@@ -583,15 +583,19 @@ public static class WorkspaceTools
         }
 
         // Route through the shared per-workspace command gate so the restore cannot write obj/
-        // concurrently with build_workspace/test_run. BuildTimeout is a total budget that includes
-        // the queue wait (GatedCommandExecutor.ExecuteAsync), so a held gate yields TimeoutException.
+        // concurrently with build_workspace/test_run. Each invocation's timeout is a total budget that
+        // includes the queue wait (GatedCommandExecutor.ExecuteAsync), so a held gate yields
+        // TimeoutException. The restore phase has its own RestoreTimeout, clamped to what is left of
+        // the enclosing request deadline minus a reserve for the reload below, so a slow restore
+        // cannot consume the whole gate deadline and starve that reload.
+        var phaseClock = Stopwatch.StartNew();
         foreach (var (targetPath, packagesPath) in PlanRestoreInvocations(status))
         {
             var execution = await commandExecutor.ExecuteAsync(
                 status.WorkspaceId,
                 targetPath,
                 BuildRestoreArguments(targetPath, packagesPath),
-                validationOptions.BuildTimeout,
+                RemainingRestoreBudget(validationOptions, phaseClock.Elapsed),
                 ct).ConfigureAwait(false);
 
             if (!execution.Succeeded)
@@ -605,6 +609,34 @@ public static class WorkspaceTools
         }
 
         return await workspace.ReloadAsync(status.WorkspaceId, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Time left for the next restore invocation: <c>RestoreTimeout</c> minus the phase time already
+    /// spent, clamped to the enclosing request deadline minus <c>RestoreReloadReserve</c> when a
+    /// gate published one. Throws a path-free <see cref="TimeoutException"/> when nothing remains,
+    /// before any <c>dotnet</c> process is spawned.
+    /// </summary>
+    private static TimeSpan RemainingRestoreBudget(ValidationServiceOptions options, TimeSpan phaseElapsed)
+    {
+        var budget = options.RestoreTimeout - phaseElapsed;
+        if (RequestDeadline.Remaining is { } requestRemaining)
+        {
+            var beforeReserve = requestRemaining - options.RestoreReloadReserve;
+            if (beforeReserve < budget)
+            {
+                budget = beforeReserve;
+            }
+        }
+
+        if (budget <= TimeSpan.Zero)
+        {
+            throw new TimeoutException(
+                "workspace auto-restore has no time budget left; raise ROSLYNMCP_RESTORE_TIMEOUT_SECONDS or ROSLYNMCP_REQUEST_TIMEOUT_SECONDS, " +
+                "or run dotnet restore for the loaded project and retry workspace_reload.");
+        }
+
+        return budget;
     }
 
     /// <summary>

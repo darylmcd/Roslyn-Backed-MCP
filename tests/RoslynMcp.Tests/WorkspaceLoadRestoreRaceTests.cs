@@ -376,7 +376,7 @@ public sealed class WorkspaceLoadRestoreRaceTests : SharedWorkspaceTestBase
 
             try
             {
-                var shortBudget = new ValidationServiceOptions { BuildTimeout = TimeSpan.FromMilliseconds(200) };
+                var shortBudget = new ValidationServiceOptions { RestoreTimeout = TimeSpan.FromMilliseconds(200) };
                 await Assert.ThrowsExactlyAsync<TimeoutException>(() =>
                     WorkspaceTools.RestoreAndReloadIfRequiredAsync(
                         executor, shortBudget, manager, restoreRequired, autoRestore: true, CancellationToken.None));

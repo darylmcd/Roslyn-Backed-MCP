@@ -987,6 +987,83 @@ public class WorkspaceExecutionGateTests
         public void Leave() => Interlocked.Decrement(ref _current);
     }
 
+    // workspace-restore-budget: the gate publishes its per-request deadline (same instant and
+    // clock as its timeout source) so gated actions can size budgets against it.
+    [TestMethod]
+    public async Task RunLoadGate_PublishesRequestDeadlineOnTheGateClock()
+    {
+        var clock = new FakeTimeProvider();
+        var gate = new WorkspaceExecutionGate(
+            new ExecutionGateOptions { RequestTimeout = TimeSpan.FromSeconds(120) },
+            new FakeGateWorkspaceManager(),
+            clock);
+        Assert.IsNull(RequestDeadline.Remaining, "no scope may be open outside a gated call.");
+
+        var seen = await gate.RunLoadGateAsync(_ =>
+        {
+            var atEntry = RequestDeadline.Remaining;
+            clock.Advance(TimeSpan.FromSeconds(45));
+            return Task.FromResult((atEntry, afterAdvance: RequestDeadline.Remaining));
+        }, CancellationToken.None);
+
+        Assert.AreEqual(TimeSpan.FromSeconds(120), seen.atEntry);
+        Assert.AreEqual(TimeSpan.FromSeconds(75), seen.afterAdvance);
+        Assert.IsNull(RequestDeadline.Remaining, "the scope must be disposed when the gated call completes.");
+    }
+
+    [TestMethod]
+    public async Task RunWriteNestedInLoadGate_KeepsTheEarlierLoadDeadline()
+    {
+        var clock = new FakeTimeProvider();
+        var gate = new WorkspaceExecutionGate(
+            new ExecutionGateOptions { RequestTimeout = TimeSpan.FromSeconds(120) },
+            new FakeGateWorkspaceManager(),
+            clock);
+
+        var remaining = await gate.RunLoadGateAsync(outerCt =>
+        {
+            clock.Advance(TimeSpan.FromSeconds(50));
+            // The nested write gate arms a fresh 120s, but the load gate's deadline is earlier.
+            return gate.RunWriteAsync(
+                WorkspaceA, _ => Task.FromResult(RequestDeadline.Remaining), outerCt, applyStalenessPolicy: false);
+        }, CancellationToken.None);
+
+        Assert.AreEqual(TimeSpan.FromSeconds(70), remaining);
+    }
+
+    [TestMethod]
+    public async Task AutoReload_ReArmsPublishedDeadlineAlongsideTimeoutBudget()
+    {
+        var clock = new FakeTimeProvider();
+        var manager = new FakeGateWorkspaceManager(reloadClock: clock, reloadAdvanceMs: 1500);
+        manager.MarkStale(WorkspaceA);
+        var gate = new WorkspaceExecutionGate(
+            new ExecutionGateOptions { RequestTimeout = TimeSpan.FromSeconds(2), OnStale = StalenessPolicy.AutoReload },
+            manager,
+            clock);
+
+        var remaining = await gate.RunReadAsync(WorkspaceA, _ => Task.FromResult(RequestDeadline.Remaining), CancellationToken.None);
+
+        Assert.AreEqual(TimeSpan.FromSeconds(2), remaining, "the published deadline must be re-armed with the timeout budget.");
+    }
+
+    [TestMethod]
+    public void RequestDeadline_NestedScopeNeverExtendsTheEnclosingDeadline_AndResetOnlyMovesItsOwn()
+    {
+        var clock = new FakeTimeProvider();
+        using var outer = RequestDeadline.Begin(clock, TimeSpan.FromSeconds(60));
+        using (var inner = RequestDeadline.Begin(clock, TimeSpan.FromSeconds(300)))
+        {
+            Assert.AreEqual(TimeSpan.FromSeconds(60), RequestDeadline.Remaining);
+            clock.Advance(TimeSpan.FromSeconds(100));
+            Assert.AreEqual(TimeSpan.Zero, RequestDeadline.Remaining, "an expired deadline reads as zero, never negative.");
+            inner.Reset(TimeSpan.FromSeconds(300));
+            Assert.AreEqual(TimeSpan.Zero, RequestDeadline.Remaining, "resetting the inner scope must not extend the expired outer one.");
+        }
+
+        Assert.AreEqual(TimeSpan.Zero, RequestDeadline.Remaining);
+    }
+
     private sealed class FakeGateWorkspaceManager : IWorkspaceManager
     {
         private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _removed = new();

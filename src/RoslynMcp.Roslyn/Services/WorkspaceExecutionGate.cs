@@ -120,6 +120,11 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
         var linked = linkedCts.Token;
 
+        // Publish the same deadline (same instant as timeoutCts) so the gated action can size its
+        // own budgets against it (workspace auto-restore reserves time for the follow-up reload).
+        // A write gate nested inside this one keeps the earlier deadline.
+        using var deadlineScope = RequestDeadline.Begin(_timeProvider, _requestTimeout);
+
         try
         {
             return await WithGlobalThrottle(async () =>
@@ -217,6 +222,10 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
         var linked = linkedCts.Token;
 
+        // Publish the same deadline (same instant as timeoutCts); re-armed alongside timeoutCts
+        // after an auto-reload below. Nested inside the load gate, the earlier deadline wins.
+        using var deadlineScope = RequestDeadline.Begin(_timeProvider, _requestTimeout);
+
         try
         {
             // Item 1: stale-gate policy. Checked once per call, before the per-workspace lock is
@@ -253,6 +262,7 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
                 if (autoReloaded && !linked.IsCancellationRequested)
                 {
                     timeoutCts.CancelAfter(_requestTimeout);
+                    deadlineScope.Reset(_requestTimeout);
                 }
             }
 
