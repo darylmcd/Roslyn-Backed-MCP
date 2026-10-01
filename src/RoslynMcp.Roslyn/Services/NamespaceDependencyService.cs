@@ -30,7 +30,7 @@ public sealed class NamespaceDependencyService : INamespaceDependencyService
         string workspaceId, string? projectFilter, CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
-        var projects = ProjectFilterHelper.FilterProjects(solution, projectFilter);
+        var projects = ProjectFilterHelper.ResolveProjects(solution, projectFilter);
 
         var namespaceCounts = new Dictionary<string, (int Count, string? Project)>();
         var edges = new Dictionary<(string From, string To), int>();
