@@ -758,6 +758,14 @@ public sealed class PromptSmokeTests : SharedWorkspaceTestBase
         public Task<NuGetVulnerabilityScanResultDto> ScanNuGetVulnerabilitiesAsync(
             string workspaceId, string? projectFilter, bool includeTransitive, CancellationToken ct) =>
             throw new NotSupportedException();
+
+        public Task<VulnerabilityScanPlan> PrepareVulnerabilityScanAsync(
+            string workspaceId, string? projectFilter, bool includeTransitive, CancellationToken ct) =>
+            throw new NotSupportedException();
+
+        public Task<NuGetVulnerabilityScanResultDto> RunVulnerabilityScanAsync(
+            VulnerabilityScanPlan plan, CancellationToken ct) =>
+            throw new NotSupportedException();
     }
 
     // review-test-coverage-prompt-payload-overflow (gh #756): the prompt previously

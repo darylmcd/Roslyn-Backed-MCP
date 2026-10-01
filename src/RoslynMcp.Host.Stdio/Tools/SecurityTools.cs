@@ -70,15 +70,36 @@ public static class SecurityTools
         IProgress<ProgressNotificationValue>? progress = null,
         CancellationToken ct = default)
     {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            // nuget_vulnerability_scan shells out to `dotnet list package --vulnerable`, which is
-            // network-bound (api.nuget.org). Emit a stage label before the await so
-            // MCP clients can distinguish an active scan from a hang while the CLI runs.
-            ProgressHelper.ReportStage(progress, 0, 1, "scanning-nuget");
-            var result = await nuGetDependencyService.ScanNuGetVulnerabilitiesAsync(workspaceId, projectName, includeTransitive, c);
-            ProgressHelper.Report(progress, 1, 1);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
+        return RunGatedScanAsync(gate, nuGetDependencyService, workspaceId, projectName, includeTransitive, progress, ct);
+    }
+
+    /// <summary>
+    /// Runs the scan in two phases so the workspace gate is NOT held across the long
+    /// <c>dotnet list package</c>: (1) a gated read resolves the target, workspace version and
+    /// cache key, (2) the command runs ungated under <c>VulnerabilityScanTimeout</c> (its own
+    /// command gates serialize it, and the budget includes queue wait). Holding the gate for both
+    /// armed the 2-minute request timeout before the scan started, so it always beat the 5-minute
+    /// scan budget while pinning a throttle slot and the reader lock.
+    /// </summary>
+    private static async Task<string> RunGatedScanAsync(
+        IWorkspaceExecutionGate gate,
+        INuGetDependencyService nuGetDependencyService,
+        string workspaceId,
+        string? projectName,
+        bool includeTransitive,
+        IProgress<ProgressNotificationValue>? progress,
+        CancellationToken ct)
+    {
+        // nuget_vulnerability_scan shells out to `dotnet list package --vulnerable`, which is
+        // network-bound (api.nuget.org). Emit a stage label before the await so
+        // MCP clients can distinguish an active scan from a hang while the CLI runs.
+        ProgressHelper.ReportStage(progress, 0, 1, "scanning-nuget");
+        var plan = await gate.RunReadAsync(
+            workspaceId,
+            c => nuGetDependencyService.PrepareVulnerabilityScanAsync(workspaceId, projectName, includeTransitive, c),
+            ct);
+        var result = plan.Cached ?? await nuGetDependencyService.RunVulnerabilityScanAsync(plan, ct);
+        ProgressHelper.Report(progress, 1, 1);
+        return JsonSerializer.Serialize(result, JsonDefaults.Indented);
     }
 }
