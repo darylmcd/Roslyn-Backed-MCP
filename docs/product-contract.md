@@ -122,6 +122,16 @@ and `reason`:
 The array is omitted when every candidate was terminated, lay outside the workspace, or had
 already exited. Clients must ignore unknown fields, per `docs/release-policy.md`.
 
+### `workspace_load` / `workspace_reload` restore recovery (`nextCall`)
+
+When the returned status reports `restoreRequired: true`, the result adds an optional
+`nextCall` object: `{ "tool": "workspace_reload", "arguments": { "workspaceId": "<id>", "autoRestore": true } }`.
+It is identical in the lean and `verbose=true` projections and matches the `nextCall` on
+`compile_check`'s `restore-required` result. The key is omitted when no restore is required. It is
+also present when an `autoRestore` attempt ran but `restoreRequired` is still true, so a client
+must not assume that issuing the call will clear the state. The lean `restoreHint` describes
+missing or out-of-date package assets. Clients must ignore unknown fields, per `docs/release-policy.md`.
+
 ### Deprecations scheduled for 5.0
 
 These 4.x behaviors are deprecated. The 5.0.0 release will change them under an ADR with

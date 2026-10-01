@@ -65,9 +65,7 @@ public sealed class CompileCheckService : ICompileCheckService
                     RequestedScope: requestedScope, ActualScope: requestedScope)
                 {
                     Readiness = "restore-required",
-                    NextCall = new NextCallDto(
-                        "workspace_reload",
-                        new Dictionary<string, object?> { ["workspaceId"] = workspaceId, ["autoRestore"] = true }),
+                    NextCall = NextCallDto.WorkspaceReloadWithAutoRestore(workspaceId),
                 };
             }
 

@@ -126,7 +126,7 @@ public sealed record WorkspaceStatusSummaryDto(
     /// <list type="number">
     ///   <item><description>VS-MSBuild required (COM references, .NET Core MSBuild limitation) → tell caller this project needs Visual Studio MSBuild on PATH.</description></item>
     ///   <item><description>Build required (missing analyzer build output) → suggest <c>dotnet build</c>, NOT <c>dotnet restore</c>.</description></item>
-    ///   <item><description>Restore required (missing NuGet package inputs) → suggest <c>dotnet restore</c>.</description></item>
+    ///   <item><description>Restore required (missing or out-of-date NuGet package assets) → suggest <c>dotnet restore</c>.</description></item>
     ///   <item><description>Unresolved analyzer warnings → tell caller analyzer-driven tools will under-report.</description></item>
     ///   <item><description>Many "could not be found" / CS0234 style errors → suggest <c>dotnet restore</c>.</description></item>
     ///   <item><description>Workspace is stale with no errors → likely transient post-apply; suggest a brief retry before reload.</description></item>
@@ -160,7 +160,7 @@ public sealed record WorkspaceStatusSummaryDto(
 
         if (restoreRequired)
         {
-            return "Package-restore inputs changed since the last restore. Run `dotnet restore` on the solution or project, then `workspace_reload`.";
+            return "Package restore assets are missing or out of date. Run `dotnet restore` on the solution or project, then `workspace_reload` (or call `workspace_reload` with autoRestore=true).";
         }
 
         if (unresolvedAnalyzerWarnings > 0)

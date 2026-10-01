@@ -30,6 +30,7 @@ public static class WorkspaceTools
 
     /// <remarks>
     /// <para>Set autoRestore=true to run dotnet restore plus one follow-up reload when the loaded status reports restoreRequired=true.</para>
+    /// <para>While restoreRequired=true remains in the result (including after an autoRestore attempt that did not clear it), the response carries a structured nextCall: { tool: "workspace_reload", arguments: { workspaceId, autoRestore: true } }. The field is omitted otherwise.</para>
     /// <para>Set prewarm=true to run the workspace_warm compilation/semantic-model prewarm after a successful load or auto-restore reload; set prewarm=false to opt out. When prewarm is omitted, solutions with more than 50 projects are prewarmed automatically. The response includes a prewarm result block only when warming ran.</para>
     /// <para>DocumentCount note: the per-project DocumentCount often exceeds the Compile item count reported by evaluate_msbuild_items by about 3, because the SDK auto-generates implicit-usings, AssemblyInfo, and GlobalUsings files that Roslyn includes in the document set but MSBuild does not list as explicit Compile items.</para>
     /// <para>Sessions persist for the lifetime of the stdio host process - there is NO inactivity TTL. A workspace can become unreachable if (a) the host process restarts (Cursor/Claude Code may relaunch the MCP server transparently between conversations), (b) workspace_close is called, or (c) the configured concurrent-workspace cap (ROSLYNMCP_MAX_WORKSPACES) forced an eviction. When a previously valid workspaceId returns "Workspace was not found", call workspace_load again rather than treating it as an error.</para>
@@ -103,6 +104,7 @@ public static class WorkspaceTools
 
     /// <remarks>
     /// <para>Pass verbose=false for a compact readiness/version/count projection; the default verbose=true preserves the full project tree.</para>
+    /// <para>While restoreRequired=true remains in the result, the response carries a structured nextCall (workspace_reload with autoRestore=true); the field is omitted otherwise.</para>
     /// </remarks>
     [McpServerTool(Name = "workspace_reload", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false), Description("Workspace-scoped calls auto-reload stale state by default. Use this for an explicit reload; autoRestore=true runs dotnet restore and reloads once when restoreRequired=true.")]
     [McpToolMetadata("workspace", "stable", false, false,
@@ -639,25 +641,34 @@ public static class WorkspaceTools
             ? ["restore", targetPath, "--nologo"]
             : ["restore", targetPath, "--nologo", "--packages", packagesPath];
 
-    private static string SerializeWorkspaceLoadResult(
+    /// <summary>
+    /// Serializes a <c>workspace_load</c>/<c>workspace_reload</c> result. Adds an additive
+    /// <c>nextCall</c> (<c>workspace_reload</c> with <c>autoRestore=true</c>) whenever
+    /// <see cref="WorkspaceStatusDto.RestoreRequired"/> is set, and a <c>prewarm</c> block when warming ran.
+    /// <c>internal</c> so wire tests can assert the emitted JSON.
+    /// </summary>
+    internal static string SerializeWorkspaceLoadResult(
         WorkspaceStatusDto status,
         bool verbose,
         WorkspaceWarmResult? prewarmResult)
     {
-        if (prewarmResult is null)
-        {
-            return verbose
-                ? JsonSerializer.Serialize(status, JsonDefaults.Indented)
-                : JsonSerializer.Serialize(WorkspaceStatusSummaryDto.From(status), JsonDefaults.Indented);
-        }
-
         var payloadJson = verbose
             ? JsonSerializer.Serialize(status, JsonDefaults.Indented)
             : JsonSerializer.Serialize(WorkspaceStatusSummaryDto.From(status), JsonDefaults.Indented);
         var payload = JsonNode.Parse(payloadJson) as JsonObject
             ?? throw new InvalidOperationException("workspace_load response root must serialize as a JSON object.");
 
-        payload["prewarm"] = JsonSerializer.SerializeToNode(prewarmResult, JsonDefaults.Indented);
+        if (status.RestoreRequired)
+        {
+            payload["nextCall"] = JsonSerializer.SerializeToNode(
+                NextCallDto.WorkspaceReloadWithAutoRestore(status.WorkspaceId), JsonDefaults.Indented);
+        }
+
+        if (prewarmResult is not null)
+        {
+            payload["prewarm"] = JsonSerializer.SerializeToNode(prewarmResult, JsonDefaults.Indented);
+        }
+
         return payload.ToJsonString(JsonDefaults.Indented);
     }
 
