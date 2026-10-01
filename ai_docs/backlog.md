@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-01T03:48:27Z
+**updated_at:** 2026-10-01T03:55:38Z
 
 ## Agent contract
 
@@ -163,6 +163,11 @@
 | `split-service-refuse-unsupported-method-signatures` | Medium | split-service-refuse-cross-partition-references | **Refuse split_service_with_di_preview for method shapes the stub cannot forward** — static, override/abstract, explicit-interface, ref-returning and generic-with-constraints methods, and generic source types. [type: bug] [source: split-service-with-di-refuse-unsupported-method-shapes] | M | items/split-service-refuse-unsupported-method-signatures.md |
 | `split-service-forward-ref-out-in-arguments` | Medium | split-service-refuse-unsupported-method-signatures | **Forward ref/out/in arguments with their modifiers in split_service_with_di forwarding stubs** — stubs emit bare identifiers, so ref/out/in parameters fail to compile. [type: bug] [source: split-service-with-di-refuse-unsupported-method-shapes] | S | items/split-service-forward-ref-out-in-arguments.md |
 | `split-service-copy-namespace-scoped-usings` | Medium | split-service-forward-ref-out-in-arguments | **Copy namespace-scoped usings into split_service_with_di partition files** — only file-level usings are copied, so moved code relying on namespace-block usings fails to compile (or refuse). [type: bug] [source: split-service-with-di-refuse-unsupported-method-shapes] | S | items/split-service-copy-namespace-scoped-usings.md |
+| `change-signature-class-struct-primary-ctor-add-remove` | Medium | — | **Support add/remove on class and struct primary constructors in change_signature_preview** — rewrite the type declaration ParameterList and every construction site, including target-typed new(...) and named arguments. [type: bug] [source: change-signature-primary-constructor-parameters] | M | items/change-signature-class-struct-primary-ctor-add-remove.md |
+| `change-signature-record-primary-ctor-add-remove` | Medium | change-signature-class-struct-primary-ctor-add-remove | **Support add/remove on positional records in change_signature_preview** — rewrite the record parameter list and construction sites; cover the synthesized property (readers, with, deconstruction) or refuse naming it. [type: bug] [source: change-signature-primary-constructor-parameters] | M | items/change-signature-record-primary-ctor-add-remove.md |
+| `change-signature-primary-ctor-rename-reorder` | Medium | change-signature-record-primary-ctor-add-remove | **Support rename and reorder on primary constructors in change_signature_preview** — classes, structs and records, including construction sites and named arguments. [type: bug] [source: change-signature-primary-constructor-parameters] | M | items/change-signature-primary-ctor-rename-reorder.md |
+| `load-profile-full-suite` | Medium | — | **Profile full-suite load and decide the test worker cap** — capture thread-pool queue length, workers and CPU during verify-release locally and on hosted windows shards; name the saturating classes. [type: test-infrastructure] [source: load-sensitive-timing-tests-full-suite] | M | items/load-profile-full-suite.md |
+| `timing-test-reaudit-wave` | Medium | — | **Re-audit the remaining wall-clock-sensitive tests** — replace fixed deadlines on timers and spawned children with injected clocks or event waits; start with the pwsh pipe-lifetime test. [type: test-infrastructure] [source: load-sensitive-timing-tests-full-suite] | L | items/timing-test-reaudit-wave.md |
 
 ## Low
 
