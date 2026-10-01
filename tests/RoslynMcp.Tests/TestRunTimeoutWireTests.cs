@@ -122,7 +122,8 @@ public sealed class TestRunTimeoutWireTests : SharedWorkspaceTestBase
     {
         public int Calls { get; private set; }
 
-        public Task<TestRunResultDto> RunTestsAsync(string workspaceId, string? projectName, string? filter, CancellationToken ct)
+        // The gated phase: the gate's request timeout (or the caller token) can still cancel here.
+        public Task<TestRunPlan> PrepareTestRunAsync(string workspaceId, string? projectName, string? filter, CancellationToken ct)
         {
             Calls++;
             if (filter is null)
@@ -132,6 +133,11 @@ public sealed class TestRunTimeoutWireTests : SharedWorkspaceTestBase
                 Assert.Fail("The controlled cancellation must fire before the runner completes.");
             }
 
+            return Task.FromResult(new TestRunPlan(workspaceId, projectName, filter));
+        }
+
+        public Task<TestRunResultDto> RunTestsAsync(string workspaceId, string? projectName, string? filter, CancellationToken ct)
+        {
             return Task.FromResult(new TestRunResultDto(
                 new CommandExecutionDto("dotnet", [], string.Empty, string.Empty, 0, true, 1, string.Empty, string.Empty),
                 1, 1, 0, 0, []));

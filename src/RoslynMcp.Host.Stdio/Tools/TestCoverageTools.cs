@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Text.Json;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
@@ -26,14 +27,15 @@ public static class TestCoverageTools
     public static Task<string> RunTestCoverage(
         IWorkspaceExecutionGate gate,
         IWorkspaceManager workspace,
-        IDotnetCommandRunner commandRunner,
+        IGatedCommandExecutor commandExecutor,
+        ValidationServiceOptions options,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Optional: specific test project name")] string? projectName = null,
         IProgress<ProgressNotificationValue>? progress = null,
         CancellationToken ct = default)
     {
         return RunTestCoverageCore(
-            gate, workspace, commandRunner, workspaceId, projectName, deprecation: null,
+            gate, workspace, commandExecutor, options, workspaceId, projectName, deprecation: null,
             progress, ct);
     }
 
@@ -42,111 +44,158 @@ public static class TestCoverageTools
     // <see cref="TestCoverageResultDto"/> in an anonymous envelope so the same JSON shape
     // can carry the `deprecation` field on every emit path (success, coverlet-missing
     // short-circuit, post-run no-coverage-file fallback).
-    internal static Task<string> RunTestCoverageCore(
+    /// <remarks>
+    /// Three phases so the workspace gate is NOT held across the long <c>dotnet test</c>: (1) a
+    /// gated read resolves workspace status, the coverlet partition and the coverage directory,
+    /// (2) the coverage commands run ungated through <see cref="IGatedCommandExecutor"/> under one
+    /// <see cref="ValidationServiceOptions.TestTimeout"/> budget shared by every project (its own
+    /// command gates serialize them, and the budget includes queue wait), (3) the coverage files are
+    /// parsed without any gate. Holding the gate for all three armed the 2-minute request timeout
+    /// before the tests started, so it beat the 10-minute test budget while pinning a throttle slot
+    /// and the reader lock.
+    /// </remarks>
+    internal static async Task<string> RunTestCoverageCore(
         IWorkspaceExecutionGate gate,
         IWorkspaceManager workspace,
-        IDotnetCommandRunner commandRunner,
+        IGatedCommandExecutor commandExecutor,
+        ValidationServiceOptions options,
         string workspaceId,
         string? projectName,
         ToolAliasDeprecation? deprecation,
         IProgress<ProgressNotificationValue>? progress = null,
         CancellationToken ct = default)
     {
-        return gate.RunReadAsync(workspaceId, async c =>
+        // test-coverage-timeout-failure-envelope: wrap the command invocation and the
+        // downstream coverage-file scan so that a command-budget or gate timeout is reported as a
+        // structured Timeout failureEnvelope. Any other exception propagates to the shared
+        // StructuredCallToolFilter, which reports it and returns isError=true with _meta
+        // (test-coverage-unexpected-error-not-iserror).
+        try
         {
-            // test-coverage-timeout-failure-envelope: wrap the runner invocation and the
-            // downstream coverage-file scan so that gate-internal cancellation (MCP timeout) is
-            // reported as a structured Timeout failureEnvelope. Any other exception propagates
-            // to the shared StructuredCallToolFilter, which reports it and returns isError=true
-            // with _meta (test-coverage-unexpected-error-not-iserror).
+            ProgressHelper.Report(progress, 0, 1);
+            var prepared = await gate.RunReadAsync(
+                workspaceId, c => PrepareCoverageRunAsync(workspace, workspaceId, projectName, c), ct).ConfigureAwait(false);
+
+            if (prepared.EarlyResult is { } earlyResult)
+            {
+                ProgressHelper.Report(progress, 1, 1);
+                return SerializeWithDeprecation(earlyResult, deprecation);
+            }
+
+            var plan = prepared.Plan!;
+
+            // test-coverage-temp-dir-leak (workspace-fork-apply-security-hardening): the temp
+            // coverage results dir is allocated per run and was previously never deleted, leaking a
+            // directory into %TEMP% on every invocation. Wrap the whole coverage lifecycle so the
+            // dir is removed after aggregation regardless of which return path (no-coverage-file,
+            // aggregated) fires. Best-effort delete — a lock on a coverage file must not turn a
+            // successful coverage run into an error.
             try
             {
-                ProgressHelper.Report(progress, 0, 1);
-                var status = await workspace.GetStatusAsync(workspaceId, c).ConfigureAwait(false);
-                var loadedPath = status.LoadedPath ?? throw new InvalidOperationException("Workspace has no loaded path.");
+                var (execution, coverageFiles, coverageGaps) = await RunCoveragePassAsync(
+                    commandExecutor, options, workspaceId, plan, projectName, progress, ct).ConfigureAwait(false);
 
-                var coverageDir = Path.Combine(Path.GetTempPath(), "roslyn-mcp-coverage", Guid.NewGuid().ToString("N"));
-
-                // test-coverage-temp-dir-leak (workspace-fork-apply-security-hardening): the temp
-                // coverage results dir is allocated per run and was previously never deleted, leaking a
-                // directory into %TEMP% on every invocation. Wrap the whole coverage lifecycle so the
-                // dir is removed after aggregation regardless of which return path (coverlet-missing,
-                // no-coverage-file, aggregated) fires. Best-effort delete — a lock on a coverage file
-                // must not turn a successful coverage run into an error.
-                try
+                if (coverageFiles.Length == 0)
                 {
-                    var partition = TestCoverageCoordinator.PartitionTestProjectsByCoverlet(status, projectName);
-                    if (partition.WithCoverlet.Count == 0 && partition.WithoutCoverlet.Count > 0)
-                    {
-                        ProgressHelper.Report(progress, 1, 1);
-                        return SerializeWithDeprecation(
-                            TestCoverageCoordinator.BuildCoverletMissingResult(partition.WithoutCoverlet),
-                            deprecation);
-                    }
-
-                    var (execution, coverageFiles, coverageGaps) = await RunCoveragePassAsync(
-                        commandRunner, status, partition, loadedPath, projectName, coverageDir, progress, c).ConfigureAwait(false);
-
-                    if (coverageFiles.Length == 0)
-                    {
-                        ProgressHelper.Report(progress, 1, 1);
-                        return SerializeWithDeprecation(
-                            TestCoverageCoordinator.BuildNoCoverageFileResult(execution.Succeeded, execution.ExitCode, coverageGaps),
-                            deprecation);
-                    }
-
-                    var result = TestCoverageCoordinator.ParseAndAggregateCoberturaXml(coverageFiles, coverageGaps);
                     ProgressHelper.Report(progress, 1, 1);
-                    return SerializeWithDeprecation(result, deprecation);
+                    return SerializeWithDeprecation(
+                        TestCoverageCoordinator.BuildNoCoverageFileResult(execution.Succeeded, execution.ExitCode, coverageGaps),
+                        deprecation);
                 }
-                finally
-                {
-                    TryDeleteCoverageDir(coverageDir);
-                }
-            }
-            catch (OperationCanceledException) when (c.IsCancellationRequested)
-            {
-                // Genuine caller cancellation (not the gate's internal timeout) must propagate
-                // as OperationCanceledException rather than being misreported as a timeout
-                // envelope — mirrors the split pattern in
-                // ValidationBundleTools.RestoreForkAsync.
-                throw;
-            }
-            catch (Exception ex) when (ex is TimeoutException or OperationCanceledException)
-            {
-                // Gate-timeout branch stays a structured Timeout envelope (success=false,
-                // non-retryable), consistent with test_run keeping its timeout result
-                // (TestRunnerService), instead of an isError frame. GatedCommandExecutor and
-                // WorkspaceExecutionGate reclassify their internal timeout CTS into
-                // TimeoutException (not OCE), so TimeoutException is the real production shape;
-                // a non-caller OCE is kept for a gate-internal cancel that was not reclassified.
-                // Ordered after the caller-cancellation rethrow and before the generic catch below
-                // so neither is rethrown as an unexpected failure.
+
+                var result = TestCoverageCoordinator.ParseAndAggregateCoberturaXml(coverageFiles, coverageGaps);
                 ProgressHelper.Report(progress, 1, 1);
-                return SerializeWithDeprecation(TestCoverageCoordinator.BuildTimeoutResult(), deprecation);
+                return SerializeWithDeprecation(result, deprecation);
             }
-            catch
+            finally
             {
-                // Every OperationCanceledException is handled by the arms above, so this arm only
-                // sees unexpected failures: close the progress sequence, then let the shared filter
-                // format the failure (isError=true, schemaHint, _meta) - mirrors ValidationTools.
-                ProgressHelper.Report(progress, 1, 1);
-                throw;
+                TryDeleteCoverageDir(plan.CoverageDir);
             }
-        }, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Genuine caller cancellation (not the command budget or the gate's internal timeout)
+            // must propagate as OperationCanceledException rather than being misreported as a
+            // timeout envelope — mirrors the split pattern in
+            // ValidationBundleTools.RestoreForkAsync.
+            throw;
+        }
+        catch (Exception ex) when (ex is TimeoutException or OperationCanceledException)
+        {
+            // Timeout branch stays a structured Timeout envelope (success=false, non-retryable),
+            // consistent with test_run keeping its timeout result (TestRunnerService), instead of
+            // an isError frame. GatedCommandExecutor and WorkspaceExecutionGate reclassify their
+            // internal timeout CTS into TimeoutException (not OCE), so TimeoutException is the real
+            // production shape; a non-caller OCE is kept for a gate-internal cancel that was not
+            // reclassified. Ordered after the caller-cancellation rethrow and before the generic
+            // catch below so neither is rethrown as an unexpected failure.
+            ProgressHelper.Report(progress, 1, 1);
+            return SerializeWithDeprecation(TestCoverageCoordinator.BuildTimeoutResult(), deprecation);
+        }
+        catch
+        {
+            // Every OperationCanceledException is handled by the arms above, so this arm only
+            // sees unexpected failures: close the progress sequence, then let the shared filter
+            // format the failure (isError=true, schemaHint, _meta) - mirrors ValidationTools.
+            ProgressHelper.Report(progress, 1, 1);
+            throw;
+        }
     }
+
+    /// <summary>
+    /// Gated-read phase: resolves the workspace status and coverlet partition and allocates the
+    /// coverage directory path (the directory itself is created by <c>dotnet test</c>). Returns the
+    /// coverlet-missing result directly when no selected test project can collect coverage.
+    /// </summary>
+    private static async Task<PreparedCoverageRun> PrepareCoverageRunAsync(
+        IWorkspaceManager workspace,
+        string workspaceId,
+        string? projectName,
+        CancellationToken ct)
+    {
+        var status = await workspace.GetStatusAsync(workspaceId, ct).ConfigureAwait(false);
+        var loadedPath = status.LoadedPath ?? throw new InvalidOperationException("Workspace has no loaded path.");
+        var partition = TestCoverageCoordinator.PartitionTestProjectsByCoverlet(status, projectName);
+        if (partition.WithCoverlet.Count == 0 && partition.WithoutCoverlet.Count > 0)
+        {
+            return new PreparedCoverageRun(
+                Plan: null,
+                EarlyResult: TestCoverageCoordinator.BuildCoverletMissingResult(partition.WithoutCoverlet));
+        }
+
+        var coverageDir = Path.Combine(Path.GetTempPath(), "roslyn-mcp-coverage", Guid.NewGuid().ToString("N"));
+        return new PreparedCoverageRun(
+            new CoverageRunPlan(status, partition, loadedPath, coverageDir),
+            EarlyResult: null);
+    }
+
+    private sealed record CoverageRunPlan(
+        WorkspaceStatusDto Status,
+        TestCoverageCoordinator.TestProjectPartition Partition,
+        string LoadedPath,
+        string CoverageDir);
+
+    private sealed record PreparedCoverageRun(CoverageRunPlan? Plan, TestCoverageResultDto? EarlyResult);
 
     private static async Task<(CommandExecutionDto execution, string[] coverageFiles, IReadOnlyList<string>? coverageGaps)>
         RunCoveragePassAsync(
-            IDotnetCommandRunner commandRunner,
-            WorkspaceStatusDto status,
-            TestCoverageCoordinator.TestProjectPartition partition,
-            string loadedPath,
+            IGatedCommandExecutor commandExecutor,
+            ValidationServiceOptions options,
+            string workspaceId,
+            CoverageRunPlan plan,
             string? projectName,
-            string coverageDir,
             IProgress<ProgressNotificationValue>? progress,
             CancellationToken ct)
     {
+        var (status, partition, loadedPath, coverageDir) = plan;
+
+        // One TestTimeout budget covers every project's dotnet test (queue wait included): each
+        // command gets the time that is left. An exhausted budget floors at zero, which the
+        // command executor reports as a timeout without starting the process.
+        var budget = Stopwatch.StartNew();
+        TimeSpan RemainingBudget() =>
+            TimeSpan.FromTicks(Math.Max(0, (options.TestTimeout - budget.Elapsed).Ticks));
+
         // test-coverage-fail-fast-on-missing-coverlet: choose between the
         // single-target (whole-solution or single-project) classic path and the
         // partial-coverage per-project path. The latter triggers only when the
@@ -163,7 +212,8 @@ public static class TestCoverageTools
             {
                 "test", targetPath, "--collect", "XPlat Code Coverage", "--results-directory", coverageDir
             };
-            var execution = await commandRunner.RunAsync(Path.GetDirectoryName(loadedPath)!, targetPath, arguments, ct).ConfigureAwait(false);
+            var execution = await commandExecutor.ExecuteAsync(
+                workspaceId, targetPath, arguments, RemainingBudget(), ct).ConfigureAwait(false);
             ProgressHelper.Report(progress, 0.8f, 1);
 
             var coverageFiles = Directory.Exists(coverageDir)
@@ -188,8 +238,8 @@ public static class TestCoverageTools
             {
                 "test", project.FilePath, "--collect", "XPlat Code Coverage", "--results-directory", coverageDir
             };
-            var perProjectExecution = await commandRunner.RunAsync(
-                Path.GetDirectoryName(loadedPath)!, project.FilePath, arguments, ct).ConfigureAwait(false);
+            var perProjectExecution = await commandExecutor.ExecuteAsync(
+                workspaceId, project.FilePath, arguments, RemainingBudget(), ct).ConfigureAwait(false);
             lastExecution = perProjectExecution;
             if (!perProjectExecution.Succeeded)
                 perProjectFailures++;
@@ -238,7 +288,8 @@ public static class TestCoverageTools
     public static Task<string> GetTestCoverageMap(
         IWorkspaceExecutionGate gate,
         IWorkspaceManager workspace,
-        IDotnetCommandRunner commandRunner,
+        IGatedCommandExecutor commandExecutor,
+        ValidationServiceOptions options,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Optional: specific test project name")] string? projectName = null,
         IProgress<ProgressNotificationValue>? progress = null,
@@ -247,7 +298,8 @@ public static class TestCoverageTools
         return RunTestCoverageCore(
             gate,
             workspace,
-            commandRunner,
+            commandExecutor,
+            options,
             workspaceId,
             projectName,
             ToolAliasDeprecation.ForSisterAlias("test_coverage"),

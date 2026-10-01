@@ -300,7 +300,16 @@ public static class ValidationTools
         }
     }
 
-    private static Task<string> RunTestsOnceAsync(
+    /// <summary>
+    /// Runs <c>test_run</c> in three phases so the workspace gate is NOT held across the long
+    /// <c>dotnet test</c>: (1) a gated read resolves the target and records the workspace version,
+    /// (2) the command runs ungated under <c>TestTimeout</c> (its own command gates serialize it,
+    /// and the budget includes queue wait), (3) a gated read adds the
+    /// <c>workspaceChangedDuringRun</c> warning when the workspace version moved. Holding the gate
+    /// for all three armed the 2-minute request timeout before the tests started, so it always
+    /// beat the 10-minute test budget while pinning a throttle slot and the reader lock.
+    /// </summary>
+    private static async Task<string> RunTestsOnceAsync(
         IWorkspaceExecutionGate gate,
         ITestRunnerService testRunnerService,
         string workspaceId,
@@ -318,7 +327,7 @@ public static class ValidationTools
         // emitted — ITestRunnerService doesn't accept progress and adding it would require
         // interface edits past the audit-coverage initiative scope. See ProgressHelper
         // remarks for the label-naming contract.
-        return gate.RunReadAsync(workspaceId, async c =>
+        var plan = await gate.RunReadAsync(workspaceId, async c =>
         {
             try
             {
@@ -328,78 +337,7 @@ public static class ValidationTools
                     throw new ArgumentException("failuresOffset must be non-negative.", nameof(failuresOffset));
 
                 ProgressHelper.ReportStage(progress, 0, 3, "discovering-tests");
-                ProgressHelper.ReportStage(progress, 1, 3, "running-tests");
-                var result = await testRunnerService.RunTestsAsync(workspaceId, projectName, filter, c);
-                ProgressHelper.ReportStage(progress, 3, 3, "done");
-
-                // Keep the service DTO full-fidelity for TRX parsing and server-side diagnosis;
-                // project only at the MCP response boundary. The JsonDefaults converter applies
-                // the same projection when validate_workspace and workspace_fork_apply embed a
-                // TestRunResultDto instead of calling this pagination wrapper.
-                var publicResult = TestRunPublicProjection.Create(result);
-
-                // test-run-failures-pagination-truncation: Failures carries one entry per failing
-                // test, and pre-fix the whole list was serialized with no cap on COUNT (the
-                // per-entry Message/StackTrace cap lives in DotnetOutputParser). A broad or
-                // unfiltered run over a large suite therefore produced a payload that grew
-                // linearly with the failure count, with no protocol-level ceiling to catch it —
-                // neither this repo nor the pinned MCP SDK declares a response-size constant, so
-                // the only real ceiling is the consuming client's context budget. Page the list
-                // the same way test_discover pages test cases: aggregate counts (total/passed/
-                // failed/skipped) always reflect the FULL run; only the per-failure detail array
-                // is capped, with failuresTotal/hasMoreFailures so callers can tell.
-                var failuresTotal = result.Failures.Count;
-                var pagedFailures = publicResult.Failures
-                    .Skip(failuresOffset)
-                    .Take(failuresLimit)
-                    .ToList();
-                var hasMoreFailures = failuresOffset + pagedFailures.Count < failuresTotal;
-
-                if (!compact)
-                {
-                    return JsonSerializer.Serialize(new
-                    {
-                        publicResult.Execution,
-                        result.Total,
-                        result.Passed,
-                        result.Failed,
-                        result.Skipped,
-                        failures = pagedFailures,
-                        failuresOffset,
-                        failuresLimit,
-                        failuresTotal,
-                        hasMoreFailures,
-                        publicResult.FailureEnvelope,
-                    }, JsonDefaults.Indented);
-                }
-
-                // compact=true: execution.stdOut/stdErr/command/arguments/workingDirectory
-                // duplicate what total/passed/failed/skipped already say once the run
-                // demonstrably ran (targetPath/exitCode/succeeded/durationMs kept — see gh #1421).
-                // Pagination fields are dropped only when there is nothing to paginate; a run with
-                // failures still needs failuresOffset/failuresLimit/hasMoreFailures to page them.
-                var compactExecution = new CompactCommandExecutionDto(
-                    publicResult.Execution.TargetPath,
-                    publicResult.Execution.ExitCode,
-                    publicResult.Execution.Succeeded,
-                    publicResult.Execution.DurationMs,
-                    publicResult.Execution.EarlyKillReason);
-                var hasFailuresToPaginate = failuresTotal > 0;
-
-                return JsonSerializer.Serialize(
-                    new CompactTestRunWireResponse(
-                        compactExecution,
-                        result.Total,
-                        result.Passed,
-                        result.Failed,
-                        result.Skipped,
-                        pagedFailures,
-                        hasFailuresToPaginate ? failuresOffset : null,
-                        hasFailuresToPaginate ? failuresLimit : null,
-                        failuresTotal,
-                        hasFailuresToPaginate ? hasMoreFailures : null,
-                        publicResult.FailureEnvelope),
-                    JsonDefaults.Indented);
+                return await testRunnerService.PrepareTestRunAsync(workspaceId, projectName, filter, c);
             }
             catch (Exception ex) when (ex is not OperationCanceledException and not WorkspaceEvictedException)
             {
@@ -410,6 +348,110 @@ public static class ValidationTools
                 throw;
             }
         }, ct);
+
+        try
+        {
+            ProgressHelper.ReportStage(progress, 1, 3, "running-tests");
+            var run = await testRunnerService.RunTestCommandAsync(plan, ct);
+
+            TestRunResultDto result;
+            try
+            {
+                result = await gate.RunReadAsync(
+                    workspaceId, c => testRunnerService.CompleteTestRunAsync(plan, run, c), ct);
+            }
+            catch (KeyNotFoundException)
+            {
+                // The workspace was closed or evicted while the command ran: the test output is
+                // still valid, so return it with the workspaceChangedDuringRun warning rather
+                // than re-running the suite against a reloaded workspace.
+                result = testRunnerService.CompleteTestRunWithoutWorkspace(run);
+            }
+
+            ProgressHelper.ReportStage(progress, 3, 3, "done");
+            return SerializeTestRun(result, failuresOffset, failuresLimit, compact);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException and not WorkspaceEvictedException)
+        {
+            ProgressHelper.ReportStage(progress, 3, 3, "done");
+            throw;
+        }
+    }
+
+    private static string SerializeTestRun(TestRunResultDto result, int failuresOffset, int failuresLimit, bool compact)
+    {
+        // Keep the service DTO full-fidelity for TRX parsing and server-side diagnosis;
+        // project only at the MCP response boundary. The JsonDefaults converter applies
+        // the same projection when validate_workspace and workspace_fork_apply embed a
+        // TestRunResultDto instead of calling this pagination wrapper.
+        var publicResult = TestRunPublicProjection.Create(result);
+
+        // test-run-failures-pagination-truncation: Failures carries one entry per failing
+        // test, and pre-fix the whole list was serialized with no cap on COUNT (the
+        // per-entry Message/StackTrace cap lives in DotnetOutputParser). A broad or
+        // unfiltered run over a large suite therefore produced a payload that grew
+        // linearly with the failure count, with no protocol-level ceiling to catch it —
+        // neither this repo nor the pinned MCP SDK declares a response-size constant, so
+        // the only real ceiling is the consuming client's context budget. Page the list
+        // the same way test_discover pages test cases: aggregate counts (total/passed/
+        // failed/skipped) always reflect the FULL run; only the per-failure detail array
+        // is capped, with failuresTotal/hasMoreFailures so callers can tell.
+        var failuresTotal = result.Failures.Count;
+        var pagedFailures = publicResult.Failures
+            .Skip(failuresOffset)
+            .Take(failuresLimit)
+            .ToList();
+        var hasMoreFailures = failuresOffset + pagedFailures.Count < failuresTotal;
+
+        if (!compact)
+        {
+            return JsonSerializer.Serialize(
+                new TestRunWireResponse(
+                    publicResult.Execution,
+                    result.Total,
+                    result.Passed,
+                    result.Failed,
+                    result.Skipped,
+                    pagedFailures,
+                    failuresOffset,
+                    failuresLimit,
+                    failuresTotal,
+                    hasMoreFailures,
+                    publicResult.FailureEnvelope,
+                    publicResult.Warnings,
+                    publicResult.CommandDurationMs),
+                JsonDefaults.Indented);
+        }
+
+        // compact=true: execution.stdOut/stdErr/command/arguments/workingDirectory
+        // duplicate what total/passed/failed/skipped already say once the run
+        // demonstrably ran (targetPath/exitCode/succeeded/durationMs kept — see gh #1421).
+        // Pagination fields are dropped only when there is nothing to paginate; a run with
+        // failures still needs failuresOffset/failuresLimit/hasMoreFailures to page them.
+        var compactExecution = new CompactCommandExecutionDto(
+            publicResult.Execution.TargetPath,
+            publicResult.Execution.ExitCode,
+            publicResult.Execution.Succeeded,
+            publicResult.Execution.DurationMs,
+            publicResult.Execution.EarlyKillReason);
+        var hasFailuresToPaginate = failuresTotal > 0;
+
+        return JsonSerializer.Serialize(
+            new CompactTestRunWireResponse(
+                compactExecution,
+                result.Total,
+                result.Passed,
+                result.Failed,
+                result.Skipped,
+                pagedFailures,
+                hasFailuresToPaginate ? failuresOffset : null,
+                hasFailuresToPaginate ? failuresLimit : null,
+                failuresTotal,
+                hasFailuresToPaginate ? hasMoreFailures : null,
+                publicResult.FailureEnvelope,
+                publicResult.Warnings,
+                publicResult.CommandDurationMs),
+            JsonDefaults.Indented);
     }
 
     /// <remarks>
@@ -487,4 +529,26 @@ internal sealed record CompactTestRunWireResponse(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? FailuresLimit,
     int FailuresTotal,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? HasMoreFailures,
-    TestRunFailureEnvelopeDto? FailureEnvelope);
+    TestRunFailureEnvelopeDto? FailureEnvelope,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Warnings,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] long? CommandDurationMs);
+
+/// <summary>
+/// Default (non-compact) <c>test_run</c> wire response. A named record rather than an anonymous
+/// object so the additive <c>warnings</c>/<c>commandDurationMs</c> fields can be omitted when null,
+/// matching <c>build_workspace</c>; every other field keeps its previous name, order and null handling.
+/// </summary>
+internal sealed record TestRunWireResponse(
+    PublicCommandExecutionDto Execution,
+    int Total,
+    int Passed,
+    int Failed,
+    int Skipped,
+    IReadOnlyList<TestFailureDto> Failures,
+    int FailuresOffset,
+    int FailuresLimit,
+    int FailuresTotal,
+    bool HasMoreFailures,
+    TestRunFailureEnvelopeDto? FailureEnvelope,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Warnings,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] long? CommandDurationMs);

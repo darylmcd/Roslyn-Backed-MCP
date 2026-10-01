@@ -1,8 +1,10 @@
 using System.Text.Json;
 using Microsoft.CodeAnalysis;
+using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
+using RoslynMcp.Roslyn.Services;
 using RoslynMcp.Tests.TestInfrastructure;
 
 namespace RoslynMcp.Tests;
@@ -35,7 +37,8 @@ public sealed class TestCoverageFailureEnvelopeTests
         var json = await TestCoverageTools.RunTestCoverageCore(
             gate,
             workspace,
-            runner,
+            new GatedCommandExecutor(workspace, runner, NullLogger<GatedCommandExecutor>.Instance),
+            new ValidationServiceOptions(),
             workspaceId: "ws-coverage-timeout",
             projectName: null,
             deprecation: null,
@@ -75,7 +78,8 @@ public sealed class TestCoverageFailureEnvelopeTests
         var json = await TestCoverageTools.RunTestCoverageCore(
             gate,
             workspace,
-            runner,
+            new GatedCommandExecutor(workspace, runner, NullLogger<GatedCommandExecutor>.Instance),
+            new ValidationServiceOptions(),
             workspaceId: "ws-coverage-gate-timeout",
             projectName: null,
             deprecation: null,
@@ -111,7 +115,8 @@ public sealed class TestCoverageFailureEnvelopeTests
             TestCoverageTools.RunTestCoverageCore(
                 gate,
                 workspace,
-                runner,
+                new GatedCommandExecutor(workspace, runner, NullLogger<GatedCommandExecutor>.Instance),
+                new ValidationServiceOptions(),
                 workspaceId: "ws-coverage-unknown",
                 projectName: null,
                 deprecation: null,
@@ -146,7 +151,8 @@ public sealed class TestCoverageFailureEnvelopeTests
         var json = await TestCoverageTools.RunTestCoverageCore(
             gate,
             workspace,
-            runner,
+            new GatedCommandExecutor(workspace, runner, NullLogger<GatedCommandExecutor>.Instance),
+            new ValidationServiceOptions(),
             workspaceId: "ws-coverage-testfailure",
             projectName: null,
             deprecation: null,
@@ -185,11 +191,14 @@ public sealed class TestCoverageFailureEnvelopeTests
         using var cts = new CancellationTokenSource();
         cts.Cancel();
 
-        await Assert.ThrowsExactlyAsync<OperationCanceledException>(() =>
+        // The command executor surfaces caller cancellation as a TaskCanceledException (an
+        // OperationCanceledException); it must propagate unwrapped, never as a Timeout envelope.
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
             TestCoverageTools.RunTestCoverageCore(
                 gate,
                 workspace,
-                runner,
+                new GatedCommandExecutor(workspace, runner, NullLogger<GatedCommandExecutor>.Instance),
+                new ValidationServiceOptions(),
                 workspaceId: "ws-coverage-caller-cancelled",
                 projectName: null,
                 deprecation: null,
@@ -217,7 +226,8 @@ public sealed class TestCoverageFailureEnvelopeTests
             TestCoverageTools.RunTestCoverageCore(
                 gate,
                 workspace,
-                runner,
+                new GatedCommandExecutor(workspace, runner, NullLogger<GatedCommandExecutor>.Instance),
+                new ValidationServiceOptions(),
                 workspaceId: "ws-coverage-status-throws",
                 projectName: null,
                 deprecation: null,
@@ -243,7 +253,8 @@ public sealed class TestCoverageFailureEnvelopeTests
             TestCoverageTools.RunTestCoverageCore(
                 gate,
                 workspace,
-                runner,
+                new GatedCommandExecutor(workspace, runner, NullLogger<GatedCommandExecutor>.Instance),
+                new ValidationServiceOptions(),
                 workspaceId: "ws-coverage-cleanup-throw",
                 projectName: null,
                 deprecation: null,

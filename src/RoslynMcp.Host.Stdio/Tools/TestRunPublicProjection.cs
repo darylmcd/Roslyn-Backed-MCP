@@ -49,7 +49,9 @@ internal static partial class TestRunPublicProjection
             result.Failed,
             result.Skipped,
             failures,
-            failureEnvelope);
+            failureEnvelope,
+            result.Warnings,
+            result.CommandDurationMs);
     }
 
     private sealed class ExecutionRedactor
@@ -436,7 +438,9 @@ internal sealed record PublicTestRunResultDto(
     int Failed,
     int Skipped,
     IReadOnlyList<TestFailureDto> Failures,
-    TestRunFailureEnvelopeDto? FailureEnvelope);
+    TestRunFailureEnvelopeDto? FailureEnvelope,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Warnings = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] long? CommandDurationMs = null);
 
 /// <summary>
 /// Applies <see cref="TestRunPublicProjection"/> whenever a sibling host response serializes an

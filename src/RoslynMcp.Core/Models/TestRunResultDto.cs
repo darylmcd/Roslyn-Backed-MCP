@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace RoslynMcp.Core.Models;
 
 /// <summary>
@@ -13,7 +15,24 @@ public sealed record TestRunResultDto(
     int Failed,
     int Skipped,
     IReadOnlyList<TestFailureDto> Failures,
-    TestRunFailureEnvelopeDto? FailureEnvelope = null);
+    TestRunFailureEnvelopeDto? FailureEnvelope = null)
+{
+    /// <summary>
+    /// Non-fatal conditions observed while producing the result (for example
+    /// <c>workspaceChangedDuringRun</c>, emitted when the workspace version moved while the test
+    /// command ran without the workspace lock). Omitted when there is nothing to report.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<string>? Warnings { get; init; }
+
+    /// <summary>
+    /// Wall-clock milliseconds the test command itself took, including its command-queue wait
+    /// (the budget <c>TestTimeout</c> bounds). Omitted when the result was not produced by a
+    /// timed command run.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public long? CommandDurationMs { get; init; }
+}
 
 /// <summary>
 /// Represents a failed test case from a test run.

@@ -1,9 +1,11 @@
 using System.Text;
 using System.Text.Json;
 using Microsoft.CodeAnalysis;
+using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
+using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
 
@@ -46,7 +48,8 @@ public sealed class TestCoveragePartialCoverletTests
         var json = await TestCoverageTools.RunTestCoverageCore(
             gate,
             workspace,
-            runner,
+            new GatedCommandExecutor(workspace, runner, NullLogger<GatedCommandExecutor>.Instance),
+            new ValidationServiceOptions(),
             workspaceId: "ws-coverage-partial",
             projectName: null,
             deprecation: null,
@@ -79,6 +82,75 @@ public sealed class TestCoveragePartialCoverletTests
     }
 
     /// <summary>
+    /// The per-project loop shares ONE <c>TestTimeout</c> budget: every command is bounded by the
+    /// time that is left, so the second project's budget is strictly smaller than the first's and
+    /// neither exceeds the configured total.
+    /// </summary>
+    [TestMethod]
+    public async Task RunTestCoverageCore_PartialPath_SharesOneTestTimeoutBudgetAcrossProjects()
+    {
+        using var fixture = new CoverletProjectFixture();
+        var first = fixture.WriteCsproj("WithCoverlet", includesCoverletCollector: true);
+        var second = fixture.WriteCsproj("SecondCoverlet", includesCoverletCollector: true);
+        var without = fixture.WriteCsproj("WithoutCoverlet", includesCoverletCollector: false);
+        var workspace = new MixedCoverletWorkspaceManager(first, without, [("SecondCoverlet", second, true)]);
+        var executor = new BudgetRecordingExecutor(delayAfterFirstCall: TimeSpan.FromMilliseconds(50));
+        var total = TimeSpan.FromMinutes(5);
+
+        await TestCoverageTools.RunTestCoverageCore(
+            new PassthroughGate(),
+            workspace,
+            executor,
+            new ValidationServiceOptions { TestTimeout = total },
+            workspaceId: "ws-coverage-budget",
+            projectName: null,
+            deprecation: null,
+            progress: null,
+            ct: CancellationToken.None);
+
+        Assert.HasCount(2, executor.Budgets);
+        Assert.IsLessThanOrEqualTo(total, executor.Budgets[0]);
+        Assert.IsLessThan(executor.Budgets[0], executor.Budgets[1]);
+    }
+
+    private sealed class BudgetRecordingExecutor(TimeSpan delayAfterFirstCall) : IGatedCommandExecutor
+    {
+        public List<TimeSpan> Budgets { get; } = [];
+
+        public async Task<CommandExecutionDto> ExecuteAsync(
+            string workspaceId,
+            string targetPath,
+            IReadOnlyList<string> arguments,
+            TimeSpan timeout,
+            CancellationToken ct)
+        {
+            Budgets.Add(timeout);
+            if (Budgets.Count == 1)
+            {
+                await Task.Delay(delayAfterFirstCall, ct);
+            }
+
+            return new CommandExecutionDto(
+                Command: "dotnet",
+                Arguments: arguments,
+                WorkingDirectory: string.Empty,
+                TargetPath: targetPath,
+                ExitCode: 0,
+                Succeeded: true,
+                DurationMs: 1,
+                StdOut: string.Empty,
+                StdErr: string.Empty);
+        }
+
+        public ProjectStatusDto ResolveProject(string workspaceId, string projectName) =>
+            throw new NotSupportedException();
+
+        public void Dispose()
+        {
+        }
+    }
+
+    /// <summary>
     /// (2) Regression guard: when EVERY in-scope test project lacks <c>coverlet.collector</c>,
     /// the pre-existing fail-fast path must remain reachable. <c>success=false</c>,
     /// <c>failureEnvelope.errorKind=CoverletMissing</c>, <c>missingPackages</c> populated.
@@ -107,7 +179,8 @@ public sealed class TestCoveragePartialCoverletTests
         var json = await TestCoverageTools.RunTestCoverageCore(
             gate,
             workspace,
-            runner,
+            new GatedCommandExecutor(workspace, runner, NullLogger<GatedCommandExecutor>.Instance),
+            new ValidationServiceOptions(),
             workspaceId: "ws-coverage-allmissing",
             projectName: null,
             deprecation: null,
@@ -162,7 +235,8 @@ public sealed class TestCoveragePartialCoverletTests
         var json = await TestCoverageTools.RunTestCoverageCore(
             gate,
             workspace,
-            runner,
+            new GatedCommandExecutor(workspace, runner, NullLogger<GatedCommandExecutor>.Instance),
+            new ValidationServiceOptions(),
             workspaceId: "ws-coverage-allcoverlet",
             projectName: null,
             deprecation: null,
@@ -200,7 +274,8 @@ public sealed class TestCoveragePartialCoverletTests
         await TestCoverageTools.RunTestCoverageCore(
             gate,
             workspace,
-            runner,
+            new GatedCommandExecutor(workspace, runner, NullLogger<GatedCommandExecutor>.Instance),
+            new ValidationServiceOptions(),
             workspaceId: "ws-coverage-cleanup",
             projectName: null,
             deprecation: null,

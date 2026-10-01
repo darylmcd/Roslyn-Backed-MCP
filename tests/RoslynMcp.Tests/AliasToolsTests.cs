@@ -1,6 +1,7 @@
 using System.Text.Json;
 using RoslynMcp.Host.Stdio.Catalog;
 using RoslynMcp.Host.Stdio.Tools;
+using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
 
@@ -107,7 +108,8 @@ public sealed class AliasToolsTests : SharedWorkspaceTestBase
         var canonicalJson = await TestCoverageTools.RunTestCoverage(
             gate: WorkspaceExecutionGate,
             workspace: WorkspaceManager,
-            commandRunner: DotnetCommandRunner,
+            commandExecutor: GatedCommandExecutor,
+            options: new ValidationServiceOptions(),
             workspaceId: WorkspaceId,
             projectName: "SampleLib.Tests",
             progress: null,
@@ -116,7 +118,8 @@ public sealed class AliasToolsTests : SharedWorkspaceTestBase
         var aliasJson = await TestCoverageTools.GetTestCoverageMap(
             gate: WorkspaceExecutionGate,
             workspace: WorkspaceManager,
-            commandRunner: DotnetCommandRunner,
+            commandExecutor: GatedCommandExecutor,
+            options: new ValidationServiceOptions(),
             workspaceId: WorkspaceId,
             projectName: "SampleLib.Tests",
             progress: null,

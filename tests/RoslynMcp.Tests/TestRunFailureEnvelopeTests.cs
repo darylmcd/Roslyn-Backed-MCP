@@ -824,6 +824,99 @@ public sealed class TestRunFailureEnvelopeTests
     /// Message/StackTrace already at the DotnetOutputParser caps (500 / 1500 chars), which is the
     /// true worst case a paginated response can serialize.
     /// </summary>
+    [TestMethod]
+    public async Task RunTestCommandAsync_PlanWithoutTargetPath_ThrowsArgumentException()
+    {
+        var service = new TestRunnerService(
+            new SingleTestProjectWorkspaceManager(),
+            new CannedExecutionExecutor(SucceededExecution()),
+            NullLogger<TestRunnerService>.Instance,
+            new ThrowingTestDiscoveryService(new InvalidOperationException("not expected")));
+
+        var thrown = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+            service.RunTestCommandAsync(new TestRunPlan("ws-no-target", null, null), CancellationToken.None));
+        Assert.AreEqual("plan", thrown.ParamName);
+    }
+
+    [TestMethod]
+    public async Task RunTestCommandAsync_SetsCommandDurationOnResult()
+    {
+        var service = new TestRunnerService(
+            new SingleTestProjectWorkspaceManager(),
+            new CannedExecutionExecutor(SucceededExecution()),
+            NullLogger<TestRunnerService>.Instance,
+            new ThrowingTestDiscoveryService(new InvalidOperationException("not expected")));
+
+        var plan = await service.PrepareTestRunAsync("ws-duration", null, null, CancellationToken.None);
+        var result = await service.RunTestCommandAsync(plan, CancellationToken.None);
+
+        Assert.IsNotNull(result.CommandDurationMs);
+        Assert.IsGreaterThanOrEqualTo(0L, result.CommandDurationMs!.Value);
+        Assert.IsNull(result.Warnings);
+    }
+
+    [TestMethod]
+    public async Task RunTestsAsync_WorkspaceClosedDuringRun_ReturnsParsedResultWithWarning()
+    {
+        var manager = new SingleTestProjectWorkspaceManager();
+        var service = new TestRunnerService(
+            manager,
+            new CallbackExecutionExecutor(() => manager.Closed = true, SucceededExecution()),
+            NullLogger<TestRunnerService>.Instance,
+            new ThrowingTestDiscoveryService(new InvalidOperationException("not expected")));
+
+        var result = await service.RunTestsAsync("ws-closed", null, null, CancellationToken.None);
+
+        Assert.IsTrue(result.Execution.Succeeded);
+        CollectionAssert.AreEqual(new[] { TestRunWarnings.WorkspaceChangedDuringRun }, result.Warnings!.ToArray());
+    }
+
+    [TestMethod]
+    public async Task CompleteTestRunAsync_VersionMoved_AddsWarningOnce()
+    {
+        var manager = new SingleTestProjectWorkspaceManager();
+        var service = new TestRunnerService(
+            manager,
+            new CannedExecutionExecutor(SucceededExecution()),
+            NullLogger<TestRunnerService>.Instance,
+            new ThrowingTestDiscoveryService(new InvalidOperationException("not expected")));
+
+        var plan = await service.PrepareTestRunAsync("ws-version", null, null, CancellationToken.None);
+        var run = await service.RunTestCommandAsync(plan, CancellationToken.None);
+        var unchanged = await service.CompleteTestRunAsync(plan, run, CancellationToken.None);
+        Assert.IsNull(unchanged.Warnings);
+
+        manager.Version++;
+        var moved = await service.CompleteTestRunAsync(plan, run, CancellationToken.None);
+        var movedAgain = await service.CompleteTestRunAsync(plan, moved, CancellationToken.None);
+        CollectionAssert.AreEqual(new[] { TestRunWarnings.WorkspaceChangedDuringRun }, moved.Warnings!.ToArray());
+        CollectionAssert.AreEqual(new[] { TestRunWarnings.WorkspaceChangedDuringRun }, movedAgain.Warnings!.ToArray());
+    }
+
+    private static CommandExecutionDto SucceededExecution() =>
+        new("dotnet", ["test"], "C:/ws", "C:/ws/Sample.Tests.csproj", 0, true, 1, string.Empty, string.Empty);
+
+    private sealed class CallbackExecutionExecutor(Action onExecute, CommandExecutionDto execution) : IGatedCommandExecutor
+    {
+        public Task<CommandExecutionDto> ExecuteAsync(
+            string workspaceId,
+            string targetPath,
+            IReadOnlyList<string> arguments,
+            TimeSpan timeout,
+            CancellationToken ct)
+        {
+            onExecute();
+            return Task.FromResult(execution);
+        }
+
+        public ProjectStatusDto ResolveProject(string workspaceId, string projectName) =>
+            throw new NotSupportedException();
+
+        public void Dispose()
+        {
+        }
+    }
+
     private sealed class LargeFailureSetTestRunnerService : ITestRunnerService
     {
         private readonly int _total;
@@ -987,7 +1080,10 @@ public sealed class TestRunFailureEnvelopeTests
         public ProjectGraphDto GetProjectGraph(string workspaceId) => throw new NotSupportedException();
         public Task<IReadOnlyList<GeneratedDocumentDto>> GetSourceGeneratedDocumentsAsync(string workspaceId, string? projectName, CancellationToken ct) => throw new NotSupportedException();
         public Task<string?> GetSourceTextAsync(string workspaceId, string filePath, CancellationToken ct) => throw new NotSupportedException();
-        public int GetCurrentVersion(string workspaceId) => throw new NotSupportedException();
+        public int Version { get; set; } = 1;
+        public bool Closed { get; set; }
+        public int GetCurrentVersion(string workspaceId) =>
+            Closed ? throw ((IWorkspaceManager)this).CreateWorkspaceNotFoundException(workspaceId) : Version;
         public void RestoreVersion(string workspaceId, int version) => throw new NotSupportedException();
         public Solution GetCurrentSolution(string workspaceId) => throw new NotSupportedException();
         public bool TryApplyChanges(string workspaceId, Solution newSolution) => throw new NotSupportedException();
