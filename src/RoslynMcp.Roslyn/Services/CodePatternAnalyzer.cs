@@ -60,7 +60,7 @@ public sealed partial class CodePatternAnalyzer : ICodePatternAnalyzer
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var results = new List<ReflectionUsageDto>();
         var failedDocumentCount = 0;
-        var projects = ProjectFilterHelper.FilterProjects(solution, projectFilter);
+        var projects = ProjectFilterHelper.ResolveProjects(solution, projectFilter);
 
         foreach (var project in projects)
         {
@@ -192,7 +192,7 @@ public sealed partial class CodePatternAnalyzer : ICodePatternAnalyzer
         // node-by-node would emit one row per declaration site. Dedupe by SymbolHandle (the
         // canonical identifier we already publish) so callers never see the same symbol twice.
         var seenHandles = new HashSet<string>(StringComparer.Ordinal);
-        var projects = ProjectFilterHelper.FilterProjects(solution, projectFilter);
+        var projects = ProjectFilterHelper.ResolveProjects(solution, projectFilter);
 
         var parse = ParseSemanticQuery(decodedQuery);
         bool Combined(ISymbol s) => parse.Predicates.All(p => p(s));
