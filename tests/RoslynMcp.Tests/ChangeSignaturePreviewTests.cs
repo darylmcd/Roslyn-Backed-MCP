@@ -1028,4 +1028,108 @@ public sealed class ChangeSignaturePreviewTests : IsolatedWorkspaceTestBase
         StringAssert.Contains(postApplyText, "Log(nameof(Compute), \"m\")",
             $"nameof(...) and its enclosing Log(...) must be untouched; got:\n{postApplyText}");
     }
+
+    /// <summary>
+    /// change-signature-primary-constructor-parameters: primary-constructor parameters live on the
+    /// type declaration's parameter list, which the rewriters never visit. Pre-fix every op on a
+    /// primary-constructor target threw the misleading "produced no changes" error; the service now
+    /// refuses up-front with a specific, host-visible message. Covers a positional record and a class
+    /// primary constructor, with the caret on the type name and on a parameter, for every op.
+    /// </summary>
+    [TestMethod]
+    [DataRow("record", "add", false)]
+    [DataRow("record", "remove", false)]
+    [DataRow("record", "rename", false)]
+    [DataRow("record", "reorder", false)]
+    [DataRow("class", "add", false)]
+    [DataRow("class", "remove", false)]
+    [DataRow("class", "rename", false)]
+    [DataRow("class", "reorder", false)]
+    [DataRow("record", "remove", true)]
+    [DataRow("class", "remove", true)]
+    public async Task ChangeSignaturePreview_PrimaryConstructor_RefusesWithSpecificMessage(
+        string typeKind, string op, bool caretOnParameter)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+
+        var fixturePath = workspace.GetPath("SampleLib", "ChangeSignaturePrimaryCtorFixture.cs");
+        var content = string.Join("\n", new[]
+        {
+            "namespace SampleLib;",
+            "",
+            $"public {typeKind} PrimaryCtorFixture(int first, string second)",
+            typeKind == "record" ? ";" : "{",
+            typeKind == "record" ? "" : "}",
+            "",
+        });
+        await File.WriteAllTextAsync(fixturePath, content);
+
+        await workspace.LoadAsync(CancellationToken.None);
+
+        // Line 3: `public <kind> PrimaryCtorFixture(int first, string second)`.
+        var declaration = content.Split('\n')[2];
+        var column = caretOnParameter
+            ? declaration.IndexOf("first", StringComparison.Ordinal) + 1
+            : declaration.IndexOf("PrimaryCtorFixture", StringComparison.Ordinal) + 1;
+        var locator = SymbolLocator.BySource(fixturePath, line: 3, column: column);
+        var request = new ChangeSignatureRequest(
+            Op: op,
+            Name: op == "add" ? "third" : (op == "rename" ? "first" : null),
+            ParameterType: op == "add" ? "int" : null,
+            Position: op == "remove" ? 0 : null,
+            NewName: op == "rename" ? "renamed" : null,
+            DefaultValue: null,
+            NewOrder: op == "reorder" ? "second, first" : null);
+
+        var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(async () =>
+            await _changeSignatureService.PreviewChangeSignatureAsync(
+                workspace.WorkspaceId, locator, request, CancellationToken.None));
+
+        StringAssert.Contains(ex.Message, "primary-constructor parameters",
+            $"refusal must name the unsupported shape; got: {ex.Message}");
+        StringAssert.Contains(ex.Message, "PrimaryCtorFixture",
+            $"refusal must name the type; got: {ex.Message}");
+        Assert.AreEqual(typeKind == "record", ex.Message.Contains("synthesized public properties", StringComparison.Ordinal),
+            $"only records carry the synthesized-property note; got: {ex.Message}");
+        Assert.IsFalse(ex.Message.Contains("produced no changes", StringComparison.OrdinalIgnoreCase),
+            $"refusal must replace the misleading 'produced no changes' error; got: {ex.Message}");
+    }
+
+    /// <summary>
+    /// A class whose constructor is an ordinary declaration (no primary constructor) must still
+    /// reach the normal pipeline: the primary-constructor refusal is scoped to parameter-list ctors.
+    /// </summary>
+    [TestMethod]
+    public async Task ChangeSignaturePreview_OrdinaryConstructor_IsNotRefusedAsPrimary()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+
+        var fixturePath = workspace.GetPath("SampleLib", "ChangeSignatureOrdinaryCtorFixture.cs");
+        var content = string.Join("\n", new[]
+        {
+            "namespace SampleLib;",
+            "",
+            "public class OrdinaryCtorFixture",
+            "{",
+            "    public OrdinaryCtorFixture(int first)",
+            "    {",
+            "    }",
+            "",
+            "    public static OrdinaryCtorFixture Make() => new OrdinaryCtorFixture(1);",
+            "}",
+            "",
+        });
+        await File.WriteAllTextAsync(fixturePath, content);
+
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var locator = SymbolLocator.BySource(fixturePath, line: 5, column: 12);
+        var request = new ChangeSignatureRequest(
+            Op: "add", Name: "second", ParameterType: "int", Position: null, NewName: null, DefaultValue: "0");
+
+        var preview = await _changeSignatureService.PreviewChangeSignatureAsync(
+            workspace.WorkspaceId, locator, request, CancellationToken.None);
+
+        Assert.IsFalse(string.IsNullOrEmpty(preview.PreviewToken), "ordinary constructor must produce a preview token");
+    }
 }
