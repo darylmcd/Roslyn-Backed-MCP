@@ -1,6 +1,7 @@
 namespace RoslynMcp.Tests;
 
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Time.Testing;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Services;
 
@@ -120,7 +121,10 @@ public sealed class MissingWorkspaceRootRetirementTests : SharedWorkspaceTestBas
         var root = Path.GetDirectoryName(solutionPath)!;
         var watcher = new SignalingFileWatcher();
         var gate = new RetryingGate();
-        using var manager = CreateManager(watcher, gate);
+        // The retirement retry loop waits on the injected clock (300 ms, then 600 ms after the injected
+        // failure), so the test drives time itself instead of racing a real timer under suite load.
+        var clock = new FakeTimeProvider();
+        using var manager = CreateManager(watcher, gate, clock);
 
         try
         {
@@ -128,11 +132,20 @@ public sealed class MissingWorkspaceRootRetirementTests : SharedWorkspaceTestBas
             File.Delete(solutionPath);
             watcher.RaiseRootMissing(status.WorkspaceId);
 
-            await gate.Succeeded.Task.WaitAsync(TimeSpan.FromSeconds(10));
             // Production calls RemoveGate strictly AFTER RunWriteAsync returns, while Succeeded fires
             // inside RunWriteAsync. Await the RemoveGate signal itself instead of reading the counter
             // in that window (a race that surfaced once the class began running in parallel).
-            await gate.GateRemoved.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            // Each pass advances past the 2 s backoff ceiling; a pass before the retirement task has
+            // registered its delay is harmless because the next pass fires the timer once it exists.
+            using var guard = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            while (!gate.GateRemoved.Task.IsCompleted)
+            {
+                guard.Token.ThrowIfCancellationRequested();
+                clock.Advance(TimeSpan.FromSeconds(2));
+                await Task.Yield();
+            }
+
+            await gate.Succeeded.Task.WaitAsync(TimeSpan.FromSeconds(10));
 
             Assert.IsTrue(gate.Attempts >= 2,
                 "A transient write-gate failure must retain and retry the lifecycle signal.");
@@ -185,14 +198,17 @@ public sealed class MissingWorkspaceRootRetirementTests : SharedWorkspaceTestBas
 
     private static WorkspaceManager CreateManager(
         IFileWatcherService watcher,
-        IWorkspaceExecutionGate gate) =>
+        IWorkspaceExecutionGate gate,
+        TimeProvider? timeProvider = null) =>
         new(
             NullLogger<WorkspaceManager>.Instance,
             new PreviewStore(),
             watcher,
             new WorkspaceManagerOptions { MaxConcurrentWorkspaces = 4 },
             cacheStore: null,
-            evictionGate: new Lazy<IWorkspaceExecutionGate>(() => gate));
+            sessionLoader: null,
+            evictionGate: new Lazy<IWorkspaceExecutionGate>(() => gate),
+            timeProvider: timeProvider);
 
     private sealed class SignalingFileWatcher : IFileWatcherService
     {
