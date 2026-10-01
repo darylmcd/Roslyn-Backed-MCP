@@ -110,7 +110,7 @@ public static class WorkspaceTools
     /// <para>Pass verbose=false for a compact readiness/version/count projection; the default verbose=true preserves the full project tree.</para>
     /// <para>While restoreRequired=true remains in the result, the response carries a structured nextCall (workspace_reload with autoRestore=true); the field is omitted otherwise.</para>
     /// </remarks>
-    [McpServerTool(Name = "workspace_reload", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false), Description("Workspace-scoped calls auto-reload stale state by default. Use this for an explicit reload; autoRestore=true runs dotnet restore and reloads once when restoreRequired=true (and fails if the restore fails), omitted restores only never-restored projects non-fatally, false never restores.")]
+    [McpServerTool(Name = "workspace_reload", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false), Description("Explicit workspace reload (stale state auto-reloads by default). autoRestore: true restores on drift and fails if the restore fails; omitted restores only never-restored projects, non-fatally; false never restores.")]
     [McpToolMetadata("workspace", "stable", false, false,
         "Reload an existing workspace session from disk.")]
     public static Task<string> ReloadWorkspace(
