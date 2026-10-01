@@ -291,13 +291,14 @@ public sealed class WorkspaceLoadRestoreRaceTests : SharedWorkspaceTestBase
 
             using var executor = new GatedCommandExecutor(
                 manager, commandRunner, NullLogger<GatedCommandExecutor>.Instance);
-            status = await WorkspaceTools.RestoreAndReloadIfRequiredAsync(
+            status = (await WorkspaceTools.RestoreAndReloadIfRequiredAsync(
                 executor,
                 ValidationOptions,
                 manager,
                 status,
                 autoRestore: true,
-                CancellationToken.None);
+                NullLogger.Instance,
+                CancellationToken.None)).Status;
 
             Assert.IsFalse(status.RestoreRequired, "Auto-restore should clear restoreRequired after rerunning restore and reload.");
             Assert.AreEqual(
@@ -337,7 +338,7 @@ public sealed class WorkspaceLoadRestoreRaceTests : SharedWorkspaceTestBase
             await runner.BuildStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
 
             var restore = WorkspaceTools.RestoreAndReloadIfRequiredAsync(
-                executor, ValidationOptions, manager, restoreRequired, autoRestore: true, CancellationToken.None);
+                executor, ValidationOptions, manager, restoreRequired, autoRestore: true, NullLogger.Instance, CancellationToken.None);
 
             await Task.Delay(300);
             Assert.IsFalse(runner.RestoreStarted, "restore must not start while the workspace command gate is held.");
@@ -379,7 +380,7 @@ public sealed class WorkspaceLoadRestoreRaceTests : SharedWorkspaceTestBase
                 var shortBudget = new ValidationServiceOptions { RestoreTimeout = TimeSpan.FromMilliseconds(200) };
                 await Assert.ThrowsExactlyAsync<TimeoutException>(() =>
                     WorkspaceTools.RestoreAndReloadIfRequiredAsync(
-                        executor, shortBudget, manager, restoreRequired, autoRestore: true, CancellationToken.None));
+                        executor, shortBudget, manager, restoreRequired, autoRestore: true, NullLogger.Instance, CancellationToken.None));
                 Assert.IsFalse(runner.RestoreStarted, "queue wait must count against the restore budget; restore never starts.");
             }
             finally

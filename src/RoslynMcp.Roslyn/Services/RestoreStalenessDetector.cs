@@ -420,6 +420,34 @@ internal class RestoreStalenessDetector
         return null;
     }
 
+    /// <summary>
+    /// workspace-load-missing-assets-auto-restore: true when the project declares at least one
+    /// <c>PackageReference</c> but has no <c>project.assets.json</c> at all — the "never restored"
+    /// state, distinct from version drift (which <see cref="IsRestoreRequired"/> also reports). The
+    /// assets file is located where MSBuild would write it, so <c>UseArtifactsOutput</c> and a
+    /// custom <c>BaseIntermediateOutputPath</c>/<c>MSBuildProjectExtensionsPath</c> are not
+    /// misread as missing. Like <see cref="IsRestoreRequired"/>, detection is best-effort: an
+    /// unreadable or unevaluable project is reported as not-missing (logged at debug) so the
+    /// default restore probe can never fail a load that would otherwise succeed.
+    /// </summary>
+    public static bool HasMissingAssets(string projectFilePath, ILogger logger)
+    {
+        if (string.IsNullOrWhiteSpace(projectFilePath) || !File.Exists(projectFilePath))
+        {
+            return false;
+        }
+
+        try
+        {
+            return CollectExpectedPackages(projectFilePath).Count > 0 && GetExistingAssetsPath(projectFilePath) is null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException)
+        {
+            logger.LogDebug(ex, "missing-assets detection skipped for '{ProjectFilePath}'", projectFilePath);
+            return false;
+        }
+    }
+
     private static string? GetExistingAssetsPath(string projectFilePath)
     {
         var projectDirectory = Path.GetDirectoryName(projectFilePath);
@@ -428,8 +456,47 @@ internal class RestoreStalenessDetector
             return null;
         }
 
-        var assetsPath = Path.Combine(projectDirectory, "obj", "project.assets.json");
-        return File.Exists(assetsPath) ? assetsPath : null;
+        // Fast path: the default layout needs no MSBuild evaluation.
+        var defaultPath = Path.Combine(projectDirectory, "obj", "project.assets.json");
+        if (File.Exists(defaultPath))
+        {
+            return defaultPath;
+        }
+
+        var relocatedPath = TryEvaluateAssetsPath(projectFilePath, projectDirectory);
+        return relocatedPath is not null && File.Exists(relocatedPath) ? relocatedPath : null;
+    }
+
+    /// <summary>
+    /// Evaluates the project to find where restore writes <c>project.assets.json</c>
+    /// (<c>ProjectAssetsFile</c>, else <c>MSBuildProjectExtensionsPath</c>), which differs from
+    /// <c>obj/</c> under <c>UseArtifactsOutput</c> or a custom <c>BaseIntermediateOutputPath</c>.
+    /// Returns <see langword="null"/> when the project cannot be evaluated; the caller then treats
+    /// the assets file as absent, which was the behaviour for every unlocatable file before this probe.
+    /// </summary>
+    private static string? TryEvaluateAssetsPath(string projectFilePath, string projectDirectory)
+    {
+        try
+        {
+            var values = MsBuildMetadataHelper.EvaluateProperties(projectFilePath, "ProjectAssetsFile", "MSBuildProjectExtensionsPath");
+            var assetsFile = values[0];
+            if (string.IsNullOrWhiteSpace(assetsFile))
+            {
+                var extensionsPath = values[1];
+                if (string.IsNullOrWhiteSpace(extensionsPath))
+                {
+                    return null;
+                }
+
+                assetsFile = Path.Combine(extensionsPath, "project.assets.json");
+            }
+
+            return Path.GetFullPath(assetsFile.Trim(), projectDirectory);
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
     }
 
     private static (Dictionary<string, HashSet<string>> PackageVersions, Dictionary<string, HashSet<string>> CentralPackageVersions)? LoadAssetsPackageVersions(string projectFilePath)

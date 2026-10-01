@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -29,7 +30,7 @@ public static class WorkspaceTools
     internal static readonly TimeSpan DefaultProcessDrainTimeout = TimeSpan.FromSeconds(10);
 
     /// <remarks>
-    /// <para>Set autoRestore=true to run dotnet restore plus one follow-up reload when the loaded status reports restoreRequired=true.</para>
+    /// <para>autoRestore is tri-state. Omitted: when a project has never been restored (no project.assets.json), run dotnet restore plus one follow-up reload; a failed or timed-out restore does not fail the load, the result keeps restoreRequired=true and adds a path-free restoreFailureReason. true: run dotnet restore plus one follow-up reload for any restoreRequired=true (package-version drift included) and fail the call when the restore fails. false: never restore.</para>
     /// <para>While restoreRequired=true remains in the result (including after an autoRestore attempt that did not clear it), the response carries a structured nextCall: { tool: "workspace_reload", arguments: { workspaceId, autoRestore: true } }. The field is omitted otherwise.</para>
     /// <para>Set prewarm=true to run the workspace_warm compilation/semantic-model prewarm after a successful load or auto-restore reload; set prewarm=false to opt out. When prewarm is omitted, solutions with more than 50 projects are prewarmed automatically. The response includes a prewarm result block only when warming ran.</para>
     /// <para>DocumentCount note: the per-project DocumentCount often exceeds the Compile item count reported by evaluate_msbuild_items by about 3, because the SDK auto-generates implicit-usings, AssemblyInfo, and GlobalUsings files that Roslyn includes in the document set but MSBuild does not list as explicit Compile items.</para>
@@ -48,13 +49,15 @@ public static class WorkspaceTools
         ValidationServiceOptions validationOptions,
         [Description("Absolute path to a .sln, .slnx, or .csproj file")] string path,
         [Description("When true, return the full per-project tree and workspace diagnostics. Default false returns only counts and load state.")] bool verbose = false,
-        [Description("When true and the loaded status reports restoreRequired=true, run `dotnet restore` on the target and reload once before returning.")] bool autoRestore = false,
+        [Description("Restore policy. Omitted: run `dotnet restore` and reload once only when a project has never been restored (missing project.assets.json); a failed or timed-out restore is non-fatal and reported as restoreRequired=true plus restoreFailureReason. true: also restore on package-version drift, and fail the call when the restore fails. false: never restore.")] bool? autoRestore = null,
         [Description("When true, run `workspace_warm` immediately after the load (and any auto-restore reload) succeeds, then include the warm result in the response. When omitted, large solutions with more than 50 projects are prewarmed automatically. Pass false to opt out and preserve the cold-load profile.")] bool? prewarm = null,
         [Description("Requests one-level sanctioned-root expansion for a sibling worktree. This takes effect only when the server operator also sets ROSLYNMCP_ALLOW_ROOT_EXPANSION=true; client input alone never widens the boundary. Higher ancestors and filesystem roots are never widened.")] bool expandSanctionedRoots = false,
         [Description("Controls cap-reached behaviour. 'Strict' (default) throws with activeWorkspaces and lruCandidate context for one-round-trip self-recovery. 'Lru' silently evicts the least-recently-used idle workspace to make room for the new load.")] EvictPolicy evictPolicy = EvictPolicy.Strict,
         IProgress<ProgressNotificationValue>? progress = null,
+        ILoggerFactory? loggerFactory = null,
         CancellationToken ct = default)
     {
+        var logger = (loggerFactory ?? NullLoggerFactory.Instance).CreateLogger(nameof(WorkspaceTools));
         return gate.RunLoadGateAsync(async c =>
         {
             // workspace-load stage emissions: clients see "validating-path → opening-workspace
@@ -75,7 +78,8 @@ public static class WorkspaceTools
             ProgressHelper.ReportStage(progress, 1, totalStages, "opening-workspace");
             var status = await workspace.LoadAsync(path, evictPolicy, c).ConfigureAwait(false);
             ProgressHelper.ReportStage(progress, 2, totalStages, "checking-restore");
-            status = await RestoreAndReloadIfRequiredAsync(commandExecutor, validationOptions, workspace, status, autoRestore, c).ConfigureAwait(false);
+            var restoreOutcome = await RestoreAndReloadIfRequiredAsync(commandExecutor, validationOptions, workspace, status, autoRestore, logger, c).ConfigureAwait(false);
+            status = restoreOutcome.Status;
             if (expandSanctionedRoots)
             {
                 // preview-apply-token-write-path-toctou: record the load-time expansion grant so a
@@ -98,7 +102,7 @@ public static class WorkspaceTools
             }
 
             ProgressHelper.ReportStage(progress, resolvedTotalStages, resolvedTotalStages, "done");
-            return SerializeWorkspaceLoadResult(status, verbose, prewarmResult);
+            return SerializeWorkspaceLoadResult(status, verbose, prewarmResult, restoreOutcome.FailureReason);
         }, ct);
     }
 
@@ -106,7 +110,7 @@ public static class WorkspaceTools
     /// <para>Pass verbose=false for a compact readiness/version/count projection; the default verbose=true preserves the full project tree.</para>
     /// <para>While restoreRequired=true remains in the result, the response carries a structured nextCall (workspace_reload with autoRestore=true); the field is omitted otherwise.</para>
     /// </remarks>
-    [McpServerTool(Name = "workspace_reload", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false), Description("Workspace-scoped calls auto-reload stale state by default. Use this for an explicit reload; autoRestore=true runs dotnet restore and reloads once when restoreRequired=true.")]
+    [McpServerTool(Name = "workspace_reload", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false), Description("Explicit workspace reload (stale state auto-reloads by default). autoRestore: true restores on drift and fails if the restore fails; omitted restores only never-restored projects, non-fatally; false never restores.")]
     [McpToolMetadata("workspace", "stable", false, false,
         "Reload an existing workspace session from disk.")]
     public static Task<string> ReloadWorkspace(
@@ -115,18 +119,20 @@ public static class WorkspaceTools
         IGatedCommandExecutor commandExecutor,
         ValidationServiceOptions validationOptions,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
-        [Description("When true and the reloaded status reports restoreRequired=true, run `dotnet restore` on the loaded target and reload once before returning.")] bool autoRestore = false,
+        [Description("Restore policy. Omitted: run `dotnet restore` and reload once only when a project has never been restored (missing project.assets.json); a failed or timed-out restore is non-fatal and reported as restoreRequired=true plus restoreFailureReason. true: also restore on package-version drift, and fail the call when the restore fails. false: never restore.")] bool? autoRestore = null,
         [Description("When true (default), preserve the full per-project response. Pass false for readiness, version, and aggregate counts without the project tree.")] bool verbose = true,
+        ILoggerFactory? loggerFactory = null,
         CancellationToken ct = default)
     {
+        var logger = (loggerFactory ?? NullLoggerFactory.Instance).CreateLogger(nameof(WorkspaceTools));
         // Reload acquires both the global load gate AND the per-workspace write lock so that
         // any in-flight readers on this workspace complete before the solution is replaced.
         return gate.RunLoadGateAsync(outerCt =>
             gate.RunWriteAsync(workspaceId, async innerCt =>
             {
                 var status = await workspace.ReloadAsync(workspaceId, innerCt).ConfigureAwait(false);
-                status = await RestoreAndReloadIfRequiredAsync(commandExecutor, validationOptions, workspace, status, autoRestore, innerCt).ConfigureAwait(false);
-                return SerializeWorkspaceLoadResult(status, verbose, prewarmResult: null);
+                var restoreOutcome = await RestoreAndReloadIfRequiredAsync(commandExecutor, validationOptions, workspace, status, autoRestore, logger, innerCt).ConfigureAwait(false);
+                return SerializeWorkspaceLoadResult(restoreOutcome.Status, verbose, prewarmResult: null, restoreOutcome.FailureReason);
             }, outerCt), ct);
     }
 
@@ -567,19 +573,67 @@ public static class WorkspaceTools
         }, ct);
     }
 
-    internal static async Task<WorkspaceStatusDto> RestoreAndReloadIfRequiredAsync(
+    /// <summary>Result of the load-time restore step: the (possibly reloaded) status plus, when a
+    /// default (omitted-<c>autoRestore</c>) restore failed non-fatally, a path-free reason.</summary>
+    internal readonly record struct RestoreReloadOutcome(WorkspaceStatusDto Status, string? FailureReason = null);
+
+    /// <summary>
+    /// Load-time restore step. <paramref name="autoRestore"/> is tri-state:
+    /// <see langword="false"/> never restores; <see langword="true"/> restores for any
+    /// <c>restoreRequired</c> (drift included) and throws on failure; <see langword="null"/>
+    /// (omitted) restores only when a project has never been restored and reports a failed or
+    /// timed-out restore as <see cref="RestoreReloadOutcome.FailureReason"/> instead of throwing.
+    /// Caller cancellation always propagates.
+    /// </summary>
+    internal static async Task<RestoreReloadOutcome> RestoreAndReloadIfRequiredAsync(
         IGatedCommandExecutor commandExecutor,
         ValidationServiceOptions validationOptions,
         IWorkspaceManager workspace,
         WorkspaceStatusDto status,
-        bool autoRestore,
+        bool? autoRestore,
+        ILogger logger,
         CancellationToken ct)
     {
-        if (!autoRestore || !status.RestoreRequired || string.IsNullOrWhiteSpace(status.LoadedPath))
+        if (autoRestore == false || !status.RestoreRequired || string.IsNullOrWhiteSpace(status.LoadedPath))
         {
-            return status;
+            return new RestoreReloadOutcome(status);
         }
 
+        if (autoRestore is null)
+        {
+            if (!EnumerateProjectPaths(status).Any(projectPath => RestoreStalenessDetector.HasMissingAssets(projectPath, logger)))
+            {
+                return new RestoreReloadOutcome(status);
+            }
+
+            try
+            {
+                await RunRestoreAsync(commandExecutor, validationOptions, status, ct).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is TimeoutException or PublicInvalidOperationException && !ct.IsCancellationRequested)
+            {
+                // Default restore is best-effort: the workspace is already loaded, so report the
+                // reason and leave restoreRequired=true. TimeoutException text embeds the dotnet
+                // command line (absolute paths), so it is replaced by a fixed path-free reason.
+                var reason = ex is PublicInvalidOperationException publicFailure
+                    ? publicFailure.PublicMessage
+                    : "workspace auto-restore timed out before completing; raise ROSLYNMCP_RESTORE_TIMEOUT_SECONDS or run dotnet restore for the loaded project and retry workspace_reload with autoRestore=true.";
+                return new RestoreReloadOutcome(status, reason);
+            }
+
+            return new RestoreReloadOutcome(await workspace.ReloadAsync(status.WorkspaceId, ct).ConfigureAwait(false));
+        }
+
+        await RunRestoreAsync(commandExecutor, validationOptions, status, ct).ConfigureAwait(false);
+        return new RestoreReloadOutcome(await workspace.ReloadAsync(status.WorkspaceId, ct).ConfigureAwait(false));
+    }
+
+    private static async Task RunRestoreAsync(
+        IGatedCommandExecutor commandExecutor,
+        ValidationServiceOptions validationOptions,
+        WorkspaceStatusDto status,
+        CancellationToken ct)
+    {
         // Route through the shared per-workspace command gate so the restore cannot write obj/
         // concurrently with build_workspace/test_run. Each invocation's timeout is a total budget that
         // includes the queue wait (GatedCommandExecutor.ExecuteAsync), so a held gate yields
@@ -605,8 +659,6 @@ public static class WorkspaceTools
                     new InvalidOperationException(BuildRestoreFailureMessage(targetPath, execution)));
             }
         }
-
-        return await workspace.ReloadAsync(status.WorkspaceId, ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -646,13 +698,7 @@ public static class WorkspaceTools
     private static IReadOnlyList<(string TargetPath, string? PackagesPath)> PlanRestoreInvocations(WorkspaceStatusDto status)
     {
         var loadedPath = status.LoadedPath!;
-        var projectPaths = status.Projects.Select(p => p.FilePath).ToList();
-        if (projectPaths.Count == 0 && loadedPath.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
-        {
-            projectPaths.Add(loadedPath);
-        }
-
-        var recorded = projectPaths
+        var recorded = EnumerateProjectPaths(status)
             .Select(path => (Path: path, PackagesPath: RestoreStalenessDetector.TryReadRestorePackagesPath(path)))
             .ToList();
         var distinctPackagesPaths = recorded
@@ -666,6 +712,19 @@ public static class WorkspaceTools
             : [(loadedPath, distinctPackagesPaths.SingleOrDefault())];
     }
 
+    /// <summary>Project files of the loaded workspace; a single-<c>.csproj</c> load with no reported
+    /// projects falls back to the loaded path itself.</summary>
+    private static List<string> EnumerateProjectPaths(WorkspaceStatusDto status)
+    {
+        var projectPaths = status.Projects.Select(p => p.FilePath).ToList();
+        if (projectPaths.Count == 0 && status.LoadedPath!.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
+        {
+            projectPaths.Add(status.LoadedPath);
+        }
+
+        return projectPaths;
+    }
+
     private static IReadOnlyList<string> BuildRestoreArguments(string targetPath, string? packagesPath) =>
         packagesPath is null
             ? ["restore", targetPath, "--nologo"]
@@ -674,13 +733,15 @@ public static class WorkspaceTools
     /// <summary>
     /// Serializes a <c>workspace_load</c>/<c>workspace_reload</c> result. Adds an additive
     /// <c>nextCall</c> (<c>workspace_reload</c> with <c>autoRestore=true</c>) whenever
-    /// <see cref="WorkspaceStatusDto.RestoreRequired"/> is set, and a <c>prewarm</c> block when warming ran.
+    /// <see cref="WorkspaceStatusDto.RestoreRequired"/> is set, a path-free <c>restoreFailureReason</c> when
+    /// a default (omitted-<c>autoRestore</c>) restore failed non-fatally, and a <c>prewarm</c> block when warming ran.
     /// <c>internal</c> so wire tests can assert the emitted JSON.
     /// </summary>
     internal static string SerializeWorkspaceLoadResult(
         WorkspaceStatusDto status,
         bool verbose,
-        WorkspaceWarmResult? prewarmResult)
+        WorkspaceWarmResult? prewarmResult,
+        string? restoreFailureReason = null)
     {
         var payloadJson = verbose
             ? JsonSerializer.Serialize(status, JsonDefaults.Indented)
@@ -692,6 +753,11 @@ public static class WorkspaceTools
         {
             payload["nextCall"] = JsonSerializer.SerializeToNode(
                 NextCallDto.WorkspaceReloadWithAutoRestore(status.WorkspaceId), JsonDefaults.Indented);
+        }
+
+        if (!string.IsNullOrWhiteSpace(restoreFailureReason))
+        {
+            payload["restoreFailureReason"] = restoreFailureReason;
         }
 
         if (prewarmResult is not null)

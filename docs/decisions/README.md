@@ -15,3 +15,4 @@ Architecture decision records (ADRs) for breaking, compatibility, and security d
 | [0009-tool-surface-policy.md](0009-tool-surface-policy.md) | Tool consolidation risk buckets and compatibility aliases | Accepted 2026-09-04 |
 | [0010-validation-verdict-completeness.md](0010-validation-verdict-completeness.md) | Incomplete compilation verdicts and retryable test-phase timeouts | Accepted 2026-09-15 |
 | [0012-editorconfig-write-workspace-boundary.md](0012-editorconfig-write-workspace-boundary.md) | Stable editorconfig write boundary and ancestor-config migration | Proposed 2026-09-29 (pending operator release decision) |
+| [0013-workspace-load-default-auto-restore.md](0013-workspace-load-default-auto-restore.md) | Tri-state `autoRestore`: omitted restores never-restored projects non-fatally, `true` restores for drift and fails, `false` opts out | Accepted 2026-10-01 |

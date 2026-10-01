@@ -91,26 +91,15 @@ internal static class ProjectMetadataParser
             return [];
         }
 
-        MsBuildInitializer.EnsureInitialized();
-        var projectCollection = new ProjectCollection();
-
         try
         {
-            var evaluatedProject = projectCollection.LoadProject(projectFilePath);
-            var frameworks = ParseTargetFrameworkValues(
-                evaluatedProject.GetPropertyValue("TargetFramework"),
-                evaluatedProject.GetPropertyValue("TargetFrameworks"));
-
-            return frameworks;
+            var values = MsBuildMetadataHelper.EvaluateProperties(projectFilePath, "TargetFramework", "TargetFrameworks");
+            return ParseTargetFrameworkValues(values[0], values[1]);
         }
         catch (Exception ex)
         {
             logger?.LogDebug(ex, "Failed to evaluate target frameworks for project {Path}", projectFilePath);
             return [];
-        }
-        finally
-        {
-            projectCollection.UnloadAllProjects();
         }
     }
 
@@ -245,23 +234,15 @@ internal static class ProjectMetadataParser
             return null;
         }
 
-        MsBuildInitializer.EnsureInitialized();
-        var projectCollection = new ProjectCollection();
-
         try
         {
-            var evaluatedProject = projectCollection.LoadProject(projectFilePath);
-            var outputType = evaluatedProject.GetPropertyValue("OutputType");
+            var outputType = MsBuildMetadataHelper.EvaluateProperties(projectFilePath, "OutputType")[0];
             return string.IsNullOrWhiteSpace(outputType) ? null : outputType.Trim();
         }
         catch (Exception ex)
         {
             logger?.LogDebug(ex, "Failed to evaluate output type for project {Path}", projectFilePath);
             return null;
-        }
-        finally
-        {
-            projectCollection.UnloadAllProjects();
         }
     }
 

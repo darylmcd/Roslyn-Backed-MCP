@@ -39,7 +39,7 @@ public sealed class WorkspaceLoadRestorePackagesPathTests : SharedWorkspaceTestB
                 }
 
                 await WorkspaceTools.RestoreAndReloadIfRequiredAsync(
-                    executor, ValidationOptions, manager, status with { RestoreRequired = true }, autoRestore: true, CancellationToken.None);
+                    executor, ValidationOptions, manager, status with { RestoreRequired = true }, autoRestore: true, NullLogger.Instance, CancellationToken.None);
 
                 Assert.HasCount(1, runner.Invocations, "One distinct recorded path must produce a single solution-level restore.");
                 CollectionAssert.AreEqual(
@@ -69,7 +69,7 @@ public sealed class WorkspaceLoadRestorePackagesPathTests : SharedWorkspaceTestB
                 }
 
                 await WorkspaceTools.RestoreAndReloadIfRequiredAsync(
-                    executor, ValidationOptions, manager, status with { RestoreRequired = true }, autoRestore: true, CancellationToken.None);
+                    executor, ValidationOptions, manager, status with { RestoreRequired = true }, autoRestore: true, NullLogger.Instance, CancellationToken.None);
 
                 Assert.HasCount(1, runner.Invocations);
                 CollectionAssert.AreEqual(
@@ -109,7 +109,7 @@ public sealed class WorkspaceLoadRestorePackagesPathTests : SharedWorkspaceTestB
                 }
 
                 await WorkspaceTools.RestoreAndReloadIfRequiredAsync(
-                    executor, ValidationOptions, manager, status with { RestoreRequired = true }, autoRestore: true, CancellationToken.None);
+                    executor, ValidationOptions, manager, status with { RestoreRequired = true }, autoRestore: true, NullLogger.Instance, CancellationToken.None);
 
                 Assert.HasCount(status.Projects.Count, runner.Invocations, "Mixed package folders must restore each project separately.");
                 CollectionAssert.AreEqual(
