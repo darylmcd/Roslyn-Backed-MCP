@@ -1,12 +1,12 @@
 {
   "schemaVersion": 4,
   "generatedAt": "2026-10-01T13:03:44.520Z",
-  "backlogSnapshot": "2026-10-01T12:00:11Z",
+  "backlogSnapshot": "2026-10-01T17:55:25Z",
   "addendaLoaded": true,
   "phase": "complete",
   "cycleCount": 0,
   "maxCycles": 2,
-  "completed": false,
+  "completed": true,
   "reviewStatus": "passed-with-warnings",
   "readyForExecute": true,
   "initiatives": [
@@ -120,7 +120,7 @@
     {
       "id": "gated-vuln-scan-command-budget",
       "order": 3,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "gated-vuln-scan-command-budget"
       ],
@@ -153,8 +153,8 @@
       ],
       "branch": null,
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1731",
+      "mergedAt": "2026-10-01T17:54:39Z",
       "notes": null,
       "fileSetHash": "8698b9975804b682acf10f76944fbae7f7ff70fa60a7e465f714d2dd40fa7562",
       "stanzaHash": "ac0abc074153540c84c8f853ce78cb12c6466b86e019ce4f45ebd92ff423bb59",
@@ -163,7 +163,7 @@
     {
       "id": "public-argument-exception-core-move",
       "order": 4,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "public-argument-exception-core-move"
       ],
@@ -204,8 +204,8 @@
       "dependsOn": [],
       "branch": null,
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1732",
+      "mergedAt": "2026-10-01T17:54:52Z",
       "notes": null,
       "fileSetHash": "62f9621197fc3cb7105d1c24054e3cdac4b1f772ae62859542cd38f4b859e4e1",
       "stanzaHash": "7826e2fa92d7913081aca19d336962912dc0e88a283fb33dd487acdc11e5be1e",
@@ -343,7 +343,7 @@
     {
       "id": "extract-type-preserve-private-fields",
       "order": 8,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "extract-type-preserve-private-fields"
       ],
@@ -373,8 +373,8 @@
       ],
       "branch": null,
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1733",
+      "mergedAt": "2026-10-01T17:55:04Z",
       "notes": null,
       "fileSetHash": "b39233ebef576f17ceeebe7a140e06427809c85452cfae1f02db223f42436701",
       "stanzaHash": "24f4efb9cfdbcf5b477ea6a08cf98fe44d5fa5b8319cad904a1c715d7ff2aa73",
@@ -483,5 +483,6 @@
   "planHash": "936eeee0a354c6aec5b0d73e5f8c3d2c2934593544c42517046d26a1d7e8c321",
   "backlogSnapshotHash": "61a6c22ad5776297f155eee007d74db5f37351818fab2aabf02faab8fc54592f",
   "reviewedPlanHash": "936eeee0a354c6aec5b0d73e5f8c3d2c2934593544c42517046d26a1d7e8c321",
-  "reviewedBacklogSnapshotHash": "61a6c22ad5776297f155eee007d74db5f37351818fab2aabf02faab8fc54592f"
+  "reviewedBacklogSnapshotHash": "61a6c22ad5776297f155eee007d74db5f37351818fab2aabf02faab8fc54592f",
+  "completedAt": "2026-10-01T17:55:27.447Z"
 }
