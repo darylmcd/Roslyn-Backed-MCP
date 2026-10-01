@@ -1,10 +1,10 @@
 using System.Text.Json;
 using System.Xml.Linq;
+using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Services;
-using Microsoft.Extensions.Logging.Abstractions;
 
 namespace RoslynMcp.Tests;
 
@@ -289,8 +289,11 @@ public sealed class WorkspaceLoadRestoreRaceTests : SharedWorkspaceTestBase
             StringAssert.Contains(summary.RestoreHint ?? string.Empty, "dotnet restore",
                 "Summary hint should point callers at restore when package inputs drift.");
 
+            using var executor = new GatedCommandExecutor(
+                manager, commandRunner, NullLogger<GatedCommandExecutor>.Instance);
             status = await WorkspaceTools.RestoreAndReloadIfRequiredAsync(
-                commandRunner,
+                executor,
+                ValidationOptions,
                 manager,
                 status,
                 autoRestore: true,
@@ -307,6 +310,135 @@ public sealed class WorkspaceLoadRestoreRaceTests : SharedWorkspaceTestBase
         finally
         {
             DeleteDirectoryIfExists(copiedRoot);
+        }
+    }
+
+    /// <summary>
+    /// Regression for <c>workspace-restore-safe-execution</c>: auto-restore must queue behind an
+    /// in-flight build-style command on the same workspace instead of running <c>dotnet restore</c>
+    /// concurrently (both write <c>obj/</c>). Fake runner, real <see cref="GatedCommandExecutor"/>.
+    /// </summary>
+    [TestMethod]
+    public async Task RestoreAndReload_WhileWorkspaceCommandGateHeld_WaitsForGateThenRestores()
+    {
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var copiedRoot = Path.GetDirectoryName(copiedSolutionPath)!;
+        try
+        {
+            using var manager = CreateIsolatedManager(restoreRaceWaitMs: 0);
+            var status = await manager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+            var restoreRequired = status with { RestoreRequired = true };
+            var runner = new GateProbeCommandRunner();
+            using var executor = new GatedCommandExecutor(
+                manager, runner, NullLogger<GatedCommandExecutor>.Instance);
+
+            var holder = executor.ExecuteAsync(
+                status.WorkspaceId, copiedSolutionPath, ["build"], TimeSpan.FromMinutes(1), CancellationToken.None);
+            await runner.BuildStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+            var restore = WorkspaceTools.RestoreAndReloadIfRequiredAsync(
+                executor, ValidationOptions, manager, restoreRequired, autoRestore: true, CancellationToken.None);
+
+            await Task.Delay(300);
+            Assert.IsFalse(runner.RestoreStarted, "restore must not start while the workspace command gate is held.");
+            Assert.IsFalse(restore.IsCompleted, "restore must be queued behind the gated build.");
+
+            runner.ReleaseBuild.SetResult();
+            await holder;
+            await restore.WaitAsync(TimeSpan.FromSeconds(60));
+
+            Assert.IsTrue(runner.RestoreStarted, "restore must run once the gate is released.");
+            Assert.IsFalse(runner.RestoreOverlappedBuild, "restore must never overlap the build.");
+        }
+        finally
+        {
+            DeleteDirectoryIfExists(copiedRoot);
+        }
+    }
+
+    [TestMethod]
+    public async Task RestoreAndReload_GateHeldPastTimeout_ThrowsTimeoutExceptionAndNeverRestores()
+    {
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var copiedRoot = Path.GetDirectoryName(copiedSolutionPath)!;
+        try
+        {
+            using var manager = CreateIsolatedManager(restoreRaceWaitMs: 0);
+            var status = await manager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+            var restoreRequired = status with { RestoreRequired = true };
+            var runner = new GateProbeCommandRunner();
+            using var executor = new GatedCommandExecutor(
+                manager, runner, NullLogger<GatedCommandExecutor>.Instance);
+
+            var holder = executor.ExecuteAsync(
+                status.WorkspaceId, copiedSolutionPath, ["build"], TimeSpan.FromMinutes(1), CancellationToken.None);
+            await runner.BuildStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+            try
+            {
+                var shortBudget = new ValidationServiceOptions { BuildTimeout = TimeSpan.FromMilliseconds(200) };
+                await Assert.ThrowsExactlyAsync<TimeoutException>(() =>
+                    WorkspaceTools.RestoreAndReloadIfRequiredAsync(
+                        executor, shortBudget, manager, restoreRequired, autoRestore: true, CancellationToken.None));
+                Assert.IsFalse(runner.RestoreStarted, "queue wait must count against the restore budget; restore never starts.");
+            }
+            finally
+            {
+                runner.ReleaseBuild.SetResult();
+                await holder;
+            }
+        }
+        finally
+        {
+            DeleteDirectoryIfExists(copiedRoot);
+        }
+    }
+
+    /// <summary>
+    /// Fake runner: a "build" command blocks until released; a "restore" command records whether
+    /// it started and whether the build was still in flight at that moment.
+    /// </summary>
+    private sealed class GateProbeCommandRunner : IDotnetCommandRunner
+    {
+        private volatile bool _buildInFlight;
+        private volatile bool _restoreStarted;
+        private volatile bool _restoreOverlappedBuild;
+
+        public TaskCompletionSource BuildStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource ReleaseBuild { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public bool RestoreStarted => _restoreStarted;
+
+        public bool RestoreOverlappedBuild => _restoreOverlappedBuild;
+
+        public async Task<CommandExecutionDto> RunAsync(
+            string workingDirectory,
+            string targetPath,
+            IReadOnlyList<string> arguments,
+            CancellationToken ct)
+        {
+            if (arguments[0] == "build")
+            {
+                _buildInFlight = true;
+                BuildStarted.SetResult();
+                try
+                {
+                    await ReleaseBuild.Task.WaitAsync(ct);
+                }
+                finally
+                {
+                    _buildInFlight = false;
+                }
+            }
+            else
+            {
+                _restoreStarted = true;
+                _restoreOverlappedBuild = _buildInFlight;
+            }
+
+            return new CommandExecutionDto(
+                "dotnet", arguments, workingDirectory, targetPath, 0, true, 0, string.Empty, string.Empty);
         }
     }
 

@@ -99,6 +99,7 @@ public abstract class TestBase
     protected static WorkspaceExecutionGate WorkspaceExecutionGate => Fixture.Services.WorkspaceExecutionGate;
     protected static DotnetCommandRunner DotnetCommandRunner => Fixture.Services.DotnetCommandRunner;
     protected static GatedCommandExecutor GatedCommandExecutor => Fixture.Services.GatedCommandExecutor;
+    protected static ValidationServiceOptions ValidationOptions => TestValidationOptions;
     protected static BulkRefactoringService BulkRefactoringService => Fixture.Services.BulkRefactoringService;
     protected static CohesionAnalysisService CohesionAnalysisService => Fixture.Services.CohesionAnalysisService;
     protected static CouplingAnalysisService CouplingAnalysisService => Fixture.Services.CouplingAnalysisService;

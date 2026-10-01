@@ -14,6 +14,7 @@ using RoslynMcp.Host.Stdio.Catalog;
 using RoslynMcp.Host.Stdio.Runtime;
 using RoslynMcp.Host.Stdio.Security;
 using RoslynMcp.Roslyn.Contracts;
+using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -42,7 +43,8 @@ public static class WorkspaceTools
         IWorkspaceExecutionGate gate,
         IWorkspaceManager workspace,
         IWorkspaceWarmService warmService,
-        IDotnetCommandRunner commandRunner,
+        IGatedCommandExecutor commandExecutor,
+        ValidationServiceOptions validationOptions,
         [Description("Absolute path to a .sln, .slnx, or .csproj file")] string path,
         [Description("When true, return the full per-project tree and workspace diagnostics. Default false returns only counts and load state.")] bool verbose = false,
         [Description("When true and the loaded status reports restoreRequired=true, run `dotnet restore` on the target and reload once before returning.")] bool autoRestore = false,
@@ -72,7 +74,7 @@ public static class WorkspaceTools
             ProgressHelper.ReportStage(progress, 1, totalStages, "opening-workspace");
             var status = await workspace.LoadAsync(path, evictPolicy, c).ConfigureAwait(false);
             ProgressHelper.ReportStage(progress, 2, totalStages, "checking-restore");
-            status = await RestoreAndReloadIfRequiredAsync(commandRunner, workspace, status, autoRestore, c).ConfigureAwait(false);
+            status = await RestoreAndReloadIfRequiredAsync(commandExecutor, validationOptions, workspace, status, autoRestore, c).ConfigureAwait(false);
             if (expandSanctionedRoots)
             {
                 // preview-apply-token-write-path-toctou: record the load-time expansion grant so a
@@ -108,7 +110,8 @@ public static class WorkspaceTools
     public static Task<string> ReloadWorkspace(
         IWorkspaceExecutionGate gate,
         IWorkspaceManager workspace,
-        IDotnetCommandRunner commandRunner,
+        IGatedCommandExecutor commandExecutor,
+        ValidationServiceOptions validationOptions,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("When true and the reloaded status reports restoreRequired=true, run `dotnet restore` on the loaded target and reload once before returning.")] bool autoRestore = false,
         [Description("When true (default), preserve the full per-project response. Pass false for readiness, version, and aggregate counts without the project tree.")] bool verbose = true,
@@ -120,7 +123,7 @@ public static class WorkspaceTools
             gate.RunWriteAsync(workspaceId, async innerCt =>
             {
                 var status = await workspace.ReloadAsync(workspaceId, innerCt).ConfigureAwait(false);
-                status = await RestoreAndReloadIfRequiredAsync(commandRunner, workspace, status, autoRestore, innerCt).ConfigureAwait(false);
+                status = await RestoreAndReloadIfRequiredAsync(commandExecutor, validationOptions, workspace, status, autoRestore, innerCt).ConfigureAwait(false);
                 return SerializeWorkspaceLoadResult(status, verbose, prewarmResult: null);
             }, outerCt), ct);
     }
@@ -565,7 +568,8 @@ public static class WorkspaceTools
     }
 
     internal static async Task<WorkspaceStatusDto> RestoreAndReloadIfRequiredAsync(
-        IDotnetCommandRunner commandRunner,
+        IGatedCommandExecutor commandExecutor,
+        ValidationServiceOptions validationOptions,
         IWorkspaceManager workspace,
         WorkspaceStatusDto status,
         bool autoRestore,
@@ -576,17 +580,14 @@ public static class WorkspaceTools
             return status;
         }
 
-        var workingDirectory = Path.GetDirectoryName(status.LoadedPath);
-        if (string.IsNullOrWhiteSpace(workingDirectory))
-        {
-            throw new InvalidOperationException(
-                $"workspace auto-restore could not determine a working directory for '{status.LoadedPath}'.");
-        }
-
-        var execution = await commandRunner.RunAsync(
-            workingDirectory,
+        // Route through the shared per-workspace command gate so the restore cannot write obj/
+        // concurrently with build_workspace/test_run. BuildTimeout is a total budget that includes
+        // the queue wait (GatedCommandExecutor.ExecuteAsync), so a held gate yields TimeoutException.
+        var execution = await commandExecutor.ExecuteAsync(
+            status.WorkspaceId,
             status.LoadedPath,
             ["restore", status.LoadedPath, "--nologo"],
+            validationOptions.BuildTimeout,
             ct).ConfigureAwait(false);
 
         if (!execution.Succeeded)
