@@ -72,7 +72,7 @@ public sealed class CouplingAnalysisService : ICouplingAnalysisService
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
 
-        var projects = ProjectFilterHelper.FilterProjects(solution, projectFilter)
+        var projects = ProjectFilterHelper.ResolveProjects(solution, projectFilter)
             .Where(p => !excludeTestProjects || !ProjectMetadataParser.IsTestProject(p))
             .ToList();
         var candidates = await CollectCandidatesAsync(
