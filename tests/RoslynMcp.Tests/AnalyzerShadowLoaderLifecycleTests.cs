@@ -483,7 +483,19 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
 
             owner.Kill(entireProcessTree: true);
             Assert.IsTrue(owner.WaitForExit(10_000));
-            AnalyzerReferenceIsolation.SweepAbandonedRoots(sharedParent, NullLogger.Instance);
+            // The lock handle is held by the cmd.exe group and its ping child: the group's exit is
+            // observable a few milliseconds before the last handle closes, so a single immediate
+            // sweep can still see the root as owned. Re-sweep until the reclaim lands; the bounded
+            // wait only separates "released shortly after the host exited" from "never released".
+            var reclaimDeadline = DateTime.UtcNow + TimeSpan.FromSeconds(15);
+            do
+            {
+                AnalyzerReferenceIsolation.SweepAbandonedRoots(sharedParent, NullLogger.Instance);
+                if (!Directory.Exists(copyRoot)) break;
+                await Task.Delay(50);
+            }
+            while (DateTime.UtcNow < reclaimDeadline);
+
             Assert.IsFalse(Directory.Exists(copyRoot), "The exited host's stale copies must be reclaimed.");
             Assert.IsFalse(Directory.Exists(processDirectory),
                 "The exited host's ownership marker and empty process parent must be reclaimed.");
