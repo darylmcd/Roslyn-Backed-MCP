@@ -143,6 +143,57 @@ function Test-IsStrictAssembledRelease {
     return $unexpectedPaths.Count -eq 0
 }
 
+function Get-StaleFixedFragments {
+    param([Parameter(Mandatory)][AllowEmptyCollection()][object[]] $Candidates)
+
+    # Advisory only: any git failure or a shallow clone (no reliable add dates) yields no warnings.
+    $shallow = (& git -C $repoRoot rev-parse --is-shallow-repository 2>$null | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0 -or $shallow -ne 'false') {
+        return @()
+    }
+
+    $maxAgeDays = 7
+    $parsedDays = 0
+    if ([int]::TryParse($env:CHANGELOG_FIXED_MAX_AGE_DAYS, [ref] $parsedDays) -and $parsedDays -gt 0) {
+        $maxAgeDays = $parsedDays
+    }
+
+    # Committer date (%ct): squash/rebase merges stamp merge time, so it measures time on main.
+    $log = @(& git -C $repoRoot log --diff-filter=A --name-only --format=%x01%ct -- changelog.d 2>$null)
+    if ($LASTEXITCODE -ne 0) {
+        return @()
+    }
+
+    $addedAt = @{}
+    $currentTimestamp = 0L
+    foreach ($rawLine in $log) {
+        $line = $rawLine.ToString().TrimEnd("`r")
+        if ($line.Length -gt 1 -and $line[0] -eq [char]1) {
+            $currentTimestamp = [long] $line.Substring(1)
+        }
+        elseif ($line -ne '' -and -not $addedAt.ContainsKey($line)) {
+            # git log is newest-first: the first add seen is the most recent add of that path.
+            $addedAt[$line] = $currentTimestamp
+        }
+    }
+
+    $now = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+    $stale = [System.Collections.Generic.List[object]]::new()
+    foreach ($candidate in $Candidates) {
+        $key = "changelog.d/$($candidate.Name)"
+        if (-not $addedAt.ContainsKey($key)) {
+            continue
+        }
+
+        $ageDays = [int][Math]::Floor(($now - $addedAt[$key]) / 86400)
+        if ($ageDays -gt $maxAgeDays) {
+            $stale.Add([pscustomobject]@{ Name = $candidate.Name; AgeDays = $ageDays; MaxDays = $maxAgeDays })
+        }
+    }
+
+    return @($stale)
+}
+
 if (-not (Test-Path -LiteralPath $fragmentDir -PathType Container)) {
     throw "Missing changelog fragment directory: $fragmentDir"
 }
@@ -150,6 +201,7 @@ if (-not (Test-Path -LiteralPath $fragmentDir -PathType Container)) {
 $fragments = @(Get-ChildItem -LiteralPath $fragmentDir -Filter '*.md' -File |
     Where-Object { $_.Name -ne 'README.md' })
 $errors = [System.Collections.Generic.List[string]]::new()
+$fixedFragments = [System.Collections.Generic.List[object]]::new()
 
 foreach ($file in $fragments) {
     if ($file.Name -notmatch '^[a-z0-9]+(?:-[a-z0-9]+)*\.md$') {
@@ -197,6 +249,10 @@ foreach ($file in $fragments) {
         $errors.Add(
             "$($file.Name): invalid category '$category' — expected one of: $($validCategories -join ' / ')")
         continue
+    }
+
+    if ($category -eq 'Fixed') {
+        $fixedFragments.Add($file)
     }
 
     $bodyLines = if ($frontmatterEnd + 1 -lt $lines.Count) {
@@ -258,6 +314,14 @@ if ($changeBearingPaths.Count -gt 0 -and
         'Change-bearing work requires a changed, validated changelog.d/<row-id>.md fragment. ' +
         "Changed paths include: $($samplePaths -join ', ')")
     exit 1
+}
+
+foreach ($stale in @(Get-StaleFixedFragments -Candidates @($fixedFragments))) {
+    $text = "changelog.d/$($stale.Name): Fixed fragment unreleased for $($stale.AgeDays) days (threshold $($stale.MaxDays); set CHANGELOG_FIXED_MAX_AGE_DAYS to change). Cut a release."
+    Write-Warning $text
+    if ($env:GITHUB_ACTIONS -eq 'true') {
+        Write-Host "::warning::$text"
+    }
 }
 
 if ($assembledRelease) {
