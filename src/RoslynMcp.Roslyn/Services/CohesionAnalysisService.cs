@@ -71,7 +71,7 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
         }
         else
         {
-            var projects = ProjectFilterHelper.FilterProjects(solution, projectFilter)
+            var projects = ProjectFilterHelper.ResolveProjects(solution, projectFilter)
                 .Where(p => !excludeTestProjects || !ProjectMetadataParser.IsTestProject(p));
             documents = projects.SelectMany(p => p.Documents);
         }

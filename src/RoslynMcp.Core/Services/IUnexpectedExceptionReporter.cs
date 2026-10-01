@@ -7,7 +7,6 @@ namespace RoslynMcp.Core.Services;
 public enum UnexpectedExceptionCategory
 {
     ToolCall,
-    TestCoverage,
     Scaffolding,
     WorkspaceValidation,
     AnalyzerLoad,

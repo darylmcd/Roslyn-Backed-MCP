@@ -85,7 +85,7 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
         var processedSymbols = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
         var failedCandidateCount = 0;
 
-        var projects = ProjectFilterHelper.FilterProjects(solution, options.ProjectFilter);
+        var projects = ProjectFilterHelper.ResolveProjects(solution, options.ProjectFilter);
 
         foreach (var project in projects)
         {
@@ -655,7 +655,7 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var results = new List<DuplicateHelperDto>();
 
-        var projects = ProjectFilterHelper.FilterProjects(solution, options.ProjectFilter);
+        var projects = ProjectFilterHelper.ResolveProjects(solution, options.ProjectFilter);
         foreach (var project in projects)
         {
             if (ct.IsCancellationRequested || results.Count >= options.Limit) break;
@@ -701,7 +701,7 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
         var results = new List<DeadFieldDto>();
         var processedSymbols = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
 
-        var projects = ProjectFilterHelper.FilterProjects(solution, options.ProjectFilter);
+        var projects = ProjectFilterHelper.ResolveProjects(solution, options.ProjectFilter);
         foreach (var project in projects)
         {
             if (ct.IsCancellationRequested || results.Count >= options.Limit) break;
@@ -1251,7 +1251,7 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var results = new List<DeadLocalDto>();
 
-        var projects = ProjectFilterHelper.FilterProjects(solution, options.ProjectFilter);
+        var projects = ProjectFilterHelper.ResolveProjects(solution, options.ProjectFilter);
         foreach (var project in projects)
         {
             if (ct.IsCancellationRequested || results.Count >= options.Limit) break;

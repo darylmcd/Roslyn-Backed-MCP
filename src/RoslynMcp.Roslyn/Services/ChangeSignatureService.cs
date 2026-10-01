@@ -82,6 +82,16 @@ public sealed class ChangeSignatureService : IChangeSignatureService
             }
         }
 
+        // change-signature-primary-constructor-parameters: primary-constructor parameters live on
+        // the TypeDeclarationSyntax.ParameterList, which the declaration/callsite rewriters never
+        // visit, so every op used to fall through to the misleading "produced no changes" error.
+        // Refuse up-front with a specific message (also for a caret on the type itself).
+        if (symbol is INamedTypeSymbol namedType && HasPrimaryConstructor(namedType))
+            throw PrimaryConstructorRefusal(namedType);
+        if (symbol is IMethodSymbol { MethodKind: MethodKind.Constructor } primaryCtor
+            && IsPrimaryConstructor(primaryCtor))
+            throw PrimaryConstructorRefusal(primaryCtor.ContainingType);
+
         if (symbol is not IMethodSymbol method)
             throw new InvalidOperationException(
                 $"change_signature_preview requires a method symbol; resolved {symbol?.Kind.ToString() ?? "null"} instead.");
@@ -96,6 +106,43 @@ public sealed class ChangeSignatureService : IChangeSignatureService
                 $"Unsupported op '{request.Op}'. Valid values: add, remove, rename, reorder.",
                 nameof(request)),
         };
+    }
+
+    /// <summary>
+    /// True when <paramref name="method"/> is the constructor declared by a type's parameter list
+    /// (<c>record R(int X)</c>, <c>class C(int x)</c>, <c>struct S(int x)</c>). The compiler-synthesized
+    /// record copy constructor also lists the record in its syntax references, so it is excluded by
+    /// the parameter-list match (it takes the record itself, never the declared parameters).
+    /// </summary>
+    private static bool IsPrimaryConstructor(IMethodSymbol method)
+    {
+        if (method.MethodKind != MethodKind.Constructor || method.IsStatic)
+            return false;
+
+        foreach (var reference in method.DeclaringSyntaxReferences)
+        {
+            if (reference.GetSyntax() is TypeDeclarationSyntax { ParameterList: { } list }
+                && !method.IsImplicitlyDeclared
+                && list.Parameters.Count == method.Parameters.Length)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool HasPrimaryConstructor(INamedTypeSymbol type) =>
+        type.InstanceConstructors.Any(IsPrimaryConstructor);
+
+    private static InvalidOperationException PrimaryConstructorRefusal(INamedTypeSymbol type)
+    {
+        var recordNote = type.IsRecord
+            ? " For a record these parameters are also synthesized public properties, so a signature edit would change its public shape."
+            : string.Empty;
+        return new PublicInvalidOperationException(
+            $"change_signature_preview does not support primary-constructor parameters ('{type.Name}'); " +
+            $"edit the parameter list on the type declaration directly.{recordNote}");
     }
 
     private async Task<RefactoringPreviewDto> PreviewAddParameterAsync(

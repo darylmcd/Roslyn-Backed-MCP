@@ -56,7 +56,7 @@ public sealed class DuplicateMethodDetectorService : IDuplicateMethodDetectorSer
         CancellationToken ct)
     {
         var buckets = new Dictionary<string, List<MethodCandidate>>(StringComparer.Ordinal);
-        var projects = ProjectFilterHelper.FilterProjects(solution, options.ProjectFilter);
+        var projects = ProjectFilterHelper.ResolveProjects(solution, options.ProjectFilter);
 
         foreach (var project in projects)
         {

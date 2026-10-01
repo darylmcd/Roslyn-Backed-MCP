@@ -44,7 +44,7 @@ public sealed class CodeMetricsService : ICodeMetricsService
         }
         else
         {
-            var projects = ProjectFilterHelper.FilterProjects(solution, projectFilter);
+            var projects = ProjectFilterHelper.ResolveProjects(solution, projectFilter);
             documents = projects.SelectMany(p => p.Documents);
         }
 

@@ -9,6 +9,7 @@ Optional overrides are read at startup from `src/RoslynMcp.Host.Stdio/Program.cs
 | `ROSLYNMCP_MAX_WORKSPACES` | `WorkspaceManagerOptions.MaxConcurrentWorkspaces` | 16 |
 | `ROSLYNMCP_MAX_SOURCE_GENERATED_DOCS` | `WorkspaceManagerOptions.MaxSourceGeneratedDocuments` | 500 |
 | `ROSLYNMCP_BUILD_TIMEOUT_SECONDS` | `ValidationServiceOptions.BuildTimeout` | 5 minutes |
+| `ROSLYNMCP_RESTORE_TIMEOUT_SECONDS` | `ValidationServiceOptions.RestoreTimeout` — budget for the `autoRestore` restore phase of `workspace_load` / `workspace_reload`, also clamped to the remaining request deadline minus a 30-second reload reserve (`RestoreReloadReserve`, not env-configurable) | 90 seconds |
 | `ROSLYNMCP_TEST_TIMEOUT_SECONDS` | `ValidationServiceOptions.TestTimeout` | 10 minutes |
 | `ROSLYNMCP_VULN_SCAN_TIMEOUT_SECONDS` | `ValidationServiceOptions.VulnerabilityScanTimeout` | 5 minutes |
 | `ROSLYNMCP_APPLY_REVERT_TIMEOUT_SECONDS` | `ValidationServiceOptions.ApplyRevertTimeout` | 30 seconds |

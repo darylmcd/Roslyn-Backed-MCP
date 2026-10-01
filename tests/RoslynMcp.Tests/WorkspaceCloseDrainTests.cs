@@ -858,6 +858,33 @@ public sealed class WorkspaceCloseDrainTests
             "Only the caller-cancellation case should cancel the request token.");
     }
 
+    // host-config-argument-guards-not-caller-errors: a non-positive drain timeout is an internal
+    // invariant (the only production caller passes a constant), so it throws InvalidOperationException,
+    // never a caller-attributable ArgumentException.
+    [TestMethod]
+    [DataRow(0)]
+    [DataRow(-1)]
+    public void CloseWorkspaceCore_NonPositiveDrainTimeout_ThrowsInvalidOperation(int milliseconds)
+    {
+        var commandRunner = new RecordingDotnetCommandRunner();
+
+        var exception = Assert.ThrowsExactly<InvalidOperationException>(() =>
+            WorkspaceTools.CloseWorkspaceCore(
+                gate: new PassthroughGate(),
+                workspace: new FakeWorkspaceManagerForDrain(CreateStatus("test-ws-bad-timeout", "bad-timeout.slnx")),
+                commandRunner: commandRunner,
+                workspaceId: "test-ws-bad-timeout",
+                drainProcesses: true,
+                loggerFactory: null,
+                exceptionReporter: null,
+                getProcessesByName: _ => [],
+                processDrainTimeout: TimeSpan.FromMilliseconds(milliseconds),
+                ct: CancellationToken.None));
+
+        StringAssert.Contains(exception.Message, "Process drain timeout must be positive");
+        Assert.AreEqual(0, commandRunner.CallCount, "The guard must fire before any drain work starts.");
+    }
+
     // ---------------------------------------------------------------------------
     // Helpers
     // ---------------------------------------------------------------------------

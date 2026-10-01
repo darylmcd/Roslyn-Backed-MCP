@@ -600,6 +600,25 @@ public sealed class TestRunPublicProjectionTests
         public Task<BuildResultDto> BuildProjectAsync(
             string workspaceId, string projectName, CancellationToken ct) =>
             Task.FromResult(result);
+
+        // Three-step API used by the build tools: the plan/run carry the fixed result through
+        // unchanged so the tool serializes exactly `result`.
+        public Task<BuildCommandPlan> PrepareWorkspaceBuildAsync(string workspaceId, CancellationToken ct) =>
+            Task.FromResult(Plan(workspaceId));
+
+        public BuildCommandPlan PrepareProjectBuild(string workspaceId, string projectName) =>
+            Plan(workspaceId);
+
+        public Task<BuildCommandRun> RunBuildCommandAsync(BuildCommandPlan plan, CancellationToken ct) =>
+            Task.FromResult(new BuildCommandRun(plan, result.Execution, CommandDurationMs: 0));
+
+        public Task<BuildResultDto> CompleteBuildAsync(BuildCommandRun run, CancellationToken ct) =>
+            Task.FromResult(result);
+
+        public BuildResultDto CompleteBuildWithoutWorkspace(BuildCommandRun run) => result;
+
+        private static BuildCommandPlan Plan(string workspaceId) =>
+            new(workspaceId, "target.sln", ["build", "target.sln", "--nologo"], WorkspaceVersion: 1);
     }
 
     private sealed class PassthroughGate : IWorkspaceExecutionGate

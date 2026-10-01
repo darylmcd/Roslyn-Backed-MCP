@@ -28,7 +28,7 @@ public sealed class FormatVerifyService : IFormatVerifyService
     {
         var sw = Stopwatch.StartNew();
         var solution = _workspace.GetCurrentSolution(workspaceId);
-        var projects = ProjectFilterHelper.FilterProjects(solution, projectName);
+        var projects = ProjectFilterHelper.ResolveProjects(solution, projectName);
 
         var violations = new List<FormatViolationDto>();
         var checkedCount = 0;
