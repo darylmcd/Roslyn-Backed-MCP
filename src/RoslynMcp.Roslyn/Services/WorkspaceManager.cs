@@ -93,6 +93,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
     /// </para>
     /// </summary>
     private readonly Lazy<IWorkspaceExecutionGate>? _evictionGate;
+    private readonly TimeProvider _timeProvider;
     private readonly ConcurrentDictionary<string, WorkspaceSession> _sessions = new(StringComparer.Ordinal);
     /// <summary>
     /// mcp-error-category-workspace-evicted-on-host-recycle + workspace-id-recovery-hints:
@@ -177,7 +178,8 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         RestoreStalenessDetector? restoreStalenessDetector = null,
         UnresolvedAnalyzerReferenceStripper? analyzerReferenceStripper = null,
         Lazy<IWorkspaceExecutionGate>? evictionGate = null,
-        bool ownsFileWatcher = true)
+        bool ownsFileWatcher = true,
+        TimeProvider? timeProvider = null)
     {
         _logger = logger;
         _previewStore = previewStore;
@@ -189,6 +191,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         _restoreStalenessDetector = restoreStalenessDetector ?? new RestoreStalenessDetector();
         _analyzerReferenceStripper = analyzerReferenceStripper ?? new UnresolvedAnalyzerReferenceStripper();
         _evictionGate = evictionGate;
+        _timeProvider = timeProvider ?? TimeProvider.System;
         var max = _options.MaxConcurrentWorkspaces > 0 ? _options.MaxConcurrentWorkspaces : 8;
         _workspaceSlots = new SemaphoreSlim(max, max);
         _fileWatcher.WorkspaceRootMissing += OnWorkspaceRootMissing;
@@ -570,7 +573,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             var retryDelay = TimeSpan.FromMilliseconds(300);
             while (!_lifetimeCancellation.IsCancellationRequested)
             {
-                await Task.Delay(retryDelay, _lifetimeCancellation.Token).ConfigureAwait(false);
+                await Task.Delay(retryDelay, _timeProvider, _lifetimeCancellation.Token).ConfigureAwait(false);
                 if (!IsWorkspaceBackingPathConfirmedMissing(workspaceId))
                 {
                     return;

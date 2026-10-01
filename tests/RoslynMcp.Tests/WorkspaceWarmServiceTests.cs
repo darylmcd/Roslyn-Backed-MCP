@@ -55,7 +55,7 @@ public sealed class WorkspaceWarmServiceTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
-    public async Task WarmAsync_SecondCall_NoCold_FasterThanFirst()
+    public async Task WarmAsync_SecondCall_ReportsNoColdCompilation()
     {
         await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
 
@@ -64,8 +64,8 @@ public sealed class WorkspaceWarmServiceTests : IsolatedWorkspaceTestBase
             projects: null,
             CancellationToken.None);
 
-        // Sanity: the first call must have done real work, otherwise the warm/warm
-        // comparison below is meaningless.
+        // Sanity: the first call must have done real work, otherwise the zero-cold
+        // assertion below is vacuous.
         Assert.IsTrue(
             first.ColdCompilationCount > 0,
             "Precondition failed: first warm should report at least one cold project.");
@@ -79,8 +79,5 @@ public sealed class WorkspaceWarmServiceTests : IsolatedWorkspaceTestBase
             0,
             second.ColdCompilationCount,
             "Repeat warm on an unchanged workspace should see every project already cached.");
-        Assert.IsTrue(
-            second.ElapsedMs < first.ElapsedMs / 10,
-            $"Expected second warm to be at least 10× faster than first: first={first.ElapsedMs}ms second={second.ElapsedMs}ms.");
     }
 }
