@@ -1,6 +1,9 @@
 using System.Text;
+using System.Text.Json;
 using System.Xml.Linq;
 using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Tools;
 
 namespace RoslynMcp.Tests;
 
@@ -17,6 +20,43 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
     public static void ClassCleanup()
     {
         DisposeServices();
+    }
+
+    [TestMethod]
+    public async Task Set_Project_Property_Unsupported_Property_Refusal_Reaches_Client_Envelope_Verbatim()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+
+        var exception = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(async () =>
+            await ProjectMutationService.PreviewSetProjectPropertyAsync(
+                workspace.WorkspaceId,
+                new SetProjectPropertyDto("SampleLib", "OutputPath", "bin/custom"),
+                CancellationToken.None));
+
+        var message = GetEnvelopeMessage(exception, "set_project_property_preview");
+        StringAssert.StartsWith(message, "Property 'OutputPath' is not supported. Allowed properties: ");
+        Assert.AreEqual(exception.Message, message);
+    }
+
+    [TestMethod]
+    public async Task Add_Project_Reference_Self_Reference_Refusal_Reaches_Client_Envelope_Verbatim()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+
+        var exception = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(async () =>
+            await ProjectMutationService.PreviewAddProjectReferenceAsync(
+                workspace.WorkspaceId,
+                new AddProjectReferenceDto("SampleApp", "SampleApp"),
+                CancellationToken.None));
+
+        Assert.AreEqual("Project 'SampleApp' cannot reference itself.",
+            GetEnvelopeMessage(exception, "add_project_reference_preview"));
+    }
+
+    private static string GetEnvelopeMessage(Exception exception, string toolName)
+    {
+        using var envelope = JsonDocument.Parse(ToolErrorHandler.ClassifyAndFormat(exception, toolName));
+        return envelope.RootElement.GetProperty("message").GetString()!;
     }
 
     [TestMethod]
@@ -90,7 +130,7 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
     {
         await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
 
-        var selfReference = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+        var selfReference = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
             ProjectMutationService.PreviewAddProjectReferenceAsync(
                 workspace.WorkspaceId,
                 new AddProjectReferenceDto("SampleLib", "SampleLib"),
@@ -100,7 +140,7 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
 
         // SampleApp already references SampleLib in the fixture. Adding the reverse edge
         // SampleLib -> SampleApp would create a two-project cycle.
-        var cycle = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+        var cycle = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
             ProjectMutationService.PreviewAddProjectReferenceAsync(
                 workspace.WorkspaceId,
                 new AddProjectReferenceDto("SampleLib", "SampleApp"),
@@ -556,7 +596,7 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
             CancellationToken.None).ConfigureAwait(false);
         _ = await workspace.LoadAsync(CancellationToken.None).ConfigureAwait(false);
 
-        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
             ProjectMutationService.PreviewAddPackageReferenceAsync(
                 workspace.WorkspaceId,
                 new AddPackageReferenceDto("SampleLib", "Humanizer.Core", "2.14.1"),
@@ -721,7 +761,7 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
         // Pass a condition that omits MSBuild-style single-quoting (the common first-time caller mistake).
         const string invalidCondition = "$(Configuration) == Release";
 
-        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
             ProjectMutationService.PreviewSetConditionalPropertyAsync(
                 workspace.WorkspaceId,
                 new SetConditionalPropertyDto("SampleLib", "LangVersion", "preview", invalidCondition),
