@@ -125,10 +125,11 @@ public static class TestCoverageTools
                 ProgressHelper.Report(progress, 1, 1);
                 return SerializeWithDeprecation(TestCoverageCoordinator.BuildTimeoutResult(), deprecation);
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch
             {
-                // Close the progress sequence, then let the shared filter format the failure
-                // (isError=true, schemaHint, _meta) - mirrors ValidationTools.
+                // Every OperationCanceledException is handled by the arms above, so this arm only
+                // sees unexpected failures: close the progress sequence, then let the shared filter
+                // format the failure (isError=true, schemaHint, _meta) - mirrors ValidationTools.
                 ProgressHelper.Report(progress, 1, 1);
                 throw;
             }
