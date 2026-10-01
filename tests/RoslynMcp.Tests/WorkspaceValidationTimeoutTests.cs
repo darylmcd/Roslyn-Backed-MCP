@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
@@ -153,6 +154,23 @@ public sealed class WorkspaceValidationTimeoutTests : IsolatedWorkspaceTestBase
 
         Assert.IsNotNull(caught,
             "Cooperative cancellation must propagate as OperationCanceledException (or a subclass like TaskCanceledException) — the new InternalValidationTimeoutException catch must NOT swallow it.");
+    }
+
+    [TestMethod]
+    public void CreateUnexpectedFailure_UndefinedOperation_ThrowsUnreachableException()
+    {
+        var service = new WorkspaceValidationService(
+            CompileCheckService,
+            DiagnosticService,
+            TestDiscoveryService,
+            TestRunnerService,
+            WorkspaceManager,
+            ChangeTracker);
+
+        Assert.ThrowsExactly<UnreachableException>(
+            () => service.CreateUnexpectedFailure(
+                new InvalidOperationException("boom"),
+                (WorkspaceValidationFailureOperation)int.MaxValue));
     }
 
     [TestMethod]

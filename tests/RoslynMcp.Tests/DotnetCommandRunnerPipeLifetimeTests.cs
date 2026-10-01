@@ -59,6 +59,17 @@ public class DotnetCommandRunnerPipeLifetimeTests
     }
 
     [TestMethod]
+    [DataRow("")]
+    [DataRow("   ")]
+    public void CreateStartInfo_BlankExecutablePath_ThrowsArgumentExceptionNamingTheParameter(string executablePath)
+    {
+        var ex = Assert.ThrowsExactly<ArgumentException>(
+            () => DotnetCommandRunner.CreateStartInfo("work", ["build", "x.slnx"], executablePath));
+
+        Assert.AreEqual("executablePath", ex.ParamName);
+    }
+
+    [TestMethod]
     [TestCategory("Process")]
     [Timeout(30_000)]
     public async Task RunAsync_ProvidesImmediateStandardInputEof()

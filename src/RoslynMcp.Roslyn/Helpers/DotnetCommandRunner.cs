@@ -157,10 +157,7 @@ public sealed class DotnetCommandRunner : IDotnetCommandRunner
         IReadOnlyList<string> arguments,
         string executablePath = "dotnet")
     {
-        if (string.IsNullOrWhiteSpace(executablePath))
-        {
-            throw new ArgumentException("Executable path must not be empty.", nameof(executablePath));
-        }
+        ArgumentException.ThrowIfNullOrWhiteSpace(executablePath);
 
         var startInfo = new ProcessStartInfo
         {

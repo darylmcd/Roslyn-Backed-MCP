@@ -268,10 +268,7 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
 
     public void MarkStale(string workspaceId, string reason)
     {
-        if (string.IsNullOrWhiteSpace(reason))
-        {
-            throw new ArgumentException("reason is required.", nameof(reason));
-        }
+        ArgumentException.ThrowIfNullOrWhiteSpace(reason);
 
         if (_watchers.TryGetValue(workspaceId, out var entry))
         {

@@ -345,6 +345,15 @@ public sealed class UndoServiceTests : IsolatedWorkspaceTestBase
         Assert.AreNotEqual(catOriginal, catAfterRetry, "Cat.cs should still be at its post-apply-B state.");
     }
 
+    [TestMethod]
+    public void CaptureBeforeApply_NonSolutionObject_ThrowsInvalidOperationException()
+    {
+        // The object-typed parameter is an internal wiring contract, not a caller-supplied
+        // argument, so a violation must not surface as a caller-blaming ArgumentException.
+        Assert.ThrowsExactly<InvalidOperationException>(
+            () => UndoService.CaptureBeforeApply("any-workspace", "wrong type", new object(), fileSnapshots: null));
+    }
+
     // ---- composite-apply-undo-encoding-still-lossy: solution-snapshot revert encoding fidelity ----
     //
     // `RevertFromSolutionSnapshotAsync` collapsed each restore to a bare string, discarding the

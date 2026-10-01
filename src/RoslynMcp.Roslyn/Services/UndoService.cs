@@ -72,7 +72,7 @@ public sealed class UndoService : IUndoService, IDisposable
         if (preApplySolution is not null)
         {
             if (preApplySolution is not Solution typed)
-                throw new ArgumentException("preApplySolution must be a Roslyn Solution or null.", nameof(preApplySolution));
+                throw new InvalidOperationException("preApplySolution must be a Roslyn Solution or null.");
             solution = typed;
         }
 
