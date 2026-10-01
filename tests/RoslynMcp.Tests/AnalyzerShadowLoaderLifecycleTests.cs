@@ -428,7 +428,7 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            Assert.Inconclusive("The cross-process ownership probe uses Windows PowerShell.");
+            Assert.Inconclusive("The cross-process ownership probe uses a Windows cmd.exe child.");
             return;
         }
 
@@ -439,30 +439,26 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
         Directory.CreateDirectory(copyRoot);
         File.WriteAllText(Path.Combine(copyRoot, "unloaded.dll"), "unmapped copy");
         var readyPath = Path.Combine(TestTempRoot.Current, "process-owner-ready-" + Guid.NewGuid().ToString("N"));
-        const string ownerCommand = """
-            $stream = [System.IO.File]::Open((Join-Path $env:RMCP_OWNER_ROOT '.owner.lock'), [System.IO.FileMode]::OpenOrCreate, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
-            try {
-                [System.IO.File]::WriteAllText($env:RMCP_OWNER_READY, 'ready')
-                Start-Sleep -Seconds 120
-            } finally {
-                $stream.Dispose()
-            }
-            """;
+        // cmd.exe starts in milliseconds, unlike a PowerShell cold start that exceeded the ready
+        // deadline on loaded hosted runners. The group-wide `9>>` redirection keeps the lock file
+        // open for the lifetime of the group, which is all the sweeper's exclusive-open probe
+        // (FileShare.None) needs to treat the root as owned by a live host.
+        var ownerScriptPath = Path.Combine(TestTempRoot.Current, "process-owner-" + Guid.NewGuid().ToString("N") + ".cmd");
+        File.WriteAllText(
+            ownerScriptPath,
+            "@echo off\r\n" +
+            "( (echo ready>\"%RMCP_OWNER_READY%\") & ping -n 120 127.0.0.1 >nul ) 9>>\"%RMCP_OWNER_ROOT%\\.owner.lock\"\r\n");
 
         using var owner = new Process
         {
             StartInfo = new ProcessStartInfo
             {
-                FileName = "powershell.exe",
+                FileName = ownerScriptPath,
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 RedirectStandardError = true,
             }
         };
-        owner.StartInfo.ArgumentList.Add("-NoProfile");
-        owner.StartInfo.ArgumentList.Add("-NonInteractive");
-        owner.StartInfo.ArgumentList.Add("-Command");
-        owner.StartInfo.ArgumentList.Add(ownerCommand);
         owner.StartInfo.Environment["RMCP_OWNER_ROOT"] = processDirectory;
         owner.StartInfo.Environment["RMCP_OWNER_READY"] = readyPath;
 
@@ -501,6 +497,7 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
             }
 
             File.Delete(readyPath);
+            File.Delete(ownerScriptPath);
             TestFixtureFileSystem.DeleteDirectoryIfExists(sharedParent);
         }
     }

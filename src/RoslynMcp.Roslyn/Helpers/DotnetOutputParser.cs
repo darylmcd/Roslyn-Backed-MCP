@@ -12,6 +12,12 @@ internal static partial class DotnetOutputParser
     [GeneratedRegex(@"^(?<file>.+?)\((?<line>\d+),(?<column>\d+)(,(?<endLine>\d+),(?<endColumn>\d+))?\): (?<severity>error|warning) (?<id>[A-Z]{2,}\d+): (?<message>.+?)( \[(?<project>.+)\])?$", RegexOptions.Compiled)]
     private static partial Regex DiagnosticRegex();
 
+    // Location-less MSBuild/NuGet form: `<file-or-tool> : error NU1201: message [project]`
+    // (restore errors, `MSBUILD : error MSB1009:`). The ` : ` separator (space before the colon)
+    // and the required `[A-Z]{2,}\d+` id keep it from matching the located form or ordinary prose.
+    [GeneratedRegex(@"^(?<file>.+?) : (?<severity>error|warning) (?<id>[A-Z]{2,}\d+): (?<message>.+?)( \[(?<project>.+)\])?$", RegexOptions.Compiled)]
+    private static partial Regex LocationlessDiagnosticRegex();
+
     [GeneratedRegex(@"MSB(3027|3021)", RegexOptions.Compiled)]
     private static partial Regex MsBuildFileLockRegex();
 
@@ -43,18 +49,27 @@ internal static partial class DotnetOutputParser
     /// Parses MSBuild-style diagnostic lines from <c>dotnet build</c> standard output.
     /// </summary>
     /// <param name="output">The raw standard output captured from the build process.</param>
-    /// <returns>A list of parsed diagnostics. Lines that do not match the expected format are silently skipped.</returns>
+    /// <returns>
+    /// A list of parsed diagnostics, including location-less lines (null line/column, null <c>Location</c>).
+    /// Lines that match neither format are silently skipped.
+    /// </returns>
     public static IReadOnlyList<DiagnosticDto> ParseBuildDiagnostics(string output)
     {
-        var seen = new HashSet<(string Id, string File, int? Line, int? Col)>();
+        var seen = new HashSet<(string Id, string File, int? Line, int? Col, string? Message)>();
         var diagnostics = new List<DiagnosticDto>();
 
         foreach (var line in output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
         {
-            var match = DiagnosticRegex().Match(line.Trim());
-            if (!match.Success)
+            var trimmed = line.Trim();
+            var match = DiagnosticRegex().Match(trimmed);
+            var hasLocation = match.Success;
+            if (!hasLocation)
             {
-                continue;
+                match = LocationlessDiagnosticRegex().Match(trimmed);
+                if (!match.Success)
+                {
+                    continue;
+                }
             }
 
             var id = match.Groups["id"].Value;
@@ -64,8 +79,10 @@ internal static partial class DotnetOutputParser
             var endLine = ParseNullableInt(match.Groups["endLine"].Value);
             var endColumn = ParseNullableInt(match.Groups["endColumn"].Value);
 
-            // Deduplicate by (Id, FilePath, Line, Column) to avoid MSBuild retry duplicates
-            if (!seen.Add((id, file, startLine, startColumn)))
+            // Deduplicate by (Id, FilePath, Line, Column) to avoid MSBuild retry duplicates. A
+            // location-less line has no position to tell two findings apart (e.g. NU1101 for two
+            // different packages on one project), so its message joins the key.
+            if (!seen.Add((id, file, startLine, startColumn, hasLocation ? null : match.Groups["message"].Value)))
                 continue;
 
             diagnostics.Add(new DiagnosticDto(

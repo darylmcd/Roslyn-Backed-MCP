@@ -43,7 +43,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
 
         if (sourceDocument.Project.Id == targetProject.Id)
         {
-            throw new InvalidOperationException("Source and target projects must be different for move-type-to-project.");
+            throw new PublicInvalidOperationException("Source and target projects must be different for move-type-to-project.");
         }
 
         var sourceRoot = await sourceDocument.GetSyntaxRootAsync(ct).ConfigureAwait(false) as CompilationUnitSyntax
@@ -52,7 +52,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         var semanticModel = await sourceDocument.GetSemanticModelAsync(ct).ConfigureAwait(false)
             ?? throw new InvalidOperationException("Semantic model could not be created for the source document.");
         var typeSymbol = semanticModel.GetDeclaredSymbol(typeDeclaration, ct) as INamedTypeSymbol
-            ?? throw new InvalidOperationException($"Type '{typeName}' could not be resolved.");
+            ?? throw new PublicInvalidOperationException($"Type '{typeName}' could not be resolved.");
         var sourceDocumentFilePath = sourceDocument.FilePath
             ?? throw new InvalidOperationException("Source document must have a file path on disk.");
         var targetProjectDirectory = Path.GetDirectoryName(targetProject.FilePath)
@@ -76,7 +76,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         var targetFilePath = Path.Combine(targetProjectDirectory, Path.GetFileName(sourceDocumentFilePath));
         if (File.Exists(targetFilePath))
         {
-            throw new InvalidOperationException($"Target file already exists: {targetFilePath}");
+            throw new PublicInvalidOperationException($"Target file already exists: {DescribeProjectRelativePath(targetProjectDirectory, targetFilePath)}");
         }
 
         var movedRoot = CreateCompilationUnitForMember(sourceRoot, typeDeclaration, resolvedTargetNamespace);
@@ -129,11 +129,11 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         var semanticModel = await sourceDocument.GetSemanticModelAsync(ct).ConfigureAwait(false)
             ?? throw new InvalidOperationException("Semantic model could not be created for the source document.");
         var typeSymbol = semanticModel.GetDeclaredSymbol(typeDeclaration, ct) as INamedTypeSymbol
-            ?? throw new InvalidOperationException($"Type '{typeName}' could not be resolved.");
+            ?? throw new PublicInvalidOperationException($"Type '{typeName}' could not be resolved.");
 
         if (typeSymbol.TypeKind is not TypeKind.Class and not TypeKind.Struct)
         {
-            throw new InvalidOperationException("Extract interface currently supports classes and structs only.");
+            throw new PublicInvalidOperationException("Extract interface currently supports classes and structs only.");
         }
 
         var resolvedInterfaceName = string.IsNullOrWhiteSpace(interfaceName) ? $"I{typeName}" : interfaceName;
@@ -171,7 +171,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         var interfaceFilePath = Path.Combine(interfaceDirectory, resolvedInterfaceName + ".cs");
         if (File.Exists(interfaceFilePath))
         {
-            throw new InvalidOperationException($"Target interface file already exists: {interfaceFilePath}");
+            throw new PublicInvalidOperationException($"Target interface file already exists: {DescribeProjectRelativePath(targetProjectDirectory, interfaceFilePath)}");
         }
 
         var updatedTypeDeclaration = AddBaseType(typeDeclaration, resolvedInterfaceName);
@@ -218,7 +218,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         var semanticModel = await sourceDocument.GetSemanticModelAsync(ct).ConfigureAwait(false)
             ?? throw new InvalidOperationException("Semantic model could not be created for the source document.");
         var typeSymbol = semanticModel.GetDeclaredSymbol(typeDeclaration, ct) as INamedTypeSymbol
-            ?? throw new InvalidOperationException($"Type '{typeName}' could not be resolved.");
+            ?? throw new PublicInvalidOperationException($"Type '{typeName}' could not be resolved.");
 
         var resolvedInterfaceName = string.IsNullOrWhiteSpace(interfaceName) ? $"I{typeName}" : interfaceName;
         var updatedSolution = await CreateInterfaceExtractionSolutionAsync(
@@ -234,7 +234,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             ct).ConfigureAwait(false);
 
         var updatedConcreteType = await SymbolResolver.ResolveByMetadataNameAsync(updatedSolution, GetMetadataName(typeSymbol), ct).ConfigureAwait(false) as INamedTypeSymbol
-            ?? throw new InvalidOperationException($"Type '{typeName}' could not be resolved after interface extraction.");
+            ?? throw new PublicInvalidOperationException($"Type '{typeName}' could not be resolved after interface extraction.");
 
         // Only documents that actually reference the extracted concrete type can hold a
         // constructor parameter typed at it. Use Roslyn's reference index (which honours the
@@ -326,19 +326,26 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         return projectDirectory;
     }
 
+    /// <summary>
+    /// Renders <paramref name="path"/> relative to the project directory so public refusal messages
+    /// never disclose absolute filesystem paths.
+    /// </summary>
+    private static string DescribeProjectRelativePath(string projectDirectory, string path) =>
+        Path.GetRelativePath(projectDirectory, path).Replace('\\', '/');
+
     private static Project ResolveProject(Solution solution, string targetProjectName)
     {
         return solution.Projects.FirstOrDefault(project =>
                    string.Equals(project.Name, targetProjectName, StringComparison.OrdinalIgnoreCase) ||
                    string.Equals(project.FilePath, targetProjectName, StringComparison.OrdinalIgnoreCase))
-               ?? throw new InvalidOperationException($"Project not found: {targetProjectName}");
+               ?? throw new PublicInvalidOperationException($"Project not found: {targetProjectName}");
     }
 
     private static TypeDeclarationSyntax FindTypeDeclaration(CompilationUnitSyntax root, string typeName)
     {
         return root.DescendantNodes().OfType<TypeDeclarationSyntax>()
             .FirstOrDefault(candidate => string.Equals(candidate.Identifier.ValueText, typeName, StringComparison.Ordinal))
-            ?? throw new InvalidOperationException($"Type '{typeName}' was not found in the source document.");
+            ?? throw new PublicInvalidOperationException($"Type '{typeName}' was not found in the source document.");
     }
 
     private static string GetContainingNamespace(INamedTypeSymbol typeSymbol)
@@ -400,7 +407,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             var compilation = await compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
             if (compilation?.GetTypeByMetadataName(fullyQualifiedName) is not null)
             {
-                throw new InvalidOperationException(
+                throw new PublicInvalidOperationException(
                     $"Type '{typeName}' already exists in project '{project.Name}' " +
                     $"(namespace '{namespaceName}'). Choose a different interface name to avoid conflicts.");
             }
@@ -545,7 +552,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
 
         if (interfaceMembers.Length == 0)
         {
-            throw new InvalidOperationException($"Type '{typeSymbol.Name}' does not have public instance members that can be extracted.");
+            throw new PublicInvalidOperationException($"Type '{typeSymbol.Name}' does not have public instance members that can be extracted.");
         }
 
         // BUG-003: Match the source type's accessibility. A cross-project extraction MUST stay
@@ -761,7 +768,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
 
         if (ProjectGraphHelpers.WouldCreateProjectReferenceCycle(sourceProject, targetProject))
         {
-            throw new InvalidOperationException(
+            throw new PublicInvalidOperationException(
                 $"Adding project reference from '{sourceProject.Name}' to '{targetProject.Name}' would create a circular dependency.");
         }
 
@@ -802,7 +809,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         var interfaceFilePath = Path.Combine(interfaceFileDirectory, interfaceName + ".cs");
         if (File.Exists(interfaceFilePath))
         {
-            throw new InvalidOperationException($"Target interface file already exists: {interfaceFilePath}");
+            throw new PublicInvalidOperationException($"Target interface file already exists: {DescribeProjectRelativePath(targetProjectDirectory, interfaceFilePath)}");
         }
 
         var updatedTypeDeclaration = AddBaseType(typeDeclaration, interfaceName);

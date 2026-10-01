@@ -13,7 +13,7 @@ Related: [Release policy](release-policy.md) (product version and gates),
 
 | Axis | Current | Where pinned | Move with | After bump |
 |------|---------|--------------|-----------|------------|
-| .NET SDK (minimum) | `10.0.400` | `global.json` (`sdk.version`, `rollForward`: `latestFeature`) | Same band as `Microsoft.CodeAnalysis.NetAnalyzers` when possible; CI exact-floor lane | `sdk-floor` job plus `./eng/verify-release.ps1`; confirm CI `setup-dotnet` still appropriate |
+| .NET SDK (minimum) | `10.0.400` | `global.json` (`sdk.version`, `rollForward`: `latestFeature`) | Supplies the built-in .NET analyzers (`EnableNETAnalyzers`); CI exact-floor lane | `sdk-floor` job plus `./eng/verify-release.ps1`; confirm CI `setup-dotnet` still appropriate |
 | CI / publish SDK channel | `10.0.x` | `.github/workflows/ci.yml`, `.github/workflows/publish-nuget.yml`; GitHub default CodeQL setup | `global.json` policy (exact vs floating) | If you pin CI to an exact SDK, document it here and verify the repository CodeQL setting |
 | Target framework | `net10.0` | `Directory.Build.props` (`TargetFramework`) | SDK that supports the TFM; extension packages in the `10.0.x` line | Full build + test |
 
@@ -52,7 +52,6 @@ The previous `10.0.100` minimum was not executable: its compiler loads Roslyn 5.
 | `coverlet.collector` | `10.1.0` | `Directory.Packages.props` | Coverage-only |
 | `Microsoft.CodeAnalysis.CSharp.Analyzer.Testing.MSTest` | `1.1.2` | `Directory.Packages.props` | Analyzer test harness; review Roslyn ABI |
 | `NuGet.Frameworks` | `6.3.4` | `Directory.Packages.props` | Direct test pin required by MSBuildLocator asset policy |
-| `Microsoft.CodeAnalysis.NetAnalyzers` | `10.0.401` | `Directory.Packages.props` | Align with the declared SDK feature band when available |
 | `Microsoft.CodeAnalysis.BannedApiAnalyzers` | `5.6.0` | `Directory.Packages.props` | Independently versioned analyzer |
 | `Nito.AsyncEx` | `5.1.2` | `Directory.Packages.props` | Independent |
 | `Microsoft.SourceLink.GitHub` | `10.0.401` | `Directory.Packages.props` | Routine SDK-wave servicing |
@@ -114,7 +113,7 @@ Automated check: `eng/verify-version-drift.ps1` (invoked from `eng/verify-releas
 
 | You are changing | Minimum checklist |
 |------------------|-------------------|
-| `global.json` SDK | Adjust `Microsoft.CodeAnalysis.NetAnalyzers` to the matching band if Microsoft publishes one; update the exact `sdk-floor` lane; run `verify-release.ps1`. |
+| `global.json` SDK | The SDK supplies the built-in .NET analyzers, so there is no analyzer package to adjust; update the exact `sdk-floor` lane; run `verify-release.ps1`. |
 | Any `Microsoft.CodeAnalysis.*` (Roslyn API) version | Bump **all** rows in section 2 together; run full tests; watch MSBuild workspace integration. |
 | `Microsoft.Build.*` or `Microsoft.Build.Locator` | Keep all four compile-family pins equal; full `verify-release.ps1`; exact-floor lane; exercise solution load + `build_workspace` / `test_run` paths. |
 | `ModelContextProtocol` | Review every official release since the pin; add an ADR disposition that preserves or explicitly supersedes the current wire decision; run raw-wire matrices for every supported protocol era; check tool/prompt/resource registration and schemas. |

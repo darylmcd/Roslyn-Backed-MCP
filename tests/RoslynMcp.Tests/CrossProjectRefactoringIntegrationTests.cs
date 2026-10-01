@@ -1,4 +1,7 @@
+using System.Text.Json;
 using System.Xml.Linq;
+using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Tools;
 
 namespace RoslynMcp.Tests;
 
@@ -599,7 +602,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
         var sourceFilePath = workspace.GetPath("SampleLib", "Dog.cs");
         await workspace.LoadAsync(CancellationToken.None);
 
-        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () =>
+        var exception = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(async () =>
             await CrossProjectRefactoringService.PreviewMoveTypeToProjectAsync(
                 workspace.WorkspaceId,
                 sourceFilePath,
@@ -617,6 +620,73 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
         Assert.IsFalse(
             exception.Message.Contains("ProjectId", StringComparison.Ordinal),
             $"Error message leaks raw ProjectId token (regression).\nActual message: {exception.Message}");
+
+        // The refusal must survive the tool error envelope verbatim instead of the generic fallback.
+        var envelopeMessage = GetEnvelopeMessage(exception);
+        Assert.AreEqual(exception.Message, envelopeMessage);
+        StringAssert.Contains(envelopeMessage, "SampleLib");
+        StringAssert.Contains(envelopeMessage, "CircularTarget");
+    }
+
+    [TestMethod]
+    public async Task Move_Type_To_Project_Preview_Existing_Target_File_Refusal_Names_Relative_Path_Through_Envelope()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        AddProjectToCopiedSolution(workspace.RootPath, "Contracts", "net10.0");
+        var sourceFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+        File.WriteAllText(workspace.GetPath("Contracts", "Dog.cs"), "// pre-existing placeholder\n");
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var exception = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(async () =>
+            await CrossProjectRefactoringService.PreviewMoveTypeToProjectAsync(
+                workspace.WorkspaceId,
+                sourceFilePath,
+                "Dog",
+                "Contracts",
+                null,
+                CancellationToken.None,
+                preserveNamespace: false));
+
+        AssertRelativeFileExistsRefusal(exception, workspace.RootPath, "Target file already exists: Dog.cs");
+    }
+
+    [TestMethod]
+    public async Task Extract_Interface_Preview_Existing_Interface_File_Refusal_Names_Relative_Path_Through_Envelope()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        AddProjectToCopiedSolution(workspace.RootPath, "Contracts", "net10.0");
+        var sourceFilePath = workspace.GetPath("SampleLib", "AnimalService.cs");
+        var interfacesDirectory = workspace.GetPath("Contracts", "Interfaces");
+        Directory.CreateDirectory(interfacesDirectory);
+        File.WriteAllText(Path.Combine(interfacesDirectory, "IAnimalService.cs"), "// pre-existing placeholder\n");
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var exception = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(async () =>
+            await CrossProjectRefactoringService.PreviewExtractInterfaceAsync(
+                workspace.WorkspaceId,
+                sourceFilePath,
+                "AnimalService",
+                "IAnimalService",
+                "Contracts",
+                CancellationToken.None));
+
+        AssertRelativeFileExistsRefusal(exception, workspace.RootPath, "Target interface file already exists: Interfaces/IAnimalService.cs");
+    }
+
+    private static string GetEnvelopeMessage(Exception exception)
+    {
+        using var envelope = JsonDocument.Parse(ToolErrorHandler.ClassifyAndFormat(exception, "move_type_to_project_preview"));
+        return envelope.RootElement.GetProperty("message").GetString()!;
+    }
+
+    private static void AssertRelativeFileExistsRefusal(Exception exception, string workspaceRoot, string expectedMessage)
+    {
+        Assert.AreEqual(expectedMessage, exception.Message);
+        var envelopeMessage = GetEnvelopeMessage(exception);
+        Assert.AreEqual(expectedMessage, envelopeMessage);
+        Assert.IsFalse(
+            envelopeMessage.Contains(workspaceRoot, StringComparison.OrdinalIgnoreCase) || Path.IsPathRooted(envelopeMessage.Split(": ", 2)[1]),
+            $"Refusal must not disclose an absolute path. Actual: {envelopeMessage}");
     }
 
     /// <summary>

@@ -23,8 +23,8 @@
   </PropertyGroup>
   <ItemGroup>
     <!-- SecurityCodeScan.VS2019 removed v1.18: package is archived. Microsoft.CodeAnalysis.NetAnalyzers
-         covers the equivalent CA-rule security checks. -->
-    <PackageReference Include="Microsoft.CodeAnalysis.NetAnalyzers" PrivateAssets="all" />
+         covers the equivalent CA-rule security checks, and the .NET SDK injects it by default
+         (EnableNETAnalyzers), so no explicit package reference is needed. -->
     <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" PrivateAssets="all" />
     <PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="all" />
   </ItemGroup>

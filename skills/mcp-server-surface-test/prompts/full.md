@@ -88,7 +88,7 @@ Execute phases in the order stated in the *Phase order* line above: **-1 â†’ 0 â
 
 ### Phase 0.5: Subagent dispatch plan
 
-This orchestrator delegates log-heavy read-side phases to the `audit-phase-runner` agent via the **Subagent dispatch groups** defined in `prompts/phases/setup-and-analysis.md`. The dispatch groups are:
+This orchestrator delegates log-heavy read-side phases to the `roslyn-mcp:audit-phase-runner` plugin agent via the **Subagent dispatch groups** defined in `prompts/phases/setup-and-analysis.md`. The dispatch groups are:
 
 - **Group A** (read-side diagnostics and metrics): phases 1, 2
 - **Group B** (symbol and flow analysis on selected types/methods): phases 3, 4

@@ -94,7 +94,8 @@ public sealed class WorkspaceToolsIntegrationTests : SharedWorkspaceTestBase
         var json = await WorkspaceTools.ReloadWorkspace(
             WorkspaceExecutionGate,
             WorkspaceManager,
-            DotnetCommandRunner,
+            GatedCommandExecutor,
+            ValidationOptions,
             WorkspaceId,
             autoRestore: false,
             ct: CancellationToken.None);
@@ -113,7 +114,8 @@ public sealed class WorkspaceToolsIntegrationTests : SharedWorkspaceTestBase
         var json = await WorkspaceTools.ReloadWorkspace(
             WorkspaceExecutionGate,
             WorkspaceManager,
-            DotnetCommandRunner,
+            GatedCommandExecutor,
+            ValidationOptions,
             WorkspaceId,
             autoRestore: false,
             verbose: false,

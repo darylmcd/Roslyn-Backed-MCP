@@ -4,6 +4,7 @@
 .claude-plugin/mcp.json
 .claude-plugin/server.json
 skills/**
+agents/**
 hooks/hooks.json
 LICENSE
 README.md

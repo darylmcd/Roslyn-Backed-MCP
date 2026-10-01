@@ -59,4 +59,13 @@ public sealed record CompileCheckDto(
     /// Independent of <see cref="Success"/>; ready results may contain compilation errors.
     /// </summary>
     public string Readiness { get; init; } = "ready";
+
+    /// <summary>
+    /// Structured follow-up call for <c>readiness=restore-required</c>: a <c>workspace_reload</c>
+    /// with <c>autoRestore=true</c> for the resolved workspace. <see langword="null"/> (and omitted
+    /// from the wire) for every other result. Additive and minor-compatible; complements the prose
+    /// <see cref="RestoreHint"/>.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public NextCallDto? NextCall { get; init; }
 }

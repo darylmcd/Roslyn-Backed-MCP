@@ -161,6 +161,11 @@ public sealed class CompileCheckServiceTests : IsolatedWorkspaceTestBase
         Assert.AreEqual(7, result.Limit);
         StringAssert.Contains(result.RestoreHint, "workspace_reload");
         StringAssert.Contains(result.RestoreHint, "autoRestore=true");
+        Assert.IsNotNull(result.NextCall);
+        Assert.AreEqual("workspace_reload", result.NextCall.Tool);
+        Assert.AreEqual(workspace.WorkspaceId, result.NextCall.Arguments["workspaceId"]);
+        Assert.AreEqual(true, result.NextCall.Arguments["autoRestore"]);
+        Assert.HasCount(2, result.NextCall.Arguments);
     }
 
     [TestMethod]

@@ -965,4 +965,67 @@ public sealed class ChangeSignaturePreviewTests : IsolatedWorkspaceTestBase
         StringAssert.Contains(postApplyText, "public int Compute(int a, int b)",
             $"explicit Position=2 must win over caret-on-b auto-resolve; got:\n{postApplyText}");
     }
+
+    /// <summary>
+    /// change-signature-callsite-rewrites-enclosing-invocation: a non-invocation reference
+    /// (method group, <c>nameof</c>) must not climb to its nearest enclosing invocation and get
+    /// that unrelated call's argument list rewritten, nor be counted as a call-site update.
+    /// </summary>
+    [TestMethod]
+    public async Task ChangeSignaturePreview_AddOp_MethodGroupAndNameofReferences_LeaveEnclosingInvocationsUntouched()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+
+        var fixturePath = workspace.GetPath("SampleLib", "ChangeSignatureRefKindsFixture.cs");
+        await File.WriteAllTextAsync(fixturePath, string.Join("\n", new[]
+        {
+            "namespace SampleLib;",
+            "",
+            "public class ChangeSignatureRefKindsFixture",
+            "{",
+            "    public int Compute(int a, int b) => a + b;",
+            "",
+            "    private static int Apply(System.Func<int, int, int> f, int x, int y) => f(x, y);",
+            "    private static string Log(string name, string message) => name + message;",
+            "",
+            "    public int Direct() => Compute(1, 2);",
+            "    public int Receiver(ChangeSignatureRefKindsFixture other) => other.Compute(3, 4);",
+            "    public int MethodGroup() => Apply(Compute, 5, 6);",
+            "    public string NameOf() => Log(nameof(Compute), \"m\");",
+            "}",
+            "",
+        }));
+
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var locator = SymbolLocator.BySource(fixturePath, line: 5, column: 16); // `Compute` identifier
+        var request = new ChangeSignatureRequest(
+            Op: "add",
+            Name: "c",
+            ParameterType: "int",
+            Position: 2,
+            NewName: null,
+            DefaultValue: "0");
+
+        var preview = await _changeSignatureService.PreviewChangeSignatureAsync(
+            workspace.WorkspaceId, locator, request, CancellationToken.None);
+
+        // Only the two genuine invocations count as call sites.
+        Assert.IsNotNull(preview.CallsiteUpdates, "CallsiteUpdates summary must be populated when apply rewrites invocations");
+        var fixtureUpdate = preview.CallsiteUpdates.Single(
+            u => u.FilePath.EndsWith("ChangeSignatureRefKindsFixture.cs", StringComparison.OrdinalIgnoreCase));
+        Assert.AreEqual(2, fixtureUpdate.CallsiteCount,
+            "method-group and nameof references are not call sites and must not be counted");
+
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
+        Assert.IsTrue(applyResult.Success, $"apply must succeed: {applyResult.Error}");
+
+        var postApplyText = await File.ReadAllTextAsync(fixturePath);
+        StringAssert.Contains(postApplyText, "Compute(1, 2, 0)", $"direct call must be rewritten; got:\n{postApplyText}");
+        StringAssert.Contains(postApplyText, "other.Compute(3, 4, 0)", $"receiver call must be rewritten; got:\n{postApplyText}");
+        StringAssert.Contains(postApplyText, "Apply(Compute, 5, 6)",
+            $"enclosing Apply(...) of a method-group reference must be untouched; got:\n{postApplyText}");
+        StringAssert.Contains(postApplyText, "Log(nameof(Compute), \"m\")",
+            $"nameof(...) and its enclosing Log(...) must be untouched; got:\n{postApplyText}");
+    }
 }

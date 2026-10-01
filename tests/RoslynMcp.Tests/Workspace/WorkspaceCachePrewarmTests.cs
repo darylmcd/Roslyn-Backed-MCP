@@ -17,7 +17,7 @@ namespace RoslynMcp.Tests.Workspace;
 // finally; the shared test WorkspaceManager's 64-workspace cap is never approached. The
 // path-authorized MCP server is a lock-guarded, create-once fixture session that is only read.
 // The three threshold tests run entirely on per-test fakes (FakeWorkspaceManager,
-// PassthroughWorkspaceExecutionGate, RecordingWorkspaceWarmService, ThrowingDotnetCommandRunner).
+// PassthroughWorkspaceExecutionGate, RecordingWorkspaceWarmService, ThrowingGatedCommandExecutor).
 // No shared-workspace reload, no *_apply, no static or environment mutation. Validated by a
 // bounded repeated (3x) concurrent run alongside its wave-35 siblings and parallel-enabled
 // workspace-loading classes, green every time.
@@ -43,7 +43,8 @@ public sealed class WorkspaceCachePrewarmTests : IsolatedWorkspaceTestBase
                 gate: WorkspaceExecutionGate,
                 workspace: WorkspaceManager,
                 warmService: WorkspaceWarmService,
-                commandRunner: DotnetCommandRunner,
+                commandExecutor: GatedCommandExecutor,
+                validationOptions: ValidationOptions,
                 path: isolated.SolutionPath,
                 verbose: false,
                 autoRestore: false,
@@ -91,7 +92,8 @@ public sealed class WorkspaceCachePrewarmTests : IsolatedWorkspaceTestBase
                 gate: WorkspaceExecutionGate,
                 workspace: WorkspaceManager,
                 warmService: WorkspaceWarmService,
-                commandRunner: DotnetCommandRunner,
+                commandExecutor: GatedCommandExecutor,
+                validationOptions: ValidationOptions,
                 path: isolated.SolutionPath,
                 verbose: false,
                 autoRestore: false,
@@ -132,7 +134,8 @@ public sealed class WorkspaceCachePrewarmTests : IsolatedWorkspaceTestBase
             gate: gate,
             workspace: workspace,
             warmService: warmService,
-            commandRunner: new ThrowingDotnetCommandRunner(),
+            commandExecutor: new ThrowingGatedCommandExecutor(),
+            validationOptions: ValidationOptions,
             path: Path.Combine(TestTempRoot.Current, "repo", "Large.slnx"),
             verbose: false,
             autoRestore: false,
@@ -162,7 +165,8 @@ public sealed class WorkspaceCachePrewarmTests : IsolatedWorkspaceTestBase
             gate: gate,
             workspace: workspace,
             warmService: warmService,
-            commandRunner: new ThrowingDotnetCommandRunner(),
+            commandExecutor: new ThrowingGatedCommandExecutor(),
+            validationOptions: ValidationOptions,
             path: Path.Combine(TestTempRoot.Current, "repo", "Threshold.slnx"),
             verbose: false,
             autoRestore: false,
@@ -190,7 +194,8 @@ public sealed class WorkspaceCachePrewarmTests : IsolatedWorkspaceTestBase
             gate: gate,
             workspace: workspace,
             warmService: warmService,
-            commandRunner: new ThrowingDotnetCommandRunner(),
+            commandExecutor: new ThrowingGatedCommandExecutor(),
+            validationOptions: ValidationOptions,
             path: Path.Combine(TestTempRoot.Current, "repo", "Large.slnx"),
             verbose: false,
             autoRestore: false,
@@ -272,14 +277,22 @@ public sealed class WorkspaceCachePrewarmTests : IsolatedWorkspaceTestBase
         }
     }
 
-    private sealed class ThrowingDotnetCommandRunner : IDotnetCommandRunner
+    private sealed class ThrowingGatedCommandExecutor : IGatedCommandExecutor
     {
-        public Task<CommandExecutionDto> RunAsync(
-            string workingDirectory,
+        public Task<CommandExecutionDto> ExecuteAsync(
+            string workspaceId,
             string targetPath,
             IReadOnlyList<string> arguments,
+            TimeSpan timeout,
             CancellationToken ct) =>
             throw new NotSupportedException("These tests disable autoRestore; dotnet should not be invoked.");
+
+        public ProjectStatusDto ResolveProject(string workspaceId, string projectName) =>
+            throw new NotSupportedException("These tests disable autoRestore; dotnet should not be invoked.");
+
+        public void Dispose()
+        {
+        }
     }
 
     private sealed class FakeWorkspaceManager(WorkspaceStatusDto status) : IWorkspaceManager

@@ -41,11 +41,11 @@ If any phase below would require an apply or a worktree, mark it `skipped-safety
 ### Phase -1: MCP server precondition (MUST run first, hard gate)
 
 1. **Check the tool list and pin the prefix.** Call each tool whose name **ends in** `server_info` until one returns a Roslyn-shaped response, then pin that tool's prefix for every later call in this run (see *Tool prefix* above). If **no** candidate does, STOP and tell the user the skill requires the Roslyn MCP server to be started.
-2. **Read the pinned `server_info` response.** Capture `version`, `catalogVersion`, `runtime`, `os`, `connection.state`, `surface.{tools,resources,prompts}.{stable,experimental}` counts, `surface.registered.parityOk`, and `resourceServerNames.{canonical,aliases,probeGuidance}`. Halt if `connection.state != ready` or `parityOk == false`.
+2. **Read the pinned `server_info` response.** Capture `version`, `catalogVersion`, `runtime`, `os`, `connection.state`, `surface.{tools,resources,prompts}.{stable,experimental}` counts, `surface.registered.parityOk`, and `resourceServerNames.{canonical,aliases,probeGuidance}`. Halt if `connection.state` is not `idle` or `ready` (the server reports `idle` until a workspace is loaded; `ready` is required only after the Phase 0 `workspace_load`) or `parityOk == false`.
 3. **Sanity-check the catalog resource.** Read `roslyn://server/catalog` using the live resource server handle selected from `server_info.resourceServerNames` when your client requires one; prefer `roslyn` when present and otherwise match an alias exactly. Do not hand-convert `plugin:roslyn-mcp:roslyn` into an underscore name unless that exact alias is listed. Confirm per-category counts match `server_info.surface`.
 4. **Workspace health probe (post-load).** After Phase 0 loads a workspace, call `workspace_health(workspaceId)` once. A non-`healthy` status before any further call is a P1 finding.
 
-**Hard-gate checkpoint:** Did a suffix-matched `server_info` return a Roslyn-shaped response? Is `connection.state == ready`? Is `parityOk == true`? Did the catalog-resource counts match `server_info`? Did `workspace_health` return `healthy`? Any `no` is a halt-or-escalate.
+**Hard-gate checkpoint:** Did a suffix-matched `server_info` return a Roslyn-shaped response? Is `connection.state` `idle` or `ready` (`ready` after the workspace loads)? Is `parityOk == true`? Did the catalog-resource counts match `server_info`? Did `workspace_health` return `healthy`? Any `no` is a halt-or-escalate.
 
 ---
 
