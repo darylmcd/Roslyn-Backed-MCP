@@ -13,7 +13,7 @@
     {
       "id": "workspace-load-missing-assets-auto-restore",
       "order": 1,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "workspace-load-missing-assets-auto-restore"
       ],
@@ -46,10 +46,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "branch": "remediation/workspace-load-missing-assets-auto-restore",
+      "worktreePath": ".worktrees/workspace-load-missing-assets-auto-restore",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1725",
+      "mergedAt": "2026-10-01T17:19:47Z",
       "notes": null,
       "fileSetHash": "cbb420308d97395eae9eec6bb48035f819fd896d9180ba5ca5787a35adb47398",
       "stanzaHash": "477bb88261e4c3c30d084e3590990e659cd17e8aac7ae49a029514d0c56fee2f",
@@ -58,7 +58,7 @@
     {
       "id": "gated-test-run-command-budget",
       "order": 2,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "gated-test-run-command-budget"
       ],
@@ -97,14 +97,25 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "branch": "remediation/gated-test-run-command-budget",
+      "worktreePath": ".worktrees/gated-test-run-command-budget",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1726",
+      "mergedAt": "2026-10-01T15:56:27Z",
       "notes": null,
       "fileSetHash": "c340be040b5152dc90a37a90724c47ac294d8a15293ed53d76c19d39aa442618",
       "stanzaHash": "3c2aaac1aa6b68ceb6146b98bb9f0149f60bf37902dcaf494e8985b8f55f6f43",
-      "reviewedStanzaHash": "3c2aaac1aa6b68ceb6146b98bb9f0149f60bf37902dcaf494e8985b8f55f6f43"
+      "reviewedStanzaHash": "3c2aaac1aa6b68ceb6146b98bb9f0149f60bf37902dcaf494e8985b8f55f6f43",
+      "chainGate": {
+        "predecessor": null,
+        "baseOid": "83bce38fb9f6a274db099d5f0af96abb5bc9235f",
+        "sourceOid": "3aac15091fb2179fd3f4491e51ae28fdf5123f23",
+        "headOid": "3aac15091fb2179fd3f4491e51ae28fdf5123f23",
+        "gatedTree": "70818465492ab0d510ee333a50985218042e3e04",
+        "exit": 0,
+        "attempts": 1,
+        "log": "~/AppData/Local/Temp/claude/D--Roslyn-Backed-MCP/c781a910-2886-4c60-8633-459b3ba522e1/scratchpad/20261001T130338Z_backlog-remediate/chain-gated-test-run-command-budget-20261001T143203815Z-35140-a1.log",
+        "gatedAt": "2026-10-01T14:47:36.243Z"
+      }
     },
     {
       "id": "gated-vuln-scan-command-budget",
@@ -203,7 +214,7 @@
     {
       "id": "tool-parameter-index-schema-drift",
       "order": 5,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "tool-parameter-index-schema-drift"
       ],
@@ -229,19 +240,30 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "branch": "remediation/tool-parameter-index-schema-drift",
+      "worktreePath": ".worktrees/tool-parameter-index-schema-drift",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1727",
+      "mergedAt": "2026-10-01T17:19:21Z",
       "notes": null,
       "fileSetHash": "dd064ff988ed3e7ef12288ab46172f5176354bcc0e0bb3a3d1274709675bc3d6",
       "stanzaHash": "ee442aef6063265d554d0d1bc8899e07ade5e2a90e528b50adf691179288b3c5",
-      "reviewedStanzaHash": "ee442aef6063265d554d0d1bc8899e07ade5e2a90e528b50adf691179288b3c5"
+      "reviewedStanzaHash": "ee442aef6063265d554d0d1bc8899e07ade5e2a90e528b50adf691179288b3c5",
+      "chainGate": {
+        "predecessor": null,
+        "baseOid": "52cda5615a7caba0e3d98d7e75e1070c3158c3b9",
+        "sourceOid": "7bc5af9eb2763a0e6db8a6a6daf68995dc7bd82f",
+        "headOid": "7bc5af9eb2763a0e6db8a6a6daf68995dc7bd82f",
+        "gatedTree": "bf17718c6b1f7ca5295d24e3aa5ec202f943c95e",
+        "exit": 0,
+        "attempts": 1,
+        "log": "~/AppData/Local/Temp/claude/D--Roslyn-Backed-MCP/c781a910-2886-4c60-8633-459b3ba522e1/scratchpad/20261001T130338Z_backlog-remediate/chain-tool-parameter-index-schema-drift-20261001T163153449Z-46156-a1.log",
+        "gatedAt": "2026-10-01T16:45:56.787Z"
+      }
     },
     {
       "id": "release-lag-guard",
       "order": 6,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "release-lag-guard"
       ],
@@ -271,10 +293,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "branch": "remediation/release-lag-guard",
+      "worktreePath": ".worktrees/release-lag-guard",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1728",
+      "mergedAt": "2026-10-01T17:19:31Z",
       "notes": null,
       "fileSetHash": "5d16fa52a68c34b4a10eb2c41d8cf460bdc0f59d85a4177960c0f15226d12300",
       "stanzaHash": "ee5a806a58ac06256b84f51c916141015b278f7a4b1bf32cd509d477d3c29db8",
@@ -283,7 +305,7 @@
     {
       "id": "extract-type-interface-implementation-guard",
       "order": 7,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "extract-type-interface-implementation-guard"
       ],
@@ -309,10 +331,10 @@
         "ruleOneBundleResolved": "split"
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "branch": "remediation/extract-type-interface-implementation-guard",
+      "worktreePath": ".worktrees/extract-type-interface-implementation-guard",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1729",
+      "mergedAt": "2026-10-01T17:19:39Z",
       "notes": null,
       "fileSetHash": "b39233ebef576f17ceeebe7a140e06427809c85452cfae1f02db223f42436701",
       "stanzaHash": "fcca6c90feb786ff320da1229b4fb86574f3921b6c17a55e316ab7205bce731b",
