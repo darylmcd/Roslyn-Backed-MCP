@@ -132,6 +132,14 @@ also present when an `autoRestore` attempt ran but `restoreRequired` is still tr
 must not assume that issuing the call will clear the state. The lean `restoreHint` describes
 missing or out-of-date package assets. Clients must ignore unknown fields, per `docs/release-policy.md`.
 
+`autoRestore` is a nullable boolean (decision: [ADR 0013](decisions/0013-workspace-load-default-auto-restore.md)):
+
+| `autoRestore` | Behavior |
+|---|---|
+| omitted | Runs `dotnet restore` plus one reload only when a project that declares package references has no `project.assets.json`. A failed or timed-out restore does not fail the call: `restoreRequired` stays `true`, `nextCall` is kept, and the result adds a path-free `restoreFailureReason` string. Package-version drift alone does not restore. |
+| `true` | Restores for any `restoreRequired` (drift included); a failed restore fails the call. |
+| `false` | Never restores. |
+
 ### Deprecations scheduled for 5.0
 
 These 4.x behaviors are deprecated. The 5.0.0 release will change them under an ADR with

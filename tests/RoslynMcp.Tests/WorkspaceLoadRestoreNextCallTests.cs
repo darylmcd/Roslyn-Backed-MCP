@@ -65,6 +65,26 @@ public sealed class WorkspaceLoadRestoreNextCallTests
     }
 
     [TestMethod]
+    public void SerializeWorkspaceLoadResult_NoFailureReason_OmitsRestoreFailureReason()
+    {
+        using var doc = JsonDocument.Parse(
+            WorkspaceTools.SerializeWorkspaceLoadResult(CreateStatus(restoreRequired: true), verbose: false, prewarmResult: null));
+
+        Assert.IsFalse(doc.RootElement.TryGetProperty("restoreFailureReason", out _));
+    }
+
+    [TestMethod]
+    public void SerializeWorkspaceLoadResult_FailureReason_EmitsRestoreFailureReasonBesideNextCall()
+    {
+        using var doc = JsonDocument.Parse(
+            WorkspaceTools.SerializeWorkspaceLoadResult(
+                CreateStatus(restoreRequired: true), verbose: true, prewarmResult: null, restoreFailureReason: "restore failed"));
+
+        Assert.AreEqual("restore failed", doc.RootElement.GetProperty("restoreFailureReason").GetString());
+        Assert.IsTrue(doc.RootElement.TryGetProperty("nextCall", out _));
+    }
+
+    [TestMethod]
     public void SerializeWorkspaceLoadResult_PrewarmWithoutRestore_OmitsNextCall()
     {
         var prewarm = new WorkspaceWarmResult(WorkspaceId, ["Sample"], ElapsedMs: 1, ColdCompilationCount: 1);
