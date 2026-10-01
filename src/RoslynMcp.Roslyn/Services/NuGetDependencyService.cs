@@ -211,7 +211,16 @@ public sealed class NuGetDependencyService : INuGetDependencyService
         bool includeTransitive,
         CancellationToken ct)
     {
-        var sw = Stopwatch.StartNew();
+        var plan = await PrepareVulnerabilityScanAsync(workspaceId, projectFilter, includeTransitive, ct).ConfigureAwait(false);
+        return plan.Cached ?? await RunVulnerabilityScanAsync(plan, ct).ConfigureAwait(false);
+    }
+
+    public async Task<VulnerabilityScanPlan> PrepareVulnerabilityScanAsync(
+        string workspaceId,
+        string? projectFilter,
+        bool includeTransitive,
+        CancellationToken ct)
+    {
         var status = await _workspace.GetStatusAsync(workspaceId, ct).ConfigureAwait(false);
         if (string.IsNullOrEmpty(status.LoadedPath))
         {
@@ -227,7 +236,8 @@ public sealed class NuGetDependencyService : INuGetDependencyService
         // cleanly even if the workspace version didn't tick.
         var version = _workspace.GetCurrentVersion(workspaceId);
         var lockfileHash = ComputeLockfileHash(status.LoadedPath, projectFilter);
-        var cacheKey = new VulnCacheKey(projectFilter ?? "<all>", includeTransitive, lockfileHash);
+        var projectFilterKey = projectFilter ?? "<all>";
+        var cacheKey = new VulnCacheKey(projectFilterKey, includeTransitive, lockfileHash);
 
         var entry = _vulnCache.AddOrUpdate(
             workspaceId,
@@ -236,10 +246,7 @@ public sealed class NuGetDependencyService : INuGetDependencyService
                 ? existing
                 : new VulnCacheEntry(version, new ConcurrentDictionary<VulnCacheKey, NuGetVulnerabilityScanResultDto>()));
 
-        if (entry.ByKey.TryGetValue(cacheKey, out var cached))
-        {
-            return cached;
-        }
+        entry.ByKey.TryGetValue(cacheKey, out var cached);
 
         var args = new List<string> { "list", targetPath, "package", "--vulnerable", "--format", "json" };
         if (includeTransitive)
@@ -247,10 +254,19 @@ public sealed class NuGetDependencyService : INuGetDependencyService
             args.Add("--include-transitive");
         }
 
+        return new VulnerabilityScanPlan(
+            workspaceId, targetPath, args, includeTransitive, projectFilterKey, lockfileHash, version, cached);
+    }
+
+    public async Task<NuGetVulnerabilityScanResultDto> RunVulnerabilityScanAsync(
+        VulnerabilityScanPlan plan,
+        CancellationToken ct)
+    {
+        var sw = Stopwatch.StartNew();
         var execution = await _executor.ExecuteAsync(
-            workspaceId,
-            targetPath,
-            args,
+            plan.WorkspaceId,
+            plan.TargetPath,
+            plan.Arguments,
             _options.VulnerabilityScanTimeout,
             ct).ConfigureAwait(false);
 
@@ -277,18 +293,45 @@ public sealed class NuGetDependencyService : INuGetDependencyService
             high,
             medium,
             low,
-            includeTransitive,
+            plan.IncludeTransitive,
             sw.ElapsedMilliseconds);
 
-        // nuget-vuln-scan-caching: store under the existing per-workspace entry. Cap at 4
-        // entries so memory stays bounded for chatty (projectFilter, includeTransitive) combos.
+        StoreIfWorkspaceUnchanged(plan, result);
+        return result;
+    }
+
+    /// <summary>
+    /// nuget-vuln-scan-caching: store under the per-workspace entry only while the workspace
+    /// version still equals the plan's, so an edit (or close/reload) during the ungated command
+    /// cannot cache a result for stale package references. Cap at 4 entries so memory stays
+    /// bounded for chatty (projectFilter, includeTransitive) combos.
+    /// </summary>
+    private void StoreIfWorkspaceUnchanged(VulnerabilityScanPlan plan, NuGetVulnerabilityScanResultDto result)
+    {
+        try
+        {
+            if (_workspace.GetCurrentVersion(plan.WorkspaceId) != plan.WorkspaceVersion)
+            {
+                return;
+            }
+        }
+        catch (WorkspaceNotFoundException)
+        {
+            return;
+        }
+
+        if (!_vulnCache.TryGetValue(plan.WorkspaceId, out var entry) || entry.Version != plan.WorkspaceVersion)
+        {
+            return;
+        }
+
         if (entry.ByKey.Count >= MaxVulnCacheEntriesPerWorkspace)
         {
             var someKey = entry.ByKey.Keys.FirstOrDefault();
             if (someKey is not null) entry.ByKey.TryRemove(someKey, out _);
         }
-        entry.ByKey[cacheKey] = result;
-        return result;
+
+        entry.ByKey[new VulnCacheKey(plan.ProjectFilterKey, plan.IncludeTransitive, plan.LockfileHash)] = result;
     }
 
     /// <summary>

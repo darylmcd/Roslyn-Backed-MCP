@@ -30,8 +30,9 @@ public sealed class GateOperationDeadlineTests
         public TestRunnerService TestService { get; }
         public GatedCommandExecutor Executor { get; }
         public ValidationServiceOptions Options { get; }
+        public NuGetDependencyService ScanService { get; }
 
-        public Harness(TimeSpan? buildTimeout = null, TimeSpan? testTimeout = null)
+        public Harness(TimeSpan? buildTimeout = null, TimeSpan? testTimeout = null, TimeSpan? scanTimeout = null)
         {
             Gate = new WorkspaceExecutionGate(new ExecutionGateOptions(), Manager, Clock);
             Executor = new GatedCommandExecutor(Manager, Runner, NullLogger<GatedCommandExecutor>.Instance);
@@ -39,7 +40,14 @@ public sealed class GateOperationDeadlineTests
             {
                 BuildTimeout = buildTimeout ?? TimeSpan.FromMinutes(5),
                 TestTimeout = testTimeout ?? TimeSpan.FromMinutes(10),
+                VulnerabilityScanTimeout = scanTimeout ?? TimeSpan.FromMinutes(5),
             };
+            ScanService = new NuGetDependencyService(
+                Manager,
+                Executor,
+                new MsBuildEvaluationService(Manager),
+                NullLogger<NuGetDependencyService>.Instance,
+                Options);
             Service = new BuildService(
                 Manager, Executor, new CompilationCache(Manager), NullLogger<BuildService>.Instance, Options);
             TestService = new TestRunnerService(
@@ -62,6 +70,10 @@ public sealed class GateOperationDeadlineTests
 
         public Task<string> BuildProjectAsync() =>
             ValidationTools.BuildProject(Gate, Service, WorkspaceId, "Sample", CancellationToken.None);
+
+        public Task<string> ScanVulnerabilitiesAsync() =>
+            SecurityTools.ScanNuGetVulnerabilities(
+                Gate, ScanService, WorkspaceId, projectName: null, includeTransitive: false, progress: null, CancellationToken.None);
     }
 
     [TestMethod]
@@ -326,6 +338,93 @@ public sealed class GateOperationDeadlineTests
         Assert.AreEqual("Timeout", doc.RootElement.GetProperty("failureEnvelope").GetProperty("errorKind").GetString());
     }
 
+    [TestMethod]
+    public async Task VulnerabilityScan_RunsPastGateRequestTimeout_WhenScanIsStillWithinScanTimeout()
+    {
+        var h = new Harness();
+
+        var scan = h.ScanVulnerabilitiesAsync();
+        await h.Runner.Started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        h.Clock.Advance(TimeSpan.FromMinutes(3));
+        h.Runner.Release();
+
+        using var doc = JsonDocument.Parse(await scan.WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.AreEqual(0, doc.RootElement.GetProperty("totalVulnerabilities").GetInt32());
+    }
+
+    [TestMethod]
+    public async Task VulnerabilityScan_DoesNotHoldWorkspaceLock_WhileCommandRuns()
+    {
+        var h = new Harness();
+
+        var scan = h.ScanVulnerabilitiesAsync();
+        await h.Runner.Started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        var writerRan = await h.Gate.RunWriteAsync(WorkspaceId, _ => Task.FromResult(true), CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.IsTrue(writerRan);
+        Assert.IsFalse(scan.IsCompleted, "The scan command must still be running while the writer ran.");
+
+        h.Runner.Release();
+        await scan.WaitAsync(TimeSpan.FromSeconds(10));
+    }
+
+    [TestMethod]
+    public async Task VulnerabilityScan_ScanTimeoutBudgetExpiry_StillThrowsTimeoutException()
+    {
+        var h = new Harness(scanTimeout: TimeSpan.FromMilliseconds(100));
+
+        // The runner never completes; the executor's total budget must expire and surface as
+        // TimeoutException (the tool error filter classifies it as Timeout).
+        await Assert.ThrowsExactlyAsync<TimeoutException>(() => h.ScanVulnerabilitiesAsync());
+    }
+
+    [TestMethod]
+    public async Task VulnerabilityScan_CachedResult_SkipsTheCommand()
+    {
+        var h = new Harness();
+
+        var first = h.ScanVulnerabilitiesAsync();
+        await h.Runner.Started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        h.Runner.Release();
+        await first.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.AreEqual(1, h.Runner.CallCount);
+
+        await h.ScanVulnerabilitiesAsync().WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.AreEqual(1, h.Runner.CallCount, "An unchanged workspace must be served from the scan cache.");
+    }
+
+    [TestMethod]
+    public async Task VulnerabilityScan_WorkspaceVersionMovedDuringRun_DoesNotCacheTheResult()
+    {
+        var h = new Harness();
+
+        var first = h.ScanVulnerabilitiesAsync();
+        await h.Runner.Started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        h.Manager.Version++;
+        h.Runner.Release();
+        await first.WaitAsync(TimeSpan.FromSeconds(10));
+
+        // The result was resolved against the old package references, so the next call at the
+        // new version must run the command again instead of reusing it.
+        await h.ScanVulnerabilitiesAsync().WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.AreEqual(2, h.Runner.CallCount);
+    }
+
+    [TestMethod]
+    public async Task VulnerabilityScan_WorkspaceClosedDuringRun_StillReturnsTheResult()
+    {
+        var h = new Harness();
+
+        var scan = h.ScanVulnerabilitiesAsync();
+        await h.Runner.Started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        h.Manager.Closed = true;
+        h.Runner.Release();
+
+        using var doc = JsonDocument.Parse(await scan.WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.AreEqual(0, doc.RootElement.GetProperty("totalVulnerabilities").GetInt32());
+    }
+
     private sealed class UnusedTestDiscoveryService : ITestDiscoveryService
     {
         public Task<TestDiscoveryDto> DiscoverTestsAsync(string workspaceId, CancellationToken ct) =>
@@ -346,6 +445,10 @@ public sealed class GateOperationDeadlineTests
 
         public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
+        public int CallCount => Volatile.Read(ref _callCount);
+
+        private int _callCount;
+
         public void Release() => _release.TrySetResult();
 
         public async Task<CommandExecutionDto> RunAsync(
@@ -354,6 +457,7 @@ public sealed class GateOperationDeadlineTests
             IReadOnlyList<string> arguments,
             CancellationToken ct)
         {
+            Interlocked.Increment(ref _callCount);
             Started.TrySetResult();
             await _release.Task.WaitAsync(ct);
             return new CommandExecutionDto(
@@ -364,7 +468,7 @@ public sealed class GateOperationDeadlineTests
                 ExitCode: 0,
                 Succeeded: true,
                 DurationMs: 1,
-                StdOut: "",
+                StdOut: "{}",
                 StdErr: "");
         }
     }

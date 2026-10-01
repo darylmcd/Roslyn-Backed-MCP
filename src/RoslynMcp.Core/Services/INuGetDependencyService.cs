@@ -33,8 +33,41 @@ public interface INuGetDependencyService
 
     /// <summary>
     /// Scans NuGet package references for known vulnerabilities using
-    /// <c>dotnet list package --vulnerable</c>.
+    /// <c>dotnet list package --vulnerable</c>. Composes
+    /// <see cref="PrepareVulnerabilityScanAsync"/> and <see cref="RunVulnerabilityScanAsync"/>
+    /// without any workspace gate; the MCP tool runs the two steps separately so the gate is not
+    /// held across the command.
     /// </summary>
     Task<NuGetVulnerabilityScanResultDto> ScanNuGetVulnerabilitiesAsync(
         string workspaceId, string? projectFilter, bool includeTransitive, CancellationToken ct);
+
+    /// <summary>
+    /// Resolves the scan target, workspace version and cache key (workspace state only), and
+    /// returns the cached result when one exists. Call under the workspace read gate.
+    /// </summary>
+    Task<VulnerabilityScanPlan> PrepareVulnerabilityScanAsync(
+        string workspaceId, string? projectFilter, bool includeTransitive, CancellationToken ct);
+
+    /// <summary>
+    /// Runs the planned <c>dotnet list package --vulnerable</c>, parses it and caches the result
+    /// only when the workspace version still equals the plan's. Call outside the workspace gate:
+    /// the command's own gates serialize it and <c>VulnerabilityScanTimeout</c> covers queue wait
+    /// plus execution.
+    /// </summary>
+    Task<NuGetVulnerabilityScanResultDto> RunVulnerabilityScanAsync(
+        VulnerabilityScanPlan plan, CancellationToken ct);
 }
+
+/// <summary>
+/// A resolved vulnerability-scan target plus the workspace version and cache key it was resolved
+/// against. <see cref="Cached"/> is non-null on a cache hit, in which case no command needs to run.
+/// </summary>
+public sealed record VulnerabilityScanPlan(
+    string WorkspaceId,
+    string TargetPath,
+    IReadOnlyList<string> Arguments,
+    bool IncludeTransitive,
+    string ProjectFilterKey,
+    string LockfileHash,
+    int WorkspaceVersion,
+    NuGetVulnerabilityScanResultDto? Cached);
