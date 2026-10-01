@@ -1,15 +1,19 @@
 using System.Collections.Frozen;
 using System.ComponentModel;
 using System.Reflection;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using RoslynMcp.Host.Stdio.Runtime;
+using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Host.Stdio.Catalog;
 
 /// <summary>
 /// inv-arg-envelope-schema-hint: cached reflection over every
 /// <see cref="McpServerToolAttribute"/>-attributed method in the Host.Stdio assembly,
-/// projecting each tool's user-facing parameters (marked with <see cref="DescriptionAttribute"/>
-/// and excluding <see cref="CancellationToken"/>) into a name → schema lookup.
+/// projecting each tool's user-facing parameters into a name → schema lookup. A parameter is
+/// user-facing when the MCP SDK binds it from the request body (see <c>IsUserFacing</c>),
+/// regardless of whether it carries a <see cref="DescriptionAttribute"/>.
 /// <para>
 /// <see cref="ToolErrorHandler"/> consults this index to attach a per-parameter
 /// <c>schemaHint</c> field to <c>InvalidArgument</c> envelopes so cold-context callers
@@ -82,15 +86,43 @@ internal static class ToolParameterIndex
     }
 
     /// <summary>
-    /// A parameter is user-facing when the caller supplies it via the JSON request body —
-    /// i.e. not a DI-resolved service and not <see cref="CancellationToken"/>. The
-    /// <see cref="DescriptionAttribute"/> is the conventional marker for user-supplied
-    /// parameters in this codebase, so absence implies a host-supplied service.
+    /// A parameter is user-facing when the MCP SDK advertises it in the tool's input schema and
+    /// binds it from the JSON request body. The SDK excludes only DI/framework-supplied
+    /// parameters: <see cref="CancellationToken"/>, <see cref="McpServer"/>,
+    /// <see cref="RequestContext{TParams}"/>, and services resolved from the container
+    /// (<see cref="PromptParameterClassifier.IsServiceType"/> — interfaces such as
+    /// <see cref="IProgress{T}"/> and Microsoft.Extensions types). Every other parameter is
+    /// caller input whether or not it carries a <see cref="DescriptionAttribute"/>; selecting on
+    /// the attribute hid undescribed bound parameters from every index consumer. DI membership is
+    /// only knowable from the container, so <c>ToolInputSchemaHygieneTests</c> asserts
+    /// index/schema parity across the whole surface.
     /// </summary>
-    private static bool IsUserFacing(ParameterInfo parameter)
+    internal static bool IsUserFacing(ParameterInfo parameter)
     {
-        if (parameter.ParameterType == typeof(CancellationToken)) return false;
-        return parameter.GetCustomAttribute<DescriptionAttribute>() is not null;
+        var type = parameter.ParameterType;
+        if (type == typeof(CancellationToken) || type == typeof(McpServer)) return false;
+        if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(RequestContext<>)) return false;
+        return !IsHostSupplied(type);
+    }
+
+    /// <summary>
+    /// Concrete (non-interface) services the SDK resolves from the container. They carry no
+    /// structural marker, so they are enumerated; the whole-surface parity test fails loudly
+    /// when a new one appears on a tool method.
+    /// </summary>
+    private static readonly FrozenSet<Type> s_hostSuppliedConcreteTypes =
+        new[] { typeof(ServerProcessMetadata), typeof(ValidationServiceOptions) }.ToFrozenSet();
+
+    private static bool IsHostSupplied(Type type)
+    {
+        if (s_hostSuppliedConcreteTypes.Contains(type)) return true;
+
+        // Collection interfaces (IReadOnlyList<string>, IEnumerable<T>, ...) are JSON-bound caller
+        // input, not container services, even though PromptParameterClassifier treats every
+        // interface as a service.
+        if (type.Namespace?.StartsWith("System.Collections", StringComparison.Ordinal) == true) return false;
+
+        return PromptParameterClassifier.IsServiceType(type);
     }
 
     private static ToolParameterSchema BuildSchema(ParameterInfo parameter)
