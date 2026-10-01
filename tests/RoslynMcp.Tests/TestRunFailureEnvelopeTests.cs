@@ -1158,7 +1158,7 @@ public sealed class TestRunFailureEnvelopeTests
         Assert.IsTrue(root.GetProperty("error").GetBoolean());
         Assert.AreEqual("InvalidOperation", root.GetProperty("category").GetString());
         Assert.AreEqual("test_run", root.GetProperty("tool").GetString());
-        Assert.AreEqual(nameof(PublicInvalidOperationException), root.GetProperty("exceptionType").GetString());
+        Assert.AreEqual(nameof(InvalidOperationException), root.GetProperty("exceptionType").GetString());
         Assert.AreEqual(actionableMessage, root.GetProperty("message").GetString(),
             $"A PublicInvalidOperationException's message must survive verbatim. Envelope: {json}");
     }

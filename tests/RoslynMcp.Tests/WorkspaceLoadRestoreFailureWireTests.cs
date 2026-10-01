@@ -52,7 +52,7 @@ public sealed class WorkspaceLoadRestoreFailureWireTests : SharedWorkspaceTestBa
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
             Assert.AreEqual("InvalidOperation", root.GetProperty("category").GetString());
-            Assert.AreEqual(nameof(PublicInvalidOperationException), root.GetProperty("exceptionType").GetString());
+            Assert.AreEqual(nameof(InvalidOperationException), root.GetProperty("exceptionType").GetString());
 
             var message = root.GetProperty("message").GetString()!;
             StringAssert.Contains(message, "auto-restore failed");
