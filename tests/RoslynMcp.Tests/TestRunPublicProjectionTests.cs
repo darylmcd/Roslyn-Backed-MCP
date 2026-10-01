@@ -82,6 +82,36 @@ public sealed class TestRunPublicProjectionTests
     }
 
     [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task RunTests_WarningsAndCommandDuration_AreOnTheWireOnlyWhenPresent(bool compact)
+    {
+        var baseline = CreateSensitiveTestRunResult(isTimeout: false);
+        var withExtras = baseline with
+        {
+            Warnings = [TestRunWarnings.WorkspaceChangedDuringRun],
+            CommandDurationMs = 1234,
+        };
+
+        var plainJson = await ValidationTools.RunTests(
+            new PassthroughGate(), new FixedTestRunnerService(baseline), workspaceId: "ws-extras-absent",
+            compact: compact, progress: null, ct: CancellationToken.None);
+        var extrasJson = await ValidationTools.RunTests(
+            new PassthroughGate(), new FixedTestRunnerService(withExtras), workspaceId: "ws-extras-present",
+            compact: compact, progress: null, ct: CancellationToken.None);
+
+        using var plain = JsonDocument.Parse(plainJson);
+        Assert.IsFalse(plain.RootElement.TryGetProperty("warnings", out _));
+        Assert.IsFalse(plain.RootElement.TryGetProperty("commandDurationMs", out _));
+
+        using var extras = JsonDocument.Parse(extrasJson);
+        Assert.AreEqual(
+            TestRunWarnings.WorkspaceChangedDuringRun,
+            extras.RootElement.GetProperty("warnings")[0].GetString());
+        Assert.AreEqual(1234, extras.RootElement.GetProperty("commandDurationMs").GetInt64());
+    }
+
+    [TestMethod]
     public void ValidateWorkspace_EmbeddedTestRun_UsesTheSamePublicProjection()
     {
         var result = CreateSensitiveTestRunResult(isTimeout: true);

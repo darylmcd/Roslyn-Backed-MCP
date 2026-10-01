@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
@@ -8,6 +9,7 @@ using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Middleware;
 using RoslynMcp.Host.Stdio.Tools;
+using RoslynMcp.Roslyn.Services;
 using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
@@ -36,7 +38,9 @@ public sealed class TestCoverageErrorWireTests
         {
             GetStatusAsyncHandler = BuildEmptyStatus,
         };
-        var runner = new ThrowingCommandRunner();
+        var executor = new GatedCommandExecutor(
+            workspace, new ThrowingCommandRunner(), NullLogger<GatedCommandExecutor>.Instance);
+        var options = new ValidationServiceOptions();
 
         // Delegate shapes mirror the production tools' (workspaceId, projectName, ct) wire
         // parameters; the Core entry points are called directly so the real filter is the only
@@ -44,8 +48,8 @@ public sealed class TestCoverageErrorWireTests
         var tool = McpServerTool.Create(
             (string workspaceId, string? projectName = null, CancellationToken ct = default) =>
                 string.Equals(toolName, "test_coverage", StringComparison.Ordinal)
-                    ? TestCoverageTools.RunTestCoverage(gate, workspace, runner, workspaceId, projectName, ct: ct)
-                    : TestCoverageTools.GetTestCoverageMap(gate, workspace, runner, workspaceId, projectName, ct: ct),
+                    ? TestCoverageTools.RunTestCoverage(gate, workspace, executor, options, workspaceId, projectName, ct: ct)
+                    : TestCoverageTools.GetTestCoverageMap(gate, workspace, executor, options, workspaceId, projectName, ct: ct),
             new McpServerToolCreateOptions { Name = toolName });
         await using var harness = await CreateHarnessAsync(tool);
 

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using RoslynMcp.Host.Stdio.Tools;
+using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
 
@@ -35,11 +36,12 @@ public sealed class ExpandedSurfaceIntegrationTests_CoverageProcess : SharedWork
         var json = await TestCoverageTools.RunTestCoverage(
             WorkspaceExecutionGate,
             WorkspaceManager,
-            DotnetCommandRunner,
+            GatedCommandExecutor,
+            new ValidationServiceOptions(),
             WorkspaceId,
             projectName: "SampleLib.Tests",
             progress: null,
-            CancellationToken.None);
+            ct: CancellationToken.None);
 
         using var doc = JsonDocument.Parse(json);
         Assert.IsTrue(doc.RootElement.TryGetProperty("success", out _));
@@ -57,11 +59,12 @@ public sealed class ExpandedSurfaceIntegrationTests_CoverageProcess : SharedWork
         var json = await TestCoverageTools.RunTestCoverage(
             WorkspaceExecutionGate,
             WorkspaceManager,
-            DotnetCommandRunner,
+            GatedCommandExecutor,
+            new ValidationServiceOptions(),
             WorkspaceId,
             projectName: "SampleLib.Tests",
             progress: null,
-            CancellationToken.None);
+            ct: CancellationToken.None);
 
         using var doc = JsonDocument.Parse(json);
         var hasEnvelope = doc.RootElement.TryGetProperty("failureEnvelope", out var envelope)

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
@@ -70,6 +71,22 @@ public sealed partial class TestRunnerService : ITestRunnerService
             workspaceId,
             projectName,
             !string.IsNullOrWhiteSpace(filter));
+        var plan = await PrepareTestRunAsync(workspaceId, projectName, filter, ct).ConfigureAwait(false);
+        var result = await RunTestCommandAsync(plan, ct).ConfigureAwait(false);
+        try
+        {
+            return await CompleteTestRunAsync(plan, result, ct).ConfigureAwait(false);
+        }
+        catch (KeyNotFoundException)
+        {
+            // The workspace closed or was evicted while the command ran: the parsed result is
+            // still valid, so return it with the workspaceChangedDuringRun warning.
+            return CompleteTestRunWithoutWorkspace(result);
+        }
+    }
+
+    public async Task<TestRunPlan> PrepareTestRunAsync(string workspaceId, string? projectName, string? filter, CancellationToken ct)
+    {
         var status = await _workspaceManager.GetStatusAsync(workspaceId, ct).ConfigureAwait(false);
         var testProjects = status.Projects.Where(p => p.IsTestProject).ToList();
 
@@ -131,6 +148,25 @@ public sealed partial class TestRunnerService : ITestRunnerService
             ? await ResolveMtpNativeExecutionPlanAsync(resolvedProject, filter, workspaceId, ct).ConfigureAwait(false)
             : MtpNativeExecutionPlan.NotRequired;
 
+        return new TestRunPlan(
+            workspaceId,
+            projectName,
+            filter,
+            targetPath,
+            mtpPlan.RequiresMtpNative,
+            mtpPlan.TreeNodeFilter,
+            mtpPlan.NoRestore,
+            _workspaceManager.GetCurrentVersion(workspaceId));
+    }
+
+    public async Task<TestRunResultDto> RunTestCommandAsync(TestRunPlan plan, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        var targetPath = plan.TargetPath
+            ?? throw new ArgumentException(
+                "The test run plan has no target path; create it with PrepareTestRunAsync.", nameof(plan));
+        var workspaceId = plan.WorkspaceId;
+
         var resultsDirectory = Path.Combine(Path.GetTempPath(), "RoslynMcpTestResults", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(resultsDirectory);
 
@@ -138,9 +174,11 @@ public sealed partial class TestRunnerService : ITestRunnerService
         {
             // Do not set a fixed TRX/results file name: solution-level runs emit one TRX per
             // test project; a fixed name would overwrite.
-            var arguments = mtpPlan.RequiresMtpNative
-                ? BuildMtpNativeArguments(targetPath, resultsDirectory, mtpPlan.TreeNodeFilter, mtpPlan.NoRestore)
-                : BuildVsTestArguments(targetPath, resultsDirectory, filter);
+            var arguments = plan.RequiresMtpNative
+                ? BuildMtpNativeArguments(targetPath, resultsDirectory, plan.TreeNodeFilter, plan.NoRestore)
+                : BuildVsTestArguments(targetPath, resultsDirectory, plan.Filter);
+
+            var stopwatch = Stopwatch.StartNew();
 
             CommandExecutionDto execution;
             try
@@ -187,14 +225,20 @@ public sealed partial class TestRunnerService : ITestRunnerService
                     DurationMs: (long)_options.TestTimeout.TotalMilliseconds,
                     StdOut: string.Empty,
                     StdErr: string.Empty);
-                return DotnetOutputParser.BuildTimeoutResult(shell, timeoutSummary);
+                return DotnetOutputParser.BuildTimeoutResult(shell, timeoutSummary) with
+                {
+                    CommandDurationMs = stopwatch.ElapsedMilliseconds,
+                };
             }
 
             var trxFiles = CollectTrxFiles(resultsDirectory, execution);
             // FLAG-N1: always pass through to the parser — it handles the no-TRX failure case
             // by emitting a structured TestRunFailureEnvelopeDto instead of throwing. See
             // test-run-failure-envelope backlog row (2026-04-08 MSB3027 Windows file-lock audits).
-            return DotnetOutputParser.ParseTestRun(execution, trxFiles);
+            return DotnetOutputParser.ParseTestRun(execution, trxFiles) with
+            {
+                CommandDurationMs = stopwatch.ElapsedMilliseconds,
+            };
         }
         finally
         {
@@ -214,6 +258,19 @@ public sealed partial class TestRunnerService : ITestRunnerService
             }
         }
     }
+
+    public Task<TestRunResultDto> CompleteTestRunAsync(TestRunPlan plan, TestRunResultDto result, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        ArgumentNullException.ThrowIfNull(result);
+        return Task.FromResult(
+            _workspaceManager.GetCurrentVersion(plan.WorkspaceId) == plan.WorkspaceVersion
+                ? result
+                : CompleteTestRunWithoutWorkspace(result));
+    }
+
+    public TestRunResultDto CompleteTestRunWithoutWorkspace(TestRunResultDto result) =>
+        TestRunWarnings.WithWorkspaceChanged(result);
 
     /// <summary>
     /// Whether <paramref name="resolvedProject"/> needs the MTP-native <c>dotnet test</c>
