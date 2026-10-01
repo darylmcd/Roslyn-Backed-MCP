@@ -92,7 +92,7 @@ internal static class StructuredResultProjector
             // Restrict refinement to binding-like errors and preserve server-authored refusals.
             if (attempt.ArgumentNames is { } argumentNames &&
                 errorInfo.Category == ToolErrorHandler.ErrorCategories.InvalidArgument &&
-                exception is not PublicArgumentException and not PublicInvalidOperationException &&
+                exception is not IPublicMessageException &&
                 UnknownArgumentDetector.DetectMissingRequiredNames(context, toolName, argumentNames) is { Count: > 0 } missing)
             {
                 var message = missing.Count == 1

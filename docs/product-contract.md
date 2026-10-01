@@ -91,7 +91,7 @@ A failed tool call returns `isError: true` and a JSON envelope with `error`, `ca
 `message`. Classified failures also carry `exceptionType`; unexpected failures carry
 `category: "InternalError"` and a `correlationId` instead. Optional fields appear only when they
 apply: `reason`, `schemaHint`, `closestMatches`, `blockingDependencies`, and `_meta`. Consumers
-must ignore fields they do not recognize.
+must ignore fields they do not recognize. Server-authored public-message refusals report the BCL base name (`ArgumentException` or `InvalidOperationException`) as `exceptionType`, never the internal class name.
 
 `reason` refines a category without changing it, so code that branches only on `category` keeps
 working. The current value is `WorkspaceNotFound`. It accompanies `category: "NotFound"` (and

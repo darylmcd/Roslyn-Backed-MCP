@@ -392,7 +392,7 @@ public sealed class ToolCallErrorWireContractTests : IsolatedWorkspaceTestBase
                 "The server requires an explicit operator choice before this call.",
                 payload["message"]?.GetValue<string>(),
                 payload.ToJsonString());
-            Assert.AreEqual("PublicArgumentException", payload["exceptionType"]?.GetValue<string>());
+            Assert.AreEqual("ArgumentException", payload["exceptionType"]?.GetValue<string>());
 
             var operationFrame = await CallAndCaptureAsync(harness, "synthetic_public_operation", arguments: null);
             var operationPayload = ErrorPayload(operationFrame);
@@ -400,7 +400,7 @@ public sealed class ToolCallErrorWireContractTests : IsolatedWorkspaceTestBase
             Assert.AreEqual(
                 "The server cannot continue this operation until its state changes.",
                 operationPayload["message"]?.GetValue<string>());
-            Assert.AreEqual("PublicInvalidOperationException", operationPayload["exceptionType"]?.GetValue<string>());
+            Assert.AreEqual("InvalidOperationException", operationPayload["exceptionType"]?.GetValue<string>());
         }
     }
 

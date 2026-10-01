@@ -7,22 +7,6 @@ using RoslynMcp.Host.Stdio.Diagnostics;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
-/// <summary>
-/// Carries a bounded, server-authored argument diagnostic through the shared error boundary.
-/// Unlike arbitrary <see cref="ArgumentException.Message"/> values, <see cref="PublicMessage"/>
-/// is deliberately safe to return verbatim to the caller.
-/// </summary>
-internal sealed class PublicArgumentException : ArgumentException
-{
-    public PublicArgumentException(string publicMessage, string parameterName)
-        : base(publicMessage, parameterName)
-    {
-        PublicMessage = publicMessage;
-    }
-
-    internal string PublicMessage { get; }
-}
-
 internal static class MetaSerializer
 {
     // Omitting unset fields (vs. serializing an explicit `null`) is wire-compatible for any
@@ -171,9 +155,9 @@ internal static class ToolErrorHandler
         // share this handler; PublicInvalidOperationException supplies an explicitly safe message.
         [typeof(InvalidOperationException)] = (ex, _) =>
         {
-            if (ex is PublicInvalidOperationException publicInvalidOperation)
+            if (ex is IPublicMessageException publicMessageException)
             {
-                return new(ErrorCategories.InvalidOperation, publicInvalidOperation.PublicMessage);
+                return new(ErrorCategories.InvalidOperation, publicMessageException.PublicMessage);
             }
 
             if (ex.Message.Contains("Not connected", StringComparison.OrdinalIgnoreCase))
@@ -605,7 +589,7 @@ internal static class ToolErrorHandler
             return ClientRootPathValidator.SanctionedRootBoundaryRefusalMessage;
         }
 
-        if (exception is PublicArgumentException publicArgument)
+        if (exception is IPublicMessageException publicArgument)
         {
             return publicArgument.PublicMessage;
         }
@@ -706,7 +690,10 @@ internal static class ToolErrorHandler
             ["category"] = info.Category.ToString(),
             ["tool"] = toolName,
             ["message"] = info.Message,
-            ["exceptionType"] = info.WireExceptionType ?? ex.GetType().Name,
+            // Public-message exceptions report their BCL base name so the Public* class names stay
+            // off the wire; an explicit WireExceptionType still wins.
+            ["exceptionType"] = info.WireExceptionType
+                ?? (ex is IPublicMessageException ? ex.GetType().BaseType!.Name : ex.GetType().Name),
         };
 
         if (info.Reason is not null)

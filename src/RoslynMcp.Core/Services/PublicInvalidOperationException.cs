@@ -3,8 +3,7 @@ namespace RoslynMcp.Core.Services;
 /// <summary>
 /// Marks an <see cref="InvalidOperationException"/> whose <see cref="Exception.Message"/> is
 /// already a deliberately-authored, safe-to-return-verbatim domain refusal — analogous to
-/// <c>RoslynMcp.Host.Stdio.Tools.PublicArgumentException</c>, but for the
-/// <see cref="InvalidOperationException"/> shape.
+/// <see cref="PublicArgumentException"/>, but for the <see cref="InvalidOperationException"/> shape.
 /// </summary>
 /// <remarks>
 /// <b>Why this exists:</b> <c>RoslynMcp.Host.Stdio.Tools.ToolErrorHandler</c>'s generic
@@ -18,10 +17,10 @@ namespace RoslynMcp.Core.Services;
 /// agent calling <c>test_run</c> and hitting one of these got no more information than "check the
 /// tool contract," even though the throw site had already composed a precise, safe explanation.
 /// <para>
-/// This type lives in <c>RoslynMcp.Core</c> (not alongside <c>PublicArgumentException</c> in
-/// <c>RoslynMcp.Host.Stdio</c>) because the throw sites are in <c>RoslynMcp.Roslyn</c>, which
-/// cannot reference the host project — the same reason <see cref="PreviewTokenStaleException"/>
-/// and <see cref="WorkspaceEvictedException"/> live here.
+/// This type lives in <c>RoslynMcp.Core</c> (not in <c>RoslynMcp.Host.Stdio</c>) because the
+/// throw sites are in <c>RoslynMcp.Roslyn</c>, which cannot reference the host project — the same
+/// reason <see cref="PublicArgumentException"/>, <see cref="PreviewTokenStaleException"/> and
+/// <see cref="WorkspaceEvictedException"/> live here.
 /// </para>
 /// <para>
 /// Use this only when the message was written FOR the caller: it must not embed absolute paths,
@@ -29,7 +28,7 @@ namespace RoslynMcp.Core.Services;
 /// <see cref="InvalidOperationException"/> and let the generic fallback apply.
 /// </para>
 /// </remarks>
-public sealed class PublicInvalidOperationException : InvalidOperationException
+public sealed class PublicInvalidOperationException : InvalidOperationException, IPublicMessageException
 {
     public PublicInvalidOperationException(string publicMessage, Exception? inner = null)
         : base(publicMessage, inner)
