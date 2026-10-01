@@ -748,6 +748,116 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task ExtractType_ImplicitInterfaceImplementation_RefusesWithStructuredBlockingDependency()
+    {
+        // extract-type-interface-implementation-guard: moving a member that implements an interface of
+        // the source type leaves `: IGuardedContract` on the source without the member (CS0535).
+        var ex = await PreviewInterfaceFixtureAsync(
+            "ImplicitInterfaceFixture",
+            [
+                "public interface IGuardedContract { int Compute(int x); }",
+                "",
+                "public class ImplicitInterfaceFixture : IGuardedContract",
+                "{",
+                "    public int Compute(int x) => x * 2;",
+                "}",
+            ],
+            "Compute");
+
+        Assert.AreEqual(1, ex.BlockingDependencies.Count);
+        Assert.AreEqual("Compute", ex.BlockingDependencies[0].Member);
+        StringAssert.Contains(ex.BlockingDependencies[0].Reason, "IGuardedContract.Compute");
+    }
+
+    [TestMethod]
+    public async Task ExtractType_ExplicitInterfaceImplementation_RefusesWithStructuredBlockingDependency()
+    {
+        // Explicit implementations are selected by bare identifier and would gain `public` (CS0106).
+        var ex = await PreviewInterfaceFixtureAsync(
+            "ExplicitInterfaceFixture",
+            [
+                "public interface IGuardedExplicit { int Compute(int x); }",
+                "",
+                "public class ExplicitInterfaceFixture : IGuardedExplicit",
+                "{",
+                "    int IGuardedExplicit.Compute(int x) => x * 2;",
+                "}",
+            ],
+            "Compute");
+
+        Assert.AreEqual(1, ex.BlockingDependencies.Count);
+        Assert.AreEqual("Compute", ex.BlockingDependencies[0].Member);
+        StringAssert.Contains(ex.BlockingDependencies[0].Reason, "IGuardedExplicit.Compute");
+    }
+
+    [TestMethod]
+    public async Task ExtractType_NonInterfaceMemberOfInterfaceImplementingType_StillExtracts()
+    {
+        // Control: the guard keys on the selected member, not on the source type having interfaces.
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
+        var fixturePath = Path.Combine(solutionDir, "SampleLib", "InterfaceControlFixture.cs");
+        await File.WriteAllTextAsync(fixturePath,
+            string.Join("\r\n", new[]
+            {
+                "namespace SampleLib;",
+                "",
+                "public interface IControlContract { int Compute(int x); }",
+                "",
+                "public class InterfaceControlFixture : IControlContract",
+                "{",
+                "    public int Compute(int x) => x * 2;",
+                "    public int Unrelated() => 7;",
+                "}",
+                "",
+            }));
+
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var wsId = loadResult.WorkspaceId;
+
+        try
+        {
+            var result = await TypeExtractionService.PreviewExtractTypeAsync(
+                wsId, fixturePath, "InterfaceControlFixture", ["Unrelated"], "UnrelatedHelper", null,
+                CancellationToken.None);
+
+            Assert.IsNotNull(result);
+            Assert.IsTrue(result.Changes.Any(
+                c => c.FilePath.EndsWith("UnrelatedHelper.cs", StringComparison.OrdinalIgnoreCase)));
+        }
+        finally
+        {
+            WorkspaceManager.Close(wsId);
+            QueueDirectoryForCleanup(solutionDir);
+        }
+    }
+
+    private async Task<ExtractTypeBlockingDependencyException> PreviewInterfaceFixtureAsync(
+        string typeName, string[] bodyLines, string memberName)
+    {
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
+        var fixturePath = Path.Combine(solutionDir, "SampleLib", typeName + ".cs");
+        await File.WriteAllTextAsync(fixturePath,
+            string.Join("\r\n", new[] { "namespace SampleLib;", "" }.Concat(bodyLines).Append("")));
+
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var wsId = loadResult.WorkspaceId;
+
+        try
+        {
+            return await Assert.ThrowsExactlyAsync<ExtractTypeBlockingDependencyException>(() =>
+                TypeExtractionService.PreviewExtractTypeAsync(
+                    wsId, fixturePath, typeName, [memberName], "ExtractedHelper", null, CancellationToken.None));
+        }
+        finally
+        {
+            WorkspaceManager.Close(wsId);
+            QueueDirectoryForCleanup(solutionDir);
+        }
+    }
+
+    [TestMethod]
     public async Task ExtractType_MultiDeclaratorField_SplitsOnlyRequestedVariables()
     {
         // Regression for `type-extraction-member-shape-validation` (2/3): `GetMemberName` named a
