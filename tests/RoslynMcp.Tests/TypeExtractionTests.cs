@@ -1388,6 +1388,104 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         }
     }
 
+    [TestMethod]
+    public async Task ExtractType_PrivateMembersUsedOnlyByExtractedCode_KeepOriginalAccessibility()
+    {
+        // Regression for `extract-type-preserve-private-fields`: every extracted member used to be
+        // forced to `public`, leaking a private field and helper that no retained code touches.
+        var fixture = await CreateExtractionFixtureAsync(
+            "PrivateOnlyExtractedFixture.cs",
+            """
+            namespace SampleLib;
+
+            public class PrivateOnlyExtractedFixture
+            {
+                public int Keep() => 1;
+                private int _factor = 3;
+                private int Scale(int value) => value * _factor;
+                public int Compute(int value) => Scale(value);
+            }
+            """);
+
+        try
+        {
+            var preview = await TypeExtractionService.PreviewExtractTypeAsync(
+                fixture.WorkspaceId,
+                fixture.FilePath,
+                "PrivateOnlyExtractedFixture",
+                ["Compute", "Scale", "_factor"],
+                "ScaleHelper",
+                null,
+                CancellationToken.None);
+
+            var newFilePath = Path.Combine(Path.GetDirectoryName(fixture.FilePath)!, "ScaleHelper.cs");
+            var newTypeSource = await GetModifiedDocumentTextAsync(preview.PreviewToken, newFilePath);
+            StringAssert.Contains(newTypeSource, "private int _factor");
+            StringAssert.Contains(newTypeSource, "private int Scale(");
+            StringAssert.Contains(newTypeSource, "public int Compute(");
+            Assert.IsFalse(newTypeSource.Contains("public int Scale(", StringComparison.Ordinal),
+                $"an extracted private helper no retained code references must stay private. New type:\n{newTypeSource}");
+            Assert.IsFalse(newTypeSource.Contains("public int _factor", StringComparison.Ordinal),
+                $"an extracted private field no retained code references must stay private. New type:\n{newTypeSource}");
+            await AssertModifiedSolutionCompilesAsync(preview.PreviewToken);
+        }
+        finally
+        {
+            WorkspaceManager.Close(fixture.WorkspaceId);
+            QueueDirectoryForCleanup(fixture.SolutionDirectory);
+        }
+    }
+
+    [TestMethod]
+    public async Task ExtractType_PrivateMembersReferencedByRetainedCode_WidenToPublicOnly()
+    {
+        // The composition rewrite turns retained references into `_holder.Member`, so exactly the
+        // extracted members a retained method still names must become reachable; an unreferenced
+        // sibling stays private.
+        var fixture = await CreateExtractionFixtureAsync(
+            "RetainedReferenceFixture.cs",
+            """
+            namespace SampleLib;
+
+            public class RetainedReferenceFixture
+            {
+                public int Keep() => Helper(2) + _offset;
+                private int _offset = 5;
+                private int Helper(int value) => value + _offset;
+                private int Hidden(int value) => value - _offset;
+                public int Visible(int value) => Hidden(value);
+            }
+            """);
+
+        try
+        {
+            var preview = await TypeExtractionService.PreviewExtractTypeAsync(
+                fixture.WorkspaceId,
+                fixture.FilePath,
+                "RetainedReferenceFixture",
+                ["Helper", "_offset", "Hidden", "Visible"],
+                "OffsetHolder",
+                null,
+                CancellationToken.None);
+
+            var newFilePath = Path.Combine(Path.GetDirectoryName(fixture.FilePath)!, "OffsetHolder.cs");
+            var newTypeSource = await GetModifiedDocumentTextAsync(preview.PreviewToken, newFilePath);
+            StringAssert.Contains(newTypeSource, "public int Helper(");
+            StringAssert.Contains(newTypeSource, "public int _offset");
+            StringAssert.Contains(newTypeSource, "private int Hidden(");
+            StringAssert.Contains(newTypeSource, "public int Visible(");
+            var updatedSource = await GetModifiedDocumentTextAsync(preview.PreviewToken, fixture.FilePath);
+            StringAssert.Contains(updatedSource, "_offsetHolder.Helper(2)");
+            StringAssert.Contains(updatedSource, "_offsetHolder._offset");
+            await AssertModifiedSolutionCompilesAsync(preview.PreviewToken);
+        }
+        finally
+        {
+            WorkspaceManager.Close(fixture.WorkspaceId);
+            QueueDirectoryForCleanup(fixture.SolutionDirectory);
+        }
+    }
+
     private static async Task<(string WorkspaceId, string FilePath, string SolutionDirectory)> CreateExtractionFixtureAsync(
         string fileName,
         string source)
