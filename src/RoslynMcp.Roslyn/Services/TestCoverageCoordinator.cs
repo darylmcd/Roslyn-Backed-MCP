@@ -14,7 +14,7 @@ namespace RoslynMcp.Roslyn.Services;
 ///   <item>Parsing one or more Cobertura XML files into the rolled-up
 ///         <see cref="TestCoverageResultDto"/>.</item>
 ///   <item>Constructing the recurring failure envelopes (coverlet-missing,
-///         no-coverage-file, timeout, unexpected error).</item>
+///         no-coverage-file, timeout).</item>
 /// </list>
 ///
 /// All members are pure (modulo Cobertura XML file reads); none of them
@@ -165,23 +165,6 @@ public static class TestCoverageCoordinator
             Modules: [],
             FailureEnvelope: new TestCoverageFailureEnvelopeDto(
                 ErrorKind: "Timeout",
-                IsRetryable: false,
-                Summary: summary));
-    }
-
-    public static TestCoverageResultDto BuildUnexpectedErrorResult(PublicUnexpectedExceptionDetail detail)
-    {
-        ArgumentNullException.ThrowIfNull(detail);
-        var summary =
-            $"test_coverage failed unexpectedly. {detail.Remediation} correlationId={detail.CorrelationId}";
-        return new TestCoverageResultDto(
-            Success: false,
-            Error: summary,
-            LineCoveragePercent: null,
-            BranchCoveragePercent: null,
-            Modules: [],
-            FailureEnvelope: new TestCoverageFailureEnvelopeDto(
-                ErrorKind: detail.Category,
                 IsRetryable: false,
                 Summary: summary));
     }

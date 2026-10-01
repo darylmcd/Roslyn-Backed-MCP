@@ -14,6 +14,7 @@ internal sealed class FailClosedWorkspaceManagerStub(params WorkspaceStatusDto[]
     private WorkspaceStatusDto[] _workspaces = workspaces;
 
     public Func<string, WorkspaceStatusDto>? GetStatusHandler { get; init; }
+    public Func<string, WorkspaceStatusDto>? GetStatusAsyncHandler { get; init; }
     public Func<string, Solution>? GetCurrentSolutionHandler { get; init; }
 
     // Consumers may establish passive cache-invalidation subscriptions during construction.
@@ -40,7 +41,8 @@ internal sealed class FailClosedWorkspaceManagerStub(params WorkspaceStatusDto[]
 
     public Task<WorkspaceStatusDto> GetStatusAsync(
         string workspaceId,
-        CancellationToken cancellationToken = default) => throw Unsupported();
+        CancellationToken cancellationToken = default) =>
+        GetStatusAsyncHandler is { } handler ? Task.FromResult(handler(workspaceId)) : throw Unsupported();
 
     public ProjectGraphDto GetProjectGraph(string workspaceId) => throw Unsupported();
 

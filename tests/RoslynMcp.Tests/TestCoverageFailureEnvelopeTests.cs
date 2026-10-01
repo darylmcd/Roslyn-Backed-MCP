@@ -2,20 +2,20 @@ using System.Text.Json;
 using Microsoft.CodeAnalysis;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
-using RoslynMcp.Host.Stdio.Diagnostics;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Tests.TestInfrastructure;
 
 namespace RoslynMcp.Tests;
 
 /// <summary>
-/// Covers the structured failure envelope for <c>test_coverage</c> — backlog row
-/// <c>test-coverage-timeout-failure-envelope</c> (P2). When the <c>dotnet test</c>
-/// runner is cancelled (MCP timeout, caller cancellation) or throws an unexpected
-/// exception, the tool must emit a typed <see cref="TestCoverageFailureEnvelopeDto"/>
-/// (<c>errorKind=Timeout</c> or <c>errorKind=InternalError</c>) instead of letting the
-/// bare exception escape <see cref="TestCoverageTools.RunTestCoverageCore"/> and
-/// surface to the MCP host as a raw invocation error.
+/// Covers the failure contract for <c>test_coverage</c> — backlog rows
+/// <c>test-coverage-timeout-failure-envelope</c> (P2) and
+/// <c>test-coverage-unexpected-error-not-iserror</c>. When the <c>dotnet test</c> runner is
+/// cancelled by the gate (MCP timeout) the tool emits a typed
+/// <see cref="TestCoverageFailureEnvelopeDto"/> (<c>errorKind=Timeout</c>); any other unexpected
+/// exception propagates out of <see cref="TestCoverageTools.RunTestCoverageCore"/> so the shared
+/// <c>StructuredCallToolFilter</c> reports it as <c>isError: true</c> (wire coverage in
+/// <c>TestCoverageErrorWireTests</c>).
 /// </summary>
 [TestClass]
 public sealed class TestCoverageFailureEnvelopeTests
@@ -59,24 +59,56 @@ public sealed class TestCoverageFailureEnvelopeTests
     }
 
     /// <summary>
-    /// (2) An arbitrary <see cref="Exception"/> from <c>RunAsync</c> must use the shared
-    /// secret-safe projection while retaining a correlation handle for the operator.
+    /// Command-gate timeout: <c>GatedCommandExecutor</c> / <c>WorkspaceExecutionGate</c> reclassify
+    /// their internal timeout into <see cref="TimeoutException"/> (not an
+    /// <see cref="OperationCanceledException"/>), so that is the real production gate-timeout shape.
+    /// It must still yield the structured <c>Timeout</c> failureEnvelope (success=false,
+    /// non-retryable), not rethrow to the shared filter as isError.
     /// </summary>
     [TestMethod]
-    public async Task RunTestCoverageCore_RunnerThrowsUnexpected_EmitsSecretSafeCorrelatedEnvelope()
+    public async Task RunTestCoverageCore_RunnerThrowsTimeoutException_EmitsTimeoutEnvelope()
     {
-        const string sentinel = "SECRET-SENTINEL-C:/private/coverage.runsettings";
         var gate = new PassthroughGate();
         var workspace = new FakeWorkspaceManager();
-        var runner = new ThrowingDotnetCommandRunner(
-            new InvalidOperationException(sentinel, new IOException(sentinel)));
-        var sink = new CapturingServerObservabilitySink();
-        var reporter = new ServerObservabilityReporter(sink);
+        var runner = new ThrowingDotnetCommandRunner(new TimeoutException("simulated command-gate timeout"));
 
-        string json;
-        using (RequestCorrelationContext.Begin())
-        {
-            json = await TestCoverageTools.RunTestCoverageCore(
+        var json = await TestCoverageTools.RunTestCoverageCore(
+            gate,
+            workspace,
+            runner,
+            workspaceId: "ws-coverage-gate-timeout",
+            projectName: null,
+            deprecation: null,
+            progress: null,
+            ct: CancellationToken.None);
+
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        Assert.IsFalse(root.GetProperty("success").GetBoolean(),
+            "Command-gate timeouts must report success=false.");
+
+        var envelope = root.GetProperty("failureEnvelope");
+        Assert.AreEqual(JsonValueKind.Object, envelope.ValueKind,
+            "Command-gate timeouts must populate failureEnvelope, not leave it null.");
+        Assert.AreEqual("Timeout", envelope.GetProperty("errorKind").GetString());
+        Assert.IsFalse(envelope.GetProperty("isRetryable").GetBoolean(),
+            "Timeout is not transient - retry without a config change is wasted.");
+    }
+
+    /// <summary>
+    /// (2) An arbitrary <see cref="Exception"/> from <c>RunAsync</c> must propagate (not be
+    /// recovered into a success-shaped envelope) so the shared filter formats it as isError.
+    /// </summary>
+    [TestMethod]
+    public async Task RunTestCoverageCore_RunnerThrowsUnexpected_PropagatesToSharedFilter()
+    {
+        var gate = new PassthroughGate();
+        var workspace = new FakeWorkspaceManager();
+        var runner = new ThrowingDotnetCommandRunner(new InvalidOperationException("runner exploded"));
+
+        var thrown = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+            TestCoverageTools.RunTestCoverageCore(
                 gate,
                 workspace,
                 runner,
@@ -84,29 +116,8 @@ public sealed class TestCoverageFailureEnvelopeTests
                 projectName: null,
                 deprecation: null,
                 progress: null,
-                ct: CancellationToken.None,
-                exceptionReporter: reporter);
-        }
-
-        using var doc = JsonDocument.Parse(json);
-        var root = doc.RootElement;
-
-        Assert.IsFalse(root.GetProperty("success").GetBoolean());
-
-        var envelope = root.GetProperty("failureEnvelope");
-        Assert.AreEqual(JsonValueKind.Object, envelope.ValueKind);
-        Assert.AreEqual("InternalError", envelope.GetProperty("errorKind").GetString());
-        Assert.IsFalse(envelope.GetProperty("isRetryable").GetBoolean(),
-            "Unexpected failures default to non-retryable until the underlying cause is resolved.");
-        Assert.IsFalse(json.Contains(sentinel, StringComparison.Ordinal));
-        Assert.IsFalse(json.Contains(nameof(InvalidOperationException), StringComparison.Ordinal));
-        StringAssert.Contains(envelope.GetProperty("summary").GetString() ?? string.Empty, "correlationId=");
-
-        Assert.HasCount(1, sink.Events);
-        var diagnosticJson = JsonSerializer.Serialize(sink.Events.Single());
-        Assert.IsFalse(diagnosticJson.Contains(sentinel, StringComparison.Ordinal));
-        Assert.AreEqual("TestCoverage", sink.Events.Single().Category);
-        Assert.HasCount(2, sink.Events.Single().Exception.ExceptionTypes);
+                ct: CancellationToken.None));
+        Assert.AreEqual("runner exploded", thrown.Message);
     }
 
     /// <summary>
@@ -187,7 +198,7 @@ public sealed class TestCoverageFailureEnvelopeTests
     }
 
     [TestMethod]
-    public async Task RunTestCoverageCore_StatusThrows_EmitsSecretSafeEnvelope()
+    public async Task RunTestCoverageCore_StatusThrows_PropagatesToSharedFilter()
     {
         var gate = new PassthroughGate();
         var workspace = new ThrowingStatusWorkspaceManager(new InvalidOperationException("workspace status unavailable"));
@@ -202,34 +213,24 @@ public sealed class TestCoverageFailureEnvelopeTests
             StdOut: string.Empty,
             StdErr: string.Empty));
 
-        var json = await TestCoverageTools.RunTestCoverageCore(
-            gate,
-            workspace,
-            runner,
-            workspaceId: "ws-coverage-status-throws",
-            projectName: null,
-            deprecation: null,
-            progress: null,
-            ct: CancellationToken.None);
-
-        using var doc = JsonDocument.Parse(json);
-        var root = doc.RootElement;
-
-        Assert.IsFalse(root.GetProperty("success").GetBoolean());
-        Assert.IsFalse((root.GetProperty("error").GetString() ?? string.Empty)
-            .Contains("workspace status unavailable", StringComparison.Ordinal));
-
-        var envelope = root.GetProperty("failureEnvelope");
-        Assert.AreEqual("InternalError", envelope.GetProperty("errorKind").GetString());
-        Assert.IsFalse((envelope.GetProperty("summary").GetString() ?? string.Empty)
-            .Contains("workspace status unavailable", StringComparison.Ordinal));
+        var thrown = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+            TestCoverageTools.RunTestCoverageCore(
+                gate,
+                workspace,
+                runner,
+                workspaceId: "ws-coverage-status-throws",
+                projectName: null,
+                deprecation: null,
+                progress: null,
+                ct: CancellationToken.None));
+        Assert.AreEqual("workspace status unavailable", thrown.Message);
     }
 
     /// <summary>
     /// (5) test-coverage-temp-dir-leak (workspace-fork-apply-security-hardening): even when the
     /// runner throws mid-run, the per-run temp coverage dir must be deleted by the finally block.
     /// The runner creates the <c>--results-directory</c> on disk (as <c>dotnet test</c> would) then
-    /// throws; after the classified failure envelope is returned, the dir must be gone.
+    /// throws; after the exception propagates, the dir must be gone.
     /// </summary>
     [TestMethod]
     public async Task RunTestCoverageCore_RunnerThrowsAfterCreatingDir_StillDeletesTempCoverageDir()
@@ -238,19 +239,16 @@ public sealed class TestCoverageFailureEnvelopeTests
         var workspace = new FakeWorkspaceManager();
         var runner = new DirCreatingThrowingDotnetCommandRunner(new InvalidOperationException("boom"));
 
-        var json = await TestCoverageTools.RunTestCoverageCore(
-            gate,
-            workspace,
-            runner,
-            workspaceId: "ws-coverage-cleanup-throw",
-            projectName: null,
-            deprecation: null,
-            progress: null,
-            ct: CancellationToken.None);
-
-        using var doc = JsonDocument.Parse(json);
-        Assert.IsFalse(doc.RootElement.GetProperty("success").GetBoolean(),
-            "The thrown runner must surface a failure envelope.");
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+            TestCoverageTools.RunTestCoverageCore(
+                gate,
+                workspace,
+                runner,
+                workspaceId: "ws-coverage-cleanup-throw",
+                projectName: null,
+                deprecation: null,
+                progress: null,
+                ct: CancellationToken.None));
 
         Assert.IsNotNull(runner.CreatedResultsDirectory,
             "Runner should have created and captured the --results-directory.");
