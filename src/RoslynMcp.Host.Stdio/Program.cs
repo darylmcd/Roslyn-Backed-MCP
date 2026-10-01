@@ -56,7 +56,7 @@ if (observabilityOptions.Sink == ServerObservabilitySinkKind.File)
 // production and test DI graphs cannot drift.
 builder.Services.AddRoslynMcpHostServices(
     BindWorkspaceManagerOptions(),
-    BindValidationServiceOptions(),
+    ValidationServiceOptionsEnvironmentBinder.Bind(ReadEnv),
     BindPreviewStoreOptions(),
     BindExecutionGateOptions(),
     BindSecurityOptions(),
@@ -236,33 +236,6 @@ static WorkspaceManagerOptions BindWorkspaceManagerOptions()
     // so operators can opt out at runtime without editing code.
     if (int.TryParse(ReadEnv("ROSLYNMCP_RESTORE_RACE_WAIT_MS"), out var waitMs) && waitMs >= 0)
         opts = opts with { RestoreRaceWaitMs = waitMs };
-    return opts;
-}
-
-static ValidationServiceOptions BindValidationServiceOptions()
-{
-    var opts = new ValidationServiceOptions();
-    var buildSec = ReadEnv("ROSLYNMCP_BUILD_TIMEOUT_SECONDS");
-    var testSec = ReadEnv("ROSLYNMCP_TEST_TIMEOUT_SECONDS");
-    var vulnSec = ReadEnv("ROSLYNMCP_VULN_SCAN_TIMEOUT_SECONDS");
-    var revertSec = ReadEnv("ROSLYNMCP_APPLY_REVERT_TIMEOUT_SECONDS");
-    var gitStatusSec = ReadEnv("ROSLYNMCP_GIT_STATUS_TIMEOUT_SECONDS");
-
-    if (int.TryParse(buildSec, out var bs) && bs > 0)
-        opts = opts with { BuildTimeout = TimeSpan.FromSeconds(bs) };
-    if (int.TryParse(ReadEnv("ROSLYNMCP_RESTORE_TIMEOUT_SECONDS"), out var rts) && rts > 0)
-        opts = opts with { RestoreTimeout = TimeSpan.FromSeconds(rts) };
-    if (int.TryParse(testSec, out var ts) && ts > 0)
-        opts = opts with { TestTimeout = TimeSpan.FromSeconds(ts) };
-    if (int.TryParse(ReadEnv("ROSLYNMCP_MAX_RELATED_FILES"), out var mrf) && mrf > 0)
-        opts = opts with { MaxRelatedFiles = mrf };
-    if (int.TryParse(vulnSec, out var vs) && vs > 0)
-        opts = opts with { VulnerabilityScanTimeout = TimeSpan.FromSeconds(vs) };
-    if (int.TryParse(revertSec, out var rs) && rs > 0)
-        opts = opts with { ApplyRevertTimeout = TimeSpan.FromSeconds(rs) };
-    if (int.TryParse(gitStatusSec, out var gss) && gss > 0)
-        opts = opts with { GitStatusTimeout = TimeSpan.FromSeconds(gss) };
-
     return opts;
 }
 
