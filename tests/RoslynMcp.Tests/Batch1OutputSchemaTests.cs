@@ -82,13 +82,13 @@ public sealed class Batch1OutputSchemaTests
     {
         using var document = JsonDocument.Parse("{}");
 
-        Assert.ThrowsExactly<ArgumentException>(
+        Assert.ThrowsExactly<InvalidOperationException>(
             () => RoslynMcp.Host.Stdio.Tools.StructuredToolResult.Create("{}"));
-        Assert.ThrowsExactly<ArgumentException>(
+        Assert.ThrowsExactly<InvalidOperationException>(
             () => RoslynMcp.Host.Stdio.Tools.StructuredToolResult.Create(document));
-        Assert.ThrowsExactly<ArgumentException>(
+        Assert.ThrowsExactly<InvalidOperationException>(
             () => RoslynMcp.Host.Stdio.Tools.StructuredToolResult.Create(document.RootElement));
-        Assert.ThrowsExactly<ArgumentException>(
+        Assert.ThrowsExactly<InvalidOperationException>(
             () => RoslynMcp.Host.Stdio.Tools.StructuredToolResult.Create(JsonNode.Parse("{}")!));
     }
 
@@ -271,6 +271,28 @@ public sealed class Batch1OutputSchemaTests
     }
 
     [TestMethod]
+    public void UnionDeclarationMisuseIsAnInvariantViolationNotACallerError()
+    {
+        Assert.ThrowsExactly<InvalidOperationException>(
+            () => OutputSchemaDeclaration.UnionOf(OutputSchemaUnionCombinator.AnyOf));
+        Assert.ThrowsExactly<InvalidOperationException>(
+            () => OutputSchemaDeclaration.UnionOf(
+                OutputSchemaUnionCombinator.AnyOf, typeof(WorkspaceListVerboseDto), null!));
+        Assert.ThrowsExactly<InvalidOperationException>(
+            () => OutputSchemaDeclaration.UnionOf(
+                OutputSchemaUnionCombinator.AnyOf,
+                typeof(WorkspaceListVerboseDto),
+                typeof(WorkspaceListVerboseDto)));
+    }
+
+    [TestMethod]
+    public void SisterAliasLookupOfUnknownCanonicalNameIsAnInvariantViolation()
+    {
+        Assert.ThrowsExactly<InvalidOperationException>(
+            () => ToolAliasDeprecation.ForSisterAlias("no_such_canonical_tool"));
+    }
+
+    [TestMethod]
     public void UnionDeclarationsCannotNameACombinatorOutsideAnyOfAndOneOf()
     {
         // Regression for the fail-open the declaration API shipped with: the combinator used to be
@@ -279,7 +301,7 @@ public sealed class Batch1OutputSchemaTests
         // declared key back out of the schema, so a misspelling matches itself.
         //
         // Half 1: an undefined combinator is rejected at construction, not projected into a schema.
-        Assert.ThrowsExactly<ArgumentOutOfRangeException>(
+        Assert.ThrowsExactly<InvalidOperationException>(
             () => OutputSchemaDeclaration.UnionOf(
                 (OutputSchemaUnionCombinator)0xBAD, typeof(WorkspaceListVerboseDto)));
 

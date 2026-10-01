@@ -78,9 +78,7 @@ public sealed record ToolAliasDeprecation(
         ArgumentException.ThrowIfNullOrWhiteSpace(canonicalName);
         return s_byCanonical.TryGetValue(canonicalName, out var deprecation)
             ? deprecation
-            : throw new ArgumentOutOfRangeException(
-                nameof(canonicalName),
-                canonicalName,
-                "The alias registry has no declaration for this canonical tool name.");
+            : throw new InvalidOperationException(
+                $"The alias registry has no declaration for canonical tool name '{canonicalName}'.");
     }
 }

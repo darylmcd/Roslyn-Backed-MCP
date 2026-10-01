@@ -117,32 +117,27 @@ internal sealed record OutputSchemaDeclaration
         // undefined value here rather than let it reach the advertised schema as a bad keyword.
         if (!Enum.IsDefined(combinator))
         {
-            throw new ArgumentOutOfRangeException(
-                nameof(combinator),
-                combinator,
-                "A union declaration must name a defined JSON-Schema combinator (anyOf or oneOf).");
+            throw new InvalidOperationException(
+                $"A union declaration must name a defined JSON-Schema combinator (anyOf or oneOf); got {combinator}.");
         }
 
         ArgumentNullException.ThrowIfNull(additionalVariants);
         if (additionalVariants.Length == 0)
         {
-            throw new ArgumentException(
-                "A union declaration must name at least one response variant beyond the SDK-declared DTO.",
-                nameof(additionalVariants));
+            throw new InvalidOperationException(
+                "A union declaration must name at least one response variant beyond the SDK-declared DTO.");
         }
 
         if (Array.IndexOf(additionalVariants, null) >= 0)
         {
-            throw new ArgumentException(
-                "A union declaration cannot name a null response variant.",
-                nameof(additionalVariants));
+            throw new InvalidOperationException(
+                "A union declaration cannot name a null response variant.");
         }
 
         if (additionalVariants.Distinct().Count() != additionalVariants.Length)
         {
-            throw new ArgumentException(
-                "A union declaration cannot name the same response variant twice.",
-                nameof(additionalVariants));
+            throw new InvalidOperationException(
+                "A union declaration cannot name the same response variant twice.");
         }
 
         // Copy defensively: params binds the caller's array when it is passed explicitly, so
