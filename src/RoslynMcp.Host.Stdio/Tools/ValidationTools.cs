@@ -30,24 +30,13 @@ public static class ValidationTools
         // Per-project N/M is intentionally not emitted — IBuildService doesn't accept
         // progress and adding it would require interface edits past the audit-coverage
         // initiative scope. See ProgressHelper remarks for the label-naming contract.
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            try
-            {
-                ProgressHelper.ReportStage(progress, 0, 3, "preparing-build");
-                ProgressHelper.ReportStage(progress, 1, 3, "msbuild-running");
-                var result = await buildService.BuildWorkspaceAsync(workspaceId, c);
-                ProgressHelper.ReportStage(progress, 3, 3, "done");
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                // Close the stage sequence, then let the shared filter format the failure
-                // (isError=true, schemaHint, _meta).
-                ProgressHelper.ReportStage(progress, 3, 3, "done");
-                throw;
-            }
-        }, ct);
+        return RunGatedBuildAsync(
+            gate,
+            buildService,
+            workspaceId,
+            c => buildService.PrepareWorkspaceBuildAsync(workspaceId, c),
+            progress,
+            ct);
     }
 
     [McpServerTool(Name = "build_project", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false), Description("Run dotnet build for a specific project in the loaded workspace and return structured diagnostics and execution output")]
@@ -60,11 +49,62 @@ public static class ValidationTools
         [Description("Project name or project file path within the loaded workspace")] string projectName,
         CancellationToken ct = default)
     {
-        return gate.RunReadAsync(workspaceId, async c =>
+        return RunGatedBuildAsync(
+            gate,
+            buildService,
+            workspaceId,
+            _ => Task.FromResult(buildService.PrepareProjectBuild(workspaceId, projectName)),
+            progress: null,
+            ct);
+    }
+
+    /// <summary>
+    /// Runs a build in three phases so the workspace gate is NOT held across the long
+    /// <c>dotnet build</c>: (1) a gated read resolves the target and records the workspace
+    /// version, (2) the command runs ungated under <c>BuildTimeout</c> (its own command gates
+    /// serialize it, and the budget includes queue wait), (3) a gated read parses and enriches
+    /// diagnostics only if the workspace version is unchanged. Holding the gate for all three
+    /// armed the 2-minute request timeout before the build started, so it always beat the
+    /// 5-minute build budget while pinning a throttle slot and the reader lock.
+    /// </summary>
+    private static async Task<string> RunGatedBuildAsync(
+        IWorkspaceExecutionGate gate,
+        IBuildService buildService,
+        string workspaceId,
+        Func<CancellationToken, Task<BuildCommandPlan>> prepare,
+        IProgress<ProgressNotificationValue>? progress,
+        CancellationToken ct)
+    {
+        try
         {
-            var result = await buildService.BuildProjectAsync(workspaceId, projectName, c);
+            ProgressHelper.ReportStage(progress, 0, 3, "preparing-build");
+            var plan = await gate.RunReadAsync(workspaceId, prepare, ct);
+            ProgressHelper.ReportStage(progress, 1, 3, "msbuild-running");
+            var run = await buildService.RunBuildCommandAsync(plan, ct);
+
+            BuildResultDto result;
+            try
+            {
+                result = await gate.RunReadAsync(
+                    workspaceId, c => buildService.CompleteBuildAsync(run, c), ct);
+            }
+            catch (WorkspaceNotFoundException)
+            {
+                // The workspace was closed while the command ran: the build output is still
+                // valid, so return it un-enriched with the workspaceChangedDuringRun warning.
+                result = buildService.CompleteBuildWithoutWorkspace(run);
+            }
+
+            ProgressHelper.ReportStage(progress, 3, 3, "done");
             return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Close the stage sequence, then let the shared filter format the failure
+            // (isError=true, schemaHint, _meta).
+            ProgressHelper.ReportStage(progress, 3, 3, "done");
+            throw;
+        }
     }
 
     /// <remarks>

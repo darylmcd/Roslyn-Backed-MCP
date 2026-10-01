@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Contracts;
@@ -29,48 +30,94 @@ public sealed class BuildService : IBuildService
         _options = options ?? new ValidationServiceOptions();
     }
 
+    internal const string WorkspaceChangedDuringRunWarning = "workspaceChangedDuringRun";
+
     public async Task<BuildResultDto> BuildWorkspaceAsync(string workspaceId, CancellationToken ct)
     {
-        var status = await _workspaceManager.GetStatusAsync(workspaceId, ct).ConfigureAwait(false);
-        var targetPath = status.LoadedPath ?? throw new InvalidOperationException($"Workspace '{workspaceId}' is not loaded.");
-        var execution = await _executor.ExecuteAsync(
-            workspaceId,
-            targetPath,
-            ["build", targetPath, "--nologo"],
-            _options.BuildTimeout,
-            ct).ConfigureAwait(false);
-        var diagnostics = await EnrichDiagnosticSpansAsync(
-            workspaceId,
-            DotnetOutputParser.ParseBuildDiagnostics($"{execution.StdOut}{Environment.NewLine}{execution.StdErr}"),
-            ct).ConfigureAwait(false);
-
-        return new BuildResultDto(
-            execution,
-            diagnostics,
-            diagnostics.Count(d => d.Severity == "Error"),
-            diagnostics.Count(d => d.Severity == "Warning"));
+        var plan = await PrepareWorkspaceBuildAsync(workspaceId, ct).ConfigureAwait(false);
+        return await RunAndCompleteAsync(plan, ct).ConfigureAwait(false);
     }
 
     public async Task<BuildResultDto> BuildProjectAsync(string workspaceId, string projectName, CancellationToken ct)
     {
+        var plan = PrepareProjectBuild(workspaceId, projectName);
+        return await RunAndCompleteAsync(plan, ct).ConfigureAwait(false);
+    }
+
+    public async Task<BuildCommandPlan> PrepareWorkspaceBuildAsync(string workspaceId, CancellationToken ct)
+    {
+        var status = await _workspaceManager.GetStatusAsync(workspaceId, ct).ConfigureAwait(false);
+        var targetPath = status.LoadedPath ?? throw new InvalidOperationException($"Workspace '{workspaceId}' is not loaded.");
+        return new BuildCommandPlan(
+            workspaceId,
+            targetPath,
+            ["build", targetPath, "--nologo"],
+            _workspaceManager.GetCurrentVersion(workspaceId));
+    }
+
+    public BuildCommandPlan PrepareProjectBuild(string workspaceId, string projectName)
+    {
         var project = _executor.ResolveProject(workspaceId, projectName);
-        var execution = await _executor.ExecuteAsync(
+        return new BuildCommandPlan(
             workspaceId,
             project.FilePath,
             ["build", project.FilePath, "--nologo"],
+            _workspaceManager.GetCurrentVersion(workspaceId));
+    }
+
+    public async Task<BuildCommandRun> RunBuildCommandAsync(BuildCommandPlan plan, CancellationToken ct)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        var execution = await _executor.ExecuteAsync(
+            plan.WorkspaceId,
+            plan.TargetPath,
+            plan.Arguments,
             _options.BuildTimeout,
             ct).ConfigureAwait(false);
+        stopwatch.Stop();
+        return new BuildCommandRun(plan, execution, stopwatch.ElapsedMilliseconds);
+    }
+
+    public async Task<BuildResultDto> CompleteBuildAsync(BuildCommandRun run, CancellationToken ct)
+    {
+        var workspaceId = run.Plan.WorkspaceId;
+        if (_workspaceManager.GetCurrentVersion(workspaceId) != run.Plan.WorkspaceVersion)
+        {
+            return CompleteBuildWithoutWorkspace(run);
+        }
+
         var diagnostics = await EnrichDiagnosticSpansAsync(
             workspaceId,
-            DotnetOutputParser.ParseBuildDiagnostics($"{execution.StdOut}{Environment.NewLine}{execution.StdErr}"),
+            ParseDiagnostics(run.Execution),
             ct).ConfigureAwait(false);
+        return CreateResult(run, diagnostics, warnings: null);
+    }
 
-        return new BuildResultDto(
-            execution,
+    public BuildResultDto CompleteBuildWithoutWorkspace(BuildCommandRun run) =>
+        CreateResult(run, ParseDiagnostics(run.Execution), [WorkspaceChangedDuringRunWarning]);
+
+    private async Task<BuildResultDto> RunAndCompleteAsync(BuildCommandPlan plan, CancellationToken ct)
+    {
+        var run = await RunBuildCommandAsync(plan, ct).ConfigureAwait(false);
+        return await CompleteBuildAsync(run, ct).ConfigureAwait(false);
+    }
+
+    private static IReadOnlyList<DiagnosticDto> ParseDiagnostics(CommandExecutionDto execution) =>
+        DotnetOutputParser.ParseBuildDiagnostics($"{execution.StdOut}{Environment.NewLine}{execution.StdErr}");
+
+    private static BuildResultDto CreateResult(
+        BuildCommandRun run,
+        IReadOnlyList<DiagnosticDto> diagnostics,
+        IReadOnlyList<string>? warnings) =>
+        new(
+            run.Execution,
             diagnostics,
             diagnostics.Count(d => d.Severity == "Error"),
-            diagnostics.Count(d => d.Severity == "Warning"));
-    }
+            diagnostics.Count(d => d.Severity == "Warning"))
+        {
+            Warnings = warnings,
+            CommandDurationMs = run.CommandDurationMs,
+        };
 
     private async Task<IReadOnlyList<DiagnosticDto>> EnrichDiagnosticSpansAsync(
         string workspaceId,
