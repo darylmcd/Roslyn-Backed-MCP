@@ -218,7 +218,7 @@ public sealed class DiRegistrationService : IDiRegistrationService
         // registrations of these service types as dead.
         var enumerableConsumed = new HashSet<string>(StringComparer.Ordinal);
         var failedDocumentCount = 0;
-        var projects = ProjectFilterHelper.FilterProjects(solution, projectFilter);
+        var projects = ProjectFilterHelper.ResolveProjects(solution, projectFilter);
 
         foreach (var project in projects)
         {

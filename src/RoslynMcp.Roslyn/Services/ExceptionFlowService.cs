@@ -68,7 +68,7 @@ public sealed class ExceptionFlowService : IExceptionFlowService
 
         var cap = NormalizeMaxResults(maxResults);
         var solution = _workspace.GetCurrentSolution(workspaceId);
-        var projects = ProjectFilterHelper.FilterProjects(solution, scopeProjectFilter).ToList();
+        var projects = ProjectFilterHelper.ResolveProjects(solution, scopeProjectFilter);
 
         // Collect catch sites and throw sites in a single per-tree DescendantNodes() pass. We
         // collect WITHOUT applying the cap so the specificity sort below can reorder before any
