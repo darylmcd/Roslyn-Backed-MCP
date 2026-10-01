@@ -33,7 +33,7 @@ public sealed class WorkspaceLoadRestoreBudgetTests : SharedWorkspaceTestBase
             var options = new ValidationServiceOptions { RestoreTimeout = TimeSpan.FromSeconds(90) };
 
             await WorkspaceTools.RestoreAndReloadIfRequiredAsync(
-                executor, options, manager, status, autoRestore: true, CancellationToken.None);
+                executor, options, manager, status, autoRestore: true, NullLogger.Instance, CancellationToken.None);
 
             Assert.AreEqual(1, executor.Timeouts.Count);
             AssertBudgetNear(TimeSpan.FromSeconds(90), executor.Timeouts[0]);
@@ -56,7 +56,7 @@ public sealed class WorkspaceLoadRestoreBudgetTests : SharedWorkspaceTestBase
             clock.Advance(TimeSpan.FromSeconds(10)); // 90s of the request left -> 60s for restore
 
             await WorkspaceTools.RestoreAndReloadIfRequiredAsync(
-                executor, options, manager, status, autoRestore: true, CancellationToken.None);
+                executor, options, manager, status, autoRestore: true, NullLogger.Instance, CancellationToken.None);
 
             AssertBudgetNear(TimeSpan.FromSeconds(60), executor.Timeouts.Single());
         });
@@ -72,7 +72,7 @@ public sealed class WorkspaceLoadRestoreBudgetTests : SharedWorkspaceTestBase
             using var deadline = RequestDeadline.Begin(new FakeTimeProvider(), TimeSpan.FromMinutes(10));
 
             await WorkspaceTools.RestoreAndReloadIfRequiredAsync(
-                executor, options, manager, status, autoRestore: true, CancellationToken.None);
+                executor, options, manager, status, autoRestore: true, NullLogger.Instance, CancellationToken.None);
 
             AssertBudgetNear(TimeSpan.FromSeconds(45), executor.Timeouts.Single());
         });
@@ -89,7 +89,7 @@ public sealed class WorkspaceLoadRestoreBudgetTests : SharedWorkspaceTestBase
 
             var thrown = await Assert.ThrowsExactlyAsync<TimeoutException>(() =>
                 WorkspaceTools.RestoreAndReloadIfRequiredAsync(
-                    executor, options, manager, status, autoRestore: true, CancellationToken.None));
+                    executor, options, manager, status, autoRestore: true, NullLogger.Instance, CancellationToken.None));
 
             Assert.AreEqual(0, executor.Timeouts.Count, "no dotnet restore may be spawned when no budget remains.");
             StringAssert.Contains(thrown.Message, "ROSLYNMCP_RESTORE_TIMEOUT_SECONDS");
@@ -110,7 +110,7 @@ public sealed class WorkspaceLoadRestoreBudgetTests : SharedWorkspaceTestBase
 
             await Assert.ThrowsExactlyAsync<TimeoutException>(() =>
                 WorkspaceTools.RestoreAndReloadIfRequiredAsync(
-                    executor, options, manager, status, autoRestore: true, CancellationToken.None));
+                    executor, options, manager, status, autoRestore: true, NullLogger.Instance, CancellationToken.None));
 
             Assert.AreEqual(0, executor.Timeouts.Count);
         });
@@ -127,7 +127,7 @@ public sealed class WorkspaceLoadRestoreBudgetTests : SharedWorkspaceTestBase
 
             await Assert.ThrowsAsync<OperationCanceledException>(() =>
                 WorkspaceTools.RestoreAndReloadIfRequiredAsync(
-                    executor, new ValidationServiceOptions(), manager, status, autoRestore: true, cts.Token));
+                    executor, new ValidationServiceOptions(), manager, status, autoRestore: true, NullLogger.Instance, cts.Token));
         });
     }
 
@@ -155,7 +155,7 @@ public sealed class WorkspaceLoadRestoreBudgetTests : SharedWorkspaceTestBase
                 {
                     clock.Advance(TimeSpan.FromSeconds(50)); // 70s left on the load deadline
                     await WorkspaceTools.RestoreAndReloadIfRequiredAsync(
-                        executor, options, manager, status, autoRestore: true, innerCt);
+                        executor, options, manager, status, autoRestore: true, NullLogger.Instance, innerCt);
                     return 0;
                 }, outerCt, applyStalenessPolicy: false), CancellationToken.None);
 

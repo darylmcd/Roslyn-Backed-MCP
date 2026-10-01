@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -53,8 +54,10 @@ public static class WorkspaceTools
         [Description("Requests one-level sanctioned-root expansion for a sibling worktree. This takes effect only when the server operator also sets ROSLYNMCP_ALLOW_ROOT_EXPANSION=true; client input alone never widens the boundary. Higher ancestors and filesystem roots are never widened.")] bool expandSanctionedRoots = false,
         [Description("Controls cap-reached behaviour. 'Strict' (default) throws with activeWorkspaces and lruCandidate context for one-round-trip self-recovery. 'Lru' silently evicts the least-recently-used idle workspace to make room for the new load.")] EvictPolicy evictPolicy = EvictPolicy.Strict,
         IProgress<ProgressNotificationValue>? progress = null,
+        ILoggerFactory? loggerFactory = null,
         CancellationToken ct = default)
     {
+        var logger = (loggerFactory ?? NullLoggerFactory.Instance).CreateLogger(nameof(WorkspaceTools));
         return gate.RunLoadGateAsync(async c =>
         {
             // workspace-load stage emissions: clients see "validating-path → opening-workspace
@@ -75,7 +78,7 @@ public static class WorkspaceTools
             ProgressHelper.ReportStage(progress, 1, totalStages, "opening-workspace");
             var status = await workspace.LoadAsync(path, evictPolicy, c).ConfigureAwait(false);
             ProgressHelper.ReportStage(progress, 2, totalStages, "checking-restore");
-            var restoreOutcome = await RestoreAndReloadIfRequiredAsync(commandExecutor, validationOptions, workspace, status, autoRestore, c).ConfigureAwait(false);
+            var restoreOutcome = await RestoreAndReloadIfRequiredAsync(commandExecutor, validationOptions, workspace, status, autoRestore, logger, c).ConfigureAwait(false);
             status = restoreOutcome.Status;
             if (expandSanctionedRoots)
             {
@@ -118,15 +121,17 @@ public static class WorkspaceTools
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Restore policy. Omitted: run `dotnet restore` and reload once only when a project has never been restored (missing project.assets.json); a failed or timed-out restore is non-fatal and reported as restoreRequired=true plus restoreFailureReason. true: also restore on package-version drift, and fail the call when the restore fails. false: never restore.")] bool? autoRestore = null,
         [Description("When true (default), preserve the full per-project response. Pass false for readiness, version, and aggregate counts without the project tree.")] bool verbose = true,
+        ILoggerFactory? loggerFactory = null,
         CancellationToken ct = default)
     {
+        var logger = (loggerFactory ?? NullLoggerFactory.Instance).CreateLogger(nameof(WorkspaceTools));
         // Reload acquires both the global load gate AND the per-workspace write lock so that
         // any in-flight readers on this workspace complete before the solution is replaced.
         return gate.RunLoadGateAsync(outerCt =>
             gate.RunWriteAsync(workspaceId, async innerCt =>
             {
                 var status = await workspace.ReloadAsync(workspaceId, innerCt).ConfigureAwait(false);
-                var restoreOutcome = await RestoreAndReloadIfRequiredAsync(commandExecutor, validationOptions, workspace, status, autoRestore, innerCt).ConfigureAwait(false);
+                var restoreOutcome = await RestoreAndReloadIfRequiredAsync(commandExecutor, validationOptions, workspace, status, autoRestore, logger, innerCt).ConfigureAwait(false);
                 return SerializeWorkspaceLoadResult(restoreOutcome.Status, verbose, prewarmResult: null, restoreOutcome.FailureReason);
             }, outerCt), ct);
     }
@@ -586,6 +591,7 @@ public static class WorkspaceTools
         IWorkspaceManager workspace,
         WorkspaceStatusDto status,
         bool? autoRestore,
+        ILogger logger,
         CancellationToken ct)
     {
         if (autoRestore == false || !status.RestoreRequired || string.IsNullOrWhiteSpace(status.LoadedPath))
@@ -595,7 +601,7 @@ public static class WorkspaceTools
 
         if (autoRestore is null)
         {
-            if (!EnumerateProjectPaths(status).Any(RestoreStalenessDetector.HasMissingAssets))
+            if (!EnumerateProjectPaths(status).Any(projectPath => RestoreStalenessDetector.HasMissingAssets(projectPath, logger)))
             {
                 return new RestoreReloadOutcome(status);
             }

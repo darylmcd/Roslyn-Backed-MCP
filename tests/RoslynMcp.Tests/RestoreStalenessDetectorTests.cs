@@ -86,7 +86,7 @@ public sealed class RestoreStalenessDetectorTests
     {
         var projectFilePath = WriteProject("NeverRestored.csproj", PackageReferenceProject);
 
-        Assert.IsTrue(RestoreStalenessDetector.HasMissingAssets(projectFilePath));
+        Assert.IsTrue(RestoreStalenessDetector.HasMissingAssets(projectFilePath, NullLogger.Instance));
     }
 
     [TestMethod]
@@ -95,7 +95,7 @@ public sealed class RestoreStalenessDetectorTests
         var projectFilePath = WriteProject("Drifted.csproj", PackageReferenceProject);
         WriteAssets(projectFilePath, "Newtonsoft.Json", "12.0.1");
 
-        Assert.IsFalse(RestoreStalenessDetector.HasMissingAssets(projectFilePath), "Drift is not missing assets.");
+        Assert.IsFalse(RestoreStalenessDetector.HasMissingAssets(projectFilePath, NullLogger.Instance), "Drift is not missing assets.");
         Assert.IsTrue(new RestoreStalenessDetector().IsRestoreRequired(projectFilePath, NullLogger.Instance));
     }
 
@@ -112,8 +112,36 @@ public sealed class RestoreStalenessDetectorTests
             </Project>
             """);
 
-        Assert.IsFalse(RestoreStalenessDetector.HasMissingAssets(noRefs));
-        Assert.IsFalse(RestoreStalenessDetector.HasMissingAssets(Path.Combine(_tempRoot, "Nope.csproj")));
+        Assert.IsFalse(RestoreStalenessDetector.HasMissingAssets(noRefs, NullLogger.Instance));
+        Assert.IsFalse(RestoreStalenessDetector.HasMissingAssets(Path.Combine(_tempRoot, "Nope.csproj"), NullLogger.Instance));
+    }
+
+    [TestMethod]
+    public void HasMissingAssets_UnreadableProjectFile_ReturnsFalseWithoutThrowing()
+    {
+        var projectFilePath = WriteProject("Locked.csproj", PackageReferenceProject);
+        using var exclusive = new FileStream(projectFilePath, FileMode.Open, FileAccess.Read, FileShare.None);
+
+        Assert.IsFalse(RestoreStalenessDetector.HasMissingAssets(projectFilePath, NullLogger.Instance));
+    }
+
+    [TestMethod]
+    public void HasMissingAssets_UnevaluableProject_DoesNotThrowAndTreatsAssetsAsAbsent()
+    {
+        // Well-formed XML that MSBuild rejects (unknown top-level element) so the assets-path
+        // evaluation throws InvalidProjectFileException; a PackageReference keeps the probe going.
+        var projectFilePath = WriteProject(
+            "Unevaluable.csproj",
+            """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <Bogus />
+              <ItemGroup>
+                <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+              </ItemGroup>
+            </Project>
+            """);
+
+        Assert.IsTrue(RestoreStalenessDetector.HasMissingAssets(projectFilePath, NullLogger.Instance));
     }
 
     [TestMethod]
@@ -126,7 +154,7 @@ public sealed class RestoreStalenessDetectorTests
             "<Project><PropertyGroup><UseArtifactsOutput>true</UseArtifactsOutput></PropertyGroup></Project>");
         var projectFilePath = WriteProject("Relocated.csproj", PackageReferenceProject);
 
-        Assert.IsTrue(RestoreStalenessDetector.HasMissingAssets(projectFilePath), "Nothing restored yet.");
+        Assert.IsTrue(RestoreStalenessDetector.HasMissingAssets(projectFilePath, NullLogger.Instance), "Nothing restored yet.");
 
         var relocatedDirectory = Path.Combine(_tempRoot, "artifacts", "obj", "Relocated");
         Directory.CreateDirectory(relocatedDirectory);
@@ -134,7 +162,7 @@ public sealed class RestoreStalenessDetectorTests
             Path.Combine(relocatedDirectory, "project.assets.json"),
             "{\"project\":{\"restore\":{\"packagesPath\":\"D:/scratch\"},\"frameworks\":{\"net10.0\":{\"dependencies\":{\"Newtonsoft.Json\":{\"version\":\"13.0.3\"}}}}}}");
 
-        Assert.IsFalse(RestoreStalenessDetector.HasMissingAssets(projectFilePath));
+        Assert.IsFalse(RestoreStalenessDetector.HasMissingAssets(projectFilePath, NullLogger.Instance));
         Assert.IsFalse(new RestoreStalenessDetector().IsRestoreRequired(projectFilePath, NullLogger.Instance));
         Assert.AreEqual("D:/scratch", RestoreStalenessDetector.TryReadRestorePackagesPath(projectFilePath));
     }

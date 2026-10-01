@@ -41,7 +41,7 @@ public sealed class WorkspaceLoadRestoreFailureWireTests : SharedWorkspaceTestBa
 
             var thrown = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
                 WorkspaceTools.RestoreAndReloadIfRequiredAsync(
-                    executor, ValidationOptions, manager, restoreRequired, autoRestore: true, CancellationToken.None));
+                    executor, ValidationOptions, manager, restoreRequired, autoRestore: true, NullLogger.Instance, CancellationToken.None));
 
             // Detail stays on the inner exception for logs.
             Assert.IsNotNull(thrown.InnerException);
@@ -94,7 +94,7 @@ public sealed class WorkspaceLoadRestoreFailureWireTests : SharedWorkspaceTestBa
                 var shortBudget = new ValidationServiceOptions { RestoreTimeout = TimeSpan.FromMilliseconds(200) };
                 var thrown = await Assert.ThrowsExactlyAsync<TimeoutException>(() =>
                     WorkspaceTools.RestoreAndReloadIfRequiredAsync(
-                        executor, shortBudget, manager, restoreRequired, autoRestore: true, CancellationToken.None));
+                        executor, shortBudget, manager, restoreRequired, autoRestore: true, NullLogger.Instance, CancellationToken.None));
 
                 var json = ToolErrorHandler.ClassifyAndFormat(thrown, "workspace_load");
                 using var doc = JsonDocument.Parse(json);

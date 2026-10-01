@@ -31,7 +31,7 @@ public sealed class WorkspaceLoadAutoRestoreTests : SharedWorkspaceTestBase
             var executor = new ScriptedExecutor(ExecutionResult.Success);
 
             var outcome = await WorkspaceTools.RestoreAndReloadIfRequiredAsync(
-                executor, ValidationOptions, manager, status, autoRestore: null, CancellationToken.None);
+                executor, ValidationOptions, manager, status, autoRestore: null, NullLogger.Instance, CancellationToken.None);
 
             Assert.HasCount(1, executor.Invocations, "A never-restored project must trigger exactly one restore.");
             Assert.IsNull(outcome.FailureReason);
@@ -46,7 +46,7 @@ public sealed class WorkspaceLoadAutoRestoreTests : SharedWorkspaceTestBase
             var executor = new ScriptedExecutor(ExecutionResult.Success);
 
             var outcome = await WorkspaceTools.RestoreAndReloadIfRequiredAsync(
-                executor, ValidationOptions, manager, status, autoRestore: null, CancellationToken.None);
+                executor, ValidationOptions, manager, status, autoRestore: null, NullLogger.Instance, CancellationToken.None);
 
             Assert.IsEmpty(executor.Invocations, "Package drift alone must not spawn a restore on the default path.");
             Assert.IsTrue(outcome.Status.RestoreRequired);
@@ -62,7 +62,7 @@ public sealed class WorkspaceLoadAutoRestoreTests : SharedWorkspaceTestBase
             var executor = new ScriptedExecutor(ExecutionResult.Success);
 
             await WorkspaceTools.RestoreAndReloadIfRequiredAsync(
-                executor, ValidationOptions, manager, status, autoRestore: true, CancellationToken.None);
+                executor, ValidationOptions, manager, status, autoRestore: true, NullLogger.Instance, CancellationToken.None);
 
             Assert.HasCount(1, executor.Invocations, "Explicit autoRestore=true keeps restoring for drift.");
         });
@@ -76,7 +76,7 @@ public sealed class WorkspaceLoadAutoRestoreTests : SharedWorkspaceTestBase
             var executor = new ScriptedExecutor(ExecutionResult.Success);
 
             var outcome = await WorkspaceTools.RestoreAndReloadIfRequiredAsync(
-                executor, ValidationOptions, manager, status, autoRestore: false, CancellationToken.None);
+                executor, ValidationOptions, manager, status, autoRestore: false, NullLogger.Instance, CancellationToken.None);
 
             Assert.IsEmpty(executor.Invocations);
             Assert.IsTrue(outcome.Status.RestoreRequired);
@@ -92,7 +92,7 @@ public sealed class WorkspaceLoadAutoRestoreTests : SharedWorkspaceTestBase
             var executor = new ScriptedExecutor(ExecutionResult.ExitCodeOne);
 
             var outcome = await WorkspaceTools.RestoreAndReloadIfRequiredAsync(
-                executor, ValidationOptions, manager, status, autoRestore: null, CancellationToken.None);
+                executor, ValidationOptions, manager, status, autoRestore: null, NullLogger.Instance, CancellationToken.None);
 
             Assert.IsTrue(outcome.Status.RestoreRequired, "A failed restore must leave restoreRequired=true.");
             Assert.IsNotNull(outcome.FailureReason);
@@ -108,6 +108,36 @@ public sealed class WorkspaceLoadAutoRestoreTests : SharedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task Omitted_UnreadableProjectFile_DoesNotFailTheLoadOrRestore()
+    {
+        await WithWorkspace(assets: AssetsState.Missing, async (manager, status, root) =>
+        {
+            var executor = new ScriptedExecutor(ExecutionResult.Success);
+            using var locks = new DisposableList(
+                status.Projects.Select(p => new FileStream(p.FilePath, FileMode.Open, FileAccess.Read, FileShare.None)));
+
+            var outcome = await WorkspaceTools.RestoreAndReloadIfRequiredAsync(
+                executor, ValidationOptions, manager, status, autoRestore: null, NullLogger.Instance, CancellationToken.None);
+
+            Assert.IsEmpty(executor.Invocations, "An unreadable project is not-missing, never a load failure or a restore trigger.");
+            Assert.IsNull(outcome.FailureReason);
+        });
+    }
+
+    private sealed class DisposableList(IEnumerable<IDisposable> items) : IDisposable
+    {
+        private readonly List<IDisposable> _items = items.ToList();
+
+        public void Dispose()
+        {
+            foreach (var item in _items)
+            {
+                item.Dispose();
+            }
+        }
+    }
+
+    [TestMethod]
     public async Task Omitted_RestoreTimesOut_IsNonFatalAndReasonOmitsCommandLine()
     {
         await WithWorkspace(assets: AssetsState.Missing, async (manager, status, root) =>
@@ -115,7 +145,7 @@ public sealed class WorkspaceLoadAutoRestoreTests : SharedWorkspaceTestBase
             var executor = new ScriptedExecutor(ExecutionResult.TimesOut);
 
             var outcome = await WorkspaceTools.RestoreAndReloadIfRequiredAsync(
-                executor, ValidationOptions, manager, status, autoRestore: null, CancellationToken.None);
+                executor, ValidationOptions, manager, status, autoRestore: null, NullLogger.Instance, CancellationToken.None);
 
             Assert.IsTrue(outcome.Status.RestoreRequired);
             Assert.IsNotNull(outcome.FailureReason);
@@ -133,7 +163,7 @@ public sealed class WorkspaceLoadAutoRestoreTests : SharedWorkspaceTestBase
 
             await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
                 WorkspaceTools.RestoreAndReloadIfRequiredAsync(
-                    executor, ValidationOptions, manager, status, autoRestore: true, CancellationToken.None));
+                    executor, ValidationOptions, manager, status, autoRestore: true, NullLogger.Instance, CancellationToken.None));
         });
     }
 
@@ -148,7 +178,7 @@ public sealed class WorkspaceLoadAutoRestoreTests : SharedWorkspaceTestBase
 
             await Assert.ThrowsAsync<OperationCanceledException>(() =>
                 WorkspaceTools.RestoreAndReloadIfRequiredAsync(
-                    executor, ValidationOptions, manager, status, autoRestore: null, cts.Token));
+                    executor, ValidationOptions, manager, status, autoRestore: null, NullLogger.Instance, cts.Token));
         });
     }
 
@@ -160,7 +190,7 @@ public sealed class WorkspaceLoadAutoRestoreTests : SharedWorkspaceTestBase
             var executor = new ScriptedExecutor(ExecutionResult.Success);
 
             await WorkspaceTools.RestoreAndReloadIfRequiredAsync(
-                executor, ValidationOptions, manager, status with { RestoreRequired = false }, autoRestore: null, CancellationToken.None);
+                executor, ValidationOptions, manager, status with { RestoreRequired = false }, autoRestore: null, NullLogger.Instance, CancellationToken.None);
 
             Assert.IsEmpty(executor.Invocations);
         });

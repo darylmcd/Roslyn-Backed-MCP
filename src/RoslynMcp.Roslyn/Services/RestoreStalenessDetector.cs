@@ -1,8 +1,6 @@
 using System.Collections.Immutable;
 using System.Text.Json;
 using System.Xml.Linq;
-using Microsoft.Build.Evaluation;
-using Microsoft.Build.Exceptions;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Roslyn.Helpers;
@@ -428,16 +426,26 @@ internal class RestoreStalenessDetector
     /// state, distinct from version drift (which <see cref="IsRestoreRequired"/> also reports). The
     /// assets file is located where MSBuild would write it, so <c>UseArtifactsOutput</c> and a
     /// custom <c>BaseIntermediateOutputPath</c>/<c>MSBuildProjectExtensionsPath</c> are not
-    /// misread as missing. I/O errors propagate: the caller has just loaded these project files.
+    /// misread as missing. Like <see cref="IsRestoreRequired"/>, detection is best-effort: an
+    /// unreadable or unevaluable project is reported as not-missing (logged at debug) so the
+    /// default restore probe can never fail a load that would otherwise succeed.
     /// </summary>
-    public static bool HasMissingAssets(string projectFilePath)
+    public static bool HasMissingAssets(string projectFilePath, ILogger logger)
     {
         if (string.IsNullOrWhiteSpace(projectFilePath) || !File.Exists(projectFilePath))
         {
             return false;
         }
 
-        return CollectExpectedPackages(projectFilePath).Count > 0 && GetExistingAssetsPath(projectFilePath) is null;
+        try
+        {
+            return CollectExpectedPackages(projectFilePath).Count > 0 && GetExistingAssetsPath(projectFilePath) is null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException)
+        {
+            logger.LogDebug(ex, "missing-assets detection skipped for '{ProjectFilePath}'", projectFilePath);
+            return false;
+        }
     }
 
     private static string? GetExistingAssetsPath(string projectFilePath)
@@ -468,15 +476,13 @@ internal class RestoreStalenessDetector
     /// </summary>
     private static string? TryEvaluateAssetsPath(string projectFilePath, string projectDirectory)
     {
-        MsBuildInitializer.EnsureInitialized();
-        var projectCollection = new ProjectCollection();
         try
         {
-            var evaluated = projectCollection.LoadProject(projectFilePath);
-            var assetsFile = evaluated.GetPropertyValue("ProjectAssetsFile");
+            var values = MsBuildMetadataHelper.EvaluateProperties(projectFilePath, "ProjectAssetsFile", "MSBuildProjectExtensionsPath");
+            var assetsFile = values[0];
             if (string.IsNullOrWhiteSpace(assetsFile))
             {
-                var extensionsPath = evaluated.GetPropertyValue("MSBuildProjectExtensionsPath");
+                var extensionsPath = values[1];
                 if (string.IsNullOrWhiteSpace(extensionsPath))
                 {
                     return null;
@@ -487,13 +493,9 @@ internal class RestoreStalenessDetector
 
             return Path.GetFullPath(assetsFile.Trim(), projectDirectory);
         }
-        catch (InvalidProjectFileException)
+        catch (InvalidOperationException)
         {
             return null;
-        }
-        finally
-        {
-            projectCollection.UnloadAllProjects();
         }
     }
 
