@@ -1,0 +1,14 @@
+| Field | Content |
+|---|---|
+| Route | deepen |
+| Diagnosis | `TypeExtractionService.cs:567-568` maps EVERY extracted member through `EnsurePublicAccessibility` (`:1024-1056`), which strips private/protected/internal and prepends `public`, so extracted private fields/helpers become public. Composition needs widening in one direction only: retained same-file code is rewritten to `_field.Member` / `NewType.Member` by `SameFileConsumerRewriter` (`:458-518`), so only extracted members referenced from retained code must be reachable from the source type. The reverse (extracted code needing retained members) is already refused by `CollectExtractTypeBlockingDependencies` (`:58-77`); external-file consumers are refused at `:86-97`. Unreferenced extracted members need no widening. |
+| Approach | Have `RewriteSameFileConsumers` (`:387`) / `SameFileConsumerRewriter.TryGetExtractedSymbol` (`:520`) record the names of extracted symbols the rewriter actually rebinds, return them to `ExtractTypeAsync` (`:101`), pass the set to `BuildNewFileRoot` (`:556`). Replace `EnsurePublicAccessibility` with a conditional widen: set `public` only when the member (any declarator, for a field) is in the referenced set; otherwise keep original modifiers (extracted names are unique: overloads/ctors refused at `:251`). `StripInheritanceOnlyModifiers` still composes after it. Update stale comment at `:562-566`. |
+| Scope | Production (1): `src/RoslynMcp.Roslyn/Services/TypeExtractionService.cs`. Tests (1): `tests/RoslynMcp.Tests/TypeExtractionTests.cs` - red-first preview/apply: private field + private helper used only by extracted members stay `private`; a private member referenced by a retained method becomes `public`; assert generated text and `AssertModifiedSolutionCompilesAsync` (`:1315`). Check existing tests for any asserting blanket `public`. |
+| Tool policy | edit-only |
+| Estimated context cost | 30000 |
+| Risks | Sibling `extract-type-interface-implementation-guard` (order 7) edits the SAME service file (`:56-58`, `:119-127`) and SAME test file; Rule 1 bundle rejected (different mechanism: interface obligations vs accessibility), so `dependsOn` it to serialize edits. Unreferenced `protected` members stay `protected` in the sealed class (CS0628 warning, pre-existing shape, not widened here) - flagged. Probe: `EnsurePublicAccessibility` has one caller (`:568`); ripple is 1 production file. |
+| Validation | `dotnet test --filter TypeExtractionTests`; new tests fail on current code (private becomes public) and pass after. |
+| Performance review | N/A — correctness fix, no hot-path changes. |
+| CHANGELOG category | Fixed |
+| CHANGELOG entry (draft) | `extract_type_preview` keeps extracted members at their original accessibility and widens to `public` only members the retained source type still references. |
+| Backlog sync | Close rows: [extract-type-preserve-private-fields]. |
