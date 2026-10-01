@@ -114,6 +114,7 @@ Apart from `ROSLYNMCP_SANCTIONED_ROOTS` (empty default = deny all path access; s
 |---|---|---|
 | `ROSLYNMCP_MAX_WORKSPACES` | `16` | Maximum concurrent workspace sessions |
 | `ROSLYNMCP_BUILD_TIMEOUT_SECONDS` | `300` | Build operation timeout |
+| `ROSLYNMCP_RESTORE_TIMEOUT_SECONDS` | `90` | `workspace_load`/`workspace_reload` `autoRestore` budget (also clamped to the remaining request timeout minus a 30s reload reserve) |
 | `ROSLYNMCP_TEST_TIMEOUT_SECONDS` | `600` | Test run timeout |
 | `ROSLYNMCP_VULN_SCAN_TIMEOUT_SECONDS` | `120` | NuGet vulnerability scan timeout |
 | `ROSLYNMCP_PREVIEW_MAX_ENTRIES` | `20` | Preview store entries per store |

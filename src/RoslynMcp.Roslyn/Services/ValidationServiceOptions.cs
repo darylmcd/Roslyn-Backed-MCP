@@ -12,6 +12,20 @@ public sealed record ValidationServiceOptions
     public TimeSpan BuildTimeout { get; init; } = TimeSpan.FromMinutes(5);
 
     /// <summary>
+    /// Gets the maximum time allowed for the <c>dotnet restore</c> phase of
+    /// <c>workspace_load</c> / <c>workspace_reload</c> with <c>autoRestore=true</c> (queue wait
+    /// included, all restore invocations combined). The effective budget is also clamped to the
+    /// enclosing request deadline minus <see cref="RestoreReloadReserve"/>. Defaults to 90 seconds.
+    /// </summary>
+    public TimeSpan RestoreTimeout { get; init; } = TimeSpan.FromSeconds(90);
+
+    /// <summary>
+    /// Gets the time held back from the enclosing request deadline so the reload that follows a
+    /// successful auto-restore can still complete. Defaults to 30 seconds.
+    /// </summary>
+    public TimeSpan RestoreReloadReserve { get; init; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>
     /// Gets the maximum time allowed for a test run before it is cancelled.
     /// Defaults to 10 minutes.
     /// </summary>

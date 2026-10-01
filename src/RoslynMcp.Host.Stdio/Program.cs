@@ -250,6 +250,8 @@ static ValidationServiceOptions BindValidationServiceOptions()
 
     if (int.TryParse(buildSec, out var bs) && bs > 0)
         opts = opts with { BuildTimeout = TimeSpan.FromSeconds(bs) };
+    if (int.TryParse(ReadEnv("ROSLYNMCP_RESTORE_TIMEOUT_SECONDS"), out var rts) && rts > 0)
+        opts = opts with { RestoreTimeout = TimeSpan.FromSeconds(rts) };
     if (int.TryParse(testSec, out var ts) && ts > 0)
         opts = opts with { TestTimeout = TimeSpan.FromSeconds(ts) };
     if (int.TryParse(ReadEnv("ROSLYNMCP_MAX_RELATED_FILES"), out var mrf) && mrf > 0)
