@@ -540,18 +540,30 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
         // scanned the csproj XML, missed the imported reference, and happily added a second
         // `<PackageReference>` that NuGet later refuses.
         //
-        // The sample fixture's Directory.Build.props already declares Microsoft.CodeAnalysis.NetAnalyzers
-        // as a PackageReference for every project, so it acts as the "transitive-present" repro.
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        // Self-contained repro: the isolated workspace copy gets its own Directory.Build.props that
+        // declares the package for every project, so the test does not depend on which packages the
+        // repo-root Directory.Build.props happens to reference.
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        await File.WriteAllTextAsync(
+            Path.Combine(workspace.RootPath, "Directory.Build.props"),
+            """
+            <Project>
+              <ItemGroup>
+                <PackageReference Include="Humanizer.Core" Version="2.14.1" />
+              </ItemGroup>
+            </Project>
+            """,
+            CancellationToken.None).ConfigureAwait(false);
+        _ = await workspace.LoadAsync(CancellationToken.None).ConfigureAwait(false);
 
         var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             ProjectMutationService.PreviewAddPackageReferenceAsync(
                 workspace.WorkspaceId,
-                new AddPackageReferenceDto("SampleLib", "Microsoft.CodeAnalysis.NetAnalyzers", "10.0.100"),
+                new AddPackageReferenceDto("SampleLib", "Humanizer.Core", "2.14.1"),
                 CancellationToken.None));
 
         StringAssert.Contains(ex.Message, "already present");
-        StringAssert.Contains(ex.Message, "Microsoft.CodeAnalysis.NetAnalyzers");
+        StringAssert.Contains(ex.Message, "Humanizer.Core");
     }
 
     [TestMethod]

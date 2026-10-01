@@ -38,7 +38,6 @@
          (see the PackageReference in RoslynMcp.Tests.csproj for ExcludeAssets details). -->
     <PackageVersion Include="NuGet.Frameworks" Version="6.3.4" />
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="5.9.0" />
-    <PackageVersion Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="10.0.401" />
     <!-- Independently versioned package; do not align mechanically with the compiler family. -->
     <PackageVersion Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="5.6.0" />
     <PackageVersion Include="Nito.AsyncEx" Version="5.1.2" />
