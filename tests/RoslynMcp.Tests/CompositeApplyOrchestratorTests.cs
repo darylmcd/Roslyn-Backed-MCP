@@ -257,7 +257,12 @@ public sealed class CompositeApplyOrchestratorTests
         var started = Stopwatch.StartNew();
         await Assert.ThrowsExactlyAsync<UnauthorizedAccessException>(() =>
             AtomicFileWriter.WriteAllTextAsync(path, "replacement", CancellationToken.None));
-        Assert.IsTrue(started.Elapsed < TimeSpan.FromSeconds(5), "A persistent lock must fail within the retry bound.");
+        // The retry budget is 9 delays totalling about 2.4 s (ReplaceAfterTransientReaderAsync). Alone the
+        // test takes ~2 s, but under the full parallel suite (local gate and hosted runner) the timer
+        // delays stretch it to ~7 s, so a tight wall-clock bound measures machine load, not the retry
+        // contract. This bound only has to separate "bounded" from an unbounded wait; mirror the
+        // +30 s margin FormatterBaselineContractTests uses for the same reason.
+        Assert.IsTrue(started.Elapsed < TimeSpan.FromSeconds(30), "A persistent lock must fail within the retry bound.");
         Assert.AreEqual("original", await File.ReadAllTextAsync(path));
         AssertNoTempArtifacts(path);
     }
