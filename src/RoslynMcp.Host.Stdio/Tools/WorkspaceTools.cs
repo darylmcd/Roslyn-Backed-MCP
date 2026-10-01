@@ -186,10 +186,8 @@ public static class WorkspaceTools
         resolveExecutablePath ??= ProcessExecutablePathResolver.Resolve;
         if (processDrainTimeout <= TimeSpan.Zero)
         {
-            throw new ArgumentOutOfRangeException(
-                nameof(processDrainTimeout),
-                processDrainTimeout,
-                "Process drain timeout must be positive.");
+            throw new InvalidOperationException(
+                $"Process drain timeout must be positive (was {processDrainTimeout}).");
         }
 
         var logger = CreateLogger(loggerFactory);

@@ -17,9 +17,8 @@ internal static class HostEnvironmentOptions
             "auto-reload" or "autoreload" => StalenessPolicy.AutoReload,
             "warn" => StalenessPolicy.Warn,
             "off" or "none" or "disabled" => StalenessPolicy.Off,
-            _ => throw new ArgumentException(
-                $"Invalid ROSLYNMCP_ON_STALE value '{value}'. Use 'auto-reload', 'warn', or 'off'.",
-                nameof(value)),
+            _ => throw new InvalidOperationException(
+                $"Invalid ROSLYNMCP_ON_STALE value '{value}'. Use 'auto-reload', 'warn', or 'off'."),
         };
     }
 }

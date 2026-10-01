@@ -131,7 +131,7 @@ public sealed class ServerObservabilitySinkTests
             ServerObservabilitySinkKind.File,
             ServerObservabilityOptions.Parse(" file ").Sink);
 
-        var exception = Assert.ThrowsExactly<ArgumentException>(
+        var exception = Assert.ThrowsExactly<InvalidOperationException>(
             () => ServerObservabilityOptions.Parse(_secretSentinel));
         Assert.IsFalse(exception.Message.Contains(_secretSentinel, StringComparison.Ordinal));
     }

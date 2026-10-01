@@ -60,9 +60,8 @@ internal sealed class ToolTierSelection
 
     public override string ToString() => string.Join(',', s_validTiers.Where(Includes));
 
-    private static ArgumentException InvalidValue(string? value) =>
+    private static InvalidOperationException InvalidValue(string? value) =>
         new(
             $"Invalid {EnvironmentVariableName} value '{value}'. " +
-            "Use 'stable' or 'stable,experimental'; experimental tools require the stable baseline.",
-            nameof(value));
+            "Use 'stable' or 'stable,experimental'; experimental tools require the stable baseline.");
 }

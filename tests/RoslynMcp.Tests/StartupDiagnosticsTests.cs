@@ -287,11 +287,11 @@ public sealed class StartupDiagnosticsTests
     [TestMethod]
     public void ToolTierSelection_RejectsUnknownOrEmptyValues()
     {
-        var unknown = Assert.ThrowsExactly<ArgumentException>(() => ToolTierSelection.Parse("stable,beta"));
+        var unknown = Assert.ThrowsExactly<InvalidOperationException>(() => ToolTierSelection.Parse("stable,beta"));
         StringAssert.Contains(unknown.Message, ToolTierSelection.EnvironmentVariableName);
         StringAssert.Contains(unknown.Message, "stable,experimental");
-        Assert.ThrowsExactly<ArgumentException>(() => ToolTierSelection.Parse(" "));
-        Assert.ThrowsExactly<ArgumentException>(() => ToolTierSelection.Parse("experimental"));
+        Assert.ThrowsExactly<InvalidOperationException>(() => ToolTierSelection.Parse(" "));
+        Assert.ThrowsExactly<InvalidOperationException>(() => ToolTierSelection.Parse("experimental"));
     }
 
     [TestMethod]
@@ -436,7 +436,7 @@ public sealed class StartupDiagnosticsTests
     [TestMethod]
     public void InvalidOnStalePolicy_FailsFastInsteadOfSilentlyEnablingReload()
     {
-        var exception = Assert.ThrowsExactly<ArgumentException>(
+        var exception = Assert.ThrowsExactly<InvalidOperationException>(
             () => HostEnvironmentOptions.ParseStalenessPolicy("typo"));
 
         StringAssert.Contains(exception.Message, "ROSLYNMCP_ON_STALE");
