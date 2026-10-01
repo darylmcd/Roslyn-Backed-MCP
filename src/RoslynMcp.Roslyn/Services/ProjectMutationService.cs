@@ -514,6 +514,15 @@ public sealed class ProjectMutationService : IProjectMutationService
             return EmptyPreview($"No changes — central package version '{request.PackageId}' was not found.");
         }
 
+        // migrate-package-removes-shared-central-version: the removal is explicit operator intent, so it
+        // is still emitted, but any file that still references the package (in or outside the loaded
+        // workspace) will fail restore with NU1010 — name them so the operator can decide.
+        var consumers = CentralPackageConsumerScanner.FindConsumers(packagesPropsPath, request.PackageId);
+        IReadOnlyList<string>? warnings = consumers.Count == 0
+            ? null
+            : [$"Central package version '{request.PackageId}' is still referenced by {consumers.Count} file(s): " +
+               $"{string.Join(", ", consumers)}. Removing it breaks restore (NU1010) for those files until their references are removed."];
+
         return await PreviewXmlFileMutationAsync(workspaceId, packagesPropsPath, document =>
         {
             EnsureCentralPackageManagementEnabled(packagesPropsPath);
@@ -521,7 +530,7 @@ public sealed class ProjectMutationService : IProjectMutationService
             var element = document.Descendants("PackageVersion").First(candidate =>
                 string.Equals((string?)candidate.Attribute("Include"), request.PackageId, StringComparison.OrdinalIgnoreCase));
             OrchestrationMsBuildXml.RemoveElementCleanly(element);
-        }, $"Remove central package version '{request.PackageId}'", ct).ConfigureAwait(false);
+        }, $"Remove central package version '{request.PackageId}'", ct, warnings).ConfigureAwait(false);
     }
 
     public async Task<ApplyResultDto> ApplyProjectMutationAsync(string previewToken, CancellationToken ct)

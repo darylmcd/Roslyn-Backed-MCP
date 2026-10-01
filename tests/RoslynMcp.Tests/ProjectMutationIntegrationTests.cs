@@ -413,12 +413,51 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
             new RemoveCentralPackageVersionDto("Humanizer.Core"),
             CancellationToken.None);
 
+        Assert.IsNull(removePreview.Warnings, "Removing a central version nothing references must not warn.");
+
         var removeResult = await ProjectMutationService.ApplyProjectMutationAsync(removePreview.PreviewToken, CancellationToken.None);
         Assert.IsTrue(removeResult.Success, removeResult.Error);
 
         propsXml = XDocument.Load(packagesPropsPath);
         Assert.IsFalse(propsXml.Descendants("PackageVersion").Any(element =>
             string.Equals((string?)element.Attribute("Include"), "Humanizer.Core", StringComparison.OrdinalIgnoreCase)));
+    }
+
+    [TestMethod]
+    public async Task Remove_Central_Package_Version_Preview_Warns_Naming_Every_Consumer_Including_Out_Of_Workspace()
+    {
+        // migrate-package-removes-shared-central-version: the removal stays available (explicit
+        // operator intent) but must name each file that still references the package.
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var addPreview = await ProjectMutationService.PreviewAddCentralPackageVersionAsync(
+            workspace.WorkspaceId,
+            new AddCentralPackageVersionDto("Humanizer.Core", "2.14.1"),
+            CancellationToken.None);
+        var addResult = await ProjectMutationService.ApplyProjectMutationAsync(addPreview.PreviewToken, CancellationToken.None);
+        Assert.IsTrue(addResult.Success, addResult.Error);
+
+        const string referencingProject =
+            "<Project Sdk=\"Microsoft.NET.Sdk\"><ItemGroup><PackageReference Include=\"Humanizer.Core\" /></ItemGroup></Project>";
+        var outsideProject = workspace.GetPath("OutsideConsumer", "OutsideConsumer.csproj");
+        Directory.CreateDirectory(Path.GetDirectoryName(outsideProject)!);
+        await File.WriteAllTextAsync(outsideProject, referencingProject, CancellationToken.None);
+        var workspaceProject = workspace.GetPath("SampleLib", "SampleLib.csproj");
+        var workspaceProjectXml = XDocument.Load(workspaceProject, LoadOptions.PreserveWhitespace);
+        workspaceProjectXml.Root!.Add(new XElement("ItemGroup",
+            new XElement("PackageReference", new XAttribute("Include", "Humanizer.Core"))));
+        workspaceProjectXml.Save(workspaceProject, SaveOptions.DisableFormatting);
+
+        var removePreview = await ProjectMutationService.PreviewRemoveCentralPackageVersionAsync(
+            workspace.WorkspaceId,
+            new RemoveCentralPackageVersionDto("Humanizer.Core"),
+            CancellationToken.None);
+
+        Assert.IsNotNull(removePreview.Warnings);
+        var warning = removePreview.Warnings.Single();
+        StringAssert.Contains(warning, outsideProject);
+        StringAssert.Contains(warning, workspaceProject);
+        StringAssert.Contains(warning, "NU1010");
+        Assert.AreEqual(1, removePreview.Changes.Count, "The removal itself is still previewed.");
     }
 
     [TestMethod]
