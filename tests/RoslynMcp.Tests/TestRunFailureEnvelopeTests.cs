@@ -1241,6 +1241,23 @@ public sealed class TestRunFailureEnvelopeTests
 
         public Task<BuildResultDto> BuildProjectAsync(string workspaceId, string projectName, CancellationToken ct) =>
             throw _exception;
+
+        // The build tools drive the three-step API; every step fails with the injected exception
+        // so the tool-level failure envelope is exercised whichever step the tool reaches first.
+        public Task<BuildCommandPlan> PrepareWorkspaceBuildAsync(string workspaceId, CancellationToken ct) =>
+            throw _exception;
+
+        public BuildCommandPlan PrepareProjectBuild(string workspaceId, string projectName) =>
+            throw _exception;
+
+        public Task<BuildCommandRun> RunBuildCommandAsync(BuildCommandPlan plan, CancellationToken ct) =>
+            throw _exception;
+
+        public Task<BuildResultDto> CompleteBuildAsync(BuildCommandRun run, CancellationToken ct) =>
+            throw _exception;
+
+        public BuildResultDto CompleteBuildWithoutWorkspace(BuildCommandRun run) =>
+            throw _exception;
     }
 
     private sealed class ThrowingTestDiscoveryService : ITestDiscoveryService
