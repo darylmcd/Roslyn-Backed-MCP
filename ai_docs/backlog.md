@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-01T17:55:43Z
+**updated_at:** 2026-10-03T00:05:48Z
 
 ## Agent contract
 
@@ -49,7 +49,6 @@
 | id | pri | deps | do | size | detail |
 |----|-----|------|----|------|--------|
 | `logging-default-sink-disabled-stderr-swallowed` | High | logging-retention-destroys-repro-evidence | **Enable the bounded file sink by default for installed users** — ROSLYNMCP_OBSERVABILITY_SINK defaults to `disabled` and the plugin mcp.json never sets it, so an MCP host that swallows stderr leaves no evidence of a first failure. [type: quality] [source: logging-audit 20260930-1340] | M | items/logging-default-sink-disabled-stderr-swallowed.md |
-| `gated-validate-test-phase-budget` | High | gated-test-run-command-budget | **Run validate_* and workspace_fork_apply test phases under TestTimeout** — move them off the 25 s phase cap, report timeout verdicts, release the fork source lock, amend ADR 0010. [type: bug] [source: gated-build-test-operation-deadline] | M | items/gated-validate-test-phase-budget.md |
 
 ## Medium
 
@@ -148,6 +147,8 @@
 | `load-profile-full-suite` | Medium | — | **Profile full-suite load and decide the test worker cap** — capture thread-pool queue length, workers and CPU during verify-release locally and on hosted windows shards; name the saturating classes. [type: test-infrastructure] [source: load-sensitive-timing-tests-full-suite] | M | items/load-profile-full-suite.md |
 | `timing-test-reaudit-wave` | Medium | — | **Re-audit the remaining wall-clock-sensitive tests** — replace fixed deadlines on timers and spawned children with injected clocks or event waits; start with the pwsh pipe-lifetime test. [type: test-infrastructure] [source: load-sensitive-timing-tests-full-suite] | L | items/timing-test-reaudit-wave.md |
 | `gate-timing-tests-fail-under-machine-load` | Medium | — | **Make wall-clock-bound tests deterministic under load** — CiTopology docs-only allowlist pwsh 30 s limit and WorkspaceValidationVerdict git-scope test fail under a loaded full-suite run. [type: bug] [source: backlog-remediate 20261001T130338Z] | M | items/gate-timing-tests-fail-under-machine-load.md |
+| `workspace-fork-copy-linked-worktree-gitfile` | Medium | — | Exclude linked-worktree .git pointer files from fork copies; directory-only filtering currently copies source Git metadata references. [type: bug] [source: gated-validate-test-phase-budget review] | S | items/workspace-fork-copy-linked-worktree-gitfile.md |
+| `pipe-lifetime-test-global-build-server-shutdown` | Medium | — | Scope pipe-lifetime test cleanup to owned build servers; preserve unrelated workers. [type: test-infrastructure] [source: adjacent-review] | S | items/pipe-lifetime-test-global-build-server-shutdown.md |
 
 ## Low
 

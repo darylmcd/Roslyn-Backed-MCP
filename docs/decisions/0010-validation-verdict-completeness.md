@@ -25,10 +25,30 @@ test failures, and zero-test runs. If none applies, incomplete compilation retur
 uncancelled legacy results without project counts retain their existing behavior.
 Do not infer a compiler failure from `Success=false` alone.
 
-Let internal test-phase timeout exceptions reach the existing timeout boundary.
-Both tools return `timeout`, a `Timeout` failure envelope with `IsRetryable=true`,
-and a warning identifying `test_run`. Caller cancellation still propagates;
-unexpected runner exceptions still produce `test-failure`.
+Run related tests under the runner's `TestTimeout`, outside the 25-second internal
+validation phase cap. Both tools preserve the runner's `Timeout` failure envelope
+with `IsRetryable=false` and add a warning identifying `test_run`. The aggregate
+verdict is `timeout` after compiler and retained diagnostic errors, before test
+failures and zero-test runs. Compile, diagnostics, and discovery retain their
+internal phase cap and retryable timeout boundary. Caller cancellation still
+propagates; unexpected runner exceptions still produce `test-failure`.
+
+Capture compilation, diagnostics, discovery, and workspace generation under the
+source read gate. Release that gate and its `RequestTimeout` before testing; only
+the caller's cancellation token and the runner's `TestTimeout` apply to test
+execution. Preserve the captured scope and compilation verdict. If the workspace
+changes or closes during testing, add a `workspaceChangedDuringRun` warning and
+replace a would-be `clean` verdict with `workspace-changed`. A snapshot already
+stale before testing also produces `workspace-changed` with a separate
+`workspaceSnapshotWasStale` warning: refresh the workspace before re-running.
+Known compiler,
+diagnostic, test, timeout, and incomplete-compilation findings retain precedence.
+
+`workspace_fork_apply` holds the source writer lock only while copying the source
+and replaying the preview. Fork restore, loading, validation, and tests run after
+that lock is released, so source writes can proceed during fork tests.
+Capture the loaded fork workspace id before validation/testing so cancellation
+closes the session before its files are deleted.
 
 ## Compatibility and migration
 
@@ -41,8 +61,11 @@ Consumers must treat `compile-incomplete` as non-passing and retry compilation o
 inspect `compileResult.cancelled`, `completedProjects`, and `totalProjects` before
 proceeding. A zero error count alone does not prove success. Consumers previously
 treating a test-phase deadline as a test assertion failure should instead handle
-`timeout` using the retryable failure envelope. JSON, summary, and Markdown
-rendering retain the aggregate verdict.
+`timeout` using the runner's non-retryable failure envelope: narrow the test filter
+or raise `TestTimeout` before retrying. Internal in-memory phase timeouts remain
+retryable. JSON, summary, and Markdown rendering retain the aggregate verdict.
+Consumers must treat `workspace-changed` as non-passing and re-run validation
+against the new source snapshot.
 
 ## Validation
 
