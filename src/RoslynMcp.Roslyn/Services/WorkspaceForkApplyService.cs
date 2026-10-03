@@ -5,8 +5,8 @@ using Microsoft.CodeAnalysis;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
-using RoslynMcp.Roslyn.Helpers;
 using RoslynMcp.Roslyn.Contracts;
+using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -78,6 +78,7 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService
         new(FileSystemPath.Comparer);
 
     private readonly IWorkspaceManager _workspaceManager;
+    private readonly IWorkspaceExecutionGate _workspaceExecutionGate;
     private readonly IPreviewStore _previewStore;
     private readonly IWorkspaceValidationService _validationService;
     private readonly ITestRunnerService _testRunnerService;
@@ -86,6 +87,7 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService
 
     public WorkspaceForkApplyService(
         IWorkspaceManager workspaceManager,
+        IWorkspaceExecutionGate workspaceExecutionGate,
         IPreviewStore previewStore,
         IWorkspaceValidationService validationService,
         ITestRunnerService testRunnerService,
@@ -93,6 +95,7 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService
         ILogger<WorkspaceForkApplyService> logger)
     {
         _workspaceManager = workspaceManager;
+        _workspaceExecutionGate = workspaceExecutionGate;
         _previewStore = previewStore;
         _validationService = validationService;
         _testRunnerService = testRunnerService;
@@ -110,7 +113,6 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService
         CancellationToken ct)
     {
         var normalizedRetention = NormalizeRetention(retention);
-        var preview = RetrieveValidatedPreview(previewToken, workspaceId);
         var source = GetRequiredSourceContext(workspaceId);
         string? forkWorkspaceId = null;
         var cleanupWarnings = new List<string>();
@@ -118,25 +120,41 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService
 
         using var sourceRootLock =
             await AcquireForkApplyLockAsync(source.Root, ct).ConfigureAwait(false);
-        var forkPath = CreateForkDirectory(source.Root, forkName);
+        string? forkPath = null;
         try
         {
-            var validationState = await CreateAndValidateForkAsync(
-                preview.OriginalSolution,
-                preview.ModifiedSolution,
-                source.LoadedPath,
-                source.Root,
-                forkPath,
+            // Capture the source and replay its preview atomically. Once this finishes,
+            // restore, loading, and tests operate only on the isolated fork.
+            var preparedFork = await _workspaceExecutionGate.RunWriteAsync(workspaceId, async c =>
+            {
+                var preview = RetrieveValidatedPreview(previewToken, workspaceId);
+                var path = CreateForkDirectory(source.Root, forkName);
+                forkPath = path;
+                CopyDirectory(source.Root, path, c);
+                var appliedFiles = await ReplayPreviewIntoForkAsync(
+                    preview.OriginalSolution, preview.ModifiedSolution, source.Root, path, c)
+                    .ConfigureAwait(false);
+                return (Path: path, AppliedFiles: appliedFiles);
+            }, ct, applyStalenessPolicy: false).ConfigureAwait(false);
+            var forkLoadedPath = MapSourcePathToFork(source.LoadedPath, source.Root, preparedFork.Path);
+            await RestoreForkAsync(forkLoadedPath, ct).ConfigureAwait(false);
+            var forkStatus = await _workspaceManager
+                .LoadAsync(forkLoadedPath, EvictPolicy.Lru, ct)
+                .ConfigureAwait(false);
+            // Own the loaded session before validation/tests can throw or be cancelled.
+            forkWorkspaceId = forkStatus.WorkspaceId;
+            var validationState = await ValidateForkAsync(
+                forkWorkspaceId,
+                preparedFork.AppliedFiles,
                 runTests,
                 testFilter,
                 ct).ConfigureAwait(false);
-            forkWorkspaceId = validationState.WorkspaceId;
             var success = validationState.Success;
             retained = ShouldRetainFork(normalizedRetention, success);
 
             if (!retained)
             {
-                CleanupFork(forkWorkspaceId, forkPath, cleanupWarnings, ct);
+                CleanupFork(forkWorkspaceId, preparedFork.Path, cleanupWarnings, ct);
                 forkWorkspaceId = null;
                 if (cleanupWarnings.Count > 0)
                 {
@@ -147,7 +165,7 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService
             return new WorkspaceForkApplyResultDto(
                 success,
                 forkWorkspaceId,
-                forkPath,
+                preparedFork.Path,
                 retained,
                 validationState.AppliedFiles,
                 validationState.Validation,
@@ -156,7 +174,7 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService
         }
         catch
         {
-            if (!retained)
+            if (!retained && forkPath is not null)
             {
                 CleanupFork(forkWorkspaceId, forkPath, cleanupWarnings, CancellationToken.None);
             }
@@ -203,43 +221,26 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService
         return new SourceContext(loadedPath, sourceRoot);
     }
 
-    private async Task<ForkValidationState> CreateAndValidateForkAsync(
-        Solution originalSolution,
-        Solution modifiedSolution,
-        string loadedPath,
-        string sourceRoot,
-        string forkPath,
+    private async Task<ForkValidationState> ValidateForkAsync(
+        string forkWorkspaceId,
+        IReadOnlyList<string> appliedFiles,
         bool runTests,
         string? testFilter,
         CancellationToken ct)
     {
-        CopyDirectory(sourceRoot, forkPath, ct);
-        var appliedFiles = await ReplayPreviewIntoForkAsync(
-            originalSolution,
-            modifiedSolution,
-            sourceRoot,
-            forkPath,
-            ct).ConfigureAwait(false);
-        var forkLoadedPath = MapSourcePathToFork(loadedPath, sourceRoot, forkPath);
-        await RestoreForkAsync(forkLoadedPath, ct).ConfigureAwait(false);
-        var forkStatus = await _workspaceManager
-            .LoadAsync(forkLoadedPath, EvictPolicy.Lru, ct)
-            .ConfigureAwait(false);
-
         var validation = await _validationService.ValidateAsync(
-            forkStatus.WorkspaceId,
+            forkWorkspaceId,
             appliedFiles,
             runTests && string.IsNullOrWhiteSpace(testFilter),
             ct,
             summary: true).ConfigureAwait(false);
         var explicitTestRun = await RunExplicitTestsAsync(
-            forkStatus.WorkspaceId,
+            forkWorkspaceId,
             runTests,
             testFilter,
             ct).ConfigureAwait(false);
 
         return new ForkValidationState(
-            forkStatus.WorkspaceId,
             appliedFiles,
             validation,
             explicitTestRun,
@@ -719,7 +720,6 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService
     }
 
     private sealed record ForkValidationState(
-        string WorkspaceId,
         IReadOnlyList<string> AppliedFiles,
         WorkspaceValidationDto Validation,
         TestRunResultDto? ExplicitTestRun,

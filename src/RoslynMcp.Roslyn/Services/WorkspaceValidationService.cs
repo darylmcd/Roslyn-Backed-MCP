@@ -103,6 +103,62 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
             new ValidationRequestContext(workspaceId, changedFilePaths, runTests, summary, Array.Empty<string>()),
             ct);
 
+    public async Task<WorkspaceValidationPlan> PrepareValidationAsync(
+        string workspaceId, IReadOnlyList<string>? changedFilePaths, bool recentGitChanges,
+        bool summary, CancellationToken ct)
+    {
+        var status = _workspace.GetStatus(workspaceId);
+        var validation = recentGitChanges
+            ? await ValidateRecentGitChangesAsync(workspaceId, runTests: false, ct, summary).ConfigureAwait(false)
+            : await ValidateAsync(workspaceId, changedFilePaths, runTests: false, ct, summary).ConfigureAwait(false);
+        return new WorkspaceValidationPlan(workspaceId, status.WorkspaceVersion, status.IsStale, validation);
+    }
+
+    public async Task<WorkspaceValidationDto> CompleteValidationTestsAsync(WorkspaceValidationPlan plan, CancellationToken ct)
+    {
+        var validation = plan.Validation;
+        if (string.IsNullOrWhiteSpace(validation.DotnetTestFilter))
+            return validation;
+
+        var testRun = await RunRelatedTestsAsync(plan.WorkspaceId, validation.DotnetTestFilter, ct).ConfigureAwait(false);
+        var status = validation.OverallStatus is "compile-error" or "analyzer-error"
+            ? validation.OverallStatus
+            : ComputeOverallStatus(validation.CompileResult, [], testRun, runTests: true);
+        if (status == "clean" && validation.OverallStatus == "git-status-unknown")
+            status = "git-status-unknown";
+        var warnings = AppendTestZeroRunWarning(validation.Warnings, status, validation.DotnetTestFilter);
+        if (testRun.FailureEnvelope is { ErrorKind: "Timeout" } timeout)
+        {
+            warnings = warnings.Concat(new[]
+            {
+                $"validation phase 'test_run' exceeded TestTimeout; retryable=false; {timeout.Summary}"
+            }).ToArray();
+        }
+
+        bool workspaceChanged;
+        try
+        {
+            var current = _workspace.GetStatus(plan.WorkspaceId);
+            workspaceChanged = !current.IsLoaded || current.WorkspaceVersion != plan.WorkspaceVersion
+                || (current.IsStale && !plan.WasStale);
+        }
+        catch (KeyNotFoundException)
+        {
+            workspaceChanged = true;
+        }
+        if (workspaceChanged)
+        {
+            warnings = warnings.Concat(new[]
+            {
+                "workspaceChangedDuringRun: compilation and test discovery reflect the captured workspace snapshot; re-run validation."
+            }).ToArray();
+            if (status == "clean")
+                status = "workspace-changed";
+        }
+
+        return validation with { OverallStatus = status, TestRunResult = testRun, Warnings = warnings };
+    }
+
     /// <summary>
     /// post-edit-validate-workspace-scoped-to-touched-files: auto-derives the changed-file set
     /// from <c>git status --porcelain</c> in the solution directory, then forwards to the
@@ -195,6 +251,7 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         IReadOnlyList<string> unknownFiles,
         CancellationToken ct)
     {
+        var workspaceStatus = request.RunTests ? _workspace.GetStatus(request.WorkspaceId) : null;
         // Stage 1: in-memory compile check across the whole workspace.
         var compile = await RunValidationPhaseAsync(
             "compile_check",
@@ -214,14 +271,8 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
             ct).ConfigureAwait(false);
         var allErrors = MergeErrorDiagnostics(compile, diagResult);
 
-        // Stages 3+4: discover related tests and (optionally) run them.
-        var (related, testRunResult) = await DiscoverAndOptionallyRunTestsAsync(
-            request.WorkspaceId, changedFiles, request.RunTests, ct).ConfigureAwait(false);
-
-        var status = ComputeOverallStatus(compile, allErrors, testRunResult, request.RunTests);
-
-        var emittedWarnings = AppendTestZeroRunWarning(
-            request.Warnings, status, related.DotnetTestFilter);
+        var related = await DiscoverRelatedTestsAsync(request.WorkspaceId, changedFiles, ct).ConfigureAwait(false);
+        var status = ComputeOverallStatus(compile, allErrors, testRunResult: null, runTests: false);
 
         // validate-workspace-output-cap-summary-mode: drop per-diagnostic + per-test detail
         // when caller asked for a summary. Counts + status still surface the verdict; the
@@ -231,7 +282,7 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         var emittedErrors = request.Summary ? Array.Empty<DiagnosticDto>() : (IReadOnlyList<DiagnosticDto>)allErrors;
         var emittedTests = request.Summary ? Array.Empty<RelatedTestCaseDto>() : related.Tests;
 
-        return new WorkspaceValidationDto(
+        var validation = new WorkspaceValidationDto(
             OverallStatus: status,
             ChangedFilePaths: changedFiles,
             UnknownFilePaths: unknownFiles,
@@ -245,8 +296,12 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
             WarningCount: compile.WarningCount,
             DiscoveredTests: emittedTests,
             DotnetTestFilter: string.IsNullOrWhiteSpace(related.DotnetTestFilter) ? null : related.DotnetTestFilter,
-            TestRunResult: testRunResult,
-            Warnings: emittedWarnings);
+            TestRunResult: null,
+            Warnings: request.Warnings);
+        return workspaceStatus is not null
+            ? await CompleteValidationTestsAsync(new WorkspaceValidationPlan(
+                request.WorkspaceId, workspaceStatus.WorkspaceVersion, workspaceStatus.IsStale, validation), ct).ConfigureAwait(false)
+            : validation;
     }
 
     /// <summary>
@@ -321,14 +376,11 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
     }
 
     /// <summary>
-    /// Stage 3 (discover related tests for the changed files) plus optional Stage 4 (run them
-    /// when <paramref name="runTests"/> is set and a filter was discovered). Returns the
-    /// discovered-tests DTO and the test-run result (null when tests were not run).
+    /// Discovers related tests for the resolved changed-file set under the in-memory phase cap.
     /// </summary>
-    private async Task<(RelatedTestsForFilesDto Related, TestRunResultDto? TestRunResult)> DiscoverAndOptionallyRunTestsAsync(
+    private async Task<RelatedTestsForFilesDto> DiscoverRelatedTestsAsync(
         string workspaceId,
         IReadOnlyList<string> changedFiles,
-        bool runTests,
         CancellationToken ct)
     {
         // Stage 3: discover related tests for the changed files (no test execution yet).
@@ -349,49 +401,39 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
                     workspaceId, changedFiles, MaxRelatedTestsCap, token),
                 ct).ConfigureAwait(false);
 
-        // Stage 4: optionally run the related tests.
-        TestRunResultDto? testRunResult = null;
-        if (runTests && !string.IsNullOrWhiteSpace(related.DotnetTestFilter))
-        {
-            try
-            {
-                testRunResult = await RunValidationPhaseAsync(
-                    "test_run",
-                    token => _testRunner.RunTestsAsync(
-                        workspaceId, projectName: null, filter: related.DotnetTestFilter, token),
-                    ct).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) { throw; }
-            catch (InternalValidationTimeoutException) { throw; }
-            catch (Exception ex)
-            {
-                // Surface the failure as a synthetic result rather than throwing — the validation
-                // bundle should always return a structured envelope so the agent can act on it.
-                var failure = CreateUnexpectedFailure(
-                    ex,
-                    WorkspaceValidationFailureOperation.DotnetTest);
-                var summary = failure.Summary;
-                testRunResult = new TestRunResultDto(
-                    new CommandExecutionDto(
-                        Command: "dotnet",
-                        Arguments: ["test", "--filter", related.DotnetTestFilter],
-                        WorkingDirectory: string.Empty,
-                        TargetPath: string.Empty,
-                        ExitCode: -1,
-                        Succeeded: false,
-                        DurationMs: 0,
-                        StdOut: string.Empty,
-                        StdErr: summary),
-                    Total: 0, Passed: 0, Failed: 1, Skipped: 0,
-                    Failures: [],
-                    FailureEnvelope: new TestRunFailureEnvelopeDto(
-                        ErrorKind: failure.Category, IsRetryable: false,
-                        Summary: summary,
-                        StdOutTail: null, StdErrTail: null));
-            }
-        }
+        return related;
+    }
 
-        return (related, testRunResult);
+    private async Task<TestRunResultDto> RunRelatedTestsAsync(string workspaceId, string filter, CancellationToken ct)
+    {
+        try
+        {
+            // The runner owns TestTimeout, including command queue wait.
+            return await _testRunner.RunTestsAsync(workspaceId, projectName: null, filter, ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            var failure = CreateUnexpectedFailure(ex, WorkspaceValidationFailureOperation.DotnetTest);
+            var summary = failure.Summary;
+            return new TestRunResultDto(
+                new CommandExecutionDto(
+                    Command: "dotnet",
+                    Arguments: ["test", "--filter", filter],
+                    WorkingDirectory: string.Empty,
+                    TargetPath: string.Empty,
+                    ExitCode: -1,
+                    Succeeded: false,
+                    DurationMs: 0,
+                    StdOut: string.Empty,
+                    StdErr: summary),
+                Total: 0, Passed: 0, Failed: 1, Skipped: 0,
+                Failures: [],
+                FailureEnvelope: new TestRunFailureEnvelopeDto(
+                    ErrorKind: failure.Category, IsRetryable: false,
+                    Summary: summary,
+                    StdOutTail: null, StdErrTail: null));
+        }
     }
 
     /// <summary>Report an observed empty test run only when it determines the verdict.</summary>
@@ -547,6 +589,8 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
             return "compile-error";
         if (errors.Count > 0)
             return "analyzer-error";
+        if (runTests && testRunResult?.FailureEnvelope?.ErrorKind == "Timeout")
+            return "timeout";
         if (runTests && testRunResult is not null && testRunResult.Failed > 0)
             return "test-failure";
         if (runTests && testRunResult is not null && testRunResult.Total == 0)

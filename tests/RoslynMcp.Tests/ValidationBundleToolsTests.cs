@@ -409,13 +409,20 @@ public sealed class ValidationBundleToolsTests
 
     /// <summary>
     /// Stand-in for <see cref="IWorkspaceValidationService"/> that throws the supplied
-    /// exception on the <c>ValidateRecentGitChangesAsync</c> entry point. Used to exercise
-    /// the tool's envelope-wrapping path without wiring a real Roslyn workspace / git subprocess.
+    /// exception during preparation. Used to exercise the tool's host-boundary propagation
+    /// without wiring a real Roslyn workspace / git subprocess.
     /// </summary>
     private sealed class ThrowingValidationService : IWorkspaceValidationService
     {
         private readonly Exception _toThrow;
         public ThrowingValidationService(Exception toThrow) => _toThrow = toThrow;
+
+        public Task<WorkspaceValidationPlan> PrepareValidationAsync(string workspaceId,
+            IReadOnlyList<string>? changedFilePaths, bool recentGitChanges, bool summary, CancellationToken ct) =>
+            Task.FromException<WorkspaceValidationPlan>(_toThrow);
+
+        public Task<WorkspaceValidationDto> CompleteValidationTestsAsync(WorkspaceValidationPlan plan, CancellationToken ct) =>
+            Task.FromException<WorkspaceValidationDto>(_toThrow);
 
         public Task<WorkspaceValidationDto> ValidateAsync(
             string workspaceId, IReadOnlyList<string>? changedFilePaths, bool runTests,
@@ -428,13 +435,20 @@ public sealed class ValidationBundleToolsTests
     }
 
     /// <summary>
-    /// Stand-in that returns a pre-built DTO on the <c>ValidateRecentGitChangesAsync</c>
-    /// entry point, so the success-path pass-through contract can be asserted.
+    /// Stand-in that prepares a pre-built DTO so the success-path pass-through contract
+    /// can be asserted.
     /// </summary>
     private sealed class SuccessfulValidationService : IWorkspaceValidationService
     {
         private readonly WorkspaceValidationDto _dto;
         public SuccessfulValidationService(WorkspaceValidationDto dto) => _dto = dto;
+
+        public Task<WorkspaceValidationPlan> PrepareValidationAsync(string workspaceId,
+            IReadOnlyList<string>? changedFilePaths, bool recentGitChanges, bool summary, CancellationToken ct) =>
+            Task.FromResult(new WorkspaceValidationPlan(workspaceId, 0, false, _dto));
+
+        public Task<WorkspaceValidationDto> CompleteValidationTestsAsync(WorkspaceValidationPlan plan, CancellationToken ct) =>
+            Task.FromResult(_dto);
 
         public Task<WorkspaceValidationDto> ValidateAsync(
             string workspaceId, IReadOnlyList<string>? changedFilePaths, bool runTests,

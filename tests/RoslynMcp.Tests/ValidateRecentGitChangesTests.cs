@@ -647,6 +647,13 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
 
     private sealed class ThrowingWorkspaceValidationService : IWorkspaceValidationService
     {
+        public Task<WorkspaceValidationPlan> PrepareValidationAsync(string workspaceId,
+            IReadOnlyList<string>? changedFilePaths, bool recentGitChanges, bool summary, CancellationToken ct) =>
+            throw new InvalidOperationException("injected validation failure");
+
+        public Task<WorkspaceValidationDto> CompleteValidationTestsAsync(WorkspaceValidationPlan plan, CancellationToken ct) =>
+            throw new NotSupportedException("Tests never execute after the injected preparation failure.");
+
         public Task<WorkspaceValidationDto> ValidateAsync(
             string workspaceId,
             IReadOnlyList<string>? changedFilePaths,

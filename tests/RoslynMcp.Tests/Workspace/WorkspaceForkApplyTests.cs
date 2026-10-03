@@ -11,7 +11,7 @@ namespace RoslynMcp.Tests;
 
 // donotparallelize-audit-wave-35: [DoNotParallelize] removed. Each fork-apply test loads its own
 // GUID-unique IsolatedWorkspaceScope copy, stores a token-keyed preview for that workspace id only,
-// and runs workspace_fork_apply under the per-workspace write gate. The fork is created under the
+// and copies/replays workspace_fork_apply under the per-workspace write gate. The fork is created under the
 // copy's own .roslynmcp/forks directory, the static ForkApplyLocks entry is keyed by that unique
 // source root, and the retained fork workspace is closed and deleted in finally. The fork's real
 // `dotnet restore` targets only the fork directory — the same shape parallel-enabled
@@ -41,7 +41,6 @@ public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
         var validationService = CreateValidationService();
 
         var json = await ValidationBundleTools.WorkspaceForkApply(
-            WorkspaceExecutionGate,
             CreateForkApplyService(validationService),
             workspace.WorkspaceId,
             token,
@@ -83,7 +82,6 @@ public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
         var validationService = CreateValidationService();
 
         var json = await ValidationBundleTools.WorkspaceForkApply(
-            WorkspaceExecutionGate,
             CreateForkApplyService(validationService),
             workspace.WorkspaceId,
             token,
@@ -118,6 +116,73 @@ public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task WorkspaceForkApply_TestsDoNotBlockSourceWrite(bool explicitFilter)
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync();
+        var token = await StoreDogPreviewAsync(workspace.WorkspaceId, source =>
+            source.Replace("Woof", "ForkWoof", StringComparison.Ordinal));
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var runner = new BlockingTestRunner(entered, release);
+        var validation = new WorkspaceValidationService(
+            CompileCheckService, DiagnosticService, new FixedDiscovery(), runner, WorkspaceManager);
+        var service = new WorkspaceForkApplyService(
+            WorkspaceManager, WorkspaceExecutionGate, PreviewStore, validation, runner, new DotnetCommandRunner(),
+            NullLogger<WorkspaceForkApplyService>.Instance);
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+        var forkTask = ValidationBundleTools.WorkspaceForkApply(
+            service, workspace.WorkspaceId, token,
+            retention: "drop-always", runTests: true,
+            testFilter: explicitFilter ? "FullyQualifiedName=ForkProbe" : null,
+            ct: cancellation.Token);
+        Task<bool>? writeTask = null;
+        try
+        {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(45));
+            writeTask = WorkspaceExecutionGate.RunWriteAsync(workspace.WorkspaceId, async ct =>
+            {
+                await File.AppendAllTextAsync(workspace.GetPath("SampleLib", "Dog.cs"),
+                    "\n// source write during fork tests\n", ct);
+                return true;
+            }, cancellation.Token, applyStalenessPolicy: false);
+            Assert.IsTrue(await writeTask.WaitAsync(TimeSpan.FromSeconds(2)),
+                "Source writes must complete while fork tests are still blocked.");
+            Assert.IsFalse(forkTask.IsCompleted);
+        }
+        finally
+        {
+            release.TrySetResult();
+            await forkTask;
+            if (writeTask is not null)
+                await writeTask;
+        }
+    }
+
+    [TestMethod]
+    public async Task WorkspaceForkApply_CallerCancellation_ClosesLoadedFork()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync();
+        var token = await StoreDogPreviewAsync(workspace.WorkspaceId, source =>
+            source.Replace("Woof", "ForkWoof", StringComparison.Ordinal));
+        using var cancellation = new CancellationTokenSource();
+        var runner = new CancellingTestRunner(cancellation);
+        var service = new WorkspaceForkApplyService(
+            WorkspaceManager, WorkspaceExecutionGate, PreviewStore, CreateValidationService(), runner,
+            new DotnetCommandRunner(), NullLogger<WorkspaceForkApplyService>.Instance);
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() => ValidationBundleTools.WorkspaceForkApply(
+            service, workspace.WorkspaceId, token, runTests: true,
+            testFilter: "FullyQualifiedName=ForkProbe", ct: cancellation.Token));
+        Assert.IsNotNull(runner.WorkspaceId);
+        Assert.IsFalse(WorkspaceManager.ContainsWorkspace(runner.WorkspaceId),
+            "Cancellation after fork loading must close the fork workspace before deleting its files.");
+        Assert.IsNotNull(runner.ForkPath);
+        Assert.IsFalse(Directory.Exists(runner.ForkPath), "Cancelled fork files must also be removed.");
+    }
+
+    [TestMethod]
     [DataRow("drop-on-success", true, false)]
     [DataRow("drop-on-success", false, true)]
     [DataRow("drop-on-failure", true, true)]
@@ -143,6 +208,7 @@ public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
             $"?api_key={secret} Authorization: Bearer {secret}");
         var service = new WorkspaceForkApplyService(
             workspaceManager: null!,
+            workspaceExecutionGate: null!,
             previewStore: null!,
             validationService: null!,
             testRunnerService: null!,
@@ -170,6 +236,7 @@ public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
         var expected = new OperationCanceledException("runner-owned cancellation");
         var service = new WorkspaceForkApplyService(
             workspaceManager: null!,
+            workspaceExecutionGate: null!,
             previewStore: null!,
             validationService: null!,
             testRunnerService: null!,
@@ -198,6 +265,7 @@ public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
         WorkspaceValidationService validationService) =>
         new(
             WorkspaceManager,
+            WorkspaceExecutionGate,
             PreviewStore,
             validationService,
             TestRunnerService,
@@ -248,5 +316,46 @@ public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
             IReadOnlyList<string> arguments,
             CancellationToken ct) =>
             Task.FromException<CommandExecutionDto>(exception);
+    }
+
+    private sealed class BlockingTestRunner(TaskCompletionSource entered, TaskCompletionSource release) : ITestRunnerService
+    {
+        public async Task<TestRunResultDto> RunTestsAsync(
+            string workspaceId, string? projectName, string? filter, CancellationToken ct)
+        {
+            entered.TrySetResult();
+            await release.Task.WaitAsync(ct);
+            return new TestRunResultDto(
+                new CommandExecutionDto("dotnet", ["test"], string.Empty, string.Empty, 0, true, 0, string.Empty, string.Empty),
+                Total: 1, Passed: 1, Failed: 0, Skipped: 0, Failures: []);
+        }
+    }
+
+    private sealed class FixedDiscovery : ITestDiscoveryService
+    {
+        public Task<RelatedTestsForFilesDto> FindRelatedTestsForFilesAsync(
+            string workspaceId, IReadOnlyList<string> filePaths, int maxResults, CancellationToken ct) =>
+            Task.FromResult(new RelatedTestsForFilesDto([], "FullyQualifiedName=ForkProbe",
+                new PaginationInfo(0, 0, false), new RelatedTestsDiagnosticsDto(1, ["fixed test fixture"], [])));
+
+        public Task<TestDiscoveryDto> DiscoverTestsAsync(string workspaceId, CancellationToken ct) => throw new NotSupportedException();
+
+        public Task<RelatedTestsForSymbolDto> FindRelatedTestsAsync(string workspaceId, SymbolLocator locator,
+            int maxResults, CancellationToken ct) => throw new NotSupportedException();
+    }
+
+    private sealed class CancellingTestRunner(CancellationTokenSource cancellation) : ITestRunnerService
+    {
+        public string? WorkspaceId { get; private set; }
+        public string? ForkPath { get; private set; }
+
+        public Task<TestRunResultDto> RunTestsAsync(
+            string workspaceId, string? projectName, string? filter, CancellationToken ct)
+        {
+            WorkspaceId = workspaceId;
+            ForkPath = Path.GetDirectoryName(WorkspaceManager.GetStatus(workspaceId).LoadedPath);
+            cancellation.Cancel();
+            return Task.FromCanceled<TestRunResultDto>(ct);
+        }
     }
 }

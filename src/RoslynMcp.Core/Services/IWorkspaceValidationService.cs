@@ -10,6 +10,14 @@ namespace RoslynMcp.Core.Services;
 /// </summary>
 public interface IWorkspaceValidationService
 {
+    /// <summary>Capture compilation, diagnostics, discovery, and workspace generation under the caller's read gate.</summary>
+    Task<WorkspaceValidationPlan> PrepareValidationAsync(
+        string workspaceId, IReadOnlyList<string>? changedFilePaths, bool recentGitChanges,
+        bool summary, CancellationToken ct);
+
+    /// <summary>Run the captured related-test filter outside the read gate and its request deadline.</summary>
+    Task<WorkspaceValidationDto> CompleteValidationTestsAsync(WorkspaceValidationPlan plan, CancellationToken ct);
+
     /// <summary>Compile and collect diagnostics across the whole workspace, then discover related tests for the resolved changed files.</summary>
     /// <param name="changedFilePaths">Paths used for related-test discovery, not compiler or diagnostic filtering. Null or empty uses the change tracker, reconciled with Git when available.</param>
     /// <param name="summary">
@@ -49,10 +57,28 @@ public interface IWorkspaceValidationService
         bool summary = false);
 }
 
+/// <summary>Host-side validation snapshot; never serialized as a tool response.</summary>
+public sealed record WorkspaceValidationPlan(
+    string WorkspaceId, int WorkspaceVersion, bool WasStale, WorkspaceValidationDto Validation);
+
 /// <summary>
 /// Aggregated output of <see cref="IWorkspaceValidationService.ValidateAsync"/>.
 /// </summary>
-/// <param name="OverallStatus">One of <c>clean</c>, <c>compile-error</c>, <c>analyzer-error</c>, <c>test-failure</c>, <c>test-zero-run</c>, <c>git-status-unknown</c>, <c>timeout</c>, <c>compile-incomplete</c>. <c>compile-incomplete</c> means compilation was cancelled or fewer projects completed than were selected, with no higher-priority diagnostic or test failure. Retry compilation before treating validation as passing. <c>analyzer-error</c> covers retained Error-severity diagnostics beyond the authoritative compiler error count, including analyzer/workspace errors and uncorroborated compiler-category errors when compilation is incomplete. <c>test-zero-run</c> (added in validate-workspace-runtests-total-zero) indicates <c>runTests=true</c> produced <c>testRunResult.Total=0</c> with no reported test failures and a non-empty discovered filter. No tests were reported; investigate with the same filter before treating the run as passing. <c>git-status-unknown</c> (added in validate-recent-git-changes-status-timeout-false-clean) is emitted only by <see cref="IWorkspaceValidationService.ValidateRecentGitChangesAsync"/> when the <c>git status</c> collection exceeded its own timeout: the verdict would otherwise have been <c>clean</c>, but it was computed over a change-tracker fallback scope rather than the real working tree, so it cannot be distinguished from a genuinely clean tree — re-run (the warning carries <c>retryable=true</c>) or raise <c>ROSLYNMCP_GIT_STATUS_TIMEOUT_SECONDS</c>. <c>timeout</c> is emitted when an internal validation phase exceeds its own timeout: <see cref="CompileCheckDto.Cancelled"/> is <see langword="true"/> and the synthetic test-run failure envelope reports an <c>ErrorKind</c> of <c>Timeout</c> even when <c>runTests=false</c>. Callers exact-matching <c>"clean"</c> as the only passing verdict need to treat <c>"test-zero-run"</c>, <c>"git-status-unknown"</c>, and <c>"timeout"</c> as non-passing verdicts too.</param>
+/// <param name="OverallStatus">
+/// One of <c>clean</c>, <c>compile-error</c>, <c>analyzer-error</c>, <c>test-failure</c>,
+/// <c>test-zero-run</c>, <c>git-status-unknown</c>, <c>timeout</c>, <c>compile-incomplete</c>,
+/// or <c>workspace-changed</c>. Only <c>clean</c> is passing.
+/// Compiler and analyzer errors take precedence over test outcomes. <c>compile-incomplete</c>
+/// means compilation was cancelled or fewer projects completed than were selected, with no
+/// higher-priority error or test outcome. <c>test-zero-run</c> means a non-empty discovered
+/// filter produced no reported tests. <c>git-status-unknown</c> means Git collection timed out
+/// and an otherwise clean verdict used the change-tracker fallback scope.
+/// <c>timeout</c> covers an internal compilation, diagnostics, or discovery phase timeout
+/// (synthetic retryable envelope), or the test runner's own timeout (its original non-retryable
+/// envelope and compilation result are retained). <c>workspace-changed</c> means an otherwise
+/// clean result used a workspace snapshot that changed or closed during test execution.
+/// Investigate the warnings and re-run validation before treating these verdicts as passing.
+/// </param>
 /// <param name="ChangedFilePaths">Resolved caller-supplied or tracker-derived paths used for related-test discovery, retained on phase timeout. Compilation and diagnostic collection cover the whole workspace.</param>
 /// <param name="UnknownFilePaths">
 /// dr-9-8-bug-validate-fabricated-accepts-fabricated-silen — caller-supplied paths that did NOT

@@ -1,5 +1,10 @@
+using System.Text.Json;
+using Microsoft.CodeAnalysis.Text;
+using Microsoft.Extensions.Time.Testing;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Tools;
+using RoslynMcp.Roslyn.Helpers;
 using RoslynMcp.Roslyn.Services;
 using RoslynMcp.Tests.Support;
 
@@ -69,7 +74,7 @@ public sealed class WorkspaceValidationVerdictTests : IsolatedWorkspaceTestBase
     [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
-    public async Task TestPhaseTimeout_IsRetryable_AndCallerCancellationStillPropagates(bool gitScope)
+    public async Task TestPhaseTimeout_AndCallerCancellationStillPropagates(bool gitScope)
     {
         if (!GitFixtureRunner.IsAvailable(out var reason))
             Assert.Inconclusive($"Git unavailable: {reason}");
@@ -80,20 +85,22 @@ public sealed class WorkspaceValidationVerdictTests : IsolatedWorkspaceTestBase
         var path = workspace.GetPath("SampleLib", "AnimalService.cs");
         await File.AppendAllTextAsync(path, "\n// timeout scope\n");
         var entered = false;
-        var runner = new DelegateRunner(async token =>
+        var expected = DotnetOutputParser.BuildTimeoutResult(
+            PassingTests().Execution with { ExitCode = -1, Succeeded = false }, "TestTimeout exhausted");
+        var runner = new DelegateRunner(token =>
         {
             entered = true;
-            await Task.Delay(Timeout.InfiniteTimeSpan, token);
-            throw new InvalidOperationException("Cancellation must end the runner.");
+            return Task.FromResult(expected);
         });
-        var service = CreateService(Compile(), runner, phaseTimeout: TimeSpan.FromMilliseconds(50));
+        var service = CreateService(Compile(), runner);
         var result = await ValidateAsync(service, workspace.WorkspaceId, path, gitScope);
-        Assert.IsTrue(entered, "Only the test phase may block; earlier phases return synchronously.");
+        Assert.IsTrue(entered, "The validation bundle must invoke the test runner.");
         Assert.AreEqual("timeout", result.OverallStatus);
+        Assert.AreSame(expected, result.TestRunResult);
         CollectionAssert.AreEqual(new[] { path }, result.ChangedFilePaths.ToArray());
         Assert.IsNotNull(result.TestRunResult?.FailureEnvelope);
         Assert.AreEqual("Timeout", result.TestRunResult.FailureEnvelope.ErrorKind);
-        Assert.IsTrue(result.TestRunResult.FailureEnvelope.IsRetryable);
+        Assert.IsFalse(result.TestRunResult.FailureEnvelope.IsRetryable);
         Assert.IsTrue(result.Warnings.Any(w => w.Contains("'test_run'", StringComparison.Ordinal)));
 
         using var cancellation = new CancellationTokenSource();
@@ -106,6 +113,119 @@ public sealed class WorkspaceValidationVerdictTests : IsolatedWorkspaceTestBase
         var cancellingService = CreateService(Compile(), cancellingRunner);
         await Assert.ThrowsAsync<OperationCanceledException>(() =>
             ValidateAsync(cancellingService, workspace.WorkspaceId, path, gitScope, ct: cancellation.Token));
+    }
+
+    [TestMethod]
+    [DataRow(false, "unchanged")]
+    [DataRow(true, "unchanged")]
+    [DataRow(false, "changed")]
+    [DataRow(true, "changed")]
+    [DataRow(false, "closed")]
+    [DataRow(true, "closed")]
+    public async Task ValidationTool_TestRunOutlastsRequestDeadline_AndReleasesSourceReaders(bool gitScope, string mutation)
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync();
+        GitFixtureRunner.InitializeRepository(workspace.RootPath);
+        GitFixtureRunner.StageAndCommitAll(workspace.RootPath);
+        var path = workspace.GetPath("SampleLib", "AnimalService.cs");
+        await File.AppendAllTextAsync(path, "\n// request budget probe\n");
+        var clock = new FakeTimeProvider();
+        using var gate = new WorkspaceExecutionGate(
+            new ExecutionGateOptions { RequestTimeout = TimeSpan.FromSeconds(5) }, WorkspaceManager, clock);
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var runner = new DelegateRunner(async ct =>
+        {
+            entered.TrySetResult();
+            await release.Task.WaitAsync(ct);
+            return PassingTests();
+        });
+        var service = CreateService(Compile(), runner);
+        var task = gitScope
+            ? ValidationBundleTools.ValidateRecentGitChanges(gate, service, workspace.WorkspaceId, runTests: true)
+            : ValidationBundleTools.ValidateWorkspace(gate, service, workspace.WorkspaceId, [path], runTests: true);
+        Task<bool>? writeTask = null;
+        try
+        {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            clock.Advance(TimeSpan.FromSeconds(6));
+            writeTask = gate.RunWriteAsync(workspace.WorkspaceId, _ =>
+            {
+                if (mutation == "closed")
+                    WorkspaceManager.Close(workspace.WorkspaceId);
+                else if (mutation == "changed")
+                {
+                    var solution = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+                    var document = solution.GetDocument(solution.GetDocumentIdsWithFilePath(path).Single());
+                    Assert.IsNotNull(document);
+                    Assert.IsTrue(WorkspaceManager.TryApplyChanges(workspace.WorkspaceId,
+                        solution.WithDocumentText(document.Id, SourceText.From("namespace SampleLib; public class AnimalService {}"))));
+                }
+                return Task.FromResult(true);
+            }, CancellationToken.None, applyStalenessPolicy: false);
+            Assert.IsTrue(await writeTask.WaitAsync(TimeSpan.FromSeconds(2)));
+        }
+        finally
+        {
+            release.TrySetResult();
+            if (writeTask is not null)
+                await writeTask;
+        }
+        var json = await task;
+        using var result = JsonDocument.Parse(json);
+        Assert.AreEqual(mutation == "unchanged" ? "clean" : "workspace-changed",
+            result.RootElement.GetProperty("overallStatus").GetString());
+        Assert.AreEqual(1, result.RootElement.GetProperty("testRunResult").GetProperty("passed").GetInt32());
+        Assert.AreEqual(path, result.RootElement.GetProperty("changedFilePaths")[0].GetString());
+        if (mutation != "unchanged")
+            StringAssert.Contains(json, "workspaceChangedDuringRun");
+    }
+
+    [TestMethod]
+    [DataRow(false, false, "timeout")]
+    [DataRow(true, false, "compile-error")]
+    [DataRow(false, true, "analyzer-error")]
+    [DataRow(true, true, "compile-error")]
+    public void TestRunTimeout_PreservesVerdictPrecedence(bool compilerError, bool diagnosticError, string expected)
+    {
+        var timeout = DotnetOutputParser.BuildTimeoutResult(
+            PassingTests().Execution with { ExitCode = -1, Succeeded = false }, "TestTimeout exhausted");
+        var compile = Compile(cancelled: true) with { ErrorCount = compilerError ? 1 : 0 };
+        DiagnosticDto[] errors = diagnosticError
+            ? [new DiagnosticDto("CA1000", "design error", "Error", "Design", null, 1, 1, 1, 2)]
+            : [];
+
+        Assert.AreEqual(expected, WorkspaceValidationService.ComputeOverallStatus(compile, errors, timeout, runTests: true));
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task TestRun_OutlastsValidationPhaseCap_AndPreservesRunnerResult(bool gitScope)
+    {
+        if (!GitFixtureRunner.IsAvailable(out var reason))
+            Assert.Inconclusive($"Git unavailable: {reason}");
+
+        await using var workspace = await CreateIsolatedWorkspaceAsync();
+        GitFixtureRunner.InitializeRepository(workspace.RootPath);
+        GitFixtureRunner.StageAndCommitAll(workspace.RootPath);
+        var path = workspace.GetPath("SampleLib", "AnimalService.cs");
+        await File.AppendAllTextAsync(path, "\n// long test run scope\n");
+        var expected = PassingTests();
+        var entered = false;
+        var runner = new DelegateRunner(async token =>
+        {
+            entered = true;
+            await Task.Delay(TimeSpan.FromMilliseconds(200), token);
+            return expected;
+        });
+        var service = CreateService(Compile(), runner, phaseTimeout: TimeSpan.FromMilliseconds(50));
+        var result = await ValidateAsync(service, workspace.WorkspaceId, path, gitScope);
+
+        Assert.IsTrue(entered);
+        Assert.AreEqual("clean", result.OverallStatus);
+        Assert.AreSame(expected, result.TestRunResult);
+        CollectionAssert.AreEqual(new[] { path }, result.ChangedFilePaths.ToArray());
     }
 
     [TestMethod]
