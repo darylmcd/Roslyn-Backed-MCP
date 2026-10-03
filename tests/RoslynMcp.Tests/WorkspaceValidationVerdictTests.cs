@@ -28,11 +28,12 @@ public sealed class WorkspaceValidationVerdictTests : IsolatedWorkspaceTestBase
         if (!GitFixtureRunner.IsAvailable(out var reason))
             Assert.Inconclusive($"Git unavailable: {reason}");
 
-        await using var workspace = await CreateIsolatedWorkspaceAsync();
+        await using var workspace = CreateIsolatedWorkspaceCopy();
         GitFixtureRunner.InitializeRepository(workspace.RootPath);
         GitFixtureRunner.StageAndCommitAll(workspace.RootPath);
         var path = workspace.GetPath("SampleLib", "AnimalService.cs");
         await File.AppendAllTextAsync(path, "\n// verdict scope\n");
+        await workspace.LoadAsync();
 
         var cases = new[]
         {
@@ -124,11 +125,12 @@ public sealed class WorkspaceValidationVerdictTests : IsolatedWorkspaceTestBase
     [DataRow(true, "closed")]
     public async Task ValidationTool_TestRunOutlastsRequestDeadline_AndReleasesSourceReaders(bool gitScope, string mutation)
     {
-        await using var workspace = await CreateIsolatedWorkspaceAsync();
+        await using var workspace = CreateIsolatedWorkspaceCopy();
         GitFixtureRunner.InitializeRepository(workspace.RootPath);
         GitFixtureRunner.StageAndCommitAll(workspace.RootPath);
         var path = workspace.GetPath("SampleLib", "AnimalService.cs");
         await File.AppendAllTextAsync(path, "\n// request budget probe\n");
+        await workspace.LoadAsync();
         var clock = new FakeTimeProvider();
         using var gate = new WorkspaceExecutionGate(
             new ExecutionGateOptions { RequestTimeout = TimeSpan.FromSeconds(5) }, WorkspaceManager, clock);
@@ -206,11 +208,14 @@ public sealed class WorkspaceValidationVerdictTests : IsolatedWorkspaceTestBase
         if (!GitFixtureRunner.IsAvailable(out var reason))
             Assert.Inconclusive($"Git unavailable: {reason}");
 
-        await using var workspace = await CreateIsolatedWorkspaceAsync();
+        await using var workspace = CreateIsolatedWorkspaceCopy();
         GitFixtureRunner.InitializeRepository(workspace.RootPath);
         GitFixtureRunner.StageAndCommitAll(workspace.RootPath);
         var path = workspace.GetPath("SampleLib", "AnimalService.cs");
         await File.AppendAllTextAsync(path, "\n// long test run scope\n");
+        // Prepare scope before loading so setup cannot deliver a delayed source-change
+        // event during the test run; actual mid-run mutations are covered separately.
+        await workspace.LoadAsync();
         var expected = PassingTests();
         var entered = false;
         var runner = new DelegateRunner(async token =>
