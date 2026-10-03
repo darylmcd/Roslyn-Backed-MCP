@@ -3,6 +3,8 @@
 Implementation quality and safety rules for this repository.
 For session bootstrap and workflow, follow `AGENTS.md` first.
 
+The [Standing Engineering Directives](../AGENTS.md#standing-engineering-directives) govern these rules: choose the smallest complete root-cause fix, rederive prior work, surface observed defects and verify current claims. Repository specs and recorded decisions do not authorize a lesser fix; surface conflicts and propose a superseding decision with evidence.
+
 ## Code Style (C#)
 
 - **Namespaces:** file-scoped (`namespace Foo;`), not block-scoped — enforced as warning in `.editorconfig`
