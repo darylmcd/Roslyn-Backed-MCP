@@ -82,11 +82,12 @@ public sealed class WorkspaceValidationVerdictTests : IsolatedWorkspaceTestBase
         if (!GitFixtureRunner.IsAvailable(out var reason))
             Assert.Inconclusive($"Git unavailable: {reason}");
 
-        await using var workspace = await CreateIsolatedWorkspaceAsync();
+        await using var workspace = CreateIsolatedWorkspaceCopy();
         GitFixtureRunner.InitializeRepository(workspace.RootPath);
         GitFixtureRunner.StageAndCommitAll(workspace.RootPath);
         var path = workspace.GetPath("SampleLib", "AnimalService.cs");
         await File.AppendAllTextAsync(path, "\n// timeout scope\n");
+        await workspace.LoadAsync();
         var entered = false;
         var expected = DotnetOutputParser.BuildTimeoutResult(
             PassingTests().Execution with { ExitCode = -1, Succeeded = false }, "TestTimeout exhausted");
@@ -334,11 +335,12 @@ public sealed class WorkspaceValidationVerdictTests : IsolatedWorkspaceTestBase
         if (!GitFixtureRunner.IsAvailable(out var reason))
             Assert.Inconclusive($"Git unavailable: {reason}");
 
-        await using var workspace = await CreateIsolatedWorkspaceAsync();
+        await using var workspace = CreateIsolatedWorkspaceCopy();
         GitFixtureRunner.InitializeRepository(workspace.RootPath);
         GitFixtureRunner.StageAndCommitAll(workspace.RootPath);
         var path = workspace.GetPath("SampleLib", "AnimalService.cs");
         await File.AppendAllTextAsync(path, "\n// warning scope\n");
+        await workspace.LoadAsync();
         var empty = PassingTests() with { Total = 0, Passed = 0 };
         var cases = new (ITestRunnerService Runner, string Status)[]
         {
