@@ -76,7 +76,7 @@ public sealed record WorkspaceValidationPlan(
 /// <c>timeout</c> covers an internal compilation, diagnostics, or discovery phase timeout
 /// (synthetic retryable envelope), or the test runner's own timeout (its original non-retryable
 /// envelope and compilation result are retained). <c>workspace-changed</c> means an otherwise
-/// clean result used a workspace snapshot that changed or closed during test execution.
+/// clean result used a workspace snapshot that was already stale, changed, or closed during test execution.
 /// Investigate the warnings and re-run validation before treating these verdicts as passing.
 /// </param>
 /// <param name="ChangedFilePaths">Resolved caller-supplied or tracker-derived paths used for related-test discovery, retained on phase timeout. Compilation and diagnostic collection cover the whole workspace.</param>

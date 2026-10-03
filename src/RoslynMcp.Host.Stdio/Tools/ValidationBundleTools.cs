@@ -17,7 +17,7 @@ public static class ValidationBundleTools
     /// <para>overallStatus is one of clean | compile-error | analyzer-error | test-failure | test-zero-run | compile-incomplete | workspace-changed | timeout.</para>
     /// <para>test-zero-run indicates runTests=true but the discovered filter matched zero tests - re-run test_run standalone against the surfaced filter; the zero-match is almost always a working-directory/filter-resolution race, not a real pass.</para>
     /// <para>timeout indicates compile, diagnostics, or discovery exceeded the 25-second internal cap (retryable=true), or test_run exhausted TestTimeout (retryable=false). Inspect testRunResult.failureEnvelope; warnings name the phase.</para>
-    /// <para>Tests run outside the source read lock and RequestTimeout. workspace-changed means a would-be clean verdict became stale while tests ran; re-run validation.</para>
+    /// <para>Tests run outside the source read lock and RequestTimeout. workspace-changed means a would-be clean verdict used a stale snapshot or the workspace changed while tests ran; refresh and re-run validation.</para>
     /// <para>Pass summary=true on multi-project solutions where the default response (per-diagnostic detail plus per-test rows) exceeds the MCP cap. Pass responseFormat="markdown" for a compact summary table; the verdict is preserved across both shapes.</para>
     /// </remarks>
     [McpServerTool(Name = "validate_workspace", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),

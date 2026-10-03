@@ -152,9 +152,16 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
             {
                 "workspaceChangedDuringRun: compilation and test discovery reflect the captured workspace snapshot; re-run validation."
             }).ToArray();
-            if (status == "clean")
-                status = "workspace-changed";
         }
+        if (plan.WasStale)
+        {
+            warnings = warnings.Concat(new[]
+            {
+                "workspaceSnapshotWasStale: compilation and test discovery used a stale workspace snapshot; refresh the workspace and re-run validation."
+            }).ToArray();
+        }
+        if ((workspaceChanged || plan.WasStale) && status == "clean")
+            status = "workspace-changed";
 
         return validation with { OverallStatus = status, TestRunResult = testRun, Warnings = warnings };
     }

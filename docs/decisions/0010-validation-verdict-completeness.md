@@ -38,7 +38,10 @@ source read gate. Release that gate and its `RequestTimeout` before testing; onl
 the caller's cancellation token and the runner's `TestTimeout` apply to test
 execution. Preserve the captured scope and compilation verdict. If the workspace
 changes or closes during testing, add a `workspaceChangedDuringRun` warning and
-replace a would-be `clean` verdict with `workspace-changed`. Known compiler,
+replace a would-be `clean` verdict with `workspace-changed`. A snapshot already
+stale before testing also produces `workspace-changed` with a separate
+`workspaceSnapshotWasStale` warning: refresh the workspace before re-running.
+Known compiler,
 diagnostic, test, timeout, and incomplete-compilation findings retain precedence.
 
 `workspace_fork_apply` holds the source writer lock only while copying the source

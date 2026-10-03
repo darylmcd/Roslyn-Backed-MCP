@@ -4,8 +4,10 @@ using Microsoft.Extensions.Time.Testing;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
+using RoslynMcp.Roslyn.Contracts;
 using RoslynMcp.Roslyn.Helpers;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 using RoslynMcp.Tests.Support;
 
 namespace RoslynMcp.Tests;
@@ -184,6 +186,32 @@ public sealed class WorkspaceValidationVerdictTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task TestRun_PreexistingStaleSnapshot_CannotReportClean()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync();
+        var path = workspace.GetPath("SampleLib", "AnimalService.cs");
+        var status = WorkspaceManager.GetStatus(workspace.WorkspaceId) with { IsStale = true };
+        var manager = new FailClosedWorkspaceManagerStub
+        {
+            GetStatusHandler = _ => status,
+            GetCurrentSolutionHandler = WorkspaceManager.GetCurrentSolution,
+        };
+        var expected = PassingTests();
+        var service = CreateService(Compile(),
+            new DelegateRunner(_ => Task.FromResult(expected)), manager: manager);
+        var plan = await service.PrepareValidationAsync(workspace.WorkspaceId, [path],
+            recentGitChanges: false, summary: false, CancellationToken.None);
+        Assert.IsTrue(plan.WasStale);
+
+        var result = await service.CompleteValidationTestsAsync(plan, CancellationToken.None);
+
+        Assert.AreEqual("workspace-changed", result.OverallStatus);
+        Assert.AreSame(expected, result.TestRunResult);
+        CollectionAssert.AreEqual(new[] { path }, result.ChangedFilePaths.ToArray());
+        Assert.IsTrue(result.Warnings.Any(w => w.Contains("workspaceSnapshotWasStale", StringComparison.Ordinal)));
+    }
+
+    [TestMethod]
     [DataRow(false, false, "timeout")]
     [DataRow(true, false, "compile-error")]
     [DataRow(false, true, "analyzer-error")]
@@ -344,9 +372,10 @@ public sealed class WorkspaceValidationVerdictTests : IsolatedWorkspaceTestBase
     private static WorkspaceValidationService CreateService(
         CompileCheckDto compile, ITestRunnerService? runner = null,
         IDiagnosticService? diagnostics = null, TimeSpan? phaseTimeout = null,
-        IChangeTracker? tracker = null, ICompileCheckService? compileService = null) =>
+        IChangeTracker? tracker = null, ICompileCheckService? compileService = null,
+        IWorkspaceManager? manager = null) =>
         new(compileService ?? new FixedCompile(compile), diagnostics ?? new FixedDiagnostics(), new FixedDiscovery(),
-            runner ?? new DelegateRunner(_ => Task.FromResult(PassingTests())), WorkspaceManager,
+            runner ?? new DelegateRunner(_ => Task.FromResult(PassingTests())), manager ?? WorkspaceManager,
             changeTracker: tracker, gitStatusTimeout: TimeSpan.FromSeconds(5),
             validationPhaseTimeout: phaseTimeout ?? TimeSpan.FromSeconds(5));
 
