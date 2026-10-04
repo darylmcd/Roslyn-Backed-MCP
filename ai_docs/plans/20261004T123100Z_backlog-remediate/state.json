@@ -17,29 +17,44 @@
       "backlogRowsClosed": [
         "argument-exception-throw-sites-lack-public-message"
       ],
-      "productionFilesTouched": null,
-      "productionFiles": null,
-      "testFilesAdded": null,
-      "testFiles": null,
-      "docFiles": null,
+      "productionFilesTouched": 7,
+      "productionFiles": [
+        "src/RoslynMcp.Host.Stdio/Tools/ParameterValidation.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/SymbolTools.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/AnalysisTools.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/AdvancedAnalysisTools.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/AnalyzerInfoTools.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/CompileCheckTools.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/ConsumerAnalysisTools.cs"
+      ],
+      "testFilesAdded": 4,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/ParameterValidationTests.cs",
+        "tests/RoslynMcp.Tests/SymbolSearchPaginationTests.cs",
+        "tests/RoslynMcp.Tests/FindReflectionUsagesPaginationTests.cs",
+        "tests/RoslynMcp.Tests/ExpandedSurfaceIntegrationTests.cs"
+      ],
+      "docFiles": [
+        "changelog.d/argument-exception-throw-sites-lack-public-message.md"
+      ],
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 70000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
-      "fanoutEstimate": null,
+      "fanoutEstimate": 7,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "ok",
       "deepenerFlags": {
-        "judgmentHeavy": false,
-        "anchorStale": false,
-        "ruleOneBundleResolved": null
+        "judgmentHeavy": true,
+        "anchorStale": true,
+        "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": "Route deepen: declared/effective L derives solely from four required test companions, not incoherent scope. Standing Engineering Directives 1/6 and RULES 5 Rule4 advisory require a complete shared validation publication fix. Exact subclass assertion pins ParameterValidationTests:24-106, SymbolSearchPaginationTests:179/195, FindReflectionUsagesPaginationTests:344/356, ExpandedSurfaceIntegrationTests:349/368/385 must move together. Existing global rows split-route-ignores-forcing-shapes and remediate-stale-file-cap-wording track the contradictory cap-era routing; do not manufacture a partial or recursively L child solely to satisfy counts."
     },
     {
       "id": "file-create-and-scaffold-refusals-public-message",
@@ -48,53 +63,37 @@
       "backlogRowsClosed": [
         "file-create-and-scaffold-refusals-public-message"
       ],
-      "productionFilesTouched": null,
-      "productionFiles": null,
-      "testFilesAdded": null,
-      "testFiles": null,
-      "docFiles": null,
-      "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
-      "scheduleHint": null,
-      "fanoutEstimate": null,
-      "fanoutOversize": false,
-      "deepenerStatus": "pending",
-      "deepenerFlags": {
-        "judgmentHeavy": false,
-        "anchorStale": false,
-        "ruleOneBundleResolved": null
-      },
-      "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": null
-    },
-    {
-      "id": "change-signature-refusals-public-message",
-      "order": 3,
-      "status": "pending",
-      "backlogRowsClosed": [
-        "change-signature-refusals-public-message"
+      "productionFilesTouched": 5,
+      "productionFiles": [
+        "src/RoslynMcp.Roslyn/Services/FileOperationService.cs",
+        "src/RoslynMcp.Roslyn/Services/BatchTestScaffolder.cs",
+        "src/RoslynMcp.Roslyn/Helpers/FileSystemPath.cs",
+        "src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs",
+        "src/RoslynMcp.Roslyn/Services/NamespaceRelocationService.cs"
       ],
-      "productionFilesTouched": null,
-      "productionFiles": null,
-      "testFilesAdded": null,
-      "testFiles": null,
-      "docFiles": null,
+      "testFilesAdded": 6,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/FileOperationIntegrationTests.cs",
+        "tests/RoslynMcp.Tests/ScaffoldingFirstTestFileTests.cs",
+        "tests/RoslynMcp.Tests/ScaffoldingIntegrationTests.cs",
+        "tests/RoslynMcp.Tests/FileSystemPathTests.cs",
+        "tests/RoslynMcp.Tests/CrossProjectRefactoringIntegrationTests.cs",
+        "tests/RoslynMcp.Tests/NamespaceRelocationTests.cs"
+      ],
+      "docFiles": [
+        "changelog.d/file-create-and-scaffold-refusals-public-message.md"
+      ],
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 60000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
-      "fanoutEstimate": null,
+      "fanoutEstimate": 5,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "ok",
       "deepenerFlags": {
-        "judgmentHeavy": false,
-        "anchorStale": false,
-        "ruleOneBundleResolved": null
+        "judgmentHeavy": true,
+        "anchorStale": true,
+        "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
       "branch": null,
@@ -110,22 +109,33 @@
       "backlogRowsClosed": [
         "get-prompt-text-unknown-prompt-public-message"
       ],
-      "productionFilesTouched": null,
-      "productionFiles": null,
-      "testFilesAdded": null,
-      "testFiles": null,
-      "docFiles": null,
+      "productionFilesTouched": 4,
+      "productionFiles": [
+        "src/RoslynMcp.Core/Services/PublicArgumentException.cs",
+        "src/RoslynMcp.Core/Services/IPublicMessageException.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/PromptShimTools.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/ToolErrorHandler.cs"
+      ],
+      "testFilesAdded": 3,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/PromptShimToolsTests.cs",
+        "tests/RoslynMcp.Tests/ArgumentErrorsTests.cs",
+        "tests/RoslynMcp.Tests/ToolCallErrorWireContractTests.cs"
+      ],
+      "docFiles": [
+        "changelog.d/get-prompt-text-unknown-prompt-public-message.md"
+      ],
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 50000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
-      "fanoutEstimate": null,
+      "fanoutEstimate": 4,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "ok",
       "deepenerFlags": {
-        "judgmentHeavy": false,
-        "anchorStale": false,
-        "ruleOneBundleResolved": null
+        "judgmentHeavy": true,
+        "anchorStale": true,
+        "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
       "branch": null,
@@ -141,22 +151,31 @@
       "backlogRowsClosed": [
         "tool-scripting-undo-workflow-argument-refusals-public-message"
       ],
-      "productionFilesTouched": null,
-      "productionFiles": null,
-      "testFilesAdded": null,
-      "testFiles": null,
-      "docFiles": null,
+      "productionFilesTouched": 3,
+      "productionFiles": [
+        "src/RoslynMcp.Host.Stdio/Tools/ScriptingTools.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/UndoTools.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/WorkflowRecommendationTools.cs"
+      ],
+      "testFilesAdded": 2,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/ErrorResponseObservabilityTests.cs",
+        "tests/RoslynMcp.Tests/WorkflowRecommendationToolsTests.cs"
+      ],
+      "docFiles": [
+        "changelog.d/tool-scripting-undo-workflow-argument-refusals-public-message.md"
+      ],
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 40000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
-      "fanoutEstimate": null,
+      "fanoutEstimate": 3,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "ok",
       "deepenerFlags": {
-        "judgmentHeavy": false,
-        "anchorStale": false,
-        "ruleOneBundleResolved": null
+        "judgmentHeavy": true,
+        "anchorStale": true,
+        "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
       "branch": null,
@@ -785,6 +804,15 @@
       {
         "id": "atomic-file-writer-external-temp-path-swap",
         "reason": "defer-band"
+      }
+    ],
+    "splits": [
+      {
+        "parent": "change-signature-refusals-public-message",
+        "children": [
+          "change-signature-service-refusals-public-message",
+          "format-range-service-refusals-public-message"
+        ]
       }
     ]
   }
