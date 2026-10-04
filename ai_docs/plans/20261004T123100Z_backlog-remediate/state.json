@@ -271,11 +271,12 @@
         "src/RoslynMcp.Host.Stdio/Tools/AnalysisTools.cs",
         "src/RoslynMcp.Host.Stdio/Tools/SourceTextRequestProjection.cs"
       ],
-      "testFilesAdded": 3,
+      "testFilesAdded": 4,
       "testFiles": [
         "tests/RoslynMcp.Tests/SourceTextRequestProjectionTests.cs",
         "tests/RoslynMcp.Tests/AnalysisToolsTests.cs",
-        "tests/RoslynMcp.Tests/HostArgumentRefusalEnvelopeTests.cs"
+        "tests/RoslynMcp.Tests/HostArgumentRefusalEnvelopeTests.cs",
+        "tests/RoslynMcp.Tests/WorkspaceToolsIntegrationTests.cs"
       ],
       "docFiles": [
         "changelog.d/symbol-locator-and-source-text-tool-argument-refusals-public-message.md"
@@ -298,9 +299,18 @@
       "prUrl": null,
       "mergedAt": null,
       "notes": null,
-      "fileSetHash": "cc8f6eda42e22bc959eb5c8838645f32c32d823282ec21e13358d1bc3e828252",
-      "stanzaHash": "d1096131c5b7aaa884cd3bbdb72f9888fd89b4d8b5547f75890e16225f3cf29c",
-      "reviewedStanzaHash": "d1096131c5b7aaa884cd3bbdb72f9888fd89b4d8b5547f75890e16225f3cf29c"
+      "fileSetHash": "5686e0abf357d6142f66d0bbb00339a19da054d68a07db758dffb2fe47d2a0c4",
+      "stanzaHash": "fbe27e852bbe40128913af964ace5f6495f2bbb0082b51b0bd0ae5b48f6f5ba2",
+      "reviewedStanzaHash": "fbe27e852bbe40128913af964ace5f6495f2bbb0082b51b0bd0ae5b48f6f5ba2",
+      "amendments": [
+        {
+          "at": "2026-10-04T17:36:44.823Z",
+          "finding": "WorkspaceToolsIntegrationTests.cs:365 consumer red expects obsolete less-than-or-equal wording; actual safe public correction includes both bounds.",
+          "reason": "Complete source-projection caller coverage requires updating this exact consumer assertion to authored startLine/endLine correction; production predicates unchanged.",
+          "previousStanzaHash": "d1096131c5b7aaa884cd3bbdb72f9888fd89b4d8b5547f75890e16225f3cf29c",
+          "stanzaHash": "fbe27e852bbe40128913af964ace5f6495f2bbb0082b51b0bd0ae5b48f6f5ba2"
+        }
+      ]
     },
     {
       "id": "resource-argument-refusals-public-message",
@@ -1171,7 +1181,7 @@
       "file-create-and-scaffold-refusals-public-message": "c8817d6666a1e14f1f452cd5c23c8b43d471a6e84f0f2bd07a5a7ea5834dcd8d",
       "get-prompt-text-unknown-prompt-public-message": "6b265b0b940c5b316584361d77ff80ce46d9d327fe4e12ddf6f45f7d5fbe10f5",
       "tool-scripting-undo-workflow-argument-refusals-public-message": "b8685312bcb9c8fe06487f82e0079baca0c768a11714cfb7cd34476ec2f70696",
-      "symbol-locator-and-source-text-tool-argument-refusals-public-message": "d1096131c5b7aaa884cd3bbdb72f9888fd89b4d8b5547f75890e16225f3cf29c",
+      "symbol-locator-and-source-text-tool-argument-refusals-public-message": "fbe27e852bbe40128913af964ace5f6495f2bbb0082b51b0bd0ae5b48f6f5ba2",
       "resource-argument-refusals-public-message": "c6f03188abf5fa68f5fd1b361324f673fa8512766c60e9188b837100a8bbc511",
       "root-boundary-argument-refusals-public-message": "12ce06bdf57ad1125f5e92c5c246004cdb985b10835d774b72fa58dd4b333214",
       "dispatch-and-tool-argument-refusals-public-message": "ef230e01430bf09ee09eb91063962783c6b1b5d2a1395ff83effb3150bd1c968",
@@ -1183,9 +1193,9 @@
       "suppression-argument-refusals-public-message": "dc22bf053f48f0b679f4af4a67cd32698d8856cbf315795afeabf2ce8743c67c"
     }
   },
-  "conflictGraphInputHash": "aaf06d1636681a142c234b0e9c9758c3c11701e4eb3c44ebedde0f6ba9f6f41b",
-  "planHash": "4ff9a04354288a22666f8f2ce6a46a2119d495e2e09eb73befa170022b743d0e",
+  "conflictGraphInputHash": "d8cc60859909341a1fe269584901aec43ebf07370c6ba2369f72f23d0f1f2042",
+  "planHash": "01ec7b428aa62d04fbab0dd75958ba539cc38ecd96da610735f0479456b58ab0",
   "backlogSnapshotHash": "aa7593fb4e2c3b59453248d6223301e471be1161179df7994320f52ec840df5f",
-  "reviewedPlanHash": "4ff9a04354288a22666f8f2ce6a46a2119d495e2e09eb73befa170022b743d0e",
+  "reviewedPlanHash": "01ec7b428aa62d04fbab0dd75958ba539cc38ecd96da610735f0479456b58ab0",
   "reviewedBacklogSnapshotHash": "aa7593fb4e2c3b59453248d6223301e471be1161179df7994320f52ec840df5f"
 }
