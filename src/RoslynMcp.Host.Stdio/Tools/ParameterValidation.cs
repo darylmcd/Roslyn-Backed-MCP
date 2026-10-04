@@ -1,3 +1,5 @@
+using RoslynMcp.Core.Services;
+
 namespace RoslynMcp.Host.Stdio.Tools;
 
 /// <summary>
@@ -22,24 +24,24 @@ internal static class ParameterValidation
     public static void ValidateSeverity(string? severity)
     {
         if (severity is not null && !SeverityValues.Contains(severity, StringComparer.OrdinalIgnoreCase))
-            throw new ArgumentException(
-                $"Invalid severity '{severity}'. Must be one of: {string.Join(", ", SeverityValues)}");
+            throw new PublicArgumentException(
+                $"Invalid severity. Must be one of: {string.Join(", ", SeverityValues)}.", nameof(severity));
     }
 
     /// <summary>Validates type kind for scaffolding.</summary>
     public static void ValidateTypeKind(string typeKind)
     {
         if (!TypeKindValues.Contains(typeKind, StringComparer.OrdinalIgnoreCase))
-            throw new ArgumentException(
-                $"Invalid type kind '{typeKind}'. Must be one of: {string.Join(", ", TypeKindValues)}");
+            throw new PublicArgumentException(
+                $"Invalid typeKind. Must be one of: {string.Join(", ", TypeKindValues)}.", nameof(typeKind));
     }
 
     /// <summary>Validates bulk replace scope if provided.</summary>
     public static void ValidateBulkReplaceScope(string? scope)
     {
         if (scope is not null && !BulkReplaceScopeValues.Contains(scope, StringComparer.OrdinalIgnoreCase))
-            throw new ArgumentException(
-                $"Invalid scope '{scope}'. Must be one of: {string.Join(", ", BulkReplaceScopeValues)}");
+            throw new PublicArgumentException(
+                $"Invalid scope. Must be one of: {string.Join(", ", BulkReplaceScopeValues)}.", nameof(scope));
     }
 
     /// <summary>
@@ -49,21 +51,21 @@ internal static class ParameterValidation
     public static void ValidateReplaceInvocationScope(string? scope)
     {
         if (scope is not null && !ReplaceInvocationScopeValues.Contains(scope, StringComparer.OrdinalIgnoreCase))
-            throw new ArgumentException(
-                $"Invalid scope '{scope}'. Must be one of: {string.Join(", ", ReplaceInvocationScopeValues)}");
+            throw new PublicArgumentException(
+                $"Invalid scope. Must be one of: {string.Join(", ", ReplaceInvocationScopeValues)}.", nameof(scope));
     }
 
     /// <summary>Validates pagination parameters.</summary>
-    public static void ValidatePagination(int offset, int limit)
+    public static void ValidatePagination(int offset, int limit, string offsetParameterName, string limitParameterName)
     {
         if (offset < 0)
-            throw new ArgumentException($"Invalid offset '{offset}'. Offset must be greater than or equal to 0.");
+            throw new PublicArgumentException($"Invalid {offsetParameterName} '{offset}'. Offset must be greater than or equal to 0.", offsetParameterName);
 
         if (limit <= 0)
-            throw new ArgumentException($"Invalid limit '{limit}'. Limit must be greater than 0.");
+            throw new PublicArgumentException($"Invalid {limitParameterName} '{limit}'. Limit must be greater than 0.", limitParameterName);
 
         if (limit > MaxLimit)
-            throw new ArgumentException($"Invalid limit '{limit}'. Limit must not exceed {MaxLimit}.");
+            throw new PublicArgumentException($"Invalid {limitParameterName} '{limit}'. Limit must not exceed {MaxLimit}.", limitParameterName);
     }
 
     /// <summary>
@@ -74,7 +76,7 @@ internal static class ParameterValidation
     public static void ValidateBulkSize(int count, int maxCount, string paramName)
     {
         if (count > maxCount)
-            throw new ArgumentException(
+            throw new PublicArgumentException(
                 $"Too many items ({count}) for '{paramName}'. Must not exceed {maxCount}.", paramName);
     }
 }

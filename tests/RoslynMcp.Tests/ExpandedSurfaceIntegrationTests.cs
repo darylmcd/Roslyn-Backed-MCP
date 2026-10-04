@@ -346,7 +346,7 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
                 FilePath: null, Line: null, Column: null),
         };
 
-        await Assert.ThrowsExactlyAsync<ArgumentException>(() => SymbolTools.FindReferencesBulk(
+        var exception = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() => SymbolTools.FindReferencesBulk(
             WorkspaceExecutionGate,
             ReferenceService,
             WorkspaceId,
@@ -355,6 +355,7 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
             summary: false,
             maxItemsPerSymbol: 0,
             ct: CancellationToken.None));
+        ParameterValidationTests.AssertPublicEnvelope(exception, "maxItemsPerSymbol", ">= 1");
     }
 
     [TestMethod]
@@ -365,7 +366,7 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
                 FilePath: null, Line: null, Column: null))
             .ToArray();
 
-        await Assert.ThrowsExactlyAsync<ArgumentException>(() => SymbolTools.FindReferencesBulk(
+        var exception = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() => SymbolTools.FindReferencesBulk(
             WorkspaceExecutionGate,
             ReferenceService,
             WorkspaceId,
@@ -374,6 +375,7 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
             summary: false,
             maxItemsPerSymbol: 100,
             ct: CancellationToken.None));
+        ParameterValidationTests.AssertPublicEnvelope(exception, "symbols", "50");
     }
 
     [TestMethod]
@@ -382,7 +384,7 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
         var gate = new RecordingWorkspaceExecutionGate();
         var service = new RecordingCodeMetricsService();
 
-        var exception = await Assert.ThrowsExactlyAsync<ArgumentException>(() => AdvancedAnalysisTools.GetComplexityMetrics(
+        var exception = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() => AdvancedAnalysisTools.GetComplexityMetrics(
             gate,
             service,
             workspaceId: "missing-workspace",
@@ -1129,4 +1131,31 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
         var status = await WorkspaceManager.LoadAsync(workspacePath, CancellationToken.None);
         return status.WorkspaceId;
     }
+
+    [TestMethod]
+    [DataRow("callersLimit", 0)]
+    [DataRow("callersLimit", 1001)]
+    [DataRow("calleesLimit", 0)]
+    [DataRow("calleesLimit", 1001)]
+    public async Task CallersCallees_InvalidLimits_NameWireParameter(string parameter, int value)
+    {
+        var exception = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
+            AnalysisTools.GetCallersCallees(WorkspaceExecutionGate, SymbolRelationshipService, WorkspaceId,
+                callersLimit: parameter == "callersLimit" ? value : 1,
+                calleesLimit: parameter == "calleesLimit" ? value : 1));
+        ParameterValidationTests.AssertPublicEnvelope(exception, parameter, value == 0 ? "greater than 0" : "1000");
+    }
+
+    [TestMethod]
+    [DataRow(-1, 1, "referencesOffset", "greater than or equal to 0")]
+    [DataRow(0, 0, "referencesLimit", "greater than 0")]
+    [DataRow(0, 1001, "referencesLimit", "1000")]
+    public async Task Impact_InvalidPagination_NamesWireParameter(int offset, int limit, string parameter, string bound)
+    {
+        var exception = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
+            AnalysisTools.AnalyzeImpact(WorkspaceExecutionGate, MutationAnalysisService, WorkspaceId,
+                referencesOffset: offset, referencesLimit: limit));
+        ParameterValidationTests.AssertPublicEnvelope(exception, parameter, bound);
+    }
+
 }

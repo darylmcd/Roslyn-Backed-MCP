@@ -1,4 +1,5 @@
 using System.Text.Json;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
 
 namespace RoslynMcp.Tests;
@@ -341,7 +342,7 @@ public static class ReflectionUsageFixture
     {
         var workspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
 
-        var negativeOffsetEx = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+        var negativeOffsetEx = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
             AdvancedAnalysisTools.FindReflectionUsages(
                 gate: WorkspaceExecutionGate,
                 codePatternAnalyzer: CodePatternAnalyzer,
@@ -353,7 +354,7 @@ public static class ReflectionUsageFixture
                 ct: CancellationToken.None));
         StringAssert.Contains(negativeOffsetEx.Message, "offset");
 
-        var zeroLimitEx = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+        var zeroLimitEx = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
             AdvancedAnalysisTools.FindReflectionUsages(
                 gate: WorkspaceExecutionGate,
                 codePatternAnalyzer: CodePatternAnalyzer,
