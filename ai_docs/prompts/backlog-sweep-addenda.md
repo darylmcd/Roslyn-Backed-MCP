@@ -4,6 +4,8 @@
 <!-- scope: in-repo -->
 <!-- contract: historical filename retained for compatibility; read by /backlog-remediate when present. -->
 
+verifiedAt: 2026-10-04
+
 This file is the single source of repo-specific extensions to `/backlog-remediate`. The global workflow handles routing, state schema, plan-directory convention, ship discipline, and mode dispatch. Everything below is **facts about this repo** the workflow needs to do its job here.
 
 If you change a fact (e.g. add a new hotspot file, swap build commands, ship a new analyzer that gates a structural unit), update this file in the same PR.
@@ -14,28 +16,28 @@ If you change a fact (e.g. add a new hotspot file, swap build commands, ship a n
 
 ```yaml
 ci_equivalent: |
-  ./eng/verify-changelog-fragments.ps1
   ./eng/verify-ai-docs.ps1
+  ./eng/verify-skills-are-generic.ps1
+  ./eng/verify-changed-format.ps1
   ./eng/verify-actionlint.ps1
-  ./eng/verify-release.ps1 -Configuration Release
-  ./eng/verify-changed-format.ps1 -BaseRef origin/main -NoRestore
+  ./eng/verify-release.ps1 -NoCoverage -ExcludeNetworkTests
   ./eng/verify-nuget-audit.ps1 -SolutionPath RoslynMcp.slnx
 doc_check: ./eng/verify-ai-docs.ps1
-per_edit_compile: mcp__roslyn__compile_check
-per_edit_test: mcp__roslyn__test_run --filter "<test-class-or-namespace>"
+per_edit_compile: <roslyn>compile_check
+per_edit_test: <roslyn>test_run --filter "<test-class-or-namespace>"
 fallback_compile: dotnet build RoslynMcp.slnx -c Release -p:TreatWarningsAsErrors=true
 fallback_test: dotnet test --filter "<filter>"
 worktreeLockRelease: ""
 skipCiToken: ""   # NONE — see CI gate note below
 ```
 
-- `ci_equivalent` mirrors the PR leg of `.github/workflows/ci.yml`, in order.
+- `ci_equivalent` mirrors the local `just ci` aggregate in recipe order; hosted validation partitions tests according to `CI_POLICY.md`.
 - `verify-release.ps1` alone is **not** the gate: `verify-changed-format` and `verify-nuget-audit` fail PRs a release build passes, and `verify-ai-docs` runs before the SDK is set up.
 - CI shards `verify-release.ps1` across matrix legs; locally, run it unsharded.
-- Skip steps only when context-tight; `fallback_compile` + targeted `mcp__roslyn__test_run` is the documented minimum substitute.
+- Context pressure requires a checkpoint and handoff; scoped compile/test checks never replace required validation.
 - Code-PR vs docs-only-PR topology (leg matrix, which gates are skipped, fail-closed classification, `validate-gate` / `validate` naming): [CI_POLICY.md](../../CI_POLICY.md) and `eng/resolve-ci-topology.ps1`. `ci_equivalent` is the code-PR shape; running it verbatim on a docs-only PR only over-validates.
-- A row that touches a skill, agent, prompt, or `CHANGELOG.md` is a **code** PR however markdown-shaped it looks.
-- `verify-changelog-fragments.ps1` runs standalone on docs-only PRs and as a `verify-release.ps1` child step on code PRs; running it explicitly first (as `ci_equivalent` does) is correct on both.
+- Hosted classification is owned by `eng/resolve-ci-topology.ps1`: shipped/local skills, agents and `.github/prompts/` are code tier; `CHANGELOG.md` and this `ai_docs/` addenda are docs tier.
+- `verify-changelog-fragments.ps1` runs standalone on docs-only PRs and as a `verify-release.ps1` child step on code PRs; the local aggregate reaches it through `verify-release-pr`.
 - **One-command local equivalent: `just ci`.** Its measured cost, timeout/background mode, hook runtime, exact filter, regeneration companions, flake registry, and `parallelSafe` value live in [AGENTS.md § Validation runtime](../../AGENTS.md#validation-runtime). Keep the machine-readable `ci_equivalent` list for consumers that must run or skip individual gates; `just ci` passes `-NoCoverage -ExcludeNetworkTests` through `verify-release-pr`.
 - **Required check, no skip token.** The ruleset requires one status context, `validate`, produced by `validate-gate` on `pull_request` events. A `[skip ci]` token in any commit subject leaves it never-reported and the PR permanently BLOCKED, so `skipCiToken` is **empty**: never put a skip token in a commit on a PR branch here.
 - Validation disables reusable build servers within its invocation. Worktree cleanup must not issue a machine-wide build-server shutdown; release only resources with verified task ownership.
@@ -46,25 +48,25 @@ The full pattern→tool table lives in [ai_docs/bootstrap-read-tool-primer.md](.
 
 | Goal | Use this | Not this |
 |---|---|---|
-| Verify compile after edit | `mcp__roslyn__compile_check` | `dotnet build` |
-| Run targeted tests | `mcp__roslyn__test_related_files` + `test_run --filter` | full `dotnet test` |
-| Find callers / consumers | `mcp__roslyn__find_references` (with `metadataName` or `filePath+line+column`) | `Grep` for the simple name |
-| Find symbol by name | `mcp__roslyn__symbol_search` | `Grep` |
-| Enumerate file public surface | `mcp__roslyn__document_symbols` | `Grep public ` |
-| Full-file diagnostics | `mcp__roslyn__project_diagnostics` | full build output parse |
+| Verify compile after edit | `<roslyn>compile_check` | `dotnet build` |
+| Run targeted tests | `<roslyn>test_related_files` + `<roslyn>test_run --filter` | targeted `dotnet test --filter` |
+| Find callers / consumers | `<roslyn>find_references` (with `metadataName` or `filePath+line+column`) | `Grep` for the simple name |
+| Find symbol by name | `<roslyn>symbol_search` | `Grep` |
+| Enumerate file public surface | `<roslyn>document_symbols` | `Grep public ` |
+| Full-file diagnostics | `<roslyn>project_diagnostics` | full build output parse |
 
 Faster and structurally accurate vs textual matching.
 
-**Tool-name prefix is session-dependent — resolve it, never hardcode it.** The `mcp__roslyn__*` names above are the bare-server form. When the server is loaded as the Claude Code *plugin* (the default here — `roslyn-mcp@roslyn-mcp-marketplace`), every tool is exposed as `mcp__plugin_roslyn-mcp_roslyn__<tool>` and the bare names do not resolve. `.claude/settings.json` carries both prefixes in its allowlist for the same reason. A subagent briefing that pastes `preferred_read_side_tools` verbatim must resolve the live prefix first (call each `*server_info` candidate until one returns a Roslyn-shaped response, then pin that prefix) rather than assuming either form.
+**Resolve `<roslyn>` per session.** Discover tools whose names end in `server_info` and contain `roslyn`; call each candidate until a Roslyn-shaped response verifies liveness, then pin its prefix. `.claude/settings.json` permits bare-server and marketplace-plugin registrations. Pass the resolved prefix to subagents; when discovery finds no candidate or every probe fails, record the gap and use the fallback commands. Tool definitions in source verify names, not server liveness.
 
 ```yaml
 preferred_read_side_tools:
-  - mcp__roslyn__find_references
-  - mcp__roslyn__symbol_search
-  - mcp__roslyn__document_symbols
-  - mcp__roslyn__compile_check
-  - mcp__roslyn__project_diagnostics
-  - mcp__roslyn__test_related_files
+  - <roslyn>find_references
+  - <roslyn>symbol_search
+  - <roslyn>document_symbols
+  - <roslyn>compile_check
+  - <roslyn>project_diagnostics
+  - <roslyn>test_related_files
 ```
 
 ## Parallel-execution safety
@@ -77,7 +79,7 @@ parallel_safety:
   serializeFullCi: true
   rationale: |
     Scoped targeted test runs are parallel-safe because test artifacts are
-    isolated per test-assembly PROCESS. Every temp path is built under `TestTempRoot.Current`
+    isolated per test-assembly PROCESS. Shared-parent fixture paths use `TestTempRoot.Current`
     (`tests/RoslynMcp.Tests/TestInfrastructure/TestTempRoot.cs`) =
     `%TEMP%/RoslynMcpTests/run-<pid>-<rand>/`, and `[AssemblyCleanup]` deletes only
     that subtree — never the shared parent. Full `just ci` / `ci_equivalent`
@@ -97,7 +99,7 @@ parallel_safety:
     `TestTempRoot.Current`.
 ```
 
-**Regression guard:** `tests/RoslynMcp.Tests/TestTempRootTests.cs` asserts the load-bearing property — the abandoned-run reaper never deletes a *live* sibling run's directory, and never deletes the shared parent. A new temp path must combine against `TestTempRoot.Current`; re-deriving `Path.GetTempPath()` + `"RoslynMcpTests"` at a call site puts that path outside the isolation and re-opens the race.
+**Regression guard:** `tests/RoslynMcp.Tests/TestTempRootTests.cs` proves that the age-based reaper preserves fresh sibling directories and the shared parent; it does not verify process liveness. Paths sharing the `RoslynMcpTests` parent must combine against `TestTempRoot.Current`; independently owned GUID-unique directories under OS temp do not share that parent. Re-deriving `Path.GetTempPath()` + `"RoslynMcpTests"` at a call site re-opens the shared-parent cleanup race. The isolation policy decision remains tracked by `test-temp-path-outside-test-temp-root`.
 
 ## Hotspot files (parallel-mode wave rule: ≤1 per wave)
 
@@ -109,7 +111,7 @@ These files are touched by many initiatives by structural inevitability. The glo
 | `src/RoslynMcp.Host.Stdio/README.md` | **Every tool-surface row edits it.** `HostStdioReadmeSurfaceCounts_MatchLiveServerSurfaceCatalog` asserts the identical surface-count paragraph. Rows historically forgot to cite it, but its edit frequency equals `README.md`'s; treat it as a same-wave collision surface with `README.md`. |
 | `src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.Refactoring.cs` | Largest catalog partial. Every refactoring-tool registration/description/tier change lands here. |
 | `src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.Orchestration.cs` | Same shape, orchestration surface. |
-| `src/RoslynMcp.Host.Stdio/Tools/RefactoringTools.cs` | Wrapper file paired with the Refactoring partial; `[McpToolMetadata]` tier/name strings live here and must agree with the partial (RMCP001/RMCP002). |
+| `src/RoslynMcp.Host.Stdio/Tools/RefactoringTools.cs` | Wrapper paired with the Refactoring partial; RMCP001/RMCP002 check attributed names/catalog coverage; `SurfaceCatalogTests` checks metadata agreement, including tier. |
 | `src/RoslynMcp.Roslyn/ServiceCollectionExtensions.cs` | The Roslyn-service DI file, touched by every new Roslyn service. Not `src/RoslynMcp.Host.Stdio/ServiceCollectionExtensions.cs` (host-local plumbing only); there is no `src/RoslynMcp.Host.Stdio/Extensions/` directory. |
 | `src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs` | Carries the whole `parameter_object_preview` pipeline (target validation, call-site binding, DTO emission, rewrite). Rows against it form a complete conflict graph: plan them as their own sequential conflict generations; do NOT expect a parallel wave. |
 | `src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs` | Shared workspace state. Rows that share state without sharing a code path still do NOT bundle (Rule 1) and should not parallel-execute against this file in the same wave. |
@@ -146,27 +148,27 @@ fragment_skill: /draft-changelog-entry
 fragment_format: |
   YAML frontmatter is mandatory — the file MUST open with
   ---\ncategory: <Fixed|Changed|Changed — BREAKING|Added|Maintenance>\n---
-  followed by the body. eng/verify-changelog-fragments.ps1 (first step of the
-  PR gate) rejects a bare body.
+  followed by exactly one nonblank bullet: - **<category>:** <entry>.
+  eng/verify-changelog-fragments.ps1 rejects a bare body or mismatched prefix.
 consumed_by: /bump (rolls fragments into CHANGELOG.md at version-bump time)
 ```
 
 `CHANGELOG.md` is a **build artifact** — never edit directly outside of `/bump`, and the release-managed guard enforces that. Always emit a fragment per closed row.
 
-## Structural-unit shape (Rule 3 exemption)
+## Structural-unit shape (Rule 3)
 
-A new `[McpServerTool]` follows the Core+Roslyn+Host.Stdio three-layer pattern. Counts as **structural units, not files** under Rule 3 — capped at ≤ 4 units per initiative. The indivisible new-tool shape:
+A new `[McpServerTool]` follows the Core+Roslyn+Host.Stdio three-layer pattern. Treat its contracts, implementation, host surface and registration as structural units when judging reviewability; file counts do not justify an incomplete change. The indivisible new-tool shape:
 
 | Structural unit | Typical files |
 |---|---|
 | Core contract | `src/RoslynMcp.Core/Services/I{Tool}Service.cs` + `src/RoslynMcp.Core/Models/{Tool}Result.cs` (+ optional request DTO) |
 | Roslyn implementation | `src/RoslynMcp.Roslyn/Services/{Tool}Service.cs` |
 | Host.Stdio tool surface | `src/RoslynMcp.Host.Stdio/Tools/{Tool}Tools.cs`, carrying the `[McpToolMetadata]` attribute (tier + name) |
-| Registration | matching `ServerSurfaceCatalog.{Area}.cs` partial entry — the attribute and the partial row MUST agree or RMCP001/RMCP002 fail the build (`analyzers/ServerSurfaceCatalogAnalyzer/ServerSurfaceCatalogAnalyzer.cs`) — plus the DI line in `src/RoslynMcp.Roslyn/ServiceCollectionExtensions.cs` |
+| Registration | Matching `ServerSurfaceCatalog.{Area}.cs` entry plus production DI in `src/RoslynMcp.Roslyn/ServiceCollectionExtensions.cs`; RMCP001/RMCP002 check attributed names/catalog coverage, and `SurfaceCatalogTests` checks metadata agreement. |
 
-Plans for new-tool initiatives MUST set `toolPolicy: "edit-only"` and cite the structural-unit exemption in Scope.
+Plans for new-tool initiatives MUST set `toolPolicy: "edit-only"` and describe the complete structural-unit shape in Scope.
 
-Test-fixture DI is a further consequence, **counted in the budget**, not a 5th structural unit: a new `I{Tool}Service` must be registered in `tests/RoslynMcp.Tests/TestBase.cs` (and in `tests/RoslynMcp.Tests/TestInfrastructure/TestServiceContainer.cs` for fixtures that use the container instead of inheriting `TestBase`), or DI-resolving tests fail at resolution time. This one has no mechanical trigger — "a *new* service was introduced" is not expressible as an anchor path — so the planner must add it by judgment. A plan that genuinely needs > 4 structural units must still split.
+Test fixtures inherit production registrations through `TestServiceContainer.Create` calling `AddRoslynServices`; do not duplicate registrations in `TestBase`. When a fixture needs a typed service accessor, update the container and forwarding accessor by judgment and include those edits in Scope. Structural-unit counts inform decomposition, not completeness.
 
 ## mandatory_companion_files
 
@@ -197,20 +199,20 @@ Further assertions in the same test class fire on a different trigger:
 - `ReadmePackageAndPluginSkillCounts_MatchShippedSkillDirectory` fires on an edit under `skills/`: the "N bundled agent skills" claim in `README.md`, `src/RoslynMcp.Host.Stdio/README.md`, **and** `.claude-plugin/plugin.json`'s description must match the shipped `skills/` directory. `.claude-plugin/plugin.json` is a **hard-blocked release-managed path** (see Hooks): a shipped-skill add/remove routes through `/bump`, `/release-cut`, or `/ship`, or creates the sentinel explicitly.
 - `BacklogPlanningSurfaceCountClaims_MatchLiveServerSurfaceCatalog` sweeps every planning/backlog `ai_docs/**/*.md` for "`<N>` tools is approaching" and `server_info.surface.registered.tools <from> -> <to>` claims, so a stale tool count in a backlog item or in this file fails the build too.
 
-**Known over-trigger.** Description-, envelope-, and parameter-text-only edits touch those anchors without moving any count. Such rows are the `tool_surface_only` shape below: cite that exemption and drop both companions from the stanza, with the reason stated in Scope. Over-triggering is the deliberate default; the failure mode it prevents is a row that under-counts the gate and blows its Rule 3 budget at validation time.
+**Known over-trigger.** Description-, envelope-, and parameter-text-only edits touch those anchors without moving any count. Such rows are the `tool_surface_only` shape below: omit companions whose literals do not change, with the reason stated in Scope. Mechanical expansion is conservative; verify each companion against its gate source.
 
-## Tool-surface-only exemption (Rule 3)
+## Tool-surface-only shape (Rule 3)
 
-Initiatives that ONLY change response-shape, error envelope, description text, or parameter defaults on an already-registered tool may touch up to **2 files**:
+Initiatives that ONLY change response-shape, error envelope, description text, or parameter defaults on an already-registered tool typically touch **2 files**; include every required companion when the mechanism needs more:
 
 | File | Purpose |
 |---|---|
 | `src/RoslynMcp.Host.Stdio/Tools/{Tool}Tools.cs` | Wrapper edit — envelope, schema, description. |
 | `src/RoslynMcp.Core/Models/{Tool}ResponseDto.cs` (optional) | DTO field add/rename. |
 
-`toolPolicy` MUST be `"edit-only"`. Rule 4 still applies. Cite in Scope: *"Rule 3 exemption: tool-surface-only, 2 files."*
+`toolPolicy` MUST be `"edit-only"`. Rule 4 still applies. State the actual file count and why omitted count companions remain unchanged in Scope. The typical two-file shape is advisory, never a ceiling on a complete fix.
 
-The 3-layer pattern would over-spec envelope/error-wrapper fixes; the 2-file cap captures them honestly.
+The 3-layer pattern would over-spec envelope/error-wrapper fixes; the 2-file target describes their usual shape.
 
 ## Hooks that block subagent tool calls
 
@@ -269,12 +271,12 @@ Planning consequence: `CHANGELOG.md` is release-managed *as well as* virtually-s
 
 ```yaml
 selfEditCaveat:
-  applies_when: working in the main checkout (NOT worktrees)
-  forbidden_in_main: mcp__roslyn__*_apply, mcp__roslyn__*_preview
+  applies_when: main-checkout self-edit against dotnet run of the checkout being edited
+  forbidden_in_main: <roslyn>*_apply
   reason: |
-    The running MCP binary services tool calls against the MSBuildWorkspace
-    snapshot it loaded at startup. *_apply mutates that snapshot, corrupting
-    subsequent calls until workspace_reload.
+    Use preview for diff visualization, then file edits when the running server
+    is built from the checkout being edited. Read-side and preview tools remain
+    supported; runtime.md owns this session-shape policy.
   worktree_carveout: |
     Worktree sessions (.worktrees/<id>/) edit source while the MCP server
     being called is the installed global tool at
@@ -310,13 +312,13 @@ These are the preferred-path skills the global commands reference. All resolve; 
 
 ## Repo-specific overrides (none currently)
 
-The global Rules 1–5 ceilings apply unmodified. Should this repo ever need to lower a cap (e.g. tighten Rule 3 from 4 to 3 files for a stretch), record it here as `overrides:` with rationale.
+Follow the canonical remediation rules. File-count targets inform reviewability; correctness governs the complete change.
 
 ---
 
 ## Maintenance
 
-- Update `Build / validation commands` when `.github/workflows/ci.yml`'s PR leg changes which `eng/*.ps1` scripts it runs — the addenda mirrors the workflow, not `verify-release.ps1` alone.
+- Update `Build / validation commands` when `justfile` changes the local `ci` aggregate or its invoked recipes. Verify hosted partitions separately against `.github/workflows/ci.yml` and `CI_POLICY.md`.
 - Update `Hotspot files` when a partial split or refactor changes the parallel-merge friction surface. Do not record citation counts; they go stale immediately.
 - Update `Structural-unit shape` if a new layer (e.g. `RoslynMcp.Host.Http`) is added.
 - Update `Hooks that block subagent tool calls` against `.claude/settings.json` **and** `hooks/hooks.json` whenever either changes. Remove a hook's addenda entry in the same PR that removes the hook.

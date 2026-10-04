@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-04T10:43:59Z
+**updated_at:** 2026-10-04T12:16:53Z
 
 ## Agent contract
 
@@ -148,6 +148,7 @@
 | `timing-test-reaudit-wave` | Medium | — | **Re-audit the remaining wall-clock-sensitive tests** — replace fixed deadlines on timers and spawned children with injected clocks or event waits; start with the pwsh pipe-lifetime test. [type: test-infrastructure] [source: load-sensitive-timing-tests-full-suite] | L | items/timing-test-reaudit-wave.md |
 | `gate-timing-tests-fail-under-machine-load` | Medium | — | **Make wall-clock-bound tests deterministic under load** — CiTopology docs-only allowlist pwsh 30 s limit and WorkspaceValidationVerdict git-scope test fail under a loaded full-suite run. [type: bug] [source: backlog-remediate 20261001T130338Z] | M | items/gate-timing-tests-fail-under-machine-load.md |
 | `workspace-close-global-build-server-shutdown` | Medium | — | **Scope explicit workspace drain** - replace machine-wide build-server shutdown with verified workspace-owned cleanup. [type: bug] [source: validation-isolation adjacent review 2026-10-04] | M | items/workspace-close-global-build-server-shutdown.md |
+| `test-temp-reaper-live-owner` | Medium | — | **Preserve live test temp roots** — require owner-lifetime evidence before reaping an old sibling directory. [type: bug] [source: addenda preflight 2026-10-04] | S | items/test-temp-reaper-live-owner.md |
 
 ## Low
 
