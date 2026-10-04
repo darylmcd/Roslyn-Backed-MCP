@@ -182,7 +182,7 @@ public static class AnalysisTools
 
     /// <summary>
     /// Resolves a positional parameter that accepts two alias names (e.g. <c>line</c> and <c>startLine</c>).
-    /// Exactly one of the two must be supplied; supplying both with conflicting values or supplying
+    /// At least one of the two must be supplied; equal values are accepted. Conflicting values or
     /// neither is a parameter error.
     /// </summary>
     private static int ResolvePositionAlias(int? primary, int? alias, string primaryName, string aliasName)
@@ -191,7 +191,7 @@ public static class AnalysisTools
         {
             if (primary.Value != alias.Value)
             {
-                throw new ArgumentException(
+                throw new PublicArgumentException(
                     $"Conflicting values for '{primaryName}' ({primary.Value}) and its alias '{aliasName}' ({alias.Value}). Supply only one.",
                     primaryName);
             }
@@ -199,7 +199,7 @@ public static class AnalysisTools
         }
         if (primary.HasValue) return primary.Value;
         if (alias.HasValue) return alias.Value;
-        throw new ArgumentException(
+        throw new PublicArgumentException(
             $"Missing required parameter '{primaryName}' (or its alias '{aliasName}').",
             primaryName);
     }
@@ -289,7 +289,7 @@ public static class AnalysisTools
         CancellationToken ct = default)
     {
         ParameterValidation.ValidatePagination(referencesOffset, referencesLimit, nameof(referencesOffset), nameof(referencesLimit));
-        if (declarationsLimit < 1) throw new ArgumentException("declarationsLimit must be >= 1.", nameof(declarationsLimit));
+        if (declarationsLimit < 1) throw new PublicArgumentException("declarationsLimit must be >= 1.", nameof(declarationsLimit));
         return gate.RunReadAsync(workspaceId, async c =>
         {
             var paging = new ImpactAnalysisPaging(referencesOffset, referencesLimit, declarationsLimit);

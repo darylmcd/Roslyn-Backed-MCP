@@ -1,3 +1,4 @@
+using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Host.Stdio.Tools;
@@ -27,18 +28,18 @@ internal static class SourceTextRequestProjection
 {
     /// <summary>
     /// Validates the caller-supplied bounds that can be checked before the document is read.
-    /// Throws <see cref="ArgumentException"/> with the historically stable paramNames.
+    /// Throws <see cref="PublicArgumentException"/> with the historically stable paramNames.
     /// </summary>
     public static void ValidateRequest(int maxChars, int? startLine, int? endLine)
     {
         if (maxChars <= 0)
-            throw new ArgumentException($"maxChars must be greater than 0 (got {maxChars}).", nameof(maxChars));
+            throw new PublicArgumentException($"maxChars must be greater than 0 (got {maxChars}).", nameof(maxChars));
         if (startLine is < 1)
-            throw new ArgumentException($"startLine must be >= 1 (got {startLine.Value}).", nameof(startLine));
+            throw new PublicArgumentException($"startLine must be >= 1 (got {startLine.Value}).", nameof(startLine));
         if (endLine is < 1)
-            throw new ArgumentException($"endLine must be >= 1 (got {endLine.Value}).", nameof(endLine));
+            throw new PublicArgumentException($"endLine must be >= 1 (got {endLine.Value}).", nameof(endLine));
         if (startLine.HasValue && endLine.HasValue && startLine.Value > endLine.Value)
-            throw new ArgumentException(
+            throw new PublicArgumentException(
                 $"startLine ({startLine.Value}) must be <= endLine ({endLine.Value}).",
                 nameof(startLine));
     }
@@ -57,7 +58,7 @@ internal static class SourceTextRequestProjection
         var requestedEnd = endLine ?? totalLineCount;
 
         if (requestedStart > totalLineCount)
-            throw new ArgumentException(
+            throw new PublicArgumentException(
                 $"startLine ({requestedStart}) is past the end of the file ({totalLineCount} lines).",
                 nameof(startLine));
 
