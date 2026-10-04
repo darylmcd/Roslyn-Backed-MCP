@@ -761,4 +761,36 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
         solutionDocument.Save(solutionFilePath, SaveOptions.DisableFormatting);
     }
 
+
+    [TestMethod]
+    [DataRow("prefix")]
+    [DataRow("parent")]
+    [DataRow("root")]
+    [DataRow("case")]
+    [DataRow("descendant")]
+    public void Interface_Directory_Inference_Only_Uses_Project_Descendants(string shape)
+    {
+        using var workspace = new Microsoft.CodeAnalysis.AdhocWorkspace();
+        var root = Path.Combine(Path.GetTempPath(), "interface-inference-" + Guid.NewGuid().ToString("N"), "Project");
+        var path = shape switch
+        {
+            "prefix" => Path.Combine(root + "2", "Interfaces", "IExternal.cs"),
+            "parent" => Path.Combine(root, "..", "Interfaces", "IExternal.cs"),
+            "root" => root,
+            "case" => Path.Combine(Path.GetDirectoryName(root)!, "project", "Interfaces", "IExternal.cs"),
+            _ => Path.Combine(root, "Interfaces", "IInside.cs")
+        };
+        var projectId = Microsoft.CodeAnalysis.ProjectId.CreateNewId();
+        var solution = workspace.CurrentSolution
+            .AddProject(Microsoft.CodeAnalysis.ProjectInfo.Create(projectId, Microsoft.CodeAnalysis.VersionStamp.Create(),
+                "Project", "Project", Microsoft.CodeAnalysis.LanguageNames.CSharp))
+            .AddDocument(Microsoft.CodeAnalysis.DocumentId.CreateNewId(projectId), "Interface.cs",
+                Microsoft.CodeAnalysis.Text.SourceText.From("interface IInside {}"), filePath: path);
+        var method = typeof(RoslynMcp.Roslyn.Services.CrossProjectRefactoringService).GetMethod(
+            "ResolvePreferredInterfaceSubdirectory", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+        var result = method.Invoke(null, [solution, solution.GetProject(projectId)!, root]);
+        Assert.AreEqual(shape == "descendant" || shape == "case" && OperatingSystem.IsWindows()
+            ? Path.Combine(root, "Interfaces") : root, result);
+    }
+
 }

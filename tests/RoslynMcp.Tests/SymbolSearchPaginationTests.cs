@@ -176,7 +176,7 @@ public sealed class SymbolSearchPaginationTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task SymbolSearch_LimitExceeds50_ThrowsArgumentException()
     {
-        await Assert.ThrowsExactlyAsync<ArgumentException>(async () =>
+        await Assert.ThrowsExactlyAsync<PublicArgumentException>(async () =>
         {
             await SymbolTools.SearchSymbols(
                 requestContext: null!, WorkspaceExecutionGate, SymbolSearchService, WorkspaceId,
@@ -192,7 +192,7 @@ public sealed class SymbolSearchPaginationTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task SymbolSearch_NegativeOffset_ThrowsArgumentException()
     {
-        await Assert.ThrowsExactlyAsync<ArgumentException>(async () =>
+        await Assert.ThrowsExactlyAsync<PublicArgumentException>(async () =>
         {
             await SymbolTools.SearchSymbols(
                 requestContext: null!, WorkspaceExecutionGate, SymbolSearchService, WorkspaceId,
@@ -334,5 +334,25 @@ public sealed class SymbolSearchPaginationTests : SharedWorkspaceTestBase
         using var doc = JsonDocument.Parse(json);
         Assert.IsTrue(doc.RootElement.TryGetProperty("symbols", out var symbols));
         Assert.AreEqual(JsonValueKind.Array, symbols.ValueKind);
+    }
+
+    [TestMethod]
+    [DataRow(-3)]
+    [DataRow(0)]
+    [DataRow(51)]
+    public async Task SymbolSearch_InvalidLimit_PublishesRange(int limit)
+    {
+        var exception = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
+            SymbolTools.SearchSymbols(null, WorkspaceExecutionGate, SymbolSearchService, WorkspaceId, "Animal", limit: limit));
+        ParameterValidationTests.AssertPublicEnvelope(exception, "limit", "between 1 and 50");
+    }
+
+    [TestMethod]
+    public async Task DocumentSymbols_MissingLocator_PublishesAlternatives()
+    {
+        var exception = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
+            SymbolTools.GetDocumentSymbolsCore(null!, WorkspaceExecutionGate, SymbolSearchService, WorkspaceId,
+                null, null, null, null));
+        ParameterValidationTests.AssertPublicEnvelope(exception, "filePath", "filePath, a symbolHandle, or a metadataName");
     }
 }

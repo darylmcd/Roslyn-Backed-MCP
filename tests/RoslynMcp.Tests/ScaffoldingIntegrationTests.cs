@@ -1841,4 +1841,20 @@ public class SnapshotContentHasher
 
         public void RestoreVersion(string workspaceId, int version) => inner.RestoreVersion(workspaceId, version);
     }
+
+    [TestMethod]
+    [DataRow(true)]
+    [DataRow(false)]
+    public async Task Batch_Refusals_Give_Actionable_Recovery_Without_Creating_Previews(bool empty)
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var original = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        ScaffoldTestBatchTargetDto[] targets = empty ? [] : [new ScaffoldTestBatchTargetDto("private-missing-target", "Missing")];
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => ScaffoldingService.PreviewScaffoldTestBatchAsync(
+            workspace.WorkspaceId, new ScaffoldTestBatchDto("SampleLib.Tests", targets, "auto"), CancellationToken.None));
+        FileOperationIntegrationTests.AssertSafeRefusal(error, empty ? "at least one target" : "Verify", null, "private-missing-target", workspace.RootPath);
+        Assert.AreSame(original, WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
+        FileOperationIntegrationTests.AssertNoStoredPreviews(PreviewStore, workspace.WorkspaceId);
+    }
+
 }

@@ -38,7 +38,7 @@ public static class AnalysisTools
         CancellationToken ct = default)
     {
         ParameterValidation.ValidateSeverity(severity);
-        ParameterValidation.ValidatePagination(offset, limit);
+        ParameterValidation.ValidatePagination(offset, limit, nameof(offset), nameof(limit));
         return gate.RunReadAsync(workspaceId, async c =>
         {
             ProgressHelper.Report(progress, 0);
@@ -242,8 +242,8 @@ public static class AnalysisTools
         [Description("Maximum number of callees to return (default: 100)")] int calleesLimit = 100,
         CancellationToken ct = default)
     {
-        ParameterValidation.ValidatePagination(0, callersLimit);
-        ParameterValidation.ValidatePagination(0, calleesLimit);
+        ParameterValidation.ValidatePagination(0, callersLimit, "offset", nameof(callersLimit));
+        ParameterValidation.ValidatePagination(0, calleesLimit, "offset", nameof(calleesLimit));
         return gate.RunReadAsync(workspaceId, async c =>
         {
             var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
@@ -288,7 +288,7 @@ public static class AnalysisTools
         [Description("When true, drops the per-reference and per-declaration arrays and returns only the targetSymbol, affectedProjects list, totals, and hasMore flags. Default false preserves the v1.18.x shape.")] bool summary = false,
         CancellationToken ct = default)
     {
-        ParameterValidation.ValidatePagination(referencesOffset, referencesLimit);
+        ParameterValidation.ValidatePagination(referencesOffset, referencesLimit, nameof(referencesOffset), nameof(referencesLimit));
         if (declarationsLimit < 1) throw new ArgumentException("declarationsLimit must be >= 1.", nameof(declarationsLimit));
         return gate.RunReadAsync(workspaceId, async c =>
         {
@@ -344,7 +344,7 @@ public static class AnalysisTools
         [Description("Maximum number of mutating members to return (default: 100)")] int limit = 100,
         CancellationToken ct = default)
     {
-        ParameterValidation.ValidatePagination(0, limit);
+        ParameterValidation.ValidatePagination(0, limit, "offset", nameof(limit));
         return gate.RunReadAsync(workspaceId, async c =>
         {
             var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
@@ -381,7 +381,7 @@ public static class AnalysisTools
         [Description("Number of usages to skip before returning results (default: 0)")] int offset = 0,
         CancellationToken ct = default)
     {
-        ParameterValidation.ValidatePagination(offset, limit);
+        ParameterValidation.ValidatePagination(offset, limit, nameof(offset), nameof(limit));
         return gate.RunReadAsync(workspaceId, async c =>
         {
             var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
@@ -427,7 +427,7 @@ public static class AnalysisTools
         [Description("Number of hits to skip before returning results (default: 0).")] int offset = 0,
         CancellationToken ct = default)
     {
-        ParameterValidation.ValidatePagination(offset, limit);
+        ParameterValidation.ValidatePagination(offset, limit, nameof(offset), nameof(limit));
         return gate.RunReadAsync(workspaceId, async c =>
         {
             // Always collect up to the 500-hit hard cap so pagination can actually advance.

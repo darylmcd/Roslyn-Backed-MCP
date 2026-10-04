@@ -305,7 +305,10 @@ public sealed class NamespaceRelocationTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
-    public async Task Preview_Rejects_Destination_Outside_Project_Sandbox()
+    [DataRow("prefix")]
+    [DataRow("parent")]
+    [DataRow("root")]
+    public async Task Preview_Rejects_Destination_Outside_Project_Sandbox(string shape)
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
 
@@ -321,7 +324,12 @@ public sealed class NamespaceRelocationTests : IsolatedWorkspaceTestBase
         var service = CreateService();
 
         // An absolute path outside the project directory must be rejected.
-        var outsidePath = Path.Combine(Path.GetTempPath(), "Widget.cs");
+        var outsidePath = shape switch
+        {
+            "prefix" => workspace.GetPath("SampleLib2", "Widget.cs"),
+            "parent" => workspace.GetPath("SampleLib", "..", "Widget.cs"),
+            _ => workspace.GetPath("SampleLib")
+        };
         await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
             service.PreviewChangeTypeNamespaceAsync(
                 wsId,

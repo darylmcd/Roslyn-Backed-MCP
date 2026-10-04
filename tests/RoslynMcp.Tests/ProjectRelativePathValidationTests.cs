@@ -110,4 +110,23 @@ public class ProjectRelativePathValidationTests
         var result = ProjectRelativePathValidation.EnsureDescendantOfRoot(Root, candidate, "dtoFolders");
         Assert.AreEqual(Path.GetFullPath(candidate), result);
     }
+
+    [TestMethod]
+    public void Descendant_Validation_Preserves_Platform_Case_Policy_And_Failure_Contract()
+    {
+        var candidate = Path.Combine(Path.GetDirectoryName(Root)!, "prpvtestroot", "Child.cs");
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.AreEqual(Path.GetFullPath(candidate),
+                ProjectRelativePathValidation.EnsureDescendantOfRoot(Root, candidate, "outputFolders"));
+        }
+        else
+        {
+            var error = Assert.ThrowsExactly<InvalidOperationException>(() =>
+                ProjectRelativePathValidation.EnsureDescendantOfRoot(Root, candidate, "outputFolders"));
+            StringAssert.Contains(error.Message, "outputFolders");
+            StringAssert.Contains(error.Message, Path.GetFullPath(candidate));
+        }
+    }
+
 }

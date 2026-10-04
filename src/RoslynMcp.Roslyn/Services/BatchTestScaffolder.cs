@@ -79,7 +79,7 @@ internal sealed class BatchTestScaffolder
     {
         if (request.Targets is null || request.Targets.Count == 0)
         {
-            throw new InvalidOperationException("scaffold_test_batch_preview requires at least one target.");
+            throw new PublicInvalidOperationException("scaffold_test_batch_preview requires at least one target.");
         }
     }
 
@@ -93,7 +93,7 @@ internal sealed class BatchTestScaffolder
         var testProject = solution.Projects.FirstOrDefault(p =>
             string.Equals(p.Name, request.TestProjectName, StringComparison.OrdinalIgnoreCase) ||
             string.Equals(p.FilePath, request.TestProjectName, StringComparison.OrdinalIgnoreCase))
-            ?? throw new InvalidOperationException($"Test project not loaded: {request.TestProjectName}");
+            ?? throw new PublicInvalidOperationException("The destination test project is not loaded. Use workspace_status to list project names, then retry with a loaded testProjectName.");
 
         return new BatchScaffoldContext(
             Project: project,
@@ -225,8 +225,8 @@ internal sealed class BatchTestScaffolder
     {
         if (state.CreatedFiles.Count == 0)
         {
-            throw new InvalidOperationException(
-                "scaffold_test_batch_preview produced no file creations. See Warnings for per-target reasons.");
+            throw new PublicInvalidOperationException(
+                "scaffold_test_batch_preview produced no file creations. Verify target type and method names reference loaded source types, and choose targets without existing generated test files.");
         }
 
         var changes = await Helpers.SolutionDiffHelper
@@ -281,14 +281,14 @@ internal sealed class BatchTestScaffolder
         string workspaceId, ScaffoldFirstTestFileDto request, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(request.ServiceMetadataName))
-            throw new InvalidOperationException("scaffold_first_test_file_preview requires a non-empty serviceMetadataName.");
+            throw new PublicInvalidOperationException("scaffold_first_test_file_preview requires a non-empty serviceMetadataName.");
 
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var (serviceSymbol, sourceProject) = await ResolveServiceByMetadataNameAsync(solution, request.ServiceMetadataName, ct).ConfigureAwait(false);
         if (serviceSymbol is null || sourceProject is null)
         {
-            throw new InvalidOperationException(
-                $"Service '{request.ServiceMetadataName}' was not found by metadata name in any loaded project. " +
+            throw new PublicInvalidOperationException(
+                "The service was not found by metadata name in any loaded project. " +
                 "Pass the fully-qualified type name (Namespace.TypeName).");
         }
 
@@ -303,8 +303,8 @@ internal sealed class BatchTestScaffolder
         var testFilePath = Path.Combine(projectDirectory, $"{simpleTypeName}Tests.cs");
         if (File.Exists(testFilePath))
         {
-            throw new InvalidOperationException(
-                $"Destination file '{testFilePath}' already exists. " +
+            throw new PublicInvalidOperationException(
+                "The destination test file already exists. " +
                 "scaffold_first_test_file_preview is for brand-new fixtures only — use scaffold_test_preview to add tests to an existing fixture.");
         }
 
@@ -467,8 +467,8 @@ internal sealed class BatchTestScaffolder
 
         if (candidates.Count == 0)
         {
-            throw new InvalidOperationException(
-                $"Could not infer a destination test project for service in project '{sourceProject.Name}'. " +
+            throw new PublicInvalidOperationException(
+                "Could not infer a destination test project for the service. " +
                 "No project ending in '.Tests' references this project. Pass testProjectName explicitly.");
         }
 
@@ -491,10 +491,9 @@ internal sealed class BatchTestScaffolder
             }
             else
             {
-                var names = string.Join(", ", candidates.Select(c => c.Name));
-                throw new InvalidOperationException(
-                    $"Multiple test projects reference '{sourceProject.Name}': {names}. " +
-                    $"Pass testProjectName explicitly, or rename a candidate to '{expectedName}' to leverage the suffix tiebreaker.");
+                throw new PublicInvalidOperationException(
+                    "Multiple test projects reference the service project and no unique convention match was found. " +
+                    "Pass testProjectName explicitly after listing projects with workspace_status.");
             }
         }
         else
