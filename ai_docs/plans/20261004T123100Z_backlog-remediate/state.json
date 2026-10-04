@@ -260,7 +260,7 @@
     {
       "id": "symbol-locator-and-source-text-tool-argument-refusals-public-message",
       "order": 6,
-      "status": "in-progress",
+      "status": "merged",
       "backlogRowsClosed": [
         "symbol-locator-and-source-text-tool-argument-refusals-public-message"
       ],
@@ -297,7 +297,7 @@
       "branch": "remediation/symbol-locator-and-source-text-tool-argument-refusals-public-message",
       "worktreePath": ".worktrees/symbol-locator-and-source-text-tool-argument-refusals-public-message",
       "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1748",
-      "mergedAt": null,
+      "mergedAt": "2026-10-04T18:08:58Z",
       "notes": null,
       "fileSetHash": "5686e0abf357d6142f66d0bbb00339a19da054d68a07db758dffb2fe47d2a0c4",
       "stanzaHash": "3cf7955f7468a4d0d5d4fdcb3802b3e6b3f9f248e744f1350a2a0ea99ab2a2e4",
@@ -318,7 +318,13 @@
           "stanzaHash": "3cf7955f7468a4d0d5d4fdcb3802b3e6b3f9f248e744f1350a2a0ea99ab2a2e4"
         }
       ],
-      "reviewedHead": "7f75cb818d4d97159b32ae30596c272a61dc4aa3"
+      "reviewedHead": "7f75cb818d4d97159b32ae30596c272a61dc4aa3",
+      "githubGate": {
+        "baseOid": "a2fd70bf9b298c901496873bac7a41c947abf23c",
+        "headOid": "7f75cb818d4d97159b32ae30596c272a61dc4aa3",
+        "tree": "1df8d570f51a049f6ff8f64445ffbb50903abd0b",
+        "checksVerifiedAt": "2026-10-04T18:08:54.816Z"
+      }
     },
     {
       "id": "resource-argument-refusals-public-message",
@@ -471,7 +477,7 @@
     {
       "id": "parameter-object-argument-refusals-public-message",
       "order": 10,
-      "status": "pending",
+      "status": "in-progress",
       "backlogRowsClosed": [
         "parameter-object-argument-refusals-public-message"
       ],
@@ -499,8 +505,8 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
+      "branch": "remediation/parameter-object-argument-refusals-public-message",
+      "worktreePath": ".worktrees/parameter-object-argument-refusals-public-message",
       "prUrl": null,
       "mergedAt": null,
       "notes": null,
