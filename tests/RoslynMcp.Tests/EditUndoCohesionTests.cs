@@ -137,7 +137,7 @@ public sealed class EditUndoCohesionTests : IsolatedWorkspaceTestBase
         var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
 
         // Intentionally build a malformed edit with null NewText. TextEditDto is a positional
-        // record so we construct it via `default` + expression to bypass nullable analysis.
+        // record; null! supplies malformed input while bypassing nullable analysis.
         var edit = new TextEditDto(1, 1, 1, 1, null!);
 
         var ex = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
