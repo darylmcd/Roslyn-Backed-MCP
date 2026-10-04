@@ -108,6 +108,7 @@ public abstract class TestBase
     protected static TypeExtractionService TypeExtractionService => Fixture.Services.TypeExtractionService;
     protected static TypeMoveService TypeMoveService => Fixture.Services.TypeMoveService;
     protected static UndoService UndoService => Fixture.Services.UndoService;
+    protected static ApplyUndoWorkflowService ApplyUndoWorkflowService => Fixture.Services.ApplyUndoWorkflowService;
     protected static FlowAnalysisService FlowAnalysisService => Fixture.Services.FlowAnalysisService;
     protected static CompileCheckService CompileCheckService => Fixture.Services.CompileCheckService;
     protected static AnalyzerInfoService AnalyzerInfoService => Fixture.Services.AnalyzerInfoService;
