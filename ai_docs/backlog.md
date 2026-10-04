@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-04T13:09:40Z
+**updated_at:** 2026-10-04T13:34:02Z
 
 ## Agent contract
 
@@ -151,6 +151,7 @@
 | `change-signature-service-refusals-public-message` | Medium | — | **Publish safe change-signature refusals** — replace unmarked caller errors with typed, path-free diagnostics. [type: bug] [source: change-signature-refusals-public-message] | S | items/change-signature-service-refusals-public-message.md |
 | `format-range-service-refusals-public-message` | Medium | — | **Publish safe formatter range refusals** — name coordinate bounds and projection recovery through the error envelope. [type: bug] [source: change-signature-refusals-public-message] | S | items/format-range-service-refusals-public-message.md |
 | `change-signature-omitted-optional-binding` | Medium | — | **Preserve binding across omitted optional arguments** — repair add/reorder positional rewriting using semantic parameter bindings. [type: bug] [source: backlog-remediate-20261004] | S | items/change-signature-omitted-optional-binding.md |
+| `cross-project-public-refusals-echo-input` | Medium | — | **Remove caller detail from public cross-project refusals** — publish path/input-free corrections for unresolved type/project names and existing destinations while preserving wire categories. [type: bug] [source: backlog-remediate adjacent review 2026-10-04] | S | items/cross-project-public-refusals-echo-input.md |
 
 ## Low
 
@@ -387,6 +388,7 @@
 | `audit-phase-runner-stale-stress-reference` | Low | — | **Update the stale /mcp-server-stress reference in agents/audit-phase-runner.md** — point it at /mcp-server-surface-test; full gate required. [type: docs] [source: plan 20260930T213336Z surface-test-skill-prompt-drift deepener] | S | items/audit-phase-runner-stale-stress-reference.md |
 | `host-bind-options-locals-untested` | Low | — | **Extract and test the remaining Program.cs Bind*Options local functions** — workspace, preview-store and execution-gate option binders are untestable top-level locals. [type: test-infrastructure] [source: workspace-restore-budget fixer] | M | items/host-bind-options-locals-untested.md |
 | `extract-type-override-modifier-stripped` | Low | — | **Investigate extract_type dropping override modifiers** — check whether extracting an override member silently discards the base contract. [type: chore] [source: backlog-remediate 20261001T130338Z] | S | items/extract-type-override-modifier-stripped.md |
+| `project-name-path-selection-duplication` | Low | file-create-and-scaffold-refusals-public-message,cross-project-public-refusals-echo-input | **Centralize project name/path selection** — reuse one selection predicate across file operations, cross-project refactoring and scaffolding while preserving caller-specific failures. [type: refactor] [source: backlog-remediate adjacent review 2026-10-04] | M | items/project-name-path-selection-duplication.md |
 
 ## Defer
 
