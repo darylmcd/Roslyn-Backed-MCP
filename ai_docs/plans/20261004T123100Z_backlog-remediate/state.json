@@ -180,12 +180,13 @@
       "dependsOn": [],
       "branch": null,
       "worktreePath": null,
-      "prUrl": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1743",
       "mergedAt": null,
-      "notes": "Immutable batch base defd4546f5a31b1ef68bbdc2c74fbc56aa64b99c; generated execute brief dispatched in isolated worktree.",
+      "notes": "Executor opened exact-head d4498e0c376fcfa53f1732c9b69e36dd8007724f; awaiting cold review and hosted validation.",
       "fileSetHash": "457338453ecab32e0effe9d3035c9357051748e55691b95f31d325561f32c890",
       "stanzaHash": "6b265b0b940c5b316584361d77ff80ce46d9d327fe4e12ddf6f45f7d5fbe10f5",
-      "reviewedStanzaHash": "6b265b0b940c5b316584361d77ff80ce46d9d327fe4e12ddf6f45f7d5fbe10f5"
+      "reviewedStanzaHash": "6b265b0b940c5b316584361d77ff80ce46d9d327fe4e12ddf6f45f7d5fbe10f5",
+      "reviewedHead": "d4498e0c376fcfa53f1732c9b69e36dd8007724f"
     },
     {
       "id": "tool-scripting-undo-workflow-argument-refusals-public-message",
