@@ -41,15 +41,15 @@ public sealed class StringLiteralReplaceService : IStringLiteralReplaceService
         CancellationToken ct)
     {
         if (replacements is null || replacements.Count == 0)
-            throw new ArgumentException("At least one replacement is required.", nameof(replacements));
+            throw new PublicArgumentException("At least one replacement is required.", nameof(replacements));
 
         var byLiteral = new Dictionary<string, StringLiteralReplacementDto>(StringComparer.Ordinal);
         foreach (var r in replacements)
         {
             if (string.IsNullOrEmpty(r.LiteralValue))
-                throw new ArgumentException("replacement.literalValue must be non-empty.", nameof(replacements));
+                throw new PublicArgumentException("replacement.literalValue must be non-empty.", nameof(replacements));
             if (string.IsNullOrWhiteSpace(r.ReplacementExpression))
-                throw new ArgumentException("replacement.replacementExpression must be non-empty.", nameof(replacements));
+                throw new PublicArgumentException("replacement.replacementExpression must be non-empty.", nameof(replacements));
             byLiteral[r.LiteralValue] = r;
         }
 

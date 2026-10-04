@@ -32,9 +32,8 @@ public interface IBulkRefactoringService
     /// <paramref name="newMethod"/> parameters use the <c>FQ.TypeName.MethodName(P1,P2,P3)</c>
     /// syntax — the parameter-type list disambiguates overloads. The new method's parameter
     /// names must be drawn from the old method's parameter names; the position of each old
-    /// parameter name in the new list describes the reorder. Every positional call is rewritten
-    /// per the positional mapping; named-argument calls keep their names and the reorder only
-    /// applies when the caller mixes positional + named args or uses only positional form.
+    /// parameter name in the new list describes the reorder. Rewritten arguments use target
+    /// parameter names while preserving original lexical evaluation order and implicit values.
     /// </summary>
     /// <param name="workspaceId">The workspace session identifier.</param>
     /// <param name="oldMethod">
@@ -45,7 +44,8 @@ public interface IBulkRefactoringService
     /// <param name="newMethod">
     /// FQ signature of the replacement method, in the form
     /// <c>Namespace.Type.OtherMethod(ParamTypeA, ParamTypeB, ...)</c>. The new parameter-type
-    /// list must be a permutation of the old list so a positional mapping can be derived.
+    /// list must correspond to a permutation of the old parameter names; compiler-supported
+    /// argument conversions are permitted when the rewritten call binds to the intended method.
     /// </param>
     /// <param name="scope">Reserved for future scope filters. Currently only <c>null</c>/<c>all</c> is accepted.</param>
     /// <param name="ct">Cancellation token.</param>
