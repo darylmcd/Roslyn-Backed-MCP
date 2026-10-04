@@ -7,7 +7,8 @@
 - `src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs:524` CloseCore invalidates previews and disposes the session.
 - `src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs:1619` session disposal clears Workspace and releases the analyzer lease.
 - `src/RoslynMcp.Host.Stdio/Tools/WorkspaceTools.cs` workspace_close lifecycle and resource-release contract.
-- `tests/RoslynMcp.Tests/WorkspaceToolsIntegrationTests.cs`; `tests/RoslynMcp.Tests/AnalyzerShadowLoaderLifecycleTests.cs`.
+- `tests/RoslynMcp.Tests/WorkspaceToolsIntegrationTests.cs`.
+- `tests/RoslynMcp.Tests/AnalyzerShadowLoaderLifecycleTests.cs`.
 
 ## Acceptance
 
@@ -22,4 +23,3 @@
 - bl-0519 cache deletion remains EPERM with Roslyn PIDs5256 and2412; both own agents independently confirmed workspace count0 and closed sessions.
 - Repeated canonical bsweep-worktree reclaim-scratch calls identify those holders and quarantine the isolated caches after worktree removal. No unrelated process was terminated.
 - Current WorkspaceManager code does call Dispose and invalidates preview tokens; the lower-level retention cause is not yet established. This row tracks the observed resource-release failure, not an assumed missing Dispose call.
-
