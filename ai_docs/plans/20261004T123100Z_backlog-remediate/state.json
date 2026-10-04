@@ -13,7 +13,7 @@
     {
       "id": "argument-exception-throw-sites-lack-public-message",
       "order": 1,
-      "status": "in-review",
+      "status": "merged",
       "backlogRowsClosed": [
         "argument-exception-throw-sites-lack-public-message"
       ],
@@ -53,17 +53,24 @@
       "branch": "remediation/argument-exception-throw-sites-lack-public-message",
       "worktreePath": ".worktrees/argument-exception-throw-sites-lack-public-message",
       "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1740",
-      "mergedAt": null,
-      "notes": "Route deepen: declared/effective L derives solely from four required test companions, not incoherent scope. Standing Engineering Directives 1/6 and RULES 5 Rule4 advisory require a complete shared validation publication fix. Exact subclass assertion pins ParameterValidationTests:24-106, SymbolSearchPaginationTests:179/195, FindReflectionUsagesPaginationTests:344/356, ExpandedSurfaceIntegrationTests:349/368/385 must move together. Existing global rows split-route-ignores-forcing-shapes and remediate-stale-file-cap-wording track the contradictory cap-era routing; do not manufacture a partial or recursively L child solely to satisfy counts.",
+      "mergedAt": "2026-10-04T14:06:20Z",
+      "notes": null,
       "fileSetHash": "83d4f9ddc9105ebe9a8f40ff613aaf1893b25fb0faffe10e74f2ef7e08b3c7bd",
       "stanzaHash": "919bee9356f9cda6aea7dcc2cfa21a644aabe8a2da829f9967705647422db863",
       "reviewedStanzaHash": "919bee9356f9cda6aea7dcc2cfa21a644aabe8a2da829f9967705647422db863",
-      "reviewedHead": "40fcb709e7f1bb56abb5c337c0d667431a8676eb"
+      "reviewedHead": "40fcb709e7f1bb56abb5c337c0d667431a8676eb",
+      "scratchRemoved": false,
+      "githubGate": {
+        "baseOid": "1990115e6fc9e9d4bdbd1d60250f6635a92053f1",
+        "headOid": "40fcb709e7f1bb56abb5c337c0d667431a8676eb",
+        "tree": "4621dc90267ab8625d4d5521415a1f3adbf17b28",
+        "checksVerifiedAt": "2026-10-04T14:06:17.774Z"
+      }
     },
     {
       "id": "file-create-and-scaffold-refusals-public-message",
       "order": 2,
-      "status": "pending",
+      "status": "in-progress",
       "backlogRowsClosed": [
         "file-create-and-scaffold-refusals-public-message"
       ],
@@ -102,8 +109,8 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
+      "branch": "remediation/file-create-and-scaffold-refusals-public-message",
+      "worktreePath": ".worktrees/file-create-and-scaffold-refusals-public-message",
       "prUrl": null,
       "mergedAt": null,
       "notes": null,
@@ -673,20 +680,6 @@
   "conflictGraph": {
     "edges": [
       {
-        "a": 1,
-        "b": 6,
-        "sharedFiles": [
-          "src/RoslynMcp.Host.Stdio/Tools/AnalysisTools.cs"
-        ]
-      },
-      {
-        "a": 1,
-        "b": 9,
-        "sharedFiles": [
-          "src/RoslynMcp.Host.Stdio/Tools/CompileCheckTools.cs"
-        ]
-      },
-      {
         "a": 2,
         "b": 12,
         "sharedFiles": [
@@ -711,13 +704,12 @@
       }
     ],
     "degrees": {
-      "1": 2,
       "2": 1,
       "4": 2,
       "5": 0,
-      "6": 1,
+      "6": 0,
       "7": 1,
-      "9": 2,
+      "9": 1,
       "10": 0,
       "11": 0,
       "12": 1,
@@ -727,6 +719,7 @@
     },
     "zeroDegreeInitiatives": [
       5,
+      6,
       10,
       11,
       13,
