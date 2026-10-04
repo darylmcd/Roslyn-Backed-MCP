@@ -1,5 +1,9 @@
-using System.Text.Json;
 using System.Reflection;
+using System.Text.Json;
+using System.Text.RegularExpressions;
+using Microsoft.CodeAnalysis;
+using RoslynMcp.Roslyn.Contracts;
+using RoslynMcp.Tests.Helpers;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
@@ -422,7 +426,10 @@ public sealed class ParameterObjectPreviewTests : TestBase
     }
 
     [TestMethod]
-    public async Task NewParameterName_InvalidRetainedOrLocalCollision_RefusesPreview()
+    [DataRow(5, "collides with retained parameter", "sumArgs")]
+    [DataRow(7, "collides with a declaration inside the target method", "Local 'sumArgs'")]
+    public async Task NewParameterName_InvalidRetainedOrLocalCollision_RefusesPreview(
+        int methodLine, string expectedMessage, string expectedDetail)
     {
         var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
             """
@@ -459,22 +466,14 @@ public sealed class ParameterObjectPreviewTests : TestBase
                     CancellationToken.None));
             StringAssert.Contains(invalidDefault.Message, "reserved C# keyword");
 
-            var retained = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
-                ParameterObjectService.PreviewParameterObjectAsync(
+            var collision = await AssertPublicArgumentRefusalAsync(service =>
+                service.PreviewParameterObjectAsync(
                     workspaceId,
-                    SymbolLocator.BySource(fixturePath, line: 5, column: 16),
-                    new ParameterObjectPreviewRequest(["a", "b"], "SumArgs"),
-                    CancellationToken.None));
-            StringAssert.Contains(retained.Message, "collides with retained parameter 'sumArgs'");
-
-            var local = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
-                ParameterObjectService.PreviewParameterObjectAsync(
-                    workspaceId,
-                    SymbolLocator.BySource(fixturePath, line: 7, column: 16),
-                    new ParameterObjectPreviewRequest(["a", "b"], "SumArgs"),
-                    CancellationToken.None));
-            StringAssert.Contains(local.Message, "collides with a declaration inside the target method");
-            StringAssert.Contains(local.Message, "Local 'sumArgs'");
+                    SymbolLocator.BySource(fixturePath, line: methodLine, column: 16),
+                    new ParameterObjectPreviewRequest(["a", "b"], "SumArgs", ParameterName: "@sumArgs"),
+                    CancellationToken.None), "parameterName", [fixturePath, "@sumArgs"]);
+            StringAssert.Contains(collision.Message, expectedMessage);
+            StringAssert.Contains(collision.Message, expectedDetail);
         }
         finally
         {
@@ -507,12 +506,12 @@ public sealed class ParameterObjectPreviewTests : TestBase
 
         try
         {
-            var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
-                ParameterObjectService.PreviewParameterObjectAsync(
+            var ex = await AssertPublicArgumentRefusalAsync(service =>
+                service.PreviewParameterObjectAsync(
                     workspaceId,
                     SymbolLocator.BySource(fixturePath, methodLine, column: 16),
-                    new ParameterObjectPreviewRequest(["a", "b"], newTypeName),
-                    CancellationToken.None));
+                    new ParameterObjectPreviewRequest(["a", "b"], newTypeName, ParameterName: methodLine == 8 ? "@sumArgs" : "@sumArgsMethod"),
+                    CancellationToken.None), "parameterName", [fixturePath, "@sumArgs", "@sumArgsMethod"]);
 
             StringAssert.Contains(ex.Message, "would capture an existing unqualified member reference");
             StringAssert.Contains(ex.Message, expectedMember);
@@ -529,6 +528,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
     [DataRow("deconstruct", "other", "CombineArgs", "reserved, synthesized, or inherited", "source parameter 'deconstruct' generates reserved member 'Deconstruct'")]
     [DataRow("clone", "other", "CombineArgs", "reserved, synthesized, or inherited", "source parameter 'clone' generates reserved member 'Clone'")]
     [DataRow("collision", "other", "Collision", "same name as its enclosing record type", "Source parameter 'collision' generates member 'Collision'")]
+    [DataRow("collision", "other", "@Collision", "same name as its enclosing record type", "Source parameter 'collision' generates member 'Collision'")]
     public async Task GeneratedRecordMemberCollision_RefusesPreview(
         string firstParameter,
         string secondParameter,
@@ -549,12 +549,12 @@ public sealed class ParameterObjectPreviewTests : TestBase
 
         try
         {
-            var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
-                ParameterObjectService.PreviewParameterObjectAsync(
+            var ex = await AssertPublicArgumentRefusalAsync(service =>
+                service.PreviewParameterObjectAsync(
                     workspaceId,
                     SymbolLocator.BySource(fixturePath, line: 5, column: 16),
                     new ParameterObjectPreviewRequest([firstParameter, secondParameter], newTypeName),
-                    CancellationToken.None));
+                    CancellationToken.None), "grouped", [fixturePath, "@Collision"]);
             StringAssert.Contains(ex.Message, expectedCategory);
             StringAssert.Contains(ex.Message, expectedDetail);
         }
@@ -891,12 +891,12 @@ public sealed class ParameterObjectPreviewTests : TestBase
 
         try
         {
-            var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
-                ParameterObjectService.PreviewParameterObjectAsync(
+            var ex = await AssertPublicArgumentRefusalAsync(service =>
+                service.PreviewParameterObjectAsync(
                     workspaceId,
                     SymbolLocator.BySource(fixturePath, line: 5, column: 17),
                     new ParameterObjectPreviewRequest(["a", "b"], "ComputeArgs"),
-                    CancellationToken.None));
+                    CancellationToken.None), "grouped", [fixturePath]);
             StringAssert.Contains(ex.Message, "by-ref kind");
         }
         finally
@@ -957,12 +957,12 @@ public sealed class ParameterObjectPreviewTests : TestBase
 
         try
         {
-            var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
-                ParameterObjectService.PreviewParameterObjectAsync(
+            var ex = await AssertPublicArgumentRefusalAsync(service =>
+                service.PreviewParameterObjectAsync(
                     workspaceId,
                     SymbolLocator.BySource(fixturePath, line, column),
                     new ParameterObjectPreviewRequest([.. parameterNames.Split(',')], "GroupedArgs"),
-                    CancellationToken.None));
+                    CancellationToken.None), "grouped", [fixturePath]);
             StringAssert.Contains(ex.Message, "parameter_object_preview refuses");
             StringAssert.Contains(ex.Message, expectedTypeFragment);
             StringAssert.Contains(ex.Message, expectedParameterFragment);
@@ -1050,15 +1050,16 @@ public sealed class ParameterObjectPreviewTests : TestBase
         var workspaceId = loadResult.WorkspaceId;
         try
         {
-            var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
-                ParameterObjectService.PreviewParameterObjectAsync(
+            var ex = await AssertPublicArgumentRefusalAsync(service =>
+                service.PreviewParameterObjectAsync(
                     workspaceId,
                     SymbolLocator.BySource(appFile, line: 7, column: 17),
                     new ParameterObjectPreviewRequest(["first", "second"], "RunArgs", DtoProjectName: "SampleLib"),
-                    CancellationToken.None));
+                    CancellationToken.None), "grouped", [appFile]);
             StringAssert.Contains(ex.Message, "'first'");
             StringAssert.Contains(ex.Message, "'SampleApp.POAppOnlyType'");
             StringAssert.Contains(ex.Message, "SampleLib -> SampleApp");
+            StringAssert.Contains(ex.PublicMessage, "use add_project_reference_preview");
         }
         finally
         {
@@ -1150,12 +1151,12 @@ public sealed class ParameterObjectPreviewTests : TestBase
         var workspaceId = loadResult.WorkspaceId;
         try
         {
-            var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
-                ParameterObjectService.PreviewParameterObjectAsync(
+            var ex = await AssertPublicArgumentRefusalAsync(service =>
+                service.PreviewParameterObjectAsync(
                     workspaceId,
                     SymbolLocator.BySource(libFile, line: 5, column: 16),
                     new ParameterObjectPreviewRequest(["a", "b", "c"], "SumArgs", DtoProjectName: "SampleApp"),
-                    CancellationToken.None));
+                    CancellationToken.None), "dtoProjectName", [libFile]);
             StringAssert.Contains(ex.Message, "SampleLib -> SampleApp");
         }
         finally
@@ -1429,6 +1430,22 @@ public sealed class ParameterObjectPreviewTests : TestBase
     public static IEnumerable<object[]> UnsupportedTargetContractCases =>
     [
         [
+            "local function",
+            """
+            namespace SampleLib;
+
+            public class POLocalFixture
+            {
+                public int Caller()
+                {
+                    int Sum(int a, int b) => a + b;
+                    return Sum(1, 2);
+                }
+            }
+            """,
+            7, 13, new[] { "a", "b" }, "does not support local functions",
+        ],
+        [
             "constructor",
             """
             namespace SampleLib;
@@ -1595,14 +1612,15 @@ public sealed class ParameterObjectPreviewTests : TestBase
 
         try
         {
-            var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
-                ParameterObjectService.PreviewParameterObjectAsync(
+            var ex = await AssertPublicArgumentRefusalAsync(service =>
+                service.PreviewParameterObjectAsync(
                     workspaceId,
                     SymbolLocator.BySource(fixturePath, line, column),
                     new ParameterObjectPreviewRequest(parameterNames, "GroupedArgs"),
-                    CancellationToken.None),
-                $"case '{caseName}' must refuse the preview");
+                    CancellationToken.None), "target", [fixturePath]);
             StringAssert.Contains(ex.Message, expectedFragment, $"case '{caseName}'");
+            if (caseName == "override")
+                StringAssert.Contains(ex.PublicMessage, "restructure the whole hierarchy manually instead");
         }
         finally
         {
@@ -2212,6 +2230,250 @@ public sealed class ParameterObjectPreviewTests : TestBase
         {
             WorkspaceManager.Close(workspaceId);
         }
+    }
+
+
+    public static IEnumerable<object[]> InvalidArgumentRequests =>
+    [
+        [new ParameterObjectPreviewRequest(null!, "Args"), "parameterNames", "at least two"],
+        [new ParameterObjectPreviewRequest([], "Args"), "parameterNames", "at least two"],
+        [new ParameterObjectPreviewRequest(["a"], "Args"), "parameterNames", "at least two"],
+        [new ParameterObjectPreviewRequest(["a", "b"], " "), "newTypeName", "requires newTypeName"],
+        [new ParameterObjectPreviewRequest(["a", " "], "Args"), "parameterNames", "non-empty"],
+        [new ParameterObjectPreviewRequest([HostileArgumentText, HostileArgumentText], "Args"), "parameterNames", "duplicate"],
+        [new ParameterObjectPreviewRequest(["a", HostileArgumentText], "Args"), "parameterNames", "Existing parameters: a, b, c"],
+        [new ParameterObjectPreviewRequest(["a", "b"], "Args", DtoProjectName: HostileArgumentText), "dtoProjectName", "workspace_status"],
+    ];
+
+    private const string HostileArgumentText = @"submitted-secret-marker C:\private\request \\host\share\request /private/request";
+
+    [TestMethod]
+    [DynamicData(nameof(InvalidArgumentRequests))]
+    public async Task InvalidArgumentRequest_PublishesSafeActionableRefusal(
+        ParameterObjectPreviewRequest request, string parameterName, string expectedMessage)
+    {
+        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+            BoundaryFixtureSource, "POBoundaryFixture.cs");
+        try
+        {
+            var ex = await AssertPublicArgumentRefusalAsync(service =>
+                service.PreviewParameterObjectAsync(
+                    workspaceId, SymbolLocator.BySource(fixturePath, 5, 16), request, CancellationToken.None),
+                parameterName, [fixturePath, HostileArgumentText, "submitted-secret-marker", @"C:\private", @"\\host\share", "/private/request"]);
+            StringAssert.Contains(ex.PublicMessage, expectedMessage);
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
+    [TestMethod]
+    public async Task NewParameterName_MethodTypeParameterCollision_RefusesPublicly()
+    {
+        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+            """
+            namespace SampleLib;
+
+            public class POTypeParameterNameFixture
+            {
+                public int Sum<T>(int a, int b) => a + b;
+            }
+            """, "POTypeParameterNameFixture.cs");
+        try
+        {
+            var ex = await AssertPublicArgumentRefusalAsync(service =>
+                service.PreviewParameterObjectAsync(
+                    workspaceId, SymbolLocator.BySource(fixturePath, 5, 16),
+                    new ParameterObjectPreviewRequest(["a", "b"], "Args", ParameterName: "@T"),
+                    CancellationToken.None),
+                "parameterName", [fixturePath, "@T"]);
+            StringAssert.Contains(ex.PublicMessage, "method type parameter 'T'");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
+    [TestMethod]
+    [DataRow("public static int Sum(int a, params int[] b) => a;", "a", "b", "'params' array")]
+    [DataRow("public static int Sum(this string receiver, int a) => a;", "receiver", "a", "extension-method 'this' receiver")]
+    public async Task GroupedParameterShape_RefusesPublicly(
+        string declaration, string firstParameter, string secondParameter, string expectedMessage)
+    {
+        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+            $$"""
+            namespace SampleLib;
+
+            public static class POShapeFixture
+            {
+                {{declaration}}
+            }
+            """, "POShapeFixture.cs");
+        try
+        {
+            var ex = await AssertPublicArgumentRefusalAsync(service =>
+                service.PreviewParameterObjectAsync(
+                    workspaceId, SymbolLocator.BySource(fixturePath, 5, 23),
+                    new ParameterObjectPreviewRequest([firstParameter, secondParameter], "Args"),
+                    CancellationToken.None),
+                "grouped", [fixturePath]);
+            StringAssert.Contains(ex.PublicMessage, expectedMessage);
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
+
+    [TestMethod]
+    public async Task CancelledParameterObjectPreview_PropagatesCancellationWithoutStoringPreview()
+    {
+        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+            BoundaryFixtureSource, "POBoundaryFixture.cs");
+        try
+        {
+            var store = new RefusalPreviewStore();
+            var service = new ParameterObjectService(WorkspaceManager, store);
+            using var source = new CancellationTokenSource();
+            source.Cancel();
+            await Assert.ThrowsAsync<OperationCanceledException>(() => ToolExecutionTestHarness.RunAsync(
+                "parameter_object_preview", async () =>
+                {
+                    await service.PreviewParameterObjectAsync(
+                        workspaceId, SymbolLocator.BySource(fixturePath, 5, 16),
+                        new ParameterObjectPreviewRequest(["a", "b"], "Args"), source.Token);
+                    return "{}";
+                }));
+            Assert.AreEqual(0, store.StoreCalls);
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
+
+    private const string AbsolutePathPattern = @"(?:^|[\s""'(])(?:[A-Za-z]:[\\/]|\\{2,}[^\\\s]|/[^\s""')]+)";
+
+    [TestMethod]
+    [DataRow(@"C:\private\request", true)]
+    [DataRow(@"'C:\private\request'", true)]
+    [DataRow(@"""C:\private\request""", true)]
+    [DataRow(@"(C:\private\request)", true)]
+    [DataRow(@"at C:\private\request", true)]
+    [DataRow(@"\\host\share\request", true)]
+    [DataRow(@"'\\host\share\request'", true)]
+    [DataRow(@"""\\host\share\request""", true)]
+    [DataRow(@"(\\host\share\request)", true)]
+    [DataRow(@"at \\host\share\request", true)]
+    [DataRow("/private/request", true)]
+    [DataRow("'/private/request'", true)]
+    [DataRow("\"/private/request\"", true)]
+    [DataRow("(/private/request)", true)]
+    [DataRow("at /private/request", true)]
+    [DataRow("ref/out/in semantics", false)]
+    [DataRow("reserved record/object members", false)]
+    [DataRow("Merge definition/implementation declarations first", false)]
+    [DataRow("Use Models/Requests relative folders", false)]
+    [DataRow(@"Use Models\Requests relative folders", false)]
+    public void AbsolutePathDetector_RecognizesPathsWithoutRejectingCorrectiveText(string text, bool expected)
+    {
+        Assert.AreEqual(expected, Regex.IsMatch(text, AbsolutePathPattern, RegexOptions.CultureInvariant));
+        using var scalar = JsonDocument.Parse(JsonSerializer.Serialize(text));
+        Assert.AreEqual(expected, ContainsAbsolutePath(scalar.RootElement));
+        using var nested = JsonDocument.Parse(JsonSerializer.Serialize(new Dictionary<string, object?>
+        {
+            ["nested"] = new[] { new Dictionary<string, object?> { ["text"] = text } },
+            ["count"] = 1,
+            ["flag"] = false,
+            ["empty"] = null,
+        }));
+        Assert.AreEqual(expected, ContainsAbsolutePath(nested.RootElement));
+        using var key = JsonDocument.Parse(JsonSerializer.Serialize(new Dictionary<string, object?> { [text] = null }));
+        Assert.AreEqual(expected, ContainsAbsolutePath(key.RootElement));
+    }
+
+    private static bool ContainsAbsolutePath(JsonElement element) => element.ValueKind switch
+    {
+        JsonValueKind.Object => element.EnumerateObject().Any(property =>
+            Regex.IsMatch(property.Name, AbsolutePathPattern, RegexOptions.CultureInvariant)
+            || ContainsAbsolutePath(property.Value)),
+        JsonValueKind.Array => element.EnumerateArray().Any(ContainsAbsolutePath),
+        JsonValueKind.String => Regex.IsMatch(element.GetString()!, AbsolutePathPattern, RegexOptions.CultureInvariant),
+        _ => false,
+    };
+
+    private static async Task<PublicArgumentException> AssertPublicArgumentRefusalAsync(
+        Func<ParameterObjectService, Task<RefactoringPreviewDto>> action,
+        string expectedParameterName,
+        string[] forbiddenValues)
+    {
+        var store = new RefusalPreviewStore();
+        var service = new ParameterObjectService(WorkspaceManager, store);
+        var exception = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() => action(service));
+        Assert.AreEqual(0, store.StoreCalls, "a refusal must not mint a preview token");
+        Assert.AreEqual(expectedParameterName, exception.ParamName);
+        Assert.IsFalse(string.IsNullOrWhiteSpace(exception.PublicMessage));
+
+        var info = ToolErrorHandler.ClassifyError(exception, "parameter_object_preview");
+        Assert.AreEqual(expectedParameterName, info.ParamName);
+        Assert.AreEqual(exception.PublicMessage, info.Message);
+        var envelope = await ToolExecutionTestHarness.RunAsync(
+            "parameter_object_preview", () => Task.FromException<string>(exception));
+        using var json = JsonDocument.Parse(envelope);
+        var error = json.RootElement;
+        Assert.IsTrue(error.GetProperty("error").GetBoolean());
+        Assert.AreEqual("parameter_object_preview", error.GetProperty("tool").GetString());
+        Assert.AreEqual("InvalidArgument", error.GetProperty("category").GetString());
+        Assert.AreEqual("ArgumentException", error.GetProperty("exceptionType").GetString());
+        Assert.AreEqual(exception.PublicMessage, error.GetProperty("message").GetString());
+        var schemaHint = error.GetProperty("schemaHint").GetString()!;
+        StringAssert.Contains(schemaHint, "parameter_object_preview(");
+        StringAssert.Contains(schemaHint,
+            expectedParameterName is "target" or "grouped" ? "workspaceId:" : $"({expectedParameterName}:");
+        Assert.IsFalse(ContainsAbsolutePath(error),
+            "the entire serialized envelope must exclude Windows, UNC, and POSIX absolute paths");
+        Assert.IsFalse(error.TryGetProperty("previewToken", out _));
+        foreach (var forbidden in forbiddenValues)
+        {
+            Assert.IsFalse(envelope.Contains(forbidden, StringComparison.Ordinal),
+                "the serialized refusal must not publish submitted text or absolute paths");
+            Assert.IsFalse(envelope.Contains(JsonSerializer.Serialize(forbidden)[1..^1], StringComparison.Ordinal),
+                "JSON escaping must not conceal submitted text or absolute paths");
+        }
+        return exception;
+    }
+
+    private sealed class RefusalPreviewStore : IPreviewStore
+    {
+        public int StoreCalls { get; private set; }
+
+        public string Store(string workspaceId, Solution modifiedSolution, int workspaceVersion, string description)
+        {
+            StoreCalls++;
+            throw new AssertFailedException("a refused operation must not store a preview");
+        }
+
+        public string Store(string workspaceId, Solution modifiedSolution, int workspaceVersion, string description, bool diffTruncated)
+            => Store(workspaceId, modifiedSolution, workspaceVersion, description);
+
+        public string Store(string workspaceId, Solution modifiedSolution, int workspaceVersion, string description, IReadOnlyList<FileChangeDto> changes)
+            => Store(workspaceId, modifiedSolution, workspaceVersion, description);
+
+        public (string WorkspaceId, Solution OriginalSolution, Solution ModifiedSolution, int WorkspaceVersion, string Description, bool DiffTruncated)? Retrieve(string token)
+            => throw new AssertFailedException("a refusal must not retrieve a preview");
+
+        public void Invalidate(string token) => throw new AssertFailedException("a refusal must not invalidate a preview");
+
+        public void InvalidateAll(string? workspaceId) => throw new AssertFailedException("a refusal must not invalidate previews");
+
+        public void InvalidateOnVersionBump(string workspaceId, int newWorkspaceVersion)
+            => throw new AssertFailedException("a refusal must not invalidate previews");
+
+        public string? PeekWorkspaceId(string token) => throw new AssertFailedException("a refusal must not inspect a preview");
     }
 
     private static async Task<(string WorkspaceId, string FixturePath, string FixtureDir)> SetupSingleProjectFixtureAsync(
