@@ -70,7 +70,7 @@
     {
       "id": "file-create-and-scaffold-refusals-public-message",
       "order": 2,
-      "status": "in-progress",
+      "status": "in-review",
       "backlogRowsClosed": [
         "file-create-and-scaffold-refusals-public-message"
       ],
@@ -111,7 +111,7 @@
       "dependsOn": [],
       "branch": "remediation/file-create-and-scaffold-refusals-public-message",
       "worktreePath": ".worktrees/file-create-and-scaffold-refusals-public-message",
-      "prUrl": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1741",
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "b71e7c4fee66c9b04353b4b24d5e6496c6d627d12fa14f4c7fc90638cd16d033",
