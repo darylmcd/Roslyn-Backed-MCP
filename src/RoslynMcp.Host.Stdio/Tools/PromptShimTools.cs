@@ -6,25 +6,11 @@ using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Catalog;
 using RoslynMcp.Host.Stdio.Prompts;
 
 namespace RoslynMcp.Host.Stdio.Tools;
-
-/// <summary>
-/// Carries an explicitly constructed, value-free prompt binding correction through the shared
-/// tool error boundary. Only this type is allowed to publish its message verbatim.
-/// </summary>
-internal sealed class PromptParameterBindingException : ArgumentException
-{
-    public PromptParameterBindingException(string publicMessage, Exception innerException)
-        : base(publicMessage, "parametersJson", innerException)
-    {
-        PublicMessage = publicMessage;
-    }
-
-    internal string PublicMessage { get; }
-}
 
 /// <summary>
 /// Item 4 (v1.18, <c>prompt-tools-exposable-to-agents</c>): generic dispatcher that exposes
@@ -59,13 +45,13 @@ public static class PromptShimTools
         CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(promptName))
-            throw new ArgumentException("promptName is required.", nameof(promptName));
+            throw new PublicArgumentException("promptName is required.", nameof(promptName));
 
         var (method, attribute) = ResolvePromptMethod(promptName);
         if (method is null || attribute is null)
         {
-            throw new ArgumentException(
-                $"Prompt '{promptName}' not found. Available prompts: " +
+            throw new PublicArgumentException(
+                "Prompt not found. Available prompts: " +
                 string.Join(", ", EnumeratePromptNames()),
                 nameof(promptName));
         }
@@ -162,7 +148,7 @@ public static class PromptShimTools
     }
 
     // Convert parser diagnostics into an explicitly safe binding exception. The shared tool error
-    // boundary publishes only PromptParameterBindingException.PublicMessage; the JsonException
+    // boundary publishes only PublicArgumentException.PublicMessage; the JsonException
     // remains available as the inner exception for server-side diagnostics. Callers own disposal
     // of the returned JsonDocument on success; the non-object branch disposes before throwing.
     private static JsonDocument ParseParametersDocument(string parametersJson)
@@ -174,7 +160,7 @@ public static class PromptShimTools
         }
         catch (JsonException ex)
         {
-            throw new PromptParameterBindingException(
+            throw PublicArgumentException.FromPromptParameterBindingFailure(
                 "parametersJson must contain a valid JSON object. " +
                 "Example: {\"workspaceId\":\"workspace-1\"}; use \"{}\" to omit all parameters.",
                 ex);
@@ -183,7 +169,7 @@ public static class PromptShimTools
         if (doc.RootElement.ValueKind != JsonValueKind.Object)
         {
             doc.Dispose();
-            throw new ArgumentException("parametersJson must be a JSON object.", "parametersJson");
+            throw new PublicArgumentException("parametersJson must be a JSON object.", "parametersJson");
         }
 
         return doc;
@@ -200,7 +186,7 @@ public static class PromptShimTools
             .ToArray();
         if (missingRequired.Length > 0)
         {
-            throw new ArgumentException(
+            throw new PublicArgumentException(
                 $"Prompt '{methodName}' is missing required parameters in parametersJson: {string.Join(", ", missingRequired)}.",
                 "parametersJson");
         }
@@ -218,7 +204,7 @@ public static class PromptShimTools
         if (p.HasDefaultValue)
             return p.DefaultValue;
 
-        throw new ArgumentException(
+        throw new PublicArgumentException(
             $"Prompt parameter '{p.Name}' (type {p.ParameterType.Name}) is required but missing from parametersJson.",
             "parametersJson");
     }
@@ -231,7 +217,7 @@ public static class PromptShimTools
         }
         catch (JsonException ex)
         {
-            throw new PromptParameterBindingException(
+            throw PublicArgumentException.FromPromptParameterBindingFailure(
                 $"parametersJson property '{p.Name}' must be compatible with " +
                 $"{GetExpectedJsonType(p.ParameterType)}. " +
                 $"Example: {{\"{p.Name}\":{GetExpectedJsonValue(p.ParameterType)}}}.",

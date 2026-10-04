@@ -594,11 +594,6 @@ internal static class ToolErrorHandler
             return publicArgument.PublicMessage;
         }
 
-        if (exception is PromptParameterBindingException promptBinding)
-        {
-            return promptBinding.PublicMessage;
-        }
-
         if (string.Equals(exception.ParamName, "parametersJson", StringComparison.Ordinal))
         {
             return "Parameter 'parametersJson' must be a JSON object whose properties match the prompt schema. " +
@@ -690,10 +685,12 @@ internal static class ToolErrorHandler
             ["category"] = info.Category.ToString(),
             ["tool"] = toolName,
             ["message"] = info.Message,
-            // Public-message exceptions report their BCL base name so the Public* class names stay
-            // off the wire; an explicit WireExceptionType still wins.
+            // Public arguments preserve their trusted released identity; other public-message
+            // exceptions report their BCL base name. An explicit WireExceptionType wins.
             ["exceptionType"] = info.WireExceptionType
-                ?? (ex is IPublicMessageException ? ex.GetType().BaseType!.Name : ex.GetType().Name),
+                ?? (ex is PublicArgumentException publicArgument
+                    ? publicArgument.WireExceptionType
+                    : ex is IPublicMessageException ? ex.GetType().BaseType!.Name : ex.GetType().Name),
         };
 
         if (info.Reason is not null)

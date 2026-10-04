@@ -404,6 +404,32 @@ public sealed class ToolCallErrorWireContractTests : IsolatedWorkspaceTestBase
         }
     }
 
+    [TestMethod]
+    [DataRow("unknown", "SECRET-SENTINEL-private-prompt", "{}", "promptName", "ArgumentException", "Available prompts:")]
+    [DataRow("blank", " ", "{}", "promptName", "ArgumentException", "promptName is required")]
+    [DataRow("malformed", "discover_capabilities", "{\"secret\":\"SECRET-SENTINEL-private-json\"", "parametersJson", "PromptParameterBindingException", "valid JSON object")]
+    [DataRow("type", "discover_capabilities", "{\"taskCategory\":{\"secret\":\"SECRET-SENTINEL-private-json\"}}", "parametersJson", "PromptParameterBindingException", "taskCategory")]
+    [DataRow("array", "discover_capabilities", "[]", "parametersJson", "ArgumentException", "JSON object")]
+    [DataRow("scalar", "discover_capabilities", "1", "parametersJson", "ArgumentException", "JSON object")]
+    [DataRow("null", "discover_capabilities", "null", "parametersJson", "ArgumentException", "JSON object")]
+    [DataRow("missing", "explain_error", "{}", "parametersJson", "ArgumentException", "workspaceId")]
+    public async Task PromptRefusal_PreservesCorrectionAndReleasedIdentityOnWire(
+        string scenario, string name, string json, string parameter, string identity, string correction)
+    {
+        foreach (var protocol in Protocols())
+        {
+            await using var harness = await CreateHarnessAsync(protocol.Requested);
+            var frame = await CallAndCaptureAsync(harness, "get_prompt_text",
+                new Dictionary<string, object?> { ["promptName"] = name, ["parametersJson"] = json });
+            AssertFastFailFrame(frame, correction, protocol.Modern);
+            var payload = ErrorPayload(frame);
+            Assert.AreEqual("get_prompt_text", payload["tool"]?.GetValue<string>(), scenario);
+            StringAssert.Contains(payload["schemaHint"]?.GetValue<string>(), parameter, scenario);
+            Assert.AreEqual(identity, payload["exceptionType"]?.GetValue<string>(), scenario);
+            Assert.IsFalse(frame.ToJsonString().Contains("SECRET-SENTINEL", StringComparison.Ordinal), scenario);
+        }
+    }
+
     private static WorkspaceManager CreateIsolatedWorkspaceManager()
     {
         var fileWatcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance);
@@ -439,6 +465,7 @@ public sealed class ToolCallErrorWireContractTests : IsolatedWorkspaceTestBase
                 };
             })
             .WithTools<SyntheticUnexpectedFailureTools>()
+            .WithTools([typeof(PromptShimTools)])
             .WithMessageFilters(static filters =>
                 filters.AddIncomingFilter(RequestCorrelationMessageFilter.Create))
             .WithRequestFilters(static filters =>
