@@ -13,7 +13,7 @@
     {
       "id": "argument-exception-throw-sites-lack-public-message",
       "order": 1,
-      "status": "in-progress",
+      "status": "in-review",
       "backlogRowsClosed": [
         "argument-exception-throw-sites-lack-public-message"
       ],
@@ -52,7 +52,7 @@
       "dependsOn": [],
       "branch": "remediation/argument-exception-throw-sites-lack-public-message",
       "worktreePath": ".worktrees/argument-exception-throw-sites-lack-public-message",
-      "prUrl": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1740",
       "mergedAt": null,
       "notes": "Route deepen: declared/effective L derives solely from four required test companions, not incoherent scope. Standing Engineering Directives 1/6 and RULES 5 Rule4 advisory require a complete shared validation publication fix. Exact subclass assertion pins ParameterValidationTests:24-106, SymbolSearchPaginationTests:179/195, FindReflectionUsagesPaginationTests:344/356, ExpandedSurfaceIntegrationTests:349/368/385 must move together. Existing global rows split-route-ignores-forcing-shapes and remediate-stale-file-cap-wording track the contradictory cap-era routing; do not manufacture a partial or recursively L child solely to satisfy counts.",
       "fileSetHash": "83d4f9ddc9105ebe9a8f40ff613aaf1893b25fb0faffe10e74f2ef7e08b3c7bd",
