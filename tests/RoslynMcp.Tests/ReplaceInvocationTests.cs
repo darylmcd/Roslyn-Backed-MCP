@@ -19,6 +19,101 @@ namespace RoslynMcp.Tests;
 [TestClass]
 public sealed class ReplaceInvocationTests : SharedWorkspaceTestBase
 {
+
+    [TestMethod]
+    public async Task ReplaceInvocation_ArgumentRefusals_ArePublicAndBounded()
+    {
+        foreach (var parameter in new[] { "oldMethod", "newMethod" })
+        {
+            foreach (var input in new string?[] { null, "", "   " })
+                await BulkRefactoringTests.AssertPublicRefusalAsync(
+                    () => BulkRefactoringService.PreviewReplaceInvocationAsync("unused",
+                        parameter == "oldMethod" ? input! : "M()",
+                        parameter == "newMethod" ? input! : "M()", null, CancellationToken.None),
+                    "replace_invocation_preview", parameter,
+                    parameter + " must be a fully-qualified signature like 'Type.Method(P1,P2)'.");
+            await BulkRefactoringTests.AssertPublicRefusalAsync(
+                () => BulkRefactoringService.PreviewReplaceInvocationAsync("unused",
+                    parameter == "oldMethod" ? " () " : "M()", parameter == "newMethod" ? " () " : "M()", null, CancellationToken.None),
+                "replace_invocation_preview", parameter, "Method signature must include a non-empty method name.");
+        }
+        await BulkRefactoringTests.AssertPublicRefusalAsync(
+            () => BulkRefactoringService.PreviewReplaceInvocationAsync("unused", "M()", "N()", "C:/private/scope-secret", CancellationToken.None),
+            "replace_invocation_preview", "scope", "scope must be 'all' for replace_invocation_preview.", "C:/private/scope-secret");
+    }
+
+    [TestMethod]
+    [DataRow("C:/private/signature-secret")]
+    [DataRow("M(int)C:/private/trailing")]
+    [DataRow("M(,int)")]
+    [DataRow("M(int,)")]
+    [DataRow("M(int,,string)")]
+    [DataRow("M(List<int)")]
+    [DataRow("M((int,string)")]
+    [DataRow("M(int[)")]
+    [DataRow("M(int])")]
+    [DataRow("M(int>)")]
+    [DataRow("M(())")]
+    [DataRow("M(int string)")]
+    [DataRow("M(int;)")]
+    [DataRow("M(List<>)")]
+    [DataRow("M(int))")]
+    [DataRow("M(int) /* C:/private/comment */")]
+    public async Task ReplaceInvocation_InvalidGrammar_PublishesRefusal(string input)
+    {
+        foreach (var parameter in new[] { "oldMethod", "newMethod" })
+            await BulkRefactoringTests.AssertPublicRefusalAsync(
+                () => BulkRefactoringService.PreviewReplaceInvocationAsync("unused",
+                    parameter == "oldMethod" ? input : "M()", parameter == "newMethod" ? input : "M()", null, CancellationToken.None),
+                "replace_invocation_preview", parameter,
+                "Method signature must have the form 'Namespace.Type.Method(ParamType1, ParamType2)' with complete, non-empty parameter types.", input);
+    }
+
+    [TestMethod]
+    [DataRow("SampleLib.NestedSignature.Old(Dictionary<string, List<int>>)", "SampleLib.NestedSignature.New(Dictionary<string, List<int>>)")]
+    [DataRow("SampleLib.NestedSignature.Old( (int, string) )", "SampleLib.NestedSignature.New( (int, string) )")]
+    [DataRow("SampleLib.NestedSignature.Old(int[,])", "SampleLib.NestedSignature.New(int[,])")]
+    [DataRow(" EmptyOld( ) ", " EmptyNew( ) ")]
+    [DataRow("SampleLib.NestedSignature.ShortOld(value)", "SampleLib.NestedSignature.ShortNew(value)")]
+    [DataRow("SampleLib.NestedSignature+Inner.Old(int)", "SampleLib.NestedSignature+Inner.New(int)")]
+    public async Task ReplaceInvocation_NestedTypes_ResolveActualOverloads(string oldName, string newName)
+    {
+        var path = CreateSampleSolutionCopy();
+        var fixture = Path.Combine(Path.GetDirectoryName(path)!, "SampleLib", "NestedSignatureFixture.cs");
+        await File.WriteAllTextAsync(fixture, """
+            using System.Collections.Generic;
+            namespace SampleLib;
+            public static class NestedSignature
+            {
+                public static int Old(Dictionary<string, List<int>> value) => 1;
+                public static int Old((int, string) value) => 2;
+                public static int Old(int[,] value) => 3;
+                public static int New(Dictionary<string, List<int>> value) => 1;
+                public static int New((int, string) value) => 2;
+                public static int New(int[,] value) => 3;
+                public static int EmptyOld() => 4;
+                public static int EmptyNew() => 4;
+                public static int ShortOld(int value) => 5;
+                public static int ShortNew(int value) => 5;
+                public class Inner
+                {
+                    public static int Old(int value) => 6;
+                    public static int New(int value) => 6;
+                }
+                public static int Calls() => Old(new Dictionary<string, List<int>>()) +
+                    Old((1, "x")) + Old(new int[1,1]) + EmptyOld() + ShortOld(1) + Inner.Old(1);
+            }
+            """);
+        var loaded = await WorkspaceManager.LoadAsync(path, CancellationToken.None);
+        try
+        {
+            var preview = await BulkRefactoringService.PreviewReplaceInvocationAsync(loaded.WorkspaceId, oldName, newName, null, CancellationToken.None);
+            Assert.AreEqual(1, preview.CallsiteUpdates!.Sum(x => x.CallsiteCount), oldName);
+            Assert.IsFalse(string.IsNullOrWhiteSpace(preview.PreviewToken));
+        }
+        finally { WorkspaceManager.Close(loaded.WorkspaceId); }
+    }
+
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
@@ -228,7 +323,7 @@ public sealed class ReplaceInvocationTests : SharedWorkspaceTestBase
 
         try
         {
-            await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+            await Assert.ThrowsExactlyAsync<RoslynMcp.Core.Services.PublicArgumentException>(() =>
                 BulkRefactoringService.PreviewReplaceInvocationAsync(
                     loadResult.WorkspaceId,
                     oldMethod: "SampleLib.ReplaceInvocationHelper.Build",
@@ -304,7 +399,7 @@ public sealed class ReplaceInvocationTests : SharedWorkspaceTestBase
 
         try
         {
-            await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+            await Assert.ThrowsExactlyAsync<RoslynMcp.Core.Services.PublicArgumentException>(() =>
                 BulkRefactoringService.PreviewReplaceInvocationAsync(
                     loadResult.WorkspaceId,
                     oldMethod: "SampleLib.ReplaceInvocationHelper.Build(int, string, bool)",

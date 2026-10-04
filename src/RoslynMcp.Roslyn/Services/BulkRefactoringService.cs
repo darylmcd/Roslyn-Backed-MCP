@@ -41,7 +41,7 @@ public sealed class BulkRefactoringService : IBulkRefactoringService
         var normalizedScope = (scope ?? "all").ToLowerInvariant();
         var validScopes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "parameters", "fields", "all" };
         if (!validScopes.Contains(normalizedScope))
-            throw new ArgumentException($"Invalid scope '{scope}'. Valid values: parameters, fields, all.");
+            throw new PublicArgumentException("scope must be one of: parameters, fields, all.", nameof(scope));
 
         var references = await SymbolFinder.FindReferencesAsync(oldTypeSymbol, solution, ct).ConfigureAwait(false);
         var newSolution = solution;
@@ -201,17 +201,16 @@ public sealed class BulkRefactoringService : IBulkRefactoringService
         string workspaceId, string oldMethod, string newMethod, string? scope, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(oldMethod))
-            throw new ArgumentException("oldMethod must be a fully-qualified signature like 'Type.Method(P1,P2)'.", nameof(oldMethod));
+            throw new PublicArgumentException("oldMethod must be a fully-qualified signature like 'Type.Method(P1,P2)'.", nameof(oldMethod));
         if (string.IsNullOrWhiteSpace(newMethod))
-            throw new ArgumentException("newMethod must be a fully-qualified signature like 'Type.Method(P1,P2)'.", nameof(newMethod));
+            throw new PublicArgumentException("newMethod must be a fully-qualified signature like 'Type.Method(P1,P2)'.", nameof(newMethod));
 
         // replace-invocation scope today is always 'all' — the parameter is reserved for
         // future file / project scoping. Reject unknown values eagerly so a stale caller
         // gets a clear error instead of silent expanded scope.
         var normalizedScope = (scope ?? "all").ToLowerInvariant();
         if (!string.Equals(normalizedScope, "all", StringComparison.Ordinal))
-            throw new ArgumentException(
-                $"Invalid scope '{scope}'. Only 'all' is supported for replace_invocation_preview today.", nameof(scope));
+            throw new PublicArgumentException("scope must be 'all' for replace_invocation_preview.", nameof(scope));
 
         var oldSig = ParseMethodSignature(oldMethod, nameof(oldMethod));
         var newSig = ParseMethodSignature(newMethod, nameof(newMethod));
@@ -551,26 +550,58 @@ public sealed class BulkRefactoringService : IBulkRefactoringService
 
     private static MethodSignature ParseMethodSignature(string signature, string paramName)
     {
-        // Expected shape: "Namespace.Type.Method(P1, P2, P3)" or "Method()".
-        // Whitespace around commas and inside parens is permitted and trimmed.
+
+        const string invalidSignature =
+            "Method signature must have the form 'Namespace.Type.Method(ParamType1, ParamType2)' with complete, non-empty parameter types.";
+        signature = signature.Trim();
         var openParen = signature.IndexOf('(');
-        var closeParen = signature.LastIndexOf(')');
-        if (openParen < 0 || closeParen < 0 || closeParen < openParen)
-            throw new ArgumentException(
-                $"Invalid method signature '{signature}'. Expected form: 'Namespace.Type.Method(ParamType1, ParamType2)'.", paramName);
+        if (openParen < 0 || !signature.EndsWith(')'))
+            throw new PublicArgumentException(invalidSignature, paramName);
 
         var name = signature[..openParen].Trim();
         if (string.IsNullOrWhiteSpace(name))
-            throw new ArgumentException(
-                $"Invalid method signature '{signature}'. Method name segment is empty.", paramName);
+            throw new PublicArgumentException("Method signature must include a non-empty method name.", paramName);
 
-        var paramList = signature[(openParen + 1)..closeParen].Trim();
-        var paramTypes = string.IsNullOrWhiteSpace(paramList)
-            ? []
-            : (IReadOnlyList<string>)paramList
-                .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        var parameterText = signature[(openParen + 1)..^1];
+        var parameterTypes = new List<string>();
+        var delimiters = new Stack<char>();
+        var slotStart = 0;
+        for (var i = 0; i <= parameterText.Length; i++)
+        {
+            if (i < parameterText.Length)
+            {
+                var character = parameterText[i];
+                if (character is '<' or '(' or '[')
+                    delimiters.Push(character);
+                else if (character is '>' or ')' or ']')
+                {
+                    var expected = character switch { '>' => '<', ')' => '(', _ => '[' };
+                    if (!delimiters.TryPop(out var opening) || opening != expected)
+                        throw new PublicArgumentException(invalidSignature, paramName);
+                }
+                if (character != ',' || delimiters.Count != 0)
+                    continue;
+            }
+            else if (delimiters.Count != 0)
+                throw new PublicArgumentException(invalidSignature, paramName);
 
-        return new MethodSignature(name, paramTypes);
+            var fragment = parameterText[slotStart..i].Trim();
+            if (fragment.Length == 0)
+            {
+                if (i == parameterText.Length && slotStart == 0)
+                    break; // An entirely blank list is the valid zero-argument form.
+                throw new PublicArgumentException(invalidSignature, paramName);
+            }
+
+            var type = SyntaxFactory.ParseTypeName(fragment, consumeFullText: true);
+            if (type.ContainsDiagnostics || type.DescendantTokens().Any(token => token.IsMissing) ||
+                type.DescendantNodesAndSelf().OfType<OmittedTypeArgumentSyntax>().Any())
+                throw new PublicArgumentException(invalidSignature, paramName);
+            parameterTypes.Add(type.NormalizeWhitespace().ToString());
+            slotStart = i + 1;
+        }
+
+        return new MethodSignature(name, parameterTypes);
     }
 
     private static async Task<IMethodSymbol?> ResolveMethodBySignatureAsync(
@@ -673,10 +704,10 @@ public sealed class BulkRefactoringService : IBulkRefactoringService
         if (string.Equals(paramType.Name, literal, StringComparison.Ordinal)) return true;
 
         var displayFull = paramType.ToDisplayString();
-        if (string.Equals(displayFull, literal, StringComparison.Ordinal)) return true;
+        if (SyntaxFactory.AreEquivalent(SyntaxFactory.ParseTypeName(displayFull), SyntaxFactory.ParseTypeName(literal))) return true;
 
         var displayMinimal = paramType.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
-        if (string.Equals(displayMinimal, literal, StringComparison.Ordinal)) return true;
+        if (SyntaxFactory.AreEquivalent(SyntaxFactory.ParseTypeName(displayMinimal), SyntaxFactory.ParseTypeName(literal))) return true;
 
         // Tolerate primitive aliases (int ↔ System.Int32, string ↔ System.String, etc.).
         var specialAlias = GetSpecialTypeAlias(paramType);
