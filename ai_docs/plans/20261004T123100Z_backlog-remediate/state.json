@@ -756,7 +756,8 @@
       "notes": null,
       "fileSetHash": "c792b4252cef1a4ee41d1f32f7592c43f9c5b8162ded73d37fb2eed0f7d2fc21",
       "stanzaHash": "2e9605f85bd0feb3e3cd6ce6e7ea5efcc48a8af6a53ac6953d2a87ee28c325cd",
-      "reviewedStanzaHash": "2e9605f85bd0feb3e3cd6ce6e7ea5efcc48a8af6a53ac6953d2a87ee28c325cd"
+      "reviewedStanzaHash": "2e9605f85bd0feb3e3cd6ce6e7ea5efcc48a8af6a53ac6953d2a87ee28c325cd",
+      "reviewedHead": "1b6333c734e5aa45744ce0cb72c812e4d07c457d"
     },
     {
       "id": "suppression-argument-refusals-public-message",
