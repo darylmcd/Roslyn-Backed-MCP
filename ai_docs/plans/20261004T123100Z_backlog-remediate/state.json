@@ -511,8 +511,17 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "7143a8bed29b522d5d9df682c1138133392566c5defa57458d2095ff2052da37",
-      "stanzaHash": "1f8409695b082c52946a025b9ce35b32e82dd217e489a06d042ebea46f8334db",
-      "reviewedStanzaHash": "1f8409695b082c52946a025b9ce35b32e82dd217e489a06d042ebea46f8334db"
+      "stanzaHash": "d32655a21730ce6a970badca6eb7dc847717c86b96484d5a2c8b1b58d1af5759",
+      "reviewedStanzaHash": "d32655a21730ce6a970badca6eb7dc847717c86b96484d5a2c8b1b58d1af5759",
+      "amendments": [
+        {
+          "at": "2026-10-04T18:25:44.116Z",
+          "finding": "Compiled old-code refusal regression created a preview for an extension receiver: p.IsThis is false on declared receiver parameters.",
+          "reason": "Complete the existing EnforceParameterShapeRefusals mechanism with method.IsExtensionMethod and parameter ordinal zero; retain same production/test Scope and prove no preview on refusal.",
+          "previousStanzaHash": "1f8409695b082c52946a025b9ce35b32e82dd217e489a06d042ebea46f8334db",
+          "stanzaHash": "d32655a21730ce6a970badca6eb7dc847717c86b96484d5a2c8b1b58d1af5759"
+        }
+      ]
     },
     {
       "id": "bulk-refactoring-argument-refusals-public-message",
@@ -1199,7 +1208,7 @@
       "resource-argument-refusals-public-message": "c6f03188abf5fa68f5fd1b361324f673fa8512766c60e9188b837100a8bbc511",
       "root-boundary-argument-refusals-public-message": "12ce06bdf57ad1125f5e92c5c246004cdb985b10835d774b72fa58dd4b333214",
       "dispatch-and-tool-argument-refusals-public-message": "ef230e01430bf09ee09eb91063962783c6b1b5d2a1395ff83effb3150bd1c968",
-      "parameter-object-argument-refusals-public-message": "1f8409695b082c52946a025b9ce35b32e82dd217e489a06d042ebea46f8334db",
+      "parameter-object-argument-refusals-public-message": "d32655a21730ce6a970badca6eb7dc847717c86b96484d5a2c8b1b58d1af5759",
       "bulk-refactoring-argument-refusals-public-message": "bc02a1bfe93a3d5152fefde42bb0e3af0b739b44bafe8f7f82163e9e1fa26e43",
       "type-extraction-argument-refusals-public-message": "f64e7f28ed65ce69c1ce3dcbbc1de0680b2a1a81e96b235397e2e4a7717a0cb0",
       "restructure-and-semantic-grep-argument-refusals-public-message": "ba31aeb5d0e14d491385da3aa1170ebcabf21b6c3f422ff803303b93dcc5fba1",
@@ -1208,8 +1217,8 @@
     }
   },
   "conflictGraphInputHash": "d8cc60859909341a1fe269584901aec43ebf07370c6ba2369f72f23d0f1f2042",
-  "planHash": "a0ba3922aedd1198cb5a7e2e5c2bef72074bac8b2b1d329ad15802d48f65b3aa",
+  "planHash": "f5494ce6e6a006e855af532977f8a6058909175c91680628cc7168ce475c466f",
   "backlogSnapshotHash": "aa7593fb4e2c3b59453248d6223301e471be1161179df7994320f52ec840df5f",
-  "reviewedPlanHash": "a0ba3922aedd1198cb5a7e2e5c2bef72074bac8b2b1d329ad15802d48f65b3aa",
+  "reviewedPlanHash": "f5494ce6e6a006e855af532977f8a6058909175c91680628cc7168ce475c466f",
   "reviewedBacklogSnapshotHash": "aa7593fb4e2c3b59453248d6223301e471be1161179df7994320f52ec840df5f"
 }
