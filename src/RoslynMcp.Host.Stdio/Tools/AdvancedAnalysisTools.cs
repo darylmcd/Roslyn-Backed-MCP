@@ -69,7 +69,7 @@ public static class AdvancedAnalysisTools
         [Description("Maximum items returned per call. Applies to the registrations list in detailed mode (default 100) and to the override-chain summary page when summary=true (clamped to [1, 500]).")] int limit = 100,
         CancellationToken ct = default)
     {
-        ParameterValidation.ValidatePagination(offset, limit);
+        ParameterValidation.ValidatePagination(offset, limit, nameof(offset), nameof(limit));
         return gate.RunReadAsync(workspaceId, async c =>
         {
             var scan = await diRegistrationService.GetDiRegistrationsDetailedAsync(
@@ -204,7 +204,7 @@ public static class AdvancedAnalysisTools
         [Description("Maximum number of results to return (default: 50)")] int limit = 50,
         CancellationToken ct = default)
     {
-        ParameterValidation.ValidatePagination(0, limit);
+        ParameterValidation.ValidatePagination(0, limit, "offset", nameof(limit));
         return gate.RunReadAsync(workspaceId, async c =>
         {
             var results = await codeMetricsService.GetComplexityMetricsAsync(workspaceId, filePath, filePaths, projectName, minComplexity, limit, c);
@@ -226,7 +226,7 @@ public static class AdvancedAnalysisTools
         [Description("When true, return only per-UsageKind aggregate counts (no item arrays). 10-100x smaller payload on reflection-heavy solutions.")] bool summary = false,
         CancellationToken ct = default)
     {
-        ParameterValidation.ValidatePagination(offset, limit);
+        ParameterValidation.ValidatePagination(offset, limit, nameof(offset), nameof(limit));
         return gate.RunReadAsync(workspaceId, async c =>
         {
             var scan = await codePatternAnalyzer.FindReflectionUsagesDetailedAsync(workspaceId, projectName, c);

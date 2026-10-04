@@ -44,7 +44,7 @@ public static class CompileCheckTools
         CancellationToken ct = default)
     {
         ParameterValidation.ValidateSeverity(severity);
-        ParameterValidation.ValidatePagination(offset, limit);
+        ParameterValidation.ValidatePagination(offset, limit, nameof(offset), nameof(limit));
         workspaceId = ToolDispatch.RequireResolvedWorkspaceId(workspaceId);
         // workspace-eviction-no-auto-retry-on-tool-call: route through the eviction-tolerant
         // dispatch helper so a workspace evicted by MaxConcurrentWorkspaces pressure is

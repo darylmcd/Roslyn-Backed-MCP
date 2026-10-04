@@ -29,7 +29,7 @@ public static class AnalyzerInfoTools
         [Description("Maximum number of analyzer rules to return (default: 100)")] int limit = 100,
         CancellationToken ct = default)
     {
-        ParameterValidation.ValidatePagination(offset, limit);
+        ParameterValidation.ValidatePagination(offset, limit, nameof(offset), nameof(limit));
         return gate.RunReadAsync(workspaceId, async c =>
         {
             var results = await analyzerInfoService.ListAnalyzersAsync(workspaceId, projectName, c);

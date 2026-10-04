@@ -31,7 +31,7 @@ public static class ConsumerAnalysisTools
         [Description("Maximum number of consumers to return (default: 100). Consumers are ordered by ascending type name; the `totals` block and `hasMore` flag let callers page high-fan-out types.")] int limit = 100,
         CancellationToken ct = default)
     {
-        ParameterValidation.ValidatePagination(offset, limit);
+        ParameterValidation.ValidatePagination(offset, limit, nameof(offset), nameof(limit));
         return gate.RunReadAsync(workspaceId, async c =>
         {
             var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);

@@ -38,9 +38,9 @@ public static class SymbolTools
         [Description("Default false (agent-first). When false, a query matching more than one symbol returns the full paginated candidate list to the calling agent. When true AND the client supports form elicitation, a >1-candidate result instead asks for a request-scoped operator choice and returns only the chosen symbol (with chosenViaElicitation:true); unsupported clients still receive the candidate list.")] bool allowElicitation = false,
         CancellationToken ct = default)
     {
-        ParameterValidation.ValidatePagination(offset, limit);
-        if (limit > 50)
-            throw new ArgumentException($"Invalid limit '{limit}'. Limit must be 50 or less.");
+        if (limit < 1 || limit > 50)
+            throw new PublicArgumentException("Limit must be between 1 and 50.", nameof(limit));
+        ParameterValidation.ValidatePagination(offset, limit, nameof(offset), nameof(limit));
 
         return gate.RunReadAsync(workspaceId, async c =>
         {
@@ -274,7 +274,7 @@ public static class SymbolTools
         CancellationToken ct = default,
         ICompilationCache? compilationCache = null)
     {
-        ParameterValidation.ValidatePagination(offset, limit);
+        ParameterValidation.ValidatePagination(offset, limit, nameof(offset), nameof(limit));
         workspaceId = ToolDispatch.RequireResolvedWorkspaceId(workspaceId);
         return gate.RunReadAsync(workspaceId, async c =>
         {
@@ -412,7 +412,7 @@ public static class SymbolTools
             string.IsNullOrWhiteSpace(metadataName) &&
             string.IsNullOrWhiteSpace(filePath))
         {
-            throw new ArgumentException("Provide either a filePath, a symbolHandle, or a metadataName.");
+            throw new PublicArgumentException("Provide either a filePath, a symbolHandle, or a metadataName.", nameof(filePath));
         }
 
         return gate.RunReadAsync(workspaceId, async c =>
@@ -626,7 +626,7 @@ public static class SymbolTools
         [Description("When true (default), a caret on a method's return-type token or a property's type token is auto-promoted to the enclosing member symbol. Set to false to resolve the type token literally.")] bool preferDeclaringMember = true,
         CancellationToken ct = default)
     {
-        ParameterValidation.ValidatePagination(0, limit);
+        ParameterValidation.ValidatePagination(0, limit, "offset", nameof(limit));
         return gate.RunReadAsync(workspaceId, async c =>
         {
             var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
@@ -677,7 +677,7 @@ public static class SymbolTools
         CancellationToken ct = default)
     {
         if (maxItemsPerSymbol < 1)
-            throw new ArgumentException("maxItemsPerSymbol must be >= 1.", nameof(maxItemsPerSymbol));
+            throw new PublicArgumentException("maxItemsPerSymbol must be >= 1.", nameof(maxItemsPerSymbol));
 
         ArgumentNullException.ThrowIfNull(symbols);
         ParameterValidation.ValidateBulkSize(symbols.Length, 50, nameof(symbols));
