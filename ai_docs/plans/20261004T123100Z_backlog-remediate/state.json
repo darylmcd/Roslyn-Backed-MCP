@@ -145,7 +145,7 @@
     {
       "id": "get-prompt-text-unknown-prompt-public-message",
       "order": 4,
-      "status": "in-progress",
+      "status": "merged",
       "backlogRowsClosed": [
         "get-prompt-text-unknown-prompt-public-message"
       ],
@@ -178,20 +178,27 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/get-prompt-text-unknown-prompt-public-message",
       "worktreePath": null,
       "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1743",
-      "mergedAt": null,
-      "notes": "Executor opened exact-head d4498e0c376fcfa53f1732c9b69e36dd8007724f; awaiting cold review and hosted validation.",
+      "mergedAt": "2026-10-04T16:25:56Z",
+      "notes": null,
       "fileSetHash": "457338453ecab32e0effe9d3035c9357051748e55691b95f31d325561f32c890",
       "stanzaHash": "6b265b0b940c5b316584361d77ff80ce46d9d327fe4e12ddf6f45f7d5fbe10f5",
       "reviewedStanzaHash": "6b265b0b940c5b316584361d77ff80ce46d9d327fe4e12ddf6f45f7d5fbe10f5",
-      "reviewedHead": "d4498e0c376fcfa53f1732c9b69e36dd8007724f"
+      "reviewedHead": "d4498e0c376fcfa53f1732c9b69e36dd8007724f",
+      "scratchRemoved": false,
+      "githubGate": {
+        "baseOid": "defd4546f5a31b1ef68bbdc2c74fbc56aa64b99c",
+        "headOid": "d4498e0c376fcfa53f1732c9b69e36dd8007724f",
+        "tree": "baea96924d1cd6f9dc0e5fe6497596e38c495235",
+        "checksVerifiedAt": "2026-10-04T16:25:52.550Z"
+      }
     },
     {
       "id": "tool-scripting-undo-workflow-argument-refusals-public-message",
       "order": 5,
-      "status": "pending",
+      "status": "in-progress",
       "backlogRowsClosed": [
         "tool-scripting-undo-workflow-argument-refusals-public-message"
       ],
@@ -226,7 +233,7 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
+      "notes": "Immutable current batch base defd4546f5a31b1ef68bbdc2c74fbc56aa64b99c; ready sibling after prompt PR1743 landed.",
       "fileSetHash": "8786b96a1cb6f35fa652f726d34ade7851946cc4e92c443aaa488d2e022fd3a6",
       "stanzaHash": "a1081d96d56fc0784e4dc07e5efc744ec78cd7b0ddf5efd5425e502130fe49bc",
       "reviewedStanzaHash": "a1081d96d56fc0784e4dc07e5efc744ec78cd7b0ddf5efd5425e502130fe49bc"
