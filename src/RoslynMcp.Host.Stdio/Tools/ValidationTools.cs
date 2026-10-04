@@ -126,9 +126,9 @@ public static class ValidationTools
         return gate.RunReadAsync(workspaceId, async c =>
         {
             if (limit <= 0)
-                throw new ArgumentException("limit must be greater than 0.", nameof(limit));
+                throw new PublicArgumentException("limit must be greater than 0.", nameof(limit));
             if (offset < 0)
-                throw new ArgumentException("offset must be non-negative.", nameof(offset));
+                throw new PublicArgumentException("offset must be non-negative.", nameof(offset));
 
             var result = await testDiscoveryService.DiscoverTestsAsync(workspaceId, c);
 
@@ -332,9 +332,9 @@ public static class ValidationTools
             try
             {
                 if (failuresLimit <= 0)
-                    throw new ArgumentException("failuresLimit must be greater than 0.", nameof(failuresLimit));
+                    throw new PublicArgumentException("failuresLimit must be greater than 0.", nameof(failuresLimit));
                 if (failuresOffset < 0)
-                    throw new ArgumentException("failuresOffset must be non-negative.", nameof(failuresOffset));
+                    throw new PublicArgumentException("failuresOffset must be non-negative.", nameof(failuresOffset));
 
                 ProgressHelper.ReportStage(progress, 0, 3, "discovering-tests");
                 return await testRunnerService.PrepareTestRunAsync(workspaceId, projectName, filter, c);

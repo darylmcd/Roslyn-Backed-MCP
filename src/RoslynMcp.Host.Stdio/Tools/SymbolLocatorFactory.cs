@@ -1,4 +1,5 @@
 using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -34,7 +35,7 @@ internal static class SymbolLocatorFactory
     /// previous <c>supportsMetadataName</c> error-tailoring switch is gone because every caller
     /// now supports the parameter.
     /// </remarks>
-    /// <exception cref="System.ArgumentException">
+    /// <exception cref="PublicArgumentException">
     /// Thrown when none of the identification parameters are supplied, or when a partial source location
     /// is provided (file path / line / column without all three required values).
     /// </exception>
@@ -66,12 +67,12 @@ internal static class SymbolLocatorFactory
             var hint = missing.Contains("column")
                 ? " Note: column is 1-based and must point at the symbol identifier token (e.g., the interface name), not the start of the line."
                 : " Note: column must point at the symbol identifier token (e.g., the interface name), not the start of the line.";
-            throw new ArgumentException(
-                $"Source location is incomplete. Provide all of filePath, line, and column. Missing: {string.Join(", ", missing)}." + hint);
+            throw new PublicArgumentException(
+                $"Source location is incomplete. Provide all of filePath, line, and column. Missing: {string.Join(", ", missing)}." + hint, missing[0]);
         }
 
-        throw new ArgumentException(
-            "Provide one of: filePath with line and column, symbolHandle, or metadataName.");
+        throw new PublicArgumentException(
+            "Provide one of: filePath with line and column, symbolHandle, or metadataName.", nameof(filePath));
     }
 
     /// <summary>
@@ -79,8 +80,8 @@ internal static class SymbolLocatorFactory
     /// actually supplied — `symbol-info-not-found-message-locator-vs-location`. Pre-fix, every
     /// not-found message read "No symbol found at the specified location" even when the caller
     /// passed only <c>metadataName</c> (no location at all), pointing the caller at a non-existent
-    /// position to debug. The branch order matches the most-specific-first contract used by
-    /// callers: source location > symbol handle > metadata name. The factory's
+    /// position to debug. This formatter checks source location before handle and metadata name;
+    /// the factory selects handle, then metadata name, then source location. The factory's
     /// <see cref="Create"/> populates exactly one mode, so in practice only one branch fires per
     /// resolved locator — the explicit ordering is defense in depth in case a future caller
     /// constructs a <see cref="SymbolLocator"/> directly with multiple modes set.

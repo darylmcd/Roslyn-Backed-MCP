@@ -1,4 +1,5 @@
 using System.Text.Json;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio;
 using RoslynMcp.Host.Stdio.Tools;
 
@@ -18,7 +19,7 @@ public sealed class SourceTextRequestProjectionTests
     [TestMethod]
     public void ValidateRequest_NonPositiveMaxChars_ThrowsNamingMaxChars()
     {
-        var ex = Assert.ThrowsExactly<ArgumentException>(
+        var ex = Assert.ThrowsExactly<PublicArgumentException>(
             () => SourceTextRequestProjection.ValidateRequest(0, null, null));
 
         Assert.AreEqual("maxChars", ex.ParamName);
@@ -28,7 +29,7 @@ public sealed class SourceTextRequestProjectionTests
     [TestMethod]
     public void ValidateRequest_ZeroStartLine_ThrowsNamingStartLine()
     {
-        var ex = Assert.ThrowsExactly<ArgumentException>(
+        var ex = Assert.ThrowsExactly<PublicArgumentException>(
             () => SourceTextRequestProjection.ValidateRequest(100, 0, null));
 
         Assert.AreEqual("startLine", ex.ParamName);
@@ -38,7 +39,7 @@ public sealed class SourceTextRequestProjectionTests
     [TestMethod]
     public void ValidateRequest_ZeroEndLine_ThrowsNamingEndLine()
     {
-        var ex = Assert.ThrowsExactly<ArgumentException>(
+        var ex = Assert.ThrowsExactly<PublicArgumentException>(
             () => SourceTextRequestProjection.ValidateRequest(100, null, 0));
 
         Assert.AreEqual("endLine", ex.ParamName);
@@ -49,7 +50,7 @@ public sealed class SourceTextRequestProjectionTests
     public void ValidateRequest_InvertedRange_ThrowsNamingStartLine()
     {
         // The historical paramName for the inverted-range throw is startLine, not endLine.
-        var ex = Assert.ThrowsExactly<ArgumentException>(
+        var ex = Assert.ThrowsExactly<PublicArgumentException>(
             () => SourceTextRequestProjection.ValidateRequest(100, 5, 2));
 
         Assert.AreEqual("startLine", ex.ParamName);
@@ -66,7 +67,7 @@ public sealed class SourceTextRequestProjectionTests
     [TestMethod]
     public void Project_StartLinePastEndOfFile_ThrowsNamingStartLine()
     {
-        var ex = Assert.ThrowsExactly<ArgumentException>(
+        var ex = Assert.ThrowsExactly<PublicArgumentException>(
             () => SourceTextRequestProjection.Project("C:/repo/A.cs", "a\nb\nc", 9, null, 65536));
 
         Assert.AreEqual("startLine", ex.ParamName);
