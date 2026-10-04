@@ -13,7 +13,7 @@ public sealed class EditService : IEditService
 {
     /// <summary>
     /// <see cref="ArgumentException.ParamName"/> reported by every edit-validation failure. Held as
-    /// a constant so <see cref="ValidateEditRange"/> — which sees one edit rather than the batch —
+    /// a constant so <see cref="ValidateEditBounds"/> — which sees one edit rather than the batch —
     /// keeps reporting the caller-visible <c>edits</c> parameter it was extracted from
     /// (<c>edit-preview-validation-decomposition</c>).
     /// </summary>
@@ -60,7 +60,7 @@ public sealed class EditService : IEditService
         // edits throw a structured ArgumentException BEFORE we touch the file or the
         // unified diff. Without this, a reversed/out-of-bounds range could produce a
         // corrupt diff (ITChatBot audit I1, 2026-04-08).
-        ValidateEdits(filePath, edits, sourceText);
+        ValidateEdits(edits, sourceText);
 
         var newSourceText = BuildPatchedSourceText(sourceText, edits);
         if (!skipSyntaxCheck
@@ -213,7 +213,7 @@ public sealed class EditService : IEditService
                 initialSolution,
                 fileEdit.FilePath,
                 ct).ConfigureAwait(false);
-            ValidateEdits(fileEdit.FilePath, fileEdit.Edits, sourceText);
+            ValidateEdits(fileEdit.Edits, sourceText);
             snapshots.Add((document, sourceText, Path.GetFullPath(fileEdit.FilePath)));
         }
 
@@ -335,7 +335,7 @@ public sealed class EditService : IEditService
         foreach (var fileEdit in fileEdits)
         {
             var (document, sourceText) = await ResolveDocumentAndTextAsync(inputSolution, fileEdit.FilePath, ct).ConfigureAwait(false);
-            ValidateEdits(fileEdit.FilePath, fileEdit.Edits, sourceText);
+            ValidateEdits(fileEdit.Edits, sourceText);
             perFile.Add((document, sourceText, fileEdit.FilePath, fileEdit.Edits));
         }
 
@@ -445,24 +445,23 @@ public sealed class EditService : IEditService
     /// <see cref="ArgumentException"/> via <c>ToolErrorHandler</c>.
     /// </summary>
     private static void ValidateEdits(
-        string filePath,
         IReadOnlyList<TextEditDto> edits,
         SourceText sourceText)
     {
         if (edits.Count == 0)
         {
-            throw new ArgumentException($"At least one text edit is required for '{filePath}'.", _editsParamName);
+            throw new PublicArgumentException("At least one text edit is required.", _editsParamName);
         }
 
         var lineCount = sourceText.Lines.Count;
 
         for (var i = 0; i < edits.Count; i++)
         {
-            ValidateEditShape(filePath, i, edits[i]);
-            ValidateEditBounds(filePath, i, edits[i], lineCount, sourceText);
+            ValidateEditShape(i, edits[i]);
+            ValidateEditBounds(i, edits[i], lineCount, sourceText);
         }
 
-        ValidateNoOverlappingEdits(filePath, edits, sourceText);
+        ValidateNoOverlappingEdits(edits, sourceText);
     }
 
     /// <summary>
@@ -473,19 +472,19 @@ public sealed class EditService : IEditService
     /// would otherwise be used to index into <see cref="SourceText.Lines"/>.
     /// </summary>
     /// <param name="index">Zero-based position of <paramref name="edit"/> in the caller's batch; used verbatim in error text.</param>
-    private static void ValidateEditShape(string filePath, int index, TextEditDto edit)
+    private static void ValidateEditShape(int index, TextEditDto edit)
     {
         if (edit.NewText is null)
         {
-            throw new ArgumentException(
-                $"Edit #{index} for '{filePath}' has a null NewText. Use an empty string for deletions.",
+            throw new PublicArgumentException(
+                $"Edit #{index} has a null NewText. Use an empty string for deletions.",
                 _editsParamName);
         }
 
         if (edit.StartLine < 1 || edit.StartColumn < 1 || edit.EndLine < 1 || edit.EndColumn < 1)
         {
-            throw new ArgumentException(
-                $"Edit #{index} for '{filePath}' has non-positive line/column: " +
+            throw new PublicArgumentException(
+                $"Edit #{index} has non-positive line/column: " +
                 $"({edit.StartLine},{edit.StartColumn})-({edit.EndLine},{edit.EndColumn}). " +
                 "Line and column are 1-based.",
                 _editsParamName);
@@ -502,7 +501,6 @@ public sealed class EditService : IEditService
     /// </summary>
     /// <param name="index">Zero-based position of <paramref name="edit"/> in the caller's batch; used verbatim in error text.</param>
     private static void ValidateEditBounds(
-        string filePath,
         int index,
         TextEditDto edit,
         int lineCount,
@@ -510,8 +508,8 @@ public sealed class EditService : IEditService
     {
         if (edit.StartLine > lineCount || edit.EndLine > lineCount)
         {
-            throw new ArgumentException(
-                $"Edit #{index} for '{filePath}' references line {Math.Max(edit.StartLine, edit.EndLine)} " +
+            throw new PublicArgumentException(
+                $"Edit #{index} references line {Math.Max(edit.StartLine, edit.EndLine)} " +
                 $"but the file only has {lineCount} line(s).",
                 _editsParamName);
         }
@@ -519,8 +517,8 @@ public sealed class EditService : IEditService
         var startLineLength = sourceText.Lines[edit.StartLine - 1].SpanIncludingLineBreak.Length;
         if (edit.StartColumn > startLineLength + 1)
         {
-            throw new ArgumentException(
-                $"Edit #{index} for '{filePath}' has StartColumn {edit.StartColumn} but line {edit.StartLine} " +
+            throw new PublicArgumentException(
+                $"Edit #{index} has StartColumn {edit.StartColumn} but line {edit.StartLine} " +
                 $"only has {startLineLength} character(s). Columns are 1-based and may be one past the end.",
                 _editsParamName);
         }
@@ -528,8 +526,8 @@ public sealed class EditService : IEditService
         var endLineLength = sourceText.Lines[edit.EndLine - 1].SpanIncludingLineBreak.Length;
         if (edit.EndColumn > endLineLength + 1)
         {
-            throw new ArgumentException(
-                $"Edit #{index} for '{filePath}' has EndColumn {edit.EndColumn} but line {edit.EndLine} " +
+            throw new PublicArgumentException(
+                $"Edit #{index} has EndColumn {edit.EndColumn} but line {edit.EndLine} " +
                 $"only has {endLineLength} character(s).",
                 _editsParamName);
         }
@@ -537,8 +535,8 @@ public sealed class EditService : IEditService
         if (edit.StartLine > edit.EndLine
             || (edit.StartLine == edit.EndLine && edit.StartColumn > edit.EndColumn))
         {
-            throw new ArgumentException(
-                $"Edit #{index} for '{filePath}' has a reversed range: " +
+            throw new PublicArgumentException(
+                $"Edit #{index} has a reversed range: " +
                 $"start ({edit.StartLine},{edit.StartColumn}) is after end ({edit.EndLine},{edit.EndColumn}). " +
                 "Zero-width ranges are allowed (inserts) but the end position must not precede the start.",
                 _editsParamName);
@@ -549,7 +547,7 @@ public sealed class EditService : IEditService
     /// apply-text-edit-overlap: Overlapping spans passed to <see cref="SourceText.WithChanges"/>
     /// produce undefined merge behavior. Reject before any mutation.
     /// </summary>
-    private static void ValidateNoOverlappingEdits(string filePath, IReadOnlyList<TextEditDto> edits, SourceText sourceText)
+    private static void ValidateNoOverlappingEdits(IReadOnlyList<TextEditDto> edits, SourceText sourceText)
     {
         if (edits.Count < 2)
         {
@@ -576,8 +574,8 @@ public sealed class EditService : IEditService
             {
                 var le = edits[left.Index];
                 var re = edits[right.Index];
-                throw new ArgumentException(
-                    $"Edits #{left.Index} and #{right.Index} for '{filePath}' have overlapping spans: " +
+                throw new PublicArgumentException(
+                    $"Edits #{left.Index} and #{right.Index} have overlapping spans: " +
                     $"({le.StartLine},{le.StartColumn})-({le.EndLine},{le.EndColumn}) vs " +
                     $"({re.StartLine},{re.StartColumn})-({re.EndLine},{re.EndColumn}). " +
                     "Merge edits into one range or apply them in separate calls.",
