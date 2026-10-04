@@ -1,0 +1,1153 @@
+{
+  "schemaVersion": 4,
+  "generatedAt": "2026-10-04T12:31:14.216Z",
+  "backlogSnapshot": "2026-10-04T12:16:53Z",
+  "addendaLoaded": true,
+  "phase": "complete",
+  "cycleCount": 0,
+  "maxCycles": 2,
+  "completed": false,
+  "reviewStatus": "passed-with-warnings",
+  "readyForExecute": true,
+  "initiatives": [
+    {
+      "id": "argument-exception-throw-sites-lack-public-message",
+      "order": 1,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "argument-exception-throw-sites-lack-public-message"
+      ],
+      "productionFilesTouched": 7,
+      "productionFiles": [
+        "src/RoslynMcp.Host.Stdio/Tools/ParameterValidation.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/SymbolTools.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/AnalysisTools.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/AdvancedAnalysisTools.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/AnalyzerInfoTools.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/CompileCheckTools.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/ConsumerAnalysisTools.cs"
+      ],
+      "testFilesAdded": 4,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/ParameterValidationTests.cs",
+        "tests/RoslynMcp.Tests/SymbolSearchPaginationTests.cs",
+        "tests/RoslynMcp.Tests/FindReflectionUsagesPaginationTests.cs",
+        "tests/RoslynMcp.Tests/ExpandedSurfaceIntegrationTests.cs"
+      ],
+      "docFiles": [
+        "changelog.d/argument-exception-throw-sites-lack-public-message.md"
+      ],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 70000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 7,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": true,
+        "anchorStale": true,
+        "ruleOneBundleResolved": "n/a"
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": "Route deepen: declared/effective L derives solely from four required test companions, not incoherent scope. Standing Engineering Directives 1/6 and RULES 5 Rule4 advisory require a complete shared validation publication fix. Exact subclass assertion pins ParameterValidationTests:24-106, SymbolSearchPaginationTests:179/195, FindReflectionUsagesPaginationTests:344/356, ExpandedSurfaceIntegrationTests:349/368/385 must move together. Existing global rows split-route-ignores-forcing-shapes and remediate-stale-file-cap-wording track the contradictory cap-era routing; do not manufacture a partial or recursively L child solely to satisfy counts.",
+      "fileSetHash": "83d4f9ddc9105ebe9a8f40ff613aaf1893b25fb0faffe10e74f2ef7e08b3c7bd",
+      "stanzaHash": "919bee9356f9cda6aea7dcc2cfa21a644aabe8a2da829f9967705647422db863",
+      "reviewedStanzaHash": "919bee9356f9cda6aea7dcc2cfa21a644aabe8a2da829f9967705647422db863"
+    },
+    {
+      "id": "file-create-and-scaffold-refusals-public-message",
+      "order": 2,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "file-create-and-scaffold-refusals-public-message"
+      ],
+      "productionFilesTouched": 5,
+      "productionFiles": [
+        "src/RoslynMcp.Roslyn/Services/FileOperationService.cs",
+        "src/RoslynMcp.Roslyn/Services/BatchTestScaffolder.cs",
+        "src/RoslynMcp.Roslyn/Helpers/FileSystemPath.cs",
+        "src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs",
+        "src/RoslynMcp.Roslyn/Services/NamespaceRelocationService.cs"
+      ],
+      "testFilesAdded": 6,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/FileOperationIntegrationTests.cs",
+        "tests/RoslynMcp.Tests/ScaffoldingFirstTestFileTests.cs",
+        "tests/RoslynMcp.Tests/ScaffoldingIntegrationTests.cs",
+        "tests/RoslynMcp.Tests/FileSystemPathTests.cs",
+        "tests/RoslynMcp.Tests/CrossProjectRefactoringIntegrationTests.cs",
+        "tests/RoslynMcp.Tests/NamespaceRelocationTests.cs"
+      ],
+      "docFiles": [
+        "changelog.d/file-create-and-scaffold-refusals-public-message.md"
+      ],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 60000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 5,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": true,
+        "anchorStale": true,
+        "ruleOneBundleResolved": "n/a"
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "03c9d24a46c6307014943887059cc4f6262641b0b5008d32a06c8a346f42e4c0",
+      "stanzaHash": "c06a924875f8b54528052b1a01cb1ef8250b9b11bf5bf52ad4e57188863902ba",
+      "reviewedStanzaHash": "c06a924875f8b54528052b1a01cb1ef8250b9b11bf5bf52ad4e57188863902ba"
+    },
+    {
+      "id": "get-prompt-text-unknown-prompt-public-message",
+      "order": 4,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "get-prompt-text-unknown-prompt-public-message"
+      ],
+      "productionFilesTouched": 4,
+      "productionFiles": [
+        "src/RoslynMcp.Core/Services/PublicArgumentException.cs",
+        "src/RoslynMcp.Core/Services/IPublicMessageException.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/PromptShimTools.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/ToolErrorHandler.cs"
+      ],
+      "testFilesAdded": 3,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/PromptShimToolsTests.cs",
+        "tests/RoslynMcp.Tests/ArgumentErrorsTests.cs",
+        "tests/RoslynMcp.Tests/ToolCallErrorWireContractTests.cs"
+      ],
+      "docFiles": [
+        "changelog.d/get-prompt-text-unknown-prompt-public-message.md"
+      ],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 50000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 4,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": true,
+        "anchorStale": true,
+        "ruleOneBundleResolved": "n/a"
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "457338453ecab32e0effe9d3035c9357051748e55691b95f31d325561f32c890",
+      "stanzaHash": "6b265b0b940c5b316584361d77ff80ce46d9d327fe4e12ddf6f45f7d5fbe10f5",
+      "reviewedStanzaHash": "6b265b0b940c5b316584361d77ff80ce46d9d327fe4e12ddf6f45f7d5fbe10f5"
+    },
+    {
+      "id": "tool-scripting-undo-workflow-argument-refusals-public-message",
+      "order": 5,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "tool-scripting-undo-workflow-argument-refusals-public-message"
+      ],
+      "productionFilesTouched": 3,
+      "productionFiles": [
+        "src/RoslynMcp.Host.Stdio/Tools/ScriptingTools.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/UndoTools.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/WorkflowRecommendationTools.cs"
+      ],
+      "testFilesAdded": 2,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/ErrorResponseObservabilityTests.cs",
+        "tests/RoslynMcp.Tests/WorkflowRecommendationToolsTests.cs"
+      ],
+      "docFiles": [
+        "changelog.d/tool-scripting-undo-workflow-argument-refusals-public-message.md"
+      ],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 40000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 3,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": true,
+        "anchorStale": true,
+        "ruleOneBundleResolved": "n/a"
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "8786b96a1cb6f35fa652f726d34ade7851946cc4e92c443aaa488d2e022fd3a6",
+      "stanzaHash": "a1081d96d56fc0784e4dc07e5efc744ec78cd7b0ddf5efd5425e502130fe49bc",
+      "reviewedStanzaHash": "a1081d96d56fc0784e4dc07e5efc744ec78cd7b0ddf5efd5425e502130fe49bc"
+    },
+    {
+      "id": "symbol-locator-and-source-text-tool-argument-refusals-public-message",
+      "order": 6,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "symbol-locator-and-source-text-tool-argument-refusals-public-message"
+      ],
+      "productionFilesTouched": 4,
+      "productionFiles": [
+        "src/RoslynMcp.Host.Stdio/Tools/SymbolLocatorFactory.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/ValidationTools.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/AnalysisTools.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/SourceTextRequestProjection.cs"
+      ],
+      "testFilesAdded": 3,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/SourceTextRequestProjectionTests.cs",
+        "tests/RoslynMcp.Tests/AnalysisToolsTests.cs",
+        "tests/RoslynMcp.Tests/HostArgumentRefusalEnvelopeTests.cs"
+      ],
+      "docFiles": [
+        "changelog.d/symbol-locator-and-source-text-tool-argument-refusals-public-message.md"
+      ],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 50000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 4,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": true,
+        "anchorStale": true,
+        "ruleOneBundleResolved": "n/a"
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "cc8f6eda42e22bc959eb5c8838645f32c32d823282ec21e13358d1bc3e828252",
+      "stanzaHash": "d1096131c5b7aaa884cd3bbdb72f9888fd89b4d8b5547f75890e16225f3cf29c",
+      "reviewedStanzaHash": "d1096131c5b7aaa884cd3bbdb72f9888fd89b4d8b5547f75890e16225f3cf29c"
+    },
+    {
+      "id": "resource-argument-refusals-public-message",
+      "order": 7,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "resource-argument-refusals-public-message"
+      ],
+      "productionFilesTouched": 5,
+      "productionFiles": [
+        "src/RoslynMcp.Host.Stdio/Resources/WorkspaceResources.cs",
+        "src/RoslynMcp.Host.Stdio/Resources/ServerResources.cs",
+        "src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.cs",
+        "src/RoslynMcp.Core/Services/PublicArgumentOutOfRangeException.cs",
+        "src/RoslynMcp.Core/Services/IPublicMessageException.cs"
+      ],
+      "testFilesAdded": 4,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/WorkspaceResourceTests.cs",
+        "tests/RoslynMcp.Tests/SurfaceCatalogTests.cs",
+        "tests/RoslynMcp.Tests/ResourceReadWireContractTests.cs",
+        "tests/RoslynMcp.Tests/PublicMessageExceptionTests.cs"
+      ],
+      "docFiles": [],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 55000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 5,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": true,
+        "anchorStale": false,
+        "ruleOneBundleResolved": "n/a"
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "a3db611ce71c6f789a20cfd446e28a87a2b10c6326942c8a50ee6d8aa4ea3ade",
+      "stanzaHash": "c6f03188abf5fa68f5fd1b361324f673fa8512766c60e9188b837100a8bbc511",
+      "reviewedStanzaHash": "c6f03188abf5fa68f5fd1b361324f673fa8512766c60e9188b837100a8bbc511"
+    },
+    {
+      "id": "root-boundary-argument-refusals-public-message",
+      "order": 8,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "root-boundary-argument-refusals-public-message"
+      ],
+      "productionFilesTouched": 3,
+      "productionFiles": [
+        "src/RoslynMcp.Host.Stdio/Tools/ClientRootPathValidator.cs",
+        "src/RoslynMcp.Host.Stdio/Security/LegacyClientRootsNarrowingAdapter.cs",
+        "src/RoslynMcp.Host.Stdio/Security/ConfiguredRootBoundary.cs"
+      ],
+      "testFilesAdded": 2,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/ClientRootPathValidatorTests.cs",
+        "tests/RoslynMcp.Tests/RootBoundaryArgumentWireTests.cs"
+      ],
+      "docFiles": [
+        "docs/decisions/0014-root-boundary-error-classification.md",
+        "docs/decisions/README.md",
+        "changelog.d/root-boundary-argument-refusals-public-message.md"
+      ],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 50000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 3,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": true,
+        "anchorStale": false,
+        "ruleOneBundleResolved": "n/a"
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": "Required operator contract-care decision pending asynchronously; do not dispatch executor before approval. Recommended role-aware configured-I/narrowing-R correction requires ADR and major-release migration. Fixture anti-pattern sketch re-derived: McpRootsProbeTools intentionally returns allowed/rejected sentinel for low-level root-policy tests (TypeExtractionTests:89-105); it does not claim production wire-error coverage. Retain risk warning not to use this fixture as wire proof, but no defect row filed for intentional probe behavior.",
+      "fileSetHash": "8fcede3179a81f04d31d460386a9e3950d8b2bd70ee582562f14d57f8525d7c1",
+      "stanzaHash": "12ce06bdf57ad1125f5e92c5c246004cdb985b10835d774b72fa58dd4b333214",
+      "reviewedStanzaHash": "12ce06bdf57ad1125f5e92c5c246004cdb985b10835d774b72fa58dd4b333214"
+    },
+    {
+      "id": "dispatch-and-tool-argument-refusals-public-message",
+      "order": 9,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "dispatch-and-tool-argument-refusals-public-message"
+      ],
+      "productionFilesTouched": 8,
+      "productionFiles": [
+        "src/RoslynMcp.Host.Stdio/Tools/ToolDispatch.cs",
+        "src/RoslynMcp.Host.Stdio/Middleware/StructuredCallElicitationCoordinator.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/CompileCheckTools.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/EditTools.cs",
+        "src/RoslynMcp.Host.Stdio/Middleware/StructuredWorkspaceResolver.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/ToolErrorHandler.cs",
+        "src/RoslynMcp.Roslyn/Helpers/ProjectFilterHelper.cs",
+        "src/RoslynMcp.Core/Models/GateMetricsDto.cs"
+      ],
+      "testFilesAdded": 10,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/ToolDispatchTests.cs",
+        "tests/RoslynMcp.Tests/CompileCheckZeroProjectsTests.cs",
+        "tests/RoslynMcp.Tests/ClientRootPathValidatorTests.cs",
+        "tests/RoslynMcp.Tests/WorkspacePathMrtrWireTests.cs",
+        "tests/RoslynMcp.Tests/ToolCallErrorWireContractTests.cs",
+        "tests/RoslynMcp.Tests/StructuredCallToolFilterAutoLoadTests.cs",
+        "tests/RoslynMcp.Tests/ToolErrorHandlerParameterValidationTests.cs",
+        "tests/RoslynMcp.Tests/ProjectFilterUnknownNamePatternTests.cs",
+        "tests/RoslynMcp.Tests/ProjectFilterUnknownNameMetricsTests.cs",
+        "tests/RoslynMcp.Tests/ProjectFilterUnknownNameScanTests.cs"
+      ],
+      "docFiles": [
+        "docs/decisions/0015-dispatch-public-argument-diagnostics.md",
+        "docs/decisions/README.md",
+        "changelog.d/dispatch-and-tool-argument-refusals-public-message.md"
+      ],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 65000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 8,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": true,
+        "anchorStale": false,
+        "ruleOneBundleResolved": "n/a"
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "8d743189c32cade4474eee006a6936eeafb2b311ab02ab029fceb8c4ccdb0bfe",
+      "stanzaHash": "ef230e01430bf09ee09eb91063962783c6b1b5d2a1395ff83effb3150bd1c968",
+      "reviewedStanzaHash": "ef230e01430bf09ee09eb91063962783c6b1b5d2a1395ff83effb3150bd1c968"
+    },
+    {
+      "id": "parameter-object-argument-refusals-public-message",
+      "order": 10,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "parameter-object-argument-refusals-public-message"
+      ],
+      "productionFilesTouched": 1,
+      "productionFiles": [
+        "src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs"
+      ],
+      "testFilesAdded": 1,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/ParameterObjectPreviewTests.cs"
+      ],
+      "docFiles": [
+        "changelog.d/parameter-object-argument-refusals-public-message.md"
+      ],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 40000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 1,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": true,
+        "anchorStale": true,
+        "ruleOneBundleResolved": "n/a"
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "7143a8bed29b522d5d9df682c1138133392566c5defa57458d2095ff2052da37",
+      "stanzaHash": "1f8409695b082c52946a025b9ce35b32e82dd217e489a06d042ebea46f8334db",
+      "reviewedStanzaHash": "1f8409695b082c52946a025b9ce35b32e82dd217e489a06d042ebea46f8334db"
+    },
+    {
+      "id": "bulk-refactoring-argument-refusals-public-message",
+      "order": 11,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "bulk-refactoring-argument-refusals-public-message"
+      ],
+      "productionFilesTouched": 2,
+      "productionFiles": [
+        "src/RoslynMcp.Roslyn/Services/BulkRefactoringService.cs",
+        "src/RoslynMcp.Roslyn/Services/StringLiteralReplaceService.cs"
+      ],
+      "testFilesAdded": 3,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/BulkRefactoringTests.cs",
+        "tests/RoslynMcp.Tests/ReplaceInvocationTests.cs",
+        "tests/RoslynMcp.Tests/StringLiteralReplaceServiceTests.cs"
+      ],
+      "docFiles": [],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 40000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 2,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": true,
+        "anchorStale": true,
+        "ruleOneBundleResolved": "n/a"
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": "Exposed ParseMethodSignature grammar defect is fixed in this scope; no separate deferred parser row. BulkRefactoringTools.cs:82-83 marks replace_invocation_preview experimental, so release-policy faster experimental evolution applies; preserve existing advertised valid forms and document correction in own fragment.",
+      "fileSetHash": "3cadaf0e53253b3ca52cd00b14cb34d6441c9533787bf6930febd930304917b2",
+      "stanzaHash": "bc02a1bfe93a3d5152fefde42bb0e3af0b739b44bafe8f7f82163e9e1fa26e43",
+      "reviewedStanzaHash": "bc02a1bfe93a3d5152fefde42bb0e3af0b739b44bafe8f7f82163e9e1fa26e43"
+    },
+    {
+      "id": "type-extraction-argument-refusals-public-message",
+      "order": 12,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "type-extraction-argument-refusals-public-message"
+      ],
+      "productionFilesTouched": 4,
+      "productionFiles": [
+        "src/RoslynMcp.Roslyn/Services/TypeExtractionService.cs",
+        "src/RoslynMcp.Roslyn/Services/RecordFieldAdditionService.cs",
+        "src/RoslynMcp.Roslyn/Services/NamespaceRelocationService.cs",
+        "src/RoslynMcp.Roslyn/Services/ExtractMethodService.cs"
+      ],
+      "testFilesAdded": 5,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/TypeExtractionTests.cs",
+        "tests/RoslynMcp.Tests/ExtractSharedExpressionTests.cs",
+        "tests/RoslynMcp.Tests/RecordFieldAdditionImpactTests.cs",
+        "tests/RoslynMcp.Tests/NamespaceRelocationTests.cs",
+        "tests/RoslynMcp.Tests/ExtractMethodTests.cs"
+      ],
+      "docFiles": [
+        "changelog.d/type-extraction-argument-refusals-public-message.md"
+      ],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 60000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 4,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": true,
+        "anchorStale": true,
+        "ruleOneBundleResolved": "n/a"
+      },
+      "dependsOn": [
+        "resource-argument-refusals-public-message"
+      ],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "2f4b932aba9489fee92a8b1d66b80ffa28a17eb8aac3cbb73f4fcfdc48e6e903",
+      "stanzaHash": "f64e7f28ed65ce69c1ce3dcbbc1de0680b2a1a81e96b235397e2e4a7717a0cb0",
+      "reviewedStanzaHash": "f64e7f28ed65ce69c1ce3dcbbc1de0680b2a1a81e96b235397e2e4a7717a0cb0"
+    },
+    {
+      "id": "restructure-and-semantic-grep-argument-refusals-public-message",
+      "order": 13,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "restructure-and-semantic-grep-argument-refusals-public-message"
+      ],
+      "productionFilesTouched": 3,
+      "productionFiles": [
+        "src/RoslynMcp.Roslyn/Services/SymbolRefactorService.cs",
+        "src/RoslynMcp.Roslyn/Services/RestructureService.cs",
+        "src/RoslynMcp.Roslyn/Services/SemanticGrepService.cs"
+      ],
+      "testFilesAdded": 3,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/SymbolRefactorPreviewTests.cs",
+        "tests/RoslynMcp.Tests/RestructureServiceTests.cs",
+        "tests/RoslynMcp.Tests/SemanticGrepServiceTests.cs"
+      ],
+      "docFiles": [],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 50000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 3,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": true,
+        "anchorStale": false,
+        "ruleOneBundleResolved": "n/a"
+      },
+      "dependsOn": [
+        "get-prompt-text-unknown-prompt-public-message"
+      ],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "a84ff27ab57765ce166591db7c152bcc8d4e72dd5ec4ea6c5ecaa42680dcc7ae",
+      "stanzaHash": "ba31aeb5d0e14d491385da3aa1170ebcabf21b6c3f422ff803303b93dcc5fba1",
+      "reviewedStanzaHash": "ba31aeb5d0e14d491385da3aa1170ebcabf21b6c3f422ff803303b93dcc5fba1"
+    },
+    {
+      "id": "edit-service-argument-refusals-public-message",
+      "order": 14,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "edit-service-argument-refusals-public-message"
+      ],
+      "productionFilesTouched": 2,
+      "productionFiles": [
+        "src/RoslynMcp.Roslyn/Services/EditService.cs",
+        "src/RoslynMcp.Roslyn/Services/EditorConfigService.cs"
+      ],
+      "testFilesAdded": 2,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/EditUndoCohesionTests.cs",
+        "tests/RoslynMcp.Tests/EditorConfigServiceTests.cs"
+      ],
+      "docFiles": [
+        "changelog.d/edit-service-argument-refusals-public-message.md"
+      ],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 35000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 2,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": true,
+        "anchorStale": true,
+        "ruleOneBundleResolved": "n/a"
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "c792b4252cef1a4ee41d1f32f7592c43f9c5b8162ded73d37fb2eed0f7d2fc21",
+      "stanzaHash": "2e9605f85bd0feb3e3cd6ce6e7ea5efcc48a8af6a53ac6953d2a87ee28c325cd",
+      "reviewedStanzaHash": "2e9605f85bd0feb3e3cd6ce6e7ea5efcc48a8af6a53ac6953d2a87ee28c325cd"
+    },
+    {
+      "id": "suppression-argument-refusals-public-message",
+      "order": 15,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "suppression-argument-refusals-public-message"
+      ],
+      "productionFilesTouched": 1,
+      "productionFiles": [
+        "src/RoslynMcp.Roslyn/Services/SuppressionService.cs"
+      ],
+      "testFilesAdded": 3,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/SuppressionServiceTests.cs",
+        "tests/RoslynMcp.Tests/PragmaScopeManipulationTests.cs",
+        "tests/RoslynMcp.Tests/SuppressionToolsTests.cs"
+      ],
+      "docFiles": [
+        "changelog.d/suppression-argument-refusals-public-message.md"
+      ],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 40000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 1,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": true,
+        "anchorStale": true,
+        "ruleOneBundleResolved": "n/a"
+      },
+      "dependsOn": [
+        "resource-argument-refusals-public-message"
+      ],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "18e674cd62ae13caa558a78adb48e73c4f645e5bba434f28d5f2d42d5fbecf82",
+      "stanzaHash": "dc22bf053f48f0b679f4af4a67cd32698d8856cbf315795afeabf2ce8743c67c",
+      "reviewedStanzaHash": "dc22bf053f48f0b679f4af4a67cd32698d8856cbf315795afeabf2ce8743c67c"
+    }
+  ],
+  "anchorVerification": "performed",
+  "conflictGraph": {
+    "edges": [
+      {
+        "a": 1,
+        "b": 6,
+        "sharedFiles": [
+          "src/RoslynMcp.Host.Stdio/Tools/AnalysisTools.cs"
+        ]
+      },
+      {
+        "a": 1,
+        "b": 9,
+        "sharedFiles": [
+          "src/RoslynMcp.Host.Stdio/Tools/CompileCheckTools.cs"
+        ]
+      },
+      {
+        "a": 2,
+        "b": 12,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/NamespaceRelocationService.cs",
+          "tests/RoslynMcp.Tests/NamespaceRelocationTests.cs"
+        ]
+      },
+      {
+        "a": 4,
+        "b": 7,
+        "sharedFiles": [
+          "src/RoslynMcp.Core/Services/IPublicMessageException.cs"
+        ]
+      },
+      {
+        "a": 4,
+        "b": 9,
+        "sharedFiles": [
+          "src/RoslynMcp.Host.Stdio/Tools/ToolErrorHandler.cs",
+          "tests/RoslynMcp.Tests/ToolCallErrorWireContractTests.cs"
+        ]
+      },
+      {
+        "a": 8,
+        "b": 9,
+        "sharedFiles": [
+          "docs/decisions/README.md",
+          "tests/RoslynMcp.Tests/ClientRootPathValidatorTests.cs"
+        ]
+      }
+    ],
+    "degrees": {
+      "1": 2,
+      "2": 1,
+      "4": 2,
+      "5": 0,
+      "6": 1,
+      "7": 1,
+      "8": 1,
+      "9": 3,
+      "10": 0,
+      "11": 0,
+      "12": 1,
+      "13": 0,
+      "14": 0,
+      "15": 0
+    },
+    "zeroDegreeInitiatives": [
+      5,
+      10,
+      11,
+      13,
+      14,
+      15
+    ]
+  },
+  "selection": {
+    "requestedCount": 15,
+    "selectedCount": 15,
+    "skipped": [
+      {
+        "id": "logging-default-sink-disabled-stderr-swallowed",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "promotion-scorecard-refresh-toplevel-run",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-analysis-batch-1",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-analysis-batch-2",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-analysis-batch-3",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-editing-batch-1",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-editing-batch-2",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-orchestration-batch-1",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-orchestration-batch-2",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-refactoring-batch-1",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-refactoring-batch-2",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-refactoring-batch-3",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-refactoring-batch-4",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-symbols",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-workspace",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-project-mutation",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-file-operations",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-formatting",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-extract",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-scaffolding",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-replace",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-code-fix",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-remove",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-cross-project",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-signature",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-restructure",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-split-class",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-move",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-formatting",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-text-edit",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-code-transform-1",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-code-transform-2",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-code-transform-3",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-code-transform-4",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-file-lifecycle",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-undo-revert",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-error-handler-argument-sniffing-arms-retired",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "argument-exception-public-message-guard",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "preview-apply-tool-descriptions",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "logging-event-id-collisions-no-catalog",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "logging-failure-records-lack-diagnosis",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "logging-dependency-boundary-duration-missing",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "logging-observability-contract-doc-incomplete",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "split-service-refuse-unsupported-method-signatures",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "split-service-forward-ref-out-in-arguments",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "split-service-copy-namespace-scoped-usings",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "change-signature-record-primary-ctor-add-remove",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "change-signature-primary-ctor-rename-reorder",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "host-tools-code-quality-extraction",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "host-tools-code-search-extraction",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "host-tools-complexity-extraction",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "changelog-process-tests-runner-adoption",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "mutation-analysis-property-write-orchestrator-decomposition",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "tasks-extension-build-test-run",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "tasks-extension-contract-docs",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "scaffolding-async-sibling-io-boundary",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "scaffold-warning-mrtr-typed-state",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "server-probe-test-doubles-batch-2",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "server-probe-test-doubles-batch-3",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "unused-code-analyzer-test-harness-wave-3",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "unused-code-analyzer-test-harness-wave-2",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "root-expansion-grant-registry-host-ownership",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "logging-event-ids-remaining-call-sites",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "logging-file-sink-sync-io-per-record",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "http-streamable-host-project",
+        "reason": "defer-band"
+      },
+      {
+        "id": "workspace-process-pool-or-daemon",
+        "reason": "defer-band"
+      },
+      {
+        "id": "locationdto-next-major-flat-field-removal",
+        "reason": "defer-band"
+      },
+      {
+        "id": "locationdto-stage3-flat-field-deprecation",
+        "reason": "defer-band"
+      },
+      {
+        "id": "audit-21-analyzer-plan-defer-or-retire",
+        "reason": "defer-band"
+      },
+      {
+        "id": "project-name-not-found-category-next-major",
+        "reason": "defer-band"
+      },
+      {
+        "id": "server-info-update-available-next-major-nullable",
+        "reason": "defer-band"
+      },
+      {
+        "id": "workspace-not-found-next-major-category-promotion",
+        "reason": "defer-band"
+      },
+      {
+        "id": "v5-major-release-contract-prereqs",
+        "reason": "defer-band"
+      },
+      {
+        "id": "editorconfig-posix-uncooperative-write-race",
+        "reason": "defer-band"
+      },
+      {
+        "id": "atomic-file-writer-external-temp-path-swap",
+        "reason": "defer-band"
+      }
+    ],
+    "splits": [
+      {
+        "parent": "change-signature-refusals-public-message",
+        "children": [
+          "change-signature-service-refusals-public-message",
+          "format-range-service-refusals-public-message"
+        ]
+      }
+    ]
+  },
+  "reviewFindings": {
+    "block": 0,
+    "warn": 4,
+    "info": 8
+  },
+  "lastReviewFindings": [
+    {
+      "initiativeId": "argument-exception-throw-sites-lack-public-message",
+      "severity": "info",
+      "rule": "3",
+      "evidence": "Seven-file validation change is coherent: live ValidatePagination reference probe has 23 references (16 runtime, six tests, one XML doc) and exactly the declared production owners. Required caller metadata completes wrong wire-parameter diagnostics."
+    },
+    {
+      "initiativeId": "file-create-and-scaffold-refusals-public-message",
+      "severity": "info",
+      "rule": "3",
+      "evidence": "Five-file defect-forced companion holds: FileOperationService:216, NamespaceRelocationService:256 and CrossProjectRefactoringService:313 all use non-segment-aware OrdinalIgnoreCase prefix containment; shared OS-aware helper and all copied consumers form one complete correction."
+    },
+    {
+      "initiativeId": "resource-argument-refusals-public-message",
+      "severity": "info",
+      "rule": "3",
+      "evidence": "Five-file EOF subtype companion holds: WorkspaceResources:264 needs the ArgumentOutOfRangeException subtype; ToolErrorHandler:592,695-696 publishes the marker and directly projects its BCL base, so PublicArgumentException would alter the released identity."
+    },
+    {
+      "initiativeId": "dispatch-and-tool-argument-refusals-public-message",
+      "severity": "info",
+      "rule": "3",
+      "evidence": "Eight-file publication correction is coherent: resolver public path detail plus shared project helper producers require their handler-arm and documentation companions; count alone is not a rejection."
+    },
+    {
+      "initiativeId": "tool-scripting-undo-workflow-argument-refusals-public-message",
+      "severity": "warn",
+      "rule": "3b",
+      "evidence": "Scope declares tool-surface-only but touches three production wrapper files, past the rubric's approximate two-file target. All are the same small publication mechanism, so retain the complete change and explicitly accept this advisory breadth rather than dropping a guard.",
+      "resolved": true,
+      "resolution": "Explicitly accepted coherent three-wrapper advisory breadth in Scope."
+    },
+    {
+      "initiativeId": "dispatch-and-tool-argument-refusals-public-message",
+      "severity": "warn",
+      "rule": "3",
+      "evidence": "Scope says '10 stateFields tests' without listing the exact ten paths, while state.testFilesAdded is 0 despite planned test extensions. Name every edited test in Scope and synchronize the count; stateFields prose is not an independent exact Scope file list.",
+      "resolved": true,
+      "resolution": "Scope now enumerates all ten exact test paths and three doc paths; testFilesAdded synchronized to 10."
+    },
+    {
+      "initiativeId": "dispatch-and-tool-argument-refusals-public-message",
+      "severity": "warn",
+      "rule": "C2-graph-disagreement",
+      "evidence": "Scope-computed edge 4-9 contains ToolErrorHandler.cs; the stored edge additionally contains tests/RoslynMcp.Tests/ToolCallErrorWireContractTests.cs, which dispatch Scope does not name. Explicitly enumerate the ten test files before recomputing/sealing the graph.",
+      "resolved": true,
+      "resolution": "Scope now names ToolCallErrorWireContractTests; generations --persist will rebuild exact path overlaps."
+    },
+    {
+      "initiativeId": "dispatch-and-tool-argument-refusals-public-message",
+      "severity": "warn",
+      "rule": "C2-wave-conflict",
+      "evidence": "Consecutive sorted initiatives 8 and 9 share ClientRootPathValidatorTests.cs and docs/decisions/README.md. Execute in distinct conflict generations and coordinate decision-index writes.",
+      "resolved": true,
+      "resolution": "Live generations separate orders 8 and 9; executor admission remains serial, including decision-index writes."
+    },
+    {
+      "initiativeId": "argument-exception-throw-sites-lack-public-message",
+      "severity": "info",
+      "rule": "C2",
+      "evidence": "Conflict degree 2 with scheduleHint=null; collision-heavy initiative must be serialized by the live conflict/dependency generations."
+    },
+    {
+      "initiativeId": "get-prompt-text-unknown-prompt-public-message",
+      "severity": "info",
+      "rule": "C2",
+      "evidence": "Conflict degree 2 with scheduleHint=null; collision-heavy initiative must be serialized by the live conflict/dependency generations."
+    },
+    {
+      "initiativeId": "dispatch-and-tool-argument-refusals-public-message",
+      "severity": "info",
+      "rule": "C2",
+      "evidence": "Conflict degree 3 with scheduleHint=null; collision-heavy initiative must be serialized by the live conflict/dependency generations."
+    },
+    {
+      "initiativeId": "root-boundary-argument-refusals-public-message",
+      "severity": "info",
+      "rule": "anchor",
+      "evidence": "Preimplementation operator hold is explicit in Approach, Validation verify(operator), and state.notes; category/release authorization is pending. Technical plan review does not discharge the marker or authorize an executor."
+    }
+  ],
+  "reviewCoverage": {
+    "status": "passed-with-warnings",
+    "stanzaHashes": {
+      "argument-exception-throw-sites-lack-public-message": "919bee9356f9cda6aea7dcc2cfa21a644aabe8a2da829f9967705647422db863",
+      "file-create-and-scaffold-refusals-public-message": "c06a924875f8b54528052b1a01cb1ef8250b9b11bf5bf52ad4e57188863902ba",
+      "get-prompt-text-unknown-prompt-public-message": "6b265b0b940c5b316584361d77ff80ce46d9d327fe4e12ddf6f45f7d5fbe10f5",
+      "tool-scripting-undo-workflow-argument-refusals-public-message": "a1081d96d56fc0784e4dc07e5efc744ec78cd7b0ddf5efd5425e502130fe49bc",
+      "symbol-locator-and-source-text-tool-argument-refusals-public-message": "d1096131c5b7aaa884cd3bbdb72f9888fd89b4d8b5547f75890e16225f3cf29c",
+      "resource-argument-refusals-public-message": "c6f03188abf5fa68f5fd1b361324f673fa8512766c60e9188b837100a8bbc511",
+      "root-boundary-argument-refusals-public-message": "12ce06bdf57ad1125f5e92c5c246004cdb985b10835d774b72fa58dd4b333214",
+      "dispatch-and-tool-argument-refusals-public-message": "ef230e01430bf09ee09eb91063962783c6b1b5d2a1395ff83effb3150bd1c968",
+      "parameter-object-argument-refusals-public-message": "1f8409695b082c52946a025b9ce35b32e82dd217e489a06d042ebea46f8334db",
+      "bulk-refactoring-argument-refusals-public-message": "bc02a1bfe93a3d5152fefde42bb0e3af0b739b44bafe8f7f82163e9e1fa26e43",
+      "type-extraction-argument-refusals-public-message": "f64e7f28ed65ce69c1ce3dcbbc1de0680b2a1a81e96b235397e2e4a7717a0cb0",
+      "restructure-and-semantic-grep-argument-refusals-public-message": "ba31aeb5d0e14d491385da3aa1170ebcabf21b6c3f422ff803303b93dcc5fba1",
+      "edit-service-argument-refusals-public-message": "2e9605f85bd0feb3e3cd6ce6e7ea5efcc48a8af6a53ac6953d2a87ee28c325cd",
+      "suppression-argument-refusals-public-message": "dc22bf053f48f0b679f4af4a67cd32698d8856cbf315795afeabf2ce8743c67c"
+    }
+  },
+  "conflictGraphInputHash": "3bb1cf2e7153e63cb0d174c67c7287587be2ce1803454f6b083d28b36d197557",
+  "planHash": "4163107cb8a7a145c43703a3f47b0d0c49cc66b6857ba7b748b688d9349f29cb",
+  "backlogSnapshotHash": "133962bd179708a6f08387eceed5e47d6fcf75b9b2035c9232a9d17a6d05ec69",
+  "reviewedPlanHash": "4163107cb8a7a145c43703a3f47b0d0c49cc66b6857ba7b748b688d9349f29cb",
+  "reviewedBacklogSnapshotHash": "133962bd179708a6f08387eceed5e47d6fcf75b9b2035c9232a9d17a6d05ec69"
+}
