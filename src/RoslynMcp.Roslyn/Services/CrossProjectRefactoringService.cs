@@ -310,7 +310,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
 
         foreach (var doc in targetProject.Documents)
         {
-            if (doc.FilePath is null || !doc.FilePath.StartsWith(projectDirectory, StringComparison.OrdinalIgnoreCase))
+            if (doc.FilePath is null || !FileSystemPath.IsStrictDescendant(projectDirectory, doc.FilePath))
                 continue;
 
             var rel = Path.GetRelativePath(projectDirectory, doc.FilePath);

@@ -46,4 +46,20 @@ public sealed class FileSystemPathTests
             resolvedUpper.Id == resolvedLower.Id,
             "Windows document lookup is case-insensitive; Unix lookup must preserve case-distinct identities.");
     }
+
+    [TestMethod]
+    public void StrictContainment_Canonicalizes_And_Requires_A_Descendant()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "ContainmentRoot");
+        Assert.IsTrue(FileSystemPath.IsStrictDescendant(root, Path.Combine(root, "Nested", "..", "File.cs")));
+        Assert.IsTrue(FileSystemPath.IsStrictDescendant(root + Path.DirectorySeparatorChar, Path.Combine(root, "..names", "File.cs")));
+        Assert.IsFalse(FileSystemPath.IsStrictDescendant(root, root));
+        Assert.IsFalse(FileSystemPath.IsStrictDescendant(root, root + Path.DirectorySeparatorChar));
+        Assert.IsFalse(FileSystemPath.IsStrictDescendant(root, Path.Combine(root + "2", "File.cs")));
+        Assert.IsFalse(FileSystemPath.IsStrictDescendant(root, Path.Combine(root, "..", "File.cs")));
+        Assert.IsTrue(FileSystemPath.IsStrictDescendant(Path.GetPathRoot(root)!, Path.Combine(root, "File.cs")));
+        Assert.AreEqual(OperatingSystem.IsWindows(),
+            FileSystemPath.IsStrictDescendant(root, Path.Combine(Path.GetTempPath(), "containmentroot", "File.cs")));
+    }
+
 }

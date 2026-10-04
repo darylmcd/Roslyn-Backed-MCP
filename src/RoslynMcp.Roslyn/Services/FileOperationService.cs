@@ -29,12 +29,12 @@ public sealed class FileOperationService : IFileOperationService
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var project = ResolveProject(solution, request.ProjectName);
-        var fullPath = Path.GetFullPath(request.FilePath);
-        ValidateFilePath(project.FilePath, fullPath);
+        var fullPath = ResolveFilePath(request.FilePath, "filePath");
+        ValidateFilePath(project.FilePath, fullPath, "filePath");
 
         if (SymbolResolver.FindDocument(solution, fullPath) is not null || File.Exists(fullPath))
         {
-            throw new InvalidOperationException($"A file already exists at '{fullPath}'.");
+            throw new PublicInvalidOperationException("A file already exists at the requested destination. Choose a new filePath or edit the existing file.");
         }
 
         // FLAG-10B: Some MCP clients pass literal "\\n" / "\\r" / "\\t" sequences in the content
@@ -104,9 +104,9 @@ public sealed class FileOperationService : IFileOperationService
     public async Task<RefactoringPreviewDto> PreviewDeleteFileAsync(string workspaceId, DeleteFileDto request, CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
-        var fullPath = Path.GetFullPath(request.FilePath);
+        var fullPath = ResolveFilePath(request.FilePath, "filePath");
         var document = SymbolResolver.FindDocument(solution, fullPath)
-            ?? throw new InvalidOperationException($"Document not found: {request.FilePath}");
+            ?? throw new PublicInvalidOperationException("The requested file is not in the loaded workspace. Verify filePath names a loaded document, then reload the workspace if needed.");
 
         var newSolution = solution.RemoveDocument(document.Id);
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
@@ -128,23 +128,23 @@ public sealed class FileOperationService : IFileOperationService
     public async Task<RefactoringPreviewDto> PreviewMoveFileAsync(string workspaceId, MoveFileDto request, CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
-        var sourcePath = Path.GetFullPath(request.SourceFilePath);
-        var destinationPath = Path.GetFullPath(request.TargetFilePath);
+        var sourcePath = ResolveFilePath(request.SourceFilePath, "sourceFilePath");
+        var destinationPath = ResolveFilePath(request.TargetFilePath, "targetFilePath");
         var sourceDocument = SymbolResolver.FindDocument(solution, sourcePath)
-            ?? throw new InvalidOperationException($"Document not found: {request.SourceFilePath}");
+            ?? throw new PublicInvalidOperationException("The source file is not in the loaded workspace. Verify sourceFilePath names a loaded document, then reload the workspace if needed.");
 
-        if (string.Equals(sourcePath, destinationPath, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(sourcePath, destinationPath, FileSystemPath.Comparison))
         {
-            throw new ArgumentException("Source and destination paths must be different.");
+            throw new PublicArgumentException("Source and destination paths must be different. Choose a different targetFilePath.", "targetFilePath");
         }
 
         if (SymbolResolver.FindDocument(solution, destinationPath) is not null || File.Exists(destinationPath))
         {
-            throw new InvalidOperationException($"A file already exists at '{destinationPath}'.");
+            throw new PublicInvalidOperationException("A file already exists at the requested destination. Choose a new targetFilePath or edit the existing file.");
         }
 
         var destinationProject = ResolveDestinationProject(solution, sourceDocument.Project, request.DestinationProjectName);
-        ValidateFilePath(destinationProject.FilePath, destinationPath);
+        ValidateFilePath(destinationProject.FilePath, destinationPath, "targetFilePath");
 
         var sourceText = await sourceDocument.GetTextAsync(ct).ConfigureAwait(false);
         var updatedText = sourceText;
@@ -188,7 +188,7 @@ public sealed class FileOperationService : IFileOperationService
         return solution.Projects.FirstOrDefault(project =>
                    string.Equals(project.Name, projectName, StringComparison.OrdinalIgnoreCase) ||
                    string.Equals(project.FilePath, projectName, StringComparison.OrdinalIgnoreCase))
-               ?? throw new InvalidOperationException($"Project not found: {projectName}");
+               ?? throw new PublicInvalidOperationException("The requested project is not loaded. Use workspace_status to list project names, then retry with a loaded project.");
     }
 
     private static Microsoft.CodeAnalysis.Project ResolveDestinationProject(
@@ -204,19 +204,65 @@ public sealed class FileOperationService : IFileOperationService
         return ResolveProject(solution, destinationProjectName);
     }
 
-    private static void ValidateFilePath(string? projectFilePath, string filePath)
+
+    private static string ResolveFilePath(string filePath, string parameterName)
+    {
+        if (string.IsNullOrWhiteSpace(filePath) || string.IsNullOrEmpty(Path.GetFileName(filePath)) ||
+            Path.GetFileName(filePath) is "." or "..")
+        {
+            throw new PublicArgumentException(
+                "The file path must include a non-empty file name. Supply a file path without a trailing directory separator.", parameterName);
+        }
+
+        if (filePath.Contains('\0'))
+        {
+            throw new PublicArgumentException(
+                "The file path contains an invalid character. Supply a file path without null characters.", parameterName);
+        }
+
+        // Validate original segments before GetFullPath trims Windows trailing-dot/space aliases
+        // or collapses directory references that could hide an invalid name.
+        var rootLength = Path.GetPathRoot(filePath)?.Length ?? 0;
+        var segments = filePath[rootLength..].Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar]);
+        if (segments.Any(IsInvalidFileSegment))
+        {
+            throw new PublicArgumentException(
+                "The file path contains an unsupported file or directory name. Use names valid on the operating system, without trailing dots or spaces on Windows.", parameterName);
+        }
+
+        string fullPath;
+        try
+        {
+            fullPath = Path.GetFullPath(filePath);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            throw ArgumentErrors.Redacted(parameterName, "The supplied file path could not be resolved.", ex);
+        }
+
+        return fullPath;
+    }
+
+    private static bool IsInvalidFileSegment(string segment)
+    {
+        if (segment is "." or "..") return false;
+        if (segment.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0) return true;
+        return OperatingSystem.IsWindows() && (segment.EndsWith(' ') || segment.EndsWith('.'));
+    }
+
+    private static void ValidateFilePath(string? projectFilePath, string filePath, string parameterName)
     {
         if (string.IsNullOrWhiteSpace(projectFilePath))
         {
-            throw new InvalidOperationException("The target project does not have a file path on disk.");
+            throw new PublicInvalidOperationException("The target project does not have a file path on disk. Load a project saved on disk before creating or moving files.");
         }
 
         var projectDirectory = Path.GetDirectoryName(projectFilePath)
-            ?? throw new InvalidOperationException($"Project directory could not be resolved for '{projectFilePath}'.");
-        if (!filePath.StartsWith(projectDirectory, StringComparison.OrdinalIgnoreCase))
+            ?? throw new PublicInvalidOperationException("The target project directory could not be resolved. Reload a project saved on disk before creating or moving files.");
+        if (!FileSystemPath.IsStrictDescendant(projectDirectory, filePath))
         {
-            throw new ArgumentException(
-                $"Path '{filePath}' must be under the target project directory '{projectDirectory}'.");
+            throw new PublicArgumentException(
+                "The file path must name a file inside the target project directory. Choose a descendant file path.", parameterName);
         }
     }
 

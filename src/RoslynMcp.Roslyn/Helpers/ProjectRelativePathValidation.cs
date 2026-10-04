@@ -71,9 +71,7 @@ internal static class ProjectRelativePathValidation
     {
         var fullRoot = Path.GetFullPath(rootDirectory);
         var fullCandidate = Path.GetFullPath(candidatePath);
-        var relative = Path.GetRelativePath(fullRoot, fullCandidate);
-        var firstSegment = relative.Split(Separators, 2)[0];
-        if (relative == "." || firstSegment == ".." || Path.IsPathRooted(relative))
+        if (!FileSystemPath.IsStrictDescendant(fullRoot, fullCandidate))
             throw new InvalidOperationException(
                 $"{parameterLabel} resolves to '{fullCandidate}', which is outside the " +
                 $"target project directory '{fullRoot}'.");

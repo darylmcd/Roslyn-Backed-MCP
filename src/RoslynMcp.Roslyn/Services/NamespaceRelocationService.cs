@@ -253,7 +253,7 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
         var projectDirectory = Path.GetDirectoryName(projectFilePath)
             ?? throw new InvalidOperationException($"Project directory could not be resolved for '{projectFilePath}'.");
 
-        if (!fullDestination.StartsWith(projectDirectory, StringComparison.OrdinalIgnoreCase))
+        if (!FileSystemPath.IsStrictDescendant(projectDirectory, fullDestination))
         {
             throw new ArgumentException(
                 $"Destination path '{fullDestination}' must be inside the source project directory '{projectDirectory}'.",

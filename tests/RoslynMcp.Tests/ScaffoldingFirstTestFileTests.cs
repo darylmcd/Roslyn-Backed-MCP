@@ -91,7 +91,7 @@ public sealed class ScaffoldingFirstTestFileTests : IsolatedWorkspaceTestBase
         Assert.IsTrue(File.Exists(destinationPath),
             $"Test precondition violated: '{destinationPath}' must exist for this scenario.");
 
-        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
             ScaffoldingService.PreviewScaffoldFirstTestFileAsync(
                 workspace.WorkspaceId,
                 new ScaffoldFirstTestFileDto("SampleLib.AnimalService", "SampleLib.Tests"),
@@ -99,6 +99,7 @@ public sealed class ScaffoldingFirstTestFileTests : IsolatedWorkspaceTestBase
 
         StringAssert.Contains(ex.Message, "already exists",
             "Error should explain that the destination file is occupied.");
+        FileOperationIntegrationTests.AssertSafeRefusal(ex, "scaffold_test_preview", null, destinationPath);
         StringAssert.Contains(ex.Message, "scaffold_test_preview",
             "Error should redirect callers to the additive surface.");
     }
@@ -142,7 +143,7 @@ public sealed class ScaffoldingFirstTestFileTests : IsolatedWorkspaceTestBase
         // namespace.
         await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
 
-        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
             ScaffoldingService.PreviewScaffoldFirstTestFileAsync(
                 workspace.WorkspaceId,
                 new ScaffoldFirstTestFileDto("SampleLib.NoSuchService", "SampleLib.Tests"),
@@ -150,6 +151,7 @@ public sealed class ScaffoldingFirstTestFileTests : IsolatedWorkspaceTestBase
 
         StringAssert.Contains(ex.Message, "not found",
             "Error should say the service was not found.");
+        FileOperationIntegrationTests.AssertSafeRefusal(ex, "fully-qualified", null, "SampleLib.NoSuchService");
         StringAssert.Contains(ex.Message, "fully-qualified",
             "Error should remind callers that the input is a metadata name (FQN).");
     }
@@ -209,8 +211,8 @@ public sealed class ScaffoldingFirstTestFileTests : IsolatedWorkspaceTestBase
     public async Task FirstTestFile_StillFails_When_Multiple_Suffix_Matches_OR_Zero_Suffix_Match()
     {
         // scaffold-first-test-file-preview-single-target-heuristic: the suffix tiebreaker is
-        // intentionally conservative. The existing pre-filter (line ~408 of
-        // ScaffoldingService.TestBatchAndFirstTestPreview.cs) only admits candidates whose Name
+        // intentionally conservative. BatchTestScaffolder.ResolveDestinationTestProject
+        // only admits candidates whose Name
         // ends with `.Tests`. Within that pool, the tiebreaker prefers the candidate whose Name
         // is exactly `<SourceProject>.Tests`. When NO candidate matches the exact suffix (e.g.
         // sibling apps `WebApi.Tests` and `ConsoleHost.Tests` both reference the shared domain
@@ -233,7 +235,7 @@ public sealed class ScaffoldingFirstTestFileTests : IsolatedWorkspaceTestBase
             await RestoreWorkspaceAsync(workspace, CancellationToken.None);
             await workspace.LoadAsync(CancellationToken.None);
 
-            var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+            var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
                 ScaffoldingService.PreviewScaffoldFirstTestFileAsync(
                     workspace.WorkspaceId,
                     new ScaffoldFirstTestFileDto(
@@ -243,14 +245,8 @@ public sealed class ScaffoldingFirstTestFileTests : IsolatedWorkspaceTestBase
 
             StringAssert.Contains(ex.Message, "Multiple test projects reference",
                 "Error must explain ambiguity is the root cause.");
-            StringAssert.Contains(ex.Message, "WebApi.Tests",
-                "Error must enumerate the ambiguous candidates so callers can choose explicitly.");
-            StringAssert.Contains(ex.Message, "ConsoleHost.Tests",
-                "Error must enumerate the ambiguous candidates so callers can choose explicitly.");
-            StringAssert.Contains(ex.Message, "Pass testProjectName explicitly",
-                "Error must point callers at the explicit-disambiguation escape hatch.");
-            StringAssert.Contains(ex.Message, "SampleLib.Tests",
-                "Error must surface the canonical suffix name that would have unlocked the tiebreaker.");
+            FileOperationIntegrationTests.AssertSafeRefusal(ex, "Pass testProjectName explicitly", null,
+                "WebApi.Tests", "ConsoleHost.Tests", "SampleLib", workspace.RootPath);
         }
         finally
         {
@@ -508,4 +504,32 @@ public sealed class ScaffoldingFirstTestFileTests : IsolatedWorkspaceTestBase
         File.WriteAllText(path, "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net10.0");
         return path;
     }
+
+    [TestMethod]
+    [DataRow("")]
+    [DataRow("private-hostile-metadata-input")]
+    public async Task FirstTestFile_Empty_Or_Missing_Metadata_Is_Actionable(string metadata)
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var original = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => ScaffoldingService.PreviewScaffoldFirstTestFileAsync(
+            workspace.WorkspaceId, new ScaffoldFirstTestFileDto(metadata, "SampleLib.Tests"), CancellationToken.None));
+        FileOperationIntegrationTests.AssertSafeRefusal(error, metadata.Length == 0 ? "non-empty serviceMetadataName" : "fully-qualified", null, "private-hostile-metadata-input");
+        Assert.AreSame(original, WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
+        FileOperationIntegrationTests.AssertNoStoredPreviews(PreviewStore, workspace.WorkspaceId);
+    }
+
+    [TestMethod]
+    public async Task FirstTestFile_Missing_Inference_Candidate_Gives_Explicit_Project_Recovery()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        ReplaceSolutionFile(workspace, ["SampleApp/SampleApp.csproj", "SampleLib/SampleLib.csproj"]);
+        await workspace.LoadAsync(CancellationToken.None);
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => ScaffoldingService.PreviewScaffoldFirstTestFileAsync(
+            workspace.WorkspaceId, new ScaffoldFirstTestFileDto("SampleLib.Dog", null), CancellationToken.None));
+        FileOperationIntegrationTests.AssertSafeRefusal(error, "Pass testProjectName explicitly", null, "SampleLib", workspace.RootPath);
+        Assert.IsFalse(File.Exists(workspace.GetPath("SampleLib.Tests", "DogTests.cs")));
+        FileOperationIntegrationTests.AssertNoStoredPreviews(PreviewStore, workspace.WorkspaceId);
+    }
+
 }
