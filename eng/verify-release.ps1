@@ -307,6 +307,18 @@ if (-not $NoCoverage) {
 $primaryFailure = $null
 $cleanupFailures = [System.Collections.Generic.List[System.Exception]]::new()
 $testTempRoot = $null
+# Do not share reusable build servers with another agent or shut down its servers.
+# Environment changes are scoped to this invocation and restored even on failure.
+$buildEnvironment = @{
+    MSBUILDDISABLENODEREUSE = '1'
+    DOTNET_CLI_USE_MSBUILD_SERVER = '0'
+    UseSharedCompilation = 'false'
+}
+$previousBuildEnvironment = @{}
+foreach ($name in $buildEnvironment.Keys) {
+    $previousBuildEnvironment[$name] = [Environment]::GetEnvironmentVariable($name)
+    [Environment]::SetEnvironmentVariable($name, $buildEnvironment[$name])
+}
 try {
 if (-not $TestShardOnly) {
     # Coordinated package families fail before restore so a split Dependabot update cannot
@@ -552,14 +564,8 @@ catch {
     $primaryFailure = $_.Exception
 }
 finally {
-    # Child builds can leave VBCSCompiler/MSBuild servers holding verifier-owned state.
-    # Attempt both cleanup actions exactly once, even when restore/build/planning/test/publish fails.
-    try {
-        dotnet build-server shutdown
-        Invoke-DotnetStep "dotnet build-server shutdown"
-    }
-    catch {
-        $cleanupFailures.Add($_.Exception)
+    foreach ($name in $previousBuildEnvironment.Keys) {
+        [Environment]::SetEnvironmentVariable($name, $previousBuildEnvironment[$name])
     }
 
     if ($null -ne $testTempRoot) {

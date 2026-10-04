@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-03T00:05:48Z
+**updated_at:** 2026-10-04T10:43:59Z
 
 ## Agent contract
 
@@ -147,8 +147,7 @@
 | `load-profile-full-suite` | Medium | — | **Profile full-suite load and decide the test worker cap** — capture thread-pool queue length, workers and CPU during verify-release locally and on hosted windows shards; name the saturating classes. [type: test-infrastructure] [source: load-sensitive-timing-tests-full-suite] | M | items/load-profile-full-suite.md |
 | `timing-test-reaudit-wave` | Medium | — | **Re-audit the remaining wall-clock-sensitive tests** — replace fixed deadlines on timers and spawned children with injected clocks or event waits; start with the pwsh pipe-lifetime test. [type: test-infrastructure] [source: load-sensitive-timing-tests-full-suite] | L | items/timing-test-reaudit-wave.md |
 | `gate-timing-tests-fail-under-machine-load` | Medium | — | **Make wall-clock-bound tests deterministic under load** — CiTopology docs-only allowlist pwsh 30 s limit and WorkspaceValidationVerdict git-scope test fail under a loaded full-suite run. [type: bug] [source: backlog-remediate 20261001T130338Z] | M | items/gate-timing-tests-fail-under-machine-load.md |
-| `workspace-fork-copy-linked-worktree-gitfile` | Medium | — | Exclude linked-worktree .git pointer files from fork copies; directory-only filtering currently copies source Git metadata references. [type: bug] [source: gated-validate-test-phase-budget review] | S | items/workspace-fork-copy-linked-worktree-gitfile.md |
-| `pipe-lifetime-test-global-build-server-shutdown` | Medium | — | Scope pipe-lifetime test cleanup to owned build servers; preserve unrelated workers. [type: test-infrastructure] [source: adjacent-review] | S | items/pipe-lifetime-test-global-build-server-shutdown.md |
+| `workspace-close-global-build-server-shutdown` | Medium | — | **Scope explicit workspace drain** - replace machine-wide build-server shutdown with verified workspace-owned cleanup. [type: bug] [source: validation-isolation adjacent review 2026-10-04] | M | items/workspace-close-global-build-server-shutdown.md |
 
 ## Low
 

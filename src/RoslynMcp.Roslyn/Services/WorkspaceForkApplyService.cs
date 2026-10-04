@@ -451,7 +451,11 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService
         foreach (var file in Directory.EnumerateFiles(sourceDirectory))
         {
             ct.ThrowIfCancellationRequested();
-            if (IsReparsePoint(file) || IsSecretBearingFile(Path.GetFileName(file)))
+            // Linked worktrees use a regular .git pointer file. Copying it would give the
+            // validation fork access to the source worktree's index and repository metadata.
+            if (IsReparsePoint(file)
+                || Path.GetFileName(file).Equals(".git", StringComparison.OrdinalIgnoreCase)
+                || IsSecretBearingFile(Path.GetFileName(file)))
             {
                 continue;
             }
