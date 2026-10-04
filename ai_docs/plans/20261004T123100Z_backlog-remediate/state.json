@@ -477,7 +477,7 @@
     {
       "id": "parameter-object-argument-refusals-public-message",
       "order": 10,
-      "status": "in-review",
+      "status": "merged",
       "backlogRowsClosed": [
         "parameter-object-argument-refusals-public-message"
       ],
@@ -508,7 +508,7 @@
       "branch": "remediation/parameter-object-argument-refusals-public-message",
       "worktreePath": ".worktrees/parameter-object-argument-refusals-public-message",
       "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1749",
-      "mergedAt": null,
+      "mergedAt": "2026-10-04T19:04:25Z",
       "notes": null,
       "fileSetHash": "7143a8bed29b522d5d9df682c1138133392566c5defa57458d2095ff2052da37",
       "stanzaHash": "d32655a21730ce6a970badca6eb7dc847717c86b96484d5a2c8b1b58d1af5759",
@@ -521,12 +521,20 @@
           "previousStanzaHash": "1f8409695b082c52946a025b9ce35b32e82dd217e489a06d042ebea46f8334db",
           "stanzaHash": "d32655a21730ce6a970badca6eb7dc847717c86b96484d5a2c8b1b58d1af5759"
         }
-      ]
+      ],
+      "reviewedHead": "a3a7831d990e8517cc62232f4937ef80723e5da3",
+      "scratchRemoved": false,
+      "githubGate": {
+        "baseOid": "eab66510036dcd09fa8a531328c99f87a4338345",
+        "headOid": "a3a7831d990e8517cc62232f4937ef80723e5da3",
+        "tree": "0042314083516da244fa5bfbfc58b1bd9b0ebc1f",
+        "checksVerifiedAt": "2026-10-04T19:04:22.085Z"
+      }
     },
     {
       "id": "bulk-refactoring-argument-refusals-public-message",
       "order": 11,
-      "status": "pending",
+      "status": "in-progress",
       "backlogRowsClosed": [
         "bulk-refactoring-argument-refusals-public-message"
       ],
@@ -555,8 +563,8 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
+      "branch": "remediation/bulk-refactoring-argument-refusals-public-message",
+      "worktreePath": ".worktrees/bulk-refactoring-argument-refusals-public-message",
       "prUrl": null,
       "mergedAt": null,
       "notes": "Exposed ParseMethodSignature grammar defect is fixed in this scope; no separate deferred parser row. BulkRefactoringTools.cs:82-83 marks replace_invocation_preview experimental, so release-policy faster experimental evolution applies; preserve existing advertised valid forms and document correction in own fragment.",
