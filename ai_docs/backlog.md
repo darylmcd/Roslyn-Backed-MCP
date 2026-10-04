@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-04T15:48:58Z
+**updated_at:** 2026-10-04T16:58:30Z
 
 ## Agent contract
 
@@ -150,6 +150,7 @@
 | `format-range-service-refusals-public-message` | Medium | — | **Publish safe formatter range refusals** — name coordinate bounds and projection recovery through the error envelope. [type: bug] [source: change-signature-refusals-public-message] | S | items/format-range-service-refusals-public-message.md |
 | `change-signature-omitted-optional-binding` | Medium | — | **Preserve binding across omitted optional arguments** — repair add/reorder positional rewriting using semantic parameter bindings. [type: bug] [source: backlog-remediate-20261004] | S | items/change-signature-omitted-optional-binding.md |
 | `cross-project-public-refusals-echo-input` | Medium | — | **Remove caller detail from public cross-project refusals** — publish path/input-free corrections for unresolved type/project names and existing destinations while preserving wire categories. [type: bug] [source: backlog-remediate adjacent review 2026-10-04] | S | items/cross-project-public-refusals-echo-input.md |
+| `preview-diff-whitespace-omission` | Medium | — | **Preserve whitespace mutations in preview diffs** — DiffGenerator uses whitespace-ignoring comparison; formatting drops empty diffs and concrete text-edit previews can apply changes absent from their hunks. [type: bug] [source: SnipCue bl-0522 live preview] | M | items/preview-diff-whitespace-omission.md |
 
 ## Low
 
