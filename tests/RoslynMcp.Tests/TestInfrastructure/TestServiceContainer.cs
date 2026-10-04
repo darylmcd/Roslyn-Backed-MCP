@@ -69,6 +69,7 @@ internal sealed class TestServiceContainer : IDisposable
     public required TypeExtractionService TypeExtractionService { get; init; }
     public required TypeMoveService TypeMoveService { get; init; }
     public required UndoService UndoService { get; init; }
+    public required ApplyUndoWorkflowService ApplyUndoWorkflowService { get; init; }
     public required FlowAnalysisService FlowAnalysisService { get; init; }
     public required CompileCheckService CompileCheckService { get; init; }
     public required AnalyzerInfoService AnalyzerInfoService { get; init; }
@@ -162,6 +163,7 @@ internal sealed class TestServiceContainer : IDisposable
                 TypeExtractionService = ResolveConcrete<ITypeExtractionService, TypeExtractionService>(provider),
                 TypeMoveService = ResolveConcrete<ITypeMoveService, TypeMoveService>(provider),
                 UndoService = ResolveConcrete<IUndoService, UndoService>(provider),
+                ApplyUndoWorkflowService = ResolveConcrete<IApplyUndoWorkflowService, ApplyUndoWorkflowService>(provider),
                 FlowAnalysisService = ResolveConcrete<IFlowAnalysisService, FlowAnalysisService>(provider),
                 CompileCheckService = ResolveConcrete<ICompileCheckService, CompileCheckService>(provider),
                 AnalyzerInfoService = ResolveConcrete<IAnalyzerInfoService, AnalyzerInfoService>(provider),
@@ -207,6 +209,16 @@ internal sealed class TestServiceContainer : IDisposable
 [TestClass]
 public sealed class TestServiceContainerTests
 {
+    [TestMethod]
+    public void Create_ApplyUndoWorkflowReusesExposedServices()
+    {
+        using var services = TestServiceContainer.Create(new ValidationServiceOptions());
+        Assert.AreSame(services.RefactoringService, GetRequiredPrivateField(services.ApplyUndoWorkflowService, "_refactoringService"));
+        Assert.AreSame(services.CompileCheckService, GetRequiredPrivateField(services.ApplyUndoWorkflowService, "_compileCheckService"));
+        Assert.AreSame(services.UndoService, GetRequiredPrivateField(services.ApplyUndoWorkflowService, "_undoService"));
+        Assert.AreSame(services.PreviewStore, GetRequiredPrivateField(services.ApplyUndoWorkflowService, "_previewStore"));
+    }
+
     [TestMethod]
     public void Create_RefactoringSuggestionsReuseExposedAnalysisServices()
     {

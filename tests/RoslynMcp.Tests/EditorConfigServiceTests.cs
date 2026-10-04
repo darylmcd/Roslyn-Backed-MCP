@@ -1,8 +1,10 @@
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -22,6 +24,59 @@ public sealed class EditorConfigServiceTests : IsolatedWorkspaceTestBase
 
     [ClassCleanup]
     public static void ClassCleanup() => DisposeServices();
+
+
+    [TestMethod]
+    public async Task SetOptionAsync_BlankKey_PublishesSafeRefusalWithoutMutatingState()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var path = workspace.GetPath("SampleLib", "Dog.cs");
+        var config = Path.Combine(workspace.RootPath, ".editorconfig");
+        await File.WriteAllTextAsync(config, "[*.cs]\nindent_size = 4\n");
+        await workspace.LoadAsync(CancellationToken.None);
+        var before = await File.ReadAllBytesAsync(config);
+        var sourceBefore = await File.ReadAllBytesAsync(path);
+        var solution = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        var version = WorkspaceManager.GetCurrentVersion(workspace.WorkspaceId);
+        var undo = UndoService.GetLastOperation(workspace.WorkspaceId);
+        const string sentinel = "submitted-value-must-stay-private";
+        foreach (var key in new[] { "", " ", "\t" })
+        {
+            foreach (var wrapped in new[] { false, true })
+            {
+                var payload = await ToolExecutionTestHarness.RunAsync("set_editorconfig_option", async () =>
+                {
+                    try
+                    {
+                        await EditorConfigService.SetOptionAsync(workspace.WorkspaceId, path, key, sentinel, "set_editorconfig_option", CancellationToken.None);
+                        Assert.Fail("Blank keys must be refused.");
+                        return "{}";
+                    }
+                    catch (ArgumentException ex)
+                    {
+                        Assert.AreEqual("key", ex.ParamName);
+                        if (wrapped) throw new TargetInvocationException(ex);
+                        throw;
+                    }
+                });
+                using var json = JsonDocument.Parse(payload);
+                var envelope = json.RootElement;
+                Assert.AreEqual("InvalidArgument", envelope.GetProperty("category").GetString(), payload);
+                Assert.AreEqual(wrapped ? "TargetInvocationException" : "ArgumentException", envelope.GetProperty("exceptionType").GetString(), payload);
+                StringAssert.Contains(envelope.GetProperty("schemaHint").GetString()!, "key", StringComparison.Ordinal);
+                StringAssert.Contains(envelope.GetProperty("message").GetString()!, "Key is required", StringComparison.Ordinal);
+                Assert.IsFalse(payload.Contains(Path.GetFileName(path), StringComparison.Ordinal));
+                Assert.IsFalse(payload.Contains(sentinel, StringComparison.Ordinal));
+                CollectionAssert.AreEqual(before, await File.ReadAllBytesAsync(config));
+                CollectionAssert.AreEqual(sourceBefore, await File.ReadAllBytesAsync(path));
+                Assert.IsFalse(payload.Contains(workspace.RootPath, StringComparison.Ordinal));
+                Assert.AreSame(solution, WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
+                Assert.AreEqual(version, WorkspaceManager.GetCurrentVersion(workspace.WorkspaceId));
+                Assert.AreSame(undo, UndoService.GetLastOperation(workspace.WorkspaceId));
+                Assert.IsFalse(WorkspaceManager.GetStatus(workspace.WorkspaceId).IsStale);
+            }
+        }
+    }
 
     [TestMethod]
     public async Task SetOptionAsync_RejectsUnloadedSourceBeforeCreatingConfig()

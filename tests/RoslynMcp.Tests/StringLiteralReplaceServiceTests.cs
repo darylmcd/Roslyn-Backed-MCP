@@ -11,7 +11,7 @@ namespace RoslynMcp.Tests;
 /// structured empty preview (empty token, empty changes list, descriptive Description)
 /// matching the shape used by FixAllService.
 /// </summary>
-// donotparallelize-audit-wave-27: [DoNotParallelize] removed. Both methods only call
+// donotparallelize-audit-wave-27: [DoNotParallelize] removed. Tests only call
 // StringLiteralReplaceService.PreviewReplaceAsync on the shared sample workspace obtained through
 // the synchronized WorkspaceIdCache; the zero-match path returns an empty preview without storing
 // a PreviewStore token, and the empty-list path throws before touching the workspace. The
@@ -23,6 +23,26 @@ public sealed class StringLiteralReplaceServiceTests : SharedWorkspaceTestBase
 {
     private static string WorkspaceId { get; set; } = null!;
     private static StringLiteralReplaceService Service { get; set; } = null!;
+
+
+    [TestMethod]
+    public async Task PreviewReplace_ArgumentRefusals_PublishMemberConstraints()
+    {
+        foreach (var replacements in new IReadOnlyList<StringLiteralReplacementDto>?[] { null, Array.Empty<StringLiteralReplacementDto>() })
+            await BulkRefactoringTests.AssertPublicRefusalAsync(
+                () => Service.PreviewReplaceAsync("unused", replacements!, new RestructureScope(null, null), CancellationToken.None),
+                "replace_string_literals_preview", "replacements", "At least one replacement is required.");
+        foreach (var value in new string?[] { null, "" })
+            await BulkRefactoringTests.AssertPublicRefusalAsync(
+                () => Service.PreviewReplaceAsync("unused", new[] { new StringLiteralReplacementDto(value!, "C:/private/expression-secret", null) },
+                    new RestructureScope(null, null), CancellationToken.None),
+                "replace_string_literals_preview", "replacements", "replacement.literalValue must be non-empty.", "C:/private/expression-secret");
+        foreach (var expression in new string?[] { null, "", "  " })
+            await BulkRefactoringTests.AssertPublicRefusalAsync(
+                () => Service.PreviewReplaceAsync("unused", new[] { new StringLiteralReplacementDto("C:/private/literal-secret", expression!, null) },
+                    new RestructureScope(null, null), CancellationToken.None),
+                "replace_string_literals_preview", "replacements", "replacement.replacementExpression must be non-empty.", "C:/private/literal-secret");
+    }
 
     [ClassInitialize]
     public static async Task ClassInit(TestContext _)
@@ -67,7 +87,7 @@ public sealed class StringLiteralReplaceServiceTests : SharedWorkspaceTestBase
         // Guard that the zero-match relaxation didn't weaken input validation. A caller
         // passing an empty replacements array is a programming error, distinct from a
         // well-formed replacement that simply doesn't match anything in scope.
-        await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+        await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
             Service.PreviewReplaceAsync(
                 WorkspaceId,
                 replacements: Array.Empty<StringLiteralReplacementDto>(),

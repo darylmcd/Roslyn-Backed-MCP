@@ -150,21 +150,21 @@ public sealed class ParameterObjectService : IParameterObjectService
     private static void ValidateRequest(ParameterObjectPreviewRequest request)
     {
         if (request.ParameterNames is null || request.ParameterNames.Count < 2)
-            throw new ArgumentException(
+            throw new PublicArgumentException(
                 "parameter_object_preview requires at least two parameter names to group.",
-                nameof(request));
+                "parameterNames");
         if (string.IsNullOrWhiteSpace(request.NewTypeName))
-            throw new ArgumentException("parameter_object_preview requires newTypeName.", nameof(request));
+            throw new PublicArgumentException("parameter_object_preview requires newTypeName.", "newTypeName");
 
         var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (var name in request.ParameterNames)
         {
             if (string.IsNullOrWhiteSpace(name))
-                throw new ArgumentException(
-                    "parameterNames entries must be non-empty.", nameof(request));
+                throw new PublicArgumentException(
+                    "parameterNames entries must be non-empty.", "parameterNames");
             if (!seen.Add(name))
-                throw new ArgumentException(
-                    $"parameterNames contains a duplicate entry: '{name}'.", nameof(request));
+                throw new PublicArgumentException(
+                    "parameterNames contains a duplicate entry. Supply each parameter name only once.", "parameterNames");
         }
     }
 
@@ -176,10 +176,10 @@ public sealed class ParameterObjectService : IParameterObjectService
         foreach (var name in request.ParameterNames)
         {
             if (!byName.TryGetValue(name, out var p))
-                throw new ArgumentException(
-                    $"Parameter '{name}' not found on {method.ToDisplayString()}. Existing parameters: " +
+                throw new PublicArgumentException(
+                    $"A parameterNames entry was not found on {method.ToDisplayString()}. Choose existing method parameters. Existing parameters: " +
                     string.Join(", ", method.Parameters.Select(q => q.Name)),
-                    nameof(request));
+                    "parameterNames");
             grouped.Add(p);
         }
         return grouped;
@@ -196,7 +196,7 @@ public sealed class ParameterObjectService : IParameterObjectService
             .ToArray();
         if (duplicateCollisions.Length > 0)
         {
-            throw new ArgumentException(
+            throw new PublicArgumentException(
                 "parameter_object_preview refuses: grouped parameter names would generate duplicate positional-record members after capitalization. " +
                 "Rename or omit one parameter from each collision. Collisions: " + string.Join("; ", duplicateCollisions),
                 nameof(grouped));
@@ -209,7 +209,7 @@ public sealed class ParameterObjectService : IParameterObjectService
             .ToArray();
         if (reservedCollisions.Length > 0)
         {
-            throw new ArgumentException(
+            throw new PublicArgumentException(
                 "parameter_object_preview refuses: one or more generated positional-record members collide with reserved, synthesized, or inherited record/object members. " +
                 "Rename or omit each source parameter. Collisions: " + string.Join("; ", reservedCollisions),
                 nameof(grouped));
@@ -221,9 +221,9 @@ public sealed class ParameterObjectService : IParameterObjectService
             .FirstOrDefault(candidate => string.Equals(candidate.GeneratedName, typeIdentifier, StringComparison.Ordinal));
         if (enclosingTypeCollision != default)
         {
-            throw new ArgumentException(
+            throw new PublicArgumentException(
                 "parameter_object_preview refuses: a generated positional-record member cannot have the same name as its enclosing record type. " +
-                $"Source parameter '{enclosingTypeCollision.SourceName}' generates member '{enclosingTypeCollision.GeneratedName}', which collides with newTypeName '{newTypeName}'. " +
+                $"Source parameter '{enclosingTypeCollision.SourceName}' generates member '{enclosingTypeCollision.GeneratedName}', which collides with the requested record type. " +
                 "Rename the type or omit the source parameter.",
                 nameof(grouped));
         }
@@ -243,20 +243,20 @@ public sealed class ParameterObjectService : IParameterObjectService
             && string.Equals(parameter.Name, identifierValue, StringComparison.Ordinal));
         if (retainedCollision is not null)
         {
-            throw new ArgumentException(
-                $"parameter_object_preview refuses: new parameter name '{newParameterName}' collides with retained parameter '{retainedCollision.Name}'. " +
+            throw new PublicArgumentException(
+                $"parameter_object_preview refuses: the requested parameterName collides with retained parameter '{retainedCollision.Name}'. " +
                 "Choose a distinct parameterName.",
-                nameof(newParameterName));
+                "parameterName");
         }
 
         var typeParameterCollision = method.TypeParameters.FirstOrDefault(typeParameter =>
             string.Equals(typeParameter.Name, identifierValue, StringComparison.Ordinal));
         if (typeParameterCollision is not null)
         {
-            throw new ArgumentException(
-                $"parameter_object_preview refuses: new parameter name '{newParameterName}' collides with method type parameter '{typeParameterCollision.Name}'. " +
+            throw new PublicArgumentException(
+                $"parameter_object_preview refuses: the requested parameterName collides with method type parameter '{typeParameterCollision.Name}'. " +
                 "Choose a distinct parameterName.",
-                nameof(newParameterName));
+                "parameterName");
         }
 
         var declarationCollisions = new List<string>();
@@ -280,9 +280,8 @@ public sealed class ParameterObjectService : IParameterObjectService
                 }
 
                 var lineSpan = node.GetLocation().GetLineSpan();
-                var filePath = document.FilePath ?? document.Name;
                 declarationCollisions.Add(
-                    $"{declaredSymbol.Kind} '{declaredSymbol.Name}' at {filePath}:{lineSpan.StartLinePosition.Line + 1}");
+                    $"{declaredSymbol.Kind} '{declaredSymbol.Name}' at line {lineSpan.StartLinePosition.Line + 1}");
             }
 
             foreach (var reference in GetBodyNodes(methodDeclaration)
@@ -295,28 +294,27 @@ public sealed class ParameterObjectService : IParameterObjectService
                 if (!IsCapturableMember(referencedSymbol)) continue;
 
                 var lineSpan = reference.GetLocation().GetLineSpan();
-                var filePath = document.FilePath ?? document.Name;
                 memberReferenceCollisions.Add(
-                    $"{referencedSymbol!.Kind} '{referencedSymbol.Name}' at {filePath}:{lineSpan.StartLinePosition.Line + 1}");
+                    $"{referencedSymbol!.Kind} '{referencedSymbol.Name}' at line {lineSpan.StartLinePosition.Line + 1}");
             }
         }
 
         if (declarationCollisions.Count > 0)
         {
-            throw new ArgumentException(
-                $"parameter_object_preview refuses: new parameter name '{newParameterName}' collides with a declaration inside the target method and would capture or break rewritten references. " +
+            throw new PublicArgumentException(
+                "parameter_object_preview refuses: the requested parameterName collides with a declaration inside the target method and would capture or break rewritten references. " +
                 "Choose a distinct parameterName. Collisions: " +
                 string.Join("; ", declarationCollisions.Distinct(StringComparer.Ordinal)),
-                nameof(newParameterName));
+                "parameterName");
         }
 
         if (memberReferenceCollisions.Count > 0)
         {
-            throw new ArgumentException(
-                $"parameter_object_preview refuses: new parameter name '{newParameterName}' would capture an existing unqualified member reference inside the target method. " +
+            throw new PublicArgumentException(
+                "parameter_object_preview refuses: the requested parameterName would capture an existing unqualified member reference inside the target method. " +
                 "Choose a distinct parameterName or qualify the affected member reference. Collisions: " +
                 string.Join("; ", memberReferenceCollisions.Distinct(StringComparer.Ordinal)),
-                nameof(newParameterName));
+                "parameterName");
         }
     }
 
@@ -625,19 +623,19 @@ public sealed class ParameterObjectService : IParameterObjectService
     private static void EnforceTargetMethodContractRefusals(IMethodSymbol target)
     {
         if (target.MethodKind == MethodKind.LocalFunction)
-            throw new ArgumentException(
+            throw new PublicArgumentException(
                 $"parameter_object_preview does not support local functions ({target.ToDisplayString()}); v1 scope is intra-class methods only.",
                 nameof(target));
 
         if (target.MethodKind == MethodKind.ExplicitInterfaceImplementation || !target.ExplicitInterfaceImplementations.IsEmpty)
-            throw new ArgumentException(
+            throw new PublicArgumentException(
                 $"parameter_object_preview refuses: '{target.ToDisplayString()}' explicitly implements an interface member. " +
                 "The interface declaration would keep the old signature, breaking the implementation relationship; " +
                 "change the interface first, then re-run against a free-standing method.",
                 nameof(target));
 
         if (target.MethodKind is not (MethodKind.Ordinary or MethodKind.ReducedExtension))
-            throw new ArgumentException(
+            throw new PublicArgumentException(
                 $"parameter_object_preview refuses: '{target.ToDisplayString()}' has method kind '{target.MethodKind}'. " +
                 "Constructors, destructors, accessors, operators, conversions, and delegate/anonymous functions " +
                 "cannot have their declaration and call sites rewritten atomically; only ordinary methods " +
@@ -645,21 +643,21 @@ public sealed class ParameterObjectService : IParameterObjectService
                 nameof(target));
 
         if (target.IsOverride)
-            throw new ArgumentException(
+            throw new PublicArgumentException(
                 $"parameter_object_preview refuses: '{target.ToDisplayString()}' is an 'override'. " +
                 "Rewriting it in isolation would leave the base declaration and sibling overrides at the old arity, " +
                 "breaking the override relationship; restructure the whole hierarchy manually instead.",
                 nameof(target));
 
         if (target.IsVirtual || target.IsAbstract)
-            throw new ArgumentException(
+            throw new PublicArgumentException(
                 $"parameter_object_preview refuses: '{target.ToDisplayString()}' is a " +
                 $"{(target.IsAbstract ? "'abstract'" : "'virtual'")} dispatch root. " +
                 "Overrides in derived types would keep the old signature; restructure the whole hierarchy manually instead.",
                 nameof(target));
 
         if (ImplementsInterfaceMember(target))
-            throw new ArgumentException(
+            throw new PublicArgumentException(
                 $"parameter_object_preview refuses: '{target.ToDisplayString()}' implements an interface member. " +
                 "The interface declaration would keep the old signature, breaking the implementation relationship; " +
                 "change the interface first, then re-run against a free-standing method.",
@@ -669,13 +667,13 @@ public sealed class ParameterObjectService : IParameterObjectService
                 attribute.AttributeClass?.ToDisplayString() is
                     "System.Runtime.InteropServices.DllImportAttribute"
                     or "System.Runtime.InteropServices.LibraryImportAttribute"))
-            throw new ArgumentException(
+            throw new PublicArgumentException(
                 $"parameter_object_preview refuses: '{target.ToDisplayString()}' is an extern/PInvoke declaration. " +
                 "Its signature is bound to a native entry point and cannot be regrouped.",
                 nameof(target));
 
         if (target.PartialDefinitionPart is not null || target.PartialImplementationPart is not null)
-            throw new ArgumentException(
+            throw new PublicArgumentException(
                 $"parameter_object_preview refuses: '{target.ToDisplayString()}' is a partial method with paired " +
                 "definition/implementation declarations, which may bind different parameter names. " +
                 "Merge the partial declarations first, then re-run.",
@@ -690,17 +688,17 @@ public sealed class ParameterObjectService : IParameterObjectService
         foreach (var p in grouped)
         {
             if (p.RefKind != RefKind.None)
-                throw new ArgumentException(
+                throw new PublicArgumentException(
                     $"parameter_object_preview refuses: parameter '{p.Name}' has by-ref kind '{p.RefKind}'. " +
                     "Positional records cannot carry ref/out/in semantics; remove it from parameterNames.",
                     nameof(grouped));
             if (p.IsParams)
-                throw new ArgumentException(
+                throw new PublicArgumentException(
                     $"parameter_object_preview refuses: parameter '{p.Name}' is a 'params' array. " +
                     "Variadic call shape does not survive grouping; remove it from parameterNames.",
                     nameof(grouped));
-            if (p.IsThis)
-                throw new ArgumentException(
+            if (method.IsExtensionMethod && p.Ordinal == 0)
+                throw new PublicArgumentException(
                     $"parameter_object_preview refuses: parameter '{p.Name}' is the extension-method 'this' receiver. " +
                     "Drop it from parameterNames; other parameters of the extension method remain eligible.",
                     nameof(grouped));
@@ -732,9 +730,9 @@ public sealed class ParameterObjectService : IParameterObjectService
 
         var dtoProject = solution.Projects.FirstOrDefault(p =>
             string.Equals(p.Name, request.DtoProjectName, StringComparison.OrdinalIgnoreCase))
-            ?? throw new ArgumentException(
-                $"dtoProjectName '{request.DtoProjectName}' was not found in the loaded solution.",
-                nameof(request));
+            ?? throw new PublicArgumentException(
+                "dtoProjectName was not found in the loaded solution. Use workspace_status to list project names, then retry.",
+                "dtoProjectName");
 
         var crossProject = dtoProject.Id != methodProject.Id;
         // Cross-project: force public so the method's signature can reference it from another assembly.
@@ -987,9 +985,9 @@ public sealed class ParameterObjectService : IParameterObjectService
         }
 
         if (missing.Count > 0)
-            throw new ArgumentException(MissingProjectReferenceMessage(
+            throw new PublicArgumentException(MissingProjectReferenceMessage(
                 "one or more caller projects do not reference the DTO project",
-                missing));
+                missing), "dtoProjectName");
     }
 
     /// <summary>
@@ -1028,7 +1026,7 @@ public sealed class ParameterObjectService : IParameterObjectService
                     var declarer = typeParameter.DeclaringMethod is { } declaringMethod
                         ? $"method '{declaringMethod.ToDisplayString()}'"
                         : $"type '{typeParameter.DeclaringType?.ToDisplayString()}'";
-                    throw new ArgumentException(
+                    throw new PublicArgumentException(
                         $"parameter_object_preview refuses: parameter '{parameter.Name}' has type '{parameter.Type.ToDisplayString()}' " +
                         $"which depends on type parameter '{typeParameter.Name}' declared by {declarer}. " +
                         "The generated record is non-generic and its new top-level file cannot bind that type parameter; " +
@@ -1040,7 +1038,7 @@ public sealed class ParameterObjectService : IParameterObjectService
                     continue;
 
                 if (AccessibilityRank(named.DeclaredAccessibility) < neededRank)
-                    throw new ArgumentException(
+                    throw new PublicArgumentException(
                         $"parameter_object_preview refuses: parameter '{parameter.Name}' has type '{parameter.Type.ToDisplayString()}' " +
                         $"involving '{named.ToDisplayString()}', which is '{named.DeclaredAccessibility.ToString().ToLowerInvariant()}' — " +
                         $"less accessible than the generated '{recordVisibility}' record. " +
@@ -1053,7 +1051,7 @@ public sealed class ParameterObjectService : IParameterObjectService
                 {
                     var typeProjectName = solution.GetProject(named.ContainingAssembly, ct)?.Name
                         ?? named.ContainingAssembly.Name;
-                    throw new ArgumentException(
+                    throw new PublicArgumentException(
                         MissingProjectReferenceMessage(
                             $"parameter '{parameter.Name}' has type '{parameter.Type.ToDisplayString()}' involving " +
                             $"'{named.ToDisplayString()}', which is declared in '{typeProjectName}' and cannot be resolved by DTO project '{dtoProject.Name}'",

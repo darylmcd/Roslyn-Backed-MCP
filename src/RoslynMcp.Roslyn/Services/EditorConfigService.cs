@@ -349,7 +349,7 @@ public sealed class EditorConfigService : IEditorConfigService
         var solution = _workspace.GetCurrentSolution(workspaceId);
         if (string.IsNullOrWhiteSpace(key))
         {
-            throw new ArgumentException("Key is required.", nameof(key));
+            throw new PublicArgumentException("Key is required. Provide a non-blank editorconfig option name.", nameof(key));
         }
 
         var document = SymbolResolver.FindDocument(solution, sourceFilePath)

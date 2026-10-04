@@ -103,6 +103,7 @@ public sealed class PromptShimToolsTests : SharedWorkspaceTestBase
 
         using var document = JsonDocument.Parse(json);
         Assert.AreEqual("InvalidArgument", document.RootElement.GetProperty("category").GetString());
+        Assert.AreEqual("PromptParameterBindingException", document.RootElement.GetProperty("exceptionType").GetString());
         var message = document.RootElement.GetProperty("message").GetString() ?? string.Empty;
         StringAssert.Contains(message, "Example:", StringComparison.Ordinal);
         if (failureKind == "document")
@@ -143,7 +144,7 @@ public sealed class PromptShimToolsTests : SharedWorkspaceTestBase
     }
 
     [TestMethod]
-    public async Task GetPromptText_MissingRequiredParameters_HidesInternalParameterInventory()
+    public async Task GetPromptText_MissingRequiredParameters_PublishesCallerParameterInventory()
     {
         using var services = new ServiceCollection()
             .AddSingleton<IDiagnosticService>(DiagnosticService)
@@ -161,9 +162,47 @@ public sealed class PromptShimToolsTests : SharedWorkspaceTestBase
         using var document = JsonDocument.Parse(json);
         Assert.AreEqual("InvalidArgument", document.RootElement.GetProperty("category").GetString());
         var message = document.RootElement.GetProperty("message").GetString() ?? string.Empty;
-        StringAssert.Contains(message, "required prompt parameter", StringComparison.Ordinal);
-        Assert.IsFalse(message.Contains("workspaceId", StringComparison.Ordinal));
-        Assert.IsFalse(message.Contains("diagnosticId", StringComparison.Ordinal));
+        StringAssert.Contains(message, "missing required parameters", StringComparison.Ordinal);
+        StringAssert.Contains(message, "workspaceId", StringComparison.Ordinal);
+        StringAssert.Contains(message, "diagnosticId", StringComparison.Ordinal);
+        Assert.IsFalse(message.Contains("diagnosticService", StringComparison.Ordinal));
+        Assert.IsFalse(message.Contains("ct", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public async Task GetPromptText_UnknownName_PublishesCatalogWithoutCallerName()
+    {
+        const string submitted = "SECRET-SENTINEL-private-prompt";
+        using var services = new ServiceCollection().BuildServiceProvider();
+        var json = await ToolExecutionTestHarness.RunAsync("get_prompt_text",
+            () => PromptShimTools.GetPromptText(services, submitted));
+        using var document = JsonDocument.Parse(json);
+        var error = document.RootElement;
+        Assert.AreEqual("InvalidArgument", error.GetProperty("category").GetString());
+        Assert.AreEqual("ArgumentException", error.GetProperty("exceptionType").GetString());
+        StringAssert.Contains(error.GetProperty("message").GetString(), "Available prompts:");
+        StringAssert.Contains(error.GetProperty("message").GetString(), "discover_capabilities");
+        Assert.IsFalse(json.Contains(submitted, StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void ResolveParameterValue_MissingCallerValue_PublishesSchemaCorrection()
+    {
+        var method = typeof(PromptShimToolsTests).GetMethod(
+            nameof(ClassifierSentinelPrompt),
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+        var resolver = typeof(PromptShimTools).GetMethod("ResolveParameterValue",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+        using var services = new ServiceCollection().BuildServiceProvider();
+        using var document = JsonDocument.Parse("{}");
+        var wrapped = Assert.ThrowsExactly<System.Reflection.TargetInvocationException>(() =>
+            resolver.Invoke(null, [method.GetParameters()[1], services, document.RootElement,
+                CancellationToken.None]));
+        var exception = Assert.IsInstanceOfType<PublicArgumentException>(wrapped.InnerException);
+        Assert.AreEqual("parametersJson", exception.ParamName);
+        var json = ToolErrorHandler.ClassifyAndFormat(exception, "get_prompt_text");
+        StringAssert.Contains(json, "callerValue");
+        StringAssert.Contains(json, "String");
     }
 
     [TestMethod]

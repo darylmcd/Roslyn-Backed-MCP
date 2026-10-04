@@ -1,6 +1,7 @@
 using System.Text.Json;
 using RoslynMcp.Host.Stdio.Catalog;
 using RoslynMcp.Host.Stdio.Tools;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -85,5 +86,41 @@ public sealed class WorkflowRecommendationToolsTests
         CollectionAssert.Contains(primaryTools, "compile_check");
         CollectionAssert.DoesNotContain(primaryTools, "build_workspace");
         CollectionAssert.DoesNotContain(followUpTools, "build_workspace");
+    }
+
+    [TestMethod]
+    [DataRow(null, null)]
+    [DataRow("", "")]
+    [DataRow(" \t\r\n", " \t\r\n")]
+    public async Task RecommendWorkflow_BlankTaskAndIntent_PublishesActionableRefusal(string? task, string? intent)
+    {
+        Task<string> Invoke() => WorkflowRecommendationTools.RecommendWorkflow(
+            task!, filePath: "/private/source.cs", symbol: "caller-sentinel", intent: intent);
+        var exception = await Assert.ThrowsAsync<ArgumentException>(Invoke);
+        Assert.AreEqual("task", exception.ParamName);
+        var json = await ToolExecutionTestHarness.RunAsync("recommend_workflow", Invoke);
+        using var document = JsonDocument.Parse(json);
+        var error = document.RootElement;
+        Assert.IsTrue(error.GetProperty("error").GetBoolean());
+        Assert.AreEqual("InvalidArgument", error.GetProperty("category").GetString());
+        Assert.AreEqual("recommend_workflow", error.GetProperty("tool").GetString());
+        Assert.AreEqual("task or intent must be provided.", error.GetProperty("message").GetString());
+        Assert.AreEqual("ArgumentException", error.GetProperty("exceptionType").GetString());
+        StringAssert.Contains(error.GetProperty("schemaHint").GetString(), "task");
+        Assert.IsFalse(json.Contains("caller-sentinel", StringComparison.Ordinal));
+        Assert.IsFalse(json.Contains("/private/source.cs", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    [DataRow("find callers", null)]
+    [DataRow("", "find callers")]
+    [DataRow(null, "find callers")]
+    public async Task RecommendWorkflow_TaskOrIntentAlone_RemainsValid(string? task, string? intent)
+    {
+        var json = await ToolExecutionTestHarness.RunAsync(
+            "recommend_workflow", () => WorkflowRecommendationTools.RecommendWorkflow(task!, intent: intent));
+        using var document = JsonDocument.Parse(json);
+        Assert.IsFalse(document.RootElement.TryGetProperty("error", out _));
+        Assert.AreEqual("find_references", document.RootElement.GetProperty("primaryTools")[0].GetString());
     }
 }

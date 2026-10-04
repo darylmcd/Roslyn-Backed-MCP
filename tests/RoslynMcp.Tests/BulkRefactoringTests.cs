@@ -16,6 +16,34 @@ public sealed class BulkRefactoringTests : SharedWorkspaceTestBase
 {
     private static string WorkspaceId { get; set; } = null!;
 
+
+    internal static async Task AssertPublicRefusalAsync(
+        Func<Task<RefactoringPreviewDto>> action, string tool, string parameter, string message, string? privateInput = null)
+    {
+        var ex = await Assert.ThrowsExactlyAsync<RoslynMcp.Core.Services.PublicArgumentException>(action);
+        Assert.AreEqual(parameter, ex.ParamName);
+        Assert.AreEqual(message, ex.PublicMessage);
+        Assert.AreEqual(parameter, RoslynMcp.Host.Stdio.Tools.ToolErrorHandler.ClassifyError(ex, tool).ParamName);
+        var wire = await ToolExecutionTestHarness.RunAsync(tool, async () => { await action(); return "{}"; });
+        using var json = System.Text.Json.JsonDocument.Parse(wire);
+        var error = json.RootElement;
+        Assert.AreEqual("InvalidArgument", error.GetProperty("category").GetString());
+        Assert.AreEqual("ArgumentException", error.GetProperty("exceptionType").GetString());
+        Assert.AreEqual(message, error.GetProperty("message").GetString());
+        StringAssert.Contains(error.GetProperty("schemaHint").GetString()!, parameter);
+        if (privateInput is not null) Assert.IsFalse(wire.Contains(privateInput, StringComparison.Ordinal), wire);
+        Assert.IsFalse(wire.Contains("C:/private", StringComparison.Ordinal), wire);
+    }
+
+    [TestMethod]
+    public async Task BulkReplaceType_InvalidScope_PublishesBoundedRefusal()
+    {
+        const string input = "C:/private/scope-secret";
+        await AssertPublicRefusalAsync(() => BulkRefactoringService.PreviewBulkReplaceTypeAsync(
+            WorkspaceId, "IAnimal", "Shape", input, CancellationToken.None),
+            "bulk_replace_type_preview", "scope", "scope must be one of: parameters, fields, all.", input);
+    }
+
     [ClassInitialize]
     public static async Task ClassInit(TestContext _)
     {
@@ -129,7 +157,7 @@ public sealed class BulkRefactoringTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task BulkReplaceType_InvalidScope_ThrowsArgument()
     {
-        await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+        await Assert.ThrowsExactlyAsync<RoslynMcp.Core.Services.PublicArgumentException>(() =>
             BulkRefactoringService.PreviewBulkReplaceTypeAsync(
                 WorkspaceId, "IAnimal", "Shape", "invalid_scope", CancellationToken.None));
     }

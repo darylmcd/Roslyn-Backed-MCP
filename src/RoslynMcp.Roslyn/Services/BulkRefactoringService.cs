@@ -6,6 +6,8 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.FindSymbols;
+using Microsoft.CodeAnalysis.Operations;
+using Microsoft.CodeAnalysis.Editing;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -41,7 +43,7 @@ public sealed class BulkRefactoringService : IBulkRefactoringService
         var normalizedScope = (scope ?? "all").ToLowerInvariant();
         var validScopes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "parameters", "fields", "all" };
         if (!validScopes.Contains(normalizedScope))
-            throw new ArgumentException($"Invalid scope '{scope}'. Valid values: parameters, fields, all.");
+            throw new PublicArgumentException("scope must be one of: parameters, fields, all.", nameof(scope));
 
         var references = await SymbolFinder.FindReferencesAsync(oldTypeSymbol, solution, ct).ConfigureAwait(false);
         var newSolution = solution;
@@ -191,27 +193,26 @@ public sealed class BulkRefactoringService : IBulkRefactoringService
     // ═══════════════════════════════════════════════════════════════════════════════════
     // replace-invocation-pattern-refactor: method-level call-site rewrite with argument
     // reorder. Parses FQ method signatures "Type.Method(P1,P2,P3)", resolves both methods
-    // by overload match, builds a positional mapping (new[i] = old[oldIndexOf(new[i])]),
+    // by overload match, builds a parameter-name permutation,
     // and rewrites every InvocationExpressionSyntax of the old method through SymbolFinder.
-    // Named-argument callers keep their names (they already locate by name, so the reorder
-    // is a no-op for them); positional or mixed callers are reordered by index.
+    // Explicit arguments keep lexical evaluation order and receive target parameter names.
+    // Implicit values are preserved instead of using replacement-method defaults.
     // ═══════════════════════════════════════════════════════════════════════════════════
 
     public async Task<RefactoringPreviewDto> PreviewReplaceInvocationAsync(
         string workspaceId, string oldMethod, string newMethod, string? scope, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(oldMethod))
-            throw new ArgumentException("oldMethod must be a fully-qualified signature like 'Type.Method(P1,P2)'.", nameof(oldMethod));
+            throw new PublicArgumentException("oldMethod must be a fully-qualified signature like 'Type.Method(P1,P2)'.", nameof(oldMethod));
         if (string.IsNullOrWhiteSpace(newMethod))
-            throw new ArgumentException("newMethod must be a fully-qualified signature like 'Type.Method(P1,P2)'.", nameof(newMethod));
+            throw new PublicArgumentException("newMethod must be a fully-qualified signature like 'Type.Method(P1,P2)'.", nameof(newMethod));
 
         // replace-invocation scope today is always 'all' — the parameter is reserved for
         // future file / project scoping. Reject unknown values eagerly so a stale caller
         // gets a clear error instead of silent expanded scope.
         var normalizedScope = (scope ?? "all").ToLowerInvariant();
         if (!string.Equals(normalizedScope, "all", StringComparison.Ordinal))
-            throw new ArgumentException(
-                $"Invalid scope '{scope}'. Only 'all' is supported for replace_invocation_preview today.", nameof(scope));
+            throw new PublicArgumentException("scope must be 'all' for replace_invocation_preview.", nameof(scope));
 
         var oldSig = ParseMethodSignature(oldMethod, nameof(oldMethod));
         var newSig = ParseMethodSignature(newMethod, nameof(newMethod));
@@ -226,10 +227,9 @@ public sealed class BulkRefactoringService : IBulkRefactoringService
             ?? throw new InvalidOperationException(
                 $"Could not resolve newMethod '{newMethod}'. Ensure the fully-qualified type name and parameter-type list match an existing method overload.");
 
-        // Build index mapping: newArgs[i] = oldArgs[indexMap[i]]. Match the new method's
-        // parameter types against the old method's by type-display (normalised to the
-        // symbol's display string) — the caller's literal type-list text may be a short
-        // or alternate form, but the resolved symbols let us compare normalised types.
+        // Validate a parameter-name bijection and describe each new parameter's original
+        // position in the preview. Call-site rewriting uses semantic argument bindings
+        // and target parameter names to preserve the caller's lexical evaluation order.
         var indexMap = BuildArgumentIndexMap(oldMethodSymbol, newMethodSymbol);
 
         var references = await SymbolFinder.FindReferencesAsync(oldMethodSymbol, solution, ct).ConfigureAwait(false);
@@ -257,7 +257,7 @@ public sealed class BulkRefactoringService : IBulkRefactoringService
         {
             ct.ThrowIfCancellationRequested();
             var (updatedSolution, count, filePath) = await RewriteInvocationsInDocumentAsync(
-                newSolution, docGroup.Key, docGroup, oldMethodSymbol, newMethodSymbol, indexMap, ct)
+                newSolution, docGroup.Key, docGroup, oldMethodSymbol, newMethodSymbol, ct)
                 .ConfigureAwait(false);
 
             newSolution = updatedSolution;
@@ -319,7 +319,6 @@ public sealed class BulkRefactoringService : IBulkRefactoringService
         IEnumerable<ReferenceLocation> locations,
         IMethodSymbol oldMethodSymbol,
         IMethodSymbol newMethodSymbol,
-        IReadOnlyList<int> indexMap,
         CancellationToken ct)
     {
         var doc = solution.GetDocument(docId);
@@ -334,7 +333,11 @@ public sealed class BulkRefactoringService : IBulkRefactoringService
         // name and the argument list. Skip reference locations that are not part of an
         // invocation (cref, nameof, method-group conversion) — the preview only rewrites
         // call sites.
-        var rewrites = new Dictionary<InvocationExpressionSyntax, InvocationExpressionSyntax>();
+        var model = await doc.GetSemanticModelAsync(ct).ConfigureAwait(false)
+            ?? throw new PublicInvalidOperationException("Invocation replacement requires a semantic model.");
+        var annotation = new SyntaxAnnotation();
+        var generator = SyntaxGenerator.GetGenerator(doc);
+        var rewrites = new Dictionary<InvocationExpressionSyntax, IInvocationOperation>();
         var newMethodSimpleName = newMethodSymbol.Name;
 
         foreach (var refLocation in locations)
@@ -351,16 +354,33 @@ public sealed class BulkRefactoringService : IBulkRefactoringService
             var invokedName = GetInvokedMethodSimpleName(invocation);
             if (!string.Equals(invokedName, oldMethodSymbol.Name, StringComparison.Ordinal)) continue;
 
-            var newInvocation = RewriteInvocation(invocation, newMethodSimpleName, oldMethodSymbol, newMethodSymbol, indexMap);
-            rewrites[invocation] = newInvocation;
+            var operation = model.GetOperation(invocation, ct) as IInvocationOperation
+                ?? throw new PublicInvalidOperationException("Invocation replacement requires a successfully bound original call.");
+            if (!SameMethodDefinition(operation.TargetMethod, oldMethodSymbol)) continue;
+            rewrites[invocation] = operation;
         }
 
         if (rewrites.Count == 0) return (solution, 0, doc.FilePath);
 
-        root = root.ReplaceNodes(rewrites.Keys, (original, _) =>
-            rewrites.TryGetValue(original, out var replacement) ? replacement : original);
+        root = root.ReplaceNodes(rewrites.Keys, (original, rewritten) =>
+            RewriteInvocation(original, rewritten, rewrites[original], model, generator, newMethodSimpleName, newMethodSymbol)
+                .WithAdditionalAnnotations(annotation));
+
 
         var updatedSolution = solution.WithDocumentSyntaxRoot(docId, root);
+        var updatedDocument = updatedSolution.GetDocument(docId)
+            ?? throw new PublicInvalidOperationException("Invocation replacement requires an available source document.");
+        var updatedRoot = await updatedDocument.GetSyntaxRootAsync(ct).ConfigureAwait(false)
+            ?? throw new PublicInvalidOperationException("Invocation replacement requires an available syntax tree.");
+        var updatedModel = await updatedDocument.GetSemanticModelAsync(ct).ConfigureAwait(false)
+            ?? throw new PublicInvalidOperationException("Invocation replacement requires a semantic model.");
+        foreach (var rewritten in updatedRoot.GetAnnotatedNodes(annotation).OfType<InvocationExpressionSyntax>())
+        {
+            if (updatedModel.GetOperation(rewritten, ct) is not IInvocationOperation rebound ||
+                !SameMethodDefinition(rebound.TargetMethod, newMethodSymbol) ||
+                updatedModel.GetDiagnostics(rewritten.Span, ct).Any(d => d.Severity == DiagnosticSeverity.Error))
+                throw new PublicInvalidOperationException("Invocation replacement cannot preserve a valid binding to the requested replacement method.");
+        }
         return (updatedSolution, rewrites.Count, doc.FilePath);
     }
 
@@ -376,43 +396,125 @@ public sealed class BulkRefactoringService : IBulkRefactoringService
         };
     }
 
-    private static InvocationExpressionSyntax RewriteInvocation(
-        InvocationExpressionSyntax invocation,
-        string newMethodSimpleName,
-        IMethodSymbol oldMethodSymbol,
-        IMethodSymbol newMethodSymbol,
-        IReadOnlyList<int> indexMap)
+
+    private static bool SameMethodDefinition(IMethodSymbol actual, IMethodSymbol expected)
     {
-        // Rewrite the method-name token on the invocation expression. Preserve any type
-        // arguments (GenericNameSyntax) and the receiver (MemberAccess / MemberBinding).
-        var newExpression = RewriteInvokedExpression(invocation.Expression, newMethodSimpleName);
+        actual = (actual.ReducedFrom ?? actual).OriginalDefinition;
+        expected = (expected.ReducedFrom ?? expected).OriginalDefinition;
+        var actualId = actual.GetDocumentationCommentId();
+        var expectedId = expected.GetDocumentationCommentId();
+        return actualId is not null && expectedId is not null &&
+            actual.ContainingAssembly.Identity.Equals(expected.ContainingAssembly.Identity) &&
+            string.Equals(actualId, expectedId, StringComparison.Ordinal);
+    }
 
-        // Reorder the arguments. The mapping is expressed as: the new parameter at position i
-        // corresponds to the old parameter at position indexMap[i]. Two call-site shapes:
-        //
-        //   • Positional only — oldArgs[indexMap[i]] already gives the correct expression,
-        //     just strip trivia and re-space.
-        //   • Named (any arg has NameColon) — the caller's lexical order may differ from
-        //     the semantic order, so first build a semantic-ordered array (oldSemantic[k]
-        //     = the argument bound to the old method's parameter k) and then map through
-        //     indexMap. Name-token preservation rewrites each argument's NameColon to the
-        //     new method's parameter name at its new slot so the rewritten call lexically
-        //     matches the new signature.
-        var oldArgs = invocation.ArgumentList.Arguments;
-        var hasNamedArgs = oldArgs.Any(a => a.NameColon is not null);
-
-        SeparatedSyntaxList<ArgumentSyntax> newArgs;
-        if (hasNamedArgs)
+    private static InvocationExpressionSyntax RewriteInvocation(
+        InvocationExpressionSyntax originalInvocation,
+        InvocationExpressionSyntax invocation,
+        IInvocationOperation operation,
+        SemanticModel model,
+        SyntaxGenerator generator,
+        string newMethodSimpleName,
+        IMethodSymbol newMethodSymbol)
+    {
+        var targetParameters = newMethodSymbol.Parameters.ToDictionary(p => p.Name, StringComparer.Ordinal);
+        var arguments = new List<SyntaxNodeOrToken>();
+        void AppendArgument(ArgumentSyntax argument, SyntaxToken? separator = null)
         {
-            newArgs = ReorderWithNamedArguments(oldArgs, oldMethodSymbol, newMethodSymbol, indexMap);
+            if (arguments.Count != 0)
+                arguments.Add(separator ?? SyntaxFactory.Token(SyntaxKind.CommaToken).WithTrailingTrivia(SyntaxFactory.Space));
+            arguments.Add(argument);
         }
-        else
+        var expanded = operation.Arguments.SingleOrDefault(a =>
+            a.ArgumentKind is ArgumentKind.ParamArray or ArgumentKind.ParamCollection && a.IsImplicit);
+        var expandedElements = new List<SyntaxNodeOrToken>();
+        SyntaxToken? expandedSeparator = null;
+        for (var i = 0; i < invocation.ArgumentList.Arguments.Count; i++)
         {
-            newArgs = ReorderPositionalArguments(oldArgs, indexMap);
+            var source = invocation.ArgumentList.Arguments[i];
+            if (model.GetOperation(originalInvocation.ArgumentList.Arguments[i]) is not IArgumentOperation argument)
+            {
+                if (expanded is null)
+                    throw new PublicInvalidOperationException("Invocation replacement cannot determine an argument's original parameter binding.");
+                if (expandedElements.Count == 0)
+                    expandedSeparator = i > 0 ? invocation.ArgumentList.Arguments.GetSeparator(i - 1) : null;
+                else
+                    expandedElements.Add(invocation.ArgumentList.Arguments.GetSeparator(i - 1));
+                expandedElements.Add(source.Expression);
+                continue;
+            }
+
+            var parameter = argument.Parameter
+                ?? throw new PublicInvalidOperationException("Invocation replacement cannot determine an argument's original parameter binding.");
+            var target = targetParameters[parameter.Name];
+            if (parameter.RefKind != target.RefKind)
+                throw new PublicInvalidOperationException("Invocation replacement cannot change a parameter's ref, in, or out passing mode.");
+            AppendArgument(NameArgument(source, target.Name),
+                i > 0 ? invocation.ArgumentList.Arguments.GetSeparator(i - 1) : null);
         }
 
-        var newArgList = invocation.ArgumentList.WithArguments(newArgs);
-        return invocation.WithExpression(newExpression).WithArgumentList(newArgList);
+        if (expanded is not null)
+        {
+            var parameter = expanded.Parameter
+                ?? throw new PublicInvalidOperationException("Invocation replacement cannot determine an argument's original parameter binding.");
+            var expandedType = expanded.Value.Type
+                ?? throw new PublicInvalidOperationException("Invocation replacement cannot determine an expanded argument's original type.");
+            var type = SyntaxFactory.ParseTypeName(expandedType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
+            var expressions = SyntaxFactory.SeparatedList<ExpressionSyntax>(expandedElements);
+            ExpressionSyntax expression = expanded.ArgumentKind == ArgumentKind.ParamArray
+                ? SyntaxFactory.ArrayCreationExpression((ArrayTypeSyntax)type,
+                    SyntaxFactory.InitializerExpression(SyntaxKind.ArrayInitializerExpression, expressions))
+                    .WithNewKeyword(SyntaxFactory.Token(SyntaxKind.NewKeyword).WithTrailingTrivia(SyntaxFactory.Space))
+                : SyntaxFactory.CastExpression(type, SyntaxFactory.CollectionExpression(
+                    SyntaxFactory.SeparatedList<CollectionElementSyntax>(expressions.GetWithSeparators().Select(item =>
+                        item.IsToken ? item : (SyntaxNodeOrToken)SyntaxFactory.ExpressionElement((ExpressionSyntax)(item.AsNode()
+                            ?? throw new PublicInvalidOperationException("Invocation replacement requires a parameter expression.")))))));
+            AppendArgument(NameArgument(SyntaxFactory.Argument(expression), parameter.Name), expandedSeparator);
+        }
+
+        // Materialize the original call's implicit values, including compiler-provided caller
+        // information, instead of letting different target defaults change the call's meaning.
+        foreach (var argument in operation.Arguments.Where(a => a.ArgumentKind == ArgumentKind.DefaultValue))
+        {
+            var parameter = argument.Parameter
+                ?? throw new PublicInvalidOperationException("Invocation replacement cannot determine an argument's original parameter binding.");
+            var type = SyntaxFactory.ParseTypeName(parameter.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
+            ExpressionSyntax value;
+            if (argument.Value.ConstantValue is { HasValue: true, Value: null } &&
+                parameter.Type.IsValueType && parameter.Type.OriginalDefinition.SpecialType != SpecialType.System_Nullable_T)
+                value = SyntaxFactory.DefaultExpression(type);
+            else if (argument.Value.ConstantValue.HasValue)
+                value = SyntaxFactory.CastExpression(type,
+                    (ExpressionSyntax)generator.LiteralExpression(argument.Value.ConstantValue.Value));
+            else if (argument.Value is IDefaultValueOperation)
+                value = SyntaxFactory.DefaultExpression(type);
+            else
+                throw new PublicInvalidOperationException("Invocation replacement cannot preserve an implicit argument value.");
+            AppendArgument(NameArgument(SyntaxFactory.Argument(value), parameter.Name));
+        }
+
+        return invocation.WithExpression(RewriteInvokedExpression(invocation.Expression, newMethodSimpleName))
+            .WithArgumentList(invocation.ArgumentList.WithArguments(SyntaxFactory.SeparatedList<ArgumentSyntax>(arguments)));
+    }
+
+    private static SyntaxToken NameIdentifier(string parameterName)
+    {
+        var identifier = SyntaxFacts.GetKeywordKind(parameterName) != SyntaxKind.None ||
+            SyntaxFacts.GetContextualKeywordKind(parameterName) != SyntaxKind.None
+            ? "@" + parameterName : parameterName;
+        return SyntaxFactory.ParseToken(identifier);
+    }
+
+    private static ArgumentSyntax NameArgument(ArgumentSyntax argument, string parameterName)
+    {
+        var name = SyntaxFactory.IdentifierName(NameIdentifier(parameterName));
+        var colon = SyntaxFactory.Token(SyntaxKind.ColonToken).WithTrailingTrivia(SyntaxFactory.Space);
+        if (argument.NameColon is { } originalName)
+        {
+            name = name.WithTriviaFrom(originalName.Name);
+            colon = originalName.ColonToken;
+        }
+        return argument.WithNameColon(SyntaxFactory.NameColon(name).WithColonToken(colon));
     }
 
     private static ExpressionSyntax RewriteInvokedExpression(ExpressionSyntax expression, string newMethodSimpleName)
@@ -420,127 +522,19 @@ public sealed class BulkRefactoringService : IBulkRefactoringService
         return expression switch
         {
             IdentifierNameSyntax id =>
-                SyntaxFactory.IdentifierName(newMethodSimpleName).WithTriviaFrom(id),
+                SyntaxFactory.IdentifierName(NameIdentifier(newMethodSimpleName)).WithTriviaFrom(id),
             GenericNameSyntax gn =>
-                gn.WithIdentifier(SyntaxFactory.Identifier(newMethodSimpleName).WithTriviaFrom(gn.Identifier)),
+                gn.WithIdentifier(NameIdentifier(newMethodSimpleName).WithTriviaFrom(gn.Identifier)),
             MemberAccessExpressionSyntax ma =>
-                ma.WithName(SyntaxFactory.IdentifierName(newMethodSimpleName).WithTriviaFrom(ma.Name)),
+                ma.WithName(ma.Name is GenericNameSyntax generic
+                    ? generic.WithIdentifier(NameIdentifier(newMethodSimpleName).WithTriviaFrom(generic.Identifier))
+                    : SyntaxFactory.IdentifierName(NameIdentifier(newMethodSimpleName)).WithTriviaFrom(ma.Name)),
             MemberBindingExpressionSyntax mb =>
-                mb.WithName(SyntaxFactory.IdentifierName(newMethodSimpleName).WithTriviaFrom(mb.Name)),
+                mb.WithName(mb.Name is GenericNameSyntax generic
+                    ? generic.WithIdentifier(NameIdentifier(newMethodSimpleName).WithTriviaFrom(generic.Identifier))
+                    : SyntaxFactory.IdentifierName(NameIdentifier(newMethodSimpleName)).WithTriviaFrom(mb.Name)),
             _ => expression,
         };
-    }
-
-    private static SeparatedSyntaxList<ArgumentSyntax> ReorderPositionalArguments(
-        SeparatedSyntaxList<ArgumentSyntax> oldArgs,
-        IReadOnlyList<int> indexMap)
-    {
-        // Purely positional callers: map each new-slot argument to the original argument at
-        // the old index indexMap[i]. Preserve the first argument's leading trivia (usually
-        // empty) so the rewritten list fits seamlessly into the parentheses.
-        var reordered = new List<ArgumentSyntax>(indexMap.Count);
-        for (var i = 0; i < indexMap.Count; i++)
-        {
-            var oldIndex = indexMap[i];
-            if (oldIndex < 0 || oldIndex >= oldArgs.Count)
-            {
-                // Caller provided fewer positional args than the old method's parameter
-                // count (e.g. default values used). Skip this slot — the new method's
-                // corresponding parameter is whatever the old default expansion would have
-                // been. Roslyn will surface a missing-arg error downstream if the new
-                // method has no default for that slot.
-                continue;
-            }
-
-            var arg = oldArgs[oldIndex].WithoutTrivia();
-            // First argument has no leading space; subsequent ones need ", " separators.
-            // The SeparatedSyntaxList will insert commas between nodes; we only need to
-            // ensure the argument expression itself has the right leading trivia.
-            if (i == 0)
-            {
-                reordered.Add(arg);
-            }
-            else
-            {
-                reordered.Add(arg.WithLeadingTrivia(SyntaxFactory.Space));
-            }
-        }
-
-        return SyntaxFactory.SeparatedList(reordered);
-    }
-
-    private static SeparatedSyntaxList<ArgumentSyntax> ReorderWithNamedArguments(
-        SeparatedSyntaxList<ArgumentSyntax> oldArgs,
-        IMethodSymbol oldMethodSymbol,
-        IMethodSymbol newMethodSymbol,
-        IReadOnlyList<int> indexMap)
-    {
-        // Mixed or fully-named callers: build a SEMANTIC array from the lexical oldArgs.
-        // oldSemantic[k] is the argument bound to the old method's parameter k — derived
-        // by reading NameColon for named args and by lexical position for positional args
-        // in the prefix (C# rule: named args must follow positional).
-        //
-        // Positional prefix fills slots 0..positionalCount-1; named args fill slots whose
-        // parameter name matches their NameColon.Name. Missing slots (default values used
-        // at the call-site) are left as null and skipped in the output.
-        var oldSemantic = new ArgumentSyntax?[oldMethodSymbol.Parameters.Length];
-        var positionalIndex = 0;
-        foreach (var arg in oldArgs)
-        {
-            if (arg.NameColon is null)
-            {
-                if (positionalIndex < oldSemantic.Length)
-                {
-                    oldSemantic[positionalIndex] = arg;
-                }
-                positionalIndex++;
-            }
-            else
-            {
-                var name = arg.NameColon.Name.Identifier.ValueText;
-                for (var k = 0; k < oldMethodSymbol.Parameters.Length; k++)
-                {
-                    if (string.Equals(oldMethodSymbol.Parameters[k].Name, name, StringComparison.Ordinal))
-                    {
-                        oldSemantic[k] = arg;
-                        break;
-                    }
-                }
-            }
-        }
-
-        // For each new-slot i, fetch the semantic-slot oldSemantic[indexMap[i]] and rewrite
-        // the NameColon's identifier to the new method's parameter name at new-slot i. The
-        // expression and refKind survive unchanged; only the name token and trivia are
-        // rebuilt so the emitted call reads "arg2: \"x\", arg3: true, arg1: 1".
-        var reordered = new List<ArgumentSyntax>(indexMap.Count);
-        for (var i = 0; i < indexMap.Count; i++)
-        {
-            var oldSemanticIndex = indexMap[i];
-            if (oldSemanticIndex < 0 || oldSemanticIndex >= oldSemantic.Length) continue;
-
-            var sourceArg = oldSemantic[oldSemanticIndex];
-            if (sourceArg is null) continue;
-
-            var newParamName = newMethodSymbol.Parameters[i].Name;
-            // NameColon built directly from the factory emits "name:" with no trailing space,
-            // which produces "arg2:\"x\"" instead of the idiomatic "arg2: \"x\"". Add a trailing
-            // space to the colon token so the rewritten source matches the Roslyn formatter's
-            // canonical spacing for named arguments.
-            var rebuiltColonToken = SyntaxFactory.Token(SyntaxKind.ColonToken)
-                .WithTrailingTrivia(SyntaxFactory.Space);
-            var rebuiltName = SyntaxFactory.NameColon(
-                SyntaxFactory.IdentifierName(newParamName),
-                rebuiltColonToken);
-            var rebuilt = SyntaxFactory.Argument(
-                rebuiltName,
-                sourceArg.RefKindKeyword,
-                sourceArg.Expression.WithoutTrivia());
-
-            reordered.Add(i == 0 ? rebuilt : rebuilt.WithLeadingTrivia(SyntaxFactory.Space));
-        }
-
-        return SyntaxFactory.SeparatedList(reordered);
     }
 
     // ═══════════════════════════════════════════════════════════════════════════════════
@@ -551,26 +545,57 @@ public sealed class BulkRefactoringService : IBulkRefactoringService
 
     private static MethodSignature ParseMethodSignature(string signature, string paramName)
     {
-        // Expected shape: "Namespace.Type.Method(P1, P2, P3)" or "Method()".
-        // Whitespace around commas and inside parens is permitted and trimmed.
+        const string invalidSignature =
+            "Method signature must have the form 'Namespace.Type.Method(ParamType1, ParamType2)' with complete, non-empty parameter types.";
+        signature = signature.Trim();
         var openParen = signature.IndexOf('(');
-        var closeParen = signature.LastIndexOf(')');
-        if (openParen < 0 || closeParen < 0 || closeParen < openParen)
-            throw new ArgumentException(
-                $"Invalid method signature '{signature}'. Expected form: 'Namespace.Type.Method(ParamType1, ParamType2)'.", paramName);
+        if (openParen < 0 || !signature.EndsWith(')'))
+            throw new PublicArgumentException(invalidSignature, paramName);
 
         var name = signature[..openParen].Trim();
         if (string.IsNullOrWhiteSpace(name))
-            throw new ArgumentException(
-                $"Invalid method signature '{signature}'. Method name segment is empty.", paramName);
+            throw new PublicArgumentException("Method signature must include a non-empty method name.", paramName);
 
-        var paramList = signature[(openParen + 1)..closeParen].Trim();
-        var paramTypes = string.IsNullOrWhiteSpace(paramList)
-            ? []
-            : (IReadOnlyList<string>)paramList
-                .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        var parameterText = signature[(openParen + 1)..^1];
+        var parameterTypes = new List<string>();
+        var delimiters = new Stack<char>();
+        var slotStart = 0;
+        for (var i = 0; i <= parameterText.Length; i++)
+        {
+            if (i < parameterText.Length)
+            {
+                var character = parameterText[i];
+                if (character is '<' or '(' or '[')
+                    delimiters.Push(character);
+                else if (character is '>' or ')' or ']')
+                {
+                    var expected = character switch { '>' => '<', ')' => '(', _ => '[' };
+                    if (!delimiters.TryPop(out var opening) || opening != expected)
+                        throw new PublicArgumentException(invalidSignature, paramName);
+                }
+                if (character != ',' || delimiters.Count != 0)
+                    continue;
+            }
+            else if (delimiters.Count != 0)
+                throw new PublicArgumentException(invalidSignature, paramName);
 
-        return new MethodSignature(name, paramTypes);
+            var fragment = parameterText[slotStart..i].Trim();
+            if (fragment.Length == 0)
+            {
+                if (i == parameterText.Length && slotStart == 0)
+                    break; // An entirely blank list is the valid zero-argument form.
+                throw new PublicArgumentException(invalidSignature, paramName);
+            }
+
+            var type = SyntaxFactory.ParseTypeName(fragment, consumeFullText: true);
+            if (type.ContainsDiagnostics || type.DescendantTokens().Any(token => token.IsMissing) ||
+                type.DescendantNodesAndSelf().OfType<OmittedTypeArgumentSyntax>().Any())
+                throw new PublicArgumentException(invalidSignature, paramName);
+            parameterTypes.Add(type.NormalizeWhitespace().ToString());
+            slotStart = i + 1;
+        }
+
+        return new MethodSignature(name, parameterTypes);
     }
 
     private static async Task<IMethodSymbol?> ResolveMethodBySignatureAsync(
@@ -673,10 +698,10 @@ public sealed class BulkRefactoringService : IBulkRefactoringService
         if (string.Equals(paramType.Name, literal, StringComparison.Ordinal)) return true;
 
         var displayFull = paramType.ToDisplayString();
-        if (string.Equals(displayFull, literal, StringComparison.Ordinal)) return true;
+        if (SyntaxFactory.AreEquivalent(SyntaxFactory.ParseTypeName(displayFull), SyntaxFactory.ParseTypeName(literal))) return true;
 
         var displayMinimal = paramType.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
-        if (string.Equals(displayMinimal, literal, StringComparison.Ordinal)) return true;
+        if (SyntaxFactory.AreEquivalent(SyntaxFactory.ParseTypeName(displayMinimal), SyntaxFactory.ParseTypeName(literal))) return true;
 
         // Tolerate primitive aliases (int ↔ System.Int32, string ↔ System.String, etc.).
         var specialAlias = GetSpecialTypeAlias(paramType);
@@ -717,6 +742,9 @@ public sealed class BulkRefactoringService : IBulkRefactoringService
         // identical types across parameters (e.g. all int), so type-match alone cannot
         // disambiguate. Parameter name equality is the stable contract the caller
         // declared in the signature text.
+        if (oldMethod.Parameters.Length != newMethod.Parameters.Length)
+            throw new PublicInvalidOperationException("The replacement method must have a permutation of the original parameter names.");
+
         var map = new int[newMethod.Parameters.Length];
         for (var i = 0; i < newMethod.Parameters.Length; i++)
         {

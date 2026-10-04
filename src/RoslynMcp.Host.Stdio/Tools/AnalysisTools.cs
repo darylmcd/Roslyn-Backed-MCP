@@ -143,8 +143,8 @@ public static class AnalysisTools
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Diagnostic identifier, e.g. CS8019")] string diagnosticId,
         [Description("Absolute path to the source file")] string filePath,
-        [Description("1-based line number (alias: startLine). Supply exactly one of line/startLine.")] int? line = null,
-        [Description("1-based column number (alias: startColumn). Supply exactly one of column/startColumn.")] int? column = null,
+        [Description("1-based line number (alias: startLine). Supply line or startLine, or both with the same value.")] int? line = null,
+        [Description("1-based column number (alias: startColumn). Supply column or startColumn, or both with the same value.")] int? column = null,
         [Description("Alias for line, matching the positional-tool convention used by find_references, goto_definition, etc.")] int? startLine = null,
         [Description("Alias for column, matching the positional-tool convention used by find_references, goto_definition, etc.")] int? startColumn = null,
         CancellationToken ct = default)
@@ -182,7 +182,7 @@ public static class AnalysisTools
 
     /// <summary>
     /// Resolves a positional parameter that accepts two alias names (e.g. <c>line</c> and <c>startLine</c>).
-    /// Exactly one of the two must be supplied; supplying both with conflicting values or supplying
+    /// At least one of the two must be supplied; equal values are accepted. Conflicting values or
     /// neither is a parameter error.
     /// </summary>
     private static int ResolvePositionAlias(int? primary, int? alias, string primaryName, string aliasName)
@@ -191,7 +191,7 @@ public static class AnalysisTools
         {
             if (primary.Value != alias.Value)
             {
-                throw new ArgumentException(
+                throw new PublicArgumentException(
                     $"Conflicting values for '{primaryName}' ({primary.Value}) and its alias '{aliasName}' ({alias.Value}). Supply only one.",
                     primaryName);
             }
@@ -199,7 +199,7 @@ public static class AnalysisTools
         }
         if (primary.HasValue) return primary.Value;
         if (alias.HasValue) return alias.Value;
-        throw new ArgumentException(
+        throw new PublicArgumentException(
             $"Missing required parameter '{primaryName}' (or its alias '{aliasName}').",
             primaryName);
     }
@@ -289,7 +289,7 @@ public static class AnalysisTools
         CancellationToken ct = default)
     {
         ParameterValidation.ValidatePagination(referencesOffset, referencesLimit, nameof(referencesOffset), nameof(referencesLimit));
-        if (declarationsLimit < 1) throw new ArgumentException("declarationsLimit must be >= 1.", nameof(declarationsLimit));
+        if (declarationsLimit < 1) throw new PublicArgumentException("declarationsLimit must be >= 1.", nameof(declarationsLimit));
         return gate.RunReadAsync(workspaceId, async c =>
         {
             var paging = new ImpactAnalysisPaging(referencesOffset, referencesLimit, declarationsLimit);

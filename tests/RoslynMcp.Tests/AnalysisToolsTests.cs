@@ -108,7 +108,7 @@ public sealed class AnalysisToolsTests : SharedWorkspaceTestBase
     {
         var animalServicePath = FindDocumentPath("AnimalService.cs");
 
-        await Assert.ThrowsExactlyAsync<ArgumentException>(async () =>
+        var ex = await Assert.ThrowsExactlyAsync<PublicArgumentException>(async () =>
         {
             await AnalysisTools.GetDiagnosticDetails(
                 server: await GetPathAuthorizedServerAsync(),
@@ -123,6 +123,7 @@ public sealed class AnalysisToolsTests : SharedWorkspaceTestBase
                 startColumn: null,
                 ct: CancellationToken.None);
         });
+        Assert.AreEqual("line", ex.ParamName);
     }
 
     [TestMethod]
@@ -130,7 +131,7 @@ public sealed class AnalysisToolsTests : SharedWorkspaceTestBase
     {
         var animalServicePath = FindDocumentPath("AnimalService.cs");
 
-        await Assert.ThrowsExactlyAsync<ArgumentException>(async () =>
+        var ex = await Assert.ThrowsExactlyAsync<PublicArgumentException>(async () =>
         {
             await AnalysisTools.GetDiagnosticDetails(
                 server: await GetPathAuthorizedServerAsync(),
@@ -145,6 +146,32 @@ public sealed class AnalysisToolsTests : SharedWorkspaceTestBase
                 startColumn: 1,
                 ct: CancellationToken.None);
         });
+        Assert.AreEqual("line", ex.ParamName);
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task DiagnosticDetails_ColumnRefusals_PreserveColumnParameter(bool conflicting)
+    {
+        var ex = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
+            AnalysisTools.GetDiagnosticDetails(
+                server: null!,
+                gate: WorkspaceExecutionGate,
+                diagnosticService: DiagnosticService,
+                workspaceId: WorkspaceId,
+                diagnosticId: "PRIVATE-DIAGNOSTIC-SENTINEL",
+                filePath: "PRIVATE-PATH-SENTINEL",
+                line: 1,
+                column: conflicting ? 1 : null,
+                startColumn: conflicting ? 2 : null));
+        Assert.AreEqual("column", ex.ParamName);
+        var info = ToolErrorHandler.ClassifyError(ex, "diagnostic_details");
+        Assert.AreEqual("column", info.ParamName);
+        Assert.AreEqual(ex.PublicMessage, info.Message);
+        StringAssert.Contains(info.Message, "column");
+        StringAssert.Contains(info.Message, "startColumn");
+        Assert.IsFalse(info.Message.Contains("PRIVATE-", StringComparison.Ordinal));
     }
 
     // impact-analysis-summary-mode: parity with find_references(summary=true). The wrapper
@@ -308,7 +335,7 @@ public sealed class AnalysisToolsTests : SharedWorkspaceTestBase
     {
         var animalPath = FindDocumentPath("IAnimal.cs");
 
-        await Assert.ThrowsExactlyAsync<ArgumentException>(async () =>
+        var ex = await Assert.ThrowsExactlyAsync<PublicArgumentException>(async () =>
         {
             await AnalysisTools.AnalyzeImpact(
                 gate: WorkspaceExecutionGate,
@@ -320,6 +347,7 @@ public sealed class AnalysisToolsTests : SharedWorkspaceTestBase
                 declarationsLimit: 0,
                 ct: CancellationToken.None);
         });
+        Assert.AreEqual("declarationsLimit", ex.ParamName);
     }
 
     [TestMethod]
