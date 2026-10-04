@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-04T15:48:58Z
+**updated_at:** 2026-10-04T16:38:05Z
 
 ## Agent contract
 
@@ -387,6 +387,7 @@
 | `host-bind-options-locals-untested` | Low | — | **Extract and test the remaining Program.cs Bind*Options local functions** — workspace, preview-store and execution-gate option binders are untestable top-level locals. [type: test-infrastructure] [source: workspace-restore-budget fixer] | M | items/host-bind-options-locals-untested.md |
 | `extract-type-override-modifier-stripped` | Low | — | **Investigate extract_type dropping override modifiers** — check whether extracting an override member silently discards the base contract. [type: chore] [source: backlog-remediate 20261001T130338Z] | S | items/extract-type-override-modifier-stripped.md |
 | `project-name-path-selection-duplication` | Low | file-create-and-scaffold-refusals-public-message,cross-project-public-refusals-echo-input | **Centralize project name/path selection** — reuse one selection predicate across file operations, cross-project refactoring and scaffolding while preserving caller-specific failures. [type: refactor] [source: backlog-remediate adjacent review 2026-10-04] | M | items/project-name-path-selection-duplication.md |
+| `preview-store-explicit-internal-state` | Low | — | Make preview truncation and apply-route provenance explicit at every internal Store caller; retire convenience defaults under public contract policy. [type: quality] [source: SnipCue tool lifecycle readback20261004] | M | items/preview-store-explicit-internal-state.md |
 
 ## Defer
 
