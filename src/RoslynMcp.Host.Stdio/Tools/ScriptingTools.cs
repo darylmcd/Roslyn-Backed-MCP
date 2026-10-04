@@ -30,7 +30,7 @@ public static class ScriptingTools
         CancellationToken ct = default)
     {
         if (timeoutSeconds is <= 0)
-            throw new ArgumentException("timeoutSeconds must be greater than 0 when supplied.", nameof(timeoutSeconds));
+            throw new PublicArgumentException("timeoutSeconds must be greater than 0 when supplied.", nameof(timeoutSeconds));
 
         ProgressHelper.Report(progress, 0, 1);
         try

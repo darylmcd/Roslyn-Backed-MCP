@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Text.Json;
 using ModelContextProtocol.Server;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
@@ -26,7 +27,7 @@ public static class WorkflowRecommendationTools
     {
         if (string.IsNullOrWhiteSpace(task) && string.IsNullOrWhiteSpace(intent))
         {
-            throw new ArgumentException("task or intent must be provided.", nameof(task));
+            throw new PublicArgumentException("task or intent must be provided.", nameof(task));
         }
 
         var recommendation = Recommend(task, filePath, symbol, intent);

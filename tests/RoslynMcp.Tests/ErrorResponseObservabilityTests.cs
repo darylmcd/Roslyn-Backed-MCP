@@ -269,4 +269,69 @@ public sealed class ErrorResponseObservabilityTests : IsolatedWorkspaceTestBase
         Assert.IsFalse(doc.RootElement.TryGetProperty("schemaHint", out _),
             $"Non-InvalidArgument envelope must not carry schemaHint. Got: {json}");
     }
+
+    [TestMethod]
+    [DataRow(-1)]
+    [DataRow(0)]
+    public async Task EvaluateCSharp_NonPositiveTimeout_PublishesActionableRefusal(int timeoutSeconds)
+    {
+        await AssertPublicArgumentRefusalAsync(
+            "evaluate_csharp",
+            () => ScriptingTools.EvaluateCSharp(ScriptingService, "caller-sentinel /private/source.cs", ["caller-sentinel"], timeoutSeconds),
+            "timeoutSeconds",
+            "timeoutSeconds must be greater than 0 when supplied.");
+    }
+
+    [TestMethod]
+    [DataRow(null, false)]
+    [DataRow("", false)]
+    [DataRow(" \t\r\n", false)]
+    [DataRow(null, true)]
+    [DataRow("", true)]
+    [DataRow(" \t\r\n", true)]
+    public async Task Undo_BlankWorkspaceId_PublishesActionableRefusal(string? workspaceId, bool bySequence)
+    {
+        var toolName = bySequence ? "revert_apply_by_sequence" : "revert_last_apply";
+        Task<string> Invoke() => bySequence
+            ? UndoTools.RevertApplyBySequence(WorkspaceExecutionGate, ApplyUndoWorkflowService, workspaceId!, -1)
+            : UndoTools.RevertLastApply(WorkspaceExecutionGate, UndoService, workspaceId!);
+        await AssertPublicArgumentRefusalAsync(
+            toolName,
+            Invoke,
+            "workspaceId",
+            "workspaceId is required. Pass the session id returned by workspace_load.");
+    }
+
+    [TestMethod]
+    [DataRow(-1)]
+    [DataRow(0)]
+    public async Task Undo_NonPositiveSequence_PublishesActionableRefusal(int sequenceNumber)
+    {
+        await AssertPublicArgumentRefusalAsync(
+            "revert_apply_by_sequence",
+            () => UndoTools.RevertApplyBySequence(WorkspaceExecutionGate, ApplyUndoWorkflowService, WorkspaceId, sequenceNumber),
+            "sequenceNumber",
+            "sequenceNumber must be a positive integer matching a value reported by workspace_changes.");
+    }
+
+    private static async Task AssertPublicArgumentRefusalAsync(
+        string toolName,
+        Func<Task<string>> action,
+        string parameterName,
+        string expectedMessage)
+    {
+        var exception = await Assert.ThrowsAsync<ArgumentException>(action);
+        Assert.AreEqual(parameterName, exception.ParamName);
+        var json = await ToolExecutionTestHarness.RunAsync(toolName, action);
+        using var document = JsonDocument.Parse(json);
+        var error = document.RootElement;
+        Assert.IsTrue(error.GetProperty("error").GetBoolean());
+        Assert.AreEqual("InvalidArgument", error.GetProperty("category").GetString());
+        Assert.AreEqual(toolName, error.GetProperty("tool").GetString());
+        Assert.AreEqual(expectedMessage, error.GetProperty("message").GetString());
+        Assert.AreEqual("ArgumentException", error.GetProperty("exceptionType").GetString());
+        StringAssert.Contains(error.GetProperty("schemaHint").GetString(), parameterName);
+        Assert.IsFalse(json.Contains("caller-sentinel", StringComparison.Ordinal));
+        Assert.IsFalse(json.Contains("/private/source.cs", StringComparison.Ordinal));
+    }
 }

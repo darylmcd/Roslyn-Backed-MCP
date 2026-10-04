@@ -27,7 +27,7 @@ public static class UndoTools
     {
         if (string.IsNullOrWhiteSpace(workspaceId))
         {
-            throw new ArgumentException("workspaceId is required. Pass the session id returned by workspace_load.");
+            throw new PublicArgumentException("workspaceId is required. Pass the session id returned by workspace_load.", nameof(workspaceId));
         }
         return gate.RunWriteAsync(workspaceId, async c =>
         {
@@ -78,11 +78,11 @@ public static class UndoTools
     {
         if (string.IsNullOrWhiteSpace(workspaceId))
         {
-            throw new ArgumentException("workspaceId is required. Pass the session id returned by workspace_load.");
+            throw new PublicArgumentException("workspaceId is required. Pass the session id returned by workspace_load.", nameof(workspaceId));
         }
         if (sequenceNumber <= 0)
         {
-            throw new ArgumentException("sequenceNumber must be a positive integer matching a value reported by workspace_changes.", nameof(sequenceNumber));
+            throw new PublicArgumentException("sequenceNumber must be a positive integer matching a value reported by workspace_changes.", nameof(sequenceNumber));
         }
         return gate.RunWriteAsync(workspaceId, async c =>
         {
