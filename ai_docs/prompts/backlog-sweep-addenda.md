@@ -37,7 +37,7 @@ skipCiToken: ""   # NONE — see CI gate note below
 - Context pressure requires a checkpoint and handoff; scoped compile/test checks never replace required validation.
 - Code-PR vs docs-only-PR topology (leg matrix, which gates are skipped, fail-closed classification, `validate-gate` / `validate` naming): [CI_POLICY.md](../../CI_POLICY.md) and `eng/resolve-ci-topology.ps1`. `ci_equivalent` is the code-PR shape; running it verbatim on a docs-only PR only over-validates.
 - Hosted classification is owned by `eng/resolve-ci-topology.ps1`: shipped/local skills, agents and `.github/prompts/` are code tier; `CHANGELOG.md` and this `ai_docs/` addenda are docs tier.
-- `verify-changelog-fragments.ps1` runs standalone on docs-only PRs and as a `verify-release.ps1` child step on code PRs; running it explicitly first (as `ci_equivalent` does) is correct on both.
+- `verify-changelog-fragments.ps1` runs standalone on docs-only PRs and as a `verify-release.ps1` child step on code PRs; the local aggregate reaches it through `verify-release-pr`.
 - **One-command local equivalent: `just ci`.** Its measured cost, timeout/background mode, hook runtime, exact filter, regeneration companions, flake registry, and `parallelSafe` value live in [AGENTS.md § Validation runtime](../../AGENTS.md#validation-runtime). Keep the machine-readable `ci_equivalent` list for consumers that must run or skip individual gates; `just ci` passes `-NoCoverage -ExcludeNetworkTests` through `verify-release-pr`.
 - **Required check, no skip token.** The ruleset requires one status context, `validate`, produced by `validate-gate` on `pull_request` events. A `[skip ci]` token in any commit subject leaves it never-reported and the PR permanently BLOCKED, so `skipCiToken` is **empty**: never put a skip token in a commit on a PR branch here.
 - Validation disables reusable build servers within its invocation. Worktree cleanup must not issue a machine-wide build-server shutdown; release only resources with verified task ownership.
@@ -155,9 +155,9 @@ consumed_by: /bump (rolls fragments into CHANGELOG.md at version-bump time)
 
 `CHANGELOG.md` is a **build artifact** — never edit directly outside of `/bump`, and the release-managed guard enforces that. Always emit a fragment per closed row.
 
-## Structural-unit shape (Rule 3 exemption)
+## Structural-unit shape (Rule 3)
 
-A new `[McpServerTool]` follows the Core+Roslyn+Host.Stdio three-layer pattern. Counts as **structural units, not files** under Rule 3 — capped at ≤ 4 units per initiative. The indivisible new-tool shape:
+A new `[McpServerTool]` follows the Core+Roslyn+Host.Stdio three-layer pattern. Treat its contracts, implementation, host surface and registration as structural units when judging reviewability; file counts do not justify an incomplete change. The indivisible new-tool shape:
 
 | Structural unit | Typical files |
 |---|---|
@@ -166,7 +166,7 @@ A new `[McpServerTool]` follows the Core+Roslyn+Host.Stdio three-layer pattern. 
 | Host.Stdio tool surface | `src/RoslynMcp.Host.Stdio/Tools/{Tool}Tools.cs`, carrying the `[McpToolMetadata]` attribute (tier + name) |
 | Registration | Matching `ServerSurfaceCatalog.{Area}.cs` entry plus production DI in `src/RoslynMcp.Roslyn/ServiceCollectionExtensions.cs`; RMCP001/RMCP002 check attributed names/catalog coverage, and `SurfaceCatalogTests` checks metadata agreement. |
 
-Plans for new-tool initiatives MUST set `toolPolicy: "edit-only"` and cite the structural-unit exemption in Scope.
+Plans for new-tool initiatives MUST set `toolPolicy: "edit-only"` and describe the complete structural-unit shape in Scope.
 
 Test fixtures inherit production registrations through `TestServiceContainer.Create` calling `AddRoslynServices`; do not duplicate registrations in `TestBase`. When a fixture needs a typed service accessor, update the container and forwarding accessor by judgment and include those edits in Scope. Structural-unit counts inform decomposition, not completeness.
 
@@ -199,20 +199,20 @@ Further assertions in the same test class fire on a different trigger:
 - `ReadmePackageAndPluginSkillCounts_MatchShippedSkillDirectory` fires on an edit under `skills/`: the "N bundled agent skills" claim in `README.md`, `src/RoslynMcp.Host.Stdio/README.md`, **and** `.claude-plugin/plugin.json`'s description must match the shipped `skills/` directory. `.claude-plugin/plugin.json` is a **hard-blocked release-managed path** (see Hooks): a shipped-skill add/remove routes through `/bump`, `/release-cut`, or `/ship`, or creates the sentinel explicitly.
 - `BacklogPlanningSurfaceCountClaims_MatchLiveServerSurfaceCatalog` sweeps every planning/backlog `ai_docs/**/*.md` for "`<N>` tools is approaching" and `server_info.surface.registered.tools <from> -> <to>` claims, so a stale tool count in a backlog item or in this file fails the build too.
 
-**Known over-trigger.** Description-, envelope-, and parameter-text-only edits touch those anchors without moving any count. Such rows are the `tool_surface_only` shape below: cite that exemption and drop both companions from the stanza, with the reason stated in Scope. Over-triggering is the deliberate default; the failure mode it prevents is a row that under-counts the gate and blows its Rule 3 budget at validation time.
+**Known over-trigger.** Description-, envelope-, and parameter-text-only edits touch those anchors without moving any count. Such rows are the `tool_surface_only` shape below: omit companions whose literals do not change, with the reason stated in Scope. Mechanical expansion is conservative; verify each companion against its gate source.
 
-## Tool-surface-only exemption (Rule 3)
+## Tool-surface-only shape (Rule 3)
 
-Initiatives that ONLY change response-shape, error envelope, description text, or parameter defaults on an already-registered tool may touch up to **2 files**:
+Initiatives that ONLY change response-shape, error envelope, description text, or parameter defaults on an already-registered tool typically touch **2 files**; include every required companion when the mechanism needs more:
 
 | File | Purpose |
 |---|---|
 | `src/RoslynMcp.Host.Stdio/Tools/{Tool}Tools.cs` | Wrapper edit — envelope, schema, description. |
 | `src/RoslynMcp.Core/Models/{Tool}ResponseDto.cs` (optional) | DTO field add/rename. |
 
-`toolPolicy` MUST be `"edit-only"`. Rule 4 still applies. Cite in Scope: *"Rule 3 exemption: tool-surface-only, 2 files."*
+`toolPolicy` MUST be `"edit-only"`. Rule 4 still applies. State the actual file count and why omitted count companions remain unchanged in Scope. The typical two-file shape is advisory, never a ceiling on a complete fix.
 
-The 3-layer pattern would over-spec envelope/error-wrapper fixes; the 2-file cap captures them honestly.
+The 3-layer pattern would over-spec envelope/error-wrapper fixes; the 2-file target describes their usual shape.
 
 ## Hooks that block subagent tool calls
 
@@ -318,7 +318,7 @@ Follow the canonical remediation rules. File-count targets inform reviewability;
 
 ## Maintenance
 
-- Update `Build / validation commands` when `.github/workflows/ci.yml`'s PR leg changes which `eng/*.ps1` scripts it runs — the addenda mirrors the workflow, not `verify-release.ps1` alone.
+- Update `Build / validation commands` when `justfile` changes the local `ci` aggregate or its invoked recipes. Verify hosted partitions separately against `.github/workflows/ci.yml` and `CI_POLICY.md`.
 - Update `Hotspot files` when a partial split or refactor changes the parallel-merge friction surface. Do not record citation counts; they go stale immediately.
 - Update `Structural-unit shape` if a new layer (e.g. `RoslynMcp.Host.Http`) is added.
 - Update `Hooks that block subagent tool calls` against `.claude/settings.json` **and** `hooks/hooks.json` whenever either changes. Remove a hook's addenda entry in the same PR that removes the hook.
