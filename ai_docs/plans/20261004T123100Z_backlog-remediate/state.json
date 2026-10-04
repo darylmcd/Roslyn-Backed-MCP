@@ -57,7 +57,8 @@
       "notes": "Route deepen: declared/effective L derives solely from four required test companions, not incoherent scope. Standing Engineering Directives 1/6 and RULES 5 Rule4 advisory require a complete shared validation publication fix. Exact subclass assertion pins ParameterValidationTests:24-106, SymbolSearchPaginationTests:179/195, FindReflectionUsagesPaginationTests:344/356, ExpandedSurfaceIntegrationTests:349/368/385 must move together. Existing global rows split-route-ignores-forcing-shapes and remediate-stale-file-cap-wording track the contradictory cap-era routing; do not manufacture a partial or recursively L child solely to satisfy counts.",
       "fileSetHash": "83d4f9ddc9105ebe9a8f40ff613aaf1893b25fb0faffe10e74f2ef7e08b3c7bd",
       "stanzaHash": "919bee9356f9cda6aea7dcc2cfa21a644aabe8a2da829f9967705647422db863",
-      "reviewedStanzaHash": "919bee9356f9cda6aea7dcc2cfa21a644aabe8a2da829f9967705647422db863"
+      "reviewedStanzaHash": "919bee9356f9cda6aea7dcc2cfa21a644aabe8a2da829f9967705647422db863",
+      "reviewedHead": "40fcb709e7f1bb56abb5c337c0d667431a8676eb"
     },
     {
       "id": "file-create-and-scaffold-refusals-public-message",
@@ -107,8 +108,8 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "b71e7c4fee66c9b04353b4b24d5e6496c6d627d12fa14f4c7fc90638cd16d033",
-      "stanzaHash": "9de2879181bed07a03a3ac087af2eb91d08ba1015c32196dc09b13a9e0834872",
-      "reviewedStanzaHash": "9de2879181bed07a03a3ac087af2eb91d08ba1015c32196dc09b13a9e0834872",
+      "stanzaHash": "c8817d6666a1e14f1f452cd5c23c8b43d471a6e84f0f2bd07a5a7ea5834dcd8d",
+      "reviewedStanzaHash": "c8817d6666a1e14f1f452cd5c23c8b43d471a6e84f0f2bd07a5a7ea5834dcd8d",
       "amendments": [
         {
           "at": "2026-10-04T13:38:17.518Z",
@@ -116,6 +117,13 @@
           "reason": "Extract and reuse the existing predicate per Standing Directives 1/6; include its existing validator and test companion without changing that failure contract.",
           "previousStanzaHash": "c06a924875f8b54528052b1a01cb1ef8250b9b11bf5bf52ad4e57188863902ba",
           "stanzaHash": "9de2879181bed07a03a3ac087af2eb91d08ba1015c32196dc09b13a9e0834872"
+        },
+        {
+          "at": "2026-10-04T13:59:16.018Z",
+          "finding": "Live Windows GetFullPath accepts wildcard filenames and trailing separators; GetFileName of the trailing-separator path is empty.",
+          "reason": "Complete the existing malformed-path deliverable with real filename validation and no-mutation regressions; normalization alone does not enforce it.",
+          "previousStanzaHash": "9de2879181bed07a03a3ac087af2eb91d08ba1015c32196dc09b13a9e0834872",
+          "stanzaHash": "c8817d6666a1e14f1f452cd5c23c8b43d471a6e84f0f2bd07a5a7ea5834dcd8d"
         }
       ]
     },
@@ -1132,7 +1140,7 @@
     "status": "passed-with-warnings",
     "stanzaHashes": {
       "argument-exception-throw-sites-lack-public-message": "919bee9356f9cda6aea7dcc2cfa21a644aabe8a2da829f9967705647422db863",
-      "file-create-and-scaffold-refusals-public-message": "9de2879181bed07a03a3ac087af2eb91d08ba1015c32196dc09b13a9e0834872",
+      "file-create-and-scaffold-refusals-public-message": "c8817d6666a1e14f1f452cd5c23c8b43d471a6e84f0f2bd07a5a7ea5834dcd8d",
       "get-prompt-text-unknown-prompt-public-message": "6b265b0b940c5b316584361d77ff80ce46d9d327fe4e12ddf6f45f7d5fbe10f5",
       "tool-scripting-undo-workflow-argument-refusals-public-message": "a1081d96d56fc0784e4dc07e5efc744ec78cd7b0ddf5efd5425e502130fe49bc",
       "symbol-locator-and-source-text-tool-argument-refusals-public-message": "d1096131c5b7aaa884cd3bbdb72f9888fd89b4d8b5547f75890e16225f3cf29c",
@@ -1148,8 +1156,8 @@
     }
   },
   "conflictGraphInputHash": "d3f5a507c7dbefa4c0c0c9d55edcdd029a56f0bec67f57ea40582aa6b3d67892",
-  "planHash": "e9b40ce06cf42c8cd4ee0d2b7d8a58f1dfdd3b2bce7674c796fd49a1ae1c1b14",
+  "planHash": "5292c3287d21cc2cfea0eb42877d101eb0e60ee780f98817c33cd41eed4fd3dc",
   "backlogSnapshotHash": "7e7b72ab38048ba57725b00ea119733bffc2c22d2f8449ba6be9c917b2146333",
-  "reviewedPlanHash": "e9b40ce06cf42c8cd4ee0d2b7d8a58f1dfdd3b2bce7674c796fd49a1ae1c1b14",
+  "reviewedPlanHash": "5292c3287d21cc2cfea0eb42877d101eb0e60ee780f98817c33cd41eed4fd3dc",
   "reviewedBacklogSnapshotHash": "7e7b72ab38048ba57725b00ea119733bffc2c22d2f8449ba6be9c917b2146333"
 }
