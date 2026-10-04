@@ -1,26 +1,29 @@
-# root-boundary-argument-refusals-public-message — Sanctioned-root boundary refusals are expressed via ArgumentErrors
+# root-boundary-argument-refusals-public-message — Correct sanctioned-root error classification
 
 **row:** `root-boundary-argument-refusals-public-message` · **pri:** `Medium` · **size:** `M` · **deps:** `public-argument-exception-core-move, argument-errors-redacted-factory`
 
 ## Anchors
 
-- `src/RoslynMcp.Host.Stdio/Tools/ClientRootPathValidator.cs`
-- `src/RoslynMcp.Host.Stdio/Security/LegacyClientRootsNarrowingAdapter.cs`
-- `src/RoslynMcp.Host.Stdio/Security/ConfiguredRootBoundary.cs`
+- `src/RoslynMcp.Host.Stdio/Tools/ClientRootPathValidator.cs:89-188`
+- `src/RoslynMcp.Host.Stdio/Security/LegacyClientRootsNarrowingAdapter.cs:38`
+- `src/RoslynMcp.Host.Stdio/Security/ConfiguredRootBoundary.cs:58`
 - `tests/RoslynMcp.Tests/ClientRootPathValidatorTests.cs`
 
 ## Acceptance
 
-- [ ] ClientRootPathValidatorTests stay green without changing their ThrowsExactly<ArgumentException> pins.
-- [ ] No construction of ArgumentException remains in the 3 files.
-- [ ] ClientRootPathValidatorTests.cs is shared with core-move (using-only edit, ordered by dependsOn).
+- [ ] Before implementation, obtain explicit operator approval of the published InvalidArgument-to-InvalidOperation correction for configured-root and client-roots RPC failures, with ADR and major-release migration strategy. A technical review or generic continue does not discharge this hold.
+- [ ] Preserve exact marked boundary-denial ArgumentException identity, InvalidArgument, opaque redaction marker and absent schemaHint. Emit no caller/configured/inner paths.
+- [ ] Separate configured authority failures from request narrowing while sharing canonicalization; configured/RPC failures use safe PublicInvalidOperationException with preserved inner causes, narrowing refusals use ArgumentErrors.Redacted with actual parameter metadata. Preserve cancellation.
+- [ ] Preserve existing exact-type pins for caller denials; add real production-filter wire regressions for configured, narrowing and RPC failures in both protocol eras. Do not treat an allowed/rejected fixture success string as wire-error evidence.
+- [ ] Follow the approved ADR/migration and run scoped tests plus required pinned-head hosted checks after current-main rebase.
 
 ## Evidence
 
-- 3 ArgumentException/ArgumentOutOfRangeException construction site(s) in scope at main f7b33b85; plain ArgumentException messages are redacted by `ToolErrorHandler.BuildSafeArgumentMessage` (`src/RoslynMcp.Host.Stdio/Tools/ToolErrorHandler.cs:570-646`) to "Parameter '<x>' is invalid", or rescued only by message/paramName sniffing arms. Survey + design: plan-deepener, backlog-remediate 20260926T234932Z.
+- Current-session diagnosis 2026-10-04: GetCanonicalRoots is used for configured authority by ClientRootPathValidator:89 and SolutionDiscoveryHelper:137/243, but for request narrowing at ClientRootPathValidator:125. Blanket argument conversion would keep server faults mislabeled as caller failures.
+- The pending decision concerns released error categories under docs/release-policy.md. Plan 20261004T123100Z_backlog-remediate holds this initiative before implementation; no approval is recorded.
+- Core/Services/ArgumentErrors.cs and public exception carriers are current policy sources; the retired core-move detail pointer is absent and must not be relied on.
 
 ## Context
 
-One child of the argument-error contract redesign (operator decision 2026-09-26: correct fix over the narrow paramless-ctor ban). Estimated diff ~30000 tokens.
-
-Family design (invariant, P/R/I classification, ban scope, exceptionType normalization): see `items/public-argument-exception-core-move.md` § Family design.
+- Original argument-error redesign survey is superseded by the current live-source diagnosis and explicit contract-care hold.
+- Technical plan review passes the proposed complete correction; it does not authorize the category/release decision.
