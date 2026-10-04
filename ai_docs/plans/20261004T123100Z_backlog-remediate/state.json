@@ -300,7 +300,7 @@
     {
       "id": "root-boundary-argument-refusals-public-message",
       "order": 8,
-      "status": "pending",
+      "status": "deferred",
       "backlogRowsClosed": [
         "root-boundary-argument-refusals-public-message"
       ],
@@ -337,7 +337,7 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": "Required operator contract-care decision pending asynchronously; do not dispatch executor before approval. Recommended role-aware configured-I/narrowing-R correction requires ADR and major-release migration. Fixture anti-pattern sketch re-derived: McpRootsProbeTools intentionally returns allowed/rejected sentinel for low-level root-policy tests (TypeExtractionTests:89-105); it does not claim production wire-error coverage. Retain risk warning not to use this fixture as wire proof, but no defect row filed for intentional probe behavior.",
+      "notes": "Operator-only preimplementation hold: published configured-root/client-roots RPC error categories change InvalidArgument to InvalidOperation; await explicit approval of ADR and major-release migration strategy. Pending question is not answered by elapsed time or generic continue. Reactivate only on a live approving decision; row remains open.",
       "fileSetHash": "8fcede3179a81f04d31d460386a9e3950d8b2bd70ee582562f14d57f8525d7c1",
       "stanzaHash": "12ce06bdf57ad1125f5e92c5c246004cdb985b10835d774b72fa58dd4b333214",
       "reviewedStanzaHash": "12ce06bdf57ad1125f5e92c5c246004cdb985b10835d774b72fa58dd4b333214"
@@ -700,14 +700,6 @@
           "src/RoslynMcp.Host.Stdio/Tools/ToolErrorHandler.cs",
           "tests/RoslynMcp.Tests/ToolCallErrorWireContractTests.cs"
         ]
-      },
-      {
-        "a": 8,
-        "b": 9,
-        "sharedFiles": [
-          "docs/decisions/README.md",
-          "tests/RoslynMcp.Tests/ClientRootPathValidatorTests.cs"
-        ]
       }
     ],
     "degrees": {
@@ -717,8 +709,7 @@
       "5": 0,
       "6": 1,
       "7": 1,
-      "8": 1,
-      "9": 3,
+      "9": 2,
       "10": 0,
       "11": 0,
       "12": 1,
