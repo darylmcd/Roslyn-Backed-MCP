@@ -300,8 +300,8 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "5686e0abf357d6142f66d0bbb00339a19da054d68a07db758dffb2fe47d2a0c4",
-      "stanzaHash": "fbe27e852bbe40128913af964ace5f6495f2bbb0082b51b0bd0ae5b48f6f5ba2",
-      "reviewedStanzaHash": "fbe27e852bbe40128913af964ace5f6495f2bbb0082b51b0bd0ae5b48f6f5ba2",
+      "stanzaHash": "3cf7955f7468a4d0d5d4fdcb3802b3e6b3f9f248e744f1350a2a0ea99ab2a2e4",
+      "reviewedStanzaHash": "3cf7955f7468a4d0d5d4fdcb3802b3e6b3f9f248e744f1350a2a0ea99ab2a2e4",
       "amendments": [
         {
           "at": "2026-10-04T17:36:44.823Z",
@@ -309,8 +309,16 @@
           "reason": "Complete source-projection caller coverage requires updating this exact consumer assertion to authored startLine/endLine correction; production predicates unchanged.",
           "previousStanzaHash": "d1096131c5b7aaa884cd3bbdb72f9888fd89b4d8b5547f75890e16225f3cf29c",
           "stanzaHash": "fbe27e852bbe40128913af964ace5f6495f2bbb0082b51b0bd0ae5b48f6f5ba2"
+        },
+        {
+          "at": "2026-10-04T17:46:43.639Z",
+          "finding": "Cold review0: AnalysisTools.cs146-147 public descriptions contradict accepted equal aliases, same inaccurate-contract mechanism as modified helper summary.",
+          "reason": "Correct all same-mechanism alias descriptions in existing production Scope; no schema shape or predicate change.",
+          "previousStanzaHash": "fbe27e852bbe40128913af964ace5f6495f2bbb0082b51b0bd0ae5b48f6f5ba2",
+          "stanzaHash": "3cf7955f7468a4d0d5d4fdcb3802b3e6b3f9f248e744f1350a2a0ea99ab2a2e4"
         }
-      ]
+      ],
+      "reviewedHead": null
     },
     {
       "id": "resource-argument-refusals-public-message",
@@ -1181,7 +1189,7 @@
       "file-create-and-scaffold-refusals-public-message": "c8817d6666a1e14f1f452cd5c23c8b43d471a6e84f0f2bd07a5a7ea5834dcd8d",
       "get-prompt-text-unknown-prompt-public-message": "6b265b0b940c5b316584361d77ff80ce46d9d327fe4e12ddf6f45f7d5fbe10f5",
       "tool-scripting-undo-workflow-argument-refusals-public-message": "b8685312bcb9c8fe06487f82e0079baca0c768a11714cfb7cd34476ec2f70696",
-      "symbol-locator-and-source-text-tool-argument-refusals-public-message": "fbe27e852bbe40128913af964ace5f6495f2bbb0082b51b0bd0ae5b48f6f5ba2",
+      "symbol-locator-and-source-text-tool-argument-refusals-public-message": "3cf7955f7468a4d0d5d4fdcb3802b3e6b3f9f248e744f1350a2a0ea99ab2a2e4",
       "resource-argument-refusals-public-message": "c6f03188abf5fa68f5fd1b361324f673fa8512766c60e9188b837100a8bbc511",
       "root-boundary-argument-refusals-public-message": "12ce06bdf57ad1125f5e92c5c246004cdb985b10835d774b72fa58dd4b333214",
       "dispatch-and-tool-argument-refusals-public-message": "ef230e01430bf09ee09eb91063962783c6b1b5d2a1395ff83effb3150bd1c968",
@@ -1194,8 +1202,8 @@
     }
   },
   "conflictGraphInputHash": "d8cc60859909341a1fe269584901aec43ebf07370c6ba2369f72f23d0f1f2042",
-  "planHash": "01ec7b428aa62d04fbab0dd75958ba539cc38ecd96da610735f0479456b58ab0",
+  "planHash": "a0ba3922aedd1198cb5a7e2e5c2bef72074bac8b2b1d329ad15802d48f65b3aa",
   "backlogSnapshotHash": "aa7593fb4e2c3b59453248d6223301e471be1161179df7994320f52ec840df5f",
-  "reviewedPlanHash": "01ec7b428aa62d04fbab0dd75958ba539cc38ecd96da610735f0479456b58ab0",
+  "reviewedPlanHash": "a0ba3922aedd1198cb5a7e2e5c2bef72074bac8b2b1d329ad15802d48f65b3aa",
   "reviewedBacklogSnapshotHash": "aa7593fb4e2c3b59453248d6223301e471be1161179df7994320f52ec840df5f"
 }
