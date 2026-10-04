@@ -132,7 +132,8 @@
           "previousStanzaHash": "9de2879181bed07a03a3ac087af2eb91d08ba1015c32196dc09b13a9e0834872",
           "stanzaHash": "c8817d6666a1e14f1f452cd5c23c8b43d471a6e84f0f2bd07a5a7ea5834dcd8d"
         }
-      ]
+      ],
+      "reviewedHead": "f8c9ce79252293ed703bdd4a432aea872f4c472c"
     },
     {
       "id": "get-prompt-text-unknown-prompt-public-message",
