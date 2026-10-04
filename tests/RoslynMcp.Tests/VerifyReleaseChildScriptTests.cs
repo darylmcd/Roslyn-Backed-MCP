@@ -5,6 +5,39 @@ namespace RoslynMcp.Tests;
 [TestClass]
 public sealed class VerifyReleaseChildScriptTests
 {
+    [TestMethod]
+    [TestCategory("Process")]
+    public async Task VerifyRelease_ConcurrentInvocations_PreserveIndependentEnvironmentAndCleanupAsync()
+    {
+        var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
+        var roots = Enumerable.Range(0, 2).Select(_ => Path.Combine(
+            TestTempRoot.Current, nameof(VerifyReleaseChildScriptTests), Guid.NewGuid().ToString("N"))).ToArray();
+        try
+        {
+            var fixtures = roots.Select(root => WriteFixture(repositoryRoot, root,
+                new ReleaseCase("concurrent isolation", null, FailureMode.None, false, null, true))).ToArray();
+            var results = await Task.WhenAll(fixtures.Select(fixture => RunVerifyReleaseAsync(fixture, false)));
+            var privateRoots = new List<string>();
+            for (var i = 0; i < results.Length; i++)
+            {
+                Assert.AreEqual(0, results[i].ExitCode, results[i].StdOut + results[i].StdErr);
+                var tempRootLine = results[i].StdOut.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+                    .Single(line => line.StartsWith("Testhost temp root: ", StringComparison.Ordinal));
+                var privateRoot = tempRootLine["Testhost temp root: ".Length..].Trim();
+                AssertPrivateTestRoot(privateRoot);
+                Assert.IsFalse(Directory.Exists(privateRoot));
+                privateRoots.Add(privateRoot);
+                var arguments = await File.ReadAllTextAsync(fixtures[i].DotnetArgumentsPath);
+                Assert.IsFalse(arguments.Contains("build-server", StringComparison.Ordinal));
+            }
+            Assert.AreNotEqual(privateRoots[0], privateRoots[1]);
+        }
+        finally
+        {
+            foreach (var root in roots) TestFixtureFileSystem.DeleteDirectoryIfExists(root);
+        }
+    }
+
     private const int _childFailureExitCode = 37;
 
     private static readonly ChildScript[] _childScripts =
@@ -111,10 +144,8 @@ public sealed class VerifyReleaseChildScriptTests
                 Assert.IsFalse(
                     failedPreflightDotnetArguments.Contains("restore", StringComparison.Ordinal),
                     $"{testCase.Name}: restore began after a failed preflight.");
-                StringAssert.Contains(
-                    failedPreflightDotnetArguments,
-                    "build-server",
-                    $"{testCase.Name}: outer cleanup did not attempt build-server shutdown.");
+                Assert.IsFalse(failedPreflightDotnetArguments.Contains("build-server", StringComparison.Ordinal),
+                    "Preflight failure must not shut down another agent's build servers.");
                 StringAssert.Contains(combinedOutput, testCase.ExpectedText!, diagnostic);
                 if (testCase.FailureMode == FailureMode.Exit)
                 {
@@ -311,9 +342,9 @@ public sealed class VerifyReleaseChildScriptTests
 
                 var dotnetArguments = await File.ReadAllTextAsync(fixture.DotnetArgumentsPath);
                 Assert.AreEqual(
-                    1,
+                    0,
                     dotnetArguments.Split("build-server", StringSplitOptions.None).Length - 1,
-                    "Verifier cleanup must attempt build-server shutdown exactly once.");
+                    "Verifier must never shut down shared build servers.");
             }
             finally
             {
@@ -355,9 +386,9 @@ public sealed class VerifyReleaseChildScriptTests
                 Assert.AreNotEqual(0, result.ExitCode, diagnostic);
                 var dotnetArguments = await File.ReadAllTextAsync(fixture.DotnetArgumentsPath);
                 Assert.AreEqual(
-                    1,
+                    0,
                     dotnetArguments.Split("build-server", StringSplitOptions.None).Length - 1,
-                    $"{diagnostic}: build-server shutdown must run exactly once.");
+                    $"{diagnostic}: verifier must not shut down shared build servers.");
                 var tempRootPrefix = "Testhost temp root: ";
                 var tempRootLine = result.StdOut
                     .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
@@ -631,6 +662,11 @@ public sealed class VerifyReleaseChildScriptTests
             Path.Combine(fixtureRoot, "fake-dotnet.ps1"),
             """
             function global:dotnet {
+                if ($env:MSBUILDDISABLENODEREUSE -ne '1' -or
+                    $env:DOTNET_CLI_USE_MSBUILD_SERVER -ne '0' -or
+                    $env:UseSharedCompilation -ne 'false') {
+                    throw 'Verifier must disable shared build servers before every dotnet phase.'
+                }
                 $arguments = @($args)
                 [System.IO.File]::WriteAllText($env:ROSLYNMCP_DOTNET_SENTINEL, 'invoked')
                 [System.IO.File]::AppendAllText(
@@ -715,13 +751,26 @@ public sealed class VerifyReleaseChildScriptTests
             )
 
             . (Join-Path $PSScriptRoot 'fake-dotnet.ps1')
-            & (Join-Path $PSScriptRoot 'eng/verify-release.ps1') `
+            $before = @{}
+            foreach ($name in @('MSBUILDDISABLENODEREUSE', 'DOTNET_CLI_USE_MSBUILD_SERVER', 'UseSharedCompilation')) {
+                $before[$name] = [Environment]::GetEnvironmentVariable($name)
+            }
+            try {
+                & (Join-Path $PSScriptRoot 'eng/verify-release.ps1') `
                 -NoCoverage:$NoCoverage `
                 -RequireConsumedFragments:$RequireConsumedFragments `
                 -TestShardOnly:$TestShardOnly `
                 -TestShardIndex $TestShardIndex `
                 -TestShardCount $TestShardCount `
                 -OutputRoot $OutputRoot
+            }
+            finally {
+                foreach ($name in $before.Keys) {
+                    if ([Environment]::GetEnvironmentVariable($name) -cne $before[$name]) {
+                        throw "Verifier did not restore $name."
+                    }
+                }
+            }
             """);
         return wrapperPath;
     }
@@ -856,6 +905,9 @@ public sealed class VerifyReleaseChildScriptTests
         {
             ["ROSLYNMCP_DOTNET_SENTINEL"] = fixture.DotnetSentinelPath,
             ["ROSLYNMCP_DOTNET_ARGUMENTS"] = fixture.DotnetArgumentsPath,
+            ["MSBUILDDISABLENODEREUSE"] = "0",
+            ["DOTNET_CLI_USE_MSBUILD_SERVER"] = "1",
+            ["UseSharedCompilation"] = "true",
         };
         if (cleanupMode is not null)
         {

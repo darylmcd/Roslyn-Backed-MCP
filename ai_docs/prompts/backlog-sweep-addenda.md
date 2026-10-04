@@ -25,7 +25,7 @@ per_edit_compile: mcp__roslyn__compile_check
 per_edit_test: mcp__roslyn__test_run --filter "<test-class-or-namespace>"
 fallback_compile: dotnet build RoslynMcp.slnx -c Release -p:TreatWarningsAsErrors=true
 fallback_test: dotnet test --filter "<filter>"
-worktreeLockRelease: dotnet build-server shutdown
+worktreeLockRelease: ""
 skipCiToken: ""   # NONE — see CI gate note below
 ```
 
@@ -38,7 +38,7 @@ skipCiToken: ""   # NONE — see CI gate note below
 - `verify-changelog-fragments.ps1` runs standalone on docs-only PRs and as a `verify-release.ps1` child step on code PRs; running it explicitly first (as `ci_equivalent` does) is correct on both.
 - **One-command local equivalent: `just ci`.** Its measured cost, timeout/background mode, hook runtime, exact filter, regeneration companions, flake registry, and `parallelSafe` value live in [AGENTS.md § Validation runtime](../../AGENTS.md#validation-runtime). Keep the machine-readable `ci_equivalent` list for consumers that must run or skip individual gates; `just ci` passes `-NoCoverage -ExcludeNetworkTests` through `verify-release-pr`.
 - **Required check, no skip token.** The ruleset requires one status context, `validate`, produced by `validate-gate` on `pull_request` events. A `[skip ci]` token in any commit subject leaves it never-reported and the PR permanently BLOCKED, so `skipCiToken` is **empty**: never put a skip token in a commit on a PR branch here.
-- `dotnet build-server shutdown` releases `testhost.exe` / `VBCSCompiler.exe` locks on `tests/RoslynMcp.Tests/bin/{Debug,Release}/net10.0/`. The parent `/ship` owner invokes it when its cleanup needs it; this addendum must never prescribe branch or worktree deletion. Check its exit status, not its stdout.
+- Validation disables reusable build servers within its invocation. Worktree cleanup must not issue a machine-wide build-server shutdown; release only resources with verified task ownership.
 
 ## Read-side tool primer
 

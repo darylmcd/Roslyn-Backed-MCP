@@ -11,29 +11,9 @@ namespace RoslynMcp.Tests;
 /// job-timeout kills. <see cref="DotnetCommandRunner"/> now (a) disables node reuse for
 /// spawned commands and (b) bounds the post-exit stream drain.
 /// </summary>
-// donotparallelize-audit-wave-07: ClassInit/ClassCleanup call ShutdownBuildServersAsync,
-// which runs `dotnet build-server shutdown` — a machine-global operation that kills every
-// warm MSBuild worker node AND VBCSCompiler process on the host, not just this class's own.
-// A concurrently running class whose build relies on a warm build server would see it
-// vanish mid-run, and RunAsync_Returns_Promptly_When_Build_Server_Descendants_Hold_The_Pipe
-// deliberately spawns `-nodeReuse:true` MSBuild worker nodes that outlive the test. Both are
-// process-tree-global side effects outside the synchronized WorkspaceIdCache, so this class
-// must stay serialized against every other test class in the assembly.
-[DoNotParallelize]
 [TestClass]
 public class DotnetCommandRunnerPipeLifetimeTests
 {
-    [ClassInitialize]
-    public static async Task ClassInit(TestContext _)
-    {
-        // Kill every warm build server (MSBuild node pool AND VBCSCompiler) so the
-        // regression test's build deterministically spawns FRESH server processes — only
-        // freshly spawned descendants inherit this process's redirected pipe handles
-        // (pre-existing servers hold someone else's), and the inherited-handle case is
-        // the one the bounded post-exit drain exists for.
-        await ShutdownBuildServersAsync();
-    }
-
     [TestMethod]
     public void CreateStartInfo_Disables_MSBuild_Node_Reuse()
     {
@@ -132,63 +112,115 @@ public class DotnetCommandRunnerPipeLifetimeTests
     }
 
     [TestMethod]
-    [Timeout(240_000)]
-    public async Task RunAsync_Returns_Promptly_When_Build_Server_Descendants_Hold_The_Pipe()
+    [TestCategory("Process")]
+    [Timeout(90_000)]
+    public async Task RunAsync_ConcurrentOwnedDescendants_HoldPipesWithoutDisruptingEachOtherAsync()
     {
-        // End-to-end canary: a cold -nodeReuse:true -m:2 build can spawn MSBuild worker
-        // nodes / VBCSCompiler that inherit the redirected pipe handles and outlive the
-        // child (whether they do depends on SDK version and server warmth, so this cannot
-        // deterministically reproduce the hang everywhere — the two unit tests above cover
-        // the drain semantics deterministically). If the environment does produce a
-        // pipe-holding descendant, a drain regression turns this into a clean [Timeout]
-        // failure instead of a 15-minute suite stall.
-        var repoRoot = TestFixtureFileSystem.FindRepositoryRoot();
-        var solutionPath = TestFixtureFileSystem.FindFixturePath(
-            repoRoot, "SampleSolution", "SampleSolution.slnx", "SampleSolution.sln");
-        var workingDirectory = Path.GetDirectoryName(solutionPath)!;
-        var runner = new DotnetCommandRunner();
-
-        var execution = await runner.RunAsync(
-            workingDirectory,
-            solutionPath,
-            ["build", solutionPath, "-m:2", "-nodeReuse:true", "--nologo"],
-            CancellationToken.None);
-
-        Assert.AreEqual(0, execution.ExitCode, execution.StdErr);
-        Assert.IsTrue(execution.Succeeded);
-        Assert.IsFalse(string.IsNullOrWhiteSpace(execution.StdOut),
-            "The bounded drain must still capture the child's own output.");
-    }
-
-    [ClassCleanup]
-    public static async Task ClassCleanup()
-    {
-        // The regression test intentionally leaves -nodeReuse:true worker nodes behind;
-        // shut them down so they don't linger 15 minutes on the host (the exact resource
-        // rot the runner's MSBUILDDISABLENODEREUSE default prevents elsewhere).
-        await ShutdownBuildServersAsync();
-    }
-
-    private static async Task ShutdownBuildServersAsync()
-    {
-        var repoRoot = TestFixtureFileSystem.FindRepositoryRoot();
-        var runner = new DotnetCommandRunner();
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-
+        var root = Path.Combine(Path.GetTempPath(), nameof(DotnetCommandRunnerPipeLifetimeTests), Guid.NewGuid().ToString("N"));
+        var children = new System.Diagnostics.Process?[2];
         try
         {
-            var execution = await runner.RunAsync(
-                repoRoot,
-                "build-server",
-                ["build-server", "shutdown"],
-                timeout.Token);
-            Assert.AreEqual(0, execution.ExitCode, execution.StdErr + execution.StdOut);
+            var tasks = Enumerable.Range(0, 2).Select(async index =>
+            {
+                var folder = Path.Combine(root, index.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                Directory.CreateDirectory(folder);
+                await File.WriteAllTextAsync(Path.Combine(folder, "child.ps1"), """
+                    [IO.File]::WriteAllText((Join-Path $PSScriptRoot 'ready'), 'ready')
+                    $deadline = [DateTime]::UtcNow.AddSeconds(60)
+                    while (-not [IO.File]::Exists((Join-Path $PSScriptRoot 'release'))) {
+                        if ([DateTime]::UtcNow -gt $deadline) { exit 91 }
+                        Start-Sleep -Milliseconds 50
+                    }
+                    """);
+                await File.WriteAllTextAsync(Path.Combine(folder, "parent.ps1"), """
+                    $info = [Diagnostics.ProcessStartInfo]::new()
+                    $info.FileName = (Get-Process -Id $PID).Path
+                    $info.UseShellExecute = $false
+                    $info.CreateNoWindow = $true
+                    $info.ArgumentList.Add('-NoProfile')
+                    $info.ArgumentList.Add('-File')
+                    $info.ArgumentList.Add((Join-Path $PSScriptRoot 'child.ps1'))
+                    $child = [Diagnostics.Process]::Start($info)
+                    [IO.File]::WriteAllText((Join-Path $PSScriptRoot 'pid.tmp'), $child.Id.ToString())
+                    [IO.File]::Move((Join-Path $PSScriptRoot 'pid.tmp'), (Join-Path $PSScriptRoot 'pid'))
+                    $deadline = [DateTime]::UtcNow.AddSeconds(15)
+                    while (-not [IO.File]::Exists((Join-Path $PSScriptRoot 'ready'))) {
+                        if ([DateTime]::UtcNow -gt $deadline) { exit 92 }
+                        Start-Sleep -Milliseconds 50
+                    }
+                    [Console]::Out.WriteLine('parent-output')
+                    [Console]::Error.WriteLine('parent-error')
+                    """);
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                var executionTask = new DotnetCommandRunner().RunAsync(
+                    folder,
+                    "pipe-probe",
+                    ["-NoProfile", "-File", Path.Combine(folder, "parent.ps1")],
+                    earlyKillPatterns: null,
+                    executablePath: OperatingSystem.IsWindows() ? "pwsh.exe" : "pwsh",
+                    timeout.Token);
+                var pidPath = Path.Combine(folder, "pid");
+                try
+                {
+                    while (!File.Exists(pidPath))
+                    {
+                        await Task.Delay(50, timeout.Token);
+                    }
+                    children[index] = System.Diagnostics.Process.GetProcessById(int.Parse(
+                        await File.ReadAllTextAsync(pidPath, timeout.Token), System.Globalization.CultureInfo.InvariantCulture));
+                    // Pin the owned process identity before its parent can exit; cleanup never
+                    // reopens a potentially recycled PID.
+                    _ = children[index]!.SafeHandle;
+                }
+                catch
+                {
+                    timeout.Cancel();
+                    try { await executionTask; }
+                    catch (OperationCanceledException) when (timeout.IsCancellationRequested) { }
+                    throw;
+                }
+                return await executionTask;
+            }).ToArray();
+            var executions = await Task.WhenAll(tasks);
+            for (var i = 0; i < executions.Length; i++)
+            {
+                var child = children[i]!;
+                Assert.AreEqual(0, executions[i].ExitCode, executions[i].StdErr);
+                StringAssert.Contains(executions[i].StdOut, "parent-output");
+                StringAssert.Contains(executions[i].StdErr, "parent-error");
+                Assert.IsTrue(executions[i].DurationMs >= DotnetCommandRunner.PostExitDrainGracePeriod.TotalMilliseconds,
+                    "The probe must exercise the bounded drain, rather than receive an early pipe EOF.");
+                Assert.IsFalse(child.HasExited, "The runner must finish while its descendant still holds both pipes.");
+            }
+
+            await File.WriteAllTextAsync(Path.Combine(root, "0", "release"), "release");
+            using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            await children[0]!.WaitForExitAsync(cleanup.Token);
+            Assert.AreEqual(0, children[0]!.ExitCode);
+            Assert.IsFalse(children[1]!.HasExited, "Cleaning one agent's child must preserve the other agent's child.");
         }
-        catch (OperationCanceledException exception) when (timeout.IsCancellationRequested)
+        finally
         {
-            throw new TimeoutException(
-                "dotnet build-server shutdown did not complete within 30 seconds.",
-                exception);
+            // Release only descendants created by this test, including on assertion/cancellation failure.
+            for (var i = 0; i < 2; i++)
+            {
+                var folder = Path.Combine(root, i.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                if (!Directory.Exists(folder)) continue;
+                await File.WriteAllTextAsync(Path.Combine(folder, "release"), "release");
+            }
+            await Task.WhenAll(children.OfType<System.Diagnostics.Process>().Select(async child =>
+            {
+                try
+                {
+                    using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                    await child.WaitForExitAsync(cleanup.Token);
+                }
+                finally
+                {
+                    child.Dispose();
+                }
+            }));
+            TestFixtureFileSystem.DeleteDirectoryIfExists(root);
         }
     }
 
