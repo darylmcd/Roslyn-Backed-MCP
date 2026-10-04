@@ -233,9 +233,9 @@
       "dependsOn": [],
       "branch": null,
       "worktreePath": null,
-      "prUrl": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1746",
       "mergedAt": null,
-      "notes": "Immutable current batch base defd4546f5a31b1ef68bbdc2c74fbc56aa64b99c; ready sibling after prompt PR1743 landed.",
+      "notes": "Executor exact-head 9b43ad36e5c70113eb3cb5df52732250f4570314; complete production DI fixture companions; awaiting cold review and hosted full validation.",
       "fileSetHash": "84840172eb975ef3bc0179d9cb13eedeae8755e1f253fa18305cffd7c63e84f8",
       "stanzaHash": "b8685312bcb9c8fe06487f82e0079baca0c768a11714cfb7cd34476ec2f70696",
       "reviewedStanzaHash": "b8685312bcb9c8fe06487f82e0079baca0c768a11714cfb7cd34476ec2f70696",
@@ -247,7 +247,8 @@
           "previousStanzaHash": "a1081d96d56fc0784e4dc07e5efc744ec78cd7b0ddf5efd5425e502130fe49bc",
           "stanzaHash": "b8685312bcb9c8fe06487f82e0079baca0c768a11714cfb7cd34476ec2f70696"
         }
-      ]
+      ],
+      "reviewedHead": "9b43ad36e5c70113eb3cb5df52732250f4570314"
     },
     {
       "id": "symbol-locator-and-source-text-tool-argument-refusals-public-message",
