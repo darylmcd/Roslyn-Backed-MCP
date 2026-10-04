@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-04T15:48:58Z
+**updated_at:** 2026-10-04T16:36:00Z
 
 ## Agent contract
 
@@ -150,6 +150,7 @@
 | `format-range-service-refusals-public-message` | Medium | — | **Publish safe formatter range refusals** — name coordinate bounds and projection recovery through the error envelope. [type: bug] [source: change-signature-refusals-public-message] | S | items/format-range-service-refusals-public-message.md |
 | `change-signature-omitted-optional-binding` | Medium | — | **Preserve binding across omitted optional arguments** — repair add/reorder positional rewriting using semantic parameter bindings. [type: bug] [source: backlog-remediate-20261004] | S | items/change-signature-omitted-optional-binding.md |
 | `cross-project-public-refusals-echo-input` | Medium | — | **Remove caller detail from public cross-project refusals** — publish path/input-free corrections for unresolved type/project names and existing destinations while preserving wire categories. [type: bug] [source: backlog-remediate adjacent review 2026-10-04] | S | items/cross-project-public-refusals-echo-input.md |
+| `workspace-close-isolated-nuget-handles` | Medium | — | Release isolated NuGet cache handles when the last workspace closes while the MCP server stays alive. [type: bug] [source: SnipCue remediation20261004 resource receipts] | M | items/workspace-close-isolated-nuget-handles.md |
 
 ## Low
 
