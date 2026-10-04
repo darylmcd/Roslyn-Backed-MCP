@@ -70,7 +70,7 @@
     {
       "id": "file-create-and-scaffold-refusals-public-message",
       "order": 2,
-      "status": "in-review",
+      "status": "merged",
       "backlogRowsClosed": [
         "file-create-and-scaffold-refusals-public-message"
       ],
@@ -112,7 +112,7 @@
       "branch": "remediation/file-create-and-scaffold-refusals-public-message",
       "worktreePath": ".worktrees/file-create-and-scaffold-refusals-public-message",
       "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1741",
-      "mergedAt": null,
+      "mergedAt": "2026-10-04T15:24:12Z",
       "notes": null,
       "fileSetHash": "b71e7c4fee66c9b04353b4b24d5e6496c6d627d12fa14f4c7fc90638cd16d033",
       "stanzaHash": "c8817d6666a1e14f1f452cd5c23c8b43d471a6e84f0f2bd07a5a7ea5834dcd8d",
@@ -133,7 +133,14 @@
           "stanzaHash": "c8817d6666a1e14f1f452cd5c23c8b43d471a6e84f0f2bd07a5a7ea5834dcd8d"
         }
       ],
-      "reviewedHead": "f8c9ce79252293ed703bdd4a432aea872f4c472c"
+      "reviewedHead": "f8c9ce79252293ed703bdd4a432aea872f4c472c",
+      "scratchRemoved": false,
+      "githubGate": {
+        "baseOid": "8adde0c5c3823704b4ffd1a8253084439ecfca5b",
+        "headOid": "f8c9ce79252293ed703bdd4a432aea872f4c472c",
+        "tree": "1f6bd98a4d0ae305bf04f498b9aacaafa1237d94",
+        "checksVerifiedAt": "2026-10-04T15:24:09.399Z"
+      }
     },
     {
       "id": "get-prompt-text-unknown-prompt-public-message",
