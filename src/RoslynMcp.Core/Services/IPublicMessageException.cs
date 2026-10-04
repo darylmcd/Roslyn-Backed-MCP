@@ -10,7 +10,8 @@ namespace RoslynMcp.Core.Services;
 /// <remarks>
 /// Implemented by <see cref="PublicArgumentException"/> and
 /// <see cref="PublicInvalidOperationException"/>. Implementers must derive directly from the BCL
-/// exception whose name the envelope reports.
+/// exception whose name the envelope reports. <see cref="PublicArgumentException"/> additionally
+/// preserves its trusted prompt-binding wire identity through its dedicated factory.
 /// </remarks>
 public interface IPublicMessageException
 {
