@@ -66,22 +66,24 @@
       "backlogRowsClosed": [
         "file-create-and-scaffold-refusals-public-message"
       ],
-      "productionFilesTouched": 5,
+      "productionFilesTouched": 6,
       "productionFiles": [
         "src/RoslynMcp.Roslyn/Services/FileOperationService.cs",
         "src/RoslynMcp.Roslyn/Services/BatchTestScaffolder.cs",
         "src/RoslynMcp.Roslyn/Helpers/FileSystemPath.cs",
         "src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs",
-        "src/RoslynMcp.Roslyn/Services/NamespaceRelocationService.cs"
+        "src/RoslynMcp.Roslyn/Services/NamespaceRelocationService.cs",
+        "src/RoslynMcp.Roslyn/Helpers/ProjectRelativePathValidation.cs"
       ],
-      "testFilesAdded": 6,
+      "testFilesAdded": 7,
       "testFiles": [
         "tests/RoslynMcp.Tests/FileOperationIntegrationTests.cs",
         "tests/RoslynMcp.Tests/ScaffoldingFirstTestFileTests.cs",
         "tests/RoslynMcp.Tests/ScaffoldingIntegrationTests.cs",
         "tests/RoslynMcp.Tests/FileSystemPathTests.cs",
         "tests/RoslynMcp.Tests/CrossProjectRefactoringIntegrationTests.cs",
-        "tests/RoslynMcp.Tests/NamespaceRelocationTests.cs"
+        "tests/RoslynMcp.Tests/NamespaceRelocationTests.cs",
+        "tests/RoslynMcp.Tests/ProjectRelativePathValidationTests.cs"
       ],
       "docFiles": [
         "changelog.d/file-create-and-scaffold-refusals-public-message.md"
@@ -90,7 +92,7 @@
       "estimatedContextTokens": 60000,
       "toolPolicy": "edit-only",
       "scheduleHint": null,
-      "fanoutEstimate": 5,
+      "fanoutEstimate": 6,
       "fanoutOversize": false,
       "deepenerStatus": "ok",
       "deepenerFlags": {
@@ -104,9 +106,18 @@
       "prUrl": null,
       "mergedAt": null,
       "notes": null,
-      "fileSetHash": "03c9d24a46c6307014943887059cc4f6262641b0b5008d32a06c8a346f42e4c0",
-      "stanzaHash": "c06a924875f8b54528052b1a01cb1ef8250b9b11bf5bf52ad4e57188863902ba",
-      "reviewedStanzaHash": "c06a924875f8b54528052b1a01cb1ef8250b9b11bf5bf52ad4e57188863902ba"
+      "fileSetHash": "b71e7c4fee66c9b04353b4b24d5e6496c6d627d12fa14f4c7fc90638cd16d033",
+      "stanzaHash": "9de2879181bed07a03a3ac087af2eb91d08ba1015c32196dc09b13a9e0834872",
+      "reviewedStanzaHash": "9de2879181bed07a03a3ac087af2eb91d08ba1015c32196dc09b13a9e0834872",
+      "amendments": [
+        {
+          "at": "2026-10-04T13:38:17.518Z",
+          "finding": "ProjectRelativePathValidation.cs:76-83 already implements strict descendant validation; a new independent FileSystemPath implementation would duplicate it.",
+          "reason": "Extract and reuse the existing predicate per Standing Directives 1/6; include its existing validator and test companion without changing that failure contract.",
+          "previousStanzaHash": "c06a924875f8b54528052b1a01cb1ef8250b9b11bf5bf52ad4e57188863902ba",
+          "stanzaHash": "9de2879181bed07a03a3ac087af2eb91d08ba1015c32196dc09b13a9e0834872"
+        }
+      ]
     },
     {
       "id": "get-prompt-text-unknown-prompt-public-message",
@@ -1130,7 +1141,7 @@
     "status": "passed-with-warnings",
     "stanzaHashes": {
       "argument-exception-throw-sites-lack-public-message": "919bee9356f9cda6aea7dcc2cfa21a644aabe8a2da829f9967705647422db863",
-      "file-create-and-scaffold-refusals-public-message": "c06a924875f8b54528052b1a01cb1ef8250b9b11bf5bf52ad4e57188863902ba",
+      "file-create-and-scaffold-refusals-public-message": "9de2879181bed07a03a3ac087af2eb91d08ba1015c32196dc09b13a9e0834872",
       "get-prompt-text-unknown-prompt-public-message": "6b265b0b940c5b316584361d77ff80ce46d9d327fe4e12ddf6f45f7d5fbe10f5",
       "tool-scripting-undo-workflow-argument-refusals-public-message": "a1081d96d56fc0784e4dc07e5efc744ec78cd7b0ddf5efd5425e502130fe49bc",
       "symbol-locator-and-source-text-tool-argument-refusals-public-message": "d1096131c5b7aaa884cd3bbdb72f9888fd89b4d8b5547f75890e16225f3cf29c",
@@ -1145,9 +1156,9 @@
       "suppression-argument-refusals-public-message": "dc22bf053f48f0b679f4af4a67cd32698d8856cbf315795afeabf2ce8743c67c"
     }
   },
-  "conflictGraphInputHash": "3bb1cf2e7153e63cb0d174c67c7287587be2ce1803454f6b083d28b36d197557",
-  "planHash": "4163107cb8a7a145c43703a3f47b0d0c49cc66b6857ba7b748b688d9349f29cb",
-  "backlogSnapshotHash": "133962bd179708a6f08387eceed5e47d6fcf75b9b2035c9232a9d17a6d05ec69",
-  "reviewedPlanHash": "4163107cb8a7a145c43703a3f47b0d0c49cc66b6857ba7b748b688d9349f29cb",
-  "reviewedBacklogSnapshotHash": "133962bd179708a6f08387eceed5e47d6fcf75b9b2035c9232a9d17a6d05ec69"
+  "conflictGraphInputHash": "d3f5a507c7dbefa4c0c0c9d55edcdd029a56f0bec67f57ea40582aa6b3d67892",
+  "planHash": "e9b40ce06cf42c8cd4ee0d2b7d8a58f1dfdd3b2bce7674c796fd49a1ae1c1b14",
+  "backlogSnapshotHash": "7e7b72ab38048ba57725b00ea119733bffc2c22d2f8449ba6be9c917b2146333",
+  "reviewedPlanHash": "e9b40ce06cf42c8cd4ee0d2b7d8a58f1dfdd3b2bce7674c796fd49a1ae1c1b14",
+  "reviewedBacklogSnapshotHash": "7e7b72ab38048ba57725b00ea119733bffc2c22d2f8449ba6be9c917b2146333"
 }
