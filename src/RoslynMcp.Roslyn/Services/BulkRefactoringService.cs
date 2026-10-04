@@ -227,10 +227,9 @@ public sealed class BulkRefactoringService : IBulkRefactoringService
             ?? throw new InvalidOperationException(
                 $"Could not resolve newMethod '{newMethod}'. Ensure the fully-qualified type name and parameter-type list match an existing method overload.");
 
-        // Build index mapping: newArgs[i] = oldArgs[indexMap[i]]. Match the new method's
-        // parameter types against the old method's by type-display (normalised to the
-        // symbol's display string) — the caller's literal type-list text may be a short
-        // or alternate form, but the resolved symbols let us compare normalised types.
+        // Validate a parameter-name bijection and describe each new parameter's original
+        // position in the preview. Call-site rewriting uses semantic argument bindings
+        // and target parameter names to preserve the caller's lexical evaluation order.
         var indexMap = BuildArgumentIndexMap(oldMethodSymbol, newMethodSymbol);
 
         var references = await SymbolFinder.FindReferencesAsync(oldMethodSymbol, solution, ct).ConfigureAwait(false);
