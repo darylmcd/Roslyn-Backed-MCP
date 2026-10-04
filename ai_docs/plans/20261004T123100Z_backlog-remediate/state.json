@@ -296,7 +296,7 @@
       "dependsOn": [],
       "branch": "remediation/symbol-locator-and-source-text-tool-argument-refusals-public-message",
       "worktreePath": ".worktrees/symbol-locator-and-source-text-tool-argument-refusals-public-message",
-      "prUrl": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1748",
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "5686e0abf357d6142f66d0bbb00339a19da054d68a07db758dffb2fe47d2a0c4",
