@@ -719,7 +719,7 @@
     {
       "id": "edit-service-argument-refusals-public-message",
       "order": 14,
-      "status": "in-review",
+      "status": "merged",
       "backlogRowsClosed": [
         "edit-service-argument-refusals-public-message"
       ],
@@ -749,15 +749,22 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/edit-service-argument-refusals-public-message",
       "worktreePath": null,
       "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1751",
-      "mergedAt": null,
+      "mergedAt": "2026-10-04T21:39:44Z",
       "notes": null,
       "fileSetHash": "c792b4252cef1a4ee41d1f32f7592c43f9c5b8162ded73d37fb2eed0f7d2fc21",
       "stanzaHash": "2e9605f85bd0feb3e3cd6ce6e7ea5efcc48a8af6a53ac6953d2a87ee28c325cd",
       "reviewedStanzaHash": "2e9605f85bd0feb3e3cd6ce6e7ea5efcc48a8af6a53ac6953d2a87ee28c325cd",
-      "reviewedHead": "1b6333c734e5aa45744ce0cb72c812e4d07c457d"
+      "reviewedHead": "1b6333c734e5aa45744ce0cb72c812e4d07c457d",
+      "scratchRemoved": false,
+      "githubGate": {
+        "baseOid": "bc768a5c4bd39ca9a4ed37c064dedaea6ab653d3",
+        "headOid": "1b6333c734e5aa45744ce0cb72c812e4d07c457d",
+        "tree": "24bb19f1d4a219fc175456b2da64d0ba978b6ac0",
+        "checksVerifiedAt": "2026-10-04T21:39:40.706Z"
+      }
     },
     {
       "id": "suppression-argument-refusals-public-message",
