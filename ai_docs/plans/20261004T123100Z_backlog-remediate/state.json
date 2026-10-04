@@ -208,10 +208,12 @@
         "src/RoslynMcp.Host.Stdio/Tools/UndoTools.cs",
         "src/RoslynMcp.Host.Stdio/Tools/WorkflowRecommendationTools.cs"
       ],
-      "testFilesAdded": 2,
+      "testFilesAdded": 4,
       "testFiles": [
         "tests/RoslynMcp.Tests/ErrorResponseObservabilityTests.cs",
-        "tests/RoslynMcp.Tests/WorkflowRecommendationToolsTests.cs"
+        "tests/RoslynMcp.Tests/WorkflowRecommendationToolsTests.cs",
+        "tests/RoslynMcp.Tests/TestInfrastructure/TestServiceContainer.cs",
+        "tests/RoslynMcp.Tests/TestBase.cs"
       ],
       "docFiles": [
         "changelog.d/tool-scripting-undo-workflow-argument-refusals-public-message.md"
@@ -234,9 +236,18 @@
       "prUrl": null,
       "mergedAt": null,
       "notes": "Immutable current batch base defd4546f5a31b1ef68bbdc2c74fbc56aa64b99c; ready sibling after prompt PR1743 landed.",
-      "fileSetHash": "8786b96a1cb6f35fa652f726d34ade7851946cc4e92c443aaa488d2e022fd3a6",
-      "stanzaHash": "a1081d96d56fc0784e4dc07e5efc744ec78cd7b0ddf5efd5425e502130fe49bc",
-      "reviewedStanzaHash": "a1081d96d56fc0784e4dc07e5efc744ec78cd7b0ddf5efd5425e502130fe49bc"
+      "fileSetHash": "84840172eb975ef3bc0179d9cb13eedeae8755e1f253fa18305cffd7c63e84f8",
+      "stanzaHash": "b8685312bcb9c8fe06487f82e0079baca0c768a11714cfb7cd34476ec2f70696",
+      "reviewedStanzaHash": "b8685312bcb9c8fe06487f82e0079baca0c768a11714cfb7cd34476ec2f70696",
+      "amendments": [
+        {
+          "at": "2026-10-04T16:39:33.913Z",
+          "finding": "Production DI registers undo workflow service but TestServiceContainer provider is private and exposes no typed accessor for real-service tool guard regressions.",
+          "reason": "Add required provider-resolved container property and get-only TestBase forwarder; include their lifecycle and binding consumers to verify the complete fixture companion.",
+          "previousStanzaHash": "a1081d96d56fc0784e4dc07e5efc744ec78cd7b0ddf5efd5425e502130fe49bc",
+          "stanzaHash": "b8685312bcb9c8fe06487f82e0079baca0c768a11714cfb7cd34476ec2f70696"
+        }
+      ]
     },
     {
       "id": "symbol-locator-and-source-text-tool-argument-refusals-public-message",
@@ -1151,7 +1162,7 @@
       "argument-exception-throw-sites-lack-public-message": "919bee9356f9cda6aea7dcc2cfa21a644aabe8a2da829f9967705647422db863",
       "file-create-and-scaffold-refusals-public-message": "c8817d6666a1e14f1f452cd5c23c8b43d471a6e84f0f2bd07a5a7ea5834dcd8d",
       "get-prompt-text-unknown-prompt-public-message": "6b265b0b940c5b316584361d77ff80ce46d9d327fe4e12ddf6f45f7d5fbe10f5",
-      "tool-scripting-undo-workflow-argument-refusals-public-message": "a1081d96d56fc0784e4dc07e5efc744ec78cd7b0ddf5efd5425e502130fe49bc",
+      "tool-scripting-undo-workflow-argument-refusals-public-message": "b8685312bcb9c8fe06487f82e0079baca0c768a11714cfb7cd34476ec2f70696",
       "symbol-locator-and-source-text-tool-argument-refusals-public-message": "d1096131c5b7aaa884cd3bbdb72f9888fd89b4d8b5547f75890e16225f3cf29c",
       "resource-argument-refusals-public-message": "c6f03188abf5fa68f5fd1b361324f673fa8512766c60e9188b837100a8bbc511",
       "root-boundary-argument-refusals-public-message": "12ce06bdf57ad1125f5e92c5c246004cdb985b10835d774b72fa58dd4b333214",
@@ -1164,9 +1175,9 @@
       "suppression-argument-refusals-public-message": "dc22bf053f48f0b679f4af4a67cd32698d8856cbf315795afeabf2ce8743c67c"
     }
   },
-  "conflictGraphInputHash": "d3f5a507c7dbefa4c0c0c9d55edcdd029a56f0bec67f57ea40582aa6b3d67892",
-  "planHash": "5292c3287d21cc2cfea0eb42877d101eb0e60ee780f98817c33cd41eed4fd3dc",
-  "backlogSnapshotHash": "7e7b72ab38048ba57725b00ea119733bffc2c22d2f8449ba6be9c917b2146333",
-  "reviewedPlanHash": "5292c3287d21cc2cfea0eb42877d101eb0e60ee780f98817c33cd41eed4fd3dc",
-  "reviewedBacklogSnapshotHash": "7e7b72ab38048ba57725b00ea119733bffc2c22d2f8449ba6be9c917b2146333"
+  "conflictGraphInputHash": "aaf06d1636681a142c234b0e9c9758c3c11701e4eb3c44ebedde0f6ba9f6f41b",
+  "planHash": "4ff9a04354288a22666f8f2ce6a46a2119d495e2e09eb73befa170022b743d0e",
+  "backlogSnapshotHash": "aa7593fb4e2c3b59453248d6223301e471be1161179df7994320f52ec840df5f",
+  "reviewedPlanHash": "4ff9a04354288a22666f8f2ce6a46a2119d495e2e09eb73befa170022b743d0e",
+  "reviewedBacklogSnapshotHash": "aa7593fb4e2c3b59453248d6223301e471be1161179df7994320f52ec840df5f"
 }
