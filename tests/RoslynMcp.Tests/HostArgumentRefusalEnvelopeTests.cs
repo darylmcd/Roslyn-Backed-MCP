@@ -158,6 +158,49 @@ public sealed class HostArgumentRefusalEnvelopeTests : IsolatedWorkspaceTestBase
             "startLine", $"startLine ({lineCount + 1}) is past the end of the file ({lineCount} lines).");
     }
 
+    [TestMethod]
+    public async Task DiagnosticAliases_AdvertisedMatchingValuesProduceEquivalentSuccess()
+    {
+        await using var harness = await ProductionParityMcpHarness.CreateAsync("host-diagnostic-alias-contract", "2025-11-25");
+        var (workspaceId, filePath, _) = await LoadWireWorkspaceAsync(harness);
+        var listed = await harness.Client.ListToolsAsync(new ListToolsRequestParams(), CancellationToken.None);
+        var schema = listed.Tools.Single(tool => tool.Name == "diagnostic_details").InputSchema;
+
+        JsonObject? expected = null;
+        foreach (var names in new[]
+        {
+            new[] { "line", "column" },
+            new[] { "startLine", "startColumn" },
+            new[] { "line", "column", "startLine", "startColumn" },
+        })
+        {
+            var args = new Dictionary<string, object?>
+            {
+                ["workspaceId"] = workspaceId,
+                ["filePath"] = filePath,
+                ["diagnosticId"] = "CS8019",
+            };
+            foreach (var name in names) args[name] = 1;
+            var result = await harness.Client.CallToolAsync("diagnostic_details", args, cancellationToken: CancellationToken.None);
+            Assert.IsFalse(result.IsError == true);
+            var payload = JsonNode.Parse(result.Content.OfType<TextContentBlock>().Single().Text)!.AsObject();
+            Assert.IsTrue(payload.ContainsKey("diagnostic"), payload.ToJsonString());
+            payload.Remove("_meta");
+            if (expected is null) expected = payload;
+            else Assert.IsTrue(JsonNode.DeepEquals(expected, payload), payload.ToJsonString());
+        }
+
+        foreach (var (primary, alias) in new[] { ("line", "startLine"), ("column", "startColumn") })
+        {
+            var description = schema.GetProperty("properties").GetProperty(primary).GetProperty("description").GetString()!;
+            StringAssert.Contains(description, primary);
+            StringAssert.Contains(description, alias);
+            StringAssert.Contains(description, "both");
+            StringAssert.Contains(description, "same value");
+            Assert.IsFalse(description.Contains("exactly one", StringComparison.OrdinalIgnoreCase), description);
+        }
+    }
+
     private static async Task<(string WorkspaceId, string FilePath, int LineCount)> LoadWireWorkspaceAsync(
         InMemoryMcpClientServerHarness harness)
     {

@@ -143,8 +143,8 @@ public static class AnalysisTools
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Diagnostic identifier, e.g. CS8019")] string diagnosticId,
         [Description("Absolute path to the source file")] string filePath,
-        [Description("1-based line number (alias: startLine). Supply exactly one of line/startLine.")] int? line = null,
-        [Description("1-based column number (alias: startColumn). Supply exactly one of column/startColumn.")] int? column = null,
+        [Description("1-based line number (alias: startLine). Supply line or startLine, or both with the same value.")] int? line = null,
+        [Description("1-based column number (alias: startColumn). Supply column or startColumn, or both with the same value.")] int? column = null,
         [Description("Alias for line, matching the positional-tool convention used by find_references, goto_definition, etc.")] int? startLine = null,
         [Description("Alias for column, matching the positional-tool convention used by find_references, goto_definition, etc.")] int? startColumn = null,
         CancellationToken ct = default)
