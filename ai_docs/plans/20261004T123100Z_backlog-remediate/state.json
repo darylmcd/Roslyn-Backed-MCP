@@ -13,7 +13,7 @@
     {
       "id": "argument-exception-throw-sites-lack-public-message",
       "order": 1,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "argument-exception-throw-sites-lack-public-message"
       ],
@@ -50,38 +50,48 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Route deepen: declared/effective L derives solely from four required test companions, not incoherent scope. Standing Engineering Directives 1/6 and RULES 5 Rule4 advisory require a complete shared validation publication fix. Exact subclass assertion pins ParameterValidationTests:24-106, SymbolSearchPaginationTests:179/195, FindReflectionUsagesPaginationTests:344/356, ExpandedSurfaceIntegrationTests:349/368/385 must move together. Existing global rows split-route-ignores-forcing-shapes and remediate-stale-file-cap-wording track the contradictory cap-era routing; do not manufacture a partial or recursively L child solely to satisfy counts.",
+      "branch": "remediation/argument-exception-throw-sites-lack-public-message",
+      "worktreePath": ".worktrees/argument-exception-throw-sites-lack-public-message",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1740",
+      "mergedAt": "2026-10-04T14:06:20Z",
+      "notes": null,
       "fileSetHash": "83d4f9ddc9105ebe9a8f40ff613aaf1893b25fb0faffe10e74f2ef7e08b3c7bd",
       "stanzaHash": "919bee9356f9cda6aea7dcc2cfa21a644aabe8a2da829f9967705647422db863",
-      "reviewedStanzaHash": "919bee9356f9cda6aea7dcc2cfa21a644aabe8a2da829f9967705647422db863"
+      "reviewedStanzaHash": "919bee9356f9cda6aea7dcc2cfa21a644aabe8a2da829f9967705647422db863",
+      "reviewedHead": "40fcb709e7f1bb56abb5c337c0d667431a8676eb",
+      "scratchRemoved": false,
+      "githubGate": {
+        "baseOid": "1990115e6fc9e9d4bdbd1d60250f6635a92053f1",
+        "headOid": "40fcb709e7f1bb56abb5c337c0d667431a8676eb",
+        "tree": "4621dc90267ab8625d4d5521415a1f3adbf17b28",
+        "checksVerifiedAt": "2026-10-04T14:06:17.774Z"
+      }
     },
     {
       "id": "file-create-and-scaffold-refusals-public-message",
       "order": 2,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "file-create-and-scaffold-refusals-public-message"
       ],
-      "productionFilesTouched": 5,
+      "productionFilesTouched": 6,
       "productionFiles": [
         "src/RoslynMcp.Roslyn/Services/FileOperationService.cs",
         "src/RoslynMcp.Roslyn/Services/BatchTestScaffolder.cs",
         "src/RoslynMcp.Roslyn/Helpers/FileSystemPath.cs",
         "src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs",
-        "src/RoslynMcp.Roslyn/Services/NamespaceRelocationService.cs"
+        "src/RoslynMcp.Roslyn/Services/NamespaceRelocationService.cs",
+        "src/RoslynMcp.Roslyn/Helpers/ProjectRelativePathValidation.cs"
       ],
-      "testFilesAdded": 6,
+      "testFilesAdded": 7,
       "testFiles": [
         "tests/RoslynMcp.Tests/FileOperationIntegrationTests.cs",
         "tests/RoslynMcp.Tests/ScaffoldingFirstTestFileTests.cs",
         "tests/RoslynMcp.Tests/ScaffoldingIntegrationTests.cs",
         "tests/RoslynMcp.Tests/FileSystemPathTests.cs",
         "tests/RoslynMcp.Tests/CrossProjectRefactoringIntegrationTests.cs",
-        "tests/RoslynMcp.Tests/NamespaceRelocationTests.cs"
+        "tests/RoslynMcp.Tests/NamespaceRelocationTests.cs",
+        "tests/RoslynMcp.Tests/ProjectRelativePathValidationTests.cs"
       ],
       "docFiles": [
         "changelog.d/file-create-and-scaffold-refusals-public-message.md"
@@ -90,7 +100,7 @@
       "estimatedContextTokens": 60000,
       "toolPolicy": "edit-only",
       "scheduleHint": null,
-      "fanoutEstimate": 5,
+      "fanoutEstimate": 6,
       "fanoutOversize": false,
       "deepenerStatus": "ok",
       "deepenerFlags": {
@@ -99,14 +109,38 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "branch": "remediation/file-create-and-scaffold-refusals-public-message",
+      "worktreePath": ".worktrees/file-create-and-scaffold-refusals-public-message",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1741",
+      "mergedAt": "2026-10-04T15:24:12Z",
       "notes": null,
-      "fileSetHash": "03c9d24a46c6307014943887059cc4f6262641b0b5008d32a06c8a346f42e4c0",
-      "stanzaHash": "c06a924875f8b54528052b1a01cb1ef8250b9b11bf5bf52ad4e57188863902ba",
-      "reviewedStanzaHash": "c06a924875f8b54528052b1a01cb1ef8250b9b11bf5bf52ad4e57188863902ba"
+      "fileSetHash": "b71e7c4fee66c9b04353b4b24d5e6496c6d627d12fa14f4c7fc90638cd16d033",
+      "stanzaHash": "c8817d6666a1e14f1f452cd5c23c8b43d471a6e84f0f2bd07a5a7ea5834dcd8d",
+      "reviewedStanzaHash": "c8817d6666a1e14f1f452cd5c23c8b43d471a6e84f0f2bd07a5a7ea5834dcd8d",
+      "amendments": [
+        {
+          "at": "2026-10-04T13:38:17.518Z",
+          "finding": "ProjectRelativePathValidation.cs:76-83 already implements strict descendant validation; a new independent FileSystemPath implementation would duplicate it.",
+          "reason": "Extract and reuse the existing predicate per Standing Directives 1/6; include its existing validator and test companion without changing that failure contract.",
+          "previousStanzaHash": "c06a924875f8b54528052b1a01cb1ef8250b9b11bf5bf52ad4e57188863902ba",
+          "stanzaHash": "9de2879181bed07a03a3ac087af2eb91d08ba1015c32196dc09b13a9e0834872"
+        },
+        {
+          "at": "2026-10-04T13:59:16.018Z",
+          "finding": "Live Windows GetFullPath accepts wildcard filenames and trailing separators; GetFileName of the trailing-separator path is empty.",
+          "reason": "Complete the existing malformed-path deliverable with real filename validation and no-mutation regressions; normalization alone does not enforce it.",
+          "previousStanzaHash": "9de2879181bed07a03a3ac087af2eb91d08ba1015c32196dc09b13a9e0834872",
+          "stanzaHash": "c8817d6666a1e14f1f452cd5c23c8b43d471a6e84f0f2bd07a5a7ea5834dcd8d"
+        }
+      ],
+      "reviewedHead": "f8c9ce79252293ed703bdd4a432aea872f4c472c",
+      "scratchRemoved": false,
+      "githubGate": {
+        "baseOid": "8adde0c5c3823704b4ffd1a8253084439ecfca5b",
+        "headOid": "f8c9ce79252293ed703bdd4a432aea872f4c472c",
+        "tree": "1f6bd98a4d0ae305bf04f498b9aacaafa1237d94",
+        "checksVerifiedAt": "2026-10-04T15:24:09.399Z"
+      }
     },
     {
       "id": "get-prompt-text-unknown-prompt-public-message",
@@ -289,7 +323,7 @@
     {
       "id": "root-boundary-argument-refusals-public-message",
       "order": 8,
-      "status": "pending",
+      "status": "deferred",
       "backlogRowsClosed": [
         "root-boundary-argument-refusals-public-message"
       ],
@@ -326,7 +360,7 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": "Required operator contract-care decision pending asynchronously; do not dispatch executor before approval. Recommended role-aware configured-I/narrowing-R correction requires ADR and major-release migration. Fixture anti-pattern sketch re-derived: McpRootsProbeTools intentionally returns allowed/rejected sentinel for low-level root-policy tests (TypeExtractionTests:89-105); it does not claim production wire-error coverage. Retain risk warning not to use this fixture as wire proof, but no defect row filed for intentional probe behavior.",
+      "notes": "Operator-only preimplementation hold: published configured-root/client-roots RPC error categories change InvalidArgument to InvalidOperation; await explicit approval of ADR and major-release migration strategy. Pending question is not answered by elapsed time or generic continue. Reactivate only on a live approving decision; row remains open.",
       "fileSetHash": "8fcede3179a81f04d31d460386a9e3950d8b2bd70ee582562f14d57f8525d7c1",
       "stanzaHash": "12ce06bdf57ad1125f5e92c5c246004cdb985b10835d774b72fa58dd4b333214",
       "reviewedStanzaHash": "12ce06bdf57ad1125f5e92c5c246004cdb985b10835d774b72fa58dd4b333214"
@@ -654,20 +688,6 @@
   "conflictGraph": {
     "edges": [
       {
-        "a": 1,
-        "b": 6,
-        "sharedFiles": [
-          "src/RoslynMcp.Host.Stdio/Tools/AnalysisTools.cs"
-        ]
-      },
-      {
-        "a": 1,
-        "b": 9,
-        "sharedFiles": [
-          "src/RoslynMcp.Host.Stdio/Tools/CompileCheckTools.cs"
-        ]
-      },
-      {
         "a": 2,
         "b": 12,
         "sharedFiles": [
@@ -689,25 +709,15 @@
           "src/RoslynMcp.Host.Stdio/Tools/ToolErrorHandler.cs",
           "tests/RoslynMcp.Tests/ToolCallErrorWireContractTests.cs"
         ]
-      },
-      {
-        "a": 8,
-        "b": 9,
-        "sharedFiles": [
-          "docs/decisions/README.md",
-          "tests/RoslynMcp.Tests/ClientRootPathValidatorTests.cs"
-        ]
       }
     ],
     "degrees": {
-      "1": 2,
       "2": 1,
       "4": 2,
       "5": 0,
-      "6": 1,
+      "6": 0,
       "7": 1,
-      "8": 1,
-      "9": 3,
+      "9": 1,
       "10": 0,
       "11": 0,
       "12": 1,
@@ -717,6 +727,7 @@
     },
     "zeroDegreeInitiatives": [
       5,
+      6,
       10,
       11,
       13,
@@ -1130,7 +1141,7 @@
     "status": "passed-with-warnings",
     "stanzaHashes": {
       "argument-exception-throw-sites-lack-public-message": "919bee9356f9cda6aea7dcc2cfa21a644aabe8a2da829f9967705647422db863",
-      "file-create-and-scaffold-refusals-public-message": "c06a924875f8b54528052b1a01cb1ef8250b9b11bf5bf52ad4e57188863902ba",
+      "file-create-and-scaffold-refusals-public-message": "c8817d6666a1e14f1f452cd5c23c8b43d471a6e84f0f2bd07a5a7ea5834dcd8d",
       "get-prompt-text-unknown-prompt-public-message": "6b265b0b940c5b316584361d77ff80ce46d9d327fe4e12ddf6f45f7d5fbe10f5",
       "tool-scripting-undo-workflow-argument-refusals-public-message": "a1081d96d56fc0784e4dc07e5efc744ec78cd7b0ddf5efd5425e502130fe49bc",
       "symbol-locator-and-source-text-tool-argument-refusals-public-message": "d1096131c5b7aaa884cd3bbdb72f9888fd89b4d8b5547f75890e16225f3cf29c",
@@ -1145,9 +1156,9 @@
       "suppression-argument-refusals-public-message": "dc22bf053f48f0b679f4af4a67cd32698d8856cbf315795afeabf2ce8743c67c"
     }
   },
-  "conflictGraphInputHash": "3bb1cf2e7153e63cb0d174c67c7287587be2ce1803454f6b083d28b36d197557",
-  "planHash": "4163107cb8a7a145c43703a3f47b0d0c49cc66b6857ba7b748b688d9349f29cb",
-  "backlogSnapshotHash": "133962bd179708a6f08387eceed5e47d6fcf75b9b2035c9232a9d17a6d05ec69",
-  "reviewedPlanHash": "4163107cb8a7a145c43703a3f47b0d0c49cc66b6857ba7b748b688d9349f29cb",
-  "reviewedBacklogSnapshotHash": "133962bd179708a6f08387eceed5e47d6fcf75b9b2035c9232a9d17a6d05ec69"
+  "conflictGraphInputHash": "d3f5a507c7dbefa4c0c0c9d55edcdd029a56f0bec67f57ea40582aa6b3d67892",
+  "planHash": "5292c3287d21cc2cfea0eb42877d101eb0e60ee780f98817c33cd41eed4fd3dc",
+  "backlogSnapshotHash": "7e7b72ab38048ba57725b00ea119733bffc2c22d2f8449ba6be9c917b2146333",
+  "reviewedPlanHash": "5292c3287d21cc2cfea0eb42877d101eb0e60ee780f98817c33cd41eed4fd3dc",
+  "reviewedBacklogSnapshotHash": "7e7b72ab38048ba57725b00ea119733bffc2c22d2f8449ba6be9c917b2146333"
 }
