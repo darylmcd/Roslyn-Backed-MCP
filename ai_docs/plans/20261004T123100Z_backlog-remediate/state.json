@@ -541,7 +541,9 @@
       "productionFilesTouched": 2,
       "productionFiles": [
         "src/RoslynMcp.Roslyn/Services/BulkRefactoringService.cs",
-        "src/RoslynMcp.Roslyn/Services/StringLiteralReplaceService.cs"
+        "src/RoslynMcp.Roslyn/Services/StringLiteralReplaceService.cs",
+        "src/RoslynMcp.Core/Services/IBulkRefactoringService.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/BulkRefactoringTools.cs"
       ],
       "testFilesAdded": 3,
       "testFiles": [
@@ -569,8 +571,8 @@
       "mergedAt": null,
       "notes": "Exposed ParseMethodSignature grammar defect is fixed in this scope; no separate deferred parser row. BulkRefactoringTools.cs:82-83 marks replace_invocation_preview experimental, so release-policy faster experimental evolution applies; preserve existing advertised valid forms and document correction in own fragment.",
       "fileSetHash": "3cadaf0e53253b3ca52cd00b14cb34d6441c9533787bf6930febd930304917b2",
-      "stanzaHash": "6f30179823572bf9ad1ee85a00695c2e0ac8e96e4825a6cbeff661fe6f444604",
-      "reviewedStanzaHash": "6f30179823572bf9ad1ee85a00695c2e0ac8e96e4825a6cbeff661fe6f444604",
+      "stanzaHash": "e7af7efb19e73a57b232b902523a524906236d69718a138524cc1205048e07e0",
+      "reviewedStanzaHash": "e7af7efb19e73a57b232b902523a524906236d69718a138524cc1205048e07e0",
       "amendments": [
         {
           "at": "2026-10-04T19:30:17.695Z",
@@ -578,6 +580,20 @@
           "reason": "Use original semantic argument binding and preserve lexical evaluation/defaults; complete same-helper variants in current file scope, verified by compiled regression proofs",
           "previousStanzaHash": "bc02a1bfe93a3d5152fefde42bb0e3af0b739b44bafe8f7f82163e9e1fa26e43",
           "stanzaHash": "6f30179823572bf9ad1ee85a00695c2e0ac8e96e4825a6cbeff661fe6f444604"
+        },
+        {
+          "at": "2026-10-04T19:32:10.045Z",
+          "finding": "Semantic rewrite invalidates lexical reorder promises in IBulkRefactoringService.cs:35-38 and BulkRefactoringTools.cs:79-80",
+          "reason": "Correct the two affected contract comments in the same PR; no schema change or stale documentation",
+          "previousStanzaHash": "6f30179823572bf9ad1ee85a00695c2e0ac8e96e4825a6cbeff661fe6f444604",
+          "stanzaHash": "0e7d704b7eb97fb94ee0591ade386760d6d442588d23066d8fcd1e5312dd4691"
+        },
+        {
+          "at": "2026-10-04T19:33:13.080Z",
+          "finding": "Core permutation contract requires bijective mapping; subset rewrite discards argument evaluation, and Risks scope count needs companion alignment",
+          "reason": "Refuse non-bijective unsafe mappings while allowing valid compiler conversions; record actual four-file production scope",
+          "previousStanzaHash": "0e7d704b7eb97fb94ee0591ade386760d6d442588d23066d8fcd1e5312dd4691",
+          "stanzaHash": "e7af7efb19e73a57b232b902523a524906236d69718a138524cc1205048e07e0"
         }
       ]
     },
@@ -1226,7 +1242,7 @@
       "root-boundary-argument-refusals-public-message": "12ce06bdf57ad1125f5e92c5c246004cdb985b10835d774b72fa58dd4b333214",
       "dispatch-and-tool-argument-refusals-public-message": "ef230e01430bf09ee09eb91063962783c6b1b5d2a1395ff83effb3150bd1c968",
       "parameter-object-argument-refusals-public-message": "d32655a21730ce6a970badca6eb7dc847717c86b96484d5a2c8b1b58d1af5759",
-      "bulk-refactoring-argument-refusals-public-message": "6f30179823572bf9ad1ee85a00695c2e0ac8e96e4825a6cbeff661fe6f444604",
+      "bulk-refactoring-argument-refusals-public-message": "e7af7efb19e73a57b232b902523a524906236d69718a138524cc1205048e07e0",
       "type-extraction-argument-refusals-public-message": "f64e7f28ed65ce69c1ce3dcbbc1de0680b2a1a81e96b235397e2e4a7717a0cb0",
       "restructure-and-semantic-grep-argument-refusals-public-message": "ba31aeb5d0e14d491385da3aa1170ebcabf21b6c3f422ff803303b93dcc5fba1",
       "edit-service-argument-refusals-public-message": "2e9605f85bd0feb3e3cd6ce6e7ea5efcc48a8af6a53ac6953d2a87ee28c325cd",
@@ -1234,8 +1250,8 @@
     }
   },
   "conflictGraphInputHash": "d8cc60859909341a1fe269584901aec43ebf07370c6ba2369f72f23d0f1f2042",
-  "planHash": "abe7d207c6ba40a0310d8ffe76165aa9e48f790af9037031c0703ae33a740c26",
+  "planHash": "af4d211a8c8abafb42b57bc1ca7e5ed66bc032baf2485339efffb93cc7c631bc",
   "backlogSnapshotHash": "aa7593fb4e2c3b59453248d6223301e471be1161179df7994320f52ec840df5f",
-  "reviewedPlanHash": "abe7d207c6ba40a0310d8ffe76165aa9e48f790af9037031c0703ae33a740c26",
+  "reviewedPlanHash": "af4d211a8c8abafb42b57bc1ca7e5ed66bc032baf2485339efffb93cc7c631bc",
   "reviewedBacklogSnapshotHash": "aa7593fb4e2c3b59453248d6223301e471be1161179df7994320f52ec840df5f"
 }
