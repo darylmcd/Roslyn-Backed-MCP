@@ -235,7 +235,7 @@
       "worktreePath": null,
       "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1746",
       "mergedAt": null,
-      "notes": "Executor exact-head 9b43ad36e5c70113eb3cb5df52732250f4570314; complete production DI fixture companions; awaiting cold review and hosted full validation.\nLifecycle coverage correction: original155-test filter missed TestAssemblyFixtureSharingAlphaTests and TestAssemblyFixtureSharingBetaTests. Both actual classes now executed at exact reviewed head9b43ad36e5c70113eb3cb5df52732250f4570314 with mandated scratchEnv; lifecycle.trx has5passed0failed0skipped, includes DisposeAsync_ReleasesOwnedResourcesExactlyOnce. Receipt script-bridge exit0 duration59671ms; log and TRX at scripting-undo-lifecycle.log and scripting-undo-lifecycle/lifecycle.trx in session plan scratch.",
+      "notes": "Executor exact-head 9b43ad36e5c70113eb3cb5df52732250f4570314; complete production DI fixture companions; awaiting cold review and hosted full validation.\nLifecycle coverage correction: original155-test filter missed TestAssemblyFixtureSharingAlphaTests and TestAssemblyFixtureSharingBetaTests. Both actual classes now executed at exact reviewed head9b43ad36e5c70113eb3cb5df52732250f4570314 with mandated scratchEnv; lifecycle.trx has5passed0failed0skipped, includes DisposeAsync_ReleasesOwnedResourcesExactlyOnce. Receipt script-bridge exit0 duration59671ms; log and TRX at scripting-undo-lifecycle.log and scripting-undo-lifecycle/lifecycle.trx in session plan scratch.\nSynced head0dad6334dd8555adcc6966ca848921704623f790 normal merge parents9b43ad36 and main5c0. Cold cycle1 pass0findings. Combined scoped suite194passed0failed0skipped, script-bridge exit0 duration230197ms; scripting-undo-synced.log and scripting-undo-synced/synced.trx. Generation base stays defd4546. Hosted watcher78533 pending on new head; previous watcher82424 READY is old-head evidence only.",
       "fileSetHash": "84840172eb975ef3bc0179d9cb13eedeae8755e1f253fa18305cffd7c63e84f8",
       "stanzaHash": "b8685312bcb9c8fe06487f82e0079baca0c768a11714cfb7cd34476ec2f70696",
       "reviewedStanzaHash": "b8685312bcb9c8fe06487f82e0079baca0c768a11714cfb7cd34476ec2f70696",
@@ -248,7 +248,7 @@
           "stanzaHash": "b8685312bcb9c8fe06487f82e0079baca0c768a11714cfb7cd34476ec2f70696"
         }
       ],
-      "reviewedHead": "9b43ad36e5c70113eb3cb5df52732250f4570314"
+      "reviewedHead": "0dad6334dd8555adcc6966ca848921704623f790"
     },
     {
       "id": "symbol-locator-and-source-text-tool-argument-refusals-public-message",
