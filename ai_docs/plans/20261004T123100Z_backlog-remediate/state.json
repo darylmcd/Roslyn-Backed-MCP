@@ -552,7 +552,7 @@
     {
       "id": "bulk-refactoring-argument-refusals-public-message",
       "order": 11,
-      "status": "in-review",
+      "status": "merged",
       "backlogRowsClosed": [
         "bulk-refactoring-argument-refusals-public-message"
       ],
@@ -586,8 +586,8 @@
       "branch": "remediation/bulk-refactoring-argument-refusals-public-message",
       "worktreePath": ".worktrees/bulk-refactoring-argument-refusals-public-message",
       "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1750",
-      "mergedAt": null,
-      "notes": "Exposed ParseMethodSignature grammar defect is fixed in this scope; no separate deferred parser row. BulkRefactoringTools.cs:82-83 marks replace_invocation_preview experimental, so release-policy faster experimental evolution applies; preserve existing advertised valid forms and document correction in own fragment.",
+      "mergedAt": "2026-10-04T20:41:04Z",
+      "notes": null,
       "fileSetHash": "3cadaf0e53253b3ca52cd00b14cb34d6441c9533787bf6930febd930304917b2",
       "stanzaHash": "e7af7efb19e73a57b232b902523a524906236d69718a138524cc1205048e07e0",
       "reviewedStanzaHash": "e7af7efb19e73a57b232b902523a524906236d69718a138524cc1205048e07e0",
@@ -614,7 +614,14 @@
           "stanzaHash": "e7af7efb19e73a57b232b902523a524906236d69718a138524cc1205048e07e0"
         }
       ],
-      "reviewedHead": "ec21fb3161384d7694d76f3cdbde710fbb6abad4"
+      "reviewedHead": "ec21fb3161384d7694d76f3cdbde710fbb6abad4",
+      "scratchRemoved": false,
+      "githubGate": {
+        "baseOid": "b4dfc21d842c9edbf8e4a4589fe941cbefc6480b",
+        "headOid": "ec21fb3161384d7694d76f3cdbde710fbb6abad4",
+        "tree": "2b271c1dd15a1d36b47a029a28e688360b046078",
+        "checksVerifiedAt": "2026-10-04T20:41:01.016Z"
+      }
     },
     {
       "id": "type-extraction-argument-refusals-public-message",
@@ -712,7 +719,7 @@
     {
       "id": "edit-service-argument-refusals-public-message",
       "order": 14,
-      "status": "pending",
+      "status": "in-progress",
       "backlogRowsClosed": [
         "edit-service-argument-refusals-public-message"
       ],
