@@ -613,7 +613,8 @@
           "previousStanzaHash": "0e7d704b7eb97fb94ee0591ade386760d6d442588d23066d8fcd1e5312dd4691",
           "stanzaHash": "e7af7efb19e73a57b232b902523a524906236d69718a138524cc1205048e07e0"
         }
-      ]
+      ],
+      "reviewedHead": "ec21fb3161384d7694d76f3cdbde710fbb6abad4"
     },
     {
       "id": "type-extraction-argument-refusals-public-message",
