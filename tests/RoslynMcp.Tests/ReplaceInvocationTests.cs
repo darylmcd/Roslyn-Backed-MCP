@@ -19,7 +19,6 @@ namespace RoslynMcp.Tests;
 [TestClass]
 public sealed class ReplaceInvocationTests : SharedWorkspaceTestBase
 {
-
     [TestMethod]
     public async Task ReplaceInvocation_ArgumentRefusals_ArePublicAndBounded()
     {
@@ -114,6 +113,252 @@ public sealed class ReplaceInvocationTests : SharedWorkspaceTestBase
         finally { WorkspaceManager.Close(loaded.WorkspaceId); }
     }
 
+
+    [TestMethod]
+    [DataRow("optional")]
+    [DataRow("mixed")]
+    public async Task ReplaceInvocation_NewNestedReachability_PreservesArgumentBindings(string shape)
+    {
+        var path = CreateSampleSolutionCopy();
+        var fixture = Path.Combine(Path.GetDirectoryName(path)!, "SampleLib", "NestedBindingFixture.cs");
+        await File.WriteAllTextAsync(fixture, """
+            using System.Collections.Generic;
+            namespace SampleLib;
+            public static class NestedBinding
+            {
+                public static int OptionalOld(Dictionary<string, List<int>> value, int count = 1) => count;
+                public static int OptionalOld(string value, int count = 1) => count;
+                public static int OptionalNew(int count = 2, Dictionary<string, List<int>> value = null) => count;
+                public static int OptionalNew(int count = 2, string value = null) => count;
+                public static int MixedOld((int, string) value, int count) => count;
+                public static int MixedOld(string value, int count) => count;
+                public static int MixedNew(int count, (int, string) value) => count;
+                public static int MixedNew(int count, string value) => count;
+                public static int OptionalCall(Dictionary<string, List<int>> dictionary) => OptionalOld(dictionary);
+                public static int MixedCall() => MixedOld(value: (1, "x"), 2);
+                public static int ParamsOld(int first, params (int, string)[] rest) => rest.Length;
+                public static int ParamsCall() => ParamsOld(1, (2, "y"), (3, "z"));
+            }
+            """);
+        var loaded = await WorkspaceManager.LoadAsync(path, CancellationToken.None);
+        try
+        {
+            var signatures = shape == "optional"
+                ? ("SampleLib.NestedBinding.OptionalOld(Dictionary<string, List<int>>, int)", "SampleLib.NestedBinding.OptionalNew(int, Dictionary<string, List<int>>)")
+                : ("SampleLib.NestedBinding.MixedOld((int, string), int)", "SampleLib.NestedBinding.MixedNew(int, (int, string))");
+            var original = WorkspaceManager.GetCurrentSolution(loaded.WorkspaceId);
+            var originalCompilation = await original.Projects.Single(x => x.Name == "SampleLib").GetCompilationAsync();
+            Assert.IsNotNull(originalCompilation);
+            Assert.IsFalse(originalCompilation.GetDiagnostics().Any(x => x.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error),
+                string.Join(Environment.NewLine, originalCompilation.GetDiagnostics()));
+
+            var preview = await BulkRefactoringService.PreviewReplaceInvocationAsync(
+                loaded.WorkspaceId, signatures.Item1, signatures.Item2, null, CancellationToken.None);
+            var changed = PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution;
+            var compilation = await changed.Projects.Single(x => x.Name == "SampleLib").GetCompilationAsync();
+            Assert.IsNotNull(compilation);
+            Assert.IsFalse(compilation.GetDiagnostics().Any(x => x.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error),
+                "Rewritten invocation must compile: " + string.Join(Environment.NewLine, compilation.GetDiagnostics()));
+            var doc = changed.Projects.Single(x => x.Name == "SampleLib").Documents.Single(x => x.FilePath == fixture);
+            var root = await doc.GetSyntaxRootAsync();
+            var model = await doc.GetSemanticModelAsync();
+            Assert.IsNotNull(root);
+            Assert.IsNotNull(model);
+            var invocation = root.DescendantNodes().OfType<Microsoft.CodeAnalysis.CSharp.Syntax.InvocationExpressionSyntax>()
+                .Single(x => x.Expression.ToString() == (shape == "optional" ? "OptionalNew" : "MixedNew"));
+            var operation = model.GetOperation(invocation) as Microsoft.CodeAnalysis.Operations.IInvocationOperation;
+            Assert.IsNotNull(operation);
+            var count = operation.Arguments.Single(x => x.Parameter!.Name == "count");
+            Assert.AreEqual(shape == "optional" ? 1 : 2, count.Value.ConstantValue.Value);
+            Assert.AreEqual(2, operation.Arguments.Length, "Every original parameter remains represented.");
+        }
+        finally { WorkspaceManager.Close(loaded.WorkspaceId); }
+    }
+
+
+    private static string ExecuteCompilation(Microsoft.CodeAnalysis.Compilation compilation, string method)
+    {
+        foreach (var tree in compilation.SyntaxTrees.ToArray())
+            compilation = compilation.ReplaceSyntaxTree(tree, Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(
+                tree.GetText(), (Microsoft.CodeAnalysis.CSharp.CSharpParseOptions)tree.Options, tree.FilePath));
+        using var stream = new MemoryStream();
+        var emitted = compilation.Emit(stream);
+        Assert.IsTrue(emitted.Success, string.Join(Environment.NewLine, emitted.Diagnostics));
+        stream.Position = 0;
+        var context = new System.Runtime.Loader.AssemblyLoadContext(Guid.NewGuid().ToString("N"), isCollectible: true);
+        try
+        {
+            var assembly = context.LoadFromStream(stream);
+            return (string)assembly.GetType("SampleLib.InvocationSemantics")!.GetMethod(method)!.Invoke(null, null)!;
+        }
+        finally { context.Unload(); }
+    }
+
+    [TestMethod]
+    [DataRow("Order", "Old(int, int)", "New(int, int)")]
+    [DataRow("Named", "Old(int, int)", "New(int, int)")]
+    [DataRow("Mixed", "Old(int, int)", "New(int, int)")]
+    [DataRow("Optional", "OptionalOld(int, int, string)", "OptionalNew(string, int, int)")]
+    [DataRow("Caller", "CallerOld(int, string, string, int, string)", "CallerNew(string, string, int, string, int)")]
+    [DataRow("Params", "ParamsOld(int, (int, string)[])", "ParamsNew((int, string)[], int)")]
+    [DataRow("EmptyParams", "ParamsOld(int, (int, string)[])", "ParamsNew((int, string)[], int)")]
+    [DataRow("ExplicitParams", "ParamsOld(int, (int, string)[])", "ParamsNew((int, string)[], int)")]
+    [DataRow("CollectionParams", "CollectionOld(int, List<(int, string)>)", "CollectionNew(List<(int, string)>, int)")]
+    [DataRow("Ref", "RefOld(int, int, int)", "RefNew(int, int, int)")]
+    [DataRow("Keyword", "KeywordOld(int, int)", "KeywordNew(int, int)")]
+    [DataRow("Nested", "NestedOld((int, string), int)", "NestedNew(int, (int, string))")]
+    [DataRow("Generic", "GenericOld()", "GenericNew()")]
+    [DataRow("ConditionalGeneric", "GenericInstanceOld()", "GenericInstanceNew()")]
+    [DataRow("Extension", "ExtensionOld(int, int, int)", "ExtensionNew(int, int, int)")]
+    [DataRow("DefaultTypes", "DefaultsOld(int, DayOfWeek, decimal, DateTime, int?)", "DefaultsNew(int?, DateTime, decimal, DayOfWeek, int)")]
+    [DataRow("Conversion", "ConvertOld(int, int)", "ConvertNew(long, long)")]
+    public async Task ReplaceInvocation_PreservesExecutableSemantics(string method, string oldSignature, string newSignature)
+    {
+        var path = CreateSampleSolutionCopy();
+        var fixture = Path.Combine(Path.GetDirectoryName(path)!, "SampleLib", "InvocationSemantics.cs");
+        await File.WriteAllTextAsync(fixture, """
+            using System;
+            using System.Collections.Generic;
+            using System.Runtime.CompilerServices;
+            namespace SampleLib;
+            public class InvocationSemantics
+            {
+                private static string Trace = "";
+                private static int Step(int value) { Trace += value; return value; }
+                public static int Old(int a, int b) => a * 10 + b;
+                public static int New(int b, int a) => a * 10 + b;
+                public static string Order() => Old(Step(1), /*comma*/ Step(2)) + ":" + Trace;
+                public static string Named() => Old(b /*name*/ : Step(2), a: Step(1)) + ":" + Trace;
+                public static string Mixed() => Old(a: Step(1), Step(2)) + ":" + Trace;
+                public static string OptionalOld(int a, int b = 7, string text = "old") => a + ":" + b + ":" + text;
+                public static string OptionalNew(string text = "new", int b = 8, int a = 0) => a + ":" + b + ":" + text;
+                public static string Optional() => OptionalOld(1);
+                public static string CallerOld(int value, [CallerArgumentExpression("value")] string expr = "", [CallerMemberName] string member = "", [CallerLineNumber] int line = 0, [CallerFilePath] string file = "") => value + ":" + expr + ":" + member + ":" + line + ":" + file;
+                public static string CallerNew(string file = "", string member = "", int line = 0, string expr = "", int value = 0) => value + ":" + expr + ":" + member + ":" + line + ":" + file;
+                public static string Caller() => CallerOld(1 + 2);
+                public static int ParamsOld(int first, params (int, string)[] rest) => first + rest.Length;
+                public static int ParamsNew((int, string)[] rest, int first) => first + rest.Length;
+                public static string Params() => ParamsOld(Step(1), (Step(2), "y"), /*element*/ (Step(3), "z")) + ":" + Trace;
+                public static string EmptyParams() => ParamsOld(1).ToString();
+                public static string ExplicitParams() => ParamsOld(1, new[] { (2, "y") }).ToString();
+                public static int CollectionOld(int first, params List<(int, string)> rest) => first + rest.Count;
+                public static int CollectionNew(List<(int, string)> rest, int first) => first + rest.Count;
+                public static string CollectionParams() => CollectionOld(Step(1), (Step(2), "y"), (Step(3), "z")) + ":" + Trace;
+                public static void RefOld(in int a, ref int b, out int c) { b += a; c = b * 2; }
+                public static void RefNew(out int c, in int a, ref int b) { b += a; c = b * 2; }
+                public static string Ref() { int a = 1, b = 2; RefOld(in a, ref b, out int c); return b + ":" + c; }
+                public static int KeywordOld(int @event, int other) => @event * 10 + other;
+                public static int KeywordNew(int other, int @event) => @event * 10 + other;
+                public static string Keyword() => KeywordOld(@event: 1, other: 2).ToString();
+                public static (int, string) NestedOld((int, string) value, int count) => (value.Item1 + count, value.Item2);
+                public static (int, string) NestedNew(int count, (int, string) value) => (value.Item1 + count, value.Item2);
+                public static string Nested() => NestedOld(NestedOld((1, "x"), 2), 3).ToString();
+                public static string GenericOld<T>() => typeof(T).Name;
+                public static string GenericNew<T>() => typeof(T).Name;
+                public static string Generic() => InvocationSemantics.GenericOld<int>();
+                public string GenericInstanceOld<T>() => typeof(T).Name;
+                public string GenericInstanceNew<T>() => typeof(T).Name;
+                public static string ConditionalGeneric() => new InvocationSemantics()?.GenericInstanceOld<int>() ?? "";
+                public static long ConvertOld(int a, int b) => a * 10 + b;
+                public static long ConvertNew(long b, long a) => a * 10 + b;
+                public static string Conversion() => ConvertOld(Step(1), Step(2)) + ":" + Trace;
+                public static string Extension() => Step(1).ExtensionOld(Step(2)) + ":" + Trace;
+                public static string DefaultsOld(int value, DayOfWeek day = DayOfWeek.Monday, decimal amount = 2.5m, DateTime date = default, int? count = null) => value + ":" + day + ":" + amount + ":" + date.Ticks + ":" + count;
+                public static string DefaultsNew(int? count = 9, DateTime date = default, decimal amount = 7m, DayOfWeek day = DayOfWeek.Friday, int value = 0) => value + ":" + day + ":" + amount + ":" + date.Ticks + ":" + count;
+                public static string DefaultTypes() => DefaultsOld(1);
+            }
+            public static class InvocationExtensions
+            {
+                public static int ExtensionOld(this int receiver, int value, int count = 7) => receiver * 100 + value * 10 + count;
+                public static int ExtensionNew(this int receiver, int count = 8, int value = 0) => receiver * 100 + value * 10 + count;
+            }
+            """);
+        var loaded = await WorkspaceManager.LoadAsync(path, CancellationToken.None);
+        try
+        {
+            var original = WorkspaceManager.GetCurrentSolution(loaded.WorkspaceId);
+            var oldCompilation = await original.Projects.Single(x => x.Name == "SampleLib").GetCompilationAsync();
+            Assert.IsNotNull(oldCompilation);
+            var before = ExecuteCompilation(oldCompilation, method);
+            var preview = await BulkRefactoringService.PreviewReplaceInvocationAsync(
+                loaded.WorkspaceId, (method == "Extension" ? "SampleLib.InvocationExtensions." : "SampleLib.InvocationSemantics.") + oldSignature,
+                (method == "Extension" ? "SampleLib.InvocationExtensions." : "SampleLib.InvocationSemantics.") + newSignature, null, CancellationToken.None);
+            var modified = PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution;
+            var newCompilation = await modified.Projects.Single(x => x.Name == "SampleLib").GetCompilationAsync();
+            Assert.IsNotNull(newCompilation);
+            Assert.AreEqual(before, ExecuteCompilation(newCompilation, method), "Result and expression evaluation order must survive the rewrite.");
+            var document = modified.Projects.Single(x => x.Name == "SampleLib").Documents.Single(x => x.FilePath == fixture);
+            var text = (await document.GetTextAsync()).ToString();
+            foreach (var marker in new[] { "/*comma*/", "/*name*/", "/*element*/" })
+                StringAssert.Contains(text, marker);
+
+            if (method == "Nested")
+            {
+                Assert.AreEqual(2, preview.CallsiteUpdates!.Sum(x => x.CallsiteCount));
+                var syntax = await document.GetSyntaxRootAsync();
+                var model = await document.GetSemanticModelAsync();
+                var entry = syntax!.DescendantNodes().OfType<Microsoft.CodeAnalysis.CSharp.Syntax.MethodDeclarationSyntax>()
+                    .Single(x => x.Identifier.ValueText == "Nested");
+                var calls = entry.DescendantNodes().OfType<Microsoft.CodeAnalysis.CSharp.Syntax.InvocationExpressionSyntax>()
+                    .Where(x => model!.GetOperation(x) is Microsoft.CodeAnalysis.Operations.IInvocationOperation op &&
+                        op.TargetMethod.Name.StartsWith("Nested", StringComparison.Ordinal)).ToArray();
+                Assert.AreEqual(2, calls.Length);
+                foreach (var call in calls)
+                    Assert.AreEqual("NestedNew", ((Microsoft.CodeAnalysis.Operations.IInvocationOperation)model!.GetOperation(call)!).TargetMethod.Name);
+            }
+        }
+        finally { WorkspaceManager.Close(loaded.WorkspaceId); }
+    }
+
+    [TestMethod]
+    [DataRow("Drop", "Old(int, int)", "Drop(int)")]
+    [DataRow("Incompatible", "Old(int, int)", "Incompatible(string, int)")]
+    [DataRow("WrongOverload", "Old(int, int)", "WrongOverload(string, int)")]
+    [DataRow("RefMode", "Old(int, int)", "RefMode(ref int, int)")]
+    public async Task ReplaceInvocation_UnsafeMappings_RefuseBeforeMintingPreview(string shape, string oldSignature, string newSignature)
+    {
+        var path = CreateSampleSolutionCopy();
+        var fixture = Path.Combine(Path.GetDirectoryName(path)!, "SampleLib", "RefusedMapping.cs");
+        await File.WriteAllTextAsync(fixture, """
+            namespace SampleLib;
+            public static class RefusedMapping
+            {
+                public static int Old(int a, int b) => a + b;
+                public static int Drop(int a) => a;
+                public static int Incompatible(string b, int a) => a;
+                public static int WrongOverload(string b, int a) => a;
+                public static int WrongOverload(int b, int a) => a + b;
+                public static int RefMode(ref int b, int a) => a + b;
+                public static int Call() => Old(1, 2);
+            }
+            """);
+        var loaded = await WorkspaceManager.LoadAsync(path, CancellationToken.None);
+        try
+        {
+            var version = WorkspaceManager.GetCurrentVersion(loaded.WorkspaceId);
+            if (shape == "WrongOverload")
+            {
+                var compilation = await WorkspaceManager.GetCurrentSolution(loaded.WorkspaceId).Projects
+                    .Single(x => x.Name == "SampleLib").GetCompilationAsync();
+                var overloads = compilation!.GetTypeByMetadataName("SampleLib.RefusedMapping")!
+                    .GetMembers("WrongOverload").OfType<Microsoft.CodeAnalysis.IMethodSymbol>().ToArray();
+                Assert.AreEqual(2, overloads.Length);
+                var ids = overloads.Select(x => x.GetDocumentationCommentId()).ToArray();
+                Assert.IsTrue(ids.All(x => x is not null));
+                Assert.AreEqual(2, ids.Distinct(StringComparer.Ordinal).Count(),
+                    "Canonical declaration IDs must distinguish the requested and accidentally bound overloads.");
+            }
+            var ex = await Assert.ThrowsExactlyAsync<RoslynMcp.Core.Services.PublicInvalidOperationException>(
+                () => BulkRefactoringService.PreviewReplaceInvocationAsync(loaded.WorkspaceId,
+                    "SampleLib.RefusedMapping." + oldSignature,
+                    "SampleLib.RefusedMapping." + newSignature.Replace("ref ", ""),
+                    null, CancellationToken.None));
+            Assert.AreEqual(version, WorkspaceManager.GetCurrentVersion(loaded.WorkspaceId));
+            StringAssert.Contains(ex.PublicMessage, shape == "Drop" ? "permutation" : shape == "RefMode" ? "passing mode" : "valid binding");
+        }
+        finally { WorkspaceManager.Close(loaded.WorkspaceId); }
+    }
+
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
@@ -126,10 +371,9 @@ public sealed class ReplaceInvocationTests : SharedWorkspaceTestBase
     ///   2. Positional literals: Build(1, "x", true)
     ///   3. Named out-of-order: Build(arg3: true, arg1: 1, arg2: "x")
     ///
-    /// After rewrite, every site should invoke Generate with arguments ordered (b, c, a)
-    /// per the declared new signature. Named callers preserve their names (the C# compiler
-    /// locates named args by name regardless of lexical order, so the rewritten source stays
-    /// compilable), but the lexical order is shuffled into the new parameter order.
+    /// After rewrite, every site invokes Generate with arguments bound to the corresponding
+    /// parameter names. Original lexical order remains unchanged so expressions keep their
+    /// evaluation order, including named and mixed argument forms.
     /// </summary>
     [TestMethod]
     public async Task ReplaceInvocation_ReordersArgumentsAcrossCallForms()
@@ -192,26 +436,23 @@ public sealed class ReplaceInvocationTests : SharedWorkspaceTestBase
                 .ToList();
             var addedText = string.Join('\n', addedLines);
 
-            // Assertion 1 — positional call ordered (a, b, c) → (b, c, a).
+            // Positional expressions keep lexical order and bind through target names.
             StringAssert.Contains(
                 addedText,
-                "ReplaceInvocationHelper.Generate(b, c, a)",
-                "Positional caller must be rewritten with arguments permuted per the new parameter order.");
+                "ReplaceInvocationHelper.Generate(arg1: a, arg2: b, arg3: c)",
+                "Positional expressions must keep lexical order and bind by parameter name.");
 
-            // Assertion 2 — positional-literals call (1, \"x\", true) → (\"x\", true, 1).
+            // Literal arguments retain their lexical order.
             StringAssert.Contains(
                 addedText,
-                "ReplaceInvocationHelper.Generate(\"x\", true, 1)",
-                "Positional-literals caller must be reordered to match the new parameter order.");
+                "ReplaceInvocationHelper.Generate(arg1: 1, arg2: \"x\", arg3: true)",
+                "Literal arguments must bind by target parameter names.");
 
-            // Assertion 3 — named-out-of-order call must be rewritten so the lexical order
-            // matches the new signature. Names are preserved; only their positions change.
-            // Expected emission (new order: arg2, arg3, arg1):
-            //   Generate(arg2: "x", arg3: true, arg1: 1)
+            // Named arguments retain their original expression evaluation order.
             StringAssert.Contains(
                 addedText,
-                "ReplaceInvocationHelper.Generate(arg2: \"x\", arg3: true, arg1: 1)",
-                "Named-argument caller must be rewritten with named args preserved and lexical order matching the new parameter order.");
+                "ReplaceInvocationHelper.Generate(arg3: true, arg1: 1, arg2: \"x\")",
+                "Named arguments must retain original lexical evaluation order.");
 
             // Negative assertion — no call-site should still reference the old method name.
             Assert.IsFalse(
@@ -288,7 +529,7 @@ public sealed class ReplaceInvocationTests : SharedWorkspaceTestBase
 
             StringAssert.Contains(
                 addedText,
-                "ReplaceInvocationDelegating.SummarizeV2(\"abcdef\", 3)",
+                "ReplaceInvocationDelegating.SummarizeV2(text: \"abcdef\", maxLength: 3)",
                 "The external caller must be rewritten to the replacement method.");
 
             Assert.IsFalse(

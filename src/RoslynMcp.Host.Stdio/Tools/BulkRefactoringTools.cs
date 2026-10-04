@@ -70,14 +70,14 @@ public static class BulkRefactoringTools
             invokedRoute: "bulk_replace_type_apply");
 
     // replace-invocation-pattern-refactor: method-level ergonomic pair to bulk_replace_type_preview.
-    // Rewrites every invocation of FQ.Old(a,b,c) to FQ.New(b,c,a) with argument reorder derived
+    // Rewrites every invocation of FQ.Old(a,b,c) to FQ.New(a: a,b: b,c: c) with parameter mapping derived
     // from parameter-name matching between the two signatures. Apply reuses the existing
     // bulk_replace_type_apply for symmetry — both tools store a previewed Solution snapshot,
     // which the shared apply path redeems via the preview token.
     /// <remarks>
     /// Supply fully-qualified signatures with parameter types to disambiguate overloads.
-    /// Parameter-name equality derives the reorder: positional arguments move, while named
-    /// arguments retain their names and are ordered to match the replacement signature.
+    /// Parameter-name equality derives the mapping. Rewritten arguments use target names
+    /// while preserving lexical evaluation order, original implicit values and passing modes.
     /// </remarks>
     [McpServerTool(Name = "replace_invocation_preview", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("refactoring", "experimental", true, false,
