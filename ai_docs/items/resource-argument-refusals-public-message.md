@@ -16,9 +16,13 @@
 - [ ] A non-absolute filePath refusal no longer embeds the received path.
 - [ ] An unsupported catalog diff lists supported pairs without echoing versions; WorkspaceResources.cs:198 no longer interpolates ex.Message.
 
+- [ ] Catalog-diff resource and target-parameter descriptions promise only accepted current-version targets and aliases; metadata regressions reject stale fixed target examples.
+
 ## Evidence
 
 - 10 ArgumentException/ArgumentOutOfRangeException construction site(s) in scope at main f7b33b85; plain ArgumentException messages are redacted by `ToolErrorHandler.BuildSafeArgumentMessage` (`src/RoslynMcp.Host.Stdio/Tools/ToolErrorHandler.cs:570-646`) to "Parameter '<x>' is invalid", or rescued only by message/paramName sniffing arms. Survey + design: plan-deepener, backlog-remediate 20260926T234932Z.
+
+- 2026-10-04: ServerResources.cs catalog-diff resource/target descriptions still advertise 2.3.2. ServerSurfaceCatalog.CreateVersionDiff accepts only V231ReleaseVersion -> CurrentReleaseVersion; Directory.Build.props currently sets 4.3.0. Keep guidance version-neutral and test it with the accepted aliases. Same catalog-version correction mechanism and existing scoped files.
 
 ## Context
 

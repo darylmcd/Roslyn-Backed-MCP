@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-04T21:40:44Z
+**updated_at:** 2026-10-05T00:56:20Z
 
 ## Agent contract
 
@@ -381,6 +381,7 @@
 | `host-bind-options-locals-untested` | Low | — | **Extract and test the remaining Program.cs Bind*Options local functions** — workspace, preview-store and execution-gate option binders are untestable top-level locals. [type: test-infrastructure] [source: workspace-restore-budget fixer] | M | items/host-bind-options-locals-untested.md |
 | `extract-type-override-modifier-stripped` | Low | — | **Investigate extract_type dropping override modifiers** — check whether extracting an override member silently discards the base contract. [type: chore] [source: backlog-remediate 20261001T130338Z] | S | items/extract-type-override-modifier-stripped.md |
 | `project-name-path-selection-duplication` | Low | file-create-and-scaffold-refusals-public-message,cross-project-public-refusals-echo-input | **Centralize project name/path selection** — reuse one selection predicate across file operations, cross-project refactoring and scaffolding while preserving caller-specific failures. [type: refactor] [source: backlog-remediate adjacent review 2026-10-04] | M | items/project-name-path-selection-duplication.md |
+| `argument-error-retired-family-design-links` | Low | — | **Preserve argument-error family design guidance** — replace fifteen live links to the deleted core-move item with a durable, source-verified contract. [type: docs] [source: backlog-remediate adjacent verification 2026-10-05] | M | items/argument-error-retired-family-design-links.md |
 
 ## Defer
 
