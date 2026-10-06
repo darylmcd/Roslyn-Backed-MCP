@@ -480,7 +480,7 @@
         "src/RoslynMcp.Roslyn/Helpers/ProjectFilterHelper.cs",
         "src/RoslynMcp.Core/Models/GateMetricsDto.cs"
       ],
-      "testFilesAdded": 10,
+      "testFilesAdded": 11,
       "testFiles": [
         "tests/RoslynMcp.Tests/ToolDispatchTests.cs",
         "tests/RoslynMcp.Tests/CompileCheckZeroProjectsTests.cs",
@@ -491,7 +491,8 @@
         "tests/RoslynMcp.Tests/ToolErrorHandlerParameterValidationTests.cs",
         "tests/RoslynMcp.Tests/ProjectFilterUnknownNamePatternTests.cs",
         "tests/RoslynMcp.Tests/ProjectFilterUnknownNameMetricsTests.cs",
-        "tests/RoslynMcp.Tests/ProjectFilterUnknownNameScanTests.cs"
+        "tests/RoslynMcp.Tests/ProjectFilterUnknownNameScanTests.cs",
+        "tests/RoslynMcp.Tests/WorkspaceIdOptionalSurfaceTests.cs"
       ],
       "docFiles": [
         "docs/decisions/0015-dispatch-public-argument-diagnostics.md",
@@ -517,8 +518,8 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "8d743189c32cade4474eee006a6936eeafb2b311ab02ab029fceb8c4ccdb0bfe",
-      "stanzaHash": "f493476e759cacc705e9196ba47917acd6bd427f6e6480f374dac998ed95d56a",
-      "reviewedStanzaHash": "f493476e759cacc705e9196ba47917acd6bd427f6e6480f374dac998ed95d56a",
+      "stanzaHash": "62f1b1099599963b573485cb22722e71d115df9bb893b759aabaa8499f527775",
+      "reviewedStanzaHash": "62f1b1099599963b573485cb22722e71d115df9bb893b759aabaa8499f527775",
       "amendments": [
         {
           "at": "2026-10-04T19:58:48.586Z",
@@ -533,6 +534,13 @@
           "reason": "Live Roslyn find_references returns all16 references in12 unique production files; the prior stanza incorrectly claimed13. Signatures and result contracts remain unchanged; production scope8 and test scope10 remain unchanged.",
           "previousStanzaHash": "0d3c7527e89ee16bdcc790b54ed46ca47b8803474249d9f348e3c3f01c97bfa1",
           "stanzaHash": "f493476e759cacc705e9196ba47917acd6bd427f6e6480f374dac998ed95d56a"
+        },
+        {
+          "at": "2026-10-06T23:57:42.737Z",
+          "finding": "Source re-vet: projectName arm has three live producers; WorkspaceIdOptionalSurfaceTests exact pin consumes changed dispatch guard",
+          "reason": "Retain live fallback to avoid new guidance downgrade; add compile-forced test companion while migrating only the selected producer family",
+          "previousStanzaHash": "f493476e759cacc705e9196ba47917acd6bd427f6e6480f374dac998ed95d56a",
+          "stanzaHash": "62f1b1099599963b573485cb22722e71d115df9bb893b759aabaa8499f527775"
         }
       ]
     },
@@ -1318,7 +1326,7 @@
       "symbol-locator-and-source-text-tool-argument-refusals-public-message": "3cf7955f7468a4d0d5d4fdcb3802b3e6b3f9f248e744f1350a2a0ea99ab2a2e4",
       "resource-argument-refusals-public-message": "6651dc3a5ed14e58e498b147d6a32650e870cd108b5850b6d47b019cb59108cd",
       "root-boundary-argument-refusals-public-message": "12ce06bdf57ad1125f5e92c5c246004cdb985b10835d774b72fa58dd4b333214",
-      "dispatch-and-tool-argument-refusals-public-message": "f493476e759cacc705e9196ba47917acd6bd427f6e6480f374dac998ed95d56a",
+      "dispatch-and-tool-argument-refusals-public-message": "62f1b1099599963b573485cb22722e71d115df9bb893b759aabaa8499f527775",
       "parameter-object-argument-refusals-public-message": "d32655a21730ce6a970badca6eb7dc847717c86b96484d5a2c8b1b58d1af5759",
       "bulk-refactoring-argument-refusals-public-message": "e7af7efb19e73a57b232b902523a524906236d69718a138524cc1205048e07e0",
       "type-extraction-argument-refusals-public-message": "f64e7f28ed65ce69c1ce3dcbbc1de0680b2a1a81e96b235397e2e4a7717a0cb0",
@@ -1328,8 +1336,8 @@
     }
   },
   "conflictGraphInputHash": "d8cc60859909341a1fe269584901aec43ebf07370c6ba2369f72f23d0f1f2042",
-  "planHash": "df93760d0a0912cc06711c64f066e049288c0ba6f3e2987f85d7714abc071207",
+  "planHash": "6b33a950a3f4daf42d5626cdd3480f72f4c9598907ec4ac8c5df7c38dd742951",
   "backlogSnapshotHash": "aa7593fb4e2c3b59453248d6223301e471be1161179df7994320f52ec840df5f",
-  "reviewedPlanHash": "df93760d0a0912cc06711c64f066e049288c0ba6f3e2987f85d7714abc071207",
+  "reviewedPlanHash": "6b33a950a3f4daf42d5626cdd3480f72f4c9598907ec4ac8c5df7c38dd742951",
   "reviewedBacklogSnapshotHash": "aa7593fb4e2c3b59453248d6223301e471be1161179df7994320f52ec840df5f"
 }
