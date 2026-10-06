@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-05T00:56:20Z
+**updated_at:** 2026-10-06T23:31:52Z
 
 ## Agent contract
 
@@ -144,6 +144,7 @@
 | `format-range-service-refusals-public-message` | Medium | — | **Publish safe formatter range refusals** — name coordinate bounds and projection recovery through the error envelope. [type: bug] [source: change-signature-refusals-public-message] | S | items/format-range-service-refusals-public-message.md |
 | `change-signature-omitted-optional-binding` | Medium | — | **Preserve binding across omitted optional arguments** — repair add/reorder positional rewriting using semantic parameter bindings. [type: bug] [source: backlog-remediate-20261004] | S | items/change-signature-omitted-optional-binding.md |
 | `cross-project-public-refusals-echo-input` | Medium | — | **Remove caller detail from public cross-project refusals** — publish path/input-free corrections for unresolved type/project names and existing destinations while preserving wire categories. [type: bug] [source: backlog-remediate adjacent review 2026-10-04] | S | items/cross-project-public-refusals-echo-input.md |
+| `top10-good-preview-result-contract` | Medium | — | **Pin the clean apply-with-verify result** — require a known-clean isolated preview to return applied and verify edited content; correct the shared-workspace comment. [type: test] [source: resource-1753-ci-companion-review] | S | items/top10-good-preview-result-contract.md |
 
 ## Low
 
