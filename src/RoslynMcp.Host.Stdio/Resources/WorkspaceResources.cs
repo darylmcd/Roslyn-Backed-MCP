@@ -183,8 +183,8 @@ public static class WorkspaceResources
                     // filePath is caller input at fault, so classification must yield
                     // InvalidArgument -> JSON-RPC InvalidParams (-32602), never the
                     // InternalError fallback (-32603). Mirrors GetSourceFileLines.
-                    throw new ArgumentException(
-                        $"filePath must be an absolute path after decoding. Received: {filePath}",
+                    throw new PublicArgumentException(
+                        "Parameter 'filePath' must be an absolute path after URI decoding.",
                         nameof(filePath));
                 }
 
@@ -194,8 +194,8 @@ public static class WorkspaceResources
                 return text;
             }, ct).ConfigureAwait(false);
         }
-        catch (KeyNotFoundException ex) { throw new McpToolException(source, $"Not found: {ex.Message}", ex); }
-        catch (ArgumentException ex) { throw new McpToolException(source, $"Invalid argument: {ex.Message}", ex); }
+        catch (KeyNotFoundException ex) { throw new McpToolException(source, "Document not found.", ex); }
+        catch (ArgumentException ex) { throw new McpToolException(source, "Invalid argument.", ex); }
     }
 
     /// <summary>
@@ -247,8 +247,8 @@ public static class WorkspaceResources
                 var normalizedPath = NormalizeFilePathForResource(filePath);
                 if (!Path.IsPathFullyQualified(normalizedPath))
                 {
-                    throw new ArgumentException(
-                        $"filePath must be an absolute path after decoding. Received: {filePath}",
+                    throw new PublicArgumentException(
+                        "Parameter 'filePath' must be an absolute path after URI decoding.",
                         nameof(filePath));
                 }
 
@@ -261,9 +261,9 @@ public static class WorkspaceResources
                 var totalLineCount = RoslynMcp.Roslyn.Helpers.SourceTextSlicer.CountLines(text);
                 if (startLine > totalLineCount)
                 {
-                    throw new ArgumentOutOfRangeException(
-                        nameof(lineRange),
-                        $"startLine ({startLine}) is past the end of the file ({totalLineCount} lines).");
+                    throw new PublicArgumentOutOfRangeException(
+                        $"Parameter 'lineRange' startLine ({startLine}) is past the end of the file ({totalLineCount} lines).",
+                        nameof(lineRange));
                 }
                 // Clamp end to file end for graceful behavior on over-shoot ranges.
                 var clampedEnd = Math.Min(endLine, totalLineCount);
@@ -278,28 +278,28 @@ public static class WorkspaceResources
     {
         if (string.IsNullOrWhiteSpace(lineRange))
         {
-            throw new ArgumentException("lineRange must be in the format \"startLine-endLine\" (1-based).", nameof(lineRange));
+            throw new PublicArgumentException("Parameter 'lineRange' must use the format \"startLine-endLine\" (1-based, inclusive).", nameof(lineRange));
         }
 
         var dash = lineRange.IndexOf('-');
         if (dash < 1 || dash == lineRange.Length - 1)
         {
-            throw new ArgumentException(
-                $"lineRange must be in the format \"startLine-endLine\" (e.g. \"100-200\"). Got: {lineRange}",
+            throw new PublicArgumentException(
+                "Parameter 'lineRange' must use the format \"startLine-endLine\" (1-based, inclusive).",
                 nameof(lineRange));
         }
 
         if (!int.TryParse(lineRange[..dash], out var start) || start < 1)
         {
-            throw new ArgumentException($"startLine must be a positive integer. Got: {lineRange[..dash]}", nameof(lineRange));
+            throw new PublicArgumentException("Parameter 'lineRange' startLine must be a positive integer.", nameof(lineRange));
         }
         if (!int.TryParse(lineRange[(dash + 1)..], out var end) || end < 1)
         {
-            throw new ArgumentException($"endLine must be a positive integer. Got: {lineRange[(dash + 1)..]}", nameof(lineRange));
+            throw new PublicArgumentException("Parameter 'lineRange' endLine must be a positive integer.", nameof(lineRange));
         }
         if (end < start)
         {
-            throw new ArgumentException($"endLine ({end}) must be >= startLine ({start}).", nameof(lineRange));
+            throw new PublicArgumentException($"Parameter 'lineRange' endLine ({end}) must be >= startLine ({start}).", nameof(lineRange));
         }
 
         return (start, end);

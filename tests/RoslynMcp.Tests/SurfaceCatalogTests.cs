@@ -18,6 +18,88 @@ namespace RoslynMcp.Tests;
 public sealed class SurfaceCatalogTests
 {
     [TestMethod]
+    public void CatalogArguments_ValidateSourceFirstAndPreserveIdentity()
+    {
+        var cases = new (string? From, string? To, string Parameter, string Type)[]
+        {
+            (null, null, "fromVersion", nameof(ArgumentNullException)),
+            ("", null, "fromVersion", nameof(ArgumentException)),
+            (" ", "bad-target", "fromVersion", nameof(ArgumentException)),
+            ("bad-source", null, "fromVersion", nameof(ArgumentException)),
+            ("bad-source", "", "fromVersion", nameof(ArgumentException)),
+            ("bad-source", "bad-target", "fromVersion", nameof(ArgumentException)),
+            ("v2.3.1", null, "toVersion", nameof(ArgumentNullException)),
+            ("v2.3.1", "", "toVersion", nameof(ArgumentException)),
+            ("v2.3.1", " ", "toVersion", nameof(ArgumentException)),
+            ("v2.3.1", "bad-target", "toVersion", nameof(ArgumentException)),
+            ("current", "latest", "fromVersion", nameof(ArgumentException))
+        };
+        foreach (var item in cases)
+        {
+            var ex = Assert.Throws<ArgumentException>(() => ServerSurfaceCatalog.CreateVersionDiff(item.From!, item.To!));
+            Assert.AreEqual(item.Parameter, ex.ParamName);
+            using var doc = JsonDocument.Parse(ToolErrorHandler.ClassifyAndFormat(ex, "resource"));
+            Assert.AreEqual("InvalidArgument", doc.RootElement.GetProperty("category").GetString());
+            Assert.AreEqual(item.Type, doc.RootElement.GetProperty("exceptionType").GetString());
+            if (item.Type == nameof(ArgumentException))
+            {
+                Assert.IsInstanceOfType<IPublicMessageException>(ex);
+                var expected = string.IsNullOrWhiteSpace(item.Parameter == "fromVersion" ? item.From : item.To)
+                    ? $"Parameter '{item.Parameter}' must be a nonblank catalog version."
+                    : $"Parameter '{item.Parameter}' is unsupported. Supported catalog diff: v2.3.1 -> v{ServerSurfaceCatalog.CurrentReleaseVersion} (source aliases: 2.3.1, v2.3.1; target aliases: {ServerSurfaceCatalog.CurrentReleaseVersion}, v{ServerSurfaceCatalog.CurrentReleaseVersion}, current, latest).";
+                Assert.AreEqual(expected, doc.RootElement.GetProperty("message").GetString());
+            }
+        }
+    }
+
+    [TestMethod]
+    public void CatalogVersionMetadataAndAcceptedAliases_Agree()
+    {
+        var method = typeof(ServerResources).GetMethod(nameof(ServerResources.GetServerCatalogVersionDiff))!;
+        var description = method.GetCustomAttribute<System.ComponentModel.DescriptionAttribute>()!.Description;
+        var target = method.GetParameters()[1].GetCustomAttribute<System.ComponentModel.DescriptionAttribute>()!.Description;
+        foreach (var metadata in new[] { description, target })
+        {
+            Assert.IsFalse(metadata.Contains("2.3.2", StringComparison.Ordinal));
+            StringAssert.Contains(metadata, "current");
+            StringAssert.Contains(metadata, "latest");
+        }
+        foreach (var source in new[] { "2.3.1", "v2.3.1", " V2.3.1 " })
+            foreach (var alias in new[] { ServerSurfaceCatalog.CurrentReleaseVersion, "v" + ServerSurfaceCatalog.CurrentReleaseVersion, "current", "latest", " CURRENT ", " LATEST " })
+            {
+                var diff = ServerSurfaceCatalog.CreateVersionDiff(source, alias);
+                Assert.AreEqual("2.3.1", diff.FromVersion);
+                Assert.AreEqual(ServerSurfaceCatalog.CurrentReleaseVersion, diff.ToVersion);
+            }
+    }
+
+    [TestMethod]
+    public void CatalogPagination_RefusalsPreserveCorrectionsAndClamping()
+    {
+        foreach (var tools in new[] { true, false })
+            foreach (var offsetBad in new[] { true, false })
+                foreach (var invalid in new[] { "caller-private", "", "2147483648" })
+                {
+                    var ex = Assert.Throws<ArgumentException>(() => tools
+                        ? ServerResources.GetServerCatalogToolsPage(offsetBad ? invalid : "0", offsetBad ? "5" : invalid)
+                        : ServerResources.GetServerCatalogPromptsPage(offsetBad ? invalid : "0", offsetBad ? "5" : invalid));
+                    var parameter = offsetBad ? "offset" : "limit";
+                    Assert.AreEqual(parameter, ex.ParamName);
+                    Assert.IsInstanceOfType<IPublicMessageException>(ex);
+                    using var doc = JsonDocument.Parse(ToolErrorHandler.ClassifyAndFormat(ex, "resource"));
+                    Assert.AreEqual("InvalidArgument", doc.RootElement.GetProperty("category").GetString());
+                    Assert.AreEqual($"Parameter '{parameter}' must be an integer.", doc.RootElement.GetProperty("message").GetString());
+                    Assert.AreEqual(nameof(ArgumentException), doc.RootElement.GetProperty("exceptionType").GetString());
+                }
+        using var page = JsonDocument.Parse(ServerResources.GetServerCatalogToolsPage("-1", "0"));
+        Assert.AreEqual(0, page.RootElement.GetProperty("offset").GetInt32());
+        Assert.AreEqual(1, page.RootElement.GetProperty("limit").GetInt32());
+        using var end = JsonDocument.Parse(ServerResources.GetServerCatalogPromptsPage("2147483647", "2147483647"));
+        Assert.AreEqual(200, end.RootElement.GetProperty("limit").GetInt32());
+        Assert.AreEqual(0, end.RootElement.GetProperty("returnedCount").GetInt32());
+    }
+
+    [TestMethod]
     public void ServerSurfaceCatalog_CoversAllRegisteredToolsResourcesAndPrompts()
     {
         var assembly = typeof(ServerTools).Assembly;
@@ -330,10 +412,10 @@ public sealed class SurfaceCatalogTests
     [TestMethod]
     public void CreateVersionDiff_UnsupportedPair_ThrowsClearError()
     {
-        var ex = Assert.ThrowsExactly<ArgumentException>(
+        var ex = Assert.ThrowsExactly<PublicArgumentException>(
             () => ServerSurfaceCatalog.CreateVersionDiff("v2.3.0", "current"));
 
-        StringAssert.Contains(ex.Message, "Unsupported catalog diff 'v2.3.0' -> 'current'");
+        StringAssert.Contains(ex.Message, "Supported catalog diff");
         StringAssert.Contains(ex.Message, "v2.3.1");
         StringAssert.Contains(ex.Message, "latest");
     }
@@ -346,10 +428,10 @@ public sealed class SurfaceCatalogTests
         // propagates to ResourceReadResultFilter, which answers on the JSON-RPC error
         // channel with InvalidParams (-32602). The wire-level shape is pinned by
         // ResourceReadWireContractTests; this test pins the handler's propagation contract.
-        var ex = Assert.ThrowsExactly<ArgumentException>(
+        var ex = Assert.ThrowsExactly<PublicArgumentException>(
             () => ServerResources.GetServerCatalogVersionDiff("v2.3.0", "current"));
 
-        StringAssert.Contains(ex.Message, "Unsupported catalog diff");
+        StringAssert.Contains(ex.Message, "Supported catalog diff");
     }
 
     [TestMethod]

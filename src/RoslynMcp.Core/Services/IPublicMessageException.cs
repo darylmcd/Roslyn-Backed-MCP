@@ -8,7 +8,8 @@ namespace RoslynMcp.Core.Services;
 /// <c>exceptionType</c> so the implementing class name never reaches the wire.
 /// </summary>
 /// <remarks>
-/// Implemented by <see cref="PublicArgumentException"/> and
+/// Implemented by <see cref="PublicArgumentException"/>,
+/// <see cref="PublicArgumentOutOfRangeException"/> and
 /// <see cref="PublicInvalidOperationException"/>. Implementers must derive directly from the BCL
 /// exception whose name the envelope reports. <see cref="PublicArgumentException"/> additionally
 /// preserves its trusted prompt-binding wire identity through its dedicated factory.
