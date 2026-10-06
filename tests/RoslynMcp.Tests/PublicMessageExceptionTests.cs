@@ -5,13 +5,26 @@ using RoslynMcp.Host.Stdio.Tools;
 namespace RoslynMcp.Tests;
 
 /// <summary>
-/// Pins the <see cref="IPublicMessageException"/> contract: both public-message types implement the
+/// Pins the <see cref="IPublicMessageException"/> contract: public-message types implement the
 /// marker, the shared error boundary returns their message verbatim, and the envelope
 /// <c>exceptionType</c> is the BCL base name rather than the implementing class name.
 /// </summary>
 [TestClass]
 public sealed class PublicMessageExceptionTests
 {
+    [TestMethod]
+    public void PublicArgumentOutOfRangeException_PreservesDirectBclIdentity()
+    {
+        Assert.AreSame(typeof(ArgumentOutOfRangeException), typeof(PublicArgumentOutOfRangeException).BaseType);
+        var ex = new PublicArgumentOutOfRangeException("Choose a line before EOF.", "lineRange");
+        Assert.IsInstanceOfType<IPublicMessageException>(ex);
+        Assert.AreEqual("lineRange", ex.ParamName);
+        using var doc = JsonDocument.Parse(ToolErrorHandler.ClassifyAndFormat(ex, "resource"));
+        Assert.AreEqual("InvalidArgument", doc.RootElement.GetProperty("category").GetString());
+        Assert.AreEqual("Choose a line before EOF.", doc.RootElement.GetProperty("message").GetString());
+        Assert.AreEqual(nameof(ArgumentOutOfRangeException), doc.RootElement.GetProperty("exceptionType").GetString());
+    }
+
     [TestMethod]
     public void PublicArgumentException_ImplementsMarker_AndDerivesFromArgumentException()
     {
