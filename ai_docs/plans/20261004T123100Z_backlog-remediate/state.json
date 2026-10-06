@@ -341,12 +341,13 @@
         "src/RoslynMcp.Core/Services/PublicArgumentOutOfRangeException.cs",
         "src/RoslynMcp.Core/Services/IPublicMessageException.cs"
       ],
-      "testFilesAdded": 4,
+      "testFilesAdded": 5,
       "testFiles": [
         "tests/RoslynMcp.Tests/WorkspaceResourceTests.cs",
         "tests/RoslynMcp.Tests/SurfaceCatalogTests.cs",
         "tests/RoslynMcp.Tests/ResourceReadWireContractTests.cs",
-        "tests/RoslynMcp.Tests/PublicMessageExceptionTests.cs"
+        "tests/RoslynMcp.Tests/PublicMessageExceptionTests.cs",
+        "tests/RoslynMcp.Tests/Top10V2RegressionTests.cs"
       ],
       "docFiles": [],
       "rowsClosedCount": 1,
@@ -368,8 +369,8 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "a3db611ce71c6f789a20cfd446e28a87a2b10c6326942c8a50ee6d8aa4ea3ade",
-      "stanzaHash": "bca29484b938395d11923f7781afd01fad199aeef7c14504ac11e1c4e29d9a62",
-      "reviewedStanzaHash": "bca29484b938395d11923f7781afd01fad199aeef7c14504ac11e1c4e29d9a62",
+      "stanzaHash": "6651dc3a5ed14e58e498b147d6a32650e870cd108b5850b6d47b019cb59108cd",
+      "reviewedStanzaHash": "6651dc3a5ed14e58e498b147d6a32650e870cd108b5850b6d47b019cb59108cd",
       "amendments": [
         {
           "at": "2026-10-04T19:58:47.351Z",
@@ -398,9 +399,16 @@
           "reason": "Immutable base normalizes both nonblank tokens before support checks. Earlier source-first wording overstated source support precedence and led to a changed exceptionType for unsupported source plus null target. Preserve source binding, target binding, then pair support phases; exact source and test paths unchanged.",
           "previousStanzaHash": "a54467007080fec5e15540a560fc2c832e26ef4ab9f4d84cdbac9ebb84107b6c",
           "stanzaHash": "bca29484b938395d11923f7781afd01fad199aeef7c14504ac11e1c4e29d9a62"
+        },
+        {
+          "at": "2026-10-06T23:25:42.331Z",
+          "finding": "CI 37544734118 Windows shard 3: three Top10 resource exact-type assertions failed on 1f6afa7",
+          "reason": "Add the missed regression companions to scope; pin intended public subclasses and safe messages without weakening assertions",
+          "previousStanzaHash": "bca29484b938395d11923f7781afd01fad199aeef7c14504ac11e1c4e29d9a62",
+          "stanzaHash": "6651dc3a5ed14e58e498b147d6a32650e870cd108b5850b6d47b019cb59108cd"
         }
       ],
-      "reviewedHead": null
+      "reviewedHead": "1f6afa733586e035889a3639de4335bff76449e2"
     },
     {
       "id": "root-boundary-argument-refusals-public-message",
@@ -1301,7 +1309,7 @@
       "get-prompt-text-unknown-prompt-public-message": "6b265b0b940c5b316584361d77ff80ce46d9d327fe4e12ddf6f45f7d5fbe10f5",
       "tool-scripting-undo-workflow-argument-refusals-public-message": "b8685312bcb9c8fe06487f82e0079baca0c768a11714cfb7cd34476ec2f70696",
       "symbol-locator-and-source-text-tool-argument-refusals-public-message": "3cf7955f7468a4d0d5d4fdcb3802b3e6b3f9f248e744f1350a2a0ea99ab2a2e4",
-      "resource-argument-refusals-public-message": "bca29484b938395d11923f7781afd01fad199aeef7c14504ac11e1c4e29d9a62",
+      "resource-argument-refusals-public-message": "6651dc3a5ed14e58e498b147d6a32650e870cd108b5850b6d47b019cb59108cd",
       "root-boundary-argument-refusals-public-message": "12ce06bdf57ad1125f5e92c5c246004cdb985b10835d774b72fa58dd4b333214",
       "dispatch-and-tool-argument-refusals-public-message": "f493476e759cacc705e9196ba47917acd6bd427f6e6480f374dac998ed95d56a",
       "parameter-object-argument-refusals-public-message": "d32655a21730ce6a970badca6eb7dc847717c86b96484d5a2c8b1b58d1af5759",
@@ -1313,8 +1321,8 @@
     }
   },
   "conflictGraphInputHash": "d8cc60859909341a1fe269584901aec43ebf07370c6ba2369f72f23d0f1f2042",
-  "planHash": "93d472decbd85504cc9c807ef35e16a14cf40bf48c70b412e12c7bfe019b7e19",
+  "planHash": "df93760d0a0912cc06711c64f066e049288c0ba6f3e2987f85d7714abc071207",
   "backlogSnapshotHash": "aa7593fb4e2c3b59453248d6223301e471be1161179df7994320f52ec840df5f",
-  "reviewedPlanHash": "93d472decbd85504cc9c807ef35e16a14cf40bf48c70b412e12c7bfe019b7e19",
+  "reviewedPlanHash": "df93760d0a0912cc06711c64f066e049288c0ba6f3e2987f85d7714abc071207",
   "reviewedBacklogSnapshotHash": "aa7593fb4e2c3b59453248d6223301e471be1161179df7994320f52ec840df5f"
 }
