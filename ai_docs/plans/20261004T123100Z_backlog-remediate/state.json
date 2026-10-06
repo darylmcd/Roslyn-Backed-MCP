@@ -329,7 +329,7 @@
     {
       "id": "resource-argument-refusals-public-message",
       "order": 7,
-      "status": "pending",
+      "status": "in-progress",
       "backlogRowsClosed": [
         "resource-argument-refusals-public-message"
       ],
@@ -362,8 +362,8 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
+      "branch": "remediation/resource-argument-refusals-public-message",
+      "worktreePath": ".worktrees/resource-argument-refusals-public-message",
       "prUrl": null,
       "mergedAt": null,
       "notes": null,
