@@ -18,15 +18,16 @@ namespace RoslynMcp.Tests;
 public sealed class SurfaceCatalogTests
 {
     [TestMethod]
-    public void CatalogArguments_ValidateSourceFirstAndPreserveIdentity()
+    public void CatalogArguments_ValidateBindingsBeforePairSupportAndPreserveIdentity()
     {
         var cases = new (string? From, string? To, string Parameter, string Type)[]
         {
             (null, null, "fromVersion", nameof(ArgumentNullException)),
             ("", null, "fromVersion", nameof(ArgumentException)),
             (" ", "bad-target", "fromVersion", nameof(ArgumentException)),
-            ("bad-source", null, "fromVersion", nameof(ArgumentException)),
-            ("bad-source", "", "fromVersion", nameof(ArgumentException)),
+            ("bad-source", null, "toVersion", nameof(ArgumentNullException)),
+            ("bad-source", "", "toVersion", nameof(ArgumentException)),
+            ("bad-source", " ", "toVersion", nameof(ArgumentException)),
             ("bad-source", "bad-target", "fromVersion", nameof(ArgumentException)),
             ("v2.3.1", null, "toVersion", nameof(ArgumentNullException)),
             ("v2.3.1", "", "toVersion", nameof(ArgumentException)),
@@ -49,6 +50,28 @@ public sealed class SurfaceCatalogTests
                     : $"Parameter '{item.Parameter}' is unsupported. Supported catalog diff: v2.3.1 -> v{ServerSurfaceCatalog.CurrentReleaseVersion} (source aliases: 2.3.1, v2.3.1; target aliases: {ServerSurfaceCatalog.CurrentReleaseVersion}, v{ServerSurfaceCatalog.CurrentReleaseVersion}, current, latest).";
                 Assert.AreEqual(expected, doc.RootElement.GetProperty("message").GetString());
             }
+        }
+    }
+
+    [TestMethod]
+    [DataRow(null, nameof(ArgumentNullException))]
+    [DataRow("", nameof(ArgumentException))]
+    [DataRow(" \t", nameof(ArgumentException))]
+    public void CatalogArguments_UnsupportedSourceStillValidatesTargetBinding(string? target, string exceptionType)
+    {
+        var ex = Assert.Throws<ArgumentException>(() => ServerSurfaceCatalog.CreateVersionDiff("bad-source", target!));
+        Assert.AreEqual("toVersion", ex.ParamName);
+        using var doc = JsonDocument.Parse(ToolErrorHandler.ClassifyAndFormat(ex, "resource"));
+        Assert.AreEqual("InvalidArgument", doc.RootElement.GetProperty("category").GetString());
+        Assert.AreEqual(exceptionType, doc.RootElement.GetProperty("exceptionType").GetString());
+        if (target is null)
+        {
+            Assert.IsInstanceOfType<ArgumentNullException>(ex);
+        }
+        else
+        {
+            Assert.IsInstanceOfType<IPublicMessageException>(ex);
+            Assert.AreEqual("Parameter 'toVersion' must be a nonblank catalog version.", doc.RootElement.GetProperty("message").GetString());
         }
     }
 

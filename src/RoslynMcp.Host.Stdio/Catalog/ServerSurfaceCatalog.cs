@@ -294,13 +294,14 @@ public static partial class ServerSurfaceCatalog
         if (string.IsNullOrWhiteSpace(fromVersion))
             throw new PublicArgumentException("Parameter 'fromVersion' must be a nonblank catalog version.", nameof(fromVersion));
         var normalizedFrom = NormalizeVersionAlias(fromVersion);
-        if (!string.Equals(normalizedFrom, V231ReleaseVersion, StringComparison.Ordinal))
-            throw UnsupportedVersion(nameof(fromVersion));
 
         ArgumentNullException.ThrowIfNull(toVersion);
         if (string.IsNullOrWhiteSpace(toVersion))
             throw new PublicArgumentException("Parameter 'toVersion' must be a nonblank catalog version.", nameof(toVersion));
         var normalizedTo = NormalizeVersionAlias(toVersion);
+
+        if (!string.Equals(normalizedFrom, V231ReleaseVersion, StringComparison.Ordinal))
+            throw UnsupportedVersion(nameof(fromVersion));
 
         if (!string.Equals(normalizedTo, CurrentReleaseVersion, StringComparison.Ordinal))
         {
