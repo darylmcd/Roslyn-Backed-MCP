@@ -145,7 +145,7 @@
     {
       "id": "get-prompt-text-unknown-prompt-public-message",
       "order": 4,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "get-prompt-text-unknown-prompt-public-message"
       ],
@@ -178,19 +178,27 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/get-prompt-text-unknown-prompt-public-message",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1743",
+      "mergedAt": "2026-10-04T16:25:56Z",
       "notes": null,
       "fileSetHash": "457338453ecab32e0effe9d3035c9357051748e55691b95f31d325561f32c890",
       "stanzaHash": "6b265b0b940c5b316584361d77ff80ce46d9d327fe4e12ddf6f45f7d5fbe10f5",
-      "reviewedStanzaHash": "6b265b0b940c5b316584361d77ff80ce46d9d327fe4e12ddf6f45f7d5fbe10f5"
+      "reviewedStanzaHash": "6b265b0b940c5b316584361d77ff80ce46d9d327fe4e12ddf6f45f7d5fbe10f5",
+      "reviewedHead": "d4498e0c376fcfa53f1732c9b69e36dd8007724f",
+      "scratchRemoved": false,
+      "githubGate": {
+        "baseOid": "defd4546f5a31b1ef68bbdc2c74fbc56aa64b99c",
+        "headOid": "d4498e0c376fcfa53f1732c9b69e36dd8007724f",
+        "tree": "baea96924d1cd6f9dc0e5fe6497596e38c495235",
+        "checksVerifiedAt": "2026-10-04T16:25:52.550Z"
+      }
     },
     {
       "id": "tool-scripting-undo-workflow-argument-refusals-public-message",
       "order": 5,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "tool-scripting-undo-workflow-argument-refusals-public-message"
       ],
@@ -200,10 +208,12 @@
         "src/RoslynMcp.Host.Stdio/Tools/UndoTools.cs",
         "src/RoslynMcp.Host.Stdio/Tools/WorkflowRecommendationTools.cs"
       ],
-      "testFilesAdded": 2,
+      "testFilesAdded": 4,
       "testFiles": [
         "tests/RoslynMcp.Tests/ErrorResponseObservabilityTests.cs",
-        "tests/RoslynMcp.Tests/WorkflowRecommendationToolsTests.cs"
+        "tests/RoslynMcp.Tests/WorkflowRecommendationToolsTests.cs",
+        "tests/RoslynMcp.Tests/TestInfrastructure/TestServiceContainer.cs",
+        "tests/RoslynMcp.Tests/TestBase.cs"
       ],
       "docFiles": [
         "changelog.d/tool-scripting-undo-workflow-argument-refusals-public-message.md"
@@ -221,19 +231,36 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/tool-scripting-undo-workflow-argument-refusals-public-message",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1746",
+      "mergedAt": "2026-10-04T17:19:02Z",
       "notes": null,
-      "fileSetHash": "8786b96a1cb6f35fa652f726d34ade7851946cc4e92c443aaa488d2e022fd3a6",
-      "stanzaHash": "a1081d96d56fc0784e4dc07e5efc744ec78cd7b0ddf5efd5425e502130fe49bc",
-      "reviewedStanzaHash": "a1081d96d56fc0784e4dc07e5efc744ec78cd7b0ddf5efd5425e502130fe49bc"
+      "fileSetHash": "84840172eb975ef3bc0179d9cb13eedeae8755e1f253fa18305cffd7c63e84f8",
+      "stanzaHash": "b8685312bcb9c8fe06487f82e0079baca0c768a11714cfb7cd34476ec2f70696",
+      "reviewedStanzaHash": "b8685312bcb9c8fe06487f82e0079baca0c768a11714cfb7cd34476ec2f70696",
+      "amendments": [
+        {
+          "at": "2026-10-04T16:39:33.913Z",
+          "finding": "Production DI registers undo workflow service but TestServiceContainer provider is private and exposes no typed accessor for real-service tool guard regressions.",
+          "reason": "Add required provider-resolved container property and get-only TestBase forwarder; include their lifecycle and binding consumers to verify the complete fixture companion.",
+          "previousStanzaHash": "a1081d96d56fc0784e4dc07e5efc744ec78cd7b0ddf5efd5425e502130fe49bc",
+          "stanzaHash": "b8685312bcb9c8fe06487f82e0079baca0c768a11714cfb7cd34476ec2f70696"
+        }
+      ],
+      "reviewedHead": "0dad6334dd8555adcc6966ca848921704623f790",
+      "scratchRemoved": false,
+      "githubGate": {
+        "baseOid": "5c0fce7cc18de1d9034c598804a2e53cf877e748",
+        "headOid": "0dad6334dd8555adcc6966ca848921704623f790",
+        "tree": "7a3ddd972a5bc81e8f165a15f52255bc51a171c3",
+        "checksVerifiedAt": "2026-10-04T17:18:54.565Z"
+      }
     },
     {
       "id": "symbol-locator-and-source-text-tool-argument-refusals-public-message",
       "order": 6,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "symbol-locator-and-source-text-tool-argument-refusals-public-message"
       ],
@@ -244,11 +271,12 @@
         "src/RoslynMcp.Host.Stdio/Tools/AnalysisTools.cs",
         "src/RoslynMcp.Host.Stdio/Tools/SourceTextRequestProjection.cs"
       ],
-      "testFilesAdded": 3,
+      "testFilesAdded": 4,
       "testFiles": [
         "tests/RoslynMcp.Tests/SourceTextRequestProjectionTests.cs",
         "tests/RoslynMcp.Tests/AnalysisToolsTests.cs",
-        "tests/RoslynMcp.Tests/HostArgumentRefusalEnvelopeTests.cs"
+        "tests/RoslynMcp.Tests/HostArgumentRefusalEnvelopeTests.cs",
+        "tests/RoslynMcp.Tests/WorkspaceToolsIntegrationTests.cs"
       ],
       "docFiles": [
         "changelog.d/symbol-locator-and-source-text-tool-argument-refusals-public-message.md"
@@ -266,14 +294,37 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "branch": "remediation/symbol-locator-and-source-text-tool-argument-refusals-public-message",
+      "worktreePath": ".worktrees/symbol-locator-and-source-text-tool-argument-refusals-public-message",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1748",
+      "mergedAt": "2026-10-04T18:08:58Z",
       "notes": null,
-      "fileSetHash": "cc8f6eda42e22bc959eb5c8838645f32c32d823282ec21e13358d1bc3e828252",
-      "stanzaHash": "d1096131c5b7aaa884cd3bbdb72f9888fd89b4d8b5547f75890e16225f3cf29c",
-      "reviewedStanzaHash": "d1096131c5b7aaa884cd3bbdb72f9888fd89b4d8b5547f75890e16225f3cf29c"
+      "fileSetHash": "5686e0abf357d6142f66d0bbb00339a19da054d68a07db758dffb2fe47d2a0c4",
+      "stanzaHash": "3cf7955f7468a4d0d5d4fdcb3802b3e6b3f9f248e744f1350a2a0ea99ab2a2e4",
+      "reviewedStanzaHash": "3cf7955f7468a4d0d5d4fdcb3802b3e6b3f9f248e744f1350a2a0ea99ab2a2e4",
+      "amendments": [
+        {
+          "at": "2026-10-04T17:36:44.823Z",
+          "finding": "WorkspaceToolsIntegrationTests.cs:365 consumer red expects obsolete less-than-or-equal wording; actual safe public correction includes both bounds.",
+          "reason": "Complete source-projection caller coverage requires updating this exact consumer assertion to authored startLine/endLine correction; production predicates unchanged.",
+          "previousStanzaHash": "d1096131c5b7aaa884cd3bbdb72f9888fd89b4d8b5547f75890e16225f3cf29c",
+          "stanzaHash": "fbe27e852bbe40128913af964ace5f6495f2bbb0082b51b0bd0ae5b48f6f5ba2"
+        },
+        {
+          "at": "2026-10-04T17:46:43.639Z",
+          "finding": "Cold review0: AnalysisTools.cs146-147 public descriptions contradict accepted equal aliases, same inaccurate-contract mechanism as modified helper summary.",
+          "reason": "Correct all same-mechanism alias descriptions in existing production Scope; no schema shape or predicate change.",
+          "previousStanzaHash": "fbe27e852bbe40128913af964ace5f6495f2bbb0082b51b0bd0ae5b48f6f5ba2",
+          "stanzaHash": "3cf7955f7468a4d0d5d4fdcb3802b3e6b3f9f248e744f1350a2a0ea99ab2a2e4"
+        }
+      ],
+      "reviewedHead": "7f75cb818d4d97159b32ae30596c272a61dc4aa3",
+      "githubGate": {
+        "baseOid": "a2fd70bf9b298c901496873bac7a41c947abf23c",
+        "headOid": "7f75cb818d4d97159b32ae30596c272a61dc4aa3",
+        "tree": "1df8d570f51a049f6ff8f64445ffbb50903abd0b",
+        "checksVerifiedAt": "2026-10-04T18:08:54.816Z"
+      }
     },
     {
       "id": "resource-argument-refusals-public-message",
@@ -317,8 +368,31 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "a3db611ce71c6f789a20cfd446e28a87a2b10c6326942c8a50ee6d8aa4ea3ade",
-      "stanzaHash": "c6f03188abf5fa68f5fd1b361324f673fa8512766c60e9188b837100a8bbc511",
-      "reviewedStanzaHash": "c6f03188abf5fa68f5fd1b361324f673fa8512766c60e9188b837100a8bbc511"
+      "stanzaHash": "a54467007080fec5e15540a560fc2c832e26ef4ab9f4d84cdbac9ebb84107b6c",
+      "reviewedStanzaHash": "a54467007080fec5e15540a560fc2c832e26ef4ab9f4d84cdbac9ebb84107b6c",
+      "amendments": [
+        {
+          "at": "2026-10-04T19:58:47.351Z",
+          "finding": "Validation still names historical base89ccceb3 despite immutable per-generation execution",
+          "reason": "Observe compiled regression failure on the actual executor-supplied immutable generation base; preserve every validation requirement",
+          "previousStanzaHash": "c6f03188abf5fa68f5fd1b361324f673fa8512766c60e9188b837100a8bbc511",
+          "stanzaHash": "b315a5a9b555de013ee654b679add73b7e4d391f25574e2100bd5dde2a843723"
+        },
+        {
+          "at": "2026-10-05T00:21:52.811Z",
+          "finding": "orchestrator source verification: stale catalog target metadata",
+          "reason": "ServerResources.cs:80,83 promises 2.3.2 but CreateVersionDiff accepts current release4.3.0; complete the same version-guidance mechanism in already scoped files with metadata regressions",
+          "previousStanzaHash": "b315a5a9b555de013ee654b679add73b7e4d391f25574e2100bd5dde2a843723",
+          "stanzaHash": "824a5aec1dccf60ddb814c562c52c23584192d2fd3eb7eb1f9da56e343063289"
+        },
+        {
+          "at": "2026-10-05T01:52:46.988Z",
+          "finding": "orchestrator source verification: preserve catalog version validation order",
+          "reason": "ServerSurfaceCatalog.cs290-293 validates and normalizes fromVersion before toVersion. Preserve that existing order for both-invalid version inputs while correcting parameter names and safe public refusals; hoisted target null guards can otherwise change the first refusal BCL identity. Existing scoped files/tests cover this mechanism.",
+          "previousStanzaHash": "824a5aec1dccf60ddb814c562c52c23584192d2fd3eb7eb1f9da56e343063289",
+          "stanzaHash": "a54467007080fec5e15540a560fc2c832e26ef4ab9f4d84cdbac9ebb84107b6c"
+        }
+      ]
     },
     {
       "id": "root-boundary-argument-refusals-public-message",
@@ -420,13 +494,22 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "8d743189c32cade4474eee006a6936eeafb2b311ab02ab029fceb8c4ccdb0bfe",
-      "stanzaHash": "ef230e01430bf09ee09eb91063962783c6b1b5d2a1395ff83effb3150bd1c968",
-      "reviewedStanzaHash": "ef230e01430bf09ee09eb91063962783c6b1b5d2a1395ff83effb3150bd1c968"
+      "stanzaHash": "0d3c7527e89ee16bdcc790b54ed46ca47b8803474249d9f348e3c3f01c97bfa1",
+      "reviewedStanzaHash": "0d3c7527e89ee16bdcc790b54ed46ca47b8803474249d9f348e3c3f01c97bfa1",
+      "amendments": [
+        {
+          "at": "2026-10-04T19:58:48.586Z",
+          "finding": "Validation still names historical base89ccceb3 despite immutable per-generation execution",
+          "reason": "Observe compiled regression failure on the actual executor-supplied immutable generation base; preserve every validation requirement",
+          "previousStanzaHash": "ef230e01430bf09ee09eb91063962783c6b1b5d2a1395ff83effb3150bd1c968",
+          "stanzaHash": "0d3c7527e89ee16bdcc790b54ed46ca47b8803474249d9f348e3c3f01c97bfa1"
+        }
+      ]
     },
     {
       "id": "parameter-object-argument-refusals-public-message",
       "order": 10,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "parameter-object-argument-refusals-public-message"
       ],
@@ -454,26 +537,45 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "branch": "remediation/parameter-object-argument-refusals-public-message",
+      "worktreePath": ".worktrees/parameter-object-argument-refusals-public-message",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1749",
+      "mergedAt": "2026-10-04T19:04:25Z",
       "notes": null,
       "fileSetHash": "7143a8bed29b522d5d9df682c1138133392566c5defa57458d2095ff2052da37",
-      "stanzaHash": "1f8409695b082c52946a025b9ce35b32e82dd217e489a06d042ebea46f8334db",
-      "reviewedStanzaHash": "1f8409695b082c52946a025b9ce35b32e82dd217e489a06d042ebea46f8334db"
+      "stanzaHash": "d32655a21730ce6a970badca6eb7dc847717c86b96484d5a2c8b1b58d1af5759",
+      "reviewedStanzaHash": "d32655a21730ce6a970badca6eb7dc847717c86b96484d5a2c8b1b58d1af5759",
+      "amendments": [
+        {
+          "at": "2026-10-04T18:25:44.116Z",
+          "finding": "Compiled old-code refusal regression created a preview for an extension receiver: p.IsThis is false on declared receiver parameters.",
+          "reason": "Complete the existing EnforceParameterShapeRefusals mechanism with method.IsExtensionMethod and parameter ordinal zero; retain same production/test Scope and prove no preview on refusal.",
+          "previousStanzaHash": "1f8409695b082c52946a025b9ce35b32e82dd217e489a06d042ebea46f8334db",
+          "stanzaHash": "d32655a21730ce6a970badca6eb7dc847717c86b96484d5a2c8b1b58d1af5759"
+        }
+      ],
+      "reviewedHead": "a3a7831d990e8517cc62232f4937ef80723e5da3",
+      "scratchRemoved": false,
+      "githubGate": {
+        "baseOid": "eab66510036dcd09fa8a531328c99f87a4338345",
+        "headOid": "a3a7831d990e8517cc62232f4937ef80723e5da3",
+        "tree": "0042314083516da244fa5bfbfc58b1bd9b0ebc1f",
+        "checksVerifiedAt": "2026-10-04T19:04:22.085Z"
+      }
     },
     {
       "id": "bulk-refactoring-argument-refusals-public-message",
       "order": 11,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "bulk-refactoring-argument-refusals-public-message"
       ],
-      "productionFilesTouched": 2,
+      "productionFilesTouched": 4,
       "productionFiles": [
         "src/RoslynMcp.Roslyn/Services/BulkRefactoringService.cs",
-        "src/RoslynMcp.Roslyn/Services/StringLiteralReplaceService.cs"
+        "src/RoslynMcp.Roslyn/Services/StringLiteralReplaceService.cs",
+        "src/RoslynMcp.Core/Services/IBulkRefactoringService.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/BulkRefactoringTools.cs"
       ],
       "testFilesAdded": 3,
       "testFiles": [
@@ -495,14 +597,45 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Exposed ParseMethodSignature grammar defect is fixed in this scope; no separate deferred parser row. BulkRefactoringTools.cs:82-83 marks replace_invocation_preview experimental, so release-policy faster experimental evolution applies; preserve existing advertised valid forms and document correction in own fragment.",
+      "branch": "remediation/bulk-refactoring-argument-refusals-public-message",
+      "worktreePath": ".worktrees/bulk-refactoring-argument-refusals-public-message",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1750",
+      "mergedAt": "2026-10-04T20:41:04Z",
+      "notes": null,
       "fileSetHash": "3cadaf0e53253b3ca52cd00b14cb34d6441c9533787bf6930febd930304917b2",
-      "stanzaHash": "bc02a1bfe93a3d5152fefde42bb0e3af0b739b44bafe8f7f82163e9e1fa26e43",
-      "reviewedStanzaHash": "bc02a1bfe93a3d5152fefde42bb0e3af0b739b44bafe8f7f82163e9e1fa26e43"
+      "stanzaHash": "e7af7efb19e73a57b232b902523a524906236d69718a138524cc1205048e07e0",
+      "reviewedStanzaHash": "e7af7efb19e73a57b232b902523a524906236d69718a138524cc1205048e07e0",
+      "amendments": [
+        {
+          "at": "2026-10-04T19:30:17.695Z",
+          "finding": "Parser resolution exposes index-only optional/mixed argument binding and expression-order defects at BulkRefactoringService.cs:379-544",
+          "reason": "Use original semantic argument binding and preserve lexical evaluation/defaults; complete same-helper variants in current file scope, verified by compiled regression proofs",
+          "previousStanzaHash": "bc02a1bfe93a3d5152fefde42bb0e3af0b739b44bafe8f7f82163e9e1fa26e43",
+          "stanzaHash": "6f30179823572bf9ad1ee85a00695c2e0ac8e96e4825a6cbeff661fe6f444604"
+        },
+        {
+          "at": "2026-10-04T19:32:10.045Z",
+          "finding": "Semantic rewrite invalidates lexical reorder promises in IBulkRefactoringService.cs:35-38 and BulkRefactoringTools.cs:79-80",
+          "reason": "Correct the two affected contract comments in the same PR; no schema change or stale documentation",
+          "previousStanzaHash": "6f30179823572bf9ad1ee85a00695c2e0ac8e96e4825a6cbeff661fe6f444604",
+          "stanzaHash": "0e7d704b7eb97fb94ee0591ade386760d6d442588d23066d8fcd1e5312dd4691"
+        },
+        {
+          "at": "2026-10-04T19:33:13.080Z",
+          "finding": "Core permutation contract requires bijective mapping; subset rewrite discards argument evaluation, and Risks scope count needs companion alignment",
+          "reason": "Refuse non-bijective unsafe mappings while allowing valid compiler conversions; record actual four-file production scope",
+          "previousStanzaHash": "0e7d704b7eb97fb94ee0591ade386760d6d442588d23066d8fcd1e5312dd4691",
+          "stanzaHash": "e7af7efb19e73a57b232b902523a524906236d69718a138524cc1205048e07e0"
+        }
+      ],
+      "reviewedHead": "ec21fb3161384d7694d76f3cdbde710fbb6abad4",
+      "scratchRemoved": false,
+      "githubGate": {
+        "baseOid": "b4dfc21d842c9edbf8e4a4589fe941cbefc6480b",
+        "headOid": "ec21fb3161384d7694d76f3cdbde710fbb6abad4",
+        "tree": "2b271c1dd15a1d36b47a029a28e688360b046078",
+        "checksVerifiedAt": "2026-10-04T20:41:01.016Z"
+      }
     },
     {
       "id": "type-extraction-argument-refusals-public-message",
@@ -600,7 +733,7 @@
     {
       "id": "edit-service-argument-refusals-public-message",
       "order": 14,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "edit-service-argument-refusals-public-message"
       ],
@@ -630,14 +763,22 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/edit-service-argument-refusals-public-message",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1751",
+      "mergedAt": "2026-10-04T21:39:44Z",
       "notes": null,
       "fileSetHash": "c792b4252cef1a4ee41d1f32f7592c43f9c5b8162ded73d37fb2eed0f7d2fc21",
       "stanzaHash": "2e9605f85bd0feb3e3cd6ce6e7ea5efcc48a8af6a53ac6953d2a87ee28c325cd",
-      "reviewedStanzaHash": "2e9605f85bd0feb3e3cd6ce6e7ea5efcc48a8af6a53ac6953d2a87ee28c325cd"
+      "reviewedStanzaHash": "2e9605f85bd0feb3e3cd6ce6e7ea5efcc48a8af6a53ac6953d2a87ee28c325cd",
+      "reviewedHead": "1b6333c734e5aa45744ce0cb72c812e4d07c457d",
+      "scratchRemoved": false,
+      "githubGate": {
+        "baseOid": "bc768a5c4bd39ca9a4ed37c064dedaea6ab653d3",
+        "headOid": "1b6333c734e5aa45744ce0cb72c812e4d07c457d",
+        "tree": "24bb19f1d4a219fc175456b2da64d0ba978b6ac0",
+        "checksVerifiedAt": "2026-10-04T21:39:40.706Z"
+      }
     },
     {
       "id": "suppression-argument-refusals-public-message",
@@ -1143,22 +1284,22 @@
       "argument-exception-throw-sites-lack-public-message": "919bee9356f9cda6aea7dcc2cfa21a644aabe8a2da829f9967705647422db863",
       "file-create-and-scaffold-refusals-public-message": "c8817d6666a1e14f1f452cd5c23c8b43d471a6e84f0f2bd07a5a7ea5834dcd8d",
       "get-prompt-text-unknown-prompt-public-message": "6b265b0b940c5b316584361d77ff80ce46d9d327fe4e12ddf6f45f7d5fbe10f5",
-      "tool-scripting-undo-workflow-argument-refusals-public-message": "a1081d96d56fc0784e4dc07e5efc744ec78cd7b0ddf5efd5425e502130fe49bc",
-      "symbol-locator-and-source-text-tool-argument-refusals-public-message": "d1096131c5b7aaa884cd3bbdb72f9888fd89b4d8b5547f75890e16225f3cf29c",
-      "resource-argument-refusals-public-message": "c6f03188abf5fa68f5fd1b361324f673fa8512766c60e9188b837100a8bbc511",
+      "tool-scripting-undo-workflow-argument-refusals-public-message": "b8685312bcb9c8fe06487f82e0079baca0c768a11714cfb7cd34476ec2f70696",
+      "symbol-locator-and-source-text-tool-argument-refusals-public-message": "3cf7955f7468a4d0d5d4fdcb3802b3e6b3f9f248e744f1350a2a0ea99ab2a2e4",
+      "resource-argument-refusals-public-message": "a54467007080fec5e15540a560fc2c832e26ef4ab9f4d84cdbac9ebb84107b6c",
       "root-boundary-argument-refusals-public-message": "12ce06bdf57ad1125f5e92c5c246004cdb985b10835d774b72fa58dd4b333214",
-      "dispatch-and-tool-argument-refusals-public-message": "ef230e01430bf09ee09eb91063962783c6b1b5d2a1395ff83effb3150bd1c968",
-      "parameter-object-argument-refusals-public-message": "1f8409695b082c52946a025b9ce35b32e82dd217e489a06d042ebea46f8334db",
-      "bulk-refactoring-argument-refusals-public-message": "bc02a1bfe93a3d5152fefde42bb0e3af0b739b44bafe8f7f82163e9e1fa26e43",
+      "dispatch-and-tool-argument-refusals-public-message": "0d3c7527e89ee16bdcc790b54ed46ca47b8803474249d9f348e3c3f01c97bfa1",
+      "parameter-object-argument-refusals-public-message": "d32655a21730ce6a970badca6eb7dc847717c86b96484d5a2c8b1b58d1af5759",
+      "bulk-refactoring-argument-refusals-public-message": "e7af7efb19e73a57b232b902523a524906236d69718a138524cc1205048e07e0",
       "type-extraction-argument-refusals-public-message": "f64e7f28ed65ce69c1ce3dcbbc1de0680b2a1a81e96b235397e2e4a7717a0cb0",
       "restructure-and-semantic-grep-argument-refusals-public-message": "ba31aeb5d0e14d491385da3aa1170ebcabf21b6c3f422ff803303b93dcc5fba1",
       "edit-service-argument-refusals-public-message": "2e9605f85bd0feb3e3cd6ce6e7ea5efcc48a8af6a53ac6953d2a87ee28c325cd",
       "suppression-argument-refusals-public-message": "dc22bf053f48f0b679f4af4a67cd32698d8856cbf315795afeabf2ce8743c67c"
     }
   },
-  "conflictGraphInputHash": "d3f5a507c7dbefa4c0c0c9d55edcdd029a56f0bec67f57ea40582aa6b3d67892",
-  "planHash": "5292c3287d21cc2cfea0eb42877d101eb0e60ee780f98817c33cd41eed4fd3dc",
-  "backlogSnapshotHash": "7e7b72ab38048ba57725b00ea119733bffc2c22d2f8449ba6be9c917b2146333",
-  "reviewedPlanHash": "5292c3287d21cc2cfea0eb42877d101eb0e60ee780f98817c33cd41eed4fd3dc",
-  "reviewedBacklogSnapshotHash": "7e7b72ab38048ba57725b00ea119733bffc2c22d2f8449ba6be9c917b2146333"
+  "conflictGraphInputHash": "d8cc60859909341a1fe269584901aec43ebf07370c6ba2369f72f23d0f1f2042",
+  "planHash": "4fdd40af4fd308045c8c177d8146206b69227e49652b505cb23e0191a5e97e97",
+  "backlogSnapshotHash": "aa7593fb4e2c3b59453248d6223301e471be1161179df7994320f52ec840df5f",
+  "reviewedPlanHash": "4fdd40af4fd308045c8c177d8146206b69227e49652b505cb23e0191a5e97e97",
+  "reviewedBacklogSnapshotHash": "aa7593fb4e2c3b59453248d6223301e471be1161179df7994320f52ec840df5f"
 }
