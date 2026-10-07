@@ -705,14 +705,16 @@
         "src/RoslynMcp.Roslyn/Services/NamespaceRelocationService.cs",
         "src/RoslynMcp.Roslyn/Services/ExtractMethodService.cs"
       ],
-      "testFilesAdded": 6,
+      "testFilesAdded": 8,
       "testFiles": [
         "tests/RoslynMcp.Tests/TypeExtractionTests.cs",
         "tests/RoslynMcp.Tests/ExtractSharedExpressionTests.cs",
         "tests/RoslynMcp.Tests/RecordFieldAdditionImpactTests.cs",
         "tests/RoslynMcp.Tests/NamespaceRelocationTests.cs",
         "tests/RoslynMcp.Tests/ExtractMethodTests.cs",
-        "tests/RoslynMcp.Tests/ExtractionArgumentRefusalWireTests.cs"
+        "tests/RoslynMcp.Tests/ExtractionArgumentRefusalWireTests.cs",
+        "tests/RoslynMcp.Tests/ExtractMethodFormatRegressionTests.cs",
+        "tests/RoslynMcp.Tests/ExtractMethodThisExclusionTests.cs"
       ],
       "docFiles": [
         "docs/decisions/0018-extraction-public-argument-diagnostics.md",
@@ -740,8 +742,8 @@
       "mergedAt": null,
       "notes": "Next generation immutable base6599be65a67de3ba24065c980118f6c4e6cc00a5 captured after verified1757 reconciliation merge/treeequality/primaryFFclean0/0; execute corrected complete public guard/bounds/null/wire/ADR scope. Originalcount15 unchanged; rootoperatorhold and suppressionnextgeneration preserved.",
       "fileSetHash": "2f4b932aba9489fee92a8b1d66b80ffa28a17eb8aac3cbb73f4fcfdc48e6e903",
-      "stanzaHash": "aa6374dc245cf4cb710cc770bd84d74775f0e1ba0ac8f2fa0c85d46422a005c9",
-      "reviewedStanzaHash": "aa6374dc245cf4cb710cc770bd84d74775f0e1ba0ac8f2fa0c85d46422a005c9",
+      "stanzaHash": "724fbf6e473f30fd3284529103ac6d529ffcd36a830ee899c9a76005caa9cea4",
+      "reviewedStanzaHash": "724fbf6e473f30fd3284529103ac6d529ffcd36a830ee899c9a76005caa9cea4",
       "changelogCategory": "Changed — BREAKING",
       "amendments": [
         {
@@ -757,6 +759,13 @@
           "reason": "Complete same-file expression-context validation in selected example and matching scan; reject shared empty spans, preserve method equal spans and value identifiers; dual-era wire/compile regression, existing major ADR scope unchanged",
           "previousStanzaHash": "67b6e91aa4ad57bd2c8194b9f501e58f5e1753d962675e75c936bc672a830f55",
           "stanzaHash": "aa6374dc245cf4cb710cc770bd84d74775f0e1ba0ac8f2fa0c85d46422a005c9"
+        },
+        {
+          "at": "2026-10-07T03:49:39.275Z",
+          "finding": "Scoped1: 13 failures reveal existing out-of-line ExtractMethod fixture coordinates in format/this regressions",
+          "reason": "Migrate all same-mechanism callers to valid source-derived selections preserving semantic assertions; no production clamps or weakened tests",
+          "previousStanzaHash": "aa6374dc245cf4cb710cc770bd84d74775f0e1ba0ac8f2fa0c85d46422a005c9",
+          "stanzaHash": "724fbf6e473f30fd3284529103ac6d529ffcd36a830ee899c9a76005caa9cea4"
         }
       ]
     },
@@ -1395,15 +1404,15 @@
       "dispatch-and-tool-argument-refusals-public-message": "120a9ef262ab5e5d4630adad9a16799665a013322ee2d39f775b18e66486f69b",
       "parameter-object-argument-refusals-public-message": "d32655a21730ce6a970badca6eb7dc847717c86b96484d5a2c8b1b58d1af5759",
       "bulk-refactoring-argument-refusals-public-message": "e7af7efb19e73a57b232b902523a524906236d69718a138524cc1205048e07e0",
-      "type-extraction-argument-refusals-public-message": "aa6374dc245cf4cb710cc770bd84d74775f0e1ba0ac8f2fa0c85d46422a005c9",
+      "type-extraction-argument-refusals-public-message": "724fbf6e473f30fd3284529103ac6d529ffcd36a830ee899c9a76005caa9cea4",
       "restructure-and-semantic-grep-argument-refusals-public-message": "c27062a29f0d33cd9d1fe6b01cacc48641bfdbb8ccc603e5c2a9550b68ec7b90",
       "edit-service-argument-refusals-public-message": "2e9605f85bd0feb3e3cd6ce6e7ea5efcc48a8af6a53ac6953d2a87ee28c325cd",
       "suppression-argument-refusals-public-message": "a720c6dafbe2a7ab9499bcf7448df6c88110582179ffee0fddbdf43071aad506"
     }
   },
   "conflictGraphInputHash": "d8cc60859909341a1fe269584901aec43ebf07370c6ba2369f72f23d0f1f2042",
-  "planHash": "53386dfb049d3fc6ae2bf2016150254f6afa152f2367009a5e36489df6d8eb1b",
+  "planHash": "7788aaa5cf90175a3b7ddb0084c445a1ca26b7d02a19e2628642daf2eccba757",
   "backlogSnapshotHash": "aa7593fb4e2c3b59453248d6223301e471be1161179df7994320f52ec840df5f",
-  "reviewedPlanHash": "53386dfb049d3fc6ae2bf2016150254f6afa152f2367009a5e36489df6d8eb1b",
+  "reviewedPlanHash": "7788aaa5cf90175a3b7ddb0084c445a1ca26b7d02a19e2628642daf2eccba757",
   "reviewedBacklogSnapshotHash": "aa7593fb4e2c3b59453248d6223301e471be1161179df7994320f52ec840df5f"
 }
