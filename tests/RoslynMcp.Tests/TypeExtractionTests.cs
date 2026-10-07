@@ -392,7 +392,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
             .Projects.SelectMany(p => p.Documents)
             .First(d => d.FilePath?.EndsWith("AnimalService.cs") == true);
 
-        await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+        await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
             TypeExtractionService.PreviewExtractTypeAsync(
                 wsId, doc.FilePath!, "AnimalService", [], "NewType", null, CancellationToken.None));
     }
@@ -1187,7 +1187,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
     [DataRow("class")]
     public async Task ExtractType_InvalidNewTypeName_ThrowsNamedArgument(string? newTypeName)
     {
-        var exception = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+        var exception = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
             TypeExtractionService.PreviewExtractTypeAsync(
                 "unused-workspace",
                 "unused.cs",
@@ -1552,4 +1552,60 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
     }
 
     private void QueueDirectoryForCleanup(string path) => _directoriesToDelete.Add(path);
+
+    [TestMethod]
+    public async Task ArgumentRefusals_NullAndEmptyMembersPreserveNamedIdentity()
+    {
+        var nullError = await Assert.ThrowsExactlyAsync<ArgumentNullException>(() =>
+            TypeExtractionService.PreviewExtractTypeAsync("unused", "unused.cs", "Unused",
+                null!, "Extracted", null, CancellationToken.None));
+        Assert.AreEqual("memberNames", nullError.ParamName);
+        var emptyError = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
+            TypeExtractionService.PreviewExtractTypeAsync("unused", "unused.cs", "Unused",
+                [], "Extracted", null, CancellationToken.None));
+        Assert.AreEqual("memberNames", emptyError.ParamName);
+        StringAssert.Contains(emptyError.PublicMessage, "At least one member");
+    }
+
+    [TestMethod]
+    [DataRow("PRIVATE-EXTRACTION-SENTINEL!")]
+    [DataRow("@")]
+    [DataRow("class")]
+    [DataRow("async")]
+    public async Task ArgumentRefusals_TypeIdentifierHasSafeGuidance(string name)
+    {
+        var error = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
+            TypeExtractionService.PreviewExtractTypeAsync("unused", "unused.cs", "Unused",
+                ["Member"], name, null, CancellationToken.None));
+        Assert.AreEqual("newTypeName", error.ParamName);
+        StringAssert.Contains(error.PublicMessage, "C# identifier");
+        Assert.IsFalse(error.PublicMessage.Contains(name, StringComparison.Ordinal));
+        Assert.IsNotNull(error.InnerException);
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task ArgumentRefusals_TypeMalformedDestinationHasNamedRedactedCause(bool longPath)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        if (longPath && !OperatingSystem.IsWindows())
+            Assert.Inconclusive("Windows path normalization enforces the maximum path length.");
+        var destination = longPath ? new string('x', 32768) : "PRIVATE-EXTRACTION-SENTINEL\0.cs";
+        var path = workspace.GetPath("SampleLib", "MalformedDestinationProbe.cs");
+        await File.WriteAllTextAsync(path,
+            "namespace SampleLib; public sealed class MalformedDestinationProbe { public int Get() => 42; }",
+            CancellationToken.None);
+        var id = await workspace.LoadAsync(CancellationToken.None);
+        var error = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+            TypeExtractionService.PreviewExtractTypeAsync(id, path, "MalformedDestinationProbe",
+                ["Get"], "Extracted", destination, CancellationToken.None));
+        Console.WriteLine("TYPE-PATH-PROBE:" + error.GetType().Name + ":" + error.ParamName + ":" + error.InnerException?.GetType().Name);
+        Assert.AreEqual("newFilePath", error.ParamName);
+        if (longPath)
+            Assert.IsInstanceOfType<PathTooLongException>(error.InnerException);
+        else
+            Assert.IsInstanceOfType<ArgumentException>(error.InnerException);
+    }
+
 }

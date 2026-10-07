@@ -1,0 +1,4 @@
+---
+category: Changed — BREAKING
+---
+- **Changed — BREAKING:** Extraction selections now reject invalid coordinates with named safe argument errors; use 1-based columns within each line and stop depending on incidental index/start/end failures or cross-line offsets. Extraction also rejects malformed/reserved method/helper names, preserves valid Unicode/verbatim/contextual identifiers through grammar-safe declaration/call spelling, and shared-expression extraction refuses empty/type/namespace selections while retaining value identifiers. Extraction, record, and namespace argument refusals publish corrective guidance without caller data. Null memberNames now returns InvalidArgument/ArgumentNullException instead of InternalError. Malformed destinations identify newFilePath; Windows paths exceeding the normalization limit now return InvalidArgument/ArgumentException instead of InternalError. See ADR 0018 for major-release migration.

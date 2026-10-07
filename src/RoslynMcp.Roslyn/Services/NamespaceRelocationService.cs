@@ -1,6 +1,3 @@
-using RoslynMcp.Core.Models;
-using RoslynMcp.Core.Services;
-using RoslynMcp.Roslyn.Helpers;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -8,6 +5,9 @@ using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.CodeAnalysis.Formatting;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging;
+using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -70,15 +70,15 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
     {
         if (string.IsNullOrWhiteSpace(typeName))
         {
-            throw new ArgumentException("Type name must be provided.", nameof(typeName));
+            throw new PublicArgumentException("Type name must be provided.", nameof(typeName));
         }
         if (string.IsNullOrWhiteSpace(fromNamespace))
         {
-            throw new ArgumentException("Source namespace must be provided (use a file-move tool if the type currently has no namespace).", nameof(fromNamespace));
+            throw new PublicArgumentException("Source namespace must be provided (use a file-move tool if the type currently has no namespace).", nameof(fromNamespace));
         }
         if (string.IsNullOrWhiteSpace(toNamespace))
         {
-            throw new ArgumentException("Destination namespace must be provided.", nameof(toNamespace));
+            throw new PublicArgumentException("Destination namespace must be provided.", nameof(toNamespace));
         }
         if (string.Equals(fromNamespace, toNamespace, StringComparison.Ordinal))
         {
@@ -247,7 +247,15 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
             return sourceFilePath;
         }
 
-        var fullDestination = Path.GetFullPath(newFilePath);
+        string fullDestination;
+        try
+        {
+            fullDestination = Path.GetFullPath(newFilePath);
+        }
+        catch (Exception exception) when (exception is ArgumentException or PathTooLongException)
+        {
+            throw ArgumentErrors.Redacted(nameof(newFilePath), "Destination path could not be normalized.", exception);
+        }
         var projectFilePath = sourceProject.FilePath
             ?? throw new InvalidOperationException("Source project must have a file path on disk.");
         var projectDirectory = Path.GetDirectoryName(projectFilePath)
@@ -255,8 +263,8 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
 
         if (!FileSystemPath.IsStrictDescendant(projectDirectory, fullDestination))
         {
-            throw new ArgumentException(
-                $"Destination path '{fullDestination}' must be inside the source project directory '{projectDirectory}'.",
+            throw new PublicArgumentException(
+                "Destination file must be inside the source project directory.",
                 nameof(newFilePath));
         }
 

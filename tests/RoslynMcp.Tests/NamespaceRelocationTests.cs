@@ -1,5 +1,6 @@
-using RoslynMcp.Roslyn.Services;
 using Microsoft.Extensions.Logging.Abstractions;
+using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
 
@@ -330,7 +331,7 @@ public sealed class NamespaceRelocationTests : IsolatedWorkspaceTestBase
             "parent" => workspace.GetPath("SampleLib", "..", "Widget.cs"),
             _ => workspace.GetPath("SampleLib")
         };
-        await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+        await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
             service.PreviewChangeTypeNamespaceAsync(
                 wsId,
                 typeName: "Widget",
@@ -482,4 +483,42 @@ public sealed class NamespaceRelocationTests : IsolatedWorkspaceTestBase
             preview.Warnings!.Any(w => w.Contains("Kept `using Shared;`", StringComparison.Ordinal)),
             $"Expected a kept-using warning naming `Shared`. Warnings:\n{string.Join("\n", preview.Warnings)}");
     }
+
+    [TestMethod]
+    public async Task ArgumentRefusals_NamespaceMalformedDestinationIsNamedAndRedacted()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync();
+        var error = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+            CreateService().PreviewChangeTypeNamespaceAsync(workspace.WorkspaceId,
+                "Dog", "SampleLib", "Other", "PRIVATE-EXTRACTION-SENTINEL\0.cs", CancellationToken.None));
+        Assert.AreEqual("newFilePath", error.ParamName);
+        Assert.IsInstanceOfType<ArgumentException>(error.InnerException);
+    }
+
+    [TestMethod]
+    [DataRow(null)]
+    [DataRow("")]
+    [DataRow("  ")]
+    public async Task ArgumentRefusals_NamespaceDefaultDestinationRemainsValid(string? destination)
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync();
+        var preview = await CreateService().PreviewChangeTypeNamespaceAsync(workspace.WorkspaceId,
+            "Dog", "SampleLib", "Other", destination, CancellationToken.None);
+        Assert.IsNotNull(preview.PreviewToken);
+    }
+
+    [TestMethod]
+    public async Task ArgumentRefusals_NamespaceWindowsLongDestinationIsNamedAndRedacted()
+    {
+        if (!OperatingSystem.IsWindows())
+            Assert.Inconclusive("Windows path normalization enforces the maximum path length before the project-boundary check.");
+
+        await using var workspace = await CreateIsolatedWorkspaceAsync();
+        var error = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+            CreateService().PreviewChangeTypeNamespaceAsync(workspace.WorkspaceId,
+                "Dog", "SampleLib", "Other", new string('x', 32768), CancellationToken.None));
+        Assert.AreEqual("newFilePath", error.ParamName);
+        Assert.IsInstanceOfType<PathTooLongException>(error.InnerException);
+    }
+
 }

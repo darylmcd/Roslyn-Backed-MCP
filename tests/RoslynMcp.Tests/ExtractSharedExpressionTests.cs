@@ -1,4 +1,5 @@
 using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
 
 namespace RoslynMcp.Tests;
 
@@ -98,7 +99,7 @@ public sealed class ExtractSharedExpressionTests : IsolatedWorkspaceTestBase
         await using var workspace = await CreateIsolatedWorkspaceAsync();
         var filePath = workspace.GetPath("SampleLib", "SharedExpressionProbe.cs");
 
-        await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+        await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
             ExtractMethodService.PreviewExtractSharedExpressionToHelperAsync(
                 workspace.WorkspaceId,
                 filePath,
@@ -119,7 +120,7 @@ public sealed class ExtractSharedExpressionTests : IsolatedWorkspaceTestBase
         await using var workspace = await CreateIsolatedWorkspaceAsync();
         var filePath = workspace.GetPath("SampleLib", "SharedExpressionProbe.cs");
 
-        await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+        await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
             ExtractMethodService.PreviewExtractSharedExpressionToHelperAsync(
                 workspace.WorkspaceId,
                 filePath,
@@ -175,4 +176,158 @@ public sealed class ExtractSharedExpressionTests : IsolatedWorkspaceTestBase
         }
         return count;
     }
+
+    [TestMethod]
+    [DataRow(0, 9, 15, 36, "startLine")]
+    [DataRow(-1, 9, 15, 36, "startLine")]
+    [DataRow(int.MinValue, 9, 15, 36, "startLine")]
+    [DataRow(int.MaxValue, 9, 15, 36, "startLine")]
+    [DataRow(13, 0, 15, 36, "startColumn")]
+    [DataRow(13, -1, 15, 36, "startColumn")]
+    [DataRow(13, int.MinValue, 15, 36, "startColumn")]
+    [DataRow(13, int.MaxValue, 15, 36, "startColumn")]
+    [DataRow(13, 100, 15, 36, "startColumn")]
+    [DataRow(13, 9, 0, 39, "endLine")]
+    [DataRow(13, 9, -1, 39, "endLine")]
+    [DataRow(13, 9, int.MinValue, 39, "endLine")]
+    [DataRow(13, 9, int.MaxValue, 39, "endLine")]
+    [DataRow(13, 9, 15, 0, "endColumn")]
+    [DataRow(13, 9, 15, -1, "endColumn")]
+    [DataRow(13, 9, 15, int.MinValue, "endColumn")]
+    [DataRow(13, 9, 15, int.MaxValue, "endColumn")]
+    [DataRow(13, 9, 15, 100, "endColumn")]
+    public async Task ArgumentRefusals_SharedCoordinatesAreBounded(
+        int startLine, int startColumn, int endLine, int endColumn, string parameter)
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync();
+        var error = await Assert.ThrowsExactlyAsync<PublicArgumentOutOfRangeException>(() =>
+            ExtractMethodService.PreviewExtractSharedExpressionToHelperAsync(workspace.WorkspaceId,
+                workspace.GetPath("SampleLib", "RefactoringProbe.cs"),
+                startLine, startColumn, endLine, endColumn, "Extracted", "private", false, CancellationToken.None));
+        Assert.AreEqual("example" + char.ToUpperInvariant(parameter[0]) + parameter[1..], error.ParamName);
+        StringAssert.Contains(error.PublicMessage, error.ParamName!);
+    }
+
+    [TestMethod]
+    [DataRow(15, 9, 13, 9, "exampleStartLine")]
+    [DataRow(13, 10, 13, 9, "exampleStartColumn")]
+    public async Task ArgumentRefusals_SharedReversedSpanNamesStart(
+        int startLine, int startColumn, int endLine, int endColumn, string parameter)
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync();
+        var error = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
+            ExtractMethodService.PreviewExtractSharedExpressionToHelperAsync(workspace.WorkspaceId, workspace.GetPath("SampleLib", "RefactoringProbe.cs"),
+                startLine, startColumn, endLine, endColumn, "Extracted", "private", false, CancellationToken.None));
+        Assert.AreEqual(parameter, error.ParamName);
+    }
+
+    [TestMethod]
+    [DataRow("")]
+    [DataRow("  ")]
+    [DataRow(" PRIVATE ")]
+    [DataRow("internal")]
+    [DataRow("public")]
+    public async Task ArgumentRefusals_SharedAccessibilityAndLineEndRemainValid(string accessibility)
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync();
+        var path = workspace.GetPath("SampleLib", "SharedExpressionProbe.cs");
+        var text = Microsoft.CodeAnalysis.Text.SourceText.From(await File.ReadAllTextAsync(path));
+        var preview = await ExtractMethodService.PreviewExtractSharedExpressionToHelperAsync(
+            workspace.WorkspaceId, path, 18, 13, 18, text.Lines[17].Span.Length + 1,
+            "Extracted", accessibility, false, CancellationToken.None);
+        Assert.IsNotNull(preview.PreviewToken);
+    }
+
+    [TestMethod]
+    public async Task ArgumentRefusals_SharedEqualSpanHasNamedCallerRefusal()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync();
+        await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
+            ExtractMethodService.PreviewExtractSharedExpressionToHelperAsync(workspace.WorkspaceId,
+                workspace.GetPath("SampleLib", "SharedExpressionProbe.cs"),
+                18, 13, 18, 13, "Extracted", "private", false, CancellationToken.None));
+    }
+
+    [TestMethod]
+    [DataRow(13, 9, 12)]
+    [DataRow(11, 12, 15)]
+    [DataRow(26, 12, 18)]
+    [DataRow(1, 11, 20)]
+    [DataRow(12, 5, 6)]
+    [DataRow(22, 16, 20)]
+    [DataRow(13, 9, 9)]
+    public async Task ArgumentRefusals_SharedTypeAndEmptySelectionsAreCallerErrors(int line, int start, int end)
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync();
+        try
+        {
+            var preview = await ExtractMethodService.PreviewExtractSharedExpressionToHelperAsync(
+                workspace.WorkspaceId, workspace.GetPath("SampleLib", "RefactoringProbe.cs"),
+                line, start, line, end, "Extracted", "private", false, CancellationToken.None);
+            Assert.Fail("Type-position selection unexpectedly produced a preview: " + preview.Description);
+        }
+        catch (Exception error) when (error is not AssertFailedException)
+        {
+            Console.WriteLine("TYPE-POSITION:" + line + ":" + start + ":" + end + ":" + error);
+            Assert.IsInstanceOfType<PublicArgumentException>(error);
+            Assert.AreEqual("exampleStartColumn", ((ArgumentException)error).ParamName);
+        }
+    }
+
+    [TestMethod]
+    public async Task ArgumentRefusals_SharedValueIdentifiersIgnoreMatchingTypeNames()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var path = workspace.GetPath("SampleLib", "TypeValueProbe.cs");
+        var source = """
+            namespace SampleLib;
+            public sealed class TypeValueProbe
+            {
+                public TypeValueProbe? Field;
+                public int Compute(int TypeValueProbe)
+                {
+                    var a = TypeValueProbe;
+                    var b = TypeValueProbe;
+                    return a + b;
+                }
+            }
+            """;
+        await File.WriteAllTextAsync(path, source, CancellationToken.None);
+        var id = await workspace.LoadAsync(CancellationToken.None);
+        var root = Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(source).GetRoot();
+        var expression = root.DescendantNodes()
+            .OfType<Microsoft.CodeAnalysis.CSharp.Syntax.EqualsValueClauseSyntax>().First().Value;
+        var location = expression.GetLocation().GetLineSpan();
+        var preview = await ExtractMethodService.PreviewExtractSharedExpressionToHelperAsync(id, path,
+            location.StartLinePosition.Line + 1, location.StartLinePosition.Character + 1,
+            location.EndLinePosition.Line + 1, location.EndLinePosition.Character + 1,
+            "ReadValue", "private", false, CancellationToken.None);
+        var result = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test-value-identifier", CancellationToken.None);
+        Assert.IsTrue(result.Success);
+        var compile = await CompileCheckService.CheckAsync(id, new CompileCheckOptions(), CancellationToken.None);
+        Assert.IsTrue(compile.Success, string.Join("; ", compile.Diagnostics?.Select(d => d.Message) ?? []));
+        var changed = await File.ReadAllTextAsync(path);
+        StringAssert.Contains(changed, "TypeValueProbe? Field");
+        StringAssert.Contains(changed, "ReadValue(TypeValueProbe)");
+    }
+
+    [TestMethod]
+    public async Task ArgumentRefusals_SharedPartialValueOverlapRemainsValid()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync();
+        var path = workspace.GetPath("SampleLib", "SharedExpressionProbe.cs");
+        var source = await File.ReadAllTextAsync(path);
+        var root = Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(source).GetRoot();
+        var identifier = root.DescendantNodes().OfType<Microsoft.CodeAnalysis.CSharp.Syntax.IdentifierNameSyntax>()
+            .First(node => node.Identifier.ValueText == "filePath");
+        var position = identifier.GetLocation().GetLineSpan().StartLinePosition;
+        var preview = await ExtractMethodService.PreviewExtractSharedExpressionToHelperAsync(
+            workspace.WorkspaceId, path, position.Line + 1, position.Character + 1,
+            position.Line + 1, position.Character + 2, "ReadPath", "private", false, CancellationToken.None);
+        var applied = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test-partial-value", CancellationToken.None);
+        Assert.IsTrue(applied.Success);
+        var compile = await CompileCheckService.CheckAsync(workspace.WorkspaceId, new CompileCheckOptions(), CancellationToken.None);
+        Assert.IsTrue(compile.Success, string.Join("; ", compile.Diagnostics?.Select(d => d.Message) ?? []));
+    }
+
 }
