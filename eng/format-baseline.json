@@ -4,17 +4,15 @@
   "diagnosticIds": [
     "FINALNEWLINE",
     "IDE1006",
-    "IMPORTS",
-    "WHITESPACE"
+    "IMPORTS"
   ],
   "totals": {
-    "findingCount": 119,
-    "fileCount": 113,
+    "findingCount": 93,
+    "fileCount": 89,
     "countsByDiagnosticId": {
       "FINALNEWLINE": 1,
       "IDE1006": 10,
-      "IMPORTS": 105,
-      "WHITESPACE": 3
+      "IMPORTS": 82
     }
   },
   "files": [
@@ -99,26 +97,6 @@
       }
     },
     {
-      "path": "src/RoslynMcp.Host.Stdio/Tools/AdvancedAnalysisTools.cs",
-      "findingCount": 1,
-      "diagnosticIds": [
-        "IMPORTS"
-      ],
-      "countsByDiagnosticId": {
-        "IMPORTS": 1
-      }
-    },
-    {
-      "path": "src/RoslynMcp.Host.Stdio/Tools/AnalysisTools.cs",
-      "findingCount": 1,
-      "diagnosticIds": [
-        "IMPORTS"
-      ],
-      "countsByDiagnosticId": {
-        "IMPORTS": 1
-      }
-    },
-    {
       "path": "src/RoslynMcp.Host.Stdio/Tools/AnalyzerInfoTools.cs",
       "findingCount": 1,
       "diagnosticIds": [
@@ -180,36 +158,6 @@
     },
     {
       "path": "src/RoslynMcp.Host.Stdio/Tools/CrossProjectRefactoringTools.cs",
-      "findingCount": 1,
-      "diagnosticIds": [
-        "IMPORTS"
-      ],
-      "countsByDiagnosticId": {
-        "IMPORTS": 1
-      }
-    },
-    {
-      "path": "src/RoslynMcp.Host.Stdio/Tools/DeadCodeTools.cs",
-      "findingCount": 1,
-      "diagnosticIds": [
-        "IMPORTS"
-      ],
-      "countsByDiagnosticId": {
-        "IMPORTS": 1
-      }
-    },
-    {
-      "path": "src/RoslynMcp.Host.Stdio/Tools/EditTools.cs",
-      "findingCount": 1,
-      "diagnosticIds": [
-        "IMPORTS"
-      ],
-      "countsByDiagnosticId": {
-        "IMPORTS": 1
-      }
-    },
-    {
-      "path": "src/RoslynMcp.Host.Stdio/Tools/EditorConfigTools.cs",
       "findingCount": 1,
       "diagnosticIds": [
         "IMPORTS"
@@ -310,16 +258,6 @@
     },
     {
       "path": "src/RoslynMcp.Host.Stdio/Tools/ProjectMutationTools.cs",
-      "findingCount": 1,
-      "diagnosticIds": [
-        "IMPORTS"
-      ],
-      "countsByDiagnosticId": {
-        "IMPORTS": 1
-      }
-    },
-    {
-      "path": "src/RoslynMcp.Host.Stdio/Tools/RefactoringTools.cs",
       "findingCount": 1,
       "diagnosticIds": [
         "IMPORTS"
@@ -430,16 +368,6 @@
     },
     {
       "path": "src/RoslynMcp.Host.Stdio/Tools/TypeExtractionTools.cs",
-      "findingCount": 1,
-      "diagnosticIds": [
-        "IMPORTS"
-      ],
-      "countsByDiagnosticId": {
-        "IMPORTS": 1
-      }
-    },
-    {
-      "path": "src/RoslynMcp.Host.Stdio/Tools/TypeMoveTools.cs",
       "findingCount": 1,
       "diagnosticIds": [
         "IMPORTS"
@@ -591,37 +519,7 @@
       }
     },
     {
-      "path": "src/RoslynMcp.Roslyn/Services/CodeMetricsService.cs",
-      "findingCount": 1,
-      "diagnosticIds": [
-        "IMPORTS"
-      ],
-      "countsByDiagnosticId": {
-        "IMPORTS": 1
-      }
-    },
-    {
       "path": "src/RoslynMcp.Roslyn/Services/CodePatternAnalyzer.cs",
-      "findingCount": 1,
-      "diagnosticIds": [
-        "IMPORTS"
-      ],
-      "countsByDiagnosticId": {
-        "IMPORTS": 1
-      }
-    },
-    {
-      "path": "src/RoslynMcp.Roslyn/Services/CohesionAnalysisService.cs",
-      "findingCount": 1,
-      "diagnosticIds": [
-        "IMPORTS"
-      ],
-      "countsByDiagnosticId": {
-        "IMPORTS": 1
-      }
-    },
-    {
-      "path": "src/RoslynMcp.Roslyn/Services/CompileCheckService.cs",
       "findingCount": 1,
       "diagnosticIds": [
         "IMPORTS"
@@ -671,16 +569,6 @@
       }
     },
     {
-      "path": "src/RoslynMcp.Roslyn/Services/DiRegistrationService.cs",
-      "findingCount": 1,
-      "diagnosticIds": [
-        "IMPORTS"
-      ],
-      "countsByDiagnosticId": {
-        "IMPORTS": 1
-      }
-    },
-    {
       "path": "src/RoslynMcp.Roslyn/Services/DuplicateMethodDetectorService.cs",
       "findingCount": 1,
       "diagnosticIds": [
@@ -711,27 +599,7 @@
       }
     },
     {
-      "path": "src/RoslynMcp.Roslyn/Services/FileWatcherService.cs",
-      "findingCount": 1,
-      "diagnosticIds": [
-        "IMPORTS"
-      ],
-      "countsByDiagnosticId": {
-        "IMPORTS": 1
-      }
-    },
-    {
       "path": "src/RoslynMcp.Roslyn/Services/FixAllService.cs",
-      "findingCount": 1,
-      "diagnosticIds": [
-        "IMPORTS"
-      ],
-      "countsByDiagnosticId": {
-        "IMPORTS": 1
-      }
-    },
-    {
-      "path": "src/RoslynMcp.Roslyn/Services/FlowAnalysisService.cs",
       "findingCount": 1,
       "diagnosticIds": [
         "IMPORTS"
@@ -811,26 +679,6 @@
       }
     },
     {
-      "path": "src/RoslynMcp.Roslyn/Services/RestoreStalenessDetector.cs",
-      "findingCount": 1,
-      "diagnosticIds": [
-        "IMPORTS"
-      ],
-      "countsByDiagnosticId": {
-        "IMPORTS": 1
-      }
-    },
-    {
-      "path": "src/RoslynMcp.Roslyn/Services/ScriptExecutionSupervisor.cs",
-      "findingCount": 3,
-      "diagnosticIds": [
-        "WHITESPACE"
-      ],
-      "countsByDiagnosticId": {
-        "WHITESPACE": 3
-      }
-    },
-    {
       "path": "src/RoslynMcp.Roslyn/Services/ScriptingService.cs",
       "findingCount": 1,
       "diagnosticIds": [
@@ -901,26 +749,6 @@
       }
     },
     {
-      "path": "src/RoslynMcp.Roslyn/Services/TestDiscoveryService.cs",
-      "findingCount": 1,
-      "diagnosticIds": [
-        "IMPORTS"
-      ],
-      "countsByDiagnosticId": {
-        "IMPORTS": 1
-      }
-    },
-    {
-      "path": "src/RoslynMcp.Roslyn/Services/TypeMoveService.cs",
-      "findingCount": 1,
-      "diagnosticIds": [
-        "IMPORTS"
-      ],
-      "countsByDiagnosticId": {
-        "IMPORTS": 1
-      }
-    },
-    {
       "path": "src/RoslynMcp.Roslyn/Services/UndoService.cs",
       "findingCount": 1,
       "diagnosticIds": [
@@ -951,57 +779,7 @@
       }
     },
     {
-      "path": "src/RoslynMcp.Roslyn/Services/WorkspaceForkApplyService.cs",
-      "findingCount": 1,
-      "diagnosticIds": [
-        "IMPORTS"
-      ],
-      "countsByDiagnosticId": {
-        "IMPORTS": 1
-      }
-    },
-    {
-      "path": "src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs",
-      "findingCount": 1,
-      "diagnosticIds": [
-        "IMPORTS"
-      ],
-      "countsByDiagnosticId": {
-        "IMPORTS": 1
-      }
-    },
-    {
-      "path": "src/RoslynMcp.Roslyn/Services/WorkspaceWarmService.cs",
-      "findingCount": 1,
-      "diagnosticIds": [
-        "IMPORTS"
-      ],
-      "countsByDiagnosticId": {
-        "IMPORTS": 1
-      }
-    },
-    {
       "path": "tests/RoslynMcp.Tests/CatalogDestructiveWarningTests.cs",
-      "findingCount": 1,
-      "diagnosticIds": [
-        "IMPORTS"
-      ],
-      "countsByDiagnosticId": {
-        "IMPORTS": 1
-      }
-    },
-    {
-      "path": "tests/RoslynMcp.Tests/CohesionAnalysisTests.cs",
-      "findingCount": 1,
-      "diagnosticIds": [
-        "IMPORTS"
-      ],
-      "countsByDiagnosticId": {
-        "IMPORTS": 1
-      }
-    },
-    {
-      "path": "tests/RoslynMcp.Tests/DiagnosticServiceFilterTotalsTests.cs",
       "findingCount": 1,
       "diagnosticIds": [
         "IMPORTS"
@@ -1101,16 +879,6 @@
       }
     },
     {
-      "path": "tests/RoslynMcp.Tests/TestInfrastructure/TestServiceContainer.cs",
-      "findingCount": 1,
-      "diagnosticIds": [
-        "IMPORTS"
-      ],
-      "countsByDiagnosticId": {
-        "IMPORTS": 1
-      }
-    },
-    {
       "path": "tests/RoslynMcp.Tests/WorkspaceEvictionAutoRetryTests.cs",
       "findingCount": 2,
       "diagnosticIds": [
@@ -1118,16 +886,6 @@
       ],
       "countsByDiagnosticId": {
         "IDE1006": 2
-      }
-    },
-    {
-      "path": "tests/RoslynMcp.Tests/WorkspaceLoadRestoreRaceTests.cs",
-      "findingCount": 1,
-      "diagnosticIds": [
-        "IMPORTS"
-      ],
-      "countsByDiagnosticId": {
-        "IMPORTS": 1
       }
     },
     {

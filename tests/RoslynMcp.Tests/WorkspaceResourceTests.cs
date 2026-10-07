@@ -1,4 +1,5 @@
 using System.Text.Json;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Resources;
 using RoslynMcp.Host.Stdio.Tools;
 
@@ -14,6 +15,80 @@ namespace RoslynMcp.Tests;
 [TestClass]
 public sealed class WorkspaceResourceTests : SharedWorkspaceTestBase
 {
+    [TestMethod]
+    public async Task SourceArgumentRefusals_ReturnExactSafeCorrections()
+    {
+        var path = FindDocumentPath("AnimalService.cs");
+        var cases = new (string File, string? Range, string Parameter, string Message)[]
+        {
+            ("caller-private.cs", null, "filePath", "Parameter 'filePath' must be an absolute path after URI decoding."),
+            ("caller-private.cs", "1-2", "filePath", "Parameter 'filePath' must be an absolute path after URI decoding."),
+            (path, " ", "lineRange", "Parameter 'lineRange' must use the format \"startLine-endLine\" (1-based, inclusive)."),
+            (path, "", "lineRange", "Parameter 'lineRange' must use the format \"startLine-endLine\" (1-based, inclusive)."),
+            (path, "callerprivate", "lineRange", "Parameter 'lineRange' must use the format \"startLine-endLine\" (1-based, inclusive)."),
+            (path, "-1", "lineRange", "Parameter 'lineRange' must use the format \"startLine-endLine\" (1-based, inclusive)."),
+            (path, "1-", "lineRange", "Parameter 'lineRange' must use the format \"startLine-endLine\" (1-based, inclusive)."),
+            (path, "private-2", "lineRange", "Parameter 'lineRange' startLine must be a positive integer."),
+            (path, "0-2", "lineRange", "Parameter 'lineRange' startLine must be a positive integer."),
+            (path, "2147483648-2", "lineRange", "Parameter 'lineRange' startLine must be a positive integer."),
+            (path, "1-private", "lineRange", "Parameter 'lineRange' endLine must be a positive integer."),
+            (path, "1-0", "lineRange", "Parameter 'lineRange' endLine must be a positive integer."),
+            (path, "1-2147483648", "lineRange", "Parameter 'lineRange' endLine must be a positive integer."),
+            (path, "2-1", "lineRange", "Parameter 'lineRange' endLine (1) must be >= startLine (2).")
+        };
+        foreach (var item in cases)
+        {
+            ArgumentException cause;
+            if (item.Range is null)
+            {
+                var wrapper = await Assert.ThrowsExactlyAsync<McpToolException>(() =>
+                    WorkspaceResources.GetSourceFile(WorkspaceExecutionGate, WorkspaceManager, WorkspaceId, item.File));
+                Assert.AreEqual("Invalid argument.", wrapper.Message);
+                Assert.IsInstanceOfType<ArgumentException>(wrapper.InnerException);
+                cause = (ArgumentException)wrapper.InnerException!;
+            }
+            else
+            {
+                cause = await Assert.ThrowsAsync<ArgumentException>(() =>
+                    WorkspaceResources.GetSourceFileLines(WorkspaceExecutionGate, WorkspaceManager, WorkspaceId, item.File, item.Range));
+            }
+            Assert.IsInstanceOfType<IPublicMessageException>(cause);
+            Assert.AreEqual(item.Parameter, cause.ParamName);
+            using var doc = JsonDocument.Parse(ToolErrorHandler.ClassifyAndFormat(cause, "resource"));
+            Assert.AreEqual("InvalidArgument", doc.RootElement.GetProperty("category").GetString());
+            Assert.AreEqual(item.Message, doc.RootElement.GetProperty("message").GetString());
+            Assert.AreEqual(nameof(ArgumentException), doc.RootElement.GetProperty("exceptionType").GetString());
+        }
+    }
+
+    [TestMethod]
+    public async Task SourceLineBounds_PreserveEofIdentityClampingAndSlices()
+    {
+        var path = FindDocumentPath("AnimalService.cs");
+        var text = await WorkspaceResources.GetSourceFile(WorkspaceExecutionGate, WorkspaceManager, WorkspaceId, path);
+        var total = RoslynMcp.Roslyn.Helpers.SourceTextSlicer.CountLines(text);
+        var eof = await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+            WorkspaceResources.GetSourceFileLines(WorkspaceExecutionGate, WorkspaceManager, WorkspaceId, path, $"{total + 1}-{total + 2}"));
+        Assert.IsInstanceOfType<IPublicMessageException>(eof);
+        Assert.AreEqual("lineRange", eof.ParamName);
+        using var doc = JsonDocument.Parse(ToolErrorHandler.ClassifyAndFormat(eof, "resource"));
+        Assert.AreEqual("InvalidArgument", doc.RootElement.GetProperty("category").GetString());
+        Assert.AreEqual($"Parameter 'lineRange' startLine ({total + 1}) is past the end of the file ({total} lines).", doc.RootElement.GetProperty("message").GetString());
+        Assert.AreEqual(nameof(ArgumentOutOfRangeException), doc.RootElement.GetProperty("exceptionType").GetString());
+        foreach (var end in new[] { 2, int.MaxValue })
+        {
+            var clamped = Math.Min(end, total);
+            var slice = await WorkspaceResources.GetSourceFileLines(WorkspaceExecutionGate, WorkspaceManager, WorkspaceId, Uri.EscapeDataString(path), $"2-{end}");
+            Assert.AreEqual($"// roslyn://workspace/{WorkspaceId}/file/.../lines/2-{clamped} of {total}{Environment.NewLine}" +
+                RoslynMcp.Roslyn.Helpers.SourceTextSlicer.SliceLines(text, 2, clamped), slice);
+        }
+        var missing = await Assert.ThrowsExactlyAsync<McpToolException>(() =>
+            WorkspaceResources.GetSourceFile(WorkspaceExecutionGate, WorkspaceManager, WorkspaceId, Path.Combine(Path.GetDirectoryName(path)!, "private-missing.cs")));
+        Assert.AreEqual("Document not found.", missing.Message);
+        Assert.IsInstanceOfType<KeyNotFoundException>(missing.InnerException);
+        StringAssert.Contains(missing.InnerException!.Message, "private-missing.cs");
+    }
+
     private static string WorkspaceId { get; set; } = null!;
 
     [ClassInitialize]
@@ -157,7 +232,7 @@ public sealed class WorkspaceResourceTests : SharedWorkspaceTestBase
         var ex = await Assert.ThrowsExactlyAsync<McpToolException>(() =>
             WorkspaceResources.GetSourceFile(WorkspaceExecutionGate, WorkspaceManager, WorkspaceId, "AnimalService.cs", CancellationToken.None));
         StringAssert.Contains(ex.Message, "Invalid argument");
-        StringAssert.Contains(ex.Message, "absolute path");
+        StringAssert.Contains(((IPublicMessageException)ex.InnerException!).PublicMessage, "absolute path");
         Assert.IsInstanceOfType<ArgumentException>(ex.InnerException,
             "inner cause must be ArgumentException so the read filter maps it to InvalidParams");
     }

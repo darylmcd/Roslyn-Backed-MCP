@@ -60,7 +60,7 @@ namespace RoslynMcp.Core.Models;
 /// <c>explicit</c> (the caller supplied an id; left untouched), <c>single-workspace</c> (id
 /// omitted and exactly one workspace was loaded, so the middleware patched it in), or
 /// <c>fast-fail</c> (id omitted and two-or-more workspaces — or two-or-more discoverable
-/// candidate solutions — so the middleware returned a structured error listing them instead
+/// candidate solutions — so the middleware returned corrective guidance instead
 /// of guessing), or <c>auto-loaded</c> (id omitted, zero workspaces loaded, and a single
 /// solution was discovered from the call context and loaded on demand before dispatch), or
 /// <c>request-state</c> (a modern MRTR retry restored the workspace selected on an earlier

@@ -162,6 +162,7 @@ Combine filters with `&` (AND) or `|` (OR) per `dotnet test` syntax.
 - Do not declare merge-ready while any required validation leg is failing, cancelled, skipped, or pending.
 - `validate-gate` depends on `route`, the complete `validate` matrix, and `sdk-floor`; it reports `validate` only when all required jobs succeeded (the floor job is intentionally skipped for policy-only docs).
 - Dispatch/schedule runs report `validate-informational`, never the required pull-request context.
+- The standalone `# ci-backstop: validation-only` declaration in `ci.yml` authorizes the shipping helper to dispatch the existing manual validation workflow on the merged base. That run adds unsharded Linux coverage, live-network canaries, and the SDK-floor probe after the reviewed PR gate; its `validate-informational` result cannot satisfy required `validate` or authorize release/package publication, deployment, or SDK generation.
 - Do not pin dynamic per-leg names in branch protection.
 - Preserve Linux pre-merge coverage because NuGet publication validates on Linux; this closes the prior Windows-pass/Linux-publish-fail gap.
 - Synchronize the branch before merge when repository protection requires it.

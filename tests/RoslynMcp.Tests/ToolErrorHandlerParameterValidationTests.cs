@@ -15,6 +15,33 @@ namespace RoslynMcp.Tests;
 [TestClass]
 public sealed class ToolErrorHandlerParameterValidationTests
 {
+
+    [TestMethod]
+    [DataRow("workspaceId", "PRIVATE candidate solution /tenant/private.slnx")]
+    public void PlainArgumentExceptions_DoNotGainProducerGuidance(string parameter, string privateDetail)
+    {
+        var payload = ToolErrorHandler.ClassifyAndFormat(new ArgumentException(privateDetail, parameter), "compile_check");
+        using var doc = JsonDocument.Parse(payload);
+        Assert.AreEqual("InvalidArgument", doc.RootElement.GetProperty("category").GetString());
+        Assert.AreEqual("ArgumentException", doc.RootElement.GetProperty("exceptionType").GetString());
+        Assert.AreEqual($"Parameter '{parameter}' is invalid. Check that all required parameters are provided and values match the expected types.",
+            doc.RootElement.GetProperty("message").GetString());
+        Assert.IsFalse(payload.Contains("PRIVATE", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void PlainProjectNameException_RetainsSafeFallbackForOtherProducers()
+    {
+        var payload = ToolErrorHandler.ClassifyAndFormat(
+            new ArgumentException("PRIVATE submitted value and loaded projects", "projectName"), "compile_check");
+        using var doc = JsonDocument.Parse(payload);
+        Assert.AreEqual("InvalidArgument", doc.RootElement.GetProperty("category").GetString());
+        Assert.AreEqual("ArgumentException", doc.RootElement.GetProperty("exceptionType").GetString());
+        Assert.AreEqual("No loaded project matches parameter 'projectName'. Use workspace_status to list project names, then retry.",
+            doc.RootElement.GetProperty("message").GetString());
+        Assert.IsFalse(payload.Contains("PRIVATE", StringComparison.Ordinal));
+    }
+
     [TestMethod]
     public async Task ArgumentNullException_WrappedInInvocationException_SurfacesParameterName()
     {

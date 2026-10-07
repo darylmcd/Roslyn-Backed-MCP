@@ -1,5 +1,7 @@
+using System.Text.Json;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
@@ -32,13 +34,53 @@ public sealed class RestructureServiceTests : SharedWorkspaceTestBase
         Service = new RestructureService(WorkspaceManager, PreviewStore);
     }
 
+
+    [TestMethod]
+    [DataRow("blank", "pattern")]
+    [DataRow("null-goal", "goal")]
+    [DataRow("empty-goal", "goal")]
+    [DataRow("null-pattern", "pattern")]
+    [DataRow("kinds", "goal")]
+    [DataRow("orphan", "goal")]
+    [DataRow("parse-pattern", "pattern")]
+    [DataRow("parse-goal", "goal")]
+    public async Task StandaloneAndCompositeValidation_PublishSafeFieldGuidance(string shape, string parameter)
+    {
+        var (pattern, goal) = shape switch
+        {
+            "blank" => (" ", "42"),
+            "null-goal" => ("42", (string?)null),
+            "empty-goal" => ("42", ""),
+            "null-pattern" => ((string)null!, "42"),
+            "kinds" => ("42", "return 42;"),
+            "orphan" => ("__captured__", "__PRIVATE_orphan__"),
+            "parse-pattern" => ("PRIVATE_parse_pattern +", "42"),
+            _ => ("42", "PRIVATE_parse_goal +"),
+        };
+        var scope = new RestructureScope(null, null);
+        var direct = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
+            Service.PreviewRestructureAsync(WorkspaceId, pattern, goal!, scope, CancellationToken.None));
+        var composite = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
+            Service.PreviewRestructureOnSolutionAsync(WorkspaceManager.GetCurrentSolution(WorkspaceId),
+                pattern, goal!, scope, CancellationToken.None));
+        Assert.AreEqual(parameter, direct.ParamName);
+        Assert.AreEqual(direct.PublicMessage, composite.PublicMessage,
+            "Both entry points must share one argument contract.");
+        using var payload = JsonDocument.Parse(ToolErrorHandler.ClassifyAndFormat(direct, "restructure_preview"));
+        Assert.AreEqual("InvalidArgument", payload.RootElement.GetProperty("category").GetString());
+        Assert.AreEqual("ArgumentException", payload.RootElement.GetProperty("exceptionType").GetString());
+        Assert.AreEqual(direct.PublicMessage, payload.RootElement.GetProperty("message").GetString());
+        Assert.IsFalse(direct.Message.Contains("PRIVATE", StringComparison.Ordinal));
+        Assert.IsFalse(payload.RootElement.GetRawText().Contains("PRIVATE", StringComparison.Ordinal));
+    }
+
     [TestMethod]
     public async Task PreviewRestructure_GoalReferencesUnknownPlaceholder_FailsLoud()
     {
         // Pattern captures __items__; goal references a second placeholder __count__ that was
         // never captured. Pre-fix this produced output containing literal `__count__` text;
         // now the service rejects the preview before touching the solution.
-        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
             Service.PreviewRestructureAsync(
                 WorkspaceId,
                 pattern: "return __items__;",
@@ -46,8 +88,8 @@ public sealed class RestructureServiceTests : SharedWorkspaceTestBase
                 scope: new RestructureScope(null, null),
                 ct: CancellationToken.None));
 
-        StringAssert.Contains(ex.Message, "__count__",
-            "Error must name the orphaned placeholder so the caller can fix the goal.");
+        Assert.IsFalse(ex.Message.Contains("__count__", StringComparison.Ordinal),
+            "Caller-supplied placeholder names must not be published.");
         StringAssert.Contains(ex.Message, "not captured by the pattern",
             "Error must explain why the placeholder cannot be substituted.");
     }
@@ -58,7 +100,7 @@ public sealed class RestructureServiceTests : SharedWorkspaceTestBase
         // Canonical R17A shape: pattern has NO placeholders, goal has one. Pre-fix
         // `_placeholderNames.Count == 0` short-circuited Substitute and the goal's literal
         // `__x__` text was emitted verbatim. Now the mismatch is rejected at validation.
-        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
             Service.PreviewRestructureAsync(
                 WorkspaceId,
                 pattern: "42",
@@ -66,8 +108,7 @@ public sealed class RestructureServiceTests : SharedWorkspaceTestBase
                 scope: new RestructureScope(null, null),
                 ct: CancellationToken.None));
 
-        StringAssert.Contains(ex.Message, "__x__",
-            "Error must name the orphaned placeholder.");
+        Assert.IsFalse(ex.Message.Contains("__x__", StringComparison.Ordinal));
     }
 
     [TestMethod]

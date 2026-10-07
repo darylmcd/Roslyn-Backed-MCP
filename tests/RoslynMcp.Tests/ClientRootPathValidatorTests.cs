@@ -1152,7 +1152,7 @@ public class ClientRootPathValidatorTests
         Directory.CreateDirectory(sub);
         Directory.CreateDirectory(other);
         File.WriteAllText(Path.Combine(sub, "Program.cs"), "// lexical target");
-        File.WriteAllText(Path.Combine(other, "Program.cs"), "// physical target");
+        File.WriteAllText(Path.Combine(testRoot, "Program.cs"), "// physical target");
 
         var link = Path.Combine(sub, "link");
         try
@@ -1165,7 +1165,7 @@ public class ClientRootPathValidatorTests
 
             // "<root>/real/sub/link/../Program.cs":
             //   lexical  -> <root>/real/sub/Program.cs   (the document EditService resolves)
-            //   physical -> <root>/other/Program.cs      (link followed, THEN ..)
+            //   physical -> <root>/Program.cs            (link followed, THEN ..)
             var requestPath = Path.Combine(link, "..", "Program.cs");
             var canonical = ClientRootPathValidator.ResolvePath(requestPath);
             var lexical = ClientRootPathValidator.ResolvePath(Path.GetFullPath(requestPath));
@@ -1176,10 +1176,21 @@ public class ClientRootPathValidatorTests
                 "Test premise: this fixture must actually produce divergent resolution, otherwise " +
                 "the guard below is not being exercised.");
 
-            var ex = Assert.ThrowsExactly<ArgumentException>(
+            var ex = Assert.ThrowsExactly<PublicArgumentException>(
                 () => EditTools.EnsurePinnedTargetMatchesResolvedDocument(requestPath, canonical),
                 "A divergent pin must fail closed rather than write one file's contents into another.");
-            StringAssert.Contains(ex.Message, "resolves ambiguously");
+            StringAssert.Contains(ex.PublicMessage, "resolves ambiguously");
+            StringAssert.Contains(ex.PublicMessage, "does not traverse a link via '..'");
+            Assert.AreEqual("filePath", ex.ParamName);
+            foreach (var privatePath in new[] { requestPath, lexical, canonical, testRoot })
+            {
+                Assert.IsFalse(ex.Message.Contains(privatePath, StringComparison.Ordinal));
+            }
+            using var payload = JsonDocument.Parse(ToolErrorHandler.ClassifyAndFormat(ex, "replace_text"));
+            Assert.AreEqual("ArgumentException", payload.RootElement.GetProperty("exceptionType").GetString());
+            Assert.AreEqual("InvalidArgument", payload.RootElement.GetProperty("category").GetString());
+            Assert.AreEqual("// lexical target", File.ReadAllText(lexical));
+            Assert.AreEqual("// physical target", File.ReadAllText(canonical));
         }
         finally
         {

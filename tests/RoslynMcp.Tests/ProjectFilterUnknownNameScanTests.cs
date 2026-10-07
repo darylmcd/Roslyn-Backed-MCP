@@ -1,3 +1,4 @@
+using RoslynMcp.Core.Services;
 namespace RoslynMcp.Tests;
 
 /// <summary>
@@ -11,7 +12,7 @@ namespace RoslynMcp.Tests;
 [TestClass]
 public sealed class ProjectFilterUnknownNameScanTests : SharedWorkspaceTestBase
 {
-    private const string UnknownProject = "NoSuchProject";
+    private const string UnknownProject = """PRIVATE-project "quoted" \candidate solution""";
 
     private static string WorkspaceId { get; set; } = null!;
 
@@ -28,7 +29,7 @@ public sealed class ProjectFilterUnknownNameScanTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task FormatCheck_UnknownProjectName_ThrowsInsteadOfReportingClean()
     {
-        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
             FormatVerifyService.CheckAsync(WorkspaceId, UnknownProject, CancellationToken.None));
         AssertUnknownProjectRejection(ex);
     }
@@ -43,7 +44,7 @@ public sealed class ProjectFilterUnknownNameScanTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task TraceExceptionFlow_UnknownScopeProject_Throws()
     {
-        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
             ExceptionFlowService.TraceExceptionFlowAsync(
                 WorkspaceId,
                 "System.InvalidOperationException",
@@ -56,14 +57,15 @@ public sealed class ProjectFilterUnknownNameScanTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task GetDiRegistrations_UnknownProject_Throws()
     {
-        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
             DiRegistrationService.GetDiRegistrationsAsync(WorkspaceId, UnknownProject, CancellationToken.None));
         AssertUnknownProjectRejection(ex);
     }
 
-    private static void AssertUnknownProjectRejection(ArgumentException ex)
+    private static void AssertUnknownProjectRejection(PublicArgumentException ex)
     {
         Assert.AreEqual("projectName", ex.ParamName);
-        StringAssert.Contains(ex.Message, $"'{UnknownProject}' matched 0 projects");
+        StringAssert.Contains(ex.PublicMessage, "workspace_status");
+        Assert.IsFalse(ex.Message.Contains(UnknownProject, StringComparison.Ordinal));
     }
 }

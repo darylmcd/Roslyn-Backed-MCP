@@ -12,7 +12,7 @@ namespace RoslynMcp.Tests;
 [TestClass]
 public sealed class ProjectFilterUnknownNamePatternTests : SharedWorkspaceTestBase
 {
-    private const string UnknownProject = "NoSuchProject.Typo";
+    private const string UnknownProject = """PRIVATE-project "quoted" \candidate solution""";
 
     private static string WorkspaceId { get; set; } = null!;
 
@@ -29,7 +29,7 @@ public sealed class ProjectFilterUnknownNamePatternTests : SharedWorkspaceTestBa
     [TestMethod]
     public async Task FindReflectionUsages_UnknownProject_Throws()
     {
-        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
             CodePatternAnalyzer.FindReflectionUsagesDetailedAsync(WorkspaceId, UnknownProject, CancellationToken.None));
 
         AssertProjectNameRejection(ex);
@@ -46,7 +46,7 @@ public sealed class ProjectFilterUnknownNamePatternTests : SharedWorkspaceTestBa
     [TestMethod]
     public async Task SemanticSearch_UnknownProject_Throws()
     {
-        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
             CodePatternAnalyzer.SemanticSearchAsync(WorkspaceId, "classes", UnknownProject, 10, CancellationToken.None));
 
         AssertProjectNameRejection(ex);
@@ -63,7 +63,7 @@ public sealed class ProjectFilterUnknownNamePatternTests : SharedWorkspaceTestBa
     [TestMethod]
     public async Task FindDuplicatedMethods_UnknownProject_Throws()
     {
-        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
             DuplicateMethodDetectorService.FindDuplicatedMethodsAsync(
                 WorkspaceId, new DuplicateMethodAnalysisOptions { ProjectFilter = UnknownProject }, CancellationToken.None));
 
@@ -82,7 +82,7 @@ public sealed class ProjectFilterUnknownNamePatternTests : SharedWorkspaceTestBa
     [TestMethod]
     public async Task FindUnusedSymbols_UnknownProject_Throws()
     {
-        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
             UnusedCodeAnalyzer.FindUnusedSymbolsAsync(
                 WorkspaceId, new UnusedSymbolsAnalysisOptions { ProjectFilter = UnknownProject }, CancellationToken.None));
 
@@ -101,7 +101,7 @@ public sealed class ProjectFilterUnknownNamePatternTests : SharedWorkspaceTestBa
     [TestMethod]
     public async Task FindDuplicateHelpers_UnknownProject_Throws()
     {
-        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
             UnusedCodeAnalyzer.FindDuplicateHelpersAsync(
                 WorkspaceId, new DuplicateHelperAnalysisOptions { ProjectFilter = UnknownProject }, CancellationToken.None));
 
@@ -111,7 +111,7 @@ public sealed class ProjectFilterUnknownNamePatternTests : SharedWorkspaceTestBa
     [TestMethod]
     public async Task FindDeadFields_UnknownProject_Throws()
     {
-        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
             UnusedCodeAnalyzer.FindDeadFieldsAsync(
                 WorkspaceId, new DeadFieldsAnalysisOptions { ProjectFilter = UnknownProject }, CancellationToken.None));
 
@@ -121,16 +121,17 @@ public sealed class ProjectFilterUnknownNamePatternTests : SharedWorkspaceTestBa
     [TestMethod]
     public async Task FindDeadLocals_UnknownProject_Throws()
     {
-        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
             UnusedCodeAnalyzer.FindDeadLocalsAsync(
                 WorkspaceId, new DeadLocalsAnalysisOptions { ProjectFilter = UnknownProject }, CancellationToken.None));
 
         AssertProjectNameRejection(ex);
     }
 
-    private static void AssertProjectNameRejection(ArgumentException ex)
+    private static void AssertProjectNameRejection(PublicArgumentException ex)
     {
         Assert.AreEqual("projectName", ex.ParamName);
-        StringAssert.Contains(ex.Message, "matched 0 projects");
+        StringAssert.Contains(ex.PublicMessage, "workspace_status");
+        Assert.IsFalse(ex.Message.Contains(UnknownProject, StringComparison.Ordinal));
     }
 }

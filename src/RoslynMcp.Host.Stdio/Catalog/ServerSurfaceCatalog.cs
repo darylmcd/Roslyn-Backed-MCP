@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using ModelContextProtocol.Server;
+using RoslynMcp.Core.Services;
 
 namespace RoslynMcp.Host.Stdio.Catalog;
 
@@ -289,14 +290,22 @@ public static partial class ServerSurfaceCatalog
 
     public static ServerCatalogVersionDiffDto CreateVersionDiff(string fromVersion, string toVersion)
     {
+        ArgumentNullException.ThrowIfNull(fromVersion);
+        if (string.IsNullOrWhiteSpace(fromVersion))
+            throw new PublicArgumentException("Parameter 'fromVersion' must be a nonblank catalog version.", nameof(fromVersion));
         var normalizedFrom = NormalizeVersionAlias(fromVersion);
+
+        ArgumentNullException.ThrowIfNull(toVersion);
+        if (string.IsNullOrWhiteSpace(toVersion))
+            throw new PublicArgumentException("Parameter 'toVersion' must be a nonblank catalog version.", nameof(toVersion));
         var normalizedTo = NormalizeVersionAlias(toVersion);
 
-        if (!string.Equals(normalizedFrom, V231ReleaseVersion, StringComparison.Ordinal) ||
-            !string.Equals(normalizedTo, CurrentReleaseVersion, StringComparison.Ordinal))
+        if (!string.Equals(normalizedFrom, V231ReleaseVersion, StringComparison.Ordinal))
+            throw UnsupportedVersion(nameof(fromVersion));
+
+        if (!string.Equals(normalizedTo, CurrentReleaseVersion, StringComparison.Ordinal))
         {
-            throw new ArgumentException(
-                $"Unsupported catalog diff '{fromVersion}' -> '{toVersion}'. Supported pairs: v{V231ReleaseVersion} -> v{CurrentReleaseVersion} (aliases: {V231ReleaseVersion}, v{V231ReleaseVersion}, {CurrentReleaseVersion}, v{CurrentReleaseVersion}, current, latest).");
+            throw UnsupportedVersion(nameof(toVersion));
         }
 
         var prior = LoadPriorCatalogSnapshot();
@@ -304,6 +313,10 @@ public static partial class ServerSurfaceCatalog
 
         return BuildVersionDiff(prior, current);
     }
+
+    private static PublicArgumentException UnsupportedVersion(string parameterName) => new(
+        $"Parameter '{parameterName}' is unsupported. Supported catalog diff: v{V231ReleaseVersion} -> v{CurrentReleaseVersion} (source aliases: {V231ReleaseVersion}, v{V231ReleaseVersion}; target aliases: {CurrentReleaseVersion}, v{CurrentReleaseVersion}, current, latest).",
+        parameterName);
 
     internal static ServerCatalogVersionDiffDto BuildVersionDiff(CatalogSnapshotDocument prior, CatalogSnapshotDocument current)
     {
@@ -334,7 +347,6 @@ public static partial class ServerSurfaceCatalog
 
     private static string NormalizeVersionAlias(string version)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(version);
         var trimmed = version.Trim();
         if (string.Equals(trimmed, "current", StringComparison.OrdinalIgnoreCase)
             || string.Equals(trimmed, "latest", StringComparison.OrdinalIgnoreCase))

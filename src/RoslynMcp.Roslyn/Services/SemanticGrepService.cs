@@ -20,10 +20,11 @@ public sealed class SemanticGrepService : ISemanticGrepService
     private static readonly TimeSpan RegexTimeout = TimeSpan.FromSeconds(2);
 
     /// <summary>
-    /// semantic-grep-pattern-error-detail-redaction: fixed, input-free message thrown when the
-    /// caller's regex fails to parse. MUST stay free of the pattern text and the .NET parser
-    /// message — <c>ToolErrorHandler.BuildSafeArgumentMessage</c> keys its regex-guidance arm
-    /// on this exact substring (plus <c>ParamName == "pattern"</c>).
+    /// semantic-grep-pattern-error-detail-redaction: legacy input-free sentinel retained for
+    /// compatibility. <c>ToolErrorHandler.BuildSafeArgumentMessage</c> recognizes this exact
+    /// substring (plus <c>ParamName == "pattern"</c>) for ordinary argument exceptions.
+    /// Current regex parse failures publish typed public guidance instead of this sentinel.
+    /// Keep this value free of the pattern text and the .NET parser message.
     /// </summary>
     public const string InvalidRegexSentinel = "The 'pattern' argument is not a valid .NET regular expression.";
 
@@ -59,17 +60,17 @@ public sealed class SemanticGrepService : ISemanticGrepService
         _logger.LogDebug("SemanticGrepService.SearchAsync: workspaceId={WorkspaceId} scope={Scope} patternLength={PatternLength} projectFilter={ProjectFilter} limit={Limit}", workspaceId, scope, pattern?.Length ?? 0, projectFilter, limit);
         if (string.IsNullOrEmpty(pattern))
         {
-            throw new ArgumentException("pattern must be non-empty.", nameof(pattern));
+            throw new PublicArgumentException("pattern must be non-empty.", nameof(pattern));
         }
         if (string.IsNullOrWhiteSpace(scope) || !ValidScopes.Contains(scope))
         {
-            throw new ArgumentException(
+            throw new PublicArgumentException(
                 $"scope must be one of: {ScopeIdentifiers}, {ScopeStrings}, {ScopeComments}, {ScopeAll}.",
                 nameof(scope));
         }
         if (limit < 1)
         {
-            throw new ArgumentException("limit must be >= 1.", nameof(limit));
+            throw new PublicArgumentException("limit must be >= 1.", nameof(limit));
         }
 
         Regex regex;
@@ -81,9 +82,13 @@ public sealed class SemanticGrepService : ISemanticGrepService
         {
             // semantic-grep-pattern-error-detail-redaction: the .NET parser message embeds the
             // caller's raw pattern text (e.g. "Invalid pattern '(?<secret' at offset 8"), which
-            // can carry the very secret the caller is grepping for. Throw a fixed, input-free
-            // sentinel instead; ex stays as InnerException for server-side diagnostics only.
-            throw new ArgumentException(InvalidRegexSentinel, nameof(pattern), ex);
+            // can carry the very secret the caller is grepping for. Throw fixed, input-free
+            // guidance instead; ex stays as InnerException for server-side diagnostics only.
+            throw new PublicArgumentException(
+                "Parameter 'pattern' is not a valid .NET regular expression. Patterns use " +
+                "System.Text.RegularExpressions syntax, not ripgrep/PCRE. Check for unbalanced " +
+                "parentheses or brackets, invalid quantifier ranges, and unescaped metacharacters, " +
+                "then retry with a corrected pattern.", nameof(pattern), ex);
         }
 
         var includeIdentifiers = scope is ScopeAll || string.Equals(scope, ScopeIdentifiers, StringComparison.OrdinalIgnoreCase);

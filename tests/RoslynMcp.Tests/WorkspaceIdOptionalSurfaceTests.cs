@@ -1,3 +1,4 @@
+using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Catalog;
 using RoslynMcp.Host.Stdio.Tools;
 
@@ -49,10 +50,10 @@ public sealed class WorkspaceIdOptionalSurfaceTests
     {
         // The residual case the middleware cannot resolve (omitted id + zero workspaces loaded +
         // nothing discoverable) reaches the tool body with workspaceId == null. The body guard
-        // must throw a structured ArgumentException (the filter classifies it to InvalidArgument)
+        // must throw PublicArgumentException (the filter classifies it to InvalidArgument)
         // pointing the caller at workspace_load — not NRE on the downstream gate call. The guard
         // runs before any service is touched, so null DI args are safe here.
-        var ex = Assert.ThrowsExactly<ArgumentException>(() =>
+        var ex = Assert.ThrowsExactly<PublicArgumentException>(() =>
             SymbolTools.GetDocumentSymbols(server: null!, gate: null!, symbolSearchService: null!, workspaceId: null));
 
         Assert.AreEqual("workspaceId", ex.ParamName);
@@ -67,7 +68,7 @@ public sealed class WorkspaceIdOptionalSurfaceTests
         // pagination validations pass for the defaults (severity=null, offset=0, limit=50), so the
         // null-workspaceId case reaches RequireResolvedWorkspaceId before any service or gate is
         // touched — null DI args are safe here.
-        var ex = Assert.ThrowsExactly<ArgumentException>(() =>
+        var ex = Assert.ThrowsExactly<PublicArgumentException>(() =>
             CompileCheckTools.CompileCheck(gate: null!, compileCheckService: null!, workspaceId: null));
 
         Assert.AreEqual("workspaceId", ex.ParamName);
