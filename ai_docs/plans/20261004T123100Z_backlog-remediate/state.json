@@ -746,13 +746,18 @@
         "src/RoslynMcp.Roslyn/Services/RestructureService.cs",
         "src/RoslynMcp.Roslyn/Services/SemanticGrepService.cs"
       ],
-      "testFilesAdded": 3,
+      "testFilesAdded": 4,
       "testFiles": [
         "tests/RoslynMcp.Tests/SymbolRefactorPreviewTests.cs",
         "tests/RoslynMcp.Tests/RestructureServiceTests.cs",
-        "tests/RoslynMcp.Tests/SemanticGrepServiceTests.cs"
+        "tests/RoslynMcp.Tests/SemanticGrepServiceTests.cs",
+        "tests/RoslynMcp.Tests/ToolCallErrorWireContractTests.cs"
       ],
-      "docFiles": [],
+      "docFiles": [
+        "docs/decisions/0016-composite-null-operation-refusal.md",
+        "docs/decisions/README.md",
+        "changelog.d/restructure-and-semantic-grep-argument-refusals-public-message.md"
+      ],
       "rowsClosedCount": 1,
       "estimatedContextTokens": 50000,
       "toolPolicy": "edit-only",
@@ -774,8 +779,8 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "a84ff27ab57765ce166591db7c152bcc8d4e72dd5ec4ea6c5ecaa42680dcc7ae",
-      "stanzaHash": "8d7b096b354a269e02f5130603132d637844795bb345a5a024caf2b536697887",
-      "reviewedStanzaHash": "8d7b096b354a269e02f5130603132d637844795bb345a5a024caf2b536697887",
+      "stanzaHash": "75b1b41478b6730e1f477dee5cab5f3dd3c80591572eb93c3e6c79dfe5cce624",
+      "reviewedStanzaHash": "75b1b41478b6730e1f477dee5cab5f3dd3c80591572eb93c3e6c79dfe5cce624",
       "amendments": [
         {
           "at": "2026-10-07T00:33:07.361Z",
@@ -790,6 +795,13 @@
           "reason": "Complete same caller-validation guard mechanism before downstream work; add regression rows in existing scoped test file",
           "previousStanzaHash": "fe33c14da4c1d32b61fedb1954b6091c7d31e699aa828cbe84032b5788576e9c",
           "stanzaHash": "8d7b096b354a269e02f5130603132d637844795bb345a5a024caf2b536697887"
+        },
+        {
+          "at": "2026-10-07T00:41:10.862Z",
+          "finding": "Actual compiled null-op probe confirms JSON/direct null array entry double-NRE and InternalError wire identity",
+          "reason": "Fix edited composite caller validation completely; ADR and major migration plus dual-era raw wire regression record the corrected stable malformed-input category",
+          "previousStanzaHash": "8d7b096b354a269e02f5130603132d637844795bb345a5a024caf2b536697887",
+          "stanzaHash": "75b1b41478b6730e1f477dee5cab5f3dd3c80591572eb93c3e6c79dfe5cce624"
         }
       ]
     },
@@ -1355,14 +1367,14 @@
       "parameter-object-argument-refusals-public-message": "d32655a21730ce6a970badca6eb7dc847717c86b96484d5a2c8b1b58d1af5759",
       "bulk-refactoring-argument-refusals-public-message": "e7af7efb19e73a57b232b902523a524906236d69718a138524cc1205048e07e0",
       "type-extraction-argument-refusals-public-message": "f64e7f28ed65ce69c1ce3dcbbc1de0680b2a1a81e96b235397e2e4a7717a0cb0",
-      "restructure-and-semantic-grep-argument-refusals-public-message": "8d7b096b354a269e02f5130603132d637844795bb345a5a024caf2b536697887",
+      "restructure-and-semantic-grep-argument-refusals-public-message": "75b1b41478b6730e1f477dee5cab5f3dd3c80591572eb93c3e6c79dfe5cce624",
       "edit-service-argument-refusals-public-message": "2e9605f85bd0feb3e3cd6ce6e7ea5efcc48a8af6a53ac6953d2a87ee28c325cd",
       "suppression-argument-refusals-public-message": "dc22bf053f48f0b679f4af4a67cd32698d8856cbf315795afeabf2ce8743c67c"
     }
   },
   "conflictGraphInputHash": "d8cc60859909341a1fe269584901aec43ebf07370c6ba2369f72f23d0f1f2042",
-  "planHash": "b0e19dc48202a68e573ce7418c1a1b5495d8f077a58afe1b29a7334d47db15d3",
+  "planHash": "0289c8d35b71ff0f42463d28b1d6abd4d59f58352b935bfc116b67af085a020b",
   "backlogSnapshotHash": "aa7593fb4e2c3b59453248d6223301e471be1161179df7994320f52ec840df5f",
-  "reviewedPlanHash": "b0e19dc48202a68e573ce7418c1a1b5495d8f077a58afe1b29a7334d47db15d3",
+  "reviewedPlanHash": "0289c8d35b71ff0f42463d28b1d6abd4d59f58352b935bfc116b67af085a020b",
   "reviewedBacklogSnapshotHash": "aa7593fb4e2c3b59453248d6223301e471be1161179df7994320f52ec840df5f"
 }
