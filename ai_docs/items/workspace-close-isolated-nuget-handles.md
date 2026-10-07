@@ -25,4 +25,11 @@
 - Current `WorkspaceManager.cs:1621,1628-1630` reads `Workspace?.Dispose();`, `Workspace = null;`, `AnalyzerLease?.Dispose();`, `LoadLock.Dispose();`.
 - PR #1744 reports SnipCue bl-0515 EPERM with PID 48528 and bl-0519 EPERM with PIDs 5256/2412 after workspace count zero. These are historical claims from the immutable detail, not reproduction generated in this re-vet; exact owning-handle evidence and retained receipt paths were not established here.
 - No defective ownership construct was traced in this read-only re-vet. Import as `[type: chore]` investigate-first; do not retain the original bug classification as proven.
-- Live main has no equivalent NuGet-handle-retention row. Existing workspace-close case-comparison/PID-reuse rows concern process-drain identity and are different mechanisms.
+- Pre-import main at the recorded re-vet base had no equivalent NuGet-handle-retention row. Existing workspace-close case-comparison/PID-reuse rows concern process-drain identity and are different mechanisms.
+
+- Current-session 2026-10-07 reproduction boundary: canonical type-extraction cache reclamation after PR1758 merge returns `scratchRemoved:false`, `EPERM`, and `holder unknown: Restart Manager probe exited 1` at 05:01Z. Own workspace close used `drainProcesses:false`; no task-rooted worker was found; no machine-wide shutdown or holder kill was issued.
+- Retained files inspected under `<private-scratch-root>/a177c9f2-type-extraction-argument-refusals-public-message/nuget/microsoft.extensions.logging.abstractions/10.0.12/`: package archive and `analyzers/dotnet/roslyn4.4/cs/Microsoft.Extensions.Logging.Generators.dll` plus resource assemblies. Presence does not prove which file is locked or who owns the handle; preserve investigate-first classification.
+
+Current-session 2026-10-07 suppression landing PR1760 at 05:54Z also returned scratchRemoved:false and EPERM for <private-scratch-root>/a177c9f2-suppression-argument-refusals-public-message; holder unknown because Restart Manager probe exited1. Owned executor and cold-review workspaces closed without process draining; native task-rooted process audits were empty; investigate exact handle ownership before classifying a lifecycle defect.
+
+Recovery observation 2026-10-07: later canonical extraction cache reclaim reports scratchRemoved:true; exact extraction cache and quarantine marker are directly absent. Same-session suppression reclaim still reports EPERM/unknown holder; no owning handle or lifecycle root cause is inferred from this different retention duration.

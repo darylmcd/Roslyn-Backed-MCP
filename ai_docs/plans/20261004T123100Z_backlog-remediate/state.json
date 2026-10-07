@@ -1,12 +1,12 @@
 {
   "schemaVersion": 4,
   "generatedAt": "2026-10-04T12:31:14.216Z",
-  "backlogSnapshot": "2026-10-04T12:16:53Z",
+  "backlogSnapshot": "2026-10-07T06:24:42Z",
   "addendaLoaded": true,
   "phase": "complete",
   "cycleCount": 0,
   "maxCycles": 2,
-  "completed": false,
+  "completed": true,
   "reviewStatus": "passed-with-warnings",
   "readyForExecute": true,
   "initiatives": [
@@ -741,7 +741,7 @@
       "worktreePath": "D:/Roslyn-Backed-MCP/.worktrees/type-extraction-argument-refusals-public-message",
       "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1758",
       "mergedAt": "2026-10-07T04:49:10Z",
-      "notes": null,
+      "notes": "Landed reviewed9517871 head as b44cb34c; Release186 scoped tests and full hosted/backstop37573409934 passed. Historical landing scratchRemoved:false retained; current-session canonical reclaim now reports scratchRemoved:true, and exact private-cache directory plus quarantine marker are directly verified absent on 2026-10-07. No global shutdown or holder kill.",
       "fileSetHash": "a0300d7bd30498f19306c8432441779ad07e52debe78036a352967b8b5d2512c",
       "stanzaHash": "f75d6717e7d4e9762292ce919804619ae659a8a9fed4e72d39d9034f08aa9aa7",
       "reviewedStanzaHash": "f75d6717e7d4e9762292ce919804619ae659a8a9fed4e72d39d9034f08aa9aa7",
@@ -954,13 +954,14 @@
     {
       "id": "suppression-argument-refusals-public-message",
       "order": 15,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "suppression-argument-refusals-public-message"
       ],
-      "productionFilesTouched": 1,
+      "productionFilesTouched": 2,
       "productionFiles": [
-        "src/RoslynMcp.Roslyn/Services/SuppressionService.cs"
+        "src/RoslynMcp.Roslyn/Services/SuppressionService.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/SuppressionTools.cs"
       ],
       "testFilesAdded": 4,
       "testFiles": [
@@ -989,14 +990,14 @@
       "dependsOn": [
         "resource-argument-refusals-public-message"
       ],
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "branch": "remediation/suppression-argument-refusals-public-message",
+      "worktreePath": "D:/Roslyn-Backed-MCP/.worktrees/suppression-argument-refusals-public-message",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1760",
+      "mergedAt": "2026-10-07T05:54:23Z",
       "notes": null,
-      "fileSetHash": "9bc574a9a65e3dcff9c54947ef31c20301ca8e85e4e7f33e1ab9be0a03086b4b",
-      "stanzaHash": "a720c6dafbe2a7ab9499bcf7448df6c88110582179ffee0fddbdf43071aad506",
-      "reviewedStanzaHash": "a720c6dafbe2a7ab9499bcf7448df6c88110582179ffee0fddbdf43071aad506",
+      "fileSetHash": "7036cbe77f0ea88e8d7420f2eba6009afa1940413bee4c040d9ddb9fb0d67e50",
+      "stanzaHash": "2e1397098de9f0f1e9e6f32781a434025e97a130b23ad50d951e420a4fb942dc",
+      "reviewedStanzaHash": "2e1397098de9f0f1e9e6f32781a434025e97a130b23ad50d951e420a4fb942dc",
       "changelogCategory": "Changed — BREAKING",
       "amendments": [
         {
@@ -1005,25 +1006,29 @@
           "reason": "Complete named guard validation, exact real-service dual-era wire companions, unique proposed ADR0018/0019 and major migration; remove stale containment defect claim",
           "previousStanzaHash": "dc22bf053f48f0b679f4af4a67cd32698d8856cbf315795afeabf2ce8743c67c",
           "stanzaHash": "a720c6dafbe2a7ab9499bcf7448df6c88110582179ffee0fddbdf43071aad506"
+        },
+        {
+          "at": "2026-10-07T05:11:34.820Z",
+          "finding": "SuppressionTools.cs:20 omits supported error while parameter description at :26 includes it",
+          "reason": "Complete the same severity API correction by aligning tool guidance with validator and preserving supported error",
+          "previousStanzaHash": "a720c6dafbe2a7ab9499bcf7448df6c88110582179ffee0fddbdf43071aad506",
+          "stanzaHash": "2e1397098de9f0f1e9e6f32781a434025e97a130b23ad50d951e420a4fb942dc"
         }
-      ]
+      ],
+      "reviewedHead": "f8447fda88f43958a47aaabca1693a6cd07fc634",
+      "scratchRemoved": false,
+      "githubGate": {
+        "baseOid": "bc6e1f160fb9825127ba35386a37b6cae02523b0",
+        "headOid": "f8447fda88f43958a47aaabca1693a6cd07fc634",
+        "tree": "113dbbbede82526550336b61ba1106f6fbcfc21c",
+        "checksVerifiedAt": "2026-10-07T05:54:20.028Z"
+      }
     }
   ],
   "anchorVerification": "performed",
   "conflictGraph": {
-    "edges": [
-      {
-        "a": 12,
-        "b": 15,
-        "sharedFiles": [
-          "docs/decisions/README.md"
-        ]
-      }
-    ],
-    "degrees": {
-      "12": 1,
-      "15": 1
-    },
+    "edges": [],
+    "degrees": {},
     "zeroDegreeInitiatives": []
   },
   "selection": {
@@ -1444,12 +1449,13 @@
       "type-extraction-argument-refusals-public-message": "f75d6717e7d4e9762292ce919804619ae659a8a9fed4e72d39d9034f08aa9aa7",
       "restructure-and-semantic-grep-argument-refusals-public-message": "c27062a29f0d33cd9d1fe6b01cacc48641bfdbb8ccc603e5c2a9550b68ec7b90",
       "edit-service-argument-refusals-public-message": "2e9605f85bd0feb3e3cd6ce6e7ea5efcc48a8af6a53ac6953d2a87ee28c325cd",
-      "suppression-argument-refusals-public-message": "a720c6dafbe2a7ab9499bcf7448df6c88110582179ffee0fddbdf43071aad506"
+      "suppression-argument-refusals-public-message": "2e1397098de9f0f1e9e6f32781a434025e97a130b23ad50d951e420a4fb942dc"
     }
   },
-  "conflictGraphInputHash": "9edd26e836a784b20637842cad630cd3206442c07a13f18d176b0dbbc6b408ba",
-  "planHash": "f5095058b41fe05e39aa02ab26956d543ee594d9fce720d3cbd424397a909f86",
-  "backlogSnapshotHash": "502d7c2cd03e3f9dadb925acb76825497570843660cd979a919c6799337ec01c",
-  "reviewedPlanHash": "f5095058b41fe05e39aa02ab26956d543ee594d9fce720d3cbd424397a909f86",
-  "reviewedBacklogSnapshotHash": "aa7593fb4e2c3b59453248d6223301e471be1161179df7994320f52ec840df5f"
+  "conflictGraphInputHash": "576b07a4b1ecb63a831962aff6ad346174c4b55d4d32d6ac6a4f33bbe900c974",
+  "planHash": "59c14f6d0cf8deadb2e4c7a5bba85d04eb67ef4eb73da666aa5c3abd9b70bb7b",
+  "backlogSnapshotHash": "ca0b772d6e7f2301d3d4d492fcc48d33e5d05c8087a98608b3a3e23e9adfeca1",
+  "reviewedPlanHash": "59c14f6d0cf8deadb2e4c7a5bba85d04eb67ef4eb73da666aa5c3abd9b70bb7b",
+  "reviewedBacklogSnapshotHash": "aa7593fb4e2c3b59453248d6223301e471be1161179df7994320f52ec840df5f",
+  "completedAt": "2026-10-07T06:25:34.906Z"
 }
