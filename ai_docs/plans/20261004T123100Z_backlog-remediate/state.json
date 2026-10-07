@@ -329,7 +329,7 @@
     {
       "id": "resource-argument-refusals-public-message",
       "order": 7,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "resource-argument-refusals-public-message"
       ],
@@ -341,12 +341,13 @@
         "src/RoslynMcp.Core/Services/PublicArgumentOutOfRangeException.cs",
         "src/RoslynMcp.Core/Services/IPublicMessageException.cs"
       ],
-      "testFilesAdded": 4,
+      "testFilesAdded": 5,
       "testFiles": [
         "tests/RoslynMcp.Tests/WorkspaceResourceTests.cs",
         "tests/RoslynMcp.Tests/SurfaceCatalogTests.cs",
         "tests/RoslynMcp.Tests/ResourceReadWireContractTests.cs",
-        "tests/RoslynMcp.Tests/PublicMessageExceptionTests.cs"
+        "tests/RoslynMcp.Tests/PublicMessageExceptionTests.cs",
+        "tests/RoslynMcp.Tests/Top10V2RegressionTests.cs"
       ],
       "docFiles": [],
       "rowsClosedCount": 1,
@@ -362,14 +363,14 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "branch": "remediation/resource-argument-refusals-public-message",
+      "worktreePath": ".worktrees/resource-argument-refusals-public-message",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1753",
+      "mergedAt": "2026-10-06T23:45:18Z",
       "notes": null,
       "fileSetHash": "a3db611ce71c6f789a20cfd446e28a87a2b10c6326942c8a50ee6d8aa4ea3ade",
-      "stanzaHash": "a54467007080fec5e15540a560fc2c832e26ef4ab9f4d84cdbac9ebb84107b6c",
-      "reviewedStanzaHash": "a54467007080fec5e15540a560fc2c832e26ef4ab9f4d84cdbac9ebb84107b6c",
+      "stanzaHash": "6651dc3a5ed14e58e498b147d6a32650e870cd108b5850b6d47b019cb59108cd",
+      "reviewedStanzaHash": "6651dc3a5ed14e58e498b147d6a32650e870cd108b5850b6d47b019cb59108cd",
       "amendments": [
         {
           "at": "2026-10-04T19:58:47.351Z",
@@ -391,8 +392,30 @@
           "reason": "ServerSurfaceCatalog.cs290-293 validates and normalizes fromVersion before toVersion. Preserve that existing order for both-invalid version inputs while correcting parameter names and safe public refusals; hoisted target null guards can otherwise change the first refusal BCL identity. Existing scoped files/tests cover this mechanism.",
           "previousStanzaHash": "824a5aec1dccf60ddb814c562c52c23584192d2fd3eb7eb1f9da56e343063289",
           "stanzaHash": "a54467007080fec5e15540a560fc2c832e26ef4ab9f4d84cdbac9ebb84107b6c"
+        },
+        {
+          "at": "2026-10-06T23:01:53.639Z",
+          "finding": "cold review1753: preserved binding and pair validation precedence",
+          "reason": "Immutable base normalizes both nonblank tokens before support checks. Earlier source-first wording overstated source support precedence and led to a changed exceptionType for unsupported source plus null target. Preserve source binding, target binding, then pair support phases; exact source and test paths unchanged.",
+          "previousStanzaHash": "a54467007080fec5e15540a560fc2c832e26ef4ab9f4d84cdbac9ebb84107b6c",
+          "stanzaHash": "bca29484b938395d11923f7781afd01fad199aeef7c14504ac11e1c4e29d9a62"
+        },
+        {
+          "at": "2026-10-06T23:25:42.331Z",
+          "finding": "CI 37544734118 Windows shard 3: three Top10 resource exact-type assertions failed on 1f6afa7",
+          "reason": "Add the missed regression companions to scope; pin intended public subclasses and safe messages without weakening assertions",
+          "previousStanzaHash": "bca29484b938395d11923f7781afd01fad199aeef7c14504ac11e1c4e29d9a62",
+          "stanzaHash": "6651dc3a5ed14e58e498b147d6a32650e870cd108b5850b6d47b019cb59108cd"
         }
-      ]
+      ],
+      "reviewedHead": "2da8e3497e1d8d04a2e3b564e9463f811e1d19ed",
+      "scratchRemoved": false,
+      "githubGate": {
+        "baseOid": "a74d846295e45eac9630b405a1b374882d1968ed",
+        "headOid": "2da8e3497e1d8d04a2e3b564e9463f811e1d19ed",
+        "tree": "a3f21a44e655a09458e1e9f0633ddf32a6b36a92",
+        "checksVerifiedAt": "2026-10-06T23:45:13.426Z"
+      }
     },
     {
       "id": "root-boundary-argument-refusals-public-message",
@@ -442,11 +465,11 @@
     {
       "id": "dispatch-and-tool-argument-refusals-public-message",
       "order": 9,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "dispatch-and-tool-argument-refusals-public-message"
       ],
-      "productionFilesTouched": 8,
+      "productionFilesTouched": 9,
       "productionFiles": [
         "src/RoslynMcp.Host.Stdio/Tools/ToolDispatch.cs",
         "src/RoslynMcp.Host.Stdio/Middleware/StructuredCallElicitationCoordinator.cs",
@@ -455,9 +478,10 @@
         "src/RoslynMcp.Host.Stdio/Middleware/StructuredWorkspaceResolver.cs",
         "src/RoslynMcp.Host.Stdio/Tools/ToolErrorHandler.cs",
         "src/RoslynMcp.Roslyn/Helpers/ProjectFilterHelper.cs",
-        "src/RoslynMcp.Core/Models/GateMetricsDto.cs"
+        "src/RoslynMcp.Core/Models/GateMetricsDto.cs",
+        "eng/format-baseline.json"
       ],
-      "testFilesAdded": 10,
+      "testFilesAdded": 11,
       "testFiles": [
         "tests/RoslynMcp.Tests/ToolDispatchTests.cs",
         "tests/RoslynMcp.Tests/CompileCheckZeroProjectsTests.cs",
@@ -468,7 +492,8 @@
         "tests/RoslynMcp.Tests/ToolErrorHandlerParameterValidationTests.cs",
         "tests/RoslynMcp.Tests/ProjectFilterUnknownNamePatternTests.cs",
         "tests/RoslynMcp.Tests/ProjectFilterUnknownNameMetricsTests.cs",
-        "tests/RoslynMcp.Tests/ProjectFilterUnknownNameScanTests.cs"
+        "tests/RoslynMcp.Tests/ProjectFilterUnknownNameScanTests.cs",
+        "tests/RoslynMcp.Tests/WorkspaceIdOptionalSurfaceTests.cs"
       ],
       "docFiles": [
         "docs/decisions/0015-dispatch-public-argument-diagnostics.md",
@@ -488,14 +513,14 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "branch": "remediation/dispatch-and-tool-argument-refusals-public-message",
+      "worktreePath": ".worktrees/dispatch-and-tool-argument-refusals-public-message",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1754",
+      "mergedAt": "2026-10-07T00:52:11Z",
       "notes": null,
       "fileSetHash": "8d743189c32cade4474eee006a6936eeafb2b311ab02ab029fceb8c4ccdb0bfe",
-      "stanzaHash": "0d3c7527e89ee16bdcc790b54ed46ca47b8803474249d9f348e3c3f01c97bfa1",
-      "reviewedStanzaHash": "0d3c7527e89ee16bdcc790b54ed46ca47b8803474249d9f348e3c3f01c97bfa1",
+      "stanzaHash": "120a9ef262ab5e5d4630adad9a16799665a013322ee2d39f775b18e66486f69b",
+      "reviewedStanzaHash": "120a9ef262ab5e5d4630adad9a16799665a013322ee2d39f775b18e66486f69b",
       "amendments": [
         {
           "at": "2026-10-04T19:58:48.586Z",
@@ -503,8 +528,37 @@
           "reason": "Observe compiled regression failure on the actual executor-supplied immutable generation base; preserve every validation requirement",
           "previousStanzaHash": "ef230e01430bf09ee09eb91063962783c6b1b5d2a1395ff83effb3150bd1c968",
           "stanzaHash": "0d3c7527e89ee16bdcc790b54ed46ca47b8803474249d9f348e3c3f01c97bfa1"
+        },
+        {
+          "at": "2026-10-06T22:51:12.683Z",
+          "finding": "orchestrator semantic re-verification: incorrect consumer-file count",
+          "reason": "Live Roslyn find_references returns all16 references in12 unique production files; the prior stanza incorrectly claimed13. Signatures and result contracts remain unchanged; production scope8 and test scope10 remain unchanged.",
+          "previousStanzaHash": "0d3c7527e89ee16bdcc790b54ed46ca47b8803474249d9f348e3c3f01c97bfa1",
+          "stanzaHash": "f493476e759cacc705e9196ba47917acd6bd427f6e6480f374dac998ed95d56a"
+        },
+        {
+          "at": "2026-10-06T23:57:42.737Z",
+          "finding": "Source re-vet: projectName arm has three live producers; WorkspaceIdOptionalSurfaceTests exact pin consumes changed dispatch guard",
+          "reason": "Retain live fallback to avoid new guidance downgrade; add compile-forced test companion while migrating only the selected producer family",
+          "previousStanzaHash": "f493476e759cacc705e9196ba47917acd6bd427f6e6480f374dac998ed95d56a",
+          "stanzaHash": "62f1b1099599963b573485cb22722e71d115df9bb893b759aabaa8499f527775"
+        },
+        {
+          "at": "2026-10-07T00:10:12.110Z",
+          "finding": "Current-head artifact audit: repaired EditTools import order leaves stale formatter allowance; three claimed fast-gate logs are zero bytes",
+          "reason": "Regenerate required deterministic inventory companion and capture actual nonempty fast-gate output before cold review",
+          "previousStanzaHash": "62f1b1099599963b573485cb22722e71d115df9bb893b759aabaa8499f527775",
+          "stanzaHash": "120a9ef262ab5e5d4630adad9a16799665a013322ee2d39f775b18e66486f69b"
         }
-      ]
+      ],
+      "reviewedHead": "9b85ea95acdb915dcd82dd8e2842034fd6d794ff",
+      "scratchRemoved": false,
+      "githubGate": {
+        "baseOid": "5e0871fe20f59ce90292eb05a645b0ea1fdd9ada",
+        "headOid": "9b85ea95acdb915dcd82dd8e2842034fd6d794ff",
+        "tree": "05e24ebec690f04304be089051140cd1da24c367",
+        "checksVerifiedAt": "2026-10-07T00:52:07.778Z"
+      }
     },
     {
       "id": "parameter-object-argument-refusals-public-message",
@@ -651,19 +705,22 @@
         "src/RoslynMcp.Roslyn/Services/NamespaceRelocationService.cs",
         "src/RoslynMcp.Roslyn/Services/ExtractMethodService.cs"
       ],
-      "testFilesAdded": 5,
+      "testFilesAdded": 6,
       "testFiles": [
         "tests/RoslynMcp.Tests/TypeExtractionTests.cs",
         "tests/RoslynMcp.Tests/ExtractSharedExpressionTests.cs",
         "tests/RoslynMcp.Tests/RecordFieldAdditionImpactTests.cs",
         "tests/RoslynMcp.Tests/NamespaceRelocationTests.cs",
-        "tests/RoslynMcp.Tests/ExtractMethodTests.cs"
+        "tests/RoslynMcp.Tests/ExtractMethodTests.cs",
+        "tests/RoslynMcp.Tests/ExtractionArgumentRefusalWireTests.cs"
       ],
       "docFiles": [
+        "docs/decisions/0018-extraction-public-argument-diagnostics.md",
+        "docs/decisions/README.md",
         "changelog.d/type-extraction-argument-refusals-public-message.md"
       ],
       "rowsClosedCount": 1,
-      "estimatedContextTokens": 60000,
+      "estimatedContextTokens": 70000,
       "toolPolicy": "edit-only",
       "scheduleHint": null,
       "fanoutEstimate": 4,
@@ -683,29 +740,45 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "2f4b932aba9489fee92a8b1d66b80ffa28a17eb8aac3cbb73f4fcfdc48e6e903",
-      "stanzaHash": "f64e7f28ed65ce69c1ce3dcbbc1de0680b2a1a81e96b235397e2e4a7717a0cb0",
-      "reviewedStanzaHash": "f64e7f28ed65ce69c1ce3dcbbc1de0680b2a1a81e96b235397e2e4a7717a0cb0"
+      "stanzaHash": "67b6e91aa4ad57bd2c8194b9f501e58f5e1753d962675e75c936bc672a830f55",
+      "reviewedStanzaHash": "67b6e91aa4ad57bd2c8194b9f501e58f5e1753d962675e75c936bc672a830f55",
+      "changelogCategory": "Changed — BREAKING",
+      "amendments": [
+        {
+          "at": "2026-10-07T02:59:53.656Z",
+          "finding": "Live source re-vet exposes null/bounds or severity acceptance contract corrections; old Fixed preservation premise false",
+          "reason": "Complete named guard validation, exact real-service dual-era wire companions, unique proposed ADR0018/0019 and major migration; remove stale containment defect claim",
+          "previousStanzaHash": "f64e7f28ed65ce69c1ce3dcbbc1de0680b2a1a81e96b235397e2e4a7717a0cb0",
+          "stanzaHash": "67b6e91aa4ad57bd2c8194b9f501e58f5e1753d962675e75c936bc672a830f55"
+        }
+      ]
     },
     {
       "id": "restructure-and-semantic-grep-argument-refusals-public-message",
       "order": 13,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "restructure-and-semantic-grep-argument-refusals-public-message"
       ],
-      "productionFilesTouched": 3,
+      "productionFilesTouched": 4,
       "productionFiles": [
         "src/RoslynMcp.Roslyn/Services/SymbolRefactorService.cs",
         "src/RoslynMcp.Roslyn/Services/RestructureService.cs",
-        "src/RoslynMcp.Roslyn/Services/SemanticGrepService.cs"
+        "src/RoslynMcp.Roslyn/Services/SemanticGrepService.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/ToolErrorHandler.cs"
       ],
-      "testFilesAdded": 3,
+      "testFilesAdded": 4,
       "testFiles": [
         "tests/RoslynMcp.Tests/SymbolRefactorPreviewTests.cs",
         "tests/RoslynMcp.Tests/RestructureServiceTests.cs",
-        "tests/RoslynMcp.Tests/SemanticGrepServiceTests.cs"
+        "tests/RoslynMcp.Tests/SemanticGrepServiceTests.cs",
+        "tests/RoslynMcp.Tests/ToolCallErrorWireContractTests.cs"
       ],
-      "docFiles": [],
+      "docFiles": [
+        "docs/decisions/0016-malformed-refactoring-input-refusals.md",
+        "docs/decisions/README.md",
+        "changelog.d/restructure-and-semantic-grep-argument-refusals-public-message.md"
+      ],
       "rowsClosedCount": 1,
       "estimatedContextTokens": 50000,
       "toolPolicy": "edit-only",
@@ -721,14 +794,59 @@
       "dependsOn": [
         "get-prompt-text-unknown-prompt-public-message"
       ],
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "branch": "remediation/restructure-and-semantic-grep-argument-refusals-public-message",
+      "worktreePath": "D:/Roslyn-Backed-MCP/.worktrees/restructure-and-semantic-grep-argument-refusals-public-message",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1755",
+      "mergedAt": "2026-10-07T03:14:04Z",
       "notes": null,
       "fileSetHash": "a84ff27ab57765ce166591db7c152bcc8d4e72dd5ec4ea6c5ecaa42680dcc7ae",
-      "stanzaHash": "ba31aeb5d0e14d491385da3aa1170ebcabf21b6c3f422ff803303b93dcc5fba1",
-      "reviewedStanzaHash": "ba31aeb5d0e14d491385da3aa1170ebcabf21b6c3f422ff803303b93dcc5fba1"
+      "stanzaHash": "c27062a29f0d33cd9d1fe6b01cacc48641bfdbb8ccc603e5c2a9550b68ec7b90",
+      "reviewedStanzaHash": "c27062a29f0d33cd9d1fe6b01cacc48641bfdbb8ccc603e5c2a9550b68ec7b90",
+      "amendments": [
+        {
+          "at": "2026-10-07T00:33:07.361Z",
+          "finding": "Live record null guards are ArgumentNullException with existing safe Host guidance; empty-goal deletion hint contradicts parser and supported syntax",
+          "reason": "Preserve published null identity while migrating only lost nonblank guidance; replace false deletion remedy with accurate syntax correction and test empty goal refusal",
+          "previousStanzaHash": "ba31aeb5d0e14d491385da3aa1170ebcabf21b6c3f422ff803303b93dcc5fba1",
+          "stanzaHash": "fe33c14da4c1d32b61fedb1954b6091c7d31e699aa828cbe84032b5788576e9c"
+        },
+        {
+          "at": "2026-10-07T00:35:55.316Z",
+          "finding": "Edited partition guard dereferences null entry and admits null or blank member names into lookup",
+          "reason": "Complete same caller-validation guard mechanism before downstream work; add regression rows in existing scoped test file",
+          "previousStanzaHash": "fe33c14da4c1d32b61fedb1954b6091c7d31e699aa828cbe84032b5788576e9c",
+          "stanzaHash": "8d7b096b354a269e02f5130603132d637844795bb345a5a024caf2b536697887"
+        },
+        {
+          "at": "2026-10-07T00:41:10.862Z",
+          "finding": "Actual compiled null-op probe confirms JSON/direct null array entry double-NRE and InternalError wire identity",
+          "reason": "Fix edited composite caller validation completely; ADR and major migration plus dual-era raw wire regression record the corrected stable malformed-input category",
+          "previousStanzaHash": "8d7b096b354a269e02f5130603132d637844795bb345a5a024caf2b536697887",
+          "stanzaHash": "75b1b41478b6730e1f477dee5cab5f3dd3c80591572eb93c3e6c79dfe5cce624"
+        },
+        {
+          "at": "2026-10-07T00:46:36.535Z",
+          "finding": "Partition null-entry and null or blank member refusals also alter released malformed-input behavior; mandatory wire and ADR-index companions overlap dispatch",
+          "reason": "Record all edited-guard corrections in one accurate ADR and migration with old-base and dual-era wire proof; deliberately serialize dispatch landing before rebasing and re-reviewing restructure",
+          "previousStanzaHash": "75b1b41478b6730e1f477dee5cab5f3dd3c80591572eb93c3e6c79dfe5cce624",
+          "stanzaHash": "7c3396c55710b9389998e6f4122075efea4dcd5dde90e154e6a1325798e02ec8"
+        },
+        {
+          "at": "2026-10-07T02:55:06.021Z",
+          "finding": "Cycle1 same-mechanism sibling ToolErrorHandler.cs:621-625 falsely describes current SemanticGrep parse failure as legacy sentinel",
+          "reason": "Correct both legacy-sentinel comments; retain symbol, value and Host arm; no behavior change",
+          "previousStanzaHash": "7c3396c55710b9389998e6f4122075efea4dcd5dde90e154e6a1325798e02ec8",
+          "stanzaHash": "c27062a29f0d33cd9d1fe6b01cacc48641bfdbb8ccc603e5c2a9550b68ec7b90"
+        }
+      ],
+      "reviewedHead": "0943a36653cd0516b425eb589b23ea321a694aae",
+      "scratchRemoved": false,
+      "githubGate": {
+        "baseOid": "c43e8fa6995151b22be6feb2c4a1020263b88ce5",
+        "headOid": "0943a36653cd0516b425eb589b23ea321a694aae",
+        "tree": "ade9d954c3b78bdf977fb6e3c57a400b80c43586",
+        "checksVerifiedAt": "2026-10-07T03:13:56.736Z"
+      }
     },
     {
       "id": "edit-service-argument-refusals-public-message",
@@ -791,17 +909,20 @@
       "productionFiles": [
         "src/RoslynMcp.Roslyn/Services/SuppressionService.cs"
       ],
-      "testFilesAdded": 3,
+      "testFilesAdded": 4,
       "testFiles": [
         "tests/RoslynMcp.Tests/SuppressionServiceTests.cs",
         "tests/RoslynMcp.Tests/PragmaScopeManipulationTests.cs",
-        "tests/RoslynMcp.Tests/SuppressionToolsTests.cs"
+        "tests/RoslynMcp.Tests/SuppressionToolsTests.cs",
+        "tests/RoslynMcp.Tests/SuppressionArgumentRefusalWireTests.cs"
       ],
       "docFiles": [
+        "docs/decisions/0019-suppression-public-argument-diagnostics.md",
+        "docs/decisions/README.md",
         "changelog.d/suppression-argument-refusals-public-message.md"
       ],
       "rowsClosedCount": 1,
-      "estimatedContextTokens": 40000,
+      "estimatedContextTokens": 55000,
       "toolPolicy": "edit-only",
       "scheduleHint": null,
       "fanoutEstimate": 1,
@@ -821,60 +942,51 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "18e674cd62ae13caa558a78adb48e73c4f645e5bba434f28d5f2d42d5fbecf82",
-      "stanzaHash": "dc22bf053f48f0b679f4af4a67cd32698d8856cbf315795afeabf2ce8743c67c",
-      "reviewedStanzaHash": "dc22bf053f48f0b679f4af4a67cd32698d8856cbf315795afeabf2ce8743c67c"
+      "stanzaHash": "a720c6dafbe2a7ab9499bcf7448df6c88110582179ffee0fddbdf43071aad506",
+      "reviewedStanzaHash": "a720c6dafbe2a7ab9499bcf7448df6c88110582179ffee0fddbdf43071aad506",
+      "changelogCategory": "Changed — BREAKING",
+      "amendments": [
+        {
+          "at": "2026-10-07T02:59:57.294Z",
+          "finding": "Live source re-vet exposes null/bounds or severity acceptance contract corrections; old Fixed preservation premise false",
+          "reason": "Complete named guard validation, exact real-service dual-era wire companions, unique proposed ADR0018/0019 and major migration; remove stale containment defect claim",
+          "previousStanzaHash": "dc22bf053f48f0b679f4af4a67cd32698d8856cbf315795afeabf2ce8743c67c",
+          "stanzaHash": "a720c6dafbe2a7ab9499bcf7448df6c88110582179ffee0fddbdf43071aad506"
+        }
+      ]
     }
   ],
   "anchorVerification": "performed",
   "conflictGraph": {
     "edges": [
       {
-        "a": 2,
-        "b": 12,
+        "a": 12,
+        "b": 13,
         "sharedFiles": [
-          "src/RoslynMcp.Roslyn/Services/NamespaceRelocationService.cs",
-          "tests/RoslynMcp.Tests/NamespaceRelocationTests.cs"
+          "docs/decisions/README.md"
         ]
       },
       {
-        "a": 4,
-        "b": 7,
+        "a": 12,
+        "b": 15,
         "sharedFiles": [
-          "src/RoslynMcp.Core/Services/IPublicMessageException.cs"
+          "docs/decisions/README.md"
         ]
       },
       {
-        "a": 4,
-        "b": 9,
+        "a": 13,
+        "b": 15,
         "sharedFiles": [
-          "src/RoslynMcp.Host.Stdio/Tools/ToolErrorHandler.cs",
-          "tests/RoslynMcp.Tests/ToolCallErrorWireContractTests.cs"
+          "docs/decisions/README.md"
         ]
       }
     ],
     "degrees": {
-      "2": 1,
-      "4": 2,
-      "5": 0,
-      "6": 0,
-      "7": 1,
-      "9": 1,
-      "10": 0,
-      "11": 0,
-      "12": 1,
-      "13": 0,
-      "14": 0,
-      "15": 0
+      "12": 2,
+      "13": 2,
+      "15": 2
     },
-    "zeroDegreeInitiatives": [
-      5,
-      6,
-      10,
-      11,
-      13,
-      14,
-      15
-    ]
+    "zeroDegreeInitiatives": []
   },
   "selection": {
     "requestedCount": 15,
@@ -1286,20 +1398,20 @@
       "get-prompt-text-unknown-prompt-public-message": "6b265b0b940c5b316584361d77ff80ce46d9d327fe4e12ddf6f45f7d5fbe10f5",
       "tool-scripting-undo-workflow-argument-refusals-public-message": "b8685312bcb9c8fe06487f82e0079baca0c768a11714cfb7cd34476ec2f70696",
       "symbol-locator-and-source-text-tool-argument-refusals-public-message": "3cf7955f7468a4d0d5d4fdcb3802b3e6b3f9f248e744f1350a2a0ea99ab2a2e4",
-      "resource-argument-refusals-public-message": "a54467007080fec5e15540a560fc2c832e26ef4ab9f4d84cdbac9ebb84107b6c",
+      "resource-argument-refusals-public-message": "6651dc3a5ed14e58e498b147d6a32650e870cd108b5850b6d47b019cb59108cd",
       "root-boundary-argument-refusals-public-message": "12ce06bdf57ad1125f5e92c5c246004cdb985b10835d774b72fa58dd4b333214",
-      "dispatch-and-tool-argument-refusals-public-message": "0d3c7527e89ee16bdcc790b54ed46ca47b8803474249d9f348e3c3f01c97bfa1",
+      "dispatch-and-tool-argument-refusals-public-message": "120a9ef262ab5e5d4630adad9a16799665a013322ee2d39f775b18e66486f69b",
       "parameter-object-argument-refusals-public-message": "d32655a21730ce6a970badca6eb7dc847717c86b96484d5a2c8b1b58d1af5759",
       "bulk-refactoring-argument-refusals-public-message": "e7af7efb19e73a57b232b902523a524906236d69718a138524cc1205048e07e0",
-      "type-extraction-argument-refusals-public-message": "f64e7f28ed65ce69c1ce3dcbbc1de0680b2a1a81e96b235397e2e4a7717a0cb0",
-      "restructure-and-semantic-grep-argument-refusals-public-message": "ba31aeb5d0e14d491385da3aa1170ebcabf21b6c3f422ff803303b93dcc5fba1",
+      "type-extraction-argument-refusals-public-message": "67b6e91aa4ad57bd2c8194b9f501e58f5e1753d962675e75c936bc672a830f55",
+      "restructure-and-semantic-grep-argument-refusals-public-message": "c27062a29f0d33cd9d1fe6b01cacc48641bfdbb8ccc603e5c2a9550b68ec7b90",
       "edit-service-argument-refusals-public-message": "2e9605f85bd0feb3e3cd6ce6e7ea5efcc48a8af6a53ac6953d2a87ee28c325cd",
-      "suppression-argument-refusals-public-message": "dc22bf053f48f0b679f4af4a67cd32698d8856cbf315795afeabf2ce8743c67c"
+      "suppression-argument-refusals-public-message": "a720c6dafbe2a7ab9499bcf7448df6c88110582179ffee0fddbdf43071aad506"
     }
   },
   "conflictGraphInputHash": "d8cc60859909341a1fe269584901aec43ebf07370c6ba2369f72f23d0f1f2042",
-  "planHash": "4fdd40af4fd308045c8c177d8146206b69227e49652b505cb23e0191a5e97e97",
+  "planHash": "e7ae3b6a8fa5e7e220189e95e9d138ffb91d8ebbff0e769323c14587b56137c3",
   "backlogSnapshotHash": "aa7593fb4e2c3b59453248d6223301e471be1161179df7994320f52ec840df5f",
-  "reviewedPlanHash": "4fdd40af4fd308045c8c177d8146206b69227e49652b505cb23e0191a5e97e97",
+  "reviewedPlanHash": "e7ae3b6a8fa5e7e220189e95e9d138ffb91d8ebbff0e769323c14587b56137c3",
   "reviewedBacklogSnapshotHash": "aa7593fb4e2c3b59453248d6223301e471be1161179df7994320f52ec840df5f"
 }
