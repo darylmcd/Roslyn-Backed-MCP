@@ -72,7 +72,7 @@ internal static class ToolDispatch
     /// </summary>
     public static string RequireResolvedWorkspaceId(string? workspaceId) =>
         string.IsNullOrEmpty(workspaceId)
-            ? throw new ArgumentException(
+            ? throw new PublicArgumentException(
                 "workspaceId was omitted but no workspace is loaded and none could be discovered. " +
                 "Call workspace_load(path=…) first, or pass workspaceId explicitly.",
                 nameof(workspaceId))

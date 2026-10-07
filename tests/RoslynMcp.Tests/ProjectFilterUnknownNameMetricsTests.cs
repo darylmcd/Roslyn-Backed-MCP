@@ -1,16 +1,17 @@
+using RoslynMcp.Core.Services;
 namespace RoslynMcp.Tests;
 
 /// <summary>
 /// project-filter-unknown-name-metrics-services: <c>get_complexity_metrics</c>,
 /// <c>get_cohesion_metrics</c>, <c>get_coupling_metrics</c> and <c>get_namespace_dependencies</c>
 /// must reject a non-blank <c>projectName</c> that matches no loaded project (ArgumentException,
-/// ParamName <c>projectName</c>, redacted by the host to the compile_check InvalidArgument envelope)
+/// ParamName <c>projectName</c>, published through the host InvalidArgument envelope)
 /// instead of returning an empty success-shaped result. A known name keeps returning results.
 /// </summary>
 [TestClass]
 public sealed class ProjectFilterUnknownNameMetricsTests : SharedWorkspaceTestBase
 {
-    private const string UnknownProject = "NoSuchProject.Typo";
+    private const string UnknownProject = """PRIVATE-project "quoted" \candidate solution""";
 
     private static string WorkspaceId { get; set; } = null!;
 
@@ -27,7 +28,7 @@ public sealed class ProjectFilterUnknownNameMetricsTests : SharedWorkspaceTestBa
     [TestMethod]
     public async Task GetComplexityMetrics_UnknownProject_ThrowsInvalidProjectName()
     {
-        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
             CodeMetricsService.GetComplexityMetricsAsync(
                 WorkspaceId, filePath: null, filePaths: null, projectFilter: UnknownProject,
                 minComplexity: null, limit: 50, CancellationToken.None));
@@ -48,7 +49,7 @@ public sealed class ProjectFilterUnknownNameMetricsTests : SharedWorkspaceTestBa
     [TestMethod]
     public async Task GetCohesionMetrics_UnknownProject_ThrowsInvalidProjectName()
     {
-        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
             CohesionAnalysisService.GetCohesionMetricsAsync(
                 WorkspaceId, filePath: null, projectFilter: UnknownProject, minMethods: 1, limit: 50,
                 includeInterfaces: true, excludeTestProjects: false, CancellationToken.None));
@@ -80,7 +81,7 @@ public sealed class ProjectFilterUnknownNameMetricsTests : SharedWorkspaceTestBa
     [TestMethod]
     public async Task GetCouplingMetrics_UnknownProject_ThrowsInvalidProjectName()
     {
-        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
             CouplingAnalysisService.GetCouplingMetricsAsync(
                 WorkspaceId, projectFilter: UnknownProject, limit: 50,
                 excludeTestProjects: false, includeInterfaces: false, CancellationToken.None));
@@ -112,7 +113,7 @@ public sealed class ProjectFilterUnknownNameMetricsTests : SharedWorkspaceTestBa
     [TestMethod]
     public async Task GetNamespaceDependencies_UnknownProject_ThrowsInvalidProjectName()
     {
-        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
             NamespaceDependencyService.GetNamespaceDependenciesAsync(
                 WorkspaceId, projectFilter: UnknownProject, CancellationToken.None));
 
@@ -128,9 +129,10 @@ public sealed class ProjectFilterUnknownNameMetricsTests : SharedWorkspaceTestBa
         Assert.IsTrue(result.Nodes.Count > 0, "Known project must still yield namespace nodes.");
     }
 
-    private static void AssertProjectNameRejection(ArgumentException ex)
+    private static void AssertProjectNameRejection(PublicArgumentException ex)
     {
         Assert.AreEqual("projectName", ex.ParamName);
-        StringAssert.Contains(ex.Message, "matched 0 projects");
+        StringAssert.Contains(ex.PublicMessage, "workspace_status");
+        Assert.IsFalse(ex.Message.Contains(UnknownProject, StringComparison.Ordinal));
     }
 }

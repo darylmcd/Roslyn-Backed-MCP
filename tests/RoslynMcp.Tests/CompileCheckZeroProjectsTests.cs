@@ -1,5 +1,6 @@
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Tools;
 
 namespace RoslynMcp.Tests;
 
@@ -25,6 +26,24 @@ public sealed class CompileCheckZeroProjectsTests : SharedWorkspaceTestBase
     public static void ClassCleanup()
     {
         DisposeServices();
+    }
+
+
+    [TestMethod]
+    public async Task CompileCheckTool_UnknownProject_PublishesInputFreeGuidance()
+    {
+        const string privateProject = "PRIVATE-project-sentinel";
+        var ex = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
+            CompileCheckTools.CompileCheck(WorkspaceExecutionGate, CompileCheckService,
+                WorkspaceId, projectName: privateProject));
+        Assert.AreEqual("projectName", ex.ParamName);
+        StringAssert.Contains(ex.PublicMessage, "workspace_status");
+        Assert.IsFalse(ex.Message.Contains(privateProject, StringComparison.Ordinal));
+        using var envelope = System.Text.Json.JsonDocument.Parse(ToolErrorHandler.ClassifyAndFormat(ex, "compile_check"));
+        Assert.AreEqual("InvalidArgument", envelope.RootElement.GetProperty("category").GetString());
+        Assert.AreEqual("ArgumentException", envelope.RootElement.GetProperty("exceptionType").GetString());
+        StringAssert.Contains(envelope.RootElement.GetProperty("message").GetString(), "workspace_status");
+        Assert.IsFalse(envelope.RootElement.GetProperty("message").GetString()!.Contains(privateProject, StringComparison.Ordinal));
     }
 
     [TestMethod]
