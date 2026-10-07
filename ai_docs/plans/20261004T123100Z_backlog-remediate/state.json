@@ -465,7 +465,7 @@
     {
       "id": "dispatch-and-tool-argument-refusals-public-message",
       "order": 9,
-      "status": "in-review",
+      "status": "merged",
       "backlogRowsClosed": [
         "dispatch-and-tool-argument-refusals-public-message"
       ],
@@ -516,7 +516,7 @@
       "branch": "remediation/dispatch-and-tool-argument-refusals-public-message",
       "worktreePath": ".worktrees/dispatch-and-tool-argument-refusals-public-message",
       "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1754",
-      "mergedAt": null,
+      "mergedAt": "2026-10-07T00:52:11Z",
       "notes": null,
       "fileSetHash": "8d743189c32cade4474eee006a6936eeafb2b311ab02ab029fceb8c4ccdb0bfe",
       "stanzaHash": "120a9ef262ab5e5d4630adad9a16799665a013322ee2d39f775b18e66486f69b",
@@ -551,7 +551,14 @@
           "stanzaHash": "120a9ef262ab5e5d4630adad9a16799665a013322ee2d39f775b18e66486f69b"
         }
       ],
-      "reviewedHead": "9b85ea95acdb915dcd82dd8e2842034fd6d794ff"
+      "reviewedHead": "9b85ea95acdb915dcd82dd8e2842034fd6d794ff",
+      "scratchRemoved": false,
+      "githubGate": {
+        "baseOid": "5e0871fe20f59ce90292eb05a645b0ea1fdd9ada",
+        "headOid": "9b85ea95acdb915dcd82dd8e2842034fd6d794ff",
+        "tree": "05e24ebec690f04304be089051140cd1da24c367",
+        "checksVerifiedAt": "2026-10-07T00:52:07.778Z"
+      }
     },
     {
       "id": "parameter-object-argument-refusals-public-message",
@@ -736,7 +743,7 @@
     {
       "id": "restructure-and-semantic-grep-argument-refusals-public-message",
       "order": 13,
-      "status": "in-progress",
+      "status": "in-review",
       "backlogRowsClosed": [
         "restructure-and-semantic-grep-argument-refusals-public-message"
       ],
@@ -773,9 +780,9 @@
       "dependsOn": [
         "get-prompt-text-unknown-prompt-public-message"
       ],
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
+      "branch": "remediation/restructure-and-semantic-grep-argument-refusals-public-message",
+      "worktreePath": "D:/Roslyn-Backed-MCP/.worktrees/restructure-and-semantic-grep-argument-refusals-public-message",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1755",
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "a84ff27ab57765ce166591db7c152bcc8d4e72dd5ec4ea6c5ecaa42680dcc7ae",
