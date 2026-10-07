@@ -1,5 +1,6 @@
 name: ci
 
+# ci-backstop: validation-only
 # Trigger model (see CI_POLICY.md): pull requests and the merge queue are the
 # merge gate; manual dispatch and the weekly schedule retain coverage and
 # live-network canaries. Push-to-main is intentionally absent because protected
