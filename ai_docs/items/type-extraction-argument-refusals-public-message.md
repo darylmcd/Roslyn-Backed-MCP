@@ -40,3 +40,5 @@
 - Family policy: public/redacted/internal classification and Host normalization; reuse existing Core carriers.
 - Sealed plan: `ai_docs/plans/20261004T123100Z_backlog-remediate/plan/type-extraction-argument-refusals-public-message.md` amendment 4 owns exact scope and validation.
 - Keep unrelated PreviewStore provenance/truncation loss on its existing row. Do not infer a solution/version race without a live concurrency failure.
+
+Current-session async-name proof: full private-env solution restore and explicit nonincremental Release build passed with zero warnings/errors. Actual method/helper await probes both fail compilation (CS4003/CS1061), including shared helper calls from another type/file. Preserve contextual names by parsed escaped tokens with unchanged ValueText for declarations/unqualified calls and token.Text for qualified ParseExpression. Self-contained async fixture stays in already scoped wire test; sample fixture has no async enclosing method.
