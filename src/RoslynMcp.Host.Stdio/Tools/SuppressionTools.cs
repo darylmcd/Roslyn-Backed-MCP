@@ -17,7 +17,7 @@ public static class SuppressionTools
     [McpServerTool(Name = "set_diagnostic_severity", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("configuration", "stable", false, false,
         "Set dotnet_diagnostic severity in .editorconfig."),
-     Description("Set dotnet_diagnostic.&lt;id&gt;.severity in .editorconfig for C# files (warning, suggestion, silent, none), scoped from a source file path.")]
+     Description("Set dotnet_diagnostic.&lt;id&gt;.severity in .editorconfig for C# files (error, warning, suggestion, silent, none), scoped from a source file path.")]
     public static Task<string> SetDiagnosticSeverity(
         IWorkspaceExecutionGate gate,
         ISuppressionService suppressionService,

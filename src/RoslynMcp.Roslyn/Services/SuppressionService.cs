@@ -63,11 +63,23 @@ public sealed class SuppressionService : ISuppressionService, IPinnedSuppression
     {
         if (string.IsNullOrWhiteSpace(diagnosticId))
         {
-            throw new ArgumentException("Diagnostic id is required.", nameof(diagnosticId));
+            throw new PublicArgumentException("Diagnostic id is required.", nameof(diagnosticId));
+        }
+
+        var normalizedSeverity = severity?.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedSeverity) ||
+            !(normalizedSeverity.Equals("error", StringComparison.OrdinalIgnoreCase) ||
+              normalizedSeverity.Equals("warning", StringComparison.OrdinalIgnoreCase) ||
+              normalizedSeverity.Equals("suggestion", StringComparison.OrdinalIgnoreCase) ||
+              normalizedSeverity.Equals("silent", StringComparison.OrdinalIgnoreCase) ||
+              normalizedSeverity.Equals("none", StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new PublicArgumentException(
+                "Severity must be error, warning, suggestion, silent, or none.", nameof(severity));
         }
 
         var key = $"dotnet_diagnostic.{diagnosticId.Trim()}.severity";
-        return _editorConfig.SetOptionAsync(workspaceId, sourceFilePath, key, severity.Trim(), "set_diagnostic_severity", ct);
+        return _editorConfig.SetOptionAsync(workspaceId, sourceFilePath, key, normalizedSeverity, "set_diagnostic_severity", ct);
     }
 
     public Task<TextEditResultDto> AddPragmaWarningDisableAsync(
@@ -100,12 +112,12 @@ public sealed class SuppressionService : ISuppressionService, IPinnedSuppression
     {
         if (line < 1)
         {
-            throw new ArgumentOutOfRangeException(nameof(line), "Line must be 1-based and positive.");
+            throw new PublicArgumentOutOfRangeException("Line must be 1-based and positive.", nameof(line));
         }
 
         if (string.IsNullOrWhiteSpace(diagnosticId))
         {
-            throw new ArgumentException("Diagnostic id is required.", nameof(diagnosticId));
+            throw new PublicArgumentException("Diagnostic id is required.", nameof(diagnosticId));
         }
 
         var normalizedId = diagnosticId.Trim();
@@ -387,15 +399,15 @@ public sealed class SuppressionService : ISuppressionService, IPinnedSuppression
     {
         if (string.IsNullOrWhiteSpace(filePath))
         {
-            throw new ArgumentException("File path is required.", nameof(filePath));
+            throw new PublicArgumentException("File path is required.", nameof(filePath));
         }
         if (line < 1)
         {
-            throw new ArgumentOutOfRangeException(nameof(line), "Line must be 1-based and positive.");
+            throw new PublicArgumentOutOfRangeException("Line must be 1-based and positive.", nameof(line));
         }
         if (string.IsNullOrWhiteSpace(diagnosticId))
         {
-            throw new ArgumentException("Diagnostic id is required.", nameof(diagnosticId));
+            throw new PublicArgumentException("Diagnostic id is required.", nameof(diagnosticId));
         }
     }
 
