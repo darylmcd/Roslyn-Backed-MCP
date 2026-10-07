@@ -694,7 +694,7 @@
     {
       "id": "type-extraction-argument-refusals-public-message",
       "order": 12,
-      "status": "pending",
+      "status": "in-progress",
       "backlogRowsClosed": [
         "type-extraction-argument-refusals-public-message"
       ],
@@ -738,7 +738,7 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
+      "notes": "Next generation immutable base6599be65a67de3ba24065c980118f6c4e6cc00a5 captured after verified1757 reconciliation merge/treeequality/primaryFFclean0/0; execute corrected complete public guard/bounds/null/wire/ADR scope. Originalcount15 unchanged; rootoperatorhold and suppressionnextgeneration preserved.",
       "fileSetHash": "2f4b932aba9489fee92a8b1d66b80ffa28a17eb8aac3cbb73f4fcfdc48e6e903",
       "stanzaHash": "67b6e91aa4ad57bd2c8194b9f501e58f5e1753d962675e75c936bc672a830f55",
       "reviewedStanzaHash": "67b6e91aa4ad57bd2c8194b9f501e58f5e1753d962675e75c936bc672a830f55",
@@ -961,20 +961,6 @@
     "edges": [
       {
         "a": 12,
-        "b": 13,
-        "sharedFiles": [
-          "docs/decisions/README.md"
-        ]
-      },
-      {
-        "a": 12,
-        "b": 15,
-        "sharedFiles": [
-          "docs/decisions/README.md"
-        ]
-      },
-      {
-        "a": 13,
         "b": 15,
         "sharedFiles": [
           "docs/decisions/README.md"
@@ -982,9 +968,8 @@
       }
     ],
     "degrees": {
-      "12": 2,
-      "13": 2,
-      "15": 2
+      "12": 1,
+      "15": 1
     },
     "zeroDegreeInitiatives": []
   },
