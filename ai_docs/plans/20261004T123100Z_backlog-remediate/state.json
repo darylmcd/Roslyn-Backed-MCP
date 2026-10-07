@@ -784,7 +784,7 @@
       "worktreePath": "D:/Roslyn-Backed-MCP/.worktrees/restructure-and-semantic-grep-argument-refusals-public-message",
       "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1755",
       "mergedAt": null,
-      "notes": null,
+      "notes": "held: fresh cold review unavailable this session; root and fresh child spawn both returned agent thread limit reached. PR1755 integrated current main with normal merge eedc130c0ebde55d2a06e52f6d115736320c94ac; exact10 authored paths/32 imported main paths proved; fresh scoped186pass6platformskip and fast checks0. No reviewedHead/merge authorization; resume fresh cold cycle0 at immutable base a74d846295e45eac9630b405a1b374882d1968ed.",
       "fileSetHash": "a84ff27ab57765ce166591db7c152bcc8d4e72dd5ec4ea6c5ecaa42680dcc7ae",
       "stanzaHash": "7c3396c55710b9389998e6f4122075efea4dcd5dde90e154e6a1325798e02ec8",
       "reviewedStanzaHash": "7c3396c55710b9389998e6f4122075efea4dcd5dde90e154e6a1325798e02ec8",

@@ -28,3 +28,14 @@
 
 - Repository prerequisite for current remediation closeout; original count=15 selection remains unchanged.
 - Change repository configuration only; global tooling remains under its coordinator ownership.
+
+## Checkpoint — 2026-10-06
+
+| Proof | State |
+|---|---|
+| Draft PR #1756; head bab318400349c76c2b62039d280746aff03f4b5c; base 8c9f851194b9d6586aeaa1900bbba84043f992d5 | Exact three paths committed through staged pre/post guards and immutable normal push; draft remains open. |
+| Pinned actionlint 1.7.12; AI-doc/skills/notice checks; fragment contract | Native exit0; nonempty logs and hash/time/private-environment receipts in session scratch. |
+| Canonical pure backstop decision | Old workflow fails; candidate selects only ci.yml. No manual workflow dispatched. |
+| Fresh cold review | Agent creation refused at root and fresh child with thread limit. No review or merge authorization; continue with fresh cold-review capacity and required hosted checks. |
+
+PR: https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1756. Original count=15 selection unchanged; this remains a tracked repository prerequisite.
