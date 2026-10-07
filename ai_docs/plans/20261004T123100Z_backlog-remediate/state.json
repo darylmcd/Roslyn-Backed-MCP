@@ -550,7 +550,8 @@
           "previousStanzaHash": "62f1b1099599963b573485cb22722e71d115df9bb893b759aabaa8499f527775",
           "stanzaHash": "120a9ef262ab5e5d4630adad9a16799665a013322ee2d39f775b18e66486f69b"
         }
-      ]
+      ],
+      "reviewedHead": "9b85ea95acdb915dcd82dd8e2842034fd6d794ff"
     },
     {
       "id": "parameter-object-argument-refusals-public-message",
@@ -735,7 +736,7 @@
     {
       "id": "restructure-and-semantic-grep-argument-refusals-public-message",
       "order": 13,
-      "status": "pending",
+      "status": "in-progress",
       "backlogRowsClosed": [
         "restructure-and-semantic-grep-argument-refusals-public-message"
       ],
