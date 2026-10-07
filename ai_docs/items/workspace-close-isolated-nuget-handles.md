@@ -29,3 +29,7 @@
 
 - Current-session 2026-10-07 reproduction boundary: canonical type-extraction cache reclamation after PR1758 merge returns `scratchRemoved:false`, `EPERM`, and `holder unknown: Restart Manager probe exited 1` at 05:01Z. Own workspace close used `drainProcesses:false`; no task-rooted worker was found; no machine-wide shutdown or holder kill was issued.
 - Retained files inspected under `<private-scratch-root>/a177c9f2-type-extraction-argument-refusals-public-message/nuget/microsoft.extensions.logging.abstractions/10.0.12/`: package archive and `analyzers/dotnet/roslyn4.4/cs/Microsoft.Extensions.Logging.Generators.dll` plus resource assemblies. Presence does not prove which file is locked or who owns the handle; preserve investigate-first classification.
+
+Current-session 2026-10-07 suppression landing PR1760 at 05:54Z also returned scratchRemoved:false and EPERM for <private-scratch-root>/a177c9f2-suppression-argument-refusals-public-message; holder unknown because Restart Manager probe exited1. Owned executor and cold-review workspaces closed without process draining; native task-rooted process audits were empty; investigate exact handle ownership before classifying a lifecycle defect.
+
+Recovery observation 2026-10-07: later canonical extraction cache reclaim reports scratchRemoved:true; exact extraction cache and quarantine marker are directly absent. Same-session suppression reclaim still reports EPERM/unknown holder; no owning handle or lifecycle root cause is inferred from this different retention duration.

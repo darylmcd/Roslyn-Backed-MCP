@@ -1,12 +1,12 @@
 {
   "schemaVersion": 4,
   "generatedAt": "2026-10-04T12:31:14.216Z",
-  "backlogSnapshot": "2026-10-04T12:16:53Z",
+  "backlogSnapshot": "2026-10-07T06:24:42Z",
   "addendaLoaded": true,
   "phase": "complete",
   "cycleCount": 0,
   "maxCycles": 2,
-  "completed": false,
+  "completed": true,
   "reviewStatus": "passed-with-warnings",
   "readyForExecute": true,
   "initiatives": [
@@ -741,7 +741,7 @@
       "worktreePath": "D:/Roslyn-Backed-MCP/.worktrees/type-extraction-argument-refusals-public-message",
       "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1758",
       "mergedAt": "2026-10-07T04:49:10Z",
-      "notes": null,
+      "notes": "Landed reviewed9517871 head as b44cb34c; Release186 scoped tests and full hosted/backstop37573409934 passed. Historical landing scratchRemoved:false retained; current-session canonical reclaim now reports scratchRemoved:true, and exact private-cache directory plus quarantine marker are directly verified absent on 2026-10-07. No global shutdown or holder kill.",
       "fileSetHash": "a0300d7bd30498f19306c8432441779ad07e52debe78036a352967b8b5d2512c",
       "stanzaHash": "f75d6717e7d4e9762292ce919804619ae659a8a9fed4e72d39d9034f08aa9aa7",
       "reviewedStanzaHash": "f75d6717e7d4e9762292ce919804619ae659a8a9fed4e72d39d9034f08aa9aa7",
@@ -954,7 +954,7 @@
     {
       "id": "suppression-argument-refusals-public-message",
       "order": 15,
-      "status": "in-review",
+      "status": "merged",
       "backlogRowsClosed": [
         "suppression-argument-refusals-public-message"
       ],
@@ -993,8 +993,8 @@
       "branch": "remediation/suppression-argument-refusals-public-message",
       "worktreePath": "D:/Roslyn-Backed-MCP/.worktrees/suppression-argument-refusals-public-message",
       "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1760",
-      "mergedAt": null,
-      "notes": "Frozen f8447fda88f43958a47aaabca1693a6cd07fc634/base bc6e1f16; executor and docfix legs returned. Parent verified fragment-only repair, nine file hashes,109 unchanged Release DLL hashes, four nonempty passing native fast gates, exact TRX140/140/0/0. Hosted d57d docs failure fixed; first cold technical review pending.",
+      "mergedAt": "2026-10-07T05:54:23Z",
+      "notes": null,
       "fileSetHash": "7036cbe77f0ea88e8d7420f2eba6009afa1940413bee4c040d9ddb9fb0d67e50",
       "stanzaHash": "2e1397098de9f0f1e9e6f32781a434025e97a130b23ad50d951e420a4fb942dc",
       "reviewedStanzaHash": "2e1397098de9f0f1e9e6f32781a434025e97a130b23ad50d951e420a4fb942dc",
@@ -1015,18 +1015,21 @@
           "stanzaHash": "2e1397098de9f0f1e9e6f32781a434025e97a130b23ad50d951e420a4fb942dc"
         }
       ],
-      "reviewedHead": "f8447fda88f43958a47aaabca1693a6cd07fc634"
+      "reviewedHead": "f8447fda88f43958a47aaabca1693a6cd07fc634",
+      "scratchRemoved": false,
+      "githubGate": {
+        "baseOid": "bc6e1f160fb9825127ba35386a37b6cae02523b0",
+        "headOid": "f8447fda88f43958a47aaabca1693a6cd07fc634",
+        "tree": "113dbbbede82526550336b61ba1106f6fbcfc21c",
+        "checksVerifiedAt": "2026-10-07T05:54:20.028Z"
+      }
     }
   ],
   "anchorVerification": "performed",
   "conflictGraph": {
     "edges": [],
-    "degrees": {
-      "15": 0
-    },
-    "zeroDegreeInitiatives": [
-      15
-    ]
+    "degrees": {},
+    "zeroDegreeInitiatives": []
   },
   "selection": {
     "requestedCount": 15,
@@ -1451,7 +1454,8 @@
   },
   "conflictGraphInputHash": "576b07a4b1ecb63a831962aff6ad346174c4b55d4d32d6ac6a4f33bbe900c974",
   "planHash": "59c14f6d0cf8deadb2e4c7a5bba85d04eb67ef4eb73da666aa5c3abd9b70bb7b",
-  "backlogSnapshotHash": "c12a936e983b390f6dc31fef2c2009b62bf8067ee9be01c775362c27b1d85702",
+  "backlogSnapshotHash": "ca0b772d6e7f2301d3d4d492fcc48d33e5d05c8087a98608b3a3e23e9adfeca1",
   "reviewedPlanHash": "59c14f6d0cf8deadb2e4c7a5bba85d04eb67ef4eb73da666aa5c3abd9b70bb7b",
-  "reviewedBacklogSnapshotHash": "aa7593fb4e2c3b59453248d6223301e471be1161179df7994320f52ec840df5f"
+  "reviewedBacklogSnapshotHash": "aa7593fb4e2c3b59453248d6223301e471be1161179df7994320f52ec840df5f",
+  "completedAt": "2026-10-07T06:25:34.906Z"
 }
