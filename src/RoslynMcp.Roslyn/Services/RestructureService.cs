@@ -1,4 +1,3 @@
-using System.Collections.Immutable;
 using System.Text.RegularExpressions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -21,8 +20,7 @@ namespace RoslynMcp.Roslyn.Services;
 public sealed class RestructureService : IRestructureService
 {
     // A placeholder token is two leading + two trailing underscores around [a-zA-Z][a-zA-Z0-9_]*
-    // and never contains more than one contiguous word. We accept the lighter __FOO pattern
-    // (matches python-refactor's convention) while also allowing __foo, __bar_42__.
+    // Examples: __foo__ and __bar_42__. Matching requires both trailing underscores.
     private static readonly Regex PlaceholderPattern =
         new(@"__(?<name>[A-Za-z][A-Za-z0-9_]*)__", RegexOptions.Compiled);
 
@@ -38,39 +36,7 @@ public sealed class RestructureService : IRestructureService
     public async Task<RefactoringPreviewDto> PreviewRestructureAsync(
         string workspaceId, string pattern, string goal, RestructureScope scope, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(pattern))
-            throw new ArgumentException("pattern must be non-empty.", nameof(pattern));
-        if (goal is null)
-            throw new ArgumentException("goal must be non-null (use empty string to delete matches).", nameof(goal));
-
-        var (patternNode, patternKind) = ParsePatternOrGoal(pattern, "pattern");
-        var (goalNode, goalKind) = ParsePatternOrGoal(goal, "goal");
-        if (patternKind != goalKind)
-        {
-            throw new ArgumentException(
-                $"pattern and goal must be the same syntactic kind (both expressions or both statements). " +
-                $"pattern={patternKind}, goal={goalKind}.");
-        }
-
-        // dr-9-1-regression-r17a-emits-literal-placeholder: extract placeholder names from
-        // BOTH sides. Pre-fix the service only inspected the pattern, so:
-        //   (a) a pattern with no placeholders + a goal with placeholders emitted the literal
-        //       `__name__` text verbatim because Substitute short-circuited on `pattern.Count == 0`.
-        //   (b) a goal referencing a placeholder name that the pattern never captured silently
-        //       left the literal text in the output.
-        // Both shapes now fail loud with an actionable error that names the offending
-        // placeholder, so callers catch the mismatch at preview time instead of discovering it
-        // mid-refactor.
-        var patternPlaceholderNames = ExtractPlaceholderNames(patternNode);
-        var goalPlaceholderNames = ExtractPlaceholderNames(goalNode);
-        var orphaned = goalPlaceholderNames.Except(patternPlaceholderNames, StringComparer.Ordinal).ToList();
-        if (orphaned.Count > 0)
-        {
-            throw new ArgumentException(
-                $"goal references placeholder(s) not captured by the pattern: {string.Join(", ", orphaned.Select(n => $"__{n}__"))}. " +
-                $"Every `__name__` in the goal must appear in the pattern so it has a captured value to substitute.",
-                nameof(goal));
-        }
+        var (patternNode, goalNode, patternKind, goalPlaceholderNames) = ValidateAndParseArguments(pattern, goal);
 
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var accumulator = solution;
@@ -128,30 +94,7 @@ public sealed class RestructureService : IRestructureService
         PreviewRestructureOnSolutionAsync(
             Solution inputSolution, string pattern, string goal, RestructureScope scope, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(pattern))
-            throw new ArgumentException("pattern must be non-empty.", nameof(pattern));
-        if (goal is null)
-            throw new ArgumentException("goal must be non-null (use empty string to delete matches).", nameof(goal));
-
-        var (patternNode, patternKind) = ParsePatternOrGoal(pattern, "pattern");
-        var (goalNode, goalKind) = ParsePatternOrGoal(goal, "goal");
-        if (patternKind != goalKind)
-        {
-            throw new ArgumentException(
-                $"pattern and goal must be the same syntactic kind (both expressions or both statements). " +
-                $"pattern={patternKind}, goal={goalKind}.");
-        }
-
-        var patternPlaceholderNames = ExtractPlaceholderNames(patternNode);
-        var goalPlaceholderNames = ExtractPlaceholderNames(goalNode);
-        var orphaned = goalPlaceholderNames.Except(patternPlaceholderNames, StringComparer.Ordinal).ToList();
-        if (orphaned.Count > 0)
-        {
-            throw new ArgumentException(
-                $"goal references placeholder(s) not captured by the pattern: {string.Join(", ", orphaned.Select(n => $"__{n}__"))}. " +
-                $"Every `__name__` in the goal must appear in the pattern so it has a captured value to substitute.",
-                nameof(goal));
-        }
+        var (patternNode, goalNode, patternKind, goalPlaceholderNames) = ValidateAndParseArguments(pattern, goal);
 
         var accumulator = inputSolution;
         var changes = new List<FileChangeDto>();
@@ -193,6 +136,37 @@ public sealed class RestructureService : IRestructureService
         return (accumulator, changes, description);
     }
 
+    private static (SyntaxNode PatternNode, SyntaxNode GoalNode, string PatternKind,
+        IReadOnlyCollection<string> GoalPlaceholderNames) ValidateAndParseArguments(string pattern, string goal)
+    {
+        if (string.IsNullOrWhiteSpace(pattern))
+            throw new PublicArgumentException("pattern must be non-empty.", nameof(pattern));
+        if (goal is null)
+            throw new PublicArgumentException(
+                "goal must be non-null. Supply a valid C# expression or statement.", nameof(goal));
+
+        var (patternNode, patternKind) = ParsePatternOrGoal(pattern, nameof(pattern));
+        var (goalNode, goalKind) = ParsePatternOrGoal(goal, nameof(goal));
+        if (patternKind != goalKind)
+        {
+            throw new PublicArgumentException(
+                "pattern and goal must be the same syntactic kind: both expressions or both statements.",
+                nameof(goal));
+        }
+
+        var patternPlaceholderNames = ExtractPlaceholderNames(patternNode);
+        var goalPlaceholderNames = ExtractPlaceholderNames(goalNode);
+        if (goalPlaceholderNames.Except(patternPlaceholderNames, StringComparer.Ordinal).Any())
+        {
+            throw new PublicArgumentException(
+                "goal references placeholders not captured by the pattern. " +
+                "Every capture placeholder in the goal must appear in the pattern so it has a value to substitute.",
+                nameof(goal));
+        }
+
+        return (patternNode, goalNode, patternKind, goalPlaceholderNames);
+    }
+
     private static (SyntaxNode Node, string Kind) ParsePatternOrGoal(string text, string argName)
     {
         // Try expression first (most common case per the backlog examples); fall back to statement.
@@ -208,13 +182,10 @@ public sealed class RestructureService : IRestructureService
             return (stmt, "statement");
         }
 
-        throw new ArgumentException(
-            $"{argName} could not be parsed as either an expression or a statement. " +
-            $"Fix the syntax and retry. Pattern text: {Truncate(text, 200)}",
+        throw new PublicArgumentException(
+            $"Parameter '{argName}' could not be parsed as a C# expression or statement. Fix the syntax and retry.",
             argName);
     }
-
-    private static string Truncate(string s, int max) => s.Length <= max ? s : s[..max] + "...";
 
     private static IReadOnlyCollection<string> ExtractPlaceholderNames(SyntaxNode pattern)
     {

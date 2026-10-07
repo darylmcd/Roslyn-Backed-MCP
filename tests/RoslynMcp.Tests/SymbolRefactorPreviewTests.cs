@@ -1,5 +1,7 @@
+using System.Text.Json;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
@@ -330,6 +332,176 @@ public sealed class SymbolRefactorPreviewTests : IsolatedWorkspaceTestBase
         // Token must remain valid for caller inspection (Invalidate is skipped on this path).
         Assert.IsNotNull(compositeStore.Retrieve(emptyToken),
             "The empty-mutations guard must NOT invalidate the token; callers should still be able to inspect it.");
+    }
+
+
+    [TestMethod]
+    [DataRow("unknown", "Kind")]
+    [DataRow("rename", "NewName")]
+    [DataRow("edit", "FileEdits")]
+    [DataRow("pattern", "Pattern")]
+    [DataRow("goal", "Goal")]
+    [DataRow("parse-pattern", "pattern")]
+    [DataRow("parse-goal", "goal")]
+    [DataRow("orphan", "goal")]
+    [DataRow("kinds", "goal")]
+    public async Task CompositeArgumentRefusal_PreservesSafeGuidanceAndOperationWireIdentity(string shape, string parameter)
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync();
+        var service = CreateSymbolRefactorService(new CompositePreviewStore());
+        var op = shape switch
+        {
+            "unknown" => new SymbolRefactorOperation("PRIVATE-kind"),
+            "rename" => new SymbolRefactorOperation("rename"),
+            "edit" => new SymbolRefactorOperation("edit"),
+            "pattern" => new SymbolRefactorOperation("restructure", Pattern: " ", Goal: "42"),
+            "goal" => new SymbolRefactorOperation("restructure", Pattern: "42"),
+            "parse-pattern" => new SymbolRefactorOperation("restructure", Pattern: "PRIVATE_pattern +", Goal: "42"),
+            "parse-goal" => new SymbolRefactorOperation("restructure", Pattern: "42", Goal: "PRIVATE_goal +"),
+            "orphan" => new SymbolRefactorOperation("restructure", Pattern: "__captured__", Goal: "__PRIVATE_orphan__"),
+            _ => new SymbolRefactorOperation("restructure", Pattern: "42", Goal: "return 42;"),
+        };
+        var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
+            service.PreviewAsync(workspace.WorkspaceId, [op], CancellationToken.None));
+        var inner = Assert.IsInstanceOfType<PublicArgumentException>(ex.InnerException);
+        Assert.AreEqual(parameter, inner.ParamName);
+        StringAssert.Contains(ex.PublicMessage, "operation #1");
+        StringAssert.Contains(ex.PublicMessage, inner.PublicMessage);
+        using var payload = JsonDocument.Parse(ToolErrorHandler.ClassifyAndFormat(ex, "symbol_refactor_preview"));
+        Assert.AreEqual("InvalidOperation", payload.RootElement.GetProperty("category").GetString());
+        Assert.AreEqual("InvalidOperationException", payload.RootElement.GetProperty("exceptionType").GetString());
+        Assert.AreEqual(ex.PublicMessage, payload.RootElement.GetProperty("message").GetString());
+        Assert.IsFalse(ex.Message.Contains("PRIVATE", StringComparison.Ordinal));
+        Assert.IsFalse(payload.RootElement.GetRawText().Contains("PRIVATE", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public async Task CompositeNullOperation_RefusesJsonNullWithoutWrapperDereference()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync();
+        var operations = JsonSerializer.Deserialize<SymbolRefactorOperation[]>("[null]")!;
+        Assert.IsNull(operations[0]);
+        var service = CreateSymbolRefactorService(new CompositePreviewStore());
+        var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
+            service.PreviewAsync(workspace.WorkspaceId, operations, CancellationToken.None));
+        var inner = Assert.IsInstanceOfType<PublicArgumentException>(ex.InnerException);
+        Assert.AreEqual("operations", inner.ParamName);
+        StringAssert.Contains(ex.PublicMessage, "operation #1");
+        StringAssert.Contains(ex.PublicMessage, "non-null");
+        using var payload = JsonDocument.Parse(ToolErrorHandler.ClassifyAndFormat(ex, "symbol_refactor_preview"));
+        Assert.AreEqual("InvalidOperation", payload.RootElement.GetProperty("category").GetString());
+        Assert.AreEqual("InvalidOperationException", payload.RootElement.GetProperty("exceptionType").GetString());
+        Assert.AreEqual(ex.PublicMessage, payload.RootElement.GetProperty("message").GetString());
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(() =>
+            service.PreviewAsync(workspace.WorkspaceId, operations, cancelled.Token));
+    }
+
+    [TestMethod]
+    [DataRow("file", "sourceFilePath")]
+    [DataRow("type", "sourceType")]
+    [DataRow("empty", "partitions")]
+    [DataRow("name", "partitions")]
+    [DataRow("members", "partitions")]
+    [DataRow("duplicate", "partitions")]
+    [DataRow("null-entry", "partitions")]
+    [DataRow("null-members", "partitions")]
+    [DataRow("null-member", "partitions")]
+    [DataRow("blank-member", "partitions")]
+    public async Task SplitArguments_PublishSafePartitionRequirements(string shape, string parameter)
+    {
+        var partitions = shape switch
+        {
+            "empty" => Array.Empty<SplitServicePartition>(),
+            "null-entry" => [null!],
+            "null-members" => [new SplitServicePartition("PRIVATE_type", null!)],
+            "null-member" => [new SplitServicePartition("PRIVATE_type", [null!])],
+            "blank-member" => [new SplitServicePartition("PRIVATE_type", [" "])],
+            "name" => [new SplitServicePartition(" ", ["PRIVATE_member"])],
+            "members" => [new SplitServicePartition("PRIVATE_type", [])],
+            "duplicate" => [new SplitServicePartition("PRIVATE_A", ["PRIVATE_member"]),
+                new SplitServicePartition("PRIVATE_B", ["PRIVATE_member"])],
+            _ => new[] { new SplitServicePartition("PRIVATE_type", ["PRIVATE_member"]) },
+        };
+        var ex = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
+            CreateSymbolRefactorService(new CompositePreviewStore()).PreviewSplitServiceWithDiAsync(
+                "unused-workspace", shape == "file" ? " " : "PRIVATE_path",
+                shape == "type" ? " " : "PRIVATE_type", partitions, null, CancellationToken.None));
+        Assert.AreEqual(parameter, ex.ParamName);
+        using var payload = JsonDocument.Parse(ToolErrorHandler.ClassifyAndFormat(ex, "split_service_with_di_preview"));
+        Assert.AreEqual("InvalidArgument", payload.RootElement.GetProperty("category").GetString());
+        Assert.AreEqual("ArgumentException", payload.RootElement.GetProperty("exceptionType").GetString());
+        Assert.AreEqual(ex.PublicMessage, payload.RootElement.GetProperty("message").GetString());
+        Assert.IsFalse(payload.RootElement.GetRawText().Contains("PRIVATE", StringComparison.Ordinal));
+        StringAssert.Contains(ex.PublicMessage, shape switch
+        {
+            "duplicate" => "exactly one partition",
+            "empty" => "At least one partition",
+            "name" or "members" or "null-entry" or "null-members" or "null-member" or "blank-member" => "TypeName",
+            _ => "required",
+        });
+    }
+
+    [TestMethod]
+    [DataRow("typeMetadataName", "")]
+    [DataRow("typeMetadataName", " ")]
+    [DataRow("newFieldName", "")]
+    [DataRow("newFieldName", " ")]
+    [DataRow("newFieldType", "")]
+    [DataRow("newFieldType", " ")]
+    public async Task RecordSatelliteArguments_PublishRequiredField(string parameter, string invalid)
+    {
+        var ex = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
+            CreateSymbolRefactorService(new CompositePreviewStore()).PreviewRecordFieldAddWithSatellitesAsync(
+                "unused-workspace", parameter == "typeMetadataName" ? invalid : "PRIVATE_type",
+                parameter == "newFieldName" ? invalid : "PRIVATE_field",
+                parameter == "newFieldType" ? invalid : "PRIVATE_field_type", CancellationToken.None));
+        Assert.AreEqual(parameter, ex.ParamName);
+        using var payload = JsonDocument.Parse(ToolErrorHandler.ClassifyAndFormat(ex, "record_field_add_with_satellites_preview"));
+        Assert.AreEqual("InvalidArgument", payload.RootElement.GetProperty("category").GetString());
+        Assert.AreEqual("ArgumentException", payload.RootElement.GetProperty("exceptionType").GetString());
+        StringAssert.Contains(ex.PublicMessage, parameter);
+        Assert.IsFalse(payload.RootElement.GetRawText().Contains("PRIVATE", StringComparison.Ordinal));
+    }
+
+
+    [TestMethod]
+    [DataRow("typeMetadataName")]
+    [DataRow("newFieldName")]
+    [DataRow("newFieldType")]
+    public async Task RecordSatelliteNullArguments_PreserveBclWireIdentity(string parameter)
+    {
+        var ex = await Assert.ThrowsExactlyAsync<ArgumentNullException>(() =>
+            CreateSymbolRefactorService(new CompositePreviewStore()).PreviewRecordFieldAddWithSatellitesAsync(
+                "unused-workspace", parameter == "typeMetadataName" ? null! : "PRIVATE_type",
+                parameter == "newFieldName" ? null! : "PRIVATE_field",
+                parameter == "newFieldType" ? null! : "PRIVATE_field_type", CancellationToken.None));
+        Assert.AreEqual(parameter, ex.ParamName);
+        using var payload = JsonDocument.Parse(ToolErrorHandler.ClassifyAndFormat(ex, "record_field_add_with_satellites_preview"));
+        Assert.AreEqual("InvalidArgument", payload.RootElement.GetProperty("category").GetString());
+        Assert.AreEqual("ArgumentNullException", payload.RootElement.GetProperty("exceptionType").GetString());
+        StringAssert.Contains(payload.RootElement.GetProperty("message").GetString(), parameter);
+        Assert.IsFalse(payload.RootElement.GetRawText().Contains("PRIVATE", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public async Task CompositeCancellationAndOrdinaryFailure_KeepExistingClassification()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync();
+        var service = CreateSymbolRefactorService(new CompositePreviewStore());
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(() =>
+            service.PreviewAsync(workspace.WorkspaceId, [new SymbolRefactorOperation("PRIVATE-kind")], cancelled.Token));
+        var ordinary = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+            service.PreviewAsync(workspace.WorkspaceId,
+                [new SymbolRefactorOperation("restructure", Pattern: "42", Goal: "43",
+                    ScopeProjectName: "PRIVATE_missing_project")], CancellationToken.None));
+        Assert.IsNotNull(ordinary.InnerException);
+        using var payload = JsonDocument.Parse(ToolErrorHandler.ClassifyAndFormat(ordinary, "symbol_refactor_preview"));
+        Assert.AreEqual("InvalidOperation", payload.RootElement.GetProperty("category").GetString());
+        Assert.IsFalse(payload.RootElement.GetRawText().Contains("PRIVATE", StringComparison.Ordinal));
     }
 
     private static SymbolRefactorService CreateSymbolRefactorService(CompositePreviewStore compositeStore)
