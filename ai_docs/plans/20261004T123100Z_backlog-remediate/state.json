@@ -954,7 +954,7 @@
     {
       "id": "suppression-argument-refusals-public-message",
       "order": 15,
-      "status": "in-progress",
+      "status": "in-review",
       "backlogRowsClosed": [
         "suppression-argument-refusals-public-message"
       ],
@@ -992,9 +992,9 @@
       ],
       "branch": "remediation/suppression-argument-refusals-public-message",
       "worktreePath": "D:/Roslyn-Backed-MCP/.worktrees/suppression-argument-refusals-public-message",
-      "prUrl": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1760",
       "mergedAt": null,
-      "notes": "Executor active on immutable bc6e1f160fb9825127ba35386a37b6cae02523b0; amendments1-2 seal complete severity refusal and help agreement. Private cache, actual-base red evidence, explicit Release verification required.",
+      "notes": "Frozen f8447fda88f43958a47aaabca1693a6cd07fc634/base bc6e1f16; executor and docfix legs returned. Parent verified fragment-only repair, nine file hashes,109 unchanged Release DLL hashes, four nonempty passing native fast gates, exact TRX140/140/0/0. Hosted d57d docs failure fixed; first cold technical review pending.",
       "fileSetHash": "7036cbe77f0ea88e8d7420f2eba6009afa1940413bee4c040d9ddb9fb0d67e50",
       "stanzaHash": "2e1397098de9f0f1e9e6f32781a434025e97a130b23ad50d951e420a4fb942dc",
       "reviewedStanzaHash": "2e1397098de9f0f1e9e6f32781a434025e97a130b23ad50d951e420a4fb942dc",
