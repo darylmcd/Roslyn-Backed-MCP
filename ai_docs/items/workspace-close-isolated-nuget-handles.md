@@ -1,0 +1,28 @@
+# workspace-close-isolated-nuget-handles — Investigate private NuGet cache retention after workspace close
+
+**row:** `workspace-close-isolated-nuget-handles` · **pri:** `Medium` · **size:** `M`
+
+## Anchors
+
+- `src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs:524` CloseCore lifecycle investigation boundary.
+- `src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs:1619` WorkspaceSession.Dispose ownership boundary.
+- `src/RoslynMcp.Host.Stdio/Tools/WorkspaceTools.cs` workspace_close lifecycle contract.
+- `tests/RoslynMcp.Tests/WorkspaceToolsIntegrationTests.cs` isolated workspace lifecycle regression location.
+- `tests/RoslynMcp.Tests/AnalyzerShadowLoaderLifecycleTests.cs` analyzer ownership regression location, only if traced cause reaches this mechanism.
+
+## Acceptance
+
+- [ ] Reproduce a private NuGet-cache deletion failure with a workspace created by the probe; capture exact retained files, handles and owning managed/native metadata or assembly load path before classifying a code bug.
+- [ ] Keep the server alive; close only the probe's owned workspace. Distinguish another active workspace's legitimate references from released-workspace retention.
+- [ ] If the defect is confirmed, repair every close/reload/eviction/host-disposal instance of the traced ownership mechanism; record old-behavior failing Windows filesystem regression and fixed passing result.
+- [ ] If the claim does not reproduce on current source, record the inspected reproduction and disposition; do not invent a missing Dispose call or infer causation from a PID name.
+- [ ] Do not kill the server, weaken deletion assertions or increase retry windows to hide confirmed retention.
+
+## Evidence
+
+- Re-vet base: `c43e8fa6995151b22be6feb2c4a1020263b88ce5`. Original filing: PR #1744, immutable head `d94fcf56fa2fa72ab98440dfa37b2e32233f6f12`.
+- Current `WorkspaceManager.cs:540-542` reads `_fileWatcher.Unwatch(workspaceId);`, `_previewStore.InvalidateAll(workspaceId);`, `session.Dispose();`.
+- Current `WorkspaceManager.cs:1621,1628-1630` reads `Workspace?.Dispose();`, `Workspace = null;`, `AnalyzerLease?.Dispose();`, `LoadLock.Dispose();`.
+- PR #1744 reports SnipCue bl-0515 EPERM with PID 48528 and bl-0519 EPERM with PIDs 5256/2412 after workspace count zero. These are historical claims from the immutable detail, not reproduction generated in this re-vet; exact owning-handle evidence and retained receipt paths were not established here.
+- No defective ownership construct was traced in this read-only re-vet. Import as `[type: chore]` investigate-first; do not retain the original bug classification as proven.
+- Live main has no equivalent NuGet-handle-retention row. Existing workspace-close case-comparison/PID-reuse rows concern process-drain identity and are different mechanisms.
