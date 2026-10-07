@@ -368,7 +368,7 @@
       "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1753",
       "mergedAt": "2026-10-06T23:45:18Z",
       "notes": " Current-session cleanup recheck2026-10-07: own private scratch directory and quarantine marker both absent; original land EPERM preserved as historical evidence, later cleanup now verified.",
-      "fileSetHash": "a3db611ce71c6f789a20cfd446e28a87a2b10c6326942c8a50ee6d8aa4ea3ade",
+      "fileSetHash": "d83630b96ec80ecbc7e37f4e776f87cca316f0d9c0268aea5a4bd8a25473ab75",
       "stanzaHash": "6651dc3a5ed14e58e498b147d6a32650e870cd108b5850b6d47b019cb59108cd",
       "reviewedStanzaHash": "6651dc3a5ed14e58e498b147d6a32650e870cd108b5850b6d47b019cb59108cd",
       "amendments": [
@@ -518,7 +518,7 @@
       "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1754",
       "mergedAt": "2026-10-07T00:52:11Z",
       "notes": " Current-session cleanup recheck2026-10-07: own private scratch directory and quarantine marker both absent; original land EPERM preserved as historical evidence, later cleanup now verified.",
-      "fileSetHash": "8d743189c32cade4474eee006a6936eeafb2b311ab02ab029fceb8c4ccdb0bfe",
+      "fileSetHash": "ef798b5f66287be4ff26d24c1ae9ec4cbe4aa1a744482667b9832a8843930706",
       "stanzaHash": "120a9ef262ab5e5d4630adad9a16799665a013322ee2d39f775b18e66486f69b",
       "reviewedStanzaHash": "120a9ef262ab5e5d4630adad9a16799665a013322ee2d39f775b18e66486f69b",
       "amendments": [
@@ -656,7 +656,7 @@
       "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1750",
       "mergedAt": "2026-10-04T20:41:04Z",
       "notes": null,
-      "fileSetHash": "3cadaf0e53253b3ca52cd00b14cb34d6441c9533787bf6930febd930304917b2",
+      "fileSetHash": "8e30ad9321fc1b950f6a02a4bcd54adfe9603e362be9f8ae28d71aca305f5dc8",
       "stanzaHash": "e7af7efb19e73a57b232b902523a524906236d69718a138524cc1205048e07e0",
       "reviewedStanzaHash": "e7af7efb19e73a57b232b902523a524906236d69718a138524cc1205048e07e0",
       "amendments": [
@@ -742,7 +742,7 @@
       "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1758",
       "mergedAt": "2026-10-07T04:49:10Z",
       "notes": null,
-      "fileSetHash": "2f4b932aba9489fee92a8b1d66b80ffa28a17eb8aac3cbb73f4fcfdc48e6e903",
+      "fileSetHash": "a0300d7bd30498f19306c8432441779ad07e52debe78036a352967b8b5d2512c",
       "stanzaHash": "f75d6717e7d4e9762292ce919804619ae659a8a9fed4e72d39d9034f08aa9aa7",
       "reviewedStanzaHash": "f75d6717e7d4e9762292ce919804619ae659a8a9fed4e72d39d9034f08aa9aa7",
       "changelogCategory": "Changed — BREAKING",
@@ -852,7 +852,7 @@
       "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1755",
       "mergedAt": "2026-10-07T03:14:04Z",
       "notes": " Current-session cleanup recheck2026-10-07: own private scratch directory and quarantine marker both absent; original land EPERM preserved as historical evidence, later cleanup now verified.",
-      "fileSetHash": "a84ff27ab57765ce166591db7c152bcc8d4e72dd5ec4ea6c5ecaa42680dcc7ae",
+      "fileSetHash": "afc374535bf49dca6d9ecb25af8df0c3104b232f2bcfd8ffce3e72813111b62d",
       "stanzaHash": "c27062a29f0d33cd9d1fe6b01cacc48641bfdbb8ccc603e5c2a9550b68ec7b90",
       "reviewedStanzaHash": "c27062a29f0d33cd9d1fe6b01cacc48641bfdbb8ccc603e5c2a9550b68ec7b90",
       "amendments": [
@@ -994,7 +994,7 @@
       "prUrl": null,
       "mergedAt": null,
       "notes": null,
-      "fileSetHash": "18e674cd62ae13caa558a78adb48e73c4f645e5bba434f28d5f2d42d5fbecf82",
+      "fileSetHash": "9bc574a9a65e3dcff9c54947ef31c20301ca8e85e4e7f33e1ab9be0a03086b4b",
       "stanzaHash": "a720c6dafbe2a7ab9499bcf7448df6c88110582179ffee0fddbdf43071aad506",
       "reviewedStanzaHash": "a720c6dafbe2a7ab9499bcf7448df6c88110582179ffee0fddbdf43071aad506",
       "changelogCategory": "Changed — BREAKING",
@@ -1447,9 +1447,9 @@
       "suppression-argument-refusals-public-message": "a720c6dafbe2a7ab9499bcf7448df6c88110582179ffee0fddbdf43071aad506"
     }
   },
-  "conflictGraphInputHash": "d8cc60859909341a1fe269584901aec43ebf07370c6ba2369f72f23d0f1f2042",
+  "conflictGraphInputHash": "9edd26e836a784b20637842cad630cd3206442c07a13f18d176b0dbbc6b408ba",
   "planHash": "f5095058b41fe05e39aa02ab26956d543ee594d9fce720d3cbd424397a909f86",
-  "backlogSnapshotHash": "aa7593fb4e2c3b59453248d6223301e471be1161179df7994320f52ec840df5f",
+  "backlogSnapshotHash": "502d7c2cd03e3f9dadb925acb76825497570843660cd979a919c6799337ec01c",
   "reviewedPlanHash": "f5095058b41fe05e39aa02ab26956d543ee594d9fce720d3cbd424397a909f86",
   "reviewedBacklogSnapshotHash": "aa7593fb4e2c3b59453248d6223301e471be1161179df7994320f52ec840df5f"
 }
