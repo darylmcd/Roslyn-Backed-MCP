@@ -1,6 +1,6 @@
-# type-extraction-argument-refusals-public-message — extract type/method, record field addition and namespace relocation argument refusals are Public and path-relative
+# type-extraction-argument-refusals-public-message — safe extraction argument contracts
 
-**row:** `type-extraction-argument-refusals-public-message` · **pri:** `Medium` · **size:** `M` · **deps:** `public-argument-exception-core-move, argument-errors-redacted-factory`
+**row:** `type-extraction-argument-refusals-public-message` · **pri:** `Medium` · **size:** `L` · **deps:** `public-argument-exception-core-move, argument-errors-redacted-factory`
 
 ## Anchors
 
@@ -8,22 +8,35 @@
 - `src/RoslynMcp.Roslyn/Services/RecordFieldAdditionService.cs`
 - `src/RoslynMcp.Roslyn/Services/NamespaceRelocationService.cs`
 - `src/RoslynMcp.Roslyn/Services/ExtractMethodService.cs`
+- `src/RoslynMcp.Roslyn/Helpers/IdentifierValidation.cs`
 - `tests/RoslynMcp.Tests/TypeExtractionTests.cs`
 - `tests/RoslynMcp.Tests/ExtractSharedExpressionTests.cs`
 - `tests/RoslynMcp.Tests/RecordFieldAdditionImpactTests.cs`
+- `tests/RoslynMcp.Tests/NamespaceRelocationTests.cs`
+- `tests/RoslynMcp.Tests/ExtractMethodTests.cs`
+- `tests/RoslynMcp.Tests/ExtractMethodFormatRegressionTests.cs`
+- `tests/RoslynMcp.Tests/ExtractMethodThisExclusionTests.cs`
+- (new) `tests/RoslynMcp.Tests/ExtractionArgumentRefusalWireTests.cs`
 
 ## Acceptance
 
-- [ ] TypeExtractionService.cs:163 no longer republishes a lower-layer message.
-- [ ] NamespaceRelocationService.cs:258 names paths relative to the project.
-- [ ] ExtractMethodService.cs:44/:511 (paramless) name the start/end parameters.
+- [ ] Publish fixed safe corrections with actual caller parameters; preserve internal exceptions, redacted inner exceptions, established BCL identities, record null guards and destination/accessibility defaults.
+- [ ] Reject null memberNames before Count; validate both extraction spans before indexing/arithmetic without cross-line offsets, overflow or clamping.
+- [ ] Preserve method equal-span refusal; shared empty/type/namespace selections become named caller refusals. Use one value-expression predicate in example validation and matching scan; compile same-name type/value previews.
+- [ ] Share lexical identifier validation; refuse malformed/reserved method/helper names before preview mutation. Preserve stricter type/rename policy and compiled Unicode/verbatim/contextual member controls.
+- [ ] Migrate invalid legacy fixture coordinates while retaining semantic assertions. Test actual services and dual-era raw wire; retain observed old-code failures and source/DLL-bound final green evidence.
+- [ ] Deliver ADR 0018 and a major migration fragment; pass required hosted Windows/Linux, SDK-floor, release/package/audit validation and cold review before closure.
 
 ## Evidence
 
-- 12 ArgumentException/ArgumentOutOfRangeException construction site(s) in scope at main f7b33b85; plain ArgumentException messages are redacted by `ToolErrorHandler.BuildSafeArgumentMessage` (`src/RoslynMcp.Host.Stdio/Tools/ToolErrorHandler.cs:570-646`) to "Parameter '<x>' is invalid", or rescued only by message/paramName sniffing arms. Survey + design: plan-deepener, backlog-remediate 20260926T234932Z.
+- Historical survey: 12 argument construction sites at f7b33b85; superseded incomplete acceptance is re-derived by the current sealed stanza.
+- Immutable source base `6599be65a67de3ba24065c980118f6c4e6cc00a5`: `if (string.IsNullOrWhiteSpace(methodName))`, `if (string.IsNullOrWhiteSpace(helperName))`, and `SyntaxFactory.Identifier(methodName)` / `SyntaxFactory.Identifier(helperName)` permit malformed nonblank names.
+- Current-session actual producer probes apply malformed/reserved names: method parse errors 28/17, helper 16/30, CompileCheck=false. Unicode/verbatim controls compile; contextual async also compiles, refuting blanket contextual rejection.
+- Base service/wire regressions: 49 failures/15 passes; exact four-production-file base probe: 8 failures/1 preserved partial-overlap control. Shared type nodes can reach InvalidCastException or false capture-set disagreement; null memberNames reaches production wire as InternalError in both eras.
+- Scoped1: 13 failures/144 passes exposed legacy out-of-line fixture coordinates. Companions are required to preserve the same extraction semantics under bounded coordinates.
 
 ## Context
 
-One child of the argument-error contract redesign (operator decision 2026-09-26: correct fix over the narrow paramless-ctor ban). Estimated diff ~40000 tokens.
-
-Family design (invariant, P/R/I classification, ban scope, exceptionType normalization): see `items/public-argument-exception-core-move.md` § Family design.
+- Family policy: public/redacted/internal classification and Host normalization; reuse existing Core carriers.
+- Sealed plan: `ai_docs/plans/20261004T123100Z_backlog-remediate/plan/type-extraction-argument-refusals-public-message.md` amendment 4 owns exact scope and validation.
+- Keep unrelated PreviewStore provenance/truncation loss on its existing row. Do not infer a solution/version race without a live concurrency failure.
