@@ -1,4 +1,5 @@
 using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
@@ -402,11 +403,11 @@ public sealed class PragmaScopeManipulationTests : IsolatedWorkspaceTestBase
     public async Task VerifyPragmaSuppresses_Throws_OnBadArgs()
     {
         var sut = CreateService();
-        await Assert.ThrowsExactlyAsync<ArgumentOutOfRangeException>(() =>
+        await Assert.ThrowsExactlyAsync<PublicArgumentOutOfRangeException>(() =>
             sut.VerifyPragmaSuppressesAsync("ws", "/tmp/a.cs", 0, "CS0219", CancellationToken.None));
-        await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+        await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
             sut.VerifyPragmaSuppressesAsync("ws", "/tmp/a.cs", 1, " ", CancellationToken.None));
-        await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+        await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
             sut.VerifyPragmaSuppressesAsync("ws", " ", 1, "CS0219", CancellationToken.None));
     }
 
@@ -414,11 +415,11 @@ public sealed class PragmaScopeManipulationTests : IsolatedWorkspaceTestBase
     public async Task PragmaScopeWiden_Throws_OnBadArgs()
     {
         var sut = CreateService();
-        await Assert.ThrowsExactlyAsync<ArgumentOutOfRangeException>(() =>
+        await Assert.ThrowsExactlyAsync<PublicArgumentOutOfRangeException>(() =>
             sut.WidenPragmaScopeAsync("ws", "/tmp/a.cs", 0, "CS0219", CancellationToken.None));
-        await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+        await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
             sut.WidenPragmaScopeAsync("ws", "/tmp/a.cs", 1, " ", CancellationToken.None));
-        await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+        await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
             sut.WidenPragmaScopeAsync("ws", " ", 1, "CS0219", CancellationToken.None));
     }
 }
