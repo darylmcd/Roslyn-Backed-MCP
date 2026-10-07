@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-07T03:20:19Z
+**updated_at:** 2026-10-07T04:51:09Z
 
 ## Agent contract
 
@@ -90,7 +90,6 @@
 | `tool-merge-apply-file-lifecycle` | Medium | tool-consolidation-adr-and-alias-machinery | BLOCKED: gated on `tool-consolidation-adr-and-alias-machinery`. **Merge 5 applies into `file_lifecycle_apply`**, old names kept as deprecated aliases. Catalog hotspot. [type: refactor] [source: tool-consolidation-apply-merges-within-risk-buckets] | M | items/tool-merge-apply-file-lifecycle.md |
 | `tool-merge-apply-undo-revert` | Medium | tool-consolidation-adr-and-alias-machinery | BLOCKED: gated on `tool-consolidation-adr-and-alias-machinery`. **Merge 2 applies into `revert_apply`**, old names kept as deprecated aliases. Catalog hotspot. [type: refactor] [source: tool-consolidation-apply-merges-within-risk-buckets] | M | items/tool-merge-apply-undo-revert.md |
 | `root-boundary-argument-refusals-public-message` | Medium | public-argument-exception-core-move, argument-errors-redacted-factory | BLOCKED: awaiting approval of published error-category migration. **Correct sanctioned-root error classification** — preserve caller denials and distinguish configured/RPC failures. [type: bug] [source: backlog-remediate cold diagnosis 2026-10-04] | M | items/root-boundary-argument-refusals-public-message.md |
-| `type-extraction-argument-refusals-public-message` | Medium | public-argument-exception-core-move, argument-errors-redacted-factory | **extract type/method, record field addition and namespace relocation argument refusals are Public and path-r…** — part of the src-wide argument-error contract (public / redacted / internal). [type: bug] [source: argument-exception-throw-sites-lack-public-message redesign 20260926] | M | items/type-extraction-argument-refusals-public-message.md |
 | `suppression-argument-refusals-public-message` | Medium | public-argument-exception-core-move, argument-errors-redacted-factory | **Pragma/suppression argument refusals (diagnosticId, line, filePath) are Public** — part of the src-wide argument-error contract (public / redacted / internal). [type: bug] [source: argument-exception-throw-sites-lack-public-message redesign 20260926] | S | items/suppression-argument-refusals-public-message.md |
 | `code-action-and-flow-argument-refusals-public-message` | Medium | public-argument-exception-core-move, argument-errors-redacted-factory | **code action / fix-all scope / flow-analysis range argument refusals are Public** — part of the src-wide argument-error contract (public / redacted / internal). [type: bug] [source: argument-exception-throw-sites-lack-public-message redesign 20260926] | M | items/code-action-and-flow-argument-refusals-public-message.md |
 | `navigation-and-locator-argument-refusals-public-message` | Medium | public-argument-exception-core-move, argument-errors-redacted-factory | **Position bounds (line/column) in navigation, resolver and completion plus Core SymbolLocator** — part of the src-wide argument-error contract (public / redacted / internal). [type: bug] [source: argument-exception-throw-sites-lack-public-message redesign 20260926] | M | items/navigation-and-locator-argument-refusals-public-message.md |
