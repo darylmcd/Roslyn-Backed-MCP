@@ -1,15 +1,13 @@
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using RoslynMcp.Core.Services;
 
 namespace RoslynMcp.Roslyn.Helpers;
 
 /// <summary>
-/// Validates that a string is a legal C# identifier suitable for rename refactorings.
-/// Rejects empty strings, names that are not valid C# identifiers (numeric prefixes,
-/// invalid characters), reserved keywords, and contextual keywords.
-///
-/// Verbatim identifiers (e.g. <c>@class</c>) are accepted: the leading <c>@</c> is
-/// stripped before the validity check, and the keyword guards are skipped because the
-/// whole point of the verbatim form is to permit a reserved word as an identifier.
+/// Shares lexical C# identifier validation. Type/rename callers reject unescaped contextual
+/// keywords; extraction members accept contextual names and emit grammar-safe identifier tokens.
+/// Reserved keywords require verbatim spelling in both policies. Unicode identifiers remain valid.
 /// </summary>
 internal static class IdentifierValidation
 {
@@ -20,6 +18,36 @@ internal static class IdentifierValidation
     /// <param name="newName">The proposed identifier. May include a leading <c>@</c> for verbatim form.</param>
     /// <param name="parameterLabel">Human-readable label for the parameter (e.g. "new name").</param>
     public static void ThrowIfInvalidIdentifier(string newName, string parameterLabel = "new name")
+        => ThrowIfInvalidIdentifierCore(newName, parameterLabel, allowContextualKeywords: false);
+
+    /// <summary>Publishes fixed caller guidance while retaining the detailed validator failure as an inner exception.</summary>
+    public static void ThrowIfInvalidPublicIdentifier(
+        string name, string parameterName, bool allowContextualKeywords)
+    {
+        try
+        {
+            ThrowIfInvalidIdentifierCore(name, parameterName, allowContextualKeywords);
+        }
+        catch (InvalidOperationException exception)
+        {
+            throw new PublicArgumentException(
+                $"Provide a valid C# identifier for {parameterName}. Use a verbatim identifier for a keyword.",
+                parameterName, exception);
+        }
+    }
+
+    /// <summary>Escapes contextual names so invocation parsing cannot reinterpret them as language constructs.</summary>
+    /// <remarks>The caller must first validate the non-null, nonempty name with the extraction-member policy.</remarks>
+    public static SyntaxToken CreateMemberIdentifierToken(string name)
+    {
+        var spelling = name[0] != '@' && SyntaxFacts.GetContextualKeywordKind(name) != SyntaxKind.None
+            ? "@" + name
+            : name;
+        return SyntaxFactory.ParseToken(spelling);
+    }
+
+    private static void ThrowIfInvalidIdentifierCore(
+        string newName, string parameterLabel, bool allowContextualKeywords)
     {
         if (string.IsNullOrEmpty(newName))
             throw new InvalidOperationException($"The {parameterLabel} is required.");
@@ -41,13 +69,14 @@ internal static class IdentifierValidation
             return; // verbatim form bypasses keyword guards by design
 
         // SyntaxFacts.IsValidIdentifier accepts reserved keywords like "class".
-        // Reject reserved and contextual keywords; callers that want to use them must
+        // Reserved keywords always require verbatim spelling. Contextual keywords require it
+        // only under the strict type/rename policy; those callers must
         // pass the verbatim form (e.g. "@class").
         if (SyntaxFacts.GetKeywordKind(coreName) != SyntaxKind.None)
             throw new InvalidOperationException(
                 $"'{newName}' is a reserved C# keyword. Prefix with '@' (e.g. '@{newName}') to use it verbatim.");
 
-        if (SyntaxFacts.GetContextualKeywordKind(coreName) != SyntaxKind.None)
+        if (!allowContextualKeywords && SyntaxFacts.GetContextualKeywordKind(coreName) != SyntaxKind.None)
             throw new InvalidOperationException(
                 $"'{newName}' is a contextual C# keyword and cannot be used as an identifier without '@'.");
     }

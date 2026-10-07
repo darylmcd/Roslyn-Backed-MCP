@@ -141,7 +141,7 @@ public sealed class ExtractMethodFormatRegressionTests : TestBase
                 workspaceId,
                 fixturePath,
                 startLine: 7, startColumn: 9,
-                endLine: 9, endColumn: 31,
+                endLine: 9, endColumn: 30,
                 methodName: "ComputeCombined",
                 ct: CancellationToken.None);
 

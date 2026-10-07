@@ -41,9 +41,15 @@ public sealed class RecordFieldAdditionService : IRecordFieldAdditionService
         string? defaultValueExpression,
         CancellationToken ct)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(recordMetadataName);
-        ArgumentException.ThrowIfNullOrWhiteSpace(newFieldName);
-        ArgumentException.ThrowIfNullOrWhiteSpace(newFieldType);
+        ArgumentNullException.ThrowIfNull(recordMetadataName);
+        if (string.IsNullOrWhiteSpace(recordMetadataName))
+            throw new PublicArgumentException("recordMetadataName must not be empty or whitespace.", nameof(recordMetadataName));
+        ArgumentNullException.ThrowIfNull(newFieldName);
+        if (string.IsNullOrWhiteSpace(newFieldName))
+            throw new PublicArgumentException("newFieldName must not be empty or whitespace.", nameof(newFieldName));
+        ArgumentNullException.ThrowIfNull(newFieldType);
+        if (string.IsNullOrWhiteSpace(newFieldType))
+            throw new PublicArgumentException("newFieldType must not be empty or whitespace.", nameof(newFieldType));
 
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var typeSymbol = await ResolveRecordTypeAsync(solution, recordMetadataName, ct).ConfigureAwait(false);
@@ -128,9 +134,8 @@ public sealed class RecordFieldAdditionService : IRecordFieldAdditionService
         }
         if (!typeSymbol.IsRecord)
         {
-            throw new ArgumentException(
-                $"Type '{recordMetadataName}' is not a record. preview_record_field_addition only " +
-                "supports record class / record struct types.",
+            throw new PublicArgumentException(
+                "Choose a record class or record struct for recordMetadataName.",
                 nameof(recordMetadataName));
         }
         return typeSymbol;
