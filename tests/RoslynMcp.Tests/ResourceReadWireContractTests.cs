@@ -118,15 +118,14 @@ public sealed class ResourceReadWireContractTests
             "roslyn://workspace/" + WorkspaceId + "/file/" + FileSegment("Present.cs") + "/lines/abc-def",
             LegacyCode: -32602,
             July2026Code: -32602,
-            // "param: lineRange" proves the HANDLER's validation fired — an SDK binding
-            // failure also produces InvalidArgument/-32602 but names "param: arguments".
-            MessageMustContain: "param: lineRange",
+            // The specific correction proves the handler validation fired.
+            MessageMustContain: "startLine must be a positive integer",
             ForbiddenLiterals: ["ArgumentException"]),
         new("workspace/source_file non-absolute filePath is caller fault (-32602, never -32603)",
             "roslyn://workspace/" + WorkspaceId + "/file/not-absolute.cs",
             LegacyCode: -32602,
             July2026Code: -32602,
-            MessageMustContain: "param: filePath",
+            MessageMustContain: "must be an absolute path after URI decoding",
             ForbiddenLiterals: ["ArgumentException", "InvalidOperation"]),
         new("workspace/source_file unexpected handler failure is sanitized",
             "roslyn://workspace/" + WorkspaceId + "/file/" + FileSegment("Boom.cs"),
@@ -139,23 +138,33 @@ public sealed class ResourceReadWireContractTests
             "roslyn://server/catalog/tools/abc/50",
             LegacyCode: -32602,
             July2026Code: -32602,
-            MessageMustContain: "param: offset",
+            MessageMustContain: "Parameter 'offset' must be an integer.",
             ForbiddenLiterals: ["ArgumentException"]),
         new("catalog/prompts page malformed limit slot",
             "roslyn://server/catalog/prompts/0/xyz",
             LegacyCode: -32602,
             July2026Code: -32602,
-            MessageMustContain: "param: limit",
+            MessageMustContain: "Parameter 'limit' must be an integer.",
             ForbiddenLiterals: ["ArgumentException"]),
         new("catalog-diff unsupported version pair",
             "roslyn://server/catalog-diff/v2.3.0/current",
             LegacyCode: -32602,
             July2026Code: -32602,
-            MessageMustContain: "Unsupported catalog diff",
-            // The raw ArgumentException message echoes the pair as 'v2.3.0' -> 'current';
-            // the sanitized remediation must not. (The bare version string still appears in
-            // the echoed *request URI*, which is caller-supplied and allowed.)
+            MessageMustContain: "Parameter 'fromVersion' is unsupported. Supported catalog diff:",
+            // Unsupported versions may appear in the echoed request URI, but the
+            // remediation must publish only server-owned supported versions.
             ForbiddenLiterals: ["ArgumentException", "'v2.3.0' ->"]),
+        new("lines relative path", "roslyn://workspace/" + WorkspaceId + "/file/caller-private.cs/lines/1-2", -32602, -32602, "must be an absolute path after URI decoding", ["ArgumentException", "ArgumentOutOfRangeException", "PublicArgumentException"]),
+        new("lines malformed shape", "roslyn://workspace/" + WorkspaceId + "/file/" + FileSegment("Present.cs") + "/lines/callerprivate", -32602, -32602, "must use the format", ["ArgumentException", "ArgumentOutOfRangeException", "PublicArgumentException"]),
+        new("lines zero start", "roslyn://workspace/" + WorkspaceId + "/file/" + FileSegment("Present.cs") + "/lines/0-2", -32602, -32602, "startLine must be a positive integer", ["ArgumentException", "ArgumentOutOfRangeException", "PublicArgumentException"]),
+        new("lines zero end", "roslyn://workspace/" + WorkspaceId + "/file/" + FileSegment("Present.cs") + "/lines/1-0", -32602, -32602, "endLine must be a positive integer", ["ArgumentException", "ArgumentOutOfRangeException", "PublicArgumentException"]),
+        new("lines bad end", "roslyn://workspace/" + WorkspaceId + "/file/" + FileSegment("Present.cs") + "/lines/1-caller-private", -32602, -32602, "endLine must be a positive integer", ["ArgumentException", "ArgumentOutOfRangeException", "PublicArgumentException"]),
+        new("lines reversed", "roslyn://workspace/" + WorkspaceId + "/file/" + FileSegment("Present.cs") + "/lines/2-1", -32602, -32602, "endLine (1) must be >= startLine (2)", ["ArgumentException", "ArgumentOutOfRangeException", "PublicArgumentException"]),
+        new("lines EOF", "roslyn://workspace/" + WorkspaceId + "/file/" + FileSegment("Present.cs") + "/lines/99-100", -32602, -32602, "is past the end of the file", ["ArgumentException", "ArgumentOutOfRangeException", "PublicArgumentException"]),
+        new("tools bad limit", "roslyn://server/catalog/tools/0/caller-private", -32602, -32602, "Parameter 'limit' must be an integer.", ["ArgumentException", "ArgumentOutOfRangeException", "PublicArgumentException"]),
+        new("prompts bad offset", "roslyn://server/catalog/prompts/caller-private/5", -32602, -32602, "Parameter 'offset' must be an integer.", ["ArgumentException", "ArgumentOutOfRangeException", "PublicArgumentException"]),
+        new("catalog bad target", "roslyn://server/catalog-diff/v2.3.1/caller-private", -32602, -32602, "Parameter 'toVersion' is unsupported. Supported catalog diff:", ["ArgumentException", "ArgumentOutOfRangeException", "PublicArgumentException"]),
+        new("catalog both invalid", "roslyn://server/catalog-diff/caller-private/caller-private-target", -32602, -32602, "Parameter 'fromVersion' is unsupported. Supported catalog diff:", ["ArgumentException", "ArgumentOutOfRangeException", "PublicArgumentException"]),
     ];
 
     [TestMethod]
@@ -203,6 +212,11 @@ public sealed class ResourceReadWireContractTests
                 var message = error.GetProperty("message").GetString() ?? string.Empty;
                 StringAssert.Contains(message, failureCase.MessageMustContain, $"{label}: message '{message}'");
                 AssertCarriesRealCorrelationId(message, label);
+                // Resource errors intentionally echo the URI; check remediation independently.
+                var remediation = message.Split(" (resource:", StringSplitOptions.None)[0];
+                Assert.IsFalse(remediation.Contains("callerprivate", StringComparison.Ordinal), label + ": malformed range leaked in remediation.");
+                Assert.IsFalse(remediation.Contains("caller-private", StringComparison.Ordinal), label + ": caller text leaked in remediation.");
+                Assert.IsFalse(remediation.Contains("not-absolute.cs", StringComparison.Ordinal), label + ": filePath leaked in remediation.");
 
                 foreach (var forbidden in failureCase.ForbiddenLiterals)
                 {

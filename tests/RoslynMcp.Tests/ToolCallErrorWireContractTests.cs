@@ -226,7 +226,19 @@ public sealed class ToolCallErrorWireContractTests : IsolatedWorkspaceTestBase
             {
                 await using var harness = await CreateHarnessAsync(protocol.Requested, null, manager, ambiguousRoot);
                 var frame = await CallAndCaptureAsync(harness, "symbol_info", arguments);
-                AssertFastFailFrame(frame, "candidate solutions", protocol.Modern);
+                AssertFastFailFrame(frame, "2 candidate solutions", protocol.Modern);
+                var payload = ErrorPayload(frame);
+                Assert.AreEqual("ArgumentException", payload["exceptionType"]?.GetValue<string>());
+                StringAssert.Contains(payload["schemaHint"]!.GetValue<string>(), "workspaceId");
+                StringAssert.Contains(payload["message"]!.GetValue<string>(), "workspace_load");
+                Assert.AreEqual("fast-fail", payload["_meta"]!["autoResolution"]?.GetValue<string>());
+                var rawFrame = frame.ToJsonString();
+                foreach (var privateDetail in new[] { ambiguousRoot, Path.GetFileName(ambiguousRoot), "Alpha.slnx", "Beta.slnx", sourcePath })
+                {
+                    Assert.IsFalse(rawFrame.Contains(privateDetail, StringComparison.Ordinal),
+                        $"Raw wire frame leaked a private discovery detail: {privateDetail}");
+                }
+                Assert.IsEmpty(manager.ListWorkspaces(), "Ambiguous discovery must never auto-load a candidate.");
             }
         }
         finally

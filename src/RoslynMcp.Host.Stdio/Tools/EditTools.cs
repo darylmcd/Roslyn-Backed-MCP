@@ -1,8 +1,8 @@
 using System.ComponentModel;
 using System.Text.Json;
+using ModelContextProtocol.Server;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
-using ModelContextProtocol.Server;
 using RoslynMcp.Host.Stdio.Catalog;
 using RoslynMcp.Host.Stdio.Security;
 
@@ -110,10 +110,9 @@ public static class EditTools
             return;
         }
 
-        throw new ArgumentException(
-            $"Path '{filePath}' resolves ambiguously: the document it identifies " +
-            $"('{documentTarget}') is not the file the boundary check approved " +
-            $"('{canonicalWritePath}'). This happens when a '..' segment follows a symlink or " +
+        throw new PublicArgumentException(
+            "The requested path resolves ambiguously: the document it identifies is not the file " +
+            "the boundary check approved. This happens when a '..' segment follows a symlink or " +
             "junction, where lexical and physical resolution disagree. Re-issue the request with a " +
             "path that does not traverse a link via '..'.",
             nameof(filePath));

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Resources;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Services;
@@ -99,12 +100,15 @@ public sealed class Top10V2RegressionTests : IsolatedWorkspaceTestBase
         var animalServicePath = Path.Combine(Path.GetDirectoryName(SampleSolutionPath)!, "SampleLib", "AnimalService.cs");
         var encoded = Uri.EscapeDataString(animalServicePath);
 
-        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
             WorkspaceResources.GetSourceFileLines(
                 WorkspaceExecutionGate, WorkspaceManager, _workspaceId, encoded, lineRange: "10-5", CancellationToken.None));
 
         Assert.AreEqual("lineRange", ex.ParamName,
             "The offending parameter must be named so the read filter can surface it.");
+        AssertSafeResourceRefusal(ex,
+            "Parameter 'lineRange' endLine (5) must be >= startLine (10).",
+            nameof(ArgumentException), animalServicePath, encoded, "10-5");
     }
 
     [TestMethod]
@@ -113,11 +117,14 @@ public sealed class Top10V2RegressionTests : IsolatedWorkspaceTestBase
         var animalServicePath = Path.Combine(Path.GetDirectoryName(SampleSolutionPath)!, "SampleLib", "AnimalService.cs");
         var encoded = Uri.EscapeDataString(animalServicePath);
 
-        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
             WorkspaceResources.GetSourceFileLines(
                 WorkspaceExecutionGate, WorkspaceManager, _workspaceId, encoded, lineRange: "abc-def", CancellationToken.None));
 
         Assert.AreEqual("lineRange", ex.ParamName);
+        AssertSafeResourceRefusal(ex,
+            "Parameter 'lineRange' startLine must be a positive integer.",
+            nameof(ArgumentException), animalServicePath, encoded, "abc-def");
     }
 
     [TestMethod]
@@ -126,14 +133,39 @@ public sealed class Top10V2RegressionTests : IsolatedWorkspaceTestBase
         var animalServicePath = Path.Combine(Path.GetDirectoryName(SampleSolutionPath)!, "SampleLib", "AnimalService.cs");
         var encoded = Uri.EscapeDataString(animalServicePath);
 
-        // AnimalService.cs is ~30 lines; 9999 is safely past EOF.
-        var ex = await Assert.ThrowsExactlyAsync<ArgumentOutOfRangeException>(() =>
+        var text = await WorkspaceManager.GetSourceTextAsync(_workspaceId, animalServicePath, CancellationToken.None);
+        Assert.IsNotNull(text);
+        var totalLineCount = RoslynMcp.Roslyn.Helpers.SourceTextSlicer.CountLines(text);
+        Assert.IsTrue(totalLineCount < 9999, "The requested start must be past EOF.");
+        var ex = await Assert.ThrowsExactlyAsync<PublicArgumentOutOfRangeException>(() =>
             WorkspaceResources.GetSourceFileLines(
                 WorkspaceExecutionGate, WorkspaceManager, _workspaceId, encoded, lineRange: "9999-10000", CancellationToken.None));
 
         Assert.AreEqual("lineRange", ex.ParamName);
         StringAssert.Contains(ex.Message, "past the end",
             "Exception message should explain the startLine-past-EOF condition.");
+        AssertSafeResourceRefusal(ex,
+            $"Parameter 'lineRange' startLine (9999) is past the end of the file ({totalLineCount} lines).",
+            nameof(ArgumentOutOfRangeException), animalServicePath, encoded, "9999-10000");
+    }
+
+    private static void AssertSafeResourceRefusal(
+        ArgumentException exception, string expectedMessage, string expectedExceptionType,
+        string path, string encodedPath, string lineRange)
+    {
+        Assert.IsInstanceOfType<IPublicMessageException>(exception);
+        var publicMessage = ((IPublicMessageException)exception).PublicMessage;
+        Assert.AreEqual(expectedMessage, publicMessage);
+        foreach (var privateInput in new[] { path, encodedPath, lineRange })
+        {
+            Assert.IsFalse(publicMessage.Contains(privateInput, StringComparison.Ordinal),
+                "The public correction must not echo the caller's path or raw range.");
+        }
+
+        using var doc = JsonDocument.Parse(ToolErrorHandler.ClassifyAndFormat(exception, "resource"));
+        Assert.AreEqual("InvalidArgument", doc.RootElement.GetProperty("category").GetString());
+        Assert.AreEqual(expectedMessage, doc.RootElement.GetProperty("message").GetString());
+        Assert.AreEqual(expectedExceptionType, doc.RootElement.GetProperty("exceptionType").GetString());
     }
 
     // ── apply-with-verify-and-rollback ──

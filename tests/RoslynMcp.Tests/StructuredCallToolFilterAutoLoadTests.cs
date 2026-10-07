@@ -1,8 +1,14 @@
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Middleware;
 using RoslynMcp.Host.Stdio.Tools;
+using RoslynMcp.Roslyn.Contracts;
+using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -82,10 +88,9 @@ public sealed class StructuredCallToolFilterAutoLoadTests
     }
 
     [TestMethod]
-    public void AmbiguousDiscovery_ProducesFastFailEnvelopeListingCandidates()
+    public async Task AmbiguousDiscovery_RealResolverPublishesCountWithoutPrivatePaths()
     {
-        // Two discoverable solutions → the filter's auto-load path records fast-fail and returns a
-        // structured InvalidArgument envelope naming the candidates with a workspace_load hint.
+        // Exercise the real public-exception producer rather than simulating its text.
         File.WriteAllText(Path.Combine(_root, "Alpha.slnx"), "<Solution />");
         File.WriteAllText(Path.Combine(_root, "Beta.slnx"), "<Solution />");
         var source = Path.Combine(_root, "Class1.cs");
@@ -99,12 +104,32 @@ public sealed class StructuredCallToolFilterAutoLoadTests
         Assert.AreEqual(SolutionDiscoveryHelper.DiscoveryStatus.Ambiguous, discovery.Status);
 
         using var scope = AmbientGateMetrics.BeginRequest();
-        AmbientGateMetrics.Current!.AutoResolution = "fast-fail";
-        var message =
-            $"workspaceId was omitted and no workspace is loaded. {discovery.Candidates.Count} candidate " +
-            $"solutions were discovered ({string.Join(", ", discovery.Candidates)}). Call workspace_load(path=…).";
-        var result = StructuredCallToolFilter.BuildErrorResult(
-            "symbol_search", new ArgumentException(message, "workspaceId"));
+
+        using var manager = new WorkspaceManager(
+            NullLogger<WorkspaceManager>.Instance, new PreviewStore(),
+            new FileWatcherService(NullLogger<FileWatcherService>.Instance),
+            new WorkspaceManagerOptions { MaxConcurrentWorkspaces = 4 });
+        using var services = new ServiceCollection()
+            .AddSingleton<IWorkspaceManager>(manager)
+            .AddSingleton(new SecurityOptions { SanctionedRoots = [_root] })
+            .BuildServiceProvider();
+        await using var harness = await InMemoryMcpClientServerHarness.CreateAsync(
+            transportName: "real-ambiguous-discovery", clientCapabilities: new ClientCapabilities(),
+            clientHandlers: new ModelContextProtocol.Client.McpClientHandlers(),
+            disposalFailureContext: "real-ambiguous-discovery", cancellationToken: CancellationToken.None,
+            serverServicesFactory: () => services);
+        var context = new RequestContext<CallToolRequestParams>(harness.Server,
+            new JsonRpcRequest { Method = RequestMethods.ToolsCall },
+            new CallToolRequestParams { Name = "symbol_info", Arguments = args })
+        {
+            Services = services,
+        };
+        var outcome = await StructuredWorkspaceResolver.ResolveAsync(
+            context, "symbol_info", null, CancellationToken.None,
+            (_, _) => throw new AssertFailedException("Ambiguous discovery must never load a candidate."));
+        var refusal = Assert.IsInstanceOfType<PublicArgumentException>(outcome.TerminalException);
+        Assert.IsFalse(outcome.ShouldTryPathRecovery);
+        var result = StructuredCallToolFilter.BuildErrorResult("symbol_info", refusal);
 
         Assert.IsTrue(result.IsError);
         var payload = JsonDocument.Parse(((TextContentBlock)result.Content![0]).Text).RootElement;
@@ -113,6 +138,9 @@ public sealed class StructuredCallToolFilterAutoLoadTests
         var publicMessage = payload.GetProperty("message").GetString()!;
         Assert.IsFalse(publicMessage.Contains("Alpha.slnx", StringComparison.Ordinal));
         Assert.IsFalse(publicMessage.Contains("Beta.slnx", StringComparison.Ordinal));
+        StringAssert.Contains(publicMessage, "2 candidate solutions");
         StringAssert.Contains(publicMessage, "workspace_load");
+        Assert.IsFalse(publicMessage.Contains(_root, StringComparison.Ordinal));
+        Assert.AreEqual("ArgumentException", payload.GetProperty("exceptionType").GetString());
     }
 }

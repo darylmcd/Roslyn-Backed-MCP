@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Server;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Catalog;
 using RoslynMcp.Host.Stdio.Tools;
 
@@ -77,10 +78,10 @@ public static class ServerResources
     }
 
     [McpServerResource(UriTemplate = "roslyn://server/catalog-diff/{fromVersion}/{toVersion}", Name = "server_catalog_version_diff", MimeType = "application/json")]
-    [Description("Structured server surface diff between supported released catalog versions. fromVersion/toVersion accept v-prefixed or v-less semver; toVersion also accepts current/latest. First supported pair: v2.3.1 -> v2.3.2/current.")]
+    [Description("Structured server surface diff from the supported historical catalog to the current release. fromVersion/toVersion accept v-prefixed or v-less semver; toVersion also accepts current/latest.")]
     public static string GetServerCatalogVersionDiff(
         [Description("Source version, e.g. v2.3.1 or 2.3.1.")] string fromVersion,
-        [Description("Target version, e.g. v2.3.2, 2.3.2, or current.")] string toVersion)
+        [Description("Target version: the current release semver (with or without v), current, or latest.")] string toVersion)
     {
         return ToolErrorHandler.ExecuteResourceScope(
             "roslyn://server/catalog-diff/{fromVersion}/{toVersion}",
@@ -95,8 +96,8 @@ public static class ServerResources
     {
         if (!int.TryParse(raw, out var value))
         {
-            throw new ArgumentException(
-                $"{slotName} must be an integer. Got: '{raw}'.",
+            throw new PublicArgumentException(
+                $"Parameter '{slotName}' must be an integer.",
                 slotName);
         }
         return value;

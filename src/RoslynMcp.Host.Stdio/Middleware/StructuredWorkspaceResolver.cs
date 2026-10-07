@@ -320,8 +320,8 @@ internal static class StructuredWorkspaceResolver
                         candidates);
                     return new PublicArgumentException(
                         $"workspaceId was omitted and no workspace is loaded. {discovery.Candidates.Count} " +
-                        $"candidate solutions were discovered ({candidates}). Call workspace_load(path=…) with " +
-                        "one of them, then retry — or pass workspaceId explicitly.",
+                        "candidate solutions were discovered. Call workspace_load(path=…) with an explicit " +
+                        "solution or project path, then retry — or pass workspaceId explicitly.",
                         ElicitationAllowlistPolicy.WorkspaceIdParameterName);
                 }
 
