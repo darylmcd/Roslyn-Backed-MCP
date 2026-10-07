@@ -22,3 +22,12 @@
 One child of the argument-error contract redesign (operator decision 2026-09-26: correct fix over the narrow paramless-ctor ban). Estimated diff ~30000 tokens.
 
 Family design (invariant, P/R/I classification, ban scope, exceptionType normalization): see `items/public-argument-exception-core-move.md` § Family design.
+
+## Amendment — 2026-10-06 (dispatch PR #1754 cold review)
+
+| Evidence | Required retirement behavior |
+|---|---|
+| ToolErrorHandler.cs:603-605 at reviewed 9b85ea95: if (string.Equals(exception.ParamName, "projectName", StringComparison.Ordinal)) returns unknown-project guidance solely from ParamName. The arm is byte-identical to immutable base a74. | Preserve distinct missing-value and unknown-project guidance while migrating remaining producers; then remove the sniff arm. |
+| FixAllTargetResolver.cs:40-41 throws ArgumentException for required projectName; MsBuildEvaluationService.cs:208-212 throws ArgumentException with message beginning "The 'project' parameter is required. Pass the project name or absolute .csproj path, " and parameter nameof(projectName); SymbolRelationshipService.cs:275 throws an unknown-project ArgumentException. | Existing dependencies code-action-and-flow, build-and-analysis and symbol-handle-and-reference own these live producers. Do not retire the fallback before all three migrate. |
+
+Dispatch public producers bypass the retained fallback. No new handler arm or compatibility shim was added.

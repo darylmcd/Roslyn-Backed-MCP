@@ -774,8 +774,17 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "a84ff27ab57765ce166591db7c152bcc8d4e72dd5ec4ea6c5ecaa42680dcc7ae",
-      "stanzaHash": "ba31aeb5d0e14d491385da3aa1170ebcabf21b6c3f422ff803303b93dcc5fba1",
-      "reviewedStanzaHash": "ba31aeb5d0e14d491385da3aa1170ebcabf21b6c3f422ff803303b93dcc5fba1"
+      "stanzaHash": "fe33c14da4c1d32b61fedb1954b6091c7d31e699aa828cbe84032b5788576e9c",
+      "reviewedStanzaHash": "fe33c14da4c1d32b61fedb1954b6091c7d31e699aa828cbe84032b5788576e9c",
+      "amendments": [
+        {
+          "at": "2026-10-07T00:33:07.361Z",
+          "finding": "Live record null guards are ArgumentNullException with existing safe Host guidance; empty-goal deletion hint contradicts parser and supported syntax",
+          "reason": "Preserve published null identity while migrating only lost nonblank guidance; replace false deletion remedy with accurate syntax correction and test empty goal refusal",
+          "previousStanzaHash": "ba31aeb5d0e14d491385da3aa1170ebcabf21b6c3f422ff803303b93dcc5fba1",
+          "stanzaHash": "fe33c14da4c1d32b61fedb1954b6091c7d31e699aa828cbe84032b5788576e9c"
+        }
+      ]
     },
     {
       "id": "edit-service-argument-refusals-public-message",
@@ -1339,14 +1348,14 @@
       "parameter-object-argument-refusals-public-message": "d32655a21730ce6a970badca6eb7dc847717c86b96484d5a2c8b1b58d1af5759",
       "bulk-refactoring-argument-refusals-public-message": "e7af7efb19e73a57b232b902523a524906236d69718a138524cc1205048e07e0",
       "type-extraction-argument-refusals-public-message": "f64e7f28ed65ce69c1ce3dcbbc1de0680b2a1a81e96b235397e2e4a7717a0cb0",
-      "restructure-and-semantic-grep-argument-refusals-public-message": "ba31aeb5d0e14d491385da3aa1170ebcabf21b6c3f422ff803303b93dcc5fba1",
+      "restructure-and-semantic-grep-argument-refusals-public-message": "fe33c14da4c1d32b61fedb1954b6091c7d31e699aa828cbe84032b5788576e9c",
       "edit-service-argument-refusals-public-message": "2e9605f85bd0feb3e3cd6ce6e7ea5efcc48a8af6a53ac6953d2a87ee28c325cd",
       "suppression-argument-refusals-public-message": "dc22bf053f48f0b679f4af4a67cd32698d8856cbf315795afeabf2ce8743c67c"
     }
   },
   "conflictGraphInputHash": "d8cc60859909341a1fe269584901aec43ebf07370c6ba2369f72f23d0f1f2042",
-  "planHash": "f3a0f3974f5252cce93e0352633fbb552f23fd395cf1300b762805bad4f103f8",
+  "planHash": "13f91c0514d6e756ccb0bca2030146aead50f54078270fdcabe045e6ef2520b7",
   "backlogSnapshotHash": "aa7593fb4e2c3b59453248d6223301e471be1161179df7994320f52ec840df5f",
-  "reviewedPlanHash": "f3a0f3974f5252cce93e0352633fbb552f23fd395cf1300b762805bad4f103f8",
+  "reviewedPlanHash": "13f91c0514d6e756ccb0bca2030146aead50f54078270fdcabe045e6ef2520b7",
   "reviewedBacklogSnapshotHash": "aa7593fb4e2c3b59453248d6223301e471be1161179df7994320f52ec840df5f"
 }

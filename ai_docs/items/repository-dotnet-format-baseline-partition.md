@@ -53,3 +53,13 @@ Fold into this row's repair slices: regenerate the artifact so `-Check` exits 0 
 state explicitly that non-zero-on-shrink is intended and pin whichever contract is chosen.
 
 [source: 2026-09-02 backlog-remediate PR #1429 cold review]
+
+## Amendment — 2026-10-06 (dispatch PR #1754 reviewed inventory)
+
+| Evidence | Observation |
+|---|---|
+| eng/format-baseline.json at reviewed 9b85ea95 | 93 findings across 89 files: 82 IMPORTS, 10 IDE1006, 1 FINALNEWLINE. |
+| Immutable generation base a74 to reviewed dispatch head | 24 changed inventory entries remove 23 IMPORTS and 3 WHITESPACE findings; zero additions or increased allowances. Total shrinks from 119 findings / 113 files. |
+| Native generator regeneration and -Check plus FormatterBaselineContractTests / ChangedFormatGateScriptTests | Both generator exits 0; 27 tests passed, zero failed/skipped. This is the reviewed dispatch candidate, not a claim that primary already contains it. |
+
+Continue bounded existing repair slices and regenerate/check after each; never increase allowances to hide new findings.
