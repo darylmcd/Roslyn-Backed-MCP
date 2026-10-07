@@ -11,27 +11,163 @@ namespace RoslynMcp.Tests;
 public sealed class SuppressionServiceTests
 {
     [TestMethod]
+    [DataRow("set", "diagnosticId")]
+    [DataRow("add", "diagnosticId")]
+    [DataRow("add", "line")]
+    [DataRow("verify", "diagnosticId")]
+    [DataRow("verify", "filePath")]
+    [DataRow("verify", "line")]
+    [DataRow("widen", "diagnosticId")]
+    [DataRow("widen", "filePath")]
+    [DataRow("widen", "line")]
+    public async Task PublicGuard_RefusesBeforeMutationDispatch(string operation, string parameter)
+    {
+        var writes = 0;
+        var editor = new StubEditorConfig
+        {
+            OnSetOption = (_, _, key, value, _, _) =>
+            {
+                writes++;
+                return Task.FromResult(new EditorConfigWriteResultDto("", key, value, false));
+            }
+        };
+        var edits = new StubEditService
+        {
+            OnApply = (_, path, _, _, _, _) =>
+            {
+                writes++;
+                return Task.FromResult(new TextEditResultDto(true, path, 1, []));
+            }
+        };
+        var sut = new SuppressionService(editor, edits);
+        var missingValues = parameter == "line" ? new string?[] { null } : [null, "", " "];
+        foreach (var missing in missingValues)
+        {
+            var path = parameter == "filePath" ? missing! : "PRIVATE-PATH-SENTINEL";
+            var id = parameter == "diagnosticId" ? missing! : "PRIVATE-ID-SENTINEL";
+            var line = parameter == "line" ? 0 : 1;
+            Task Invoke() => operation switch
+            {
+                "set" => sut.SetDiagnosticSeverityAsync("ws", id, "warning", path, CancellationToken.None),
+                "add" => sut.AddPragmaWarningDisableAsync("ws", path, line, id, CancellationToken.None),
+                "verify" => sut.VerifyPragmaSuppressesAsync("ws", path, line, id, CancellationToken.None),
+                "widen" => sut.WidenPragmaScopeAsync("ws", path, line, id, CancellationToken.None),
+                _ => throw new AssertFailedException(operation),
+            };
+            ArgumentException error = parameter == "line"
+                ? await Assert.ThrowsExactlyAsync<PublicArgumentOutOfRangeException>(Invoke)
+                : await Assert.ThrowsExactlyAsync<PublicArgumentException>(Invoke);
+            Assert.AreEqual(parameter, error.ParamName);
+            var correction = parameter switch
+            {
+                "line" => "Line must be 1-based and positive.",
+                "filePath" => "File path is required.",
+                _ => "Diagnostic id is required.",
+            };
+            Assert.AreEqual(correction, ((IPublicMessageException)error).PublicMessage);
+            Assert.IsFalse(error.Message.Contains("SENTINEL", StringComparison.Ordinal));
+            Assert.AreEqual(0, writes);
+        }
+    }
+
+    [TestMethod]
+    public async Task InternalNullGuards_RetainBclRefusals()
+    {
+        var editor = new StubEditorConfig();
+        var edits = new StubEditService();
+        var loggerError = Assert.ThrowsExactly<ArgumentNullException>(() =>
+            new SuppressionService(editor, edits, null, null, null!));
+        Assert.AreEqual("logger", loggerError.ParamName);
+        var sut = new SuppressionService(editor, edits);
+        var addError = await Assert.ThrowsExactlyAsync<ArgumentNullException>(() =>
+            sut.AddPragmaWarningDisableAsync("ws", "path", 1, "CS0168", null!, CancellationToken.None));
+        var widenError = await Assert.ThrowsExactlyAsync<ArgumentNullException>(() =>
+            sut.WidenPragmaScopeAsync("ws", "path", 1, "CS0168", null!, CancellationToken.None));
+        Assert.AreEqual("canonicalWritePath", addError.ParamName);
+        Assert.AreEqual("canonicalWritePath", widenError.ParamName);
+    }
+
+    [TestMethod]
+    [DataRow(null)]
+    [DataRow("")]
+    [DataRow("  ")]
+    [DataRow("PRIVATE-SEVERITY-SENTINEL")]
+    [DataRow("default")]
+    public async Task SetDiagnosticSeverityAsync_InvalidSeverity_RefusesBeforeDispatch(string? severity)
+    {
+        var dispatches = 0;
+        var editor = new StubEditorConfig
+        {
+            OnSetOption = (_, _, key, value, _, _) =>
+            {
+                dispatches++;
+                return Task.FromResult(new EditorConfigWriteResultDto("", key, value, false));
+            }
+        };
+        var sut = new SuppressionService(editor, new StubEditService());
+        var error = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
+            sut.SetDiagnosticSeverityAsync("ws", "CS0168", severity!, "/tmp/a.cs", CancellationToken.None));
+        Assert.AreEqual("severity", error.ParamName);
+        StringAssert.Contains(error.Message, "error, warning, suggestion, silent, or none");
+        Assert.IsFalse(error.Message.Contains("PRIVATE-SEVERITY-SENTINEL", StringComparison.Ordinal));
+        Assert.AreEqual(0, dispatches);
+    }
+
+    [TestMethod]
+    [DataRow("error")]
+    [DataRow("warning")]
+    [DataRow("suggestion")]
+    [DataRow("silent")]
+    [DataRow("none")]
+    [DataRow(" ERROR ")]
+    [DataRow(" Warning ")]
+    [DataRow(" SuGgEsTiOn ")]
+    [DataRow(" SILENT ")]
+    [DataRow(" NONE ")]
+    public async Task SetDiagnosticSeverityAsync_SupportedSeverity_PreservesTrimmedValue(string severity)
+    {
+        string? dispatched = null;
+        var editor = new StubEditorConfig
+        {
+            OnSetOption = (_, _, key, value, _, _) =>
+            {
+                dispatched = value;
+                return Task.FromResult(new EditorConfigWriteResultDto("", key, value, false));
+            }
+        };
+        await new SuppressionService(editor, new StubEditService()).SetDiagnosticSeverityAsync(
+            "ws", "CS0168", severity, "/tmp/a.cs", CancellationToken.None);
+        Assert.AreEqual(severity.Trim(), dispatched);
+    }
+
+    [TestMethod]
     public async Task SetDiagnosticSeverityAsync_Throws_WhenDiagnosticId_Missing()
     {
         var sut = new SuppressionService(new StubEditorConfig(), new StubEditService());
-        await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+        var error = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
             sut.SetDiagnosticSeverityAsync("ws", " ", "warning", "/tmp/a.cs", CancellationToken.None));
+        Assert.AreEqual("diagnosticId", error.ParamName);
+        Assert.AreEqual("ArgumentException", error.WireExceptionType);
     }
 
     [TestMethod]
     public async Task AddPragmaWarningDisableAsync_Throws_WhenLine_NotPositive()
     {
         var sut = new SuppressionService(new StubEditorConfig(), new StubEditService());
-        await Assert.ThrowsExactlyAsync<ArgumentOutOfRangeException>(() =>
+        var error = await Assert.ThrowsExactlyAsync<PublicArgumentOutOfRangeException>(() =>
             sut.AddPragmaWarningDisableAsync("ws", "/tmp/a.cs", 0, "CS0168", CancellationToken.None));
+        Assert.AreEqual("line", error.ParamName);
+        Assert.AreEqual("Line must be 1-based and positive.", error.PublicMessage);
     }
 
     [TestMethod]
     public async Task AddPragmaWarningDisableAsync_Throws_WhenDiagnosticId_Missing()
     {
         var sut = new SuppressionService(new StubEditorConfig(), new StubEditService());
-        await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+        var error = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
             sut.AddPragmaWarningDisableAsync("ws", "/tmp/a.cs", 1, " ", CancellationToken.None));
+        Assert.AreEqual("diagnosticId", error.ParamName);
+        Assert.AreEqual("ArgumentException", error.WireExceptionType);
     }
 
     [TestMethod]

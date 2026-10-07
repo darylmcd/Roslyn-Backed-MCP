@@ -1,6 +1,8 @@
+using System.Reflection;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
+using DescriptionAttribute = System.ComponentModel.DescriptionAttribute;
 
 namespace RoslynMcp.Tests;
 
@@ -19,6 +21,20 @@ public sealed class SuppressionToolsTests : IsolatedWorkspaceTestBase
 
     [ClassCleanup]
     public static void ClassCleanup() => DisposeServices();
+
+    [TestMethod]
+    public void SetDiagnosticSeverity_MetadataAdvertisesExactlySupportedSeverities()
+    {
+        var method = typeof(SuppressionTools).GetMethod(nameof(SuppressionTools.SetDiagnosticSeverity))!;
+        var description = method.GetCustomAttribute<DescriptionAttribute>()!.Description;
+        var parameter = method.GetParameters().Single(p => p.Name == "severity")
+            .GetCustomAttribute<DescriptionAttribute>()!.Description;
+        var values = new[] { "error", "warning", "suggestion", "silent", "none" };
+        var advertised = description[(description.IndexOf('(') + 1)..description.IndexOf(')')]
+            .Split(", ", StringSplitOptions.None);
+        CollectionAssert.AreEqual(values, advertised);
+        Assert.AreEqual("Severity: " + string.Join(", ", values[..^1]) + ", or " + values[^1], parameter);
+    }
 
     [TestMethod]
     [DataRow("add_pragma_suppression")]
