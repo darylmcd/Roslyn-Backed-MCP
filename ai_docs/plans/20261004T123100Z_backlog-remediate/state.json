@@ -694,7 +694,7 @@
     {
       "id": "type-extraction-argument-refusals-public-message",
       "order": 12,
-      "status": "in-progress",
+      "status": "in-review",
       "backlogRowsClosed": [
         "type-extraction-argument-refusals-public-message"
       ],
@@ -737,11 +737,11 @@
       "dependsOn": [
         "resource-argument-refusals-public-message"
       ],
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
+      "branch": "remediation/type-extraction-argument-refusals-public-message",
+      "worktreePath": "D:/Roslyn-Backed-MCP/.worktrees/type-extraction-argument-refusals-public-message",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1758",
       "mergedAt": null,
-      "notes": "Next generation immutable base6599be65a67de3ba24065c980118f6c4e6cc00a5 captured after verified1757 reconciliation merge/treeequality/primaryFFclean0/0; execute corrected complete public guard/bounds/null/wire/ADR scope. Originalcount15 unchanged; rootoperatorhold and suppressionnextgeneration preserved.",
+      "notes": "Executor returned complete; parent verified full envelope/current19source-DLL hashes/twoRelease receipts/logs/TRX186PASS0FAIL0SKIP and clean immutable9517871 head; Debug additionalonly. Fullhosted/coldreview/pinnedlanding stillrequired; originalcount15/rootoperatorhold unchanged.",
       "fileSetHash": "2f4b932aba9489fee92a8b1d66b80ffa28a17eb8aac3cbb73f4fcfdc48e6e903",
       "stanzaHash": "f75d6717e7d4e9762292ce919804619ae659a8a9fed4e72d39d9034f08aa9aa7",
       "reviewedStanzaHash": "f75d6717e7d4e9762292ce919804619ae659a8a9fed4e72d39d9034f08aa9aa7",
