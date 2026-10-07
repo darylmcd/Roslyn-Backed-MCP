@@ -31,3 +31,4 @@
 - These source traces establish state loss; no runtime exploit, tests or gate was executed during re-vet. Medium bug classification is justified by bounded preview state being lost, beyond the original Low quality description.
 - Live main contains no equivalent state-loss row; test-preview-store-cross-class-eviction concerns global capacity and different ownership semantics.
 
+2026-10-07 source re-vet at6599be65: ExtractMethodService shared-expression preview tail also calls Store(workspaceId, accumulator, _workspace.GetCurrentVersion(workspaceId), description) after bounded fileChanges are computed; legacy overload defaults diffTruncated:false/PreviewKind.Unspecified. Include this producer in the existing all-producer safety-state/provenance migration, preserving generic apply and public contract-care requirements. No Store change belongs to the separate extraction argument-guard initiative.
