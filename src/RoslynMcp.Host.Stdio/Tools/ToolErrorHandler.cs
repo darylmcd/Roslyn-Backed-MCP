@@ -618,12 +618,6 @@ internal static class ToolErrorHandler
             return "Parameter 'startLine' must be less than or equal to endLine.";
         }
 
-        if (string.Equals(exception.ParamName, "workspaceId", StringComparison.Ordinal) &&
-            rawMessage.Contains("candidate solution", StringComparison.OrdinalIgnoreCase))
-        {
-            return "Workspace auto-discovery found multiple candidates. Call workspace_load with an explicit solution or project path.";
-        }
-
         // semantic-grep-pattern-error-detail-redaction: SemanticGrepService throws a fixed
         // input-free sentinel when the caller's regex fails to parse (the raw .NET parser
         // message embeds the submitted pattern, which may itself be a secret). Guard on BOTH

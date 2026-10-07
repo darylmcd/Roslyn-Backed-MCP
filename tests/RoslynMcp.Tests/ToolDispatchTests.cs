@@ -602,6 +602,23 @@ public sealed class ToolDispatchTests
         }
     }
 
+    [TestMethod]
+    [DataRow(null)]
+    [DataRow("")]
+    public void RequireResolvedWorkspaceId_PublishesActionableRefusal(string? workspaceId)
+    {
+        var ex = Assert.ThrowsExactly<PublicArgumentException>(() =>
+            ToolDispatch.RequireResolvedWorkspaceId(workspaceId));
+        Assert.AreEqual("workspaceId", ex.ParamName);
+        StringAssert.Contains(ex.PublicMessage, "workspace_load");
+        Assert.AreEqual("ws-present", ToolDispatch.RequireResolvedWorkspaceId("ws-present"));
+        Assert.AreEqual(" ", ToolDispatch.RequireResolvedWorkspaceId(" "));
+        using var envelope = JsonDocument.Parse(ToolErrorHandler.ClassifyAndFormat(ex, "compile_check"));
+        Assert.AreEqual("InvalidArgument", envelope.RootElement.GetProperty("category").GetString());
+        Assert.AreEqual("ArgumentException", envelope.RootElement.GetProperty("exceptionType").GetString());
+        StringAssert.Contains(envelope.RootElement.GetProperty("message").GetString(), "workspace_load");
+    }
+
     /// <summary>
     /// Minimal stand-in for <see cref="IWorkspaceExecutionGate"/> that records which verb
     /// was invoked and the workspaceId that was passed. <c>RunLoadGateAsync</c> and

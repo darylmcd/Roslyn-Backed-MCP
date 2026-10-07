@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Catalog;
 using RoslynMcp.Host.Stdio.Elicitation;
 using RoslynMcp.Host.Stdio.ProtocolCompatibility;
@@ -61,7 +62,7 @@ internal static class StructuredCallElicitationCoordinator
         if (parameters.Arguments?.Keys.Any(name =>
                 ToolParameterIndex.GetParameter(parameters.Name, name) is null) == true)
         {
-            throw new ArgumentException(
+            throw new PublicArgumentException(
                 "Supply the required path argument using the exact name in the workspace_load schema.",
                 ElicitationAllowlistPolicy.PathParameterName);
         }
