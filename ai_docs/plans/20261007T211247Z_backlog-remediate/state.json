@@ -1,0 +1,1213 @@
+{
+  "schemaVersion": 4,
+  "generatedAt": "2026-10-07T21:13:16.850Z",
+  "backlogSnapshot": "2026-10-07T06:24:42Z",
+  "addendaLoaded": true,
+  "phase": "skeleton",
+  "cycleCount": 0,
+  "maxCycles": 2,
+  "completed": false,
+  "reviewStatus": "pending",
+  "readyForExecute": false,
+  "initiatives": [
+    {
+      "id": "code-action-and-flow-argument-refusals-public-message",
+      "order": 1,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "code-action-and-flow-argument-refusals-public-message"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "testFiles": null,
+      "docFiles": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "navigation-and-locator-argument-refusals-public-message",
+      "order": 2,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "navigation-and-locator-argument-refusals-public-message"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "testFiles": null,
+      "docFiles": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "workspace-lifecycle-argument-refusals-public-message",
+      "order": 3,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "workspace-lifecycle-argument-refusals-public-message"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "testFiles": null,
+      "docFiles": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "tool-refusal-public-message-guard",
+      "order": 4,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "tool-refusal-public-message-guard"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "testFiles": null,
+      "docFiles": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "extract-type-preserve-untouched-trivia",
+      "order": 5,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "extract-type-preserve-untouched-trivia"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "testFiles": null,
+      "docFiles": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "scaffold-batch-preview-apply-route",
+      "order": 6,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "scaffold-batch-preview-apply-route"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "testFiles": null,
+      "docFiles": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "workspace-fork-project-mutation-preview",
+      "order": 7,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "workspace-fork-project-mutation-preview"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "testFiles": null,
+      "docFiles": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "preview-token-consumed-reason",
+      "order": 8,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "preview-token-consumed-reason"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "testFiles": null,
+      "docFiles": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "notice-verifier-scoped-test-inherits-nuget-packages",
+      "order": 9,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "notice-verifier-scoped-test-inherits-nuget-packages"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "testFiles": null,
+      "docFiles": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "test-discovery-file-path-case-identity",
+      "order": 10,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "test-discovery-file-path-case-identity"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "testFiles": null,
+      "docFiles": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "workspace-project-alias-lookup",
+      "order": 11,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "workspace-project-alias-lookup"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "testFiles": null,
+      "docFiles": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "fix-all-equivalence-key-unregistered-fallback",
+      "order": 12,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "fix-all-equivalence-key-unregistered-fallback"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "testFiles": null,
+      "docFiles": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "editorconfig-section-source-path-matching",
+      "order": 13,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "editorconfig-section-source-path-matching"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "testFiles": null,
+      "docFiles": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "logging-jsonl-drops-structured-state",
+      "order": 14,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "logging-jsonl-drops-structured-state"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "testFiles": null,
+      "docFiles": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "restore-callers-missing-packages-path",
+      "order": 15,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "restore-callers-missing-packages-path"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "testFiles": null,
+      "docFiles": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "split-service-refuse-cross-partition-references",
+      "order": 16,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "split-service-refuse-cross-partition-references"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "testFiles": null,
+      "docFiles": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "change-signature-class-struct-primary-ctor-add-remove",
+      "order": 17,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "change-signature-class-struct-primary-ctor-add-remove"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "testFiles": null,
+      "docFiles": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "load-profile-full-suite",
+      "order": 18,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "load-profile-full-suite"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "testFiles": null,
+      "docFiles": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "workspace-close-global-build-server-shutdown",
+      "order": 19,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "workspace-close-global-build-server-shutdown"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "testFiles": null,
+      "docFiles": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "test-temp-reaper-live-owner",
+      "order": 20,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "test-temp-reaper-live-owner"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "testFiles": null,
+      "docFiles": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "change-signature-service-refusals-public-message",
+      "order": 21,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "change-signature-service-refusals-public-message"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "testFiles": null,
+      "docFiles": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "cross-project-public-refusals-echo-input",
+      "order": 22,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "cross-project-public-refusals-echo-input"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "testFiles": null,
+      "docFiles": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "top10-good-preview-result-contract",
+      "order": 23,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "top10-good-preview-result-contract"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "testFiles": null,
+      "docFiles": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "workspace-close-isolated-nuget-handles",
+      "order": 24,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "workspace-close-isolated-nuget-handles"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "testFiles": null,
+      "docFiles": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "preview-store-explicit-internal-state",
+      "order": 25,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "preview-store-explicit-internal-state"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "testFiles": null,
+      "docFiles": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "preview-diff-whitespace-omission",
+      "order": 26,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "preview-diff-whitespace-omission"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "testFiles": null,
+      "docFiles": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    }
+  ],
+  "anchorVerification": "pending",
+  "conflictGraph": {
+    "edges": [],
+    "degrees": {},
+    "zeroDegreeInitiatives": []
+  },
+  "selection": {
+    "requestedCount": "auto",
+    "selectedCount": 26,
+    "skipped": [
+      {
+        "id": "logging-default-sink-disabled-stderr-swallowed",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "promotion-scorecard-refresh-toplevel-run",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-analysis-batch-1",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-analysis-batch-2",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-analysis-batch-3",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-editing-batch-1",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-editing-batch-2",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-orchestration-batch-1",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-orchestration-batch-2",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-refactoring-batch-1",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-refactoring-batch-2",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-refactoring-batch-3",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-refactoring-batch-4",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-symbols",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-workspace",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-project-mutation",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-file-operations",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-formatting",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-extract",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-scaffolding",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-replace",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-code-fix",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-remove",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-cross-project",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-signature",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-restructure",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-split-class",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-move",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-formatting",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-text-edit",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-code-transform-1",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-code-transform-2",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-code-transform-3",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-code-transform-4",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-file-lifecycle",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-undo-revert",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "root-boundary-argument-refusals-public-message",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-error-handler-argument-sniffing-arms-retired",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "argument-exception-public-message-guard",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "preview-apply-tool-descriptions",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "logging-event-id-collisions-no-catalog",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "logging-failure-records-lack-diagnosis",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "logging-dependency-boundary-duration-missing",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "logging-observability-contract-doc-incomplete",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "split-service-refuse-unsupported-method-signatures",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "split-service-forward-ref-out-in-arguments",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "split-service-copy-namespace-scoped-usings",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "change-signature-record-primary-ctor-add-remove",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "change-signature-primary-ctor-rename-reorder",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "host-tools-code-quality-extraction",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "host-tools-code-search-extraction",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "host-tools-complexity-extraction",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "changelog-process-tests-runner-adoption",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "mutation-analysis-property-write-orchestrator-decomposition",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "tasks-extension-build-test-run",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "tasks-extension-contract-docs",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "scaffolding-async-sibling-io-boundary",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "scaffold-warning-mrtr-typed-state",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "server-probe-test-doubles-batch-2",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "server-probe-test-doubles-batch-3",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "unused-code-analyzer-test-harness-wave-3",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "unused-code-analyzer-test-harness-wave-2",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "root-expansion-grant-registry-host-ownership",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "logging-event-ids-remaining-call-sites",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "logging-file-sink-sync-io-per-record",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "project-name-path-selection-duplication",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "http-streamable-host-project",
+        "reason": "defer-band"
+      },
+      {
+        "id": "workspace-process-pool-or-daemon",
+        "reason": "defer-band"
+      },
+      {
+        "id": "locationdto-next-major-flat-field-removal",
+        "reason": "defer-band"
+      },
+      {
+        "id": "locationdto-stage3-flat-field-deprecation",
+        "reason": "defer-band"
+      },
+      {
+        "id": "audit-21-analyzer-plan-defer-or-retire",
+        "reason": "defer-band"
+      },
+      {
+        "id": "project-name-not-found-category-next-major",
+        "reason": "defer-band"
+      },
+      {
+        "id": "server-info-update-available-next-major-nullable",
+        "reason": "defer-band"
+      },
+      {
+        "id": "workspace-not-found-next-major-category-promotion",
+        "reason": "defer-band"
+      },
+      {
+        "id": "v5-major-release-contract-prereqs",
+        "reason": "defer-band"
+      },
+      {
+        "id": "editorconfig-posix-uncooperative-write-race",
+        "reason": "defer-band"
+      },
+      {
+        "id": "atomic-file-writer-external-temp-path-swap",
+        "reason": "defer-band"
+      },
+      {
+        "id": "client-root-widening-drive-root-parent",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "initiative-executor-roslyn-tool-discovery-experiment",
+        "reason": "non-code-deliverable"
+      },
+      {
+        "id": "move-to-git-issues",
+        "reason": "row-factory"
+      },
+      {
+        "id": "tool-surface-pagination-or-tool-sets",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "symbol-handle-and-reference-argument-refusals-public-message",
+        "reason": "split-budget-exhausted"
+      },
+      {
+        "id": "preview-token-argument-refusals-public-message",
+        "reason": "split-budget-exhausted"
+      },
+      {
+        "id": "build-and-analysis-argument-refusals-public-message",
+        "reason": "split-budget-exhausted"
+      },
+      {
+        "id": "scripting-and-snippet-argument-refusals-public-message",
+        "reason": "split-budget-exhausted"
+      },
+      {
+        "id": "timeout-error-names-fired-timer",
+        "reason": "split-budget-exhausted"
+      },
+      {
+        "id": "test-run-nobuild-msbuild-properties",
+        "reason": "split-budget-exhausted"
+      },
+      {
+        "id": "project-name-not-found-misleading-reload-advice",
+        "reason": "split-budget-exhausted"
+      },
+      {
+        "id": "other-failed-apply-displaces-undo-target",
+        "reason": "split-budget-exhausted"
+      },
+      {
+        "id": "logging-retention-destroys-repro-evidence",
+        "reason": "split-budget-exhausted"
+      },
+      {
+        "id": "logging-process-vitals-absent",
+        "reason": "split-budget-exhausted"
+      },
+      {
+        "id": "timing-test-reaudit-wave",
+        "reason": "split-budget-exhausted"
+      },
+      {
+        "id": "gate-timing-tests-fail-under-machine-load",
+        "reason": "split-budget-exhausted"
+      },
+      {
+        "id": "format-range-service-refusals-public-message",
+        "reason": "split-budget-exhausted"
+      },
+      {
+        "id": "change-signature-omitted-optional-binding",
+        "reason": "split-budget-exhausted"
+      }
+    ],
+    "note": "Default first-40 window; one split retained, 14 further split candidates skipped without backfill; 214 capability-eligible rows beyond ceiling. No contextPct supplied: at most 10 implementation dispatches before checkpoint."
+  }
+}
