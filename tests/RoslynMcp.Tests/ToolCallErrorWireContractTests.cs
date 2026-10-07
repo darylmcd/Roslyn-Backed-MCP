@@ -64,7 +64,7 @@ public sealed class ToolCallErrorWireContractTests : IsolatedWorkspaceTestBase
 
         foreach (var protocol in protocols)
         {
-            await using var harness = await CreateHarnessAsync(protocol.Requested);
+            await using var harness = await CreateHarnessAsync(protocol.Requested, null);
             Assert.AreEqual(protocol.Expected, harness.Client.NegotiatedProtocolVersion);
 
             var priorMessageCount = harness.RawServerMessages.Count;
@@ -191,7 +191,7 @@ public sealed class ToolCallErrorWireContractTests : IsolatedWorkspaceTestBase
             {
                 foreach (var protocol in Protocols())
                 {
-                    await using var harness = await CreateHarnessAsync(protocol.Requested, manager);
+                    await using var harness = await CreateHarnessAsync(protocol.Requested, null, manager);
                     var frame = await CallAndCaptureAsync(harness, "compile_check", arguments: null);
                     AssertFastFailFrame(frame, "loaded workspace", protocol.Modern);
 
@@ -224,7 +224,7 @@ public sealed class ToolCallErrorWireContractTests : IsolatedWorkspaceTestBase
             };
             foreach (var protocol in Protocols())
             {
-                await using var harness = await CreateHarnessAsync(protocol.Requested, manager, ambiguousRoot);
+                await using var harness = await CreateHarnessAsync(protocol.Requested, null, manager, ambiguousRoot);
                 var frame = await CallAndCaptureAsync(harness, "symbol_info", arguments);
                 AssertFastFailFrame(frame, "candidate solutions", protocol.Modern);
             }
@@ -242,7 +242,7 @@ public sealed class ToolCallErrorWireContractTests : IsolatedWorkspaceTestBase
     {
         foreach (var protocol in Protocols())
         {
-            await using var harness = await CreateHarnessAsync(protocol.Requested);
+            await using var harness = await CreateHarnessAsync(protocol.Requested, null);
             var frame = await CallAndCaptureAsync(harness, "workspace_load", arguments: null);
             AssertFastFailFrame(frame, "path", protocol.Modern);
             var payload = ErrorPayload(frame);
@@ -262,7 +262,7 @@ public sealed class ToolCallErrorWireContractTests : IsolatedWorkspaceTestBase
     {
         foreach (var protocol in Protocols())
         {
-            await using var harness = await CreateHarnessAsync(protocol.Requested);
+            await using var harness = await CreateHarnessAsync(protocol.Requested, null);
             var partial = new Dictionary<string, object?> { ["first"] = "supplied" };
             var frame = await CallAndCaptureAsync(harness, "synthetic_required_arguments", partial);
             var payload = ErrorPayload(frame);
@@ -289,7 +289,7 @@ public sealed class ToolCallErrorWireContractTests : IsolatedWorkspaceTestBase
     {
         foreach (var protocol in Protocols())
         {
-            await using var harness = await CreateHarnessAsync(protocol.Requested);
+            await using var harness = await CreateHarnessAsync(protocol.Requested, null);
             var arguments = new Dictionary<string, object?>
             {
                 ["workspaceId"] = "synthetic-workspace",
@@ -309,6 +309,7 @@ public sealed class ToolCallErrorWireContractTests : IsolatedWorkspaceTestBase
     public async Task MrtrRetry_UsesRecoveredArgumentsToNameTheRemainingOmission()
     {
         await using var harness = await CreateHarnessAsync(
+            symbolRefactorService: null,
             protocolVersion: null,
             workspaceManager: new FailClosedWorkspaceManagerStub(),
             elicitationHandler: (_, _) => ValueTask.FromResult(new ElicitResult
@@ -354,7 +355,7 @@ public sealed class ToolCallErrorWireContractTests : IsolatedWorkspaceTestBase
             {
                 foreach (var protocol in Protocols())
                 {
-                    await using var harness = await CreateHarnessAsync(protocol.Requested, manager);
+                    await using var harness = await CreateHarnessAsync(protocol.Requested, null, manager);
                     var arguments = new Dictionary<string, object?>
                     {
                         ["filePath"] = Path.Combine(root, "SampleLib", "WidgetTarget.cs"),
@@ -384,7 +385,7 @@ public sealed class ToolCallErrorWireContractTests : IsolatedWorkspaceTestBase
     {
         foreach (var protocol in Protocols())
         {
-            await using var harness = await CreateHarnessAsync(protocol.Requested);
+            await using var harness = await CreateHarnessAsync(protocol.Requested, null);
             var frame = await CallAndCaptureAsync(harness, "synthetic_public_refusal", arguments: null);
             var payload = ErrorPayload(frame);
             Assert.AreEqual("InvalidArgument", payload["category"]?.GetValue<string>());
@@ -418,7 +419,7 @@ public sealed class ToolCallErrorWireContractTests : IsolatedWorkspaceTestBase
     {
         foreach (var protocol in Protocols())
         {
-            await using var harness = await CreateHarnessAsync(protocol.Requested);
+            await using var harness = await CreateHarnessAsync(protocol.Requested, null);
             var frame = await CallAndCaptureAsync(harness, "get_prompt_text",
                 new Dictionary<string, object?> { ["promptName"] = name, ["parametersJson"] = json });
             AssertFastFailFrame(frame, correction, protocol.Modern);
@@ -428,6 +429,60 @@ public sealed class ToolCallErrorWireContractTests : IsolatedWorkspaceTestBase
             Assert.AreEqual(identity, payload["exceptionType"]?.GetValue<string>(), scenario);
             Assert.IsFalse(frame.ToJsonString().Contains("SECRET-SENTINEL", StringComparison.Ordinal), scenario);
         }
+    }
+
+    [TestMethod]
+    [DataRow("2025-11-25", false, "null-operation", "InvalidOperation", "InvalidOperationException")]
+    [DataRow("2026-07-28", true, "null-operation", "InvalidOperation", "InvalidOperationException")]
+    [DataRow("2025-11-25", false, "null-partition", "InvalidArgument", "ArgumentException")]
+    [DataRow("2026-07-28", true, "null-partition", "InvalidArgument", "ArgumentException")]
+    [DataRow("2025-11-25", false, "null-member", "InvalidArgument", "ArgumentException")]
+    [DataRow("2026-07-28", true, "null-member", "InvalidArgument", "ArgumentException")]
+    [DataRow("2025-11-25", false, "blank-member", "InvalidArgument", "ArgumentException")]
+    [DataRow("2026-07-28", true, "blank-member", "InvalidArgument", "ArgumentException")]
+    public async Task MalformedCompositeInput_ActualProducerPreservesSafeWireIdentity(
+        string protocol, bool modern, string shape, string category, string identity)
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync();
+        var service = new SymbolRefactorService(WorkspaceManager, RefactoringService, EditService,
+            new RestructureService(WorkspaceManager, PreviewStore), new CompositePreviewStore(), DiRegistrationService);
+        await using var harness = await CreateHarnessAsync(protocol, service);
+        Assert.AreEqual(protocol, harness.Client.NegotiatedProtocolVersion);
+        var toolName = shape == "null-operation" ? "symbol_refactor_preview" : "split_service_with_di_preview";
+        var arguments = new Dictionary<string, object?> { ["workspaceId"] = workspace.WorkspaceId };
+        if (shape == "null-operation")
+            arguments["operations"] = new object?[] { null };
+        else
+        {
+            arguments["sourceFilePath"] = Path.Combine(Path.GetDirectoryName(workspace.SolutionPath)!, "SampleLib", "RefactoringProbe.cs");
+            arguments["sourceType"] = "RefactoringProbe";
+            arguments["partitions"] = shape == "null-partition" ? new object?[] { null }
+                : [new { typeName = SecretSentinel, memberNames = new string?[] { shape == "null-member" ? null : " " } }];
+        }
+        var frame = await CallAndCaptureAsync(harness, toolName, arguments);
+        var raw = frame.ToJsonString();
+        Assert.IsNull(frame["error"], raw);
+        var result = Assert.IsInstanceOfType<JsonObject>(frame["result"]);
+        Assert.AreEqual(true, result["isError"]?.GetValue<bool>(), raw);
+        if (modern)
+            Assert.AreEqual("complete", result["resultType"]?.GetValue<string>(), raw);
+        else
+            Assert.IsNull(result["resultType"], raw);
+        var payload = ErrorPayload(frame);
+        Assert.AreEqual(category, payload["category"]?.GetValue<string>(), raw);
+        Assert.AreEqual(identity, payload["exceptionType"]?.GetValue<string>(), raw);
+        StringAssert.Contains(payload["message"]?.GetValue<string>(), shape == "null-operation" ? "operation #1" : "MemberName");
+        Assert.IsInstanceOfType<JsonObject>(payload["_meta"]);
+        if (shape == "null-operation")
+            Assert.IsNull(payload["schemaHint"]);
+        else
+            StringAssert.Contains(payload["schemaHint"]?.GetValue<string>(), "partitions");
+        Assert.IsFalse(raw.Contains(JsonEncodedText.Encode(SecretSentinel).ToString(), StringComparison.Ordinal), raw);
+        Assert.IsFalse(raw.Contains(nameof(NullReferenceException), StringComparison.Ordinal), raw);
+        Assert.IsFalse(raw.Contains(nameof(PublicArgumentException), StringComparison.Ordinal), raw);
+        Assert.IsFalse(raw.Contains(nameof(PublicInvalidOperationException), StringComparison.Ordinal), raw);
+        Assert.IsFalse(raw.Contains("stackTrace", StringComparison.Ordinal), raw);
+        Assert.IsFalse(raw.Contains(JsonEncodedText.Encode(workspace.SolutionPath).ToString(), StringComparison.Ordinal), raw);
     }
 
     private static WorkspaceManager CreateIsolatedWorkspaceManager()
@@ -442,11 +497,17 @@ public sealed class ToolCallErrorWireContractTests : IsolatedWorkspaceTestBase
 
     private static async Task<InMemoryMcpClientServerHarness> CreateHarnessAsync(
         string? protocolVersion,
+        ISymbolRefactorService? symbolRefactorService,
         IWorkspaceManager? workspaceManager = null,
         string? sanctionedRoot = null,
         Func<ElicitRequestParams?, CancellationToken, ValueTask<ElicitResult>>? elicitationHandler = null)
     {
         var services = new ServiceCollection();
+        if (symbolRefactorService is not null)
+        {
+            services.AddSingleton(symbolRefactorService);
+            services.AddSingleton<IWorkspaceExecutionGate>(WorkspaceExecutionGate);
+        }
         if (workspaceManager is not null)
         {
             services.AddSingleton<IWorkspaceManager>(workspaceManager);
@@ -465,7 +526,7 @@ public sealed class ToolCallErrorWireContractTests : IsolatedWorkspaceTestBase
                 };
             })
             .WithTools<SyntheticUnexpectedFailureTools>()
-            .WithTools([typeof(PromptShimTools)])
+            .WithTools([typeof(PromptShimTools), typeof(SymbolRefactorTools)])
             .WithMessageFilters(static filters =>
                 filters.AddIncomingFilter(RequestCorrelationMessageFilter.Create))
             .WithRequestFilters(static filters =>

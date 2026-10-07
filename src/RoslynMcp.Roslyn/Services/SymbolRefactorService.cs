@@ -88,6 +88,9 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
             var op = operations[i];
             try
             {
+                if (op is null)
+                    throw new PublicArgumentException("Each operation must be non-null.", nameof(operations));
+
                 var (nextSolution, stepChanges, stepDescription) =
                     await ExecuteOperationOnSolutionAsync(accumulator, op, ct).ConfigureAwait(false);
 
@@ -98,6 +101,11 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
                 {
                     aggregatedDiffs[change.FilePath] = change;
                 }
+            }
+            catch (PublicArgumentException ex)
+            {
+                throw new PublicInvalidOperationException(
+                    $"symbol_refactor_preview operation #{i + 1} failed: {ex.PublicMessage}", ex);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -137,8 +145,8 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
             "rename" => await ExecuteRenameOnSolutionAsync(inputSolution, op, ct).ConfigureAwait(false),
             "edit" => await ExecuteEditOnSolutionAsync(inputSolution, op, ct).ConfigureAwait(false),
             "restructure" => await ExecuteRestructureOnSolutionAsync(inputSolution, op, ct).ConfigureAwait(false),
-            _ => throw new ArgumentException(
-                $"Unsupported operation kind '{op.Kind}'. Valid: rename, edit, restructure."),
+            _ => throw new PublicArgumentException(
+                "Unsupported operation Kind. Valid kinds: rename, edit, restructure.", nameof(op.Kind)),
         };
     }
 
@@ -146,7 +154,7 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
         ExecuteRenameOnSolutionAsync(Solution inputSolution, SymbolRefactorOperation op, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(op.NewName))
-            throw new ArgumentException("kind='rename' requires NewName.");
+            throw new PublicArgumentException("kind='rename' requires NewName.", nameof(op.NewName));
         var locator = new SymbolLocator(op.FilePath, op.Line, op.Column, op.SymbolHandle, op.MetadataName);
         locator.Validate();
         return _refactoringServiceConcrete.PreviewRenameOnSolutionAsync(inputSolution, locator, op.NewName, ct);
@@ -156,7 +164,7 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
         ExecuteEditOnSolutionAsync(Solution inputSolution, SymbolRefactorOperation op, CancellationToken ct)
     {
         if (op.FileEdits is null || op.FileEdits.Count == 0)
-            throw new ArgumentException("kind='edit' requires FileEdits.");
+            throw new PublicArgumentException("kind='edit' requires FileEdits.", nameof(op.FileEdits));
         var (newSolution, changes, description, _) = await _editServiceConcrete
             .PreviewMultiFileTextEditsOnSolutionAsync(inputSolution, op.FileEdits, ct, skipSyntaxCheck: false)
             .ConfigureAwait(false);
@@ -166,8 +174,10 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
     private Task<(Solution NewSolution, IReadOnlyList<FileChangeDto> Changes, string Description)>
         ExecuteRestructureOnSolutionAsync(Solution inputSolution, SymbolRefactorOperation op, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(op.Pattern) || op.Goal is null)
-            throw new ArgumentException("kind='restructure' requires Pattern and Goal.");
+        if (string.IsNullOrWhiteSpace(op.Pattern))
+            throw new PublicArgumentException("kind='restructure' requires a non-empty Pattern.", nameof(op.Pattern));
+        if (op.Goal is null)
+            throw new PublicArgumentException("kind='restructure' requires Goal.", nameof(op.Goal));
         return _restructureServiceConcrete.PreviewRestructureOnSolutionAsync(
             inputSolution, op.Pattern, op.Goal,
             new RestructureScope(op.ScopeFilePath, op.ScopeProjectName), ct);
@@ -266,13 +276,15 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
     private static void ValidateSplitServiceArgs(string sourceFilePath, string sourceType, IReadOnlyList<SplitServicePartition> partitions)
     {
         if (string.IsNullOrWhiteSpace(sourceFilePath))
-            throw new ArgumentException("sourceFilePath is required.", nameof(sourceFilePath));
+            throw new PublicArgumentException("sourceFilePath is required.", nameof(sourceFilePath));
         if (string.IsNullOrWhiteSpace(sourceType))
-            throw new ArgumentException("sourceType is required.", nameof(sourceType));
+            throw new PublicArgumentException("sourceType is required.", nameof(sourceType));
         if (partitions is null || partitions.Count == 0)
-            throw new ArgumentException("At least one partition is required.", nameof(partitions));
-        if (partitions.Any(partition => string.IsNullOrWhiteSpace(partition.TypeName) || partition.MemberNames is null || partition.MemberNames.Count == 0))
-            throw new ArgumentException("Each partition requires TypeName and at least one MemberName.", nameof(partitions));
+            throw new PublicArgumentException("At least one partition is required.", nameof(partitions));
+        if (partitions.Any(partition => partition is null || string.IsNullOrWhiteSpace(partition.TypeName)
+            || partition.MemberNames is null || partition.MemberNames.Count == 0
+            || partition.MemberNames.Any(string.IsNullOrWhiteSpace)))
+            throw new PublicArgumentException("Each partition must be non-null and requires TypeName and at least one non-empty MemberName.", nameof(partitions));
 
         var duplicatedMembers = partitions
             .SelectMany(partition => partition.MemberNames)
@@ -282,8 +294,8 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
             .ToArray();
         if (duplicatedMembers.Length > 0)
         {
-            throw new ArgumentException(
-                $"Each member must appear in exactly one partition. Duplicated: {string.Join(", ", duplicatedMembers)}",
+            throw new PublicArgumentException(
+                "Each member must appear in exactly one partition; remove duplicate member assignments.",
                 nameof(partitions));
         }
     }
@@ -1367,9 +1379,15 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
         string newFieldType,
         CancellationToken ct)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(typeMetadataName);
-        ArgumentException.ThrowIfNullOrWhiteSpace(newFieldName);
-        ArgumentException.ThrowIfNullOrWhiteSpace(newFieldType);
+        ArgumentNullException.ThrowIfNull(typeMetadataName);
+        if (string.IsNullOrWhiteSpace(typeMetadataName))
+            throw new PublicArgumentException("typeMetadataName is required and must be non-empty.", nameof(typeMetadataName));
+        ArgumentNullException.ThrowIfNull(newFieldName);
+        if (string.IsNullOrWhiteSpace(newFieldName))
+            throw new PublicArgumentException("newFieldName is required and must be non-empty.", nameof(newFieldName));
+        ArgumentNullException.ThrowIfNull(newFieldType);
+        if (string.IsNullOrWhiteSpace(newFieldType))
+            throw new PublicArgumentException("newFieldType is required and must be non-empty.", nameof(newFieldType));
 
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var symbol = await SymbolResolver.ResolveByMetadataNameAsync(solution, typeMetadataName, ct).ConfigureAwait(false);

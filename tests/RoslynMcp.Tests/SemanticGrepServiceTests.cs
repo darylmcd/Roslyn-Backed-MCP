@@ -1,4 +1,5 @@
 using System.Text.Json;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
 
 namespace RoslynMcp.Tests;
@@ -23,6 +24,31 @@ public sealed class SemanticGrepServiceTests : SharedWorkspaceTestBase
 
     [ClassCleanup]
     public static void ClassCleanup() => DisposeServices();
+
+
+    [TestMethod]
+    [DataRow("blank", "pattern")]
+    [DataRow("scope", "scope")]
+    [DataRow("limit", "limit")]
+    public async Task InvalidArguments_PublishActionableGuidanceWithoutSubmittedValues(string shape, string parameter)
+    {
+        var ex = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
+            SemanticGrepService.SearchAsync(WorkspaceId, shape == "blank" ? "" : "PRIVATE_valid_pattern",
+                shape == "scope" ? "PRIVATE_scope" : "identifiers", null,
+                shape == "limit" ? 0 : 10, CancellationToken.None));
+        Assert.AreEqual(parameter, ex.ParamName);
+        using var payload = JsonDocument.Parse(ToolErrorHandler.ClassifyAndFormat(ex, "semantic_grep"));
+        Assert.AreEqual("InvalidArgument", payload.RootElement.GetProperty("category").GetString());
+        Assert.AreEqual("ArgumentException", payload.RootElement.GetProperty("exceptionType").GetString());
+        Assert.AreEqual(ex.PublicMessage, payload.RootElement.GetProperty("message").GetString());
+        StringAssert.Contains(ex.PublicMessage, shape switch
+        {
+            "blank" => "non-empty",
+            "scope" => "identifiers, strings, comments, all",
+            _ => ">= 1",
+        });
+        Assert.IsFalse(payload.RootElement.GetRawText().Contains("PRIVATE", StringComparison.Ordinal));
+    }
 
     [TestMethod]
     public async Task SemanticGrep_Identifiers_FindsConsoleInvocationsButNotStringContent()
@@ -107,7 +133,7 @@ public sealed class SemanticGrepServiceTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task SemanticGrep_InvalidScope_Throws()
     {
-        await Assert.ThrowsExactlyAsync<ArgumentException>(
+        await Assert.ThrowsExactlyAsync<PublicArgumentException>(
             () => SemanticGrepService.SearchAsync(
                 WorkspaceId, @"x", "definitely-not-a-scope", projectFilter: null, limit: 10, CancellationToken.None));
     }
@@ -115,7 +141,7 @@ public sealed class SemanticGrepServiceTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task SemanticGrep_EmptyPattern_Throws()
     {
-        await Assert.ThrowsExactlyAsync<ArgumentException>(
+        await Assert.ThrowsExactlyAsync<PublicArgumentException>(
             () => SemanticGrepService.SearchAsync(
                 WorkspaceId, "", "identifiers", projectFilter: null, limit: 10, CancellationToken.None));
     }
@@ -123,7 +149,7 @@ public sealed class SemanticGrepServiceTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task SemanticGrep_InvalidRegex_Throws()
     {
-        await Assert.ThrowsExactlyAsync<ArgumentException>(
+        await Assert.ThrowsExactlyAsync<PublicArgumentException>(
             () => SemanticGrepService.SearchAsync(
                 WorkspaceId, "(unclosed", "identifiers", projectFilter: null, limit: 10, CancellationToken.None));
     }
@@ -180,12 +206,14 @@ public sealed class SemanticGrepServiceTests : SharedWorkspaceTestBase
             thrown = ex;
         }
 
-        // Thrown message: fixed sentinel, no pattern text, no parser fragment. Parser detail
+        Assert.IsInstanceOfType<PublicArgumentException>(thrown);
+        // Thrown message: fixed public guidance, no pattern text, no parser fragment. Parser detail
         // survives server-side as InnerException only.
         Assert.IsFalse(MessageLeaks(thrown.Message, pattern),
             $"Thrown message leaked pattern or parser text: {thrown.Message}");
         Assert.AreEqual("pattern", thrown.ParamName);
-        Assert.IsNotNull(thrown.InnerException, "Parser detail must be preserved as InnerException for server-side diagnostics.");
+        var parserError = Assert.IsInstanceOfType<System.Text.RegularExpressions.RegexParseException>(thrown.InnerException);
+        StringAssert.Contains(parserError.Message, pattern, "The original parser detail must remain private for diagnostics.");
 
         // Public envelope via the real classifier path.
         var envelopeJson = ToolErrorHandler.ClassifyAndFormat(thrown, "semantic_grep");
@@ -198,6 +226,11 @@ public sealed class SemanticGrepServiceTests : SharedWorkspaceTestBase
             $"Public envelope message leaked pattern or parser text: {message}");
         StringAssert.Contains(message, "not a valid .NET regular expression",
             "Public envelope must carry regex-specific correction guidance, not the generic parameter fallback.");
+        Assert.AreEqual("ArgumentException", root.GetProperty("exceptionType").GetString());
+        Assert.AreEqual("Parameter 'pattern' is not a valid .NET regular expression. Patterns use " +
+            "System.Text.RegularExpressions syntax, not ripgrep/PCRE. Check for unbalanced " +
+            "parentheses or brackets, invalid quantifier ranges, and unescaped metacharacters, " +
+            "then retry with a corrected pattern.", message);
         StringAssert.Contains(message, "System.Text.RegularExpressions",
             "Guidance must name the regex dialect so callers stop retrying ripgrep/PCRE syntax.");
     }

@@ -59,17 +59,17 @@ public sealed class SemanticGrepService : ISemanticGrepService
         _logger.LogDebug("SemanticGrepService.SearchAsync: workspaceId={WorkspaceId} scope={Scope} patternLength={PatternLength} projectFilter={ProjectFilter} limit={Limit}", workspaceId, scope, pattern?.Length ?? 0, projectFilter, limit);
         if (string.IsNullOrEmpty(pattern))
         {
-            throw new ArgumentException("pattern must be non-empty.", nameof(pattern));
+            throw new PublicArgumentException("pattern must be non-empty.", nameof(pattern));
         }
         if (string.IsNullOrWhiteSpace(scope) || !ValidScopes.Contains(scope))
         {
-            throw new ArgumentException(
+            throw new PublicArgumentException(
                 $"scope must be one of: {ScopeIdentifiers}, {ScopeStrings}, {ScopeComments}, {ScopeAll}.",
                 nameof(scope));
         }
         if (limit < 1)
         {
-            throw new ArgumentException("limit must be >= 1.", nameof(limit));
+            throw new PublicArgumentException("limit must be >= 1.", nameof(limit));
         }
 
         Regex regex;
@@ -81,9 +81,13 @@ public sealed class SemanticGrepService : ISemanticGrepService
         {
             // semantic-grep-pattern-error-detail-redaction: the .NET parser message embeds the
             // caller's raw pattern text (e.g. "Invalid pattern '(?<secret' at offset 8"), which
-            // can carry the very secret the caller is grepping for. Throw a fixed, input-free
-            // sentinel instead; ex stays as InnerException for server-side diagnostics only.
-            throw new ArgumentException(InvalidRegexSentinel, nameof(pattern), ex);
+            // can carry the very secret the caller is grepping for. Throw fixed, input-free
+            // guidance instead; ex stays as InnerException for server-side diagnostics only.
+            throw new PublicArgumentException(
+                "Parameter 'pattern' is not a valid .NET regular expression. Patterns use " +
+                "System.Text.RegularExpressions syntax, not ripgrep/PCRE. Check for unbalanced " +
+                "parentheses or brackets, invalid quantifier ranges, and unescaped metacharacters, " +
+                "then retry with a corrected pattern.", nameof(pattern), ex);
         }
 
         var includeIdentifiers = scope is ScopeAll || string.Equals(scope, ScopeIdentifiers, StringComparison.OrdinalIgnoreCase);
