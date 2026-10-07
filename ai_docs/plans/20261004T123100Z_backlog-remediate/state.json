@@ -1014,7 +1014,8 @@
           "previousStanzaHash": "a720c6dafbe2a7ab9499bcf7448df6c88110582179ffee0fddbdf43071aad506",
           "stanzaHash": "2e1397098de9f0f1e9e6f32781a434025e97a130b23ad50d951e420a4fb942dc"
         }
-      ]
+      ],
+      "reviewedHead": "f8447fda88f43958a47aaabca1693a6cd07fc634"
     }
   ],
   "anchorVerification": "performed",
