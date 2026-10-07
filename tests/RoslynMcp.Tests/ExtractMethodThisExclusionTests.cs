@@ -1,3 +1,6 @@
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+
 namespace RoslynMcp.Tests;
 
 /// <summary>
@@ -60,13 +63,14 @@ public sealed class ExtractMethodThisExclusionTests : TestBase
             // Extract the two statements (`var doubled = ...` and `var result = ...`).
             // `_multiplier` is read via implicit `this`, which is what used to pull
             // the `this` pointer into the synthesized parameter list.
+            var selection = await FindStatementSelectionAsync(fixturePath);
             var previewDto = await ExtractMethodService.PreviewExtractMethodAsync(
                 workspaceId,
                 fixturePath,
-                startLine: 8,
-                startColumn: 9,
-                endLine: 9,
-                endColumn: 46,
+                startLine: selection.Start.Line + 1,
+                startColumn: selection.Start.Character + 1,
+                endLine: selection.End.Line + 1,
+                endColumn: selection.End.Character + 1,
                 methodName: "CalculateResult",
                 ct: CancellationToken.None);
 
@@ -122,13 +126,14 @@ public sealed class ExtractMethodThisExclusionTests : TestBase
 
         try
         {
+            var selection = await FindStatementSelectionAsync(fixturePath);
             var previewDto = await ExtractMethodService.PreviewExtractMethodAsync(
                 workspaceId,
                 fixturePath,
-                startLine: 6,
-                startColumn: 9,
-                endLine: 7,
-                endColumn: 58,
+                startLine: selection.Start.Line + 1,
+                startColumn: selection.Start.Character + 1,
+                endLine: selection.End.Line + 1,
+                endColumn: selection.End.Character + 1,
                 methodName: "ComputeTripledFromDoubled",
                 ct: CancellationToken.None);
 
@@ -146,4 +151,14 @@ public sealed class ExtractMethodThisExclusionTests : TestBase
             TestFixtureFileSystem.DeleteDirectoryIfExists(solutionDir);
         }
     }
+    private static async Task<Microsoft.CodeAnalysis.Text.LinePositionSpan> FindStatementSelectionAsync(string path)
+    {
+        var source = await File.ReadAllTextAsync(path);
+        var root = CSharpSyntaxTree.ParseText(source).GetRoot();
+        var statements = root.DescendantNodes().OfType<LocalDeclarationStatementSyntax>().Take(2).ToArray();
+        return new Microsoft.CodeAnalysis.Text.LinePositionSpan(
+            statements[0].GetLocation().GetLineSpan().StartLinePosition,
+            statements[1].GetLocation().GetLineSpan().EndLinePosition);
+    }
+
 }

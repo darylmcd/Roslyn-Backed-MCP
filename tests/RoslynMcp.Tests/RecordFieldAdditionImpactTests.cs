@@ -1,3 +1,4 @@
+using RoslynMcp.Core.Services;
 namespace RoslynMcp.Tests;
 
 // donotparallelize-audit-wave-21: [DoNotParallelize] removed. The two positional/non-positional
@@ -229,7 +230,7 @@ public static class NonPositionalRecordConsumer
         // should know they invoked the wrong tool.
         var workspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
 
-        await Assert.ThrowsExactlyAsync<ArgumentException>(async () =>
+        await Assert.ThrowsExactlyAsync<PublicArgumentException>(async () =>
             await RecordFieldAdditionService.PreviewAdditionAsync(
                 workspaceId,
                 recordMetadataName: "SampleLib.Dog",
@@ -256,4 +257,31 @@ public static class NonPositionalRecordConsumer
                 defaultValueExpression: null,
                 CancellationToken.None));
     }
+
+    [TestMethod]
+    [DataRow("recordMetadataName")]
+    [DataRow("newFieldName")]
+    [DataRow("newFieldType")]
+    public async Task ArgumentRefusals_RecordNullAndBlankAreDistinct(string parameter)
+    {
+        foreach (var value in new string?[] { null, "", "  " })
+        {
+            Func<Task> action = () => RecordFieldAdditionService.PreviewAdditionAsync("unused",
+                parameter == "recordMetadataName" ? value! : "SampleLib.Dog",
+                parameter == "newFieldName" ? value! : "Flag",
+                parameter == "newFieldType" ? value! : "bool", null, CancellationToken.None);
+            if (value is null)
+            {
+                var error = await Assert.ThrowsExactlyAsync<ArgumentNullException>(action);
+                Assert.AreEqual(parameter, error.ParamName);
+            }
+            else
+            {
+                var error = await Assert.ThrowsExactlyAsync<PublicArgumentException>(action);
+                Assert.AreEqual(parameter, error.ParamName);
+                StringAssert.Contains(error.PublicMessage, "must not be empty");
+            }
+        }
+    }
+
 }

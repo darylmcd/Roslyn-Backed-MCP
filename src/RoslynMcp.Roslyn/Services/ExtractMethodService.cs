@@ -38,15 +38,14 @@ public sealed class ExtractMethodService : IExtractMethodService
         string methodName, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(methodName))
-            throw new ArgumentException("Method name must not be empty.", nameof(methodName));
-
-        if (startLine > endLine || (startLine == endLine && startColumn > endColumn))
-            throw new ArgumentException("Start position must be before end position.");
+            throw new PublicArgumentException("Method name must not be empty.", nameof(methodName));
+        IdentifierValidation.ThrowIfInvalidPublicIdentifier(methodName, nameof(methodName), allowContextualKeywords: true);
 
         var (root, semanticModel, text, document, solution) =
             await ResolveDocumentAsync(workspaceId, filePath, ct).ConfigureAwait(false);
 
-        var selectionSpan = BuildSelectionSpan(text, startLine, startColumn, endLine, endColumn);
+        var selectionSpan = BuildSelectionSpan(text, startLine, startColumn, endLine, endColumn,
+            nameof(startLine), nameof(startColumn), nameof(endLine), nameof(endColumn));
 
         var (enclosingMember, statementsInSelection, parentBlock) =
             FindEnclosingMethodAndStatements(root, selectionSpan);
@@ -161,11 +160,37 @@ public sealed class ExtractMethodService : IExtractMethodService
 
     private static Microsoft.CodeAnalysis.Text.TextSpan BuildSelectionSpan(
         Microsoft.CodeAnalysis.Text.SourceText text,
-        int startLine, int startColumn, int endLine, int endColumn)
+        int startLine, int startColumn, int endLine, int endColumn,
+        string startLineParameter, string startColumnParameter,
+        string endLineParameter, string endColumnParameter)
     {
-        var startPosition = text.Lines[startLine - 1].Start + (startColumn - 1);
-        var endPosition = text.Lines[endLine - 1].Start + (endColumn - 1);
+        var startPosition = ResolveSelectionPosition(text, startLine, startColumn, startLineParameter, startColumnParameter);
+        var endPosition = ResolveSelectionPosition(text, endLine, endColumn, endLineParameter, endColumnParameter);
+        if (startLine > endLine)
+            throw new PublicArgumentException(
+                $"{startLineParameter} must not be after {endLineParameter}.", startLineParameter);
+        if (startLine == endLine && startColumn > endColumn)
+            throw new PublicArgumentException(
+                $"{startColumnParameter} must not be after {endColumnParameter} on the same line.", startColumnParameter);
+
         return Microsoft.CodeAnalysis.Text.TextSpan.FromBounds(startPosition, endPosition);
+    }
+
+    private static int ResolveSelectionPosition(
+        Microsoft.CodeAnalysis.Text.SourceText text, int line, int column,
+        string lineParameter, string columnParameter)
+    {
+        if (line < 1 || line > text.Lines.Count)
+            throw new PublicArgumentOutOfRangeException(
+                $"{lineParameter} must be between 1 and the source line count.", lineParameter);
+
+        var sourceLine = text.Lines[line - 1];
+        if (column < 1 || (long)column > (long)sourceLine.Span.Length + 1)
+            throw new PublicArgumentOutOfRangeException(
+                $"{columnParameter} must be between 1 and the selected line length plus 1.", columnParameter);
+
+        // Bounds above make this sum no greater than sourceLine.End (and therefore text.Length).
+        return checked(sourceLine.Start + (column - 1));
     }
 
     private static (MemberDeclarationSyntax EnclosingMember, List<StatementSyntax> Statements, BlockSyntax ParentBlock)
@@ -364,7 +389,7 @@ public sealed class ExtractMethodService : IExtractMethodService
         // (in PreviewExtractMethodAsync) re-flows whitespace inside this method —
         // including class-scope indentation on the declaration line and a clean
         // newline before the next sibling member's closing brace.
-        var newMethod = SyntaxFactory.MethodDeclaration(returnType, SyntaxFactory.Identifier(methodName))
+        var newMethod = SyntaxFactory.MethodDeclaration(returnType, IdentifierValidation.CreateMemberIdentifierToken(methodName))
             .WithModifiers(SyntaxFactory.TokenList(
                 isStatic
                     ? [accessModifier, SyntaxFactory.Token(SyntaxKind.StaticKeyword)]
@@ -382,7 +407,7 @@ public sealed class ExtractMethodService : IExtractMethodService
                     SyntaxFactory.Argument(SyntaxFactory.IdentifierName(p.Name)))));
 
         var callExpression = SyntaxFactory.InvocationExpression(
-            SyntaxFactory.IdentifierName(methodName), arguments);
+            SyntaxFactory.IdentifierName(IdentifierValidation.CreateMemberIdentifierToken(methodName)), arguments);
 
         StatementSyntax callStatement;
         if (flowsOut.Count == 1)
@@ -575,10 +600,8 @@ public sealed class ExtractMethodService : IExtractMethodService
         CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(helperName))
-            throw new ArgumentException("Helper name must not be empty.", nameof(helperName));
-        if (exampleStartLine > exampleEndLine
-            || (exampleStartLine == exampleEndLine && exampleStartColumn > exampleEndColumn))
-            throw new ArgumentException("Start position must be before end position.");
+            throw new PublicArgumentException("Helper name must not be empty.", nameof(helperName));
+        IdentifierValidation.ThrowIfInvalidPublicIdentifier(helperName, nameof(helperName), allowContextualKeywords: true);
 
         var accessibilityToken = ParseAccessibility(helperAccessibility);
 
@@ -593,9 +616,15 @@ public sealed class ExtractMethodService : IExtractMethodService
         var exampleText = await exampleDocument.GetTextAsync(ct).ConfigureAwait(false);
 
         var exampleSpan = BuildSelectionSpan(
-            exampleText, exampleStartLine, exampleStartColumn, exampleEndLine, exampleEndColumn);
+            exampleText, exampleStartLine, exampleStartColumn, exampleEndLine, exampleEndColumn,
+            nameof(exampleStartLine), nameof(exampleStartColumn), nameof(exampleEndLine), nameof(exampleEndColumn));
 
-        var exampleExpression = FindContainedExpression(exampleRoot, exampleSpan);
+        if (exampleSpan.IsEmpty)
+            throw new PublicArgumentException(
+                "Select a nonempty complete value expression.", nameof(exampleStartColumn));
+
+        var exampleExpression = FindContainedExpression(
+            exampleRoot, exampleModel, exampleSpan, nameof(exampleStartColumn));
         var exampleType = exampleExpression.AncestorsAndSelf().OfType<TypeDeclarationSyntax>().FirstOrDefault()
             ?? throw new InvalidOperationException(
                 "Example expression must be inside a type declaration.");
@@ -697,6 +726,7 @@ public sealed class ExtractMethodService : IExtractMethodService
             {
                 if (!SyntaxFactory.AreEquivalent(exampleExpression, candidate, topLevel: false))
                     continue;
+                if (!IsValueExpression(candidate, docModel)) continue;
 
                 // Apply containing-type guard when allowCrossFile=false. Different containing
                 // types would force the helper to sit across a type boundary that the plan's
@@ -843,43 +873,50 @@ public sealed class ExtractMethodService : IExtractMethodService
         return (accumulator, change);
     }
 
-    private static SyntaxToken ParseAccessibility(string accessibility)
+    private static SyntaxToken ParseAccessibility(string helperAccessibility)
     {
-        if (string.IsNullOrWhiteSpace(accessibility))
+        if (string.IsNullOrWhiteSpace(helperAccessibility))
             return SyntaxFactory.Token(SyntaxKind.PrivateKeyword);
 
-        return accessibility.Trim().ToLowerInvariant() switch
+        return helperAccessibility.Trim().ToLowerInvariant() switch
         {
             "private" => SyntaxFactory.Token(SyntaxKind.PrivateKeyword),
             "internal" => SyntaxFactory.Token(SyntaxKind.InternalKeyword),
             "public" => SyntaxFactory.Token(SyntaxKind.PublicKeyword),
-            _ => throw new ArgumentException(
-                $"Unsupported accessibility '{accessibility}'. Use private, internal, or public.",
-                nameof(accessibility))
+            _ => throw new PublicArgumentException(
+                "Use private, internal, or public for helperAccessibility.",
+                nameof(helperAccessibility))
         };
     }
 
-    private static ExpressionSyntax FindContainedExpression(
-        CompilationUnitSyntax root, Microsoft.CodeAnalysis.Text.TextSpan selectionSpan)
+    private static bool IsValueExpression(ExpressionSyntax expression, SemanticModel model)
     {
-        // Prefer the deepest expression fully contained by the selection span; fall back to the
-        // innermost expression touching the span. The caller supplies an example span that
-        // should bracket a complete sub-expression.
+        // Names inherit TypeSyntax even in value positions. Use context and binding, not the CLR node type.
+        return !SyntaxFacts.IsInNamespaceOrTypeContext(expression)
+            && model.GetSymbolInfo(expression).Symbol is not ITypeSymbol and not INamespaceSymbol;
+    }
+
+    private static ExpressionSyntax FindContainedExpression(
+        CompilationUnitSyntax root, SemanticModel model,
+        Microsoft.CodeAnalysis.Text.TextSpan selectionSpan, string selectionParameter)
+    {
+        // Prefer the largest value expression fully contained by the selection.
         ExpressionSyntax? best = null;
-        foreach (var expr in root.DescendantNodes().OfType<ExpressionSyntax>())
+        foreach (var expression in root.DescendantNodes().OfType<ExpressionSyntax>())
         {
-            if (!selectionSpan.Contains(expr.Span)) continue;
-            if (best is null || expr.Span.Length > best.Span.Length) best = expr;
+            if (!selectionSpan.Contains(expression.Span) || !IsValueExpression(expression, model)) continue;
+            if (best is null || expression.Span.Length > best.Span.Length) best = expression;
         }
 
         if (best is not null) return best;
 
-        // Fall back: find innermost expression overlapping the span.
         var startNode = root.FindNode(selectionSpan, getInnermostNodeForTie: true);
         var innermost = startNode.AncestorsAndSelf().OfType<ExpressionSyntax>().FirstOrDefault();
-        return innermost
-            ?? throw new InvalidOperationException(
-                "Example span does not resolve to any C# expression. Select a complete sub-expression.");
+        if (innermost is null || !IsValueExpression(innermost, model))
+            throw new PublicArgumentException(
+                "Select a complete value expression rather than a type or namespace name.", selectionParameter);
+
+        return innermost;
     }
 
     private static List<FreeVariable> CollectFreeVariables(ExpressionSyntax expression, SemanticModel model)
@@ -938,7 +975,7 @@ public sealed class ExtractMethodService : IExtractMethodService
                     .WithAdditionalAnnotations(Formatter.Annotation)
             }));
 
-        return SyntaxFactory.MethodDeclaration(returnTypeSyntax, SyntaxFactory.Identifier(helperName))
+        return SyntaxFactory.MethodDeclaration(returnTypeSyntax, IdentifierValidation.CreateMemberIdentifierToken(helperName))
             .WithModifiers(SyntaxFactory.TokenList(
                 accessibility,
                 SyntaxFactory.Token(SyntaxKind.StaticKeyword)))
@@ -958,8 +995,8 @@ public sealed class ExtractMethodService : IExtractMethodService
                 freeVariables.Select(v => SyntaxFactory.Argument(SyntaxFactory.IdentifierName(v.Name)))));
 
         ExpressionSyntax target = string.IsNullOrEmpty(fullyQualifiedTypePrefix)
-            ? SyntaxFactory.IdentifierName(helperName)
-            : SyntaxFactory.ParseExpression($"{fullyQualifiedTypePrefix}.{helperName}");
+            ? SyntaxFactory.IdentifierName(IdentifierValidation.CreateMemberIdentifierToken(helperName))
+            : SyntaxFactory.ParseExpression($"{fullyQualifiedTypePrefix}.{IdentifierValidation.CreateMemberIdentifierToken(helperName).Text}");
 
         // Formatter.Annotation lets `Formatter.FormatAsync` re-flow spacing around commas,
         // parentheses, and (when fully-qualified) dotted member-access chains per editorconfig.

@@ -1,4 +1,5 @@
 using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
 
 namespace RoslynMcp.Tests;
 
@@ -29,7 +30,7 @@ public sealed class ExtractMethodTests : IsolatedWorkspaceTestBase
             workspace.WorkspaceId,
             filePath,
             startLine: 13, startColumn: 9,
-            endLine: 15, endColumn: 39,
+            endLine: 15, endColumn: 36,
             "ComputeCore",
             CancellationToken.None);
 
@@ -57,7 +58,7 @@ public sealed class ExtractMethodTests : IsolatedWorkspaceTestBase
             workspace.WorkspaceId,
             filePath,
             startLine: 13, startColumn: 9,
-            endLine: 15, endColumn: 39,
+            endLine: 15, endColumn: 36,
             "ComputeCore",
             CancellationToken.None);
 
@@ -91,7 +92,7 @@ public sealed class ExtractMethodTests : IsolatedWorkspaceTestBase
             workspace.WorkspaceId,
             filePath,
             startLine: 13, startColumn: 9,
-            endLine: 14, endColumn: 34,
+            endLine: 14, endColumn: 31,
             "ComputeDoubled",
             CancellationToken.None);
 
@@ -187,7 +188,7 @@ public sealed class ExtractMethodTests : IsolatedWorkspaceTestBase
                 workspace.WorkspaceId,
                 filePath,
                 startLine: 13, startColumn: 9,
-                endLine: 16, endColumn: 25,
+                endLine: 16, endColumn: 24,
                 "BadExtract",
                 CancellationToken.None));
 
@@ -203,12 +204,12 @@ public sealed class ExtractMethodTests : IsolatedWorkspaceTestBase
         await using var workspace = await CreateIsolatedWorkspaceAsync();
         var filePath = workspace.GetPath("SampleLib", "RefactoringProbe.cs");
 
-        await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+        await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
             ExtractMethodService.PreviewExtractMethodAsync(
                 workspace.WorkspaceId,
                 filePath,
                 startLine: 13, startColumn: 9,
-                endLine: 14, endColumn: 34,
+                endLine: 14, endColumn: 31,
                 "",
                 CancellationToken.None));
     }
@@ -232,7 +233,7 @@ public sealed class ExtractMethodTests : IsolatedWorkspaceTestBase
             workspace.WorkspaceId,
             filePath,
             startLine: 39, startColumn: 9,
-            endLine: 40, endColumn: 30,
+            endLine: 40, endColumn: 29,
             "TransformResult",
             CancellationToken.None);
 
@@ -270,7 +271,7 @@ public sealed class ExtractMethodTests : IsolatedWorkspaceTestBase
             workspace.WorkspaceId,
             filePath,
             startLine: 13, startColumn: 9,
-            endLine: 14, endColumn: 34,
+            endLine: 14, endColumn: 31,
             "ComputeDoubled",
             CancellationToken.None);
 
@@ -305,7 +306,7 @@ public sealed class ExtractMethodTests : IsolatedWorkspaceTestBase
             workspace.WorkspaceId,
             filePath,
             startLine: 56, startColumn: 9,
-            endLine: 60, endColumn: 9,
+            endLine: 60, endColumn: 10,
             "AmplifyResult",
             CancellationToken.None);
 
@@ -317,4 +318,71 @@ public sealed class ExtractMethodTests : IsolatedWorkspaceTestBase
         Assert.IsTrue(diff.Contains("AmplifyResult"),
             $"Diff should contain the extracted method name. Diff:\n{diff}");
     }
+
+    [TestMethod]
+    [DataRow(0, 9, 15, 36, "startLine")]
+    [DataRow(-1, 9, 15, 36, "startLine")]
+    [DataRow(int.MinValue, 9, 15, 36, "startLine")]
+    [DataRow(int.MaxValue, 9, 15, 36, "startLine")]
+    [DataRow(13, 0, 15, 36, "startColumn")]
+    [DataRow(13, -1, 15, 36, "startColumn")]
+    [DataRow(13, int.MinValue, 15, 36, "startColumn")]
+    [DataRow(13, int.MaxValue, 15, 36, "startColumn")]
+    [DataRow(13, 100, 15, 36, "startColumn")]
+    [DataRow(13, 9, 0, 39, "endLine")]
+    [DataRow(13, 9, -1, 39, "endLine")]
+    [DataRow(13, 9, int.MinValue, 39, "endLine")]
+    [DataRow(13, 9, int.MaxValue, 39, "endLine")]
+    [DataRow(13, 9, 15, 0, "endColumn")]
+    [DataRow(13, 9, 15, -1, "endColumn")]
+    [DataRow(13, 9, 15, int.MinValue, "endColumn")]
+    [DataRow(13, 9, 15, int.MaxValue, "endColumn")]
+    [DataRow(13, 9, 15, 100, "endColumn")]
+    public async Task ArgumentRefusals_MethodCoordinatesAreBounded(
+        int startLine, int startColumn, int endLine, int endColumn, string parameter)
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync();
+        var error = await Assert.ThrowsExactlyAsync<PublicArgumentOutOfRangeException>(() =>
+            ExtractMethodService.PreviewExtractMethodAsync(workspace.WorkspaceId,
+                workspace.GetPath("SampleLib", "RefactoringProbe.cs"),
+                startLine, startColumn, endLine, endColumn, "Extracted", CancellationToken.None));
+        Assert.AreEqual(parameter, error.ParamName);
+        StringAssert.Contains(error.PublicMessage, parameter);
+        StringAssert.Contains(error.PublicMessage, "1");
+    }
+
+    [TestMethod]
+    [DataRow(15, 9, 13, 9, "startLine")]
+    [DataRow(13, 10, 13, 9, "startColumn")]
+    public async Task ArgumentRefusals_MethodReversedSpanNamesStart(
+        int startLine, int startColumn, int endLine, int endColumn, string parameter)
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync();
+        var error = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
+            ExtractMethodService.PreviewExtractMethodAsync(workspace.WorkspaceId, workspace.GetPath("SampleLib", "RefactoringProbe.cs"),
+                startLine, startColumn, endLine, endColumn, "Extracted", CancellationToken.None));
+        Assert.AreEqual(parameter, error.ParamName);
+    }
+
+    [TestMethod]
+    public async Task ArgumentRefusals_MethodEqualSpanRetainsDownstreamRefusal()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync();
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+            ExtractMethodService.PreviewExtractMethodAsync(workspace.WorkspaceId,
+                workspace.GetPath("SampleLib", "RefactoringProbe.cs"),
+                13, 9, 13, 9, "Extracted", CancellationToken.None));
+    }
+
+    [TestMethod]
+    public async Task ArgumentRefusals_MethodLineLengthPlusOneIsValid()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync();
+        var path = workspace.GetPath("SampleLib", "RefactoringProbe.cs");
+        var text = Microsoft.CodeAnalysis.Text.SourceText.From(await File.ReadAllTextAsync(path));
+        var preview = await ExtractMethodService.PreviewExtractMethodAsync(workspace.WorkspaceId,
+            path, 13, 9, 15, text.Lines[14].Span.Length + 1, "Extracted", CancellationToken.None);
+        Assert.IsNotNull(preview.PreviewToken);
+    }
+
 }

@@ -24,9 +24,10 @@ public sealed class TypeExtractionService : ITypeExtractionService
         IReadOnlyList<string> memberNames, string newTypeName, string? newFilePath,
         CancellationToken ct)
     {
-        ValidateNewTypeName(newTypeName);
+        IdentifierValidation.ThrowIfInvalidPublicIdentifier(newTypeName, nameof(newTypeName), allowContextualKeywords: false);
+        ArgumentNullException.ThrowIfNull(memberNames);
         if (memberNames.Count == 0)
-            throw new ArgumentException("At least one member name must be specified.", nameof(memberNames));
+            throw new PublicArgumentException("At least one member name must be specified.", nameof(memberNames));
 
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var sourceDocument = SymbolResolver.FindDocument(solution, filePath)
@@ -112,7 +113,15 @@ public sealed class TypeExtractionService : ITypeExtractionService
         // Determine target file path
         var sourceDir = Path.GetDirectoryName(sourceDocument.FilePath!)!;
         var resolvedTargetPath = newFilePath ?? Path.Combine(sourceDir, $"{newTypeName}.cs");
-        resolvedTargetPath = Path.GetFullPath(resolvedTargetPath);
+        try
+        {
+            resolvedTargetPath = Path.GetFullPath(resolvedTargetPath);
+        }
+        catch (Exception exception) when (newFilePath is not null
+            && (exception is ArgumentException or PathTooLongException))
+        {
+            throw ArgumentErrors.Redacted(nameof(newFilePath), "Target path could not be normalized.", exception);
+        }
 
         // Build the new type declaration with extracted members
         var newFileRoot = BuildNewFileRoot(
@@ -152,18 +161,6 @@ public sealed class TypeExtractionService : ITypeExtractionService
         return new RefactoringPreviewDto(
             token, description, changes,
             Warnings: null);
-    }
-
-    private static void ValidateNewTypeName(string newTypeName)
-    {
-        try
-        {
-            IdentifierValidation.ThrowIfInvalidIdentifier(newTypeName, "newTypeName");
-        }
-        catch (InvalidOperationException exception)
-        {
-            throw new ArgumentException(exception.Message, nameof(newTypeName), exception);
-        }
     }
 
     /// <summary>
