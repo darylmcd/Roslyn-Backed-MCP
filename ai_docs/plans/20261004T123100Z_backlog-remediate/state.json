@@ -796,7 +796,8 @@
           "previousStanzaHash": "fdb324b702e8dad49a2422ffe39db3d13cf477e2114a994c153dfb71c37baf4a",
           "stanzaHash": "f75d6717e7d4e9762292ce919804619ae659a8a9fed4e72d39d9034f08aa9aa7"
         }
-      ]
+      ],
+      "reviewedHead": "9517871d82546e1b3f30fe150cf1650d2699f362"
     },
     {
       "id": "restructure-and-semantic-grep-argument-refusals-public-message",
