@@ -9,7 +9,6 @@ Selection note: Default first-40 window; one split retained, 14 further split ca
 
 | # | id | status | PR | rows closed |
 |---|----|--------|----|-------------|
-| 1 | code-action-and-flow-argument-refusals-public-message | pending | — | code-action-and-flow-argument-refusals-public-message |
 | 2 | navigation-and-locator-argument-refusals-public-message | pending | — | navigation-and-locator-argument-refusals-public-message |
 | 3 | workspace-lifecycle-argument-refusals-public-message | pending | — | workspace-lifecycle-argument-refusals-public-message |
 | 4 | tool-refusal-public-message-guard | pending | — | tool-refusal-public-message-guard |
@@ -17,7 +16,7 @@ Selection note: Default first-40 window; one split retained, 14 further split ca
 | 6 | scaffold-batch-preview-apply-route | pending | — | scaffold-batch-preview-apply-route |
 | 7 | workspace-fork-project-mutation-preview | pending | — | workspace-fork-project-mutation-preview |
 | 8 | preview-token-consumed-reason | pending | — | preview-token-consumed-reason |
-| 9 | notice-verifier-scoped-test-inherits-nuget-packages | pending | — | notice-verifier-scoped-test-inherits-nuget-packages |
+| 9 | notice-verifier-scoped-test-inherits-nuget-packages | obsolete | — | notice-verifier-scoped-test-inherits-nuget-packages |
 | 10 | test-discovery-file-path-case-identity | pending | — | test-discovery-file-path-case-identity |
 | 11 | workspace-project-alias-lookup | pending | — | workspace-project-alias-lookup |
 | 12 | fix-all-equivalence-key-unregistered-fallback | pending | — | fix-all-equivalence-key-unregistered-fallback |
@@ -38,10 +37,6 @@ Selection note: Default first-40 window; one split retained, 14 further split ca
 <!-- BSWEEP:STATUS-TABLE END -->
 
 ## Initiatives
-
-### 1. code-action-and-flow-argument-refusals-public-message
-
-Stanza: `plan/code-action-and-flow-argument-refusals-public-message.md`
 
 ### 2. navigation-and-locator-argument-refusals-public-message
 
