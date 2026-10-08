@@ -3,11 +3,11 @@
   "generatedAt": "2026-10-07T21:13:16.850Z",
   "backlogSnapshot": "2026-10-07T06:24:42Z",
   "addendaLoaded": true,
-  "phase": "skeleton",
-  "cycleCount": 0,
+  "phase": "complete",
+  "cycleCount": 1,
   "maxCycles": 2,
   "completed": false,
-  "reviewStatus": "pending",
+  "reviewStatus": "failed",
   "readyForExecute": false,
   "initiatives": [
     {
@@ -220,134 +220,6 @@
       "notes": null
     },
     {
-      "id": "workspace-fork-project-mutation-preview",
-      "order": 7,
-      "status": "pending",
-      "backlogRowsClosed": [
-        "workspace-fork-project-mutation-preview"
-      ],
-      "productionFilesTouched": 13,
-      "productionFiles": [
-        "src/RoslynMcp.Core/Services/IProjectMutationPreviewStore.cs",
-        "src/RoslynMcp.Core/Services/ICompositePreviewStore.cs",
-        "src/RoslynMcp.Roslyn/Services/ProjectMutationPreviewStore.cs",
-        "src/RoslynMcp.Roslyn/Services/CompositePreviewStore.cs",
-        "src/RoslynMcp.Roslyn/Services/PersistentCompositeStorage.cs",
-        "src/RoslynMcp.Roslyn/Services/ProjectMutationService.cs",
-        "src/RoslynMcp.Roslyn/Services/CompositeApplyOrchestrator.cs",
-        "src/RoslynMcp.Roslyn/Services/ClassSplitOrchestrator.cs",
-        "src/RoslynMcp.Roslyn/Services/ExtractAndWireOrchestrator.cs",
-        "src/RoslynMcp.Roslyn/Services/PackageMigrationOrchestrator.cs",
-        "src/RoslynMcp.Roslyn/Services/SymbolRefactorService.cs",
-        "src/RoslynMcp.Roslyn/Services/WorkspaceForkApplyService.cs",
-        "src/RoslynMcp.Host.Stdio/Tools/ValidationBundleTools.cs"
-      ],
-      "testFilesAdded": 8,
-      "testFiles": [
-        "tests/RoslynMcp.Tests/Workspace/WorkspaceForkApplyTests.cs",
-        "tests/RoslynMcp.Tests/Services/PersistentCompositeStorageTests.cs",
-        "tests/RoslynMcp.Tests/CompositeApplyOrchestratorTests.cs",
-        "tests/RoslynMcp.Tests/ClientRootPathValidatorTests.cs",
-        "tests/RoslynMcp.Tests/SymbolRefactorPreviewTests.cs",
-        "tests/RoslynMcp.Tests/BoundedStoreEvictionTests.cs",
-        "tests/RoslynMcp.Tests/ProjectMutationIntegrationTests.cs",
-        "tests/RoslynMcp.Tests/FileMutationPreviewSafetyTests.cs"
-      ],
-      "docFiles": [
-        "docs/decisions/0020-workspace-fork-preview-replay.md",
-        "docs/decisions/0009-tool-surface-policy.md",
-        "docs/decisions/README.md",
-        "changelog.d/workspace-fork-project-mutation-preview.md"
-      ],
-      "rowsClosedCount": 1,
-      "estimatedContextTokens": 65000,
-      "toolPolicy": "edit-only",
-      "scheduleHint": "heroic-last",
-      "fanoutEstimate": 13,
-      "fanoutOversize": true,
-      "deepenerStatus": "ok",
-      "deepenerFlags": {
-        "judgmentHeavy": true,
-        "anchorStale": false,
-        "ruleOneBundleResolved": "n/a"
-      },
-      "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": null
-    },
-    {
-      "id": "preview-token-consumed-reason",
-      "order": 8,
-      "status": "pending",
-      "backlogRowsClosed": [
-        "preview-token-consumed-reason"
-      ],
-      "productionFilesTouched": 20,
-      "productionFiles": [
-        "src/RoslynMcp.Core/Services/BoundedStore.cs",
-        "src/RoslynMcp.Core/Services/PreviewTokenState.cs",
-        "src/RoslynMcp.Core/Services/PreviewTokenStaleException.cs",
-        "src/RoslynMcp.Core/Services/ICompositePreviewStore.cs",
-        "src/RoslynMcp.Core/Services/IProjectMutationPreviewStore.cs",
-        "src/RoslynMcp.Roslyn/Contracts/IPreviewStore.cs",
-        "src/RoslynMcp.Roslyn/Services/PreviewStore.cs",
-        "src/RoslynMcp.Roslyn/Services/CompositePreviewStore.cs",
-        "src/RoslynMcp.Roslyn/Services/ProjectMutationPreviewStore.cs",
-        "src/RoslynMcp.Roslyn/Services/PersistentCompositeStorage.cs",
-        "src/RoslynMcp.Roslyn/Services/RefactoringService.cs",
-        "src/RoslynMcp.Roslyn/Services/ProjectMutationService.cs",
-        "src/RoslynMcp.Roslyn/Services/CompositeApplyOrchestrator.cs",
-        "src/RoslynMcp.Roslyn/Services/ApplyUndoWorkflowService.cs",
-        "src/RoslynMcp.Roslyn/Services/WorkspaceForkApplyService.cs",
-        "src/RoslynMcp.Host.Stdio/Tools/ToolDispatch.cs",
-        "src/RoslynMcp.Host.Stdio/Tools/ApplyWithVerifyTool.cs",
-        "src/RoslynMcp.Host.Stdio/Tools/ToolErrorHandler.cs",
-        "src/RoslynMcp.Host.Stdio/Tools/OrchestrationTools.cs",
-        "src/RoslynMcp.Host.Stdio/Tools/ProjectMutationTools.cs"
-      ],
-      "testFilesAdded": 14,
-      "testFiles": [
-        "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs",
-        "tests/RoslynMcp.Tests/PreviewTokenStaleAcrossAutoReloadTests.cs",
-        "tests/RoslynMcp.Tests/PreviewStoreTests.cs",
-        "tests/RoslynMcp.Tests/BoundedStoreEvictionTests.cs",
-        "tests/RoslynMcp.Tests/CompositeApplyOrchestratorTests.cs",
-        "tests/RoslynMcp.Tests/ProjectMutationIntegrationTests.cs",
-        "tests/RoslynMcp.Tests/Services/PersistentCompositeStorageTests.cs",
-        "tests/RoslynMcp.Tests/ToolDispatchTests.cs",
-        "tests/RoslynMcp.Tests/ApplyUndoWorkflowServiceTests.cs",
-        "tests/RoslynMcp.Tests/ApplyWithVerifyCancellationAndScopeTests.cs",
-        "tests/RoslynMcp.Tests/ExtractionApplyRouteBindingTests.cs",
-        "tests/RoslynMcp.Tests/ParameterObjectPreviewTests.cs",
-        "tests/RoslynMcp.Tests/PreviewRouteBindingEditingTests.cs",
-        "tests/RoslynMcp.Tests/PreviewRouteBindingFileOpsTests.cs"
-      ],
-      "docFiles": [
-        "docs/product-contract.md"
-      ],
-      "rowsClosedCount": 1,
-      "estimatedContextTokens": 80000,
-      "toolPolicy": "edit-only",
-      "scheduleHint": "heroic-last",
-      "fanoutEstimate": 20,
-      "fanoutOversize": true,
-      "deepenerStatus": "ok",
-      "deepenerFlags": {
-        "judgmentHeavy": true,
-        "anchorStale": false,
-        "ruleOneBundleResolved": "n/a"
-      },
-      "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": null
-    },
-    {
       "id": "notice-verifier-scoped-test-inherits-nuget-packages",
       "order": 9,
       "status": "obsolete",
@@ -497,16 +369,16 @@
       "backlogRowsClosed": [
         "editorconfig-section-source-path-matching"
       ],
-      "productionFilesTouched": 1,
+      "productionFilesTouched": 2,
       "productionFiles": [
-        "src/RoslynMcp.Roslyn/Services/EditorConfigService.cs"
+        "src/RoslynMcp.Roslyn/Services/EditorConfigService.cs",
+        "ai_docs/items/editorconfig-section-source-path-matching.md"
       ],
       "testFilesAdded": 1,
       "testFiles": [
         "tests/RoslynMcp.Tests/EditorConfigServiceTests.cs"
       ],
       "docFiles": [
-        "ai_docs/items/editorconfig-section-source-path-matching.md",
         "changelog.d/editorconfig-section-source-path-matching.md"
       ],
       "rowsClosedCount": 1,
@@ -535,22 +407,31 @@
       "backlogRowsClosed": [
         "logging-jsonl-drops-structured-state"
       ],
-      "productionFilesTouched": null,
-      "productionFiles": null,
-      "testFilesAdded": null,
-      "testFiles": null,
-      "docFiles": null,
+      "productionFilesTouched": 2,
+      "productionFiles": [
+        "src/RoslynMcp.Host.Stdio/Diagnostics/JsonLinesFileLoggerProvider.cs",
+        "src/RoslynMcp.Host.Stdio/Diagnostics/ServerObservability.cs"
+      ],
+      "testFilesAdded": 2,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/ServerObservabilitySinkTests.cs",
+        "tests/RoslynMcp.Tests/McpLoggingLifecycleWireTests.cs"
+      ],
+      "docFiles": [
+        "docs/stdio-client-integration.md",
+        "changelog.d/logging-jsonl-drops-structured-state.md"
+      ],
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 40000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
-      "fanoutEstimate": null,
+      "fanoutEstimate": 2,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "ok",
       "deepenerFlags": {
-        "judgmentHeavy": false,
+        "judgmentHeavy": true,
         "anchorStale": false,
-        "ruleOneBundleResolved": null
+        "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
       "branch": null,
@@ -610,17 +491,17 @@
       "backlogRowsClosed": [
         "split-service-refuse-cross-partition-references"
       ],
-      "productionFilesTouched": 2,
+      "productionFilesTouched": 3,
       "productionFiles": [
         "src/RoslynMcp.Roslyn/Services/SymbolRefactorService.cs",
-        "src/RoslynMcp.Core/Services/ISymbolRefactorService.cs"
+        "src/RoslynMcp.Core/Services/ISymbolRefactorService.cs",
+        "ai_docs/items/split-service-refuse-cross-partition-references.md"
       ],
       "testFilesAdded": 1,
       "testFiles": [
         "tests/RoslynMcp.Tests/CompositeSplitServiceDiPreviewTests.cs"
       ],
       "docFiles": [
-        "ai_docs/items/split-service-refuse-cross-partition-references.md",
         "changelog.d/split-service-refuse-cross-partition-references.md"
       ],
       "rowsClosedCount": 1,
@@ -632,7 +513,7 @@
       "deepenerStatus": "ok",
       "deepenerFlags": {
         "judgmentHeavy": true,
-        "anchorStale": true,
+        "anchorStale": false,
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
@@ -731,22 +612,36 @@
       "backlogRowsClosed": [
         "workspace-close-global-build-server-shutdown"
       ],
-      "productionFilesTouched": null,
-      "productionFiles": null,
-      "testFilesAdded": null,
-      "testFiles": null,
-      "docFiles": null,
+      "productionFilesTouched": 4,
+      "productionFiles": [
+        "src/RoslynMcp.Host.Stdio/Tools/WorkspaceTools.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/DetachedTestHostDrain.cs",
+        "src/RoslynMcp.Host.Stdio/Runtime/ProcessExecutablePathResolver.cs",
+        "src/RoslynMcp.Host.Stdio/Prompts/RoslynPrompts.RefactoringWorkflows.cs"
+      ],
+      "testFilesAdded": 3,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/WorkspaceCloseDrainTests.cs",
+        "tests/RoslynMcp.Tests/AnalyzerShadowLoaderLifecycleTests.cs",
+        "tests/RoslynMcp.Tests/PromptSmokeTests.cs"
+      ],
+      "docFiles": [
+        "docs/product-contract.md",
+        "docs/decisions/0022-workspace-close-owned-process-drain.md",
+        "changelog.d/workspace-close-global-build-server-shutdown.md",
+        "docs/decisions/README.md"
+      ],
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 60000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
-      "fanoutEstimate": null,
+      "fanoutEstimate": 4,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "ok",
       "deepenerFlags": {
-        "judgmentHeavy": false,
+        "judgmentHeavy": true,
         "anchorStale": false,
-        "ruleOneBundleResolved": null
+        "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
       "branch": null,
@@ -762,22 +657,27 @@
       "backlogRowsClosed": [
         "test-temp-reaper-live-owner"
       ],
-      "productionFilesTouched": null,
-      "productionFiles": null,
-      "testFilesAdded": null,
-      "testFiles": null,
-      "docFiles": null,
+      "productionFilesTouched": 0,
+      "productionFiles": [],
+      "testFilesAdded": 2,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/TestInfrastructure/TestTempRoot.cs",
+        "tests/RoslynMcp.Tests/TestTempRootTests.cs"
+      ],
+      "docFiles": [
+        "changelog.d/test-temp-reaper-live-owner.md"
+      ],
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 40000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
-      "fanoutEstimate": null,
+      "fanoutEstimate": 0,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "ok",
       "deepenerFlags": {
-        "judgmentHeavy": false,
+        "judgmentHeavy": true,
         "anchorStale": false,
-        "ruleOneBundleResolved": null
+        "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
       "branch": null,
@@ -793,22 +693,30 @@
       "backlogRowsClosed": [
         "change-signature-service-refusals-public-message"
       ],
-      "productionFilesTouched": null,
-      "productionFiles": null,
-      "testFilesAdded": null,
-      "testFiles": null,
-      "docFiles": null,
+      "productionFilesTouched": 1,
+      "productionFiles": [
+        "src/RoslynMcp.Roslyn/Services/ChangeSignatureService.cs"
+      ],
+      "testFilesAdded": 3,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/ChangeSignaturePreviewTests.cs",
+        "tests/RoslynMcp.Tests/ChangeSignaturePreviewMetadataNameShapeTests.cs",
+        "tests/RoslynMcp.Tests/ChangeSignaturePublicRefusalTests.cs"
+      ],
+      "docFiles": [
+        "changelog.d/change-signature-service-refusals-public-message.md"
+      ],
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 35000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
-      "fanoutEstimate": null,
+      "fanoutEstimate": 1,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "ok",
       "deepenerFlags": {
-        "judgmentHeavy": false,
+        "judgmentHeavy": true,
         "anchorStale": false,
-        "ruleOneBundleResolved": null
+        "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
       "branch": null,
@@ -824,22 +732,31 @@
       "backlogRowsClosed": [
         "cross-project-public-refusals-echo-input"
       ],
-      "productionFilesTouched": null,
-      "productionFiles": null,
-      "testFilesAdded": null,
-      "testFiles": null,
-      "docFiles": null,
+      "productionFilesTouched": 1,
+      "productionFiles": [
+        "src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs"
+      ],
+      "testFilesAdded": 2,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/CrossProjectRefactoringIntegrationTests.cs",
+        "tests/RoslynMcp.Tests/CrossProjectRefusalWireTests.cs"
+      ],
+      "docFiles": [
+        "docs/decisions/0021-cross-project-safe-public-refusals.md",
+        "docs/decisions/README.md",
+        "changelog.d/cross-project-public-refusals-echo-input.md"
+      ],
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 35000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
-      "fanoutEstimate": null,
+      "fanoutEstimate": 1,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "ok",
       "deepenerFlags": {
-        "judgmentHeavy": false,
+        "judgmentHeavy": true,
         "anchorStale": false,
-        "ruleOneBundleResolved": null
+        "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
       "branch": null,
@@ -890,22 +807,26 @@
       "backlogRowsClosed": [
         "workspace-close-isolated-nuget-handles"
       ],
-      "productionFilesTouched": null,
-      "productionFiles": null,
-      "testFilesAdded": null,
-      "testFiles": null,
-      "docFiles": null,
+      "productionFilesTouched": 1,
+      "productionFiles": [
+        "ai_docs/items/workspace-close-isolated-nuget-handles.md"
+      ],
+      "testFilesAdded": 1,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/AnalyzerShadowLoaderLifecycleTests.cs"
+      ],
+      "docFiles": [],
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 40000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
-      "fanoutEstimate": null,
+      "fanoutEstimate": 0,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "ok",
       "deepenerFlags": {
-        "judgmentHeavy": false,
+        "judgmentHeavy": true,
         "anchorStale": false,
-        "ruleOneBundleResolved": null
+        "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
       "branch": null,
@@ -1022,22 +943,32 @@
       "backlogRowsClosed": [
         "preview-diff-whitespace-omission"
       ],
-      "productionFilesTouched": null,
-      "productionFiles": null,
-      "testFilesAdded": null,
-      "testFiles": null,
-      "docFiles": null,
+      "productionFilesTouched": 4,
+      "productionFiles": [
+        "src/RoslynMcp.Roslyn/Helpers/DiffGenerator.cs",
+        "src/RoslynMcp.Roslyn/Helpers/SolutionDiffHelper.cs",
+        "src/RoslynMcp.Roslyn/Services/RefactoringService.cs",
+        "src/RoslynMcp.Roslyn/Services/EditService.cs"
+      ],
+      "testFilesAdded": 4,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/DiffGeneratorTests.cs",
+        "tests/RoslynMcp.Tests/SolutionDiffHelperTests.cs",
+        "tests/RoslynMcp.Tests/IntegrationTests.EditApply.cs",
+        "tests/RoslynMcp.Tests/PreviewMultiFileEditSyntaxRegressionTests.cs"
+      ],
+      "docFiles": [],
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 40000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
-      "fanoutEstimate": null,
+      "fanoutEstimate": 4,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "ok",
       "deepenerFlags": {
         "judgmentHeavy": false,
         "anchorStale": false,
-        "ruleOneBundleResolved": null
+        "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
       "branch": null,
@@ -1045,13 +976,643 @@
       "prUrl": null,
       "mergedAt": null,
       "notes": null
+    },
+    {
+      "id": "preview-token-lifecycle-evidence",
+      "order": 8.01,
+      "status": "pending",
+      "productionFiles": [
+        "src/RoslynMcp.Core/Services/BoundedStore.cs",
+        "src/RoslynMcp.Core/Services/PreviewTokenState.cs",
+        "src/RoslynMcp.Core/Services/ICompositePreviewStore.cs",
+        "src/RoslynMcp.Core/Services/IProjectMutationPreviewStore.cs",
+        "src/RoslynMcp.Roslyn/Contracts/IPreviewStore.cs",
+        "src/RoslynMcp.Roslyn/Services/PreviewStore.cs"
+      ],
+      "testFiles": [
+        "tests/RoslynMcp.Tests/BoundedStoreEvictionTests.cs",
+        "tests/RoslynMcp.Tests/PreviewStoreTests.cs",
+        "tests/RoslynMcp.Tests/ApplyUndoWorkflowServiceTests.cs",
+        "tests/RoslynMcp.Tests/ApplyWithVerifyCancellationAndScopeTests.cs",
+        "tests/RoslynMcp.Tests/ExtractionApplyRouteBindingTests.cs",
+        "tests/RoslynMcp.Tests/ParameterObjectPreviewTests.cs",
+        "tests/RoslynMcp.Tests/PreviewRouteBindingEditingTests.cs",
+        "tests/RoslynMcp.Tests/PreviewRouteBindingFileOpsTests.cs",
+        "tests/RoslynMcp.Tests/ToolDispatchTests.cs"
+      ],
+      "docFiles": [
+        "docs/decisions/0024-preview-token-terminal-lifecycle.md",
+        "docs/decisions/README.md",
+        "changelog.d/preview-token-lifecycle-evidence.md"
+      ],
+      "estimatedContextTokens": 65000,
+      "toolPolicy": "edit-only",
+      "fanoutEstimate": 6,
+      "fanoutOversize": false,
+      "scheduleHint": null,
+      "dependsOn": [],
+      "productionFilesTouched": 6,
+      "testFilesAdded": 9,
+      "backlogRowsClosed": [],
+      "rowsClosedCount": 0
+    },
+    {
+      "id": "preview-token-reason-projection",
+      "order": 8.02,
+      "status": "pending",
+      "productionFiles": [
+        "src/RoslynMcp.Core/Services/PreviewTokenStaleException.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/ToolDispatch.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/ApplyWithVerifyTool.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/ToolErrorHandler.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/OrchestrationTools.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/ProjectMutationTools.cs",
+        "src/RoslynMcp.Roslyn/Services/ApplyUndoWorkflowService.cs",
+        "src/RoslynMcp.Roslyn/Services/WorkspaceForkApplyService.cs"
+      ],
+      "testFiles": [
+        "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs",
+        "tests/RoslynMcp.Tests/PreviewTokenStaleAcrossAutoReloadTests.cs",
+        "tests/RoslynMcp.Tests/ToolDispatchTests.cs",
+        "tests/RoslynMcp.Tests/ToolErrorHandlerSpecificityTests.cs"
+      ],
+      "docFiles": [
+        "docs/product-contract.md",
+        "docs/decisions/0024-preview-token-terminal-lifecycle.md",
+        "changelog.d/preview-token-reason-projection.md"
+      ],
+      "estimatedContextTokens": 65000,
+      "toolPolicy": "edit-only",
+      "fanoutEstimate": 8,
+      "fanoutOversize": false,
+      "scheduleHint": null,
+      "dependsOn": [
+        "preview-token-lifecycle-evidence"
+      ],
+      "productionFilesTouched": 8,
+      "testFilesAdded": 4,
+      "backlogRowsClosed": [],
+      "rowsClosedCount": 0
+    },
+    {
+      "id": "preview-token-solution-confirmation",
+      "order": 8.03,
+      "status": "pending",
+      "productionFiles": [
+        "src/RoslynMcp.Roslyn/Services/RefactoringService.cs"
+      ],
+      "testFiles": [
+        "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs",
+        "tests/RoslynMcp.Tests/RefactoringToolsIntegrationTests.cs",
+        "tests/RoslynMcp.Tests/ApplyUndoWorkflowServiceTests.cs"
+      ],
+      "docFiles": [
+        "changelog.d/preview-token-solution-confirmation.md"
+      ],
+      "estimatedContextTokens": 40000,
+      "toolPolicy": "edit-only",
+      "fanoutEstimate": 1,
+      "fanoutOversize": false,
+      "scheduleHint": null,
+      "dependsOn": [
+        "preview-token-reason-projection"
+      ],
+      "productionFilesTouched": 1,
+      "testFilesAdded": 3,
+      "backlogRowsClosed": [],
+      "rowsClosedCount": 0
+    },
+    {
+      "id": "preview-token-composite-confirmation",
+      "order": 8.04,
+      "status": "pending",
+      "productionFiles": [
+        "src/RoslynMcp.Roslyn/Services/CompositePreviewStore.cs",
+        "src/RoslynMcp.Roslyn/Services/PersistentCompositeStorage.cs",
+        "src/RoslynMcp.Roslyn/Services/CompositeApplyOrchestrator.cs"
+      ],
+      "testFiles": [
+        "tests/RoslynMcp.Tests/Services/PersistentCompositeStorageTests.cs",
+        "tests/RoslynMcp.Tests/CompositeApplyOrchestratorTests.cs",
+        "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs"
+      ],
+      "docFiles": [
+        "changelog.d/preview-token-composite-confirmation.md"
+      ],
+      "estimatedContextTokens": 60000,
+      "toolPolicy": "edit-only",
+      "fanoutEstimate": 3,
+      "fanoutOversize": false,
+      "scheduleHint": null,
+      "dependsOn": [
+        "preview-token-reason-projection"
+      ],
+      "productionFilesTouched": 3,
+      "testFilesAdded": 3,
+      "backlogRowsClosed": [],
+      "rowsClosedCount": 0
+    },
+    {
+      "id": "preview-token-project-confirmation",
+      "order": 8.05,
+      "status": "pending",
+      "productionFiles": [
+        "src/RoslynMcp.Roslyn/Services/ProjectMutationService.cs"
+      ],
+      "testFiles": [
+        "tests/RoslynMcp.Tests/ProjectMutationIntegrationTests.cs",
+        "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs"
+      ],
+      "docFiles": [
+        "changelog.d/preview-token-project-confirmation.md"
+      ],
+      "estimatedContextTokens": 40000,
+      "toolPolicy": "edit-only",
+      "fanoutEstimate": 1,
+      "fanoutOversize": false,
+      "scheduleHint": null,
+      "dependsOn": [
+        "preview-token-solution-confirmation",
+        "preview-token-composite-confirmation"
+      ],
+      "productionFilesTouched": 1,
+      "testFilesAdded": 2,
+      "backlogRowsClosed": [
+        "preview-token-consumed-reason"
+      ],
+      "rowsClosedCount": 1
+    },
+    {
+      "id": "fork-composite-nonconsuming-snapshot",
+      "order": 7.01,
+      "status": "pending",
+      "fanoutOversize": false,
+      "scheduleHint": null,
+      "fanoutEstimate": 4,
+      "estimatedContextTokens": 45000,
+      "docFiles": [
+        "changelog.d/fork-composite-nonconsuming-snapshot.md"
+      ],
+      "testFiles": [
+        "tests/RoslynMcp.Tests/Services/PersistentCompositeStorageTests.cs",
+        "tests/RoslynMcp.Tests/ServiceCollectionExtensionsTests.cs"
+      ],
+      "toolPolicy": "edit-only",
+      "productionFiles": [
+        "src/RoslynMcp.Roslyn/Contracts/ICompositePreviewSnapshotReader.cs",
+        "src/RoslynMcp.Roslyn/Services/CompositePreviewStore.cs",
+        "src/RoslynMcp.Roslyn/Services/PersistentCompositeStorage.cs",
+        "src/RoslynMcp.Roslyn/ServiceCollectionExtensions.cs"
+      ],
+      "dependsOn": [
+        "preview-store-explicit-internal-state"
+      ],
+      "productionFilesTouched": 4,
+      "testFilesAdded": 2,
+      "backlogRowsClosed": [],
+      "rowsClosedCount": 0
+    },
+    {
+      "id": "fork-preview-project-composite-replay",
+      "order": 7.02,
+      "status": "pending",
+      "fanoutOversize": false,
+      "scheduleHint": null,
+      "fanoutEstimate": 2,
+      "estimatedContextTokens": 45000,
+      "docFiles": [
+        "docs/decisions/0025-isolated-fork-preview-replay.md",
+        "docs/decisions/README.md",
+        "README.md",
+        "src/RoslynMcp.Host.Stdio/README.md",
+        "changelog.d/fork-preview-project-composite-replay.md"
+      ],
+      "testFiles": [
+        "tests/RoslynMcp.Tests/Workspace/WorkspaceForkApplyTests.cs"
+      ],
+      "toolPolicy": "edit-only",
+      "productionFiles": [
+        "src/RoslynMcp.Roslyn/Services/WorkspaceForkApplyService.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/ValidationBundleTools.cs"
+      ],
+      "dependsOn": [
+        "fork-composite-nonconsuming-snapshot",
+        "preview-store-explicit-internal-state"
+      ],
+      "productionFilesTouched": 2,
+      "testFilesAdded": 1,
+      "backlogRowsClosed": [
+        "workspace-fork-project-mutation-preview"
+      ],
+      "rowsClosedCount": 1
     }
   ],
   "anchorVerification": "pending",
   "conflictGraph": {
-    "edges": [],
-    "degrees": {},
-    "zeroDegreeInitiatives": []
+    "edges": [
+      {
+        "a": 2,
+        "b": 25,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/CodeActionService.cs"
+        ]
+      },
+      {
+        "a": 3,
+        "b": 11,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs"
+        ]
+      },
+      {
+        "a": 5,
+        "b": 25,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/TypeExtractionService.cs"
+        ]
+      },
+      {
+        "a": 6,
+        "b": 7.02,
+        "sharedFiles": [
+          "README.md",
+          "src/RoslynMcp.Host.Stdio/README.md"
+        ]
+      },
+      {
+        "a": 6,
+        "b": 8.01,
+        "sharedFiles": [
+          "tests/RoslynMcp.Tests/ToolDispatchTests.cs"
+        ]
+      },
+      {
+        "a": 6,
+        "b": 8.02,
+        "sharedFiles": [
+          "src/RoslynMcp.Host.Stdio/Tools/OrchestrationTools.cs",
+          "src/RoslynMcp.Host.Stdio/Tools/ToolDispatch.cs",
+          "tests/RoslynMcp.Tests/ToolDispatchTests.cs"
+        ]
+      },
+      {
+        "a": 6,
+        "b": 25,
+        "sharedFiles": [
+          "src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.cs",
+          "src/RoslynMcp.Host.Stdio/Tools/ToolDispatch.cs",
+          "src/RoslynMcp.Roslyn/Services/BatchTestScaffolder.cs",
+          "tests/RoslynMcp.Tests/ScaffoldingIntegrationTests.cs",
+          "tests/RoslynMcp.Tests/ToolDispatchTests.cs"
+        ]
+      },
+      {
+        "a": 7.01,
+        "b": 8.04,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/CompositePreviewStore.cs",
+          "src/RoslynMcp.Roslyn/Services/PersistentCompositeStorage.cs",
+          "tests/RoslynMcp.Tests/Services/PersistentCompositeStorageTests.cs"
+        ]
+      },
+      {
+        "a": 7.01,
+        "b": 25,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/CompositePreviewStore.cs",
+          "src/RoslynMcp.Roslyn/Services/PersistentCompositeStorage.cs",
+          "tests/RoslynMcp.Tests/Services/PersistentCompositeStorageTests.cs"
+        ]
+      },
+      {
+        "a": 7.02,
+        "b": 8.01,
+        "sharedFiles": [
+          "docs/decisions/README.md"
+        ]
+      },
+      {
+        "a": 7.02,
+        "b": 8.02,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/WorkspaceForkApplyService.cs"
+        ]
+      },
+      {
+        "a": 7.02,
+        "b": 15,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/WorkspaceForkApplyService.cs",
+          "tests/RoslynMcp.Tests/Workspace/WorkspaceForkApplyTests.cs"
+        ]
+      },
+      {
+        "a": 7.02,
+        "b": 19,
+        "sharedFiles": [
+          "docs/decisions/README.md"
+        ]
+      },
+      {
+        "a": 7.02,
+        "b": 22,
+        "sharedFiles": [
+          "docs/decisions/README.md"
+        ]
+      },
+      {
+        "a": 7.02,
+        "b": 25,
+        "sharedFiles": [
+          "docs/decisions/README.md",
+          "tests/RoslynMcp.Tests/Workspace/WorkspaceForkApplyTests.cs"
+        ]
+      },
+      {
+        "a": 8.01,
+        "b": 8.02,
+        "sharedFiles": [
+          "docs/decisions/0024-preview-token-terminal-lifecycle.md",
+          "tests/RoslynMcp.Tests/ToolDispatchTests.cs"
+        ]
+      },
+      {
+        "a": 8.01,
+        "b": 8.03,
+        "sharedFiles": [
+          "tests/RoslynMcp.Tests/ApplyUndoWorkflowServiceTests.cs"
+        ]
+      },
+      {
+        "a": 8.01,
+        "b": 19,
+        "sharedFiles": [
+          "docs/decisions/README.md"
+        ]
+      },
+      {
+        "a": 8.01,
+        "b": 22,
+        "sharedFiles": [
+          "docs/decisions/README.md"
+        ]
+      },
+      {
+        "a": 8.01,
+        "b": 25,
+        "sharedFiles": [
+          "docs/decisions/README.md",
+          "src/RoslynMcp.Core/Services/ICompositePreviewStore.cs",
+          "src/RoslynMcp.Core/Services/IProjectMutationPreviewStore.cs",
+          "src/RoslynMcp.Roslyn/Contracts/IPreviewStore.cs",
+          "src/RoslynMcp.Roslyn/Services/PreviewStore.cs",
+          "tests/RoslynMcp.Tests/ApplyUndoWorkflowServiceTests.cs",
+          "tests/RoslynMcp.Tests/ApplyWithVerifyCancellationAndScopeTests.cs",
+          "tests/RoslynMcp.Tests/BoundedStoreEvictionTests.cs",
+          "tests/RoslynMcp.Tests/ExtractionApplyRouteBindingTests.cs",
+          "tests/RoslynMcp.Tests/ParameterObjectPreviewTests.cs",
+          "tests/RoslynMcp.Tests/PreviewRouteBindingEditingTests.cs",
+          "tests/RoslynMcp.Tests/PreviewRouteBindingFileOpsTests.cs",
+          "tests/RoslynMcp.Tests/PreviewStoreTests.cs",
+          "tests/RoslynMcp.Tests/ToolDispatchTests.cs"
+        ]
+      },
+      {
+        "a": 8.02,
+        "b": 8.03,
+        "sharedFiles": [
+          "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs"
+        ]
+      },
+      {
+        "a": 8.02,
+        "b": 8.04,
+        "sharedFiles": [
+          "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs"
+        ]
+      },
+      {
+        "a": 8.02,
+        "b": 8.05,
+        "sharedFiles": [
+          "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs"
+        ]
+      },
+      {
+        "a": 8.02,
+        "b": 15,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/WorkspaceForkApplyService.cs"
+        ]
+      },
+      {
+        "a": 8.02,
+        "b": 19,
+        "sharedFiles": [
+          "docs/product-contract.md"
+        ]
+      },
+      {
+        "a": 8.02,
+        "b": 25,
+        "sharedFiles": [
+          "src/RoslynMcp.Host.Stdio/Tools/ToolDispatch.cs",
+          "tests/RoslynMcp.Tests/PreviewTokenStaleAcrossAutoReloadTests.cs",
+          "tests/RoslynMcp.Tests/ToolDispatchTests.cs"
+        ]
+      },
+      {
+        "a": 8.03,
+        "b": 8.04,
+        "sharedFiles": [
+          "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs"
+        ]
+      },
+      {
+        "a": 8.03,
+        "b": 8.05,
+        "sharedFiles": [
+          "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs"
+        ]
+      },
+      {
+        "a": 8.03,
+        "b": 25,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/RefactoringService.cs",
+          "tests/RoslynMcp.Tests/ApplyUndoWorkflowServiceTests.cs"
+        ]
+      },
+      {
+        "a": 8.03,
+        "b": 26,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/RefactoringService.cs"
+        ]
+      },
+      {
+        "a": 8.04,
+        "b": 8.05,
+        "sharedFiles": [
+          "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs"
+        ]
+      },
+      {
+        "a": 8.04,
+        "b": 25,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/CompositeApplyOrchestrator.cs",
+          "src/RoslynMcp.Roslyn/Services/CompositePreviewStore.cs",
+          "src/RoslynMcp.Roslyn/Services/PersistentCompositeStorage.cs",
+          "tests/RoslynMcp.Tests/CompositeApplyOrchestratorTests.cs",
+          "tests/RoslynMcp.Tests/Services/PersistentCompositeStorageTests.cs"
+        ]
+      },
+      {
+        "a": 8.05,
+        "b": 25,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/ProjectMutationService.cs",
+          "tests/RoslynMcp.Tests/ProjectMutationIntegrationTests.cs"
+        ]
+      },
+      {
+        "a": 12,
+        "b": 25,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/FixAllService.cs"
+        ]
+      },
+      {
+        "a": 15,
+        "b": 19,
+        "sharedFiles": [
+          "src/RoslynMcp.Host.Stdio/Tools/WorkspaceTools.cs"
+        ]
+      },
+      {
+        "a": 15,
+        "b": 25,
+        "sharedFiles": [
+          "tests/RoslynMcp.Tests/Workspace/WorkspaceForkApplyTests.cs"
+        ]
+      },
+      {
+        "a": 16,
+        "b": 25,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/SymbolRefactorService.cs"
+        ]
+      },
+      {
+        "a": 17,
+        "b": 21,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/ChangeSignatureService.cs",
+          "tests/RoslynMcp.Tests/ChangeSignaturePreviewTests.cs"
+        ]
+      },
+      {
+        "a": 17,
+        "b": 25,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/ChangeSignatureAddRemovePreviewBuilder.cs",
+          "src/RoslynMcp.Roslyn/Services/ChangeSignatureService.cs",
+          "tests/RoslynMcp.Tests/ChangeSignaturePreviewTests.cs"
+        ]
+      },
+      {
+        "a": 19,
+        "b": 22,
+        "sharedFiles": [
+          "docs/decisions/README.md"
+        ]
+      },
+      {
+        "a": 19,
+        "b": 24,
+        "sharedFiles": [
+          "tests/RoslynMcp.Tests/AnalyzerShadowLoaderLifecycleTests.cs"
+        ]
+      },
+      {
+        "a": 19,
+        "b": 25,
+        "sharedFiles": [
+          "docs/decisions/README.md"
+        ]
+      },
+      {
+        "a": 21,
+        "b": 25,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/ChangeSignatureService.cs",
+          "tests/RoslynMcp.Tests/ChangeSignaturePreviewTests.cs"
+        ]
+      },
+      {
+        "a": 22,
+        "b": 25,
+        "sharedFiles": [
+          "docs/decisions/README.md",
+          "src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs"
+        ]
+      },
+      {
+        "a": 25,
+        "b": 26,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Helpers/DiffGenerator.cs",
+          "src/RoslynMcp.Roslyn/Helpers/SolutionDiffHelper.cs",
+          "src/RoslynMcp.Roslyn/Services/EditService.cs",
+          "src/RoslynMcp.Roslyn/Services/RefactoringService.cs",
+          "tests/RoslynMcp.Tests/DiffGeneratorTests.cs",
+          "tests/RoslynMcp.Tests/SolutionDiffHelperTests.cs"
+        ]
+      }
+    ],
+    "degrees": {
+      "2": 1,
+      "3": 1,
+      "4": 0,
+      "5": 1,
+      "6": 4,
+      "9": 0,
+      "10": 0,
+      "11": 1,
+      "12": 1,
+      "13": 0,
+      "14": 0,
+      "15": 4,
+      "16": 1,
+      "17": 2,
+      "18": 0,
+      "19": 7,
+      "20": 0,
+      "21": 2,
+      "22": 4,
+      "23": 0,
+      "24": 1,
+      "25": 18,
+      "26": 2,
+      "8.01": 7,
+      "8.02": 9,
+      "8.03": 6,
+      "8.04": 5,
+      "8.05": 4,
+      "7.01": 2,
+      "7.02": 7
+    },
+    "zeroDegreeInitiatives": [
+      4,
+      9,
+      10,
+      13,
+      14,
+      18,
+      20,
+      23
+    ]
   },
   "selection": {
     "requestedCount": "auto",
@@ -1449,5 +2010,257 @@
         ]
       }
     ]
+  },
+  "reviewFindings": {
+    "block": 2,
+    "warn": 8,
+    "info": 20
+  },
+  "lastReviewFindings": [
+    {
+      "initiativeId": "preview-store-explicit-internal-state",
+      "severity": "block",
+      "rule": "5b",
+      "evidence": "state.json records fanoutOversize=true, fanoutEstimate=38, productionFilesTouched=38; heroic-last does not waive this hard block. Split into independently correct dependency-chained stages and cold-review every child before execution. Still present after cycle 0 remediation.",
+      "unresolvedSinceCycle": 0
+    },
+    {
+      "initiativeId": "preview-store-explicit-internal-state",
+      "severity": "block",
+      "rule": "5",
+      "evidence": "estimatedContextTokens=110000 exceeds the authoritative rule5-max-context-tokens marker 80000 in backlog-remediate-rules.md:116. The stanza itself requires split before execution. Still present after cycle 0 remediation.",
+      "unresolvedSinceCycle": 0
+    },
+    {
+      "initiativeId": "navigation-and-locator-argument-refusals-public-message",
+      "severity": "info",
+      "rule": "3",
+      "evidence": "SymbolResolver.cs:291 unchecked addition reaches FindToken(:296); the helper and all raw-position consumers form one complete bounds/public-correction change. Still present after cycle 0 remediation.",
+      "unresolvedSinceCycle": 0
+    },
+    {
+      "initiativeId": "scaffold-batch-preview-apply-route",
+      "severity": "info",
+      "rule": "3",
+      "evidence": "BatchTestScaffolder.cs:236 stores untagged solution previews; OrchestrationTools.cs:124-128 peeks only composite storage; ServerSurfaceCatalog.cs:43-85 omits batch pairing. Producer, correction and catalog companions share the observed route defect. Still present after cycle 0 remediation.",
+      "unresolvedSinceCycle": 0
+    },
+    {
+      "initiativeId": "restore-callers-missing-packages-path",
+      "severity": "info",
+      "rule": "3",
+      "evidence": "RestoreStalenessDetector.cs:405-406 uses TryGetProperty without root/project object guards; WorkspaceTools.cs:707 conflates package-root identity. Existing fork copying omits assets, forcing source-captured shared restore planning. Still present after cycle 0 remediation.",
+      "unresolvedSinceCycle": 0
+    },
+    {
+      "initiativeId": "preview-store-explicit-internal-state",
+      "severity": "info",
+      "rule": "3",
+      "evidence": "PreviewStore.cs:68-88 defaults completeness/provenance; BatchTestScaffolder.cs:236 discards computed changes; DiffGenerator.cs:83-100 produces per-file truncation. ToolDispatchTests.cs:236-267 and 278-316 verify every concrete PreviewKind route and its content pin. Producer/contracts/persistence/guards/maps form the traced safety mechanism, still blocked pending split. Still present after cycle 0 remediation.",
+      "unresolvedSinceCycle": 0
+    },
+    {
+      "initiativeId": "preview-token-lifecycle-evidence",
+      "severity": "info",
+      "rule": "3",
+      "evidence": "Six production files form the traced removal-evidence/source-contract unit: BoundedStore.cs:35-51 removes payload without cause, PreviewStore.cs:279-284 invalidates on reload, and three store interfaces require explicit completion/query operations. Scope includes concrete fake edits and ADR migration; nine test files exercise one lifecycle mechanism.",
+      "introducedByRemediation": true
+    },
+    {
+      "initiativeId": "preview-token-reason-projection",
+      "severity": "info",
+      "rule": "3",
+      "evidence": "Eight production files form one reason propagation change: ToolDispatch.cs:398 constructs a cause-agnostic exception; ToolErrorHandler.cs:146-151 maps every miss to reload. Required exception/delegate changes include the listed production constructor and generic-apply callers.",
+      "introducedByRemediation": true
+    },
+    {
+      "initiativeId": "preview-token-lifecycle-evidence",
+      "severity": "warn",
+      "rule": "C2-wave-conflict",
+      "evidence": "Consecutive order 7.02 and 8.01 overlap on 1 file(s): docs/decisions/README.md. Use distinct generations and rederive later scopes after earlier landing.",
+      "introducedByRemediation": true
+    },
+    {
+      "initiativeId": "preview-token-reason-projection",
+      "severity": "warn",
+      "rule": "C2-wave-conflict",
+      "evidence": "Consecutive order 8.01 and 8.02 overlap on 2 file(s): docs/decisions/0024-preview-token-terminal-lifecycle.md, tests/RoslynMcp.Tests/ToolDispatchTests.cs. Use distinct generations and rederive later scopes after earlier landing.",
+      "introducedByRemediation": true
+    },
+    {
+      "initiativeId": "preview-token-solution-confirmation",
+      "severity": "warn",
+      "rule": "C2-wave-conflict",
+      "evidence": "Consecutive order 8.02 and 8.03 overlap on 1 file(s): tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs. Use distinct generations and rederive later scopes after earlier landing.",
+      "introducedByRemediation": true
+    },
+    {
+      "initiativeId": "preview-token-composite-confirmation",
+      "severity": "warn",
+      "rule": "C2-wave-conflict",
+      "evidence": "Consecutive order 8.03 and 8.04 overlap on 1 file(s): tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs. Use distinct generations and rederive later scopes after earlier landing.",
+      "introducedByRemediation": true
+    },
+    {
+      "initiativeId": "preview-token-project-confirmation",
+      "severity": "warn",
+      "rule": "C2-wave-conflict",
+      "evidence": "Consecutive order 8.04 and 8.05 overlap on 1 file(s): tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs. Use distinct generations and rederive later scopes after earlier landing.",
+      "introducedByRemediation": true
+    },
+    {
+      "initiativeId": "preview-diff-whitespace-omission",
+      "severity": "warn",
+      "rule": "C2-wave-conflict",
+      "evidence": "Consecutive order 25 and 26 overlap on 6 file(s): src/RoslynMcp.Roslyn/Helpers/DiffGenerator.cs, src/RoslynMcp.Roslyn/Helpers/SolutionDiffHelper.cs, src/RoslynMcp.Roslyn/Services/EditService.cs, src/RoslynMcp.Roslyn/Services/RefactoringService.cs, tests/RoslynMcp.Tests/DiffGeneratorTests.cs, tests/RoslynMcp.Tests/SolutionDiffHelperTests.cs. Use distinct generations and rederive later scopes after earlier landing. Still present after cycle 0 remediation.",
+      "unresolvedSinceCycle": 0
+    },
+    {
+      "initiativeId": "scaffold-batch-preview-apply-route",
+      "severity": "info",
+      "rule": "C2",
+      "evidence": "Conflict degree 4 without heroic-last; use computed generations and rederive after overlapping predecessors land. Still present after cycle 0 remediation.",
+      "unresolvedSinceCycle": 0
+    },
+    {
+      "initiativeId": "restore-callers-missing-packages-path",
+      "severity": "info",
+      "rule": "C2",
+      "evidence": "Conflict degree 4 without heroic-last; use computed generations and rederive after overlapping predecessors land. Still present after cycle 0 remediation.",
+      "unresolvedSinceCycle": 0
+    },
+    {
+      "initiativeId": "change-signature-class-struct-primary-ctor-add-remove",
+      "severity": "info",
+      "rule": "C2",
+      "evidence": "Conflict degree 2 without heroic-last; use computed generations and rederive after overlapping predecessors land. Still present after cycle 0 remediation.",
+      "unresolvedSinceCycle": 0
+    },
+    {
+      "initiativeId": "workspace-close-global-build-server-shutdown",
+      "severity": "info",
+      "rule": "C2",
+      "evidence": "Conflict degree 7 without heroic-last; use computed generations and rederive after overlapping predecessors land. Still present after cycle 0 remediation.",
+      "unresolvedSinceCycle": 0
+    },
+    {
+      "initiativeId": "change-signature-service-refusals-public-message",
+      "severity": "info",
+      "rule": "C2",
+      "evidence": "Conflict degree 2 without heroic-last; use computed generations and rederive after overlapping predecessors land. Still present after cycle 0 remediation.",
+      "unresolvedSinceCycle": 0
+    },
+    {
+      "initiativeId": "cross-project-public-refusals-echo-input",
+      "severity": "info",
+      "rule": "C2",
+      "evidence": "Conflict degree 4 without heroic-last; use computed generations and rederive after overlapping predecessors land. Still present after cycle 0 remediation.",
+      "unresolvedSinceCycle": 0
+    },
+    {
+      "initiativeId": "preview-diff-whitespace-omission",
+      "severity": "info",
+      "rule": "C2",
+      "evidence": "Conflict degree 2 without heroic-last; use computed generations and rederive after overlapping predecessors land. Still present after cycle 0 remediation.",
+      "unresolvedSinceCycle": 0
+    },
+    {
+      "initiativeId": "preview-token-lifecycle-evidence",
+      "severity": "info",
+      "rule": "C2",
+      "evidence": "Conflict degree 7 without heroic-last; use computed generations and rederive after overlapping predecessors land.",
+      "introducedByRemediation": true
+    },
+    {
+      "initiativeId": "preview-token-reason-projection",
+      "severity": "info",
+      "rule": "C2",
+      "evidence": "Conflict degree 9 without heroic-last; use computed generations and rederive after overlapping predecessors land.",
+      "introducedByRemediation": true
+    },
+    {
+      "initiativeId": "preview-token-solution-confirmation",
+      "severity": "info",
+      "rule": "C2",
+      "evidence": "Conflict degree 6 without heroic-last; use computed generations and rederive after overlapping predecessors land.",
+      "introducedByRemediation": true
+    },
+    {
+      "initiativeId": "preview-token-composite-confirmation",
+      "severity": "info",
+      "rule": "C2",
+      "evidence": "Conflict degree 5 without heroic-last; use computed generations and rederive after overlapping predecessors land.",
+      "introducedByRemediation": true
+    },
+    {
+      "initiativeId": "preview-token-project-confirmation",
+      "severity": "info",
+      "rule": "C2",
+      "evidence": "Conflict degree 4 without heroic-last; use computed generations and rederive after overlapping predecessors land.",
+      "introducedByRemediation": true
+    },
+    {
+      "initiativeId": "fork-composite-nonconsuming-snapshot",
+      "severity": "info",
+      "rule": "C2",
+      "evidence": "Conflict degree 2 without heroic-last; use computed generations and rederive after overlapping predecessors land.",
+      "introducedByRemediation": true
+    },
+    {
+      "initiativeId": "fork-preview-project-composite-replay",
+      "severity": "info",
+      "rule": "C2",
+      "evidence": "Conflict degree 7 without heroic-last; use computed generations and rederive after overlapping predecessors land.",
+      "introducedByRemediation": true
+    },
+    {
+      "initiativeId": "fork-composite-nonconsuming-snapshot",
+      "severity": "warn",
+      "rule": "hotspot",
+      "evidence": "Consecutive initiatives 6 (scaffold-batch-preview-apply-route) and 7.01 both touch addenda hotspots: README.md, src/RoslynMcp.Host.Stdio/README.md, src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.Orchestration.cs, src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.cs; src/RoslynMcp.Roslyn/ServiceCollectionExtensions.cs. Respect one hotspot-touching initiative per wave even where exact files differ.",
+      "introducedByRemediation": true
+    },
+    {
+      "initiativeId": "fork-preview-project-composite-replay",
+      "severity": "warn",
+      "rule": "hotspot",
+      "evidence": "Consecutive initiatives 7.01 (fork-composite-nonconsuming-snapshot) and 7.02 both touch addenda hotspots: src/RoslynMcp.Roslyn/ServiceCollectionExtensions.cs; README.md, src/RoslynMcp.Host.Stdio/README.md. Respect one hotspot-touching initiative per wave even where exact files differ.",
+      "introducedByRemediation": true
+    }
+  ],
+  "reviewCoverage": {
+    "status": "failed",
+    "stanzaHashes": {
+      "navigation-and-locator-argument-refusals-public-message": "666521d55949857919f81050776dae5632f633b4022d3c7451baf26b93af338f",
+      "workspace-lifecycle-argument-refusals-public-message": "d06d9285b83699a868a3996681820eb101b3acef7bd3b617b031701eb12fd44f",
+      "tool-refusal-public-message-guard": "4eff07904b02ba69e478d3d9aaa727831799ecdeb82635aa2b062d03d00bef50",
+      "extract-type-preserve-untouched-trivia": "cefaf2862383a0649b6802b3f949b13cf6233cc91100d939d9b785448c2dc343",
+      "scaffold-batch-preview-apply-route": "847bb3e0c0a082f9a1b16a1c89db0b9faca9d6deb662ffe8d47e0093e2af1ccd",
+      "notice-verifier-scoped-test-inherits-nuget-packages": "e1ff8a04c6da28d98e04ffa92f6e4632bc2fa0d3806aca2f57e5c0486320ad35",
+      "test-discovery-file-path-case-identity": "1145ae27e4bee0dbf2d191d955b33c7b804f2943b9ecbbe6d663e28d3f2de031",
+      "workspace-project-alias-lookup": "71a0718b98e486f2d7e922407c0120e829f833c522ff3588befce534d96262ca",
+      "fix-all-equivalence-key-unregistered-fallback": "913514db5542443540c48366ab331270a804e76f3350e61ff3b3122811f12f1f",
+      "editorconfig-section-source-path-matching": "56bbce20febc10f9c2b59496955ae4c711e041c5b802fcef475b9d4075d4268f",
+      "logging-jsonl-drops-structured-state": "fd3aef40e86b7820bb0d8c786d2534936d972b89ddedf7adf9b78b33b3ff579e",
+      "restore-callers-missing-packages-path": "5e7bc589d2e8eac07e1489f9396e75b478a090c22112ceb9a4c3a1439c198521",
+      "split-service-refuse-cross-partition-references": "3c92791380fba16b69f6a42f9157eeef8e87c8752b41aafba94da90c4478fa75",
+      "change-signature-class-struct-primary-ctor-add-remove": "6a8b4057370d3affb55f0799654613f5b3441e9aae49085849c9370f391ade96",
+      "load-profile-full-suite": "bc2695528f8866034df6aa82bf401da7ca40f647183d1062466b408fe73768fa",
+      "workspace-close-global-build-server-shutdown": "cf010db06593e16475cf66103df1391e94e4b0dfb8b7faec779004992b458e4f",
+      "test-temp-reaper-live-owner": "75252658ed097350897e2a9d422ae19e59925f169294094bd0e77cf6f1fc85d1",
+      "change-signature-service-refusals-public-message": "ef997e9a4919038ae0947c3e3f1f99bd2f30d6f2616af291ea9a397c2b768083",
+      "cross-project-public-refusals-echo-input": "8a00fc184c9bc3eed28e5ac5190ab5525f3daa8600fd101255ddf0cf8a49c770",
+      "top10-good-preview-result-contract": "2776a9f7799a1adbc47410ea9bab3377a56c154a6b3e38c5e786036668e2b154",
+      "workspace-close-isolated-nuget-handles": "2680f5502a0f4cdadc8c385a838f4d47f029a50f296405ab741444df81d8eacd",
+      "preview-store-explicit-internal-state": "928252056cf3207c7d6eac15fe72d80a24a4fa6e95ed05a4396d75b2d135ace3",
+      "preview-diff-whitespace-omission": "322cd92491b97397041e0252bb8cf617ccac91defd3d847351dd3a180aadba5e",
+      "preview-token-lifecycle-evidence": "07c7592b348ad2a4f900076455b31f6794d9bf4d2fc76aa4248b10b53739f4cc",
+      "preview-token-reason-projection": "4a8c245cec99ee749c080c3c5de267edbd77fb93d6e0c1889d17b7271a675c18",
+      "preview-token-solution-confirmation": "f391d2ba9ede8381c894af4f7a17c250add8de6540816a497aeb4252888fe9f0",
+      "preview-token-composite-confirmation": "e028421571de16aaff0e573308c71d1c18aa46a91313fb0c995b190e7ada614a",
+      "preview-token-project-confirmation": "5b3db04aab6d5bca44869369e23f9cae2d1cbcb5b22bbb27339e8608b53bb9fb",
+      "fork-composite-nonconsuming-snapshot": "fd27c0b8f49321c6afefbedfa17fe940da2d76638629787c3f40319068ea1189",
+      "fork-preview-project-composite-replay": "c524884456374574eb70979508d878be7d0d3a58e6c94484d3d6a2bf204610d4"
+    }
   }
 }

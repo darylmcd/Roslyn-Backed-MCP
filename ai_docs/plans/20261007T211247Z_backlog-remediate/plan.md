@@ -14,8 +14,6 @@ Selection note: Default first-40 window; one split retained, 14 further split ca
 | 4 | tool-refusal-public-message-guard | pending | — | tool-refusal-public-message-guard |
 | 5 | extract-type-preserve-untouched-trivia | pending | — | extract-type-preserve-untouched-trivia |
 | 6 | scaffold-batch-preview-apply-route | pending | — | scaffold-batch-preview-apply-route |
-| 7 | workspace-fork-project-mutation-preview | pending | — | workspace-fork-project-mutation-preview |
-| 8 | preview-token-consumed-reason | pending | — | preview-token-consumed-reason |
 | 9 | notice-verifier-scoped-test-inherits-nuget-packages | obsolete | — | notice-verifier-scoped-test-inherits-nuget-packages |
 | 10 | test-discovery-file-path-case-identity | pending | — | test-discovery-file-path-case-identity |
 | 11 | workspace-project-alias-lookup | pending | — | workspace-project-alias-lookup |
@@ -34,6 +32,13 @@ Selection note: Default first-40 window; one split retained, 14 further split ca
 | 24 | workspace-close-isolated-nuget-handles | pending | — | workspace-close-isolated-nuget-handles |
 | 25 | preview-store-explicit-internal-state | pending | — | preview-store-explicit-internal-state |
 | 26 | preview-diff-whitespace-omission | pending | — | preview-diff-whitespace-omission |
+| 8.01 | preview-token-lifecycle-evidence | pending | — | — |
+| 8.02 | preview-token-reason-projection | pending | — | — |
+| 8.03 | preview-token-solution-confirmation | pending | — | — |
+| 8.04 | preview-token-composite-confirmation | pending | — | — |
+| 8.05 | preview-token-project-confirmation | pending | — | preview-token-consumed-reason |
+| 7.01 | fork-composite-nonconsuming-snapshot | pending | — | — |
+| 7.02 | fork-preview-project-composite-replay | pending | — | workspace-fork-project-mutation-preview |
 <!-- BSWEEP:STATUS-TABLE END -->
 
 ## Initiatives
@@ -57,14 +62,6 @@ Stanza: `plan/extract-type-preserve-untouched-trivia.md`
 ### 6. scaffold-batch-preview-apply-route
 
 Stanza: `plan/scaffold-batch-preview-apply-route.md`
-
-### 7. workspace-fork-project-mutation-preview
-
-Stanza: `plan/workspace-fork-project-mutation-preview.md`
-
-### 8. preview-token-consumed-reason
-
-Stanza: `plan/preview-token-consumed-reason.md`
 
 ### 9. notice-verifier-scoped-test-inherits-nuget-packages
 
@@ -137,3 +134,31 @@ Stanza: `plan/preview-store-explicit-internal-state.md`
 ### 26. preview-diff-whitespace-omission
 
 Stanza: `plan/preview-diff-whitespace-omission.md`
+
+### 8.01. preview-token-lifecycle-evidence
+
+Stanza: `plan/preview-token-lifecycle-evidence.md`
+
+### 8.02. preview-token-reason-projection
+
+Stanza: `plan/preview-token-reason-projection.md`
+
+### 8.03. preview-token-solution-confirmation
+
+Stanza: `plan/preview-token-solution-confirmation.md`
+
+### 8.04. preview-token-composite-confirmation
+
+Stanza: `plan/preview-token-composite-confirmation.md`
+
+### 8.05. preview-token-project-confirmation
+
+Stanza: `plan/preview-token-project-confirmation.md`
+
+### 7.01. fork-composite-nonconsuming-snapshot
+
+Stanza: `plan/fork-composite-nonconsuming-snapshot.md`
+
+### 7.02. fork-preview-project-composite-replay
+
+Stanza: `plan/fork-preview-project-composite-replay.md`

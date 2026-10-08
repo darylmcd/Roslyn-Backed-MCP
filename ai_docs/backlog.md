@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-07T21:55:07Z
+**updated_at:** 2026-10-08T02:55:58Z
 
 ## Agent contract
 
@@ -122,7 +122,7 @@
 | `logging-process-vitals-absent` | Medium | — | **Expose process vitals in server_heartbeat and the JSON-lines stream** — memory, GC, thread-pool and execution-gate depth are visible nowhere an agent can read headlessly. [type: quality] [source: logging-audit 20260930-1340] | M | items/logging-process-vitals-absent.md |
 | `logging-observability-contract-doc-incomplete` | Medium | logging-jsonl-drops-structured-state,logging-event-id-collisions-no-catalog | **Complete the observability contract docs with agent recipes** — add file-name pattern, correlate/timing/health recipes and event table to consumer docs, and the A10 section to AGENTS.md. [type: docs] [source: logging-audit 20260930-1340] | S | items/logging-observability-contract-doc-incomplete.md |
 | `restore-callers-missing-packages-path` | Medium | workspace-restore-packages-path | **Pass the assets-recorded packagesPath in the test-runner and fork-apply restores** — reuse the helper from workspace-restore-packages-path. [type: bug] [source: plan 20260930T213336Z workspace-restore-packages-path deepener] | S | items/restore-callers-missing-packages-path.md |
-| `split-service-refuse-cross-partition-references` | Medium | — | **Refuse split_service_with_di_preview when a moved method references members it will not carry** — kept methods/properties, statics, base members or another partitions method make the partition uncompilable. [type: bug] [source: split-service-with-di-refuse-unsupported-method-shapes] | M | items/split-service-refuse-cross-partition-references.md |
+| `split-service-refuse-cross-partition-references` | Medium | — | **Preserve semantic references across service partitions** — replace name-only discovery with source-owned composition for dependent moved members; refuse only proven unrepresentable external shapes. [type: bug] [source: split-service-with-di-refuse-unsupported-method-shapes] | M | items/split-service-refuse-cross-partition-references.md |
 | `split-service-refuse-unsupported-method-signatures` | Medium | split-service-refuse-cross-partition-references | **Refuse split_service_with_di_preview for method shapes the stub cannot forward** — static, override/abstract, explicit-interface, ref-returning and generic-with-constraints methods, and generic source types. [type: bug] [source: split-service-with-di-refuse-unsupported-method-shapes] | M | items/split-service-refuse-unsupported-method-signatures.md |
 | `split-service-forward-ref-out-in-arguments` | Medium | split-service-refuse-unsupported-method-signatures | **Forward ref/out/in arguments with their modifiers in split_service_with_di forwarding stubs** — stubs emit bare identifiers, so ref/out/in parameters fail to compile. [type: bug] [source: split-service-with-di-refuse-unsupported-method-shapes] | S | items/split-service-forward-ref-out-in-arguments.md |
 | `split-service-copy-namespace-scoped-usings` | Medium | split-service-forward-ref-out-in-arguments | **Copy namespace-scoped usings into split_service_with_di partition files** — only file-level usings are copied, so moved code relying on namespace-block usings fails to compile (or refuse). [type: bug] [source: split-service-with-di-refuse-unsupported-method-shapes] | S | items/split-service-copy-namespace-scoped-usings.md |
@@ -148,6 +148,8 @@
 | `fix-all-scope-public-argument-refusals` | Medium | — | **Publish FixAll scope corrections** — expose safe scope and required-input guidance with released argument-error identity. [type: bug] [source: code-action-and-flow-argument-refusals-public-message] | S | items/fix-all-scope-public-argument-refusals.md |
 | `code-fix-provider-failure-silent-fallback` | Medium | — | **Surface code-fix provider registration failures** — distinguish failures from no registered action before legacy fallback. [type: bug] [source: fix-all-equivalence-key cold diagnosis 2026-10-07] | S | items/code-fix-provider-failure-silent-fallback.md |
 | `editorconfig-writer-effective-section-precedence` | Medium | — | Preserve effective option values when later matching editorconfig sections override the first updated assignment. [type: bug] [source: backlog-remediate planning 20261007] | S | items/editorconfig-writer-effective-section-precedence.md |
+| `change-signature-callsite-update-path-identity` | Medium | — | **Preserve case-sensitive caller file identity** — use filesystem-aware grouping for change-signature callsite updates so Linux case-distinct source files keep separate counts. [type: bug] [source: October 7 signature-refusal deepening] | S | items/change-signature-callsite-update-path-identity.md |
+| `composite-apply-platform-path-identity` | Medium | — | **Preserve physical file identity in composite apply and undo** — use filesystem-aware grouping for snapshots, applied files and revert overlap so Linux case-distinct paths remain separate. [type: bug] [source: October 7 fork re-vet] | M | items/composite-apply-platform-path-identity.md |
 
 ## Low
 

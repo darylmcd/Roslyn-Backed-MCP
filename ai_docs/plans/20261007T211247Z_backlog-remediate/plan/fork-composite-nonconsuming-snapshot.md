@@ -1,0 +1,14 @@
+| Field | Content |
+|---|---|
+| Route | split-child of workspace-fork-project-mutation-preview |
+| Diagnosis | CompositePreviewStore.cs:40 calls PersistentCompositeStorage.cs:154-196 to claim/delete source tokens; TryRead is also consuming. Forks require a separate non-consuming disk-authoritative snapshot capability. |
+| Approach | Add internal capability and same-singleton DI; capture immutable disk-authoritative snapshots without redemption/TTL renewal, sharing completeness/parser validation with claims. Preserve ordinary claims and cover two-host capture/claim interleavings. Independently correct storage capability; no fork advertisement change. Depend on the complete shared safety migration preview-store-explicit-internal-state; no competing producer/store completeness implementation. |
+| Scope | Production 4: `src/RoslynMcp.Roslyn/Contracts/ICompositePreviewSnapshotReader.cs`, `src/RoslynMcp.Roslyn/Services/CompositePreviewStore.cs`, `src/RoslynMcp.Roslyn/Services/PersistentCompositeStorage.cs`, `src/RoslynMcp.Roslyn/ServiceCollectionExtensions.cs`. Tests 2: `tests/RoslynMcp.Tests/Services/PersistentCompositeStorageTests.cs`, `tests/RoslynMcp.Tests/ServiceCollectionExtensionsTests.cs`. Docs: `changelog.d/fork-composite-nonconsuming-snapshot.md`. defect-forced-companion: fork lookup -> consuming composite retrieval -> persistent claim deletes source authority; preserve ordinary claims while adding snapshot/replay. |
+| Tool policy | edit-only |
+| Estimated context cost | 45000 |
+| Risks | Source-verified production ripple 4; exact prerequisites: preview-store-explicit-internal-state. Preserve snapshot/claim linearization, TTL, disk authority without stale-memory fallback, physical boundaries and immutable snapshots. Required public safety changes are owned by the prerequisite. ADR 0025 reserves isolated validation rationale without consolidating ADR 0009 source-apply risk buckets. |
+| Validation | Observe old-head regressions before repair. Real project/central-props and composite create/update/delete previews; inspect fork/source bytes/version/undo and redeem source token canonically. Two-host capture/claim races, expired/claimed/malformed/missing-safety records, zero writes on boundary/truncation refusals, encoding and all document kinds, cancellation/retention, same-singleton DI. compile_check and related test_run; required hosted Windows/Linux/SDK-floor gates per CI_POLICY.md, scoped executor gate and serialized full fallback per addenda. |
+| Performance review | Bounded immutable snapshot/replay; avoid retaining duplicate payloads or recomputing diff completeness. |
+| CHANGELOG category | Fixed |
+| CHANGELOG entry (draft) | fork-composite-nonconsuming-snapshot preserves non-consuming preview authority during isolated validation. |
+| Backlog sync | Close rows: []. |
