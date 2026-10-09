@@ -133,7 +133,7 @@
     {
       "id": "tool-refusal-public-message-guard",
       "order": 4,
-      "status": "in-progress",
+      "status": "in-review",
       "backlogRowsClosed": [
         "tool-refusal-public-message-guard"
       ],
@@ -166,7 +166,7 @@
       "worktreePath": null,
       "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1768",
       "mergedAt": null,
-      "notes": "Cycle1 amended to fail after a zero-diagnostic exact Roslyn5.9 probe proved non-BCL dynamic constructors falsely rejected at ScanSites391. Both cycle0 defects remain resolved. Same-PR fix2 required with target-first exact-BCL classification, unresolved-target refusal, full-validator red/green corpus, fresh complete producer and cold cycle2. No own defect deferred; no landing authorized.",
+      "notes": "Fix2 head d4ebf55dc2fa044459455abcea05f92734596729 tree ded8d770932ab2fb3a68c74e93e3255bbf75e3bb has fresh complete producer eeadfefdf7a5c3ae:4086 passed,12 platform skips,zero failures and clean audit; focused91 passed, definitive zero-diagnostic old-scanner13-failure proof. Await cold cycle2 and current-head hosted gates; no landing authorized.",
       "fileSetHash": "516755c23fa7ef12b6a24ccdd3d7ffedb3a8c24a3bdb9a283724ce985faed3d9",
       "stanzaHash": "4eff07904b02ba69e478d3d9aaa727831799ecdeb82635aa2b062d03d00bef50",
       "reviewedStanzaHash": "4eff07904b02ba69e478d3d9aaa727831799ecdeb82635aa2b062d03d00bef50",
