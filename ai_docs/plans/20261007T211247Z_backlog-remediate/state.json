@@ -82,7 +82,7 @@
     {
       "id": "workspace-lifecycle-argument-refusals-public-message",
       "order": 3,
-      "status": "in-review",
+      "status": "merged",
       "backlogRowsClosed": [
         "workspace-lifecycle-argument-refusals-public-message"
       ],
@@ -116,11 +116,19 @@
       "branch": "remediation/workspace-lifecycle-argument-refusals-public-message",
       "worktreePath": "D:/Roslyn-Backed-MCP/.worktrees/workspace-lifecycle-argument-refusals-public-message",
       "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1766",
-      "mergedAt": null,
+      "mergedAt": "2026-10-09T18:54:11Z",
       "notes": null,
       "fileSetHash": "9cf0dbd1ccedd885be2a5b52c5f65079e75c9b487ce24aaa80ae10771b18def1",
       "stanzaHash": "d06d9285b83699a868a3996681820eb101b3acef7bd3b617b031701eb12fd44f",
-      "reviewedStanzaHash": "d06d9285b83699a868a3996681820eb101b3acef7bd3b617b031701eb12fd44f"
+      "reviewedStanzaHash": "d06d9285b83699a868a3996681820eb101b3acef7bd3b617b031701eb12fd44f",
+      "reviewedHead": "69335f4d583807533193e88f3db712710a68d3bb",
+      "scratchRemoved": false,
+      "githubGate": {
+        "baseOid": "d9ae7d6c12535e0d2ed3f87c4d68a1c4a0af8643",
+        "headOid": "69335f4d583807533193e88f3db712710a68d3bb",
+        "tree": "fb1d29f179e7eaecde33001a4d1f4e07866539b0",
+        "checksVerifiedAt": "2026-10-09T18:54:05.032Z"
+      }
     },
     {
       "id": "tool-refusal-public-message-guard",
@@ -1366,13 +1374,6 @@
   "conflictGraph": {
     "edges": [
       {
-        "a": 3,
-        "b": 11,
-        "sharedFiles": [
-          "src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs"
-        ]
-      },
-      {
         "a": 6,
         "b": 8.01,
         "sharedFiles": [
@@ -1511,12 +1512,11 @@
       }
     ],
     "degrees": {
-      "3": 1,
       "4": 0,
       "5": 0,
       "6": 2,
       "10": 0,
-      "11": 1,
+      "11": 0,
       "12": 0,
       "13": 0,
       "14": 0,
@@ -1541,6 +1541,7 @@
       4,
       5,
       10,
+      11,
       12,
       13,
       14,
@@ -2147,7 +2148,7 @@
   },
   "conflictGraphInputHash": "46541ab8b79e4abc910815ba6b872c0dc4239e6878f4b1effd133b10f17dcce8",
   "planHash": "cb8758812db8c615ebbf6f548e1d86b6a2788e3260b83ae9e43c4320e9f2efd4",
-  "backlogSnapshotHash": "56aae582402757fbd3961d0b7d4de0ee9ec6e0b4c00e4c83668a3cdad090d767",
+  "backlogSnapshotHash": "0cb31bea14ea0a665941829157de09f183944e450558cd328896d78cf3e0c330",
   "reviewedPlanHash": "cb8758812db8c615ebbf6f548e1d86b6a2788e3260b83ae9e43c4320e9f2efd4",
   "reviewedBacklogSnapshotHash": "cc5f2af685632ecdcbfcf94a8fe98135b9da20f7b2f4ba18d6cdddf811c1c1cc"
 }
