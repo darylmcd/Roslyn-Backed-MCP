@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-09T17:56:15Z
+**updated_at:** 2026-10-09T19:14:48Z
 
 ## Agent contract
 
@@ -91,7 +91,6 @@
 | `tool-merge-apply-undo-revert` | Medium | tool-consolidation-adr-and-alias-machinery | BLOCKED: gated on `tool-consolidation-adr-and-alias-machinery`. **Merge 2 applies into `revert_apply`**, old names kept as deprecated aliases. Catalog hotspot. [type: refactor] [source: tool-consolidation-apply-merges-within-risk-buckets] | M | items/tool-merge-apply-undo-revert.md |
 | `root-boundary-argument-refusals-public-message` | Medium | public-argument-exception-core-move, argument-errors-redacted-factory | BLOCKED: awaiting approval of published error-category migration. **Correct sanctioned-root error classification** — preserve caller denials and distinguish configured/RPC failures. [type: bug] [source: backlog-remediate cold diagnosis 2026-10-04] | M | items/root-boundary-argument-refusals-public-message.md |
 | `symbol-handle-and-reference-argument-refusals-public-message` | Medium | public-argument-exception-core-move, argument-errors-redacted-factory | **symbolHandle decode, bulk-locator, relationship projectName and type-consumer argument refusals are Public** — part of the src-wide argument-error contract (public / redacted / internal). [type: bug] [source: argument-exception-throw-sites-lack-public-message redesign 20260926] | M | items/symbol-handle-and-reference-argument-refusals-public-message.md |
-| `workspace-lifecycle-argument-refusals-public-message` | Medium | public-argument-exception-core-move, argument-errors-redacted-factory | **workspace_load path / gate workspaceId / physical-path argument refusals are Public and path-free** — part of the src-wide argument-error contract (public / redacted / internal). [type: bug] [source: argument-exception-throw-sites-lack-public-message redesign 20260926] | M | items/workspace-lifecycle-argument-refusals-public-message.md |
 | `preview-token-argument-refusals-public-message` | Medium | public-argument-exception-core-move, argument-errors-redacted-factory | **Preview-token/fork retention argument refusals are Public without echoing tokens or workspace ids** — part of the src-wide argument-error contract (public / redacted / internal). [type: bug] [source: argument-exception-throw-sites-lack-public-message redesign 20260926] | M | items/preview-token-argument-refusals-public-message.md |
 | `build-and-analysis-argument-refusals-public-message` | Medium | public-argument-exception-core-move, argument-errors-redacted-factory | **MSBuild evaluation, related-tests cap, unused usageKind and dead-code argument refusals are Public** — part of the src-wide argument-error contract (public / redacted / internal). [type: bug] [source: argument-exception-throw-sites-lack-public-message redesign 20260926] | M | items/build-and-analysis-argument-refusals-public-message.md |
 | `scripting-and-snippet-argument-refusals-public-message` | Medium | public-argument-exception-core-move, argument-errors-redacted-factory | **evaluate_csharp timeout-override/IPC-size and analyze_snippet kind refusals are Public** — part of the src-wide argument-error contract (public / redacted / internal). [type: bug] [source: argument-exception-throw-sites-lack-public-message redesign 20260926] | M | items/scripting-and-snippet-argument-refusals-public-message.md |
@@ -150,6 +149,7 @@
 | `composite-apply-platform-path-identity` | Medium | — | **Preserve physical file identity in composite apply and undo** — use filesystem-aware grouping for snapshots, applied files and revert overlap so Linux case-distinct paths remain separate. [type: bug] [source: October 7 fork re-vet] | M | items/composite-apply-platform-path-identity.md |
 | `test-os-guards-report-passed` | Medium | — | **OS-guarded tests return early and report Passed** — 13 tests in 4 files open with `if (!OperatingSystem.IsX()) return;`; 41 sibling guards use Assert.Inconclusive. Make every OS guard report not-run. [type: test] [source: test-rot-probe-20261009] | L | items/test-os-guards-report-passed.md |
 | `test-inconclusive-count-unbudgeted` | Medium | — | **Nothing bounds the inconclusive test count** — ~95 Assert.Inconclusive sites and no CI or verify-release check on tests that end not-run: a runner without git silently drops 23 tests. [type: ops] [source: test-rot-probe-20261009] | M | items/test-inconclusive-count-unbudgeted.md |
+| `workspace-msbuild-global-properties-value-redaction` | Medium | workspace-lifecycle-argument-refusals-public-message | Keep caller MSBuild global-property values out of rendered and structured logs; retain safe counts and unchanged evaluation inputs. [type: bug] [source: lifecycle cold diagnosis 2026-10-09] | S | items/workspace-msbuild-global-properties-value-redaction.md |
 
 ## Low
 
