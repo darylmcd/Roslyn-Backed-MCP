@@ -1,6 +1,8 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Text;
+using RoslynMcp.Core.Services;
 
 namespace RoslynMcp.Roslyn.Helpers;
 
@@ -17,10 +19,14 @@ public static class PhysicalPathResolver
     /// </summary>
     public static string Resolve(string path)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        ArgumentNullException.ThrowIfNull(path);
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            throw new PublicArgumentException("Provide a non-empty filesystem path.", nameof(path));
+        }
         if (Path.IsPathRooted(path) && !Path.IsPathFullyQualified(path))
         {
-            throw new ArgumentException(
+            throw new PublicArgumentException(
                 "Drive-relative and root-relative paths are ambiguous; use a fully qualified or ordinary relative path.",
                 nameof(path));
         }
@@ -193,7 +199,7 @@ public static class PhysicalPathResolver
         var pathRoot = Path.GetPathRoot(absolutePath);
         if (string.IsNullOrEmpty(pathRoot))
         {
-            throw new ArgumentException("Path could not be resolved to a filesystem root.", nameof(path));
+            throw new UnreachableException("A fully qualified path must have a filesystem root.");
         }
 
         var relativePath = absolutePath[pathRoot.Length..];

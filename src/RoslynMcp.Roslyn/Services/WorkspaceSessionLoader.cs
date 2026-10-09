@@ -1,5 +1,6 @@
 using Microsoft.CodeAnalysis.MSBuild;
 using Microsoft.Extensions.Logging;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Roslyn.Services;
@@ -22,6 +23,8 @@ namespace RoslynMcp.Roslyn.Services;
 /// </remarks>
 internal class WorkspaceSessionLoader
 {
+    internal const string SupportedPathCorrection = "Path must identify a solution (.sln/.slnx) or C# project (.csproj).";
+
     /// <summary>
     /// Creates a new <see cref="MSBuildWorkspace"/>, attaches the diagnostics sink, opens
     /// the supplied solution or project path, and retargets file-based analyzer references
@@ -75,7 +78,7 @@ internal class WorkspaceSessionLoader
             }
             else
             {
-                throw new ArgumentException($"Path must end with .sln, .slnx, or .csproj: {path}");
+                throw new PublicArgumentException(SupportedPathCorrection, nameof(path));
             }
 
             analyzerLease = AnalyzerReferenceIsolation.RetargetFileReferencesToShadowLoader(
