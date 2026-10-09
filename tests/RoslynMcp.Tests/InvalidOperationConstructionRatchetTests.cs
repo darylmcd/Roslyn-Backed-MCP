@@ -4,6 +4,7 @@ using System.Text.Json;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Operations;
 using Microsoft.CodeAnalysis.Text;
 using RoslynMcp.Roslyn.Services;
 
@@ -13,6 +14,7 @@ namespace RoslynMcp.Tests;
 [TestClass]
 public sealed class InvalidOperationConstructionRatchetTests
 {
+    private const string _syntheticPath = "src/Synthetic/Example.cs";
     private const string _factoryPath = "src/RoslynMcp.Core/Services/InvalidOperationErrors.cs";
     private const string _factoryMember = "M:RoslynMcp.Core.Services.InvalidOperationErrors.Internal(System.String,System.Exception)";
     private static readonly JsonSerializerOptions _jsonOptions = new() { WriteIndented = true };
@@ -261,11 +263,22 @@ public sealed class InvalidOperationConstructionRatchetTests
     {
         var root = TestFixtureFileSystem.FindRepositoryRoot();
         using var workspace = new AdhocWorkspace();
+        await ValidateProductionInventoryAsync(CreateSyntheticProductionSolutions(workspace, root,
+            "using System; class Example { void Run() { " + body + " } }"),
+            root, [_factoryPath, _syntheticPath], baselineJson);
+    }
+
+    private static Solution[] CreateSyntheticProductionSolutions(AdhocWorkspace workspace, string root, string source)
+    {
+        var trustedAssemblies = AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string;
+        Assert.IsNotNull(trustedAssemblies);
         var project = workspace.AddProject("Synthetic", LanguageNames.CSharp)
             .Solution.WithProjectFilePath(workspace.CurrentSolution.ProjectIds.Single(),
                 Path.Combine(root, "src", "Synthetic", "Synthetic.csproj"))
             .GetProject(workspace.CurrentSolution.ProjectIds.Single())!
-            .WithMetadataReferences([MetadataReference.CreateFromFile(typeof(object).Assembly.Location)])
+            .WithMetadataReferences(trustedAssemblies.Split(Path.PathSeparator)
+                .Append(typeof(RoslynMcp.Core.Services.PublicInvalidOperationException).Assembly.Location)
+                .Distinct(StringComparer.OrdinalIgnoreCase).Select(path => MetadataReference.CreateFromFile(path)))
             .WithCompilationOptions(new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
         const string factory = "using System; namespace RoslynMcp.Core.Services; " +
             "public static class InvalidOperationErrors { " +
@@ -273,14 +286,11 @@ public sealed class InvalidOperationConstructionRatchetTests
             "=> new InvalidOperationException(serverDetail, inner); }";
         project = project.AddDocument("Factory.cs", SourceText.From(factory),
             filePath: Path.Combine(root, _factoryPath)).Project;
-        const string examplePath = "src/Synthetic/Example.cs";
-        project = project.AddDocument("Example.cs", SourceText.From(
-            "using System; class Example { void Run() { " + body + " } }"),
-            filePath: Path.Combine(root, examplePath)).Project;
-        var solutions = new[] { new[] { "DEBUG" }, Array.Empty<string>() }.Select(symbols =>
+        project = project.AddDocument("Example.cs", SourceText.From(source),
+            filePath: Path.Combine(root, _syntheticPath)).Project;
+        return new[] { new[] { "DEBUG" }, Array.Empty<string>() }.Select(symbols =>
             project.WithParseOptions(new CSharpParseOptions(LanguageVersion.Latest,
                 preprocessorSymbols: symbols)).Solution).ToArray();
-        await ValidateProductionInventoryAsync(solutions, root, [_factoryPath, examplePath], baselineJson);
     }
 
     [TestMethod]
@@ -387,12 +397,15 @@ public sealed class InvalidOperationConstructionRatchetTests
         var identities = new List<Site>();
         foreach (var node in model.SyntaxTree.GetRoot().DescendantNodes().OfType<BaseObjectCreationExpressionSyntax>())
         {
-            var constructor = model.GetSymbolInfo(node).Symbol as IMethodSymbol;
-            Assert.IsNotNull(constructor, $"Unresolved construction at {path}:{node.GetLocation().GetLineSpan().StartLinePosition.Line + 1}");
-            if (!SymbolEqualityComparer.Default.Equals(constructor.ContainingType, exactType))
+            var target = model.GetTypeInfo(node).Type;
+            Assert.IsNotNull(target, $"Construction target did not resolve: {path}");
+            Assert.AreNotEqual(TypeKind.Error, target.TypeKind, $"Construction target did not resolve: {path}");
+            if (!SymbolEqualityComparer.Default.Equals(target, exactType))
             {
                 continue;
             }
+
+            AssertConstructorTargetIdentity(model, node, exactType, path);
 
             var declaration = node.Ancestors().FirstOrDefault(ancestor =>
                 ancestor is MemberDeclarationSyntax or LocalFunctionStatementSyntax or AccessorDeclarationSyntax
@@ -406,6 +419,36 @@ public sealed class InvalidOperationConstructionRatchetTests
         }
 
         return identities.ToArray();
+    }
+
+    private static void AssertConstructorTargetIdentity(SemanticModel model,
+        BaseObjectCreationExpressionSyntax node, ITypeSymbol expectedTarget, string path)
+    {
+        var operation = model.GetOperation(node);
+        IMethodSymbol[] constructors;
+        if (operation is IDynamicObjectCreationOperation dynamicCreation)
+        {
+            Assert.IsTrue(SymbolEqualityComparer.Default.Equals(dynamicCreation.Type, expectedTarget),
+                "Dynamic construction must retain the exact target.");
+            var symbols = model.GetSymbolInfo(node);
+            Assert.IsTrue(symbols.Symbol is IMethodSymbol
+                || symbols.Symbol is null && symbols.CandidateReason == CandidateReason.LateBound
+                && symbols.CandidateSymbols.Length > 0
+                && symbols.CandidateSymbols.All(candidate => candidate is IMethodSymbol),
+                $"Unresolved construction identity: {path}");
+            constructors = symbols.Symbol is IMethodSymbol selected
+                ? [selected] : symbols.CandidateSymbols.Cast<IMethodSymbol>().ToArray();
+        }
+        else
+        {
+            var constructor = (operation as IObjectCreationOperation)?.Constructor;
+            Assert.IsNotNull(constructor, $"Unresolved construction at {path}");
+            constructors = [constructor];
+        }
+
+        Assert.IsTrue(constructors.All(constructor => constructor.MethodKind == MethodKind.Constructor
+            && SymbolEqualityComparer.Default.Equals(constructor.ContainingType, expectedTarget)),
+            $"Construction identity must belong to the exact target: {path}");
     }
 
     private static string MemberIdentity(ISymbol member)
@@ -681,6 +724,239 @@ public sealed class InvalidOperationConstructionRatchetTests
         const string live = "{ void Local() { throw new InvalidOperationException(\"x\"); } }";
         var baseline = ScanConfigurations(live);
         AssertSubset(ScanConfigurations("#region moved\n#if DEBUG\n#endif\n" + live + "\n#endregion"), baseline);
+    }
+
+
+    [TestMethod]
+    [DataRow("new OtherType(value)")]
+    [DataRow("new OtherType((dynamic)value)")]
+    [DataRow("new(value)")]
+    [DataRow("new((dynamic)value)")]
+    [DataRow("new OtherType(value: value)")]
+    [DataRow("new(value: value)")]
+    [DataRow("new OtherAlias(value)")]
+    public async Task CompleteProductionValidator_AllowsResolvedNonBclDynamicOverloadsAsync(string creation)
+    {
+        const string declarations = "using OtherAlias = OtherType; public class OtherType { " +
+            "public OtherType(string value) {} public OtherType(int value) {} } ";
+        await ValidateDiagnosticFreeSyntheticSourceAsync(declarations +
+            "public class Example { public OtherAlias Make(dynamic value) => " + creation + "; }", "[]");
+    }
+
+    [TestMethod]
+    [DataRow("OtherType<int>", "public class OtherType<T> { public OtherType(string value) {} public OtherType(int value) {} }", "new OtherType<int>(value)")]
+    [DataRow("OtherType<int>", "public class OtherType<T> { public OtherType(string value) {} public OtherType(int value) {} }", "new(value)")]
+    [DataRow("OtherException", "public class OtherException : System.InvalidOperationException { public OtherException(string value) {} public OtherException(int value) {} }", "new OtherException(value)")]
+    [DataRow("OtherException", "public class OtherException : System.InvalidOperationException { public OtherException(string value) {} public OtherException(int value) {} }", "new(value)")]
+    public async Task CompleteProductionValidator_AllowsResolvedNonBclGenericAndDerivedTargetsAsync(
+        string target, string declarations, string creation)
+    {
+        await ValidateDiagnosticFreeSyntheticSourceAsync(declarations +
+            " public class Example { public " + target + " Make(dynamic value) => " + creation + "; }", "[]");
+    }
+
+    [TestMethod]
+    [DataRow("new PublicInvalidOperationException(value)")]
+    [DataRow("new(value)")]
+    [DataRow("new PublicInvalidOperationException((dynamic)value)")]
+    [DataRow("new((dynamic)value)")]
+    public async Task CompleteProductionValidator_AllowsActualPublicMarkerDynamicConstructionAsync(string creation)
+    {
+        await ValidateDiagnosticFreeSyntheticSourceAsync("using RoslynMcp.Core.Services; " +
+            "public class Example { public PublicInvalidOperationException Make(dynamic value) => " + creation + "; }", "[]");
+    }
+
+    [TestMethod]
+    [DataRow("new System.InvalidOperationException(value)")]
+    [DataRow("new(value)")]
+    [DataRow("new System.InvalidOperationException((dynamic)value)")]
+    [DataRow("new((dynamic)value)")]
+    public async Task CompleteProductionValidator_InventoriesExactBclDynamicConstructionAsync(string creation)
+    {
+        var root = TestFixtureFileSystem.FindRepositoryRoot();
+        using var workspace = new AdhocWorkspace();
+        var solutions = CreateSyntheticProductionSolutions(workspace, root,
+            "public class Example { public System.InvalidOperationException Make(dynamic value) => " + creation + "; }");
+        await AssertDiagnosticFreeAsync(solutions);
+        var inventory = AggregateSites((await Task.WhenAll(solutions.Select(async solution =>
+        {
+            var project = solution.Projects.Single();
+            var compilation = await project.GetCompilationAsync();
+            Assert.IsNotNull(compilation);
+            var tree = compilation.SyntaxTrees.Single(tree => Relative(root, tree.FilePath) == _syntheticPath);
+            var model = compilation.GetSemanticModel(tree);
+            var node = tree.GetRoot().DescendantNodes().OfType<BaseObjectCreationExpressionSyntax>().Single();
+            var operation = model.GetOperation(node);
+            Assert.IsTrue(operation is IDynamicObjectCreationOperation, "BCL corpus must exercise actual dynamic binding.");
+            var symbols = model.GetSymbolInfo(node);
+            TestContext.WriteLine($"BCL-DYNAMIC operation={operation.Kind} selected={symbols.Symbol} " +
+                $"reason={symbols.CandidateReason} candidates={symbols.CandidateSymbols.Length}");
+            return ScanSites(model, _syntheticPath);
+        }))).SelectMany(sites => sites));
+        Assert.AreEqual(1, inventory.Single().Count);
+        await ValidateProductionInventoryAsync(solutions, root, [_factoryPath, _syntheticPath],
+            JsonSerializer.Serialize(inventory));
+        await Assert.ThrowsExactlyAsync<AssertFailedException>(() =>
+            ValidateProductionInventoryAsync(solutions, root, [_factoryPath, _syntheticPath], "[]"));
+    }
+
+    [TestMethod]
+    [DataRow("MissingType", "new MissingType(value)")]
+    [DataRow("MissingType", "new(value)")]
+    public async Task CompleteProductionValidator_RefusesUnresolvedDynamicTargetsAsync(string target, string creation)
+    {
+        var root = TestFixtureFileSystem.FindRepositoryRoot();
+        using var workspace = new AdhocWorkspace();
+        var solutions = CreateSyntheticProductionSolutions(workspace, root,
+            "public class Example { public " + target + " Make(dynamic value) => " + creation + "; }");
+        foreach (var solution in solutions)
+        {
+            var compilation = await solution.Projects.Single().GetCompilationAsync();
+            Assert.IsNotNull(compilation);
+            Assert.IsTrue(compilation.GetDiagnostics().Any(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error));
+        }
+
+        await Assert.ThrowsExactlyAsync<AssertFailedException>(() =>
+            ValidateProductionInventoryAsync(solutions, root, [_factoryPath, _syntheticPath], "[]"));
+    }
+
+
+    [TestMethod]
+    [DataRow("new System.InvalidOperationException(1, 2, 3)")]
+    [DataRow("new(1, 2, 3)")]
+    public async Task CompleteProductionValidator_RefusesUnresolvedExactBclConstructorsAsync(string creation)
+    {
+        var root = TestFixtureFileSystem.FindRepositoryRoot();
+        using var workspace = new AdhocWorkspace();
+        var solutions = CreateSyntheticProductionSolutions(workspace, root,
+            "public class Example { public System.InvalidOperationException Make() => " + creation + "; }");
+        foreach (var solution in solutions)
+        {
+            var compilation = await solution.Projects.Single().GetCompilationAsync();
+            Assert.IsNotNull(compilation);
+            Assert.IsTrue(compilation.GetDiagnostics().Any(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error));
+        }
+
+        var exception = await Assert.ThrowsExactlyAsync<AssertFailedException>(() =>
+            ValidateProductionInventoryAsync(solutions, root, [_factoryPath, _syntheticPath], "[]"));
+        StringAssert.Contains(exception.Message, "Unresolved construction");
+    }
+
+    [TestMethod]
+    public void ContainingSymbolWithoutDocumentationIdentity_FailsClosed()
+    {
+        var assembly = SnippetModel("throw new InvalidOperationException(\"x\");",
+            "src/example.cs", "Run", []).Compilation.Assembly;
+        Assert.IsNull(assembly.GetDocumentationCommentId());
+        Assert.ThrowsExactly<AssertFailedException>(() => MemberIdentity(assembly));
+    }
+
+
+    [TestMethod]
+    [DataRow("new T()")]
+    [DataRow("new()")]
+    public async Task CompleteProductionValidator_AllowsResolvedTypeParameterTargetAsync(string creation)
+    {
+        await ValidateDiagnosticFreeSyntheticSourceAsync(
+            "public class Example { public T Make<T>() where T : new() => " + creation + "; }", "[]");
+    }
+
+
+    [TestMethod]
+    [DataRow("new OtherType(value)", true)]
+    [DataRow("new OtherType(1)", false)]
+    public async Task ConstructorEvidence_RequiresSelectedOrCandidateConstructorsOnTheKnownTargetAsync(
+        string creation, bool lateBound)
+    {
+        var root = TestFixtureFileSystem.FindRepositoryRoot();
+        using var workspace = new AdhocWorkspace();
+        var solutions = CreateSyntheticProductionSolutions(workspace, root,
+            "public class OtherType { public OtherType(string value) {} public OtherType(int value) {} } " +
+            "public class Example { public OtherType Make(dynamic value) => " + creation + "; }");
+        await AssertDiagnosticFreeAsync(solutions);
+        foreach (var solution in solutions)
+        {
+            var compilation = await solution.Projects.Single().GetCompilationAsync();
+            Assert.IsNotNull(compilation);
+            var tree = compilation.SyntaxTrees.Single(tree => Relative(root, tree.FilePath) == _syntheticPath);
+            var model = compilation.GetSemanticModel(tree);
+            var node = tree.GetRoot().DescendantNodes().OfType<BaseObjectCreationExpressionSyntax>().Single();
+            var target = model.GetTypeInfo(node).Type;
+            Assert.IsNotNull(target);
+            var symbols = model.GetSymbolInfo(node);
+            if (lateBound)
+            {
+                Assert.IsNull(symbols.Symbol);
+                Assert.AreEqual(CandidateReason.LateBound, symbols.CandidateReason);
+                Assert.AreEqual(2, symbols.CandidateSymbols.Length);
+            }
+            else
+            {
+                Assert.IsTrue(symbols.Symbol is IMethodSymbol);
+                Assert.AreEqual(CandidateReason.None, symbols.CandidateReason);
+            }
+            AssertConstructorTargetIdentity(model, node, target, _syntheticPath);
+            var differentTarget = compilation.GetSpecialType(SpecialType.System_Object);
+            Assert.ThrowsExactly<AssertFailedException>(() =>
+                AssertConstructorTargetIdentity(model, node, differentTarget, _syntheticPath));
+            TestContext.WriteLine($"CONSTRUCTOR-EVIDENCE selected={symbols.Symbol} " +
+                $"reason={symbols.CandidateReason} candidates={symbols.CandidateSymbols.Length}");
+        }
+
+        await ValidateProductionInventoryAsync(solutions, root, [_factoryPath, _syntheticPath], "[]");
+        await AssertDiagnosticFreeAsync(solutions);
+    }
+
+
+    [TestMethod]
+    public async Task CompleteProductionValidator_RefusesMissingTargetTypedIdentityAsync()
+    {
+        var root = TestFixtureFileSystem.FindRepositoryRoot();
+        using var workspace = new AdhocWorkspace();
+        var solutions = CreateSyntheticProductionSolutions(workspace, root,
+            "public class Example { public object Make(dynamic value) { var result = new(value); return result; } }");
+        foreach (var solution in solutions)
+        {
+            var compilation = await solution.Projects.Single().GetCompilationAsync();
+            Assert.IsNotNull(compilation);
+            var tree = compilation.SyntaxTrees.Single(tree => Relative(root, tree.FilePath) == _syntheticPath);
+            var node = tree.GetRoot().DescendantNodes().OfType<BaseObjectCreationExpressionSyntax>().Single();
+            var target = compilation.GetSemanticModel(tree).GetTypeInfo(node).Type;
+            Assert.IsNotNull(target);
+            Assert.AreEqual(TypeKind.Error, target.TypeKind);
+            Assert.IsTrue(compilation.GetDiagnostics().Any(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error));
+        }
+
+        var exception = await Assert.ThrowsExactlyAsync<AssertFailedException>(() =>
+            ValidateProductionInventoryAsync(solutions, root, [_factoryPath, _syntheticPath], "[]"));
+        StringAssert.Contains(exception.Message, "Construction target did not resolve");
+    }
+
+    private async Task ValidateDiagnosticFreeSyntheticSourceAsync(string source, string baselineJson)
+    {
+        var root = TestFixtureFileSystem.FindRepositoryRoot();
+        using var workspace = new AdhocWorkspace();
+        var solutions = CreateSyntheticProductionSolutions(workspace, root, source);
+        await AssertDiagnosticFreeAsync(solutions);
+        await ValidateProductionInventoryAsync(solutions, root, [_factoryPath, _syntheticPath], baselineJson);
+        await AssertDiagnosticFreeAsync(solutions);
+    }
+
+    private static async Task AssertDiagnosticFreeAsync(IEnumerable<Solution> solutions)
+    {
+        foreach (var solution in solutions)
+        {
+            var compilation = await solution.Projects.Single().GetCompilationAsync();
+            Assert.IsNotNull(compilation);
+            foreach (var tree in compilation.SyntaxTrees)
+            {
+                _ = compilation.GetSemanticModel(tree).GetDiagnostics();
+            }
+
+            var diagnostics = compilation.GetDiagnostics();
+            Assert.AreEqual(0, diagnostics.Length,
+                "Dynamic corpus must have zero compiler diagnostics: " + string.Join("; ", diagnostics));
+        }
     }
 
     private static Construction[] ScanConfigurations(string body)
