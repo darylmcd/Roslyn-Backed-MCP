@@ -133,7 +133,7 @@
     {
       "id": "tool-refusal-public-message-guard",
       "order": 4,
-      "status": "pending",
+      "status": "in-progress",
       "backlogRowsClosed": [
         "tool-refusal-public-message-guard"
       ],
@@ -162,7 +162,7 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/tool-refusal-public-message-guard",
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
