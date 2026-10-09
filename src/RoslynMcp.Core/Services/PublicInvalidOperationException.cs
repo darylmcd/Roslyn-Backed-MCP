@@ -24,8 +24,11 @@ namespace RoslynMcp.Core.Services;
 /// </para>
 /// <para>
 /// Use this only when the message was written FOR the caller: it must not embed absolute paths,
-/// stack traces, or any value that could carry secrets. When in doubt, throw the plain
-/// <see cref="InvalidOperationException"/> and let the generic fallback apply.
+/// stack traces, or any value that could carry secrets.
+/// Use <see cref="InvalidOperationErrors.Internal"/> for server-only diagnostic detail.
+/// For impossible states, use <see cref="System.Diagnostics.UnreachableException"/> or the BCL
+/// <c>ThrowIf*</c> helpers for their explicit invariants; these are not caller refusals.
+/// New plain <see cref="InvalidOperationException"/> constructions are guarded by a source ratchet.
 /// </para>
 /// </remarks>
 public sealed class PublicInvalidOperationException : InvalidOperationException, IPublicMessageException
