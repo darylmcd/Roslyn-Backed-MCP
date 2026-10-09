@@ -7,7 +7,16 @@
 | Authorization | File global backlog rows only; global implementation belongs to another agent. Complete eligible product work; defer product work requiring the missing tooling. |
 | Global prerequisites | Fanout guidance: claude-config PR #718. Indivisible Rule 5 admission: claude-config PR #724, row `plan-rule5-indivisible-scope-admission`. Current exec-args reproduced exit 4 for 110000 > 80000; no bypass. |
 | Deferred | `preview-store-explicit-internal-state`, `fork-composite-nonconsuming-snapshot`, `fork-preview-project-composite-replay`. Preserve full scope and open backlog rows; resume only after tooling correction, source re-vet and fresh cold review. |
-| Eligible remainder | 26 pending initiatives. Fresh complete pending-subset/whole-graph review required before plan admission. Older evidence below describes the previous checkpoint and is historical. |
+| Admission | Fresh cold plan review passed with warnings; hashes verified. Plan PR #1762 merged at e52c124196c350a334e30b5b925274f3e9974b46. Main backstop run 37951698771 succeeded. |
+| Eligible remainder | 25 pending initiatives; navigation initiative in review. Three tooling-dependent initiatives deferred; one notice initiative obsolete and reconciled. Plan remains incomplete. |
+| Navigation implementation | PR #1764 rebased to head b1b08243a425fbbdc22c0ff58aefc3c4c15f5057 after main advanced through metadata PR #1763. Previous head review and full receipt superseded; fresh full validation, cold review and hosted gates required. No runtime merge claimed. |
+| Other global filings | Existing active-conflict-cache row updated in PR #727; existing Windows Bash-resolution row updated in PR #729. Filing only; no global implementation. |
+| Additional tracked debt | Low/S symbol-resolver-token-lookup-comment-parity: unchanged stale findInsideTrivia comment; actual exact-position and lenient preceding-token lookups verified. |
+| Resume | Preserve current plan branch/worktree and PR #1764. Complete cold review, exact-head landing, main backstop and reviewed reconciliation before capturing the next generation base. One of ten default implementation dispatches used. |
+
+## Historical checkpoint before plan admission
+
+The sections below record the earlier unmerged checkpoint. Current status is the operator update above plus helper-owned state; older next actions and snapshots are superseded.
 
 ## Landed
 

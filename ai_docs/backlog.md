@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-09T15:10:48Z
+**updated_at:** 2026-10-09T16:34:28Z
 
 ## Agent contract
 
@@ -387,6 +387,7 @@
 | `extract-type-override-modifier-stripped` | Low | — | **Investigate extract_type dropping override modifiers** — check whether extracting an override member silently discards the base contract. [type: chore] [source: backlog-remediate 20261001T130338Z] | S | items/extract-type-override-modifier-stripped.md |
 | `project-name-path-selection-duplication` | Low | file-create-and-scaffold-refusals-public-message,cross-project-public-refusals-echo-input | **Centralize project name/path selection** — reuse one selection predicate across file operations, cross-project refactoring and scaffolding while preserving caller-specific failures. [type: refactor] [source: backlog-remediate adjacent review 2026-10-04] | M | items/project-name-path-selection-duplication.md |
 | `argument-error-retired-family-design-links` | Low | — | **Preserve argument-error family design guidance** — replace fifteen live links to the deleted core-move item with a durable, source-verified contract. [type: docs] [source: backlog-remediate adjacent verification 2026-10-05] | M | items/argument-error-retired-family-design-links.md |
+| `symbol-resolver-token-lookup-comment-parity` | Low | navigation-and-locator-argument-refusals-public-message | **Align SymbolResolver token lookup commentary** — replace the stale findInsideTrivia claim with the actual exact-position lookup and lenient preceding-token fallback; preserve behavior. [type: chore] [source: navigation cold self-review] | S | items/symbol-resolver-token-lookup-comment-parity.md |
 
 ## Defer
 
