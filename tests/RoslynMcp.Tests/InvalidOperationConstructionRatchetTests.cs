@@ -4,6 +4,7 @@ using System.Text.Json;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Text;
 using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
@@ -15,6 +16,10 @@ public sealed class InvalidOperationConstructionRatchetTests
     private const string _factoryPath = "src/RoslynMcp.Core/Services/InvalidOperationErrors.cs";
     private const string _factoryMember = "M:RoslynMcp.Core.Services.InvalidOperationErrors.Internal(System.String,System.Exception)";
     private static readonly JsonSerializerOptions _jsonOptions = new() { WriteIndented = true };
+    private static readonly JsonSerializerOptions _inventoryReadOptions = new()
+    {
+        UnmappedMemberHandling = System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow,
+    };
     public TestContext TestContext { get; set; } = null!;
 
     public sealed record Construction(string Path, string Member, string Fingerprint, int Count);
@@ -25,17 +30,30 @@ public sealed class InvalidOperationConstructionRatchetTests
     public async Task ProductionConstructions_DoNotGrowOrReplacePinnedIdentitiesAsync()
     {
         var root = TestFixtureFileSystem.FindRepositoryRoot();
-        var inventory = new List<Site>();
-        // Production loading supplies real MSBuild parse options, source documents and references.
-        // Separate owned containers avoid mutating the assembly-shared sample workspace.
+        using var services = TestServiceContainer.Create(new ValidationServiceOptions());
+        var solutions = new List<Solution>();
         foreach (var configuration in new[] { "Debug", "Release" })
         {
-            using var services = TestServiceContainer.Create(new ValidationServiceOptions());
             var status = await services.WorkspaceManager.LoadAsync(
                 Path.Combine(root, "RoslynMcp.slnx"),
                 new Dictionary<string, string> { ["Configuration"] = configuration },
                 CancellationToken.None);
-            var solution = services.WorkspaceManager.GetCurrentSolution(status.WorkspaceId);
+            solutions.Add(services.WorkspaceManager.GetCurrentSolution(status.WorkspaceId));
+        }
+
+        await ValidateProductionInventoryAsync(solutions, root,
+            Directory.EnumerateFiles(Path.Combine(root, "src"), "*.cs", SearchOption.AllDirectories)
+                .Where(path => IsProductionSource(root, path)).Select(path => Relative(root, path)).ToArray(),
+            File.ReadAllText(Path.Combine(root, "tests", "RoslynMcp.Tests", "TestData",
+                "invalid-operation-construction-baseline.json")));
+    }
+
+    private async Task<Construction[]> ValidateProductionInventoryAsync(IEnumerable<Solution> solutions,
+        string root, string[] expectedPaths, string baselineJson)
+    {
+        var inventory = new List<Site>();
+        foreach (var solution in solutions)
+        {
             var paths = new HashSet<string>(StringComparer.Ordinal);
             var constructions = new List<Site>();
             var factoryCount = 0;
@@ -68,10 +86,8 @@ public sealed class InvalidOperationConstructionRatchetTests
                 }
             }
 
-            CollectionAssert.AreEquivalent(
-                Directory.EnumerateFiles(Path.Combine(root, "src"), "*.cs", SearchOption.AllDirectories)
-                    .Where(path => IsProductionSource(root, path)).Select(path => Relative(root, path)).ToArray(),
-                paths.ToArray(), "Every production source file must belong to the semantic inventory.");
+            CollectionAssert.AreEquivalent(expectedPaths, paths.ToArray(),
+                "Every production source file must belong to the semantic inventory.");
             Assert.AreEqual(1, factoryCount, "Only the factory's exact member may construct a new plain exception.");
             // Retain offsets only until configurations are unioned; persisted identities never include positions.
             inventory.AddRange(constructions);
@@ -79,15 +95,192 @@ public sealed class InvalidOperationConstructionRatchetTests
 
         var actual = AggregateSites(inventory);
         TestContext.WriteLine("INVENTORY-BEGIN" + JsonSerializer.Serialize(actual, _jsonOptions) + "INVENTORY-END");
-        var baseline = JsonSerializer.Deserialize<Construction[]>(File.ReadAllText(
-            Path.Combine(root, "tests", "RoslynMcp.Tests", "TestData", "invalid-operation-construction-baseline.json")));
+        var baseline = JsonSerializer.Deserialize<Construction[]>(baselineJson, _inventoryReadOptions);
         Assert.IsNotNull(baseline);
-        Assert.IsTrue(baseline.Length > 0, "The committed debt inventory must be populated.");
-        Assert.IsTrue(baseline.All(item => item.Count > 0 && item.Path.StartsWith("src/", StringComparison.Ordinal)
-            && !item.Path.Contains("..", StringComparison.Ordinal) && !item.Path.Contains('\\')
-            && item.Member.Length > 0 && item.Fingerprint.Length == 64));
-        Assert.AreEqual(baseline.Length, baseline.Select(item => (item.Path, item.Member, item.Fingerprint)).Distinct().Count());
+        foreach (var item in baseline)
+        {
+            Assert.IsNotNull(item, "Inventory records must not be null.");
+            Assert.IsTrue(item.Count > 0, "Inventory counts must be positive.");
+            Assert.IsFalse(string.IsNullOrWhiteSpace(item.Path));
+            Assert.IsTrue(item.Path.StartsWith("src/", StringComparison.Ordinal)
+                && item.Path.Split('/').All(part => part.Length > 0 && part is not ("." or ".."))
+                && item.Path.EndsWith(".cs", StringComparison.Ordinal) && !item.Path.Any(char.IsControl)
+                && !item.Path.Contains('\\'),
+                "Inventory paths must be normalized production paths.");
+            Assert.IsFalse(string.IsNullOrWhiteSpace(item.Member));
+            Assert.IsNotNull(item.Fingerprint);
+            Assert.IsTrue(item.Fingerprint.Length == 64 && item.Fingerprint.All(Uri.IsHexDigit),
+                "Construction fingerprints must be SHA-256 hex.");
+        }
+
+        Assert.AreEqual(baseline.Length,
+            baseline.Select(item => (item.Path, item.Member, item.Fingerprint)).Distinct().Count(),
+            "Inventory identities must not be duplicated.");
         AssertSubset(actual, baseline);
+        return actual;
+    }
+
+    [TestMethod]
+    public async Task CompleteProductionValidator_AllDebtRemovedAllowsEmptyInventoryAsync()
+    {
+        await ValidateSyntheticProductionAsync("", "[]");
+    }
+
+    [TestMethod]
+    public async Task CompleteProductionValidator_LiveDebtRejectsEmptyInventoryAsync()
+    {
+        await Assert.ThrowsExactlyAsync<AssertFailedException>(() =>
+            ValidateSyntheticProductionAsync("throw new InvalidOperationException(\"live\");", "[]"));
+    }
+
+    [TestMethod]
+    public void SiblingLocalFunctions_CannotExchangeIdenticalConstructions()
+    {
+        const string before = "{ void Local() { throw new InvalidOperationException(\"x\"); } } " +
+            "{ void Local() { } }";
+        const string after = "{ void Local() { } } " +
+            "{ void Local() { throw new InvalidOperationException(\"x\"); } }";
+        var baseline = ScanSnippet(before);
+        Assert.ThrowsExactly<AssertFailedException>(() => AssertSubset(ScanSnippet(after), baseline));
+    }
+
+    [TestMethod]
+    public void LocalScopes_AllowDeclarationTriviaMovementAndConstructionOrFunctionDeletion()
+    {
+        const string original = "{ void Local() { throw new InvalidOperationException(\"x\"); } int first = 1; } " +
+            "{ void Local() { throw new InvalidOperationException(\"y\"); } }";
+        var baseline = ScanSnippet(original);
+        AssertSubset(ScanSnippet("\n{ int first = 1; /*before*/ void Local() { " +
+            "throw new /*inside*/ InvalidOperationException(\"x\"); } }\n" +
+            "{ void Local() { throw new InvalidOperationException(\"y\"); } }"), baseline);
+        AssertSubset(ScanSnippet("{ void Local() { } int first = 1; } " +
+            "{ void Local() { throw new InvalidOperationException(\"y\"); } }"), baseline);
+        AssertSubset(ScanSnippet("{ int first = 1; } " +
+            "{ void Local() { throw new InvalidOperationException(\"y\"); } }"), baseline);
+        AssertSubset([], baseline);
+    }
+
+    [TestMethod]
+    public void LocalScopes_AllowUniquelyHeadedEarlierScopeDeletion()
+    {
+        const string before = "if (true) { void Local() { throw new InvalidOperationException(\"x\"); } } " +
+            "if (false) { void Local() { throw new InvalidOperationException(\"y\"); } }";
+        var baseline = ScanSnippet(before);
+        AssertSubset(ScanSnippet("if (false) { void Local() { " +
+            "throw new InvalidOperationException(\"y\"); } }"), baseline);
+    }
+
+    [TestMethod]
+    public void LocalScopes_KeepThenIdentityWhenElseScopeIsDeleted()
+    {
+        var baseline = ScanSnippet("if (true) { void Local() { " +
+            "throw new InvalidOperationException(\"x\"); } } else { void Local() { } }");
+        AssertSubset(ScanSnippet("if (true) { void Local() { " +
+            "throw new InvalidOperationException(\"x\"); } }"), baseline);
+    }
+
+    [TestMethod]
+    public void LocalScopes_KeepUnbracedControlAncestryDistinct()
+    {
+        var baseline = ScanSnippet("if (true) if (true) { void Local() { " +
+            "throw new InvalidOperationException(\"x\"); } }");
+        Assert.ThrowsExactly<AssertFailedException>(() => AssertSubset(
+            ScanSnippet("if (false) if (true) { void Local() { " +
+                "throw new InvalidOperationException(\"x\"); } }"), baseline));
+    }
+
+    [TestMethod]
+    [DataRow("while (true)", "while (false)")]
+    [DataRow("for (int i = 0; i < 1; i++)", "for (int i = 0; i < 2; i++)")]
+    [DataRow("lock (\"first\")", "lock (\"second\")")]
+    public void LocalScopes_RetainGenericControlHeaders(string before, string after)
+    {
+        const string body = " { void Local() { throw new InvalidOperationException(\"x\"); } }";
+        var baseline = ScanSnippet(before + body);
+        Assert.ThrowsExactly<AssertFailedException>(() => AssertSubset(ScanSnippet(after + body), baseline));
+    }
+
+    [TestMethod]
+    public void LocalScopes_RejectAmbiguousWholeScopeDeletionWithoutReassigningOldIdentity()
+    {
+        const string before = "{ void Local() { } } " +
+            "{ void Local() { throw new InvalidOperationException(\"x\"); } }";
+        var baseline = ScanSnippet(before);
+        var remaining = ScanSnippet("{ void Local() { throw new InvalidOperationException(\"x\"); } }");
+        Assert.AreNotEqual(baseline.Single().Member, remaining.Single().Member);
+        Assert.ThrowsExactly<AssertFailedException>(() => AssertSubset(remaining, baseline));
+        AssertSubset([], baseline);
+    }
+
+    [TestMethod]
+    [DataRow("null", false)]
+    [DataRow("[null]", false)]
+    [DataRow("[{}]", false)]
+    [DataRow("[{\"Path\":null,\"Member\":\"M:x\",\"Fingerprint\":\"x\",\"Count\":1}]", false)]
+    [DataRow("[{\"Path\":\"src/a.cs\",\"Member\":null,\"Fingerprint\":\"x\",\"Count\":1}]", false)]
+    [DataRow("[{\"Path\":\"src/a.cs\",\"Member\":\"M:x\",\"Fingerprint\":null,\"Count\":1}]", false)]
+    [DataRow("[", true)]
+    [DataRow("{}", true)]
+    [DataRow("[{\"Path\":\"src/a.cs\",\"Member\":\"M:x\",\"Fingerprint\":\"x\",\"Count\":1,\"Unexpected\":true}]", true)]
+    public async Task CompleteProductionValidator_RejectsMalformedInventoryAsync(string json, bool syntaxError)
+    {
+        if (syntaxError)
+        {
+            await Assert.ThrowsExactlyAsync<JsonException>(() => ValidateSyntheticProductionAsync("", json));
+        }
+        else
+        {
+            await Assert.ThrowsExactlyAsync<AssertFailedException>(() => ValidateSyntheticProductionAsync("", json));
+        }
+    }
+
+    [TestMethod]
+    public async Task CompleteProductionValidator_RejectsInvalidFieldsAndDuplicateRecordsAsync()
+    {
+        var valid = ScanSnippet("throw new InvalidOperationException(\"x\");").Single();
+        var invalid = new[]
+        {
+            valid with { Path = "../outside.cs" }, valid with { Path = "src/../a.cs" },
+            valid with { Path = "src\\a.cs" }, valid with { Path = "src//a.cs" },
+            valid with { Path = "src/./a.cs" }, valid with { Path = "src/a/" },
+            valid with { Member = " " },
+            valid with { Fingerprint = new string('Z', 64) }, valid with { Fingerprint = "" },
+            valid with { Count = 0 }, valid with { Count = -1 },
+        };
+        foreach (var item in invalid)
+        {
+            await Assert.ThrowsExactlyAsync<AssertFailedException>(() =>
+                ValidateSyntheticProductionAsync("", JsonSerializer.Serialize(new[] { item })));
+        }
+
+        await Assert.ThrowsExactlyAsync<AssertFailedException>(() =>
+            ValidateSyntheticProductionAsync("", JsonSerializer.Serialize(new[] { valid, valid })));
+    }
+
+    private async Task ValidateSyntheticProductionAsync(string body, string baselineJson)
+    {
+        var root = TestFixtureFileSystem.FindRepositoryRoot();
+        using var workspace = new AdhocWorkspace();
+        var project = workspace.AddProject("Synthetic", LanguageNames.CSharp)
+            .Solution.WithProjectFilePath(workspace.CurrentSolution.ProjectIds.Single(),
+                Path.Combine(root, "src", "Synthetic", "Synthetic.csproj"))
+            .GetProject(workspace.CurrentSolution.ProjectIds.Single())!
+            .WithMetadataReferences([MetadataReference.CreateFromFile(typeof(object).Assembly.Location)])
+            .WithCompilationOptions(new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        const string factory = "using System; namespace RoslynMcp.Core.Services; " +
+            "public static class InvalidOperationErrors { " +
+            "public static InvalidOperationException Internal(string serverDetail, Exception inner = null) " +
+            "=> new InvalidOperationException(serverDetail, inner); }";
+        project = project.AddDocument("Factory.cs", SourceText.From(factory),
+            filePath: Path.Combine(root, _factoryPath)).Project;
+        const string examplePath = "src/Synthetic/Example.cs";
+        project = project.AddDocument("Example.cs", SourceText.From(
+            "using System; class Example { void Run() { " + body + " } }"),
+            filePath: Path.Combine(root, examplePath)).Project;
+        var solutions = new[] { new[] { "DEBUG" }, Array.Empty<string>() }.Select(symbols =>
+            project.WithParseOptions(new CSharpParseOptions(LanguageVersion.Latest,
+                preprocessorSymbols: symbols)).Solution).ToArray();
+        await ValidateProductionInventoryAsync(solutions, root, [_factoryPath, examplePath], baselineJson);
     }
 
     [TestMethod]
@@ -223,12 +416,96 @@ public sealed class InvalidOperationConstructionRatchetTests
             // Preserve the entire containing-member chain, including nested local functions.
             Assert.IsNotNull(member.ContainingSymbol);
             return MemberIdentity(member.ContainingSymbol) + "/" +
-                member.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat);
+                member.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat) + LexicalScopeIdentity(member);
         }
 
         var documentationId = member.GetDocumentationCommentId();
         Assert.IsNotNull(documentationId, $"Member needs a stable identity: {member}");
         return documentationId;
+    }
+
+    private sealed record ScopeFrame(string Header, int PeerIndex, int PeerCount);
+
+    private static string LexicalScopeIdentity(ISymbol member)
+    {
+        var declarations = member.DeclaringSyntaxReferences;
+        Assert.AreEqual(1, declarations.Length, "A local function must have one source declaration.");
+        var declaration = declarations.Single().GetSyntax();
+        var frames = declaration.Ancestors().OfType<BlockSyntax>().Reverse()
+            .Where(IsLexicalScope).Select(block =>
+            {
+                var parentBlock = block.Ancestors().OfType<BlockSyntax>().FirstOrDefault();
+                var root = parentBlock is null ? block.SyntaxTree.GetRoot() : parentBlock;
+                var header = ScopeHeader(block);
+                var peers = root.DescendantNodes().OfType<BlockSyntax>()
+                    .Where(peer => IsLexicalScope(peer)
+                        && peer.Ancestors().OfType<BlockSyntax>().FirstOrDefault() == parentBlock
+                        && ScopeHeader(peer) == header).ToArray();
+                var index = Array.IndexOf(peers, block);
+                Assert.IsTrue(index >= 0, "Lexical scope must belong to its peer inventory.");
+                return new ScopeFrame(header, index, peers.Length);
+            }).ToArray();
+        return "@scopes:" + JsonSerializer.Serialize(frames) + ConditionalScopeIdentity(declaration);
+    }
+
+
+    private sealed record ConditionalFrame(string Condition, string Branch);
+
+    private static string ConditionalScopeIdentity(SyntaxNode declaration)
+    {
+        var frames = new List<ConditionalFrame>();
+        foreach (var directive in declaration.SyntaxTree.GetRoot().DescendantTrivia(descendIntoTrivia: true)
+                     .Select(trivia => trivia.GetStructure()).OfType<DirectiveTriviaSyntax>()
+                     .OrderBy(directive => directive.SpanStart)
+                     .TakeWhile(directive => directive.SpanStart < declaration.SpanStart))
+        {
+            Assert.IsFalse(directive.ContainsDiagnostics, "Directive syntax must resolve before assigning an identity.");
+            switch (directive)
+            {
+                case IfDirectiveTriviaSyntax conditional:
+                    frames.Add(new ConditionalFrame(Fingerprint(conditional.Condition), "if"));
+                    break;
+                case ElifDirectiveTriviaSyntax conditional:
+                    Assert.IsTrue(frames.Count > 0, "An elif branch must have a containing conditional.");
+                    frames[^1] = frames[^1] with { Branch = "elif:" + Fingerprint(conditional.Condition) };
+                    break;
+                case ElseDirectiveTriviaSyntax:
+                    Assert.IsTrue(frames.Count > 0, "An else branch must have a containing conditional.");
+                    frames[^1] = frames[^1] with { Branch = "else" };
+                    break;
+                case EndIfDirectiveTriviaSyntax:
+                    Assert.IsTrue(frames.Count > 0, "An endif directive must have a containing conditional.");
+                    frames.RemoveAt(frames.Count - 1);
+                    break;
+            }
+        }
+
+        return frames.Count == 0 ? "" : "@conditions:" + JsonSerializer.Serialize(frames);
+    }
+
+    private static bool IsLexicalScope(BlockSyntax block)
+        => block.Parent is not (BaseMethodDeclarationSyntax or AccessorDeclarationSyntax
+            or LocalFunctionStatementSyntax);
+
+    private static string ScopeHeader(BlockSyntax block)
+    {
+        if (block.Parent is BlockSyntax or GlobalStatementSyntax)
+        {
+            return "bare";
+        }
+
+        return string.Join("/", block.Ancestors().TakeWhile(node => node is not BlockSyntax)
+            .Reverse().Select(node => node switch
+            {
+                IfStatementSyntax conditional => "if:" + Fingerprint(conditional.Condition),
+                ElseClauseSyntax => "else",
+                SwitchStatementSyntax selection => "switch:" + Fingerprint(selection.Expression),
+                SwitchSectionSyntax section => "case:" + TokenFingerprint(
+                    section.Labels.SelectMany(label => label.DescendantTokens())),
+                _ => node.Kind() + ":" + TokenFingerprint(node.DescendantTokens().Where(token =>
+                    !token.Parent!.AncestorsAndSelf().TakeWhile(ancestor => ancestor != node)
+                        .OfType<StatementSyntax>().Any())),
+            }));
     }
 
     [TestMethod]
@@ -314,6 +591,98 @@ public sealed class InvalidOperationConstructionRatchetTests
         Assert.AreEqual(1, ScanConfigurations("throw new InvalidOperationException(\"x\");").Single().Count);
     }
 
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task ConditionalLocalFunctions_CannotExchangeIdenticalConstructionsAsync(bool directBody)
+    {
+        const string construction = "void Local() { throw new InvalidOperationException(\"x\"); }";
+        const string empty = "void Local() { }";
+        string Scope(string local) => directBody ? local : "{ " + local + " }";
+        var before = "#if DEBUG\n" + Scope(construction) + "\n#else\n" + Scope(empty) + "\n#endif";
+        var after = "#if DEBUG\n" + Scope(empty) + "\n#else\n" + Scope(construction) + "\n#endif";
+        var baseline = ScanConfigurations(before);
+        Assert.AreEqual(1, baseline.Single().Count);
+        Assert.ThrowsExactly<AssertFailedException>(() => AssertSubset(ScanConfigurations(after), baseline));
+        var productionBaseline = JsonSerializer.Serialize(baseline.Select(item =>
+            item with { Path = "src/Synthetic/Example.cs", Member = item.Member.Replace("Sample", "Example") }));
+        await ValidateSyntheticProductionAsync("\n" + before, productionBaseline);
+        await Assert.ThrowsExactlyAsync<AssertFailedException>(() =>
+            ValidateSyntheticProductionAsync("\n" + after, productionBaseline));
+    }
+
+    [TestMethod]
+    public void ConditionalLocalFunctions_RetainNestedElifBranchAndConditionIdentity()
+    {
+        const string local = "{ void Local() { throw new InvalidOperationException(\"x\"); } }";
+        var baseline = ScanConfigurations("#if DEBUG\n#if true\n" + local + "\n#endif\n#endif");
+        Assert.ThrowsExactly<AssertFailedException>(() => AssertSubset(
+            ScanConfigurations("#if DEBUG\n#if false\n#else\n" + local + "\n#endif\n#endif"), baseline));
+        var elif = ScanConfigurations("#if DEBUG\n{ void Local() { } }\n#elif !DEBUG\n" + local + "\n#endif");
+        Assert.AreEqual(1, elif.Single().Count);
+        Assert.ThrowsExactly<AssertFailedException>(() => AssertSubset(
+            ScanConfigurations("#if DEBUG\n{ void Local() { } }\n#else\n" + local + "\n#endif"), elif));
+    }
+
+    [TestMethod]
+    public void ConditionalLocalFunctions_AllowDirectiveTriviaMovementAndDeletion()
+    {
+        const string original = "#if DEBUG\n{ void Local() { throw new InvalidOperationException(\"x\"); } int first = 1; }\n#else\n{ void Local() { throw new InvalidOperationException(\"y\"); } }\n#endif";
+        var baseline = ScanConfigurations(original);
+        Assert.AreEqual(2, baseline.Sum(item => item.Count));
+        AssertSubset(ScanConfigurations("\n#if   DEBUG // moved\n\n{ int first = 1; /*moved*/ void Local() { throw new /*inside*/ InvalidOperationException(\"x\"); } }\n#else // moved\n{ void Local() { throw new InvalidOperationException(\"y\"); } }\n#endif\n"), baseline);
+        AssertSubset(ScanConfigurations("#if DEBUG\n{ int first = 1; }\n#else\n{ void Local() { throw new InvalidOperationException(\"y\"); } }\n#endif"), baseline);
+        AssertSubset([], baseline);
+    }
+
+    [TestMethod]
+    public void SwitchLocalFunctions_RetainCaseAndSelectionHeadersAndAllowUniqueScopeDeletion()
+    {
+        const string live = "{ void Local() { throw new InvalidOperationException(\"x\"); } } break; ";
+        const string empty = "{ void Local() { } } break; ";
+        var baseline = ScanSnippet("switch (1) { case 1: " + live + "case 2: " + empty + "}");
+        Assert.ThrowsExactly<AssertFailedException>(() => AssertSubset(
+            ScanSnippet("switch (1) { case 1: " + empty + "case 2: " + live + "}"), baseline));
+        Assert.ThrowsExactly<AssertFailedException>(() => AssertSubset(
+            ScanSnippet("switch (2) { case 1: " + live + "case 2: " + empty + "}"), baseline));
+        var deletionBaseline = ScanSnippet("switch (1) { case 1: " + empty + "case 2: " + live + "}");
+        AssertSubset(ScanSnippet("switch (1) { case 2: " + live + "}"), deletionBaseline);
+        AssertSubset(ScanSnippet("switch ( 1 ) { case 2: /*moved*/ " + live + "}"), deletionBaseline);
+    }
+
+    [TestMethod]
+    public void TopLevelLocalFunctions_RetainSiblingScopeIdentityAndFailClosedOnAmbiguousDeletion()
+    {
+        const string live = "{ void Local() { throw new System.InvalidOperationException(\"x\"); } }";
+        const string empty = "{ void Local() { } }";
+        Construction[] ScanTop(string source) => Scan(CorpusModel(CSharpSyntaxTree.ParseText(source),
+            OutputKind.ConsoleApplication), "src/Program.cs");
+        var baseline = ScanTop(empty + live);
+        Assert.ThrowsExactly<AssertFailedException>(() => AssertSubset(ScanTop(live + empty), baseline));
+        Assert.ThrowsExactly<AssertFailedException>(() => AssertSubset(ScanTop(live), baseline));
+        AssertSubset(ScanTop("\n" + empty + "\n/*moved*/" + live), baseline);
+        AssertSubset(ScanTop(empty + "{ }"), baseline);
+    }
+
+    [TestMethod]
+    [DataRow("#else")]
+    [DataRow("#elif DEBUG")]
+    [DataRow("#endif")]
+    public void ConditionalLocalFunctions_RejectUnmatchedDirectives(string directive)
+    {
+        Assert.ThrowsExactly<AssertFailedException>(() => ScanConfigurations(directive +
+            "\nvoid Local() { throw new InvalidOperationException(\"x\"); }"));
+    }
+
+    [TestMethod]
+    public void ConditionalLocalFunctions_IgnoreNonConditionalDirectivesAndCompletedConditions()
+    {
+        const string live = "{ void Local() { throw new InvalidOperationException(\"x\"); } }";
+        var baseline = ScanConfigurations(live);
+        AssertSubset(ScanConfigurations("#region moved\n#if DEBUG\n#endif\n" + live + "\n#endregion"), baseline);
+    }
+
     private static Construction[] ScanConfigurations(string body)
     {
         var sites = new List<Site>();
@@ -327,8 +696,11 @@ public sealed class InvalidOperationConstructionRatchetTests
     }
 
     private static string Fingerprint(SyntaxNode node)
+        => TokenFingerprint(node.DescendantTokens());
+
+    private static string TokenFingerprint(IEnumerable<SyntaxToken> tokens)
         => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(
-            node.DescendantTokens().Select(token => new { token.RawKind, token.Text })))));
+            tokens.Select(token => new { token.RawKind, token.Text })))));
 
     private static void AssertSubset(Construction[] actual, Construction[] baseline)
     {
@@ -336,7 +708,9 @@ public sealed class InvalidOperationConstructionRatchetTests
         var additions = actual.Where(item => !pinned.TryGetValue((item.Path, item.Member, item.Fingerprint), out var count)
             || item.Count > count).ToArray();
         Assert.AreEqual(0, additions.Length,
-            "New/replaced unmarked InvalidOperationException construction(s): " + JsonSerializer.Serialize(additions));
+            "New/replaced unmarked InvalidOperationException construction(s), or unproven lexical scope topology. " +
+            "Use PublicInvalidOperationException for safe caller refusals or InvalidOperationErrors.Internal " +
+            "for server-only diagnostics; do not reassign an old identity: " + JsonSerializer.Serialize(additions));
     }
 
     private static string Relative(string root, string path) => Path.GetRelativePath(root, path).Replace('\\', '/');

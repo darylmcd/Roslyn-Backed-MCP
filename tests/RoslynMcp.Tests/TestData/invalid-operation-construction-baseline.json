@@ -1219,7 +1219,7 @@
   },
   {
     "Path": "src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs",
-    "Member": "M:RoslynMcp.Roslyn.Services.ParameterObjectService.BindCallSite(Microsoft.CodeAnalysis.SemanticModel,Microsoft.CodeAnalysis.SyntaxNode,Microsoft.CodeAnalysis.CSharp.Syntax.InvocationExpressionSyntax,Microsoft.CodeAnalysis.IMethodSymbol,System.Collections.Generic.IReadOnlyList{Microsoft.CodeAnalysis.IParameterSymbol},System.String,System.Threading.CancellationToken)/Unmappable(string)",
+    "Member": "M:RoslynMcp.Roslyn.Services.ParameterObjectService.BindCallSite(Microsoft.CodeAnalysis.SemanticModel,Microsoft.CodeAnalysis.SyntaxNode,Microsoft.CodeAnalysis.CSharp.Syntax.InvocationExpressionSyntax,Microsoft.CodeAnalysis.IMethodSymbol,System.Collections.Generic.IReadOnlyList{Microsoft.CodeAnalysis.IParameterSymbol},System.String,System.Threading.CancellationToken)/Unmappable(string)@scopes:[]",
     "Fingerprint": "1A896B9986F8CFC830DBEF5046A2D397A3238B4A44BB589D55E2D75647E38216",
     "Count": 1
   },
