@@ -263,7 +263,7 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": "Current main source ThirdPartyNoticeDriftTests.cs:132-138 passes currentRoot for scoped verification; RunVerifierAsync:237 explicitly supplies NUGET_PACKAGES for every child (null clears inherited). Current-session mcp__roslyn__test_run ClassName=RoslynMcp.Tests.ThirdPartyNoticeDriftTests: 3 passed, 0 failed/skipped, exit 0, duration 26440ms. No code changes needed; closure owed by reviewed plan reconciliation.",
+      "notes": "Reverified 2026-10-09 on unchanged production source: ThirdPartyNoticeDriftTests.cs scoped call sets activePackageRoot=currentRoot; RunVerifierAsync passes environment NUGET_PACKAGES=activePackageRoot, null clears other callers. MCP focused run: 3 passed, 0 failed. Foreign ambient NUGET_PACKAGES focused no-build/no-restore run: 3 passed, 0 failed; scratch notice-tests/notice-ambient.trx. Premise already satisfied; close as obsolete, no implementation claim.",
       "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "stanzaHash": "e1ff8a04c6da28d98e04ffa92f6e4632bc2fa0d3806aca2f57e5c0486320ad35",
       "reviewedStanzaHash": "e1ff8a04c6da28d98e04ffa92f6e4632bc2fa0d3806aca2f57e5c0486320ad35"
