@@ -86,9 +86,7 @@ public static class SymbolResolver
         // every caller that threads a workspaceId through for other reasons must keep working.
         if (compilationCache is not null && string.IsNullOrEmpty(workspaceId))
         {
-            throw new ArgumentException(
-                "workspaceId is required when compilationCache is supplied — the compilation cache keys on it.",
-                nameof(workspaceId));
+            ArgumentException.ThrowIfNullOrEmpty(workspaceId);
         }
     }
 
@@ -281,14 +279,7 @@ public static class SymbolResolver
         if (syntaxTree is null) return null;
 
         var text = syntaxTree.GetText(ct);
-        if (line < 1 || line > text.Lines.Count)
-        {
-            throw new ArgumentException(
-                $"Line {line} is out of range. The file has {text.Lines.Count} line(s).",
-                nameof(line));
-        }
-
-        var position = text.Lines[line - 1].Start + (column - 1);
+        var position = SourcePosition.StrictCaret(text, line, column);
         var root = await syntaxTree.GetRootAsync(ct).ConfigureAwait(false);
 
         // Try the token at the exact position first, then also try FindToken with
@@ -609,9 +600,7 @@ public static class SymbolResolver
         if (semanticModel is null || tree is null) return null;
 
         var text = tree.GetText(ct);
-        if (line < 1 || line > text.Lines.Count) return null;
-
-        var position = text.Lines[line - 1].Start + (column - 1);
+        var position = SourcePosition.StrictCaret(text, line, column);
         var root = await tree.GetRootAsync(ct).ConfigureAwait(false);
 
         var node = root.FindToken(position).Parent;

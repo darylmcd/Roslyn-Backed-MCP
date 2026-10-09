@@ -53,7 +53,7 @@ public sealed class NegativeEdgeCaseTests : SharedWorkspaceTestBase
     public void SymbolLocator_NoFields_ThrowsArgumentException()
     {
         var locator = new SymbolLocator(null, null, null, null, null);
-        Assert.ThrowsExactly<ArgumentException>(() => locator.Validate());
+        Assert.ThrowsExactly<PublicArgumentException>(() => locator.Validate());
     }
 
     [TestMethod]
@@ -75,9 +75,10 @@ public sealed class NegativeEdgeCaseTests : SharedWorkspaceTestBase
             .Documents.First(d => d.FilePath?.EndsWith(".cs") == true);
 
         var locator = SymbolLocator.BySource(doc.FilePath!, -1, -1);
-        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
             SymbolNavigationService.GoToDefinitionAsync(WorkspaceId, locator, CancellationToken.None));
-        StringAssert.Contains(ex.Message, "out of range");
+        StringAssert.Contains(ex.PublicMessage, "out of range");
+        Assert.AreEqual("line", ex.ParamName);
     }
 
     [TestMethod]

@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-09T17:16:31Z
+**updated_at:** 2026-10-09T17:44:41Z
 
 ## Agent contract
 
@@ -149,6 +149,8 @@
 | `editorconfig-writer-effective-section-precedence` | Medium | — | Preserve effective option values when later matching editorconfig sections override the first updated assignment. [type: bug] [source: backlog-remediate planning 20261007] | S | items/editorconfig-writer-effective-section-precedence.md |
 | `change-signature-callsite-update-path-identity` | Medium | — | **Preserve case-sensitive caller file identity** — use filesystem-aware grouping for change-signature callsite updates so Linux case-distinct source files keep separate counts. [type: bug] [source: October 7 signature-refusal deepening] | S | items/change-signature-callsite-update-path-identity.md |
 | `composite-apply-platform-path-identity` | Medium | — | **Preserve physical file identity in composite apply and undo** — use filesystem-aware grouping for snapshots, applied files and revert overlap so Linux case-distinct paths remain separate. [type: bug] [source: October 7 fork re-vet] | M | items/composite-apply-platform-path-identity.md |
+| `test-os-guards-report-passed` | Medium | — | **OS-guarded tests return early and report Passed** — 13 tests in 4 files open with `if (!OperatingSystem.IsX()) return;`; 41 sibling guards use Assert.Inconclusive. Make every OS guard report not-run. [type: test] [source: test-rot-probe-20261009] | L | items/test-os-guards-report-passed.md |
+| `test-inconclusive-count-unbudgeted` | Medium | — | **Nothing bounds the inconclusive test count** — ~95 Assert.Inconclusive sites and no CI or verify-release check on tests that end not-run: a runner without git silently drops 23 tests. [type: ops] [source: test-rot-probe-20261009] | M | items/test-inconclusive-count-unbudgeted.md |
 
 ## Low
 
@@ -387,6 +389,10 @@
 | `extract-type-override-modifier-stripped` | Low | — | **Investigate extract_type dropping override modifiers** — check whether extracting an override member silently discards the base contract. [type: chore] [source: backlog-remediate 20261001T130338Z] | S | items/extract-type-override-modifier-stripped.md |
 | `project-name-path-selection-duplication` | Low | file-create-and-scaffold-refusals-public-message,cross-project-public-refusals-echo-input | **Centralize project name/path selection** — reuse one selection predicate across file operations, cross-project refactoring and scaffolding while preserving caller-specific failures. [type: refactor] [source: backlog-remediate adjacent review 2026-10-04] | M | items/project-name-path-selection-duplication.md |
 | `argument-error-retired-family-design-links` | Low | — | **Preserve argument-error family design guidance** — replace fifteen live links to the deleted core-move item with a durable, source-verified contract. [type: docs] [source: backlog-remediate adjacent verification 2026-10-05] | M | items/argument-error-retired-family-design-links.md |
+| `test-workspace-fakes-hand-rolled-per-file` | Low | — | **Workspace interfaces are re-faked per test file** — 34 hand-written IWorkspaceManager and 23 IWorkspaceExecutionGate fakes restate the whole interface; slice the move onto shared Helpers doubles. [type: test-refactor] [source: test-rot-probe-20261009] | S | items/test-workspace-fakes-hand-rolled-per-file.md |
+| `test-try-delete-directory-copies` | Low | — | **TryDeleteDirectory with a bare catch is copied into 7 test files** — beside the shared TestFixtureFileSystem.DeleteDirectoryIfExists; a leaked fixture directory is invisible. Use the shared helper. [type: test-refactor] [source: test-rot-probe-20261009] | S | items/test-try-delete-directory-copies.md |
+| `test-require-git-triplicated` | Low | — | **RequireGit is duplicated in three test classes** — ChangelogFragmentRequirementTests, CodexChangelogHookTests and ReleaseLagGuardTests each define it; share one helper beside GitFixtureRunner. [type: test-refactor] [source: test-rot-probe-20261009] | L | items/test-require-git-triplicated.md |
+| `sanctioned-root-refusal-names-no-remedy` | Low | — | **The sanctioned-root refusal names no remedy** — workspace_load outside the boundary returns one sentence with no pointer to ROSLYNMCP_SANCTIONED_ROOTS or expandSanctionedRoots; a caller cannot self-correct. [type: bug] [source: test-rot-probe-20261009] | M | items/sanctioned-root-refusal-names-no-remedy.md |
 | `symbol-resolver-token-lookup-comment-parity` | Low | navigation-and-locator-argument-refusals-public-message | **Align SymbolResolver token lookup commentary** — replace the stale findInsideTrivia claim with the actual exact-position lookup and lenient preceding-token fallback; preserve behavior. [type: chore] [source: navigation cold self-review] | S | items/symbol-resolver-token-lookup-comment-parity.md |
 
 ## Defer

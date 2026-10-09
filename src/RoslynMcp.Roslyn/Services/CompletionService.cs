@@ -26,7 +26,7 @@ public sealed class CompletionService : ICompletionService
         CancellationToken ct)
     {
         if (maxItems <= 0)
-            throw new ArgumentException("maxItems must be greater than 0.", nameof(maxItems));
+            throw new PublicArgumentException("maxItems must be greater than 0.", nameof(maxItems));
 
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var document = SymbolResolver.FindDocument(solution, filePath);
@@ -42,14 +42,7 @@ public sealed class CompletionService : ICompletionService
         }
 
         var text = await document.GetTextAsync(ct).ConfigureAwait(false);
-        if (line < 1 || line > text.Lines.Count)
-        {
-            throw new ArgumentException(
-                $"Line {line} is out of range. The file has {text.Lines.Count} line(s).",
-                nameof(line));
-        }
-
-        var position = text.Lines[line - 1].Start + (column - 1);
+        var position = SourcePosition.StrictCaret(text, line, column);
 
         // get-completions-filtertext-doesnt-promote-in-scope-members: when a triggerCharacter
         // is supplied (typically '.'), pass an explicit CompletionTrigger.CreateInsertionTrigger
