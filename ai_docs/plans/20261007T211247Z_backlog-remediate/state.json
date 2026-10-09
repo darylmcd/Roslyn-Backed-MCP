@@ -57,7 +57,7 @@
       "worktreePath": "D:/Roslyn-Backed-MCP/.worktrees/navigation-and-locator-argument-refusals-public-message",
       "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1764",
       "mergedAt": "2026-10-09T17:13:21Z",
-      "notes": "Merged PR1764 at5cf87d77d2d6709d6c92b1b7f1c6af96139792e5 after cold re-review of b1b08243a425fbbdc22c0ff58aefc3c4c15f5057 and hosted green. Fresh full producer3bf9ee18ccac6b02 tree578e6d25d26313c3ab0733cc795f90b39808093a exit0:3982passed/12platformskips/0failed. Own workspaces closed drainProcesses:false. Worktree removed; scratch EPERM quarantine a177c9f2-navigation-and-locator-argument-refusals-public-message remains; holder unconfirmed because probe emitted only CLIXML framing. Main backstop37964842895 pending. Original pre-rebase gate/review superseded.",
+      "notes": "Merged PR #1764 at 5cf87d77d2d6709d6c92b1b7f1c6af96139792e5 after cold re-review of b1b08243a425fbbdc22c0ff58aefc3c4c15f5057 and green hosted checks. Fresh full producer 3bf9ee18ccac6b02 passed tree 578e6d25d26313c3ab0733cc795f90b39808093a: 3982 passed, 12 platform skips, zero failures. Main backstop 37964842895 succeeded on exact merge commit. Own workspaces closed with drainProcesses:false. Worktree removed; scratch EPERM quarantine a177c9f2-navigation-and-locator-argument-refusals-public-message remains. Holder unconfirmed; global diagnostic defect filed in claude-config PR #733. Original pre-rebase gate/review superseded.",
       "fileSetHash": "6071dd98bae90da2d52a7df904443ebf22e70f322d016ecc7979f9be88f96022",
       "stanzaHash": "75d352d7b21486720ade9f4dd51b70df28977bdda5dc301632c5d08eec87afab",
       "reviewedStanzaHash": "75d352d7b21486720ade9f4dd51b70df28977bdda5dc301632c5d08eec87afab",
