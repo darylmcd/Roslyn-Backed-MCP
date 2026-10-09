@@ -8,7 +8,7 @@
 | Estimated context cost | 35000 |
 | Risks | Preserve untouched source bytes, comments, directives and line endings; format only synthesized/changed nodes. Probe every NormalizeWhitespace call in this service and distinguish new-document generation from existing source rewriting. No signature or contract changes; no production ripple beyond the defining service. |
 | Validation | Red-first copied-sample extraction with unusual whitespace outside the extraction; compare unchanged byte regions before/after preview and apply, and compile the result. Run TypeExtractionTests and related extraction classes discovered by test_related_files. Per-edit compile_check and targeted test_run; scoped executor gate; required hosted validate per CI_POLICY.md is the full landing gate, without duplicating hosted checks locally. |
-| Performance review | N/A - correctness fix; inspect alias-resolution cost at index rebuild, not repeated enumeration. |
+| Performance review | N/A - syntax/trivia correctness fix; no new hot-path mechanism is planned. |
 | CHANGELOG category | Fixed |
 | CHANGELOG entry (draft) | Type extraction preserves source formatting outside the changed syntax. |
 | Backlog sync | Close rows: [extract-type-preserve-untouched-trivia]. |

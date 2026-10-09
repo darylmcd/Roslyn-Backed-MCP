@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-09T16:10:57Z
+**updated_at:** 2026-10-09T17:56:15Z
 
 ## Agent contract
 
@@ -90,7 +90,6 @@
 | `tool-merge-apply-file-lifecycle` | Medium | tool-consolidation-adr-and-alias-machinery | BLOCKED: gated on `tool-consolidation-adr-and-alias-machinery`. **Merge 5 applies into `file_lifecycle_apply`**, old names kept as deprecated aliases. Catalog hotspot. [type: refactor] [source: tool-consolidation-apply-merges-within-risk-buckets] | M | items/tool-merge-apply-file-lifecycle.md |
 | `tool-merge-apply-undo-revert` | Medium | tool-consolidation-adr-and-alias-machinery | BLOCKED: gated on `tool-consolidation-adr-and-alias-machinery`. **Merge 2 applies into `revert_apply`**, old names kept as deprecated aliases. Catalog hotspot. [type: refactor] [source: tool-consolidation-apply-merges-within-risk-buckets] | M | items/tool-merge-apply-undo-revert.md |
 | `root-boundary-argument-refusals-public-message` | Medium | public-argument-exception-core-move, argument-errors-redacted-factory | BLOCKED: awaiting approval of published error-category migration. **Correct sanctioned-root error classification** — preserve caller denials and distinguish configured/RPC failures. [type: bug] [source: backlog-remediate cold diagnosis 2026-10-04] | M | items/root-boundary-argument-refusals-public-message.md |
-| `navigation-and-locator-argument-refusals-public-message` | Medium | public-argument-exception-core-move, argument-errors-redacted-factory | **Position bounds (line/column) in navigation, resolver and completion plus Core SymbolLocator** — part of the src-wide argument-error contract (public / redacted / internal). [type: bug] [source: argument-exception-throw-sites-lack-public-message redesign 20260926] | M | items/navigation-and-locator-argument-refusals-public-message.md |
 | `symbol-handle-and-reference-argument-refusals-public-message` | Medium | public-argument-exception-core-move, argument-errors-redacted-factory | **symbolHandle decode, bulk-locator, relationship projectName and type-consumer argument refusals are Public** — part of the src-wide argument-error contract (public / redacted / internal). [type: bug] [source: argument-exception-throw-sites-lack-public-message redesign 20260926] | M | items/symbol-handle-and-reference-argument-refusals-public-message.md |
 | `workspace-lifecycle-argument-refusals-public-message` | Medium | public-argument-exception-core-move, argument-errors-redacted-factory | **workspace_load path / gate workspaceId / physical-path argument refusals are Public and path-free** — part of the src-wide argument-error contract (public / redacted / internal). [type: bug] [source: argument-exception-throw-sites-lack-public-message redesign 20260926] | M | items/workspace-lifecycle-argument-refusals-public-message.md |
 | `preview-token-argument-refusals-public-message` | Medium | public-argument-exception-core-move, argument-errors-redacted-factory | **Preview-token/fork retention argument refusals are Public without echoing tokens or workspace ids** — part of the src-wide argument-error contract (public / redacted / internal). [type: bug] [source: argument-exception-throw-sites-lack-public-message redesign 20260926] | M | items/preview-token-argument-refusals-public-message.md |
@@ -393,6 +392,7 @@
 | `test-try-delete-directory-copies` | Low | — | **TryDeleteDirectory with a bare catch is copied into 7 test files** — beside the shared TestFixtureFileSystem.DeleteDirectoryIfExists; a leaked fixture directory is invisible. Use the shared helper. [type: test-refactor] [source: test-rot-probe-20261009] | S | items/test-try-delete-directory-copies.md |
 | `test-require-git-triplicated` | Low | — | **RequireGit is duplicated in three test classes** — ChangelogFragmentRequirementTests, CodexChangelogHookTests and ReleaseLagGuardTests each define it; share one helper beside GitFixtureRunner. [type: test-refactor] [source: test-rot-probe-20261009] | L | items/test-require-git-triplicated.md |
 | `sanctioned-root-refusal-names-no-remedy` | Low | — | **The sanctioned-root refusal names no remedy** — workspace_load outside the boundary returns one sentence with no pointer to ROSLYNMCP_SANCTIONED_ROOTS or expandSanctionedRoots; a caller cannot self-correct. [type: bug] [source: test-rot-probe-20261009] | M | items/sanctioned-root-refusal-names-no-remedy.md |
+| `symbol-resolver-token-lookup-comment-parity` | Low | navigation-and-locator-argument-refusals-public-message | **Align SymbolResolver token lookup commentary** — replace the stale findInsideTrivia claim with the actual exact-position lookup and lenient preceding-token fallback; preserve behavior. [type: chore] [source: navigation cold self-review] | S | items/symbol-resolver-token-lookup-comment-parity.md |
 
 ## Defer
 

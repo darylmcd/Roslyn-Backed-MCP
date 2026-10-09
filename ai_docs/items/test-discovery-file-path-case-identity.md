@@ -21,3 +21,5 @@
 ## Context
 
 - Found while correcting junction alias selection in `FindDocumentByPath`. That caller-path lookup now uses platform identity; these related-test collections still collapse distinct paths on case-sensitive volumes.
+
+2026-10-09 planning-quality finding: this initiative performance cell contained copied alias-resolution text belonging to workspace-project-alias-lookup. Corrected through audited stanza-amend; source approach, runtime scope, acceptance and estimate unchanged. This existing row tracks implementation; no runtime completion claimed.

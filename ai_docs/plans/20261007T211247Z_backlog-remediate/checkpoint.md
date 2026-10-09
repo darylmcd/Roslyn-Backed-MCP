@@ -7,7 +7,17 @@
 | Authorization | File global backlog rows only; global implementation belongs to another agent. Complete eligible product work; defer product work requiring the missing tooling. |
 | Global prerequisites | Fanout guidance: claude-config PR #718. Indivisible Rule 5 admission: claude-config PR #724, row `plan-rule5-indivisible-scope-admission`. Current exec-args reproduced exit 4 for 110000 > 80000; no bypass. |
 | Deferred | `preview-store-explicit-internal-state`, `fork-composite-nonconsuming-snapshot`, `fork-preview-project-composite-replay`. Preserve full scope and open backlog rows; resume only after tooling correction, source re-vet and fresh cold review. |
-| Eligible remainder | 26 pending initiatives. Fresh complete pending-subset/whole-graph review required before plan admission. Older evidence below describes the previous checkpoint and is historical. |
+| Admission | Fresh cold plan review passed with warnings; hashes verified. Plan PR #1762 merged at e52c124196c350a334e30b5b925274f3e9974b46. Main backstop run 37951698771 succeeded. |
+| Eligible remainder | 25 pending initiatives; navigation initiative merged. Three tooling-dependent initiatives deferred; one notice initiative obsolete and reconciled. Plan remains incomplete. |
+| Navigation implementation | PR #1764 merged at 5cf87d77d2d6709d6c92b1b7f1c6af96139792e5, 2026-10-09T17:13:21Z. Fresh full producer 3bf9ee18ccac6b02 passed tree 578e6d25d26313c3ab0733cc795f90b39808093a: 3982 passed, 12 platform skips, zero failures. Cold re-review passed zero findings; hosted checks green. Main backstop run 37964842895 succeeded on exact merge commit. |
+| Navigation cleanup | Implementation worktree removed; primary main fast-forwarded. Scratch cache quarantined after EPERM; holder probe returned only CLIXML framing. Underlying holder unconfirmed; cleanup remains incomplete. |
+| Other global filings | Existing active-conflict-cache row updated in PR #727; existing Windows Bash-resolution row updated in PR #729; holder-probe CLIXML diagnostics filed in PR #733. Filing only; no global implementation. |
+| Additional tracked debt | Low/S symbol-resolver-token-lookup-comment-parity: unchanged stale findInsideTrivia comment; actual exact-position and lenient preceding-token lookups verified. |
+| Resume | Preserve current plan branch/worktree. Complete reviewed reconciliation before capturing the next generation base. One of ten default implementation dispatches used; contextPct unavailable. Navigation dispatch 2026-10-09T15:25:04Z, merge 17:13:21Z; 108.3 minutes before reconciliation. |
+
+## Historical checkpoint before plan admission
+
+The sections below record the earlier unmerged checkpoint. Current status is the operator update above plus helper-owned state; older next actions and snapshots are superseded.
 
 ## Landed
 

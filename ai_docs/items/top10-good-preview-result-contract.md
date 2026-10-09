@@ -23,3 +23,5 @@
 | Immutable generation base a74d846295e45eac9630b405a1b374882d1968ed | Same permissive assertion/comment precede the resource changes. |
 | ApplyWithVerifyTool:60-92 | Applied and RolledBack are distinct outcomes with separate status and payload contracts. |
 | Independent mechanism | Resource argument publication does not change the apply/verify workflow; file this assertion defect separately. |
+
+2026-10-09 planning-quality finding: this initiative performance cell contained copied alias-resolution text belonging to workspace-project-alias-lookup. Corrected through audited stanza-amend; source approach, runtime scope, acceptance and estimate unchanged. This existing row tracks implementation; no runtime completion claimed.
