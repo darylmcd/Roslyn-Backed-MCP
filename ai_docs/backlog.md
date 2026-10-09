@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-09T21:28:46Z
+**updated_at:** 2026-10-09T23:20:50Z
 
 ## Agent contract
 
@@ -49,6 +49,7 @@
 | id | pri | deps | do | size | detail |
 |----|-----|------|----|------|--------|
 | `logging-default-sink-disabled-stderr-swallowed` | High | logging-retention-destroys-repro-evidence | **Enable the bounded file sink by default for installed users** — ROSLYNMCP_OBSERVABILITY_SINK defaults to `disabled` and the plugin mcp.json never sets it, so an MCP host that swallows stderr leaves no evidence of a first failure. [type: quality] [source: logging-audit 20260930-1340] | M | items/logging-default-sink-disabled-stderr-swallowed.md |
+| `persistent-composite-workspace-identity-not-portable` | High | — | Resolve persisted composite tokens to the correct receiving workspace and source snapshot before claim or mutation. [type: bug] [source: token-lifecycle-independence-revet] | L | items/persistent-composite-workspace-identity-not-portable.md |
 
 ## Medium
 
@@ -393,6 +394,7 @@
 | `test-require-git-triplicated` | Low | — | **RequireGit is duplicated in three test classes** — ChangelogFragmentRequirementTests, CodexChangelogHookTests and ReleaseLagGuardTests each define it; share one helper beside GitFixtureRunner. [type: test-refactor] [source: test-rot-probe-20261009] | L | items/test-require-git-triplicated.md |
 | `sanctioned-root-refusal-names-no-remedy` | Low | — | **The sanctioned-root refusal names no remedy** — workspace_load outside the boundary returns one sentence with no pointer to ROSLYNMCP_SANCTIONED_ROOTS or expandSanctionedRoots; a caller cannot self-correct. [type: bug] [source: test-rot-probe-20261009] | M | items/sanctioned-root-refusal-names-no-remedy.md |
 | `symbol-resolver-token-lookup-comment-parity` | Low | navigation-and-locator-argument-refusals-public-message | **Align SymbolResolver token lookup commentary** — replace the stale findInsideTrivia claim with the actual exact-position lookup and lenient preceding-token fallback; preserve behavior. [type: chore] [source: navigation cold self-review] | S | items/symbol-resolver-token-lookup-comment-parity.md |
+| `file-operation-preview-state-assertion-contract` | Low | — | Assert preview refusal behavior without reflecting private store representation; update every consumer. [type: test-refactor] [source: token-lifecycle-independence-revet] | S | items/file-operation-preview-state-assertion-contract.md |
 
 ## Defer
 

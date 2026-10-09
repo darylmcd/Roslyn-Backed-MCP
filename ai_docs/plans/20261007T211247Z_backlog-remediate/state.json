@@ -133,7 +133,7 @@
     {
       "id": "tool-refusal-public-message-guard",
       "order": 4,
-      "status": "in-review",
+      "status": "merged",
       "backlogRowsClosed": [
         "tool-refusal-public-message-guard"
       ],
@@ -165,12 +165,19 @@
       "branch": "remediation/tool-refusal-public-message-guard",
       "worktreePath": null,
       "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1768",
-      "mergedAt": null,
-      "notes": "Fix2 head d4ebf55dc2fa044459455abcea05f92734596729 tree ded8d770932ab2fb3a68c74e93e3255bbf75e3bb has fresh complete producer eeadfefdf7a5c3ae:4086 passed,12 platform skips,zero failures and clean audit; focused91 passed, definitive zero-diagnostic old-scanner13-failure proof. Await cold cycle2 and current-head hosted gates; no landing authorized.",
+      "mergedAt": "2026-10-09T22:58:00Z",
+      "notes": null,
       "fileSetHash": "516755c23fa7ef12b6a24ccdd3d7ffedb3a8c24a3bdb9a283724ce985faed3d9",
       "stanzaHash": "4eff07904b02ba69e478d3d9aaa727831799ecdeb82635aa2b062d03d00bef50",
       "reviewedStanzaHash": "4eff07904b02ba69e478d3d9aaa727831799ecdeb82635aa2b062d03d00bef50",
-      "reviewedHead": null
+      "reviewedHead": "d4ebf55dc2fa044459455abcea05f92734596729",
+      "scratchRemoved": false,
+      "githubGate": {
+        "baseOid": "1dd9a62c63e4277ac02ae793415436552ac668a5",
+        "headOid": "d4ebf55dc2fa044459455abcea05f92734596729",
+        "tree": "ded8d770932ab2fb3a68c74e93e3255bbf75e3bb",
+        "checksVerifiedAt": "2026-10-09T22:57:47.900Z"
+      }
     },
     {
       "id": "extract-type-preserve-untouched-trivia",
@@ -1190,14 +1197,20 @@
     {
       "id": "preview-token-lifecycle-evidence",
       "order": 8.01,
-      "status": "pending",
+      "status": "deferred",
       "productionFiles": [
         "src/RoslynMcp.Core/Services/BoundedStore.cs",
         "src/RoslynMcp.Core/Services/PreviewTokenState.cs",
         "src/RoslynMcp.Core/Services/ICompositePreviewStore.cs",
         "src/RoslynMcp.Core/Services/IProjectMutationPreviewStore.cs",
         "src/RoslynMcp.Roslyn/Contracts/IPreviewStore.cs",
-        "src/RoslynMcp.Roslyn/Services/PreviewStore.cs"
+        "src/RoslynMcp.Roslyn/Services/PreviewStore.cs",
+        "src/RoslynMcp.Roslyn/Services/RefactoringService.cs",
+        "src/RoslynMcp.Roslyn/Services/CompositePreviewStore.cs",
+        "src/RoslynMcp.Roslyn/Services/PersistentCompositeStorage.cs",
+        "src/RoslynMcp.Roslyn/Services/CompositeApplyOrchestrator.cs",
+        "src/RoslynMcp.Roslyn/Services/ProjectMutationService.cs",
+        "src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs"
       ],
       "testFiles": [
         "tests/RoslynMcp.Tests/BoundedStoreEvictionTests.cs",
@@ -1208,26 +1221,32 @@
         "tests/RoslynMcp.Tests/ParameterObjectPreviewTests.cs",
         "tests/RoslynMcp.Tests/PreviewRouteBindingEditingTests.cs",
         "tests/RoslynMcp.Tests/PreviewRouteBindingFileOpsTests.cs",
-        "tests/RoslynMcp.Tests/ToolDispatchTests.cs"
+        "tests/RoslynMcp.Tests/ToolDispatchTests.cs",
+        "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs",
+        "tests/RoslynMcp.Tests/RefactoringToolsIntegrationTests.cs",
+        "tests/RoslynMcp.Tests/CompositeApplyOrchestratorTests.cs",
+        "tests/RoslynMcp.Tests/Services/PersistentCompositeStorageTests.cs",
+        "tests/RoslynMcp.Tests/ProjectMutationIntegrationTests.cs",
+        "tests/RoslynMcp.Tests/TestData/invalid-operation-construction-baseline.json"
       ],
       "docFiles": [
         "docs/decisions/0024-preview-token-terminal-lifecycle.md",
         "docs/decisions/README.md",
         "changelog.d/preview-token-lifecycle-evidence.md"
       ],
-      "estimatedContextTokens": 65000,
+      "estimatedContextTokens": 160000,
       "toolPolicy": "edit-only",
-      "fanoutEstimate": 6,
+      "fanoutEstimate": 12,
       "fanoutOversize": false,
-      "scheduleHint": null,
+      "scheduleHint": "heroic-last",
       "dependsOn": [],
-      "productionFilesTouched": 6,
-      "testFilesAdded": 9,
+      "productionFilesTouched": 12,
+      "testFilesAdded": 15,
       "backlogRowsClosed": [],
       "rowsClosedCount": 0,
-      "fileSetHash": "b114ed6217432d10b0b088db516b1900a40e34d4c06cd49c3ff0c61da5c34e8c",
-      "stanzaHash": "0f7f7c45714a4e2f494c34cfbe6b87a2f3c47cc93b86cc5179a0097135a01569",
-      "reviewedStanzaHash": "0f7f7c45714a4e2f494c34cfbe6b87a2f3c47cc93b86cc5179a0097135a01569",
+      "fileSetHash": "7140904e12431c1ebbc9928bee297c0212774ce958f975fadbf9186e789663ee",
+      "stanzaHash": "35e108b39e9ab2b7fa538716bf5de4bd1ec0ff523cfe44a2b552cd8cf0f329df",
+      "reviewedStanzaHash": "35e108b39e9ab2b7fa538716bf5de4bd1ec0ff523cfe44a2b552cd8cf0f329df",
       "amendments": [
         {
           "at": "2026-10-09T16:19:02.240Z",
@@ -1235,13 +1254,21 @@
           "reason": "Move the existing source-traced coupling sentence from Risks to Scope; preserve every runtime file, test file, estimate, Approach and dependency.",
           "previousStanzaHash": "07c7592b348ad2a4f900076455b31f6794d9bf4d2fc76aa4248b10b53739f4cc",
           "stanzaHash": "0f7f7c45714a4e2f494c34cfbe6b87a2f3c47cc93b86cc5179a0097135a01569"
+        },
+        {
+          "at": "2026-10-09T23:16:51.266Z",
+          "finding": "Inherited split exposes Discarded for successful solution/project/composite apply and for pre-write persistent claim.",
+          "reason": "Source-only independence re-vet at 683dc0fcb503d02f49063e6909e327272ab4044c forces all completion producers and persistent claim authority into the first lifecycle boundary. Preserve complete 12-production/15-test-asset scope and genuine 160000 estimate. This is a planning hold, not execution approval; resolve portable identity prerequisite, global Rule5 admission and fresh cold review before shipping.",
+          "previousStanzaHash": "0f7f7c45714a4e2f494c34cfbe6b87a2f3c47cc93b86cc5179a0097135a01569",
+          "stanzaHash": "35e108b39e9ab2b7fa538716bf5de4bd1ec0ff523cfe44a2b552cd8cf0f329df"
         }
-      ]
+      ],
+      "notes": "Source re-vet at 683dc0fc disproves inherited stage independence. Correct first lifecycle boundary includes all completion producers and persistent claim authority (12 production/15 test-assets/160000). Native exec-args exit4 confirms global Rule5 admission blocker, owned by claude-config PR724. Portable receiving-workspace/source-snapshot identity is a tracked explicit prerequisite. Resume only after prerequisite and audited global admission land, complete source/scope re-vet and fresh cold review. Preserve child/source-row identities, original closure owner and full scope; no implementation delivered, no child obsolete."
     },
     {
       "id": "preview-token-reason-projection",
       "order": 8.02,
-      "status": "pending",
+      "status": "deferred",
       "productionFiles": [
         "src/RoslynMcp.Core/Services/PreviewTokenStaleException.cs",
         "src/RoslynMcp.Host.Stdio/Tools/ToolDispatch.cs",
@@ -1286,12 +1313,13 @@
           "previousStanzaHash": "4a8c245cec99ee749c080c3c5de267edbd77fb93d6e0c1889d17b7271a675c18",
           "stanzaHash": "9b387eed7f47e93026f019e59197c5a04208abc3ad8f182206c43a29d03cbba2"
         }
-      ]
+      ],
+      "notes": "Source re-vet at 683dc0fc disproves inherited stage independence. Correct first lifecycle boundary includes all completion producers and persistent claim authority (12 production/15 test-assets/160000). Native exec-args exit4 confirms global Rule5 admission blocker, owned by claude-config PR724. Portable receiving-workspace/source-snapshot identity is a tracked explicit prerequisite. Resume only after prerequisite and audited global admission land, complete source/scope re-vet and fresh cold review. Preserve child/source-row identities, original closure owner and full scope; no implementation delivered, no child obsolete."
     },
     {
       "id": "preview-token-solution-confirmation",
       "order": 8.03,
-      "status": "pending",
+      "status": "deferred",
       "productionFiles": [
         "src/RoslynMcp.Roslyn/Services/RefactoringService.cs"
       ],
@@ -1317,12 +1345,13 @@
       "rowsClosedCount": 0,
       "fileSetHash": "d549db625f0af225e1fbd9f097479905fac2cfcc46dd234d2926a81a10951d28",
       "stanzaHash": "f391d2ba9ede8381c894af4f7a17c250add8de6540816a497aeb4252888fe9f0",
-      "reviewedStanzaHash": "f391d2ba9ede8381c894af4f7a17c250add8de6540816a497aeb4252888fe9f0"
+      "reviewedStanzaHash": "f391d2ba9ede8381c894af4f7a17c250add8de6540816a497aeb4252888fe9f0",
+      "notes": "Source re-vet at 683dc0fc disproves inherited stage independence. Correct first lifecycle boundary includes all completion producers and persistent claim authority (12 production/15 test-assets/160000). Native exec-args exit4 confirms global Rule5 admission blocker, owned by claude-config PR724. Portable receiving-workspace/source-snapshot identity is a tracked explicit prerequisite. Resume only after prerequisite and audited global admission land, complete source/scope re-vet and fresh cold review. Preserve child/source-row identities, original closure owner and full scope; no implementation delivered, no child obsolete."
     },
     {
       "id": "preview-token-composite-confirmation",
       "order": 8.04,
-      "status": "pending",
+      "status": "deferred",
       "productionFiles": [
         "src/RoslynMcp.Roslyn/Services/CompositePreviewStore.cs",
         "src/RoslynMcp.Roslyn/Services/PersistentCompositeStorage.cs",
@@ -1350,12 +1379,13 @@
       "rowsClosedCount": 0,
       "fileSetHash": "cf4bb718f02fbc2259cd680f140dc9a8e29631bdab2b196561c1e1db2fa23090",
       "stanzaHash": "e028421571de16aaff0e573308c71d1c18aa46a91313fb0c995b190e7ada614a",
-      "reviewedStanzaHash": "e028421571de16aaff0e573308c71d1c18aa46a91313fb0c995b190e7ada614a"
+      "reviewedStanzaHash": "e028421571de16aaff0e573308c71d1c18aa46a91313fb0c995b190e7ada614a",
+      "notes": "Source re-vet at 683dc0fc disproves inherited stage independence. Correct first lifecycle boundary includes all completion producers and persistent claim authority (12 production/15 test-assets/160000). Native exec-args exit4 confirms global Rule5 admission blocker, owned by claude-config PR724. Portable receiving-workspace/source-snapshot identity is a tracked explicit prerequisite. Resume only after prerequisite and audited global admission land, complete source/scope re-vet and fresh cold review. Preserve child/source-row identities, original closure owner and full scope; no implementation delivered, no child obsolete."
     },
     {
       "id": "preview-token-project-confirmation",
       "order": 8.05,
-      "status": "pending",
+      "status": "deferred",
       "productionFiles": [
         "src/RoslynMcp.Roslyn/Services/ProjectMutationService.cs"
       ],
@@ -1383,7 +1413,8 @@
       "rowsClosedCount": 1,
       "fileSetHash": "09936473e33eda3704a26c4bf05ba3dffce89d8a842742981d2fa59f31896269",
       "stanzaHash": "5b3db04aab6d5bca44869369e23f9cae2d1cbcb5b22bbb27339e8608b53bb9fb",
-      "reviewedStanzaHash": "5b3db04aab6d5bca44869369e23f9cae2d1cbcb5b22bbb27339e8608b53bb9fb"
+      "reviewedStanzaHash": "5b3db04aab6d5bca44869369e23f9cae2d1cbcb5b22bbb27339e8608b53bb9fb",
+      "notes": "Source re-vet at 683dc0fc disproves inherited stage independence. Correct first lifecycle boundary includes all completion producers and persistent claim authority (12 production/15 test-assets/160000). Native exec-args exit4 confirms global Rule5 admission blocker, owned by claude-config PR724. Portable receiving-workspace/source-snapshot identity is a tracked explicit prerequisite. Resume only after prerequisite and audited global admission land, complete source/scope re-vet and fresh cold review. Preserve child/source-row identities, original closure owner and full scope; no implementation delivered, no child obsolete."
     },
     {
       "id": "fork-composite-nonconsuming-snapshot",
@@ -1480,24 +1511,10 @@
   "conflictGraph": {
     "edges": [
       {
-        "a": 4,
-        "b": 21,
-        "sharedFiles": [
-          "tests/RoslynMcp.Tests/TestData/invalid-operation-construction-baseline.json"
-        ]
-      },
-      {
         "a": 15,
         "b": 19,
         "sharedFiles": [
           "src/RoslynMcp.Host.Stdio/Tools/WorkspaceTools.cs"
-        ]
-      },
-      {
-        "a": 15,
-        "b": 8.02,
-        "sharedFiles": [
-          "src/RoslynMcp.Roslyn/Services/WorkspaceForkApplyService.cs"
         ]
       },
       {
@@ -1521,117 +1538,26 @@
         "sharedFiles": [
           "tests/RoslynMcp.Tests/AnalyzerShadowLoaderLifecycleTests.cs"
         ]
-      },
-      {
-        "a": 19,
-        "b": 8.01,
-        "sharedFiles": [
-          "docs/decisions/README.md"
-        ]
-      },
-      {
-        "a": 19,
-        "b": 8.02,
-        "sharedFiles": [
-          "docs/product-contract.md"
-        ]
-      },
-      {
-        "a": 22,
-        "b": 8.01,
-        "sharedFiles": [
-          "docs/decisions/README.md"
-        ]
-      },
-      {
-        "a": 26,
-        "b": 8.03,
-        "sharedFiles": [
-          "src/RoslynMcp.Roslyn/Services/RefactoringService.cs"
-        ]
-      },
-      {
-        "a": 8.01,
-        "b": 8.02,
-        "sharedFiles": [
-          "docs/decisions/0024-preview-token-terminal-lifecycle.md",
-          "tests/RoslynMcp.Tests/ToolDispatchTests.cs"
-        ]
-      },
-      {
-        "a": 8.01,
-        "b": 8.03,
-        "sharedFiles": [
-          "tests/RoslynMcp.Tests/ApplyUndoWorkflowServiceTests.cs"
-        ]
-      },
-      {
-        "a": 8.02,
-        "b": 8.03,
-        "sharedFiles": [
-          "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs"
-        ]
-      },
-      {
-        "a": 8.02,
-        "b": 8.04,
-        "sharedFiles": [
-          "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs"
-        ]
-      },
-      {
-        "a": 8.02,
-        "b": 8.05,
-        "sharedFiles": [
-          "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs"
-        ]
-      },
-      {
-        "a": 8.03,
-        "b": 8.04,
-        "sharedFiles": [
-          "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs"
-        ]
-      },
-      {
-        "a": 8.03,
-        "b": 8.05,
-        "sharedFiles": [
-          "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs"
-        ]
-      },
-      {
-        "a": 8.04,
-        "b": 8.05,
-        "sharedFiles": [
-          "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs"
-        ]
       }
     ],
     "degrees": {
-      "4": 1,
       "5": 0,
       "10": 0,
       "11": 0,
       "12": 0,
       "13": 0,
       "14": 0,
-      "15": 2,
+      "15": 1,
       "16": 0,
       "17": 1,
       "18": 0,
-      "19": 5,
+      "19": 3,
       "20": 0,
-      "21": 2,
-      "22": 2,
+      "21": 1,
+      "22": 1,
       "23": 0,
       "24": 1,
-      "26": 1,
-      "8.01": 4,
-      "8.02": 6,
-      "8.03": 5,
-      "8.04": 3,
-      "8.05": 3
+      "26": 0
     },
     "zeroDegreeInitiatives": [
       5,
@@ -1643,7 +1569,8 @@
       16,
       18,
       20,
-      23
+      23,
+      26
     ]
   },
   "selection": {
@@ -2232,7 +2159,7 @@
       "workspace-close-isolated-nuget-handles": "2680f5502a0f4cdadc8c385a838f4d47f029a50f296405ab741444df81d8eacd",
       "preview-store-explicit-internal-state": "928252056cf3207c7d6eac15fe72d80a24a4fa6e95ed05a4396d75b2d135ace3",
       "preview-diff-whitespace-omission": "322cd92491b97397041e0252bb8cf617ccac91defd3d847351dd3a180aadba5e",
-      "preview-token-lifecycle-evidence": "0f7f7c45714a4e2f494c34cfbe6b87a2f3c47cc93b86cc5179a0097135a01569",
+      "preview-token-lifecycle-evidence": "35e108b39e9ab2b7fa538716bf5de4bd1ec0ff523cfe44a2b552cd8cf0f329df",
       "preview-token-reason-projection": "9b387eed7f47e93026f019e59197c5a04208abc3ad8f182206c43a29d03cbba2",
       "preview-token-solution-confirmation": "f391d2ba9ede8381c894af4f7a17c250add8de6540816a497aeb4252888fe9f0",
       "preview-token-composite-confirmation": "e028421571de16aaff0e573308c71d1c18aa46a91313fb0c995b190e7ada614a",
@@ -2241,9 +2168,9 @@
       "fork-preview-project-composite-replay": "cd6c4c6aa3a52afdbbdf70820ab4f53e5735ca94771f2f2f2e30ad70e957f688"
     }
   },
-  "conflictGraphInputHash": "18ae8cc3b4eb74aabc5240767ad0360f6dcf17fdb3a94b5b330197ad985a914e",
-  "planHash": "6d1ac5bd127c0afef120c4c607ba7a09c00a5f2325697ab9e04e1f8501827a57",
-  "backlogSnapshotHash": "284ca1c5e07578868c61ada4081bdf939b112d3f58e3dbfdd4efaa94f90e7336",
-  "reviewedPlanHash": "6d1ac5bd127c0afef120c4c607ba7a09c00a5f2325697ab9e04e1f8501827a57",
+  "conflictGraphInputHash": "401e80ba541788fea6b2636d8dcf67b3ce402610942346380fa33a30b0dc1e78",
+  "planHash": "e5436f27114d8f51be3327e405e2e84397e37f489696f7bcacb9edcf040f5256",
+  "backlogSnapshotHash": "4013514d7186652a5d257013bdff9b05e7997acec6391a552c4c156828a9bad1",
+  "reviewedPlanHash": "e5436f27114d8f51be3327e405e2e84397e37f489696f7bcacb9edcf040f5256",
   "reviewedBacklogSnapshotHash": "cc5f2af685632ecdcbfcf94a8fe98135b9da20f7b2f4ba18d6cdddf811c1c1cc"
 }
