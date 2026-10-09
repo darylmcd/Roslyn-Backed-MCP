@@ -854,11 +854,12 @@
       "productionFiles": [
         "src/RoslynMcp.Roslyn/Services/ChangeSignatureService.cs"
       ],
-      "testFilesAdded": 3,
+      "testFilesAdded": 4,
       "testFiles": [
         "tests/RoslynMcp.Tests/ChangeSignaturePreviewTests.cs",
         "tests/RoslynMcp.Tests/ChangeSignaturePreviewMetadataNameShapeTests.cs",
-        "tests/RoslynMcp.Tests/ChangeSignaturePublicRefusalTests.cs"
+        "tests/RoslynMcp.Tests/ChangeSignaturePublicRefusalTests.cs",
+        "tests/RoslynMcp.Tests/TestData/invalid-operation-construction-baseline.json"
       ],
       "docFiles": [
         "changelog.d/change-signature-service-refusals-public-message.md"
@@ -875,15 +876,33 @@
         "anchorStale": false,
         "ruleOneBundleResolved": "n/a"
       },
-      "dependsOn": [],
+      "dependsOn": [
+        "tool-refusal-public-message-guard"
+      ],
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
       "notes": null,
-      "fileSetHash": "243f78fd3d949eaf79952eeca6aee1cd06b3491d70e61116ca4398529bcb88d3",
-      "stanzaHash": "ef997e9a4919038ae0947c3e3f1f99bd2f30d6f2616af291ea9a397c2b768083",
-      "reviewedStanzaHash": "ef997e9a4919038ae0947c3e3f1f99bd2f30d6f2616af291ea9a397c2b768083"
+      "fileSetHash": "089a69ad89a6a1f1ca7ab5d7c0331d621d0f48776577d503ee8aa0049447b8f1",
+      "stanzaHash": "625f9cfb183f553f92b624cf88579f2b28a577440efbe4b3205921c97c15b84c",
+      "reviewedStanzaHash": "625f9cfb183f553f92b624cf88579f2b28a577440efbe4b3205921c97c15b84c",
+      "amendments": [
+        {
+          "at": "2026-10-09T22:12:27.409Z",
+          "finding": "Planned refusal conversion removes inventoried plain-BCL constructions and requires the planned guard baseline companion.",
+          "reason": "Current guard candidate inventories ChangeSignatureService on immutable base1dd9a62c. Require guard landing and source re-vet first; list its exact asset as test scope and allow only burn-down. Product scope, estimate, behavior, validation and pending status preserved.",
+          "previousStanzaHash": "ef997e9a4919038ae0947c3e3f1f99bd2f30d6f2616af291ea9a397c2b768083",
+          "stanzaHash": "de56ce6d0910248d2a2cac80518af5b078bfe3d70413fdb0fce63dec1729009b"
+        },
+        {
+          "at": "2026-10-09T22:13:17.047Z",
+          "finding": "Planned refusal conversion removes inventoried plain-BCL constructions and requires the planned guard baseline companion.",
+          "reason": "Current guard candidate inventories ChangeSignatureService on immutable base1dd9a62c. Require guard landing and source re-vet first; list its exact asset as test scope and allow only burn-down. Product scope, estimate, behavior, validation and pending status preserved.",
+          "previousStanzaHash": "de56ce6d0910248d2a2cac80518af5b078bfe3d70413fdb0fce63dec1729009b",
+          "stanzaHash": "625f9cfb183f553f92b624cf88579f2b28a577440efbe4b3205921c97c15b84c"
+        }
+      ]
     },
     {
       "id": "cross-project-public-refusals-echo-input",
@@ -1461,6 +1480,13 @@
   "conflictGraph": {
     "edges": [
       {
+        "a": 4,
+        "b": 21,
+        "sharedFiles": [
+          "tests/RoslynMcp.Tests/TestData/invalid-operation-construction-baseline.json"
+        ]
+      },
+      {
         "a": 15,
         "b": 19,
         "sharedFiles": [
@@ -1583,7 +1609,7 @@
       }
     ],
     "degrees": {
-      "4": 0,
+      "4": 1,
       "5": 0,
       "10": 0,
       "11": 0,
@@ -1596,7 +1622,7 @@
       "18": 0,
       "19": 5,
       "20": 0,
-      "21": 1,
+      "21": 2,
       "22": 2,
       "23": 0,
       "24": 1,
@@ -1608,7 +1634,6 @@
       "8.05": 3
     },
     "zeroDegreeInitiatives": [
-      4,
       5,
       10,
       11,
@@ -2201,7 +2226,7 @@
       "load-profile-full-suite": "bc2695528f8866034df6aa82bf401da7ca40f647183d1062466b408fe73768fa",
       "workspace-close-global-build-server-shutdown": "cf010db06593e16475cf66103df1391e94e4b0dfb8b7faec779004992b458e4f",
       "test-temp-reaper-live-owner": "75252658ed097350897e2a9d422ae19e59925f169294094bd0e77cf6f1fc85d1",
-      "change-signature-service-refusals-public-message": "ef997e9a4919038ae0947c3e3f1f99bd2f30d6f2616af291ea9a397c2b768083",
+      "change-signature-service-refusals-public-message": "625f9cfb183f553f92b624cf88579f2b28a577440efbe4b3205921c97c15b84c",
       "cross-project-public-refusals-echo-input": "8a00fc184c9bc3eed28e5ac5190ab5525f3daa8600fd101255ddf0cf8a49c770",
       "top10-good-preview-result-contract": "a607800c1b116462dfb7dc8c2bb53ea655b7412452b06eb3427d298f34a54c8a",
       "workspace-close-isolated-nuget-handles": "2680f5502a0f4cdadc8c385a838f4d47f029a50f296405ab741444df81d8eacd",
@@ -2216,9 +2241,9 @@
       "fork-preview-project-composite-replay": "cd6c4c6aa3a52afdbbdf70820ab4f53e5735ca94771f2f2f2e30ad70e957f688"
     }
   },
-  "conflictGraphInputHash": "9c69bf382ba2dabda5fdfcbb6ec5f4813d91a59226075b1f53dd2acd3875fa7f",
-  "planHash": "6c960182b12ec31504b5bba0f936d901b32b4c57f9bee2396f0409d1587e1486",
+  "conflictGraphInputHash": "18ae8cc3b4eb74aabc5240767ad0360f6dcf17fdb3a94b5b330197ad985a914e",
+  "planHash": "6d1ac5bd127c0afef120c4c607ba7a09c00a5f2325697ab9e04e1f8501827a57",
   "backlogSnapshotHash": "284ca1c5e07578868c61ada4081bdf939b112d3f58e3dbfdd4efaa94f90e7336",
-  "reviewedPlanHash": "6c960182b12ec31504b5bba0f936d901b32b4c57f9bee2396f0409d1587e1486",
+  "reviewedPlanHash": "6d1ac5bd127c0afef120c4c607ba7a09c00a5f2325697ab9e04e1f8501827a57",
   "reviewedBacklogSnapshotHash": "cc5f2af685632ecdcbfcf94a8fe98135b9da20f7b2f4ba18d6cdddf811c1c1cc"
 }
