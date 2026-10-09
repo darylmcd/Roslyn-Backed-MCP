@@ -10,7 +10,7 @@ Selection note: Default first-40 window; one split retained, 14 further split ca
 | # | id | status | PR | rows closed |
 |---|----|--------|----|-------------|
 | 2 | navigation-and-locator-argument-refusals-public-message | merged | [#1764](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1764) | navigation-and-locator-argument-refusals-public-message |
-| 3 | workspace-lifecycle-argument-refusals-public-message | in-progress | — | workspace-lifecycle-argument-refusals-public-message |
+| 3 | workspace-lifecycle-argument-refusals-public-message | in-review | [#1766](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1766) | workspace-lifecycle-argument-refusals-public-message |
 | 4 | tool-refusal-public-message-guard | pending | — | tool-refusal-public-message-guard |
 | 5 | extract-type-preserve-untouched-trivia | pending | — | extract-type-preserve-untouched-trivia |
 | 6 | scaffold-batch-preview-apply-route | pending | — | scaffold-batch-preview-apply-route |

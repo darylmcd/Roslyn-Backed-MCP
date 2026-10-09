@@ -82,7 +82,7 @@
     {
       "id": "workspace-lifecycle-argument-refusals-public-message",
       "order": 3,
-      "status": "in-progress",
+      "status": "in-review",
       "backlogRowsClosed": [
         "workspace-lifecycle-argument-refusals-public-message"
       ],
@@ -115,7 +115,7 @@
       "dependsOn": [],
       "branch": "remediation/workspace-lifecycle-argument-refusals-public-message",
       "worktreePath": "D:/Roslyn-Backed-MCP/.worktrees/workspace-lifecycle-argument-refusals-public-message",
-      "prUrl": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1766",
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "9cf0dbd1ccedd885be2a5b52c5f65079e75c9b487ce24aaa80ae10771b18def1",
