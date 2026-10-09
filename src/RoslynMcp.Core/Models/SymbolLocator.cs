@@ -1,3 +1,5 @@
+using RoslynMcp.Core.Services;
+
 namespace RoslynMcp.Core.Models;
 
 /// <summary>
@@ -55,7 +57,8 @@ public sealed record SymbolLocator(
             return;
         }
 
-        throw new ArgumentException(
-            "Provide either a file path with line/column, a symbol handle, or a metadata name.");
+        var parameter = string.IsNullOrWhiteSpace(FilePath) ? "filePath" : !Line.HasValue ? "line" : "column";
+        throw new PublicArgumentException(
+            "Provide either a file path with line/column, a symbol handle, or a metadata name.", parameter);
     }
 }

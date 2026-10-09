@@ -30,7 +30,7 @@ public sealed class OperationService : IOperationService
 
         // Convert 1-based to 0-based and find the position
         var text = await document.GetTextAsync(ct).ConfigureAwait(false);
-        var position = text.Lines[line - 1].Start + (column - 1);
+        var position = SourcePosition.StrictCaret(text, line, column);
 
         // Find the most specific node at this position
         var node = root.FindNode(new Microsoft.CodeAnalysis.Text.TextSpan(position, 0));

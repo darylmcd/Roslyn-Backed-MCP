@@ -1,3 +1,5 @@
+using Microsoft.CodeAnalysis.Text;
+
 namespace RoslynMcp.Tests;
 
 /// <summary>
@@ -54,13 +56,14 @@ public sealed class SelectionRangeCodeActionTests : SharedWorkspaceTestBase
         var filePath = FindDocumentPath("RefactoringProbe.cs");
 
         // Lines 13-15: var sum = ...; var doubled = ...; Console.WriteLine(doubled);
+        var text = SourceText.From(File.ReadAllText(filePath));
         var result = await CodeActionService.GetCodeActionsAsync(
             SampleWorkspaceId,
             filePath,
             startLine: 13,
             startColumn: 9,
             endLine: 15,
-            endColumn: 39,
+            endColumn: text.Lines[14].Span.Length + 1,
             CancellationToken.None);
 
         var extractActions = result.Actions
@@ -155,13 +158,14 @@ public sealed class SelectionRangeCodeActionTests : SharedWorkspaceTestBase
         var filePath = FindDocumentPath("RefactoringProbe.cs");
 
         // Line 28: var greeting = $"Hello, {name}!";
+        var text = SourceText.From(File.ReadAllText(filePath));
         var result = await CodeActionService.GetCodeActionsAsync(
             SampleWorkspaceId,
             filePath,
             startLine: 28,
             startColumn: 9,
             endLine: 28,
-            endColumn: 43,
+            endColumn: text.Lines[27].Span.Length + 1,
             CancellationToken.None);
 
         Assert.IsTrue(result.Count > 0,

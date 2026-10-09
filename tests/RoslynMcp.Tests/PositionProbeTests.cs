@@ -1,3 +1,5 @@
+using RoslynMcp.Core.Services;
+
 namespace RoslynMcp.Tests;
 
 /// <summary>
@@ -173,7 +175,7 @@ public sealed class PositionProbeTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task ProbePosition_LineOutOfRange_Throws()
     {
-        await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+        await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
             SymbolNavigationService.ProbePositionAsync(
                 _workspaceId, _animalServicePath, line: 99_999, column: 1, CancellationToken.None));
     }
