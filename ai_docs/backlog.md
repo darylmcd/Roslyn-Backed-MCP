@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-08T02:55:58Z
+**updated_at:** 2026-10-09T15:10:48Z
 
 ## Agent contract
 
@@ -107,7 +107,6 @@
 | `preview-apply-tool-descriptions` | Medium | scaffold-batch-preview-apply-route | **Name each previews apply tool** — align five producer descriptions with tested token routes. [type: bug] [source: preview-token-store-mismatch-false-stale] | M | items/preview-apply-tool-descriptions.md |
 | `workspace-fork-project-mutation-preview` | Medium | — | **Align workspace_fork_apply with project-mutation tokens** — replay safely or narrow its claim. [type: bug] [source: preview-token-store-mismatch-false-stale] | M | items/workspace-fork-project-mutation-preview.md |
 | `preview-token-consumed-reason` | Medium | — | **Report consumed preview tokens accurately** — distinguish already applied from reload and expiry. [type: bug] [source: preview-token-store-mismatch-false-stale] | M | items/preview-token-consumed-reason.md |
-| `notice-verifier-scoped-test-inherits-nuget-packages` | Medium | — | Isolate the scoped third-party notice verifier fixture from ambient NUGET_PACKAGES so its asset graph check is deterministic. [type: bug] [source: PR #1672 base-gate comparison 2026-09-29] | S | items/notice-verifier-scoped-test-inherits-nuget-packages.md |
 | `test-discovery-file-path-case-identity` | Medium | — | Preserve platform file-path identity in related-test discovery and direct-reference matching. [type: bug] [source: junction alias review 2026-09-29] | S | items/test-discovery-file-path-case-identity.md |
 | `workspace-project-alias-lookup` | Medium | — | Match project paths by physical identity across filesystem aliases. [type: bug] [source: drive-mount canonicalization review 2026-09-29] | S | items/workspace-project-alias-lookup.md |
 | `fix-all-equivalence-key-unregistered-fallback` | Medium | — | **Refuse unregistered FixAll equivalence keys** — replace the provider-type-name fallback with an actionable refusal or a verified keyless contract. [type: bug] [source: FixAll code review 2026-09-29] | S | items/fix-all-equivalence-key-unregistered-fallback.md |

@@ -1,5 +1,14 @@
 # Planning checkpoint — 20261007T211247Z_backlog-remediate
 
+## Operator update 2026-10-09
+
+| Item | Disposition |
+|---|---|
+| Authorization | File global backlog rows only; global implementation belongs to another agent. Complete eligible product work; defer product work requiring the missing tooling. |
+| Global prerequisites | Fanout guidance: claude-config PR #718. Indivisible Rule 5 admission: claude-config PR #724, row `plan-rule5-indivisible-scope-admission`. Current exec-args reproduced exit 4 for 110000 > 80000; no bypass. |
+| Deferred | `preview-store-explicit-internal-state`, `fork-composite-nonconsuming-snapshot`, `fork-preview-project-composite-replay`. Preserve full scope and open backlog rows; resume only after tooling correction, source re-vet and fresh cold review. |
+| Eligible remainder | 26 pending initiatives. Fresh complete pending-subset/whole-graph review required before plan admission. Older evidence below describes the previous checkpoint and is historical. |
+
 ## Landed
 
 | Item | Evidence |

@@ -30,15 +30,15 @@ Selection note: Default first-40 window; one split retained, 14 further split ca
 | 22 | cross-project-public-refusals-echo-input | pending | — | cross-project-public-refusals-echo-input |
 | 23 | top10-good-preview-result-contract | pending | — | top10-good-preview-result-contract |
 | 24 | workspace-close-isolated-nuget-handles | pending | — | workspace-close-isolated-nuget-handles |
-| 25 | preview-store-explicit-internal-state | pending | — | preview-store-explicit-internal-state |
+| 25 | preview-store-explicit-internal-state | deferred | — | preview-store-explicit-internal-state |
 | 26 | preview-diff-whitespace-omission | pending | — | preview-diff-whitespace-omission |
 | 8.01 | preview-token-lifecycle-evidence | pending | — | — |
 | 8.02 | preview-token-reason-projection | pending | — | — |
 | 8.03 | preview-token-solution-confirmation | pending | — | — |
 | 8.04 | preview-token-composite-confirmation | pending | — | — |
 | 8.05 | preview-token-project-confirmation | pending | — | preview-token-consumed-reason |
-| 7.01 | fork-composite-nonconsuming-snapshot | pending | — | — |
-| 7.02 | fork-preview-project-composite-replay | pending | — | workspace-fork-project-mutation-preview |
+| 7.01 | fork-composite-nonconsuming-snapshot | deferred | — | — |
+| 7.02 | fork-preview-project-composite-replay | deferred | — | workspace-fork-project-mutation-preview |
 <!-- BSWEEP:STATUS-TABLE END -->
 
 ## Initiatives
