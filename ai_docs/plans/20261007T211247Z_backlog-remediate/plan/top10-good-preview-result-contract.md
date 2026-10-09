@@ -7,7 +7,7 @@
 | Tool policy | edit-only |
 | Estimated context cost | 25000 |
 | Risks | Keep pre-existing-error and genuine rollback cases separate. Observe the strengthened contract reject a controlled rolled_back result during a temporary mutation probe; do not introduce a production rollback bug to manufacture a red test. ApplyWithVerifyTool is a read/validation anchor; modify production only if the new test exposes a real defect, then widen Scope with evidence. |
-| Validation | Run Top10V2RegressionTests and apply-with-verify companions. Pin a deterministic preview delta, exact applied status, reported files and actual post-apply bytes; prove rollback violates this success contract with a temporary mutation probe. Per-edit compile_check and targeted test_run; scoped executor gate; required hosted validate per CI_POLICY.md is the full landing gate, without duplicating hosted checks locally. |
+| Validation | Run Top10V2RegressionTests and apply-with-verify companions. Pin a deterministic preview delta, exact applied status, reported files and actual post-apply bytes; prove rollback violates this success contract with a temporary mutation probe. Per-edit compile_check and targeted test_run; scoped regression gate, then serialized complete local `just ci` through the sanctioned full-gate producer (complete addenda ci_equivalent), followed by required hosted validate per CI_POLICY.md. |
 | Performance review | N/A - test-only contract strengthening; no production performance change. |
 | CHANGELOG category | Fixed |
 | CHANGELOG entry (draft) | The clean apply-with-verify regression requires a real applied edit and verifies its resulting content. |

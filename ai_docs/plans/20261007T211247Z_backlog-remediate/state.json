@@ -208,8 +208,8 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "b39233ebef576f17ceeebe7a140e06427809c85452cfae1f02db223f42436701",
-      "stanzaHash": "db67ceb07157f8d223d087da6224dcebc53b23abae236aa93051ba6052754447",
-      "reviewedStanzaHash": "db67ceb07157f8d223d087da6224dcebc53b23abae236aa93051ba6052754447",
+      "stanzaHash": "f61984713ef5c7484d539c7121a8052fa83c27180dfe083894f7a83dcda2b749",
+      "reviewedStanzaHash": "f61984713ef5c7484d539c7121a8052fa83c27180dfe083894f7a83dcda2b749",
       "amendments": [
         {
           "at": "2026-10-09T15:33:09.082Z",
@@ -217,6 +217,13 @@
           "reason": "Correct the AI-facing performance cell for this actual planned scope; preserve Approach, exact file sets, estimates, dependencies and runtime acceptance.",
           "previousStanzaHash": "cefaf2862383a0649b6802b3f949b13cf6233cc91100d939d9b785448c2dc343",
           "stanzaHash": "db67ceb07157f8d223d087da6224dcebc53b23abae236aa93051ba6052754447"
+        },
+        {
+          "at": "2026-10-09T19:46:05.748Z",
+          "finding": "Inherited Validation treats full local validation as omitted or fallback despite CI_POLICY.md:152-158 required unsharded PR-equivalent local gate.",
+          "reason": "Require scoped regressions plus serialized complete sanctioned local PR-equivalent producer before required hosted gates; preserve file scope, estimates, dependencies and deferred dispositions.",
+          "previousStanzaHash": "db67ceb07157f8d223d087da6224dcebc53b23abae236aa93051ba6052754447",
+          "stanzaHash": "f61984713ef5c7484d539c7121a8052fa83c27180dfe083894f7a83dcda2b749"
         }
       ]
     },
@@ -340,8 +347,8 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "a5293638d175b55e86c905ef7b8bae7795070496e70da55380b756ac64be88b3",
-      "stanzaHash": "772111263c053632d4dea6cacd9fb10206e414bdd52267364c6f7c584be718a2",
-      "reviewedStanzaHash": "772111263c053632d4dea6cacd9fb10206e414bdd52267364c6f7c584be718a2",
+      "stanzaHash": "fd4ca08bdefaa91aa17ed4e9ac20ca7ae749bf376efef9940ab94f67ef3321c6",
+      "reviewedStanzaHash": "fd4ca08bdefaa91aa17ed4e9ac20ca7ae749bf376efef9940ab94f67ef3321c6",
       "amendments": [
         {
           "at": "2026-10-09T15:33:59.015Z",
@@ -349,6 +356,13 @@
           "reason": "Correct the AI-facing performance cell for this actual planned scope; preserve Approach, exact file sets, estimates, dependencies and runtime acceptance.",
           "previousStanzaHash": "1145ae27e4bee0dbf2d191d955b33c7b804f2943b9ecbbe6d663e28d3f2de031",
           "stanzaHash": "772111263c053632d4dea6cacd9fb10206e414bdd52267364c6f7c584be718a2"
+        },
+        {
+          "at": "2026-10-09T19:46:11.140Z",
+          "finding": "Inherited Validation treats full local validation as omitted or fallback despite CI_POLICY.md:152-158 required unsharded PR-equivalent local gate.",
+          "reason": "Require scoped regressions plus serialized complete sanctioned local PR-equivalent producer before required hosted gates; preserve file scope, estimates, dependencies and deferred dispositions.",
+          "previousStanzaHash": "772111263c053632d4dea6cacd9fb10206e414bdd52267364c6f7c584be718a2",
+          "stanzaHash": "fd4ca08bdefaa91aa17ed4e9ac20ca7ae749bf376efef9940ab94f67ef3321c6"
         }
       ]
     },
@@ -389,8 +403,17 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "5ae53efeefad9af7661e98abc4db281f0b23dea87b760a8f56fdd1108bfbec13",
-      "stanzaHash": "71a0718b98e486f2d7e922407c0120e829f833c522ff3588befce534d96262ca",
-      "reviewedStanzaHash": "71a0718b98e486f2d7e922407c0120e829f833c522ff3588befce534d96262ca"
+      "stanzaHash": "eef5b009427f000551878925dc35a574b1c24cbf5e5108a22b27b18f7494e89d",
+      "reviewedStanzaHash": "eef5b009427f000551878925dc35a574b1c24cbf5e5108a22b27b18f7494e89d",
+      "amendments": [
+        {
+          "at": "2026-10-09T19:46:18.359Z",
+          "finding": "Inherited Validation treats full local validation as omitted or fallback despite CI_POLICY.md:152-158 required unsharded PR-equivalent local gate.",
+          "reason": "Require scoped regressions plus serialized complete sanctioned local PR-equivalent producer before required hosted gates; preserve file scope, estimates, dependencies and deferred dispositions.",
+          "previousStanzaHash": "71a0718b98e486f2d7e922407c0120e829f833c522ff3588befce534d96262ca",
+          "stanzaHash": "eef5b009427f000551878925dc35a574b1c24cbf5e5108a22b27b18f7494e89d"
+        }
+      ]
     },
     {
       "id": "fix-all-equivalence-key-unregistered-fallback",
@@ -901,8 +924,8 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "d6bd25e851e02db5199d9ad12553f202c329caa301ecad41be05393a24b53c0d",
-      "stanzaHash": "cfe5883712f3e6a8963ef6b20637f15b17e49a28425ca0f6f9a46c002e920a41",
-      "reviewedStanzaHash": "cfe5883712f3e6a8963ef6b20637f15b17e49a28425ca0f6f9a46c002e920a41",
+      "stanzaHash": "a607800c1b116462dfb7dc8c2bb53ea655b7412452b06eb3427d298f34a54c8a",
+      "reviewedStanzaHash": "a607800c1b116462dfb7dc8c2bb53ea655b7412452b06eb3427d298f34a54c8a",
       "amendments": [
         {
           "at": "2026-10-09T15:33:35.321Z",
@@ -910,6 +933,13 @@
           "reason": "Correct the AI-facing performance cell for this actual planned scope; preserve Approach, exact file sets, estimates, dependencies and runtime acceptance.",
           "previousStanzaHash": "2776a9f7799a1adbc47410ea9bab3377a56c154a6b3e38c5e786036668e2b154",
           "stanzaHash": "cfe5883712f3e6a8963ef6b20637f15b17e49a28425ca0f6f9a46c002e920a41"
+        },
+        {
+          "at": "2026-10-09T19:46:12.764Z",
+          "finding": "Inherited Validation treats full local validation as omitted or fallback despite CI_POLICY.md:152-158 required unsharded PR-equivalent local gate.",
+          "reason": "Require scoped regressions plus serialized complete sanctioned local PR-equivalent producer before required hosted gates; preserve file scope, estimates, dependencies and deferred dispositions.",
+          "previousStanzaHash": "cfe5883712f3e6a8963ef6b20637f15b17e49a28425ca0f6f9a46c002e920a41",
+          "stanzaHash": "a607800c1b116462dfb7dc8c2bb53ea655b7412452b06eb3427d298f34a54c8a"
         }
       ]
     },
@@ -1328,8 +1358,17 @@
       "rowsClosedCount": 0,
       "notes": "Deferred per operator 2026-10-09 until preview-store-explicit-internal-state lands after global plan-rule5-indivisible-scope-admission repair (claude-config PR724) and fresh review. Preserve complete scope; leave owed backlog row open.",
       "fileSetHash": "8dc2571f00dc044c50af337be3a80b98c3ac772a42635081e6b9d8044e69fc49",
-      "stanzaHash": "fd27c0b8f49321c6afefbedfa17fe940da2d76638629787c3f40319068ea1189",
-      "reviewedStanzaHash": "fd27c0b8f49321c6afefbedfa17fe940da2d76638629787c3f40319068ea1189"
+      "stanzaHash": "7d5ab832df279ef69adc3f5fa8b5d286d0b8aeab2460d9d539e2e7d8efacc845",
+      "reviewedStanzaHash": "7d5ab832df279ef69adc3f5fa8b5d286d0b8aeab2460d9d539e2e7d8efacc845",
+      "amendments": [
+        {
+          "at": "2026-10-09T19:46:24.592Z",
+          "finding": "Inherited Validation treats full local validation as omitted or fallback despite CI_POLICY.md:152-158 required unsharded PR-equivalent local gate.",
+          "reason": "Require scoped regressions plus serialized complete sanctioned local PR-equivalent producer before required hosted gates; preserve file scope, estimates, dependencies and deferred dispositions.",
+          "previousStanzaHash": "fd27c0b8f49321c6afefbedfa17fe940da2d76638629787c3f40319068ea1189",
+          "stanzaHash": "7d5ab832df279ef69adc3f5fa8b5d286d0b8aeab2460d9d539e2e7d8efacc845"
+        }
+      ]
     },
     {
       "id": "fork-preview-project-composite-replay",
@@ -1366,8 +1405,17 @@
       "rowsClosedCount": 1,
       "notes": "Deferred per operator 2026-10-09 until safety and nonconsuming snapshot prerequisites land after global plan-rule5-indivisible-scope-admission repair (claude-config PR724) and fresh review. Preserve complete scope; leave owed backlog row open.",
       "fileSetHash": "5afece8c5daa0f3308167fb0d464a2188df5169813d5ddaf8f3939ccdd9c6d86",
-      "stanzaHash": "c524884456374574eb70979508d878be7d0d3a58e6c94484d3d6a2bf204610d4",
-      "reviewedStanzaHash": "c524884456374574eb70979508d878be7d0d3a58e6c94484d3d6a2bf204610d4"
+      "stanzaHash": "cd6c4c6aa3a52afdbbdf70820ab4f53e5735ca94771f2f2f2e30ad70e957f688",
+      "reviewedStanzaHash": "cd6c4c6aa3a52afdbbdf70820ab4f53e5735ca94771f2f2f2e30ad70e957f688",
+      "amendments": [
+        {
+          "at": "2026-10-09T19:46:27.146Z",
+          "finding": "Inherited Validation treats full local validation as omitted or fallback despite CI_POLICY.md:152-158 required unsharded PR-equivalent local gate.",
+          "reason": "Require scoped regressions plus serialized complete sanctioned local PR-equivalent producer before required hosted gates; preserve file scope, estimates, dependencies and deferred dispositions.",
+          "previousStanzaHash": "c524884456374574eb70979508d878be7d0d3a58e6c94484d3d6a2bf204610d4",
+          "stanzaHash": "cd6c4c6aa3a52afdbbdf70820ab4f53e5735ca94771f2f2f2e30ad70e957f688"
+        }
+      ]
     }
   ],
   "anchorVerification": "performed",
@@ -2117,11 +2165,11 @@
       "navigation-and-locator-argument-refusals-public-message": "75d352d7b21486720ade9f4dd51b70df28977bdda5dc301632c5d08eec87afab",
       "workspace-lifecycle-argument-refusals-public-message": "d06d9285b83699a868a3996681820eb101b3acef7bd3b617b031701eb12fd44f",
       "tool-refusal-public-message-guard": "4eff07904b02ba69e478d3d9aaa727831799ecdeb82635aa2b062d03d00bef50",
-      "extract-type-preserve-untouched-trivia": "db67ceb07157f8d223d087da6224dcebc53b23abae236aa93051ba6052754447",
+      "extract-type-preserve-untouched-trivia": "f61984713ef5c7484d539c7121a8052fa83c27180dfe083894f7a83dcda2b749",
       "scaffold-batch-preview-apply-route": "847bb3e0c0a082f9a1b16a1c89db0b9faca9d6deb662ffe8d47e0093e2af1ccd",
       "notice-verifier-scoped-test-inherits-nuget-packages": "e1ff8a04c6da28d98e04ffa92f6e4632bc2fa0d3806aca2f57e5c0486320ad35",
-      "test-discovery-file-path-case-identity": "772111263c053632d4dea6cacd9fb10206e414bdd52267364c6f7c584be718a2",
-      "workspace-project-alias-lookup": "71a0718b98e486f2d7e922407c0120e829f833c522ff3588befce534d96262ca",
+      "test-discovery-file-path-case-identity": "fd4ca08bdefaa91aa17ed4e9ac20ca7ae749bf376efef9940ab94f67ef3321c6",
+      "workspace-project-alias-lookup": "eef5b009427f000551878925dc35a574b1c24cbf5e5108a22b27b18f7494e89d",
       "fix-all-equivalence-key-unregistered-fallback": "913514db5542443540c48366ab331270a804e76f3350e61ff3b3122811f12f1f",
       "editorconfig-section-source-path-matching": "56bbce20febc10f9c2b59496955ae4c711e041c5b802fcef475b9d4075d4268f",
       "logging-jsonl-drops-structured-state": "fd3aef40e86b7820bb0d8c786d2534936d972b89ddedf7adf9b78b33b3ff579e",
@@ -2133,7 +2181,7 @@
       "test-temp-reaper-live-owner": "75252658ed097350897e2a9d422ae19e59925f169294094bd0e77cf6f1fc85d1",
       "change-signature-service-refusals-public-message": "ef997e9a4919038ae0947c3e3f1f99bd2f30d6f2616af291ea9a397c2b768083",
       "cross-project-public-refusals-echo-input": "8a00fc184c9bc3eed28e5ac5190ab5525f3daa8600fd101255ddf0cf8a49c770",
-      "top10-good-preview-result-contract": "cfe5883712f3e6a8963ef6b20637f15b17e49a28425ca0f6f9a46c002e920a41",
+      "top10-good-preview-result-contract": "a607800c1b116462dfb7dc8c2bb53ea655b7412452b06eb3427d298f34a54c8a",
       "workspace-close-isolated-nuget-handles": "2680f5502a0f4cdadc8c385a838f4d47f029a50f296405ab741444df81d8eacd",
       "preview-store-explicit-internal-state": "928252056cf3207c7d6eac15fe72d80a24a4fa6e95ed05a4396d75b2d135ace3",
       "preview-diff-whitespace-omission": "322cd92491b97397041e0252bb8cf617ccac91defd3d847351dd3a180aadba5e",
@@ -2142,13 +2190,13 @@
       "preview-token-solution-confirmation": "f391d2ba9ede8381c894af4f7a17c250add8de6540816a497aeb4252888fe9f0",
       "preview-token-composite-confirmation": "e028421571de16aaff0e573308c71d1c18aa46a91313fb0c995b190e7ada614a",
       "preview-token-project-confirmation": "5b3db04aab6d5bca44869369e23f9cae2d1cbcb5b22bbb27339e8608b53bb9fb",
-      "fork-composite-nonconsuming-snapshot": "fd27c0b8f49321c6afefbedfa17fe940da2d76638629787c3f40319068ea1189",
-      "fork-preview-project-composite-replay": "c524884456374574eb70979508d878be7d0d3a58e6c94484d3d6a2bf204610d4"
+      "fork-composite-nonconsuming-snapshot": "7d5ab832df279ef69adc3f5fa8b5d286d0b8aeab2460d9d539e2e7d8efacc845",
+      "fork-preview-project-composite-replay": "cd6c4c6aa3a52afdbbdf70820ab4f53e5735ca94771f2f2f2e30ad70e957f688"
     }
   },
   "conflictGraphInputHash": "46541ab8b79e4abc910815ba6b872c0dc4239e6878f4b1effd133b10f17dcce8",
-  "planHash": "cb8758812db8c615ebbf6f548e1d86b6a2788e3260b83ae9e43c4320e9f2efd4",
+  "planHash": "962a0fd50a4751801a5507c193d9b9ee7a6df64fa35d4a58cc206865ca23d78d",
   "backlogSnapshotHash": "7b32d8e99758542a7ade9e35b213589c62c1d8dd1161881242884a0f2c8b3618",
-  "reviewedPlanHash": "cb8758812db8c615ebbf6f548e1d86b6a2788e3260b83ae9e43c4320e9f2efd4",
+  "reviewedPlanHash": "962a0fd50a4751801a5507c193d9b9ee7a6df64fa35d4a58cc206865ca23d78d",
   "reviewedBacklogSnapshotHash": "cc5f2af685632ecdcbfcf94a8fe98135b9da20f7b2f4ba18d6cdddf811c1c1cc"
 }

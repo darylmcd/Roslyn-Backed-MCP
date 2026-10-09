@@ -7,7 +7,7 @@
 | Tool policy | edit-only |
 | Estimated context cost | 35000 |
 | Risks | Preserve untouched source bytes, comments, directives and line endings; format only synthesized/changed nodes. Probe every NormalizeWhitespace call in this service and distinguish new-document generation from existing source rewriting. No signature or contract changes; no production ripple beyond the defining service. |
-| Validation | Red-first copied-sample extraction with unusual whitespace outside the extraction; compare unchanged byte regions before/after preview and apply, and compile the result. Run TypeExtractionTests and related extraction classes discovered by test_related_files. Per-edit compile_check and targeted test_run; scoped executor gate; required hosted validate per CI_POLICY.md is the full landing gate, without duplicating hosted checks locally. |
+| Validation | Red-first copied-sample extraction with unusual whitespace outside the extraction; compare unchanged byte regions before/after preview and apply, and compile the result. Run TypeExtractionTests and related extraction classes discovered by test_related_files. Per-edit compile_check and targeted test_run; scoped regression gate, then serialized complete local `just ci` through the sanctioned full-gate producer (complete addenda ci_equivalent), followed by required hosted validate per CI_POLICY.md. |
 | Performance review | N/A - syntax/trivia correctness fix; no new hot-path mechanism is planned. |
 | CHANGELOG category | Fixed |
 | CHANGELOG entry (draft) | Type extraction preserves source formatting outside the changed syntax. |
