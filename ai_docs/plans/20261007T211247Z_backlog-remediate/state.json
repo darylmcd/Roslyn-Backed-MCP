@@ -209,8 +209,8 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "b39233ebef576f17ceeebe7a140e06427809c85452cfae1f02db223f42436701",
-      "stanzaHash": "e4581c1279994d4fda099f06a8615a1b117c4ecfdc6fa5751e0ce9d688628c4c",
-      "reviewedStanzaHash": "e4581c1279994d4fda099f06a8615a1b117c4ecfdc6fa5751e0ce9d688628c4c",
+      "stanzaHash": "1339e6a4fae0c816703bf2759b9551e5784180ccedde90be99d8416903f1dc9e",
+      "reviewedStanzaHash": "1339e6a4fae0c816703bf2759b9551e5784180ccedde90be99d8416903f1dc9e",
       "amendments": [
         {
           "at": "2026-10-09T15:33:09.082Z",
@@ -232,6 +232,13 @@
           "reason": "Current code at135-138 contains ReplaceNode and whole-root NormalizeWhitespace; update pointers only. Diagnosis, Scope, acceptance, estimate, dependencies and Validation unchanged.",
           "previousStanzaHash": "f61984713ef5c7484d539c7121a8052fa83c27180dfe083894f7a83dcda2b749",
           "stanzaHash": "e4581c1279994d4fda099f06a8615a1b117c4ecfdc6fa5751e0ce9d688628c4c"
+        },
+        {
+          "at": "2026-10-09T22:04:08.287Z",
+          "finding": "Record source-derived same-mechanism probe before direct implementation dispatch.",
+          "reason": "Current global Rule2 requires explicit sibling probe evidence in Diagnosis. Both normalization operations were inspected; only the existing source-root operation causes this defect. Scope and acceptance preserved.",
+          "previousStanzaHash": "e4581c1279994d4fda099f06a8615a1b117c4ecfdc6fa5751e0ce9d688628c4c",
+          "stanzaHash": "1339e6a4fae0c816703bf2759b9551e5784180ccedde90be99d8416903f1dc9e"
         }
       ]
     },
@@ -2180,7 +2187,7 @@
       "navigation-and-locator-argument-refusals-public-message": "75d352d7b21486720ade9f4dd51b70df28977bdda5dc301632c5d08eec87afab",
       "workspace-lifecycle-argument-refusals-public-message": "d06d9285b83699a868a3996681820eb101b3acef7bd3b617b031701eb12fd44f",
       "tool-refusal-public-message-guard": "4eff07904b02ba69e478d3d9aaa727831799ecdeb82635aa2b062d03d00bef50",
-      "extract-type-preserve-untouched-trivia": "e4581c1279994d4fda099f06a8615a1b117c4ecfdc6fa5751e0ce9d688628c4c",
+      "extract-type-preserve-untouched-trivia": "1339e6a4fae0c816703bf2759b9551e5784180ccedde90be99d8416903f1dc9e",
       "scaffold-batch-preview-apply-route": "8f5c2bfe46162db26cba37e16760dd549b91380091ba4f172a30a63078ba8ca8",
       "notice-verifier-scoped-test-inherits-nuget-packages": "e1ff8a04c6da28d98e04ffa92f6e4632bc2fa0d3806aca2f57e5c0486320ad35",
       "test-discovery-file-path-case-identity": "fd4ca08bdefaa91aa17ed4e9ac20ca7ae749bf376efef9940ab94f67ef3321c6",
@@ -2210,8 +2217,8 @@
     }
   },
   "conflictGraphInputHash": "9c69bf382ba2dabda5fdfcbb6ec5f4813d91a59226075b1f53dd2acd3875fa7f",
-  "planHash": "ba96092356702f3379b9476c9c6d223c812e464e7c8683436206a2464a6a601c",
+  "planHash": "6c960182b12ec31504b5bba0f936d901b32b4c57f9bee2396f0409d1587e1486",
   "backlogSnapshotHash": "284ca1c5e07578868c61ada4081bdf939b112d3f58e3dbfdd4efaa94f90e7336",
-  "reviewedPlanHash": "ba96092356702f3379b9476c9c6d223c812e464e7c8683436206a2464a6a601c",
+  "reviewedPlanHash": "6c960182b12ec31504b5bba0f936d901b32b4c57f9bee2396f0409d1587e1486",
   "reviewedBacklogSnapshotHash": "cc5f2af685632ecdcbfcf94a8fe98135b9da20f7b2f4ba18d6cdddf811c1c1cc"
 }
