@@ -7,7 +7,7 @@
 | Tool policy | edit-only |
 | Estimated context cost | 35000 |
 | Risks | Preserve current name lookup and separate physical path lookup with FileSystemPath comparison. Re-derive path/name collisions and versioned index invalidation; do not change shared path helpers. The private ProjectIndexEntry has one defining-file construction/consumer mechanism. |
-| Validation | Red-first real loaded project selected through a Windows junction/drive alias or supported symlink; wrong project and case-distinct paths stay distinct on applicable platforms. Explicitly skip unavailable filesystem features. Run WorkspaceProjectAliasLookupTests and existing GetProject/dedup/version tests. Per-edit compile_check and targeted test_run; scoped executor gate; required hosted validate per CI_POLICY.md is the full landing gate, without duplicating hosted checks locally. |
+| Validation | Red-first real loaded project selected through a Windows junction/drive alias or supported symlink; wrong project and case-distinct paths stay distinct on applicable platforms. Explicitly skip unavailable filesystem features. Run WorkspaceProjectAliasLookupTests and existing GetProject/dedup/version tests. Per-edit compile_check and targeted test_run; scoped regression gate, then serialized complete local `just ci` through the sanctioned full-gate producer (complete addenda ci_equivalent), followed by required hosted validate per CI_POLICY.md. |
 | Performance review | N/A - correctness fix; inspect alias-resolution cost at index rebuild, not repeated enumeration. |
 | CHANGELOG category | Fixed |
 | CHANGELOG entry (draft) | Workspace project selection resolves equivalent physical path aliases. |

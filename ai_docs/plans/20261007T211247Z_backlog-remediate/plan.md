@@ -11,9 +11,9 @@ Selection note: Default first-40 window; one split retained, 14 further split ca
 |---|----|--------|----|-------------|
 | 2 | navigation-and-locator-argument-refusals-public-message | merged | [#1764](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1764) | navigation-and-locator-argument-refusals-public-message |
 | 3 | workspace-lifecycle-argument-refusals-public-message | merged | [#1766](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1766) | workspace-lifecycle-argument-refusals-public-message |
-| 4 | tool-refusal-public-message-guard | pending | — | tool-refusal-public-message-guard |
+| 4 | tool-refusal-public-message-guard | merged | [#1768](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1768) | tool-refusal-public-message-guard |
 | 5 | extract-type-preserve-untouched-trivia | pending | — | extract-type-preserve-untouched-trivia |
-| 6 | scaffold-batch-preview-apply-route | pending | — | scaffold-batch-preview-apply-route |
+| 6 | scaffold-batch-preview-apply-route | deferred | — | scaffold-batch-preview-apply-route |
 | 9 | notice-verifier-scoped-test-inherits-nuget-packages | obsolete | — | notice-verifier-scoped-test-inherits-nuget-packages |
 | 10 | test-discovery-file-path-case-identity | pending | — | test-discovery-file-path-case-identity |
 | 11 | workspace-project-alias-lookup | pending | — | workspace-project-alias-lookup |
@@ -32,11 +32,11 @@ Selection note: Default first-40 window; one split retained, 14 further split ca
 | 24 | workspace-close-isolated-nuget-handles | pending | — | workspace-close-isolated-nuget-handles |
 | 25 | preview-store-explicit-internal-state | deferred | — | preview-store-explicit-internal-state |
 | 26 | preview-diff-whitespace-omission | pending | — | preview-diff-whitespace-omission |
-| 8.01 | preview-token-lifecycle-evidence | pending | — | — |
-| 8.02 | preview-token-reason-projection | pending | — | — |
-| 8.03 | preview-token-solution-confirmation | pending | — | — |
-| 8.04 | preview-token-composite-confirmation | pending | — | — |
-| 8.05 | preview-token-project-confirmation | pending | — | preview-token-consumed-reason |
+| 8.01 | preview-token-lifecycle-evidence | deferred | — | — |
+| 8.02 | preview-token-reason-projection | deferred | — | — |
+| 8.03 | preview-token-solution-confirmation | deferred | — | — |
+| 8.04 | preview-token-composite-confirmation | deferred | — | — |
+| 8.05 | preview-token-project-confirmation | deferred | — | preview-token-consumed-reason |
 | 7.01 | fork-composite-nonconsuming-snapshot | deferred | — | — |
 | 7.02 | fork-preview-project-composite-replay | deferred | — | workspace-fork-project-mutation-preview |
 <!-- BSWEEP:STATUS-TABLE END -->

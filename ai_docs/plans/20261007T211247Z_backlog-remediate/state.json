@@ -133,7 +133,7 @@
     {
       "id": "tool-refusal-public-message-guard",
       "order": 4,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "tool-refusal-public-message-guard"
       ],
@@ -162,14 +162,22 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/tool-refusal-public-message-guard",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1768",
+      "mergedAt": "2026-10-09T22:58:00Z",
       "notes": null,
       "fileSetHash": "516755c23fa7ef12b6a24ccdd3d7ffedb3a8c24a3bdb9a283724ce985faed3d9",
       "stanzaHash": "4eff07904b02ba69e478d3d9aaa727831799ecdeb82635aa2b062d03d00bef50",
-      "reviewedStanzaHash": "4eff07904b02ba69e478d3d9aaa727831799ecdeb82635aa2b062d03d00bef50"
+      "reviewedStanzaHash": "4eff07904b02ba69e478d3d9aaa727831799ecdeb82635aa2b062d03d00bef50",
+      "reviewedHead": "d4ebf55dc2fa044459455abcea05f92734596729",
+      "scratchRemoved": false,
+      "githubGate": {
+        "baseOid": "1dd9a62c63e4277ac02ae793415436552ac668a5",
+        "headOid": "d4ebf55dc2fa044459455abcea05f92734596729",
+        "tree": "ded8d770932ab2fb3a68c74e93e3255bbf75e3bb",
+        "checksVerifiedAt": "2026-10-09T22:57:47.900Z"
+      }
     },
     {
       "id": "extract-type-preserve-untouched-trivia",
@@ -208,8 +216,8 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "b39233ebef576f17ceeebe7a140e06427809c85452cfae1f02db223f42436701",
-      "stanzaHash": "db67ceb07157f8d223d087da6224dcebc53b23abae236aa93051ba6052754447",
-      "reviewedStanzaHash": "db67ceb07157f8d223d087da6224dcebc53b23abae236aa93051ba6052754447",
+      "stanzaHash": "1339e6a4fae0c816703bf2759b9551e5784180ccedde90be99d8416903f1dc9e",
+      "reviewedStanzaHash": "1339e6a4fae0c816703bf2759b9551e5784180ccedde90be99d8416903f1dc9e",
       "amendments": [
         {
           "at": "2026-10-09T15:33:09.082Z",
@@ -217,13 +225,34 @@
           "reason": "Correct the AI-facing performance cell for this actual planned scope; preserve Approach, exact file sets, estimates, dependencies and runtime acceptance.",
           "previousStanzaHash": "cefaf2862383a0649b6802b3f949b13cf6233cc91100d939d9b785448c2dc343",
           "stanzaHash": "db67ceb07157f8d223d087da6224dcebc53b23abae236aa93051ba6052754447"
+        },
+        {
+          "at": "2026-10-09T19:46:05.748Z",
+          "finding": "Inherited Validation treats full local validation as omitted or fallback despite CI_POLICY.md:152-158 required unsharded PR-equivalent local gate.",
+          "reason": "Require scoped regressions plus serialized complete sanctioned local PR-equivalent producer before required hosted gates; preserve file scope, estimates, dependencies and deferred dispositions.",
+          "previousStanzaHash": "db67ceb07157f8d223d087da6224dcebc53b23abae236aa93051ba6052754447",
+          "stanzaHash": "f61984713ef5c7484d539c7121a8052fa83c27180dfe083894f7a83dcda2b749"
+        },
+        {
+          "at": "2026-10-09T20:57:05.049Z",
+          "finding": "Source re-vet: inherited Diagnosis line142-144 and detail line124-127 miss the current source-root normalization.",
+          "reason": "Current code at135-138 contains ReplaceNode and whole-root NormalizeWhitespace; update pointers only. Diagnosis, Scope, acceptance, estimate, dependencies and Validation unchanged.",
+          "previousStanzaHash": "f61984713ef5c7484d539c7121a8052fa83c27180dfe083894f7a83dcda2b749",
+          "stanzaHash": "e4581c1279994d4fda099f06a8615a1b117c4ecfdc6fa5751e0ce9d688628c4c"
+        },
+        {
+          "at": "2026-10-09T22:04:08.287Z",
+          "finding": "Record source-derived same-mechanism probe before direct implementation dispatch.",
+          "reason": "Current global Rule2 requires explicit sibling probe evidence in Diagnosis. Both normalization operations were inspected; only the existing source-root operation causes this defect. Scope and acceptance preserved.",
+          "previousStanzaHash": "e4581c1279994d4fda099f06a8615a1b117c4ecfdc6fa5751e0ce9d688628c4c",
+          "stanzaHash": "1339e6a4fae0c816703bf2759b9551e5784180ccedde90be99d8416903f1dc9e"
         }
       ]
     },
     {
       "id": "scaffold-batch-preview-apply-route",
       "order": 6,
-      "status": "pending",
+      "status": "deferred",
       "backlogRowsClosed": [
         "scaffold-batch-preview-apply-route"
       ],
@@ -236,16 +265,21 @@
         "src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.cs",
         "src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.Orchestration.cs"
       ],
-      "testFilesAdded": 3,
+      "testFilesAdded": 7,
       "testFiles": [
         "tests/RoslynMcp.Tests/ScaffoldingIntegrationTests.cs",
         "tests/RoslynMcp.Tests/ToolDispatchTests.cs",
-        "tests/RoslynMcp.Tests/ScaffoldBatchApplyRouteWireTests.cs"
+        "tests/RoslynMcp.Tests/ScaffoldBatchApplyRouteWireTests.cs",
+        "tests/RoslynMcp.Tests/ExtractionApplyRouteBindingTests.cs",
+        "tests/RoslynMcp.Tests/PreviewRouteBindingEditingTests.cs",
+        "tests/RoslynMcp.Tests/PreviewRouteBindingFileOpsTests.cs",
+        "tests/RoslynMcp.Tests/TestData/invalid-operation-construction-baseline.json"
       ],
       "docFiles": [
         "README.md",
         "src/RoslynMcp.Host.Stdio/README.md",
-        "skills/mcp-server-surface-test/prompts/phases/output-and-close.md"
+        "skills/mcp-server-surface-test/prompts/phases/output-and-close.md",
+        "changelog.d/scaffold-batch-preview-apply-route.md"
       ],
       "rowsClosedCount": 1,
       "estimatedContextTokens": 60000,
@@ -259,15 +293,34 @@
         "anchorStale": false,
         "ruleOneBundleResolved": "n/a"
       },
-      "dependsOn": [],
+      "dependsOn": [
+        "preview-store-explicit-internal-state",
+        "tool-refusal-public-message-guard"
+      ],
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
-      "fileSetHash": "a812876b11864cd1faa4b9a6afbe203b3bf0427c0037af9f1d671a1d572893e7",
-      "stanzaHash": "847bb3e0c0a082f9a1b16a1c89db0b9faca9d6deb662ffe8d47e0093e2af1ccd",
-      "reviewedStanzaHash": "847bb3e0c0a082f9a1b16a1c89db0b9faca9d6deb662ffe8d47e0093e2af1ccd"
+      "notes": "Source re-vet proved that the proposed changes-aware Store still loses per-file truncation and can persist unseen edits. Defer the complete route repair until preview-store-explicit-internal-state lands after global Rule5 admission repair (claude-config PR724), plus tool-refusal-public-message-guard for its planned burn-down inventory asset. Preserve six production files, all seven test/assets and four docs; estimate60000 unchanged. Re-vet contracts/source and obtain fresh cold review before dispatch. No partial implementation; backlog row remains open.",
+      "fileSetHash": "dfa70c6f212e2b87fdfbce37d20f0444063b5261de5cde5049e695801b1413b9",
+      "stanzaHash": "8f5c2bfe46162db26cba37e16760dd549b91380091ba4f172a30a63078ba8ca8",
+      "reviewedStanzaHash": "8f5c2bfe46162db26cba37e16760dd549b91380091ba4f172a30a63078ba8ca8",
+      "amendments": [
+        {
+          "at": "2026-10-09T21:28:44.029Z",
+          "finding": "Source/semantic re-vet: the inherited changes-aware Store proposal loses per-file safety, and shared refusal conversion omitted exact-type/ratchet companions.",
+          "reason": "Preserve the complete six-production-file route repair; require the existing atomic safety and inventory predecessors, retain every necessary test/asset companion, and re-vet their actual contracts before dispatch. No lowered estimate or runtime workaround.",
+          "previousStanzaHash": "847bb3e0c0a082f9a1b16a1c89db0b9faca9d6deb662ffe8d47e0093e2af1ccd",
+          "stanzaHash": "0b2423d52493cdacae1df06c33661c821788e563a979abe06df286e6f83a179e"
+        },
+        {
+          "at": "2026-10-09T21:47:49.841Z",
+          "finding": "Own metadata review: necessary test/asset companion citations should accompany the exact Scope list, not remain solely in Risks.",
+          "reason": "Move the existing source-derived exact-refusal assertion citations into Scope and point to the guard acceptance; no gate run is fabricated. File arrays/counts, dependencies, estimate, behavior, validation and deferred status unchanged.",
+          "previousStanzaHash": "0b2423d52493cdacae1df06c33661c821788e563a979abe06df286e6f83a179e",
+          "stanzaHash": "8f5c2bfe46162db26cba37e16760dd549b91380091ba4f172a30a63078ba8ca8"
+        }
+      ]
     },
     {
       "id": "notice-verifier-scoped-test-inherits-nuget-packages",
@@ -340,8 +393,8 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "a5293638d175b55e86c905ef7b8bae7795070496e70da55380b756ac64be88b3",
-      "stanzaHash": "772111263c053632d4dea6cacd9fb10206e414bdd52267364c6f7c584be718a2",
-      "reviewedStanzaHash": "772111263c053632d4dea6cacd9fb10206e414bdd52267364c6f7c584be718a2",
+      "stanzaHash": "fd4ca08bdefaa91aa17ed4e9ac20ca7ae749bf376efef9940ab94f67ef3321c6",
+      "reviewedStanzaHash": "fd4ca08bdefaa91aa17ed4e9ac20ca7ae749bf376efef9940ab94f67ef3321c6",
       "amendments": [
         {
           "at": "2026-10-09T15:33:59.015Z",
@@ -349,6 +402,13 @@
           "reason": "Correct the AI-facing performance cell for this actual planned scope; preserve Approach, exact file sets, estimates, dependencies and runtime acceptance.",
           "previousStanzaHash": "1145ae27e4bee0dbf2d191d955b33c7b804f2943b9ecbbe6d663e28d3f2de031",
           "stanzaHash": "772111263c053632d4dea6cacd9fb10206e414bdd52267364c6f7c584be718a2"
+        },
+        {
+          "at": "2026-10-09T19:46:11.140Z",
+          "finding": "Inherited Validation treats full local validation as omitted or fallback despite CI_POLICY.md:152-158 required unsharded PR-equivalent local gate.",
+          "reason": "Require scoped regressions plus serialized complete sanctioned local PR-equivalent producer before required hosted gates; preserve file scope, estimates, dependencies and deferred dispositions.",
+          "previousStanzaHash": "772111263c053632d4dea6cacd9fb10206e414bdd52267364c6f7c584be718a2",
+          "stanzaHash": "fd4ca08bdefaa91aa17ed4e9ac20ca7ae749bf376efef9940ab94f67ef3321c6"
         }
       ]
     },
@@ -389,8 +449,17 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "5ae53efeefad9af7661e98abc4db281f0b23dea87b760a8f56fdd1108bfbec13",
-      "stanzaHash": "71a0718b98e486f2d7e922407c0120e829f833c522ff3588befce534d96262ca",
-      "reviewedStanzaHash": "71a0718b98e486f2d7e922407c0120e829f833c522ff3588befce534d96262ca"
+      "stanzaHash": "eef5b009427f000551878925dc35a574b1c24cbf5e5108a22b27b18f7494e89d",
+      "reviewedStanzaHash": "eef5b009427f000551878925dc35a574b1c24cbf5e5108a22b27b18f7494e89d",
+      "amendments": [
+        {
+          "at": "2026-10-09T19:46:18.359Z",
+          "finding": "Inherited Validation treats full local validation as omitted or fallback despite CI_POLICY.md:152-158 required unsharded PR-equivalent local gate.",
+          "reason": "Require scoped regressions plus serialized complete sanctioned local PR-equivalent producer before required hosted gates; preserve file scope, estimates, dependencies and deferred dispositions.",
+          "previousStanzaHash": "71a0718b98e486f2d7e922407c0120e829f833c522ff3588befce534d96262ca",
+          "stanzaHash": "eef5b009427f000551878925dc35a574b1c24cbf5e5108a22b27b18f7494e89d"
+        }
+      ]
     },
     {
       "id": "fix-all-equivalence-key-unregistered-fallback",
@@ -792,11 +861,12 @@
       "productionFiles": [
         "src/RoslynMcp.Roslyn/Services/ChangeSignatureService.cs"
       ],
-      "testFilesAdded": 3,
+      "testFilesAdded": 4,
       "testFiles": [
         "tests/RoslynMcp.Tests/ChangeSignaturePreviewTests.cs",
         "tests/RoslynMcp.Tests/ChangeSignaturePreviewMetadataNameShapeTests.cs",
-        "tests/RoslynMcp.Tests/ChangeSignaturePublicRefusalTests.cs"
+        "tests/RoslynMcp.Tests/ChangeSignaturePublicRefusalTests.cs",
+        "tests/RoslynMcp.Tests/TestData/invalid-operation-construction-baseline.json"
       ],
       "docFiles": [
         "changelog.d/change-signature-service-refusals-public-message.md"
@@ -813,15 +883,33 @@
         "anchorStale": false,
         "ruleOneBundleResolved": "n/a"
       },
-      "dependsOn": [],
+      "dependsOn": [
+        "tool-refusal-public-message-guard"
+      ],
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
       "notes": null,
-      "fileSetHash": "243f78fd3d949eaf79952eeca6aee1cd06b3491d70e61116ca4398529bcb88d3",
-      "stanzaHash": "ef997e9a4919038ae0947c3e3f1f99bd2f30d6f2616af291ea9a397c2b768083",
-      "reviewedStanzaHash": "ef997e9a4919038ae0947c3e3f1f99bd2f30d6f2616af291ea9a397c2b768083"
+      "fileSetHash": "089a69ad89a6a1f1ca7ab5d7c0331d621d0f48776577d503ee8aa0049447b8f1",
+      "stanzaHash": "625f9cfb183f553f92b624cf88579f2b28a577440efbe4b3205921c97c15b84c",
+      "reviewedStanzaHash": "625f9cfb183f553f92b624cf88579f2b28a577440efbe4b3205921c97c15b84c",
+      "amendments": [
+        {
+          "at": "2026-10-09T22:12:27.409Z",
+          "finding": "Planned refusal conversion removes inventoried plain-BCL constructions and requires the planned guard baseline companion.",
+          "reason": "Current guard candidate inventories ChangeSignatureService on immutable base1dd9a62c. Require guard landing and source re-vet first; list its exact asset as test scope and allow only burn-down. Product scope, estimate, behavior, validation and pending status preserved.",
+          "previousStanzaHash": "ef997e9a4919038ae0947c3e3f1f99bd2f30d6f2616af291ea9a397c2b768083",
+          "stanzaHash": "de56ce6d0910248d2a2cac80518af5b078bfe3d70413fdb0fce63dec1729009b"
+        },
+        {
+          "at": "2026-10-09T22:13:17.047Z",
+          "finding": "Planned refusal conversion removes inventoried plain-BCL constructions and requires the planned guard baseline companion.",
+          "reason": "Current guard candidate inventories ChangeSignatureService on immutable base1dd9a62c. Require guard landing and source re-vet first; list its exact asset as test scope and allow only burn-down. Product scope, estimate, behavior, validation and pending status preserved.",
+          "previousStanzaHash": "de56ce6d0910248d2a2cac80518af5b078bfe3d70413fdb0fce63dec1729009b",
+          "stanzaHash": "625f9cfb183f553f92b624cf88579f2b28a577440efbe4b3205921c97c15b84c"
+        }
+      ]
     },
     {
       "id": "cross-project-public-refusals-echo-input",
@@ -901,8 +989,8 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "d6bd25e851e02db5199d9ad12553f202c329caa301ecad41be05393a24b53c0d",
-      "stanzaHash": "cfe5883712f3e6a8963ef6b20637f15b17e49a28425ca0f6f9a46c002e920a41",
-      "reviewedStanzaHash": "cfe5883712f3e6a8963ef6b20637f15b17e49a28425ca0f6f9a46c002e920a41",
+      "stanzaHash": "a607800c1b116462dfb7dc8c2bb53ea655b7412452b06eb3427d298f34a54c8a",
+      "reviewedStanzaHash": "a607800c1b116462dfb7dc8c2bb53ea655b7412452b06eb3427d298f34a54c8a",
       "amendments": [
         {
           "at": "2026-10-09T15:33:35.321Z",
@@ -910,6 +998,13 @@
           "reason": "Correct the AI-facing performance cell for this actual planned scope; preserve Approach, exact file sets, estimates, dependencies and runtime acceptance.",
           "previousStanzaHash": "2776a9f7799a1adbc47410ea9bab3377a56c154a6b3e38c5e786036668e2b154",
           "stanzaHash": "cfe5883712f3e6a8963ef6b20637f15b17e49a28425ca0f6f9a46c002e920a41"
+        },
+        {
+          "at": "2026-10-09T19:46:12.764Z",
+          "finding": "Inherited Validation treats full local validation as omitted or fallback despite CI_POLICY.md:152-158 required unsharded PR-equivalent local gate.",
+          "reason": "Require scoped regressions plus serialized complete sanctioned local PR-equivalent producer before required hosted gates; preserve file scope, estimates, dependencies and deferred dispositions.",
+          "previousStanzaHash": "cfe5883712f3e6a8963ef6b20637f15b17e49a28425ca0f6f9a46c002e920a41",
+          "stanzaHash": "a607800c1b116462dfb7dc8c2bb53ea655b7412452b06eb3427d298f34a54c8a"
         }
       ]
     },
@@ -1050,7 +1145,7 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": "Operator 2026-10-09: global backlog filings only. Deferred complete atomic safety migration pending plan-rule5-indivisible-scope-admission (claude-config PR724); fanout guidance tracked in PR718. Reproduced exec-args exit4: estimate110000 exceeds80000. Preserve full38-production/26-test scope. Resume requires verified global remediation, source re-vet and fresh cold review; no partial safety implementation.",
+      "notes": "Operator 2026-10-09: global backlog filings only. Deferred complete atomic safety migration pending plan-rule5-indivisible-scope-admission (claude-config PR724). Fanout guidance repaired by global owner in PR737 and reconciled PR738; filing PR718 closed unmerged. Current installed exec-args still reproduces exit4: estimate110000 exceeds80000. Preserve full38-production/26-test scope. Resume requires verified Rule5 admission repair, source re-vet and fresh cold review; no partial safety implementation.",
       "fileSetHash": "8dacf970c6ce7ee290595e5a43e935f2f745071db396f160ecf2f17d52f6f53a",
       "stanzaHash": "928252056cf3207c7d6eac15fe72d80a24a4fa6e95ed05a4396d75b2d135ace3",
       "reviewedStanzaHash": "928252056cf3207c7d6eac15fe72d80a24a4fa6e95ed05a4396d75b2d135ace3"
@@ -1102,14 +1197,20 @@
     {
       "id": "preview-token-lifecycle-evidence",
       "order": 8.01,
-      "status": "pending",
+      "status": "deferred",
       "productionFiles": [
         "src/RoslynMcp.Core/Services/BoundedStore.cs",
         "src/RoslynMcp.Core/Services/PreviewTokenState.cs",
         "src/RoslynMcp.Core/Services/ICompositePreviewStore.cs",
         "src/RoslynMcp.Core/Services/IProjectMutationPreviewStore.cs",
         "src/RoslynMcp.Roslyn/Contracts/IPreviewStore.cs",
-        "src/RoslynMcp.Roslyn/Services/PreviewStore.cs"
+        "src/RoslynMcp.Roslyn/Services/PreviewStore.cs",
+        "src/RoslynMcp.Roslyn/Services/RefactoringService.cs",
+        "src/RoslynMcp.Roslyn/Services/CompositePreviewStore.cs",
+        "src/RoslynMcp.Roslyn/Services/PersistentCompositeStorage.cs",
+        "src/RoslynMcp.Roslyn/Services/CompositeApplyOrchestrator.cs",
+        "src/RoslynMcp.Roslyn/Services/ProjectMutationService.cs",
+        "src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs"
       ],
       "testFiles": [
         "tests/RoslynMcp.Tests/BoundedStoreEvictionTests.cs",
@@ -1120,26 +1221,32 @@
         "tests/RoslynMcp.Tests/ParameterObjectPreviewTests.cs",
         "tests/RoslynMcp.Tests/PreviewRouteBindingEditingTests.cs",
         "tests/RoslynMcp.Tests/PreviewRouteBindingFileOpsTests.cs",
-        "tests/RoslynMcp.Tests/ToolDispatchTests.cs"
+        "tests/RoslynMcp.Tests/ToolDispatchTests.cs",
+        "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs",
+        "tests/RoslynMcp.Tests/RefactoringToolsIntegrationTests.cs",
+        "tests/RoslynMcp.Tests/CompositeApplyOrchestratorTests.cs",
+        "tests/RoslynMcp.Tests/Services/PersistentCompositeStorageTests.cs",
+        "tests/RoslynMcp.Tests/ProjectMutationIntegrationTests.cs",
+        "tests/RoslynMcp.Tests/TestData/invalid-operation-construction-baseline.json"
       ],
       "docFiles": [
         "docs/decisions/0024-preview-token-terminal-lifecycle.md",
         "docs/decisions/README.md",
         "changelog.d/preview-token-lifecycle-evidence.md"
       ],
-      "estimatedContextTokens": 65000,
+      "estimatedContextTokens": 160000,
       "toolPolicy": "edit-only",
-      "fanoutEstimate": 6,
+      "fanoutEstimate": 12,
       "fanoutOversize": false,
-      "scheduleHint": null,
+      "scheduleHint": "heroic-last",
       "dependsOn": [],
-      "productionFilesTouched": 6,
-      "testFilesAdded": 9,
+      "productionFilesTouched": 12,
+      "testFilesAdded": 15,
       "backlogRowsClosed": [],
       "rowsClosedCount": 0,
-      "fileSetHash": "b114ed6217432d10b0b088db516b1900a40e34d4c06cd49c3ff0c61da5c34e8c",
-      "stanzaHash": "0f7f7c45714a4e2f494c34cfbe6b87a2f3c47cc93b86cc5179a0097135a01569",
-      "reviewedStanzaHash": "0f7f7c45714a4e2f494c34cfbe6b87a2f3c47cc93b86cc5179a0097135a01569",
+      "fileSetHash": "7140904e12431c1ebbc9928bee297c0212774ce958f975fadbf9186e789663ee",
+      "stanzaHash": "35e108b39e9ab2b7fa538716bf5de4bd1ec0ff523cfe44a2b552cd8cf0f329df",
+      "reviewedStanzaHash": "35e108b39e9ab2b7fa538716bf5de4bd1ec0ff523cfe44a2b552cd8cf0f329df",
       "amendments": [
         {
           "at": "2026-10-09T16:19:02.240Z",
@@ -1147,13 +1254,21 @@
           "reason": "Move the existing source-traced coupling sentence from Risks to Scope; preserve every runtime file, test file, estimate, Approach and dependency.",
           "previousStanzaHash": "07c7592b348ad2a4f900076455b31f6794d9bf4d2fc76aa4248b10b53739f4cc",
           "stanzaHash": "0f7f7c45714a4e2f494c34cfbe6b87a2f3c47cc93b86cc5179a0097135a01569"
+        },
+        {
+          "at": "2026-10-09T23:16:51.266Z",
+          "finding": "Inherited split exposes Discarded for successful solution/project/composite apply and for pre-write persistent claim.",
+          "reason": "Source-only independence re-vet at 683dc0fcb503d02f49063e6909e327272ab4044c forces all completion producers and persistent claim authority into the first lifecycle boundary. Preserve complete 12-production/15-test-asset scope and genuine 160000 estimate. This is a planning hold, not execution approval; resolve portable identity prerequisite, global Rule5 admission and fresh cold review before shipping.",
+          "previousStanzaHash": "0f7f7c45714a4e2f494c34cfbe6b87a2f3c47cc93b86cc5179a0097135a01569",
+          "stanzaHash": "35e108b39e9ab2b7fa538716bf5de4bd1ec0ff523cfe44a2b552cd8cf0f329df"
         }
-      ]
+      ],
+      "notes": "Source re-vet at 683dc0fc disproves inherited stage independence. Correct first lifecycle boundary includes all completion producers and persistent claim authority (12 production/15 test-assets/160000). Native exec-args exit4 confirms global Rule5 admission blocker, owned by claude-config PR724. Portable receiving-workspace/source-snapshot identity is a tracked explicit prerequisite. Resume only after prerequisite and audited global admission land, complete source/scope re-vet and fresh cold review. Preserve child/source-row identities, original closure owner and full scope; no implementation delivered, no child obsolete."
     },
     {
       "id": "preview-token-reason-projection",
       "order": 8.02,
-      "status": "pending",
+      "status": "deferred",
       "productionFiles": [
         "src/RoslynMcp.Core/Services/PreviewTokenStaleException.cs",
         "src/RoslynMcp.Host.Stdio/Tools/ToolDispatch.cs",
@@ -1198,12 +1313,13 @@
           "previousStanzaHash": "4a8c245cec99ee749c080c3c5de267edbd77fb93d6e0c1889d17b7271a675c18",
           "stanzaHash": "9b387eed7f47e93026f019e59197c5a04208abc3ad8f182206c43a29d03cbba2"
         }
-      ]
+      ],
+      "notes": "Source re-vet at 683dc0fc disproves inherited stage independence. Correct first lifecycle boundary includes all completion producers and persistent claim authority (12 production/15 test-assets/160000). Native exec-args exit4 confirms global Rule5 admission blocker, owned by claude-config PR724. Portable receiving-workspace/source-snapshot identity is a tracked explicit prerequisite. Resume only after prerequisite and audited global admission land, complete source/scope re-vet and fresh cold review. Preserve child/source-row identities, original closure owner and full scope; no implementation delivered, no child obsolete."
     },
     {
       "id": "preview-token-solution-confirmation",
       "order": 8.03,
-      "status": "pending",
+      "status": "deferred",
       "productionFiles": [
         "src/RoslynMcp.Roslyn/Services/RefactoringService.cs"
       ],
@@ -1229,12 +1345,13 @@
       "rowsClosedCount": 0,
       "fileSetHash": "d549db625f0af225e1fbd9f097479905fac2cfcc46dd234d2926a81a10951d28",
       "stanzaHash": "f391d2ba9ede8381c894af4f7a17c250add8de6540816a497aeb4252888fe9f0",
-      "reviewedStanzaHash": "f391d2ba9ede8381c894af4f7a17c250add8de6540816a497aeb4252888fe9f0"
+      "reviewedStanzaHash": "f391d2ba9ede8381c894af4f7a17c250add8de6540816a497aeb4252888fe9f0",
+      "notes": "Source re-vet at 683dc0fc disproves inherited stage independence. Correct first lifecycle boundary includes all completion producers and persistent claim authority (12 production/15 test-assets/160000). Native exec-args exit4 confirms global Rule5 admission blocker, owned by claude-config PR724. Portable receiving-workspace/source-snapshot identity is a tracked explicit prerequisite. Resume only after prerequisite and audited global admission land, complete source/scope re-vet and fresh cold review. Preserve child/source-row identities, original closure owner and full scope; no implementation delivered, no child obsolete."
     },
     {
       "id": "preview-token-composite-confirmation",
       "order": 8.04,
-      "status": "pending",
+      "status": "deferred",
       "productionFiles": [
         "src/RoslynMcp.Roslyn/Services/CompositePreviewStore.cs",
         "src/RoslynMcp.Roslyn/Services/PersistentCompositeStorage.cs",
@@ -1262,12 +1379,13 @@
       "rowsClosedCount": 0,
       "fileSetHash": "cf4bb718f02fbc2259cd680f140dc9a8e29631bdab2b196561c1e1db2fa23090",
       "stanzaHash": "e028421571de16aaff0e573308c71d1c18aa46a91313fb0c995b190e7ada614a",
-      "reviewedStanzaHash": "e028421571de16aaff0e573308c71d1c18aa46a91313fb0c995b190e7ada614a"
+      "reviewedStanzaHash": "e028421571de16aaff0e573308c71d1c18aa46a91313fb0c995b190e7ada614a",
+      "notes": "Source re-vet at 683dc0fc disproves inherited stage independence. Correct first lifecycle boundary includes all completion producers and persistent claim authority (12 production/15 test-assets/160000). Native exec-args exit4 confirms global Rule5 admission blocker, owned by claude-config PR724. Portable receiving-workspace/source-snapshot identity is a tracked explicit prerequisite. Resume only after prerequisite and audited global admission land, complete source/scope re-vet and fresh cold review. Preserve child/source-row identities, original closure owner and full scope; no implementation delivered, no child obsolete."
     },
     {
       "id": "preview-token-project-confirmation",
       "order": 8.05,
-      "status": "pending",
+      "status": "deferred",
       "productionFiles": [
         "src/RoslynMcp.Roslyn/Services/ProjectMutationService.cs"
       ],
@@ -1295,7 +1413,8 @@
       "rowsClosedCount": 1,
       "fileSetHash": "09936473e33eda3704a26c4bf05ba3dffce89d8a842742981d2fa59f31896269",
       "stanzaHash": "5b3db04aab6d5bca44869369e23f9cae2d1cbcb5b22bbb27339e8608b53bb9fb",
-      "reviewedStanzaHash": "5b3db04aab6d5bca44869369e23f9cae2d1cbcb5b22bbb27339e8608b53bb9fb"
+      "reviewedStanzaHash": "5b3db04aab6d5bca44869369e23f9cae2d1cbcb5b22bbb27339e8608b53bb9fb",
+      "notes": "Source re-vet at 683dc0fc disproves inherited stage independence. Correct first lifecycle boundary includes all completion producers and persistent claim authority (12 production/15 test-assets/160000). Native exec-args exit4 confirms global Rule5 admission blocker, owned by claude-config PR724. Portable receiving-workspace/source-snapshot identity is a tracked explicit prerequisite. Resume only after prerequisite and audited global admission land, complete source/scope re-vet and fresh cold review. Preserve child/source-row identities, original closure owner and full scope; no implementation delivered, no child obsolete."
     },
     {
       "id": "fork-composite-nonconsuming-snapshot",
@@ -1328,8 +1447,17 @@
       "rowsClosedCount": 0,
       "notes": "Deferred per operator 2026-10-09 until preview-store-explicit-internal-state lands after global plan-rule5-indivisible-scope-admission repair (claude-config PR724) and fresh review. Preserve complete scope; leave owed backlog row open.",
       "fileSetHash": "8dc2571f00dc044c50af337be3a80b98c3ac772a42635081e6b9d8044e69fc49",
-      "stanzaHash": "fd27c0b8f49321c6afefbedfa17fe940da2d76638629787c3f40319068ea1189",
-      "reviewedStanzaHash": "fd27c0b8f49321c6afefbedfa17fe940da2d76638629787c3f40319068ea1189"
+      "stanzaHash": "7d5ab832df279ef69adc3f5fa8b5d286d0b8aeab2460d9d539e2e7d8efacc845",
+      "reviewedStanzaHash": "7d5ab832df279ef69adc3f5fa8b5d286d0b8aeab2460d9d539e2e7d8efacc845",
+      "amendments": [
+        {
+          "at": "2026-10-09T19:46:24.592Z",
+          "finding": "Inherited Validation treats full local validation as omitted or fallback despite CI_POLICY.md:152-158 required unsharded PR-equivalent local gate.",
+          "reason": "Require scoped regressions plus serialized complete sanctioned local PR-equivalent producer before required hosted gates; preserve file scope, estimates, dependencies and deferred dispositions.",
+          "previousStanzaHash": "fd27c0b8f49321c6afefbedfa17fe940da2d76638629787c3f40319068ea1189",
+          "stanzaHash": "7d5ab832df279ef69adc3f5fa8b5d286d0b8aeab2460d9d539e2e7d8efacc845"
+        }
+      ]
     },
     {
       "id": "fork-preview-project-composite-replay",
@@ -1366,41 +1494,27 @@
       "rowsClosedCount": 1,
       "notes": "Deferred per operator 2026-10-09 until safety and nonconsuming snapshot prerequisites land after global plan-rule5-indivisible-scope-admission repair (claude-config PR724) and fresh review. Preserve complete scope; leave owed backlog row open.",
       "fileSetHash": "5afece8c5daa0f3308167fb0d464a2188df5169813d5ddaf8f3939ccdd9c6d86",
-      "stanzaHash": "c524884456374574eb70979508d878be7d0d3a58e6c94484d3d6a2bf204610d4",
-      "reviewedStanzaHash": "c524884456374574eb70979508d878be7d0d3a58e6c94484d3d6a2bf204610d4"
+      "stanzaHash": "cd6c4c6aa3a52afdbbdf70820ab4f53e5735ca94771f2f2f2e30ad70e957f688",
+      "reviewedStanzaHash": "cd6c4c6aa3a52afdbbdf70820ab4f53e5735ca94771f2f2f2e30ad70e957f688",
+      "amendments": [
+        {
+          "at": "2026-10-09T19:46:27.146Z",
+          "finding": "Inherited Validation treats full local validation as omitted or fallback despite CI_POLICY.md:152-158 required unsharded PR-equivalent local gate.",
+          "reason": "Require scoped regressions plus serialized complete sanctioned local PR-equivalent producer before required hosted gates; preserve file scope, estimates, dependencies and deferred dispositions.",
+          "previousStanzaHash": "c524884456374574eb70979508d878be7d0d3a58e6c94484d3d6a2bf204610d4",
+          "stanzaHash": "cd6c4c6aa3a52afdbbdf70820ab4f53e5735ca94771f2f2f2e30ad70e957f688"
+        }
+      ]
     }
   ],
   "anchorVerification": "performed",
   "conflictGraph": {
     "edges": [
       {
-        "a": 6,
-        "b": 8.01,
-        "sharedFiles": [
-          "tests/RoslynMcp.Tests/ToolDispatchTests.cs"
-        ]
-      },
-      {
-        "a": 6,
-        "b": 8.02,
-        "sharedFiles": [
-          "src/RoslynMcp.Host.Stdio/Tools/OrchestrationTools.cs",
-          "src/RoslynMcp.Host.Stdio/Tools/ToolDispatch.cs",
-          "tests/RoslynMcp.Tests/ToolDispatchTests.cs"
-        ]
-      },
-      {
         "a": 15,
         "b": 19,
         "sharedFiles": [
           "src/RoslynMcp.Host.Stdio/Tools/WorkspaceTools.cs"
-        ]
-      },
-      {
-        "a": 15,
-        "b": 8.02,
-        "sharedFiles": [
-          "src/RoslynMcp.Roslyn/Services/WorkspaceForkApplyService.cs"
         ]
       },
       {
@@ -1424,121 +1538,28 @@
         "sharedFiles": [
           "tests/RoslynMcp.Tests/AnalyzerShadowLoaderLifecycleTests.cs"
         ]
-      },
-      {
-        "a": 19,
-        "b": 8.01,
-        "sharedFiles": [
-          "docs/decisions/README.md"
-        ]
-      },
-      {
-        "a": 19,
-        "b": 8.02,
-        "sharedFiles": [
-          "docs/product-contract.md"
-        ]
-      },
-      {
-        "a": 22,
-        "b": 8.01,
-        "sharedFiles": [
-          "docs/decisions/README.md"
-        ]
-      },
-      {
-        "a": 26,
-        "b": 8.03,
-        "sharedFiles": [
-          "src/RoslynMcp.Roslyn/Services/RefactoringService.cs"
-        ]
-      },
-      {
-        "a": 8.01,
-        "b": 8.02,
-        "sharedFiles": [
-          "docs/decisions/0024-preview-token-terminal-lifecycle.md",
-          "tests/RoslynMcp.Tests/ToolDispatchTests.cs"
-        ]
-      },
-      {
-        "a": 8.01,
-        "b": 8.03,
-        "sharedFiles": [
-          "tests/RoslynMcp.Tests/ApplyUndoWorkflowServiceTests.cs"
-        ]
-      },
-      {
-        "a": 8.02,
-        "b": 8.03,
-        "sharedFiles": [
-          "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs"
-        ]
-      },
-      {
-        "a": 8.02,
-        "b": 8.04,
-        "sharedFiles": [
-          "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs"
-        ]
-      },
-      {
-        "a": 8.02,
-        "b": 8.05,
-        "sharedFiles": [
-          "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs"
-        ]
-      },
-      {
-        "a": 8.03,
-        "b": 8.04,
-        "sharedFiles": [
-          "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs"
-        ]
-      },
-      {
-        "a": 8.03,
-        "b": 8.05,
-        "sharedFiles": [
-          "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs"
-        ]
-      },
-      {
-        "a": 8.04,
-        "b": 8.05,
-        "sharedFiles": [
-          "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs"
-        ]
       }
     ],
     "degrees": {
-      "4": 0,
       "5": 0,
-      "6": 2,
       "10": 0,
       "11": 0,
       "12": 0,
       "13": 0,
       "14": 0,
-      "15": 2,
+      "15": 1,
       "16": 0,
       "17": 1,
       "18": 0,
-      "19": 5,
+      "19": 3,
       "20": 0,
       "21": 1,
-      "22": 2,
+      "22": 1,
       "23": 0,
       "24": 1,
-      "26": 1,
-      "8.01": 5,
-      "8.02": 7,
-      "8.03": 5,
-      "8.04": 3,
-      "8.05": 3
+      "26": 0
     },
     "zeroDegreeInitiatives": [
-      4,
       5,
       10,
       11,
@@ -1548,7 +1569,8 @@
       16,
       18,
       20,
-      23
+      23,
+      26
     ]
   },
   "selection": {
@@ -2117,11 +2139,11 @@
       "navigation-and-locator-argument-refusals-public-message": "75d352d7b21486720ade9f4dd51b70df28977bdda5dc301632c5d08eec87afab",
       "workspace-lifecycle-argument-refusals-public-message": "d06d9285b83699a868a3996681820eb101b3acef7bd3b617b031701eb12fd44f",
       "tool-refusal-public-message-guard": "4eff07904b02ba69e478d3d9aaa727831799ecdeb82635aa2b062d03d00bef50",
-      "extract-type-preserve-untouched-trivia": "db67ceb07157f8d223d087da6224dcebc53b23abae236aa93051ba6052754447",
-      "scaffold-batch-preview-apply-route": "847bb3e0c0a082f9a1b16a1c89db0b9faca9d6deb662ffe8d47e0093e2af1ccd",
+      "extract-type-preserve-untouched-trivia": "1339e6a4fae0c816703bf2759b9551e5784180ccedde90be99d8416903f1dc9e",
+      "scaffold-batch-preview-apply-route": "8f5c2bfe46162db26cba37e16760dd549b91380091ba4f172a30a63078ba8ca8",
       "notice-verifier-scoped-test-inherits-nuget-packages": "e1ff8a04c6da28d98e04ffa92f6e4632bc2fa0d3806aca2f57e5c0486320ad35",
-      "test-discovery-file-path-case-identity": "772111263c053632d4dea6cacd9fb10206e414bdd52267364c6f7c584be718a2",
-      "workspace-project-alias-lookup": "71a0718b98e486f2d7e922407c0120e829f833c522ff3588befce534d96262ca",
+      "test-discovery-file-path-case-identity": "fd4ca08bdefaa91aa17ed4e9ac20ca7ae749bf376efef9940ab94f67ef3321c6",
+      "workspace-project-alias-lookup": "eef5b009427f000551878925dc35a574b1c24cbf5e5108a22b27b18f7494e89d",
       "fix-all-equivalence-key-unregistered-fallback": "913514db5542443540c48366ab331270a804e76f3350e61ff3b3122811f12f1f",
       "editorconfig-section-source-path-matching": "56bbce20febc10f9c2b59496955ae4c711e041c5b802fcef475b9d4075d4268f",
       "logging-jsonl-drops-structured-state": "fd3aef40e86b7820bb0d8c786d2534936d972b89ddedf7adf9b78b33b3ff579e",
@@ -2131,24 +2153,24 @@
       "load-profile-full-suite": "bc2695528f8866034df6aa82bf401da7ca40f647183d1062466b408fe73768fa",
       "workspace-close-global-build-server-shutdown": "cf010db06593e16475cf66103df1391e94e4b0dfb8b7faec779004992b458e4f",
       "test-temp-reaper-live-owner": "75252658ed097350897e2a9d422ae19e59925f169294094bd0e77cf6f1fc85d1",
-      "change-signature-service-refusals-public-message": "ef997e9a4919038ae0947c3e3f1f99bd2f30d6f2616af291ea9a397c2b768083",
+      "change-signature-service-refusals-public-message": "625f9cfb183f553f92b624cf88579f2b28a577440efbe4b3205921c97c15b84c",
       "cross-project-public-refusals-echo-input": "8a00fc184c9bc3eed28e5ac5190ab5525f3daa8600fd101255ddf0cf8a49c770",
-      "top10-good-preview-result-contract": "cfe5883712f3e6a8963ef6b20637f15b17e49a28425ca0f6f9a46c002e920a41",
+      "top10-good-preview-result-contract": "a607800c1b116462dfb7dc8c2bb53ea655b7412452b06eb3427d298f34a54c8a",
       "workspace-close-isolated-nuget-handles": "2680f5502a0f4cdadc8c385a838f4d47f029a50f296405ab741444df81d8eacd",
       "preview-store-explicit-internal-state": "928252056cf3207c7d6eac15fe72d80a24a4fa6e95ed05a4396d75b2d135ace3",
       "preview-diff-whitespace-omission": "322cd92491b97397041e0252bb8cf617ccac91defd3d847351dd3a180aadba5e",
-      "preview-token-lifecycle-evidence": "0f7f7c45714a4e2f494c34cfbe6b87a2f3c47cc93b86cc5179a0097135a01569",
+      "preview-token-lifecycle-evidence": "35e108b39e9ab2b7fa538716bf5de4bd1ec0ff523cfe44a2b552cd8cf0f329df",
       "preview-token-reason-projection": "9b387eed7f47e93026f019e59197c5a04208abc3ad8f182206c43a29d03cbba2",
       "preview-token-solution-confirmation": "f391d2ba9ede8381c894af4f7a17c250add8de6540816a497aeb4252888fe9f0",
       "preview-token-composite-confirmation": "e028421571de16aaff0e573308c71d1c18aa46a91313fb0c995b190e7ada614a",
       "preview-token-project-confirmation": "5b3db04aab6d5bca44869369e23f9cae2d1cbcb5b22bbb27339e8608b53bb9fb",
-      "fork-composite-nonconsuming-snapshot": "fd27c0b8f49321c6afefbedfa17fe940da2d76638629787c3f40319068ea1189",
-      "fork-preview-project-composite-replay": "c524884456374574eb70979508d878be7d0d3a58e6c94484d3d6a2bf204610d4"
+      "fork-composite-nonconsuming-snapshot": "7d5ab832df279ef69adc3f5fa8b5d286d0b8aeab2460d9d539e2e7d8efacc845",
+      "fork-preview-project-composite-replay": "cd6c4c6aa3a52afdbbdf70820ab4f53e5735ca94771f2f2f2e30ad70e957f688"
     }
   },
-  "conflictGraphInputHash": "46541ab8b79e4abc910815ba6b872c0dc4239e6878f4b1effd133b10f17dcce8",
-  "planHash": "cb8758812db8c615ebbf6f548e1d86b6a2788e3260b83ae9e43c4320e9f2efd4",
-  "backlogSnapshotHash": "7b32d8e99758542a7ade9e35b213589c62c1d8dd1161881242884a0f2c8b3618",
-  "reviewedPlanHash": "cb8758812db8c615ebbf6f548e1d86b6a2788e3260b83ae9e43c4320e9f2efd4",
+  "conflictGraphInputHash": "401e80ba541788fea6b2636d8dcf67b3ce402610942346380fa33a30b0dc1e78",
+  "planHash": "e5436f27114d8f51be3327e405e2e84397e37f489696f7bcacb9edcf040f5256",
+  "backlogSnapshotHash": "4013514d7186652a5d257013bdff9b05e7997acec6391a552c4c156828a9bad1",
+  "reviewedPlanHash": "e5436f27114d8f51be3327e405e2e84397e37f489696f7bcacb9edcf040f5256",
   "reviewedBacklogSnapshotHash": "cc5f2af685632ecdcbfcf94a8fe98135b9da20f7b2f4ba18d6cdddf811c1c1cc"
 }
