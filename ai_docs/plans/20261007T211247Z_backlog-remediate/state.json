@@ -13,7 +13,7 @@
     {
       "id": "navigation-and-locator-argument-refusals-public-message",
       "order": 2,
-      "status": "pending",
+      "status": "in-progress",
       "backlogRowsClosed": [
         "navigation-and-locator-argument-refusals-public-message"
       ],
@@ -52,8 +52,8 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
+      "branch": "remediation/navigation-and-locator-argument-refusals-public-message",
+      "worktreePath": "D:/Roslyn-Backed-MCP/.worktrees/navigation-and-locator-argument-refusals-public-message",
       "prUrl": null,
       "mergedAt": null,
       "notes": null,
