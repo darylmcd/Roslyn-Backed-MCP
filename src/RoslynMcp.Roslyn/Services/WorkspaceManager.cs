@@ -1440,7 +1440,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
     {
         if (string.IsNullOrWhiteSpace(path))
         {
-            throw new ArgumentException("A workspace path is required.", nameof(path));
+            throw new PublicArgumentException(WorkspaceSessionLoader.SupportedPathCorrection, nameof(path));
         }
 
         var fullPath = PhysicalPathResolver.Resolve(path);
@@ -1453,7 +1453,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             !fullPath.EndsWith(".slnx", StringComparison.OrdinalIgnoreCase) &&
             !fullPath.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
         {
-            throw new ArgumentException($"Path must end with .sln, .slnx, or .csproj: {path}");
+            throw new PublicArgumentException(WorkspaceSessionLoader.SupportedPathCorrection, nameof(path));
         }
 
         return fullPath;

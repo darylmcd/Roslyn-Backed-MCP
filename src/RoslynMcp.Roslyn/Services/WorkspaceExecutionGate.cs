@@ -206,7 +206,7 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
 
         if (string.IsNullOrWhiteSpace(workspaceId))
         {
-            throw new ArgumentException("workspaceId is required.", nameof(workspaceId));
+            throw new PublicArgumentException("workspaceId is required; use the workspaceId returned by workspace_load.", nameof(workspaceId));
         }
 
         if (!_workspaceManager.ContainsWorkspace(workspaceId))
