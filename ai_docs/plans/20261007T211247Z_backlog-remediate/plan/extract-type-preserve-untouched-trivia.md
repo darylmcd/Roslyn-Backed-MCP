@@ -1,7 +1,7 @@
 | Field | Content |
 |---|---|
 | Route | direct |
-| Diagnosis | `TypeExtractionService.cs:142-144` normalizes the complete updated compilation unit, rewriting unrelated source trivia after extraction. The synthesized new file can be formatted independently. |
+| Diagnosis | `TypeExtractionService.cs:135-138` normalizes the complete updated compilation unit, rewriting unrelated source trivia after extraction. The synthesized new file can be formatted independently. |
 | Approach | - [ ] `extract_type_preview` formats only synthesized or changed syntax, leaving unchanged source regions byte-identical.<br>- [ ] A red-first regression includes unusual whitespace outside the extraction and compares the untouched bytes after preview/apply. |
 | Scope | Production 1: `src/RoslynMcp.Roslyn/Services/TypeExtractionService.cs`. Tests 1: `tests/RoslynMcp.Tests/TypeExtractionTests.cs`. Own fragment; no deletions. |
 | Tool policy | edit-only |

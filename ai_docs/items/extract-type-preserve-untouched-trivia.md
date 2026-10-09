@@ -4,7 +4,7 @@
 
 ## Anchors
 
-- `src/RoslynMcp.Roslyn/Services/TypeExtractionService.cs:124-127`
+- `src/RoslynMcp.Roslyn/Services/TypeExtractionService.cs:135-138`
 - `tests/RoslynMcp.Tests/TypeExtractionTests.cs`
 
 ## Acceptance

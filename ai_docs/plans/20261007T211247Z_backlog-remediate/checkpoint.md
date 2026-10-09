@@ -5,7 +5,7 @@
 | Item | Disposition |
 |---|---|
 | Authorization | File global backlog rows only; global implementation belongs to another agent. Complete eligible product work; defer product work requiring the missing tooling. |
-| Global prerequisites | Fanout guidance: claude-config PR #718. Indivisible Rule 5 admission: claude-config PR #724, row `plan-rule5-indivisible-scope-admission`. Current exec-args reproduced exit 4 for 110000 > 80000; no bypass. |
+| Global prerequisites | Global owner repaired fanout guidance in claude-config PR #737 (4dc34ff6), reconciled by #738; filing #718 closed unmerged. Installed plan-deepener guidance verified. Indivisible Rule 5 admission remains open in #724, row `plan-rule5-indivisible-scope-admission`; current installed exec-args still reproduces exit 4 for 110000 > 80000. No global implementation performed here; no bypass. |
 | Deferred | `preview-store-explicit-internal-state`, `fork-composite-nonconsuming-snapshot`, `fork-preview-project-composite-replay`. Preserve full scope and open backlog rows; resume only after tooling correction, source re-vet and fresh cold review. |
 | Admission | Fresh cold plan review passed with warnings; hashes verified. Plan PR #1762 merged at e52c124196c350a334e30b5b925274f3e9974b46. Main backstop run 37951698771 succeeded. |
 | Eligible remainder | 23 pending initiatives; tool-refusal-public-message-guard in progress. Navigation and workspace lifecycle merged and reconciled. Three tooling-dependent initiatives deferred; one notice initiative obsolete and reconciled. Plan remains incomplete. |

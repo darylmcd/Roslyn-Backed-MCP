@@ -164,12 +164,13 @@
       "dependsOn": [],
       "branch": "remediation/tool-refusal-public-message-guard",
       "worktreePath": null,
-      "prUrl": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1768",
       "mergedAt": null,
-      "notes": null,
+      "notes": "Cold implementation review cycle0 held two introduced guard defects: empty inventory burn-down and sibling local-function identity collision. Fix cycle1 in progress; require fresh exact-tree full validation and cold rereview.",
       "fileSetHash": "516755c23fa7ef12b6a24ccdd3d7ffedb3a8c24a3bdb9a283724ce985faed3d9",
       "stanzaHash": "4eff07904b02ba69e478d3d9aaa727831799ecdeb82635aa2b062d03d00bef50",
-      "reviewedStanzaHash": "4eff07904b02ba69e478d3d9aaa727831799ecdeb82635aa2b062d03d00bef50"
+      "reviewedStanzaHash": "4eff07904b02ba69e478d3d9aaa727831799ecdeb82635aa2b062d03d00bef50",
+      "reviewedHead": null
     },
     {
       "id": "extract-type-preserve-untouched-trivia",
@@ -208,8 +209,8 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "b39233ebef576f17ceeebe7a140e06427809c85452cfae1f02db223f42436701",
-      "stanzaHash": "f61984713ef5c7484d539c7121a8052fa83c27180dfe083894f7a83dcda2b749",
-      "reviewedStanzaHash": "f61984713ef5c7484d539c7121a8052fa83c27180dfe083894f7a83dcda2b749",
+      "stanzaHash": "e4581c1279994d4fda099f06a8615a1b117c4ecfdc6fa5751e0ce9d688628c4c",
+      "reviewedStanzaHash": "e4581c1279994d4fda099f06a8615a1b117c4ecfdc6fa5751e0ce9d688628c4c",
       "amendments": [
         {
           "at": "2026-10-09T15:33:09.082Z",
@@ -224,6 +225,13 @@
           "reason": "Require scoped regressions plus serialized complete sanctioned local PR-equivalent producer before required hosted gates; preserve file scope, estimates, dependencies and deferred dispositions.",
           "previousStanzaHash": "db67ceb07157f8d223d087da6224dcebc53b23abae236aa93051ba6052754447",
           "stanzaHash": "f61984713ef5c7484d539c7121a8052fa83c27180dfe083894f7a83dcda2b749"
+        },
+        {
+          "at": "2026-10-09T20:57:05.049Z",
+          "finding": "Source re-vet: inherited Diagnosis line142-144 and detail line124-127 miss the current source-root normalization.",
+          "reason": "Current code at135-138 contains ReplaceNode and whole-root NormalizeWhitespace; update pointers only. Diagnosis, Scope, acceptance, estimate, dependencies and Validation unchanged.",
+          "previousStanzaHash": "f61984713ef5c7484d539c7121a8052fa83c27180dfe083894f7a83dcda2b749",
+          "stanzaHash": "e4581c1279994d4fda099f06a8615a1b117c4ecfdc6fa5751e0ce9d688628c4c"
         }
       ]
     },
@@ -1080,7 +1088,7 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": "Operator 2026-10-09: global backlog filings only. Deferred complete atomic safety migration pending plan-rule5-indivisible-scope-admission (claude-config PR724); fanout guidance tracked in PR718. Reproduced exec-args exit4: estimate110000 exceeds80000. Preserve full38-production/26-test scope. Resume requires verified global remediation, source re-vet and fresh cold review; no partial safety implementation.",
+      "notes": "Operator 2026-10-09: global backlog filings only. Deferred complete atomic safety migration pending plan-rule5-indivisible-scope-admission (claude-config PR724). Fanout guidance repaired by global owner in PR737 and reconciled PR738; filing PR718 closed unmerged. Current installed exec-args still reproduces exit4: estimate110000 exceeds80000. Preserve full38-production/26-test scope. Resume requires verified Rule5 admission repair, source re-vet and fresh cold review; no partial safety implementation.",
       "fileSetHash": "8dacf970c6ce7ee290595e5a43e935f2f745071db396f160ecf2f17d52f6f53a",
       "stanzaHash": "928252056cf3207c7d6eac15fe72d80a24a4fa6e95ed05a4396d75b2d135ace3",
       "reviewedStanzaHash": "928252056cf3207c7d6eac15fe72d80a24a4fa6e95ed05a4396d75b2d135ace3"
@@ -2165,7 +2173,7 @@
       "navigation-and-locator-argument-refusals-public-message": "75d352d7b21486720ade9f4dd51b70df28977bdda5dc301632c5d08eec87afab",
       "workspace-lifecycle-argument-refusals-public-message": "d06d9285b83699a868a3996681820eb101b3acef7bd3b617b031701eb12fd44f",
       "tool-refusal-public-message-guard": "4eff07904b02ba69e478d3d9aaa727831799ecdeb82635aa2b062d03d00bef50",
-      "extract-type-preserve-untouched-trivia": "f61984713ef5c7484d539c7121a8052fa83c27180dfe083894f7a83dcda2b749",
+      "extract-type-preserve-untouched-trivia": "e4581c1279994d4fda099f06a8615a1b117c4ecfdc6fa5751e0ce9d688628c4c",
       "scaffold-batch-preview-apply-route": "847bb3e0c0a082f9a1b16a1c89db0b9faca9d6deb662ffe8d47e0093e2af1ccd",
       "notice-verifier-scoped-test-inherits-nuget-packages": "e1ff8a04c6da28d98e04ffa92f6e4632bc2fa0d3806aca2f57e5c0486320ad35",
       "test-discovery-file-path-case-identity": "fd4ca08bdefaa91aa17ed4e9ac20ca7ae749bf376efef9940ab94f67ef3321c6",
@@ -2195,8 +2203,8 @@
     }
   },
   "conflictGraphInputHash": "46541ab8b79e4abc910815ba6b872c0dc4239e6878f4b1effd133b10f17dcce8",
-  "planHash": "962a0fd50a4751801a5507c193d9b9ee7a6df64fa35d4a58cc206865ca23d78d",
-  "backlogSnapshotHash": "7b32d8e99758542a7ade9e35b213589c62c1d8dd1161881242884a0f2c8b3618",
-  "reviewedPlanHash": "962a0fd50a4751801a5507c193d9b9ee7a6df64fa35d4a58cc206865ca23d78d",
+  "planHash": "7a97516c92106c66266fdc7efe1397bb08ed3d33ba4d497de7fd8acf7abba5c1",
+  "backlogSnapshotHash": "90489e355801b93456b29ef3167e8048cb2e45b12682db9bfa8841a8dbe14a99",
+  "reviewedPlanHash": "7a97516c92106c66266fdc7efe1397bb08ed3d33ba4d497de7fd8acf7abba5c1",
   "reviewedBacklogSnapshotHash": "cc5f2af685632ecdcbfcf94a8fe98135b9da20f7b2f4ba18d6cdddf811c1c1cc"
 }
