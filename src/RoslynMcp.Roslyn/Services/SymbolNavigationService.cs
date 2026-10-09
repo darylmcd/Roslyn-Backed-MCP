@@ -143,14 +143,7 @@ public sealed class SymbolNavigationService : ISymbolNavigationService
         if (syntaxTree is null) return null;
 
         var text = await syntaxTree.GetTextAsync(ct).ConfigureAwait(false);
-        if (line < 1 || line > text.Lines.Count)
-        {
-            throw new ArgumentException(
-                $"Line {line} is out of range. The file has {text.Lines.Count} line(s).",
-                nameof(line));
-        }
-
-        var position = text.Lines[line - 1].Start + (column - 1);
+        var position = SourcePosition.StrictCaret(text, line, column);
         var root = await syntaxTree.GetRootAsync(ct).ConfigureAwait(false);
         var node = root.FindToken(position).Parent;
 
@@ -191,26 +184,7 @@ public sealed class SymbolNavigationService : ISymbolNavigationService
         if (syntaxTree is null) return null;
 
         var text = await syntaxTree.GetTextAsync(ct).ConfigureAwait(false);
-        if (line < 1 || line > text.Lines.Count)
-        {
-            throw new ArgumentException(
-                $"Line {line} is out of range. The file has {text.Lines.Count} line(s).",
-                nameof(line));
-        }
-
-        var lineInfo = text.Lines[line - 1];
-        // Column 1-based; clamp to line-end so callers probing past the last column on a line fall
-        // on the end-of-line trivia (deterministic) instead of silently advancing to the next line's
-        // first token — this is the end-of-line risk called out in the plan's Risks field.
-        var maxColumn = lineInfo.EndIncludingLineBreak - lineInfo.Start + 1;
-        if (column < 1 || column > maxColumn)
-        {
-            throw new ArgumentException(
-                $"Column {column} is out of range for line {line} (valid range: 1..{maxColumn}).",
-                nameof(column));
-        }
-
-        var position = lineInfo.Start + (column - 1);
+        var position = SourcePosition.ProbeTrivia(text, line, column);
         var root = await syntaxTree.GetRootAsync(ct).ConfigureAwait(false);
 
         // FindToken returns the token whose FullSpan encloses `position`. That FullSpan covers:

@@ -66,16 +66,8 @@ public sealed class CodeActionService : ICodeActionService
     public async Task<CodeActionListDto> GetCodeActionsAsync(
         string workspaceId, string filePath, int startLine, int startColumn, int? endLine, int? endColumn, CancellationToken ct)
     {
-        // dr-get-code-actions-opaque-error-on-bad-contract: Validate 1-based parameters
-        // up front so callers get a clear error instead of a cryptic IndexOutOfRangeException.
-        if (startLine < 1)
-            throw new ArgumentException(
-                $"startLine must be >= 1 (1-based). Got {startLine}. Did you pass 'line' instead of 'startLine'?",
-                nameof(startLine));
-        if (startColumn < 1)
-            throw new ArgumentException(
-                $"startColumn must be >= 1 (1-based). Got {startColumn}. Did you pass 'column' instead of 'startColumn'?",
-                nameof(startColumn));
+        // Preserve the lower-bound refusal before workspace or document lookup.
+        SourcePosition.ValidatePositiveCoordinates(startLine, startColumn, nameof(startLine), nameof(startColumn));
 
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var document = SymbolResolver.FindDocument(solution, filePath);
@@ -300,22 +292,22 @@ public sealed class CodeActionService : ICodeActionService
 
     private static TextSpan CreateSpan(SourceText text, int startLine, int startColumn, int? endLine, int? endColumn)
     {
-        var startPosition = text.Lines[startLine - 1].Start + (startColumn - 1);
+        if (endLine.HasValue != endColumn.HasValue)
+            throw new PublicArgumentException(
+                "endLine and endColumn must be provided together.", endLine.HasValue ? nameof(endColumn) : nameof(endLine));
+
         if (endLine.HasValue && endColumn.HasValue)
         {
-            var endPosition = text.Lines[endLine.Value - 1].Start + (endColumn.Value - 1);
+            var startPosition = SourcePosition.StrictCaret(text, startLine, startColumn, nameof(startLine), nameof(startColumn));
+            var endPosition = SourcePosition.StrictCaret(text, endLine.Value, endColumn.Value, nameof(endLine), nameof(endColumn));
+            if (endPosition < startPosition)
+                throw new PublicArgumentException(
+                    "Selection end must not precede its start.", endLine.Value < startLine ? nameof(endLine) : nameof(endColumn));
             return TextSpan.FromBounds(startPosition, endPosition);
         }
 
-        // get-code-actions-caret-only-inverted-range: When caret-only callers pass a startColumn
-        // past the line's last character (common on callers that supply a column >= the line
-        // length, e.g. a caret logically sitting at EOL on a short line), the original code
-        // built TextSpan.FromBounds(startPosition, lineEnd) with lineEnd < startPosition,
-        // yielding an inverted-range ArgumentOutOfRangeException. Clamp end >= start so a
-        // caret-only call always yields a well-formed span — a zero-width selection at the
-        // caret when startColumn is past EOL, otherwise the remainder of the line.
-        var lineEnd = text.Lines[startLine - 1].End;
-        return TextSpan.FromBounds(startPosition, Math.Max(startPosition, lineEnd));
+        var caretPosition = SourcePosition.ClampedCodeActionCaret(text, startLine, startColumn);
+        return TextSpan.FromBounds(caretPosition, text.Lines[startLine - 1].End);
     }
 
 }

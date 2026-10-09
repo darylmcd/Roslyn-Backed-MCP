@@ -969,7 +969,7 @@ public sealed class CompilationCacheAdoptionTests : IsolatedWorkspaceTestBase
         var cache = new RecordingCompilationCache(inner);
         var solution = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
 
-        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(
+        var ex = await Assert.ThrowsExactlyAsync<ArgumentNullException>(
             () => SymbolResolver.ResolveByMetadataNameAsync(
                 solution, "SampleLib.Dog", CancellationToken.None, cache, workspaceId: null));
         Assert.AreEqual("workspaceId", ex.ParamName,
@@ -980,7 +980,7 @@ public sealed class CompilationCacheAdoptionTests : IsolatedWorkspaceTestBase
                 solution, "SampleLib.Dogg", maxResults: 5, CancellationToken.None, cache, workspaceId: string.Empty));
         Assert.AreEqual("workspaceId", closestEx.ParamName);
 
-        var allEx = await Assert.ThrowsExactlyAsync<ArgumentException>(
+        var allEx = await Assert.ThrowsExactlyAsync<ArgumentNullException>(
             () => SymbolHandleSerializer.FindAllByMetadataNameAsync(
                 solution, "SampleLib.Dog", CancellationToken.None, cache, workspaceId: null));
         Assert.AreEqual("workspaceId", allEx.ParamName);
