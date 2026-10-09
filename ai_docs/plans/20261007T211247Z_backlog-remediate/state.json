@@ -133,7 +133,7 @@
     {
       "id": "tool-refusal-public-message-guard",
       "order": 4,
-      "status": "in-progress",
+      "status": "in-review",
       "backlogRowsClosed": [
         "tool-refusal-public-message-guard"
       ],
@@ -166,7 +166,7 @@
       "worktreePath": null,
       "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1768",
       "mergedAt": null,
-      "notes": "Cold implementation review cycle0 held two introduced guard defects: empty inventory burn-down and sibling local-function identity collision. Fix cycle1 in progress; require fresh exact-tree full validation and cold rereview.",
+      "notes": "Fix1 returned strict success on f0378558147facb3f6b97993e11444f48c85e32f; final producer031c20ecf649883a passed exact tree7e765d296717e838e14c1db81a0730a3c8fde4ae, 4057pass12platformskip0fail; focused62pass. Both cycle0 own defects and conditional/control siblings repaired. Fresh cold cycle1 required; no landable review yet.",
       "fileSetHash": "516755c23fa7ef12b6a24ccdd3d7ffedb3a8c24a3bdb9a283724ce985faed3d9",
       "stanzaHash": "4eff07904b02ba69e478d3d9aaa727831799ecdeb82635aa2b062d03d00bef50",
       "reviewedStanzaHash": "4eff07904b02ba69e478d3d9aaa727831799ecdeb82635aa2b062d03d00bef50",
@@ -238,7 +238,7 @@
     {
       "id": "scaffold-batch-preview-apply-route",
       "order": 6,
-      "status": "pending",
+      "status": "deferred",
       "backlogRowsClosed": [
         "scaffold-batch-preview-apply-route"
       ],
@@ -251,16 +251,21 @@
         "src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.cs",
         "src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.Orchestration.cs"
       ],
-      "testFilesAdded": 3,
+      "testFilesAdded": 7,
       "testFiles": [
         "tests/RoslynMcp.Tests/ScaffoldingIntegrationTests.cs",
         "tests/RoslynMcp.Tests/ToolDispatchTests.cs",
-        "tests/RoslynMcp.Tests/ScaffoldBatchApplyRouteWireTests.cs"
+        "tests/RoslynMcp.Tests/ScaffoldBatchApplyRouteWireTests.cs",
+        "tests/RoslynMcp.Tests/ExtractionApplyRouteBindingTests.cs",
+        "tests/RoslynMcp.Tests/PreviewRouteBindingEditingTests.cs",
+        "tests/RoslynMcp.Tests/PreviewRouteBindingFileOpsTests.cs",
+        "tests/RoslynMcp.Tests/TestData/invalid-operation-construction-baseline.json"
       ],
       "docFiles": [
         "README.md",
         "src/RoslynMcp.Host.Stdio/README.md",
-        "skills/mcp-server-surface-test/prompts/phases/output-and-close.md"
+        "skills/mcp-server-surface-test/prompts/phases/output-and-close.md",
+        "changelog.d/scaffold-batch-preview-apply-route.md"
       ],
       "rowsClosedCount": 1,
       "estimatedContextTokens": 60000,
@@ -274,15 +279,27 @@
         "anchorStale": false,
         "ruleOneBundleResolved": "n/a"
       },
-      "dependsOn": [],
+      "dependsOn": [
+        "preview-store-explicit-internal-state",
+        "tool-refusal-public-message-guard"
+      ],
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
-      "fileSetHash": "a812876b11864cd1faa4b9a6afbe203b3bf0427c0037af9f1d671a1d572893e7",
-      "stanzaHash": "847bb3e0c0a082f9a1b16a1c89db0b9faca9d6deb662ffe8d47e0093e2af1ccd",
-      "reviewedStanzaHash": "847bb3e0c0a082f9a1b16a1c89db0b9faca9d6deb662ffe8d47e0093e2af1ccd"
+      "notes": "Source re-vet proved that the proposed changes-aware Store still loses per-file truncation and can persist unseen edits. Defer the complete route repair until preview-store-explicit-internal-state lands after global Rule5 admission repair (claude-config PR724), plus tool-refusal-public-message-guard for its planned burn-down inventory asset. Preserve six production files, all seven test/assets and four docs; estimate60000 unchanged. Re-vet contracts/source and obtain fresh cold review before dispatch. No partial implementation; backlog row remains open.",
+      "fileSetHash": "dfa70c6f212e2b87fdfbce37d20f0444063b5261de5cde5049e695801b1413b9",
+      "stanzaHash": "0b2423d52493cdacae1df06c33661c821788e563a979abe06df286e6f83a179e",
+      "reviewedStanzaHash": "0b2423d52493cdacae1df06c33661c821788e563a979abe06df286e6f83a179e",
+      "amendments": [
+        {
+          "at": "2026-10-09T21:28:44.029Z",
+          "finding": "Source/semantic re-vet: the inherited changes-aware Store proposal loses per-file safety, and shared refusal conversion omitted exact-type/ratchet companions.",
+          "reason": "Preserve the complete six-production-file route repair; require the existing atomic safety and inventory predecessors, retain every necessary test/asset companion, and re-vet their actual contracts before dispatch. No lowered estimate or runtime workaround.",
+          "previousStanzaHash": "847bb3e0c0a082f9a1b16a1c89db0b9faca9d6deb662ffe8d47e0093e2af1ccd",
+          "stanzaHash": "0b2423d52493cdacae1df06c33661c821788e563a979abe06df286e6f83a179e"
+        }
+      ]
     },
     {
       "id": "notice-verifier-scoped-test-inherits-nuget-packages",
@@ -1430,22 +1447,6 @@
   "conflictGraph": {
     "edges": [
       {
-        "a": 6,
-        "b": 8.01,
-        "sharedFiles": [
-          "tests/RoslynMcp.Tests/ToolDispatchTests.cs"
-        ]
-      },
-      {
-        "a": 6,
-        "b": 8.02,
-        "sharedFiles": [
-          "src/RoslynMcp.Host.Stdio/Tools/OrchestrationTools.cs",
-          "src/RoslynMcp.Host.Stdio/Tools/ToolDispatch.cs",
-          "tests/RoslynMcp.Tests/ToolDispatchTests.cs"
-        ]
-      },
-      {
         "a": 15,
         "b": 19,
         "sharedFiles": [
@@ -1570,7 +1571,6 @@
     "degrees": {
       "4": 0,
       "5": 0,
-      "6": 2,
       "10": 0,
       "11": 0,
       "12": 0,
@@ -1587,8 +1587,8 @@
       "23": 0,
       "24": 1,
       "26": 1,
-      "8.01": 5,
-      "8.02": 7,
+      "8.01": 4,
+      "8.02": 6,
       "8.03": 5,
       "8.04": 3,
       "8.05": 3
@@ -2174,7 +2174,7 @@
       "workspace-lifecycle-argument-refusals-public-message": "d06d9285b83699a868a3996681820eb101b3acef7bd3b617b031701eb12fd44f",
       "tool-refusal-public-message-guard": "4eff07904b02ba69e478d3d9aaa727831799ecdeb82635aa2b062d03d00bef50",
       "extract-type-preserve-untouched-trivia": "e4581c1279994d4fda099f06a8615a1b117c4ecfdc6fa5751e0ce9d688628c4c",
-      "scaffold-batch-preview-apply-route": "847bb3e0c0a082f9a1b16a1c89db0b9faca9d6deb662ffe8d47e0093e2af1ccd",
+      "scaffold-batch-preview-apply-route": "0b2423d52493cdacae1df06c33661c821788e563a979abe06df286e6f83a179e",
       "notice-verifier-scoped-test-inherits-nuget-packages": "e1ff8a04c6da28d98e04ffa92f6e4632bc2fa0d3806aca2f57e5c0486320ad35",
       "test-discovery-file-path-case-identity": "fd4ca08bdefaa91aa17ed4e9ac20ca7ae749bf376efef9940ab94f67ef3321c6",
       "workspace-project-alias-lookup": "eef5b009427f000551878925dc35a574b1c24cbf5e5108a22b27b18f7494e89d",
@@ -2202,9 +2202,9 @@
       "fork-preview-project-composite-replay": "cd6c4c6aa3a52afdbbdf70820ab4f53e5735ca94771f2f2f2e30ad70e957f688"
     }
   },
-  "conflictGraphInputHash": "46541ab8b79e4abc910815ba6b872c0dc4239e6878f4b1effd133b10f17dcce8",
-  "planHash": "7a97516c92106c66266fdc7efe1397bb08ed3d33ba4d497de7fd8acf7abba5c1",
-  "backlogSnapshotHash": "90489e355801b93456b29ef3167e8048cb2e45b12682db9bfa8841a8dbe14a99",
-  "reviewedPlanHash": "7a97516c92106c66266fdc7efe1397bb08ed3d33ba4d497de7fd8acf7abba5c1",
+  "conflictGraphInputHash": "9c69bf382ba2dabda5fdfcbb6ec5f4813d91a59226075b1f53dd2acd3875fa7f",
+  "planHash": "eb710bb641e71852dd749fa1de1304724b5aa027ec6fc9b7934381f290ac075d",
+  "backlogSnapshotHash": "284ca1c5e07578868c61ada4081bdf939b112d3f58e3dbfdd4efaa94f90e7336",
+  "reviewedPlanHash": "eb710bb641e71852dd749fa1de1304724b5aa027ec6fc9b7934381f290ac075d",
   "reviewedBacklogSnapshotHash": "cc5f2af685632ecdcbfcf94a8fe98135b9da20f7b2f4ba18d6cdddf811c1c1cc"
 }
