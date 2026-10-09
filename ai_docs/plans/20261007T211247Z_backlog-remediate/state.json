@@ -133,7 +133,7 @@
     {
       "id": "tool-refusal-public-message-guard",
       "order": 4,
-      "status": "in-review",
+      "status": "in-progress",
       "backlogRowsClosed": [
         "tool-refusal-public-message-guard"
       ],
@@ -166,7 +166,7 @@
       "worktreePath": null,
       "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1768",
       "mergedAt": null,
-      "notes": "Fix1 returned strict success on f0378558147facb3f6b97993e11444f48c85e32f; final producer031c20ecf649883a passed exact tree7e765d296717e838e14c1db81a0730a3c8fde4ae, 4057pass12platformskip0fail; focused62pass. Both cycle0 own defects and conditional/control siblings repaired. Fresh cold cycle1 required; no landable review yet.",
+      "notes": "Cycle1 amended to fail after a zero-diagnostic exact Roslyn5.9 probe proved non-BCL dynamic constructors falsely rejected at ScanSites391. Both cycle0 defects remain resolved. Same-PR fix2 required with target-first exact-BCL classification, unresolved-target refusal, full-validator red/green corpus, fresh complete producer and cold cycle2. No own defect deferred; no landing authorized.",
       "fileSetHash": "516755c23fa7ef12b6a24ccdd3d7ffedb3a8c24a3bdb9a283724ce985faed3d9",
       "stanzaHash": "4eff07904b02ba69e478d3d9aaa727831799ecdeb82635aa2b062d03d00bef50",
       "reviewedStanzaHash": "4eff07904b02ba69e478d3d9aaa727831799ecdeb82635aa2b062d03d00bef50",
@@ -289,8 +289,8 @@
       "mergedAt": null,
       "notes": "Source re-vet proved that the proposed changes-aware Store still loses per-file truncation and can persist unseen edits. Defer the complete route repair until preview-store-explicit-internal-state lands after global Rule5 admission repair (claude-config PR724), plus tool-refusal-public-message-guard for its planned burn-down inventory asset. Preserve six production files, all seven test/assets and four docs; estimate60000 unchanged. Re-vet contracts/source and obtain fresh cold review before dispatch. No partial implementation; backlog row remains open.",
       "fileSetHash": "dfa70c6f212e2b87fdfbce37d20f0444063b5261de5cde5049e695801b1413b9",
-      "stanzaHash": "0b2423d52493cdacae1df06c33661c821788e563a979abe06df286e6f83a179e",
-      "reviewedStanzaHash": "0b2423d52493cdacae1df06c33661c821788e563a979abe06df286e6f83a179e",
+      "stanzaHash": "8f5c2bfe46162db26cba37e16760dd549b91380091ba4f172a30a63078ba8ca8",
+      "reviewedStanzaHash": "8f5c2bfe46162db26cba37e16760dd549b91380091ba4f172a30a63078ba8ca8",
       "amendments": [
         {
           "at": "2026-10-09T21:28:44.029Z",
@@ -298,6 +298,13 @@
           "reason": "Preserve the complete six-production-file route repair; require the existing atomic safety and inventory predecessors, retain every necessary test/asset companion, and re-vet their actual contracts before dispatch. No lowered estimate or runtime workaround.",
           "previousStanzaHash": "847bb3e0c0a082f9a1b16a1c89db0b9faca9d6deb662ffe8d47e0093e2af1ccd",
           "stanzaHash": "0b2423d52493cdacae1df06c33661c821788e563a979abe06df286e6f83a179e"
+        },
+        {
+          "at": "2026-10-09T21:47:49.841Z",
+          "finding": "Own metadata review: necessary test/asset companion citations should accompany the exact Scope list, not remain solely in Risks.",
+          "reason": "Move the existing source-derived exact-refusal assertion citations into Scope and point to the guard acceptance; no gate run is fabricated. File arrays/counts, dependencies, estimate, behavior, validation and deferred status unchanged.",
+          "previousStanzaHash": "0b2423d52493cdacae1df06c33661c821788e563a979abe06df286e6f83a179e",
+          "stanzaHash": "8f5c2bfe46162db26cba37e16760dd549b91380091ba4f172a30a63078ba8ca8"
         }
       ]
     },
@@ -2174,7 +2181,7 @@
       "workspace-lifecycle-argument-refusals-public-message": "d06d9285b83699a868a3996681820eb101b3acef7bd3b617b031701eb12fd44f",
       "tool-refusal-public-message-guard": "4eff07904b02ba69e478d3d9aaa727831799ecdeb82635aa2b062d03d00bef50",
       "extract-type-preserve-untouched-trivia": "e4581c1279994d4fda099f06a8615a1b117c4ecfdc6fa5751e0ce9d688628c4c",
-      "scaffold-batch-preview-apply-route": "0b2423d52493cdacae1df06c33661c821788e563a979abe06df286e6f83a179e",
+      "scaffold-batch-preview-apply-route": "8f5c2bfe46162db26cba37e16760dd549b91380091ba4f172a30a63078ba8ca8",
       "notice-verifier-scoped-test-inherits-nuget-packages": "e1ff8a04c6da28d98e04ffa92f6e4632bc2fa0d3806aca2f57e5c0486320ad35",
       "test-discovery-file-path-case-identity": "fd4ca08bdefaa91aa17ed4e9ac20ca7ae749bf376efef9940ab94f67ef3321c6",
       "workspace-project-alias-lookup": "eef5b009427f000551878925dc35a574b1c24cbf5e5108a22b27b18f7494e89d",
@@ -2203,8 +2210,8 @@
     }
   },
   "conflictGraphInputHash": "9c69bf382ba2dabda5fdfcbb6ec5f4813d91a59226075b1f53dd2acd3875fa7f",
-  "planHash": "eb710bb641e71852dd749fa1de1304724b5aa027ec6fc9b7934381f290ac075d",
+  "planHash": "ba96092356702f3379b9476c9c6d223c812e464e7c8683436206a2464a6a601c",
   "backlogSnapshotHash": "284ca1c5e07578868c61ada4081bdf939b112d3f58e3dbfdd4efaa94f90e7336",
-  "reviewedPlanHash": "eb710bb641e71852dd749fa1de1304724b5aa027ec6fc9b7934381f290ac075d",
+  "reviewedPlanHash": "ba96092356702f3379b9476c9c6d223c812e464e7c8683436206a2464a6a601c",
   "reviewedBacklogSnapshotHash": "cc5f2af685632ecdcbfcf94a8fe98135b9da20f7b2f4ba18d6cdddf811c1c1cc"
 }
