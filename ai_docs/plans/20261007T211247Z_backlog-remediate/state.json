@@ -1,0 +1,2309 @@
+{
+  "schemaVersion": 4,
+  "generatedAt": "2026-10-07T21:13:16.850Z",
+  "backlogSnapshot": "2026-10-07T06:24:42Z",
+  "addendaLoaded": true,
+  "phase": "complete",
+  "cycleCount": 0,
+  "maxCycles": 2,
+  "completed": false,
+  "reviewStatus": "passed-with-warnings",
+  "readyForExecute": true,
+  "initiatives": [
+    {
+      "id": "navigation-and-locator-argument-refusals-public-message",
+      "order": 2,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "navigation-and-locator-argument-refusals-public-message"
+      ],
+      "productionFilesTouched": 7,
+      "productionFiles": [
+        "src/RoslynMcp.Core/Models/SymbolLocator.cs",
+        "src/RoslynMcp.Roslyn/Helpers/SymbolResolver.cs",
+        "src/RoslynMcp.Roslyn/Helpers/SourcePosition.cs",
+        "src/RoslynMcp.Roslyn/Services/SymbolNavigationService.cs",
+        "src/RoslynMcp.Roslyn/Services/CompletionService.cs",
+        "src/RoslynMcp.Roslyn/Services/OperationService.cs",
+        "src/RoslynMcp.Roslyn/Services/CodeActionService.cs"
+      ],
+      "testFilesAdded": 6,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/SymbolLocatorTests.cs",
+        "tests/RoslynMcp.Tests/NegativeEdgeCaseTests.cs",
+        "tests/RoslynMcp.Tests/PositionProbeTests.cs",
+        "tests/RoslynMcp.Tests/CompilationCacheAdoptionTests.cs",
+        "tests/RoslynMcp.Tests/CodeActionServiceTests.cs",
+        "tests/RoslynMcp.Tests/NavigationArgumentRefusalTests.cs"
+      ],
+      "docFiles": [
+        "changelog.d/navigation-and-locator-argument-refusals-public-message.md"
+      ],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 65000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 7,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": true,
+        "anchorStale": false,
+        "ruleOneBundleResolved": "n/a"
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "6071dd98bae90da2d52a7df904443ebf22e70f322d016ecc7979f9be88f96022",
+      "stanzaHash": "666521d55949857919f81050776dae5632f633b4022d3c7451baf26b93af338f",
+      "reviewedStanzaHash": "666521d55949857919f81050776dae5632f633b4022d3c7451baf26b93af338f"
+    },
+    {
+      "id": "workspace-lifecycle-argument-refusals-public-message",
+      "order": 3,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "workspace-lifecycle-argument-refusals-public-message"
+      ],
+      "productionFilesTouched": 4,
+      "productionFiles": [
+        "src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs",
+        "src/RoslynMcp.Roslyn/Services/WorkspaceSessionLoader.cs",
+        "src/RoslynMcp.Roslyn/Services/WorkspaceExecutionGate.cs",
+        "src/RoslynMcp.Roslyn/Helpers/PhysicalPathResolver.cs"
+      ],
+      "testFilesAdded": 1,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/WorkspaceLifecycleArgumentRefusalTests.cs"
+      ],
+      "docFiles": [
+        "changelog.d/workspace-lifecycle-argument-refusals-public-message.md"
+      ],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 50000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 4,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": true,
+        "anchorStale": false,
+        "ruleOneBundleResolved": "n/a"
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "9cf0dbd1ccedd885be2a5b52c5f65079e75c9b487ce24aaa80ae10771b18def1",
+      "stanzaHash": "d06d9285b83699a868a3996681820eb101b3acef7bd3b617b031701eb12fd44f",
+      "reviewedStanzaHash": "d06d9285b83699a868a3996681820eb101b3acef7bd3b617b031701eb12fd44f"
+    },
+    {
+      "id": "tool-refusal-public-message-guard",
+      "order": 4,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "tool-refusal-public-message-guard"
+      ],
+      "productionFilesTouched": 2,
+      "productionFiles": [
+        "src/RoslynMcp.Core/Services/InvalidOperationErrors.cs",
+        "src/RoslynMcp.Core/Services/PublicInvalidOperationException.cs"
+      ],
+      "testFilesAdded": 3,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/InvalidOperationConstructionRatchetTests.cs",
+        "tests/RoslynMcp.Tests/InvalidOperationErrorsTests.cs",
+        "tests/RoslynMcp.Tests/TestData/invalid-operation-construction-baseline.json"
+      ],
+      "docFiles": [],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 40000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 2,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": true,
+        "anchorStale": false,
+        "ruleOneBundleResolved": "n/a"
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "516755c23fa7ef12b6a24ccdd3d7ffedb3a8c24a3bdb9a283724ce985faed3d9",
+      "stanzaHash": "4eff07904b02ba69e478d3d9aaa727831799ecdeb82635aa2b062d03d00bef50",
+      "reviewedStanzaHash": "4eff07904b02ba69e478d3d9aaa727831799ecdeb82635aa2b062d03d00bef50"
+    },
+    {
+      "id": "extract-type-preserve-untouched-trivia",
+      "order": 5,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "extract-type-preserve-untouched-trivia"
+      ],
+      "productionFilesTouched": 1,
+      "productionFiles": [
+        "src/RoslynMcp.Roslyn/Services/TypeExtractionService.cs"
+      ],
+      "testFilesAdded": 1,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/TypeExtractionTests.cs"
+      ],
+      "docFiles": [
+        "changelog.d/extract-type-preserve-untouched-trivia.md"
+      ],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 35000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 1,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "b39233ebef576f17ceeebe7a140e06427809c85452cfae1f02db223f42436701",
+      "stanzaHash": "cefaf2862383a0649b6802b3f949b13cf6233cc91100d939d9b785448c2dc343",
+      "reviewedStanzaHash": "cefaf2862383a0649b6802b3f949b13cf6233cc91100d939d9b785448c2dc343"
+    },
+    {
+      "id": "scaffold-batch-preview-apply-route",
+      "order": 6,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "scaffold-batch-preview-apply-route"
+      ],
+      "productionFilesTouched": 6,
+      "productionFiles": [
+        "src/RoslynMcp.Roslyn/Services/BatchTestScaffolder.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/ScaffoldingTools.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/OrchestrationTools.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/ToolDispatch.cs",
+        "src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.cs",
+        "src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.Orchestration.cs"
+      ],
+      "testFilesAdded": 3,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/ScaffoldingIntegrationTests.cs",
+        "tests/RoslynMcp.Tests/ToolDispatchTests.cs",
+        "tests/RoslynMcp.Tests/ScaffoldBatchApplyRouteWireTests.cs"
+      ],
+      "docFiles": [
+        "README.md",
+        "src/RoslynMcp.Host.Stdio/README.md",
+        "skills/mcp-server-surface-test/prompts/phases/output-and-close.md"
+      ],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 60000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 6,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": true,
+        "anchorStale": false,
+        "ruleOneBundleResolved": "n/a"
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "a812876b11864cd1faa4b9a6afbe203b3bf0427c0037af9f1d671a1d572893e7",
+      "stanzaHash": "847bb3e0c0a082f9a1b16a1c89db0b9faca9d6deb662ffe8d47e0093e2af1ccd",
+      "reviewedStanzaHash": "847bb3e0c0a082f9a1b16a1c89db0b9faca9d6deb662ffe8d47e0093e2af1ccd"
+    },
+    {
+      "id": "notice-verifier-scoped-test-inherits-nuget-packages",
+      "order": 9,
+      "status": "obsolete",
+      "backlogRowsClosed": [
+        "notice-verifier-scoped-test-inherits-nuget-packages"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "testFiles": null,
+      "docFiles": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": "Reverified 2026-10-09 on unchanged production source: ThirdPartyNoticeDriftTests.cs scoped call sets activePackageRoot=currentRoot; RunVerifierAsync passes environment NUGET_PACKAGES=activePackageRoot, null clears other callers. MCP focused run: 3 passed, 0 failed. Foreign ambient NUGET_PACKAGES focused no-build/no-restore run: 3 passed, 0 failed; scratch notice-tests/notice-ambient.trx. Premise already satisfied; close as obsolete, no implementation claim.",
+      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stanzaHash": "e1ff8a04c6da28d98e04ffa92f6e4632bc2fa0d3806aca2f57e5c0486320ad35",
+      "reviewedStanzaHash": "e1ff8a04c6da28d98e04ffa92f6e4632bc2fa0d3806aca2f57e5c0486320ad35"
+    },
+    {
+      "id": "test-discovery-file-path-case-identity",
+      "order": 10,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "test-discovery-file-path-case-identity"
+      ],
+      "productionFilesTouched": 1,
+      "productionFiles": [
+        "src/RoslynMcp.Roslyn/Services/TestDiscoveryService.cs"
+      ],
+      "testFilesAdded": 1,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/TestDiscoveryFileIdentityTests.cs"
+      ],
+      "docFiles": [
+        "changelog.d/test-discovery-file-path-case-identity.md"
+      ],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 35000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 1,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "a5293638d175b55e86c905ef7b8bae7795070496e70da55380b756ac64be88b3",
+      "stanzaHash": "1145ae27e4bee0dbf2d191d955b33c7b804f2943b9ecbbe6d663e28d3f2de031",
+      "reviewedStanzaHash": "1145ae27e4bee0dbf2d191d955b33c7b804f2943b9ecbbe6d663e28d3f2de031"
+    },
+    {
+      "id": "workspace-project-alias-lookup",
+      "order": 11,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "workspace-project-alias-lookup"
+      ],
+      "productionFilesTouched": 1,
+      "productionFiles": [
+        "src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs"
+      ],
+      "testFilesAdded": 1,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/WorkspaceProjectAliasLookupTests.cs"
+      ],
+      "docFiles": [
+        "changelog.d/workspace-project-alias-lookup.md"
+      ],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 35000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 1,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "5ae53efeefad9af7661e98abc4db281f0b23dea87b760a8f56fdd1108bfbec13",
+      "stanzaHash": "71a0718b98e486f2d7e922407c0120e829f833c522ff3588befce534d96262ca",
+      "reviewedStanzaHash": "71a0718b98e486f2d7e922407c0120e829f833c522ff3588befce534d96262ca"
+    },
+    {
+      "id": "fix-all-equivalence-key-unregistered-fallback",
+      "order": 12,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "fix-all-equivalence-key-unregistered-fallback"
+      ],
+      "productionFilesTouched": 1,
+      "productionFiles": [
+        "src/RoslynMcp.Roslyn/Services/FixAllService.cs"
+      ],
+      "testFilesAdded": 2,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/FixAllServiceTests.cs",
+        "tests/RoslynMcp.Tests/FixAllEquivalenceKeyIntegrationTests.cs"
+      ],
+      "docFiles": [
+        "changelog.d/fix-all-equivalence-key-unregistered-fallback.md"
+      ],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 40000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 1,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": true,
+        "anchorStale": false,
+        "ruleOneBundleResolved": "n/a"
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "8897b64e921fd6762cf334f68ec548ea7906dc3d525d08ef45d3678e5181733c",
+      "stanzaHash": "913514db5542443540c48366ab331270a804e76f3350e61ff3b3122811f12f1f",
+      "reviewedStanzaHash": "913514db5542443540c48366ab331270a804e76f3350e61ff3b3122811f12f1f"
+    },
+    {
+      "id": "editorconfig-section-source-path-matching",
+      "order": 13,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "editorconfig-section-source-path-matching"
+      ],
+      "productionFilesTouched": 2,
+      "productionFiles": [
+        "src/RoslynMcp.Roslyn/Services/EditorConfigService.cs",
+        "ai_docs/items/editorconfig-section-source-path-matching.md"
+      ],
+      "testFilesAdded": 1,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/EditorConfigServiceTests.cs"
+      ],
+      "docFiles": [
+        "changelog.d/editorconfig-section-source-path-matching.md"
+      ],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 40000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 1,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": true,
+        "anchorStale": false,
+        "ruleOneBundleResolved": "n/a"
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "903e11ba80b3347994fc257449e90ef9654a828845f57af583b0c4cd7a8f15be",
+      "stanzaHash": "56bbce20febc10f9c2b59496955ae4c711e041c5b802fcef475b9d4075d4268f",
+      "reviewedStanzaHash": "56bbce20febc10f9c2b59496955ae4c711e041c5b802fcef475b9d4075d4268f"
+    },
+    {
+      "id": "logging-jsonl-drops-structured-state",
+      "order": 14,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "logging-jsonl-drops-structured-state"
+      ],
+      "productionFilesTouched": 2,
+      "productionFiles": [
+        "src/RoslynMcp.Host.Stdio/Diagnostics/JsonLinesFileLoggerProvider.cs",
+        "src/RoslynMcp.Host.Stdio/Diagnostics/ServerObservability.cs"
+      ],
+      "testFilesAdded": 2,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/ServerObservabilitySinkTests.cs",
+        "tests/RoslynMcp.Tests/McpLoggingLifecycleWireTests.cs"
+      ],
+      "docFiles": [
+        "docs/stdio-client-integration.md",
+        "changelog.d/logging-jsonl-drops-structured-state.md"
+      ],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 40000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 2,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": true,
+        "anchorStale": false,
+        "ruleOneBundleResolved": "n/a"
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "b2e61e8a5ec4de58c81419ab72201a9b4acaf572b8359c687a7d6564e69a44aa",
+      "stanzaHash": "fd3aef40e86b7820bb0d8c786d2534936d972b89ddedf7adf9b78b33b3ff579e",
+      "reviewedStanzaHash": "fd3aef40e86b7820bb0d8c786d2534936d972b89ddedf7adf9b78b33b3ff579e"
+    },
+    {
+      "id": "restore-callers-missing-packages-path",
+      "order": 15,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "restore-callers-missing-packages-path"
+      ],
+      "productionFilesTouched": 5,
+      "productionFiles": [
+        "src/RoslynMcp.Roslyn/Services/RestoreInvocationPlanner.cs",
+        "src/RoslynMcp.Roslyn/Services/RestoreStalenessDetector.cs",
+        "src/RoslynMcp.Roslyn/Services/TestRunnerService.cs",
+        "src/RoslynMcp.Roslyn/Services/WorkspaceForkApplyService.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/WorkspaceTools.cs"
+      ],
+      "testFilesAdded": 4,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/TUnitMtpNativeTestRunTests.cs",
+        "tests/RoslynMcp.Tests/Workspace/WorkspaceForkApplyTests.cs",
+        "tests/RoslynMcp.Tests/WorkspaceLoadRestorePackagesPathTests.cs",
+        "tests/RoslynMcp.Tests/RestoreStalenessDetectorTests.cs"
+      ],
+      "docFiles": [
+        "changelog.d/restore-callers-missing-packages-path.md"
+      ],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 60000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 5,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": true,
+        "anchorStale": true,
+        "ruleOneBundleResolved": "n/a"
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "4eec65cd51d82affe39e1025c2342f18fd85ea1ab390148b9b180e6e7bb4f2e1",
+      "stanzaHash": "5e7bc589d2e8eac07e1489f9396e75b478a090c22112ceb9a4c3a1439c198521",
+      "reviewedStanzaHash": "5e7bc589d2e8eac07e1489f9396e75b478a090c22112ceb9a4c3a1439c198521"
+    },
+    {
+      "id": "split-service-refuse-cross-partition-references",
+      "order": 16,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "split-service-refuse-cross-partition-references"
+      ],
+      "productionFilesTouched": 3,
+      "productionFiles": [
+        "src/RoslynMcp.Roslyn/Services/SymbolRefactorService.cs",
+        "src/RoslynMcp.Core/Services/ISymbolRefactorService.cs",
+        "ai_docs/items/split-service-refuse-cross-partition-references.md"
+      ],
+      "testFilesAdded": 1,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/CompositeSplitServiceDiPreviewTests.cs"
+      ],
+      "docFiles": [
+        "changelog.d/split-service-refuse-cross-partition-references.md"
+      ],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 65000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 2,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": true,
+        "anchorStale": false,
+        "ruleOneBundleResolved": "n/a"
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "0a5070b58f44f5ac91afc9945dd87feb77c508c90e8f066d57378b8c2dbac70c",
+      "stanzaHash": "3c92791380fba16b69f6a42f9157eeef8e87c8752b41aafba94da90c4478fa75",
+      "reviewedStanzaHash": "3c92791380fba16b69f6a42f9157eeef8e87c8752b41aafba94da90c4478fa75"
+    },
+    {
+      "id": "change-signature-class-struct-primary-ctor-add-remove",
+      "order": 17,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "change-signature-class-struct-primary-ctor-add-remove"
+      ],
+      "productionFilesTouched": 2,
+      "productionFiles": [
+        "src/RoslynMcp.Roslyn/Services/ChangeSignatureService.cs",
+        "src/RoslynMcp.Roslyn/Services/ChangeSignatureAddRemovePreviewBuilder.cs"
+      ],
+      "testFilesAdded": 1,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/ChangeSignaturePreviewTests.cs"
+      ],
+      "docFiles": [
+        "changelog.d/change-signature-class-struct-primary-ctor-add-remove.md"
+      ],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 60000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 2,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": true,
+        "anchorStale": false,
+        "ruleOneBundleResolved": "n/a"
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "92511a82ecb80bbc29ceb0379ccca0f341e03b985d94e566af0d6c16c8cfeef5",
+      "stanzaHash": "6a8b4057370d3affb55f0799654613f5b3441e9aae49085849c9370f391ade96",
+      "reviewedStanzaHash": "6a8b4057370d3affb55f0799654613f5b3441e9aae49085849c9370f391ade96"
+    },
+    {
+      "id": "load-profile-full-suite",
+      "order": 18,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "load-profile-full-suite"
+      ],
+      "productionFilesTouched": 3,
+      "productionFiles": [
+        "eng/verify-release.ps1",
+        "eng/profile-test-load.ps1",
+        ".github/workflows/ci.yml"
+      ],
+      "testFilesAdded": 4,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/AssemblyCleanup.cs",
+        "tests/RoslynMcp.Tests/TestInfrastructure/TestLoadSampler.cs",
+        "tests/RoslynMcp.Tests/TestLoadProfileTests.cs",
+        "tests/RoslynMcp.Tests/AssemblyInfo.cs"
+      ],
+      "docFiles": [
+        "CI_POLICY.md",
+        "ai_docs/reports/load-profile-full-suite.md",
+        "changelog.d/load-profile-full-suite.md"
+      ],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 60000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 3,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": true,
+        "anchorStale": false,
+        "ruleOneBundleResolved": "n/a"
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "7bf48313b190c6e1a866b6e8af8b86f9f1faa6d42c4193664bacaafb1644c3d1",
+      "stanzaHash": "bc2695528f8866034df6aa82bf401da7ca40f647183d1062466b408fe73768fa",
+      "reviewedStanzaHash": "bc2695528f8866034df6aa82bf401da7ca40f647183d1062466b408fe73768fa"
+    },
+    {
+      "id": "workspace-close-global-build-server-shutdown",
+      "order": 19,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "workspace-close-global-build-server-shutdown"
+      ],
+      "productionFilesTouched": 4,
+      "productionFiles": [
+        "src/RoslynMcp.Host.Stdio/Tools/WorkspaceTools.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/DetachedTestHostDrain.cs",
+        "src/RoslynMcp.Host.Stdio/Runtime/ProcessExecutablePathResolver.cs",
+        "src/RoslynMcp.Host.Stdio/Prompts/RoslynPrompts.RefactoringWorkflows.cs"
+      ],
+      "testFilesAdded": 3,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/WorkspaceCloseDrainTests.cs",
+        "tests/RoslynMcp.Tests/AnalyzerShadowLoaderLifecycleTests.cs",
+        "tests/RoslynMcp.Tests/PromptSmokeTests.cs"
+      ],
+      "docFiles": [
+        "docs/product-contract.md",
+        "docs/decisions/0022-workspace-close-owned-process-drain.md",
+        "changelog.d/workspace-close-global-build-server-shutdown.md",
+        "docs/decisions/README.md"
+      ],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 60000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 4,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": true,
+        "anchorStale": false,
+        "ruleOneBundleResolved": "n/a"
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "e3f0ca2eb3a175426d3459d551dccbdaff120bb32e0d552f16ab2f782f1a64f8",
+      "stanzaHash": "cf010db06593e16475cf66103df1391e94e4b0dfb8b7faec779004992b458e4f",
+      "reviewedStanzaHash": "cf010db06593e16475cf66103df1391e94e4b0dfb8b7faec779004992b458e4f"
+    },
+    {
+      "id": "test-temp-reaper-live-owner",
+      "order": 20,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "test-temp-reaper-live-owner"
+      ],
+      "productionFilesTouched": 0,
+      "productionFiles": [],
+      "testFilesAdded": 2,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/TestInfrastructure/TestTempRoot.cs",
+        "tests/RoslynMcp.Tests/TestTempRootTests.cs"
+      ],
+      "docFiles": [
+        "changelog.d/test-temp-reaper-live-owner.md"
+      ],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 40000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 0,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": true,
+        "anchorStale": false,
+        "ruleOneBundleResolved": "n/a"
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "ca7b7b5cfa1665114e8f785bc5c19b3db69dd659e04062859436a0378c784f3b",
+      "stanzaHash": "75252658ed097350897e2a9d422ae19e59925f169294094bd0e77cf6f1fc85d1",
+      "reviewedStanzaHash": "75252658ed097350897e2a9d422ae19e59925f169294094bd0e77cf6f1fc85d1"
+    },
+    {
+      "id": "change-signature-service-refusals-public-message",
+      "order": 21,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "change-signature-service-refusals-public-message"
+      ],
+      "productionFilesTouched": 1,
+      "productionFiles": [
+        "src/RoslynMcp.Roslyn/Services/ChangeSignatureService.cs"
+      ],
+      "testFilesAdded": 3,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/ChangeSignaturePreviewTests.cs",
+        "tests/RoslynMcp.Tests/ChangeSignaturePreviewMetadataNameShapeTests.cs",
+        "tests/RoslynMcp.Tests/ChangeSignaturePublicRefusalTests.cs"
+      ],
+      "docFiles": [
+        "changelog.d/change-signature-service-refusals-public-message.md"
+      ],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 35000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 1,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": true,
+        "anchorStale": false,
+        "ruleOneBundleResolved": "n/a"
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "243f78fd3d949eaf79952eeca6aee1cd06b3491d70e61116ca4398529bcb88d3",
+      "stanzaHash": "ef997e9a4919038ae0947c3e3f1f99bd2f30d6f2616af291ea9a397c2b768083",
+      "reviewedStanzaHash": "ef997e9a4919038ae0947c3e3f1f99bd2f30d6f2616af291ea9a397c2b768083"
+    },
+    {
+      "id": "cross-project-public-refusals-echo-input",
+      "order": 22,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "cross-project-public-refusals-echo-input"
+      ],
+      "productionFilesTouched": 1,
+      "productionFiles": [
+        "src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs"
+      ],
+      "testFilesAdded": 2,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/CrossProjectRefactoringIntegrationTests.cs",
+        "tests/RoslynMcp.Tests/CrossProjectRefusalWireTests.cs"
+      ],
+      "docFiles": [
+        "docs/decisions/0021-cross-project-safe-public-refusals.md",
+        "docs/decisions/README.md",
+        "changelog.d/cross-project-public-refusals-echo-input.md"
+      ],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 35000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 1,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": true,
+        "anchorStale": false,
+        "ruleOneBundleResolved": "n/a"
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "8f502406e6f5731ced5288ee771b2c29d33e06eb20a312c0861c2ee973738429",
+      "stanzaHash": "8a00fc184c9bc3eed28e5ac5190ab5525f3daa8600fd101255ddf0cf8a49c770",
+      "reviewedStanzaHash": "8a00fc184c9bc3eed28e5ac5190ab5525f3daa8600fd101255ddf0cf8a49c770"
+    },
+    {
+      "id": "top10-good-preview-result-contract",
+      "order": 23,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "top10-good-preview-result-contract"
+      ],
+      "productionFilesTouched": 0,
+      "productionFiles": [],
+      "testFilesAdded": 1,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/Top10V2RegressionTests.cs"
+      ],
+      "docFiles": [
+        "changelog.d/top10-good-preview-result-contract.md"
+      ],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 25000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 0,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "d6bd25e851e02db5199d9ad12553f202c329caa301ecad41be05393a24b53c0d",
+      "stanzaHash": "2776a9f7799a1adbc47410ea9bab3377a56c154a6b3e38c5e786036668e2b154",
+      "reviewedStanzaHash": "2776a9f7799a1adbc47410ea9bab3377a56c154a6b3e38c5e786036668e2b154"
+    },
+    {
+      "id": "workspace-close-isolated-nuget-handles",
+      "order": 24,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "workspace-close-isolated-nuget-handles"
+      ],
+      "productionFilesTouched": 1,
+      "productionFiles": [
+        "ai_docs/items/workspace-close-isolated-nuget-handles.md"
+      ],
+      "testFilesAdded": 1,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/AnalyzerShadowLoaderLifecycleTests.cs"
+      ],
+      "docFiles": [],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 40000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 0,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": true,
+        "anchorStale": false,
+        "ruleOneBundleResolved": "n/a"
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "e5b41d4be7e6d8e0979eeb3d382a0f3eaa85d9192bd409db38263669f1d6be2d",
+      "stanzaHash": "2680f5502a0f4cdadc8c385a838f4d47f029a50f296405ab741444df81d8eacd",
+      "reviewedStanzaHash": "2680f5502a0f4cdadc8c385a838f4d47f029a50f296405ab741444df81d8eacd"
+    },
+    {
+      "id": "preview-store-explicit-internal-state",
+      "order": 25,
+      "status": "deferred",
+      "backlogRowsClosed": [
+        "preview-store-explicit-internal-state"
+      ],
+      "productionFilesTouched": 38,
+      "productionFiles": [
+        "src/RoslynMcp.Roslyn/Services/BatchTestScaffolder.cs",
+        "src/RoslynMcp.Roslyn/Services/BulkRefactoringService.cs",
+        "src/RoslynMcp.Roslyn/Services/ChangeSignatureService.cs",
+        "src/RoslynMcp.Roslyn/Services/ChangeSignatureAddRemovePreviewBuilder.cs",
+        "src/RoslynMcp.Roslyn/Services/ClassSplitOrchestrator.cs",
+        "src/RoslynMcp.Roslyn/Services/CodeActionService.cs",
+        "src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs",
+        "src/RoslynMcp.Roslyn/Services/DeadCodeService.cs",
+        "src/RoslynMcp.Roslyn/Services/EditService.cs",
+        "src/RoslynMcp.Roslyn/Services/ExtractAndWireOrchestrator.cs",
+        "src/RoslynMcp.Roslyn/Services/ExtractMethodService.cs",
+        "src/RoslynMcp.Roslyn/Services/FixAllService.cs",
+        "src/RoslynMcp.Roslyn/Services/FileOperationService.cs",
+        "src/RoslynMcp.Roslyn/Services/InterfaceExtractionService.cs",
+        "src/RoslynMcp.Roslyn/Services/NamespaceRelocationService.cs",
+        "src/RoslynMcp.Roslyn/Services/PackageMigrationOrchestrator.cs",
+        "src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs",
+        "src/RoslynMcp.Roslyn/Services/ProjectMutationService.cs",
+        "src/RoslynMcp.Roslyn/Services/RefactoringService.cs",
+        "src/RoslynMcp.Roslyn/Services/RestructureService.cs",
+        "src/RoslynMcp.Roslyn/Services/StringLiteralReplaceService.cs",
+        "src/RoslynMcp.Roslyn/Services/SymbolRefactorService.cs",
+        "src/RoslynMcp.Roslyn/Services/TypeMoveService.cs",
+        "src/RoslynMcp.Roslyn/Services/TypeExtractionService.cs",
+        "src/RoslynMcp.Roslyn/Services/PreviewStore.cs",
+        "src/RoslynMcp.Roslyn/Services/ProjectMutationPreviewStore.cs",
+        "src/RoslynMcp.Roslyn/Services/CompositePreviewStore.cs",
+        "src/RoslynMcp.Roslyn/Services/PersistentCompositeStorage.cs",
+        "src/RoslynMcp.Roslyn/Services/CompositeApplyOrchestrator.cs",
+        "src/RoslynMcp.Roslyn/Contracts/IPreviewStore.cs",
+        "src/RoslynMcp.Roslyn/Helpers/DiffGenerator.cs",
+        "src/RoslynMcp.Roslyn/Helpers/SolutionDiffHelper.cs",
+        "src/RoslynMcp.Core/Models/PreviewSafetyState.cs",
+        "src/RoslynMcp.Core/Models/PreviewKind.cs",
+        "src/RoslynMcp.Core/Services/ICompositePreviewStore.cs",
+        "src/RoslynMcp.Core/Services/IProjectMutationPreviewStore.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/ToolDispatch.cs",
+        "src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.cs"
+      ],
+      "testFilesAdded": 26,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/ApplyWithVerifyCancellationAndScopeTests.cs",
+        "tests/RoslynMcp.Tests/ApplyUndoWorkflowServiceTests.cs",
+        "tests/RoslynMcp.Tests/BoundedStoreEvictionTests.cs",
+        "tests/RoslynMcp.Tests/ClientRootPathValidatorTests.cs",
+        "tests/RoslynMcp.Tests/CompositeApplyOrchestratorTests.cs",
+        "tests/RoslynMcp.Tests/ExtractionApplyRouteBindingTests.cs",
+        "tests/RoslynMcp.Tests/ParameterObjectPreviewTests.cs",
+        "tests/RoslynMcp.Tests/PreviewStoreTests.cs",
+        "tests/RoslynMcp.Tests/PreviewRouteBindingFileOpsTests.cs",
+        "tests/RoslynMcp.Tests/PreviewRouteBindingEditingTests.cs",
+        "tests/RoslynMcp.Tests/PreviewTokenStaleAcrossAutoReloadTests.cs",
+        "tests/RoslynMcp.Tests/PreviewApplyBoundaryRevalidationTests.cs",
+        "tests/RoslynMcp.Tests/SymbolRefactorPreviewTests.cs",
+        "tests/RoslynMcp.Tests/ToolDispatchTests.cs",
+        "tests/RoslynMcp.Tests/TruncatedPreviewApplyGateTests.cs",
+        "tests/RoslynMcp.Tests/ChangeSignaturePreviewTests.cs",
+        "tests/RoslynMcp.Tests/ScaffoldingIntegrationTests.cs",
+        "tests/RoslynMcp.Tests/ExtractSharedExpressionTests.cs",
+        "tests/RoslynMcp.Tests/RestructureServiceTests.cs",
+        "tests/RoslynMcp.Tests/StringLiteralReplaceServiceTests.cs",
+        "tests/RoslynMcp.Tests/DiffGeneratorTests.cs",
+        "tests/RoslynMcp.Tests/SolutionDiffHelperTests.cs",
+        "tests/RoslynMcp.Tests/ProjectMutationIntegrationTests.cs",
+        "tests/RoslynMcp.Tests/OrchestrationIntegrationTests.cs",
+        "tests/RoslynMcp.Tests/Services/PersistentCompositeStorageTests.cs",
+        "tests/RoslynMcp.Tests/Workspace/WorkspaceForkApplyTests.cs"
+      ],
+      "docFiles": [
+        "docs/decisions/0020-preview-safety-state.md",
+        "docs/decisions/README.md",
+        "changelog.d/preview-store-explicit-internal-state.md"
+      ],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 110000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": "heroic-last",
+      "fanoutEstimate": 38,
+      "fanoutOversize": true,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": true,
+        "anchorStale": false,
+        "ruleOneBundleResolved": "n/a"
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": "Operator 2026-10-09: global backlog filings only; defer complete atomic safety migration until global Rule 5 admission tooling supports justified indivisible scope. exec-args reproduced exit 4: 110000 exceeds 80000. Root-cause scope preserved; no partial implementation.",
+      "fileSetHash": "8dacf970c6ce7ee290595e5a43e935f2f745071db396f160ecf2f17d52f6f53a",
+      "stanzaHash": "928252056cf3207c7d6eac15fe72d80a24a4fa6e95ed05a4396d75b2d135ace3",
+      "reviewedStanzaHash": "928252056cf3207c7d6eac15fe72d80a24a4fa6e95ed05a4396d75b2d135ace3"
+    },
+    {
+      "id": "preview-diff-whitespace-omission",
+      "order": 26,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "preview-diff-whitespace-omission"
+      ],
+      "productionFilesTouched": 4,
+      "productionFiles": [
+        "src/RoslynMcp.Roslyn/Helpers/DiffGenerator.cs",
+        "src/RoslynMcp.Roslyn/Helpers/SolutionDiffHelper.cs",
+        "src/RoslynMcp.Roslyn/Services/RefactoringService.cs",
+        "src/RoslynMcp.Roslyn/Services/EditService.cs"
+      ],
+      "testFilesAdded": 4,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/DiffGeneratorTests.cs",
+        "tests/RoslynMcp.Tests/SolutionDiffHelperTests.cs",
+        "tests/RoslynMcp.Tests/IntegrationTests.EditApply.cs",
+        "tests/RoslynMcp.Tests/PreviewMultiFileEditSyntaxRegressionTests.cs"
+      ],
+      "docFiles": [],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 40000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 4,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": "n/a"
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "3aeed77236a572e7946230f221fe11da32b6896b800f979a41341cbcc63bf376",
+      "stanzaHash": "322cd92491b97397041e0252bb8cf617ccac91defd3d847351dd3a180aadba5e",
+      "reviewedStanzaHash": "322cd92491b97397041e0252bb8cf617ccac91defd3d847351dd3a180aadba5e"
+    },
+    {
+      "id": "preview-token-lifecycle-evidence",
+      "order": 8.01,
+      "status": "pending",
+      "productionFiles": [
+        "src/RoslynMcp.Core/Services/BoundedStore.cs",
+        "src/RoslynMcp.Core/Services/PreviewTokenState.cs",
+        "src/RoslynMcp.Core/Services/ICompositePreviewStore.cs",
+        "src/RoslynMcp.Core/Services/IProjectMutationPreviewStore.cs",
+        "src/RoslynMcp.Roslyn/Contracts/IPreviewStore.cs",
+        "src/RoslynMcp.Roslyn/Services/PreviewStore.cs"
+      ],
+      "testFiles": [
+        "tests/RoslynMcp.Tests/BoundedStoreEvictionTests.cs",
+        "tests/RoslynMcp.Tests/PreviewStoreTests.cs",
+        "tests/RoslynMcp.Tests/ApplyUndoWorkflowServiceTests.cs",
+        "tests/RoslynMcp.Tests/ApplyWithVerifyCancellationAndScopeTests.cs",
+        "tests/RoslynMcp.Tests/ExtractionApplyRouteBindingTests.cs",
+        "tests/RoslynMcp.Tests/ParameterObjectPreviewTests.cs",
+        "tests/RoslynMcp.Tests/PreviewRouteBindingEditingTests.cs",
+        "tests/RoslynMcp.Tests/PreviewRouteBindingFileOpsTests.cs",
+        "tests/RoslynMcp.Tests/ToolDispatchTests.cs"
+      ],
+      "docFiles": [
+        "docs/decisions/0024-preview-token-terminal-lifecycle.md",
+        "docs/decisions/README.md",
+        "changelog.d/preview-token-lifecycle-evidence.md"
+      ],
+      "estimatedContextTokens": 65000,
+      "toolPolicy": "edit-only",
+      "fanoutEstimate": 6,
+      "fanoutOversize": false,
+      "scheduleHint": null,
+      "dependsOn": [],
+      "productionFilesTouched": 6,
+      "testFilesAdded": 9,
+      "backlogRowsClosed": [],
+      "rowsClosedCount": 0,
+      "fileSetHash": "b114ed6217432d10b0b088db516b1900a40e34d4c06cd49c3ff0c61da5c34e8c",
+      "stanzaHash": "07c7592b348ad2a4f900076455b31f6794d9bf4d2fc76aa4248b10b53739f4cc",
+      "reviewedStanzaHash": "07c7592b348ad2a4f900076455b31f6794d9bf4d2fc76aa4248b10b53739f4cc"
+    },
+    {
+      "id": "preview-token-reason-projection",
+      "order": 8.02,
+      "status": "pending",
+      "productionFiles": [
+        "src/RoslynMcp.Core/Services/PreviewTokenStaleException.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/ToolDispatch.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/ApplyWithVerifyTool.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/ToolErrorHandler.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/OrchestrationTools.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/ProjectMutationTools.cs",
+        "src/RoslynMcp.Roslyn/Services/ApplyUndoWorkflowService.cs",
+        "src/RoslynMcp.Roslyn/Services/WorkspaceForkApplyService.cs"
+      ],
+      "testFiles": [
+        "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs",
+        "tests/RoslynMcp.Tests/PreviewTokenStaleAcrossAutoReloadTests.cs",
+        "tests/RoslynMcp.Tests/ToolDispatchTests.cs",
+        "tests/RoslynMcp.Tests/ToolErrorHandlerSpecificityTests.cs"
+      ],
+      "docFiles": [
+        "docs/product-contract.md",
+        "docs/decisions/0024-preview-token-terminal-lifecycle.md",
+        "changelog.d/preview-token-reason-projection.md"
+      ],
+      "estimatedContextTokens": 65000,
+      "toolPolicy": "edit-only",
+      "fanoutEstimate": 8,
+      "fanoutOversize": false,
+      "scheduleHint": null,
+      "dependsOn": [
+        "preview-token-lifecycle-evidence"
+      ],
+      "productionFilesTouched": 8,
+      "testFilesAdded": 4,
+      "backlogRowsClosed": [],
+      "rowsClosedCount": 0,
+      "fileSetHash": "3cd9128b934f83f334fa3d0ca4bb9ca3253220192e5ca027957affe6922b98c1",
+      "stanzaHash": "4a8c245cec99ee749c080c3c5de267edbd77fb93d6e0c1889d17b7271a675c18",
+      "reviewedStanzaHash": "4a8c245cec99ee749c080c3c5de267edbd77fb93d6e0c1889d17b7271a675c18"
+    },
+    {
+      "id": "preview-token-solution-confirmation",
+      "order": 8.03,
+      "status": "pending",
+      "productionFiles": [
+        "src/RoslynMcp.Roslyn/Services/RefactoringService.cs"
+      ],
+      "testFiles": [
+        "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs",
+        "tests/RoslynMcp.Tests/RefactoringToolsIntegrationTests.cs",
+        "tests/RoslynMcp.Tests/ApplyUndoWorkflowServiceTests.cs"
+      ],
+      "docFiles": [
+        "changelog.d/preview-token-solution-confirmation.md"
+      ],
+      "estimatedContextTokens": 40000,
+      "toolPolicy": "edit-only",
+      "fanoutEstimate": 1,
+      "fanoutOversize": false,
+      "scheduleHint": null,
+      "dependsOn": [
+        "preview-token-reason-projection"
+      ],
+      "productionFilesTouched": 1,
+      "testFilesAdded": 3,
+      "backlogRowsClosed": [],
+      "rowsClosedCount": 0,
+      "fileSetHash": "d549db625f0af225e1fbd9f097479905fac2cfcc46dd234d2926a81a10951d28",
+      "stanzaHash": "f391d2ba9ede8381c894af4f7a17c250add8de6540816a497aeb4252888fe9f0",
+      "reviewedStanzaHash": "f391d2ba9ede8381c894af4f7a17c250add8de6540816a497aeb4252888fe9f0"
+    },
+    {
+      "id": "preview-token-composite-confirmation",
+      "order": 8.04,
+      "status": "pending",
+      "productionFiles": [
+        "src/RoslynMcp.Roslyn/Services/CompositePreviewStore.cs",
+        "src/RoslynMcp.Roslyn/Services/PersistentCompositeStorage.cs",
+        "src/RoslynMcp.Roslyn/Services/CompositeApplyOrchestrator.cs"
+      ],
+      "testFiles": [
+        "tests/RoslynMcp.Tests/Services/PersistentCompositeStorageTests.cs",
+        "tests/RoslynMcp.Tests/CompositeApplyOrchestratorTests.cs",
+        "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs"
+      ],
+      "docFiles": [
+        "changelog.d/preview-token-composite-confirmation.md"
+      ],
+      "estimatedContextTokens": 60000,
+      "toolPolicy": "edit-only",
+      "fanoutEstimate": 3,
+      "fanoutOversize": false,
+      "scheduleHint": null,
+      "dependsOn": [
+        "preview-token-reason-projection"
+      ],
+      "productionFilesTouched": 3,
+      "testFilesAdded": 3,
+      "backlogRowsClosed": [],
+      "rowsClosedCount": 0,
+      "fileSetHash": "cf4bb718f02fbc2259cd680f140dc9a8e29631bdab2b196561c1e1db2fa23090",
+      "stanzaHash": "e028421571de16aaff0e573308c71d1c18aa46a91313fb0c995b190e7ada614a",
+      "reviewedStanzaHash": "e028421571de16aaff0e573308c71d1c18aa46a91313fb0c995b190e7ada614a"
+    },
+    {
+      "id": "preview-token-project-confirmation",
+      "order": 8.05,
+      "status": "pending",
+      "productionFiles": [
+        "src/RoslynMcp.Roslyn/Services/ProjectMutationService.cs"
+      ],
+      "testFiles": [
+        "tests/RoslynMcp.Tests/ProjectMutationIntegrationTests.cs",
+        "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs"
+      ],
+      "docFiles": [
+        "changelog.d/preview-token-project-confirmation.md"
+      ],
+      "estimatedContextTokens": 40000,
+      "toolPolicy": "edit-only",
+      "fanoutEstimate": 1,
+      "fanoutOversize": false,
+      "scheduleHint": null,
+      "dependsOn": [
+        "preview-token-solution-confirmation",
+        "preview-token-composite-confirmation"
+      ],
+      "productionFilesTouched": 1,
+      "testFilesAdded": 2,
+      "backlogRowsClosed": [
+        "preview-token-consumed-reason"
+      ],
+      "rowsClosedCount": 1,
+      "fileSetHash": "09936473e33eda3704a26c4bf05ba3dffce89d8a842742981d2fa59f31896269",
+      "stanzaHash": "5b3db04aab6d5bca44869369e23f9cae2d1cbcb5b22bbb27339e8608b53bb9fb",
+      "reviewedStanzaHash": "5b3db04aab6d5bca44869369e23f9cae2d1cbcb5b22bbb27339e8608b53bb9fb"
+    },
+    {
+      "id": "fork-composite-nonconsuming-snapshot",
+      "order": 7.01,
+      "status": "deferred",
+      "fanoutOversize": false,
+      "scheduleHint": null,
+      "fanoutEstimate": 4,
+      "estimatedContextTokens": 45000,
+      "docFiles": [
+        "changelog.d/fork-composite-nonconsuming-snapshot.md"
+      ],
+      "testFiles": [
+        "tests/RoslynMcp.Tests/Services/PersistentCompositeStorageTests.cs",
+        "tests/RoslynMcp.Tests/ServiceCollectionExtensionsTests.cs"
+      ],
+      "toolPolicy": "edit-only",
+      "productionFiles": [
+        "src/RoslynMcp.Roslyn/Contracts/ICompositePreviewSnapshotReader.cs",
+        "src/RoslynMcp.Roslyn/Services/CompositePreviewStore.cs",
+        "src/RoslynMcp.Roslyn/Services/PersistentCompositeStorage.cs",
+        "src/RoslynMcp.Roslyn/ServiceCollectionExtensions.cs"
+      ],
+      "dependsOn": [
+        "preview-store-explicit-internal-state"
+      ],
+      "productionFilesTouched": 4,
+      "testFilesAdded": 2,
+      "backlogRowsClosed": [],
+      "rowsClosedCount": 0,
+      "notes": "Operator 2026-10-09: deferred until preview-store-explicit-internal-state safety prerequisite lands after global Rule 5 admission tooling repair.",
+      "fileSetHash": "8dc2571f00dc044c50af337be3a80b98c3ac772a42635081e6b9d8044e69fc49",
+      "stanzaHash": "fd27c0b8f49321c6afefbedfa17fe940da2d76638629787c3f40319068ea1189",
+      "reviewedStanzaHash": "fd27c0b8f49321c6afefbedfa17fe940da2d76638629787c3f40319068ea1189"
+    },
+    {
+      "id": "fork-preview-project-composite-replay",
+      "order": 7.02,
+      "status": "deferred",
+      "fanoutOversize": false,
+      "scheduleHint": null,
+      "fanoutEstimate": 2,
+      "estimatedContextTokens": 45000,
+      "docFiles": [
+        "docs/decisions/0025-isolated-fork-preview-replay.md",
+        "docs/decisions/README.md",
+        "README.md",
+        "src/RoslynMcp.Host.Stdio/README.md",
+        "changelog.d/fork-preview-project-composite-replay.md"
+      ],
+      "testFiles": [
+        "tests/RoslynMcp.Tests/Workspace/WorkspaceForkApplyTests.cs"
+      ],
+      "toolPolicy": "edit-only",
+      "productionFiles": [
+        "src/RoslynMcp.Roslyn/Services/WorkspaceForkApplyService.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/ValidationBundleTools.cs"
+      ],
+      "dependsOn": [
+        "fork-composite-nonconsuming-snapshot",
+        "preview-store-explicit-internal-state"
+      ],
+      "productionFilesTouched": 2,
+      "testFilesAdded": 1,
+      "backlogRowsClosed": [
+        "workspace-fork-project-mutation-preview"
+      ],
+      "rowsClosedCount": 1,
+      "notes": "Operator 2026-10-09: deferred until safety and nonconsuming fork snapshot prerequisites land after global Rule 5 admission tooling repair.",
+      "fileSetHash": "5afece8c5daa0f3308167fb0d464a2188df5169813d5ddaf8f3939ccdd9c6d86",
+      "stanzaHash": "c524884456374574eb70979508d878be7d0d3a58e6c94484d3d6a2bf204610d4",
+      "reviewedStanzaHash": "c524884456374574eb70979508d878be7d0d3a58e6c94484d3d6a2bf204610d4"
+    }
+  ],
+  "anchorVerification": "performed",
+  "conflictGraph": {
+    "edges": [
+      {
+        "a": 2,
+        "b": 25,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/CodeActionService.cs"
+        ]
+      },
+      {
+        "a": 3,
+        "b": 11,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs"
+        ]
+      },
+      {
+        "a": 5,
+        "b": 25,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/TypeExtractionService.cs"
+        ]
+      },
+      {
+        "a": 6,
+        "b": 25,
+        "sharedFiles": [
+          "src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.cs",
+          "src/RoslynMcp.Host.Stdio/Tools/ToolDispatch.cs",
+          "src/RoslynMcp.Roslyn/Services/BatchTestScaffolder.cs",
+          "tests/RoslynMcp.Tests/ScaffoldingIntegrationTests.cs",
+          "tests/RoslynMcp.Tests/ToolDispatchTests.cs"
+        ]
+      },
+      {
+        "a": 6,
+        "b": 8.01,
+        "sharedFiles": [
+          "tests/RoslynMcp.Tests/ToolDispatchTests.cs"
+        ]
+      },
+      {
+        "a": 6,
+        "b": 8.02,
+        "sharedFiles": [
+          "src/RoslynMcp.Host.Stdio/Tools/OrchestrationTools.cs",
+          "src/RoslynMcp.Host.Stdio/Tools/ToolDispatch.cs",
+          "tests/RoslynMcp.Tests/ToolDispatchTests.cs"
+        ]
+      },
+      {
+        "a": 6,
+        "b": 7.02,
+        "sharedFiles": [
+          "README.md",
+          "src/RoslynMcp.Host.Stdio/README.md"
+        ]
+      },
+      {
+        "a": 12,
+        "b": 25,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/FixAllService.cs"
+        ]
+      },
+      {
+        "a": 15,
+        "b": 19,
+        "sharedFiles": [
+          "src/RoslynMcp.Host.Stdio/Tools/WorkspaceTools.cs"
+        ]
+      },
+      {
+        "a": 15,
+        "b": 25,
+        "sharedFiles": [
+          "tests/RoslynMcp.Tests/Workspace/WorkspaceForkApplyTests.cs"
+        ]
+      },
+      {
+        "a": 15,
+        "b": 8.02,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/WorkspaceForkApplyService.cs"
+        ]
+      },
+      {
+        "a": 15,
+        "b": 7.02,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/WorkspaceForkApplyService.cs",
+          "tests/RoslynMcp.Tests/Workspace/WorkspaceForkApplyTests.cs"
+        ]
+      },
+      {
+        "a": 16,
+        "b": 25,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/SymbolRefactorService.cs"
+        ]
+      },
+      {
+        "a": 17,
+        "b": 21,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/ChangeSignatureService.cs",
+          "tests/RoslynMcp.Tests/ChangeSignaturePreviewTests.cs"
+        ]
+      },
+      {
+        "a": 17,
+        "b": 25,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/ChangeSignatureAddRemovePreviewBuilder.cs",
+          "src/RoslynMcp.Roslyn/Services/ChangeSignatureService.cs",
+          "tests/RoslynMcp.Tests/ChangeSignaturePreviewTests.cs"
+        ]
+      },
+      {
+        "a": 19,
+        "b": 22,
+        "sharedFiles": [
+          "docs/decisions/README.md"
+        ]
+      },
+      {
+        "a": 19,
+        "b": 24,
+        "sharedFiles": [
+          "tests/RoslynMcp.Tests/AnalyzerShadowLoaderLifecycleTests.cs"
+        ]
+      },
+      {
+        "a": 19,
+        "b": 25,
+        "sharedFiles": [
+          "docs/decisions/README.md"
+        ]
+      },
+      {
+        "a": 19,
+        "b": 8.01,
+        "sharedFiles": [
+          "docs/decisions/README.md"
+        ]
+      },
+      {
+        "a": 19,
+        "b": 8.02,
+        "sharedFiles": [
+          "docs/product-contract.md"
+        ]
+      },
+      {
+        "a": 19,
+        "b": 7.02,
+        "sharedFiles": [
+          "docs/decisions/README.md"
+        ]
+      },
+      {
+        "a": 21,
+        "b": 25,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/ChangeSignatureService.cs",
+          "tests/RoslynMcp.Tests/ChangeSignaturePreviewTests.cs"
+        ]
+      },
+      {
+        "a": 22,
+        "b": 25,
+        "sharedFiles": [
+          "docs/decisions/README.md",
+          "src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs"
+        ]
+      },
+      {
+        "a": 22,
+        "b": 8.01,
+        "sharedFiles": [
+          "docs/decisions/README.md"
+        ]
+      },
+      {
+        "a": 22,
+        "b": 7.02,
+        "sharedFiles": [
+          "docs/decisions/README.md"
+        ]
+      },
+      {
+        "a": 25,
+        "b": 26,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Helpers/DiffGenerator.cs",
+          "src/RoslynMcp.Roslyn/Helpers/SolutionDiffHelper.cs",
+          "src/RoslynMcp.Roslyn/Services/EditService.cs",
+          "src/RoslynMcp.Roslyn/Services/RefactoringService.cs",
+          "tests/RoslynMcp.Tests/DiffGeneratorTests.cs",
+          "tests/RoslynMcp.Tests/SolutionDiffHelperTests.cs"
+        ]
+      },
+      {
+        "a": 25,
+        "b": 8.01,
+        "sharedFiles": [
+          "docs/decisions/README.md",
+          "src/RoslynMcp.Core/Services/ICompositePreviewStore.cs",
+          "src/RoslynMcp.Core/Services/IProjectMutationPreviewStore.cs",
+          "src/RoslynMcp.Roslyn/Contracts/IPreviewStore.cs",
+          "src/RoslynMcp.Roslyn/Services/PreviewStore.cs",
+          "tests/RoslynMcp.Tests/ApplyUndoWorkflowServiceTests.cs",
+          "tests/RoslynMcp.Tests/ApplyWithVerifyCancellationAndScopeTests.cs",
+          "tests/RoslynMcp.Tests/BoundedStoreEvictionTests.cs",
+          "tests/RoslynMcp.Tests/ExtractionApplyRouteBindingTests.cs",
+          "tests/RoslynMcp.Tests/ParameterObjectPreviewTests.cs",
+          "tests/RoslynMcp.Tests/PreviewRouteBindingEditingTests.cs",
+          "tests/RoslynMcp.Tests/PreviewRouteBindingFileOpsTests.cs",
+          "tests/RoslynMcp.Tests/PreviewStoreTests.cs",
+          "tests/RoslynMcp.Tests/ToolDispatchTests.cs"
+        ]
+      },
+      {
+        "a": 25,
+        "b": 8.02,
+        "sharedFiles": [
+          "src/RoslynMcp.Host.Stdio/Tools/ToolDispatch.cs",
+          "tests/RoslynMcp.Tests/PreviewTokenStaleAcrossAutoReloadTests.cs",
+          "tests/RoslynMcp.Tests/ToolDispatchTests.cs"
+        ]
+      },
+      {
+        "a": 25,
+        "b": 8.03,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/RefactoringService.cs",
+          "tests/RoslynMcp.Tests/ApplyUndoWorkflowServiceTests.cs"
+        ]
+      },
+      {
+        "a": 25,
+        "b": 8.04,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/CompositeApplyOrchestrator.cs",
+          "src/RoslynMcp.Roslyn/Services/CompositePreviewStore.cs",
+          "src/RoslynMcp.Roslyn/Services/PersistentCompositeStorage.cs",
+          "tests/RoslynMcp.Tests/CompositeApplyOrchestratorTests.cs",
+          "tests/RoslynMcp.Tests/Services/PersistentCompositeStorageTests.cs"
+        ]
+      },
+      {
+        "a": 25,
+        "b": 8.05,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/ProjectMutationService.cs",
+          "tests/RoslynMcp.Tests/ProjectMutationIntegrationTests.cs"
+        ]
+      },
+      {
+        "a": 25,
+        "b": 7.01,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/CompositePreviewStore.cs",
+          "src/RoslynMcp.Roslyn/Services/PersistentCompositeStorage.cs",
+          "tests/RoslynMcp.Tests/Services/PersistentCompositeStorageTests.cs"
+        ]
+      },
+      {
+        "a": 25,
+        "b": 7.02,
+        "sharedFiles": [
+          "docs/decisions/README.md",
+          "tests/RoslynMcp.Tests/Workspace/WorkspaceForkApplyTests.cs"
+        ]
+      },
+      {
+        "a": 26,
+        "b": 8.03,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/RefactoringService.cs"
+        ]
+      },
+      {
+        "a": 8.01,
+        "b": 8.02,
+        "sharedFiles": [
+          "docs/decisions/0024-preview-token-terminal-lifecycle.md",
+          "tests/RoslynMcp.Tests/ToolDispatchTests.cs"
+        ]
+      },
+      {
+        "a": 8.01,
+        "b": 8.03,
+        "sharedFiles": [
+          "tests/RoslynMcp.Tests/ApplyUndoWorkflowServiceTests.cs"
+        ]
+      },
+      {
+        "a": 8.01,
+        "b": 7.02,
+        "sharedFiles": [
+          "docs/decisions/README.md"
+        ]
+      },
+      {
+        "a": 8.02,
+        "b": 8.03,
+        "sharedFiles": [
+          "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs"
+        ]
+      },
+      {
+        "a": 8.02,
+        "b": 8.04,
+        "sharedFiles": [
+          "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs"
+        ]
+      },
+      {
+        "a": 8.02,
+        "b": 8.05,
+        "sharedFiles": [
+          "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs"
+        ]
+      },
+      {
+        "a": 8.02,
+        "b": 7.02,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/WorkspaceForkApplyService.cs"
+        ]
+      },
+      {
+        "a": 8.03,
+        "b": 8.04,
+        "sharedFiles": [
+          "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs"
+        ]
+      },
+      {
+        "a": 8.03,
+        "b": 8.05,
+        "sharedFiles": [
+          "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs"
+        ]
+      },
+      {
+        "a": 8.04,
+        "b": 8.05,
+        "sharedFiles": [
+          "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs"
+        ]
+      },
+      {
+        "a": 8.04,
+        "b": 7.01,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/CompositePreviewStore.cs",
+          "src/RoslynMcp.Roslyn/Services/PersistentCompositeStorage.cs",
+          "tests/RoslynMcp.Tests/Services/PersistentCompositeStorageTests.cs"
+        ]
+      }
+    ],
+    "degrees": {
+      "2": 1,
+      "3": 1,
+      "4": 0,
+      "5": 1,
+      "6": 4,
+      "9": 0,
+      "10": 0,
+      "11": 1,
+      "12": 1,
+      "13": 0,
+      "14": 0,
+      "15": 4,
+      "16": 1,
+      "17": 2,
+      "18": 0,
+      "19": 7,
+      "20": 0,
+      "21": 2,
+      "22": 4,
+      "23": 0,
+      "24": 1,
+      "25": 18,
+      "26": 2,
+      "8.01": 7,
+      "8.02": 9,
+      "8.03": 6,
+      "8.04": 5,
+      "8.05": 4,
+      "7.01": 2,
+      "7.02": 7
+    },
+    "zeroDegreeInitiatives": [
+      4,
+      9,
+      10,
+      13,
+      14,
+      18,
+      20,
+      23
+    ]
+  },
+  "selection": {
+    "requestedCount": "auto",
+    "selectedCount": 26,
+    "skipped": [
+      {
+        "id": "logging-default-sink-disabled-stderr-swallowed",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "promotion-scorecard-refresh-toplevel-run",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-analysis-batch-1",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-analysis-batch-2",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-analysis-batch-3",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-editing-batch-1",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-editing-batch-2",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-orchestration-batch-1",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-orchestration-batch-2",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-refactoring-batch-1",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-refactoring-batch-2",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-refactoring-batch-3",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-refactoring-batch-4",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-symbols",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-workspace",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-project-mutation",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-file-operations",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-formatting",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-extract",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-scaffolding",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-replace",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-code-fix",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-remove",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-cross-project",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-signature",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-restructure",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-split-class",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-move",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-formatting",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-text-edit",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-code-transform-1",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-code-transform-2",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-code-transform-3",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-code-transform-4",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-file-lifecycle",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-undo-revert",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "root-boundary-argument-refusals-public-message",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-error-handler-argument-sniffing-arms-retired",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "argument-exception-public-message-guard",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "preview-apply-tool-descriptions",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "logging-event-id-collisions-no-catalog",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "logging-failure-records-lack-diagnosis",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "logging-dependency-boundary-duration-missing",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "logging-observability-contract-doc-incomplete",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "split-service-refuse-unsupported-method-signatures",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "split-service-forward-ref-out-in-arguments",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "split-service-copy-namespace-scoped-usings",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "change-signature-record-primary-ctor-add-remove",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "change-signature-primary-ctor-rename-reorder",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "host-tools-code-quality-extraction",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "host-tools-code-search-extraction",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "host-tools-complexity-extraction",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "changelog-process-tests-runner-adoption",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "mutation-analysis-property-write-orchestrator-decomposition",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "tasks-extension-build-test-run",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "tasks-extension-contract-docs",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "scaffolding-async-sibling-io-boundary",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "scaffold-warning-mrtr-typed-state",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "server-probe-test-doubles-batch-2",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "server-probe-test-doubles-batch-3",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "unused-code-analyzer-test-harness-wave-3",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "unused-code-analyzer-test-harness-wave-2",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "root-expansion-grant-registry-host-ownership",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "logging-event-ids-remaining-call-sites",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "logging-file-sink-sync-io-per-record",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "project-name-path-selection-duplication",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "http-streamable-host-project",
+        "reason": "defer-band"
+      },
+      {
+        "id": "workspace-process-pool-or-daemon",
+        "reason": "defer-band"
+      },
+      {
+        "id": "locationdto-next-major-flat-field-removal",
+        "reason": "defer-band"
+      },
+      {
+        "id": "locationdto-stage3-flat-field-deprecation",
+        "reason": "defer-band"
+      },
+      {
+        "id": "audit-21-analyzer-plan-defer-or-retire",
+        "reason": "defer-band"
+      },
+      {
+        "id": "project-name-not-found-category-next-major",
+        "reason": "defer-band"
+      },
+      {
+        "id": "server-info-update-available-next-major-nullable",
+        "reason": "defer-band"
+      },
+      {
+        "id": "workspace-not-found-next-major-category-promotion",
+        "reason": "defer-band"
+      },
+      {
+        "id": "v5-major-release-contract-prereqs",
+        "reason": "defer-band"
+      },
+      {
+        "id": "editorconfig-posix-uncooperative-write-race",
+        "reason": "defer-band"
+      },
+      {
+        "id": "atomic-file-writer-external-temp-path-swap",
+        "reason": "defer-band"
+      },
+      {
+        "id": "client-root-widening-drive-root-parent",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "initiative-executor-roslyn-tool-discovery-experiment",
+        "reason": "non-code-deliverable"
+      },
+      {
+        "id": "move-to-git-issues",
+        "reason": "row-factory"
+      },
+      {
+        "id": "tool-surface-pagination-or-tool-sets",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "symbol-handle-and-reference-argument-refusals-public-message",
+        "reason": "split-budget-exhausted"
+      },
+      {
+        "id": "preview-token-argument-refusals-public-message",
+        "reason": "split-budget-exhausted"
+      },
+      {
+        "id": "build-and-analysis-argument-refusals-public-message",
+        "reason": "split-budget-exhausted"
+      },
+      {
+        "id": "scripting-and-snippet-argument-refusals-public-message",
+        "reason": "split-budget-exhausted"
+      },
+      {
+        "id": "timeout-error-names-fired-timer",
+        "reason": "split-budget-exhausted"
+      },
+      {
+        "id": "test-run-nobuild-msbuild-properties",
+        "reason": "split-budget-exhausted"
+      },
+      {
+        "id": "project-name-not-found-misleading-reload-advice",
+        "reason": "split-budget-exhausted"
+      },
+      {
+        "id": "other-failed-apply-displaces-undo-target",
+        "reason": "split-budget-exhausted"
+      },
+      {
+        "id": "logging-retention-destroys-repro-evidence",
+        "reason": "split-budget-exhausted"
+      },
+      {
+        "id": "logging-process-vitals-absent",
+        "reason": "split-budget-exhausted"
+      },
+      {
+        "id": "timing-test-reaudit-wave",
+        "reason": "split-budget-exhausted"
+      },
+      {
+        "id": "gate-timing-tests-fail-under-machine-load",
+        "reason": "split-budget-exhausted"
+      },
+      {
+        "id": "format-range-service-refusals-public-message",
+        "reason": "split-budget-exhausted"
+      },
+      {
+        "id": "change-signature-omitted-optional-binding",
+        "reason": "split-budget-exhausted"
+      }
+    ],
+    "note": "Default first-40 window; one split retained, 14 further split candidates skipped without backfill; 214 capability-eligible rows beyond ceiling. No contextPct supplied: at most 10 implementation dispatches before checkpoint.",
+    "splits": [
+      {
+        "parent": "code-action-and-flow-argument-refusals-public-message",
+        "children": [
+          "code-action-index-public-refusal",
+          "flow-region-public-argument-refusals",
+          "fix-all-scope-public-argument-refusals"
+        ]
+      }
+    ]
+  },
+  "reviewFindings": {
+    "block": 0,
+    "warn": 11,
+    "info": 15
+  },
+  "lastReviewFindings": [
+    {
+      "initiativeId": "preview-token-lifecycle-evidence",
+      "severity": "warn",
+      "rule": "3",
+      "evidence": "Scope lists 6 production files but omits the required forcing-shape justification sentence; defect-forced-companion reasoning is in Risks. Move the traced mechanism and observable failure into Scope without shrinking the complete change."
+    },
+    {
+      "initiativeId": "preview-token-reason-projection",
+      "severity": "warn",
+      "rule": "3",
+      "evidence": "Scope lists 8 production files but omits the required forcing-shape justification sentence; defect-forced-companion reasoning is in Risks. Move the traced mechanism and observable failure into Scope without shrinking the complete change."
+    },
+    {
+      "initiativeId": "navigation-and-locator-argument-refusals-public-message",
+      "severity": "info",
+      "rule": "3",
+      "evidence": "Defect-forced-companion holds: SymbolResolver.cs:291, SymbolNavigationService.cs:153 and CompletionService.cs:52 feed unchecked coordinates to Roslyn consumers; shared checked conversion and local public corrections form one coherent change."
+    },
+    {
+      "initiativeId": "scaffold-batch-preview-apply-route",
+      "severity": "info",
+      "rule": "3",
+      "evidence": "Defect-forced-companion holds: BatchTestScaffolder.cs:236 emits a solution token while OrchestrationTools.cs:124-128 peeks only composite ownership and ToolDispatch.cs:398 emits false stale guidance; producer, route and catalog companions are one repair."
+    },
+    {
+      "initiativeId": "restore-callers-missing-packages-path",
+      "severity": "info",
+      "rule": "3",
+      "evidence": "Defect-forced-companion holds: WorkspaceForkApplyService.cs:531 omits packages cache, WorkspaceTools.cs:704-712 collapses mixed/default roots, and RestoreStalenessDetector.cs:405-406 dereferences unguarded JSON shape. Shared planning and root propagation address the traced restore mechanism."
+    },
+    {
+      "initiativeId": "plan",
+      "severity": "warn",
+      "rule": "C2-graph-disagreement",
+      "evidence": "Whole-loaded-stanza graph contains 45 edges; stored graph has 20. Additional order pairs: 2/25, 5/25, 6/25, 6/7.02, 12/25, 15/25, 7.02/15, 16/25, 17/25, 19/25, 7.02/19, 21/25, 22/25, 7.02/22, 25/26, 8.01/25, 8.02/25, 8.03/25, 8.04/25, 8.05/25, 7.01/25, 7.02/25, 7.02/8.01, 7.02/8.02, 7.01/8.04. Every additional edge involves a deferred initiative. Restricting both graphs to pending initiatives yields identical 20 edges; stored active scheduling is accurate. Reviewer/producer population contract needs alignment."
+    },
+    {
+      "initiativeId": "preview-token-lifecycle-evidence",
+      "severity": "warn",
+      "rule": "C2-wave-conflict",
+      "evidence": "Consecutive full-plan orders 7.02 (deferred) and 8.01 (pending) overlap: docs/decisions/README.md. Serialize executable conflicts; deferred neighbors remain parked."
+    },
+    {
+      "initiativeId": "preview-token-reason-projection",
+      "severity": "warn",
+      "rule": "C2-wave-conflict",
+      "evidence": "Consecutive full-plan orders 8.01 (pending) and 8.02 (pending) overlap: docs/decisions/0024-preview-token-terminal-lifecycle.md, tests/RoslynMcp.Tests/ToolDispatchTests.cs. Serialize executable conflicts; deferred neighbors remain parked."
+    },
+    {
+      "initiativeId": "preview-token-solution-confirmation",
+      "severity": "warn",
+      "rule": "C2-wave-conflict",
+      "evidence": "Consecutive full-plan orders 8.02 (pending) and 8.03 (pending) overlap: tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs. Serialize executable conflicts; deferred neighbors remain parked."
+    },
+    {
+      "initiativeId": "preview-token-composite-confirmation",
+      "severity": "warn",
+      "rule": "C2-wave-conflict",
+      "evidence": "Consecutive full-plan orders 8.03 (pending) and 8.04 (pending) overlap: tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs. Serialize executable conflicts; deferred neighbors remain parked."
+    },
+    {
+      "initiativeId": "preview-token-project-confirmation",
+      "severity": "warn",
+      "rule": "C2-wave-conflict",
+      "evidence": "Consecutive full-plan orders 8.04 (pending) and 8.05 (pending) overlap: tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs. Serialize executable conflicts; deferred neighbors remain parked."
+    },
+    {
+      "initiativeId": "preview-diff-whitespace-omission",
+      "severity": "warn",
+      "rule": "C2-wave-conflict",
+      "evidence": "Consecutive full-plan orders 25 (deferred) and 26 (pending) overlap: src/RoslynMcp.Roslyn/Helpers/DiffGenerator.cs, src/RoslynMcp.Roslyn/Helpers/SolutionDiffHelper.cs, src/RoslynMcp.Roslyn/Services/EditService.cs, src/RoslynMcp.Roslyn/Services/RefactoringService.cs, tests/RoslynMcp.Tests/DiffGeneratorTests.cs, tests/RoslynMcp.Tests/SolutionDiffHelperTests.cs. Serialize executable conflicts; deferred neighbors remain parked."
+    },
+    {
+      "initiativeId": "fork-composite-nonconsuming-snapshot",
+      "severity": "warn",
+      "rule": "hotspot",
+      "evidence": "Consecutive full-plan initiatives scaffold-batch-preview-apply-route and fork-composite-nonconsuming-snapshot both touch listed hotspots (src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.cs, src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.Orchestration.cs, README.md, src/RoslynMcp.Host.Stdio/README.md; src/RoslynMcp.Roslyn/ServiceCollectionExtensions.cs). This pair includes deferred work; keep it parked and re-evaluate on operator re-plan."
+    },
+    {
+      "initiativeId": "fork-preview-project-composite-replay",
+      "severity": "warn",
+      "rule": "hotspot",
+      "evidence": "Consecutive full-plan initiatives fork-composite-nonconsuming-snapshot and fork-preview-project-composite-replay both touch listed hotspots (src/RoslynMcp.Roslyn/ServiceCollectionExtensions.cs; README.md, src/RoslynMcp.Host.Stdio/README.md). This pair includes deferred work; keep it parked and re-evaluate on operator re-plan."
+    },
+    {
+      "initiativeId": "scaffold-batch-preview-apply-route",
+      "severity": "info",
+      "rule": "C2",
+      "evidence": "Whole-plan degree 4 without heroic-last; active cached degree 2. Use live generations and explicit dependsOn; parked edges do not authorize terminal execution."
+    },
+    {
+      "initiativeId": "restore-callers-missing-packages-path",
+      "severity": "info",
+      "rule": "C2",
+      "evidence": "Whole-plan degree 4 without heroic-last; active cached degree 2. Use live generations and explicit dependsOn; parked edges do not authorize terminal execution."
+    },
+    {
+      "initiativeId": "change-signature-class-struct-primary-ctor-add-remove",
+      "severity": "info",
+      "rule": "C2",
+      "evidence": "Whole-plan degree 2 without heroic-last; active cached degree 1. Use live generations and explicit dependsOn; parked edges do not authorize terminal execution."
+    },
+    {
+      "initiativeId": "workspace-close-global-build-server-shutdown",
+      "severity": "info",
+      "rule": "C2",
+      "evidence": "Whole-plan degree 7 without heroic-last; active cached degree 5. Use live generations and explicit dependsOn; parked edges do not authorize terminal execution."
+    },
+    {
+      "initiativeId": "change-signature-service-refusals-public-message",
+      "severity": "info",
+      "rule": "C2",
+      "evidence": "Whole-plan degree 2 without heroic-last; active cached degree 1. Use live generations and explicit dependsOn; parked edges do not authorize terminal execution."
+    },
+    {
+      "initiativeId": "cross-project-public-refusals-echo-input",
+      "severity": "info",
+      "rule": "C2",
+      "evidence": "Whole-plan degree 4 without heroic-last; active cached degree 2. Use live generations and explicit dependsOn; parked edges do not authorize terminal execution."
+    },
+    {
+      "initiativeId": "preview-diff-whitespace-omission",
+      "severity": "info",
+      "rule": "C2",
+      "evidence": "Whole-plan degree 2 without heroic-last; active cached degree 1. Use live generations and explicit dependsOn; parked edges do not authorize terminal execution."
+    },
+    {
+      "initiativeId": "preview-token-lifecycle-evidence",
+      "severity": "info",
+      "rule": "C2",
+      "evidence": "Whole-plan degree 7 without heroic-last; active cached degree 5. Use live generations and explicit dependsOn; parked edges do not authorize terminal execution."
+    },
+    {
+      "initiativeId": "preview-token-reason-projection",
+      "severity": "info",
+      "rule": "C2",
+      "evidence": "Whole-plan degree 9 without heroic-last; active cached degree 7. Use live generations and explicit dependsOn; parked edges do not authorize terminal execution."
+    },
+    {
+      "initiativeId": "preview-token-solution-confirmation",
+      "severity": "info",
+      "rule": "C2",
+      "evidence": "Whole-plan degree 6 without heroic-last; active cached degree 5. Use live generations and explicit dependsOn; parked edges do not authorize terminal execution."
+    },
+    {
+      "initiativeId": "preview-token-composite-confirmation",
+      "severity": "info",
+      "rule": "C2",
+      "evidence": "Whole-plan degree 5 without heroic-last; active cached degree 3. Use live generations and explicit dependsOn; parked edges do not authorize terminal execution."
+    },
+    {
+      "initiativeId": "preview-token-project-confirmation",
+      "severity": "info",
+      "rule": "C2",
+      "evidence": "Whole-plan degree 4 without heroic-last; active cached degree 3. Use live generations and explicit dependsOn; parked edges do not authorize terminal execution."
+    }
+  ],
+  "reviewCoverage": {
+    "status": "passed-with-warnings",
+    "stanzaHashes": {
+      "navigation-and-locator-argument-refusals-public-message": "666521d55949857919f81050776dae5632f633b4022d3c7451baf26b93af338f",
+      "workspace-lifecycle-argument-refusals-public-message": "d06d9285b83699a868a3996681820eb101b3acef7bd3b617b031701eb12fd44f",
+      "tool-refusal-public-message-guard": "4eff07904b02ba69e478d3d9aaa727831799ecdeb82635aa2b062d03d00bef50",
+      "extract-type-preserve-untouched-trivia": "cefaf2862383a0649b6802b3f949b13cf6233cc91100d939d9b785448c2dc343",
+      "scaffold-batch-preview-apply-route": "847bb3e0c0a082f9a1b16a1c89db0b9faca9d6deb662ffe8d47e0093e2af1ccd",
+      "notice-verifier-scoped-test-inherits-nuget-packages": "e1ff8a04c6da28d98e04ffa92f6e4632bc2fa0d3806aca2f57e5c0486320ad35",
+      "test-discovery-file-path-case-identity": "1145ae27e4bee0dbf2d191d955b33c7b804f2943b9ecbbe6d663e28d3f2de031",
+      "workspace-project-alias-lookup": "71a0718b98e486f2d7e922407c0120e829f833c522ff3588befce534d96262ca",
+      "fix-all-equivalence-key-unregistered-fallback": "913514db5542443540c48366ab331270a804e76f3350e61ff3b3122811f12f1f",
+      "editorconfig-section-source-path-matching": "56bbce20febc10f9c2b59496955ae4c711e041c5b802fcef475b9d4075d4268f",
+      "logging-jsonl-drops-structured-state": "fd3aef40e86b7820bb0d8c786d2534936d972b89ddedf7adf9b78b33b3ff579e",
+      "restore-callers-missing-packages-path": "5e7bc589d2e8eac07e1489f9396e75b478a090c22112ceb9a4c3a1439c198521",
+      "split-service-refuse-cross-partition-references": "3c92791380fba16b69f6a42f9157eeef8e87c8752b41aafba94da90c4478fa75",
+      "change-signature-class-struct-primary-ctor-add-remove": "6a8b4057370d3affb55f0799654613f5b3441e9aae49085849c9370f391ade96",
+      "load-profile-full-suite": "bc2695528f8866034df6aa82bf401da7ca40f647183d1062466b408fe73768fa",
+      "workspace-close-global-build-server-shutdown": "cf010db06593e16475cf66103df1391e94e4b0dfb8b7faec779004992b458e4f",
+      "test-temp-reaper-live-owner": "75252658ed097350897e2a9d422ae19e59925f169294094bd0e77cf6f1fc85d1",
+      "change-signature-service-refusals-public-message": "ef997e9a4919038ae0947c3e3f1f99bd2f30d6f2616af291ea9a397c2b768083",
+      "cross-project-public-refusals-echo-input": "8a00fc184c9bc3eed28e5ac5190ab5525f3daa8600fd101255ddf0cf8a49c770",
+      "top10-good-preview-result-contract": "2776a9f7799a1adbc47410ea9bab3377a56c154a6b3e38c5e786036668e2b154",
+      "workspace-close-isolated-nuget-handles": "2680f5502a0f4cdadc8c385a838f4d47f029a50f296405ab741444df81d8eacd",
+      "preview-store-explicit-internal-state": "928252056cf3207c7d6eac15fe72d80a24a4fa6e95ed05a4396d75b2d135ace3",
+      "preview-diff-whitespace-omission": "322cd92491b97397041e0252bb8cf617ccac91defd3d847351dd3a180aadba5e",
+      "preview-token-lifecycle-evidence": "07c7592b348ad2a4f900076455b31f6794d9bf4d2fc76aa4248b10b53739f4cc",
+      "preview-token-reason-projection": "4a8c245cec99ee749c080c3c5de267edbd77fb93d6e0c1889d17b7271a675c18",
+      "preview-token-solution-confirmation": "f391d2ba9ede8381c894af4f7a17c250add8de6540816a497aeb4252888fe9f0",
+      "preview-token-composite-confirmation": "e028421571de16aaff0e573308c71d1c18aa46a91313fb0c995b190e7ada614a",
+      "preview-token-project-confirmation": "5b3db04aab6d5bca44869369e23f9cae2d1cbcb5b22bbb27339e8608b53bb9fb",
+      "fork-composite-nonconsuming-snapshot": "fd27c0b8f49321c6afefbedfa17fe940da2d76638629787c3f40319068ea1189",
+      "fork-preview-project-composite-replay": "c524884456374574eb70979508d878be7d0d3a58e6c94484d3d6a2bf204610d4"
+    }
+  },
+  "conflictGraphInputHash": "50036f49da08ca8b29ebc273b044a1848c7fb99767378405f22c33770ae8973e",
+  "planHash": "2a80115fccfc91e2b5b4d58ba6f4dad99008b8a38245541fb3685c8ed44cebe3",
+  "backlogSnapshotHash": "cc5f2af685632ecdcbfcf94a8fe98135b9da20f7b2f4ba18d6cdddf811c1c1cc",
+  "reviewedPlanHash": "2a80115fccfc91e2b5b4d58ba6f4dad99008b8a38245541fb3685c8ed44cebe3",
+  "reviewedBacklogSnapshotHash": "cc5f2af685632ecdcbfcf94a8fe98135b9da20f7b2f4ba18d6cdddf811c1c1cc"
+}
