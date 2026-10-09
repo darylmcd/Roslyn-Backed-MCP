@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-09T23:23:59Z
+**updated_at:** 2026-10-09T23:29:18Z
 
 ## Agent contract
 
@@ -150,6 +150,7 @@
 | `test-os-guards-report-passed` | Medium | — | **OS-guarded tests return early and report Passed** — 13 tests in 4 files open with `if (!OperatingSystem.IsX()) return;`; 41 sibling guards use Assert.Inconclusive. Make every OS guard report not-run. [type: test] [source: test-rot-probe-20261009] | L | items/test-os-guards-report-passed.md |
 | `test-inconclusive-count-unbudgeted` | Medium | — | **Nothing bounds the inconclusive test count** — ~95 Assert.Inconclusive sites and no CI or verify-release check on tests that end not-run: a runner without git silently drops 23 tests. [type: ops] [source: test-rot-probe-20261009] | M | items/test-inconclusive-count-unbudgeted.md |
 | `workspace-msbuild-global-properties-value-redaction` | Medium | workspace-lifecycle-argument-refusals-public-message | Keep caller MSBuild global-property values out of rendered and structured logs; retain safe counts and unchanged evaluation inputs. [type: bug] [source: lifecycle cold diagnosis 2026-10-09] | S | items/workspace-msbuild-global-properties-value-redaction.md |
+| `type-extraction-service-refusals-public-message` | Medium | — | Publish safe type-extraction caller corrections through the existing error envelope; retain internal redaction and structured safety refusals. [type: bug] [source: extraction-trivia-preflight] | S | items/type-extraction-service-refusals-public-message.md |
 
 ## Low
 

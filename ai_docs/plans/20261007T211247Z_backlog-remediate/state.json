@@ -182,7 +182,7 @@
     {
       "id": "extract-type-preserve-untouched-trivia",
       "order": 5,
-      "status": "pending",
+      "status": "in-progress",
       "backlogRowsClosed": [
         "extract-type-preserve-untouched-trivia"
       ],
@@ -210,11 +210,11 @@
         "ruleOneBundleResolved": null
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
+      "branch": "remediation/extract-type-preserve-untouched-trivia",
+      "worktreePath": "D:/Roslyn-Backed-MCP/.worktrees/extract-type-preserve-untouched-trivia",
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
+      "notes": "Immutable dispatch base7322a2d1810743427185add91f4e44442ebfb1a9 after guard/reconciliation and successful exact-main backstop38002117752. Re-vet root formatting plus constructor synthesis; prove preview and persisted apply bytes/compilation. Fourth implementation dispatch; contextPct/contextCost unavailable. Adjacent unmarked InvalidOperation caller refusals tracked in new product row without expanding selection.",
       "fileSetHash": "b39233ebef576f17ceeebe7a140e06427809c85452cfae1f02db223f42436701",
       "stanzaHash": "1339e6a4fae0c816703bf2759b9551e5784180ccedde90be99d8416903f1dc9e",
       "reviewedStanzaHash": "1339e6a4fae0c816703bf2759b9551e5784180ccedde90be99d8416903f1dc9e",
@@ -393,8 +393,8 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "a5293638d175b55e86c905ef7b8bae7795070496e70da55380b756ac64be88b3",
-      "stanzaHash": "fd4ca08bdefaa91aa17ed4e9ac20ca7ae749bf376efef9940ab94f67ef3321c6",
-      "reviewedStanzaHash": "fd4ca08bdefaa91aa17ed4e9ac20ca7ae749bf376efef9940ab94f67ef3321c6",
+      "stanzaHash": "e2d34c23e8893f4eb8df24fff6c2a685e83da668b07975ae52ed0efacdcbf804",
+      "reviewedStanzaHash": "e2d34c23e8893f4eb8df24fff6c2a685e83da668b07975ae52ed0efacdcbf804",
       "amendments": [
         {
           "at": "2026-10-09T15:33:59.015Z",
@@ -409,6 +409,13 @@
           "reason": "Require scoped regressions plus serialized complete sanctioned local PR-equivalent producer before required hosted gates; preserve file scope, estimates, dependencies and deferred dispositions.",
           "previousStanzaHash": "772111263c053632d4dea6cacd9fb10206e414bdd52267364c6f7c584be718a2",
           "stanzaHash": "fd4ca08bdefaa91aa17ed4e9ac20ca7ae749bf376efef9940ab94f67ef3321c6"
+        },
+        {
+          "at": "2026-10-09T23:31:14.498Z",
+          "finding": "Installed complete-fix sibling-probe requirement needs explicit source-bound witnesses before dispatch.",
+          "reason": "Read defining service and all path comparison/index uses on immutable7322a2d1810743427185add91f4e44442ebfb1a9. Distinguish exact path mechanisms from correct name/search heuristics and existing physical lookup. Scope, estimates, validation and pending status retained; execution-base re-vet still required.",
+          "previousStanzaHash": "fd4ca08bdefaa91aa17ed4e9ac20ca7ae749bf376efef9940ab94f67ef3321c6",
+          "stanzaHash": "e2d34c23e8893f4eb8df24fff6c2a685e83da668b07975ae52ed0efacdcbf804"
         }
       ]
     },
@@ -449,8 +456,8 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "5ae53efeefad9af7661e98abc4db281f0b23dea87b760a8f56fdd1108bfbec13",
-      "stanzaHash": "eef5b009427f000551878925dc35a574b1c24cbf5e5108a22b27b18f7494e89d",
-      "reviewedStanzaHash": "eef5b009427f000551878925dc35a574b1c24cbf5e5108a22b27b18f7494e89d",
+      "stanzaHash": "23ca433d4565efda70d65fddf058331ccc1a139ea356db06fce4dbea59420ce4",
+      "reviewedStanzaHash": "23ca433d4565efda70d65fddf058331ccc1a139ea356db06fce4dbea59420ce4",
       "amendments": [
         {
           "at": "2026-10-09T19:46:18.359Z",
@@ -458,6 +465,13 @@
           "reason": "Require scoped regressions plus serialized complete sanctioned local PR-equivalent producer before required hosted gates; preserve file scope, estimates, dependencies and deferred dispositions.",
           "previousStanzaHash": "71a0718b98e486f2d7e922407c0120e829f833c522ff3588befce534d96262ca",
           "stanzaHash": "eef5b009427f000551878925dc35a574b1c24cbf5e5108a22b27b18f7494e89d"
+        },
+        {
+          "at": "2026-10-09T23:31:14.880Z",
+          "finding": "Installed complete-fix sibling-probe requirement needs explicit source-bound witnesses before dispatch.",
+          "reason": "Read defining service and all path comparison/index uses on immutable7322a2d1810743427185add91f4e44442ebfb1a9. Distinguish exact path mechanisms from correct name/search heuristics and existing physical lookup. Scope, estimates, validation and pending status retained; execution-base re-vet still required.",
+          "previousStanzaHash": "eef5b009427f000551878925dc35a574b1c24cbf5e5108a22b27b18f7494e89d",
+          "stanzaHash": "23ca433d4565efda70d65fddf058331ccc1a139ea356db06fce4dbea59420ce4"
         }
       ]
     },
@@ -2142,8 +2156,8 @@
       "extract-type-preserve-untouched-trivia": "1339e6a4fae0c816703bf2759b9551e5784180ccedde90be99d8416903f1dc9e",
       "scaffold-batch-preview-apply-route": "8f5c2bfe46162db26cba37e16760dd549b91380091ba4f172a30a63078ba8ca8",
       "notice-verifier-scoped-test-inherits-nuget-packages": "e1ff8a04c6da28d98e04ffa92f6e4632bc2fa0d3806aca2f57e5c0486320ad35",
-      "test-discovery-file-path-case-identity": "fd4ca08bdefaa91aa17ed4e9ac20ca7ae749bf376efef9940ab94f67ef3321c6",
-      "workspace-project-alias-lookup": "eef5b009427f000551878925dc35a574b1c24cbf5e5108a22b27b18f7494e89d",
+      "test-discovery-file-path-case-identity": "e2d34c23e8893f4eb8df24fff6c2a685e83da668b07975ae52ed0efacdcbf804",
+      "workspace-project-alias-lookup": "23ca433d4565efda70d65fddf058331ccc1a139ea356db06fce4dbea59420ce4",
       "fix-all-equivalence-key-unregistered-fallback": "913514db5542443540c48366ab331270a804e76f3350e61ff3b3122811f12f1f",
       "editorconfig-section-source-path-matching": "56bbce20febc10f9c2b59496955ae4c711e041c5b802fcef475b9d4075d4268f",
       "logging-jsonl-drops-structured-state": "fd3aef40e86b7820bb0d8c786d2534936d972b89ddedf7adf9b78b33b3ff579e",
@@ -2169,8 +2183,8 @@
     }
   },
   "conflictGraphInputHash": "401e80ba541788fea6b2636d8dcf67b3ce402610942346380fa33a30b0dc1e78",
-  "planHash": "e5436f27114d8f51be3327e405e2e84397e37f489696f7bcacb9edcf040f5256",
-  "backlogSnapshotHash": "4013514d7186652a5d257013bdff9b05e7997acec6391a552c4c156828a9bad1",
-  "reviewedPlanHash": "e5436f27114d8f51be3327e405e2e84397e37f489696f7bcacb9edcf040f5256",
+  "planHash": "688d6a22b504bd51bfb5c8e438c934036234b56150d1a0424f8627890cf5faa6",
+  "backlogSnapshotHash": "418363fe611b9f9ecdc2e204253933a756a48b28b720d282e002748a31dd1e7e",
+  "reviewedPlanHash": "688d6a22b504bd51bfb5c8e438c934036234b56150d1a0424f8627890cf5faa6",
   "reviewedBacklogSnapshotHash": "cc5f2af685632ecdcbfcf94a8fe98135b9da20f7b2f4ba18d6cdddf811c1c1cc"
 }
