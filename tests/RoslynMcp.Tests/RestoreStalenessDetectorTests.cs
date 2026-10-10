@@ -31,6 +31,22 @@ public sealed class RestoreStalenessDetectorTests
         TestFixtureFileSystem.DeleteDirectoryIfExists(_tempRoot);
     }
 
+
+    [TestMethod]
+    [DataRow("null")]
+    [DataRow("[]")]
+    [DataRow("""{"project":null}""")]
+    [DataRow("""{"project":{"frameworks":{"net10.0":null}}}""")]
+    [DataRow("""{"project":{"frameworks":{"net10.0":{"dependencies":{"Newtonsoft.Json":4}}}}}""")]
+    [DataRow("""{"project":{"frameworks":{"net10.0":{"centralPackageVersions":{"Newtonsoft.Json":[]}}}}}""")]
+    public void IsRestoreRequired_ValidJsonWrongShape_RequiresRestore(string json)
+    {
+        var path = WriteProject("Shape.csproj", PackageReferenceProject);
+        Directory.CreateDirectory(Path.Combine(_tempRoot, "obj"));
+        File.WriteAllText(Path.Combine(_tempRoot, "obj", "project.assets.json"), json);
+        Assert.IsTrue(new RestoreStalenessDetector().IsRestoreRequired(path, NullLogger.Instance));
+    }
+
     [TestMethod]
     public void IsRestoreRequired_NoPackageReferences_ReturnsFalse()
     {
