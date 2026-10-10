@@ -15,26 +15,60 @@ internal sealed record FixAllDiagnosticCollectionContext(
     Project TargetProject,
     ImmutableArray<DiagnosticAnalyzer> Analyzers);
 
+internal sealed class FixAllDiagnosticCollectionUnavailableException : InvalidOperationException;
+
 internal sealed class FixAllDiagnosticCollector(ICompilationCache compilationCache)
 {
     internal async Task<ImmutableDictionary<Document, ImmutableArray<Diagnostic>>> CollectAsync(
         FixAllDiagnosticCollectionContext context,
+        CancellationToken cancellationToken) =>
+        await CollectCoreAsync(context, context.Solution, useCache: true, cancellationToken).ConfigureAwait(false)
+        ?? throw new FixAllDiagnosticCollectionUnavailableException();
+
+    /// <summary>
+    /// Re-diagnoses the candidate snapshot without reading or modifying the live compilation cache.
+    /// A missing required scope target or compilation makes verification unavailable, never empty.
+    /// </summary>
+    internal Task<ImmutableDictionary<Document, ImmutableArray<Diagnostic>>?> CollectCandidateAsync(
+        FixAllDiagnosticCollectionContext context,
+        Solution candidate,
+        CancellationToken cancellationToken) =>
+        CollectCoreAsync(context, candidate, useCache: false, cancellationToken);
+
+    private async Task<ImmutableDictionary<Document, ImmutableArray<Diagnostic>>?> CollectCoreAsync(
+        FixAllDiagnosticCollectionContext context,
+        Solution solution,
+        bool useCache,
         CancellationToken cancellationToken)
     {
-        var builder = ImmutableDictionary.CreateBuilder<Document, ImmutableArray<Diagnostic>>();
-        IEnumerable<Project> projects = context.Scope == FixAllScope.Solution
-            ? context.Solution.Projects
+        cancellationToken.ThrowIfCancellationRequested();
+        var originalProjects = context.Scope == FixAllScope.Solution
+            ? context.Solution.Projects.ToArray()
             : [context.TargetProject];
+        var originalDocumentIds = context.Scope == FixAllScope.Document
+            ? [context.TargetDocument.Id]
+            : originalProjects.SelectMany(project => project.DocumentIds).ToArray();
+        if (originalDocumentIds.Any(id => solution.GetDocument(id) is null))
+        {
+            return null;
+        }
+
+        var builder = ImmutableDictionary.CreateBuilder<Document, ImmutableArray<Diagnostic>>();
+        var projects = originalProjects.Select(project => solution.GetProject(project.Id));
 
         foreach (var project in projects)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var compilation = await compilationCache
-                .GetCompilationAsync(context.WorkspaceId, project, cancellationToken)
-                .ConfigureAwait(false);
+            if (project is null)
+            {
+                return null;
+            }
+            var compilation = useCache
+                ? await compilationCache.GetCompilationAsync(context.WorkspaceId, project, cancellationToken).ConfigureAwait(false)
+                : await project.GetCompilationAsync(cancellationToken).ConfigureAwait(false);
             if (compilation is null)
             {
-                continue;
+                return null;
             }
 
             IEnumerable<Diagnostic> diagnostics;
