@@ -3,9 +3,8 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
-using RoslynMcp.Core.Services;
-using RoslynMcp.Roslyn.Contracts;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -99,12 +98,36 @@ public sealed class TestDiscoveryFileIdentityTests
         Assert.AreEqual("ALPHAPROBE", symbolResult.Tests.Single().DisplayName);
     }
 
+    [TestMethod]
+    public void WorkspaceVersion_UnconfiguredHandlerFailsClosed()
+    {
+        Assert.Throws<NotSupportedException>(() => new FailClosedWorkspaceManagerStub().GetCurrentVersion("fixture"));
+    }
+
+    [TestMethod]
+    public void WorkspaceVersion_ConfiguredHandlerReceivesWorkspaceId()
+    {
+        var manager = new FailClosedWorkspaceManagerStub
+        {
+            GetCurrentVersionHandler = workspaceId => workspaceId == "fixture" ? 7 : 11
+        };
+        Assert.AreEqual(7, manager.GetCurrentVersion("fixture"));
+        Assert.AreEqual(11, manager.GetCurrentVersion("other"));
+    }
+
     private sealed class DiscoveryFixture : IDisposable
     {
         private readonly AdhocWorkspace _workspace = new();
         private readonly ProjectId _projectId = ProjectId.CreateNewId();
         private readonly string _root = Path.Combine(TestTempRoot.Current, "discovery-" + Guid.NewGuid().ToString("N"));
-        public TestDiscoveryService Service => new(new FixtureWorkspaceManager(_workspace.CurrentSolution), NullLogger<TestDiscoveryService>.Instance);
+        public TestDiscoveryService Service => new(new FailClosedWorkspaceManagerStub
+        {
+            GetCurrentSolutionHandler = _ => _workspace.CurrentSolution,
+            GetCurrentVersionHandler = _ => 1,
+            GetStatusAsyncHandler = workspaceId => new(workspaceId, null, 1, "fixture:1", DateTimeOffset.UtcNow, 1,
+                _workspace.CurrentSolution.Projects.Single().DocumentIds.Count,
+                [new("Verification", "", _workspace.CurrentSolution.Projects.Single().DocumentIds.Count, [], [], true, "Verification", "Library")], true, false, [])
+        }, NullLogger<TestDiscoveryService>.Instance);
 
         public DiscoveryFixture()
         {
@@ -143,26 +166,4 @@ public sealed class TestDiscoveryFileIdentityTests
         }
     }
 
-    private sealed class FixtureWorkspaceManager(Solution solution) : IWorkspaceManager
-    {
-        public event Action<string>? WorkspaceClosed { add { } remove { } }
-        public event Action<string>? WorkspaceReloaded { add { } remove { } }
-        public Solution GetCurrentSolution(string workspaceId) => solution;
-        public int GetCurrentVersion(string workspaceId) => 1;
-        public WorkspaceStatusDto GetStatus(string workspaceId) => new(workspaceId, null, 1, "fixture:1", DateTimeOffset.UtcNow, 1,
-            solution.Projects.Single().DocumentIds.Count, [new("Verification", "", solution.Projects.Single().DocumentIds.Count, [], [], true, "Verification", "Library")], true, false, []);
-        public Task<WorkspaceStatusDto> GetStatusAsync(string workspaceId, CancellationToken cancellationToken = default) => Task.FromResult(GetStatus(workspaceId));
-        public Task<WorkspaceStatusDto> LoadAsync(string path, EvictPolicy evictPolicy, CancellationToken ct) => throw new NotSupportedException();
-        public Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct) => throw new NotSupportedException();
-        public bool ContainsWorkspace(string workspaceId) => workspaceId == "fixture";
-        public bool IsStale(string workspaceId) => false;
-        public bool Close(string workspaceId) => throw new NotSupportedException();
-        public IReadOnlyList<WorkspaceStatusDto> ListWorkspaces() => [GetStatus("fixture")];
-        public ProjectGraphDto GetProjectGraph(string workspaceId) => throw new NotSupportedException();
-        public Task<IReadOnlyList<GeneratedDocumentDto>> GetSourceGeneratedDocumentsAsync(string workspaceId, string? projectName, CancellationToken ct) => throw new NotSupportedException();
-        public Task<string?> GetSourceTextAsync(string workspaceId, string filePath, CancellationToken ct) => throw new NotSupportedException();
-        public void RestoreVersion(string workspaceId, int version) => throw new NotSupportedException();
-        public bool TryApplyChanges(string workspaceId, Solution newSolution) => throw new NotSupportedException();
-        public Project? GetProject(string workspaceId, string projectNameOrPath) => solution.Projects.SingleOrDefault(p => p.Name == projectNameOrPath);
-    }
 }
