@@ -711,7 +711,7 @@
     {
       "id": "restore-callers-missing-packages-path",
       "order": 15,
-      "status": "pending",
+      "status": "in-progress",
       "backlogRowsClosed": [
         "restore-callers-missing-packages-path"
       ],
@@ -746,8 +746,8 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
+      "branch": "remediation/restore-callers-missing-packages-path",
+      "worktreePath": ".worktrees/restore-callers-missing-packages-path",
       "prUrl": null,
       "mergedAt": null,
       "notes": null,
