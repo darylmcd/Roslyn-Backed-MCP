@@ -4,7 +4,7 @@
 
 ## Anchors
 
-- `src/RoslynMcp.Roslyn/Services/TestDiscoveryService.cs:453-504`
+- `src/RoslynMcp.Roslyn/Services/TestDiscoveryService.cs:447-496`
 
 ## Acceptance
 
@@ -14,7 +14,7 @@
 
 ## Evidence
 
-- Source inspection at immutable c087ac4f512f2ddcddd83b89aca4e3e7c611757f: AddDirectReferenceMatchesAsync catches every non-cancellation exception at lines500-504 and discards it without logging or result diagnostics. DirectReferenceAttempted may already be true when failure occurs.
+- Source inspection at immutable c087ac4f512f2ddcddd83b89aca4e3e7c611757f: AddDirectReferenceMatchesAsync catches every non-cancellation exception at lines491-495 and discards it without logging or result diagnostics. DirectReferenceAttempted may already be true when failure occurs.
 - Separate mechanism from filesystem comparison and cross-project fully-qualified-name collisions. No runtime reproduction or fix is claimed by this filing.
 
 ## Context
