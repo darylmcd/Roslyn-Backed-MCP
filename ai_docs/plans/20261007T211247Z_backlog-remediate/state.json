@@ -198,7 +198,7 @@
         "changelog.d/extract-type-preserve-untouched-trivia.md"
       ],
       "rowsClosedCount": 1,
-      "estimatedContextTokens": 65000,
+      "estimatedContextTokens": 70000,
       "toolPolicy": "edit-only",
       "scheduleHint": null,
       "fanoutEstimate": 1,
@@ -216,8 +216,8 @@
       "mergedAt": null,
       "notes": "Immutable dispatch base7322a2d1810743427185add91f4e44442ebfb1a9 after guard/reconciliation and successful exact-main backstop38002117752. Re-vet root formatting plus constructor synthesis; prove preview and persisted apply bytes/compilation. Fourth implementation dispatch; contextPct/contextCost unavailable. Adjacent unmarked InvalidOperation caller refusals tracked in new product row without expanding selection.",
       "fileSetHash": "b39233ebef576f17ceeebe7a140e06427809c85452cfae1f02db223f42436701",
-      "stanzaHash": "5d4a3941b843dc332e623c1b1f1c859d65824e55eea4b149ef9b84400c052148",
-      "reviewedStanzaHash": "5d4a3941b843dc332e623c1b1f1c859d65824e55eea4b149ef9b84400c052148",
+      "stanzaHash": "7401bdfe5434523ba796a9a1a5ab49c9bc4624b458f41316190caa37bef425c5",
+      "reviewedStanzaHash": "7401bdfe5434523ba796a9a1a5ab49c9bc4624b458f41316190caa37bef425c5",
       "amendments": [
         {
           "at": "2026-10-09T15:33:09.082Z",
@@ -253,6 +253,13 @@
           "reason": "Cold source-only deepener re-derived complete trivia/identifier/name-allocation/namespace boundary on immutable7322a2d. Preserve exact three-file ownership and closure identity; widen Approach, route deepen, raise truthful diff-proxy estimate35000 to65000 and mark judgment-heavy/fanout1. All current-session old-code regressions and fresh full/cold/hosted proof remain required; no lesser-fix refusal, signature shim, cap bypass or global implementation.",
           "previousStanzaHash": "1339e6a4fae0c816703bf2759b9551e5784180ccedde90be99d8416903f1dc9e",
           "stanzaHash": "5d4a3941b843dc332e623c1b1f1c859d65824e55eea4b149ef9b84400c052148"
+        },
+        {
+          "at": "2026-10-10T00:39:59.227Z",
+          "finding": "Generated namespace helper can capture valid original imported namespace/type/alias/attribute bindings across user documents.",
+          "reason": "Cold immutable-source follow-up confirms public extraction contract does not reserve imported names. Include selective original-context Roslyn expansion and candidate binding comparison across every affected runtime document, all preview/apply deltas and unchanged bytes elsewhere. Same three implementation paths/fanout1; truthful diff-proxy estimate rises65000 to70000. No imported-name unsupported refusal, defaults, weakened checks or cap bypass; actual declaration-identity conflict remains typed domain validation.",
+          "previousStanzaHash": "5d4a3941b843dc332e623c1b1f1c859d65824e55eea4b149ef9b84400c052148",
+          "stanzaHash": "7401bdfe5434523ba796a9a1a5ab49c9bc4624b458f41316190caa37bef425c5"
         }
       ]
     },
@@ -2160,7 +2167,7 @@
       "navigation-and-locator-argument-refusals-public-message": "75d352d7b21486720ade9f4dd51b70df28977bdda5dc301632c5d08eec87afab",
       "workspace-lifecycle-argument-refusals-public-message": "d06d9285b83699a868a3996681820eb101b3acef7bd3b617b031701eb12fd44f",
       "tool-refusal-public-message-guard": "4eff07904b02ba69e478d3d9aaa727831799ecdeb82635aa2b062d03d00bef50",
-      "extract-type-preserve-untouched-trivia": "5d4a3941b843dc332e623c1b1f1c859d65824e55eea4b149ef9b84400c052148",
+      "extract-type-preserve-untouched-trivia": "7401bdfe5434523ba796a9a1a5ab49c9bc4624b458f41316190caa37bef425c5",
       "scaffold-batch-preview-apply-route": "8f5c2bfe46162db26cba37e16760dd549b91380091ba4f172a30a63078ba8ca8",
       "notice-verifier-scoped-test-inherits-nuget-packages": "e1ff8a04c6da28d98e04ffa92f6e4632bc2fa0d3806aca2f57e5c0486320ad35",
       "test-discovery-file-path-case-identity": "e2d34c23e8893f4eb8df24fff6c2a685e83da668b07975ae52ed0efacdcbf804",
@@ -2190,8 +2197,8 @@
     }
   },
   "conflictGraphInputHash": "401e80ba541788fea6b2636d8dcf67b3ce402610942346380fa33a30b0dc1e78",
-  "planHash": "b2722268530299c4c545131a627520c42cec11c7c5ed4bc6085fe211a5e8f84f",
+  "planHash": "c23ec2c23864c3b71301a7d1f962af9b773439a5a3a48ebf7ac01418e17c15c7",
   "backlogSnapshotHash": "169555d5699a9915da7508d4b6124fa802a5975770a3ccedb507ab79b89302d0",
-  "reviewedPlanHash": "b2722268530299c4c545131a627520c42cec11c7c5ed4bc6085fe211a5e8f84f",
+  "reviewedPlanHash": "c23ec2c23864c3b71301a7d1f962af9b773439a5a3a48ebf7ac01418e17c15c7",
   "reviewedBacklogSnapshotHash": "cc5f2af685632ecdcbfcf94a8fe98135b9da20f7b2f4ba18d6cdddf811c1c1cc"
 }
