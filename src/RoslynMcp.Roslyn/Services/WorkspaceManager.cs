@@ -975,13 +975,55 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
     }
 
     /// <summary>
-    /// solution-project-index-by-name: per-(workspaceId, version) index from project name and
-    /// absolute file path → Project, lazily built on first lookup. Older entries for the same
-    /// workspace are pruned automatically when the version bumps.
+    /// solution-project-index-by-name: names and raw paths cached per workspace/version.
+    /// Physical paths are indexed only for fallback lookup.
+    /// A different observed workspace version rebuilds the entry.
     /// </summary>
     private readonly ConcurrentDictionary<string, ProjectIndexEntry> _projectIndex = new(StringComparer.Ordinal);
 
-    private sealed record ProjectIndexEntry(int Version, IReadOnlyDictionary<string, Project> ByName);
+    internal sealed record ProjectIndexHit(int Order, Project Project);
+
+    internal sealed class ProjectIndexEntry(
+        int version,
+        IReadOnlyDictionary<string, ProjectIndexHit> byName,
+        IReadOnlyDictionary<string, ProjectIndexHit> byLexicalPath,
+        IReadOnlyList<(string Path, Project Project)> physicalCandidates)
+    {
+        public int Version { get; } = version;
+        private readonly IReadOnlyDictionary<string, ProjectIndexHit> _byName = byName;
+        private readonly IReadOnlyDictionary<string, ProjectIndexHit> _byLexicalPath = byLexicalPath;
+        private readonly IReadOnlyList<(string Path, Project Project)> _physicalCandidates = physicalCandidates;
+        private readonly object _physicalPathsLock = new();
+        private Dictionary<string, Project>? _physicalPaths;
+
+        public Project? Find(string nameOrPath)
+        {
+            _byName.TryGetValue(nameOrPath, out var name);
+            _byLexicalPath.TryGetValue(nameOrPath, out var lexical);
+            // Preserve solution order when name and platform-aware lexical path both match.
+            // A newly recognized alias must not displace an existing literal name.
+            if (name is not null)
+                return lexical is null || name.Order <= lexical.Order ? name.Project : lexical.Project;
+            if (lexical is not null) return lexical.Project;
+
+            if (nameOrPath.IndexOfAny(Path.GetInvalidPathChars()) >= 0
+                || (Path.IsPathRooted(nameOrPath) && !Path.IsPathFullyQualified(nameOrPath))) return null;
+
+            var physicalPath = PhysicalPathResolver.Resolve(nameOrPath);
+            lock (_physicalPathsLock)
+            {
+                if (_physicalPaths is null)
+                {
+                    var physicalPaths = new Dictionary<string, Project>(FileSystemPath.Comparer);
+                    foreach (var candidate in _physicalCandidates)
+                        physicalPaths.TryAdd(PhysicalPathResolver.Resolve(candidate.Path), candidate.Project);
+                    // Publish only after all candidates resolve; a failed build leaves no cached map.
+                    _physicalPaths = physicalPaths;
+                }
+                return _physicalPaths.TryGetValue(physicalPath, out var physical) ? physical : null;
+            }
+        }
+    }
 
     public Project? GetProject(string workspaceId, string projectNameOrPath)
     {
@@ -997,32 +1039,26 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             _ => BuildProjectIndex(version, solution),
             (_, existing) => existing.Version == version ? existing : BuildProjectIndex(version, solution));
 
-        return entry.ByName.TryGetValue(projectNameOrPath, out var hit) ? hit : null;
+        return entry.Find(projectNameOrPath);
     }
 
-    private static ProjectIndexEntry BuildProjectIndex(int version, Solution solution)
+    internal static ProjectIndexEntry BuildProjectIndex(int version, Solution solution)
     {
-        var dict = new Dictionary<string, Project>(StringComparer.OrdinalIgnoreCase);
+        var names = new Dictionary<string, ProjectIndexHit>(StringComparer.OrdinalIgnoreCase);
+        var lexicalPaths = new Dictionary<string, ProjectIndexHit>(FileSystemPath.Comparer);
+        var order = 0;
         foreach (var project in solution.Projects)
         {
-            if (!string.IsNullOrEmpty(project.Name) && !dict.ContainsKey(project.Name))
-            {
-                dict[project.Name] = project;
-            }
+            var hit = new ProjectIndexHit(order++, project);
+            if (!string.IsNullOrEmpty(project.Name)) names.TryAdd(project.Name, hit);
             if (!string.IsNullOrEmpty(project.FilePath))
             {
-                var fullPath = Path.GetFullPath(project.FilePath);
-                if (!dict.ContainsKey(fullPath))
-                {
-                    dict[fullPath] = project;
-                }
-                if (!dict.ContainsKey(project.FilePath))
-                {
-                    dict[project.FilePath] = project;
-                }
+                lexicalPaths.TryAdd(project.FilePath, hit);
             }
         }
-        return new ProjectIndexEntry(version, dict);
+        var physicalCandidates = lexicalPaths.OrderBy(pair => pair.Value.Order)
+            .Select(pair => (pair.Key, pair.Value.Project)).ToArray();
+        return new ProjectIndexEntry(version, names, lexicalPaths, physicalCandidates);
     }
 
     public bool TryApplyChanges(string workspaceId, Solution newSolution)
