@@ -2806,6 +2806,99 @@
         "value": "test-fixture-cleanup-link-boundary",
         "at": "2026-10-10T05:05:08.898Z"
       }
+    },
+    {
+      "n": 5,
+      "source": "executor",
+      "initiativeId": "workspace-project-alias-lookup",
+      "title": "Warn when a nonempty test filter matches zero tests",
+      "suggestedPri": "Low",
+      "amendRow": "test-run-zero-match-filter-silent-success",
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/TestRunnerService.cs:238"
+      ],
+      "acceptance": [
+        "Nonempty filter matching zero tests emits a warning or distinct status; retain success/counts for real matches."
+      ],
+      "evidence": "Live TestRunnerService.cs:238 directly returns DotnetOutputParser.ParseTestRun(execution, trxFiles); this session test_run returned succeeded=true,total=0,failed=0 without warning before the fixture existed. Exact original response retained in zero-match-original-response.json, timestamp2026-10-10T03:42:09.563Z: compacttest_run exited0 in24154ms,total/passed/failed/skipped all0,failureEnvelope null, no warning field.",
+      "at": "2026-10-10T05:41:27.305Z",
+      "disposition": {
+        "kind": "row",
+        "value": "test-run-zero-match-filter-silent-success",
+        "at": "2026-10-10T05:41:29.701Z"
+      }
+    },
+    {
+      "n": 6,
+      "source": "executor",
+      "initiativeId": "workspace-project-alias-lookup",
+      "title": "Release versioned project indexes with workspace session lifetime",
+      "suggestedPri": "Medium",
+      "amendRow": "workspace-project-index-session-lifetime",
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs:526",
+        "src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs:982",
+        "src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs:995",
+        "src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs:1113"
+      ],
+      "acceptance": [
+        "Deterministically release index entries on close, eviction, and shutdown; prove no closed-session republishing under overlapping lookup/close.",
+        "Retain reload/version correctness with deterministic publication and shutdown/load race controls."
+      ],
+      "evidence": "Immutable base0442d5fa0d4be457f0f9a5f0de50996ada720750: field982 + AddOrUpdate995 are the only _projectIndex references; CloseCore removes _sessions at526 and Dispose clears _sessions at1113 without clearing the Project-bearing cache. Existing root-cause row already filed by parent; no runtime memory-measurement claim.",
+      "at": "2026-10-10T05:41:32.235Z",
+      "disposition": {
+        "kind": "row",
+        "value": "workspace-project-index-session-lifetime",
+        "at": "2026-10-10T05:41:36.323Z"
+      }
+    },
+    {
+      "n": 7,
+      "source": "executor",
+      "initiativeId": "workspace-project-alias-lookup",
+      "title": "Distinguish interpreter exit from descendant capture completion during owned producer recovery",
+      "suggestedPri": "Medium",
+      "amendRow": "script-bridge-long-run-result-recovery",
+      "anchors": [
+        "mcp-servers/script-bridge/server.mjs:191",
+        "mcp-servers/script-bridge/server.mjs:251",
+        "mcp-servers/script-bridge/server.mjs:298",
+        "mcp-servers/script-bridge/server.mjs:529"
+      ],
+      "acceptance": [
+        "Retain bounded recoverable interpreter exit/capture completion evidence and owned producer identity when descendants keep stream handles open.",
+        "Regression: interpreter exits0, owned producer remains active beyond capture timeout; recovery neither duplicates execution nor mistakes timedOut for producer failure."
+      ],
+      "evidence": "run_script timeoutMs60000 returned exitCode0,timedOuttrue,durationMs60035,termination already-exited/no tree kill. Native04:42:28Z: interpreter17604 absent; producer25772 creation-bound live, parent17604. launch-relay-evidence.json,launch-native-evidence.json,refusal-producer-descendants.json retain sanitized proof; existing global row witness adopted on installed main8054ff9d0324c034ffb76b92fe3c7488c680e9e6; filing PR756 closed unmerged after owner adoption (PR755 superseded); no recovery implementation proof.",
+      "at": "2026-10-10T05:41:38.499Z",
+      "disposition": {
+        "kind": "row",
+        "value": "script-bridge-long-run-result-recovery",
+        "at": "2026-10-10T05:41:42.141Z"
+      }
+    },
+    {
+      "n": 8,
+      "source": "executor",
+      "initiativeId": "workspace-project-alias-lookup",
+      "title": "Keep fixture cleanup within owned roots across filesystem links",
+      "suggestedPri": "High",
+      "amendRow": "test-fixture-cleanup-link-boundary",
+      "anchors": [
+        "tests/RoslynMcp.Tests/TestInfrastructure/TestFixtureFileSystem.cs:114",
+        "tests/RoslynMcp.Tests/TestInfrastructure/TestFixtureFileSystem.cs:119"
+      ],
+      "acceptance": [
+        "Cleanup must not traverse links and mutate attributes on external targets; add owned inside/outside marker controls and link-cycle cleanup controls."
+      ],
+      "evidence": "Live ClearReadOnlyAttributes114 enumerates SearchOption.AllDirectories and119 calls File.SetAttributes; parent reproduced an owned Windows A/link→B marker changing ReadOnly→Normal, then restored and removed owned artifacts. Existing High/S product row filed by parent; current alias fixtures target only owned sample directories and explicitly unlink cycles before cleanup.",
+      "at": "2026-10-10T05:41:44.295Z",
+      "disposition": {
+        "kind": "row",
+        "value": "test-fixture-cleanup-link-boundary",
+        "at": "2026-10-10T05:41:46.802Z"
+      }
     }
   ]
 }
