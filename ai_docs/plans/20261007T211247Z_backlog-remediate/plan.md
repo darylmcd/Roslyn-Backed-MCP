@@ -22,7 +22,7 @@ Selection note: Default first-40 window; one split retained, 14 further split ca
 | 14 | logging-jsonl-drops-structured-state | merged | [#1777](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1777) | logging-jsonl-drops-structured-state |
 | 15 | restore-callers-missing-packages-path | deferred | — | restore-callers-missing-packages-path |
 | 16 | split-service-refuse-cross-partition-references | deferred | — | split-service-refuse-cross-partition-references |
-| 17 | change-signature-class-struct-primary-ctor-add-remove | pending | — | change-signature-class-struct-primary-ctor-add-remove |
+| 17 | change-signature-class-struct-primary-ctor-add-remove | in-progress | — | change-signature-class-struct-primary-ctor-add-remove |
 | 18 | load-profile-full-suite | pending | — | load-profile-full-suite |
 | 19 | workspace-close-global-build-server-shutdown | pending | — | workspace-close-global-build-server-shutdown |
 | 20 | test-temp-reaper-live-owner | pending | — | test-temp-reaper-live-owner |

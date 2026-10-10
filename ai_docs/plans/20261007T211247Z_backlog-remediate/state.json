@@ -4,7 +4,7 @@
   "backlogSnapshot": "2026-10-07T06:24:42Z",
   "addendaLoaded": true,
   "phase": "complete",
-  "cycleCount": 3,
+  "cycleCount": 4,
   "maxCycles": 2,
   "completed": false,
   "reviewStatus": "passed-with-warnings",
@@ -764,7 +764,7 @@
       "prUrl": null,
       "mergedAt": null,
       "notes": "Complete source re-vet12production9tests2docs estimate120000 exceeds installed5f8bf2da Rule5 cap80000; native exec-args exit4 in complete-graph-admission-5f8.log. Accepted ordinary reference previews require physical graph replay plus shared source persistence/rebase/preview diff and path completeness; no blanket refusal or partial shipment. SOURCE-ONLY ea969292d61a8c633cb77581a587841d36742741 pushed on retained owned branch/WT,72scopedpass/6project compiler/causal9red+2real-mixedred, nofullgate/PR. Fresh cold complete-scope review and admission required after global audited oversized-scope capability; preserve existing3family deferred owner and source token authority.",
-      "fileSetHash": "4eec65cd51d82affe39e1025c2342f18fd85ea1ab390148b9b180e6e7bb4f2e1",
+      "fileSetHash": "195c72f1173665358bb34e45a2225d2378f13cb05ba2c3aed46298a847f77039",
       "stanzaHash": "8110615440439c3baadb8b32bb5269dde230fc7054bdd20067874a2cc40730e8",
       "reviewedStanzaHash": "8110615440439c3baadb8b32bb5269dde230fc7054bdd20067874a2cc40730e8",
       "amendments": [
@@ -858,7 +858,7 @@
     {
       "id": "change-signature-class-struct-primary-ctor-add-remove",
       "order": 17,
-      "status": "pending",
+      "status": "in-progress",
       "backlogRowsClosed": [
         "change-signature-class-struct-primary-ctor-add-remove"
       ],
@@ -891,8 +891,8 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
+      "branch": "remediation/change-signature-class-struct-primary-ctor-add-remove",
+      "worktreePath": ".worktrees/change-signature-class-struct-primary-ctor-add-remove",
       "prUrl": null,
       "mergedAt": null,
       "notes": null,
@@ -2144,7 +2144,7 @@
   "reviewFindings": {
     "block": 0,
     "warn": 11,
-    "info": 20
+    "info": 18
   },
   "lastReviewFindings": [
     {
@@ -2208,12 +2208,6 @@
       "evidence": "Whole-plan conflict degree 2; scheduleHint is not heroic-last. Rebuild includes terminal stanzas and excludes canonical shared paths."
     },
     {
-      "initiativeId": "restore-callers-missing-packages-path",
-      "severity": "info",
-      "rule": "C2",
-      "evidence": "Whole-plan conflict degree 4; scheduleHint is not heroic-last. Rebuild includes terminal stanzas and excludes canonical shared paths."
-    },
-    {
       "initiativeId": "workspace-close-global-build-server-shutdown",
       "severity": "info",
       "rule": "C2",
@@ -2272,12 +2266,6 @@
       "severity": "info",
       "rule": "C2",
       "evidence": "Whole-plan conflict degree 7; scheduleHint is not heroic-last. Rebuild includes terminal stanzas and excludes canonical shared paths."
-    },
-    {
-      "initiativeId": "restore-callers-missing-packages-path",
-      "severity": "info",
-      "rule": "3",
-      "evidence": "Five-file defect-forced-companion holds: WorkspaceForkApplyService.cs:128-140 copies without obj before restore; WorkspaceTools.cs:702-712 drops null roots and uses ordinal-ignore-case identity; RestoreStalenessDetector.cs:405-406 accesses unguarded JSON shapes. Shared planner and all three callers form one complete restore mechanism."
     },
     {
       "initiativeId": "fork-composite-nonconsuming-snapshot",
@@ -2370,11 +2358,11 @@
       "fork-preview-project-composite-replay": "cd6c4c6aa3a52afdbbdf70820ab4f53e5735ca94771f2f2f2e30ad70e957f688"
     }
   },
-  "conflictGraphInputHash": "2e1fe8f3241bc69715300fe3a18ca7fbde82f2c67e330748937ae77e5b3d793f",
+  "conflictGraphInputHash": "df4ce41f5bdbd3fae59b0e2de721eda3bf5c46f5d8d39e6600a38910311f8b00",
   "planHash": "0f852cd7939c540b1c0f93d23142217165c164c8248488f08bee36b347b28bba",
-  "backlogSnapshotHash": "b57555fce06fa99df0f1bfb9eae39f7c42bb33fe98c94b5b2b98956badb993d7",
+  "backlogSnapshotHash": "a87daf0a751a67fc079dab78048c709f013db37e38d7751d2e8f01f15528de1b",
   "reviewedPlanHash": "0f852cd7939c540b1c0f93d23142217165c164c8248488f08bee36b347b28bba",
-  "reviewedBacklogSnapshotHash": "b57555fce06fa99df0f1bfb9eae39f7c42bb33fe98c94b5b2b98956badb993d7",
+  "reviewedBacklogSnapshotHash": "a87daf0a751a67fc079dab78048c709f013db37e38d7751d2e8f01f15528de1b",
   "backlogSketches": [
     {
       "n": 1,
