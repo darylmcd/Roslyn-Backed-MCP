@@ -176,16 +176,18 @@ public sealed class FixAllService : IFixAllService
         var analyzersForCollection = SelectAnalyzersForFixAllCollection(
             diagnosticId, _analyzers.Value, projectAnalyzers);
 
-        var diagnosticsMap = await _diagnosticCollector.CollectAsync(
-            new FixAllDiagnosticCollectionContext(
-                workspaceId,
-                solution,
-                diagnosticId,
-                fixAllScope,
-                target.Document,
-                target.Project,
-                analyzersForCollection),
-            ct).ConfigureAwait(false);
+        var collectionContext = new FixAllDiagnosticCollectionContext(
+            workspaceId, solution, diagnosticId, fixAllScope,
+            target.Document, target.Project, analyzersForCollection);
+        ImmutableDictionary<Document, ImmutableArray<Diagnostic>> diagnosticsMap;
+        try
+        {
+            diagnosticsMap = await _diagnosticCollector.CollectAsync(collectionContext, ct).ConfigureAwait(false);
+        }
+        catch (FixAllDiagnosticCollectionUnavailableException)
+        {
+            return BuildUnverifiedPreview(diagnosticId, scope, "A required scope target or compilation is unavailable.");
+        }
 
         var totalDiagCount = diagnosticsMap.Values.Sum(d => d.Length);
         if (totalDiagCount == 0)
@@ -199,15 +201,21 @@ public sealed class FixAllService : IFixAllService
                 GuidanceMessage: BuildNoOccurrencesGuidance(diagnosticId, scope, filePath, projectName));
         }
 
-        // Obtain the correct equivalence key by invoking the provider on a sample diagnostic
-        var equivalenceKey = await GetEquivalenceKeyAsync(provider, diagnosticId, diagnosticsMap, ct).ConfigureAwait(false);
+        var registration = await GetEquivalenceKeyAsync(provider, diagnosticId, diagnosticsMap, ct).ConfigureAwait(false);
+        if (!registration.HasAction)
+        {
+            return new FixAllPreviewDto(
+                PreviewToken: "", DiagnosticId: diagnosticId, Scope: scope,
+                FixedCount: 0, Changes: [],
+                GuidanceMessage: BuildProviderHasNoActionsGuidance(diagnosticId, totalDiagCount));
+        }
 
         // Use the FixAllProvider to compute the fix
         var fixAllContext = new FixAllContext(
             document: target.Document,
             codeFixProvider: provider,
             scope: fixAllScope,
-            codeActionEquivalenceKey: equivalenceKey,
+            codeActionEquivalenceKey: registration.EquivalenceKey,
             diagnosticIds: [diagnosticId],
             fixAllDiagnosticProvider: new DiagnosticMapProvider(diagnosticsMap),
             cancellationToken: ct);
@@ -267,7 +275,27 @@ public sealed class FixAllService : IFixAllService
 
         var newSolution = applyOp.ChangedSolution;
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
-        var description = $"Fix all '{diagnosticId}' ({scope}): {totalDiagCount} occurrences";
+        if (changes.Count == 0)
+        {
+            return BuildUnverifiedPreview(diagnosticId, scope, "The provider made no source changes.");
+        }
+
+        var remainingDiagnostics = await _diagnosticCollector.CollectCandidateAsync(
+            collectionContext, newSolution, ct).ConfigureAwait(false);
+        if (remainingDiagnostics is null)
+        {
+            return BuildUnverifiedPreview(diagnosticId, scope, "A required candidate scope target or compilation is unavailable.");
+        }
+
+        var remainingCount = remainingDiagnostics.Values.Sum(diagnostics => diagnostics.Length);
+        var fixedCount = totalDiagCount - remainingCount;
+        if (fixedCount <= 0)
+        {
+            return BuildUnverifiedPreview(diagnosticId, scope, "The candidate did not reduce the requested source diagnostics.");
+        }
+
+        ct.ThrowIfCancellationRequested();
+        var description = $"Fix all '{diagnosticId}' ({scope}): {fixedCount} occurrences";
         var token = _previewStore.Store(
             workspaceId,
             newSolution,
@@ -283,64 +311,86 @@ public sealed class FixAllService : IFixAllService
             PreviewToken: token,
             DiagnosticId: diagnosticId,
             Scope: scope,
-            FixedCount: totalDiagCount,
-            Changes: changes);
+            FixedCount: fixedCount,
+            Changes: changes,
+            GuidanceMessage: remainingCount > 0
+                ? $"Fixed {fixedCount} of {totalDiagCount} occurrence(s) of '{diagnosticId}'; {remainingCount} remain. " +
+                  "Use code_fix_preview on remaining occurrences to inspect other actions."
+                : null);
     }
 
+    internal readonly record struct FixAllRegistration(bool HasAction, string? EquivalenceKey);
+
     /// <summary>
-    /// Obtains the correct equivalence key by invoking the provider on a sample diagnostic.
-    /// The FixAllProvider requires the exact key the provider registers — fabricated keys always fail.
+    /// Resolves an actual executable action from completed provider registrations.
+    /// Prefer the first non-null leaf key in deterministic occurrence order, retaining real keyless fallback.
+    /// Failed registrations contribute no actions, including callbacks issued before failure.
     /// </summary>
-    internal async Task<string> GetEquivalenceKeyAsync(
+    internal async Task<FixAllRegistration> GetEquivalenceKeyAsync(
         CodeFixProvider provider, string diagnosticId,
         ImmutableDictionary<Document, ImmutableArray<Diagnostic>> diagnosticsMap,
         CancellationToken ct)
     {
-        // Find the first diagnostic to use as a sample
-        foreach (var (doc, diagnostics) in diagnosticsMap.OrderBy(
-                     entry => entry.Key.FilePath,
-                     StringComparer.OrdinalIgnoreCase))
+        var hasKeylessAction = false;
+        foreach (var (doc, diagnostics) in diagnosticsMap
+                     .OrderBy(entry => entry.Key.FilePath, StringComparer.OrdinalIgnoreCase)
+                     .ThenBy(entry => entry.Key.FilePath, StringComparer.Ordinal)
+                     .ThenBy(entry => entry.Key.Project.Id.Id)
+                     .ThenBy(entry => entry.Key.Id.Id))
         {
-            var sampleDiag = diagnostics.FirstOrDefault(d => d.Id == diagnosticId);
-            if (sampleDiag is null)
+            foreach (var diagnostic in diagnostics.Where(item => item.Id == diagnosticId)
+                         .OrderBy(item => item.Location.SourceSpan.Start)
+                         .ThenBy(item => item.Location.SourceSpan.Length))
             {
-                continue;
-            }
+                ct.ThrowIfCancellationRequested();
+                var actions = new List<CodeAction>();
+                var context = new CodeFixContext(doc, diagnostic, (action, _) => actions.Add(action), ct);
+                try
+                {
+                    await provider.RegisterCodeFixesAsync(context).ConfigureAwait(false);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    var detail = UnexpectedExceptionReporting.Report(
+                        _exceptionReporter, ex, UnexpectedExceptionCategory.FixAll);
+                    _logger.LogWarning(
+                        "Code fix provider registration failed while resolving an equivalence key for " +
+                        "{DiagnosticId}; continuing with the next occurrence. correlationId={CorrelationId}",
+                        diagnosticId, detail.Public.CorrelationId);
+                    continue;
+                }
 
-            string? capturedKey = null;
-
-            var context = new CodeFixContext(doc, sampleDiag, (action, _) =>
-            {
-                capturedKey ??= action.EquivalenceKey;
-            }, ct);
-
-            try
-            {
-                await provider.RegisterCodeFixesAsync(context).ConfigureAwait(false);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                var detail = UnexpectedExceptionReporting.Report(
-                    _exceptionReporter,
-                    ex,
-                    UnexpectedExceptionCategory.FixAll);
-                _logger.LogWarning(
-                    "Code fix provider registration failed while resolving an equivalence key for " +
-                    "{DiagnosticId}; continuing with the next occurrence. correlationId={CorrelationId}",
-                    diagnosticId,
-                    detail.Public.CorrelationId);
-                continue;
-            }
-
-            if (capturedKey is not null)
-            {
-                return capturedKey;
+                ct.ThrowIfCancellationRequested();
+                foreach (var leaf in actions.SelectMany(ExecutableLeaves))
+                {
+                    if (leaf.EquivalenceKey is { } key)
+                    {
+                        return new FixAllRegistration(true, key);
+                    }
+                    hasKeylessAction = true;
+                }
             }
         }
 
-        // Fallback: use provider type name (may not work, but better than nothing)
-        return provider.GetType().Name;
+        return new FixAllRegistration(hasKeylessAction, null);
     }
+
+    private static IEnumerable<CodeAction> ExecutableLeaves(CodeAction action)
+    {
+        if (action.NestedActions.IsDefaultOrEmpty)
+        {
+            yield return action;
+        }
+        else
+        {
+            foreach (var nested in action.NestedActions.SelectMany(ExecutableLeaves))
+                yield return nested;
+        }
+    }
+
+    private static FixAllPreviewDto BuildUnverifiedPreview(string diagnosticId, string scope, string reason) =>
+        new(PreviewToken: "", DiagnosticId: diagnosticId, Scope: scope, FixedCount: 0, Changes: [],
+            GuidanceMessage: reason + " No verified FixAll preview is available; use code_fix_preview on individual occurrences.");
 
     private static ImmutableArray<DiagnosticAnalyzer> CollectProjectAnalyzersForDiagnosticId(
         Solution solution, string diagnosticId)
@@ -369,7 +419,7 @@ public sealed class FixAllService : IFixAllService
 
     /// <summary>
     /// Builds the guidance message for the "no occurrences" empty-result path. A provider IS
-    /// registered for the diagnostic, but <see cref="CollectDiagnosticsAsync"/> found zero
+    /// registered for the diagnostic, but <see cref="FixAllDiagnosticCollector.CollectAsync"/> found zero
     /// occurrences in the requested scope. This distinguishes scenario (1) from scenarios (2)
     /// "no provider registered" and (3) "provider returned no actions" so the caller can tell
     /// them apart.

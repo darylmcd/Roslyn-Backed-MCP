@@ -338,7 +338,7 @@ public sealed class FixAllServiceTests
             [provider],
             reporter);
 
-        string equivalenceKey;
+        FixAllService.FixAllRegistration equivalenceKey;
         using (RequestCorrelationContext.Begin())
         {
             equivalenceKey = await service.GetEquivalenceKeyAsync(
@@ -348,7 +348,8 @@ public sealed class FixAllServiceTests
                 CancellationToken.None);
         }
 
-        Assert.AreEqual("healthy-key", equivalenceKey);
+        Assert.IsTrue(equivalenceKey.HasAction);
+        Assert.AreEqual("healthy-key", equivalenceKey.EquivalenceKey);
         Assert.AreEqual(2, provider.InvocationCount);
         Assert.HasCount(1, sink.Events);
         Assert.HasCount(1, logger.Entries);
@@ -361,6 +362,119 @@ public sealed class FixAllServiceTests
             Log = logger.Entries.Single().Message,
         });
         Assert.IsFalse(boundaryJson.Contains(sentinel, StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    [DataRow("none")]
+    [DataRow("null")]
+    [DataRow("nested")]
+    [DataRow("later")]
+    [DataRow("failed-callback")]
+    [DataRow("prefer-key")]
+    public async Task GetEquivalenceKeyAsync_UsesCompletedExecutableRegistrations(string behavior)
+    {
+        using var workspace = new AdhocWorkspace();
+        var projectId = ProjectId.CreateNewId();
+        var documentId = DocumentId.CreateNewId(projectId);
+        var solution = workspace.CurrentSolution.AddProject(projectId, "P", "P", LanguageNames.CSharp)
+            .AddDocument(documentId, "A.cs", SourceText.From("class A { }"));
+        var document = solution.GetDocument(documentId)!;
+        var tree = await document.GetSyntaxTreeAsync();
+        Assert.IsNotNull(tree);
+        var diagnostics = ImmutableDictionary<Document, ImmutableArray<Diagnostic>>.Empty.Add(document,
+            [Diagnostic.Create(IdeDescriptor, Location.Create(tree, new TextSpan(4, 1))),
+             Diagnostic.Create(IdeDescriptor, Location.Create(tree, new TextSpan(0, 1)))]);
+        var provider = new RegistrationProvider(behavior);
+        var service = new FixAllService(null!, null!, null!, null!, NullLogger<FixAllService>.Instance, [provider]);
+        var registration = await service.GetEquivalenceKeyAsync(provider, IdeDescriptor.Id, diagnostics, CancellationToken.None);
+        Assert.AreEqual(behavior != "none", registration.HasAction);
+        Assert.AreEqual(behavior is "none" or "null" ? null : "key", registration.EquivalenceKey);
+        CollectionAssert.AreEqual(behavior == "nested" ? new[] { 0 } : new[] { 0, 4 }, provider.Spans.ToArray());
+    }
+
+    [TestMethod]
+    [DataRow("case")]
+    [DataRow("equal")]
+    [DataRow("null")]
+    [DataRow("project")]
+    public async Task GetEquivalenceKeyAsync_DocumentOrderHasDeterministicTies(string shape)
+    {
+        using var workspace = new AdhocWorkspace();
+        var projectA = ProjectId.CreateFromSerialized(Guid.Parse("00000000-0000-0000-0000-000000000001"));
+        var projectB = shape == "project"
+            ? ProjectId.CreateFromSerialized(Guid.Parse("00000000-0000-0000-0000-000000000002")) : projectA;
+        var documentA = DocumentId.CreateFromSerialized(projectA, Guid.Parse("00000000-0000-0000-0000-000000000001"));
+        var documentB = DocumentId.CreateFromSerialized(projectB, Guid.Parse("00000000-0000-0000-0000-000000000002"));
+        var solution = workspace.CurrentSolution.AddProject(projectA, "P", "P", LanguageNames.CSharp);
+        if (projectB != projectA)
+            solution = solution.AddProject(projectB, "Q", "Q", LanguageNames.CSharp);
+        solution = solution.AddDocument(documentB, "B.cs", SourceText.From("class B { }"),
+                filePath: shape == "null" ? null : "A.cs")
+            .AddDocument(documentA, "A.cs", SourceText.From("class A { }"),
+                filePath: shape == "null" ? null : shape == "case" ? "a.cs" : "A.cs");
+        var a = solution.GetDocument(documentA)!;
+        var b = solution.GetDocument(documentB)!;
+        var diagnostics = ImmutableDictionary<Document, ImmutableArray<Diagnostic>>.Empty
+            .Add(a, [await CreateDiagnosticAsync(a)]).Add(b, [await CreateDiagnosticAsync(b)]);
+        var provider = new NamedRegistrationProvider();
+        var service = new FixAllService(null!, null!, null!, null!, NullLogger<FixAllService>.Instance, [provider]);
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            var registration = await service.GetEquivalenceKeyAsync(provider, IdeDescriptor.Id, diagnostics, CancellationToken.None);
+            Assert.AreEqual(shape == "case" ? "B.cs" : "A.cs", registration.EquivalenceKey);
+        }
+    }
+
+    [TestMethod]
+    public async Task GetEquivalenceKeyAsync_PropagatesRegistrationCancellation()
+    {
+        using var workspace = new AdhocWorkspace();
+        var projectId = ProjectId.CreateNewId();
+        var documentId = DocumentId.CreateNewId(projectId);
+        var document = workspace.CurrentSolution.AddProject(projectId, "P", "P", LanguageNames.CSharp)
+            .AddDocument(documentId, "A.cs", SourceText.From("class A { }")).GetDocument(documentId)!;
+        var diagnostics = ImmutableDictionary<Document, ImmutableArray<Diagnostic>>.Empty
+            .Add(document, [await CreateDiagnosticAsync(document)]);
+        var provider = new RegistrationProvider("cancel");
+        var service = new FixAllService(null!, null!, null!, null!, NullLogger<FixAllService>.Instance, [provider]);
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(() =>
+            service.GetEquivalenceKeyAsync(provider, IdeDescriptor.Id, diagnostics, CancellationToken.None));
+    }
+
+    private sealed class NamedRegistrationProvider : CodeFixProvider
+    {
+        public override ImmutableArray<string> FixableDiagnosticIds => [IdeDescriptor.Id];
+        public override Task RegisterCodeFixesAsync(CodeFixContext context)
+        {
+            context.RegisterCodeFix(CodeAction.Create("Fix", _ => Task.FromResult(context.Document),
+                context.Document.Name), context.Diagnostics);
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class RegistrationProvider(string behavior) : CodeFixProvider
+    {
+        public List<int> Spans { get; } = [];
+        public override ImmutableArray<string> FixableDiagnosticIds => [IdeDescriptor.Id];
+        public override Task RegisterCodeFixesAsync(CodeFixContext context)
+        {
+            Spans.Add(context.Span.Start);
+            if (behavior == "cancel")
+                throw new OperationCanceledException();
+            if (behavior == "none" || (behavior == "later" && context.Span.Start == 0))
+                return Task.CompletedTask;
+            var key = behavior == "null" || (behavior == "prefer-key" && context.Span.Start == 0) ? null : "key";
+            if (behavior == "failed-callback" && context.Span.Start == 0)
+                key = "discarded-key";
+            var leaf = CodeAction.Create("Fix", _ => Task.FromResult(context.Document), key);
+            var action = behavior == "nested"
+                ? CodeAction.Create("Container", [CodeAction.Create("Inner", [leaf], isInlinable: false)], isInlinable: false)
+                : leaf;
+            context.RegisterCodeFix(action, context.Diagnostics);
+            if (behavior == "failed-callback" && context.Span.Start == 0)
+                throw new InvalidOperationException("Registration failed after callback.");
+            return Task.CompletedTask;
+        }
     }
 
     private static async Task<Diagnostic> CreateDiagnosticAsync(Document document)
