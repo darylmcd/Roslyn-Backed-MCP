@@ -268,6 +268,17 @@
           "previousStanzaHash": "7401bdfe5434523ba796a9a1a5ab49c9bc4624b458f41316190caa37bef425c5",
           "stanzaHash": "3c7afeb15464c17e3e0535aebf8fc4cd7f3d4c05caa85a290d5dcbad5e893929"
         }
+      ],
+      "sourceCheckpoints": [
+        {
+          "at": "2026-10-10T03:46:50.498Z",
+          "branch": "remediation/extract-type-preserve-untouched-trivia",
+          "headOid": "8a40da79e6aff2386a75b9f21138b142c80100ec",
+          "pushed": true,
+          "priorPrs": [],
+          "finding": "Complete extraction repair remains deferred by audited Rule5 admission and pending product boundary; latest scoped 5 failed/8 passed and last repair untested.",
+          "reason": "Durable exact three-file WIP checkpoint only; no PR because implementation and full validation remain incomplete. Worktree retained; no machine-wide shutdown or cleanup."
+        }
       ]
     },
     {
@@ -519,9 +530,10 @@
       "backlogRowsClosed": [
         "fix-all-equivalence-key-unregistered-fallback"
       ],
-      "productionFilesTouched": 1,
+      "productionFilesTouched": 2,
       "productionFiles": [
-        "src/RoslynMcp.Roslyn/Services/FixAllService.cs"
+        "src/RoslynMcp.Roslyn/Services/FixAllService.cs",
+        "src/RoslynMcp.Roslyn/Services/FixAllDiagnosticCollector.cs"
       ],
       "testFilesAdded": 2,
       "testFiles": [
@@ -532,16 +544,16 @@
         "changelog.d/fix-all-equivalence-key-unregistered-fallback.md"
       ],
       "rowsClosedCount": 1,
-      "estimatedContextTokens": 40000,
+      "estimatedContextTokens": 55000,
       "toolPolicy": "edit-only",
       "scheduleHint": null,
-      "fanoutEstimate": 1,
+      "fanoutEstimate": 2,
       "fanoutOversize": false,
       "deepenerStatus": "ok",
       "deepenerFlags": {
-        "judgmentHeavy": true,
+        "ruleOneBundleResolved": false,
         "anchorStale": false,
-        "ruleOneBundleResolved": "n/a"
+        "judgmentHeavy": true
       },
       "dependsOn": [],
       "branch": null,
@@ -549,9 +561,18 @@
       "prUrl": null,
       "mergedAt": null,
       "notes": null,
-      "fileSetHash": "8897b64e921fd6762cf334f68ec548ea7906dc3d525d08ef45d3678e5181733c",
-      "stanzaHash": "913514db5542443540c48366ab331270a804e76f3350e61ff3b3122811f12f1f",
-      "reviewedStanzaHash": "913514db5542443540c48366ab331270a804e76f3350e61ff3b3122811f12f1f"
+      "fileSetHash": "142fde435999ba810a24b2064033576c311e1bf71e65c41a2e63a1b6a3837294",
+      "stanzaHash": "107cc2cb31a0b88616a304033f2b3cc46ebc6e44afaad18b69a7756aed4a1e93",
+      "reviewedStanzaHash": "107cc2cb31a0b88616a304033f2b3cc46ebc6e44afaad18b69a7756aed4a1e93",
+      "amendments": [
+        {
+          "at": "2026-10-10T03:48:48.495Z",
+          "finding": "Cold source re-vet: keyed distractors expose incorrect total count; candidate recollection through version-keyed live cache would reuse old diagnostics.",
+          "reason": "Complete correction requires shared collector candidate verification with cache bypass, fail-closed diagnostic completeness and truthful verified reduction. Widen two production/two test files and cost40000 to55000; preserve scope identity and no-token safeguards; obtain fresh cold plan review before dispatch.",
+          "previousStanzaHash": "913514db5542443540c48366ab331270a804e76f3350e61ff3b3122811f12f1f",
+          "stanzaHash": "107cc2cb31a0b88616a304033f2b3cc46ebc6e44afaad18b69a7756aed4a1e93"
+        }
+      ]
     },
     {
       "id": "editorconfig-section-source-path-matching",
@@ -1592,7 +1613,6 @@
       }
     ],
     "degrees": {
-      "10": 0,
       "11": 0,
       "12": 0,
       "13": 0,
@@ -1610,7 +1630,6 @@
       "26": 0
     },
     "zeroDegreeInitiatives": [
-      10,
       11,
       12,
       13,
@@ -2193,7 +2212,7 @@
       "notice-verifier-scoped-test-inherits-nuget-packages": "e1ff8a04c6da28d98e04ffa92f6e4632bc2fa0d3806aca2f57e5c0486320ad35",
       "test-discovery-file-path-case-identity": "467bcd5b94094bc40107595fc9fe43725c98504d5fb0016d860db3dd95e21bf8",
       "workspace-project-alias-lookup": "23ca433d4565efda70d65fddf058331ccc1a139ea356db06fce4dbea59420ce4",
-      "fix-all-equivalence-key-unregistered-fallback": "913514db5542443540c48366ab331270a804e76f3350e61ff3b3122811f12f1f",
+      "fix-all-equivalence-key-unregistered-fallback": "107cc2cb31a0b88616a304033f2b3cc46ebc6e44afaad18b69a7756aed4a1e93",
       "editorconfig-section-source-path-matching": "56bbce20febc10f9c2b59496955ae4c711e041c5b802fcef475b9d4075d4268f",
       "logging-jsonl-drops-structured-state": "fd3aef40e86b7820bb0d8c786d2534936d972b89ddedf7adf9b78b33b3ff579e",
       "restore-callers-missing-packages-path": "5e7bc589d2e8eac07e1489f9396e75b478a090c22112ceb9a4c3a1439c198521",
@@ -2217,9 +2236,9 @@
       "fork-preview-project-composite-replay": "cd6c4c6aa3a52afdbbdf70820ab4f53e5735ca94771f2f2f2e30ad70e957f688"
     }
   },
-  "conflictGraphInputHash": "3d31e9219b135dd0d5e6c5d89338c0dac8d1a7487f7535b49e224658792ed72b",
-  "planHash": "d04ec8b4f7930e7a1e778c59f47dc411b4d39af0fa4cf9cccf23fa207ce831fe",
-  "backlogSnapshotHash": "092865ba7133c037457328de265e888abff3283b24529bd973c642414f32c429",
-  "reviewedPlanHash": "d04ec8b4f7930e7a1e778c59f47dc411b4d39af0fa4cf9cccf23fa207ce831fe",
+  "conflictGraphInputHash": "b71bad909e0e12d8540436cd51baadde08014a080c57424a57f7f4c0ed702eab",
+  "planHash": "2a1b875e17b2245f57d7d6d4fd430df9fec6f1b6f7f85e193edbbb94eadc0e05",
+  "backlogSnapshotHash": "65f83fd7e02e6dad2e9fd6e1a8ffa623e646ed4c230539aaac7bcf989c29b483",
+  "reviewedPlanHash": "2a1b875e17b2245f57d7d6d4fd430df9fec6f1b6f7f85e193edbbb94eadc0e05",
   "reviewedBacklogSnapshotHash": "cc5f2af685632ecdcbfcf94a8fe98135b9da20f7b2f4ba18d6cdddf811c1c1cc"
 }
