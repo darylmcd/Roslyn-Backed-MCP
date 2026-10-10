@@ -858,7 +858,7 @@
     {
       "id": "change-signature-class-struct-primary-ctor-add-remove",
       "order": 17,
-      "status": "in-progress",
+      "status": "in-review",
       "backlogRowsClosed": [
         "change-signature-class-struct-primary-ctor-add-remove"
       ],
@@ -893,7 +893,7 @@
       "dependsOn": [],
       "branch": "remediation/change-signature-class-struct-primary-ctor-add-remove",
       "worktreePath": ".worktrees/change-signature-class-struct-primary-ctor-add-remove",
-      "prUrl": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1779",
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "8c960fe95a632d07d6ba37c979d25bc24086c9805002c4248382a29b202adee0",
@@ -907,7 +907,8 @@
           "previousStanzaHash": "6a8b4057370d3affb55f0799654613f5b3441e9aae49085849c9370f391ade96",
           "stanzaHash": "85654b631bc417dd5425a08de19bb905302678cac3ee9d9afb7defe000f8265c"
         }
-      ]
+      ],
+      "reviewedHead": null
     },
     {
       "id": "load-profile-full-suite",
@@ -2828,6 +2829,102 @@
         "kind": "row",
         "value": "test-run-worktree-package-isolation",
         "at": "2026-10-10T21:42:13.872Z"
+      }
+    },
+    {
+      "n": 21,
+      "source": "executor",
+      "initiativeId": "change-signature-class-struct-primary-ctor-add-remove",
+      "title": "Windows full-gate launcher resolves native WSL bash before Git Bash",
+      "suggestedPri": "Medium",
+      "amendRow": "bsweep-integration-gate-windows-bash-resolution",
+      "anchors": [
+        "C:/Users/daryl/.claude/scripts/_bsweep-gate.mjs:71",
+        "C:/Users/daryl/.claude/scripts/_bsweep-gate.mjs:398",
+        "C:/Users/daryl/.claude/scripts/_bsweep-gate.mjs:532"
+      ],
+      "acceptance": [
+        "Resolve the intended Git Bash executable consistently on Windows and preserve literal argv, including quoted wildcards, across full-gate and ship-helper launch paths.",
+        "Cover WSL-first PATH and Git/bin wrapper argv behavior; preserve inherited environment and avoid machine-wide PATH mutation."
+      ],
+      "evidence": "Live _bsweep-gate.mjs:71 invokes spawnSync('bash', ['-c', 'command -v pwsh']); :398/:532 also launch plain bash. Initial producer ed269f0f054f0707 failed exit8 before tests because Windows native bash resolved before Git Bash. Process-local C:/Program Files/Git/usr/bin PATH prefix allowed later sanctioned producers; initial failure and actual subsequent argv/env metadata retained. Existing row is the owner; no new global implementation or duplicate row.",
+      "at": "2026-10-10T23:50:17.441Z",
+      "disposition": {
+        "kind": "row",
+        "value": "bsweep-integration-gate-windows-bash-resolution",
+        "at": "2026-10-10T23:51:27.729Z"
+      }
+    },
+    {
+      "n": 22,
+      "source": "executor",
+      "initiativeId": "change-signature-class-struct-primary-ctor-add-remove",
+      "title": "Provide owned worktree package isolation for test_run",
+      "suggestedPri": "Low",
+      "amendRow": "test-run-worktree-package-isolation",
+      "anchors": [
+        "src/RoslynMcp.Host.Stdio/Tools/ValidationTools.cs:213",
+        "src/RoslynMcp.Roslyn/Services/TestRunnerService.cs:67",
+        "src/RoslynMcp.Roslyn/Services/TestRunnerService.cs:74"
+      ],
+      "acceptance": [
+        "Carry a scoped package-path/environment contract from test_run through owned restore and process execution, with complete schema/interface/catalog/test companions.",
+        "Prove separate worktrees retain their package roots without mutating inherited runner state; preserve existing sync/async/native test-run contracts."
+      ],
+      "evidence": "Live ValidationTools.cs213-225 RunTests exposes workspaceId/projectName/filter/failuresOffset/failuresLimit/compact/progress but no package/environment override; TestRunnerService.cs67 RunTestsAsync likewise accepts workspaceId/projectName/filter/ct and calls PrepareTestRunAsync at74. Initial MCP eight causal reds used inherited runner environment; exact eight were independently reproduced using script-bridge and supplied NUGET_PACKAGES. This is a verified capability gap, not a corruption claim. Root already filed the Low/L owner row.",
+      "at": "2026-10-10T23:50:17.583Z",
+      "disposition": {
+        "kind": "row",
+        "value": "test-run-worktree-package-isolation",
+        "at": "2026-10-10T23:51:27.874Z"
+      }
+    },
+    {
+      "n": 23,
+      "source": "executor",
+      "initiativeId": "change-signature-class-struct-primary-ctor-add-remove",
+      "title": "Publish unchanged authored change-signature caller refusals",
+      "suggestedPri": "Medium",
+      "amendRow": "change-signature-service-refusals-public-message",
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/ChangeSignatureService.cs:38",
+        "src/RoslynMcp.Roslyn/Services/ChangeSignatureService.cs:80",
+        "src/RoslynMcp.Roslyn/Services/ChangeSignatureService.cs:233",
+        "tests/RoslynMcp.Tests/ChangeSignaturePreviewMetadataNameShapeTests.cs"
+      ],
+      "acceptance": [
+        "Classify all remaining caller argument/operation refusals with public or explicitly redacted detail while retaining true internal invariants and published category/BCL exceptionType.",
+        "Verify safe actionable messages and hostile-input/path redaction through ToolErrorHandler, preserving valid preview/apply and exact-type contracts."
+      ],
+      "evidence": "Live unchanged service38 constructs plain ArgumentException(\"ChangeSignatureRequest.Op is required.\", nameof(request));80 constructs plain InvalidOperationException for \"change_signature_preview requires a method symbol; resolved ... instead.\";233 constructs plain InvalidOperationException(\"Parameter has no source location to rename from.\"). Other existing argument/permutation guards remain in this independent pending row. The moved own-diff no-change guard was repaired with PublicInvalidOperationException and a zero-token control in this PR; this does not close the remaining public-refusal row.",
+      "at": "2026-10-10T23:50:17.716Z",
+      "disposition": {
+        "kind": "row",
+        "value": "change-signature-service-refusals-public-message",
+        "at": "2026-10-10T23:51:28.020Z"
+      }
+    },
+    {
+      "n": 24,
+      "source": "executor",
+      "initiativeId": "change-signature-class-struct-primary-ctor-add-remove",
+      "title": "Publish authored test-run service operation refusals safely",
+      "suggestedPri": "Medium",
+      "amendRow": null,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/TestRunnerService.cs:99",
+        "src/RoslynMcp.Roslyn/Services/TestRunnerService.cs:106"
+      ],
+      "acceptance": [
+        "Classify non-test-project and no-test-project caller refusals with typed path-safe public or explicit redacted detail, retaining category and BCL exceptionType.",
+        "Add service and raw-wire controls for actionable valid names, hostile names/workspace identifiers, absence of absolute-path disclosure, and unchanged successful test_run behavior."
+      ],
+      "evidence": "Live TestRunnerService.cs99-101 throws plain InvalidOperationException with interpolated \"Project '{projectName}' is not a test project. Available test projects: ...\";106-108 throws plain InvalidOperationException with \"No test projects found in workspace '{workspaceId}'. Ensure the workspace contains projects with a test SDK reference ...\". These authored caller details lack the public-message marker. Root independently confirmed current-source occurrences and no matching public-refusal owner row; other TestRunner rows cover different mechanisms. Recommend one focused Medium/S product row; Root owns sanctioned filing.",
+      "at": "2026-10-10T23:50:17.851Z",
+      "disposition": {
+        "kind": "row",
+        "value": "test-run-service-refusals-public-message",
+        "at": "2026-10-10T23:51:28.168Z"
       }
     }
   ]

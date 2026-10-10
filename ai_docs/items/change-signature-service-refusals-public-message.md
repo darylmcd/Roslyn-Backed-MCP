@@ -24,3 +24,5 @@
 
 - Split from change-signature-refusals-public-message; independent of formatter range publication. Current Core PublicArgumentException, ArgumentErrors and Host boundary code govern the contract; the historical Family design pointer no longer exists.
 - Optional positional-binding preservation is a separate algorithm defect tracked by change-signature-omitted-optional-binding.
+
+Source re-read on PR1779 head99775703a2fd46eb35b5fc80d2fcfbc1a6f67936: ChangeSignatureService.cs:38 still constructs plain `ArgumentException("ChangeSignatureRequest.Op is required.", nameof(request))`; :80 constructs plain `InvalidOperationException` for `change_signature_preview requires a method symbol; resolved ... instead.`; :233 constructs plain `InvalidOperationException("Parameter has no source location to rename from.")`. These independent caller refusals remain in this row. The moved no-change guard in PR1779 is now public and has a zero-token regression; that repair does not discharge this row's full classification/wire acceptance. Preserve all existing acceptance and metadata-shape companions.

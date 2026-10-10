@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-10T21:41:52Z
+**updated_at:** 2026-10-10T23:51:02Z
 
 ## Agent contract
 
@@ -155,6 +155,7 @@
 | `bounded-store-capacity-atomic-insertion` | Medium | — | **Enforce bounded-store capacity** - make eviction and insertion preserve the configured entry cap under serial and concurrent writes. [type: bug] [source: fix-all-equivalence-key-unregistered-fallback] | S | items/bounded-store-capacity-atomic-insertion.md |
 | `editorconfig-option-assignment-grammar-validation` | Medium | — | Validate editorconfig keys and values as one provider-valid assignment before writing; prevent injected or lost assignments. [type: bug] [source: backlog-remediate writer re-vet] | M | items/editorconfig-option-assignment-grammar-validation.md |
 | `restore-assets-read-failure-false-fresh` | Medium | — | **Distinguish failed assets reads from fresh restore state** — prevent malformed or unreadable assets with known package expectations from silently returning not-restore-required. [type: bug] [source: restore-callers cold source inspection 2026-10-10] | S | items/restore-assets-read-failure-false-fresh.md |
+| `test-run-service-refusals-public-message` | Medium | — | Publish safe authored test_run operation refusals through service and raw-wire contracts. [type: bug] [source: primary-constructor-executor] | S | items/test-run-service-refusals-public-message.md |
 
 ## Low
 
