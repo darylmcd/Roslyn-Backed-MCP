@@ -711,33 +711,46 @@
     {
       "id": "restore-callers-missing-packages-path",
       "order": 15,
-      "status": "in-progress",
+      "status": "deferred",
       "backlogRowsClosed": [
         "restore-callers-missing-packages-path"
       ],
-      "productionFilesTouched": 5,
+      "productionFilesTouched": 12,
       "productionFiles": [
         "src/RoslynMcp.Roslyn/Services/RestoreInvocationPlanner.cs",
         "src/RoslynMcp.Roslyn/Services/RestoreStalenessDetector.cs",
         "src/RoslynMcp.Roslyn/Services/TestRunnerService.cs",
         "src/RoslynMcp.Roslyn/Services/WorkspaceForkApplyService.cs",
-        "src/RoslynMcp.Host.Stdio/Tools/WorkspaceTools.cs"
+        "src/RoslynMcp.Host.Stdio/Tools/WorkspaceTools.cs",
+        "src/RoslynMcp.Roslyn/Services/DocumentSetPersistenceService.cs",
+        "src/RoslynMcp.Roslyn/Services/SolutionFileMutationPlanner.cs",
+        "src/RoslynMcp.Roslyn/Services/ForkGraphPreparation.cs",
+        "src/RoslynMcp.Roslyn/Services/RefactoringService.cs",
+        "src/RoslynMcp.Roslyn/Helpers/SolutionDiffHelper.cs",
+        "src/RoslynMcp.Roslyn/Services/PreviewStore.cs",
+        "ai_docs/items/restore-callers-missing-packages-path.md"
       ],
-      "testFilesAdded": 4,
+      "testFilesAdded": 9,
       "testFiles": [
         "tests/RoslynMcp.Tests/TUnitMtpNativeTestRunTests.cs",
         "tests/RoslynMcp.Tests/Workspace/WorkspaceForkApplyTests.cs",
         "tests/RoslynMcp.Tests/WorkspaceLoadRestorePackagesPathTests.cs",
-        "tests/RoslynMcp.Tests/RestoreStalenessDetectorTests.cs"
+        "tests/RoslynMcp.Tests/RestoreStalenessDetectorTests.cs",
+        "tests/RoslynMcp.Tests/UndoFileOperationsTests.cs",
+        "tests/RoslynMcp.Tests/SolutionDiffHelperTests.cs",
+        "tests/RoslynMcp.Tests/PreviewStoreTests.cs",
+        "tests/RoslynMcp.Tests/PreviewTokenCrossCouplingTests.cs",
+        "tests/RoslynMcp.Tests/Workspace/WorkspaceForkGraphReplayTests.cs"
       ],
       "docFiles": [
+        "docs/decisions/0010-validation-verdict-completeness.md",
         "changelog.d/restore-callers-missing-packages-path.md"
       ],
       "rowsClosedCount": 1,
-      "estimatedContextTokens": 60000,
+      "estimatedContextTokens": 120000,
       "toolPolicy": "edit-only",
-      "scheduleHint": null,
-      "fanoutEstimate": 5,
+      "scheduleHint": "heroic-last",
+      "fanoutEstimate": 12,
       "fanoutOversize": false,
       "deepenerStatus": "ok",
       "deepenerFlags": {
@@ -750,10 +763,37 @@
       "worktreePath": ".worktrees/restore-callers-missing-packages-path",
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
+      "notes": "Complete source re-vet12production9tests2docs estimate120000 exceeds installed5f8bf2da Rule5 cap80000; native exec-args exit4 in complete-graph-admission-5f8.log. Accepted ordinary reference previews require physical graph replay plus shared source persistence/rebase/preview diff and path completeness; no blanket refusal or partial shipment. SOURCE-ONLY ea969292d61a8c633cb77581a587841d36742741 pushed on retained owned branch/WT,72scopedpass/6project compiler/causal9red+2real-mixedred, nofullgate/PR. Fresh cold complete-scope review and admission required after global audited oversized-scope capability; preserve existing3family deferred owner and source token authority.",
       "fileSetHash": "4eec65cd51d82affe39e1025c2342f18fd85ea1ab390148b9b180e6e7bb4f2e1",
-      "stanzaHash": "5e7bc589d2e8eac07e1489f9396e75b478a090c22112ceb9a4c3a1439c198521",
-      "reviewedStanzaHash": "5e7bc589d2e8eac07e1489f9396e75b478a090c22112ceb9a4c3a1439c198521"
+      "stanzaHash": "8110615440439c3baadb8b32bb5269dde230fc7054bdd20067874a2cc40730e8",
+      "reviewedStanzaHash": "8110615440439c3baadb8b32bb5269dde230fc7054bdd20067874a2cc40730e8",
+      "amendments": [
+        {
+          "at": "2026-10-10T21:26:05.960Z",
+          "finding": "Actual accepted cross-project reference previews expose physical fork graph loss and omitted project-write diff/path visibility; original60K repair incomplete.",
+          "reason": "Preserve complete shared renderer/rebase/physical graph/root planning scope and honest120000 estimate; own row is production per canonical Rule3,12paths/fanout12/heroic-last. No blanket valid-preview refusal, safety defaults or expanded implementation.",
+          "previousStanzaHash": "5e7bc589d2e8eac07e1489f9396e75b478a090c22112ceb9a4c3a1439c198521",
+          "stanzaHash": "6dd5a373afa20e4d1b9fd22e5903e42d614ac9122c46d4f5777234292b801006"
+        },
+        {
+          "at": "2026-10-10T21:26:44.606Z",
+          "finding": "Expanded graph scope must explicitly preserve original nullable/mixed-root/JSON-shape and total-budget caller repair requirements.",
+          "reason": "Retain complete original requirements in Approach rather than relying on historical pointer; scope12production9tests2docs and honest120000 unchanged.",
+          "previousStanzaHash": "6dd5a373afa20e4d1b9fd22e5903e42d614ac9122c46d4f5777234292b801006",
+          "stanzaHash": "8110615440439c3baadb8b32bb5269dde230fc7054bdd20067874a2cc40730e8"
+        }
+      ],
+      "sourceCheckpoints": [
+        {
+          "at": "2026-10-10T21:26:47.488Z",
+          "branch": "remediation/restore-callers-missing-packages-path",
+          "headOid": "ea969292d61a8c633cb77581a587841d36742741",
+          "pushed": true,
+          "priorPrs": [],
+          "finding": "Complete physical/reviewed graph restoration120000 exceeds native80000 admission; original10path WIP partial only,72scopedpass/6projectcompile.",
+          "reason": "No implementation PR or full producer because required exposed ordinary-preview graph-write correctness companions remain unimplemented; durable tested source-only checkpoint, no weakened refusal."
+        }
+      ]
     },
     {
       "id": "split-service-refuse-cross-partition-references",
@@ -1664,13 +1704,6 @@
   "conflictGraph": {
     "edges": [
       {
-        "a": 15,
-        "b": 19,
-        "sharedFiles": [
-          "src/RoslynMcp.Host.Stdio/Tools/WorkspaceTools.cs"
-        ]
-      },
-      {
         "a": 17,
         "b": 21,
         "sharedFiles": [
@@ -1694,11 +1727,9 @@
       }
     ],
     "degrees": {
-      "14": 0,
-      "15": 1,
       "17": 1,
       "18": 0,
-      "19": 3,
+      "19": 2,
       "20": 0,
       "21": 1,
       "22": 1,
@@ -1707,7 +1738,6 @@
       "26": 0
     },
     "zeroDegreeInitiatives": [
-      14,
       18,
       20,
       23,
@@ -2319,7 +2349,7 @@
       "fix-all-equivalence-key-unregistered-fallback": "f9022ed2a29c8a2f83bf2a1ec78fc4fb185c432d08c85b6db28ae108d3754108",
       "editorconfig-section-source-path-matching": "455a00b8ff470ee417bab1ee5be2dcecd83f6f543ce17a66f61b144becab9fd9",
       "logging-jsonl-drops-structured-state": "fd3aef40e86b7820bb0d8c786d2534936d972b89ddedf7adf9b78b33b3ff579e",
-      "restore-callers-missing-packages-path": "5e7bc589d2e8eac07e1489f9396e75b478a090c22112ceb9a4c3a1439c198521",
+      "restore-callers-missing-packages-path": "8110615440439c3baadb8b32bb5269dde230fc7054bdd20067874a2cc40730e8",
       "split-service-refuse-cross-partition-references": "603ea86ed5ca4de619a27c527d1b72440bd25468edd6accf46895761393e2cf1",
       "change-signature-class-struct-primary-ctor-add-remove": "85654b631bc417dd5425a08de19bb905302678cac3ee9d9afb7defe000f8265c",
       "load-profile-full-suite": "bc2695528f8866034df6aa82bf401da7ca40f647183d1062466b408fe73768fa",
@@ -2341,9 +2371,9 @@
     }
   },
   "conflictGraphInputHash": "2e1fe8f3241bc69715300fe3a18ca7fbde82f2c67e330748937ae77e5b3d793f",
-  "planHash": "8359c0c0c067eacad3c76e0647891c0ca9be3b4f200428c2540354c7da7a9ce5",
+  "planHash": "0f852cd7939c540b1c0f93d23142217165c164c8248488f08bee36b347b28bba",
   "backlogSnapshotHash": "b57555fce06fa99df0f1bfb9eae39f7c42bb33fe98c94b5b2b98956badb993d7",
-  "reviewedPlanHash": "8359c0c0c067eacad3c76e0647891c0ca9be3b4f200428c2540354c7da7a9ce5",
+  "reviewedPlanHash": "0f852cd7939c540b1c0f93d23142217165c164c8248488f08bee36b347b28bba",
   "reviewedBacklogSnapshotHash": "b57555fce06fa99df0f1bfb9eae39f7c42bb33fe98c94b5b2b98956badb993d7",
   "backlogSketches": [
     {
@@ -2743,6 +2773,51 @@
         "kind": "row",
         "value": "recover-stalled-workspace-cleanup-ownership",
         "at": "2026-10-10T20:47:22.050Z"
+      }
+    },
+    {
+      "n": 18,
+      "source": "orchestrator",
+      "initiativeId": null,
+      "title": "Assets read failure is reported as not restore-required",
+      "suggestedPri": "Medium",
+      "amendRow": "restore-assets-read-failure-false-fresh",
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/RestoreStalenessDetector.cs:224-268",
+        "tests/RoslynMcp.Tests/RestoreStalenessDetectorTests.cs"
+      ],
+      "acceptance": [
+        "Distinguish failed assets reads from verified fresh state with known package expectations; red-first malformed JSON and unreadable-assets cases plus fresh/no-package controls."
+      ],
+      "evidence": "Root source-read immutable337fc2cde10eca3f591cc016c146dee7b893e26a: catch263-266 logs Debug and returnsfalse268 after LoadAssetsPackageVersions fails. Source trace only, runtime reproduction owed; different mechanism from cache-root planning/ValueKind guards.",
+      "at": "2026-10-10T21:20:32.927Z",
+      "disposition": {
+        "kind": "row",
+        "value": "restore-assets-read-failure-false-fresh",
+        "at": "2026-10-10T21:20:43.754Z"
+      }
+    },
+    {
+      "n": 19,
+      "source": "executor",
+      "initiativeId": "restore-callers-missing-packages-path",
+      "title": "Restore assets read failures must not report fresh",
+      "suggestedPri": "Medium",
+      "amendRow": "restore-assets-read-failure-false-fresh",
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/RestoreStalenessDetector.cs:263",
+        "src/RoslynMcp.Roslyn/Services/RestoreStalenessDetector.cs:268"
+      ],
+      "acceptance": [
+        "Represent unreadable/malformed assets as restore-required or an explicit indeterminate outcome instead of fresh.",
+        "Prove malformed JSON and IO failure behavior with causal regressions and preserve real no-package-project behavior."
+      ],
+      "evidence": "At immutable base337fc/current source, IsRestoreRequired catches IOException/UnauthorizedAccessException/JsonException/InvalidOperationException at263, logs restore-drift detection skipped at265, then returns false at268. No causal runtime proof was generated for this separate pre-existing disposition mechanism; parent already filed the exact owning row.",
+      "at": "2026-10-10T21:24:44.622Z",
+      "disposition": {
+        "kind": "row",
+        "value": "restore-assets-read-failure-false-fresh",
+        "at": "2026-10-10T21:24:45.531Z"
       }
     }
   ]

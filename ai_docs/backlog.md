@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-10T20:52:55Z
+**updated_at:** 2026-10-10T21:27:42Z
 
 ## Agent contract
 
@@ -115,7 +115,7 @@
 | `logging-dependency-boundary-duration-missing` | Medium | logging-jsonl-drops-structured-state | **Emit duration and outcome for subprocess and workspace-load boundaries** — the dotnet-command event has target+exit code but no duration; MSBuild workspace load has no boundary event. [type: quality] [source: logging-audit 20260930-1340] | M | items/logging-dependency-boundary-duration-missing.md |
 | `logging-process-vitals-absent` | Medium | — | **Expose process vitals in server_heartbeat and the JSON-lines stream** — memory, GC, thread-pool and execution-gate depth are visible nowhere an agent can read headlessly. [type: quality] [source: logging-audit 20260930-1340] | M | items/logging-process-vitals-absent.md |
 | `logging-observability-contract-doc-incomplete` | Medium | logging-jsonl-drops-structured-state,logging-event-id-collisions-no-catalog | **Complete the observability contract docs with agent recipes** — add file-name pattern, correlate/timing/health recipes and event table to consumer docs, and the A10 section to AGENTS.md. [type: docs] [source: logging-audit 20260930-1340] | S | items/logging-observability-contract-doc-incomplete.md |
-| `restore-callers-missing-packages-path` | Medium | workspace-restore-packages-path | **Pass the assets-recorded packagesPath in the test-runner and fork-apply restores** — reuse the helper from workspace-restore-packages-path. [type: bug] [source: plan 20260930T213336Z workspace-restore-packages-path deepener] | S | items/restore-callers-missing-packages-path.md |
+| `restore-callers-missing-packages-path` | Medium | workspace-restore-packages-path | **Preserve recorded roots and the reviewed fork graph** — restore the actual isolated project graph with each project's recorded NuGet cache root and complete reviewed file effects. [type: bug] [source: restore callers complete-scope re-vet 2026-10-10] | L | items/restore-callers-missing-packages-path.md |
 | `split-service-refuse-cross-partition-references` | Medium | — | **Preserve semantic references across service partitions** — replace name-only discovery with source-owned composition for dependent moved members; refuse only proven unrepresentable external shapes. [type: bug] [source: split-service-with-di-refuse-unsupported-method-shapes] | M | items/split-service-refuse-cross-partition-references.md |
 | `split-service-refuse-unsupported-method-signatures` | Medium | split-service-refuse-cross-partition-references | **Refuse split_service_with_di_preview for method shapes the stub cannot forward** — static, override/abstract, explicit-interface, ref-returning and generic-with-constraints methods, and generic source types. [type: bug] [source: split-service-with-di-refuse-unsupported-method-shapes] | M | items/split-service-refuse-unsupported-method-signatures.md |
 | `split-service-forward-ref-out-in-arguments` | Medium | split-service-refuse-unsupported-method-signatures | **Forward ref/out/in arguments with their modifiers in split_service_with_di forwarding stubs** — stubs emit bare identifiers, so ref/out/in parameters fail to compile. [type: bug] [source: split-service-with-di-refuse-unsupported-method-shapes] | S | items/split-service-forward-ref-out-in-arguments.md |
@@ -154,6 +154,7 @@
 | `workspace-project-index-session-lifetime` | Medium | — | **Release project indexes with workspace lifetime** — prevent closed sessions and concurrent lookups from retaining obsolete project snapshots. [type: bug] [source: workspace-project-alias-lookup] | S | items/workspace-project-index-session-lifetime.md |
 | `bounded-store-capacity-atomic-insertion` | Medium | — | **Enforce bounded-store capacity** - make eviction and insertion preserve the configured entry cap under serial and concurrent writes. [type: bug] [source: fix-all-equivalence-key-unregistered-fallback] | S | items/bounded-store-capacity-atomic-insertion.md |
 | `editorconfig-option-assignment-grammar-validation` | Medium | — | Validate editorconfig keys and values as one provider-valid assignment before writing; prevent injected or lost assignments. [type: bug] [source: backlog-remediate writer re-vet] | M | items/editorconfig-option-assignment-grammar-validation.md |
+| `restore-assets-read-failure-false-fresh` | Medium | — | **Distinguish failed assets reads from fresh restore state** — prevent malformed or unreadable assets with known package expectations from silently returning not-restore-required. [type: bug] [source: restore-callers cold source inspection 2026-10-10] | S | items/restore-assets-read-failure-false-fresh.md |
 
 ## Low
 
