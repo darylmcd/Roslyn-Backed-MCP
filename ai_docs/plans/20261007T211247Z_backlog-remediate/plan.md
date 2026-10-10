@@ -15,7 +15,7 @@ Selection note: Default first-40 window; one split retained, 14 further split ca
 | 5 | extract-type-preserve-untouched-trivia | deferred | — | extract-type-preserve-untouched-trivia |
 | 6 | scaffold-batch-preview-apply-route | deferred | — | scaffold-batch-preview-apply-route |
 | 9 | notice-verifier-scoped-test-inherits-nuget-packages | obsolete | — | notice-verifier-scoped-test-inherits-nuget-packages |
-| 10 | test-discovery-file-path-case-identity | in-progress | — | test-discovery-file-path-case-identity |
+| 10 | test-discovery-file-path-case-identity | in-review | [#1771](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1771) | test-discovery-file-path-case-identity |
 | 11 | workspace-project-alias-lookup | pending | — | workspace-project-alias-lookup |
 | 12 | fix-all-equivalence-key-unregistered-fallback | pending | — | fix-all-equivalence-key-unregistered-fallback |
 | 13 | editorconfig-section-source-path-matching | pending | — | editorconfig-section-source-path-matching |

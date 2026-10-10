@@ -380,7 +380,7 @@
     {
       "id": "test-discovery-file-path-case-identity",
       "order": 10,
-      "status": "in-progress",
+      "status": "in-review",
       "backlogRowsClosed": [
         "test-discovery-file-path-case-identity"
       ],
@@ -410,7 +410,7 @@
       "dependsOn": [],
       "branch": "remediation/test-discovery-file-path-case-identity",
       "worktreePath": ".worktrees/test-discovery-file-path-case-identity",
-      "prUrl": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1771",
       "mergedAt": null,
       "notes": "Execution base c087ac4f512f2ddcddd83b89aca4e3e7c611757f; primary clean/metadata merge verified, service/helper source unchanged from7322. Live semantic source probes and same-mechanism4 pathsets confirm1production fanout. Isolated Linux SDK/pwsh/filesystem preflight ready; real Linux red/green mandatory, supplements Windowsfull/hosted. Project-qualified test identity is different mechanism tracked outside selection; do not hide own-diff defects.",
       "fileSetHash": "a5293638d175b55e86c905ef7b8bae7795070496e70da55380b756ac64be88b3",
