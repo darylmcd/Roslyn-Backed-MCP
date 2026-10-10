@@ -17,7 +17,7 @@ Selection note: Default first-40 window; one split retained, 14 further split ca
 | 9 | notice-verifier-scoped-test-inherits-nuget-packages | obsolete | — | notice-verifier-scoped-test-inherits-nuget-packages |
 | 10 | test-discovery-file-path-case-identity | merged | [#1771](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1771) | test-discovery-file-path-case-identity |
 | 11 | workspace-project-alias-lookup | merged | [#1773](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1773) | workspace-project-alias-lookup |
-| 12 | fix-all-equivalence-key-unregistered-fallback | in-review | [#1775](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1775) | fix-all-equivalence-key-unregistered-fallback |
+| 12 | fix-all-equivalence-key-unregistered-fallback | merged | [#1775](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1775) | fix-all-equivalence-key-unregistered-fallback |
 | 13 | editorconfig-section-source-path-matching | pending | — | editorconfig-section-source-path-matching |
 | 14 | logging-jsonl-drops-structured-state | pending | — | logging-jsonl-drops-structured-state |
 | 15 | restore-callers-missing-packages-path | pending | — | restore-callers-missing-packages-path |

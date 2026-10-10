@@ -534,7 +534,7 @@
     {
       "id": "fix-all-equivalence-key-unregistered-fallback",
       "order": 12,
-      "status": "in-review",
+      "status": "merged",
       "backlogRowsClosed": [
         "fix-all-equivalence-key-unregistered-fallback"
       ],
@@ -568,7 +568,7 @@
       "branch": "remediation/fix-all-equivalence-key-unregistered-fallback",
       "worktreePath": "D:/Roslyn-Backed-MCP/.worktrees/fix-all-equivalence-key-unregistered-fallback",
       "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1775",
-      "mergedAt": null,
+      "mergedAt": "2026-10-10T19:14:14Z",
       "notes": null,
       "fileSetHash": "dded991a714167e89b33bbb559c0c1894eb4eec6de3e5a721f06d905a248c88e",
       "stanzaHash": "f9022ed2a29c8a2f83bf2a1ec78fc4fb185c432d08c85b6db28ae108d3754108",
@@ -589,7 +589,14 @@
           "stanzaHash": "f9022ed2a29c8a2f83bf2a1ec78fc4fb185c432d08c85b6db28ae108d3754108"
         }
       ],
-      "reviewedHead": "a32fe54f11212a7b605efcbd98386cd8c1bf8ba2"
+      "reviewedHead": "a32fe54f11212a7b605efcbd98386cd8c1bf8ba2",
+      "scratchRemoved": false,
+      "githubGate": {
+        "baseOid": "b6fea40ccefc7e967717e4f9f02053ed5a811222",
+        "headOid": "a32fe54f11212a7b605efcbd98386cd8c1bf8ba2",
+        "tree": "98176f4bcd226da9fa78fe4e32d05772c0e4e636",
+        "checksVerifiedAt": "2026-10-10T19:14:08.933Z"
+      }
     },
     {
       "id": "editorconfig-section-source-path-matching",
@@ -631,8 +638,8 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "5d41bd7b55c218330bfe9ce7adf84c5f8d9aab9401d2292fe641e9d5c87d81dd",
-      "stanzaHash": "cd5325df881d8299b97bef77a1d480d44dd59e96dea1e1b776366178af971292",
-      "reviewedStanzaHash": "cd5325df881d8299b97bef77a1d480d44dd59e96dea1e1b776366178af971292",
+      "stanzaHash": "455a00b8ff470ee417bab1ee5be2dcecd83f6f543ce17a66f61b144becab9fd9",
+      "reviewedStanzaHash": "455a00b8ff470ee417bab1ee5be2dcecd83f6f543ce17a66f61b144becab9fd9",
       "amendments": [
         {
           "at": "2026-10-10T18:12:42.297Z",
@@ -640,6 +647,13 @@
           "reason": "Preserve all source/test paths and40000 estimate. Measured immutable b6fea40 predicate and installed Roslyn5.9 matcher on all34 cases; root independently reproduced baseline14TP16FP2FN2TN/provider16TP0FP0FN18TN and original25 literal equality. Use canonical parent-inline ownership; no dispatched-ban override or global implementation.",
           "previousStanzaHash": "56bbce20febc10f9c2b59496955ae4c711e041c5b802fcef475b9d4075d4268f",
           "stanzaHash": "cd5325df881d8299b97bef77a1d480d44dd59e96dea1e1b776366178af971292"
+        },
+        {
+          "at": "2026-10-10T19:15:11.235Z",
+          "finding": "Independent public API probe proves malformed-header active-state, colon assignments, global_level conflicts and structural root semantics require full-text provider composition; isolated-section folding would duplicate parser behavior. Own handle test311 falsely passes unsupported platforms.",
+          "reason": "Use full-text stable per-key markers and public Roslyn composition with original diagnostics/control outputs; preserve exact34 corpus, full2production1test3docs Scope and40000 estimate, fix explicit platform skip in same edited test. Root reproduced34 matching and7composition cases plus12 lexical semantic parity; this is feasibility only.",
+          "previousStanzaHash": "cd5325df881d8299b97bef77a1d480d44dd59e96dea1e1b776366178af971292",
+          "stanzaHash": "455a00b8ff470ee417bab1ee5be2dcecd83f6f543ce17a66f61b144becab9fd9"
         }
       ]
     },
@@ -2718,7 +2732,7 @@
       "test-discovery-file-path-case-identity": "467bcd5b94094bc40107595fc9fe43725c98504d5fb0016d860db3dd95e21bf8",
       "workspace-project-alias-lookup": "23ca433d4565efda70d65fddf058331ccc1a139ea356db06fce4dbea59420ce4",
       "fix-all-equivalence-key-unregistered-fallback": "f9022ed2a29c8a2f83bf2a1ec78fc4fb185c432d08c85b6db28ae108d3754108",
-      "editorconfig-section-source-path-matching": "cd5325df881d8299b97bef77a1d480d44dd59e96dea1e1b776366178af971292",
+      "editorconfig-section-source-path-matching": "455a00b8ff470ee417bab1ee5be2dcecd83f6f543ce17a66f61b144becab9fd9",
       "logging-jsonl-drops-structured-state": "fd3aef40e86b7820bb0d8c786d2534936d972b89ddedf7adf9b78b33b3ff579e",
       "restore-callers-missing-packages-path": "5e7bc589d2e8eac07e1489f9396e75b478a090c22112ceb9a4c3a1439c198521",
       "split-service-refuse-cross-partition-references": "3c92791380fba16b69f6a42f9157eeef8e87c8752b41aafba94da90c4478fa75",
@@ -2742,9 +2756,9 @@
     }
   },
   "conflictGraphInputHash": "c324f82fb4662bb387a7da49214153d6fbbf97c9b75fc92864846d9902272e57",
-  "planHash": "1936940356e02e9c120b637d0b8cc72fc069c7b232af23b826f6fefe3003f194",
+  "planHash": "29b45d020271ebb03abcf0091c277a05690046af19bf79e17b2673373f05ba7d",
   "backlogSnapshotHash": "412267ff24a0d038ee74f51f9dee1d9da44b5b1af2f37a34d358eadf1ce1a732",
-  "reviewedPlanHash": "1936940356e02e9c120b637d0b8cc72fc069c7b232af23b826f6fefe3003f194",
+  "reviewedPlanHash": "29b45d020271ebb03abcf0091c277a05690046af19bf79e17b2673373f05ba7d",
   "reviewedBacklogSnapshotHash": "412267ff24a0d038ee74f51f9dee1d9da44b5b1af2f37a34d358eadf1ce1a732",
   "backlogSketches": [
     {
