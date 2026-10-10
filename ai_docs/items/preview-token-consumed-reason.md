@@ -1,6 +1,6 @@
 # preview-token-consumed-reason — Distinguish applied tokens from reload
 
-**row:** `preview-token-consumed-reason` · **pri:** `Medium` · **size:** `M`
+**row:** `preview-token-consumed-reason` · **pri:** `Medium` · **size:** `M` · **deps:** `persistent-composite-workspace-identity-not-portable`
 
 ## Anchors
 
