@@ -2,6 +2,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.FindSymbols;
+using Microsoft.CodeAnalysis.Simplification;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
@@ -29,7 +30,8 @@ public sealed class TypeExtractionService : ITypeExtractionService
         if (memberNames.Count == 0)
             throw new PublicArgumentException("At least one member name must be specified.", nameof(memberNames));
 
-        var solution = _workspace.GetCurrentSolution(workspaceId);
+        var originalSolution = _workspace.GetCurrentSolution(workspaceId);
+        var solution = originalSolution;
         var sourceDocument = SymbolResolver.FindDocument(solution, filePath)
             ?? throw new InvalidOperationException($"Document not found: {filePath}");
 
@@ -53,6 +55,28 @@ public sealed class TypeExtractionService : ITypeExtractionService
                 "partial declarations, and the extraction cannot wire the composition field through constructors " +
                 "declared in other parts. Consolidate the constructors into one declaration first, then retry.");
         }
+
+        var helperIdentifier = IdentifierValidation.CreateMemberIdentifierToken(newTypeName);
+        if (typeSymbol.ContainingNamespace.GetMembers(helperIdentifier.ValueText)
+            .Any(member => member is INamespaceSymbol or INamedTypeSymbol { Arity: 0 }))
+        {
+            throw new PublicArgumentException(
+                "The target namespace already contains this type or namespace name. Choose a different new type name.",
+                nameof(newTypeName));
+        }
+
+        solution = await ProtectIntroducedTypeBindingsAsync(
+            solution, sourceDocument.Project.Id, typeSymbol.ContainingNamespace,
+            helperIdentifier.ValueText, ct).ConfigureAwait(false);
+        sourceDocument = solution.GetDocument(sourceDocument.Id)!;
+        sourceRoot = (CompilationUnitSyntax)(await sourceDocument.GetSyntaxRootAsync(ct).ConfigureAwait(false))!;
+        semanticModel = (await sourceDocument.GetSemanticModelAsync(ct).ConfigureAwait(false))!;
+        typeDecl = sourceRoot.DescendantNodes().OfType<TypeDeclarationSyntax>()
+            .First(type => string.Equals(type.Identifier.Text, sourceTypeName, StringComparison.Ordinal));
+        typeSymbol = (INamedTypeSymbol)semanticModel.GetDeclaredSymbol(typeDecl, ct)!;
+
+        var helperTypeName = CreateHelperTypeName(typeSymbol.ContainingNamespace, newTypeName);
+        var occupiedNames = GetOccupiedIdentifierNames(typeDecl, typeSymbol);
 
         var (membersToExtract, _, analysisNodes) = PartitionMembers(typeDecl, memberNames, sourceTypeName);
 
@@ -99,12 +123,13 @@ public sealed class TypeExtractionService : ITypeExtractionService
         }
 
         var identifierCore = newTypeName[0] == '@' ? newTypeName[1..] : newTypeName;
-        var fieldName = "_" + char.ToLowerInvariant(identifierCore[0]) + identifierCore[1..];
+        var fieldName = FreshIdentifierCore("_" + char.ToLowerInvariant(identifierCore[0]) + identifierCore[1..], occupiedNames);
         var (rewrittenTypeDecl, referencedExtractedNames) = RewriteSameFileConsumers(
             typeDecl,
             semanticModel,
             analysisNodes,
             newTypeName,
+            helperTypeName,
             fieldName,
             sourceTypeName,
             ct);
@@ -125,17 +150,15 @@ public sealed class TypeExtractionService : ITypeExtractionService
 
         // Build the new type declaration with extracted members
         var newFileRoot = BuildNewFileRoot(
-            sourceRoot, typeDecl, membersToExtract, newTypeName, referencedExtractedNames);
+            sourceRoot, typeDecl, semanticModel, membersToExtract, newTypeName, referencedExtractedNames);
 
         // Remove extracted members from source type and inject field + ctor parameter
         var updatedTypeDecl = InjectFieldAndCtorParameter(
             rewrittenTypeDecl.WithMembers(SyntaxFactory.List(rewrittenMembersToKeep)),
             typeDecl, semanticModel, newTypeName, fieldName, sourceTypeName, ct);
 
-        // Replace in source root (normalize so field/modifier tokens get proper spacing)
+        // Replace only the changed declaration; existing source trivia is not formatting input.
         var updatedSourceRoot = sourceRoot.ReplaceNode(typeDecl, updatedTypeDecl);
-        if (updatedSourceRoot is CompilationUnitSyntax normalizedRoot)
-            updatedSourceRoot = normalizedRoot.NormalizeWhitespace();
 
         var newSolution = solution.WithDocumentSyntaxRoot(sourceDocument.Id, updatedSourceRoot);
 
@@ -148,7 +171,7 @@ public sealed class TypeExtractionService : ITypeExtractionService
         newSolution = newDoc.Project.Solution;
 
         // Compute diff
-        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
+        var changes = await SolutionDiffHelper.ComputeChangesAsync(originalSolution, newSolution, ct).ConfigureAwait(false);
         var description = $"Extract {membersToExtract.Count} member(s) from '{sourceTypeName}' into new type '{newTypeName}'";
         var token = _previewStore.Store(
             workspaceId,
@@ -373,8 +396,31 @@ public sealed class TypeExtractionService : ITypeExtractionService
     private static FieldDeclarationSyntax WithDeclarators(
         FieldDeclarationSyntax field, IEnumerable<VariableDeclaratorSyntax> declarators)
     {
+        var original = field.Declaration.Variables;
+        var nodes = new List<SyntaxNodeOrToken>();
+        foreach (var declarator in declarators)
+        {
+            var originalIndex = original.IndexOf(declarator);
+            if (nodes.Count > 0)
+            {
+                nodes.Add(original.GetSeparator(originalIndex - 1));
+                nodes.Add(declarator);
+            }
+            else
+            {
+                // Removing the preceding comma must not remove its comments or directives.
+                var precedingTrivia = originalIndex > 0
+                    ? original.GetSeparator(originalIndex - 1).LeadingTrivia
+                        .AddRange(original.GetSeparator(originalIndex - 1).TrailingTrivia)
+                    : default;
+                var hasContent = precedingTrivia.Any(t => !t.IsKind(SyntaxKind.WhitespaceTrivia));
+                nodes.Add(hasContent
+                    ? declarator.WithLeadingTrivia(precedingTrivia.AddRange(declarator.GetLeadingTrivia()))
+                    : declarator);
+            }
+        }
         return field.WithDeclaration(
-            field.Declaration.WithVariables(SyntaxFactory.SeparatedList(declarators)));
+            field.Declaration.WithVariables(SyntaxFactory.SeparatedList<VariableDeclaratorSyntax>(nodes)));
     }
 
     /// <summary>
@@ -390,6 +436,7 @@ public sealed class TypeExtractionService : ITypeExtractionService
         SemanticModel semanticModel,
         IReadOnlyList<SyntaxNode> analysisNodes,
         string newTypeName,
+        NameSyntax helperTypeName,
         string fieldName,
         string sourceTypeName,
         CancellationToken ct)
@@ -410,6 +457,7 @@ public sealed class TypeExtractionService : ITypeExtractionService
             semanticModel,
             extractedSymbols,
             newTypeName,
+            helperTypeName,
             fieldName,
             sourceTypeName,
             ct);
@@ -422,6 +470,7 @@ public sealed class TypeExtractionService : ITypeExtractionService
         private readonly SemanticModel _semanticModel;
         private readonly IReadOnlySet<ISymbol> _extractedSymbols;
         private readonly string _newTypeName;
+        private readonly NameSyntax _helperTypeName;
         private readonly string _fieldName;
         private readonly string _sourceTypeName;
         private readonly CancellationToken _ct;
@@ -431,6 +480,7 @@ public sealed class TypeExtractionService : ITypeExtractionService
             SemanticModel semanticModel,
             IReadOnlySet<ISymbol> extractedSymbols,
             string newTypeName,
+            NameSyntax helperTypeName,
             string fieldName,
             string sourceTypeName,
             CancellationToken ct)
@@ -438,6 +488,7 @@ public sealed class TypeExtractionService : ITypeExtractionService
             _semanticModel = semanticModel;
             _extractedSymbols = extractedSymbols;
             _newTypeName = newTypeName;
+            _helperTypeName = helperTypeName;
             _fieldName = fieldName;
             _sourceTypeName = sourceTypeName;
             _ct = ct;
@@ -473,22 +524,18 @@ public sealed class TypeExtractionService : ITypeExtractionService
             ExpressionSyntax owner;
             if (symbol.IsStatic)
             {
-                owner = SyntaxFactory.IdentifierName(_newTypeName);
+                owner = PreserveReceiverTrivia(_helperTypeName, node.Expression);
             }
             else
             {
                 var receiver = (ExpressionSyntax)base.Visit(node.Expression)!;
                 owner = SyntaxFactory.MemberAccessExpression(
                     SyntaxKind.SimpleMemberAccessExpression,
-                    receiver.WithoutTrivia(),
+                    receiver,
                     SyntaxFactory.IdentifierName(_fieldName));
             }
 
-            return SyntaxFactory.MemberAccessExpression(
-                    SyntaxKind.SimpleMemberAccessExpression,
-                    owner,
-                    memberName.WithoutTrivia())
-                .WithTriviaFrom(node);
+            return node.WithExpression(owner).WithName(memberName);
         }
 
         public override SyntaxNode? VisitIdentifierName(IdentifierNameSyntax node)
@@ -515,12 +562,27 @@ public sealed class TypeExtractionService : ITypeExtractionService
             }
 
             EnsureInstanceReferenceCanBeRewritten(node, symbol);
-            var owner = symbol.IsStatic ? _newTypeName : _fieldName;
+            ExpressionSyntax owner = symbol.IsStatic
+                ? _helperTypeName
+                : SyntaxFactory.MemberAccessExpression(
+                    SyntaxKind.SimpleMemberAccessExpression,
+                    SyntaxFactory.ThisExpression(),
+                    SyntaxFactory.IdentifierName(_fieldName));
             return SyntaxFactory.MemberAccessExpression(
                     SyntaxKind.SimpleMemberAccessExpression,
-                    SyntaxFactory.IdentifierName(owner),
+                    owner,
                     node.WithoutTrivia())
                 .WithTriviaFrom(node);
+        }
+
+        private static NameSyntax PreserveReceiverTrivia(NameSyntax replacement, ExpressionSyntax original)
+        {
+            var internalTrivia = original.DescendantTrivia()
+                .Where(trivia => original.Span.Contains(trivia.Span));
+            var lastToken = replacement.GetLastToken();
+            return replacement.ReplaceToken(lastToken,
+                    lastToken.WithLeadingTrivia(internalTrivia))
+                .WithTriviaFrom(original);
         }
 
         private bool TryGetExtractedSymbol(SimpleNameSyntax node, out ISymbol symbol)
@@ -563,6 +625,7 @@ public sealed class TypeExtractionService : ITypeExtractionService
     private static CompilationUnitSyntax BuildNewFileRoot(
         CompilationUnitSyntax sourceRoot,
         TypeDeclarationSyntax typeDecl,
+        SemanticModel semanticModel,
         IReadOnlyList<MemberDeclarationSyntax> membersToExtract,
         string newTypeName,
         IReadOnlySet<string> referencedExtractedNames)
@@ -574,31 +637,49 @@ public sealed class TypeExtractionService : ITypeExtractionService
         // `sealed`, `new`) become compile errors or meaningless noise. Strip them after the
         // widening. Tracked by `dr-9-3-preserves-when-new-type-does-not-inherit-the-bas`.
         var extractedMembers = membersToExtract
-            .Select(member => WidenIfReferencedByRetainedCode(member, referencedExtractedNames))
-            .Select(StripInheritanceOnlyModifiers)
+            .Select(member =>
+            {
+                var context = semanticModel.GetNullableContext(member.SpanStart);
+                var nullableTrivia = SyntaxFactory.ParseLeadingTrivia(
+                    "#nullable " + (context.HasFlag(NullableContext.AnnotationsEnabled) ? "enable" : "disable") + " annotations\n"
+                    + "#nullable " + (context.HasFlag(NullableContext.WarningsEnabled) ? "enable" : "disable") + " warnings\n");
+                var extracted = StripInheritanceOnlyModifiers(WidenIfReferencedByRetainedCode(member, referencedExtractedNames));
+                return extracted.WithLeadingTrivia(nullableTrivia.AddRange(extracted.GetLeadingTrivia()));
+            })
             .ToList();
-        TypeDeclarationSyntax newTypeDecl = SyntaxFactory.ClassDeclaration(newTypeName)
+        TypeDeclarationSyntax newTypeDecl = SyntaxFactory.ClassDeclaration(IdentifierValidation.CreateMemberIdentifierToken(newTypeName))
             .WithModifiers(SyntaxFactory.TokenList(
                 SyntaxFactory.Token(SyntaxKind.PublicKeyword),
                 SyntaxFactory.Token(SyntaxKind.SealedKeyword)))
             .WithMembers(SyntaxFactory.List(extractedMembers));
 
-        var namespaceDecl = typeDecl.Ancestors().OfType<BaseNamespaceDeclarationSyntax>().FirstOrDefault();
-        MemberDeclarationSyntax topLevelMember = namespaceDecl switch
+        MemberDeclarationSyntax topLevelMember = newTypeDecl;
+        foreach (var enclosingNamespace in typeDecl.Ancestors().OfType<BaseNamespaceDeclarationSyntax>())
         {
-            FileScopedNamespaceDeclarationSyntax fileScopedNs =>
-                SyntaxFactory.FileScopedNamespaceDeclaration(fileScopedNs.Name)
-                    .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(newTypeDecl)),
-            NamespaceDeclarationSyntax blockNs =>
-                SyntaxFactory.NamespaceDeclaration(blockNs.Name)
-                    .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(newTypeDecl)),
-            _ => newTypeDecl
-        };
+            // Recreate lexical import layers, without copying directive blocks whose closing
+            // trivia belongs to other declarations or the original file's EOF.
+            BaseNamespaceDeclarationSyntax wrapper = enclosingNamespace is FileScopedNamespaceDeclarationSyntax
+                ? SyntaxFactory.FileScopedNamespaceDeclaration(enclosingNamespace.Name.WithoutTrivia())
+                : SyntaxFactory.NamespaceDeclaration(enclosingNamespace.Name.WithoutTrivia());
+            topLevelMember = wrapper
+                .WithExterns(SyntaxFactory.List(enclosingNamespace.Externs.Select(WithoutScaffoldingDirectives)))
+                .WithUsings(SyntaxFactory.List(enclosingNamespace.Usings.Select(WithoutScaffoldingDirectives)))
+                .WithMembers(SyntaxFactory.SingletonList(topLevelMember));
+        }
 
         var compilationUnit = SyntaxFactory.CompilationUnit()
-            .WithUsings(sourceRoot.Usings)
+            .WithExterns(SyntaxFactory.List(sourceRoot.Externs.Select(WithoutScaffoldingDirectives)))
+            .WithUsings(SyntaxFactory.List(sourceRoot.Usings.Select(WithoutScaffoldingDirectives)))
             .WithMembers(SyntaxFactory.SingletonList(topLevelMember))
             .NormalizeWhitespace();
+        // File-local symbols are not project parse options. Reproduce active header changes
+        // before the generated file's first token, preserving conditional member behavior.
+        var symbols = sourceRoot.GetFirstToken().LeadingTrivia
+            .Select(trivia => trivia.GetStructure())
+            .OfType<DirectiveTriviaSyntax>()
+            .Where(directive => directive.IsActive && directive is DefineDirectiveTriviaSyntax or UndefDirectiveTriviaSyntax);
+        var symbolTrivia = SyntaxFactory.ParseLeadingTrivia(string.Concat(symbols.Select(directive => directive.ToFullString())));
+        compilationUnit = compilationUnit.WithLeadingTrivia(symbolTrivia.AddRange(compilationUnit.GetLeadingTrivia()));
 
         // dr-9-5-strips-the-blank-line-between-namespace-and-clas:
         // `NormalizeWhitespace()` emits a single newline between a namespace declaration and
@@ -608,6 +689,11 @@ public sealed class TypeExtractionService : ITypeExtractionService
         // hand and the shape `dotnet format` / editorconfig defaults produce.
         return EnsureBlankLineBetweenNamespaceAndType(compilationUnit);
     }
+
+    private static T WithoutScaffoldingDirectives<T>(T node) where T : SyntaxNode =>
+        node.ReplaceTrivia(node.DescendantTrivia().Where(trivia =>
+            trivia.GetStructure() is DirectiveTriviaSyntax || trivia.IsKind(SyntaxKind.DisabledTextTrivia)),
+            (_, _) => default);
 
     /// <summary>
     /// After a `NormalizeWhitespace()` pass, inject a blank line before the first type
@@ -664,6 +750,157 @@ public sealed class TypeExtractionService : ITypeExtractionService
         return typeDecl.WithLeadingTrivia(existing.Insert(0, blankLine));
     }
 
+    private static async Task<Solution> ProtectIntroducedTypeBindingsAsync(
+        Solution original, ProjectId targetProjectId, INamespaceSymbol targetNamespace,
+        string helperName, CancellationToken ct)
+    {
+        // Probe the new public type without changing any original document. Only names whose
+        // original binding is captured by this declaration require qualification.
+        var probeType = SyntaxFactory.ClassDeclaration(IdentifierValidation.CreateMemberIdentifierToken(
+                SyntaxFacts.GetKeywordKind(helperName) != SyntaxKind.None
+                    || SyntaxFacts.GetContextualKeywordKind(helperName) != SyntaxKind.None ? "@" + helperName : helperName))
+            .WithModifiers(SyntaxFactory.TokenList(SyntaxFactory.Token(SyntaxKind.PublicKeyword)));
+        MemberDeclarationSyntax probeMember = targetNamespace.IsGlobalNamespace
+            ? probeType
+            : SyntaxFactory.NamespaceDeclaration(SyntaxFactory.ParseName(
+                    targetNamespace.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)["global::".Length..]))
+                .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(probeType));
+        var probeRoot = SyntaxFactory.CompilationUnit()
+            .WithMembers(SyntaxFactory.SingletonList(probeMember))
+            .NormalizeWhitespace();
+        var candidate = original.AddDocument(DocumentId.CreateNewId(targetProjectId),
+            "TypeExtractionBindingProbe.cs", probeRoot.GetText());
+        var result = original;
+        var affectedProjects = original.GetProjectDependencyGraph()
+            .GetProjectsThatTransitivelyDependOnThisProject(targetProjectId)
+            .Append(targetProjectId).ToHashSet();
+        foreach (var project in original.Projects.Where(project =>
+            affectedProjects.Contains(project.Id) && project.Language == LanguageNames.CSharp))
+        {
+            foreach (var document in project.Documents)
+            {
+                ct.ThrowIfCancellationRequested();
+                // Documents without syntax/semantic capability do not participate in C# binding.
+                if (!document.SupportsSyntaxTree || !document.SupportsSemanticModel) continue;
+                var root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false)
+                    ?? throw InvalidOperationErrors.Internal("A syntax-capable extraction document did not provide its root.");
+                var names = root.DescendantNodes().OfType<SimpleNameSyntax>()
+                    .Where(name => name.Identifier.ValueText == helperName
+                        || name.Identifier.ValueText + "Attribute" == helperName)
+                    .ToArray();
+                if (names.Length == 0) continue;
+                var originalModel = await document.GetSemanticModelAsync(ct).ConfigureAwait(false)
+                    ?? throw InvalidOperationErrors.Internal("A semantic-capable extraction document did not provide its original model.");
+                var candidateDocument = candidate.GetDocument(document.Id)!;
+                var candidateModel = await candidateDocument.GetSemanticModelAsync(ct).ConfigureAwait(false)
+                    ?? throw InvalidOperationErrors.Internal("A semantic-capable extraction document did not provide its candidate model.");
+                var replacements = new Dictionary<SyntaxNode, SyntaxNode>();
+                string? dynamicAlias = null;
+                foreach (var name in names)
+                {
+                    var oldSymbol = originalModel.GetSymbolInfo(name, ct).Symbol;
+                    if (oldSymbol is null) continue;
+                    var newSymbol = candidateModel.GetSymbolInfo(name, ct).Symbol;
+                    if (BindingIdentity(oldSymbol) == BindingIdentity(newSymbol)) continue;
+                    SyntaxNode expanded;
+                    if (oldSymbol is IDynamicTypeSymbol && helperName == "dynamic" && !targetNamespace.IsGlobalNamespace)
+                    {
+                        // An alias outside the captured namespace retains intrinsic dynamic
+                        // semantics; a qualified System.Object would lose runtime dispatch.
+                        dynamicAlias ??= FreshIdentifierCore("__TypeExtractionDynamic",
+                            root.DescendantTokens().Where(token => token.IsKind(SyntaxKind.IdentifierToken))
+                                .Select(token => token.ValueText)
+                                .Concat(originalModel.LookupSymbols(0).Select(symbol => symbol.Name))
+                                .ToHashSet(StringComparer.Ordinal));
+                        expanded = SyntaxFactory.IdentifierName(dynamicAlias);
+                    }
+                    else if (name.Identifier.ValueText == "var" && oldSymbol is ITypeSymbol inferredType
+                        && !ContainsAnonymousType(inferredType))
+                        expanded = SyntaxFactory.ParseTypeName(inferredType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
+                    else
+                        expanded = await Simplifier.ExpandAsync<SyntaxNode>(
+                            name, document, cancellationToken: ct).ConfigureAwait(false);
+                    replacements.Add(name, expanded.WithTriviaFrom(name));
+                }
+                if (replacements.Count > 0)
+                {
+                    var rewrittenRoot = root.ReplaceNodes(replacements.Keys, (name, rewritten) =>
+                        {
+                            var expanded = replacements[name];
+                            // Keep unaffected type argument tokens; nested captured names have
+                            // already been rewritten by ReplaceNodes.
+                            if (rewritten is GenericNameSyntax generic)
+                            {
+                                var expandedGeneric = expanded.DescendantNodesAndSelf()
+                                    .OfType<GenericNameSyntax>()
+                                    .Last(node => node.Identifier.ValueText == generic.Identifier.ValueText);
+                                expanded = expanded.ReplaceNode(expandedGeneric,
+                                    expandedGeneric.WithTypeArgumentList(generic.TypeArgumentList));
+                            }
+                            return expanded;
+                        });
+                    if (dynamicAlias is not null)
+                    {
+                        var compilationUnit = (CompilationUnitSyntax)rewrittenRoot;
+                        var alias = SyntaxFactory.ParseCompilationUnit("using " + dynamicAlias + " = dynamic;\n").Usings.Single();
+                        if (compilationUnit.Externs.Count == 0 && compilationUnit.Usings.Count == 0)
+                        {
+                            // Header #define/#undef directives must still precede every token.
+                            alias = alias.WithLeadingTrivia(compilationUnit.GetLeadingTrivia());
+                            compilationUnit = compilationUnit.WithLeadingTrivia(default(SyntaxTriviaList));
+                        }
+                        rewrittenRoot = compilationUnit.WithUsings(compilationUnit.Usings.Add(alias));
+                    }
+                    result = result.WithDocumentSyntaxRoot(document.Id, rewrittenRoot);
+                }
+            }
+        }
+        return result;
+    }
+
+    private static bool ContainsAnonymousType(ITypeSymbol type) => type switch
+    {
+        INamedTypeSymbol named => named.IsAnonymousType || named.TypeArguments.Any(ContainsAnonymousType),
+        IArrayTypeSymbol array => ContainsAnonymousType(array.ElementType),
+        IPointerTypeSymbol pointer => ContainsAnonymousType(pointer.PointedAtType),
+        _ => false,
+    };
+
+    private static string? BindingIdentity(ISymbol? symbol)
+    {
+        if (symbol is IAliasSymbol alias) symbol = alias.Target;
+        return symbol is null ? null
+            : symbol.Kind + ":" + symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
+                + ":" + symbol.ContainingAssembly?.Identity;
+    }
+
+    private static HashSet<string> GetOccupiedIdentifierNames(TypeDeclarationSyntax typeDecl, INamedTypeSymbol typeSymbol)
+    {
+        var names = typeDecl.DescendantTokens()
+            .Where(token => token.IsKind(SyntaxKind.IdentifierToken))
+            .Select(token => token.ValueText)
+            .ToHashSet(StringComparer.Ordinal);
+        for (var scope = typeSymbol; scope is not null; scope = scope.BaseType)
+            names.UnionWith(scope.GetMembers().Select(member => member.Name));
+        return names;
+    }
+
+    private static NameSyntax CreateHelperTypeName(INamespaceSymbol targetNamespace, string newTypeName)
+    {
+        var prefix = targetNamespace.IsGlobalNamespace
+            ? "global::"
+            : targetNamespace.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) + ".";
+        return SyntaxFactory.ParseName(prefix + newTypeName);
+    }
+
+    private static string FreshIdentifierCore(string preferredName, IReadOnlySet<string> occupiedNames)
+    {
+        var candidate = preferredName;
+        for (var suffix = 1; occupiedNames.Contains(candidate); suffix++)
+            candidate = preferredName + suffix.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        return candidate;
+    }
+
     /// <summary>
     /// Injects the <c>private readonly {NewType} _field</c> composition field and wires it through
     /// EVERY instance constructor of the source type (type-extraction-composition-constructor-coverage).
@@ -710,24 +947,48 @@ public sealed class TypeExtractionService : ITypeExtractionService
                 $"parameters. Convert the primary constructor to an explicit constructor first, then retry.");
         }
 
+        var typeSymbol = (INamedTypeSymbol)semanticModel.GetDeclaredSymbol(originalTypeDecl, ct)!;
+        var occupiedNames = GetOccupiedIdentifierNames(originalTypeDecl, typeSymbol);
+        var helperTypeName = CreateHelperTypeName(typeSymbol.ContainingNamespace, newTypeName);
+
+        var eol = originalTypeDecl.SyntaxTree.GetRoot(ct).DescendantTrivia()
+            .FirstOrDefault(t => t.IsKind(SyntaxKind.EndOfLineTrivia)).ToFullString();
+        if (eol.Length == 0)
+            eol = "\n";
+        var indentation = originalTypeDecl.Members.FirstOrDefault()?.GetLeadingTrivia()
+            .LastOrDefault(t => t.IsKind(SyntaxKind.WhitespaceTrivia)).ToFullString() ?? "    ";
+
         var fieldDecl = SyntaxFactory.FieldDeclaration(
-            SyntaxFactory.VariableDeclaration(SyntaxFactory.ParseTypeName(newTypeName))
+            SyntaxFactory.VariableDeclaration(helperTypeName)
                 .WithVariables(SyntaxFactory.SingletonSeparatedList(
                     SyntaxFactory.VariableDeclarator(fieldName))))
             .WithModifiers(SyntaxFactory.TokenList(
                 SyntaxFactory.Token(SyntaxKind.PrivateKeyword),
-                SyntaxFactory.Token(SyntaxKind.ReadOnlyKeyword)));
+                SyntaxFactory.Token(SyntaxKind.ReadOnlyKeyword)))
+            .NormalizeWhitespace(eol: eol)
+            .WithLeadingTrivia(SyntaxFactory.Whitespace(indentation))
+            .WithTrailingTrivia(SyntaxFactory.EndOfLine(eol));
 
         var identifierCore = newTypeName[0] == '@' ? newTypeName[1..] : newTypeName;
-        var camelCaseCore = char.ToLowerInvariant(identifierCore[0]) + identifierCore[1..];
-        var paramName = newTypeName[0] == '@' ? "@" + camelCaseCore : camelCaseCore;
-        var newParam = SyntaxFactory.Parameter(SyntaxFactory.Identifier(paramName))
-            .WithType(SyntaxFactory.ParseTypeName(newTypeName));
+        var camelCaseCore = FreshIdentifierCore(char.ToLowerInvariant(identifierCore[0]) + identifierCore[1..], occupiedNames);
+        var paramName = newTypeName[0] == '@' || SyntaxFacts.GetKeywordKind(camelCaseCore) != SyntaxKind.None
+            ? "@" + camelCaseCore
+            : camelCaseCore;
+        var paramIdentifier = IdentifierValidation.CreateMemberIdentifierToken(paramName);
+        var newParam = SyntaxFactory.Parameter(paramIdentifier)
+            .WithType(helperTypeName)
+            .NormalizeWhitespace();
         var assignment = SyntaxFactory.ExpressionStatement(
             SyntaxFactory.AssignmentExpression(
                 SyntaxKind.SimpleAssignmentExpression,
-                SyntaxFactory.IdentifierName(fieldName),
-                SyntaxFactory.IdentifierName(paramName)));
+                SyntaxFactory.MemberAccessExpression(
+                    SyntaxKind.SimpleMemberAccessExpression,
+                    SyntaxFactory.ThisExpression(),
+                    SyntaxFactory.IdentifierName(fieldName)),
+                SyntaxFactory.IdentifierName(paramIdentifier)))
+            .NormalizeWhitespace(eol: eol)
+            .WithLeadingTrivia(SyntaxFactory.EndOfLine(eol), SyntaxFactory.Whitespace(indentation + "    "))
+            .WithTrailingTrivia(SyntaxFactory.EndOfLine(eol));
 
         var ctors = typeDecl.Members.OfType<ConstructorDeclarationSyntax>().ToList();
         var originalCtors = originalTypeDecl.Members.OfType<ConstructorDeclarationSyntax>().ToList();
@@ -739,11 +1000,26 @@ public sealed class TypeExtractionService : ITypeExtractionService
         {
             // Implicit constructor: the compiler-supplied parameterless constructor cannot assign the
             // new readonly field, so synthesize an explicit one that does. Inserted right after the
-            // field; NormalizeWhitespace at the call site handles formatting.
-            var synthesizedCtor = SyntaxFactory.ConstructorDeclaration(SyntaxFactory.Identifier(typeDecl.Identifier.Text))
+            // field; only this wholly synthesized declaration is formatted.
+            var synthesizedCtor = SyntaxFactory.ConstructorDeclaration(typeDecl.Identifier.WithoutTrivia())
                 .WithModifiers(SyntaxFactory.TokenList(SyntaxFactory.Token(SyntaxKind.PublicKeyword)))
                 .WithParameterList(SyntaxFactory.ParameterList(SyntaxFactory.SingletonSeparatedList(newParam)))
-                .WithBody(SyntaxFactory.Block(assignment));
+                .WithBody(SyntaxFactory.Block(assignment))
+                .NormalizeWhitespace(eol: eol);
+            // All constructor tokens are synthesized, so indentation can be assigned locally.
+            var body = SyntaxFactory.Block(
+                    assignment.WithLeadingTrivia(SyntaxFactory.Whitespace(indentation + "    ")))
+                .WithOpenBraceToken(SyntaxFactory.Token(SyntaxKind.OpenBraceToken)
+                    .WithLeadingTrivia(SyntaxFactory.EndOfLine(eol), SyntaxFactory.Whitespace(indentation))
+                    .WithTrailingTrivia(SyntaxFactory.EndOfLine(eol)))
+                .WithCloseBraceToken(SyntaxFactory.Token(SyntaxKind.CloseBraceToken)
+                    .WithLeadingTrivia(SyntaxFactory.Whitespace(indentation))
+                    .WithTrailingTrivia(SyntaxFactory.EndOfLine(eol)));
+            synthesizedCtor = synthesizedCtor
+                .WithLeadingTrivia(SyntaxFactory.Whitespace(indentation))
+                .WithParameterList(synthesizedCtor.ParameterList.WithCloseParenToken(
+                    synthesizedCtor.ParameterList.CloseParenToken.WithTrailingTrivia()))
+                .WithBody(body);
 
             return typeDecl.WithMembers(typeDecl.Members.Insert(0, fieldDecl).Insert(1, synthesizedCtor));
         }
@@ -777,7 +1053,7 @@ public sealed class TypeExtractionService : ITypeExtractionService
             var insertIndex = ParameterInsertIndex(ctor);
             var updatedCtor = ctor.WithParameterList(
                 ctor.ParameterList.WithParameters(
-                    ctor.ParameterList.Parameters.Insert(insertIndex, newParam)));
+                    InsertWithSpace(ctor.ParameterList.Parameters, insertIndex, newParam)));
 
             if (ctor.Initializer is { } initializer && initializer.IsKind(SyntaxKind.ThisConstructorInitializer))
             {
@@ -813,7 +1089,7 @@ public sealed class TypeExtractionService : ITypeExtractionService
                 updatedCtor = updatedCtor.WithInitializer(
                     initializer.WithArgumentList(
                         initializer.ArgumentList.WithArguments(
-                            arguments.Insert(argumentIndex, SyntaxFactory.Argument(SyntaxFactory.IdentifierName(paramName))))));
+                            InsertWithSpace(arguments, argumentIndex, SyntaxFactory.Argument(SyntaxFactory.IdentifierName(paramIdentifier))))));
             }
             else if (ctor.ExpressionBody is { } expressionBody)
             {
@@ -823,8 +1099,15 @@ public sealed class TypeExtractionService : ITypeExtractionService
                     .WithExpressionBody(null)
                     .WithSemicolonToken(default)
                     .WithBody(SyntaxFactory.Block(
-                        SyntaxFactory.ExpressionStatement(expressionBody.Expression),
-                        assignment));
+                            SyntaxFactory.ExpressionStatement(expressionBody.Expression)
+                                .WithSemicolonToken(ctor.SemicolonToken),
+                            assignment)
+                        .WithOpenBraceToken(SyntaxFactory.Token(
+                            expressionBody.ArrowToken.LeadingTrivia, SyntaxKind.OpenBraceToken,
+                            expressionBody.ArrowToken.TrailingTrivia))
+                        .WithCloseBraceToken(SyntaxFactory.Token(SyntaxKind.CloseBraceToken)
+                            .WithLeadingTrivia(SyntaxFactory.Whitespace(indentation))
+                            .WithTrailingTrivia(SyntaxFactory.EndOfLine(eol))));
             }
             else
             {
@@ -836,6 +1119,26 @@ public sealed class TypeExtractionService : ITypeExtractionService
 
         typeDecl = typeDecl.ReplaceNodes(replacements.Keys, (original, _) => replacements[original]);
         return typeDecl.WithMembers(typeDecl.Members.Insert(0, fieldDecl));
+    }
+
+    // Preserve every existing separator and its trivia; synthesize only the new comma.
+    private static SeparatedSyntaxList<T> InsertWithSpace<T>(SeparatedSyntaxList<T> list, int index, T node)
+        where T : SyntaxNode
+    {
+        var nodes = list.GetWithSeparators().ToList();
+        var comma = SyntaxFactory.Token(SyntaxKind.CommaToken).WithTrailingTrivia(SyntaxFactory.Space);
+        if (index == list.Count)
+        {
+            if (nodes.Count > 0)
+                nodes.Add(comma);
+            nodes.Add(node);
+        }
+        else
+        {
+            nodes.Insert(index * 2, node);
+            nodes.Insert(index * 2 + 1, comma);
+        }
+        return SyntaxFactory.SeparatedList<T>(nodes);
     }
 
     /// <summary>

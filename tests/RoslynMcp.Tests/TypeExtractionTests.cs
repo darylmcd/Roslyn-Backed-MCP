@@ -11,8 +11,8 @@ namespace RoslynMcp.Tests;
 // donotparallelize-audit-wave-32: [DoNotParallelize] removed. Every workspace-backed test loads
 // its own GUID-unique SampleSolution copy (CreateSampleSolutionCopy / CreateIsolatedWorkspaceAsync),
 // writes fixtures only inside it, and WorkspaceManager LoadAsync/Close act only on that session.
-// Only the preview side of TypeExtractionService runs — no *_apply, no reload, no UndoService or
-// ChangeTracker write (the one ApplyExtractMethod call is refused on route before any mutation).
+// Preview and apply mutate only test-owned copies; reload, UndoService and ChangeTracker
+// writes stay in that workspace (ApplyExtractMethod is refused on route before mutation).
 // Tokens are redeemed from the bounded (20-entry), oldest-first-evicting PreviewStore immediately
 // after the preview, so displacing one would need 20 newer previews inside that window. The roots
 // tests build private McpRootsTestServerFactory pairs over GUID-named directories; no static or
@@ -1005,7 +1005,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
                 CancellationToken.None);
 
             var updatedSource = await GetModifiedDocumentTextAsync(result.PreviewToken, fixturePath);
-            StringAssert.Contains(updatedSource, "public ImplicitCtorFixture(ComputeHelper computeHelper)",
+            StringAssert.Contains(updatedSource, "public ImplicitCtorFixture(global::SampleLib.ComputeHelper computeHelper)",
                 "a constructor accepting the extracted type must be synthesized when the type had only the implicit constructor");
             StringAssert.Contains(updatedSource, "_computeHelper = computeHelper;",
                 "the synthesized constructor must assign the composition field");
@@ -1057,9 +1057,9 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
                 CancellationToken.None);
 
             var updatedSource = await GetModifiedDocumentTextAsync(result.PreviewToken, fixturePath);
-            StringAssert.Contains(updatedSource, "ChainedCtorFixture(int seed, ComputeHelper computeHelper)",
+            StringAssert.Contains(updatedSource, "ChainedCtorFixture(int seed, global::SampleLib.ComputeHelper computeHelper)",
                 "the root constructor must gain the new parameter");
-            StringAssert.Contains(updatedSource, "ChainedCtorFixture(ComputeHelper computeHelper)",
+            StringAssert.Contains(updatedSource, "ChainedCtorFixture(global::SampleLib.ComputeHelper computeHelper)",
                 "the chained constructor must gain the new parameter too");
             StringAssert.Contains(updatedSource, "this(7, computeHelper)",
                 "the chained initializer must forward the new argument to the delegated constructor");
@@ -1114,7 +1114,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
                 CancellationToken.None);
 
             var updatedSource = await GetModifiedDocumentTextAsync(result.PreviewToken, fixturePath);
-            StringAssert.Contains(updatedSource, "ExpressionBodiedCtorFixture(int seed, ComputeHelper computeHelper)",
+            StringAssert.Contains(updatedSource, "ExpressionBodiedCtorFixture(int seed, global::SampleLib.ComputeHelper computeHelper)",
                 "the expression-bodied constructor must gain the new parameter");
             StringAssert.Contains(updatedSource, "_seed = seed;",
                 "the original expression body must survive as a block statement");
@@ -1231,7 +1231,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
 
             var updatedSource = await GetModifiedDocumentTextAsync(preview.PreviewToken, fixture.FilePath);
             StringAssert.Contains(updatedSource, "_caféHelper.Compute(21)");
-            StringAssert.Contains(updatedSource, "MethodGroupUser() => _caféHelper.Compute");
+            StringAssert.Contains(updatedSource, "MethodGroupUser() => this._caféHelper.Compute");
             StringAssert.Contains(updatedSource, "CaféHelper.StaticCompute(21)");
             await AssertModifiedSolutionCompilesAsync(preview.PreviewToken);
         }
@@ -1273,9 +1273,9 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
             var updatedSource = await GetModifiedDocumentTextAsync(preview.PreviewToken, fixture.FilePath);
 
             StringAssert.Contains(updatedSource,
-                "ParamsCtorFixture(int seed, ComputeHelper computeHelper, params string[] labels)");
+                "ParamsCtorFixture(int seed, global::SampleLib.ComputeHelper computeHelper, params string[] labels)");
             StringAssert.Contains(updatedSource,
-                "ParamsCtorFixture(ComputeHelper computeHelper, params string[] labels)");
+                "ParamsCtorFixture(global::SampleLib.ComputeHelper computeHelper, params string[] labels)");
             StringAssert.Contains(updatedSource, "this(0, computeHelper, labels)");
             await AssertModifiedSolutionCompilesAsync(preview.PreviewToken);
         }
@@ -1483,6 +1483,635 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         {
             WorkspaceManager.Close(fixture.WorkspaceId);
             QueueDirectoryForCleanup(fixture.SolutionDirectory);
+        }
+    }
+
+    [TestMethod]
+    [DataRow("\n", "implicit")]
+    [DataRow("\r\n", "implicit")]
+    [DataRow("\n", "block")]
+    [DataRow("\r\n", "block")]
+    [DataRow("\n", "expression")]
+    [DataRow("\r\n", "expression")]
+    [DataRow("\n", "chain")]
+    [DataRow("\r\n", "chain")]
+    public async Task ExtractType_PreviewAndApply_PreserveUntouchedTrivia(string eol, string topology)
+    {
+        var constructor = topology switch
+        {
+            "implicit" => "",
+            "block" => "\tpublic TriviaFixture(int seed = 1) : base() { /* before */ _seed  =  seed; /* after */ } // ctor tail",
+            "expression" => "\tpublic TriviaFixture(int seed = 1) /* arrow before */ => /* arrow after */ _seed  =  seed; // ctor tail",
+            "chain" => "\tpublic TriviaFixture(int seed, params string[] labels) { /* before */ _seed  =  seed; /* after */ } // ctor tail"
+                + eol + "\tpublic TriviaFixture(params string[] labels) : this(1 /* argument */, labels) { /* chain body */ }",
+            _ => throw new AssertFailedException("Unknown constructor topology."),
+        };
+        var prefix = "// file header  " + eol + "#nullable enable" + eol
+            + "namespace   SampleLib;" + eol + eol + "public class TriviaFixture" + eol + "{" + eol;
+        var retained = "\t// retained marker  " + eol + "#region Kept" + eol
+            + "\tpublic   int Keep( ) {  return _seed; } // exact tail  " + eol + "#endregion" + eol;
+        var suffix = "}" + eol + eol + "// unrelated marker  " + eol
+            + "public class UnrelatedTrivia { public int Value( )=>  7; }" + eol;
+        var source = prefix + "\tprivate int _seed = 1;" + eol
+            + "\tstatic TriviaFixture( ) { /* static body */ }" + eol
+            + (constructor.Length == 0 ? "" : constructor + eol) + retained
+            + "\tpublic int User( ) => this /* receiver */ . /* dot */ Compute( 2 );" + eol
+            + "\tpublic static int StaticUser( ) => TriviaFixture /* static receiver */ . /* static dot */ StaticCompute( 3 );" + eol
+            + "\tprivate static int StaticCompute(int value) => value * 3;" + eol
+            + "\tprivate int Compute(int value) => value * 2;" + eol + suffix;
+        var fixture = await CreateExtractionFixtureAsync("TriviaFixture.cs", source);
+        try
+        {
+            var originalBytes = await File.ReadAllBytesAsync(fixture.FilePath);
+            var preview = await TypeExtractionService.PreviewExtractTypeAsync(
+                fixture.WorkspaceId, fixture.FilePath, "TriviaFixture", ["Compute", "StaticCompute"],
+                "ComputeHelper", null, CancellationToken.None);
+            var text = await GetModifiedDocumentTextAsync(preview.PreviewToken, fixture.FilePath);
+            CollectionAssert.AreEqual(originalBytes, await File.ReadAllBytesAsync(fixture.FilePath));
+            StringAssert.StartsWith(text, prefix);
+            StringAssert.EndsWith(text, suffix);
+            StringAssert.Contains(text, retained);
+            StringAssert.Contains(text, "\tstatic TriviaFixture( ) { /* static body */ }" + eol);
+            StringAssert.Contains(text, "this /* receiver */ ._computeHelper. /* dot */ Compute( 2 )");
+            StringAssert.Contains(text, "ComputeHelper /* static receiver */ . /* static dot */ StaticCompute( 3 )");
+            if (topology is "block" or "chain")
+                StringAssert.Contains(text, "/* before */ _seed  =  seed; /* after */");
+            if (topology == "expression")
+            {
+                StringAssert.Contains(text, "/* arrow before */");
+                StringAssert.Contains(text, "/* arrow after */ _seed  =  seed; // ctor tail");
+            }
+            if (topology == "chain")
+            {
+                StringAssert.Contains(text, "1 /* argument */, computeHelper, labels");
+                StringAssert.Contains(text, "{ /* chain body */ }");
+            }
+            Assert.AreEqual(0, text.Replace(eol, "", StringComparison.Ordinal).Count(c => c is '\r' or '\n'));
+            await AssertModifiedSolutionCompilesAsync(preview.PreviewToken);
+            var applied = await RefactoringService.ApplyRefactoringAsync(
+                preview.PreviewToken, "extract_type_apply", CancellationToken.None);
+            Assert.IsTrue(applied.Success);
+            CollectionAssert.AreEqual(System.Text.Encoding.UTF8.GetBytes(text), await File.ReadAllBytesAsync(fixture.FilePath));
+            await WorkspaceManager.ReloadAsync(fixture.WorkspaceId, CancellationToken.None);
+            var project = WorkspaceManager.GetCurrentSolution(fixture.WorkspaceId).Projects.Single(p => p.Name == "SampleLib");
+            var compilation = await project.GetCompilationAsync();
+            Assert.IsNotNull(compilation);
+            var errors = compilation.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).ToArray();
+            Assert.HasCount(0, errors, string.Join(eol, errors.Select(d => d.ToString())));
+        }
+        finally
+        {
+            WorkspaceManager.Close(fixture.WorkspaceId);
+            QueueDirectoryForCleanup(fixture.SolutionDirectory);
+        }
+    }
+
+    [TestMethod]
+    [DataRow("")]
+    [DataRow("\r\n")]
+    public async Task ExtractType_CompactSourceAndSplitField_PreserveRetainedSeparators(string headerEol)
+    {
+        var fixture = await CreateExtractionFixtureAsync("CompactTriviaFixture.cs",
+            "namespace SampleLib;" + headerEol + " public class CompactTriviaFixture { "
+            + "private int a = 1, /* extracted separator */ removed = 2, /* retained separator */ b  =  3, /* second separator */ c = 4; "
+            + "public int Keep( ) => a + b + c; public int User( ) => removed; } // final comment");
+        try
+        {
+            var preview = await TypeExtractionService.PreviewExtractTypeAsync(
+                fixture.WorkspaceId, fixture.FilePath, "CompactTriviaFixture", ["removed"],
+                "FieldHolder", null, CancellationToken.None);
+            var text = await GetModifiedDocumentTextAsync(preview.PreviewToken, fixture.FilePath);
+            StringAssert.StartsWith(text, "namespace SampleLib;" + headerEol + " public class CompactTriviaFixture { ");
+            StringAssert.EndsWith(text, "} // final comment");
+            StringAssert.Contains(text,
+                "private int a = 1, /* retained separator */ b  =  3, /* second separator */ c = 4;");
+            StringAssert.Contains(text, "public int Keep( ) => a + b + c;");
+            StringAssert.Contains(text, "public int User( ) => this._fieldHolder.removed;");
+            var helper = await GetModifiedDocumentTextAsync(preview.PreviewToken,
+                Path.Combine(Path.GetDirectoryName(fixture.FilePath)!, "FieldHolder.cs"));
+            StringAssert.Contains(helper, "/* extracted separator */");
+            if (headerEol.Length > 0)
+                Assert.AreEqual(0, text.Replace(headerEol, "", StringComparison.Ordinal).Count(c => c is '\r' or '\n'));
+            await AssertModifiedSolutionCompilesAsync(preview.PreviewToken);
+        }
+        finally
+        {
+            WorkspaceManager.Close(fixture.WorkspaceId);
+            QueueDirectoryForCleanup(fixture.SolutionDirectory);
+        }
+    }
+
+    [TestMethod]
+    public async Task ExtractType_FirstRetainedField_PreservesRemovedCommaComments()
+    {
+        var fixture = await CreateExtractionFixtureAsync("FirstRetainedTrivia.cs",
+            "namespace SampleLib; public class FirstRetainedTrivia { "
+            + "private int a = 1, /* first retained separator */ b = 2, c = 3; "
+            + "public int Keep( ) => b + c; public int User( ) => a; }");
+        try
+        {
+            var preview = await TypeExtractionService.PreviewExtractTypeAsync(
+                fixture.WorkspaceId, fixture.FilePath, "FirstRetainedTrivia", ["a"],
+                "FieldHolder", null, CancellationToken.None);
+            var text = await GetModifiedDocumentTextAsync(preview.PreviewToken, fixture.FilePath);
+            StringAssert.Contains(text, "/* first retained separator */ b = 2, c = 3;");
+            await AssertModifiedSolutionCompilesAsync(preview.PreviewToken);
+        }
+        finally
+        {
+            WorkspaceManager.Close(fixture.WorkspaceId);
+            QueueDirectoryForCleanup(fixture.SolutionDirectory);
+        }
+    }
+
+
+
+    [TestMethod]
+    [DataRow("parameter")]
+    [DataRow("local")]
+    [DataRow("member")]
+    [DataRow("inherited")]
+    [DataRow("assignment-local")]
+    [DataRow("consumer-local")]
+    [DataRow("static-parameter")]
+    [DataRow("static-local")]
+    [DataRow("nested-namespace")]
+    [DataRow("global-namespace")]
+    [DataRow("escaped-namespace")]
+    [DataRow("nested-type")]
+    [DataRow("namespace-imports")]
+    [DataRow("imported-type")]
+    [DataRow("imported-alias")]
+    [DataRow("unicode")]
+    [DataRow("qualified-receiver")]
+    [DataRow("generic-import")]
+    [DataRow("attribute-import")]
+    [DataRow("namespace-capture")]
+    [DataRow("external-import")]
+    [DataRow("alias-qualified")]
+    [DataRow("receiver-directives")]
+    public async Task ExtractType_GeneratedBindings_PreserveExistingNames(string scenario)
+    {
+        var namespacePrefix = scenario switch
+        {
+            "nested-namespace" => "namespace BindingOuter { namespace BindingInner { ",
+            "namespace-imports" => "namespace BindingOuter { using Alias = System.Int32; namespace BindingInner { using Alias = System.String; ",
+            "imported-type" or "external-import" => "using System.Text; namespace BindingCases { ",
+            "generic-import" => "using System.Collections.Generic; namespace BindingCases { ",
+            "attribute-import" => "using System; namespace BindingCases { ",
+            "alias-qualified" => "using Alias = System.Text; namespace BindingCases { ",
+            "imported-alias" => "namespace BindingCases { using ComputeHelper = System.String; ",
+            "global-namespace" => "",
+            "escaped-namespace" => "namespace @class { ",
+            _ => "namespace BindingCases { ",
+        };
+        var namespaceSuffix = scenario is "nested-namespace" or "namespace-imports" ? " } }" :
+            scenario == "global-namespace" ? "" : " }";
+        var qualifiedNamespace = scenario switch
+        {
+            "nested-namespace" or "namespace-imports" => "BindingOuter.BindingInner.",
+            "global-namespace" => "",
+            "escaped-namespace" => "class.",
+            _ => "BindingCases.",
+        };
+        var importedType = scenario is "imported-type" or "external-import";
+        var helperName = scenario switch
+        {
+            "unicode" => "CaféHelper",
+            "imported-type" or "external-import" => "StringBuilder",
+            "generic-import" => "Dictionary",
+            "attribute-import" => "ObsoleteAttribute",
+            "namespace-capture" => "System",
+            "alias-qualified" => "Alias",
+            _ => "ComputeHelper",
+        };
+        var constructor = scenario switch
+        {
+            "parameter" => "public BindingFixture(int computeHelper) { _seed = computeHelper; } ",
+            "local" => "public BindingFixture(int seed = 1) { int computeHelper = seed; _seed = computeHelper; } ",
+            "assignment-local" => "public BindingFixture(int seed = 1) { int _computeHelper = seed; _seed = _computeHelper; } ",
+            "member" or "inherited" => "public BindingFixture(int seed = 1) { _seed = seed + _computeHelper; } ",
+            "imported-type" or "external-import" => "public BindingFixture(int seed = 1) { _seed = seed + new StringBuilder(\"kept\").Length; } ",
+            _ => "public BindingFixture(int seed = 1) { _seed = seed; } ",
+        };
+        var members = scenario switch
+        {
+            "member" => "public int _computeHelper = 5; ",
+            "nested-type" => "public class ComputeHelper { } ",
+            "alias-qualified" => "public int KeepAlias( ) => new Alias::StringBuilder(\"kept\").Length; ",
+            "generic-import" => "public int GenericKeep( ) => new Dictionary<int /* key */, List<string /* item */>> { [1] = [\"a\"] }.Count; ",
+            _ => "",
+        };
+        var user = scenario == "consumer-local"
+            ? "public int User() { int _computeHelper = 3; return Compute(_seed) + _computeHelper; } "
+            : "public int User() => Compute(_seed); ";
+        var receiver = scenario switch
+        {
+            "qualified-receiver" => "global:: /* alias comment */ BindingCases /* namespace comment */ . /* qualifier dot */ BindingFixture /* receiver comment */",
+            "receiver-directives" => "global::\n#if true\n/* alias directive */ BindingCases\n#endif\n. /* qualifier dot */ BindingFixture",
+            _ => "BindingFixture",
+        };
+        var staticUser = scenario switch
+        {
+            "static-parameter" => "public static int StaticUser(int ComputeHelper) => StaticCompute(ComputeHelper); ",
+            "static-local" => "public static int StaticUser(int value) { int ComputeHelper = value; return StaticCompute(ComputeHelper); } ",
+            _ => "public static int StaticUser(int value) => " + receiver + ". /* member dot */ StaticCompute(value); ",
+        };
+        var extra = scenario switch
+        {
+            "namespace-imports" => " + typeof(Alias).Name.Length",
+            "imported-alias" => " + typeof(ComputeHelper).Name.Length",
+            "imported-type" or "external-import" => " + new StringBuilder(\"helper\").Length",
+            "generic-import" => " + new Dictionary<int, List<string>> { [1] = [\"a\"] }.Count",
+            "attribute-import" => " + new ObsoleteAttribute(\"helper\").Message!.Length",
+            "alias-qualified" => " + new Alias::StringBuilder(\"helper\").Length",
+            _ => "",
+        };
+        var source = namespacePrefix
+            + (scenario == "inherited" ? "public class BindingBase { protected int _computeHelper = 5; } " : "")
+            + (scenario == "attribute-import" ? "[Obsolete(\"source\")] " : "")
+            + "public class BindingFixture" + (scenario == "inherited" ? " : BindingBase" : "") + " { "
+            + "private readonly int _seed; " + members + constructor
+            + "public BindingFixture(string label) : this(2) { } " + user + staticUser
+            + "public System.Func<int, int> MethodGroupUser() => Compute; "
+            + "public static System.Func<int, int> StaticMethodGroupUser() => StaticCompute; "
+            + (scenario == "attribute-import" ? "[Obsolete(\"member\")] " : "")
+            + "private int Compute(int value) => value * 2" + extra + "; "
+            + "private static int StaticCompute(int value) => value * 3" + extra + "; }" + namespaceSuffix;
+        var fixture = await CreateExtractionFixtureAsync("BindingFixture.cs", source);
+        var peerPath = Path.Combine(Path.GetDirectoryName(fixture.FilePath)!, "ImportedConsumer.cs");
+        var peerSource = "using System.Text; namespace BindingCases { public static class ImportedConsumer { public static int Value( ) => new StringBuilder(\"peer\").Length; } } namespace BindingCases.Child { public static class ChildConsumer { public static int Value( ) => new StringBuilder(\"child\").Length; } }";
+        var externalPath = Path.Combine(Path.GetDirectoryName(fixture.FilePath)!, "ExternalConsumer.cs");
+        var externalSource = "using System.Text; using BindingCases; namespace OtherConsumers { public static class ExternalConsumer { public static int Value( ) => new StringBuilder(\"external\").Length; } }";
+        var unaffectedPath = Path.Combine(Path.GetDirectoryName(fixture.FilePath)!, "UnaffectedConsumer.cs");
+        var unaffectedSource = "using System.Text; namespace Unaffected { public static class UnaffectedConsumer { public static int Value( ) => new StringBuilder(\"untouched\").Length; } }";
+        var dependentPath = Path.Combine(fixture.SolutionDirectory, "SampleApp", "DependentConsumer.cs");
+        var dependentSource = "using System.Text; using BindingCases; namespace DependentConsumers { public static class DependentConsumer { public static int Value( ) => new StringBuilder(\"dependent\").Length; } }";
+        try
+        {
+            if (importedType)
+            {
+                await File.WriteAllTextAsync(peerPath, peerSource);
+                if (scenario == "external-import")
+                {
+                    await File.WriteAllTextAsync(externalPath, externalSource);
+                    await File.WriteAllTextAsync(unaffectedPath, unaffectedSource);
+                    await File.WriteAllTextAsync(dependentPath, dependentSource);
+                }
+                await WorkspaceManager.ReloadAsync(fixture.WorkspaceId, CancellationToken.None);
+            }
+            var originalBytes = await File.ReadAllBytesAsync(fixture.FilePath);
+            var preview = await TypeExtractionService.PreviewExtractTypeAsync(
+                fixture.WorkspaceId, fixture.FilePath, "BindingFixture", ["Compute", "StaticCompute"],
+                helperName, null, CancellationToken.None);
+            var text = await GetModifiedDocumentTextAsync(preview.PreviewToken, fixture.FilePath);
+            CollectionAssert.AreEqual(originalBytes, await File.ReadAllBytesAsync(fixture.FilePath));
+            if (scenario == "receiver-directives")
+            {
+                foreach (var preserved in new[] { "\n#if true\n", "\n#endif\n", "/* alias directive */", "/* qualifier dot */" })
+                    Assert.AreEqual(1, text.Split(preserved, StringSplitOptions.None).Length - 1);
+            }
+            if (scenario == "qualified-receiver")
+            {
+                foreach (var comment in new[] { "/* alias comment */", "/* namespace comment */", "/* qualifier dot */", "/* receiver comment */", "/* member dot */" })
+                    Assert.AreEqual(1, text.Split(comment, StringSplitOptions.None).Length - 1);
+            }
+            if (importedType)
+                Assert.AreEqual(peerSource, await File.ReadAllTextAsync(peerPath));
+            if (scenario == "external-import")
+            {
+                Assert.AreEqual(externalSource, await File.ReadAllTextAsync(externalPath));
+                Assert.AreEqual(dependentSource, await File.ReadAllTextAsync(dependentPath));
+                Assert.AreEqual(unaffectedSource, await GetModifiedDocumentTextAsync(preview.PreviewToken, unaffectedPath));
+            }
+            StringAssert.Contains(text, constructor[..constructor.IndexOf('{')].TrimEnd().Split('(')[0]);
+            var modifiedPeers = new Dictionary<string, string>(StringComparer.Ordinal);
+            if (importedType)
+            {
+                foreach (var path in scenario == "external-import" ? new[] { peerPath, externalPath, dependentPath } : new[] { peerPath })
+                {
+                    Assert.AreEqual(1, preview.Changes.Count(change => FileSystemPath.Comparer.Equals(change.FilePath, path)));
+                    modifiedPeers.Add(path, await GetModifiedDocumentTextAsync(preview.PreviewToken, path));
+                }
+            }
+            if (scenario == "generic-import")
+                StringAssert.Contains(text, "int /* key */, List<string /* item */>");
+            if (scenario == "alias-qualified")
+                StringAssert.Contains(text, "public int KeepAlias( ) => new Alias::StringBuilder(\"kept\").Length;");
+            await AssertModifiedSolutionCompilesAsync(preview.PreviewToken);
+            await AssertAppliedExtractionRunsAsync(
+                fixture.WorkspaceId, preview.PreviewToken, fixture.FilePath, text, assembly =>
+            {
+                var helperType = assembly.GetType(qualifiedNamespace + helperName, throwOnError: true)!;
+                var sourceType = assembly.GetType(qualifiedNamespace + "BindingFixture", throwOnError: true)!;
+                var helper = Activator.CreateInstance(helperType)!;
+                var root = Activator.CreateInstance(sourceType, scenario == "parameter" ? [3, helper] : [helper, 3])!;
+                var chained = Activator.CreateInstance(sourceType, ["chain", helper])!;
+                var aliasOffset = scenario == "generic-import" ? 1 : extra.Length > 0 ? 6 : 0;
+                var offset = scenario is "member" or "inherited" ? 10 : scenario == "consumer-local" ? 3 : importedType ? 8 : 0;
+                offset += aliasOffset;
+                Assert.AreEqual(6 + offset, sourceType.GetMethod("User")!.Invoke(root, null));
+                Assert.AreEqual(4 + offset, sourceType.GetMethod("User")!.Invoke(chained, null));
+                Assert.AreEqual(9 + aliasOffset, sourceType.GetMethod("StaticUser")!.Invoke(null, [3]));
+                var group = (Func<int, int>)sourceType.GetMethod("MethodGroupUser")!.Invoke(root, null)!;
+                var staticGroup = (Func<int, int>)sourceType.GetMethod("StaticMethodGroupUser")!.Invoke(null, null)!;
+                Assert.AreEqual(4 + aliasOffset, group(2));
+                Assert.AreEqual(6 + aliasOffset, staticGroup(2));
+                if (importedType)
+                {
+                    Assert.AreEqual(4, assembly.GetType("BindingCases.ImportedConsumer")!.GetMethod("Value")!.Invoke(null, null));
+                    Assert.AreEqual(5, assembly.GetType("BindingCases.Child.ChildConsumer")!.GetMethod("Value")!.Invoke(null, null));
+                }
+                if (scenario == "external-import")
+                    Assert.AreEqual(8, assembly.GetType("OtherConsumers.ExternalConsumer")!.GetMethod("Value")!.Invoke(null, null));
+                if (scenario == "attribute-import")
+                {
+                    Assert.AreEqual("source", sourceType.GetCustomAttributes(typeof(ObsoleteAttribute), false)
+                        .Cast<ObsoleteAttribute>().Single().Message);
+                    Assert.AreEqual("member", helperType.GetMethod("Compute")!
+                        .GetCustomAttributes(typeof(ObsoleteAttribute), false).Cast<ObsoleteAttribute>().Single().Message);
+                }
+            });
+            if (importedType)
+            {
+                var peerText = modifiedPeers[peerPath];
+                CollectionAssert.AreEqual(System.Text.Encoding.UTF8.GetBytes(peerText), await File.ReadAllBytesAsync(peerPath));
+                StringAssert.StartsWith(peerText, "using System.Text; namespace BindingCases { public static class ImportedConsumer { public static int Value( ) => ");
+            }
+            if (scenario == "external-import")
+            {
+                foreach (var path in new[] { externalPath, dependentPath })
+                {
+                    var modified = modifiedPeers[path];
+                    CollectionAssert.AreEqual(System.Text.Encoding.UTF8.GetBytes(modified), await File.ReadAllBytesAsync(path));
+                    StringAssert.Contains(modified, "public static int Value( ) => ");
+                }
+                Assert.AreEqual(unaffectedSource, await File.ReadAllTextAsync(unaffectedPath));
+                var dependent = WorkspaceManager.GetCurrentSolution(fixture.WorkspaceId).Projects.Single(p => p.Name == "SampleApp");
+                var dependentCompilation = await dependent.GetCompilationAsync();
+                Assert.IsNotNull(dependentCompilation);
+                Assert.HasCount(0, dependentCompilation.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).ToArray());
+                var document = dependent.Documents.Single(d => d.FilePath == dependentPath);
+                var model = await document.GetSemanticModelAsync();
+                var documentRoot = await document.GetSyntaxRootAsync();
+                Assert.IsNotNull(model);
+                Assert.IsNotNull(documentRoot);
+                var creation = documentRoot.DescendantNodes().OfType<Microsoft.CodeAnalysis.CSharp.Syntax.ObjectCreationExpressionSyntax>().Single();
+                Assert.AreEqual("System.Text", model.GetTypeInfo(creation).Type!.ContainingNamespace.ToDisplayString());
+            }
+        }
+        finally
+        {
+            WorkspaceManager.Close(fixture.WorkspaceId);
+            QueueDirectoryForCleanup(fixture.SolutionDirectory);
+        }
+    }
+
+    [TestMethod]
+    [DataRow("nullable")]
+    [DataRow("region")]
+    [DataRow("conditional")]
+    [DataRow("using-region")]
+    [DataRow("using-conditional")]
+    [DataRow("var")]
+    [DataRow("dynamic")]
+    [DataRow("named-var")]
+    [DataRow("dynamic-alias-collision")]
+    [DataRow("define")]
+    [DataRow("undef-debug")]
+    [DataRow("dynamic-define")]
+    [DataRow("dynamic-extern")]
+    public async Task ExtractType_LexicalContext_PreservesSemantics(string scenario)
+    {
+        var prefix = scenario switch
+        {
+            "nullable" => "#nullable disable\n",
+            "region" => "#region context\nnamespace LexicalCases {\n",
+            "conditional" => "#if true\nnamespace LexicalCases {\n",
+            "using-region" => "#region context\nusing System;\nnamespace LexicalCases {\n",
+            "using-conditional" => "#if true\nusing System;\nnamespace LexicalCases {\n",
+            "define" or "dynamic-define" => "#define LOCAL\nnamespace LexicalCases {\n",
+            "undef-debug" => "#undef DEBUG\nnamespace LexicalCases {\n",
+            "dynamic-extern" => "#define LOCAL\nextern alias FixtureAlias;\nnamespace LexicalCases {\n",
+            _ => "namespace LexicalCases {\n",
+        };
+        var suffix = scenario switch
+        {
+            "nullable" => "",
+            "region" or "using-region" => "\n}\n#endregion\n",
+            "conditional" or "using-conditional" => "\n}\n#endif\n",
+            _ => "\n}\n",
+        };
+        var kept = scenario switch
+        {
+            "var" => "public static int Kept() { var item = new { Value = 7 }; return item.Value; }",
+            "dynamic" => "public static int Kept() { dynamic /* type comment */ item = new System.Text.StringBuilder(\"dynamic\"); return item.Length; }",
+            "dynamic-alias-collision" => "public static int Kept() { int __TypeExtractionDynamic = 1; dynamic /* type comment */ item = new System.Text.StringBuilder(\"six666\"); return item.Length + __TypeExtractionDynamic; }",
+            "dynamic-define" or "dynamic-extern" => "public static int Kept() { dynamic /* type comment */ item = new System.Text.StringBuilder(\"dynamic\"); return item.Length + Compute() - 7; }",
+            "named-var" => "public static int Kept() { var item = new System.Text.StringBuilder(\"named77\"); return item.Length; }",
+            "define" or "undef-debug" => "public static int Kept() => Compute();",
+            _ => "public static int Kept() => 7;",
+        };
+        var dynamicCase = scenario is "dynamic" or "dynamic-alias-collision" or "dynamic-define" or "dynamic-extern";
+        var helperName = scenario is "var" or "named-var" ? "@var" : dynamicCase ? "@dynamic" : "LexicalHelper";
+        var moved = scenario switch
+        {
+            "nullable" => "private static string Compute(string value) => value;",
+            "define" or "dynamic-define" or "dynamic-extern" => "private static int Compute() {\n#if LOCAL\nreturn 7;\n#else\nreturn 9;\n#endif\n}",
+            "undef-debug" => "private static int Compute() {\n#if DEBUG\nreturn 9;\n#else\nreturn 7;\n#endif\n}",
+            _ => "private static int Compute(int value) => value * 2;",
+        };
+        var source = prefix + "public class LexicalFixture { " + kept + " " + moved + " }" + suffix;
+        var fixture = await CreateExtractionFixtureAsync("LexicalFixture.cs", source);
+        try
+        {
+            if (scenario == "dynamic-extern")
+            {
+                var assemblyPath = Path.Combine(Path.GetDirectoryName(fixture.FilePath)!, "AliasSurface.dll");
+                var assembly = Microsoft.CodeAnalysis.CSharp.CSharpCompilation.Create("AliasSurface",
+                    [Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText("namespace AliasSurface { public class Marker { } }")],
+                    [MetadataReference.CreateFromFile(typeof(object).Assembly.Location)],
+                    new Microsoft.CodeAnalysis.CSharp.CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+                await using (var output = File.Create(assemblyPath))
+                    Assert.IsTrue(assembly.Emit(output).Success);
+                var projectPath = Path.Combine(Path.GetDirectoryName(fixture.FilePath)!, "SampleLib.csproj");
+                var projectText = await File.ReadAllTextAsync(projectPath);
+                await File.WriteAllTextAsync(projectPath, projectText.Replace("</Project>",
+                    "<ItemGroup><Reference Include=\"AliasSurface\"><HintPath>AliasSurface.dll</HintPath><Aliases>FixtureAlias</Aliases></Reference></ItemGroup></Project>", StringComparison.Ordinal));
+                await WorkspaceManager.ReloadAsync(fixture.WorkspaceId, CancellationToken.None);
+            }
+            var preview = await TypeExtractionService.PreviewExtractTypeAsync(fixture.WorkspaceId, fixture.FilePath,
+                "LexicalFixture", ["Compute"], helperName, null, CancellationToken.None);
+            var text = await GetModifiedDocumentTextAsync(preview.PreviewToken, fixture.FilePath);
+            Assert.AreEqual(source, await File.ReadAllTextAsync(fixture.FilePath));
+            await AssertModifiedSolutionCompilesAsync(preview.PreviewToken);
+            if (scenario == "nullable")
+            {
+                var stored = PreviewStore.Retrieve(preview.PreviewToken);
+                Assert.IsNotNull(stored);
+                var compilation = await stored.Value.ModifiedSolution.Projects.Single(p => p.Name == "SampleLib").GetCompilationAsync();
+                Assert.IsNotNull(compilation);
+                var method = compilation.GetTypeByMetadataName("LexicalHelper")!.GetMembers("Compute").OfType<IMethodSymbol>().Single();
+                Assert.AreEqual(NullableAnnotation.None, method.ReturnType.NullableAnnotation);
+                Assert.AreEqual(NullableAnnotation.None, method.Parameters[0].Type.NullableAnnotation);
+            }
+            if (dynamicCase || scenario == "named-var")
+            {
+                var stored = PreviewStore.Retrieve(preview.PreviewToken);
+                Assert.IsNotNull(stored);
+                var document = stored.Value.ModifiedSolution.Projects.SelectMany(project => project.Documents)
+                    .Single(document => document.FilePath == fixture.FilePath);
+                var root = await document.GetSyntaxRootAsync();
+                var model = await document.GetSemanticModelAsync();
+                Assert.IsNotNull(root);
+                Assert.IsNotNull(model);
+                var local = root.DescendantNodes().OfType<Microsoft.CodeAnalysis.CSharp.Syntax.VariableDeclaratorSyntax>()
+                    .Single(variable => variable.Identifier.ValueText == "item");
+                var type = ((ILocalSymbol)model.GetDeclaredSymbol(local)!).Type;
+                if (dynamicCase)
+                {
+                    Assert.AreEqual(TypeKind.Dynamic, type.TypeKind);
+                    Assert.AreEqual(1, text.Split("/* type comment */", StringSplitOptions.None).Length - 1);
+                }
+                else
+                    Assert.AreEqual("global::System.Text.StringBuilder", type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
+            }
+            var aliasName = scenario == "dynamic-alias-collision" ? "__TypeExtractionDynamic1" : "__TypeExtractionDynamic";
+            var namespacePosition = prefix.IndexOf("namespace", StringComparison.Ordinal);
+            var expectedPrefix = dynamicCase
+                ? prefix[..namespacePosition] + "using " + aliasName + " = dynamic;\n" + prefix[namespacePosition..]
+                : prefix;
+            StringAssert.StartsWith(text, expectedPrefix);
+            StringAssert.EndsWith(text, suffix);
+            await AssertAppliedExtractionRunsAsync(fixture.WorkspaceId, preview.PreviewToken, fixture.FilePath, text, assembly =>
+            {
+                var type = assembly.GetType((scenario == "nullable" ? "" : "LexicalCases.") + "LexicalFixture", true)!;
+                Assert.AreEqual(7, type.GetMethod("Kept")!.Invoke(null, null));
+            });
+        }
+        finally
+        {
+            WorkspaceManager.Close(fixture.WorkspaceId);
+            QueueDirectoryForCleanup(fixture.SolutionDirectory);
+        }
+    }
+
+    [TestMethod]
+    [DataRow("public class ComputeHelper { }")]
+    [DataRow("namespace ComputeHelper { public class Existing { } }")]
+    public async Task ExtractType_DuplicateTargetName_RefusesBeforeEffects(string declaration)
+    {
+        var fixture = await CreateExtractionFixtureAsync("DuplicateTarget.cs",
+            "namespace BindingCases { " + declaration
+            + " public class DuplicateTarget { private int Compute(int value) => value * 2; } }");
+        try
+        {
+            var bytes = await File.ReadAllBytesAsync(fixture.FilePath);
+            var error = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
+                TypeExtractionService.PreviewExtractTypeAsync(
+                    fixture.WorkspaceId, fixture.FilePath, "DuplicateTarget", ["Compute"],
+                    "ComputeHelper", null, CancellationToken.None));
+            Assert.AreEqual("newTypeName", error.ParamName);
+            StringAssert.Contains(error.PublicMessage, "Choose a different");
+            CollectionAssert.AreEqual(bytes, await File.ReadAllBytesAsync(fixture.FilePath));
+            Assert.IsFalse(File.Exists(Path.Combine(Path.GetDirectoryName(fixture.FilePath)!, "ComputeHelper.cs")));
+        }
+        finally
+        {
+            WorkspaceManager.Close(fixture.WorkspaceId);
+            QueueDirectoryForCleanup(fixture.SolutionDirectory);
+        }
+    }
+
+    public static IEnumerable<object[]> DerivedKeywordIdentifiers()
+    {
+        foreach (var spelling in Microsoft.CodeAnalysis.CSharp.SyntaxFacts.GetReservedKeywordKinds()
+            .Concat(Microsoft.CodeAnalysis.CSharp.SyntaxFacts.GetContextualKeywordKinds())
+            .Select(Microsoft.CodeAnalysis.CSharp.SyntaxFacts.GetText)
+            .Where(text => text.Length > 0 && char.IsLetter(text[0]))
+            .Select(text => char.ToUpperInvariant(text[0]) + text[1..])
+            .Distinct(StringComparer.Ordinal))
+        {
+            yield return [spelling, false, "KeywordCtorFixture"];
+        }
+        yield return ["@class", false, "KeywordCtorFixture"];
+        yield return ["@Class", false, "KeywordCtorFixture"];
+        yield return ["@class", true, "@KeywordCtorFixture"];
+        yield return ["Class", true, "@KeywordCtorFixture"];
+    }
+
+    [TestMethod]
+    [DynamicData(nameof(DerivedKeywordIdentifiers))]
+    public async Task ExtractType_DerivedKeywordIdentifiers_PreviewApplyAndConstruct(
+        string helperName, bool implicitConstructor, string sourceName)
+    {
+        var constructor = implicitConstructor ? "" :
+            "public " + sourceName + "(int seed = 1) { _seed = seed; } "
+            + "public " + sourceName + "(string label) : this(2) { } ";
+        var fixture = await CreateExtractionFixtureAsync("KeywordCtorFixture.cs",
+            "namespace KeywordExtraction; public class " + sourceName + " { "
+            + "private readonly int _seed = 3; " + constructor
+            + "public int User() => Compute(_seed); "
+            + "public static int StaticUser() => " + sourceName + ".StaticCompute(3); "
+            + "private int Compute(int value) => value * 2; "
+            + "private static int StaticCompute(int value) => value * 3; }");
+        try
+        {
+            var originalBytes = await File.ReadAllBytesAsync(fixture.FilePath);
+            var preview = await TypeExtractionService.PreviewExtractTypeAsync(
+                fixture.WorkspaceId, fixture.FilePath, sourceName, ["Compute", "StaticCompute"],
+                helperName, null, CancellationToken.None);
+            var text = await GetModifiedDocumentTextAsync(preview.PreviewToken, fixture.FilePath);
+            CollectionAssert.AreEqual(originalBytes, await File.ReadAllBytesAsync(fixture.FilePath));
+            await AssertModifiedSolutionCompilesAsync(preview.PreviewToken);
+            await AssertAppliedExtractionRunsAsync(
+                fixture.WorkspaceId, preview.PreviewToken, fixture.FilePath, text, assembly =>
+            {
+                var helperType = assembly.GetType("KeywordExtraction." + helperName.TrimStart('@'), throwOnError: true)!;
+                var sourceType = assembly.GetType("KeywordExtraction." + sourceName.TrimStart('@'), throwOnError: true)!;
+                var helper = Activator.CreateInstance(helperType)!;
+                var root = Activator.CreateInstance(sourceType,
+                    implicitConstructor ? [helper] : [helper, 3])!;
+                Assert.AreEqual(6, sourceType.GetMethod("User")!.Invoke(root, null));
+                Assert.AreEqual(9, sourceType.GetMethod("StaticUser")!.Invoke(null, null));
+                if (!implicitConstructor)
+                {
+                    var chained = Activator.CreateInstance(sourceType, ["chain", helper])!;
+                    Assert.AreEqual(4, sourceType.GetMethod("User")!.Invoke(chained, null));
+                }
+            });
+        }
+        finally
+        {
+            WorkspaceManager.Close(fixture.WorkspaceId);
+            QueueDirectoryForCleanup(fixture.SolutionDirectory);
+        }
+    }
+
+    private static async Task AssertAppliedExtractionRunsAsync(
+        string workspaceId, string previewToken, string filePath, string expectedText,
+        Action<System.Reflection.Assembly> verify)
+    {
+        var applied = await RefactoringService.ApplyRefactoringAsync(
+            previewToken, "extract_type_apply", CancellationToken.None);
+        Assert.IsTrue(applied.Success);
+        CollectionAssert.AreEqual(System.Text.Encoding.UTF8.GetBytes(expectedText), await File.ReadAllBytesAsync(filePath));
+        await WorkspaceManager.ReloadAsync(workspaceId, CancellationToken.None);
+        var project = WorkspaceManager.GetCurrentSolution(workspaceId).Projects.Single(p => p.Name == "SampleLib");
+        var compilation = await project.GetCompilationAsync();
+        Assert.IsNotNull(compilation);
+        using var assemblyBytes = new MemoryStream();
+        var emitted = compilation.Emit(assemblyBytes);
+        Assert.IsTrue(emitted.Success, string.Join(Environment.NewLine, emitted.Diagnostics));
+        assemblyBytes.Position = 0;
+        var context = new System.Runtime.Loader.AssemblyLoadContext(Guid.NewGuid().ToString("N"), isCollectible: true);
+        try
+        {
+            verify(context.LoadFromStream(assemblyBytes));
+        }
+        finally
+        {
+            context.Unload();
         }
     }
 
