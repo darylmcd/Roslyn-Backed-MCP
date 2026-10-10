@@ -5,8 +5,8 @@
 ## Anchors
 
 - `src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs:524-546`
-- `src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs:982-1000`
-- `src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs:1097-1124`
+- `src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs:982-1072`
+- `src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs:1108-1152`
 
 ## Acceptance
 
@@ -26,3 +26,8 @@
 
 - Re-derive all index publishers, close/retirement paths and disposal synchronization before implementing; removing entries alone is insufficient if an overlapping reader can publish afterward.
 - Add focused lifecycle coverage in an existing appropriate fixture or one new fixture. Keep this row outside the current plan selection.
+
+2026-10-10 post-alias source revalidation:
+- PR1773 merged d2950c8812ff59639346205385ef31d6a0034560; reviewed head66f2fc05936fcb2b820304fbce1fd6d40d976484 and merge share treeffd88af328b936dc1bc0f8cd4070bdf73ee03a84; primary fast-forwarded and clean.
+- Current source: `_projectIndex` field982 and `_projectIndex.AddOrUpdate(` at1037 remain its only references; CloseCore526 removes sessions and Dispose1149 calls `_sessions.Clear();` without releasing the index. Updated live Anchors; immutable-base Evidence above remains explicitly historical and accurate.
+- Alias implementation retains winning raw lexical Projects and lazily publishes complete physical maps per entry; it adds no session cleanup or publication/close synchronization. Cold implementation review passed with no own-diff findings. This lifetime row remains open and outside selection; no runtime memory-growth proof or completed repair claimed.

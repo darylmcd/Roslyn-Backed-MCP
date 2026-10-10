@@ -470,7 +470,7 @@
     {
       "id": "workspace-project-alias-lookup",
       "order": 11,
-      "status": "in-review",
+      "status": "merged",
       "backlogRowsClosed": [
         "workspace-project-alias-lookup"
       ],
@@ -501,8 +501,8 @@
       "branch": "remediation/workspace-project-alias-lookup",
       "worktreePath": "D:/Roslyn-Backed-MCP/.worktrees/workspace-project-alias-lookup",
       "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1773",
-      "mergedAt": null,
-      "notes": "Cold review cycle0 on final conventional subject/head66f2fc05936fcb2b820304fbce1fd6d40d976484; exact source treeffd88af328b936dc1bc0f8cd4070bdf73ee03a84 full producer a2dc3024f8844235 passed; hosted checks must bind final head.",
+      "mergedAt": "2026-10-10T06:15:41Z",
+      "notes": null,
       "fileSetHash": "5ae53efeefad9af7661e98abc4db281f0b23dea87b760a8f56fdd1108bfbec13",
       "stanzaHash": "23ca433d4565efda70d65fddf058331ccc1a139ea356db06fce4dbea59420ce4",
       "reviewedStanzaHash": "23ca433d4565efda70d65fddf058331ccc1a139ea356db06fce4dbea59420ce4",
@@ -521,7 +521,15 @@
           "previousStanzaHash": "eef5b009427f000551878925dc35a574b1c24cbf5e5108a22b27b18f7494e89d",
           "stanzaHash": "23ca433d4565efda70d65fddf058331ccc1a139ea356db06fce4dbea59420ce4"
         }
-      ]
+      ],
+      "reviewedHead": "66f2fc05936fcb2b820304fbce1fd6d40d976484",
+      "scratchRemoved": false,
+      "githubGate": {
+        "baseOid": "0442d5fa0d4be457f0f9a5f0de50996ada720750",
+        "headOid": "66f2fc05936fcb2b820304fbce1fd6d40d976484",
+        "tree": "ffd88af328b936dc1bc0f8cd4070bdf73ee03a84",
+        "checksVerifiedAt": "2026-10-10T06:15:30.487Z"
+      }
     },
     {
       "id": "fix-all-equivalence-key-unregistered-fallback",
