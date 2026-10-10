@@ -93,10 +93,11 @@ internal sealed class FileServerObservabilitySink : IServerObservabilitySink
             diagnosticEvent.Level,
             new EventId(diagnosticEvent.EventId, diagnosticEvent.EventName),
             "Unexpected {ExceptionCategory} failure; exceptionTypes={ExceptionTypes}; " +
-            "stackFrameCount={StackFrameCount}",
+            "stackFrameCount={StackFrameCount}; correlationId={CorrelationId}",
             diagnosticEvent.Category,
-            string.Join(',', diagnosticEvent.Exception.ExceptionTypes),
-            diagnosticEvent.Exception.StackFrameCount);
+            diagnosticEvent.Exception.ExceptionTypes.ToArray(),
+            diagnosticEvent.Exception.StackFrameCount,
+            diagnosticEvent.Exception.CorrelationId);
     }
 }
 

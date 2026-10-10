@@ -56,7 +56,29 @@ The file path is independent of the process working directory:
 | `XDG_STATE_HOME` set | `$XDG_STATE_HOME/roslyn-mcp/logs/` |
 | Other fallback | The platform `LocalApplicationData/roslyn-mcp/logs/` directory; the system temp directory is the last resort when no local-application-data path exists. |
 
-JSON-lines records contain `ts`, `level`, `category`, `eventId`, `message`, and `correlationId`.
+JSON-lines records contain `ts`, `level`, `category`, `eventId`, `message`, `correlationId`,
+`eventName`, and `fields`. `eventName` is null when the logger has no named event.
+Framework template logs (extension methods and `LoggerMessage.Define`) retain named values in
+`fields`: keys use camelCase, numeric and boolean values retain their JSON types, nulls remain null,
+and string arrays remain arrays. `{OriginalFormat}` is omitted. Repeated names and camelCase
+collisions receive the next available `_2`, `_3`, … suffix in template order; for example,
+`{Name} {name} {Name} {name_2}` becomes `name`, `name_2`, `name_3`, `name_2_2`.
+
+Custom state and custom formatters produce empty `fields`; unrendered values are never promoted.
+Opaque template values use their type name without invoking formatting or reading properties; exception
+fields contain only their type name. The formatted `message` remains caller-owned operator data,
+so callers must supply safe messages and safe string representations. Arbitrary state graphs and
+opaque scopes are not enumerated. Correlation is read only from safe scalar values (strings, characters, booleans, and numbers)
+in admitted template state/scopes; opaque, array, and null values are ignored.
+Unexpected-failure records include projected `exceptionTypes`, `stackFrameCount`, and `correlationId`.
+Sink formatting, projection, serialization, and file failures are isolated from the MCP response
+and trigger at most one fixed, secret-safe stderr warning per provider.
+
+Select timings without parsing message text:
+
+```sh
+jq 'select(.eventName == "ToolCompleted") | {tool: .fields.toolName, elapsedMs: .fields.elapsedMs}' roslyn-mcp-1234.jsonl
+```
 Tool-call completion and failure records carry an outcome and elapsed milliseconds. The same request
 correlation identifier appears in public unexpected-error envelopes, so an operator can join a
 client-visible failure to local records without exposing exception messages or stack text.
