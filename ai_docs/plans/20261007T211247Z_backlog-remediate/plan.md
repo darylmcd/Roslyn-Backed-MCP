@@ -19,7 +19,7 @@ Selection note: Default first-40 window; one split retained, 14 further split ca
 | 11 | workspace-project-alias-lookup | merged | [#1773](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1773) | workspace-project-alias-lookup |
 | 12 | fix-all-equivalence-key-unregistered-fallback | merged | [#1775](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1775) | fix-all-equivalence-key-unregistered-fallback |
 | 13 | editorconfig-section-source-path-matching | deferred | — | editorconfig-section-source-path-matching |
-| 14 | logging-jsonl-drops-structured-state | in-review | [#1777](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1777) | logging-jsonl-drops-structured-state |
+| 14 | logging-jsonl-drops-structured-state | merged | [#1777](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1777) | logging-jsonl-drops-structured-state |
 | 15 | restore-callers-missing-packages-path | pending | — | restore-callers-missing-packages-path |
 | 16 | split-service-refuse-cross-partition-references | deferred | — | split-service-refuse-cross-partition-references |
 | 17 | change-signature-class-struct-primary-ctor-add-remove | pending | — | change-signature-class-struct-primary-ctor-add-remove |

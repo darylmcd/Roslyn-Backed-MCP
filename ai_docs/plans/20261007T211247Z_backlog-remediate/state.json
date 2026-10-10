@@ -660,7 +660,7 @@
     {
       "id": "logging-jsonl-drops-structured-state",
       "order": 14,
-      "status": "in-review",
+      "status": "merged",
       "backlogRowsClosed": [
         "logging-jsonl-drops-structured-state"
       ],
@@ -691,14 +691,22 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/logging-jsonl-drops-structured-state",
       "worktreePath": null,
       "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1777",
-      "mergedAt": null,
-      "notes": "Source PR1777 rebased onto exact administrative main1cd4a90 at927e969; original implementation basea4a826dc preserved. Six-file patch unchanged. Final integrated full d0a3a455f4d8694b/tree dbfe6200 passed4143/19platformskip/0fail, owned process reaped. Cold implementation review pending; retention sketch13 filed/disposed to existing row. Artifact timing19:35:10.7235818Z, exact dispatch/contextCost unavailable.",
+      "mergedAt": "2026-10-10T20:43:30Z",
+      "notes": null,
       "fileSetHash": "b2e61e8a5ec4de58c81419ab72201a9b4acaf572b8359c687a7d6564e69a44aa",
       "stanzaHash": "fd3aef40e86b7820bb0d8c786d2534936d972b89ddedf7adf9b78b33b3ff579e",
-      "reviewedStanzaHash": "fd3aef40e86b7820bb0d8c786d2534936d972b89ddedf7adf9b78b33b3ff579e"
+      "reviewedStanzaHash": "fd3aef40e86b7820bb0d8c786d2534936d972b89ddedf7adf9b78b33b3ff579e",
+      "reviewedHead": "927e96906a70c3b9a0c74b54320a6660fc79e51d",
+      "scratchRemoved": false,
+      "githubGate": {
+        "baseOid": "1cd4a90a76094191789f40d796adcd02b290b363",
+        "headOid": "927e96906a70c3b9a0c74b54320a6660fc79e51d",
+        "tree": "dbfe6200ea9d6a6cfa7d553ed1e6ee92cb9e82fd",
+        "checksVerifiedAt": "2026-10-10T20:43:25.890Z"
+      }
     },
     {
       "id": "restore-callers-missing-packages-path",
@@ -2662,6 +2670,79 @@
         "kind": "row",
         "value": "split-service-with-di-identity-semantics",
         "at": "2026-10-10T20:25:46.730Z"
+      }
+    },
+    {
+      "n": 15,
+      "source": "reviewer",
+      "initiativeId": "logging-jsonl-drops-structured-state",
+      "title": "Define oversized-record handling for JSON-lines retention",
+      "suggestedPri": "Medium",
+      "amendRow": "logging-retention-destroys-repro-evidence",
+      "anchors": [
+        "src/RoslynMcp.Host.Stdio/Diagnostics/JsonLinesFileLoggerProvider.cs:203",
+        "src/RoslynMcp.Host.Stdio/Diagnostics/JsonLinesFileLoggerProvider.cs:208",
+        "tests/RoslynMcp.Tests/ServerObservabilitySinkTests.cs:149",
+        "tests/RoslynMcp.Tests/ServerObservabilitySinkTests.cs:182"
+      ],
+      "acceptance": [
+        "Define an operator-safe valid-JSON policy for a single record exceeding the configured segment threshold and document the actual bound.",
+        "Cover first, empty and nonempty files with a single oversized record."
+      ],
+      "evidence": "Live unchanged construct at provider:208 is if (currentLength == 0 || currentLength + pendingByteCount <= _maxFileBytes); provider:203 returns when !File.Exists(FilePath); provider:97 calls File.AppendAllText(FilePath, line, _utf8WithoutBom). This source-only finding is already amended into the existing open row in the plan worktree, which was read this session; no dedicated oversized-record runtime reproduction is claimed.",
+      "at": "2026-10-10T20:41:02.000Z",
+      "disposition": {
+        "kind": "row",
+        "value": "logging-retention-destroys-repro-evidence",
+        "at": "2026-10-10T20:41:02.957Z"
+      }
+    },
+    {
+      "n": 16,
+      "source": "reviewer",
+      "initiativeId": "logging-jsonl-drops-structured-state",
+      "title": "Avoid per-record open/stat/append in the JSON-lines sink",
+      "suggestedPri": "Low",
+      "amendRow": "logging-file-sink-sync-io-per-record",
+      "anchors": [
+        "src/RoslynMcp.Host.Stdio/Diagnostics/JsonLinesFileLoggerProvider.cs:76",
+        "src/RoslynMcp.Host.Stdio/Diagnostics/JsonLinesFileLoggerProvider.cs:95",
+        "src/RoslynMcp.Host.Stdio/Diagnostics/JsonLinesFileLoggerProvider.cs:97"
+      ],
+      "acceptance": [
+        "Use an owned writer and release its handle deterministically on disposal and rotation.",
+        "Coordinate with retention work so one authority owns segment rotation and verify representative enabled-file throughput."
+      ],
+      "evidence": "Existing performance mechanism at provider:95 is Directory.CreateDirectory(directory); provider:97 is File.AppendAllText(FilePath, line, _utf8WithoutBom), called within lock (_writeLock) at provider:76. Existing open row logging-file-sink-sync-io-per-record names the same mechanism; no duplicate row is needed.",
+      "at": "2026-10-10T20:41:18.838Z",
+      "disposition": {
+        "kind": "row",
+        "value": "logging-file-sink-sync-io-per-record",
+        "at": "2026-10-10T20:41:19.749Z"
+      }
+    },
+    {
+      "n": 17,
+      "source": "orchestrator",
+      "initiativeId": null,
+      "title": "Remove unscoped build-server shutdown from landing lock retries",
+      "suggestedPri": "Medium",
+      "amendRow": "recover-stalled-workspace-cleanup-ownership",
+      "anchors": [
+        "scripts/_bsweep-teardown.mjs:70",
+        "scripts/_bsweep-teardown.mjs:85",
+        "scripts/_test/test_bsweep_state_land.sh:151"
+      ],
+      "acceptance": [
+        "Release only creation-bound target-owned resources and preserve unrelated live sessions.",
+        "Reject machine-wide build-server shutdown; preserve unknown holders with actionable evidence and regress deterministic helper callers."
+      ],
+      "evidence": "Source-only direct re-read at global5f8bf2da: native runTeardownWithRetry invokes unscoped dotnet build-server shutdown on lock failures; its test expects three shutdown calls. Existing recovery ownership row owns this same resource-release mechanism and received witness in filingPR770. Root sanctioned owned pre-teardown succeeded before pinned logging land, preserving branch and scratch; no unsafe shutdown or global implementation performed.",
+      "at": "2026-10-10T20:46:57.466Z",
+      "disposition": {
+        "kind": "row",
+        "value": "recover-stalled-workspace-cleanup-ownership",
+        "at": "2026-10-10T20:47:22.050Z"
       }
     }
   ]
