@@ -380,7 +380,7 @@
     {
       "id": "test-discovery-file-path-case-identity",
       "order": 10,
-      "status": "in-review",
+      "status": "merged",
       "backlogRowsClosed": [
         "test-discovery-file-path-case-identity"
       ],
@@ -412,8 +412,8 @@
       "branch": "remediation/test-discovery-file-path-case-identity",
       "worktreePath": ".worktrees/test-discovery-file-path-case-identity",
       "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1771",
-      "mergedAt": null,
-      "notes": "Fix1 newhead64739b3/tree240659: shared fail-closed fixture reused, all assertions retained; Windows scoped218/10skip, Linux225/3skip; fresh full5dcf527 exit0/4090pass17skip. Strict fix1 result read; fresh cold cycle1 and current-head hosted checks pending. Prior4568 reviewfail/full/hosted superseded; no merge or row closure.",
+      "mergedAt": "2026-10-10T03:14:37Z",
+      "notes": "Merged PR1771 at2026-10-10T03:14:37Z/c0bb1337cda729ef2ef3c914a59b0a9bd1a31df8; reviewed head64739b3d9c714e55b98d8a2a187d8d5f07ca2803. Merge/head/full tree240659722adac451357caa7bdb8e3bc06d482205 equality verified. Cold0 failed duplicated fixture; amendment4/fix1 reused shared fail-closed seam; cold1 passed0 findings/previous finding resolved; classifier landable. Linux old-production red5fail1pass1skip; current scoped Windows218pass10skip/Linux225pass3skip; fresh full5dcf527a926224a2 exit0/4090pass17skip4107total/clean NuGet audit. Hosted CI38018773735 SUCCESS on exact64739. Owned MCP sessions closed drainProcesses:false and creation-bound runner cleanup verified. Primary ff-synced; worktree/local/remote branch absent. Scratch cleanup EPERM quarantined/holder unknown-CLIXML; existing global holder row and product isolated-NuGet row own it. Main backstop38019941317 active on exactmergec0bb, require final success before closeout. Three unrelated source findings filed outside selection. Five implementation dispatches; elapsed/contextCost final accounting pending.",
       "fileSetHash": "7c66b310228defa00e69866f6253c186b4172c481f2df4989d6fcbd36e48d69b",
       "stanzaHash": "467bcd5b94094bc40107595fc9fe43725c98504d5fb0016d860db3dd95e21bf8",
       "reviewedStanzaHash": "467bcd5b94094bc40107595fc9fe43725c98504d5fb0016d860db3dd95e21bf8",
@@ -447,7 +447,14 @@
           "stanzaHash": "467bcd5b94094bc40107595fc9fe43725c98504d5fb0016d860db3dd95e21bf8"
         }
       ],
-      "reviewedHead": null
+      "reviewedHead": "64739b3d9c714e55b98d8a2a187d8d5f07ca2803",
+      "scratchRemoved": false,
+      "githubGate": {
+        "baseOid": "c087ac4f512f2ddcddd83b89aca4e3e7c611757f",
+        "headOid": "64739b3d9c714e55b98d8a2a187d8d5f07ca2803",
+        "tree": "240659722adac451357caa7bdb8e3bc06d482205",
+        "checksVerifiedAt": "2026-10-10T03:14:32.217Z"
+      }
     },
     {
       "id": "workspace-project-alias-lookup",
