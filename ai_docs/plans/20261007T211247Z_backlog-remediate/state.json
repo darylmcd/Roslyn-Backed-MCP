@@ -534,7 +534,7 @@
     {
       "id": "fix-all-equivalence-key-unregistered-fallback",
       "order": 12,
-      "status": "pending",
+      "status": "in-progress",
       "backlogRowsClosed": [
         "fix-all-equivalence-key-unregistered-fallback"
       ],
@@ -564,8 +564,8 @@
         "judgmentHeavy": true
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
+      "branch": "remediation/fix-all-equivalence-key-unregistered-fallback",
+      "worktreePath": "D:/Roslyn-Backed-MCP/.worktrees/fix-all-equivalence-key-unregistered-fallback",
       "prUrl": null,
       "mergedAt": null,
       "notes": null,
