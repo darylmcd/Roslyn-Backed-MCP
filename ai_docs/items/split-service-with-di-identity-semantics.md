@@ -19,3 +19,5 @@
 ## Context
 
 Filed 2026-09-25 while shipping the sibling-types fix.
+
+Source-only re-vet 2026-10-10 at a4a826dc, unchanged runtime on1cd4a90: SymbolRefactorService865-985/1217-1263 copies source fields/constructors into partitions and replaces facade constructor. Complete selected split-service-refuse-cross-partition-references amendment1 must repair this same mechanism at110000: retain original source state/constructor and delegate targets, preserve record equality/hash/with/clone using owner graphs outside record instance state, preserve per-actual-owner graph identity across facade/cross-calls and three DI lifetimes without collapsing independent transient roots. Reference identity graphs must publish one side-effect-free wrapper per partition and remain collectable; preserve struct/ref-struct byref ownership or prove a specific unrepresentable request, never blanket-refuse valid source kinds. Selected atomic scope is deferred for externally owned Rule5 admission; no implementation/runtime proof or row closure. Earlier blanket refusal acceptance is not authorization for a lesser fix.

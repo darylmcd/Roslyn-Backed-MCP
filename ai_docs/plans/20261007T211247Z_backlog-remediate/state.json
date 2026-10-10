@@ -4,7 +4,7 @@
   "backlogSnapshot": "2026-10-07T06:24:42Z",
   "addendaLoaded": true,
   "phase": "complete",
-  "cycleCount": 2,
+  "cycleCount": 3,
   "maxCycles": 2,
   "completed": false,
   "reviewStatus": "passed-with-warnings",
@@ -601,7 +601,7 @@
     {
       "id": "editorconfig-section-source-path-matching",
       "order": 13,
-      "status": "pending",
+      "status": "deferred",
       "backlogRowsClosed": [
         "editorconfig-section-source-path-matching"
       ],
@@ -636,7 +636,7 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
+      "notes": "Reader correction exposes existing writer first-assignment/precedence defect. Complete companion proposal is source-only in editorconfig-writer-design-proposal.result: matching-assignment edit provenance, new-key placement and global-config write domain require operator policy and public-contract decision/ADR/migration. Earlier async policy question remains unanswered. Do not execute reader-only approved scope; retain 34-case corpus and full proposal, then native replan and fresh cold review after explicit decisions. No implementation started; not a global-tooling blocker.",
       "fileSetHash": "5d41bd7b55c218330bfe9ce7adf84c5f8d9aab9401d2292fe641e9d5c87d81dd",
       "stanzaHash": "455a00b8ff470ee417bab1ee5be2dcecd83f6f543ce17a66f61b144becab9fd9",
       "reviewedStanzaHash": "455a00b8ff470ee417bab1ee5be2dcecd83f6f543ce17a66f61b144becab9fd9",
@@ -750,28 +750,37 @@
     {
       "id": "split-service-refuse-cross-partition-references",
       "order": 16,
-      "status": "pending",
+      "status": "deferred",
       "backlogRowsClosed": [
         "split-service-refuse-cross-partition-references"
       ],
-      "productionFilesTouched": 3,
+      "productionFilesTouched": 7,
       "productionFiles": [
         "src/RoslynMcp.Roslyn/Services/SymbolRefactorService.cs",
+        "src/RoslynMcp.Roslyn/Services/SplitServiceSemanticPlan.cs",
+        "src/RoslynMcp.Roslyn/Services/SplitServiceEmitter.cs",
+        "src/RoslynMcp.Roslyn/Services/SplitServiceRegistrationPlanner.cs",
         "src/RoslynMcp.Core/Services/ISymbolRefactorService.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/SymbolRefactorTools.cs",
         "ai_docs/items/split-service-refuse-cross-partition-references.md"
       ],
-      "testFilesAdded": 1,
+      "testFilesAdded": 4,
       "testFiles": [
-        "tests/RoslynMcp.Tests/CompositeSplitServiceDiPreviewTests.cs"
+        "tests/RoslynMcp.Tests/CompositeSplitServiceDiPreviewTests.cs",
+        "tests/RoslynMcp.Tests/SplitServiceSemanticBindingTests.cs",
+        "tests/RoslynMcp.Tests/SplitServiceIdentityTests.cs",
+        "tests/RoslynMcp.Tests/SplitServiceDiIdentityTests.cs"
       ],
       "docFiles": [
+        "docs/decisions/0020-split-service-source-ownership.md",
+        "docs/decisions/README.md",
         "changelog.d/split-service-refuse-cross-partition-references.md"
       ],
       "rowsClosedCount": 1,
-      "estimatedContextTokens": 65000,
+      "estimatedContextTokens": 110000,
       "toolPolicy": "edit-only",
       "scheduleHint": null,
-      "fanoutEstimate": 2,
+      "fanoutEstimate": 7,
       "fanoutOversize": false,
       "deepenerStatus": "ok",
       "deepenerFlags": {
@@ -784,10 +793,19 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
-      "fileSetHash": "0a5070b58f44f5ac91afc9945dd87feb77c508c90e8f066d57378b8c2dbac70c",
-      "stanzaHash": "3c92791380fba16b69f6a42f9157eeef8e87c8752b41aafba94da90c4478fa75",
-      "reviewedStanzaHash": "3c92791380fba16b69f6a42f9157eeef8e87c8752b41aafba94da90c4478fa75"
+      "notes": "Complete source re-vet requires seven production/four test paths plus ADR/index/fragment and honest estimatedContextTokens=110000. Installed global Rule5 execution admission remains capped at80000. Global owner handles plan-rule5-indivisible-scope-admission. Preserve complete semantic owner/record/DI/forwarding scope; no implementation started or validation claimed. Resume only after tooling admission repair and fresh cold approval.",
+      "fileSetHash": "8b851919d9411811fba501fbb08c65b746054b5aa4d96b110eaf5447edd3eac9",
+      "stanzaHash": "603ea86ed5ca4de619a27c527d1b72440bd25468edd6accf46895761393e2cf1",
+      "reviewedStanzaHash": "603ea86ed5ca4de619a27c527d1b72440bd25468edd6accf46895761393e2cf1",
+      "amendments": [
+        {
+          "at": "2026-10-10T20:18:56.073Z",
+          "finding": "Original name-only partitioning loses binding, owner identity and DI semantics; complete scope includes forwarding, public descriptions, record clone and signature companions.",
+          "reason": "Preserve complete seven-production/four-test/ADR-index-fragment structural unit at honest 110000 estimate. Global Rule5 admission is externally owned; do not lower the estimate, omit callers or refuse representable cases. Cold review required; execution remains blocked.",
+          "previousStanzaHash": "3c92791380fba16b69f6a42f9157eeef8e87c8752b41aafba94da90c4478fa75",
+          "stanzaHash": "603ea86ed5ca4de619a27c527d1b72440bd25468edd6accf46895761393e2cf1"
+        }
+      ]
     },
     {
       "id": "change-signature-class-struct-primary-ctor-add-remove",
@@ -796,23 +814,27 @@
       "backlogRowsClosed": [
         "change-signature-class-struct-primary-ctor-add-remove"
       ],
-      "productionFilesTouched": 2,
+      "productionFilesTouched": 5,
       "productionFiles": [
         "src/RoslynMcp.Roslyn/Services/ChangeSignatureService.cs",
-        "src/RoslynMcp.Roslyn/Services/ChangeSignatureAddRemovePreviewBuilder.cs"
+        "src/RoslynMcp.Roslyn/Services/ChangeSignatureAddRemovePreviewBuilder.cs",
+        "src/RoslynMcp.Core/Services/IChangeSignatureService.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/ChangeSignatureTools.cs",
+        "src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.Refactoring.cs"
       ],
-      "testFilesAdded": 1,
+      "testFilesAdded": 2,
       "testFiles": [
-        "tests/RoslynMcp.Tests/ChangeSignaturePreviewTests.cs"
+        "tests/RoslynMcp.Tests/ChangeSignaturePreviewTests.cs",
+        "tests/RoslynMcp.Tests/SurfaceCatalogTests.cs"
       ],
       "docFiles": [
         "changelog.d/change-signature-class-struct-primary-ctor-add-remove.md"
       ],
       "rowsClosedCount": 1,
-      "estimatedContextTokens": 60000,
+      "estimatedContextTokens": 70000,
       "toolPolicy": "edit-only",
       "scheduleHint": null,
-      "fanoutEstimate": 2,
+      "fanoutEstimate": 5,
       "fanoutOversize": false,
       "deepenerStatus": "ok",
       "deepenerFlags": {
@@ -826,9 +848,18 @@
       "prUrl": null,
       "mergedAt": null,
       "notes": null,
-      "fileSetHash": "92511a82ecb80bbc29ceb0379ccca0f341e03b985d94e566af0d6c16c8cfeef5",
-      "stanzaHash": "6a8b4057370d3affb55f0799654613f5b3441e9aae49085849c9370f391ade96",
-      "reviewedStanzaHash": "6a8b4057370d3affb55f0799654613f5b3441e9aae49085849c9370f391ade96"
+      "fileSetHash": "8c960fe95a632d07d6ba37c979d25bc24086c9805002c4248382a29b202adee0",
+      "stanzaHash": "85654b631bc417dd5425a08de19bb905302678cac3ee9d9afb7defe000f8265c",
+      "reviewedStanzaHash": "85654b631bc417dd5425a08de19bb905302678cac3ee9d9afb7defe000f8265c",
+      "amendments": [
+        {
+          "at": "2026-10-10T20:18:47.243Z",
+          "finding": "Current source re-vet requires original semantic argument mappings, callback consumers and public catalog descriptions plus pinned current catalog tests.",
+          "reason": "Complete semantic primary-constructor support requires five production and two test companions at honest 70000 estimate; retain all valid params/caller-info/constructor shapes and original binding validation. Fresh cold plan review required before admission.",
+          "previousStanzaHash": "6a8b4057370d3affb55f0799654613f5b3441e9aae49085849c9370f391ade96",
+          "stanzaHash": "85654b631bc417dd5425a08de19bb905302678cac3ee9d9afb7defe000f8265c"
+        }
+      ]
     },
     {
       "id": "load-profile-full-suite",
@@ -1623,74 +1654,66 @@
   ],
   "anchorVerification": "performed",
   "conflictGraph": {
-    "zeroDegreeInitiatives": [
-      9,
-      10,
-      13,
-      14,
-      18,
-      20,
-      23
-    ],
     "edges": [
       {
+        "a": 2,
         "b": 25,
         "sharedFiles": [
           "src/RoslynMcp.Roslyn/Services/CodeActionService.cs"
-        ],
-        "a": 2
+        ]
       },
       {
+        "a": 3,
         "b": 8.01,
         "sharedFiles": [
           "src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs"
-        ],
-        "a": 3
+        ]
       },
       {
+        "a": 3,
         "b": 11,
         "sharedFiles": [
           "src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs"
-        ],
-        "a": 3
+        ]
       },
       {
+        "a": 4,
         "b": 6,
         "sharedFiles": [
           "tests/RoslynMcp.Tests/TestData/invalid-operation-construction-baseline.json"
-        ],
-        "a": 4
+        ]
       },
       {
+        "a": 4,
         "b": 8.01,
         "sharedFiles": [
           "tests/RoslynMcp.Tests/TestData/invalid-operation-construction-baseline.json"
-        ],
-        "a": 4
+        ]
       },
       {
+        "a": 4,
         "b": 21,
         "sharedFiles": [
           "tests/RoslynMcp.Tests/TestData/invalid-operation-construction-baseline.json"
-        ],
-        "a": 4
+        ]
       },
       {
+        "a": 5,
         "b": 25,
         "sharedFiles": [
           "src/RoslynMcp.Roslyn/Services/TypeExtractionService.cs"
-        ],
-        "a": 5
+        ]
       },
       {
+        "a": 6,
         "b": 7.02,
         "sharedFiles": [
           "README.md",
           "src/RoslynMcp.Host.Stdio/README.md"
-        ],
-        "a": 6
+        ]
       },
       {
+        "a": 6,
         "b": 8.01,
         "sharedFiles": [
           "tests/RoslynMcp.Tests/ExtractionApplyRouteBindingTests.cs",
@@ -1698,33 +1721,33 @@
           "tests/RoslynMcp.Tests/PreviewRouteBindingFileOpsTests.cs",
           "tests/RoslynMcp.Tests/TestData/invalid-operation-construction-baseline.json",
           "tests/RoslynMcp.Tests/ToolDispatchTests.cs"
-        ],
-        "a": 6
+        ]
       },
       {
+        "a": 6,
         "b": 8.02,
         "sharedFiles": [
           "src/RoslynMcp.Host.Stdio/Tools/OrchestrationTools.cs",
           "src/RoslynMcp.Host.Stdio/Tools/ToolDispatch.cs",
           "tests/RoslynMcp.Tests/ToolDispatchTests.cs"
-        ],
-        "a": 6
+        ]
       },
       {
+        "a": 6,
         "b": 12,
         "sharedFiles": [
           "tests/RoslynMcp.Tests/PreviewRouteBindingFileOpsTests.cs"
-        ],
-        "a": 6
+        ]
       },
       {
+        "a": 6,
         "b": 21,
         "sharedFiles": [
           "tests/RoslynMcp.Tests/TestData/invalid-operation-construction-baseline.json"
-        ],
-        "a": 6
+        ]
       },
       {
+        "a": 6,
         "b": 25,
         "sharedFiles": [
           "src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.cs",
@@ -1735,100 +1758,107 @@
           "tests/RoslynMcp.Tests/PreviewRouteBindingFileOpsTests.cs",
           "tests/RoslynMcp.Tests/ScaffoldingIntegrationTests.cs",
           "tests/RoslynMcp.Tests/ToolDispatchTests.cs"
-        ],
-        "a": 6
+        ]
       },
       {
+        "a": 7.01,
         "b": 8.01,
         "sharedFiles": [
           "src/RoslynMcp.Roslyn/Services/CompositePreviewStore.cs",
           "src/RoslynMcp.Roslyn/Services/PersistentCompositeStorage.cs",
           "tests/RoslynMcp.Tests/Services/PersistentCompositeStorageTests.cs"
-        ],
-        "a": 7.01
+        ]
       },
       {
+        "a": 7.01,
         "b": 8.04,
         "sharedFiles": [
           "src/RoslynMcp.Roslyn/Services/CompositePreviewStore.cs",
           "src/RoslynMcp.Roslyn/Services/PersistentCompositeStorage.cs",
           "tests/RoslynMcp.Tests/Services/PersistentCompositeStorageTests.cs"
-        ],
-        "a": 7.01
+        ]
       },
       {
+        "a": 7.01,
         "b": 25,
         "sharedFiles": [
           "src/RoslynMcp.Roslyn/Services/CompositePreviewStore.cs",
           "src/RoslynMcp.Roslyn/Services/PersistentCompositeStorage.cs",
           "tests/RoslynMcp.Tests/Services/PersistentCompositeStorageTests.cs"
-        ],
-        "a": 7.01
+        ]
       },
       {
+        "a": 7.02,
         "b": 8.01,
         "sharedFiles": [
           "docs/decisions/README.md"
-        ],
-        "a": 7.02
+        ]
       },
       {
+        "a": 7.02,
         "b": 8.02,
         "sharedFiles": [
           "src/RoslynMcp.Roslyn/Services/WorkspaceForkApplyService.cs"
-        ],
-        "a": 7.02
+        ]
       },
       {
+        "a": 7.02,
         "b": 15,
         "sharedFiles": [
           "src/RoslynMcp.Roslyn/Services/WorkspaceForkApplyService.cs",
           "tests/RoslynMcp.Tests/Workspace/WorkspaceForkApplyTests.cs"
-        ],
-        "a": 7.02
+        ]
       },
       {
+        "a": 7.02,
+        "b": 16,
+        "sharedFiles": [
+          "docs/decisions/README.md"
+        ]
+      },
+      {
+        "a": 7.02,
         "b": 19,
         "sharedFiles": [
           "docs/decisions/README.md"
-        ],
-        "a": 7.02
+        ]
       },
       {
+        "a": 7.02,
         "b": 22,
         "sharedFiles": [
           "docs/decisions/README.md"
-        ],
-        "a": 7.02
+        ]
       },
       {
+        "a": 7.02,
         "b": 25,
         "sharedFiles": [
           "docs/decisions/README.md",
           "tests/RoslynMcp.Tests/Workspace/WorkspaceForkApplyTests.cs"
-        ],
-        "a": 7.02
+        ]
       },
       {
+        "a": 8.01,
         "b": 8.02,
         "sharedFiles": [
           "docs/decisions/0024-preview-token-terminal-lifecycle.md",
           "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs",
           "tests/RoslynMcp.Tests/ToolDispatchTests.cs"
-        ],
-        "a": 8.01
+        ]
       },
       {
+        "a": 8.01,
         "b": 8.03,
         "sharedFiles": [
           "src/RoslynMcp.Roslyn/Services/RefactoringService.cs",
           "tests/RoslynMcp.Tests/ApplyUndoWorkflowServiceTests.cs",
           "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs",
           "tests/RoslynMcp.Tests/RefactoringToolsIntegrationTests.cs"
-        ],
-        "a": 8.01
+        ]
       },
       {
+        "a": 8.01,
         "b": 8.04,
         "sharedFiles": [
           "src/RoslynMcp.Roslyn/Services/CompositeApplyOrchestrator.cs",
@@ -1837,54 +1867,61 @@
           "tests/RoslynMcp.Tests/CompositeApplyOrchestratorTests.cs",
           "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs",
           "tests/RoslynMcp.Tests/Services/PersistentCompositeStorageTests.cs"
-        ],
-        "a": 8.01
+        ]
       },
       {
+        "a": 8.01,
         "b": 8.05,
         "sharedFiles": [
           "src/RoslynMcp.Roslyn/Services/ProjectMutationService.cs",
           "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs",
           "tests/RoslynMcp.Tests/ProjectMutationIntegrationTests.cs"
-        ],
-        "a": 8.01
+        ]
       },
       {
+        "a": 8.01,
         "b": 11,
         "sharedFiles": [
           "src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs"
-        ],
-        "a": 8.01
+        ]
       },
       {
+        "a": 8.01,
         "b": 12,
         "sharedFiles": [
           "tests/RoslynMcp.Tests/PreviewRouteBindingFileOpsTests.cs"
-        ],
-        "a": 8.01
+        ]
       },
       {
+        "a": 8.01,
+        "b": 16,
+        "sharedFiles": [
+          "docs/decisions/README.md"
+        ]
+      },
+      {
+        "a": 8.01,
         "b": 19,
         "sharedFiles": [
           "docs/decisions/README.md"
-        ],
-        "a": 8.01
+        ]
       },
       {
+        "a": 8.01,
         "b": 21,
         "sharedFiles": [
           "tests/RoslynMcp.Tests/TestData/invalid-operation-construction-baseline.json"
-        ],
-        "a": 8.01
+        ]
       },
       {
+        "a": 8.01,
         "b": 22,
         "sharedFiles": [
           "docs/decisions/README.md"
-        ],
-        "a": 8.01
+        ]
       },
       {
+        "a": 8.01,
         "b": 25,
         "sharedFiles": [
           "docs/decisions/README.md",
@@ -1909,97 +1946,97 @@
           "tests/RoslynMcp.Tests/ProjectMutationIntegrationTests.cs",
           "tests/RoslynMcp.Tests/Services/PersistentCompositeStorageTests.cs",
           "tests/RoslynMcp.Tests/ToolDispatchTests.cs"
-        ],
-        "a": 8.01
+        ]
       },
       {
+        "a": 8.01,
         "b": 26,
         "sharedFiles": [
           "src/RoslynMcp.Roslyn/Services/RefactoringService.cs"
-        ],
-        "a": 8.01
+        ]
       },
       {
+        "a": 8.02,
         "b": 8.03,
         "sharedFiles": [
           "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs"
-        ],
-        "a": 8.02
+        ]
       },
       {
+        "a": 8.02,
         "b": 8.04,
         "sharedFiles": [
           "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs"
-        ],
-        "a": 8.02
+        ]
       },
       {
+        "a": 8.02,
         "b": 8.05,
         "sharedFiles": [
           "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs"
-        ],
-        "a": 8.02
+        ]
       },
       {
+        "a": 8.02,
         "b": 15,
         "sharedFiles": [
           "src/RoslynMcp.Roslyn/Services/WorkspaceForkApplyService.cs"
-        ],
-        "a": 8.02
+        ]
       },
       {
+        "a": 8.02,
         "b": 19,
         "sharedFiles": [
           "docs/product-contract.md"
-        ],
-        "a": 8.02
+        ]
       },
       {
+        "a": 8.02,
         "b": 25,
         "sharedFiles": [
           "src/RoslynMcp.Host.Stdio/Tools/ToolDispatch.cs",
           "tests/RoslynMcp.Tests/PreviewTokenStaleAcrossAutoReloadTests.cs",
           "tests/RoslynMcp.Tests/ToolDispatchTests.cs"
-        ],
-        "a": 8.02
+        ]
       },
       {
+        "a": 8.03,
         "b": 8.04,
         "sharedFiles": [
           "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs"
-        ],
-        "a": 8.03
+        ]
       },
       {
+        "a": 8.03,
         "b": 8.05,
         "sharedFiles": [
           "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs"
-        ],
-        "a": 8.03
+        ]
       },
       {
+        "a": 8.03,
         "b": 25,
         "sharedFiles": [
           "src/RoslynMcp.Roslyn/Services/RefactoringService.cs",
           "tests/RoslynMcp.Tests/ApplyUndoWorkflowServiceTests.cs"
-        ],
-        "a": 8.03
+        ]
       },
       {
+        "a": 8.03,
         "b": 26,
         "sharedFiles": [
           "src/RoslynMcp.Roslyn/Services/RefactoringService.cs"
-        ],
-        "a": 8.03
+        ]
       },
       {
+        "a": 8.04,
         "b": 8.05,
         "sharedFiles": [
           "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs"
-        ],
-        "a": 8.04
+        ]
       },
       {
+        "a": 8.04,
         "b": 25,
         "sharedFiles": [
           "src/RoslynMcp.Roslyn/Services/CompositeApplyOrchestrator.cs",
@@ -2007,101 +2044,116 @@
           "src/RoslynMcp.Roslyn/Services/PersistentCompositeStorage.cs",
           "tests/RoslynMcp.Tests/CompositeApplyOrchestratorTests.cs",
           "tests/RoslynMcp.Tests/Services/PersistentCompositeStorageTests.cs"
-        ],
-        "a": 8.04
+        ]
       },
       {
+        "a": 8.05,
         "b": 25,
         "sharedFiles": [
           "src/RoslynMcp.Roslyn/Services/ProjectMutationService.cs",
           "tests/RoslynMcp.Tests/ProjectMutationIntegrationTests.cs"
-        ],
-        "a": 8.05
+        ]
       },
       {
+        "a": 12,
         "b": 25,
         "sharedFiles": [
           "src/RoslynMcp.Roslyn/Services/FixAllService.cs",
           "tests/RoslynMcp.Tests/PreviewRouteBindingFileOpsTests.cs"
-        ],
-        "a": 12
+        ]
       },
       {
+        "a": 15,
         "b": 19,
         "sharedFiles": [
           "src/RoslynMcp.Host.Stdio/Tools/WorkspaceTools.cs"
-        ],
-        "a": 15
+        ]
       },
       {
+        "a": 15,
         "b": 25,
         "sharedFiles": [
           "tests/RoslynMcp.Tests/Workspace/WorkspaceForkApplyTests.cs"
-        ],
-        "a": 15
+        ]
       },
       {
+        "a": 16,
+        "b": 19,
+        "sharedFiles": [
+          "docs/decisions/README.md"
+        ]
+      },
+      {
+        "a": 16,
+        "b": 22,
+        "sharedFiles": [
+          "docs/decisions/README.md"
+        ]
+      },
+      {
+        "a": 16,
         "b": 25,
         "sharedFiles": [
+          "docs/decisions/README.md",
           "src/RoslynMcp.Roslyn/Services/SymbolRefactorService.cs"
-        ],
-        "a": 16
+        ]
       },
       {
+        "a": 17,
         "b": 21,
         "sharedFiles": [
           "src/RoslynMcp.Roslyn/Services/ChangeSignatureService.cs",
           "tests/RoslynMcp.Tests/ChangeSignaturePreviewTests.cs"
-        ],
-        "a": 17
+        ]
       },
       {
+        "a": 17,
         "b": 25,
         "sharedFiles": [
           "src/RoslynMcp.Roslyn/Services/ChangeSignatureAddRemovePreviewBuilder.cs",
           "src/RoslynMcp.Roslyn/Services/ChangeSignatureService.cs",
           "tests/RoslynMcp.Tests/ChangeSignaturePreviewTests.cs"
-        ],
-        "a": 17
+        ]
       },
       {
+        "a": 19,
         "b": 22,
         "sharedFiles": [
           "docs/decisions/README.md"
-        ],
-        "a": 19
+        ]
       },
       {
+        "a": 19,
         "b": 24,
         "sharedFiles": [
           "tests/RoslynMcp.Tests/AnalyzerShadowLoaderLifecycleTests.cs"
-        ],
-        "a": 19
+        ]
       },
       {
+        "a": 19,
         "b": 25,
         "sharedFiles": [
           "docs/decisions/README.md"
-        ],
-        "a": 19
+        ]
       },
       {
+        "a": 21,
         "b": 25,
         "sharedFiles": [
           "src/RoslynMcp.Roslyn/Services/ChangeSignatureService.cs",
           "tests/RoslynMcp.Tests/ChangeSignaturePreviewTests.cs"
-        ],
-        "a": 21
+        ]
       },
       {
+        "a": 22,
         "b": 25,
         "sharedFiles": [
           "docs/decisions/README.md",
           "src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs"
-        ],
-        "a": 22
+        ]
       },
       {
+        "a": 25,
         "b": 26,
         "sharedFiles": [
           "src/RoslynMcp.Roslyn/Helpers/DiffGenerator.cs",
@@ -2110,8 +2162,7 @@
           "src/RoslynMcp.Roslyn/Services/RefactoringService.cs",
           "tests/RoslynMcp.Tests/DiffGeneratorTests.cs",
           "tests/RoslynMcp.Tests/SolutionDiffHelperTests.cs"
-        ],
-        "a": 25
+        ]
       }
     ],
     "degrees": {
@@ -2127,25 +2178,34 @@
       "13": 0,
       "14": 0,
       "15": 4,
-      "16": 1,
+      "16": 5,
       "17": 2,
       "18": 0,
-      "19": 7,
+      "19": 8,
       "20": 0,
       "21": 5,
-      "22": 4,
+      "22": 5,
       "23": 0,
       "24": 1,
       "25": 18,
       "26": 3,
-      "8.05": 5,
-      "7.02": 7,
-      "8.03": 6,
-      "8.01": 16,
-      "8.04": 6,
+      "7.01": 3,
+      "7.02": 8,
+      "8.01": 17,
       "8.02": 9,
-      "7.01": 3
-    }
+      "8.03": 6,
+      "8.04": 6,
+      "8.05": 5
+    },
+    "zeroDegreeInitiatives": [
+      9,
+      10,
+      13,
+      14,
+      18,
+      20,
+      23
+    ]
   },
   "selection": {
     "requestedCount": "auto",
@@ -2546,8 +2606,8 @@
   },
   "reviewFindings": {
     "block": 0,
-    "warn": 10,
-    "info": 18
+    "warn": 11,
+    "info": 20
   },
   "lastReviewFindings": [
     {
@@ -2615,12 +2675,6 @@
       "severity": "info",
       "rule": "C2",
       "evidence": "Whole-plan conflict degree 4; scheduleHint is not heroic-last. Rebuild includes terminal stanzas and excludes canonical shared paths."
-    },
-    {
-      "initiativeId": "change-signature-class-struct-primary-ctor-add-remove",
-      "severity": "info",
-      "rule": "C2",
-      "evidence": "Whole-plan conflict degree 2; scheduleHint is not heroic-last. Rebuild includes terminal stanzas and excludes canonical shared paths."
     },
     {
       "initiativeId": "workspace-close-global-build-server-shutdown",
@@ -2718,6 +2772,30 @@
       "severity": "info",
       "rule": "C2",
       "evidence": "Whole-plan conflict degree is now 3 after adding PreviewRouteBindingFileOpsTests.cs; scheduleHint is not heroic-last. Conflicts are with deferred orders 6, 8.01 and 25; preserve their holds."
+    },
+    {
+      "initiativeId": "change-signature-class-struct-primary-ctor-add-remove",
+      "severity": "info",
+      "rule": "3",
+      "evidence": "Five-file defect-forced-companion holds on current immutable base 1cd4a90: ChangeSignatureService.cs:85-92 refuses primary constructors; builder:72,129-155 omits type declarations/constructions; service:195-217,235-246,364-405 loses omitted/expanded parameter mappings. Core:5-26, Tools:11-44 and Catalog.Refactoring:18 advertise method-only behavior; SurfaceCatalogTests.cs:331-350,391 pins the changed-description set/count. The stanza repairs every shared adapter, semantic/trivia validation and public-description companion in one feature; README counts stay unchanged."
+    },
+    {
+      "initiativeId": "change-signature-class-struct-primary-ctor-add-remove",
+      "severity": "info",
+      "rule": "C2",
+      "evidence": "Whole-plan conflict degree 2; scheduleHint is not heroic-last. Rebuilt from every safely loaded Scope, including terminal stanzas and all production/test/doc companions."
+    },
+    {
+      "initiativeId": "split-service-refuse-cross-partition-references",
+      "severity": "info",
+      "rule": "C2",
+      "evidence": "Whole-plan conflict degree 5; scheduleHint is not heroic-last. Rebuilt from every safely loaded Scope, including terminal stanzas and all production/test/doc companions."
+    },
+    {
+      "initiativeId": "change-signature-class-struct-primary-ctor-add-remove",
+      "severity": "warn",
+      "rule": "C2-graph-disagreement",
+      "evidence": "Stored graph contains only 16 edges; required all-stanza Scope rebuild has 62 edges, with 46 missing and zero extraneous: {\"onlyStored\":[],\"onlyRebuilt\":[\"[12,25,[\\\"src/RoslynMcp.Roslyn/Services/FixAllService.cs\\\",\\\"tests/RoslynMcp.Tests/PreviewRouteBindingFileOpsTests.cs\\\"]]\",\"[15,25,[\\\"tests/RoslynMcp.Tests/Workspace/WorkspaceForkApplyTests.cs\\\"]]\",\"[16,19,[\\\"docs/decisions/README.md\\\"]]\",\"[16,22,[\\\"docs/decisions/README.md\\\"]]\",\"[16,25,[\\\"docs/decisions/README.md\\\",\\\"src/RoslynMcp.Roslyn/Services/SymbolRefactorService.cs\\\"]]\",\"[17,25,[\\\"src/RoslynMcp.Roslyn/Services/ChangeSignatureAddRemovePreviewBuilder.cs\\\",\\\"src/RoslynMcp.Roslyn/Services/ChangeSignatureService.cs\\\",\\\"tests/RoslynMcp.Tests/ChangeSignaturePreviewTests.cs\\\"]]\",\"[19,25,[\\\"docs/decisions/README.md\\\"]]\",\"[2,25,[\\\"src/RoslynMcp.Roslyn/Services/CodeActionService.cs\\\"]]\",\"[21,25,[\\\"src/RoslynMcp.Roslyn/Services/ChangeSignatureService.cs\\\",\\\"tests/RoslynMcp.Tests/ChangeSignaturePreviewTests.cs\\\"]]\",\"[22,25,[\\\"docs/decisions/README.md\\\",\\\"src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs\\\"]]\",\"[25,26,[\\\"src/RoslynMcp.Roslyn/Helpers/DiffGenerator.cs\\\",\\\"src/RoslynMcp.Roslyn/Helpers/SolutionDiffHelper.cs\\\",\\\"src/RoslynMcp.Roslyn/Services/EditService.cs\\\",\\\"src/RoslynMcp.Roslyn/Services/RefactoringService.cs\\\",\\\"tests/RoslynMcp.Tests/DiffGeneratorTests.cs\\\",\\\"tests/RoslynMcp.Tests/SolutionDiffHelperTests.cs\\\"]]\",\"[3,11,[\\\"src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs\\\"]]\",\"[3,8.01,[\\\"src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs\\\"]]\",\"[4,21,[\\\"tests/RoslynMcp.Tests/TestData/invalid-operation-construction-baseline.json\\\"]]\",\"[4,6,[\\\"tests/RoslynMcp.Tests/TestData/invalid-operation-construction-baseline.json\\\"]]\",\"[4,8.01,[\\\"tests/RoslynMcp.Tests/TestData/invalid-operation-construction-baseline.json\\\"]]\",\"[5,25,[\\\"src/RoslynMcp.Roslyn/Services/TypeExtractionService.cs\\\"]]\",\"[6,12,[\\\"tests/RoslynMcp.Tests/PreviewRouteBindingFileOpsTests.cs\\\"]]\",\"[6,21,[\\\"tests/RoslynMcp.Tests/TestData/invalid-operation-construction-baseline.json\\\"]]\",\"[6,25,[\\\"src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.cs\\\",\\\"src/RoslynMcp.Host.Stdio/Tools/ToolDispatch.cs\\\",\\\"src/RoslynMcp.Roslyn/Services/BatchTestScaffolder.cs\\\",\\\"tests/RoslynMcp.Tests/ExtractionApplyRouteBindingTests.cs\\\",\\\"tests/RoslynMcp.Tests/PreviewRouteBindingEditingTests.cs\\\",\\\"tests/RoslynMcp.Tests/PreviewRouteBindingFileOpsTests.cs\\\",\\\"tests/RoslynMcp.Tests/ScaffoldingIntegrationTests.cs\\\",\\\"tests/RoslynMcp.Tests/ToolDispatchTests.cs\\\"]]\",\"[6,7.02,[\\\"README.md\\\",\\\"src/RoslynMcp.Host.Stdio/README.md\\\"]]\",\"[6,8.01,[\\\"tests/RoslynMcp.Tests/ExtractionApplyRouteBindingTests.cs\\\",\\\"tests/RoslynMcp.Tests/PreviewRouteBindingEditingTests.cs\\\",\\\"tests/RoslynMcp.Tests/PreviewRouteBindingFileOpsTests.cs\\\",\\\"tests/RoslynMcp.Tests/TestData/invalid-operation-construction-baseline.json\\\",\\\"tests/RoslynMcp.Tests/ToolDispatchTests.cs\\\"]]\",\"[6,8.02,[\\\"src/RoslynMcp.Host.Stdio/Tools/OrchestrationTools.cs\\\",\\\"src/RoslynMcp.Host.Stdio/Tools/ToolDispatch.cs\\\",\\\"tests/RoslynMcp.Tests/ToolDispatchTests.cs\\\"]]\",\"[7.01,25,[\\\"src/RoslynMcp.Roslyn/Services/CompositePreviewStore.cs\\\",\\\"src/RoslynMcp.Roslyn/Services/PersistentCompositeStorage.cs\\\",\\\"tests/RoslynMcp.Tests/Services/PersistentCompositeStorageTests.cs\\\"]]\",\"[7.01,8.01,[\\\"src/RoslynMcp.Roslyn/Services/CompositePreviewStore.cs\\\",\\\"src/RoslynMcp.Roslyn/Services/PersistentCompositeStorage.cs\\\",\\\"tests/RoslynMcp.Tests/Services/PersistentCompositeStorageTests.cs\\\"]]\",\"[7.01,8.04,[\\\"src/RoslynMcp.Roslyn/Services/CompositePreviewStore.cs\\\",\\\"src/RoslynMcp.Roslyn/Services/PersistentCompositeStorage.cs\\\",\\\"tests/RoslynMcp.Tests/Services/PersistentCompositeStorageTests.cs\\\"]]\",\"[7.02,15,[\\\"src/RoslynMcp.Roslyn/Services/WorkspaceForkApplyService.cs\\\",\\\"tests/RoslynMcp.Tests/Workspace/WorkspaceForkApplyTests.cs\\\"]]\",\"[7.02,16,[\\\"docs/decisions/README.md\\\"]]\",\"[7.02,19,[\\\"docs/decisions/README.md\\\"]]\",\"[7.02,22,[\\\"docs/decisions/README.md\\\"]]\",\"[7.02,25,[\\\"docs/decisions/README.md\\\",\\\"tests/RoslynMcp.Tests/Workspace/WorkspaceForkApplyTests.cs\\\"]]\",\"[7.02,8.01,[\\\"docs/decisions/README.md\\\"]]\",\"[7.02,8.02,[\\\"src/RoslynMcp.Roslyn/Services/WorkspaceForkApplyService.cs\\\"]]\",\"[8.01,11,[\\\"src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs\\\"]]\",\"[8.01,12,[\\\"tests/RoslynMcp.Tests/PreviewRouteBindingFileOpsTests.cs\\\"]]\",\"[8.01,16,[\\\"docs/decisions/README.md\\\"]]\",\"[8.01,19,[\\\"docs/decisions/README.md\\\"]]\",\"[8.01,21,[\\\"tests/RoslynMcp.Tests/TestData/invalid-operation-construction-baseline.json\\\"]]\",\"[8.01,22,[\\\"docs/decisions/README.md\\\"]]\",\"[8.01,25,[\\\"docs/decisions/README.md\\\",\\\"src/RoslynMcp.Core/Services/ICompositePreviewStore.cs\\\",\\\"src/RoslynMcp.Core/Services/IProjectMutationPreviewStore.cs\\\",\\\"src/RoslynMcp.Roslyn/Contracts/IPreviewStore.cs\\\",\\\"src/RoslynMcp.Roslyn/Services/CompositeApplyOrchestrator.cs\\\",\\\"src/RoslynMcp.Roslyn/Services/CompositePreviewStore.cs\\\",\\\"src/RoslynMcp.Roslyn/Services/PersistentCompositeStorage.cs\\\",\\\"src/RoslynMcp.Roslyn/Services/PreviewStore.cs\\\",\\\"src/RoslynMcp.Roslyn/Services/ProjectMutationService.cs\\\",\\\"src/RoslynMcp.Roslyn/Services/RefactoringService.cs\\\",\\\"tests/RoslynMcp.Tests/ApplyUndoWorkflowServiceTests.cs\\\",\\\"tests/RoslynMcp.Tests/ApplyWithVerifyCancellationAndScopeTests.cs\\\",\\\"tests/RoslynMcp.Tests/BoundedStoreEvictionTests.cs\\\",\\\"tests/RoslynMcp.Tests/CompositeApplyOrchestratorTests.cs\\\",\\\"tests/RoslynMcp.Tests/ExtractionApplyRouteBindingTests.cs\\\",\\\"tests/RoslynMcp.Tests/ParameterObjectPreviewTests.cs\\\",\\\"tests/RoslynMcp.Tests/PreviewRouteBindingEditingTests.cs\\\",\\\"tests/RoslynMcp.Tests/PreviewRouteBindingFileOpsTests.cs\\\",\\\"tests/RoslynMcp.Tests/PreviewStoreTests.cs\\\",\\\"tests/RoslynMcp.Tests/ProjectMutationIntegrationTests.cs\\\",\\\"tests/RoslynMcp.Tests/Services/PersistentCompositeStorageTests.cs\\\",\\\"tests/RoslynMcp.Tests/ToolDispatchTests.cs\\\"]]\",\"[8.01,26,[\\\"src/RoslynMcp.Roslyn/Services/RefactoringService.cs\\\"]]\",\"[8.01,8.02,[\\\"docs/decisions/0024-preview-token-terminal-lifecycle.md\\\",\\\"tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs\\\",\\\"tests/RoslynMcp.Tests/ToolDispatchTests.cs\\\"]]\",\"[8.01,8.03,[\\\"src/RoslynMcp.Roslyn/Services/RefactoringService.cs\\\",\\\"tests/RoslynMcp.Tests/ApplyUndoWorkflowServiceTests.cs\\\",\\\"tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs\\\",\\\"tests/RoslynMcp.Tests/RefactoringToolsIntegrationTests.cs\\\"]]\",\"[8.01,8.04,[\\\"src/RoslynMcp.Roslyn/Services/CompositeApplyOrchestrator.cs\\\",\\\"src/RoslynMcp.Roslyn/Services/CompositePreviewStore.cs\\\",\\\"src/RoslynMcp.Roslyn/Services/PersistentCompositeStorage.cs\\\",\\\"tests/RoslynMcp.Tests/CompositeApplyOrchestratorTests.cs\\\",\\\"tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs\\\",\\\"tests/RoslynMcp.Tests/Services/PersistentCompositeStorageTests.cs\\\"]]\",\"[8.01,8.05,[\\\"src/RoslynMcp.Roslyn/Services/ProjectMutationService.cs\\\",\\\"tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs\\\",\\\"tests/RoslynMcp.Tests/ProjectMutationIntegrationTests.cs\\\"]]\",\"[8.02,15,[\\\"src/RoslynMcp.Roslyn/Services/WorkspaceForkApplyService.cs\\\"]]\",\"[8.02,19,[\\\"docs/product-contract.md\\\"]]\",\"[8.02,25,[\\\"src/RoslynMcp.Host.Stdio/Tools/ToolDispatch.cs\\\",\\\"tests/RoslynMcp.Tests/PreviewTokenStaleAcrossAutoReloadTests.cs\\\",\\\"tests/RoslynMcp.Tests/ToolDispatchTests.cs\\\"]]\",\"[8.02,8.03,[\\\"tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs\\\"]]\",\"[8.02,8.04,[\\\"tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs\\\"]]\",\"[8.02,8.05,[\\\"tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs\\\"]]\",\"[8.03,25,[\\\"src/RoslynMcp.Roslyn/Services/RefactoringService.cs\\\",\\\"tests/RoslynMcp.Tests/ApplyUndoWorkflowServiceTests.cs\\\"]]\",\"[8.03,26,[\\\"src/RoslynMcp.Roslyn/Services/RefactoringService.cs\\\"]]\",\"[8.03,8.04,[\\\"tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs\\\"]]\",\"[8.03,8.05,[\\\"tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs\\\"]]\",\"[8.04,25,[\\\"src/RoslynMcp.Roslyn/Services/CompositeApplyOrchestrator.cs\\\",\\\"src/RoslynMcp.Roslyn/Services/CompositePreviewStore.cs\\\",\\\"src/RoslynMcp.Roslyn/Services/PersistentCompositeStorage.cs\\\",\\\"tests/RoslynMcp.Tests/CompositeApplyOrchestratorTests.cs\\\",\\\"tests/RoslynMcp.Tests/Services/PersistentCompositeStorageTests.cs\\\"]]\",\"[8.04,8.05,[\\\"tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs\\\"]]\",\"[8.05,25,[\\\"src/RoslynMcp.Roslyn/Services/ProjectMutationService.cs\\\",\\\"tests/RoslynMcp.Tests/ProjectMutationIntegrationTests.cs\\\"]]\"]}"
     }
   ],
   "reviewCoverage": {
@@ -2735,8 +2813,8 @@
       "editorconfig-section-source-path-matching": "455a00b8ff470ee417bab1ee5be2dcecd83f6f543ce17a66f61b144becab9fd9",
       "logging-jsonl-drops-structured-state": "fd3aef40e86b7820bb0d8c786d2534936d972b89ddedf7adf9b78b33b3ff579e",
       "restore-callers-missing-packages-path": "5e7bc589d2e8eac07e1489f9396e75b478a090c22112ceb9a4c3a1439c198521",
-      "split-service-refuse-cross-partition-references": "3c92791380fba16b69f6a42f9157eeef8e87c8752b41aafba94da90c4478fa75",
-      "change-signature-class-struct-primary-ctor-add-remove": "6a8b4057370d3affb55f0799654613f5b3441e9aae49085849c9370f391ade96",
+      "split-service-refuse-cross-partition-references": "603ea86ed5ca4de619a27c527d1b72440bd25468edd6accf46895761393e2cf1",
+      "change-signature-class-struct-primary-ctor-add-remove": "85654b631bc417dd5425a08de19bb905302678cac3ee9d9afb7defe000f8265c",
       "load-profile-full-suite": "bc2695528f8866034df6aa82bf401da7ca40f647183d1062466b408fe73768fa",
       "workspace-close-global-build-server-shutdown": "cf010db06593e16475cf66103df1391e94e4b0dfb8b7faec779004992b458e4f",
       "test-temp-reaper-live-owner": "75252658ed097350897e2a9d422ae19e59925f169294094bd0e77cf6f1fc85d1",
@@ -2755,11 +2833,11 @@
       "fork-preview-project-composite-replay": "cd6c4c6aa3a52afdbbdf70820ab4f53e5735ca94771f2f2f2e30ad70e957f688"
     }
   },
-  "conflictGraphInputHash": "c324f82fb4662bb387a7da49214153d6fbbf97c9b75fc92864846d9902272e57",
-  "planHash": "29b45d020271ebb03abcf0091c277a05690046af19bf79e17b2673373f05ba7d",
-  "backlogSnapshotHash": "b949d74130731e049124b9b12a215f6ad176f3f536810cdd4818ed061391b7b0",
-  "reviewedPlanHash": "29b45d020271ebb03abcf0091c277a05690046af19bf79e17b2673373f05ba7d",
-  "reviewedBacklogSnapshotHash": "b949d74130731e049124b9b12a215f6ad176f3f536810cdd4818ed061391b7b0",
+  "conflictGraphInputHash": "2e1fe8f3241bc69715300fe3a18ca7fbde82f2c67e330748937ae77e5b3d793f",
+  "planHash": "8359c0c0c067eacad3c76e0647891c0ca9be3b4f200428c2540354c7da7a9ce5",
+  "backlogSnapshotHash": "b57555fce06fa99df0f1bfb9eae39f7c42bb33fe98c94b5b2b98956badb993d7",
+  "reviewedPlanHash": "8359c0c0c067eacad3c76e0647891c0ca9be3b4f200428c2540354c7da7a9ce5",
+  "reviewedBacklogSnapshotHash": "b57555fce06fa99df0f1bfb9eae39f7c42bb33fe98c94b5b2b98956badb993d7",
   "backlogSketches": [
     {
       "n": 1,
@@ -3038,6 +3116,53 @@
         "kind": "row",
         "value": "bounded-store-capacity-atomic-insertion",
         "at": "2026-10-10T19:42:51.340Z"
+      }
+    },
+    {
+      "n": 13,
+      "source": "executor",
+      "initiativeId": "logging-jsonl-drops-structured-state",
+      "title": "Define oversized-record handling for JSON-lines retention",
+      "suggestedPri": "Medium",
+      "amendRow": "logging-retention-destroys-repro-evidence",
+      "anchors": [
+        "src/RoslynMcp.Host.Stdio/Diagnostics/JsonLinesFileLoggerProvider.cs:203",
+        "src/RoslynMcp.Host.Stdio/Diagnostics/JsonLinesFileLoggerProvider.cs:211",
+        "tests/RoslynMcp.Tests/ServerObservabilitySinkTests.cs:149",
+        "tests/RoslynMcp.Tests/ServerObservabilitySinkTests.cs:182"
+      ],
+      "acceptance": [
+        "Define and enforce an operator-safe valid-JSON policy when one pending record exceeds the configured segment threshold; document the resulting bound.",
+        "Cover first, empty, and nonempty files with a single oversized record, preserving explicit evidence of the chosen policy."
+      ],
+      "evidence": "Pre-existing independent mechanism, identical at supplied base: RotateIfNeeded returns when FilePath is absent or currentLength==0, otherwise moves the current file, and Write then File.AppendAllText writes the entire pending line without an oversized-record policy. Existing unchanged test already uses maxFileBytes:450 and new string('x',500). This change did not introduce that size-threshold behavior; retain amendment with existing retention work.",
+      "at": "2026-10-10T20:24:36.292Z",
+      "disposition": {
+        "kind": "row",
+        "value": "logging-retention-destroys-repro-evidence",
+        "at": "2026-10-10T20:24:37.350Z"
+      }
+    },
+    {
+      "n": 14,
+      "source": "deepener",
+      "initiativeId": "split-service-refuse-cross-partition-references",
+      "title": "Preserve source graph identity, record equality and clones during service splitting",
+      "suggestedPri": "Medium",
+      "amendRow": "split-service-with-di-identity-semantics",
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/SymbolRefactorService.cs:865-985",
+        "src/RoslynMcp.Roslyn/Services/SymbolRefactorService.cs:1217-1263"
+      ],
+      "acceptance": [
+        "Original source field/ctor identity and delegate receiver targets remain stable; each reference source and record clone obtains its own graph; three lifetime tests prove per-root sharing without collapsing independent transient roots."
+      ],
+      "evidence": "Source-only deepener result at a4a826dc, runtime unchanged on1cd4a90: copied fields and facade constructor replacement at SymbolRefactorService865-985/1217-1263 force owner graph identity, record clone/equality and three-lifetime companions into the complete selected110000 fix. No runtime or implementation proof. Native note filed to existing identity row; global admission externally blocked.",
+      "at": "2026-10-10T20:25:30.781Z",
+      "disposition": {
+        "kind": "row",
+        "value": "split-service-with-di-identity-semantics",
+        "at": "2026-10-10T20:25:46.730Z"
       }
     }
   ]

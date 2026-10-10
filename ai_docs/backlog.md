@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-10T19:42:18Z
+**updated_at:** 2026-10-10T20:25:53Z
 
 ## Agent contract
 
@@ -110,7 +110,7 @@
 | `other-failed-apply-displaces-undo-target` | Medium | editorconfig-failed-write-displaces-undo-target | Preserve prior revert_last_apply target when EditService, ProjectMutationService, or RefactoringService fails after preparing undo. [type: bug] [source: backlog-remediate cold review 20260929] | L | items/other-failed-apply-displaces-undo-target.md |
 | `client-root-widening-drive-root-parent` | Medium | — | **Decide sibling-worktree widening when repo root parent is a drive root** — expandSanctionedRoots skips D:\ parents, so D:\<repo>-audit-* siblings are rejected; choose prefix-scoped widening or keep skip, implement + test + document [type: decision] [source: PR #1685 fixture change] | S | items/client-root-widening-drive-root-parent.md |
 | `logging-jsonl-drops-structured-state` | Medium | — | **Serialize ILogger state as structured fields in the JSON-lines sink** — emit `fields` (toolName, outcome, elapsedMs, exceptionTypes…) and `eventName` per record instead of only the formatted prose message. [type: quality] [source: logging-audit 20260930-1340] | M | items/logging-jsonl-drops-structured-state.md |
-| `logging-retention-destroys-repro-evidence` | Medium | — | **Bound JSON-lines retention without deleting repro evidence** — rotation deletes the prior segment (10 MiB/process ceiling) and per-pid files of dead processes are never pruned. [type: quality] [source: logging-audit 20260930-1340] | S | items/logging-retention-destroys-repro-evidence.md |
+| `logging-retention-destroys-repro-evidence` | Medium | — | **Bound JSON-lines retention without deleting repro evidence** — rotation removes prior segments, oversized records bypass a strict size bound, and dead-pid files are never pruned. [type: quality] [source: logging-audit 20260930-1340] | S | items/logging-retention-destroys-repro-evidence.md |
 | `logging-event-id-collisions-no-catalog` | Medium | logging-jsonl-drops-structured-state | **Give every LoggerMessage a unique EventId and publish the catalog** — six unrelated events share EventId 1; add a constants catalog, drift test and docs table. [type: quality] [source: logging-audit 20260930-1340] | L | items/logging-event-id-collisions-no-catalog.md |
 | `logging-failure-records-lack-diagnosis` | Medium | logging-jsonl-drops-structured-state | **Put error category and sanitized frames in tool-failure log records** — expected failures log only `outcome=expected-error`; unexpected ones log exception types + a frame count with no frames. [type: quality] [source: logging-audit 20260930-1340] | M | items/logging-failure-records-lack-diagnosis.md |
 | `logging-dependency-boundary-duration-missing` | Medium | logging-jsonl-drops-structured-state | **Emit duration and outcome for subprocess and workspace-load boundaries** — the dotnet-command event has target+exit code but no duration; MSBuild workspace load has no boundary event. [type: quality] [source: logging-audit 20260930-1340] | M | items/logging-dependency-boundary-duration-missing.md |
