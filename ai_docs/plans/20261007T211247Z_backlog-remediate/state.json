@@ -660,7 +660,7 @@
     {
       "id": "logging-jsonl-drops-structured-state",
       "order": 14,
-      "status": "pending",
+      "status": "in-progress",
       "backlogRowsClosed": [
         "logging-jsonl-drops-structured-state"
       ],
@@ -695,7 +695,7 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
+      "notes": "Source execution start 8 of 10; immutable base a4a826dcf589068b908234759a1103cafe39bb8b; owned source worktree precreated. No global implementation.",
       "fileSetHash": "b2e61e8a5ec4de58c81419ab72201a9b4acaf572b8359c687a7d6564e69a44aa",
       "stanzaHash": "fd3aef40e86b7820bb0d8c786d2534936d972b89ddedf7adf9b78b33b3ff579e",
       "reviewedStanzaHash": "fd3aef40e86b7820bb0d8c786d2534936d972b89ddedf7adf9b78b33b3ff579e"
