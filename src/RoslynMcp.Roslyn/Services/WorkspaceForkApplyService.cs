@@ -134,10 +134,21 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService
                 var appliedFiles = await ReplayPreviewIntoForkAsync(
                     preview.OriginalSolution, preview.ModifiedSolution, source.Root, path, c)
                     .ConfigureAwait(false);
-                return (Path: path, AppliedFiles: appliedFiles);
+                var projects = preview.ModifiedSolution.Projects.Select(project =>
+                {
+                    var sourcePath = project.FilePath
+                        ?? throw new InvalidOperationException("Fork restore requires an on-disk path for every preview project.");
+                    var forkProjectPath = MapSourcePathToFork(sourcePath, source.Root, path);
+                    if (!File.Exists(forkProjectPath))
+                        throw new InvalidOperationException("A preview project is not present in the copied fork graph.");
+                    var originalPath = preview.OriginalSolution.GetProject(project.Id)?.FilePath;
+                    return new RestoreInvocationPlanner.ProjectRestore(forkProjectPath,
+                        originalPath is null ? null : RestoreStalenessDetector.TryReadRestorePackagesPath(originalPath));
+                }).ToArray();
+                return (Path: path, AppliedFiles: appliedFiles, Projects: projects);
             }, ct, applyStalenessPolicy: false).ConfigureAwait(false);
             var forkLoadedPath = MapSourcePathToFork(source.LoadedPath, source.Root, preparedFork.Path);
-            await RestoreForkAsync(forkLoadedPath, ct).ConfigureAwait(false);
+            await RestoreForkAsync(RestoreInvocationPlanner.Plan(forkLoadedPath, preparedFork.Projects), ct).ConfigureAwait(false);
             var forkStatus = await _workspaceManager
                 .LoadAsync(forkLoadedPath, EvictPolicy.Lru, ct)
                 .ConfigureAwait(false);
@@ -513,42 +524,47 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService
         return false;
     }
 
-    internal async Task RestoreForkAsync(string forkLoadedPath, CancellationToken ct)
+    internal async Task RestoreForkAsync(IReadOnlyList<RestoreInvocationPlanner.Invocation> plan, CancellationToken ct)
     {
-        var workingDirectory = Path.GetDirectoryName(forkLoadedPath)
-            ?? throw new InvalidOperationException(
-                $"Could not resolve working directory for fork '{forkLoadedPath}'.");
         var timeoutMinutes = ResolveForkRestoreTimeoutMinutes();
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(TimeSpan.FromMinutes(timeoutMinutes));
 
-        CommandExecutionDto execution;
-        try
+        foreach (var invocation in plan)
         {
-            execution = await _commandRunner.RunAsync(
-                workingDirectory,
-                forkLoadedPath,
-                ["restore", forkLoadedPath, "--nologo"],
-                earlyKillPatterns: null,
-                executablePath: ResolveForkDotnetPath(),
-                ct: timeout.Token).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested && timeout.IsCancellationRequested)
-        {
-            throw new TimeoutException(
-                $"dotnet restore for workspace fork exceeded the {timeoutMinutes.ToString(CultureInfo.InvariantCulture)} minute timeout.");
+            ct.ThrowIfCancellationRequested();
+            var workingDirectory = Path.GetDirectoryName(invocation.TargetPath)
+                ?? throw new InvalidOperationException("Could not resolve the restore target directory.");
+            CommandExecutionDto execution;
+            try
+            {
+                timeout.Token.ThrowIfCancellationRequested();
+                execution = await _commandRunner.RunAsync(
+                    workingDirectory,
+                    invocation.TargetPath,
+                    invocation.Arguments,
+                    earlyKillPatterns: null,
+                    executablePath: ResolveForkDotnetPath(),
+                    ct: timeout.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested && timeout.IsCancellationRequested)
+            {
+                throw new TimeoutException(
+                    $"dotnet restore for workspace fork exceeded the {timeoutMinutes.ToString(CultureInfo.InvariantCulture)} minute timeout.");
+            }
+
+            if (!execution.Succeeded)
+            {
+                var detail = BuildRestoreFailureSummary(execution);
+                _logger.LogWarning(
+                    "dotnet restore for workspace fork failed with exit code {ExitCode}. Diagnostic: {Diagnostic}",
+                    execution.ExitCode,
+                    detail);
+                throw new InvalidOperationException(
+                    $"dotnet restore for workspace fork failed with exit code {execution.ExitCode}. {detail}");
+            }
         }
 
-        if (!execution.Succeeded)
-        {
-            var detail = BuildRestoreFailureSummary(execution);
-            _logger.LogWarning(
-                "dotnet restore for workspace fork failed with exit code {ExitCode}. Diagnostic: {Diagnostic}",
-                execution.ExitCode,
-                detail);
-            throw new InvalidOperationException(
-                $"dotnet restore for workspace fork failed with exit code {execution.ExitCode}. {detail}");
-        }
     }
 
     internal static string BuildRestoreFailureSummary(CommandExecutionDto execution)

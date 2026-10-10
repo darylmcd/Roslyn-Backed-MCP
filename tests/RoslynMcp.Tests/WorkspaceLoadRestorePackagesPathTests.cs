@@ -113,10 +113,10 @@ public sealed class WorkspaceLoadRestorePackagesPathTests : SharedWorkspaceTestB
 
                 Assert.HasCount(status.Projects.Count, runner.Invocations, "Mixed package folders must restore each project separately.");
                 CollectionAssert.AreEqual(
-                    new[] { "restore", status.Projects[0].FilePath, "--nologo", "--packages", pathA },
+                    new[] { "restore", status.Projects[0].FilePath, "--nologo", "--packages", pathA, "--no-dependencies" },
                     runner.Invocations[0].ToArray());
                 CollectionAssert.AreEqual(
-                    new[] { "restore", status.Projects[1].FilePath, "--nologo", "--packages", pathB },
+                    new[] { "restore", status.Projects[1].FilePath, "--nologo", "--packages", pathB, "--no-dependencies" },
                     runner.Invocations[1].ToArray());
                 foreach (var tail in runner.Invocations.Skip(2))
                 {
@@ -158,6 +158,126 @@ public sealed class WorkspaceLoadRestorePackagesPathTests : SharedWorkspaceTestB
         {
             DeleteDirectoryIfExists(root);
         }
+    }
+
+
+    [TestMethod]
+    [DataRow("null")]
+    [DataRow("[]")]
+    [DataRow("42")]
+    [DataRow("""{"project":null}""")]
+    [DataRow("""{"project":[]}""")]
+    [DataRow("""{"project":{"restore":false}}""")]
+    [DataRow("""{"project":{"restore":{"packagesPath":5}}}""")]
+    public void TryReadRestorePackagesPath_ValidJsonWrongShape_ReturnsNull(string json)
+    {
+        var root = Path.Combine(TestTempRoot.Current, "restore-shape-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(root, "obj"));
+            File.WriteAllText(Path.Combine(root, "obj", "project.assets.json"), json);
+            Assert.IsNull(RestoreStalenessDetector.TryReadRestorePackagesPath(Path.Combine(root, "App.csproj")));
+        }
+        finally { DeleteDirectoryIfExists(root); }
+    }
+
+
+    [TestMethod]
+    public void Planner_NullAndRecordedRoots_IsolatesEveryProject()
+    {
+        var plan = RestoreInvocationPlanner.Plan("App.slnx",
+            [new("A.csproj", "packages"), new("B.csproj", null)]);
+        Assert.HasCount(2, plan);
+        CollectionAssert.Contains(plan[0].Arguments.ToArray(), "--no-dependencies");
+        CollectionAssert.AreEqual(new[] { "restore", "B.csproj", "--nologo", "--no-dependencies" }, plan[1].Arguments.ToArray());
+    }
+
+
+    [TestMethod]
+    public void Planner_DependencyClosure_ContainsOnlySelectedProjectAndTransitiveDependencies()
+    {
+        using var workspace = new Microsoft.CodeAnalysis.AdhocWorkspace();
+        var solution = workspace.CurrentSolution;
+        var ids = new[] { "C", "B", "A", "Unrelated" }.ToDictionary(n => n, n => Microsoft.CodeAnalysis.ProjectId.CreateNewId(n), StringComparer.Ordinal);
+        foreach (var (name, id) in ids)
+            solution = solution.AddProject(Microsoft.CodeAnalysis.ProjectInfo.Create(id, Microsoft.CodeAnalysis.VersionStamp.Create(),
+                name, name, Microsoft.CodeAnalysis.LanguageNames.CSharp, filePath: Path.GetFullPath(name + ".csproj")));
+        solution = solution.AddProjectReference(ids["A"], new Microsoft.CodeAnalysis.ProjectReference(ids["B"]))
+            .AddProjectReference(ids["B"], new Microsoft.CodeAnalysis.ProjectReference(ids["C"]));
+        CollectionAssert.AreEqual(new[] { Path.GetFullPath("C.csproj"), Path.GetFullPath("B.csproj"), Path.GetFullPath("A.csproj") },
+            RestoreInvocationPlanner.DependencyClosure(solution.GetProject(ids["A"])!).ToArray());
+    }
+
+
+    [TestMethod]
+    public void Planner_DependencyWithoutFilePath_RefusesIncompleteGraph()
+    {
+        using var workspace = new Microsoft.CodeAnalysis.AdhocWorkspace();
+        var project = workspace.AddProject("InMemory", Microsoft.CodeAnalysis.LanguageNames.CSharp);
+        Assert.ThrowsExactly<InvalidOperationException>(() => RestoreInvocationPlanner.DependencyClosure(project));
+    }
+
+    [TestMethod]
+    public void Planner_CaseVariants_UsesPlatformIdentity()
+    {
+        var plan = RestoreInvocationPlanner.Plan("App.slnx",
+            [new("A.csproj", "packages"), new("B.csproj", "PACKAGES")]);
+        Assert.HasCount(OperatingSystem.IsWindows() ? 1 : 2, plan);
+    }
+
+    [TestMethod]
+    public async Task Planner_RealMixedRootRestore_PreservesReferencedProjectAssets()
+    {
+        var root = Path.Combine(TestTempRoot.Current, "mixed-root-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var feed = Path.Combine(root, "feed");
+            Directory.CreateDirectory(feed);
+            using (var zip = System.IO.Compression.ZipFile.Open(Path.Combine(feed, "RestoreProbe.1.0.0.nupkg"),
+                System.IO.Compression.ZipArchiveMode.Create))
+            {
+                using (var writer = new StreamWriter(zip.CreateEntry("RestoreProbe.nuspec").Open()))
+                    writer.Write("""<?xml version="1.0"?><package><metadata><id>RestoreProbe</id><version>1.0.0</version><authors>Tests</authors><description>Local restore fixture</description></metadata></package>""");
+                zip.CreateEntry("lib/net10.0/_._");
+            }
+            File.WriteAllText(Path.Combine(root, "NuGet.Config"),
+                """<configuration><packageSources><clear/><add key="local" value="feed"/></packageSources></configuration>""");
+            var projects = new List<RestoreInvocationPlanner.ProjectRestore>();
+            foreach (var name in new[] { "B", "A" })
+            {
+                var directory = Path.Combine(root, name);
+                Directory.CreateDirectory(directory);
+                var path = Path.Combine(directory, name + ".csproj");
+                var reference = name == "A" ? """<ProjectReference Include="../B/B.csproj"/>""" : "";
+                File.WriteAllText(path, $"""
+                    <Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework><NuGetAudit>false</NuGetAudit></PropertyGroup>
+                    <ItemGroup><PackageReference Include="RestoreProbe" Version="1.0.0"/>{reference}</ItemGroup></Project>
+                    """);
+                projects.Add(new(path, Path.Combine(root, "packages-" + name)));
+            }
+            var runner = new DotnetCommandRunner();
+            // Establish real assets with independently recorded caches using isolated restores.
+            foreach (var project in projects)
+            {
+                var execution = await runner.RunAsync(root, project.ProjectPath,
+                    ["restore", project.ProjectPath, "--packages", project.PackagesPath!, "--no-dependencies"], CancellationToken.None);
+                Assert.IsTrue(execution.Succeeded, execution.StdErr + execution.StdOut);
+            }
+            File.WriteAllText(Path.Combine(root, "Both.slnx"), """<Solution><Project Path="A/A.csproj"/><Project Path="B/B.csproj"/></Solution>""");
+            var plan = RestoreInvocationPlanner.Plan(Path.Combine(root, "Both.slnx"),
+                RestoreInvocationPlanner.Capture(projects.Select(p => p.ProjectPath)));
+            foreach (var invocation in plan)
+            {
+                var execution = await runner.RunAsync(root, invocation.TargetPath, invocation.Arguments, CancellationToken.None);
+                Assert.IsTrue(execution.Succeeded, execution.StdErr + execution.StdOut);
+            }
+            foreach (var project in projects)
+            {
+                Assert.AreEqual(project.PackagesPath, RestoreStalenessDetector.TryReadRestorePackagesPath(project.ProjectPath));
+                Assert.IsTrue(Directory.Exists(Path.Combine(project.PackagesPath!, "restoreprobe", "1.0.0")));
+            }
+        }
+        finally { DeleteDirectoryIfExists(root); }
     }
 
     private static (string SolutionPath, string Root) CreateSampleSolutionCopyWithRoot()

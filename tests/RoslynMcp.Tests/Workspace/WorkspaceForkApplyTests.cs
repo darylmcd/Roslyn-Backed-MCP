@@ -217,7 +217,7 @@ public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
 
         var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
             () => service.RestoreForkAsync(
-                Path.Combine(Path.GetTempPath(), "fork", "SampleSolution.slnx"),
+                RestoreInvocationPlanner.Plan(Path.Combine(Path.GetTempPath(), "fork", "SampleSolution.slnx"), []),
                 CancellationToken.None));
 
         StringAssert.Contains(exception.Message, "exit code 1");
@@ -245,11 +245,104 @@ public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
 
         var actual = await Assert.ThrowsExactlyAsync<OperationCanceledException>(() =>
             service.RestoreForkAsync(
-                Path.Combine(Path.GetTempPath(), "fork", "SampleSolution.slnx"),
+                RestoreInvocationPlanner.Plan(Path.Combine(Path.GetTempPath(), "fork", "SampleSolution.slnx"), []),
                 CancellationToken.None));
 
         Assert.AreSame(expected, actual,
             "Only the service-owned timeout token may be reclassified as TimeoutException.");
+    }
+
+
+    [TestMethod]
+    public async Task WorkspaceForkApply_RestoreCapturesSourcePackagesBeforeObjIsExcluded()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync();
+        var token = await StoreDogPreviewAsync(workspace.WorkspaceId, source => source.Replace("Woof", "ForkWoof", StringComparison.Ordinal));
+        var packages = Path.Combine(Path.GetDirectoryName(WorkspaceManager.GetStatus(workspace.WorkspaceId).LoadedPath!)!, "scratch-packages");
+        foreach (var project in WorkspaceManager.GetStatus(workspace.WorkspaceId).Projects)
+        {
+            var obj = Path.Combine(Path.GetDirectoryName(project.FilePath)!, "obj");
+            Directory.CreateDirectory(obj);
+            File.WriteAllText(Path.Combine(obj, "project.assets.json"), JsonSerializer.Serialize(new { project = new { restore = new { packagesPath = packages } } }));
+        }
+        var runner = new CapturingRestoreRunner();
+        var service = new WorkspaceForkApplyService(WorkspaceManager, WorkspaceExecutionGate, PreviewStore,
+            CreateValidationService(), TestRunnerService, runner, NullLogger<WorkspaceForkApplyService>.Instance);
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => service.ApplyAsync(workspace.WorkspaceId, token,
+            "drop-always", false, null, "packages", CancellationToken.None));
+        var invocation = runner.Invocations.Single();
+        CollectionAssert.AreEqual(new[] { "restore", invocation[1], "--nologo", "--packages", packages }, invocation.ToArray());
+        Assert.IsFalse(runner.AssetsPresent, "Fork assets must be absent before restore; roots must come from the source.");
+    }
+
+
+    [TestMethod]
+    public async Task WorkspaceForkApply_MixedRecordedAndDefaultRoots_IsolatesForkProjects()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync();
+        var token = await StoreDogPreviewAsync(workspace.WorkspaceId, source => source.Replace("Woof", "ForkWoof", StringComparison.Ordinal));
+        var projects = WorkspaceManager.GetStatus(workspace.WorkspaceId).Projects;
+        Assert.IsGreaterThanOrEqualTo(2, projects.Count);
+        var packages = Path.Combine(Path.GetDirectoryName(projects[0].FilePath)!, "scratch-packages");
+        for (var i = 0; i < projects.Count; i++)
+        {
+            var obj = Path.Combine(Path.GetDirectoryName(projects[i].FilePath)!, "obj");
+            Directory.CreateDirectory(obj);
+            File.WriteAllText(Path.Combine(obj, "project.assets.json"), i == 0
+                ? JsonSerializer.Serialize(new { project = new { restore = new { packagesPath = packages } } })
+                : "{}");
+        }
+        var runner = new CapturingRestoreRunner(projects.Count);
+        var service = new WorkspaceForkApplyService(WorkspaceManager, WorkspaceExecutionGate, PreviewStore,
+            CreateValidationService(), TestRunnerService, runner, NullLogger<WorkspaceForkApplyService>.Instance);
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => service.ApplyAsync(workspace.WorkspaceId, token,
+            "drop-always", false, null, "mixed-packages", CancellationToken.None));
+        Assert.HasCount(projects.Count, runner.Invocations);
+        foreach (var invocation in runner.Invocations)
+        {
+            CollectionAssert.Contains(invocation.ToArray(), "--no-dependencies");
+            Assert.IsTrue(invocation[1].Contains(Path.Combine(".roslynmcp", "forks"), StringComparison.Ordinal));
+        }
+        Assert.HasCount(1, runner.Invocations.Where(i => i.Contains("--packages")).ToArray());
+        Assert.IsTrue(runner.Tokens.All(token => token == runner.Tokens[0]), "All restores must share one timeout/cancellation budget.");
+    }
+
+    [TestMethod]
+    public async Task RestoreForkAsync_CallerCancellationBetweenProjects_DoesNotLaunchNextRestore()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var runner = new CancellingBetweenRestoresRunner(cancellation);
+        var service = new WorkspaceForkApplyService(null!, null!, null!, null!, null!, runner, NullLogger<WorkspaceForkApplyService>.Instance);
+        var plan = RestoreInvocationPlanner.Plan(Path.GetFullPath("App.slnx"),
+            [new(Path.GetFullPath("A.csproj"), "packages"), new(Path.GetFullPath("B.csproj"), null)]);
+        await Assert.ThrowsAsync<OperationCanceledException>(() => service.RestoreForkAsync(plan, cancellation.Token));
+        Assert.AreEqual(1, runner.InvocationCount);
+    }
+
+    private sealed class CancellingBetweenRestoresRunner(CancellationTokenSource cancellation) : IDotnetCommandRunner
+    {
+        public int InvocationCount { get; private set; }
+        public Task<CommandExecutionDto> RunAsync(string workingDirectory, string targetPath, IReadOnlyList<string> arguments, CancellationToken ct)
+        {
+            InvocationCount++;
+            cancellation.Cancel();
+            return Task.FromResult(new CommandExecutionDto("dotnet", arguments, workingDirectory, targetPath, 0, true, 0, "", ""));
+        }
+    }
+
+    private sealed class CapturingRestoreRunner(int failOnInvocation = 1) : IDotnetCommandRunner
+    {
+        public List<IReadOnlyList<string>> Invocations { get; } = [];
+        public bool AssetsPresent { get; private set; }
+        public List<CancellationToken> Tokens { get; } = [];
+        public Task<CommandExecutionDto> RunAsync(string workingDirectory, string targetPath, IReadOnlyList<string> arguments, CancellationToken ct)
+        {
+            Invocations.Add(arguments.ToArray());
+            Tokens.Add(ct);
+            AssetsPresent = Directory.EnumerateFiles(workingDirectory, "project.assets.json", SearchOption.AllDirectories).Any();
+            var fails = Invocations.Count == failOnInvocation;
+            return Task.FromResult(new CommandExecutionDto("dotnet", arguments, workingDirectory, targetPath, fails ? 1 : 0, !fails, 0, "", "test refusal"));
+        }
     }
 
     private static WorkspaceValidationService CreateValidationService() =>

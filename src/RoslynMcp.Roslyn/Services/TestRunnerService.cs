@@ -368,20 +368,27 @@ public sealed partial class TestRunnerService : ITestRunnerService
     /// <exception cref="InvalidOperationException">'dotnet restore' failed.</exception>
     private async Task RestoreProjectAsync(string workspaceId, ProjectStatusDto resolvedProject, CancellationToken ct)
     {
-        var execution = await _executor.ExecuteAsync(
-            workspaceId,
-            resolvedProject.FilePath,
-            ["restore", resolvedProject.FilePath],
-            _options.BuildTimeout,
-            ct).ConfigureAwait(false);
-
-        if (!execution.Succeeded)
+        var solution = _workspaceManager.GetCurrentSolution(workspaceId);
+        var project = solution.Projects.First(p => p.FilePath is not null &&
+            FileSystemPath.Comparer.Equals(p.FilePath, resolvedProject.FilePath));
+        var plan = RestoreInvocationPlanner.Plan(resolvedProject.FilePath,
+            RestoreInvocationPlanner.Capture(RestoreInvocationPlanner.DependencyClosure(project)));
+        var clock = Stopwatch.StartNew();
+        foreach (var invocation in plan)
         {
-            throw new PublicInvalidOperationException(
-                $"Project '{resolvedProject.Name}' needs a fresh restore to safely check its resolved " +
-                "TUnit.Engine version before translating an OR filter (see " +
-                "tunit-treenode-filter-or-requires-tunit-fix), but 'dotnet restore' failed with exit code " +
-                $"{execution.ExitCode}. Restore the project directly to see the full error, then retry.");
+            var remaining = _options.BuildTimeout - clock.Elapsed;
+            if (remaining <= TimeSpan.Zero)
+                throw new TimeoutException("The test project's restore exceeded its total time budget.");
+            var execution = await _executor.ExecuteAsync(
+                workspaceId, invocation.TargetPath, invocation.Arguments, remaining, ct).ConfigureAwait(false);
+            if (!execution.Succeeded)
+            {
+                throw new PublicInvalidOperationException(
+                    $"Project '{resolvedProject.Name}' needs a fresh restore to safely check its resolved " +
+                    "TUnit.Engine version before translating an OR filter (see " +
+                    "tunit-treenode-filter-or-requires-tunit-fix), but 'dotnet restore' failed with exit code " +
+                    $"{execution.ExitCode}. Restore the project directly to see the full error, then retry.");
+            }
         }
     }
 
