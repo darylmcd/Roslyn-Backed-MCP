@@ -380,7 +380,7 @@
     {
       "id": "test-discovery-file-path-case-identity",
       "order": 10,
-      "status": "in-review",
+      "status": "in-progress",
       "backlogRowsClosed": [
         "test-discovery-file-path-case-identity"
       ],
@@ -388,9 +388,10 @@
       "productionFiles": [
         "src/RoslynMcp.Roslyn/Services/TestDiscoveryService.cs"
       ],
-      "testFilesAdded": 1,
+      "testFilesAdded": 2,
       "testFiles": [
-        "tests/RoslynMcp.Tests/TestDiscoveryFileIdentityTests.cs"
+        "tests/RoslynMcp.Tests/TestDiscoveryFileIdentityTests.cs",
+        "tests/RoslynMcp.Tests/Helpers/FailClosedWorkspaceManagerStub.cs"
       ],
       "docFiles": [
         "changelog.d/test-discovery-file-path-case-identity.md"
@@ -412,10 +413,10 @@
       "worktreePath": ".worktrees/test-discovery-file-path-case-identity",
       "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1771",
       "mergedAt": null,
-      "notes": "Execution base c087ac4f512f2ddcddd83b89aca4e3e7c611757f; primary clean/metadata merge verified, service/helper source unchanged from7322. Live semantic source probes and same-mechanism4 pathsets confirm1production fanout. Isolated Linux SDK/pwsh/filesystem preflight ready; real Linux red/green mandatory, supplements Windowsfull/hosted. Project-qualified test identity is different mechanism tracked outside selection; do not hide own-diff defects.",
-      "fileSetHash": "a5293638d175b55e86c905ef7b8bae7795070496e70da55380b756ac64be88b3",
-      "stanzaHash": "e2d34c23e8893f4eb8df24fff6c2a685e83da668b07975ae52ed0efacdcbf804",
-      "reviewedStanzaHash": "e2d34c23e8893f4eb8df24fff6c2a685e83da668b07975ae52ed0efacdcbf804",
+      "notes": "Cold cycle0 failed own-diff duplicated IWorkspaceManager fixture. Amendment4 widens exact test Scope to shared FailClosedWorkspaceManagerStub; fix1 active on retained PR1771. Old treeb29fa9 passing full receipt is superseded for next head; fresh scoped/full/re-review/hosted required. No merge or backlog closure.",
+      "fileSetHash": "7c66b310228defa00e69866f6253c186b4172c481f2df4989d6fcbd36e48d69b",
+      "stanzaHash": "467bcd5b94094bc40107595fc9fe43725c98504d5fb0016d860db3dd95e21bf8",
+      "reviewedStanzaHash": "467bcd5b94094bc40107595fc9fe43725c98504d5fb0016d860db3dd95e21bf8",
       "amendments": [
         {
           "at": "2026-10-09T15:33:59.015Z",
@@ -437,8 +438,16 @@
           "reason": "Read defining service and all path comparison/index uses on immutable7322a2d1810743427185add91f4e44442ebfb1a9. Distinguish exact path mechanisms from correct name/search heuristics and existing physical lookup. Scope, estimates, validation and pending status retained; execution-base re-vet still required.",
           "previousStanzaHash": "fd4ca08bdefaa91aa17ed4e9ac20ca7ae749bf376efef9940ab94f67ef3321c6",
           "stanzaHash": "e2d34c23e8893f4eb8df24fff6c2a685e83da668b07975ae52ed0efacdcbf804"
+        },
+        {
+          "at": "2026-10-10T02:27:59.745Z",
+          "finding": "Cold cycle0 quality/duplication at new fixture145 restates shared fail-closed IWorkspaceManager test seam.",
+          "reason": "Fix own-diff duplication completely by reusing the shared seam with explicit version handling; defect-forced extra test companion preserves every assertion and fail-closed behavior.",
+          "previousStanzaHash": "e2d34c23e8893f4eb8df24fff6c2a685e83da668b07975ae52ed0efacdcbf804",
+          "stanzaHash": "467bcd5b94094bc40107595fc9fe43725c98504d5fb0016d860db3dd95e21bf8"
         }
-      ]
+      ],
+      "reviewedHead": null
     },
     {
       "id": "workspace-project-alias-lookup",
@@ -1576,7 +1585,6 @@
       }
     ],
     "degrees": {
-      "5": 0,
       "10": 0,
       "11": 0,
       "12": 0,
@@ -1595,7 +1603,6 @@
       "26": 0
     },
     "zeroDegreeInitiatives": [
-      5,
       10,
       11,
       12,
@@ -2177,7 +2184,7 @@
       "extract-type-preserve-untouched-trivia": "3c7afeb15464c17e3e0535aebf8fc4cd7f3d4c05caa85a290d5dcbad5e893929",
       "scaffold-batch-preview-apply-route": "8f5c2bfe46162db26cba37e16760dd549b91380091ba4f172a30a63078ba8ca8",
       "notice-verifier-scoped-test-inherits-nuget-packages": "e1ff8a04c6da28d98e04ffa92f6e4632bc2fa0d3806aca2f57e5c0486320ad35",
-      "test-discovery-file-path-case-identity": "e2d34c23e8893f4eb8df24fff6c2a685e83da668b07975ae52ed0efacdcbf804",
+      "test-discovery-file-path-case-identity": "467bcd5b94094bc40107595fc9fe43725c98504d5fb0016d860db3dd95e21bf8",
       "workspace-project-alias-lookup": "23ca433d4565efda70d65fddf058331ccc1a139ea356db06fce4dbea59420ce4",
       "fix-all-equivalence-key-unregistered-fallback": "913514db5542443540c48366ab331270a804e76f3350e61ff3b3122811f12f1f",
       "editorconfig-section-source-path-matching": "56bbce20febc10f9c2b59496955ae4c711e041c5b802fcef475b9d4075d4268f",
@@ -2203,9 +2210,9 @@
       "fork-preview-project-composite-replay": "cd6c4c6aa3a52afdbbdf70820ab4f53e5735ca94771f2f2f2e30ad70e957f688"
     }
   },
-  "conflictGraphInputHash": "401e80ba541788fea6b2636d8dcf67b3ce402610942346380fa33a30b0dc1e78",
-  "planHash": "395e7facd8b456732bd00115f733e4de766664a1ae05d72ff3009c2d47d74c06",
-  "backlogSnapshotHash": "169555d5699a9915da7508d4b6124fa802a5975770a3ccedb507ab79b89302d0",
-  "reviewedPlanHash": "395e7facd8b456732bd00115f733e4de766664a1ae05d72ff3009c2d47d74c06",
+  "conflictGraphInputHash": "3d31e9219b135dd0d5e6c5d89338c0dac8d1a7487f7535b49e224658792ed72b",
+  "planHash": "d04ec8b4f7930e7a1e778c59f47dc411b4d39af0fa4cf9cccf23fa207ce831fe",
+  "backlogSnapshotHash": "092865ba7133c037457328de265e888abff3283b24529bd973c642414f32c429",
+  "reviewedPlanHash": "d04ec8b4f7930e7a1e778c59f47dc411b4d39af0fa4cf9cccf23fa207ce831fe",
   "reviewedBacklogSnapshotHash": "cc5f2af685632ecdcbfcf94a8fe98135b9da20f7b2f4ba18d6cdddf811c1c1cc"
 }
