@@ -16,6 +16,7 @@ internal sealed class FailClosedWorkspaceManagerStub(params WorkspaceStatusDto[]
     public Func<string, WorkspaceStatusDto>? GetStatusHandler { get; init; }
     public Func<string, WorkspaceStatusDto>? GetStatusAsyncHandler { get; init; }
     public Func<string, Solution>? GetCurrentSolutionHandler { get; init; }
+    public Func<string, int>? GetCurrentVersionHandler { get; init; }
 
     // Consumers may establish passive cache-invalidation subscriptions during construction.
     // Accept add/remove without publishing events; operational members still fail closed.
@@ -56,7 +57,8 @@ internal sealed class FailClosedWorkspaceManagerStub(params WorkspaceStatusDto[]
         string filePath,
         CancellationToken ct) => throw Unsupported();
 
-    public int GetCurrentVersion(string workspaceId) => throw Unsupported();
+    public int GetCurrentVersion(string workspaceId) =>
+        GetCurrentVersionHandler is { } handler ? handler(workspaceId) : throw Unsupported();
     public Solution GetCurrentSolution(string workspaceId) =>
         GetCurrentSolutionHandler is { } handler ? handler(workspaceId) : throw Unsupported();
     public Project? GetProject(string workspaceId, string projectNameOrPath) => throw Unsupported();
