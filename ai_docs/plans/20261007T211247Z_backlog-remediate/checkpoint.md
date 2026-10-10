@@ -1,6 +1,22 @@
 # Planning checkpoint — 20261007T211247Z_backlog-remediate
 
-## Operator update 2026-10-09
+## Current execution hold 2026-10-10
+
+| Item | Current evidence / obligation |
+|---|---|
+| State | 30 initiatives:16 pending,3 merged,1 obsolete,10 deferred; no active executor. Plan remains incomplete. Four implementation dispatches used; contextPct/contextCost unavailable. Continue eligible product work after reviewed metadata reconciliation. |
+| Extraction hold | Complete cold source re-vet90000 exceeds installed Rule5 cap80000. Audited stanza amendment7 preserves3 exact owned paths/fanout1; native retry exec-args exit1 on global1f3a0bd16a397200b3e68d096347b1df755ab8dd. Existing global admission row received third witness in filing PR https://github.com/darylmcd/claude-config/pull/748; filing only. |
+| Product boundary | Operator question pending: targeted typed pre-effect refusal for proven unrescued anonymous/ref/global-dynamic capture versus explicit namespace feature. Conditional stanza is NOT accepted implementation or exception admission. Do not silently choose, relocate, ban keywords or lower estimate. |
+| Retained WIP | D:/Roslyn-Backed-MCP/.worktrees/extract-type-preserve-untouched-trivia, branch remediation/extract-type-preserve-untouched-trivia, HEAD/base7322a2d1810743427185add91f4e44442ebfb1a9. Exact3 file hashes/snapshots independently verified against strict exec result and extract-held-capture-complete-checkpoint.json under session scratch. No commit/PR/merge or cleanup; actor returned. Own processes reaped, commandline inventory empty. |
+| Validation limit | Latest scoped gate5failed8passed13total; persisted LOCAL/DEBUG results9 instead7 plus contextual capture/header placement failures. Last file-symbol/header-order repair UNTESTED. Final moved/context corpus, binding verification, ratchet/keyword/scoped, fresh full producer and cold implementation review remain required. No current passing full receipt. |
+| Causal harness correction | Copy-preserved timestamps caused stale standalone output. Source-hash controlled forced Rebuild corrected falsegreens: nested dynamic alias captured/control0/0; global alias and anonymous deconstruction/for/foreach/out/pattern/ref/ref-readonly1/0. No flake claim/global tool row for caller harness mistakes. |
+| Deferred source ownership | Five source rows BLOCKED; extraction joins prior9 deferred initiatives. All remain open/fullscope. Resume exact extraction WIP after tooling correction, product decision and fresh source vetting; preserve portable-workspace identity and atomic-safety prerequisites for lifecycle/fork/scaffold. |
+| Global scope | No global implementation by this session. Owner landed filing rows/notes in #745 and global reconciliation #747; our earlier #724/#727/#729/#733/#742 were closed superseded. #744 and #748 are filing PRs; verify their live status before closeout. Global current admission still rejects90000 and complete110000/160000 boundaries. |
+| Linux preparation | Isolated Linux SDK10.0.400 and PowerShell7.5.11 live version probes pass. No Linux builds/tests yet. Separate Linux artifacts/NuGet/case-sensitive fixture root; preserve Windows setup isolation and serial admission. Source-only next-path and FixAll preparations do not authorize execution. |
+
+## Historical operator update 2026-10-09
+
+Rows below record intermediate observations superseded by the current hold above; they are not current execution admission or validation claims.
 
 | Item | Disposition |
 |---|---|

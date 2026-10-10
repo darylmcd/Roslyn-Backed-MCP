@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-10T00:02:31Z
+**updated_at:** 2026-10-10T01:24:57Z
 
 ## Agent contract
 
@@ -100,7 +100,7 @@
 | `timeout-error-names-fired-timer` | Medium | — | **Timeout errors name the wrong knob** — ToolErrorHandler replaces every TimeoutException with a build/test-knob hint; type each source (gate, build, test, vuln scan, fork restore) and name the timer that fired. [type: bug] [source: retro-20260927] | L | items/timeout-error-names-fired-timer.md |
 | `test-run-nobuild-msbuild-properties` | Medium | — | **test_run always rebuilds and takes no MSBuild properties** — add noBuild and allowlisted msbuildProperties so a scoped run can match dotnet test --no-build -p:SkipFrontendBuild=true. [type: feature] [source: retro-20260927] | L | items/test-run-nobuild-msbuild-properties.md |
 | `project-name-not-found-misleading-reload-advice` | Medium | public-argument-exception-core-move | **Stop advising workspace_reload for unknown project names and symbol handles** — build_project/test_run/rename_preview say not found and list loaded projects; category and exceptionType stay unchanged on 4.x. [type: bug] [source: invalid-operation-throw-sites-lack-public-message] | M | items/project-name-not-found-misleading-reload-advice.md |
-| `extract-type-preserve-untouched-trivia` | Medium | — | **Preserve untouched source trivia in extract_type** — replace whole-root formatting with bounded formatting. [type: bug] [source: extract-type-breaks-interfaces-and-publicizes-fields] | S | items/extract-type-preserve-untouched-trivia.md |
+| `extract-type-preserve-untouched-trivia` | Medium | — | **BLOCKED: complete extract_type preservation** — preserve untouched trivia, lexical context and original bindings after audited scope admission. [type: bug] [source: extract-type-breaks-interfaces-and-publicizes-fields] | S | items/extract-type-preserve-untouched-trivia.md |
 | `scaffold-batch-preview-apply-route` | Medium | preview-store-explicit-internal-state | BLOCKED: atomic preview safety and global indivisible admission. Redeem batch-scaffold previews through the correct apply route without hiding truncated edits. [type: bug] [source: preview-token-store-mismatch-false-stale] | M | items/scaffold-batch-preview-apply-route.md |
 | `preview-apply-tool-descriptions` | Medium | scaffold-batch-preview-apply-route | **Name each previews apply tool** — align five producer descriptions with tested token routes. [type: bug] [source: preview-token-store-mismatch-false-stale] | M | items/preview-apply-tool-descriptions.md |
 | `workspace-fork-project-mutation-preview` | Medium | preview-store-explicit-internal-state | BLOCKED: atomic preview safety and global indivisible admission. Replay project/composite fork previews from owned non-consuming snapshots without redeeming source tokens. [type: bug] [source: preview-token-store-mismatch-false-stale] | M | items/workspace-fork-project-mutation-preview.md |
