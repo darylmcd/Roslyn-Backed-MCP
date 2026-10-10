@@ -2781,6 +2781,31 @@
         "value": "script-bridge-long-run-result-recovery",
         "at": "2026-10-10T04:50:51.700Z"
       }
+    },
+    {
+      "n": 4,
+      "source": "orchestrator",
+      "initiativeId": "workspace-project-alias-lookup",
+      "title": "Keep fixture cleanup inside its owned tree",
+      "suggestedPri": "High",
+      "amendRow": "test-fixture-cleanup-link-boundary",
+      "anchors": [
+        "tests/RoslynMcp.Tests/TestInfrastructure/TestFixtureFileSystem.cs:49",
+        "tests/RoslynMcp.Tests/TestInfrastructure/TestFixtureFileSystem.cs:112-122",
+        "tests/RoslynMcp.Tests/TestFixtureFileSystemTests.cs:66-102"
+      ],
+      "acceptance": [
+        "Do not traverse directory/file links to mutate external attributes or delete targets; safely remove owned links.",
+        "Preserve ordinary read-only cleanup and bounded terminal lock failures.",
+        "Red-first tests preserve simulated external content/attributes and terminate on cycles on Windows and Linux."
+      ],
+      "evidence": "Immutable0442 helper49 always invokes ClearReadOnlyAttributes;114 recursively enumerates all directories and119 clears ReadOnly without ownership/link boundary. Controlled owned Windows junction probe independently changed simulated outside marker from ReadOnly to Normal using these exact primitives; attributes restored and all owned probe paths removed, exit0. No arbitrary external files touched, no compiled helper suite or fix claimed. Separate from abandonment identity and duplicate-helper consolidation.",
+      "at": "2026-10-10T05:04:59.549Z",
+      "disposition": {
+        "kind": "row",
+        "value": "test-fixture-cleanup-link-boundary",
+        "at": "2026-10-10T05:05:08.898Z"
+      }
     }
   ]
 }

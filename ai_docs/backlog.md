@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-10T04:22:09Z
+**updated_at:** 2026-10-10T05:04:34Z
 
 ## Agent contract
 
@@ -50,6 +50,7 @@
 |----|-----|------|----|------|--------|
 | `logging-default-sink-disabled-stderr-swallowed` | High | logging-retention-destroys-repro-evidence | **Enable the bounded file sink by default for installed users** — ROSLYNMCP_OBSERVABILITY_SINK defaults to `disabled` and the plugin mcp.json never sets it, so an MCP host that swallows stderr leaves no evidence of a first failure. [type: quality] [source: logging-audit 20260930-1340] | M | items/logging-default-sink-disabled-stderr-swallowed.md |
 | `persistent-composite-workspace-identity-not-portable` | High | — | Resolve persisted composite tokens to the correct receiving workspace and source snapshot before claim or mutation. [type: bug] [source: token-lifecycle-independence-revet] | L | items/persistent-composite-workspace-identity-not-portable.md |
+| `test-fixture-cleanup-link-boundary` | High | — | **Keep fixture cleanup inside its owned tree** — prevent link traversal from changing external file attributes or cleanup targets. [type: bug] [source: workspace-project-alias-lookup] | S | items/test-fixture-cleanup-link-boundary.md |
 
 ## Medium
 
