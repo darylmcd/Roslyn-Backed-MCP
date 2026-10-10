@@ -380,7 +380,7 @@
     {
       "id": "test-discovery-file-path-case-identity",
       "order": 10,
-      "status": "in-progress",
+      "status": "in-review",
       "backlogRowsClosed": [
         "test-discovery-file-path-case-identity"
       ],
@@ -413,7 +413,7 @@
       "worktreePath": ".worktrees/test-discovery-file-path-case-identity",
       "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1771",
       "mergedAt": null,
-      "notes": "Cold cycle0 failed own-diff duplicated IWorkspaceManager fixture. Amendment4 widens exact test Scope to shared FailClosedWorkspaceManagerStub; fix1 active on retained PR1771. Old treeb29fa9 passing full receipt is superseded for next head; fresh scoped/full/re-review/hosted required. No merge or backlog closure.",
+      "notes": "Fix1 newhead64739b3/tree240659: shared fail-closed fixture reused, all assertions retained; Windows scoped218/10skip, Linux225/3skip; fresh full5dcf527 exit0/4090pass17skip. Strict fix1 result read; fresh cold cycle1 and current-head hosted checks pending. Prior4568 reviewfail/full/hosted superseded; no merge or row closure.",
       "fileSetHash": "7c66b310228defa00e69866f6253c186b4172c481f2df4989d6fcbd36e48d69b",
       "stanzaHash": "467bcd5b94094bc40107595fc9fe43725c98504d5fb0016d860db3dd95e21bf8",
       "reviewedStanzaHash": "467bcd5b94094bc40107595fc9fe43725c98504d5fb0016d860db3dd95e21bf8",
