@@ -139,12 +139,11 @@ public sealed class McpLoggingLifecycleWireTests
                     .Count() > 1,
                 "The file sink captured only one logger category instead of the full stream.");
             var completion = records.Single(record =>
-                record.RootElement.GetProperty("eventId").GetInt32() == 2101 &&
-                record.RootElement.GetProperty("message").GetString() is { } message &&
-                message.Contains("Tool server_info completed", StringComparison.Ordinal));
+                record.RootElement.GetProperty("eventName").GetString() == "ToolCompleted" &&
+                record.RootElement.GetProperty("fields").GetProperty("toolName").GetString() == "server_info");
             var completionRoot = completion.RootElement;
-            StringAssert.Contains(completionRoot.GetProperty("message").GetString(), "outcome=success");
-            StringAssert.Contains(completionRoot.GetProperty("message").GetString(), "elapsedMs=");
+            Assert.AreEqual("success", completionRoot.GetProperty("fields").GetProperty("outcome").GetString());
+            Assert.IsTrue(completionRoot.GetProperty("fields").GetProperty("elapsedMs").GetDouble() >= 0);
             var correlationId = completionRoot.GetProperty("correlationId").GetString();
             Assert.IsNotNull(correlationId);
             Assert.AreEqual(32, correlationId.Length);
@@ -156,12 +155,11 @@ public sealed class McpLoggingLifecycleWireTests
             Assert.IsTrue(DateTimeOffset.TryParse(timestamp, out _));
 
             var failure = records.Single(record =>
-                record.RootElement.GetProperty("eventId").GetInt32() == 2104 &&
-                record.RootElement.GetProperty("message").GetString() is { } message &&
-                message.Contains("Tool workspace_load failed", StringComparison.Ordinal));
+                record.RootElement.GetProperty("eventName").GetString() == "ToolFailed" &&
+                record.RootElement.GetProperty("fields").GetProperty("toolName").GetString() == "workspace_load");
             var failureRoot = failure.RootElement;
-            StringAssert.Contains(failureRoot.GetProperty("message").GetString(), "outcome=expected-error");
-            StringAssert.Contains(failureRoot.GetProperty("message").GetString(), "elapsedMs=");
+            Assert.AreEqual("expected-error", failureRoot.GetProperty("fields").GetProperty("outcome").GetString());
+            Assert.IsTrue(failureRoot.GetProperty("fields").GetProperty("elapsedMs").GetDouble() >= 0);
             var failureCorrelationId = failureRoot.GetProperty("correlationId").GetString();
             Assert.IsNotNull(failureCorrelationId);
             Assert.AreEqual(32, failureCorrelationId.Length);
