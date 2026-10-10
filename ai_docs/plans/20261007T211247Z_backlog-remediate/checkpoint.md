@@ -4,7 +4,7 @@
 
 | Item | Current evidence / obligation |
 |---|---|
-| State | 30 initiatives:15 pending,1 prepared in-progress,3 merged,1 obsolete,10 deferred. Plan remains incomplete. Four implementation dispatches used; fifth setup prepared, not yet dispatched. contextPct/contextCost unavailable. |
+| State | 30 initiatives:15 pending,1 in-progress,3 merged,1 obsolete,10 deferred. Plan remains incomplete. Five implementation dispatches used; contextPct/contextCost unavailable. test-discovery-file-path-case-identity executor dispatched on immutablec087ac4f. |
 | Reconciliation | PR1770 mergedc087ac4f512f2ddcddd83b89aca4e3e7c611757f at2026-10-10T01:30:36Z; cold cycle0 pass/zero findings, all hosted checks settledgreen. Primary/parent clean tree2ade870fb3576fe9d1a674667604ead6033d1ca4 equality verified before parent reset --keep. No rowsclosed; all10 deferrals preserved. |
 | Next executor | test-discovery-file-path-case-identity setup at immutablec087ac4f; one production/one new test/own fragment, estimate35000/direct. Native generation admission exit0/serialaggregateLocktrue; source unchangedfrom7322. Owned Linux SDK/pwsh/case-distinct fixture preflight verified; actual product red/green notrun yet. Separate discovered FQN/project conflation tracked by new test-related-project-qualified-identity, outside selection. |
 | Extraction hold | Complete cold source re-vet90000 exceeds installed Rule5 cap80000. Audited stanza amendment7 preserves3 exact owned paths/fanout1; native retry exec-args exit1 on global1f3a0bd16a397200b3e68d096347b1df755ab8dd. Existing global admission row received third witness in filing PR https://github.com/darylmcd/claude-config/pull/748; filing only. |
