@@ -380,7 +380,7 @@
     {
       "id": "test-discovery-file-path-case-identity",
       "order": 10,
-      "status": "pending",
+      "status": "in-progress",
       "backlogRowsClosed": [
         "test-discovery-file-path-case-identity"
       ],
@@ -408,11 +408,11 @@
         "ruleOneBundleResolved": null
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
+      "branch": "remediation/test-discovery-file-path-case-identity",
+      "worktreePath": ".worktrees/test-discovery-file-path-case-identity",
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
+      "notes": "Execution base c087ac4f512f2ddcddd83b89aca4e3e7c611757f; primary clean/metadata merge verified, service/helper source unchanged from7322. Live semantic source probes and same-mechanism4 pathsets confirm1production fanout. Isolated Linux SDK/pwsh/filesystem preflight ready; real Linux red/green mandatory, supplements Windowsfull/hosted. Project-qualified test identity is different mechanism tracked outside selection; do not hide own-diff defects.",
       "fileSetHash": "a5293638d175b55e86c905ef7b8bae7795070496e70da55380b756ac64be88b3",
       "stanzaHash": "e2d34c23e8893f4eb8df24fff6c2a685e83da668b07975ae52ed0efacdcbf804",
       "reviewedStanzaHash": "e2d34c23e8893f4eb8df24fff6c2a685e83da668b07975ae52ed0efacdcbf804",

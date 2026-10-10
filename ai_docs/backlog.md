@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-10T01:24:57Z
+**updated_at:** 2026-10-10T01:33:27Z
 
 ## Agent contract
 
@@ -151,6 +151,7 @@
 | `test-inconclusive-count-unbudgeted` | Medium | — | **Nothing bounds the inconclusive test count** — ~95 Assert.Inconclusive sites and no CI or verify-release check on tests that end not-run: a runner without git silently drops 23 tests. [type: ops] [source: test-rot-probe-20261009] | M | items/test-inconclusive-count-unbudgeted.md |
 | `workspace-msbuild-global-properties-value-redaction` | Medium | workspace-lifecycle-argument-refusals-public-message | Keep caller MSBuild global-property values out of rendered and structured logs; retain safe counts and unchanged evaluation inputs. [type: bug] [source: lifecycle cold diagnosis 2026-10-09] | S | items/workspace-msbuild-global-properties-value-redaction.md |
 | `type-extraction-service-refusals-public-message` | Medium | — | Publish safe type-extraction caller corrections through the existing error envelope; retain internal redaction and structured safety refusals. [type: bug] [source: extraction-trivia-preflight] | S | items/type-extraction-service-refusals-public-message.md |
+| `test-related-project-qualified-identity` | Medium | — | Preserve owning-project identity in related-test matching, enrichment and lookup when separate projects declare the same fully qualified test name. [type: bug] [source: test-discovery-path-identity-revet] | S | items/test-related-project-qualified-identity.md |
 
 ## Low
 
