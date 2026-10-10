@@ -534,7 +534,7 @@
     {
       "id": "fix-all-equivalence-key-unregistered-fallback",
       "order": 12,
-      "status": "in-progress",
+      "status": "in-review",
       "backlogRowsClosed": [
         "fix-all-equivalence-key-unregistered-fallback"
       ],
@@ -567,7 +567,7 @@
       "dependsOn": [],
       "branch": "remediation/fix-all-equivalence-key-unregistered-fallback",
       "worktreePath": "D:/Roslyn-Backed-MCP/.worktrees/fix-all-equivalence-key-unregistered-fallback",
-      "prUrl": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1775",
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "dded991a714167e89b33bbb559c0c1894eb4eec6de3e5a721f06d905a248c88e",
@@ -2929,6 +2929,55 @@
         "kind": "row",
         "value": "test-fixture-cleanup-link-boundary",
         "at": "2026-10-10T05:41:46.802Z"
+      }
+    },
+    {
+      "n": 9,
+      "source": "executor",
+      "initiativeId": "fix-all-equivalence-key-unregistered-fallback",
+      "title": "BoundedStore capacity admission must be atomic and enforce the first max+1 insertion",
+      "suggestedPri": "Medium",
+      "amendRow": "bounded-store-capacity-atomic-insertion",
+      "anchors": [
+        "src/RoslynMcp.Core/Services/BoundedStore.cs:31",
+        "src/RoslynMcp.Core/Services/BoundedStore.cs:128"
+      ],
+      "acceptance": [
+        "Enforce configured capacity immediately after each insertion, including the first max+1 insertion and concurrent writers.",
+        "Preserve existing token and TTL behavior; verify the capacity boundary rather than only a later insertion."
+      ],
+      "evidence": "StoreEntry calls CleanExpired(); EvictIfOverLimit(); before _entries[token] = entry, while EvictIfOverLimit returns when _entries.Count <= _maxEntries. Parent owns the existing capacity row.",
+      "at": "2026-10-10T18:56:27.317Z",
+      "disposition": {
+        "kind": "row",
+        "value": "bounded-store-capacity-atomic-insertion",
+        "at": "2026-10-10T18:56:27.467Z"
+      }
+    },
+    {
+      "n": 10,
+      "source": "executor",
+      "initiativeId": "fix-all-equivalence-key-unregistered-fallback",
+      "title": "Re-derive registry and curated fallback rationale during code-fix decomposition",
+      "suggestedPri": "Low",
+      "amendRow": "refactoring-code-fix-preview-decomposition",
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/RefactoringService.cs:35",
+        "src/RoslynMcp.Roslyn/Services/RefactoringService.cs:677",
+        "src/RoslynMcp.Roslyn/Services/RefactoringService.cs:698",
+        "src/RoslynMcp.Roslyn/ServiceCollectionExtensions.cs:86",
+        "tests/RoslynMcp.Tests/TestInfrastructure/TestServiceContainer.cs:106"
+      ],
+      "acceptance": [
+        "During the existing decomposition, re-derive public constructor and registry fallback contracts against actual owned DI/test construction; correct the stale unit-test rationale.",
+        "Preserve genuine no-action curated fallback; any published constructor breaking change requires ADR and migration note."
+      ],
+      "evidence": "Public optional registry is supported; FirstProviderFor may produce no provider even with a non-null registry. Comment698-700 motivates fallback with callers not wiring registry, notably some unit tests, but owned production and test graphs resolve AddRoslynServices with registered registry. No test-exclusive runtime bug is proven; parent already appended the source-bound investigation note.",
+      "at": "2026-10-10T18:56:27.657Z",
+      "disposition": {
+        "kind": "row",
+        "value": "refactoring-code-fix-preview-decomposition",
+        "at": "2026-10-10T18:56:27.815Z"
       }
     }
   ]
