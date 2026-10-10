@@ -23,3 +23,5 @@
 - Split from `code-action-and-flow-argument-refusals-public-message`; one scope-argument validation mechanism, independent of action-index and flow-region correction.
 - Publication contract: `src/RoslynMcp.Core/Services/PublicArgumentException.cs`, `ArgumentErrors.cs`; check current host boundary and `docs/release-policy.md`. Do not rely on the deleted core-move detail.
 - backlog: sync ai_docs/backlog.md.
+
+Low same-file maintenance: FixAllServiceIntegrationTests.cs:6-10 claims no preview token is ever minted and only no-provider/input paths exist, but CA1822 test:45-63 invokes both individual and FixAll previews and requires changes. Re-derive the class parallel-safety/store ownership rationale when this file is changed; preserve real provider coverage. Source-only witness at0442d5fa; no concurrent-safety reproduction claimed.

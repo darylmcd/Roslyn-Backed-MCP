@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-10T03:30:09Z
+**updated_at:** 2026-10-10T17:55:59Z
 
 ## Agent contract
 
@@ -50,6 +50,7 @@
 |----|-----|------|----|------|--------|
 | `logging-default-sink-disabled-stderr-swallowed` | High | logging-retention-destroys-repro-evidence | **Enable the bounded file sink by default for installed users** — ROSLYNMCP_OBSERVABILITY_SINK defaults to `disabled` and the plugin mcp.json never sets it, so an MCP host that swallows stderr leaves no evidence of a first failure. [type: quality] [source: logging-audit 20260930-1340] | M | items/logging-default-sink-disabled-stderr-swallowed.md |
 | `persistent-composite-workspace-identity-not-portable` | High | — | Resolve persisted composite tokens to the correct receiving workspace and source snapshot before claim or mutation. [type: bug] [source: token-lifecycle-independence-revet] | L | items/persistent-composite-workspace-identity-not-portable.md |
+| `test-fixture-cleanup-link-boundary` | High | — | **Keep fixture cleanup inside its owned tree** — prevent link traversal from changing external file attributes or cleanup targets. [type: bug] [source: workspace-project-alias-lookup] | S | items/test-fixture-cleanup-link-boundary.md |
 
 ## Medium
 
@@ -105,7 +106,6 @@
 | `preview-apply-tool-descriptions` | Medium | scaffold-batch-preview-apply-route | **Name each previews apply tool** — align five producer descriptions with tested token routes. [type: bug] [source: preview-token-store-mismatch-false-stale] | M | items/preview-apply-tool-descriptions.md |
 | `workspace-fork-project-mutation-preview` | Medium | preview-store-explicit-internal-state | BLOCKED: atomic preview safety and global indivisible admission. Replay project/composite fork previews from owned non-consuming snapshots without redeeming source tokens. [type: bug] [source: preview-token-store-mismatch-false-stale] | M | items/workspace-fork-project-mutation-preview.md |
 | `preview-token-consumed-reason` | Medium | persistent-composite-workspace-identity-not-portable | BLOCKED: audited global indivisible admission and portable-workspace identity. Report evidence-backed consumed, reloaded and expired tokens after every completion producer is correct. [type: bug] [source: preview-token-store-mismatch-false-stale] | M | items/preview-token-consumed-reason.md |
-| `workspace-project-alias-lookup` | Medium | — | Match project paths by physical identity across filesystem aliases. [type: bug] [source: drive-mount canonicalization review 2026-09-29] | S | items/workspace-project-alias-lookup.md |
 | `fix-all-equivalence-key-unregistered-fallback` | Medium | — | **Refuse unregistered FixAll equivalence keys** — replace the provider-type-name fallback with an actionable refusal or a verified keyless contract. [type: bug] [source: FixAll code review 2026-09-29] | S | items/fix-all-equivalence-key-unregistered-fallback.md |
 | `editorconfig-section-source-path-matching` | Medium | — | **Match editorconfig sections to the requested source path** — honor path-qualified globs in the disk option overlay. [type: bug] [source: editorconfig code review 2026-09-29] | S | items/editorconfig-section-source-path-matching.md |
 | `other-failed-apply-displaces-undo-target` | Medium | editorconfig-failed-write-displaces-undo-target | Preserve prior revert_last_apply target when EditService, ProjectMutationService, or RefactoringService fails after preparing undo. [type: bug] [source: backlog-remediate cold review 20260929] | L | items/other-failed-apply-displaces-undo-target.md |
@@ -153,6 +153,7 @@
 | `test-related-project-qualified-identity` | Medium | — | Preserve owning-project identity in related-test matching, enrichment and lookup when separate projects declare the same fully qualified test name. [type: bug] [source: test-discovery-path-identity-revet] | S | items/test-related-project-qualified-identity.md |
 | `test-discovery-direct-reference-failure-observability` | Medium | — | Observe incomplete semantic reference discovery without hiding failed sweeps behind fallback results. [type: bug] [source: discovery-path-identity-review-20261010] | S | items/test-discovery-direct-reference-failure-observability.md |
 | `test-discovery-cache-session-lifetime` | Medium | — | Release cached test-discovery results when workspace lifetime ends, including in-flight publication races. [type: bug] [source: discovery-path-identity-review-20261010] | M | items/test-discovery-cache-session-lifetime.md |
+| `workspace-project-index-session-lifetime` | Medium | — | **Release project indexes with workspace lifetime** — prevent closed sessions and concurrent lookups from retaining obsolete project snapshots. [type: bug] [source: workspace-project-alias-lookup] | S | items/workspace-project-index-session-lifetime.md |
 
 ## Low
 
