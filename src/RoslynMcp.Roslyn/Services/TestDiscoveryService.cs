@@ -274,7 +274,7 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
         Solution solution,
         CancellationToken ct)
     {
-        var referencedFilePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var referencedFilePaths = new HashSet<string>(FileSystemPath.Comparer);
         var symbolsToWalk = await CollectSymbolAndImplementationsAsync(symbol, solution, ct).ConfigureAwait(false);
 
         foreach (var candidate in symbolsToWalk)
@@ -721,7 +721,7 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
             match.Rank = rank;
         }
 
-        if (!match.TriggeredByFiles.Contains(filePath, StringComparer.OrdinalIgnoreCase))
+        if (!match.TriggeredByFiles.Contains(filePath, FileSystemPath.Comparer))
         {
             match.TriggeredByFiles.Add(filePath);
         }
@@ -730,7 +730,7 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
     private static HashSet<string> BuildTestFilePathSet(
         IReadOnlyList<(string Project, TestCaseDto Test)> allTests)
     {
-        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var set = new HashSet<string>(FileSystemPath.Comparer);
         foreach (var (_, test) in allTests)
         {
             if (!string.IsNullOrWhiteSpace(test.FilePath))
@@ -891,7 +891,7 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
         HashSet<string> testFilePaths,
         CancellationToken ct)
     {
-        var referencedTestFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var referencedTestFiles = new HashSet<string>(FileSystemPath.Comparer);
         var references = await SymbolFinder.FindReferencesAsync(symbol, solution, ct).ConfigureAwait(false);
         foreach (var refSet in references)
         {
