@@ -1,6 +1,6 @@
 # scaffold-batch-preview-apply-route — Redeem scaffold tokens in their store
 
-**row:** `scaffold-batch-preview-apply-route` · **pri:** `Medium` · **size:** `M`
+**row:** `scaffold-batch-preview-apply-route` · **pri:** `Medium` · **size:** `M` · **deps:** `preview-store-explicit-internal-state`
 
 ## Anchors
 
@@ -11,9 +11,11 @@
 
 ## Acceptance
 
-- [ ] A `scaffold_test_batch_preview` token applies through its documented tool, or the preview names the working `preview_multi_file_edit_apply` route.
-- [ ] The wrong apply tool identifies the valid route without falsely reporting a workspace reload or consuming the token.
-- [ ] Red-first wire test applies the token through the advertised route and verifies the generated files.
+- [ ] `scaffold_test_batch_preview` advertises `scaffold_test_apply`, which redeems its token from the correct store and persists the complete generated-file set.
+- [ ] Preserve explicit per-file truncation, producer provenance and generation safety through preview creation and apply; reject unsafe previews before file effects. Atomic preview safety is a prerequisite.
+- [ ] The wrong composite apply tool gives the typed `scaffold_test_apply` correction without consuming the token, calling the apply service or falsely reporting reload.
+- [ ] Red-first wire tests apply through the advertised route, verify generated files and encoding, and retain exact public-refusal and service-not-called assertions across all affected route-binding tests.
+- [ ] Re-vet after both preview safety and the shared refusal guard land; pin the refusal inventory decrease and run the required full producer and cold review.
 
 ## Evidence
 

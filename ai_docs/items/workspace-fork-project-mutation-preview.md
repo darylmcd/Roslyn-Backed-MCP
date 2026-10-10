@@ -1,6 +1,6 @@
 # workspace-fork-project-mutation-preview — Align fork apply with its claim
 
-**row:** `workspace-fork-project-mutation-preview` · **pri:** `Medium` · **size:** `M`
+**row:** `workspace-fork-project-mutation-preview` · **pri:** `Medium` · **size:** `M` · **deps:** `preview-store-explicit-internal-state`
 
 ## Anchors
 
@@ -10,8 +10,10 @@
 
 ## Acceptance
 
-- [ ] `workspace_fork_apply` either safely replays a project-mutation preview in the fork or narrows its public description so it does not claim to accept any `*_preview` token.
-- [ ] A red-first test checks a project-mutation token and verifies the source workspace is unchanged; if unsupported, a contract test checks the corrected description and safe refusal.
+- [ ] `workspace_fork_apply` replays document, composite and project-mutation previews from owned non-consuming snapshots in the isolated fork; preserve the advertised token-family contract.
+- [ ] Replay preserves source workspace bytes, version, undo state and source-token availability, including failure and capture/claim races. Unsupported edits fail before effects with an actionable typed refusal.
+- [ ] Red-first tests exercise actual project and composite fork replay, every supported change kind and preview safety metadata; verify generated files, encoding and source isolation. No default safety metadata or destructive source-token retrieval.
+- [ ] Re-vet the complete scope after atomic preview safety lands; run the required full producer and cold review before landing.
 
 ## Evidence
 
