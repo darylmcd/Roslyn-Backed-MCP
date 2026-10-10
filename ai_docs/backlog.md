@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-10T20:25:53Z
+**updated_at:** 2026-10-10T20:32:54Z
 
 ## Agent contract
 
@@ -364,7 +364,7 @@
 | `prompt-shim-json-options-and-type-describer-dedup` | Low | — | **Align get_prompt_text argument binding with prompts/get** — use the SDK prompt-binder JSON options and share one expected-JSON-type describer between PromptShimTools and PromptBindingStageAdapter. [type: chore] [source: backlog-remediate 20260924T162035Z] | M | items/prompt-shim-json-options-and-type-describer-dedup.md |
 | `composite-failed-apply-displaces-undo-target` | Low | — | **Define revert_last_apply after a failed composite apply** — a failed apply_composite leaves an uncommitted undo snapshot that displaces the previous apply's revert target. [type: bug] [source: backlog-remediate 20260924T162035Z] | M | items/composite-failed-apply-displaces-undo-target.md |
 | `verify-actionlint-per-worktree-download` | Low | — | **Cache the pinned actionlint binary outside the worktree** — every fresh integration/executor worktree re-downloads it, and a transient download failure fails the whole gate. [type: chore] [source: backlog-remediate 20260924T162035Z] | S | items/verify-actionlint-per-worktree-download.md |
-| `split-service-with-di-identity-semantics` | Low | — | **Refuse splits that change identity semantics** — moved methods using this, record source types, one instance fanned into several. [type: bug] [source: 20260925 split-service cold review] | S | items/split-service-with-di-identity-semantics.md |
+| `split-service-with-di-identity-semantics` | Low | — | **Preserve service graph identity during splitting** — keep original receiver, state, construction and DI identity, including records and delegate targets; refuse only proven unrepresentable requests. [type: quality] [source: 20260925-cold-review] | S | items/split-service-with-di-identity-semantics.md |
 | `test-temp-path-outside-test-temp-root` | Low | — | **Decide and enforce the TestTempRoot isolation rule** — addenda says every test temp path uses TestTempRoot.Current but ~49 test files use Path.GetTempPath() unguarded. [type: chore] [source: backlog-remediate 20260926T234932Z] | S | items/test-temp-path-outside-test-temp-root.md |
 | `test-host-service-provider-composition-dedupe` | Low | — | **Share one host service-provider builder across tests** — the AddRoslynMcpHostServices + AddMcpServer().WithToolsFromAssembly composition is copy-pasted in 6 test files. [type: refactor] [source: backlog-remediate 20260926T234932Z] | L | items/test-host-service-provider-composition-dedupe.md |
 | `serialize-full-ci-premise-recheck` | Low | — | **Re-decide addenda serializeFullCi** — it forces serial executor dispatch, but full CI now runs only on GitHub; confirm whether any local full gate still needs the lock. [type: chore] [source: backlog-remediate 20260926T234932Z] | S | items/serialize-full-ci-premise-recheck.md |
