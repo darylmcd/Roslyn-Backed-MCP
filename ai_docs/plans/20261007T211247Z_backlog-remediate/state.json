@@ -2757,6 +2757,30 @@
         "value": "recover-stalled-workspace-cleanup-ownership",
         "at": "2026-10-10T04:03:32.550Z"
       }
+    },
+    {
+      "n": 3,
+      "source": "reviewer",
+      "initiativeId": "workspace-project-alias-lookup",
+      "title": "Refresh recovery row source citations",
+      "suggestedPri": "Medium",
+      "amendRow": "script-bridge-long-run-result-recovery",
+      "anchors": [
+        "mcp-servers/script-bridge/server.mjs:191-193",
+        "mcp-servers/script-bridge/server.mjs:529",
+        "ai_docs/items/script-bridge-long-run-result-recovery.md"
+      ],
+      "acceptance": [
+        "Update inherited timeout and direct-await citations to the verified current immutable source; preserve historical runtime evidence and the added interpreter/capture witness.",
+        "Amend the existing recovery row through the sanctioned writer; do not create a duplicate mechanism row."
+      ],
+      "evidence": "Inherited server.mjs:127-129 names TASKKILL_NOT_FOUND handling rather than timeout clamping; :440-441 names the run_script declaration rather than direct await. Root independently re-derived timeout at :191-193 and direct await at :529. Global backlog citation correction will be filed through the sanctioned writer before owner handoff; no global implementation is included.",
+      "at": "2026-10-10T04:50:21.944Z",
+      "disposition": {
+        "kind": "row",
+        "value": "script-bridge-long-run-result-recovery",
+        "at": "2026-10-10T04:50:51.700Z"
+      }
     }
   ]
 }
