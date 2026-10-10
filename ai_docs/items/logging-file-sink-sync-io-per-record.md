@@ -24,3 +24,11 @@ Write() (lines 95-101) performs four filesystem operations per record inside `lo
 Same lines as the retention row — sequenced after it.
 
 **Approach:** Hold the stream inside the existing lock; flush per record so last-gasp records survive a crash. Avoid a background writer (would lose the final records on abrupt exit).
+
+## Current cold review 2026-10-10
+
+| Item | Evidence / obligation |
+|---|---|
+| Source | At927e969, provider95 creates the directory,97 appends synchronously, and76 locks the request thread; rotation probes existence/length. Mechanism unchanged from reviewed1cd4a90. |
+| Ownership | Existing row/dependency owns the finding; no duplicate row or benchmark claim. Structured-state PR1777 does not fix this debt. |
+| Complete repair | One owned writer/rotation authority; deterministic disposal/rotation handle release and representative enabled-file throughput proof. |

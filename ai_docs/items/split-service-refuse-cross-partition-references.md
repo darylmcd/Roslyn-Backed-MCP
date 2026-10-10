@@ -22,3 +22,14 @@
 - Split child of `split-service-with-di-refuse-unsupported-method-shapes` (plan 20261001T034545Z; one regression shape each). Siblings share `SymbolRefactorService.cs` and `tests/RoslynMcp.Tests/CompositeSplitServiceDiPreviewTests.cs`, so they are chained by `deps`. Each ships independently: a refusal or a correct forward, never a half-supported shape.
 
 Planning re-vet 2026-10-07: SymbolRefactorService.cs:348-362 selects declarations by spelling; :445-510 copies fields using identifier-name matches; :872-909 repeats that analysis for retained facade members. Blanket refusal suppresses representable operations without repairing binding/state ownership. The complete plan must replace name-only discovery and preserve original semantic receivers and shared state; no implementation is claimed.
+
+## Complete source-ownership supersession 2026-10-10
+
+| Item | Evidence / obligation |
+|---|---|
+| Subject | Runtime1cd4a90 unchanged froma4a826dc; audited selected amendment1 retains7production/4tests/ADR-index-fragment at110000 and deferred status. |
+| Semantic boundary | Preserve symbol-bound receiver/state/capture/signature/import ownership, original constructors/initializers, method-group target/equality/unsubscription, record equality/hash/with/clone and original DI service/interface/factory/receiver/lifetime descriptors. |
+| Publication/identity | Do not inject partition references into record equality state, duplicate user initialization/dependency resolution, collapse transient roots, expose private nested types, move synchronized locking to the wrong receiver or change caller-info evaluation. Preserve struct/ref-struct byref ownership; refuse only proven unrepresentable requests atomically. |
+| Forced companions | Ref/out/in, generic/ref-return/constraint/interface/override and namespace-import defects belong in this complete repair; overlapping sibling rows stay open until full acceptance proves. |
+| Verification | Dedicated red-first compilation/runtime identity/concurrency/collectability tests remain owed. No implementation admitted. |
+| External prerequisite | Other agent owns global plan-rule5-indivisible-scope-admission; no estimate reduction or broad-refusal substitute. Native80000 cap rejects110000. |
