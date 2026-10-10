@@ -470,7 +470,7 @@
     {
       "id": "workspace-project-alias-lookup",
       "order": 11,
-      "status": "in-progress",
+      "status": "in-review",
       "backlogRowsClosed": [
         "workspace-project-alias-lookup"
       ],
@@ -500,9 +500,9 @@
       "dependsOn": [],
       "branch": "remediation/workspace-project-alias-lookup",
       "worktreePath": "D:/Roslyn-Backed-MCP/.worktrees/workspace-project-alias-lookup",
-      "prUrl": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1773",
       "mergedAt": null,
-      "notes": null,
+      "notes": "Cold review cycle0 on final conventional subject/head66f2fc05936fcb2b820304fbce1fd6d40d976484; exact source treeffd88af328b936dc1bc0f8cd4070bdf73ee03a84 full producer a2dc3024f8844235 passed; hosted checks must bind final head.",
       "fileSetHash": "5ae53efeefad9af7661e98abc4db281f0b23dea87b760a8f56fdd1108bfbec13",
       "stanzaHash": "23ca433d4565efda70d65fddf058331ccc1a139ea356db06fce4dbea59420ce4",
       "reviewedStanzaHash": "23ca433d4565efda70d65fddf058331ccc1a139ea356db06fce4dbea59420ce4",
