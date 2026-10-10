@@ -588,7 +588,8 @@
           "previousStanzaHash": "107cc2cb31a0b88616a304033f2b3cc46ebc6e44afaad18b69a7756aed4a1e93",
           "stanzaHash": "f9022ed2a29c8a2f83bf2a1ec78fc4fb185c432d08c85b6db28ae108d3754108"
         }
-      ]
+      ],
+      "reviewedHead": "a32fe54f11212a7b605efcbd98386cd8c1bf8ba2"
     },
     {
       "id": "editorconfig-section-source-path-matching",
