@@ -2,7 +2,7 @@ using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CodeActions;
 using Microsoft.CodeAnalysis.CodeFixes;
-using Microsoft.CodeAnalysis.Text;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
@@ -247,47 +247,43 @@ public sealed class PreviewRouteBindingFileOpsTests : IsolatedWorkspaceTestBase
             PreviewKind.FixAll,
             PreviewStore.PeekKind(preview.PreviewToken),
             "fix_all_preview must mint a FixAll token.");
+        Assert.AreEqual(1, preview.FixedCount, "The isolated sample has one intentional CS0414 occurrence.");
+        var entry = PreviewStore.Retrieve(preview.PreviewToken);
+        Assert.IsNotNull(entry);
+        StringAssert.Contains(entry.Value.Description, "1 occurrences");
+        foreach (var project in entry.Value.ModifiedSolution.Projects)
+        {
+            var compilation = await project.GetCompilationAsync(CancellationToken.None);
+            Assert.IsNotNull(compilation);
+            Assert.IsFalse(compilation.GetDiagnostics().Any(diagnostic => diagnostic.Id == "CS0414"),
+                "The real BatchFixer candidate must remove CS0414 before a provenance token can be minted.");
+        }
     }
 
     private sealed class TestFixAllCodeFixProvider : CodeFixProvider
     {
         public override ImmutableArray<string> FixableDiagnosticIds => ["CS0414"];
 
-        public override FixAllProvider GetFixAllProvider() => new TestFixAllProvider();
+        public override FixAllProvider GetFixAllProvider() => WellKnownFixAllProviders.BatchFixer;
 
-        public override Task RegisterCodeFixesAsync(CodeFixContext context)
+        public override async Task RegisterCodeFixesAsync(CodeFixContext context)
         {
+            var root = await context.Document.GetSyntaxRootAsync(context.CancellationToken).ConfigureAwait(false);
+            Assert.IsNotNull(root);
+            var field = root.FindNode(context.Span).FirstAncestorOrSelf<FieldDeclarationSyntax>();
+            Assert.IsNotNull(field);
+            Assert.HasCount(1, field.Declaration.Variables, "The provenance fixture uses single-variable unused fields.");
             context.RegisterCodeFix(
                 CodeAction.Create(
-                    "Test fix",
-                    _ => Task.FromResult(context.Document),
+                    "Remove unused field",
+                    _ =>
+                    {
+                        var changedRoot = root.RemoveNode(field, SyntaxRemoveOptions.KeepExteriorTrivia);
+                        Assert.IsNotNull(changedRoot);
+                        return Task.FromResult(context.Document.WithSyntaxRoot(changedRoot));
+                    },
                     equivalenceKey: "test-fix"),
                 context.Diagnostics);
-            return Task.CompletedTask;
-        }
-
-        private sealed class TestFixAllProvider : FixAllProvider
-        {
-            public override Task<CodeAction?> GetFixAsync(FixAllContext fixAllContext)
-            {
-                var document = fixAllContext.Document
-                    ?? throw new InvalidOperationException("The test FixAll context requires a document.");
-                CodeAction action = CodeAction.Create(
-                    "Test fix all",
-                    cancellationToken => AddMarkerAsync(document, cancellationToken),
-                    equivalenceKey: "test-fix");
-                return Task.FromResult<CodeAction?>(action);
-            }
-
-            private static async Task<Solution> AddMarkerAsync(
-                Document document,
-                CancellationToken cancellationToken)
-            {
-                var text = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
-                var changedText = text.WithChanges(
-                    new TextChange(new TextSpan(text.Length, 0), "\n// fix-all producer test\n"));
-                return document.Project.Solution.WithDocumentText(document.Id, changedText);
-            }
         }
     }
 
