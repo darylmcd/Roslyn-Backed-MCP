@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-10T21:27:42Z
+**updated_at:** 2026-10-10T21:41:52Z
 
 ## Agent contract
 
@@ -400,6 +400,7 @@
 | `symbol-resolver-token-lookup-comment-parity` | Low | navigation-and-locator-argument-refusals-public-message | **Align SymbolResolver token lookup commentary** — replace the stale findInsideTrivia claim with the actual exact-position lookup and lenient preceding-token fallback; preserve behavior. [type: chore] [source: navigation cold self-review] | S | items/symbol-resolver-token-lookup-comment-parity.md |
 | `file-operation-preview-state-assertion-contract` | Low | — | Assert preview refusal behavior without reflecting private store representation; update every consumer. [type: test-refactor] [source: token-lifecycle-independence-revet] | S | items/file-operation-preview-state-assertion-contract.md |
 | `extraction-route-binding-test-fake-reuse` | Low | — | Share duplicated extraction/dispatch route test fakes through one internal fixture while preserving explicit variants and isolation. [type: test-refactor] [source: extraction-trivia-blast-radius-revet] | S | items/extraction-route-binding-test-fake-reuse.md |
+| `test-run-worktree-package-isolation` | Low | — | **Support isolated package roots for MCP test execution** — carry safe per-worktree NuGet package-root authority into test subprocesses without server-global environment mutation. [type: feature] [source: primary-constructor executor environment boundary 2026-10-10] | L | items/test-run-worktree-package-isolation.md |
 
 ## Defer
 

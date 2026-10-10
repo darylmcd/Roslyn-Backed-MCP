@@ -2807,6 +2807,28 @@
         "value": "restore-assets-read-failure-false-fresh",
         "at": "2026-10-10T21:24:45.531Z"
       }
+    },
+    {
+      "n": 20,
+      "source": "orchestrator",
+      "initiativeId": null,
+      "title": "MCP test execution has no per-worktree package-root authority",
+      "suggestedPri": "Low",
+      "amendRow": "test-run-worktree-package-isolation",
+      "anchors": [
+        "src/RoslynMcp.Host.Stdio/Tools/ValidationTools.cs:210-229",
+        "src/RoslynMcp.Roslyn/Helpers/DotnetCommandRunner.cs:155-179"
+      ],
+      "acceptance": [
+        "Provide safe per-worktree NuGet root authority across required job contracts without server-global mutation; test concurrent isolation and retain public compatibility controls."
+      ],
+      "evidence": "Live primary executor test_run schema lacks environment fields; eight actual red cases ran under server environment. Root independently read tool input surface and inherited ProcessStartInfo environment on base337fc. No cache corruption claimed; owned final gates need supplied scratchEnv and structured CLI fallback.",
+      "at": "2026-10-10T21:42:12.980Z",
+      "disposition": {
+        "kind": "row",
+        "value": "test-run-worktree-package-isolation",
+        "at": "2026-10-10T21:42:13.872Z"
+      }
     }
   ]
 }
