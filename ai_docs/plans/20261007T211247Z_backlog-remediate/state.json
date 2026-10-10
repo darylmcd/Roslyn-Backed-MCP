@@ -569,7 +569,7 @@
       "worktreePath": "D:/Roslyn-Backed-MCP/.worktrees/fix-all-equivalence-key-unregistered-fallback",
       "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1775",
       "mergedAt": "2026-10-10T19:14:14Z",
-      "notes": null,
+      "notes": "Reconciliation correction: historical executor sketch9 has stale BoundedStore anchor128; live StoreEntry26-33, EvictIfOverLimit109-121 and guard111 re-derived at a4a826dc/b6fea40. Corrected bounded-store-capacity-atomic-insertion detail and correction sighting supersede original raw anchors; no runtime reproduction claim.",
       "fileSetHash": "dded991a714167e89b33bbb559c0c1894eb4eec6de3e5a721f06d905a248c88e",
       "stanzaHash": "f9022ed2a29c8a2f83bf2a1ec78fc4fb185c432d08c85b6db28ae108d3754108",
       "reviewedStanzaHash": "f9022ed2a29c8a2f83bf2a1ec78fc4fb185c432d08c85b6db28ae108d3754108",
@@ -3015,6 +3015,29 @@
         "kind": "row",
         "value": "editorconfig-option-assignment-grammar-validation",
         "at": "2026-10-10T19:34:31.504Z"
+      }
+    },
+    {
+      "n": 12,
+      "source": "orchestrator",
+      "initiativeId": null,
+      "title": "Correct bounded-store capacity source anchors from sketch9",
+      "suggestedPri": "Medium",
+      "amendRow": "bounded-store-capacity-atomic-insertion",
+      "anchors": [
+        "src/RoslynMcp.Core/Services/BoundedStore.cs:26-33",
+        "src/RoslynMcp.Core/Services/BoundedStore.cs:109-121",
+        "tests/RoslynMcp.Tests/BoundedStoreEvictionTests.cs:15-28"
+      ],
+      "acceptance": [
+        "Use actual StoreEntry and eviction guard anchors; runtime race reproduction remains owed."
+      ],
+      "evidence": "At immutable a4a826dc and b6fea40 StoreEntry26-33 calls CleanExpired/EvictIfOverLimit before insertion; EvictIfOverLimit109-121 returns at Count<=maxEntries on111. Historical executor sketch9 anchor128 names an interface close, not eviction; superseded by this re-derivation and corrected row.",
+      "at": "2026-10-10T19:42:19.525Z",
+      "disposition": {
+        "kind": "row",
+        "value": "bounded-store-capacity-atomic-insertion",
+        "at": "2026-10-10T19:42:51.340Z"
       }
     }
   ]

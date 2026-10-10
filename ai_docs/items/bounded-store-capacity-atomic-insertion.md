@@ -4,8 +4,8 @@
 
 ## Anchors
 
-- `src/RoslynMcp.Core/Services/BoundedStore.cs:31-35`
-- `src/RoslynMcp.Core/Services/BoundedStore.cs:128-140`
+- `src/RoslynMcp.Core/Services/BoundedStore.cs:26-33`
+- `src/RoslynMcp.Core/Services/BoundedStore.cs:109-121`
 - `tests/RoslynMcp.Tests/BoundedStoreEvictionTests.cs:15-28`
 
 ## Acceptance
@@ -20,3 +20,5 @@
 - The ConcurrentDictionary protects individual operations, while the capacity check, enumeration, removals and insertion have no common insertion authority; concurrent insertions can independently observe capacity and exceed it. Reproduce this race before choosing the complete synchronization policy.
 - Existing test stores four entries for a cap of two and asserts only after the fourth call; it misses the third-call overflow. Shared-helper repair must cover all consumers, without copying eviction policies or weakening the cap.
 - This is separate from FixAll action registration, diagnostic reduction and no-token behavior. Filed outside the current selection.
+
+- Reconciliation cold review corrected previously misreported line anchors: StoreEntry is26-33, EvictIfOverLimit is109-121, capacity guard111 at immutable b6fea40 and current a4a826dc. Historical executor sketch9 incorrectly cited128; this correction supersedes that reference. Mechanism and reproduction obligation unchanged.
