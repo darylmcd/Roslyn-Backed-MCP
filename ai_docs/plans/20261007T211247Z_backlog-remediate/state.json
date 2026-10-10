@@ -2736,6 +2736,27 @@
         "value": "fix-all-scope-public-argument-refusals",
         "at": "2026-10-10T03:57:41.527Z"
       }
+    },
+    {
+      "n": 2,
+      "source": "orchestrator",
+      "initiativeId": null,
+      "title": "Scope stalled recovery resource release to verified task ownership",
+      "suggestedPri": "Medium",
+      "amendRow": "recover-stalled-workspace-cleanup-ownership",
+      "anchors": [
+        "<global-tooling-root>/skills/recover-stalled-subagent/SKILL.md:127-148"
+      ],
+      "acceptance": [
+        "Preserve unrelated sessions; release only creation-bound target resources, retain unknown-holder residue and prove sibling survival; deploy corrected mirrors."
+      ],
+      "evidence": "Source-only installed global d525a17b7ccc96c1243b77d5652454a45b52f69b: recovery Step5 invokes dotnet build-server shutdown and line136 calls it always safe. No target ownership is established. Operation not executed; exact row filed via sanctioned writer in global PR753 and cold content review passed; full global owner harness remains required before landing.",
+      "at": "2026-10-10T04:02:23.629Z",
+      "disposition": {
+        "kind": "row",
+        "value": "recover-stalled-workspace-cleanup-ownership",
+        "at": "2026-10-10T04:03:32.550Z"
+      }
     }
   ]
 }
