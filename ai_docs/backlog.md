@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-10T03:49:14Z
+**updated_at:** 2026-10-10T04:22:09Z
 
 ## Agent contract
 
@@ -153,6 +153,7 @@
 | `test-related-project-qualified-identity` | Medium | — | Preserve owning-project identity in related-test matching, enrichment and lookup when separate projects declare the same fully qualified test name. [type: bug] [source: test-discovery-path-identity-revet] | S | items/test-related-project-qualified-identity.md |
 | `test-discovery-direct-reference-failure-observability` | Medium | — | Observe incomplete semantic reference discovery without hiding failed sweeps behind fallback results. [type: bug] [source: discovery-path-identity-review-20261010] | S | items/test-discovery-direct-reference-failure-observability.md |
 | `test-discovery-cache-session-lifetime` | Medium | — | Release cached test-discovery results when workspace lifetime ends, including in-flight publication races. [type: bug] [source: discovery-path-identity-review-20261010] | M | items/test-discovery-cache-session-lifetime.md |
+| `workspace-project-index-session-lifetime` | Medium | — | **Release project indexes with workspace lifetime** — prevent closed sessions and concurrent lookups from retaining obsolete project snapshots. [type: bug] [source: workspace-project-alias-lookup] | S | items/workspace-project-index-session-lifetime.md |
 
 ## Low
 
