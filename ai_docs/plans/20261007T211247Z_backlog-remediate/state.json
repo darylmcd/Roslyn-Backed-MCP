@@ -4,7 +4,7 @@
   "backlogSnapshot": "2026-10-07T06:24:42Z",
   "addendaLoaded": true,
   "phase": "complete",
-  "cycleCount": 0,
+  "cycleCount": 2,
   "maxCycles": 2,
   "completed": false,
   "reviewStatus": "passed-with-warnings",
@@ -534,7 +534,7 @@
     {
       "id": "fix-all-equivalence-key-unregistered-fallback",
       "order": 12,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "fix-all-equivalence-key-unregistered-fallback"
       ],
@@ -543,16 +543,17 @@
         "src/RoslynMcp.Roslyn/Services/FixAllService.cs",
         "src/RoslynMcp.Roslyn/Services/FixAllDiagnosticCollector.cs"
       ],
-      "testFilesAdded": 2,
+      "testFilesAdded": 3,
       "testFiles": [
         "tests/RoslynMcp.Tests/FixAllServiceTests.cs",
-        "tests/RoslynMcp.Tests/FixAllEquivalenceKeyIntegrationTests.cs"
+        "tests/RoslynMcp.Tests/FixAllEquivalenceKeyIntegrationTests.cs",
+        "tests/RoslynMcp.Tests/PreviewRouteBindingFileOpsTests.cs"
       ],
       "docFiles": [
         "changelog.d/fix-all-equivalence-key-unregistered-fallback.md"
       ],
       "rowsClosedCount": 1,
-      "estimatedContextTokens": 55000,
+      "estimatedContextTokens": 60000,
       "toolPolicy": "edit-only",
       "scheduleHint": null,
       "fanoutEstimate": 2,
@@ -564,14 +565,14 @@
         "judgmentHeavy": true
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": null,
-      "fileSetHash": "142fde435999ba810a24b2064033576c311e1bf71e65c41a2e63a1b6a3837294",
-      "stanzaHash": "107cc2cb31a0b88616a304033f2b3cc46ebc6e44afaad18b69a7756aed4a1e93",
-      "reviewedStanzaHash": "107cc2cb31a0b88616a304033f2b3cc46ebc6e44afaad18b69a7756aed4a1e93",
+      "branch": "remediation/fix-all-equivalence-key-unregistered-fallback",
+      "worktreePath": "D:/Roslyn-Backed-MCP/.worktrees/fix-all-equivalence-key-unregistered-fallback",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1775",
+      "mergedAt": "2026-10-10T19:14:14Z",
+      "notes": "Reconciliation correction: historical executor sketch9 has stale BoundedStore anchor128; live StoreEntry26-33, EvictIfOverLimit109-121 and guard111 re-derived at a4a826dc/b6fea40. Corrected bounded-store-capacity-atomic-insertion detail and correction sighting supersede original raw anchors; no runtime reproduction claim.",
+      "fileSetHash": "dded991a714167e89b33bbb559c0c1894eb4eec6de3e5a721f06d905a248c88e",
+      "stanzaHash": "f9022ed2a29c8a2f83bf2a1ec78fc4fb185c432d08c85b6db28ae108d3754108",
+      "reviewedStanzaHash": "f9022ed2a29c8a2f83bf2a1ec78fc4fb185c432d08c85b6db28ae108d3754108",
       "amendments": [
         {
           "at": "2026-10-10T03:48:48.495Z",
@@ -579,8 +580,23 @@
           "reason": "Complete correction requires shared collector candidate verification with cache bypass, fail-closed diagnostic completeness and truthful verified reduction. Widen two production/two test files and cost40000 to55000; preserve scope identity and no-token safeguards; obtain fresh cold plan review before dispatch.",
           "previousStanzaHash": "913514db5542443540c48366ab331270a804e76f3350e61ff3b3122811f12f1f",
           "stanzaHash": "107cc2cb31a0b88616a304033f2b3cc46ebc6e44afaad18b69a7756aed4a1e93"
+        },
+        {
+          "at": "2026-10-10T18:25:52.184Z",
+          "finding": "Full gate exposes producer-kind fake that adds a comment without reducing CS0414.",
+          "reason": "Defect-forced third test companion PreviewRouteBindingFileOpsTests.cs:283-292 preserves diagnostics and fails :243 after truthful reduction verification. Repair real code-fix behavior and retain producer-kind assertion; complete estimate55000 to60000, production2 unchanged. No scope omission, default/shim or verification weakening.",
+          "previousStanzaHash": "107cc2cb31a0b88616a304033f2b3cc46ebc6e44afaad18b69a7756aed4a1e93",
+          "stanzaHash": "f9022ed2a29c8a2f83bf2a1ec78fc4fb185c432d08c85b6db28ae108d3754108"
         }
-      ]
+      ],
+      "reviewedHead": "a32fe54f11212a7b605efcbd98386cd8c1bf8ba2",
+      "scratchRemoved": false,
+      "githubGate": {
+        "baseOid": "b6fea40ccefc7e967717e4f9f02053ed5a811222",
+        "headOid": "a32fe54f11212a7b605efcbd98386cd8c1bf8ba2",
+        "tree": "98176f4bcd226da9fa78fe4e32d05772c0e4e636",
+        "checksVerifiedAt": "2026-10-10T19:14:08.933Z"
+      }
     },
     {
       "id": "editorconfig-section-source-path-matching",
@@ -599,7 +615,9 @@
         "tests/RoslynMcp.Tests/EditorConfigServiceTests.cs"
       ],
       "docFiles": [
-        "changelog.d/editorconfig-section-source-path-matching.md"
+        "changelog.d/editorconfig-section-source-path-matching.md",
+        "ai_docs/backlog.md",
+        "ai_docs/plans/20261007T211247Z_backlog-remediate/plan/editorconfig-section-source-path-matching.md"
       ],
       "rowsClosedCount": 1,
       "estimatedContextTokens": 40000,
@@ -619,14 +637,30 @@
       "prUrl": null,
       "mergedAt": null,
       "notes": null,
-      "fileSetHash": "903e11ba80b3347994fc257449e90ef9654a828845f57af583b0c4cd7a8f15be",
-      "stanzaHash": "56bbce20febc10f9c2b59496955ae4c711e041c5b802fcef475b9d4075d4268f",
-      "reviewedStanzaHash": "56bbce20febc10f9c2b59496955ae4c711e041c5b802fcef475b9d4075d4268f"
+      "fileSetHash": "5d41bd7b55c218330bfe9ce7adf84c5f8d9aab9401d2292fe641e9d5c87d81dd",
+      "stanzaHash": "455a00b8ff470ee417bab1ee5be2dcecd83f6f543ce17a66f61b144becab9fd9",
+      "reviewedStanzaHash": "455a00b8ff470ee417bab1ee5be2dcecd83f6f543ce17a66f61b144becab9fd9",
+      "amendments": [
+        {
+          "at": "2026-10-10T18:12:42.297Z",
+          "finding": "Dispatched brief forbids owned corpus detail; complete serial-inline route needs explicit own-stanza corpus preservation and canonical closure.",
+          "reason": "Preserve all source/test paths and40000 estimate. Measured immutable b6fea40 predicate and installed Roslyn5.9 matcher on all34 cases; root independently reproduced baseline14TP16FP2FN2TN/provider16TP0FP0FN18TN and original25 literal equality. Use canonical parent-inline ownership; no dispatched-ban override or global implementation.",
+          "previousStanzaHash": "56bbce20febc10f9c2b59496955ae4c711e041c5b802fcef475b9d4075d4268f",
+          "stanzaHash": "cd5325df881d8299b97bef77a1d480d44dd59e96dea1e1b776366178af971292"
+        },
+        {
+          "at": "2026-10-10T19:15:11.235Z",
+          "finding": "Independent public API probe proves malformed-header active-state, colon assignments, global_level conflicts and structural root semantics require full-text provider composition; isolated-section folding would duplicate parser behavior. Own handle test311 falsely passes unsupported platforms.",
+          "reason": "Use full-text stable per-key markers and public Roslyn composition with original diagnostics/control outputs; preserve exact34 corpus, full2production1test3docs Scope and40000 estimate, fix explicit platform skip in same edited test. Root reproduced34 matching and7composition cases plus12 lexical semantic parity; this is feasibility only.",
+          "previousStanzaHash": "cd5325df881d8299b97bef77a1d480d44dd59e96dea1e1b776366178af971292",
+          "stanzaHash": "455a00b8ff470ee417bab1ee5be2dcecd83f6f543ce17a66f61b144becab9fd9"
+        }
+      ]
     },
     {
       "id": "logging-jsonl-drops-structured-state",
       "order": 14,
-      "status": "pending",
+      "status": "in-progress",
       "backlogRowsClosed": [
         "logging-jsonl-drops-structured-state"
       ],
@@ -661,7 +695,7 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
+      "notes": "Source execution start 8 of 10; immutable base a4a826dcf589068b908234759a1103cafe39bb8b; owned source worktree precreated. No global implementation.",
       "fileSetHash": "b2e61e8a5ec4de58c81419ab72201a9b4acaf572b8359c687a7d6564e69a44aa",
       "stanzaHash": "fd3aef40e86b7820bb0d8c786d2534936d972b89ddedf7adf9b78b33b3ff579e",
       "reviewedStanzaHash": "fd3aef40e86b7820bb0d8c786d2534936d972b89ddedf7adf9b78b33b3ff579e"
@@ -1589,66 +1623,74 @@
   ],
   "anchorVerification": "performed",
   "conflictGraph": {
+    "zeroDegreeInitiatives": [
+      9,
+      10,
+      13,
+      14,
+      18,
+      20,
+      23
+    ],
     "edges": [
       {
-        "a": 2,
         "b": 25,
         "sharedFiles": [
           "src/RoslynMcp.Roslyn/Services/CodeActionService.cs"
-        ]
+        ],
+        "a": 2
       },
       {
-        "a": 3,
         "b": 8.01,
         "sharedFiles": [
           "src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs"
-        ]
+        ],
+        "a": 3
       },
       {
-        "a": 3,
         "b": 11,
         "sharedFiles": [
           "src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs"
-        ]
+        ],
+        "a": 3
       },
       {
-        "a": 4,
         "b": 6,
         "sharedFiles": [
           "tests/RoslynMcp.Tests/TestData/invalid-operation-construction-baseline.json"
-        ]
+        ],
+        "a": 4
       },
       {
-        "a": 4,
         "b": 8.01,
         "sharedFiles": [
           "tests/RoslynMcp.Tests/TestData/invalid-operation-construction-baseline.json"
-        ]
+        ],
+        "a": 4
       },
       {
-        "a": 4,
         "b": 21,
         "sharedFiles": [
           "tests/RoslynMcp.Tests/TestData/invalid-operation-construction-baseline.json"
-        ]
+        ],
+        "a": 4
       },
       {
-        "a": 5,
         "b": 25,
         "sharedFiles": [
           "src/RoslynMcp.Roslyn/Services/TypeExtractionService.cs"
-        ]
+        ],
+        "a": 5
       },
       {
-        "a": 6,
         "b": 7.02,
         "sharedFiles": [
           "README.md",
           "src/RoslynMcp.Host.Stdio/README.md"
-        ]
+        ],
+        "a": 6
       },
       {
-        "a": 6,
         "b": 8.01,
         "sharedFiles": [
           "tests/RoslynMcp.Tests/ExtractionApplyRouteBindingTests.cs",
@@ -1656,26 +1698,33 @@
           "tests/RoslynMcp.Tests/PreviewRouteBindingFileOpsTests.cs",
           "tests/RoslynMcp.Tests/TestData/invalid-operation-construction-baseline.json",
           "tests/RoslynMcp.Tests/ToolDispatchTests.cs"
-        ]
+        ],
+        "a": 6
       },
       {
-        "a": 6,
         "b": 8.02,
         "sharedFiles": [
           "src/RoslynMcp.Host.Stdio/Tools/OrchestrationTools.cs",
           "src/RoslynMcp.Host.Stdio/Tools/ToolDispatch.cs",
           "tests/RoslynMcp.Tests/ToolDispatchTests.cs"
-        ]
+        ],
+        "a": 6
       },
       {
-        "a": 6,
+        "b": 12,
+        "sharedFiles": [
+          "tests/RoslynMcp.Tests/PreviewRouteBindingFileOpsTests.cs"
+        ],
+        "a": 6
+      },
+      {
         "b": 21,
         "sharedFiles": [
           "tests/RoslynMcp.Tests/TestData/invalid-operation-construction-baseline.json"
-        ]
+        ],
+        "a": 6
       },
       {
-        "a": 6,
         "b": 25,
         "sharedFiles": [
           "src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.cs",
@@ -1686,100 +1735,100 @@
           "tests/RoslynMcp.Tests/PreviewRouteBindingFileOpsTests.cs",
           "tests/RoslynMcp.Tests/ScaffoldingIntegrationTests.cs",
           "tests/RoslynMcp.Tests/ToolDispatchTests.cs"
-        ]
+        ],
+        "a": 6
       },
       {
-        "a": 7.01,
         "b": 8.01,
         "sharedFiles": [
           "src/RoslynMcp.Roslyn/Services/CompositePreviewStore.cs",
           "src/RoslynMcp.Roslyn/Services/PersistentCompositeStorage.cs",
           "tests/RoslynMcp.Tests/Services/PersistentCompositeStorageTests.cs"
-        ]
+        ],
+        "a": 7.01
       },
       {
-        "a": 7.01,
         "b": 8.04,
         "sharedFiles": [
           "src/RoslynMcp.Roslyn/Services/CompositePreviewStore.cs",
           "src/RoslynMcp.Roslyn/Services/PersistentCompositeStorage.cs",
           "tests/RoslynMcp.Tests/Services/PersistentCompositeStorageTests.cs"
-        ]
+        ],
+        "a": 7.01
       },
       {
-        "a": 7.01,
         "b": 25,
         "sharedFiles": [
           "src/RoslynMcp.Roslyn/Services/CompositePreviewStore.cs",
           "src/RoslynMcp.Roslyn/Services/PersistentCompositeStorage.cs",
           "tests/RoslynMcp.Tests/Services/PersistentCompositeStorageTests.cs"
-        ]
+        ],
+        "a": 7.01
       },
       {
-        "a": 7.02,
         "b": 8.01,
         "sharedFiles": [
           "docs/decisions/README.md"
-        ]
+        ],
+        "a": 7.02
       },
       {
-        "a": 7.02,
         "b": 8.02,
         "sharedFiles": [
           "src/RoslynMcp.Roslyn/Services/WorkspaceForkApplyService.cs"
-        ]
+        ],
+        "a": 7.02
       },
       {
-        "a": 7.02,
         "b": 15,
         "sharedFiles": [
           "src/RoslynMcp.Roslyn/Services/WorkspaceForkApplyService.cs",
           "tests/RoslynMcp.Tests/Workspace/WorkspaceForkApplyTests.cs"
-        ]
+        ],
+        "a": 7.02
       },
       {
-        "a": 7.02,
         "b": 19,
         "sharedFiles": [
           "docs/decisions/README.md"
-        ]
+        ],
+        "a": 7.02
       },
       {
-        "a": 7.02,
         "b": 22,
         "sharedFiles": [
           "docs/decisions/README.md"
-        ]
+        ],
+        "a": 7.02
       },
       {
-        "a": 7.02,
         "b": 25,
         "sharedFiles": [
           "docs/decisions/README.md",
           "tests/RoslynMcp.Tests/Workspace/WorkspaceForkApplyTests.cs"
-        ]
+        ],
+        "a": 7.02
       },
       {
-        "a": 8.01,
         "b": 8.02,
         "sharedFiles": [
           "docs/decisions/0024-preview-token-terminal-lifecycle.md",
           "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs",
           "tests/RoslynMcp.Tests/ToolDispatchTests.cs"
-        ]
+        ],
+        "a": 8.01
       },
       {
-        "a": 8.01,
         "b": 8.03,
         "sharedFiles": [
           "src/RoslynMcp.Roslyn/Services/RefactoringService.cs",
           "tests/RoslynMcp.Tests/ApplyUndoWorkflowServiceTests.cs",
           "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs",
           "tests/RoslynMcp.Tests/RefactoringToolsIntegrationTests.cs"
-        ]
+        ],
+        "a": 8.01
       },
       {
-        "a": 8.01,
         "b": 8.04,
         "sharedFiles": [
           "src/RoslynMcp.Roslyn/Services/CompositeApplyOrchestrator.cs",
@@ -1788,47 +1837,54 @@
           "tests/RoslynMcp.Tests/CompositeApplyOrchestratorTests.cs",
           "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs",
           "tests/RoslynMcp.Tests/Services/PersistentCompositeStorageTests.cs"
-        ]
+        ],
+        "a": 8.01
       },
       {
-        "a": 8.01,
         "b": 8.05,
         "sharedFiles": [
           "src/RoslynMcp.Roslyn/Services/ProjectMutationService.cs",
           "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs",
           "tests/RoslynMcp.Tests/ProjectMutationIntegrationTests.cs"
-        ]
+        ],
+        "a": 8.01
       },
       {
-        "a": 8.01,
         "b": 11,
         "sharedFiles": [
           "src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs"
-        ]
+        ],
+        "a": 8.01
       },
       {
-        "a": 8.01,
+        "b": 12,
+        "sharedFiles": [
+          "tests/RoslynMcp.Tests/PreviewRouteBindingFileOpsTests.cs"
+        ],
+        "a": 8.01
+      },
+      {
         "b": 19,
         "sharedFiles": [
           "docs/decisions/README.md"
-        ]
+        ],
+        "a": 8.01
       },
       {
-        "a": 8.01,
         "b": 21,
         "sharedFiles": [
           "tests/RoslynMcp.Tests/TestData/invalid-operation-construction-baseline.json"
-        ]
+        ],
+        "a": 8.01
       },
       {
-        "a": 8.01,
         "b": 22,
         "sharedFiles": [
           "docs/decisions/README.md"
-        ]
+        ],
+        "a": 8.01
       },
       {
-        "a": 8.01,
         "b": 25,
         "sharedFiles": [
           "docs/decisions/README.md",
@@ -1853,97 +1909,97 @@
           "tests/RoslynMcp.Tests/ProjectMutationIntegrationTests.cs",
           "tests/RoslynMcp.Tests/Services/PersistentCompositeStorageTests.cs",
           "tests/RoslynMcp.Tests/ToolDispatchTests.cs"
-        ]
+        ],
+        "a": 8.01
       },
       {
-        "a": 8.01,
         "b": 26,
         "sharedFiles": [
           "src/RoslynMcp.Roslyn/Services/RefactoringService.cs"
-        ]
+        ],
+        "a": 8.01
       },
       {
-        "a": 8.02,
         "b": 8.03,
         "sharedFiles": [
           "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs"
-        ]
+        ],
+        "a": 8.02
       },
       {
-        "a": 8.02,
         "b": 8.04,
         "sharedFiles": [
           "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs"
-        ]
+        ],
+        "a": 8.02
       },
       {
-        "a": 8.02,
         "b": 8.05,
         "sharedFiles": [
           "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs"
-        ]
+        ],
+        "a": 8.02
       },
       {
-        "a": 8.02,
         "b": 15,
         "sharedFiles": [
           "src/RoslynMcp.Roslyn/Services/WorkspaceForkApplyService.cs"
-        ]
+        ],
+        "a": 8.02
       },
       {
-        "a": 8.02,
         "b": 19,
         "sharedFiles": [
           "docs/product-contract.md"
-        ]
+        ],
+        "a": 8.02
       },
       {
-        "a": 8.02,
         "b": 25,
         "sharedFiles": [
           "src/RoslynMcp.Host.Stdio/Tools/ToolDispatch.cs",
           "tests/RoslynMcp.Tests/PreviewTokenStaleAcrossAutoReloadTests.cs",
           "tests/RoslynMcp.Tests/ToolDispatchTests.cs"
-        ]
+        ],
+        "a": 8.02
       },
       {
-        "a": 8.03,
         "b": 8.04,
         "sharedFiles": [
           "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs"
-        ]
+        ],
+        "a": 8.03
       },
       {
-        "a": 8.03,
         "b": 8.05,
         "sharedFiles": [
           "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs"
-        ]
+        ],
+        "a": 8.03
       },
       {
-        "a": 8.03,
         "b": 25,
         "sharedFiles": [
           "src/RoslynMcp.Roslyn/Services/RefactoringService.cs",
           "tests/RoslynMcp.Tests/ApplyUndoWorkflowServiceTests.cs"
-        ]
+        ],
+        "a": 8.03
       },
       {
-        "a": 8.03,
         "b": 26,
         "sharedFiles": [
           "src/RoslynMcp.Roslyn/Services/RefactoringService.cs"
-        ]
+        ],
+        "a": 8.03
       },
       {
-        "a": 8.04,
         "b": 8.05,
         "sharedFiles": [
           "tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs"
-        ]
+        ],
+        "a": 8.04
       },
       {
-        "a": 8.04,
         "b": 25,
         "sharedFiles": [
           "src/RoslynMcp.Roslyn/Services/CompositeApplyOrchestrator.cs",
@@ -1951,100 +2007,101 @@
           "src/RoslynMcp.Roslyn/Services/PersistentCompositeStorage.cs",
           "tests/RoslynMcp.Tests/CompositeApplyOrchestratorTests.cs",
           "tests/RoslynMcp.Tests/Services/PersistentCompositeStorageTests.cs"
-        ]
+        ],
+        "a": 8.04
       },
       {
-        "a": 8.05,
         "b": 25,
         "sharedFiles": [
           "src/RoslynMcp.Roslyn/Services/ProjectMutationService.cs",
           "tests/RoslynMcp.Tests/ProjectMutationIntegrationTests.cs"
-        ]
+        ],
+        "a": 8.05
       },
       {
-        "a": 12,
         "b": 25,
         "sharedFiles": [
-          "src/RoslynMcp.Roslyn/Services/FixAllService.cs"
-        ]
+          "src/RoslynMcp.Roslyn/Services/FixAllService.cs",
+          "tests/RoslynMcp.Tests/PreviewRouteBindingFileOpsTests.cs"
+        ],
+        "a": 12
       },
       {
-        "a": 15,
         "b": 19,
         "sharedFiles": [
           "src/RoslynMcp.Host.Stdio/Tools/WorkspaceTools.cs"
-        ]
+        ],
+        "a": 15
       },
       {
-        "a": 15,
         "b": 25,
         "sharedFiles": [
           "tests/RoslynMcp.Tests/Workspace/WorkspaceForkApplyTests.cs"
-        ]
+        ],
+        "a": 15
       },
       {
-        "a": 16,
         "b": 25,
         "sharedFiles": [
           "src/RoslynMcp.Roslyn/Services/SymbolRefactorService.cs"
-        ]
+        ],
+        "a": 16
       },
       {
-        "a": 17,
         "b": 21,
         "sharedFiles": [
           "src/RoslynMcp.Roslyn/Services/ChangeSignatureService.cs",
           "tests/RoslynMcp.Tests/ChangeSignaturePreviewTests.cs"
-        ]
+        ],
+        "a": 17
       },
       {
-        "a": 17,
         "b": 25,
         "sharedFiles": [
           "src/RoslynMcp.Roslyn/Services/ChangeSignatureAddRemovePreviewBuilder.cs",
           "src/RoslynMcp.Roslyn/Services/ChangeSignatureService.cs",
           "tests/RoslynMcp.Tests/ChangeSignaturePreviewTests.cs"
-        ]
+        ],
+        "a": 17
       },
       {
-        "a": 19,
         "b": 22,
         "sharedFiles": [
           "docs/decisions/README.md"
-        ]
+        ],
+        "a": 19
       },
       {
-        "a": 19,
         "b": 24,
         "sharedFiles": [
           "tests/RoslynMcp.Tests/AnalyzerShadowLoaderLifecycleTests.cs"
-        ]
+        ],
+        "a": 19
       },
       {
-        "a": 19,
         "b": 25,
         "sharedFiles": [
           "docs/decisions/README.md"
-        ]
+        ],
+        "a": 19
       },
       {
-        "a": 21,
         "b": 25,
         "sharedFiles": [
           "src/RoslynMcp.Roslyn/Services/ChangeSignatureService.cs",
           "tests/RoslynMcp.Tests/ChangeSignaturePreviewTests.cs"
-        ]
+        ],
+        "a": 21
       },
       {
-        "a": 22,
         "b": 25,
         "sharedFiles": [
           "docs/decisions/README.md",
           "src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs"
-        ]
+        ],
+        "a": 22
       },
       {
-        "a": 25,
         "b": 26,
         "sharedFiles": [
           "src/RoslynMcp.Roslyn/Helpers/DiffGenerator.cs",
@@ -2053,7 +2110,8 @@
           "src/RoslynMcp.Roslyn/Services/RefactoringService.cs",
           "tests/RoslynMcp.Tests/DiffGeneratorTests.cs",
           "tests/RoslynMcp.Tests/SolutionDiffHelperTests.cs"
-        ]
+        ],
+        "a": 25
       }
     ],
     "degrees": {
@@ -2061,11 +2119,11 @@
       "3": 2,
       "4": 3,
       "5": 1,
-      "6": 6,
+      "6": 7,
       "9": 0,
       "10": 0,
       "11": 2,
-      "12": 1,
+      "12": 3,
       "13": 0,
       "14": 0,
       "15": 4,
@@ -2080,23 +2138,14 @@
       "24": 1,
       "25": 18,
       "26": 3,
-      "7.01": 3,
+      "8.05": 5,
       "7.02": 7,
-      "8.01": 15,
-      "8.02": 9,
       "8.03": 6,
+      "8.01": 16,
       "8.04": 6,
-      "8.05": 5
-    },
-    "zeroDegreeInitiatives": [
-      9,
-      10,
-      13,
-      14,
-      18,
-      20,
-      23
-    ]
+      "8.02": 9,
+      "7.01": 3
+    }
   },
   "selection": {
     "requestedCount": "auto",
@@ -2498,188 +2547,177 @@
   "reviewFindings": {
     "block": 0,
     "warn": 10,
-    "info": 20
+    "info": 18
   },
   "lastReviewFindings": [
-    {
-      "initiativeId": null,
-      "severity": "warn",
-      "rule": "C2-graph-disagreement",
-      "evidence": "Whole-plan Scope union yields 56 edges versus 4 stored active-only edges. Extra pairs: 2-25, 3-8.01, 3-11, 4-6, 4-8.01, 4-21, 5-25, 6-7.02, 6-8.01, 6-8.02, 6-21, 6-25, 7.01-8.01, 7.01-8.04, 7.01-25, 7.02-8.01, 7.02-8.02, 7.02-15, 7.02-19, 7.02-22, 7.02-25, 8.01-8.02, 8.01-8.03, 8.01-8.04, 8.01-8.05, 8.01-11, 8.01-19, 8.01-21, 8.01-22, 8.01-25, 8.01-26, 8.02-8.03, 8.02-8.04, 8.02-8.05, 8.02-15, 8.02-19, 8.02-25, 8.03-8.04, 8.03-8.05, 8.03-25, 8.03-26, 8.04-8.05, 8.04-25, 8.05-25, 12-25, 15-25, 16-25, 17-25, 19-25, 21-25, 22-25, 25-26. Missing pairs: none. All terminal scopes remain in the review graph; they remain non-executable."
-    },
     {
       "initiativeId": "preview-token-lifecycle-evidence",
       "severity": "warn",
       "rule": "C2-wave-conflict",
-      "evidence": "Consecutive sorted orders 7.02 and 8.01 share docs/decisions/README.md. Serialize any future explicitly authorized re-plan; terminal status is preserved."
+      "evidence": "Consecutive orders 7.02 and 8.01 share docs/decisions/README.md; keep the pair serialized. Deferred predecessors retain their disposition; this is whole-graph scheduling evidence."
     },
     {
       "initiativeId": "preview-token-reason-projection",
       "severity": "warn",
       "rule": "C2-wave-conflict",
-      "evidence": "Consecutive sorted orders 8.01 and 8.02 share docs/decisions/0024-preview-token-terminal-lifecycle.md, tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs, tests/RoslynMcp.Tests/ToolDispatchTests.cs. Serialize any future explicitly authorized re-plan; terminal status is preserved."
+      "evidence": "Consecutive orders 8.01 and 8.02 share docs/decisions/0024-preview-token-terminal-lifecycle.md, tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs, tests/RoslynMcp.Tests/ToolDispatchTests.cs; keep the pair serialized. Deferred predecessors retain their disposition; this is whole-graph scheduling evidence."
     },
     {
       "initiativeId": "preview-token-solution-confirmation",
       "severity": "warn",
       "rule": "C2-wave-conflict",
-      "evidence": "Consecutive sorted orders 8.02 and 8.03 share tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs. Serialize any future explicitly authorized re-plan; terminal status is preserved."
+      "evidence": "Consecutive orders 8.02 and 8.03 share tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs; keep the pair serialized. Deferred predecessors retain their disposition; this is whole-graph scheduling evidence."
     },
     {
       "initiativeId": "preview-token-composite-confirmation",
       "severity": "warn",
       "rule": "C2-wave-conflict",
-      "evidence": "Consecutive sorted orders 8.03 and 8.04 share tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs. Serialize any future explicitly authorized re-plan; terminal status is preserved."
+      "evidence": "Consecutive orders 8.03 and 8.04 share tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs; keep the pair serialized. Deferred predecessors retain their disposition; this is whole-graph scheduling evidence."
     },
     {
       "initiativeId": "preview-token-project-confirmation",
       "severity": "warn",
       "rule": "C2-wave-conflict",
-      "evidence": "Consecutive sorted orders 8.04 and 8.05 share tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs. Serialize any future explicitly authorized re-plan; terminal status is preserved."
+      "evidence": "Consecutive orders 8.04 and 8.05 share tests/RoslynMcp.Tests/PreviewTokenConsumedReasonTests.cs; keep the pair serialized. Deferred predecessors retain their disposition; this is whole-graph scheduling evidence."
     },
     {
       "initiativeId": "preview-diff-whitespace-omission",
       "severity": "warn",
       "rule": "C2-wave-conflict",
-      "evidence": "Consecutive sorted orders 25 and 26 share src/RoslynMcp.Roslyn/Helpers/DiffGenerator.cs, src/RoslynMcp.Roslyn/Helpers/SolutionDiffHelper.cs, src/RoslynMcp.Roslyn/Services/EditService.cs, src/RoslynMcp.Roslyn/Services/RefactoringService.cs, tests/RoslynMcp.Tests/DiffGeneratorTests.cs, tests/RoslynMcp.Tests/SolutionDiffHelperTests.cs. Serialize any future explicitly authorized re-plan; terminal status is preserved."
-    },
-    {
-      "initiativeId": "fork-composite-nonconsuming-snapshot",
-      "severity": "warn",
-      "rule": "hotspot",
-      "evidence": "Consecutive sorted orders 6 and 7.01 both touch addenda hotspots: README.md, src/RoslynMcp.Host.Stdio/README.md, src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.Orchestration.cs, src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.cs / src/RoslynMcp.Roslyn/ServiceCollectionExtensions.cs. These terminal holds are not current dispatches."
-    },
-    {
-      "initiativeId": "fork-preview-project-composite-replay",
-      "severity": "warn",
-      "rule": "hotspot",
-      "evidence": "Consecutive sorted orders 7.01 and 7.02 both touch addenda hotspots: src/RoslynMcp.Roslyn/ServiceCollectionExtensions.cs / README.md, src/RoslynMcp.Host.Stdio/README.md. These terminal holds are not current dispatches."
-    },
-    {
-      "initiativeId": "preview-token-lifecycle-evidence",
-      "severity": "warn",
-      "rule": "hotspot",
-      "evidence": "Consecutive sorted orders 7.02 and 8.01 both touch addenda hotspots: README.md, src/RoslynMcp.Host.Stdio/README.md / src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs. These terminal holds are not current dispatches."
+      "evidence": "Consecutive orders 25 and 26 share src/RoslynMcp.Roslyn/Helpers/DiffGenerator.cs, src/RoslynMcp.Roslyn/Helpers/SolutionDiffHelper.cs, src/RoslynMcp.Roslyn/Services/EditService.cs, src/RoslynMcp.Roslyn/Services/RefactoringService.cs, tests/RoslynMcp.Tests/DiffGeneratorTests.cs, tests/RoslynMcp.Tests/SolutionDiffHelperTests.cs; keep the pair serialized. Deferred predecessors retain their disposition; this is whole-graph scheduling evidence."
     },
     {
       "initiativeId": "workspace-lifecycle-argument-refusals-public-message",
       "severity": "info",
       "rule": "C2",
-      "evidence": "Whole-plan conflict degree 2 without heroic-last; scheduleHint is advisory. Status merged."
+      "evidence": "Whole-plan conflict degree 2; scheduleHint is not heroic-last. Rebuild includes terminal stanzas and excludes canonical shared paths."
     },
     {
       "initiativeId": "tool-refusal-public-message-guard",
       "severity": "info",
       "rule": "C2",
-      "evidence": "Whole-plan conflict degree 3 without heroic-last; scheduleHint is advisory. Status merged."
+      "evidence": "Whole-plan conflict degree 3; scheduleHint is not heroic-last. Rebuild includes terminal stanzas and excludes canonical shared paths."
     },
     {
       "initiativeId": "scaffold-batch-preview-apply-route",
       "severity": "info",
       "rule": "C2",
-      "evidence": "Whole-plan conflict degree 6 without heroic-last; scheduleHint is advisory. Status deferred."
-    },
-    {
-      "initiativeId": "fork-composite-nonconsuming-snapshot",
-      "severity": "info",
-      "rule": "C2",
-      "evidence": "Whole-plan conflict degree 3 without heroic-last; scheduleHint is advisory. Status deferred."
-    },
-    {
-      "initiativeId": "fork-preview-project-composite-replay",
-      "severity": "info",
-      "rule": "C2",
-      "evidence": "Whole-plan conflict degree 7 without heroic-last; scheduleHint is advisory. Status deferred."
-    },
-    {
-      "initiativeId": "preview-token-reason-projection",
-      "severity": "info",
-      "rule": "C2",
-      "evidence": "Whole-plan conflict degree 9 without heroic-last; scheduleHint is advisory. Status deferred."
-    },
-    {
-      "initiativeId": "preview-token-solution-confirmation",
-      "severity": "info",
-      "rule": "C2",
-      "evidence": "Whole-plan conflict degree 6 without heroic-last; scheduleHint is advisory. Status deferred."
-    },
-    {
-      "initiativeId": "preview-token-composite-confirmation",
-      "severity": "info",
-      "rule": "C2",
-      "evidence": "Whole-plan conflict degree 6 without heroic-last; scheduleHint is advisory. Status deferred."
-    },
-    {
-      "initiativeId": "preview-token-project-confirmation",
-      "severity": "info",
-      "rule": "C2",
-      "evidence": "Whole-plan conflict degree 5 without heroic-last; scheduleHint is advisory. Status deferred."
+      "evidence": "Whole-plan conflict degree 6; scheduleHint is not heroic-last. Rebuild includes terminal stanzas and excludes canonical shared paths."
     },
     {
       "initiativeId": "workspace-project-alias-lookup",
       "severity": "info",
       "rule": "C2",
-      "evidence": "Whole-plan conflict degree 2 without heroic-last; scheduleHint is advisory. Status in-progress."
+      "evidence": "Whole-plan conflict degree 2; scheduleHint is not heroic-last. Rebuild includes terminal stanzas and excludes canonical shared paths."
     },
     {
       "initiativeId": "restore-callers-missing-packages-path",
       "severity": "info",
       "rule": "C2",
-      "evidence": "Whole-plan conflict degree 4 without heroic-last; scheduleHint is advisory. Status pending."
+      "evidence": "Whole-plan conflict degree 4; scheduleHint is not heroic-last. Rebuild includes terminal stanzas and excludes canonical shared paths."
     },
     {
       "initiativeId": "change-signature-class-struct-primary-ctor-add-remove",
       "severity": "info",
       "rule": "C2",
-      "evidence": "Whole-plan conflict degree 2 without heroic-last; scheduleHint is advisory. Status pending."
+      "evidence": "Whole-plan conflict degree 2; scheduleHint is not heroic-last. Rebuild includes terminal stanzas and excludes canonical shared paths."
     },
     {
       "initiativeId": "workspace-close-global-build-server-shutdown",
       "severity": "info",
       "rule": "C2",
-      "evidence": "Whole-plan conflict degree 7 without heroic-last; scheduleHint is advisory. Status pending."
+      "evidence": "Whole-plan conflict degree 7; scheduleHint is not heroic-last. Rebuild includes terminal stanzas and excludes canonical shared paths."
     },
     {
       "initiativeId": "change-signature-service-refusals-public-message",
       "severity": "info",
       "rule": "C2",
-      "evidence": "Whole-plan conflict degree 5 without heroic-last; scheduleHint is advisory. Status pending."
+      "evidence": "Whole-plan conflict degree 5; scheduleHint is not heroic-last. Rebuild includes terminal stanzas and excludes canonical shared paths."
     },
     {
       "initiativeId": "cross-project-public-refusals-echo-input",
       "severity": "info",
       "rule": "C2",
-      "evidence": "Whole-plan conflict degree 4 without heroic-last; scheduleHint is advisory. Status pending."
+      "evidence": "Whole-plan conflict degree 4; scheduleHint is not heroic-last. Rebuild includes terminal stanzas and excludes canonical shared paths."
     },
     {
       "initiativeId": "preview-diff-whitespace-omission",
       "severity": "info",
       "rule": "C2",
-      "evidence": "Whole-plan conflict degree 3 without heroic-last; scheduleHint is advisory. Status pending."
+      "evidence": "Whole-plan conflict degree 3; scheduleHint is not heroic-last. Rebuild includes terminal stanzas and excludes canonical shared paths."
+    },
+    {
+      "initiativeId": "preview-token-reason-projection",
+      "severity": "info",
+      "rule": "C2",
+      "evidence": "Whole-plan conflict degree 9; scheduleHint is not heroic-last. Rebuild includes terminal stanzas and excludes canonical shared paths."
+    },
+    {
+      "initiativeId": "preview-token-solution-confirmation",
+      "severity": "info",
+      "rule": "C2",
+      "evidence": "Whole-plan conflict degree 6; scheduleHint is not heroic-last. Rebuild includes terminal stanzas and excludes canonical shared paths."
+    },
+    {
+      "initiativeId": "preview-token-composite-confirmation",
+      "severity": "info",
+      "rule": "C2",
+      "evidence": "Whole-plan conflict degree 6; scheduleHint is not heroic-last. Rebuild includes terminal stanzas and excludes canonical shared paths."
+    },
+    {
+      "initiativeId": "preview-token-project-confirmation",
+      "severity": "info",
+      "rule": "C2",
+      "evidence": "Whole-plan conflict degree 5; scheduleHint is not heroic-last. Rebuild includes terminal stanzas and excludes canonical shared paths."
+    },
+    {
+      "initiativeId": "fork-composite-nonconsuming-snapshot",
+      "severity": "info",
+      "rule": "C2",
+      "evidence": "Whole-plan conflict degree 3; scheduleHint is not heroic-last. Rebuild includes terminal stanzas and excludes canonical shared paths."
+    },
+    {
+      "initiativeId": "fork-preview-project-composite-replay",
+      "severity": "info",
+      "rule": "C2",
+      "evidence": "Whole-plan conflict degree 7; scheduleHint is not heroic-last. Rebuild includes terminal stanzas and excludes canonical shared paths."
     },
     {
       "initiativeId": "restore-callers-missing-packages-path",
       "severity": "info",
       "rule": "3",
-      "evidence": "Five production files form a verified defect-forced companion: TestRunnerService.cs:374 and WorkspaceForkApplyService.cs:531 omit recorded roots; WorkspaceTools.cs:702-712 drops default roots/case identity; RestoreStalenessDetector.cs:405-406 lacks root/project JSON guards. Shared planner plus all three runtime callers and parsing correction repair one restore-root mechanism."
+      "evidence": "Five-file defect-forced-companion holds: WorkspaceForkApplyService.cs:128-140 copies without obj before restore; WorkspaceTools.cs:702-712 drops null roots and uses ordinal-ignore-case identity; RestoreStalenessDetector.cs:405-406 accesses unguarded JSON shapes. Shared planner and all three callers form one complete restore mechanism."
+    },
+    {
+      "initiativeId": "fork-composite-nonconsuming-snapshot",
+      "severity": "warn",
+      "rule": "hotspot",
+      "evidence": "Consecutive orders 6/7.01 touch addenda hotspots: src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.cs, src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.Orchestration.cs, README.md, src/RoslynMcp.Host.Stdio/README.md / src/RoslynMcp.Roslyn/ServiceCollectionExtensions.cs. Both are deferred; keep one hotspot-touching initiative per future wave."
+    },
+    {
+      "initiativeId": "fork-preview-project-composite-replay",
+      "severity": "warn",
+      "rule": "hotspot",
+      "evidence": "Consecutive orders 7.01/7.02 touch addenda hotspots: src/RoslynMcp.Roslyn/ServiceCollectionExtensions.cs / README.md, src/RoslynMcp.Host.Stdio/README.md. Both are deferred; keep one hotspot-touching initiative per future wave."
+    },
+    {
+      "initiativeId": "preview-token-lifecycle-evidence",
+      "severity": "warn",
+      "rule": "hotspot",
+      "evidence": "Consecutive orders 7.02/8.01 touch addenda hotspots: README.md, src/RoslynMcp.Host.Stdio/README.md / src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs. Both are deferred; keep one hotspot-touching initiative per future wave."
+    },
+    {
+      "initiativeId": "fix-all-equivalence-key-unregistered-fallback",
+      "severity": "warn",
+      "rule": "C2-graph-disagreement",
+      "evidence": "Companion test adds Scope edges 6-12 and 8.01-12 on tests/RoslynMcp.Tests/PreviewRouteBindingFileOpsTests.cs, and adds that shared file to edge 12-25. Stored graph has 56 edges; reviewer rebuild has 58. Regenerate graph through sanctioned writer before execution scheduling.",
+      "introducedByRemediation": true
     },
     {
       "initiativeId": "fix-all-equivalence-key-unregistered-fallback",
       "severity": "info",
-      "rule": "anchor",
-      "evidence": "FixAllService.cs:203-212,270-342 and FixAllDiagnosticCollector.cs:25-37 confirm fabricated key, misleading total count and live-cache/incomplete-collection mechanisms. CompilationCache.cs:120-130 keys by live workspace version/project; candidate path must bypass it."
-    },
-    {
-      "initiativeId": "editorconfig-section-source-path-matching",
-      "severity": "info",
-      "rule": "anchor",
-      "evidence": "EditorConfigService.cs:140-216 confirms path-free extension-only reader; Evidence contains resolvable 13-red/12-green literals, measured baseline TP=10 FP=11 FN=2 TN=2 and decidable inputs."
-    },
-    {
-      "initiativeId": "logging-jsonl-drops-structured-state",
-      "severity": "info",
-      "rule": "anchor",
-      "evidence": "JsonLinesFileLoggerProvider.cs:77-86 drops EventId.Name/state; ServerObservability.cs:92-100 flattens exceptionTypes and omits correlation."
+      "rule": "C2",
+      "evidence": "Whole-plan conflict degree is now 3 after adding PreviewRouteBindingFileOpsTests.cs; scheduleHint is not heroic-last. Conflicts are with deferred orders 6, 8.01 and 25; preserve their holds."
     }
   ],
   "reviewCoverage": {
@@ -2693,8 +2731,8 @@
       "notice-verifier-scoped-test-inherits-nuget-packages": "e1ff8a04c6da28d98e04ffa92f6e4632bc2fa0d3806aca2f57e5c0486320ad35",
       "test-discovery-file-path-case-identity": "467bcd5b94094bc40107595fc9fe43725c98504d5fb0016d860db3dd95e21bf8",
       "workspace-project-alias-lookup": "23ca433d4565efda70d65fddf058331ccc1a139ea356db06fce4dbea59420ce4",
-      "fix-all-equivalence-key-unregistered-fallback": "107cc2cb31a0b88616a304033f2b3cc46ebc6e44afaad18b69a7756aed4a1e93",
-      "editorconfig-section-source-path-matching": "56bbce20febc10f9c2b59496955ae4c711e041c5b802fcef475b9d4075d4268f",
+      "fix-all-equivalence-key-unregistered-fallback": "f9022ed2a29c8a2f83bf2a1ec78fc4fb185c432d08c85b6db28ae108d3754108",
+      "editorconfig-section-source-path-matching": "455a00b8ff470ee417bab1ee5be2dcecd83f6f543ce17a66f61b144becab9fd9",
       "logging-jsonl-drops-structured-state": "fd3aef40e86b7820bb0d8c786d2534936d972b89ddedf7adf9b78b33b3ff579e",
       "restore-callers-missing-packages-path": "5e7bc589d2e8eac07e1489f9396e75b478a090c22112ceb9a4c3a1439c198521",
       "split-service-refuse-cross-partition-references": "3c92791380fba16b69f6a42f9157eeef8e87c8752b41aafba94da90c4478fa75",
@@ -2717,11 +2755,11 @@
       "fork-preview-project-composite-replay": "cd6c4c6aa3a52afdbbdf70820ab4f53e5735ca94771f2f2f2e30ad70e957f688"
     }
   },
-  "conflictGraphInputHash": "b71bad909e0e12d8540436cd51baadde08014a080c57424a57f7f4c0ed702eab",
-  "planHash": "2a1b875e17b2245f57d7d6d4fd430df9fec6f1b6f7f85e193edbbb94eadc0e05",
-  "backlogSnapshotHash": "59ddd068898f31b931bc689510dd8b23a5f086f69d5b9c09dc23af3a3fdc97e7",
-  "reviewedPlanHash": "2a1b875e17b2245f57d7d6d4fd430df9fec6f1b6f7f85e193edbbb94eadc0e05",
-  "reviewedBacklogSnapshotHash": "59ddd068898f31b931bc689510dd8b23a5f086f69d5b9c09dc23af3a3fdc97e7",
+  "conflictGraphInputHash": "c324f82fb4662bb387a7da49214153d6fbbf97c9b75fc92864846d9902272e57",
+  "planHash": "29b45d020271ebb03abcf0091c277a05690046af19bf79e17b2673373f05ba7d",
+  "backlogSnapshotHash": "b949d74130731e049124b9b12a215f6ad176f3f536810cdd4818ed061391b7b0",
+  "reviewedPlanHash": "29b45d020271ebb03abcf0091c277a05690046af19bf79e17b2673373f05ba7d",
+  "reviewedBacklogSnapshotHash": "b949d74130731e049124b9b12a215f6ad176f3f536810cdd4818ed061391b7b0",
   "backlogSketches": [
     {
       "n": 1,
@@ -2906,6 +2944,100 @@
         "kind": "row",
         "value": "test-fixture-cleanup-link-boundary",
         "at": "2026-10-10T05:41:46.802Z"
+      }
+    },
+    {
+      "n": 9,
+      "source": "executor",
+      "initiativeId": "fix-all-equivalence-key-unregistered-fallback",
+      "title": "BoundedStore capacity admission must be atomic and enforce the first max+1 insertion",
+      "suggestedPri": "Medium",
+      "amendRow": "bounded-store-capacity-atomic-insertion",
+      "anchors": [
+        "src/RoslynMcp.Core/Services/BoundedStore.cs:31",
+        "src/RoslynMcp.Core/Services/BoundedStore.cs:128"
+      ],
+      "acceptance": [
+        "Enforce configured capacity immediately after each insertion, including the first max+1 insertion and concurrent writers.",
+        "Preserve existing token and TTL behavior; verify the capacity boundary rather than only a later insertion."
+      ],
+      "evidence": "StoreEntry calls CleanExpired(); EvictIfOverLimit(); before _entries[token] = entry, while EvictIfOverLimit returns when _entries.Count <= _maxEntries. Parent owns the existing capacity row.",
+      "at": "2026-10-10T18:56:27.317Z",
+      "disposition": {
+        "kind": "row",
+        "value": "bounded-store-capacity-atomic-insertion",
+        "at": "2026-10-10T18:56:27.467Z"
+      }
+    },
+    {
+      "n": 10,
+      "source": "executor",
+      "initiativeId": "fix-all-equivalence-key-unregistered-fallback",
+      "title": "Re-derive registry and curated fallback rationale during code-fix decomposition",
+      "suggestedPri": "Low",
+      "amendRow": "refactoring-code-fix-preview-decomposition",
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/RefactoringService.cs:35",
+        "src/RoslynMcp.Roslyn/Services/RefactoringService.cs:677",
+        "src/RoslynMcp.Roslyn/Services/RefactoringService.cs:698",
+        "src/RoslynMcp.Roslyn/ServiceCollectionExtensions.cs:86",
+        "tests/RoslynMcp.Tests/TestInfrastructure/TestServiceContainer.cs:106"
+      ],
+      "acceptance": [
+        "During the existing decomposition, re-derive public constructor and registry fallback contracts against actual owned DI/test construction; correct the stale unit-test rationale.",
+        "Preserve genuine no-action curated fallback; any published constructor breaking change requires ADR and migration note."
+      ],
+      "evidence": "Public optional registry is supported; FirstProviderFor may produce no provider even with a non-null registry. Comment698-700 motivates fallback with callers not wiring registry, notably some unit tests, but owned production and test graphs resolve AddRoslynServices with registered registry. No test-exclusive runtime bug is proven; parent already appended the source-bound investigation note.",
+      "at": "2026-10-10T18:56:27.657Z",
+      "disposition": {
+        "kind": "row",
+        "value": "refactoring-code-fix-preview-decomposition",
+        "at": "2026-10-10T18:56:27.815Z"
+      }
+    },
+    {
+      "n": 11,
+      "source": "deepener",
+      "initiativeId": "editorconfig-section-source-path-matching",
+      "title": "Validate Editorconfig single-assignment serialization",
+      "suggestedPri": "Medium",
+      "amendRow": null,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/EditorConfigService.cs:350",
+        "src/RoslynMcp.Roslyn/Services/EditorConfigService.cs:483"
+      ],
+      "acceptance": [
+        "Validate one provider-valid assignment before writing; prove no-mutation refusal and public wire behavior."
+      ],
+      "evidence": "At a4a826dc only string.IsNullOrWhiteSpace(key) is validated; key.Trim()/value.Trim() are interpolated into one assignment without rejecting newline/key syntax. Source trace only, runtime proof owed.",
+      "at": "2026-10-10T19:34:26.080Z",
+      "disposition": {
+        "kind": "row",
+        "value": "editorconfig-option-assignment-grammar-validation",
+        "at": "2026-10-10T19:34:31.504Z"
+      }
+    },
+    {
+      "n": 12,
+      "source": "orchestrator",
+      "initiativeId": null,
+      "title": "Correct bounded-store capacity source anchors from sketch9",
+      "suggestedPri": "Medium",
+      "amendRow": "bounded-store-capacity-atomic-insertion",
+      "anchors": [
+        "src/RoslynMcp.Core/Services/BoundedStore.cs:26-33",
+        "src/RoslynMcp.Core/Services/BoundedStore.cs:109-121",
+        "tests/RoslynMcp.Tests/BoundedStoreEvictionTests.cs:15-28"
+      ],
+      "acceptance": [
+        "Use actual StoreEntry and eviction guard anchors; runtime race reproduction remains owed."
+      ],
+      "evidence": "At immutable a4a826dc and b6fea40 StoreEntry26-33 calls CleanExpired/EvictIfOverLimit before insertion; EvictIfOverLimit109-121 returns at Count<=maxEntries on111. Historical executor sketch9 anchor128 names an interface close, not eviction; superseded by this re-derivation and corrected row.",
+      "at": "2026-10-10T19:42:19.525Z",
+      "disposition": {
+        "kind": "row",
+        "value": "bounded-store-capacity-atomic-insertion",
+        "at": "2026-10-10T19:42:51.340Z"
       }
     }
   ]
