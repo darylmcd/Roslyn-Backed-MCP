@@ -74,17 +74,6 @@ internal sealed class JsonLinesFileLoggerProvider : ILoggerProvider, ISupportExt
         TState state,
         Func<TState, Exception?, string> formatter)
     {
-        var correlationId = FindCorrelationId(state);
-        var record = new JsonLinesLogRecord(
-            _utcNow().UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", CultureInfo.InvariantCulture),
-            level.ToString(),
-            category,
-            eventId.Id,
-            formatter(state, null),
-            correlationId);
-        var line = JsonSerializer.Serialize(record, _jsonOptions) + Environment.NewLine;
-        var lineByteCount = _utf8WithoutBom.GetByteCount(line);
-
         lock (_writeLock)
         {
             if (_disposed)
@@ -94,6 +83,13 @@ internal sealed class JsonLinesFileLoggerProvider : ILoggerProvider, ISupportExt
 
             try
             {
+                var fields = ProjectFields(state, formatter);
+                var correlationId = FindCorrelationId(IsFrameworkFormatter(formatter) ? state : default);
+                var record = new JsonLinesLogRecord(
+                    _utcNow().UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", CultureInfo.InvariantCulture),
+                    level.ToString(), category, eventId.Id, formatter(state, null), correlationId, eventId.Name, fields);
+                var line = JsonSerializer.Serialize(record, _jsonOptions) + Environment.NewLine;
+                var lineByteCount = _utf8WithoutBom.GetByteCount(line);
                 var directory = Path.GetDirectoryName(FilePath)
                     ?? throw new InvalidOperationException("The observability log path has no directory.");
                 Directory.CreateDirectory(directory);
@@ -106,6 +102,66 @@ internal sealed class JsonLinesFileLoggerProvider : ILoggerProvider, ISupportExt
             }
         }
     }
+
+    private static bool IsFrameworkTemplateState(object? state)
+    {
+        var type = state?.GetType();
+        return type?.Assembly == typeof(LoggerExtensions).Assembly &&
+            (type.FullName == "Microsoft.Extensions.Logging.FormattedLogValues" ||
+             type.FullName?.StartsWith("Microsoft.Extensions.Logging.LoggerMessage+LogValues", StringComparison.Ordinal) == true);
+    }
+
+    private static bool IsFrameworkFormatter<TState>(Func<TState, Exception?, string> formatter)
+    {
+        var type = formatter.Method.DeclaringType;
+        return type?.Assembly == typeof(LoggerExtensions).Assembly &&
+            (type == typeof(LoggerExtensions) ||
+             type.FullName?.StartsWith("Microsoft.Extensions.Logging.LoggerMessage+LogValues", StringComparison.Ordinal) == true);
+    }
+
+    private static Dictionary<string, object?> ProjectFields<TState>(
+        TState state,
+        Func<TState, Exception?, string> formatter)
+    {
+        var fields = new Dictionary<string, object?>(StringComparer.Ordinal);
+        if (!IsFrameworkTemplateState(state) || !IsFrameworkFormatter(formatter) ||
+            state is not IEnumerable<KeyValuePair<string, object?>> properties)
+        {
+            return fields;
+        }
+
+        foreach (var property in properties)
+        {
+            if (property.Key == "{OriginalFormat}")
+            {
+                continue;
+            }
+
+            var name = JsonNamingPolicy.CamelCase.ConvertName(property.Key);
+            var uniqueName = name;
+            for (var suffix = 2; fields.ContainsKey(uniqueName); suffix++)
+            {
+                uniqueName = name + "_" + suffix.ToString(CultureInfo.InvariantCulture);
+            }
+
+            fields.Add(uniqueName, ProjectValue(property.Value));
+        }
+
+        return fields;
+    }
+
+    private static object? ProjectValue(object? value) => value switch
+    {
+        null => null,
+        char character => character.ToString(),
+        _ when IsScalarValue(value) => value,
+        string[] strings => strings,
+        _ => value.GetType().FullName,
+    };
+
+    private static bool IsScalarValue(object? value) => value is
+        string or char or bool or byte or sbyte or short or ushort or int or uint or long or ulong
+            or float or double or decimal;
 
     private string? FindCorrelationId<TState>(TState state)
     {
@@ -127,7 +183,7 @@ internal sealed class JsonLinesFileLoggerProvider : ILoggerProvider, ISupportExt
 
     private static string? FindCorrelationIdInScope(object? scope)
     {
-        if (scope is not IEnumerable<KeyValuePair<string, object?>> properties)
+        if (!IsFrameworkTemplateState(scope) || scope is not IEnumerable<KeyValuePair<string, object?>> properties)
         {
             return null;
         }
@@ -135,7 +191,7 @@ internal sealed class JsonLinesFileLoggerProvider : ILoggerProvider, ISupportExt
         foreach (var property in properties)
         {
             if (string.Equals(property.Key, "CorrelationId", StringComparison.OrdinalIgnoreCase) &&
-                property.Value is not null)
+                IsScalarValue(property.Value))
             {
                 return Convert.ToString(property.Value, CultureInfo.InvariantCulture);
             }
@@ -214,5 +270,7 @@ internal sealed class JsonLinesFileLoggerProvider : ILoggerProvider, ISupportExt
         string Category,
         int EventId,
         string Message,
-        string? CorrelationId);
+        string? CorrelationId,
+        string? EventName,
+        Dictionary<string, object?> Fields);
 }
