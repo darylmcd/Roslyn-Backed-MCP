@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-10T17:55:59Z
+**updated_at:** 2026-10-10T18:18:12Z
 
 ## Agent contract
 
@@ -154,6 +154,7 @@
 | `test-discovery-direct-reference-failure-observability` | Medium | — | Observe incomplete semantic reference discovery without hiding failed sweeps behind fallback results. [type: bug] [source: discovery-path-identity-review-20261010] | S | items/test-discovery-direct-reference-failure-observability.md |
 | `test-discovery-cache-session-lifetime` | Medium | — | Release cached test-discovery results when workspace lifetime ends, including in-flight publication races. [type: bug] [source: discovery-path-identity-review-20261010] | M | items/test-discovery-cache-session-lifetime.md |
 | `workspace-project-index-session-lifetime` | Medium | — | **Release project indexes with workspace lifetime** — prevent closed sessions and concurrent lookups from retaining obsolete project snapshots. [type: bug] [source: workspace-project-alias-lookup] | S | items/workspace-project-index-session-lifetime.md |
+| `bounded-store-capacity-atomic-insertion` | Medium | — | **Enforce bounded-store capacity** - make eviction and insertion preserve the configured entry cap under serial and concurrent writes. [type: bug] [source: fix-all-equivalence-key-unregistered-fallback] | S | items/bounded-store-capacity-atomic-insertion.md |
 
 ## Low
 
