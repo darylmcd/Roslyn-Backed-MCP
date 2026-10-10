@@ -2994,6 +2994,28 @@
         "value": "refactoring-code-fix-preview-decomposition",
         "at": "2026-10-10T18:56:27.815Z"
       }
+    },
+    {
+      "n": 11,
+      "source": "deepener",
+      "initiativeId": "editorconfig-section-source-path-matching",
+      "title": "Validate Editorconfig single-assignment serialization",
+      "suggestedPri": "Medium",
+      "amendRow": null,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/EditorConfigService.cs:350",
+        "src/RoslynMcp.Roslyn/Services/EditorConfigService.cs:483"
+      ],
+      "acceptance": [
+        "Validate one provider-valid assignment before writing; prove no-mutation refusal and public wire behavior."
+      ],
+      "evidence": "At a4a826dc only string.IsNullOrWhiteSpace(key) is validated; key.Trim()/value.Trim() are interpolated into one assignment without rejecting newline/key syntax. Source trace only, runtime proof owed.",
+      "at": "2026-10-10T19:34:26.080Z",
+      "disposition": {
+        "kind": "row",
+        "value": "editorconfig-option-assignment-grammar-validation",
+        "at": "2026-10-10T19:34:31.504Z"
+      }
     }
   ]
 }
