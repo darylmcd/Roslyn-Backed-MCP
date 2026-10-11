@@ -4,6 +4,21 @@
 
 | Item | Current verified disposition |
 |---|---|
+| Delivered | Fix All source1775/admin1776 and logging source1777/admin1778 merged and reconciled; exact-main backstops succeeded. Primary337fc2cde10eca3f591cc016c146dee7b893e26a clean. Scratch quarantines remain; cleanup incomplete. |
+| Active | PR1779 remains on intermediate03d4af4b27af9ff9fb5bc1b871ebc2dd203ea6ba. Same executor fix1 active; no final envelope, corrected-head cold1, landing or teardown. |
+| Actual validation | Corrected-source scoped287pass12m01 plus actual exception/ratchet94pass26s; format0 and MCP6/6 compile0errors0warnings, own workspace closed explicitly drainProcessesfalse. Full7f0787ea8a98dd15 passed c19568e16cfea372ea70c0aa0141ea9258aacaa6 at05:02:28.815Z:4369pass/0fail/19platformskip/4388total20m40; build/publish/hash/audit clean. Root read whole raw receipts/logs and parsedTRX. All24 captured full-run identities absent/rootedrunners[] at05:03:54.6512191Z. Existing release-fragment age warnings persist. |
+| Current causal hold | Added Activator controls on unchanged productionC195 proved5modified-runtime failures: expected7\|0, actual7\|7, across generic/factory/type/nonpublic/empty-arguments forms. Same executor repairs explicit-constructor default-construction behavior. Full7f is intermediate; corrected scoped/fresh full/new committed head/cold1 owed. No own defect deferred. |
+| Editorconfig | Existing-assignment matching-section policy approved and recorded through sanctioned item note/native annotation at810413084bda682a755e305f0034f8b5881e86d7. New-key placement and global-config write semantics remain separate pending decisions. Row stays deferred; complete scope re-admission after active source delivery, without rotating its gate epoch mid-run. |
+| Accounting | 30 initiatives:8pending/1in-review/7merged/1obsolete/13deferred, completedfalse;10distinct initial starts used. All25 sketches disposed. Eight eligible cap-held rows stay pending; genuine holds stay deferred. |
+| Global ownership | Evidence-only PRs768-771,773,774 filed and attached; implementation belongs to other agent. Installed a8b1b0a7 sanctioned stanza-read succeeded on actual primary stanza; all30 reviewed-stamp checks passed without writes. |
+| Next | Complete same fix1, corrected scoped/fresh exact-tree full proof and final result; cold1 with previous dispositions; corrected-head hosted READY; safe owned teardown/pinned land; exact-main backstop and cold administrative reconciliation. Checkpoint/push/disarm at10-start cap; retain source-only branches and truthful holds. |
+
+All evidence tables below are historical snapshots. This status table and native state govern current actions.
+
+## Earlier checkpoint evidence through 2026-10-11T05:07Z
+
+| Item | Current verified disposition |
+|---|---|
 | Reconciled | Fix All source1775/admin1776 and logging source1777/admin1778 merged; exact-main backstops succeeded; primary337fc2cde10eca3f591cc016c146dee7b893e26a clean. Scratch quarantines remain, cleanup incomplete. |
 | Active source | PR1779 pushed03d4af4b27af9ff9fb5bc1b871ebc2dd203ea6ba/treeaae10f64c89defb7c5d436181ca1c11ad1574036; cold0 fail3/native held work-failure. Same executor fix1 active; final envelope/cold1 held for own last-struct-parameter declaration correction, no replacement or additional initiative. |
 | Latest validation | Fix1 consolidated204pass/0fail/0skip,4m44; format0 and Roslyn6-project compile clean. Full32adfe626e44aa08 passed4285/0fail/19platformskip at2026-10-11T01:02:24.165Z on tree64b1b631561bce8e7341e3af7f2245e68f267716; publish/hash/audit clean, producer46668 and26recorded owned test processes reaped. This is intermediate: queued alias-shadow controls subsequently proved4fail22pass (three nearer using-alias CS0431, one unnecessarily aliased globally available type CS0234). Same executor repairs shared renderer; fresh consolidated/full/new committed head/cold1 required. No own defect deferred. |
@@ -21,8 +36,6 @@
 | Frozen full in progress | Source stage c19568e16cfea372ea70c0aa0141ea9258aacaa6, exact overall5production/2tests/1fragment; final formatting0, own MCP6/6 compile0errors0warnings and closed explicitly drainProcessesfalse. Scoped session62228 reaping exit0/live[]/rootedrunners[] at04:38:25.4344833Z. Full producer46952/run7f0787ea8a98dd15 launchedAfter1791693648696 at04:40:49.052Z; native statusrunning/exit3, Release build0warnings0errors, full tests active. Source/index frozen; no terminal test/publish/audit result. |
 | Remaining constructor audit | Same executor identified possible Activator.CreateInstance behavior change from the newly explicit last-parameter struct constructor. This is an unproven mechanism concern, not a reproduced defect or admitted separate initiative. Keep current full tree frozen until terminal/reaped, then original/candidate runtime control; if causal, complete same-PR correction and fresh full proof before final envelope/cold1/landing. No valid-case broad reflection ban or own-defect deferral authorized. |
 | Full7f terminal and new causal hold | Full7f0787ea8a98dd15 passed exact c19568e16cfea372ea70c0aa0141ea9258aacaa6 at05:02:28.815Z:4369pass/0fail/19platformskip/4388total/tests20m40; build0warnings0errors/publish/hash/audit clean. Root read whole raw log/receipt/terminal/reaping and parsedTRX;24captured identities absent/rootedrunners[]/producerterminal0 at05:03:54.6512191Z. Existing release-fragment age warnings remain distinct from compiler warnings. This proof is intermediate: Activator controls on unchanged production SHA b6dc5f4a39cbb67206d3a5543f3f73443142e66c4ad2e06956303b3eaf104f7c proved5actual modified-runtime failures, expected7\|0 actual7\|7, for generic/factory/type/nonpublic/empty-arguments forms. Same executor repairs newly explicit-constructor default-construction mechanism; fresh scoped/full/new committed head/cold1 owed. No own defect deferred; prior audit concern is now established. |
-
-All evidence tables below are historical snapshots. This status table and native state govern current actions.
 
 ## Reconciliation and admission evidence history 2026-10-10
 
