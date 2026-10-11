@@ -97,3 +97,16 @@ All three operator policy choices are answered. Earlier unanswered-policy statem
 | Sequencing | Active constructor validation epoch remains intact. Native replan and fresh cold review occur only after that lifecycle settles. Ten initial starts used; editorconfig implementation remains unstarted. |
 
 Earlier claims that the original three policy answers were pending are historical. The newly derived global new-key placement is a distinct decision, not a revocation of global write support.
+
+## Operator decision — new keys in global configs
+
+| Decision | Recorded instruction |
+|---|---|
+| Approved | Insert a global preamble default before existing named sections. It applies to all project sources; later exact-source sections retain precedence. |
+| Live answer | `Global preamble default (recommended)` to the separate global-placement question. |
+| Ordinary config | Preserve the approved canonical C# default section before existing sections. |
+| Existing assignments | Preserve the approved update of every applicable existing matching assignment; retain other-only assignments and disclose shared effects. |
+| Ownership | Keep writes within the selected config; no silent edits of other configs or global_level escalation. Complete original-provider final-effective-value proof and specific atomic refusal of genuinely unrepresentable external precedence remain required. |
+| Remaining work | Final source-only scope/estimate re-vet with Root metadata separated from executor files; then native replan, actual admission and fresh cold review after the active constructor lifecycle settles. No implementation or admission granted by this note. |
+
+All current operator policy questions are answered. Earlier global-placement pending statements are historical and superseded.
