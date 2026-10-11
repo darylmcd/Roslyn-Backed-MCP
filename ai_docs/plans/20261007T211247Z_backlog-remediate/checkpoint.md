@@ -1,6 +1,6 @@
 # Planning checkpoint — 20261007T211247Z_backlog-remediate
 
-## Current execution status 2026-10-11T04:38Z
+## Current execution status 2026-10-11T04:49Z
 
 | Item | Current verified disposition |
 |---|---|
@@ -18,6 +18,8 @@
 | Editorconfig operator decision | Existing-assignment policy approved: update applicable broad C# defaults and later overrides matching requested source; preserve other-only overrides. Sanctioned item note and native annotation pushed810413084bda682a755e305f0034f8b5881e86d7. New-key placement and selected global-config write semantics remain separate pending decisions. Complete scope re-admission is deferred until active primary delivery settles; do not rotate plan-wide gate epoch while its source proof is active. |
 | Consolidated corrected source | Native scoped session62228 terminated0:287pass/0fail/0skip12m01; actual PublicException/InvalidOperationConstructionRatchet follow-on94pass26s. Root read both complete logs. Intermediate helper metadata13pass, ownership3pass, expression-hosts18pass, parameter-kind7pass. Prior checked-expression replay1fail/3controls is a valid-request binding/conversion refusal, not an accepted runtime regression; finally-restored SHA matches. Attribute fixture NRE was invalid original short-name binding, corrected original/candidate metadata controls pass; no attribute defect established. Owned process reaping, MCP compile/closefalse, frozen fresh full, final pushed head and cold1 remain owed. |
 | Installed reader | Other agent's global tooling HEADa8b1b0a72807a166f890a0df95d7731bcbfb9aba provides stanza-read; Root verified live full bounded primary stanza read0. Native reviewed-stamp checks all30 pass, no writes. No global implementation by Root. |
+| Frozen full in progress | Source stage c19568e16cfea372ea70c0aa0141ea9258aacaa6, exact overall5production/2tests/1fragment; final formatting0, own MCP6/6 compile0errors0warnings and closed explicitly drainProcessesfalse. Scoped session62228 reaping exit0/live[]/rootedrunners[] at04:38:25.4344833Z. Full producer46952/run7f0787ea8a98dd15 launchedAfter1791693648696 at04:40:49.052Z; native statusrunning/exit3, Release build0warnings0errors, full tests active. Source/index frozen; no terminal test/publish/audit result. |
+| Remaining constructor audit | Same executor identified possible Activator.CreateInstance behavior change from the newly explicit last-parameter struct constructor. This is an unproven mechanism concern, not a reproduced defect or admitted separate initiative. Keep current full tree frozen until terminal/reaped, then original/candidate runtime control; if causal, complete same-PR correction and fresh full proof before final envelope/cold1/landing. No valid-case broad reflection ban or own-defect deferral authorized. |
 
 All evidence tables below are historical snapshots. This status table and native state govern current actions.
 
