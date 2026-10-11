@@ -1,6 +1,6 @@
 # Planning checkpoint — 20261007T211247Z_backlog-remediate
 
-## Current execution status 2026-10-11T03:18Z
+## Current execution status 2026-10-11T04:09Z
 
 | Item | Current verified disposition |
 |---|---|
@@ -14,6 +14,8 @@
 | Latest own-branch correction | Unchanged03d4 metadata causal3fail: two CS8983 and lost constructor attribute runtime1\|7→0\|7. Expanded controls exposed semicolon grammar, constrained generic construction and initializer effects; same executor corrections remain active. Root read generic green4 terminal3pass and initializer green terminal14pass, preserving runtime/nullability/conversion/other-instantiation/allocation controls. Nested/collection/expression-tree adapter checks, consolidated/full/final head/cold1 remain owed. No own defect deferred. |
 | Intermediate hosted proof | Head03d4 hosted CI aggregate38104316131 SUCCESS at2026-10-11T02:31:39Z; all nonallowlisted checks SUCCESS. Read-only native watch37188 READY/exit0 and reaped; result is intermediate only, not corrected-head landing approval. |
 | Current validation hold | Context20pass and hosts27pass precede consolidated3fail/242pass/245total5m40: two real nested brace-comment losses and one original escaped-namespace fixture grammar error. Client transport timeout is not a test verdict; all four owned processes reaped at03:16:42.9703866Z. Focused index/argument-host2fail proves duplicated nested-index annotation/evaluation and representable invocation collection refusal. Same executor fixes own adapter defects; fresh consolidation/full/head/cold1 owed. |
+| Latest targeted correction | Same executor fix1 remains active. Original negated loop lowering replay proved3causal failures CS0023 for custom truth values without operator !; finally-restored SHA matched. Subsequent custom-helper revision failed6/passed18/24total due serialized elsebreak CS0103. Corrected custom-helper-green2 passed24/0fail/0skip1m25; Root read full terminal log. Moved constructor-attribute binding/caller-line audit remains unproven and queued; fresh consolidation/full/new head/cold1 still owed. No own defect deferred. |
+| Editorconfig operator decision | Existing-assignment policy approved: update applicable broad C# defaults and later overrides matching requested source; preserve other-only overrides. Sanctioned item note and native annotation pushed810413084bda682a755e305f0034f8b5881e86d7. New-key placement and selected global-config write semantics remain separate pending decisions. Complete scope re-admission is deferred until active primary delivery settles; do not rotate plan-wide gate epoch while its source proof is active. |
 
 All evidence tables below are historical snapshots. This status table and native state govern current actions.
 
