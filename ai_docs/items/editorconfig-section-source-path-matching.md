@@ -80,3 +80,20 @@ The earlier matching-assignment question is answered. Do not infer approval of n
 | Current sequencing | Record all three approvals now. Wait for active constructor validation/delivery to settle before plan-wide replan epoch changes. Ten initial starts used; implementation remains unstarted for this run. |
 
 All three operator policy choices are answered. Earlier unanswered-policy statements are historical and superseded by this table.
+
+## Approved global design — source-only re-vet checkpoint
+
+| Field | Evidence / pending work |
+|---|---|
+| Artifact | `C:/Users/daryl/.codex/scratch/roslyn-20261009-resume/editorconfig-approved-global-design.result`; Root read all20780 bytes, parsed exact result sentinel/JSON; proposed stanza4930 UTF-8 bytes. |
+| Provenance | Parent44a941c91a27a0265b48a91a5a465e90df8fd31a; editorconfig source/tests unchanged from337fc2cde10eca3f591cc016c146dee7b893e26a. Independent deepener used live read-side MCP and closed only its own workspace with drainProcessesfalse. No fresh tests/builds/corpus measurements. |
+| Existing approvals | Applicable existing matching assignments, ordinary new-key C# default before existing sections, and complete selected-global write support remain approved. |
+| Newly derived global placement | Pinned Roslyn5.9 provider accepts only absolute named global sections; glob sections are invalid. New global key needs a separate choice: global preamble default affects all project sources, or exact requested-source section affects one source. Root asked asynchronously; answer pending. Ordinary C# default approval is unchanged. |
+| Provider source | `https://github.com/dotnet/roslyn/blob/35d9211b841e7613c1d2f8f5af6d628ace696c4c/src/Compilers/Core/Portable/CommandLine/AnalyzerConfigSet.cs`:444-460 validity; :165-176 exact path matching; :510-566 global-level conflicts. Root independently read the pinned source. |
+| Complete behavior | Public-provider full-file provenance and original-key final-value proof; preserve original byte spans/encoding/EOL/EOF/undo; update applicable existing assignments; never silently edit another config or change global_level to defeat external precedence. Specific unrepresentable conflicts must refuse atomically, without blanket global refusal. Preserve literal34-case reader corpus and full writer/input-validation/dual-wire-era obligations. |
+| Scope ownership correction | Source result includes Root-owned metadata among proposed file arrays; this grants no executor write permission. Actual proposed executor: five code files, two test files, four ADR/index/product-contract/fragment docs. Root owns item/corpus/policy-supersession/stanza updates before admission and backlog closure/deletion during reconciliation. Separate these before native application/cold review. |
+| Comment clarification | Proposed helper-comment repairs refer to scoped EditorConfigService comments. Independent stale SourceFileEncoding comment is tracked separately as sourcefileencoding-editorconfig-transaction-comment; it is not an unlisted executor edit. |
+| Estimate / admission | Conservative complete source-derived estimate90000, above installed Rule5 marker80000. No native90000 execution admission attempt, no replan and no expanded scope approval yet. Re-vet estimate/files after global-placement answer; retain honest full scope and tracked remainder. |
+| Sequencing | Active constructor validation epoch remains intact. Native replan and fresh cold review occur only after that lifecycle settles. Ten initial starts used; editorconfig implementation remains unstarted. |
+
+Earlier claims that the original three policy answers were pending are historical. The newly derived global new-key placement is a distinct decision, not a revocation of global write support.

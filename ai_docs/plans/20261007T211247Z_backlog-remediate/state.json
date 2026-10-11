@@ -636,7 +636,7 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": "All three operator choices approved: applicable broad C# defaults and source-matching existing overrides (shared impact accepted), new-key canonical C# default before existing sections preserving later overrides, and complete global writes with re-vetted design. Preserve original34-case reader corpus and full byte/encoding/undo/effective-value obligations. Reader-only40000 scope is incomplete; provisional source-only70000 proposal did not cover global semantics and grants no admission. Native complete replan/estimate/public rationale/migration/fresh cold review owed after active constructor validation/delivery settles; avoid rotating its plan-wide epoch mid-run. No implementation start; ten-start cap is distinct from tooling holds. Earlier unanswered-policy notes superseded.",
+      "notes": "Three policies approved: all applicable existing assignments/shared impact, ordinary new-key C# default before existing sections, and complete global writes. Source-only re-vet result(editorconfig-approved-global-design.result,whole-read20780B,stanza4930B) proposes90000 above80000 marker; no native90000 refusal/admission/replan occurred. Pinned global provider requires absolute named sections, so global NEW-key domain is a newly derived pending choice: project-wide preamble default(recommended) or exact requested-source section. Root asked asynchronously; ordinary choice unaffected. Before application separate Root metadata from actual proposed executor5code/2tests/4docs, preserve34-case corpus/full byte/provenance/final-effective-value/dual-wire obligations and specific atomic external-precedence refusals without blanket global ban. Independent helper stale-comment row filed. Active constructor epoch unchanged; replan/cold review after lifecycle settles; implementation unstarted, ten-start cap distinct from global holds.",
       "fileSetHash": "5d41bd7b55c218330bfe9ce7adf84c5f8d9aab9401d2292fe641e9d5c87d81dd",
       "stanzaHash": "455a00b8ff470ee417bab1ee5be2dcecd83f6f543ce17a66f61b144becab9fd9",
       "reviewedStanzaHash": "455a00b8ff470ee417bab1ee5be2dcecd83f6f543ce17a66f61b144becab9fd9",
@@ -2946,6 +2946,29 @@
         "kind": "row",
         "value": "script-bridge-long-run-result-recovery",
         "at": "2026-10-11T03:17:56.908Z"
+      }
+    },
+    {
+      "n": 26,
+      "source": "deepener",
+      "initiativeId": "editorconfig-section-source-path-matching",
+      "title": "Correct stale SourceFileEncoding editorconfig write-path commentary",
+      "suggestedPri": "Low",
+      "amendRow": null,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Helpers/SourceFileEncoding.cs:13",
+        "src/RoslynMcp.Roslyn/Services/EditorConfigService.cs:397-406"
+      ],
+      "acceptance": [
+        "Describe current memory-buffer rendering and owned transaction.WriteBytes publication, preserving accurate encoding/extraction history.",
+        "Resolve the documented call chain against current source without runtime changes or conflating the separate Core relocation mechanism."
+      ],
+      "evidence": "SourceFileEncoding.cs:13 says EditorConfigService writes via File.WriteAllLines(string, IEnumerable{string}, Encoding); current EditorConfigService.cs:397-406 renders through StreamWriter and calls transaction.WriteBytes(writtenBytes). Independent pre-existing stale-comment debt, source-traced only.",
+      "at": "2026-10-11T15:41:13.571Z",
+      "disposition": {
+        "kind": "row",
+        "value": "sourcefileencoding-editorconfig-transaction-comment",
+        "at": "2026-10-11T15:41:21.294Z"
       }
     }
   ]

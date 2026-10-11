@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-11T15:24:57Z
+**updated_at:** 2026-10-11T15:43:02Z
 
 ## Agent contract
 
@@ -402,6 +402,7 @@
 | `file-operation-preview-state-assertion-contract` | Low | — | Assert preview refusal behavior without reflecting private store representation; update every consumer. [type: test-refactor] [source: token-lifecycle-independence-revet] | S | items/file-operation-preview-state-assertion-contract.md |
 | `extraction-route-binding-test-fake-reuse` | Low | — | Share duplicated extraction/dispatch route test fakes through one internal fixture while preserving explicit variants and isolation. [type: test-refactor] [source: extraction-trivia-blast-radius-revet] | S | items/extraction-route-binding-test-fake-reuse.md |
 | `test-run-worktree-package-isolation` | Low | — | **Support isolated package roots for MCP test execution** — carry safe per-worktree NuGet package-root authority into test subprocesses without server-global environment mutation. [type: feature] [source: primary-constructor executor environment boundary 2026-10-10] | L | items/test-run-worktree-package-isolation.md |
+| `sourcefileencoding-editorconfig-transaction-comment` | Low | — | Correct SourceFileEncoding commentary that still describes the editorconfig writer as File.WriteAllLines; cite its current byte-rendering and owned transaction path. [type: docs] [source: editorconfig global design re-vet] | M | items/sourcefileencoding-editorconfig-transaction-comment.md |
 
 ## Defer
 
