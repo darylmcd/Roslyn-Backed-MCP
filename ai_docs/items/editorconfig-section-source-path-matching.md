@@ -67,3 +67,16 @@ Official implementation inspected: https://raw.githubusercontent.com/dotnet/rosl
 | Run boundary | Ten distinct initial starts already used; do not disguise cap-held work as a global dependency. |
 
 The earlier matching-assignment question is answered. Do not infer approval of new-key placement or global refusal from that answer.
+
+## Operator policy decisions — superseding the unanswered-policy checkpoint
+
+| Policy | Approved instruction |
+|---|---|
+| Existing assignments | Update applicable broad C# defaults and all later overrides matching the requested source; preserve other-only assignments. Shared-section impact, public rationale and migration note remain approved. |
+| New key without applicable assignment | Insert the canonical C# default before existing sections, preserving later overrides. Live answer: `Insert the default before existing sections (recommended)`. |
+| Selected global config | Support global writes with a re-vetted design. Live answer: `Support global writes with a re-vetted design (recommended)`. Do not substitute blanket prewrite refusal. |
+| Re-vet required | Derive global provider precedence, domain selection, applicable assignments and new-key placement from actual public-provider behavior. Preserve full config, original bytes/encoding/undo, and final effective-value proof. Retain the original34-case reader corpus and all writer regression obligations. |
+| Admission | Original reader-only40000 scope is incomplete; source-only70000 proposal did not cover approved global semantics. Re-derive complete files, estimate, ADR/migration and companion-row dispositions; use native replan and fresh cold review. No expanded admission or implementation claim. |
+| Current sequencing | Record all three approvals now. Wait for active constructor validation/delivery to settle before plan-wide replan epoch changes. Ten initial starts used; implementation remains unstarted for this run. |
+
+All three operator policy choices are answered. Earlier unanswered-policy statements are historical and superseded by this table.
