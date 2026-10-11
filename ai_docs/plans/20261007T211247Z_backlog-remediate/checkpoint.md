@@ -1,6 +1,19 @@
 # Planning checkpoint — 20261007T211247Z_backlog-remediate
 
-## Latest reconciliation and admission 2026-10-10
+## Current execution status 2026-10-11T00:02Z
+
+| Item | Current verified disposition |
+|---|---|
+| Reconciled | Fix All source1775/admin1776 and logging source1777/admin1778 merged; exact-main backstops succeeded; primary337fc2cde10eca3f591cc016c146dee7b893e26a clean. Scratch quarantines remain, cleanup incomplete. |
+| Active source | PR1779 at99775703a2fd46eb35b5fc80d2fcfbc1a6f67936; cold0 fail3/native held work-failure. Same executor fix1 active on existing branch/WT, no replacement or additional initiative. |
+| Latest validation | Reviewed head full b4e7fe273d889a37 passed4247/0fail/19skip; that proof will not approve corrected source. Fix1 causal9fail1pass on unchanged reviewed production; targeted old-GetArguments replay6fail0pass/restored byte-exact; corrected expanded17pass0fail0skip. Consolidated/new full/new head/cold1 still pending. |
+| Plan accounting | 30 initiatives:8pending/1in-review/7merged/1obsolete/13deferred, completedfalse;10distinct initial starts used. All24 sketches disposed. Eight eligible cap-held rows remain pending; genuine global/operator holds stay deferred. |
+| Global filing | Evidence-only PRs768-771 and773, attached; global implementation belongs to other agent. No global source remediation, bypass or false execution admission. |
+| Next | Finish fix1, scoped/fresh exact-tree full proof, cold cycle1 with all previous dispositions, exact-head hosted READY, safe owned teardown/pinned source land, one exact-main backstop and cold administrative reconciliation. Then checkpoint/push/disarm at10-start cap. |
+
+All evidence tables below are historical snapshots. This status table and native state govern current actions.
+
+## Reconciliation and admission evidence history 2026-10-10
 
 | Item | Current evidence / obligation |
 |---|---|
