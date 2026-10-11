@@ -2970,6 +2970,29 @@
         "value": "sourcefileencoding-editorconfig-transaction-comment",
         "at": "2026-10-11T15:41:21.294Z"
       }
+    },
+    {
+      "n": 27,
+      "source": "orchestrator",
+      "initiativeId": null,
+      "title": "Persist portable sketch evidence and migrate recorded profile paths",
+      "suggestedPri": "Medium",
+      "amendRow": "plan-sketch-evidence-path-portability",
+      "anchors": [
+        "~/.claude/scripts/_bsweep-sketch.mjs:56",
+        "~/.claude/scripts/_bsweep-plan-metadata.mjs:160",
+        "~/.claude/scripts/_bsweep-status.mjs"
+      ],
+      "acceptance": [
+        "Normalize profile-specific sketch anchors and provide audited correction for existing disposed sketches, preserving identity, source, sequence, timestamps and disposition without hand edits or public-gate suppression."
+      ],
+      "evidence": "Current parent verify-ai-docs exits1 after editorconfig artifact pointers were corrected: state.json sketches21/25 retain four profile-prefixed global anchors. Current globalee8531f7 sketch-add stores supplied strings, sketch-dispose cannot change them, normalize-evidence-paths excludes sketches. Filed evidence-only global PR785 through backlog.mjs --via-worktree; global implementation belongs to other agent. Administrative gate remains red; constructor semantic repair remains independently active.",
+      "at": "2026-10-11T17:07:18.981Z",
+      "disposition": {
+        "kind": "row",
+        "value": "plan-sketch-evidence-path-portability",
+        "at": "2026-10-11T17:07:26.700Z"
+      }
     }
   ]
 }

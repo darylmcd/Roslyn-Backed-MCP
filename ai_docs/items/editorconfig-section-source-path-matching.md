@@ -85,7 +85,7 @@ All three operator policy choices are answered. Earlier unanswered-policy statem
 
 | Field | Evidence / pending work |
 |---|---|
-| Artifact | `C:/Users/daryl/.codex/scratch/roslyn-20261009-resume/editorconfig-approved-global-design.result`; Root read all20780 bytes, parsed exact result sentinel/JSON; proposed stanza4930 UTF-8 bytes. |
+| Artifact | `<user-profile>/.codex/scratch/roslyn-20261009-resume/editorconfig-approved-global-design.result`; Root read all20780 bytes, parsed exact result sentinel/JSON; proposed stanza4930 UTF-8 bytes. |
 | Provenance | Parent44a941c91a27a0265b48a91a5a465e90df8fd31a; editorconfig source/tests unchanged from337fc2cde10eca3f591cc016c146dee7b893e26a. Independent deepener used live read-side MCP and closed only its own workspace with drainProcessesfalse. No fresh tests/builds/corpus measurements. |
 | Existing approvals | Applicable existing matching assignments, ordinary new-key C# default before existing sections, and complete selected-global write support remain approved. |
 | Newly derived global placement | Pinned Roslyn5.9 provider accepts only absolute named global sections; glob sections are invalid. New global key needs a separate choice: global preamble default affects all project sources, or exact requested-source section affects one source. Root asked asynchronously; answer pending. Ordinary C# default approval is unchanged. |
@@ -115,7 +115,7 @@ All current operator policy questions are answered. Earlier global-placement pen
 
 | Field | Recorded disposition |
 |---|---|
-| Source-only artifact | C:/Users/daryl/.codex/scratch/roslyn-20261009-resume/editorconfig-approved-global-final-design.result;22582bytes;SHA2568d03a529edac5bc317c771a096a46f68b0da15266d87359bda894de8e39f76aa. Root read whole artifact and parsed sentinel/JSON. |
+| Source-only artifact | <user-profile>/.codex/scratch/roslyn-20261009-resume/editorconfig-approved-global-final-design.result;22582bytes;SHA2568d03a529edac5bc317c771a096a46f68b0da15266d87359bda894de8e39f76aa. Root read whole artifact and parsed sentinel/JSON. |
 | Proposed executor scope | 5code/2tests/4docs; fanout5; complete estimate90000. Root metadata stays outside executor arrays. Proposed stanza5034UTF8 bytes. |
 | Policies | Every current policy choice approved, including global new-key project-wide preamble before named sections; ordinary C# default-before-sections unchanged. |
 | Admission | No native90000 attempt/replan/cold approval/implementation. Preserve active constructor epoch; apply only after its lifecycle settles with native approval/history handling and fresh cold review. Do not lower estimate, omit global/input-validation/byte/undo obligations or claim historical corpus measurements fresh. |
