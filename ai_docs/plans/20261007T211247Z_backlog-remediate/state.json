@@ -2926,6 +2926,27 @@
         "value": "test-run-service-refusals-public-message",
         "at": "2026-10-10T23:51:28.168Z"
       }
+    },
+    {
+      "n": 25,
+      "source": "orchestrator",
+      "initiativeId": "change-signature-class-struct-primary-ctor-add-remove",
+      "title": "Preserve long script results across shorter client deadlines",
+      "suggestedPri": "Medium",
+      "amendRow": "script-bridge-long-run-result-recovery",
+      "anchors": [
+        "C:/Users/daryl/.claude/mcp-servers/script-bridge/server.mjs:529"
+      ],
+      "acceptance": [
+        "Recover owned run identity, eventual exit/output and cancellation across a shorter client request deadline; preserve short-call behavior."
+      ],
+      "evidence": "Global server.mjs:529 `result = await runScript(args);`; current scoped request600000ms received `timed out awaiting tools/call after 300s` while owned processes remained live. Actual terminal3fail242pass245total5m40 and four-process reaping retained at fix1-scoped-transport-provenance.json. Evidence-only global PR774 amends the existing row.",
+      "at": "2026-10-11T03:17:53.168Z",
+      "disposition": {
+        "kind": "row",
+        "value": "script-bridge-long-run-result-recovery",
+        "at": "2026-10-11T03:17:56.908Z"
+      }
     }
   ]
 }
