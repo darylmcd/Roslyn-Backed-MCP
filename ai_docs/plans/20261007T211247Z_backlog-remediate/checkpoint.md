@@ -1,12 +1,12 @@
 # Planning checkpoint — 20261007T211247Z_backlog-remediate
 
-## Current execution status 2026-10-11T00:46Z
+## Current execution status 2026-10-11T01:06Z
 
 | Item | Current verified disposition |
 |---|---|
 | Reconciled | Fix All source1775/admin1776 and logging source1777/admin1778 merged; exact-main backstops succeeded; primary337fc2cde10eca3f591cc016c146dee7b893e26a clean. Scratch quarantines remain, cleanup incomplete. |
 | Active source | PR1779 at99775703a2fd46eb35b5fc80d2fcfbc1a6f67936; cold0 fail3/native held work-failure. Same executor fix1 active on existing branch/WT, no replacement or additional initiative. |
-| Latest validation | Fix1 consolidated204pass/0fail/0skip,4m44; format0 and Roslyn6-project compile clean. Red-first initializer/generic, assembly-alias, missing-directive and same-scope alias-shadow regressions retained; value-type annotation mismatch normalized without dropping assembly identity. Fresh full producer launched1791679577159/PID46668 on frozen staged tree64b1b631561bce8e7341e3af7f2245e68f267716; terminal/full receipt/new committed head/cold1 pending. Reviewed-head b4e7fe273d889a37 proof does not approve this corrected source. |
+| Latest validation | Fix1 consolidated204pass/0fail/0skip,4m44; format0 and Roslyn6-project compile clean. Full32adfe626e44aa08 passed4285/0fail/19platformskip at2026-10-11T01:02:24.165Z on tree64b1b631561bce8e7341e3af7f2245e68f267716; publish/hash/audit clean, producer46668 and26recorded owned test processes reaped. This is intermediate: queued alias-shadow controls subsequently proved4fail22pass (three nearer using-alias CS0431, one unnecessarily aliased globally available type CS0234). Same executor repairs shared renderer; fresh consolidated/full/new committed head/cold1 required. No own defect deferred. |
 | Plan accounting | 30 initiatives:8pending/1in-review/7merged/1obsolete/13deferred, completedfalse;10distinct initial starts used. All24 sketches disposed. Eight eligible cap-held rows remain pending; genuine global/operator holds stay deferred. |
 | Global filing | Evidence-only PRs768-771 and773, attached; global implementation belongs to other agent. No global source remediation, bypass or false execution admission. |
 | Next | Finish fix1, scoped/fresh exact-tree full proof, cold cycle1 with all previous dispositions, exact-head hosted READY, safe owned teardown/pinned source land, one exact-main backstop and cold administrative reconciliation. Then checkpoint/push/disarm at10-start cap. |
