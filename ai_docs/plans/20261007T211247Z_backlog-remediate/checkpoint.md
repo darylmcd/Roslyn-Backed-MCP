@@ -1,6 +1,6 @@
 # Planning checkpoint — 20261007T211247Z_backlog-remediate
 
-## Current execution status 2026-10-11T04:09Z
+## Current execution status 2026-10-11T04:38Z
 
 | Item | Current verified disposition |
 |---|---|
@@ -16,6 +16,8 @@
 | Current validation hold | Context20pass and hosts27pass precede consolidated3fail/242pass/245total5m40: two real nested brace-comment losses and one original escaped-namespace fixture grammar error. Client transport timeout is not a test verdict; all four owned processes reaped at03:16:42.9703866Z. Focused index/argument-host2fail proves duplicated nested-index annotation/evaluation and representable invocation collection refusal. Same executor fixes own adapter defects; fresh consolidation/full/head/cold1 owed. |
 | Latest targeted correction | Same executor fix1 remains active. Original negated loop lowering replay proved3causal failures CS0023 for custom truth values without operator !; finally-restored SHA matched. Subsequent custom-helper revision failed6/passed18/24total due serialized elsebreak CS0103. Corrected custom-helper-green2 passed24/0fail/0skip1m25; Root read full terminal log. Moved constructor-attribute binding/caller-line audit remains unproven and queued; fresh consolidation/full/new head/cold1 still owed. No own defect deferred. |
 | Editorconfig operator decision | Existing-assignment policy approved: update applicable broad C# defaults and later overrides matching requested source; preserve other-only overrides. Sanctioned item note and native annotation pushed810413084bda682a755e305f0034f8b5881e86d7. New-key placement and selected global-config write semantics remain separate pending decisions. Complete scope re-admission is deferred until active primary delivery settles; do not rotate plan-wide gate epoch while its source proof is active. |
+| Consolidated corrected source | Native scoped session62228 terminated0:287pass/0fail/0skip12m01; actual PublicException/InvalidOperationConstructionRatchet follow-on94pass26s. Root read both complete logs. Intermediate helper metadata13pass, ownership3pass, expression-hosts18pass, parameter-kind7pass. Prior checked-expression replay1fail/3controls is a valid-request binding/conversion refusal, not an accepted runtime regression; finally-restored SHA matches. Attribute fixture NRE was invalid original short-name binding, corrected original/candidate metadata controls pass; no attribute defect established. Owned process reaping, MCP compile/closefalse, frozen fresh full, final pushed head and cold1 remain owed. |
+| Installed reader | Other agent's global tooling HEADa8b1b0a72807a166f890a0df95d7731bcbfb9aba provides stanza-read; Root verified live full bounded primary stanza read0. Native reviewed-stamp checks all30 pass, no writes. No global implementation by Root. |
 
 All evidence tables below are historical snapshots. This status table and native state govern current actions.
 
