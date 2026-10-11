@@ -55,3 +55,15 @@ Official implementation inspected: https://raw.githubusercontent.com/dotnet/rosl
 | Unanswered decisions | Effects on other files sharing matching assignments; new-key placement/parallel default versus section reuse; global-config write domain versus new local-only refusal. Silence authorizes no decision. |
 | Contract/scope | ADR/migration/release disposition and catalog-description companion probe required; proposed70000 three-code/three-row-detail/two-test plus docs scope is unapproved. Re-vet, native-amend and cold-review after decisions. |
 | Verification | Eight public-API provenance/preamble probes establish feasibility only; service/wire/full validation remains owed. Complete proposal is durable in selected checkpoint; no implementation or global-tooling blocker claimed. |
+
+## Operator policy decision — existing assignments
+
+| Decision | Recorded instruction |
+|---|---|
+| Approved | Update applicable broad C# defaults and every later override matching the requested source; preserve assignments matching only other sources. Shared matching sections may change other files. |
+| Live answer | `Use the recommended policy` to the matching-default/override question; public-contract rationale and migration note authorized. |
+| Unanswered separate policies | New-key placement (canonical default before existing sections versus matching-section reuse); selected `is_global` write domain (complete global semantics versus explicit prewrite refusal with breaking migration). |
+| Implementation state | Unstarted. Reader-only40000 scope remains inadmissible for the complete repair; writer companion must be natively replanned and cold-reviewed after the separate choices. Preserve34-case corpus and source-only70000 proposal; no estimate/admission claim for a wider global design. |
+| Run boundary | Ten distinct initial starts already used; do not disguise cap-held work as a global dependency. |
+
+The earlier matching-assignment question is answered. Do not infer approval of new-key placement or global refusal from that answer.

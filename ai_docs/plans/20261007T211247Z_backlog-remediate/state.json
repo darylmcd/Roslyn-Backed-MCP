@@ -636,7 +636,7 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": "Reader correction exposes existing writer first-assignment/precedence defect. Complete companion proposal is source-only in editorconfig-writer-design-proposal.result: matching-assignment edit provenance, new-key placement and global-config write domain require operator policy and public-contract decision/ADR/migration. Earlier async policy question remains unanswered. Do not execute reader-only approved scope; retain 34-case corpus and full proposal, then native replan and fresh cold review after explicit decisions. No implementation started; not a global-tooling blocker.",
+      "notes": "Operator approved applicable broad C# defaults and requested-source matching overrides; preserve other-only assignments and shared-section impact accepted. New-key placement and selected is_global write domain are separate unanswered decisions, requested asynchronously. Complete writer/reader policy proposal remains source-only; retain34-case corpus, do not execute reader-only40000 scope or infer approval of70000/global-refusal design. Native replan and fresh cold review owed after decisions; no implementation start. Ten-start execution cap remains distinct from policy/global holds.",
       "fileSetHash": "5d41bd7b55c218330bfe9ce7adf84c5f8d9aab9401d2292fe641e9d5c87d81dd",
       "stanzaHash": "455a00b8ff470ee417bab1ee5be2dcecd83f6f543ce17a66f61b144becab9fd9",
       "reviewedStanzaHash": "455a00b8ff470ee417bab1ee5be2dcecd83f6f543ce17a66f61b144becab9fd9",
