@@ -1,13 +1,13 @@
 # Planning checkpoint — 20261007T211247Z_backlog-remediate
 
-## Current execution status 2026-10-11T05:07Z
+## Current execution status 2026-10-11T05:45Z
 
 | Item | Current verified disposition |
 |---|---|
 | Delivered | Fix All source1775/admin1776 and logging source1777/admin1778 merged and reconciled; exact-main backstops succeeded. Primary337fc2cde10eca3f591cc016c146dee7b893e26a clean. Scratch quarantines remain; cleanup incomplete. |
 | Active | PR1779 remains on intermediate03d4af4b27af9ff9fb5bc1b871ebc2dd203ea6ba. Same executor fix1 active; no final envelope, corrected-head cold1, landing or teardown. |
 | Actual validation | Corrected-source scoped287pass12m01 plus actual exception/ratchet94pass26s; format0 and MCP6/6 compile0errors0warnings, own workspace closed explicitly drainProcessesfalse. Full7f0787ea8a98dd15 passed c19568e16cfea372ea70c0aa0141ea9258aacaa6 at05:02:28.815Z:4369pass/0fail/19platformskip/4388total20m40; build/publish/hash/audit clean. Root read whole raw receipts/logs and parsedTRX. All24 captured full-run identities absent/rootedrunners[] at05:03:54.6512191Z. Existing release-fragment age warnings persist. |
-| Current causal hold | Added Activator controls on unchanged productionC195 proved5modified-runtime failures: expected7\|0, actual7\|7, across generic/factory/type/nonpublic/empty-arguments forms. Same executor repairs explicit-constructor default-construction behavior. Full7f is intermediate; corrected scoped/fresh full/new committed head/cold1 owed. No own defect deferred. |
+| Current causal hold | Activator controls on unchanged productionC195 proved5modified-runtime failures, expected7\|0 actual7\|7. Same fix1 corrects default construction, generic expression-tree representation and custom Type underlying-resolution effects. Expanded complete5 passed21/0fail/0skip45s, whole terminal read. Final-controls passed29/failed1: original throwing-getter fixture CS8115, not a candidate runtime defect; corrected fixture run controls2 active. Earlier complete4 actually failed12/passed9: one accepted TypeDelegator runtime mismatch plus11 own conversion-validator regressions. Full7f remains intermediate; corrected consolidation/fresh full/new committed head/cold1 owed. No own defect deferred. |
 | Editorconfig | Existing-assignment matching-section policy approved and recorded through sanctioned item note/native annotation at810413084bda682a755e305f0034f8b5881e86d7. New-key placement and global-config write semantics remain separate pending decisions. Row stays deferred; complete scope re-admission after active source delivery, without rotating its gate epoch mid-run. |
 | Accounting | 30 initiatives:8pending/1in-review/7merged/1obsolete/13deferred, completedfalse;10distinct initial starts used. All25 sketches disposed. Eight eligible cap-held rows stay pending; genuine holds stay deferred. |
 | Global ownership | Evidence-only PRs768-771,773,774 filed and attached; implementation belongs to other agent. Installed a8b1b0a7 sanctioned stanza-read succeeded on actual primary stanza; all30 reviewed-stamp checks passed without writes. |
