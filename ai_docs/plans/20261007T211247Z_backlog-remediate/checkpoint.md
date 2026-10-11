@@ -1,6 +1,6 @@
 # Planning checkpoint — 20261007T211247Z_backlog-remediate
 
-## Current execution status 2026-10-11T02:23Z
+## Current execution status 2026-10-11T02:44Z
 
 | Item | Current verified disposition |
 |---|---|
@@ -11,6 +11,8 @@
 | Plan accounting | 30 initiatives:8pending/1in-review/7merged/1obsolete/13deferred, completedfalse;10distinct initial starts used. All24 sketches disposed. Eight eligible cap-held rows remain pending; genuine global/operator holds stay deferred. |
 | Global filing | Evidence-only PRs768-771 and773, attached; global implementation belongs to other agent. No global source remediation, bypass or false execution admission. |
 | Next | Finish fix1, scoped/fresh exact-tree full proof, cold cycle1 with all previous dispositions, exact-head hosted READY, safe owned teardown/pinned source land, one exact-main backstop and cold administrative reconciliation. Then checkpoint/push/disarm at10-start cap. |
+| Latest own-branch correction | Unchanged03d4 metadata causal3fail: two CS8983 and lost constructor attribute runtime1\|7→0\|7. Expanded controls exposed semicolon grammar, constrained generic construction and initializer effects; same executor corrections remain active. Root read generic green4 terminal3pass and initializer green terminal14pass, preserving runtime/nullability/conversion/other-instantiation/allocation controls. Nested/collection/expression-tree adapter checks, consolidated/full/final head/cold1 remain owed. No own defect deferred. |
+| Intermediate hosted proof | Head03d4 hosted CI aggregate38104316131 SUCCESS at2026-10-11T02:31:39Z; all nonallowlisted checks SUCCESS. Read-only native watch37188 READY/exit0 and reaped; result is intermediate only, not corrected-head landing approval. |
 
 All evidence tables below are historical snapshots. This status table and native state govern current actions.
 
