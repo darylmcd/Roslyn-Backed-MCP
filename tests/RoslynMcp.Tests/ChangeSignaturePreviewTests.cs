@@ -747,7 +747,7 @@ public sealed class ChangeSignaturePreviewTests : IsolatedWorkspaceTestBase
         // Retained declaration trivia keeps the body brace on its own line.
         StringAssert.Contains(postApplyText, "public int Compute(int c, int a, int b)\r\n    {",
             $"body brace must stay on its own line; got:\n{postApplyText}");
-        // Positional callsite Compute(1, 2, 3) was reordered to Compute(3, 1, 2).
+        // Name the original arguments to retain evaluation order and their parameter bindings.
         StringAssert.Contains(postApplyText, "Compute(a: 1, b: 2, c: 3)",
             $"positional callsite arguments must keep evaluation order and named bindings; got:\n{postApplyText}");
     }
@@ -1224,6 +1224,15 @@ public sealed class ChangeSignaturePreviewTests : IsolatedWorkspaceTestBase
         Assert.IsTrue(emission.Success, string.Join("\n", emission.Diagnostics.OrderByDescending(d => d.Severity)));
         image.Position = 0;
         var context = new System.Runtime.Loader.AssemblyLoadContext("signature-proof", isCollectible: true);
+        context.Resolving += (loader, name) =>
+        {
+            var reference = compilation.References.OfType<Microsoft.CodeAnalysis.PortableExecutableReference>()
+                .FirstOrDefault(r => r.FilePath is { } file && File.Exists(file)
+                    && System.Reflection.AssemblyName.GetAssemblyName(file).Name == name.Name);
+            if (reference?.FilePath is not { } dependency) return null;
+            using var dependencyImage = new MemoryStream(File.ReadAllBytes(dependency));
+            return loader.LoadFromStream(dependencyImage);
+        };
         try
         {
             var assembly = context.LoadFromStream(image);
@@ -1896,13 +1905,20 @@ public sealed class ChangeSignaturePreviewTests : IsolatedWorkspaceTestBase
         var model = (await document.GetSemanticModelAsync())!;
         var call = root.DescendantNodes().OfType<Microsoft.CodeAnalysis.CSharp.Syntax.InvocationExpressionSyntax>().Single();
         if (boundConditional) Assert.IsNotNull(model.GetSymbolInfo(call).Symbol, "typed conditional argument must retain an actual original method binding");
+        else
+        {
+            Assert.IsNull(model.GetSymbolInfo(call).Symbol);
+            Assert.IsTrue(model.GetSymbolInfo(call).CandidateSymbols.OfType<Microsoft.CodeAnalysis.IMethodSymbol>()
+                .Any(m => m.Name == "M"));
+        }
         var probe = new SignatureStoreProbe(PreviewStore);
         var service = new ChangeSignatureService(WorkspaceManager, probe, RefactoringService);
         var error = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
             service.PreviewChangeSignatureAsync(workspace.WorkspaceId,
                 SymbolLocator.BySource(path, 2, declaration.IndexOf("M(", StringComparison.Ordinal) + 1),
                 new ChangeSignatureRequest("remove", Position: 0), CancellationToken.None));
-        StringAssert.Contains(error.Message, "CS0103");
+        if (boundConditional) StringAssert.Contains(error.Message, "CS0103");
+        else Assert.AreEqual("An unresolved invocation may bind to the edited member. Resolve its binding errors before changing this signature.", error.Message);
         Assert.AreEqual(0, probe.StoreCalls);
         Assert.AreSame(original, WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
         Assert.AreEqual(source, await File.ReadAllTextAsync(path));
@@ -2107,6 +2123,443 @@ public sealed class ChangeSignaturePreviewTests : IsolatedWorkspaceTestBase
         Assert.AreEqual(0, probe.StoreCalls);
         Assert.AreSame(original, WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
         Assert.AreEqual(source, await File.ReadAllTextAsync(path));
+    }
+
+    [TestMethod]
+    [DataRow(true)]
+    [DataRow(false)]
+    public async Task ChangeSignaturePreview_UnboundErrorTypeCall_ProtectsOnlyEditedCandidates(bool related)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var path = workspace.GetPath("SampleLib", "ErrorTypeSubstitution.cs");
+        var declaration = "public static class SignatureProof { public static int Compute<T>(T unused, int value) => value;";
+        var source = "namespace SampleLib;\n" + declaration
+            + " public static int Other<T>(T value, int retained) => retained; public static int Run() { MissingType value = default; return "
+            + (related ? "Compute(value, 2)" : "Other(value, Compute(\"x\", 2))") + "; } }";
+        await File.WriteAllTextAsync(path, source);
+        await workspace.LoadAsync(CancellationToken.None);
+        var original = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        var document = original.Projects.Single(p => p.Name == "SampleLib").Documents.Single(d => d.FilePath == path);
+        var model = (await document.GetSemanticModelAsync())!;
+        var call = (await document.GetSyntaxRootAsync())!.DescendantNodes()
+            .OfType<Microsoft.CodeAnalysis.CSharp.Syntax.InvocationExpressionSyntax>().First();
+        Assert.IsNull(model.GetSymbolInfo(call).Symbol);
+        Assert.IsTrue(model.GetSymbolInfo(call).CandidateSymbols.OfType<Microsoft.CodeAnalysis.IMethodSymbol>()
+            .Any(m => m.Name == (related ? "Compute" : "Other")));
+        var probe = new SignatureStoreProbe(PreviewStore);
+        var service = new ChangeSignatureService(WorkspaceManager, probe, RefactoringService);
+        var locator = SymbolLocator.BySource(path, 2, declaration.IndexOf("Compute", StringComparison.Ordinal) + 1);
+        if (related)
+        {
+            var error = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
+                service.PreviewChangeSignatureAsync(workspace.WorkspaceId, locator,
+                    new ChangeSignatureRequest("remove", Name: "unused"), CancellationToken.None));
+            StringAssert.Contains(error.Message, "unresolved invocation");
+            Assert.AreEqual(0, probe.StoreCalls);
+        }
+        else
+        {
+            var preview = await service.PreviewChangeSignatureAsync(workspace.WorkspaceId, locator,
+                new ChangeSignatureRequest("remove", Name: "unused"), CancellationToken.None);
+            var stored = PreviewStore.Retrieve(preview.PreviewToken);
+            Assert.IsNotNull(stored);
+            var updated = stored.Value.ModifiedSolution.GetDocument(document.Id)!;
+            var updatedModel = (await updated.GetSemanticModelAsync())!;
+            var updatedCall = (await updated.GetSyntaxRootAsync())!.DescendantNodes()
+                .OfType<Microsoft.CodeAnalysis.CSharp.Syntax.InvocationExpressionSyntax>()
+                .Single(n => n.Expression.ToString().Contains("Compute", StringComparison.Ordinal));
+            var target = (Microsoft.CodeAnalysis.IMethodSymbol)updatedModel.GetSymbolInfo(updatedCall).Symbol!;
+            Assert.AreEqual(Microsoft.CodeAnalysis.SpecialType.System_String, target.TypeArguments.Single().SpecialType);
+            Assert.AreEqual("value", target.Parameters.Single().Name);
+            Assert.AreEqual(1, probe.StoreCalls);
+        }
+        Assert.AreSame(original, WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
+        Assert.AreEqual(source, await File.ReadAllTextAsync(path));
+    }
+
+    [TestMethod]
+    [DataRow("ordinary")]
+    [DataRow("extension")]
+    [DataRow("array")]
+    [DataRow("nested")]
+    [DataRow("owner")]
+    [DataRow("missing-directive")]
+    [DataRow("missing-directive-preamble")]
+    [DataRow("missing-directive-existing")]
+    [DataRow("missing-directive-shadow")]
+    [DataRow("missing-directive-shadow-use")]
+    [DataRow("missing-directive-no-root-scope")]
+    [DataRow("missing-directive-block")]
+    [DataRow("missing-directive-global")]
+    [DataRow("missing-directive-global-existing")]
+    [DataRow("missing-directive-namespace-existing")]
+    [DataRow("missing-directive-namespace-using")]
+    [DataRow("existing-directive-shadow")]
+    [DataRow("existing-directive-shadow-nested")]
+    [DataRow("existing-directive-shadow-trivia")]
+    [DataRow("global-visible-b")]
+    [DataRow("optional")]
+    [DataRow("expanded-array")]
+    [DataRow("expanded-collection")]
+    [DataRow("pointer")]
+    [DataRow("function-pointer")]
+    [DataRow("unmanaged-function-pointer")]
+    [DataRow("ref-function-pointer")]
+    [DataRow("conditional")]
+    public async Task ChangeSignaturePreview_ExternAliasSubstitution_PreservesAssembly(string shape)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var path = workspace.GetPath("SampleLib", "AliasSubstitution.cs");
+        var dotnetRoot = Path.GetFullPath(Path.Combine(System.Runtime.InteropServices.RuntimeEnvironment.GetRuntimeDirectory(), "../../.."));
+        var targetFramework = "net" + AppContext.TargetFrameworkName!.Split("Version=v", StringSplitOptions.None)[1];
+        var referenceDirectory = Directory.GetDirectories(Path.Combine(dotnetRoot, "packs", "Microsoft.NETCore.App.Ref"))
+            .OrderByDescending(p => Version.Parse(Path.GetFileName(p).Split('-')[0]))
+            .Select(p => Path.Combine(p, "ref", targetFramework)).First(Directory.Exists);
+        var references = Directory.GetFiles(referenceDirectory, "*.dll")
+            .Select(p => Microsoft.CodeAnalysis.MetadataReference.CreateFromFile(p));
+        foreach (var assemblyName in new[] { "AliasFirst", "AliasSecond" })
+        {
+            var compilation = Microsoft.CodeAnalysis.CSharp.CSharpCompilation.Create(assemblyName,
+                [Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText("namespace Shared; public struct Value { }")],
+                references, new Microsoft.CodeAnalysis.CSharp.CSharpCompilationOptions(Microsoft.CodeAnalysis.OutputKind.DynamicallyLinkedLibrary));
+            using var image = new MemoryStream();
+            var emission = compilation.Emit(image);
+            Assert.IsTrue(emission.Success, string.Join("\n", emission.Diagnostics));
+            await File.WriteAllBytesAsync(workspace.GetPath("SampleLib", assemblyName + ".dll"), image.ToArray());
+        }
+        var projectPath = workspace.GetPath("SampleLib", "SampleLib.csproj");
+        var projectXml = System.Xml.Linq.XDocument.Load(projectPath);
+        projectXml.Root!.Add(new System.Xml.Linq.XElement("ItemGroup",
+            new System.Xml.Linq.XElement("Reference", new System.Xml.Linq.XAttribute("Include", "AliasFirst"),
+                new System.Xml.Linq.XElement("HintPath", "AliasFirst.dll"), new System.Xml.Linq.XElement("Aliases", "first")),
+            new System.Xml.Linq.XElement("Reference", new System.Xml.Linq.XAttribute("Include", "AliasSecond"),
+                new System.Xml.Linq.XElement("HintPath", "AliasSecond.dll"), new System.Xml.Linq.XElement("Aliases", "global,second"))));
+        projectXml.Root.Add(new System.Xml.Linq.XElement("PropertyGroup", new System.Xml.Linq.XElement("AllowUnsafeBlocks", "true")));
+        projectXml.Save(projectPath);
+        var extension = shape is "extension" or "conditional";
+        var declaration = shape switch
+        {
+            "optional" => "public static unsafe class SignatureProof { public static string Compute(int unused, first::Shared.Value retained = default) => typeof(first::Shared.Value).Assembly.GetName().Name!;",
+            "expanded-array" => "public static unsafe class SignatureProof { public static string Compute(int unused, params first::Shared.Value[] retained) => retained.GetType().GetElementType()!.Assembly.GetName().Name!;",
+            "expanded-collection" => "public static unsafe class SignatureProof { public static string Compute(int unused, params System.Collections.Generic.List<first::Shared.Value> retained) => retained.GetType().GetGenericArguments()[0].Assembly.GetName().Name!;",
+            "pointer" => "public static unsafe class SignatureProof { public static string Compute(int unused, first::Shared.Value* retained) => typeof(first::Shared.Value).Assembly.GetName().Name!;",
+            "function-pointer" => "public static unsafe class SignatureProof { public static string Compute(int unused, delegate*<first::Shared.Value, first::Shared.Value> retained) => typeof(first::Shared.Value).Assembly.GetName().Name!;",
+            "unmanaged-function-pointer" => "public static unsafe class SignatureProof { public static string Compute(int unused, delegate* unmanaged[Cdecl]<first::Shared.Value, first::Shared.Value> retained) => typeof(first::Shared.Value).Assembly.GetName().Name!;",
+            "ref-function-pointer" => "public static unsafe class SignatureProof { public static string Compute(int unused, delegate*<first::Shared.Value, ref first::Shared.Value> retained) => typeof(first::Shared.Value).Assembly.GetName().Name!;",
+            "conditional" => "public static unsafe class SignatureProof { public static first::Shared.Value Compute(this AliasReceiver unused, int retained) => new first::Shared.Value();",
+            _ => "public static unsafe class SignatureProof { public static string Compute<T>("
+                + (extension ? "this AliasReceiver receiver, " : "") + "T unused, int retained) => "
+                + "(typeof(T).IsArray ? typeof(T).GetElementType()! : typeof(T).IsGenericType ? typeof(T).GetGenericArguments()[0] : typeof(T)).Assembly.GetName().Name!;",
+        };
+        var call = shape switch
+        {
+            "optional" => "Compute(1)",
+            "expanded-array" or "expanded-collection" => "Compute(1, new first::Shared.Value(), new first::Shared.Value())",
+            "pointer" => "Compute(1, default(first::Shared.Value*))",
+            "function-pointer" => "Compute(1, default(delegate*<first::Shared.Value, first::Shared.Value>))",
+            "unmanaged-function-pointer" => "Compute(1, default(delegate* unmanaged[Cdecl]<first::Shared.Value, first::Shared.Value>))",
+            "ref-function-pointer" => "Compute(1, default(delegate*<first::Shared.Value, ref first::Shared.Value>))",
+            "conditional" => "((object)(new AliasReceiver()?.Compute(1))!).GetType().Assembly.GetName().Name!",
+            "owner" => "Forward(new first::Shared.Value())",
+            "missing-directive" or "missing-directive-preamble" or "missing-directive-existing" or "missing-directive-shadow" or "missing-directive-block" or "missing-directive-namespace-existing" or "missing-directive-namespace-using" or "existing-directive-shadow" or "existing-directive-shadow-nested" => "Compute(AliasFactory.Create(), 1) + \"|\" + Line()",
+            "missing-directive-no-root-scope" or "missing-directive-shadow-use" or "existing-directive-shadow-trivia" => "Compute(AliasFactory.Create(), 1) + \"|\" + first.Empty + Line() + \"|\" + nameof(first)",
+            "global-visible-b" => "Compute(new global::Shared.Value(), 1) + \"|\" + second.Empty + Line()",
+            "missing-directive-global" or "missing-directive-global-existing" => "Compute(SampleLib.AliasFactory.Create(), 1) + \"|\" + Line()",
+            _ => (extension ? "new AliasReceiver().Compute" : "Compute") + "(" + (shape switch
+            {
+                "array" => "new first::Shared.Value[0]",
+                "nested" => "new System.Collections.Generic.List<first::Shared.Value>()",
+                _ => "new first::Shared.Value()",
+            }) + ", 1)",
+        };
+        var source = (shape.StartsWith("missing-directive", StringComparison.Ordinal) || shape.StartsWith("existing-directive-shadow", StringComparison.Ordinal) || shape == "global-visible-b"
+            ? shape switch
+            {
+                "existing-directive-shadow" => "extern alias first;\nnamespace SampleLib;\nusing first = System.String;\n",
+                "existing-directive-shadow-nested" => "extern alias first;\nnamespace SampleLib { using first = System.String;\nnamespace Nested {\n",
+                "existing-directive-shadow-trivia" => "extern alias first;\nnamespace SampleLib;\nusing /*alias*/ first /*name*/ = /*target*/ System.String;\n",
+                "global-visible-b" => "extern alias first;\nusing second = System.String;\nnamespace SampleLib;\n",
+                "missing-directive-preamble" => "#nullable enable\n/*header*/\nnamespace SampleLib;\n",
+                "missing-directive-existing" => "extern alias second;\nnamespace SampleLib;\n",
+                "missing-directive-shadow" => "using first = System.Object;\nnamespace SampleLib;\n",
+                "missing-directive-shadow-use" or "missing-directive-no-root-scope" => "using first = System.String;\nnamespace SampleLib;\n",
+                "missing-directive-block" => "namespace SampleLib {\n",
+                "missing-directive-global" => "",
+                "missing-directive-global-existing" => "extern alias second;\n",
+                "missing-directive-namespace-existing" => "namespace SampleLib;\nextern alias second;\n",
+                "missing-directive-namespace-using" => "namespace SampleLib;\nusing Collections = System.Collections.Generic;\n",
+                _ => "namespace SampleLib;\n",
+            }
+            : "extern alias first;\nnamespace SampleLib;\n") + declaration
+            + " public static string Run() => " + call + "; "
+            + (shape == "owner" ? "private static string Forward<T>(T value) => Compute(value, 1); " : "")
+            + "private static int Line([System.Runtime.CompilerServices.CallerLineNumber] int line = 0) => line; } public class AliasReceiver { }"
+            + (shape == "missing-directive-block" ? " }" : shape == "existing-directive-shadow-nested" ? " } }" : "");
+        if (shape.StartsWith("missing-directive", StringComparison.Ordinal) || shape.StartsWith("existing-directive-shadow", StringComparison.Ordinal))
+            await File.WriteAllTextAsync(workspace.GetPath("SampleLib", "AliasFactory.cs"),
+                shape == "missing-directive-no-root-scope"
+                    ? "using first = System.String; namespace SampleLib { extern alias first; public static class AliasFactory { public static first::Shared.Value Create() => new first::Shared.Value(); } }"
+                    : "extern alias first; namespace SampleLib; public static class AliasFactory { public static first::Shared.Value Create() => new first::Shared.Value(); }");
+        await File.WriteAllTextAsync(path, source);
+        await workspace.LoadAsync(CancellationToken.None);
+        var original = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        if (shape == "missing-directive-no-root-scope")
+        {
+            var updated = original;
+            foreach (var sourceDocument in original.Projects.Single(p => p.Name == "SampleLib").Documents)
+            {
+                var root = (Microsoft.CodeAnalysis.CSharp.Syntax.CompilationUnitSyntax)(await sourceDocument.GetSyntaxRootAsync())!;
+                if (root.Usings.Any(u => u.Alias?.Name.Identifier.ValueText == "first")) continue;
+                var alias = Microsoft.CodeAnalysis.CSharp.SyntaxFactory.ParseCompilationUnit("using first = System.String; ").Usings.Single();
+                updated = updated.WithDocumentSyntaxRoot(sourceDocument.Id, root.WithUsings(root.Usings.Add(alias)));
+            }
+            Assert.IsTrue(WorkspaceManager.TryApplyChanges(workspace.WorkspaceId, updated));
+            original = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+            foreach (var sourceDocument in original.Projects.Single(p => p.Name == "SampleLib").Documents)
+                Assert.IsTrue(((Microsoft.CodeAnalysis.CSharp.Syntax.CompilationUnitSyntax)(await sourceDocument.GetSyntaxRootAsync())!)
+                    .Usings.Any(u => u.Alias?.Name.Identifier.ValueText == "first"));
+        }
+        var expected = (shape == "global-visible-b" ? "AliasSecond" : "AliasFirst") + (shape.StartsWith("missing-directive", StringComparison.Ordinal) || shape.StartsWith("existing-directive-shadow", StringComparison.Ordinal) || shape == "global-visible-b"
+            ? "|" + (shape switch { "missing-directive-preamble" or "existing-directive-shadow" or "existing-directive-shadow-nested" or "existing-directive-shadow-trivia" or "global-visible-b" => "4", "missing-directive-existing" or "missing-directive-shadow" or "missing-directive-shadow-use" or "missing-directive-no-root-scope" or "missing-directive-namespace-existing" or "missing-directive-namespace-using" => "3", "missing-directive-global" => "1", _ => "2" }) : "") + (shape is "existing-directive-shadow-trivia" or "missing-directive-shadow-use" or "missing-directive-no-root-scope" ? "|first" : "");
+        var proofType = shape.StartsWith("missing-directive-global", StringComparison.Ordinal) ? "SignatureProof"
+            : shape == "existing-directive-shadow-nested" ? "SampleLib.Nested.SignatureProof" : "SampleLib.SignatureProof";
+        Assert.AreEqual(expected, await RunSignatureFixtureAsync(original, proofType));
+        if (shape == "existing-directive-shadow")
+        {
+            var document = original.Projects.Single(p => p.Name == "SampleLib").Documents.Single(d => d.FilePath == path);
+            var representable = source.Replace("extern alias first;", "extern alias first; using __signatureAssembly = first;", StringComparison.Ordinal)
+                .Replace("T unused, int retained", "int retained", StringComparison.Ordinal)
+                .Replace("Compute(AliasFactory.Create(), 1)", "Compute<__signatureAssembly::Shared.Value>(1)", StringComparison.Ordinal);
+            Assert.AreEqual(expected, await RunSignatureFixtureAsync(original.WithDocumentText(document.Id,
+                Microsoft.CodeAnalysis.Text.SourceText.From(representable)), proofType));
+        }
+        if (shape is "missing-directive-shadow-use" or "missing-directive-no-root-scope")
+        {
+            var caller = original.Projects.Single(p => p.Name == "SampleLib").Documents.Single(d => d.FilePath == path);
+            var factory = caller.Project.Documents.Single(d => d.Name == "AliasFactory.cs");
+            var represented = original.WithDocumentText(caller.Id, Microsoft.CodeAnalysis.Text.SourceText.From(source
+                .Replace("T unused, int retained", "int retained", StringComparison.Ordinal)
+                .Replace("Compute(AliasFactory.Create(), 1)", "Compute<__signatureAssembly::Shared.Value>(1)", StringComparison.Ordinal)));
+            represented = shape == "missing-directive-no-root-scope"
+                ? represented.AddDocument(Microsoft.CodeAnalysis.DocumentId.CreateNewId(caller.Project.Id), "AssemblyAlias.cs",
+                    Microsoft.CodeAnalysis.Text.SourceText.From("extern alias first; global using __signatureAssembly = first;"))
+                : represented.WithDocumentText(factory.Id, Microsoft.CodeAnalysis.Text.SourceText.From(
+                    (await factory.GetTextAsync()).ToString().Replace("extern alias first;", "extern alias first; global using __signatureAssembly = first;", StringComparison.Ordinal)));
+            Assert.AreEqual(expected, await RunSignatureFixtureAsync(represented, proofType));
+        }
+        var preview = await _changeSignatureService.PreviewChangeSignatureAsync(workspace.WorkspaceId,
+            SymbolLocator.BySource(path, source[..source.IndexOf(declaration, StringComparison.Ordinal)].Count(c => c == '\n') + 1, declaration.IndexOf("Compute", StringComparison.Ordinal) + 1),
+            new ChangeSignatureRequest("remove", Name: "unused"), CancellationToken.None);
+        var stored = PreviewStore.Retrieve(preview.PreviewToken);
+        Assert.IsNotNull(stored);
+        var additions = stored.Value.ModifiedSolution.GetChanges(original).GetProjectChanges()
+            .SelectMany(p => p.GetAddedDocuments()).Select(id => stored.Value.ModifiedSolution.GetDocument(id)!).ToArray();
+        if (shape == "missing-directive-no-root-scope")
+        {
+            Assert.AreEqual(1, additions.Length);
+            StringAssert.StartsWith(additions.Single().Name, "__SignatureAssemblyAliases_");
+            Assert.AreEqual(Path.GetDirectoryName(path), Path.GetDirectoryName(additions.Single().FilePath));
+            Assert.IsFalse(File.Exists(additions.Single().FilePath));
+        }
+        else Assert.AreEqual(0, additions.Length);
+        async Task VerifyAsync(Microsoft.CodeAnalysis.Solution solution)
+        {
+            Assert.AreEqual(expected, await RunSignatureFixtureAsync(solution, proofType));
+            var document = solution.Projects.Single(p => p.Name == "SampleLib").Documents.Single(d => d.FilePath == path);
+            var root = (await document.GetSyntaxRootAsync())!;
+            var model = (await document.GetSemanticModelAsync())!;
+            var call = root.DescendantNodes().OfType<Microsoft.CodeAnalysis.CSharp.Syntax.InvocationExpressionSyntax>()
+                .Single(n => model.GetSymbolInfo(n).Symbol is Microsoft.CodeAnalysis.IMethodSymbol { Name: "Compute" });
+            var target = (Microsoft.CodeAnalysis.IMethodSymbol)model.GetSymbolInfo(call).Symbol!;
+            var type = shape == "conditional" ? target.ReturnType : target.IsGenericMethod ? target.TypeArguments.Single() : target.Parameters.Single().Type;
+            if (type is Microsoft.CodeAnalysis.IArrayTypeSymbol array) type = array.ElementType;
+            else if (type is Microsoft.CodeAnalysis.IPointerTypeSymbol pointer) type = pointer.PointedAtType;
+            else if (type is Microsoft.CodeAnalysis.IFunctionPointerTypeSymbol function) type = function.Signature.ReturnType;
+            else if (type is Microsoft.CodeAnalysis.INamedTypeSymbol { IsGenericType: true } named) type = named.TypeArguments.Single();
+            if (shape == "owner")
+            {
+                Assert.AreEqual(Microsoft.CodeAnalysis.TypeKind.TypeParameter, type.TypeKind);
+                Assert.AreEqual("Forward", type.ContainingSymbol.Name);
+            }
+            else Assert.AreEqual(shape == "global-visible-b" ? "AliasSecond" : "AliasFirst", type.ContainingAssembly.Name);
+            var updatedText = (await document.GetTextAsync()).ToString();
+            if (shape.StartsWith("existing-directive-shadow", StringComparison.Ordinal))
+            {
+                StringAssert.Contains(updatedText, "__signatureAssembly::Shared.Value");
+                StringAssert.Contains(updatedText, "using __signatureAssembly = first;");
+                Assert.AreEqual(1, root.DescendantNodes().OfType<Microsoft.CodeAnalysis.CSharp.Syntax.UsingDirectiveSyntax>()
+                    .Count(u => u.Alias?.Name.Identifier.ValueText == "__signatureAssembly"));
+            }
+            else if (shape is "missing-directive-shadow" or "missing-directive-shadow-use" or "missing-directive-no-root-scope")
+            {
+                StringAssert.Contains(updatedText, "__signatureAssembly::Shared.Value");
+                var globalAliases = new List<Microsoft.CodeAnalysis.CSharp.Syntax.UsingDirectiveSyntax>();
+                foreach (var sourceDocument in document.Project.Documents)
+                    globalAliases.AddRange((await sourceDocument.GetSyntaxRootAsync())!.DescendantNodes()
+                        .OfType<Microsoft.CodeAnalysis.CSharp.Syntax.UsingDirectiveSyntax>()
+                        .Where(u => u.Alias?.Name.Identifier.ValueText == "__signatureAssembly"));
+                Assert.AreEqual(1, globalAliases.Count);
+                Assert.AreEqual((int)Microsoft.CodeAnalysis.CSharp.SyntaxKind.GlobalKeyword, globalAliases.Single().GlobalKeyword.RawKind);
+                Assert.AreEqual("first", globalAliases.Single().NamespaceOrType!.ToString());
+            }
+            else StringAssert.Contains(updatedText, shape == "global-visible-b" ? "global::Shared.Value" : "first::");
+            foreach (var marker in new[] { "/*header*/", "#nullable enable", "extern alias second;", "using first = System.Object;", "using Collections = System.Collections.Generic;", "/*alias*/", "/*name*/", "/*target*/", "using second = System.String;" })
+                Assert.AreEqual(source.Split(marker, StringSplitOptions.None).Length - 1, updatedText.Split(marker, StringSplitOptions.None).Length - 1, marker);
+            Assert.AreEqual(shape is "missing-directive-shadow" or "missing-directive-shadow-use" or "missing-directive-no-root-scope" ? 0 : 1, root.DescendantNodes().OfType<Microsoft.CodeAnalysis.CSharp.Syntax.ExternAliasDirectiveSyntax>()
+                .Count(a => a.Identifier.ValueText == "first"));
+        }
+        await VerifyAsync(stored.Value.ModifiedSolution);
+        var applied = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
+        Assert.IsTrue(applied.Success, applied.Error);
+        await VerifyAsync(WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
+        if (shape == "missing-directive-no-root-scope")
+        {
+            Assert.IsTrue(File.Exists(additions.Single().FilePath));
+            Assert.AreEqual((await additions.Single().GetTextAsync()).ToString(), await File.ReadAllTextAsync(additions.Single().FilePath!));
+            await WorkspaceManager.ReloadAsync(workspace.WorkspaceId, CancellationToken.None);
+            await VerifyAsync(WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
+        }
+    }
+
+    [TestMethod]
+    [DataRow(false, false, false)]
+    [DataRow(true, false, false)]
+    [DataRow(false, true, false)]
+    [DataRow(true, true, false)]
+    [DataRow(false, false, true)]
+    [DataRow(true, false, true)]
+    public async Task ChangeSignaturePreview_ParenthesisFreeConstruction_AddsBoundArguments(bool collection, bool generic, bool ordinaryOptional)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var path = workspace.GetPath("SampleLib", "ParenthesisFree.cs");
+        var declaration = ordinaryOptional
+            ? collection ? "public class EmptyPrimary : System.Collections.Generic.List<int> { public EmptyPrimary(int retained = 2) { Default = retained; } public int Default { get; } }"
+                : "public class EmptyPrimary { public EmptyPrimary(int retained = 2) { Default = retained; } public int Default { get; } public int Value { get; set; } }"
+            : collection ? "public class EmptyPrimary" + (generic ? "<T>" : "") + "() : System.Collections.Generic.List<int> { }"
+                : "public class EmptyPrimary" + (generic ? "<T>" : "") + "() { public int Value { get; set; } }";
+        var construction = collection ? "new EmptyPrimary /*type*/ { /*open*/ Trace(1), /*comma*/ Trace(2) /*close*/ }"
+            : "new EmptyPrimary /*type*/ { /*open*/ Value = Trace(1) /*close*/ }";
+        if (generic) construction = construction.Replace("new EmptyPrimary ", "new EmptyPrimary<string> ", StringComparison.Ordinal);
+        var source = "namespace SampleLib;\n" + declaration
+            + "\npublic static class SignatureProof { private static string trace = \"\"; public static int Trace(int value) { trace += value; return value; } public static string Run() { var item = "
+            + construction + "; return trace + \"|\" + " + (collection ? "item[0] + item[1]" : "item.Value")
+            + (ordinaryOptional ? " + \":\" + item.Default" : "") + "; } }";
+        await File.WriteAllTextAsync(path, source);
+        await workspace.LoadAsync(CancellationToken.None);
+        var original = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        var expected = await RunSignatureFixtureAsync(original, "SampleLib.SignatureProof");
+        var originalDocument = original.Projects.Single(p => p.Name == "SampleLib").Documents.Single(d => d.FilePath == path);
+        var originalRoot = (await originalDocument.GetSyntaxRootAsync())!;
+        var oldCreation = originalRoot.DescendantNodes().OfType<Microsoft.CodeAnalysis.CSharp.Syntax.ObjectCreationExpressionSyntax>().Single();
+        Assert.IsNull(oldCreation.ArgumentList);
+        var originalModel = (await originalDocument.GetSemanticModelAsync())!;
+        var oldTarget = (Microsoft.CodeAnalysis.IMethodSymbol)originalModel.GetSymbolInfo(oldCreation).Symbol!;
+        Assert.AreEqual(ordinaryOptional ? 1 : 0, oldTarget.Parameters.Length);
+        var preview = await _changeSignatureService.PreviewChangeSignatureAsync(workspace.WorkspaceId,
+            SymbolLocator.BySource(path, 2, declaration.IndexOf(ordinaryOptional ? "EmptyPrimary(int" : "EmptyPrimary", StringComparison.Ordinal) + 1),
+            new ChangeSignatureRequest("add", Name: "marker", ParameterType: "int", Position: 0), CancellationToken.None);
+        var stored = PreviewStore.Retrieve(preview.PreviewToken);
+        Assert.IsNotNull(stored);
+        async Task VerifyAsync(Microsoft.CodeAnalysis.Solution solution)
+        {
+            var document = solution.Projects.Single(p => p.Name == "SampleLib").Documents.Single(d => d.FilePath == path);
+            var root = (await document.GetSyntaxRootAsync())!;
+            var creation = root.DescendantNodes().OfType<Microsoft.CodeAnalysis.CSharp.Syntax.ObjectCreationExpressionSyntax>().Single();
+            var model = (await document.GetSemanticModelAsync())!;
+            var target = (Microsoft.CodeAnalysis.IMethodSymbol)model.GetSymbolInfo(creation).Symbol!;
+            Assert.AreEqual(oldTarget.ContainingType.ToDisplayString(), target.ContainingType.ToDisplayString());
+            Assert.AreEqual(oldTarget.Parameters.Length + 1, target.Parameters.Length);
+            var arguments = ((Microsoft.CodeAnalysis.Operations.IObjectCreationOperation)model.GetOperation(creation)!).Arguments;
+            Assert.AreEqual("marker", arguments.Single(a => a.Parameter!.Name == "marker").Parameter!.Name);
+            if (ordinaryOptional)
+            {
+                var retained = arguments.Single(a => a.Parameter!.Name == "retained");
+                Assert.AreEqual(2, retained.Value.ConstantValue.Value);
+                Assert.AreEqual(oldTarget.Parameters.Single().Type.ToDisplayString(),
+                    target.Parameters.Single(p => p.Name == "retained").Type.ToDisplayString());
+            }
+            Assert.AreEqual(oldCreation.Initializer!.ToFullString(), creation.Initializer!.ToFullString());
+            var text = (await document.GetTextAsync()).ToString();
+            foreach (var marker in collection ? new[] { "type", "open", "comma", "close" } : new[] { "type", "open", "close" })
+                Assert.AreEqual(1, text.Split("/*" + marker + "*/", StringSplitOptions.None).Length - 1, marker);
+            Assert.AreEqual(expected, await RunSignatureFixtureAsync(solution, "SampleLib.SignatureProof"));
+        }
+        await VerifyAsync(stored.Value.ModifiedSolution);
+        Assert.AreEqual(1, preview.CallsiteUpdates!.Sum(c => c.CallsiteCount));
+        var applied = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
+        Assert.IsTrue(applied.Success, applied.Error);
+        await VerifyAsync(WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
+    }
+
+    [TestMethod]
+    [DataRow("static", false)]
+    [DataRow("instance", false)]
+    [DataRow("conditional-instance", false)]
+    [DataRow("conditional-instance", true)]
+    [DataRow("extension", false)]
+    [DataRow("conditional-extension", false)]
+    [DataRow("conditional-extension", true)]
+    [DataRow("explicit", false)]
+    public async Task ChangeSignaturePreview_RemoveInferenceBearingParameter_RetainsSubstitution(string shape, bool isNull)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var path = workspace.GetPath("SampleLib", "GenericRemoval.cs");
+        var extension = shape is "extension" or "conditional-extension";
+        var declaration = extension
+            ? "public static class GenericExtension { public static int Compute<T>(this GenericTarget receiver, T unused, int value) => SignatureProof.Trace(value); }"
+            : "public class GenericTarget { public " + (shape is "static" or "explicit" ? "static " : "")
+                + "int Compute<T>(T unused, int value) => SignatureProof.Trace(value); }";
+        var call = shape switch
+        {
+            "static" => "GenericTarget.Compute(\"x\", Argument())",
+            "explicit" => "GenericTarget.Compute /*method*/ < /*type*/ string /*close*/ >(\"x\", Argument())",
+            "instance" or "extension" => "Get() /*receiver*/ . /*dot*/ Compute /*method*/ (\"x\", Argument())",
+            _ => "Get() /*receiver*/ ? /*question*/ . /*dot*/ Compute /*method*/ (\"x\", Argument())",
+        };
+        var source = "namespace SampleLib;\n" + declaration + "\n"
+            + (extension ? "public class GenericTarget { }" : "")
+            + "public static class SignatureProof { private static string trace = \"\"; public static int Trace(int value) { trace += value; return value; }"
+            + "private static int Argument() => Trace(1); private static GenericTarget? Get() { trace += \"R\"; return "
+            + (isNull ? "null" : "new GenericTarget()") + "; } public static string Run() { var value = "
+            + call + "; return trace + \"|\" + value; } }";
+        await File.WriteAllTextAsync(path, source);
+        await workspace.LoadAsync(CancellationToken.None);
+        var original = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        var expected = await RunSignatureFixtureAsync(original, "SampleLib.SignatureProof");
+        async Task VerifyAsync(Microsoft.CodeAnalysis.Solution solution)
+        {
+            var document = solution.Projects.Single(p => p.Name == "SampleLib").Documents.Single(d => d.FilePath == path);
+            var root = (await document.GetSyntaxRootAsync())!;
+            var callNode = root.DescendantNodes().OfType<Microsoft.CodeAnalysis.CSharp.Syntax.InvocationExpressionSyntax>()
+                .Single(n => n.Expression.ToString().Contains("Compute", StringComparison.Ordinal));
+            var model = (await document.GetSemanticModelAsync())!;
+            var target = (Microsoft.CodeAnalysis.IMethodSymbol)model.GetSymbolInfo(callNode).Symbol!;
+            Assert.AreEqual(Microsoft.CodeAnalysis.SpecialType.System_String, target.TypeArguments.Single().SpecialType);
+            Assert.AreEqual("value", ((Microsoft.CodeAnalysis.Operations.IInvocationOperation)model.GetOperation(callNode)!)
+                .Arguments.Single(a => a.Syntax is Microsoft.CodeAnalysis.CSharp.Syntax.ArgumentSyntax).Parameter!.Name);
+            Assert.AreEqual(expected, await RunSignatureFixtureAsync(solution, "SampleLib.SignatureProof"));
+            var text = (await document.GetTextAsync()).ToString();
+            foreach (var marker in new[] { "receiver", "question", "dot", "method", "type", "close" })
+                Assert.AreEqual(source.Split("/*" + marker + "*/", StringSplitOptions.None).Length - 1,
+                    text.Split("/*" + marker + "*/", StringSplitOptions.None).Length - 1, marker);
+        }
+        var originalDoc = original.Projects.Single(p => p.Name == "SampleLib").Documents.Single(d => d.FilePath == path);
+        var originalModel = (await originalDoc.GetSemanticModelAsync())!;
+        var originalCall = (await originalDoc.GetSyntaxRootAsync())!.DescendantNodes()
+            .OfType<Microsoft.CodeAnalysis.CSharp.Syntax.InvocationExpressionSyntax>()
+            .Single(n => n.Expression.ToString().Contains("Compute", StringComparison.Ordinal));
+        Assert.AreEqual(Microsoft.CodeAnalysis.SpecialType.System_String,
+            ((Microsoft.CodeAnalysis.IMethodSymbol)originalModel.GetSymbolInfo(originalCall).Symbol!).TypeArguments.Single().SpecialType);
+        var preview = await _changeSignatureService.PreviewChangeSignatureAsync(workspace.WorkspaceId,
+            SymbolLocator.BySource(path, 2, declaration.IndexOf("Compute", StringComparison.Ordinal) + 1),
+            new ChangeSignatureRequest("remove", Name: "unused"), CancellationToken.None);
+        var stored = PreviewStore.Retrieve(preview.PreviewToken);
+        Assert.IsNotNull(stored);
+        await VerifyAsync(stored.Value.ModifiedSolution);
+        Assert.AreEqual(1, preview.CallsiteUpdates!.Sum(c => c.CallsiteCount));
+        var applied = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
+        Assert.IsTrue(applied.Success, applied.Error);
+        await VerifyAsync(WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
     }
 
 }

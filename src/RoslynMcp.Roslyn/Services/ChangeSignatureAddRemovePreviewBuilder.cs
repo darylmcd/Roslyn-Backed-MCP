@@ -18,10 +18,14 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
     private const string ArgumentTag = "signature-argument";
     private const string DiagnosticTag = "signature-diagnostic";
     private const string ConditionalTag = "signature-conditional";
+    private const string AliasScopeTag = "signature-alias-scope";
 
     internal sealed class BoundCallContext
     {
         private readonly IMethodSymbol _method;
+        private readonly SemanticModel _model;
+        private readonly int _position;
+        private readonly HashSet<string> _requiredAliases;
         private readonly ImmutableArray<IArgumentOperation> _operations;
         private readonly List<(int Ordinal, bool Expanded)> _bindings;
 
@@ -29,9 +33,12 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
 
         internal BoundCallContext(
             IMethodSymbol method, ImmutableArray<IArgumentOperation> operations,
-            SemanticModel model, SeparatedSyntaxList<ArgumentSyntax> arguments)
+            SemanticModel model, SeparatedSyntaxList<ArgumentSyntax> arguments, int position, HashSet<string> requiredAliases)
         {
             _method = method;
+            _model = model;
+            _position = position;
+            _requiredAliases = requiredAliases;
             _operations = operations;
             _bindings = [];
             foreach (var argument in arguments)
@@ -93,20 +100,14 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
 
         internal ExpressionSyntax StaticExtensionTarget(ExpressionSyntax original)
         {
-            var type = SyntaxFactory.ParseExpression(_method.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
+            var type = SyntaxFactory.ParseExpression(MaterializedTypeName(_method.ContainingType, _model, _position, _requiredAliases));
             var name = original switch
             {
                 MemberAccessExpressionSyntax member => member.Name,
                 MemberBindingExpressionSyntax member => member.Name,
                 _ => throw Refuse("The extension target has no editable member syntax."),
             };
-            if (name is IdentifierNameSyntax identifier && _method.Arity > 0)
-            {
-                var types = _method.TypeArguments.Select(t => SyntaxFactory.ParseTypeName(t.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat))).ToArray();
-                if (types.All(t => !t.ContainsDiagnostics))
-                    name = identifier.CopyAnnotationsTo(SyntaxFactory.GenericName(identifier.Identifier,
-                        SyntaxFactory.TypeArgumentList(SyntaxFactory.SeparatedList(types))));
-            }
+            name = RetainTypeArguments(name);
             return original switch
             {
                 MemberAccessExpressionSyntax member => member.WithExpression(type.WithTriviaFrom(member.Expression)).WithName(name),
@@ -114,6 +115,28 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
                     SyntaxKind.SimpleMemberAccessExpression, type, member.OperatorToken, name)),
                 _ => throw Refuse("The extension target has no editable member syntax."),
             };
+        }
+
+
+        internal ExpressionSyntax RetainTypeSubstitution(ExpressionSyntax expression) => expression switch
+        {
+            SimpleNameSyntax name => RetainTypeArguments(name),
+            MemberAccessExpressionSyntax member => member.WithName(RetainTypeArguments(member.Name)),
+            MemberBindingExpressionSyntax member => member.WithName(RetainTypeArguments(member.Name)),
+            _ => expression,
+        };
+
+        private SimpleNameSyntax RetainTypeArguments(SimpleNameSyntax name)
+        {
+            if (name is not IdentifierNameSyntax identifier || _method.Arity == 0) return name;
+            var requiredAliases = new HashSet<string>(_requiredAliases, StringComparer.Ordinal);
+            var types = _method.TypeArguments.Select(t => SyntaxFactory.ParseTypeName(MaterializedTypeName(t, _model, _position, requiredAliases))).ToArray();
+            // Anonymous substitutions cannot be named. Leave inference intact and let
+            // candidate binding validation distinguish retained inference from an unsafe edit.
+            if (types.Any(t => t.ContainsDiagnostics)) return name;
+            _requiredAliases.UnionWith(requiredAliases);
+            return identifier.CopyAnnotationsTo(SyntaxFactory.GenericName(identifier.Identifier,
+                SyntaxFactory.TypeArgumentList(SyntaxFactory.SeparatedList(types))));
         }
 
         private SeparatedSyntaxList<ArgumentSyntax> NameOriginalArguments(
@@ -146,7 +169,7 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
                     {
                         packed = SyntaxFactory.ArrayCreationExpression(
                             SyntaxFactory.ArrayType(SyntaxFactory.ParseTypeName(
-                                array.ElementType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)),
+                                MaterializedTypeName(array.ElementType, _model, _position, _requiredAliases)),
                                 SyntaxFactory.SingletonList(SyntaxFactory.ArrayRankSpecifier(
                                     SyntaxFactory.SingletonSeparatedList<ExpressionSyntax>(SyntaxFactory.OmittedArraySizeExpression())))),
                             SyntaxFactory.InitializerExpression(SyntaxKind.ArrayInitializerExpression,
@@ -156,7 +179,7 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
                     else
                     {
                         packed = SyntaxFactory.CastExpression(
-                            SyntaxFactory.ParseTypeName(parameter.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)),
+                            SyntaxFactory.ParseTypeName(MaterializedTypeName(parameter.Type, _model, _position, _requiredAliases)),
                             SyntaxFactory.ParenthesizedExpression(SyntaxFactory.CollectionExpression(SyntaxFactory.SeparatedList<CollectionElementSyntax>(
                                 elements.Select(SyntaxFactory.ExpressionElement), separators))));
                     }
@@ -190,9 +213,11 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
             {
                 if (operation.Parameter is not { } parameter || parameter.Ordinal == removedOrdinal
                     || operation.ArgumentKind != ArgumentKind.DefaultValue) continue;
-                if (!operation.Value.ConstantValue.HasValue)
-                    throw Refuse("An omitted argument cannot be materialized from its original bound value.");
-                var value = ConstantExpression(operation.Value.ConstantValue.Value, parameter.Type);
+                // Struct defaults have no operation constant, but their optional metadata value is null.
+                var originalValue = operation.Value.ConstantValue.HasValue ? operation.Value.ConstantValue.Value
+                    : parameter.HasExplicitDefaultValue ? parameter.ExplicitDefaultValue
+                    : throw Refuse("An omitted argument cannot be materialized from its original bound value.");
+                var value = ConstantExpression(originalValue, parameter.Type, _model, _position, _requiredAliases);
                 result = result.Add(NamedArgument(parameter.Name, value)
                     .WithLeadingTrivia(result.Count == 0 ? default : SyntaxFactory.Space));
             }
@@ -267,6 +292,7 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
         var evidence = new Dictionary<DocumentId, List<BindingEvidence>>();
         var changedDocuments = new HashSet<DocumentId>();
         var callCounts = new Dictionary<DocumentId, int>();
+        var globalAliases = new HashSet<string>(StringComparer.Ordinal);
         foreach (var project in solution.Projects.Where(p => affectedProjects.Contains(p.Id)))
         {
             foreach (var document in project.Documents)
@@ -292,8 +318,13 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
                 }
 
                 var annotations = new Dictionary<SyntaxNode, List<SyntaxAnnotation>>();
+                foreach (var scope in root.DescendantNodes().OfType<BaseNamespaceDeclarationSyntax>())
+                    AddAnnotation(annotations, scope, new SyntaxAnnotation(AliasScopeTag, scope.SpanStart.ToString(CultureInfo.InvariantCulture)));
                 var calls = new Dictionary<SyntaxNode, BoundCallContext>();
-                var conditionalTypes = new Dictionary<SyntaxAnnotation, ITypeSymbol?>();
+                var requiredAliases = new HashSet<string>(globalAliases.Concat(project.Documents
+                    .Where(d => d.FilePath is not null).Select(d => "@source|" + d.Id.Id.ToString("N") + "|" + EncodeAliasPath(d.FilePath!)))
+                    .Append("@project|" + project.Id.Id.ToString("N") + "|" + EncodeAliasPath(Path.GetDirectoryName(project.FilePath ?? document.FilePath)!)), StringComparer.Ordinal);
+                var conditionalTypes = new Dictionary<SyntaxAnnotation, (ITypeSymbol? Type, int Position)>();
                 var discardedConditionals = new HashSet<SyntaxAnnotation>();
                 var conditionalCalls = new Dictionary<SyntaxNode, List<SyntaxAnnotation>>();
                 var documentEvidence = new List<BindingEvidence>();
@@ -314,7 +345,8 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
                         }
                         continue;
                     }
-                    var target = model.GetSymbolInfo(node, ct).Symbol as IMethodSymbol;
+                    var symbolInfo = model.GetSymbolInfo(node, ct);
+                    var target = symbolInfo.Symbol as IMethodSymbol;
                     var originalOperation = model.GetOperation(node, ct);
                     if (originalOperation is IDynamicInvocationOperation
                         && node is InvocationExpressionSyntax dynamicCall)
@@ -343,7 +375,13 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
                             && SymbolEqualityComparer.Default.Equals(m.ContainingType.OriginalDefinition,
                                 (dynamicCreation.Type as INamedTypeSymbol)?.OriginalDefinition)))
                         throw Refuse("A dynamic constructor invocation may bind to the edited constructor at runtime. Use a statically bound construction before changing this signature.");
-                    if (target is null) continue;
+                    if (target is null)
+                    {
+                        if (symbolInfo.CandidateSymbols.OfType<IMethodSymbol>()
+                            .Any(m => declarationKeys.ContainsKey(SymbolIdentity(CanonicalDefinition(m)))))
+                            throw Refuse("An unresolved invocation may bind to the edited member. Resolve its binding errors before changing this signature.");
+                        continue;
+                    }
                     var annotation = new SyntaxAnnotation(BindingTag);
                     AddAnnotation(annotations, node, annotation);
                     documentEvidence.Add(CreateEvidence(annotation, target, node, model, declarationKeys));
@@ -357,7 +395,7 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
                     };
                     var operationTarget = operation is IInvocationOperation boundInvocation
                         ? boundInvocation.TargetMethod : target;
-                    calls[node] = new BoundCallContext(operationTarget, arguments, model, list.Arguments);
+                    calls[node] = new BoundCallContext(operationTarget, arguments, model, list.Arguments, node.SpanStart, requiredAliases);
                     foreach (var conditional in node.Ancestors().OfType<ConditionalAccessExpressionSyntax>())
                     {
                         var tag = annotations.TryGetValue(conditional, out var existing)
@@ -366,7 +404,7 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
                         {
                             tag = new SyntaxAnnotation(ConditionalTag);
                             AddAnnotation(annotations, conditional, tag);
-                            conditionalTypes[tag] = model.GetTypeInfo(conditional, ct).Type;
+                            conditionalTypes[tag] = (model.GetTypeInfo(conditional, ct).Type, conditional.SpanStart);
                             if (conditional.Parent is LambdaExpressionSyntax lambda
                                 && model.GetTypeInfo(lambda, ct).ConvertedType is INamedTypeSymbol { DelegateInvokeMethod.ReturnsVoid: true })
                                 discardedConditionals.Add(tag);
@@ -423,6 +461,8 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
                         var updated = updateCallsite(context, list.Arguments);
                         if (!updated.Equals(list.Arguments)) count++;
                         rewritten = WithArguments(rewritten, list.WithArguments(updated));
+                        if (rewritten is InvocationExpressionSyntax genericInvocation)
+                            rewritten = genericInvocation.WithExpression(context.RetainTypeSubstitution(genericInvocation.Expression));
                         if (context.RemovesExtensionReceiver && rewritten is InvocationExpressionSyntax invocation)
                         {
                             rewritten = invocation.WithExpression(context.StaticExtensionTarget(invocation.Expression));
@@ -433,7 +473,9 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
                     return rewritten;
                 });
                 if (affectedConditionals.Count > 0)
-                    rewrittenRoot = new ConditionalReceiverRewriter(affectedConditionals, conditionalTypes, discardedConditionals, root).Visit(rewrittenRoot)!;
+                    rewrittenRoot = new ConditionalReceiverRewriter(affectedConditionals, conditionalTypes, discardedConditionals, root, model, requiredAliases).Visit(rewrittenRoot)!;
+                globalAliases.UnionWith(requiredAliases.Where(a => a.StartsWith("@global|", StringComparison.Ordinal) || a.StartsWith("@newglobal|", StringComparison.Ordinal)));
+                if (requiredAliases.Count > 0) rewrittenRoot = AddAliasDirectives(rewrittenRoot, requiredAliases);
                 documentEvidence = documentEvidence.Select(entry => entry with
                 {
                     ContainingArguments = entry.OriginalNode.AncestorsAndSelf()
@@ -449,18 +491,49 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
             }
         }
 
+        foreach (var group in globalAliases.Where(a => a.StartsWith("@global|", StringComparison.Ordinal)).GroupBy(a => a.Split('|')[1], StringComparer.Ordinal))
+        {
+            var originalDocument = solution.Projects.SelectMany(p => p.Documents).Single(d => d.Id.Id.ToString("N") == group.Key);
+            var document = candidate.GetDocument(originalDocument.Id)!;
+            var root = (await document.GetSyntaxRootAsync(ct).ConfigureAwait(false))!;
+            var directives = group.SelectMany(a =>
+            {
+                var parts = a.Split('|');
+                var entries = new List<string> { "@globalusing:" + parts[2] + ":" + parts[3] };
+                if (!((CompilationUnitSyntax)root).Externs.Any(e => e.Identifier.ValueText == parts[3])) entries.Add(parts[3]);
+                return entries;
+            }).Distinct(StringComparer.Ordinal);
+            var updated = RoundTripRoot(AddAliasDirectivesToScope(root, directives), document, ct);
+            candidate = candidate.WithDocumentSyntaxRoot(document.Id, updated);
+            changedDocuments.Add(document.Id);
+        }
+
+        foreach (var plan in globalAliases.Where(a => a.StartsWith("@newglobal|", StringComparison.Ordinal)))
+        {
+            var parts = plan.Split('|');
+            var projectId = solution.ProjectIds.Single(id => id.Id.ToString("N") == parts[1]);
+            var documentId = DocumentId.CreateFromSerialized(projectId, Guid.ParseExact(parts[2], "N"));
+            var text = Microsoft.CodeAnalysis.Text.SourceText.From("extern alias " + EscapeIdentifier(parts[4])
+                + "; global using " + EscapeIdentifier(parts[3]) + " = " + EscapeIdentifier(parts[4]) + "; ", System.Text.Encoding.UTF8);
+            candidate = candidate.AddDocument(documentId, Path.GetFileName(DecodeAliasPath(parts[5])), text, filePath: DecodeAliasPath(parts[5]));
+            changedDocuments.Add(documentId);
+        }
+
         var warnings = await ValidateCandidateAsync(solution, candidate, affectedProjects, evidence, declarationKeys, diagnosticEvidence, ct).ConfigureAwait(false);
         // Drop verification-only annotations and unchanged document versions from the public preview.
         var accumulator = solution;
         var changes = new List<FileChangeDto>();
         foreach (var id in changedDocuments)
         {
-            var original = solution.GetDocument(id)!;
+            var original = solution.GetDocument(id);
             var updated = candidate.GetDocument(id)!;
-            var oldText = await original.GetTextAsync(ct).ConfigureAwait(false);
+            var oldText = original is null ? Microsoft.CodeAnalysis.Text.SourceText.From(string.Empty)
+                : await original.GetTextAsync(ct).ConfigureAwait(false);
             var newText = await updated.GetTextAsync(ct).ConfigureAwait(false);
-            accumulator = accumulator.WithDocumentText(id, newText);
-            var path = original.FilePath ?? original.Name;
+            accumulator = original is null
+                ? accumulator.AddDocument(id, updated.Name, newText, updated.Folders, updated.FilePath)
+                : accumulator.WithDocumentText(id, newText);
+            var path = updated.FilePath ?? updated.Name;
             changes.Add(new FileChangeDto(path, DiffGenerator.GenerateUnifiedDiff(oldText.ToString(), newText.ToString(), path)));
         }
         var updates = callCounts.Select(pair => new CallsiteUpdateDto(
@@ -474,8 +547,8 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
     // Lower only conditional accesses affected by removing their extension receiver.
     // Receiver tests stay at their original evaluation position, including loop iterators.
     private sealed class ConditionalReceiverRewriter(
-        HashSet<SyntaxAnnotation> affected, Dictionary<SyntaxAnnotation, ITypeSymbol?> types,
-        HashSet<SyntaxAnnotation> discarded, SyntaxNode original) : CSharpSyntaxRewriter
+        HashSet<SyntaxAnnotation> affected, Dictionary<SyntaxAnnotation, (ITypeSymbol? Type, int Position)> types,
+        HashSet<SyntaxAnnotation> discarded, SyntaxNode original, SemanticModel model, HashSet<string> requiredAliases) : CSharpSyntaxRewriter
     {
         private readonly HashSet<string> _names = original.DescendantTokens().Where(t => t.IsKind(SyntaxKind.IdentifierToken))
             .Select(t => t.ValueText).ToHashSet(StringComparer.Ordinal);
@@ -527,13 +600,11 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
         {
             var updated = (ConditionalAccessExpressionSyntax)base.VisitConditionalAccessExpression(node)!;
             if (!IsAffected(updated)) return updated;
-            var type = types[updated.GetAnnotations(ConditionalTag).First(affected.Contains)];
+            var (type, position) = types[updated.GetAnnotations(ConditionalTag).First(affected.Contains)];
             // Statement contexts are lowered by their owning statement/arrow/loop.
             if (type?.SpecialType == SpecialType.System_Void || IsDiscarded(node)) return updated;
             var (condition, body) = Parts(updated);
-            var syntax = type is null ? null : SyntaxFactory.ParseTypeName(type.ToDisplayString(
-                SymbolDisplayFormat.FullyQualifiedFormat.WithMiscellaneousOptions(
-                    SymbolDisplayFormat.FullyQualifiedFormat.MiscellaneousOptions | SymbolDisplayMiscellaneousOptions.IncludeNullableReferenceTypeModifier)));
+            var syntax = type is null ? null : SyntaxFactory.ParseTypeName(MaterializedTypeName(type, model, position, requiredAliases));
             ExpressionSyntax absent = syntax is null || syntax.ContainsDiagnostics
                 ? SyntaxFactory.LiteralExpression(SyntaxKind.NullLiteralExpression) : SyntaxFactory.DefaultExpression(syntax);
             if (syntax is not null && !syntax.ContainsDiagnostics)
@@ -736,7 +807,7 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
     private static ArgumentListSyntax? GetArguments(SyntaxNode node) => node switch
     {
         InvocationExpressionSyntax invocation => invocation.ArgumentList,
-        BaseObjectCreationExpressionSyntax creation => creation.ArgumentList,
+        BaseObjectCreationExpressionSyntax creation => creation.ArgumentList ?? SyntaxFactory.ArgumentList(),
         ConstructorInitializerSyntax initializer => initializer.ArgumentList,
         PrimaryConstructorBaseTypeSyntax primaryBase => primaryBase.ArgumentList,
         _ => null,
@@ -774,10 +845,10 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
     private static string EscapeIdentifier(string name) =>
         SyntaxFacts.GetKeywordKind(name) != SyntaxKind.None ? "@" + name : name;
 
-    private static ExpressionSyntax ConstantExpression(object? value, ITypeSymbol type)
+    private static ExpressionSyntax ConstantExpression(object? value, ITypeSymbol type, SemanticModel model, int position, HashSet<string> requiredAliases)
     {
         if (value is null) return SyntaxFactory.ParseExpression("default(" +
-            type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) + ")");
+            MaterializedTypeName(type, model, position, requiredAliases) + ")");
         var literal = value switch
         {
             string text => SymbolDisplay.FormatLiteral(text, true),
@@ -799,8 +870,204 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
                 ?? throw Refuse("The original optional argument value is not representable."),
         };
         return SyntaxFactory.CastExpression(SyntaxFactory.ParseTypeName(
-            type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)),
+            MaterializedTypeName(type, model, position, requiredAliases)),
             SyntaxFactory.ParenthesizedExpression(SyntaxFactory.ParseExpression(literal)));
+    }
+
+    private static SyntaxNode AddAliasDirectives(SyntaxNode root, HashSet<string> aliases)
+    {
+        var scopes = aliases.Where(a => !a.StartsWith("@global|", StringComparison.Ordinal) && !a.StartsWith("@newglobal|", StringComparison.Ordinal)
+            && !a.StartsWith("@source|", StringComparison.Ordinal) && !a.StartsWith("@project|", StringComparison.Ordinal)).GroupBy(a => a[..a.IndexOf(':')])
+            .ToDictionary(g => g.Key, g => g.Select(a => a[(a.IndexOf(':') + 1)..]).ToArray(), StringComparer.Ordinal);
+        var namespaces = root.GetAnnotatedNodes(AliasScopeTag).OfType<BaseNamespaceDeclarationSyntax>()
+            .Where(n => scopes.ContainsKey(n.GetAnnotations(AliasScopeTag).Single().Data!)).ToArray();
+        root = root.ReplaceNodes(namespaces, (original, rewritten) => (BaseNamespaceDeclarationSyntax)AddAliasDirectivesToScope(
+            rewritten, scopes[original.GetAnnotations(AliasScopeTag).Single().Data!]));
+        return scopes.TryGetValue("-1", out var global) ? AddAliasDirectivesToScope(root, global) : root;
+    }
+
+    private static SyntaxNode AddAliasDirectivesToScope(SyntaxNode scope, IEnumerable<string> aliases)
+    {
+        // Add no line breaks: unrelated caller-line values must retain their original lines.
+        var entries = aliases.OrderBy(a => a, StringComparer.Ordinal).ToArray();
+        var directives = entries.Where(a => !a.StartsWith("@using:", StringComparison.Ordinal) && !a.StartsWith("@globalusing:", StringComparison.Ordinal))
+            .Select(a => SyntaxFactory.ParseCompilationUnit("extern alias " + EscapeIdentifier(a) + "; ").Externs.Single()).ToArray();
+        var usings = entries.Where(a => a.StartsWith("@using:", StringComparison.Ordinal))
+            .Select(a => a["@using:".Length..].Split(':'))
+            .Select(a => SyntaxFactory.ParseCompilationUnit("using " + EscapeIdentifier(a[0]) + " = " + EscapeIdentifier(a[1]) + "; ").Usings.Single()).ToArray();
+        var globalUsings = entries.Where(a => a.StartsWith("@globalusing:", StringComparison.Ordinal))
+            .Select(a => a["@globalusing:".Length..].Split(':'))
+            .Select(a => SyntaxFactory.ParseCompilationUnit("global using " + EscapeIdentifier(a[0]) + " = " + EscapeIdentifier(a[1]) + "; ").Usings.Single()).ToArray();
+        var externs = scope is CompilationUnitSyntax root ? root.Externs : ((BaseNamespaceDeclarationSyntax)scope).Externs;
+        var originalUsings = scope is CompilationUnitSyntax unit ? unit.Usings : ((BaseNamespaceDeclarationSyntax)scope).Usings;
+        if (externs.Count == 0 && (directives.Length > 0 || originalUsings.Count == 0))
+        {
+            var first = scope is BaseNamespaceDeclarationSyntax ns
+                ? ns.Usings.FirstOrDefault()?.GetFirstToken() ?? ns.Members.First().GetFirstToken() : scope.GetFirstToken();
+            if (directives.Length > 0) directives[0] = directives[0].WithLeadingTrivia(first.LeadingTrivia);
+            else if (globalUsings.Length > 0) globalUsings[0] = globalUsings[0].WithLeadingTrivia(first.LeadingTrivia);
+            else usings[0] = usings[0].WithLeadingTrivia(first.LeadingTrivia);
+            scope = scope.ReplaceToken(first, first.WithLeadingTrivia(default(SyntaxTriviaList)));
+        }
+        var combinedUsings = SyntaxFactory.List(originalUsings.Where(u => !u.GlobalKeyword.IsKind(SyntaxKind.None))
+            .Concat(globalUsings).Concat(originalUsings.Where(u => u.GlobalKeyword.IsKind(SyntaxKind.None))).Concat(usings));
+        return scope switch
+        {
+            CompilationUnitSyntax compilation => compilation.WithExterns(externs.AddRange(directives)).WithUsings(combinedUsings),
+            FileScopedNamespaceDeclarationSyntax file => file.WithExterns(externs.AddRange(directives)).WithUsings(originalUsings.AddRange(usings)),
+            _ => ((NamespaceDeclarationSyntax)scope).WithExterns(externs.AddRange(directives)).WithUsings(originalUsings.AddRange(usings)),
+        };
+    }
+
+    private static string MaterializedTypeName(ITypeSymbol type, SemanticModel model, int position, HashSet<string> requiredAliases)
+    {
+        var format = SymbolDisplayFormat.FullyQualifiedFormat.WithMiscellaneousOptions(
+            SymbolDisplayFormat.FullyQualifiedFormat.MiscellaneousOptions | SymbolDisplayMiscellaneousOptions.IncludeNullableReferenceTypeModifier);
+        var parts = type.ToDisplayParts(format);
+        var root = model.SyntaxTree.GetRoot();
+        var scopes = root.FindToken(position).Parent!.AncestorsAndSelf()
+            .Where(n => n is BaseNamespaceDeclarationSyntax or CompilationUnitSyntax).ToArray();
+        var externs = root.DescendantNodes().OfType<ExternAliasDirectiveSyntax>()
+            .Where(a => scopes.Contains(a.Parent)).ToArray();
+        bool IsAccessible(string alias, SyntaxNode owner) => !scopes.TakeWhile(s => s != owner).Append(owner)
+            .SelectMany(s => s is CompilationUnitSyntax unit ? unit.Usings : ((BaseNamespaceDeclarationSyntax)s).Usings)
+            .Any(u => u.Alias?.Name.Identifier.ValueText == alias);
+        var text = new System.Text.StringBuilder();
+        for (var i = 0; i < parts.Length; i++)
+        {
+            var part = parts[i];
+            if (part.ToString() == "global" && i + 1 < parts.Length && parts[i + 1].ToString() == "::")
+            {
+                var named = parts.Skip(i + 2).TakeWhile(p => p.ToString() != "<")
+                    .Select(p => p.Symbol).OfType<INamedTypeSymbol>().FirstOrDefault();
+                // Prefer the original global binding when that assembly is already accessible.
+                if (named is not null && SymbolEqualityComparer.Default.Equals(named,
+                    model.GetSpeculativeTypeInfo(position, SyntaxFactory.ParseTypeName(named.ToDisplayString(format)),
+                        SpeculativeBindingOption.BindAsTypeOrNamespace).Type))
+                {
+                    text.Append("global");
+                    continue;
+                }
+                var reference = named is null ? null : model.Compilation.References.FirstOrDefault(r =>
+                    SymbolEqualityComparer.Default.Equals(model.Compilation.GetAssemblyOrModuleSymbol(r), named.ContainingAssembly));
+                var alias = reference?.Properties.Aliases.FirstOrDefault(a => a != "global" &&
+                    externs.Any(e => e.Identifier.ValueText == a && IsAccessible(a, e.Parent!)))
+                    ?? reference?.Properties.Aliases.FirstOrDefault(a => a != "global");
+                if (alias is not null)
+                {
+                    var existing = externs.FirstOrDefault(e => e.Identifier.ValueText == alias);
+                    if (existing is not null && !IsAccessible(alias, existing.Parent!))
+                    {
+                        // Alias the extern assembly root in its original scope, before a nearer alias shadows it.
+                        var scopeId = (existing.Parent is CompilationUnitSyntax ? -1 : existing.Parent!.SpanStart)
+                            .ToString(CultureInfo.InvariantCulture);
+                        var prefix = scopeId + ":@using:";
+                        var planned = requiredAliases.FirstOrDefault(a => a.StartsWith(prefix, StringComparison.Ordinal)
+                            && a.EndsWith(":" + alias, StringComparison.Ordinal));
+                        if (planned is null)
+                        {
+                            var fresh = FreshAssemblyAlias(model.Compilation, requiredAliases);
+                            planned = prefix + fresh + ":" + alias;
+                            requiredAliases.Add(planned);
+                        }
+                        alias = planned[prefix.Length..planned.LastIndexOf(':')];
+                    }
+                    else if (existing is null)
+                    {
+                        if (!IsAccessible(alias, scopes.Last()))
+                        {
+                            // Preserve existing alias uses by importing a fresh assembly-root alias from a safe source scope.
+                            var host = model.Compilation.SyntaxTrees.FirstOrDefault(t => t.GetRoot() is CompilationUnitSyntax unit
+                                && requiredAliases.Any(a => a.StartsWith("@source|", StringComparison.Ordinal) && a.EndsWith("|" + EncodeAliasPath(t.FilePath), StringComparison.Ordinal))
+                                && !unit.Usings.Any(u => u.Alias?.Name.Identifier.ValueText == alias)
+                                && (t == model.SyntaxTree || unit.DescendantNodes().OfType<ExternAliasDirectiveSyntax>()
+                                    .Any(e => e.Identifier.ValueText == alias)));
+                            if (host is null)
+                            {
+                                // A directive-only source document provides a scope without changing existing aliases or project references.
+                                var project = requiredAliases.Single(a => a.StartsWith("@project|", StringComparison.Ordinal)).Split('|');
+                                var newPrefix = "@newglobal|" + project[1] + "|";
+                                var newPlan = requiredAliases.FirstOrDefault(a => a.StartsWith(newPrefix, StringComparison.Ordinal) && a.Split('|')[4] == alias);
+                                if (newPlan is null)
+                                {
+                                    var fresh = FreshAssemblyAlias(model.Compilation, requiredAliases);
+                                    var documentId = Guid.NewGuid().ToString("N");
+                                    var path = Path.Combine(DecodeAliasPath(project[2]), "__SignatureAssemblyAliases_" + documentId + ".cs");
+                                    newPlan = newPrefix + documentId + "|" + fresh + "|" + alias + "|" + EncodeAliasPath(path);
+                                    requiredAliases.Add(newPlan);
+                                }
+                                alias = newPlan.Split('|')[3];
+                                text.Append(EscapeIdentifier(alias));
+                                continue;
+                            }
+                            var hostId = requiredAliases.Single(a => a.StartsWith("@source|", StringComparison.Ordinal)
+                                && a.EndsWith("|" + EncodeAliasPath(host.FilePath), StringComparison.Ordinal)).Split('|')[1];
+                            var prefix = "@global|" + hostId + "|";
+                            var planned = requiredAliases.FirstOrDefault(a => a.StartsWith(prefix, StringComparison.Ordinal)
+                                && a.EndsWith("|" + alias, StringComparison.Ordinal));
+                            if (planned is null)
+                            {
+                                var fresh = FreshAssemblyAlias(model.Compilation, requiredAliases);
+                                planned = prefix + fresh + "|" + alias;
+                                requiredAliases.Add(planned);
+                            }
+                            alias = planned.Split('|')[2];
+                        }
+                        else
+                        {
+                            var scope = scopes.OfType<BaseNamespaceDeclarationSyntax>().FirstOrDefault();
+                            requiredAliases.Add((scope?.SpanStart ?? -1).ToString(CultureInfo.InvariantCulture) + ":" + alias);
+                        }
+                    }
+                    text.Append(EscapeIdentifier(alias));
+                    continue;
+                }
+            }
+            text.Append(part.ToString());
+        }
+        return text.ToString();
+    }
+
+    private static string EncodeAliasPath(string path) => Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(path));
+    private static string DecodeAliasPath(string path) => System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(path));
+
+    private static string FreshAssemblyAlias(Compilation compilation, HashSet<string> requiredAliases)
+    {
+        var names = compilation.SyntaxTrees.SelectMany(t => t.GetRoot().DescendantTokens())
+            .Where(t => t.IsKind(SyntaxKind.IdentifierToken)).Select(t => t.ValueText).ToHashSet(StringComparer.Ordinal);
+        var fresh = "__signatureAssembly";
+        for (var suffix = 0; names.Contains(fresh) || requiredAliases.Any(a =>
+            a.Contains(":" + fresh + ":", StringComparison.Ordinal) || a.Contains("|" + fresh + "|", StringComparison.Ordinal)); suffix++)
+            fresh = "__signatureAssembly" + suffix.ToString(CultureInfo.InvariantCulture);
+        return fresh;
+    }
+
+    private static string AssemblyTypeIdentity(ITypeSymbol type) => TypeIdentity(type, null)!;
+
+    private static string? TypeIdentity(ITypeSymbol? type, Dictionary<string, string>? originals)
+    {
+        if (type is null) return null;
+        var identity = type switch
+        {
+            IArrayTypeSymbol array => "array:" + array.Rank + ":" + TypeIdentity(array.ElementType, originals),
+            IPointerTypeSymbol pointer => "pointer:" + TypeIdentity(pointer.PointedAtType, originals),
+            IFunctionPointerTypeSymbol pointer => "function:" + pointer.Signature.CallingConvention + ":"
+                + string.Join(",", pointer.Signature.UnmanagedCallingConventionTypes.Select(t => TypeIdentity(t, originals))) + ":"
+                + pointer.Signature.RefKind + ":" + TypeIdentity(pointer.Signature.ReturnType, originals) + ":"
+                + string.Join(",", pointer.Signature.Parameters.Select(p => p.RefKind + ":" + TypeIdentity(p.Type, originals))),
+            INamedTypeSymbol named => named.ContainingAssembly?.Identity + ":"
+                + named.OriginalDefinition.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) + ":"
+                + (named.ContainingType is null ? "" : TypeIdentity(named.ContainingType, originals))
+                + "<" + string.Join(",", named.TypeArguments.Select(t => TypeIdentity(t, originals))) + ">",
+            ITypeParameterSymbol parameter => parameter.Ordinal + ":" + (parameter.ContainingSymbol is IMethodSymbol owner
+                ? originals is null ? owner.ContainingAssembly.Identity + ":" + owner.ContainingType.ToDisplayString() + ":" + owner.Name + ":" + owner.Arity
+                    : TargetIdentity(owner, originals)
+                : parameter.ContainingSymbol.ContainingAssembly?.Identity + ":" + parameter.ContainingSymbol.ToDisplayString()),
+            _ => type.ContainingAssembly?.Identity.ToString(),
+        };
+        // Roslyn reports None or NotAnnotated for the same nonnullable value-type conversion.
+        // Nullable<T> remains a distinct named type; reference/type-parameter annotations remain meaningful.
+        return (type.IsValueType ? NullableAnnotation.None : type.NullableAnnotation) + ":" + type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) + ":" + identity;
     }
 
     private static IMethodSymbol CanonicalDefinition(IMethodSymbol method) =>
@@ -808,7 +1075,7 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
 
     private static string SymbolIdentity(IMethodSymbol method) =>
         method.ContainingAssembly.Identity + ":" + method.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) + ":" + method.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
-            + ":" + string.Join(",", method.Parameters.Select(p => p.RefKind + " " + p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)));
+            + ":" + string.Join(",", method.Parameters.Select(p => p.RefKind + " " + AssemblyTypeIdentity(p.Type)));
 
     private static string TargetIdentity(IMethodSymbol method, Dictionary<string, string> originals)
     {
@@ -826,9 +1093,9 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
         var types = node is ExpressionSyntax expression ? model.GetTypeInfo(expression) : default;
         return new BindingEvidence(annotation, TargetIdentity(target, originals),
             string.Join(",", target.TypeArguments.Concat(target.ContainingType.TypeArguments)
-                .Select(t => t.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat))),
-            types.Type?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-            types.ConvertedType?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                .Select(t => TypeIdentity(t, originals))),
+            TypeIdentity(types.Type, originals),
+            TypeIdentity(types.ConvertedType, originals),
             node is ExpressionSyntax e ? ConversionIdentity(model.GetConversion(e), originals) : string.Empty, null, node, []);
     }
 
