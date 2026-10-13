@@ -858,7 +858,7 @@
     {
       "id": "change-signature-class-struct-primary-ctor-add-remove",
       "order": 17,
-      "status": "in-review",
+      "status": "deferred",
       "backlogRowsClosed": [
         "change-signature-class-struct-primary-ctor-add-remove"
       ],
@@ -895,7 +895,7 @@
       "worktreePath": ".worktrees/change-signature-class-struct-primary-ctor-add-remove",
       "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1779",
       "mergedAt": null,
-      "notes": "Same executor fix1 held for unresolved initialization safety policy; no operator answer inferred from the pause. PR1779 remains OPEN on intermediate03d4af4b27af9ff9fb5bc1b871ebc2dd203ea6ba; full57 passed4402/0fail/19platformskip on CBB but is superseded by subsequent actual serializer/static/typed initialization regressions. Root whole-read causal logs: serializer1fail; expanded4fail7pass45s; typed3fail3pass53s; existing explicit0 collision original-valid atomic1pass13s. Known-neutral/proven-conflict boundary fits existing stanza; unknown computations need explicit decision because conservative refusal also rejects valid pure-but-unproved cases. Scratch classifier/reference audit are proposals, not production verification; nullable converted-storage classification correction required. Preserve own source, staged/working changes, original runtime witnesses, cold0 review identity and same PR. No final fix1 envelope, corrected-head cold1, hosted/landing or cleanup proof. Distinct global metadata portability blocker filed PR785; do not reclassify source defects as global tooling. Parent epoch unchanged, ten initial starts used; cap-held rows pending, genuine global holds deferred. Current clock refresh2026-10-13 after user pause; previous drain expired, no approval by elapsed time.",
+      "notes": "Operator explicitly chose \"Defer this initiative for a broader design\" on 2026-10-13, replying to the unresolved-initialization policy question. Conservative cannot-prove-preservation refusal, including valid pure-but-unproved computations, was NOT approved. Status deferred for a broader independently re-vetted construction design; no reduced scope, test weakening or falsely proven-impossible classification. Preserve existing PR1779 OPEN/head03d4af4b27af9ff9fb5bc1b871ebc2dd203ea6ba, same executor/source worktree/remediation branch, stagedtreeccb59b7db26e33199f2b8c9c4919dad817544a80, productionSHAa9df3bcc7eaa1387ed490eaa3ca9c7aebd6359eda70008da8d7dc3044a7e9d99 and tests workingSHAe0dc1b851a8c31aa7a4f9119a9b22bd16e2f7b6f25ec18da4bdbbd05c259a5af. Held scratch checkpoint SHA561c6e4a35d531929b53269a8c866f8d1328cedd85856170aff8402e03981e4c preserves364 checked artifact hashes and all original/candidate runtime witnesses. Full57 passing4402 tests is intermediate after real serializer/static/typed regressions. No final strict fix1 result, final-head cold review, landing or cleanup claim. This operator/design hold is separate from global tooling holds, including metadata portability PR785. Broader design requires complete semantic/typed/static/external factory proof, fresh audited replan and cold review before renewed execution; never treat this deferral as permission for the rejected conservative policy.",
       "fileSetHash": "8c960fe95a632d07d6ba37c979d25bc24086c9805002c4248382a29b202adee0",
       "stanzaHash": "85654b631bc417dd5425a08de19bb905302678cac3ee9d9afb7defe000f8265c",
       "reviewedStanzaHash": "85654b631bc417dd5425a08de19bb905302678cac3ee9d9afb7defe000f8265c",

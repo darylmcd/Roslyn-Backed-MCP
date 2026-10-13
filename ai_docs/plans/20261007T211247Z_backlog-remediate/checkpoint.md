@@ -1,6 +1,19 @@
 # Planning checkpoint — 20261007T211247Z_backlog-remediate
 
-## Current execution status 2026-10-13 UTC
+## Current operator disposition 2026-10-13
+
+| Item | Current disposition |
+|---|---|
+| Live decision | Operator chose: Defer this initiative for a broader design. Unresolved-computation conservative refusal was NOT approved. Earlier pending-question statements below are superseded. |
+| Constructor initiative | change-signature-class-struct-primary-ctor-add-remove is natively deferred with an explicit operator/design reason; backlog row stays open. No source implementation or policy-dependent test changes made for this decision. |
+| Preserved ownership | PR1779 OPEN/head03d4af4b27af9ff9fb5bc1b871ebc2dd203ea6ba; same executor, branch, worktree, staged/working changes and cold0 history retained. Held checkpoint SHA561c6e4a35d531929b53269a8c866f8d1328cedd85856170aff8402e03981e4c and364 artifact hashes remain the evidence checkpoint. |
+| Validation limit | Full57 is intermediate after proven serializer/static/typed initialization regressions. No final strict fix1 success, corrected-head cold1, landing or cleanup claim. Draft classifier remains uncompiled/unimplemented. |
+| Accounting | 30 initiatives:8pending/7merged/1obsolete/14deferred; no in-review initiative, completedfalse. Ten initial starts used;27 sketches disposed. Eight cap-held rows remain pending, not global-deferred. |
+| Other policies | All four editorconfig policies remain approved. Its complete proposal remains source-only with native replan/review/admission and runtime proof owed. No broader implementation was started. |
+| Global boundary | Global tooling implementation stays with the other agent. Previously observed metadata gate red and portability PR785 are separate from this operator/design deferral; no global source fix or native-state hand edit. |
+| Resume requirement | Re-vet a broader complete construction design and public contract, preserve positive cases and all causal witnesses, then obtain fresh audited replan/review/admission and exact-head validation. Do not substitute the unapproved conservative policy or restart from a new identity. |
+
+## Historical execution snapshot 2026-10-13 UTC — superseded by operator disposition above
 
 | Item | Current verified disposition |
 |---|---|
