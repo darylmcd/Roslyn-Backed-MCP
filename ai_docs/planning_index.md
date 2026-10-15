@@ -25,6 +25,7 @@
 
 | Scope | If you are answering... | Open first | Then |
 |-------|--------------------------|------------|------|
+| `in-repo` | October 15 direct remediation of 15 rows, after open-PR reconciliation | `plans/20261015-backlog-15.md` | Own orchestration; backlog-remediate skill excluded during its rework. |
 | `in-repo` | "What should I work on next in this repo?" or any unnamed next-step question | `backlog.md` | Relevant file under `ai_docs/plans/` if a row or initiative names it. Registered plan: `plans/audit-21-analyzers/plan.md` (AUDIT-21 analyzer gap — **parked 2026-08-18**, not a live work source; unpark trigger: `plans/audit-21-analyzers/plan.md` header table, `Unpark trigger` row). |
 | `cross-project` | User explicitly named another repo, adapter, ecosystem, or integration | No repo-local cross-project planner in this repo | Work only from the named external context; do not infer a local ecosystem file |
 | `reference` | You need planning context, not an actionable next step | `../docs/roadmap.md` or the relevant planning-support file | Return to `backlog.md` or the named plan before recommending work |

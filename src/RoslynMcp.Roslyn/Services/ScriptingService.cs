@@ -91,10 +91,8 @@ public sealed class ScriptingService : IScriptingService
         // UX-002: a supplied per-call timeout is an explicit contract, not a fallback hint.
         if (timeoutSecondsOverride is <= 0)
         {
-            throw new ArgumentOutOfRangeException(
-                nameof(timeoutSecondsOverride),
-                timeoutSecondsOverride,
-                "Script timeout must be greater than zero when supplied.");
+            throw new PublicArgumentOutOfRangeException(
+                "Script timeout must be greater than zero when supplied.", nameof(timeoutSecondsOverride));
         }
 
         var effectiveTimeoutSeconds = timeoutSecondsOverride ?? _options.TimeoutSeconds;
@@ -102,17 +100,18 @@ public sealed class ScriptingService : IScriptingService
         var maximumBudgetSeconds = ScriptingServiceOptions.MaxTimerDurationSeconds - graceSeconds;
         if (maximumBudgetSeconds < 1)
         {
-            throw new InvalidOperationException(
+            throw InvalidOperationErrors.Internal(
                 $"{nameof(ScriptingServiceOptions.WatchdogGraceSeconds)} must be less than " +
                 $"{ScriptingServiceOptions.MaxTimerDurationSeconds} seconds.");
         }
 
         if (effectiveTimeoutSeconds is < 1 || effectiveTimeoutSeconds > maximumBudgetSeconds)
         {
-            throw new ArgumentOutOfRangeException(
-                nameof(timeoutSecondsOverride),
-                effectiveTimeoutSeconds,
-                $"Script timeout must be between 1 and {maximumBudgetSeconds} seconds after watchdog grace.");
+            var correction = $"Script timeout must be between 1 and {maximumBudgetSeconds} seconds after watchdog grace.";
+            if (timeoutSecondsOverride is null)
+                throw InvalidOperationErrors.Internal("The configured default is invalid. " + correction);
+            throw new PublicArgumentOutOfRangeException(
+                correction, nameof(timeoutSecondsOverride));
         }
 
         return new ScriptExecutionSupervisorSettings(

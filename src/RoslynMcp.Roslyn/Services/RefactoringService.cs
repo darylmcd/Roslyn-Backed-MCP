@@ -57,7 +57,7 @@ public sealed class RefactoringService : IRefactoringService
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
         if (symbol is null)
-            throw new InvalidOperationException(BuildRenameTargetNotFoundMessage(locator));
+            throw new PublicInvalidOperationException(BuildRenameTargetNotFoundMessage(locator));
 
         if (!symbol.Locations.Any(static l => l.IsInSource))
         {
@@ -143,7 +143,7 @@ public sealed class RefactoringService : IRefactoringService
     {
         var symbol = await SymbolResolver.ResolveAsync(inputSolution, locator, ct).ConfigureAwait(false);
         if (symbol is null)
-            throw new InvalidOperationException(BuildRenameTargetNotFoundMessage(locator));
+            throw new PublicInvalidOperationException(BuildRenameTargetNotFoundMessage(locator));
 
         if (!symbol.Locations.Any(static l => l.IsInSource))
         {
@@ -166,7 +166,7 @@ public sealed class RefactoringService : IRefactoringService
     {
         if (locator.HasMetadataName)
         {
-            return $"No symbol found for metadataName '{locator.MetadataName}'. " +
+            return "No symbol found for the supplied metadataName. " +
                    "For member renames, pass a fully qualified target such as Namespace.Type.Member or ContainingType.Member, " +
                    "or use a symbolHandle from document_symbols/enclosing_symbol for precise targeting.";
         }
@@ -177,7 +177,7 @@ public sealed class RefactoringService : IRefactoringService
                    "refresh it with document_symbols or enclosing_symbol before retrying.";
         }
 
-        return $"No symbol found at {locator.FilePath}:{locator.Line}:{locator.Column}. " +
+        return "No symbol found at the supplied source location. " +
                "Place the location on the identifier to rename, or use a symbolHandle from document_symbols/enclosing_symbol.";
     }
 

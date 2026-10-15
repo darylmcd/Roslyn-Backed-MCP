@@ -205,9 +205,9 @@ public sealed class MsBuildEvaluationService : IMsBuildEvaluationService
             // msbuild-tools-bad-argument-message: a missing/whitespace project name is the most
             // common MCP client mistake (firewall audit, 2026-04-08). Surface the required
             // parameter name and an invocation example instead of a generic invocation error.
-            throw new ArgumentException(
-                "The 'project' parameter is required. Pass the project name or absolute .csproj path, " +
-                "e.g. { \"workspaceId\": \"<id>\", \"project\": \"MyApp.Core\", \"propertyName\": \"TargetFramework\" }. " +
+            throw new PublicArgumentException(
+                "The 'projectName' parameter is required. Pass the project name or absolute .csproj path, " +
+                "e.g. { \"workspaceId\": \"<id>\", \"projectName\": \"MyApp.Core\", \"propertyName\": \"TargetFramework\" }. " +
                 "Use workspace_status to list loaded projects.",
                 nameof(projectName));
         }
@@ -227,10 +227,7 @@ public sealed class MsBuildEvaluationService : IMsBuildEvaluationService
                 "MSBuild evaluation could not resolve project '{ProjectName}' in workspace '{WorkspaceId}'; {LoadedCount} project(s) loaded: {LoadedProjects}.",
                 projectName, workspaceId, loadedProjects.Count, loadedList);
 
-            throw new InvalidOperationException(
-                $"Project '{projectName}' not found in workspace '{workspaceId}'. " +
-                $"Loaded projects ({loadedProjects.Count}): {loadedList}. " +
-                "Pass a matching 'project' value (project name or absolute .csproj path).");
+            throw WorkspaceProjectResolver.NotFound(loadedProjects);
         }
 
         if (string.IsNullOrEmpty(proj.FilePath))

@@ -1,4 +1,5 @@
 using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
 
 namespace RoslynMcp.Tests;
 
@@ -164,7 +165,7 @@ public sealed class HighValueCoverageIntegrationTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task DeadCode_PreviewRemoveDeadCode_Empty_Throws()
     {
-        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
             DeadCodeService.PreviewRemoveDeadCodeAsync(
                 SampleWorkspaceId,
                 new DeadCodeRemovalDto([]),

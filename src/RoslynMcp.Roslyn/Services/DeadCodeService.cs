@@ -32,7 +32,7 @@ public sealed class DeadCodeService : IDeadCodeService
     {
         if (request.SymbolHandles.Count == 0)
         {
-            throw new ArgumentException("At least one symbol handle is required.", nameof(request));
+            throw new PublicArgumentException("At least one symbol handle is required.", nameof(request));
         }
 
         var solution = _workspace.GetCurrentSolution(workspaceId);

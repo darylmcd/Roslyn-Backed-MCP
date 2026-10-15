@@ -1,14 +1,13 @@
 using Microsoft.CodeAnalysis.CodeFixes;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
 
-// donotparallelize-audit-wave-12: [DoNotParallelize] removed. Every test reads the shared SampleSolution
-// through the assembly-shared, synchronized WorkspaceIdCache (LoadSharedSampleWorkspaceAsync) or validates
-// input with no workspace at all. No preview token is ever minted (unknown-id / no-provider / validation-throw
-// paths only), the CompilationCache is a per-test local instance, and there is no apply, reload, direct
-// WorkspaceManager.LoadAsync/Close, or filesystem write. Verified with a repeated (3x) concurrent run
-// alongside its wave-12 siblings and other parallel isolated-workspace classes, green every time.
+// Tests read the assembly-shared SampleSolution through the synchronized WorkspaceIdCache.
+// The CA1822 provider control creates token-keyed previews; it never applies them or mutates
+// the shared workspace. Other cases validate inputs or provider guidance. Keep apply, reload,
+// workspace close and filesystem mutation in isolated-workspace fixtures.
 [TestClass]
 public sealed class FixAllServiceIntegrationTests : SharedWorkspaceTestBase
 {
@@ -106,7 +105,7 @@ public sealed class FixAllServiceIntegrationTests : SharedWorkspaceTestBase
     {
         // CS8019 has no FixAll provider in this workspace. The validation must still run first,
         // otherwise provider discovery masks the malformed project-scoped request.
-        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(async () =>
+        var ex = await Assert.ThrowsExactlyAsync<PublicArgumentException>(async () =>
             await FixAllService.PreviewFixAllAsync(
                 WorkspaceId,
                 diagnosticId: "CS8019",
@@ -170,7 +169,7 @@ public sealed class FixAllServiceIntegrationTests : SharedWorkspaceTestBase
         string? projectName,
         string expectedParameter)
     {
-        var exception = Assert.ThrowsExactly<ArgumentException>(() =>
+        var exception = Assert.ThrowsExactly<PublicArgumentException>(() =>
             FixAllTargetResolver.ParseAndValidate(scope, filePath, projectName));
 
         Assert.AreEqual(expectedParameter, exception.ParamName);

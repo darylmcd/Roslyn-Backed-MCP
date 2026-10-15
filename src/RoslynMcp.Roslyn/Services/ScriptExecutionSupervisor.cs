@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -338,11 +339,11 @@ internal sealed class ScriptExecutionSupervisor
     {
         var maximum = TimeSpan.FromSeconds(ScriptingServiceOptions.MaxTimerDurationSeconds);
         if (settings.EffectiveTimeoutSeconds < 1 || settings.Budget <= TimeSpan.Zero || settings.Budget > maximum)
-            throw new ArgumentOutOfRangeException(nameof(settings), "Script budget is outside the supported range.");
+            throw InvalidOperationErrors.Internal("Script budget is outside the supported range.");
         if (settings.HardDeadlineSeconds < 1 || settings.HardDeadlineSeconds > ScriptingServiceOptions.MaxTimerDurationSeconds)
-            throw new ArgumentOutOfRangeException(nameof(settings), "Hard deadline is outside the supported range.");
+            throw InvalidOperationErrors.Internal("Hard deadline is outside the supported range.");
         if (settings.HeartbeatInterval <= TimeSpan.Zero || settings.HeartbeatInterval > maximum)
-            throw new ArgumentOutOfRangeException(nameof(settings), "Heartbeat interval is outside the supported range.");
+            throw InvalidOperationErrors.Internal("Heartbeat interval is outside the supported range.");
     }
 
     private static TimeSpan MinPositive(TimeSpan first, TimeSpan second, TimeSpan third) =>

@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using Microsoft.CodeAnalysis;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Contracts;
 
 namespace RoslynMcp.Roslyn.Helpers;
@@ -90,7 +91,7 @@ public static class SymbolHandleSerializer
     {
         if (string.IsNullOrWhiteSpace(symbolHandle))
         {
-            throw new ArgumentException("symbolHandle is empty.", nameof(symbolHandle));
+            throw new PublicArgumentException("symbolHandle is empty.", nameof(symbolHandle));
         }
 
         string json;
@@ -100,7 +101,7 @@ public static class SymbolHandleSerializer
         }
         catch (FormatException ex)
         {
-            throw new ArgumentException("symbolHandle is not valid base64.", nameof(symbolHandle), ex);
+            throw new PublicArgumentException("symbolHandle is not valid base64.", nameof(symbolHandle), ex);
         }
 
         SymbolHandlePayload? payload;
@@ -110,12 +111,12 @@ public static class SymbolHandleSerializer
         }
         catch (JsonException ex)
         {
-            throw new ArgumentException("symbolHandle is not valid JSON.", nameof(symbolHandle), ex);
+            throw new PublicArgumentException("symbolHandle is not valid JSON.", nameof(symbolHandle), ex);
         }
 
         if (payload is null)
         {
-            throw new ArgumentException("symbolHandle JSON deserialized to null.", nameof(symbolHandle));
+            throw new PublicArgumentException("symbolHandle JSON deserialized to null.", nameof(symbolHandle));
         }
 
         var hasMetadata = !string.IsNullOrWhiteSpace(payload.MetadataName);
@@ -123,7 +124,7 @@ public static class SymbolHandleSerializer
         var hasDisplay = !string.IsNullOrWhiteSpace(payload.DisplayName);
         if (!hasMetadata && !hasSource && !hasDisplay)
         {
-            throw new ArgumentException(
+            throw new PublicArgumentException(
                 "symbolHandle payload must include MetadataName, source location (filePath, line, column), or DisplayName.",
                 nameof(symbolHandle));
         }

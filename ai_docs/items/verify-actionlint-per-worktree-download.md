@@ -18,3 +18,5 @@
 ## Context
 
 Observed during strict per-PR landing (each gate cuts a new throwaway worktree).
+
+2026-10-15: fresh PR1781 worktree at5c91d362 failed the pinned actionlint download with HTTP504. Primary cache holds the exact pinned binary SHA25654ca21be3de4c7cfa26914aa8b61bd76bf573ef3caac5f80d110558cdf241718. Using the documented override exposed a separately tracked fixture-isolation defect actionlint-fixture-inherited-override; do not treat a retry as root-cause proof.

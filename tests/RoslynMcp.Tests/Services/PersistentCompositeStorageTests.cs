@@ -31,6 +31,23 @@ public sealed class PersistentCompositeStorageTests
     }
 
     [TestMethod]
+    public void Write_InvalidTokenPublishesFormatWithoutIdentifier()
+    {
+        const string sentinel = "PRIVATE-PERSISTENT-TOKEN";
+        var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
+        var entry = new CompositePreviewStore.Entry("PRIVATE-WORKSPACE", 1, "test", [], DateTime.UtcNow);
+        var exception = Assert.Throws<ArgumentException>(() => store.Write(sentinel, entry));
+        Assert.IsInstanceOfType<IPublicMessageException>(exception);
+        using var envelope = System.Text.Json.JsonDocument.Parse(
+            RoslynMcp.Host.Stdio.Tools.ToolErrorHandler.ClassifyAndFormat(exception, "apply_composite_preview"));
+        Assert.AreEqual("InvalidArgument", envelope.RootElement.GetProperty("category").GetString());
+        Assert.AreEqual("ArgumentException", envelope.RootElement.GetProperty("exceptionType").GetString());
+        StringAssert.Contains(envelope.RootElement.GetProperty("message").GetString()!, "32 hexadecimal GUID characters");
+        Assert.IsFalse(envelope.RootElement.GetRawText().Contains(sentinel, StringComparison.Ordinal));
+        Assert.IsEmpty(Directory.EnumerateFileSystemEntries(_root));
+    }
+
+    [TestMethod]
     public void Write_ThenTryClaim_ConsumesAndRoundTripsEntry()
     {
         var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
@@ -156,7 +173,7 @@ public sealed class PersistentCompositeStorageTests
             [],
             DateTime.UtcNow);
 
-        Assert.ThrowsExactly<ArgumentException>(() => store.Write("../escape", entry));
+        Assert.ThrowsExactly<PublicArgumentException>(() => store.Write("../escape", entry));
         Assert.IsFalse(Directory.Exists(Path.Combine(_root, "7")));
     }
 
