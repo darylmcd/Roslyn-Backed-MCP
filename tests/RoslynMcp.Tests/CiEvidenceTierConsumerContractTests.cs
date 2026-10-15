@@ -45,7 +45,7 @@ public sealed class CiEvidenceTierConsumerContractTests
         ["tests/RoslynMcp.Tests/ChangelogFragmentRequirementTests.cs"] = "Synthetic temp repositories only.",
         ["tests/RoslynMcp.Tests/CiEvidenceTierConsumerContractTests.cs"] = "This guard.",
         ["tests/RoslynMcp.Tests/CiTopologyDecisionContractTests.cs"] = "Synthetic router payloads only.",
-        ["tests/RoslynMcp.Tests/ParameterObjectPreviewTests.cs"] = "Doc-comment mention only.",
+        ["tests/RoslynMcp.Tests/DocumentationOwnershipContractTests.cs"] = "Scans source comments and resolves docs-tier plan paths; the retired item path is a forbidden source-text literal only, never an evidence-file read.",
         ["tests/RoslynMcp.Tests/ReadmeSurfaceCountTests.cs"] = "Recursive ai_docs walk filtered to backlog.md, planning_index.md and plans/ (docs tier).",
         ["tests/RoslynMcp.Tests/Skills/AggregatePromotionScorecardsScriptTests.cs"] = "Synthetic temp roots only.",
         ["tests/RoslynMcp.Tests/Skills/ArchiveOldReportsScriptTests.cs"] = "Synthetic temp roots only.",

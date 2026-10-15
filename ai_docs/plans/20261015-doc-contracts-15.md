@@ -1,8 +1,10 @@
 # Backlog documentation and test-contract remediation — 15 items
 
-<!-- scope: in-repo -->
+<!-- scope: reference -->
 <!-- artifact: plan -->
-<!-- status: active -->
+<!-- status: reference -->
+
+Reference only: implementation and validation-obligation record. PR1789 owns live review, gate and delivery status.
 
 | Field | Contract |
 |---|---|
@@ -50,4 +52,6 @@
 | Focused proof | 200 passed, 0 failed, 0 skipped; docs-green.trx in session scratch. |
 | Static proof | Roslyn token equivalence across 24 comment-only files; every just recipe described; changed-format and AI-doc validation passed. |
 | Full gate | Required on final tree before merge; retain session scratch full-ci.log and process exit evidence. |
-| Hosted gate / delivery | Require exact-head code PR validation and confirmed merge/cleanup; do not infer completion from row deletion. |
+| CI consumer companion | Source-text-only regression classified in CiEvidenceTierConsumerContractTests; removed stale ParameterObjectPreviewTests inventory entry. All 5 inventory/documentation tests passed. |
+| Gate findings | Corrected the fragment Maintenance prefix and the newly exposed CI consumer inventory; preserve rejected-run logs. No diagnostic/test/router assertion weakened. |
+| Hosted gate / delivery | [PR1789](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1789) is authoritative. Require exact-head code validation and confirmed merge/cleanup; do not infer completion from row deletion. |
