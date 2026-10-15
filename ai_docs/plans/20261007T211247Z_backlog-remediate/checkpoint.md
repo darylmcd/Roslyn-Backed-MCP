@@ -5,7 +5,7 @@
 | Item | Current disposition |
 |---|---|
 | Authorization | Operator authorized direct implementation, repair and shipping of existing work; do not invoke the reworked backlog-remediate skill. |
-| Source | PR1779 merged2026-10-15T19:56:53Z as8f74aaeb7f0d25fab25af72bab7d8643b4994440; final reviewed source head8c303620bf625493fa41cbfe35f35a0c1d0a46d8. Canonical shipping cleaned the feature checkout and branch. |
+| Source | PR1779 merged2026-10-15T19:56:53Z as8f74aaeb7f0d25fab25af72bab7d8643b4994440; final source head8c303620bf625493fa41cbfe35f35a0c1d0a46d8. Canonical shipping cleaned the feature checkout and branch. |
 | Design | ADR0026 supersedes private-core relocation: retain the original explicit-zero constructor and delegate the added signature to it; use a required fresh marker for last-parameter removal. |
 | Focused proof | Earlier324 constructor cases passed before final metadata changes; all nine added metadata/empty-primary/native-ABI regressions failed on the old code, then the repaired25-case construction matrix passed. |
 | Final validation | Head8c303620 full local just ci passed4450/0failed/19skipped, including all333constructor cases; vulnerability audit clean. Hosted Windows/Linux matrix, SDK-floor probe and CodeQL passed. |
