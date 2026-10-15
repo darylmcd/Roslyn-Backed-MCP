@@ -161,15 +161,12 @@ public sealed class McpServerSurfaceTestSkillTests
     }
 
     [TestMethod]
-    public void CanonicalPromotionScorecard_IsGitTracked()
+    public async Task CanonicalPromotionScorecard_IsGitTracked()
     {
-        if (!GitFixtureRunner.IsAvailable(out var gitUnavailableReason))
-        {
-            Assert.Inconclusive($"git is not available on PATH — cannot assert tracked state. {gitUnavailableReason}");
-        }
+        await GitFixtureRunner.RequireAvailableAsync();
 
         var repoRoot = TestFixtureFileSystem.FindRepositoryRoot();
-        var tracked = GitFixtureRunner.RunGitCapture(repoRoot, "ls-files", "--", CanonicalScorecardPath);
+        var tracked = await GitFixtureRunner.RunGitCaptureAsync(repoRoot, "ls-files", "--", CanonicalScorecardPath);
 
         Assert.IsFalse(
             string.IsNullOrWhiteSpace(tracked),

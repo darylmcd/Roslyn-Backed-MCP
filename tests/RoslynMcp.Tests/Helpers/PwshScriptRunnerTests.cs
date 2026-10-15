@@ -8,6 +8,31 @@ public sealed class PwshScriptRunnerTests
 {
     [TestMethod]
     [TestCategory("Process")]
+    public async Task GitFixture_OneAvailableWorker_CompletesAfterNativeExit()
+    {
+        await GitFixtureRunner.RequireAvailableAsync();
+        var root = CreateFixtureRoot();
+        var probeRoot = Path.Combine(root, OperatingSystem.IsWindows() ? "quoted ' paths" : "quoted ' paths with\\backslash");
+        Directory.CreateDirectory(probeRoot);
+        try
+        {
+            var result = await PwshScriptRunner.RunExecutableAsync(
+                "dotnet",
+                [Path.Combine(AppContext.BaseDirectory, "ProcessProbes", "GitFixtureWorkerProbe", "GitFixtureWorkerProbe.dll"),
+                 typeof(GitFixtureRunner).Assembly.Location, probeRoot],
+                environment: null,
+                timeout: TimeSpan.FromSeconds(45),
+                description: "isolated Git fixture worker probe");
+            Assert.AreEqual(0, result.ExitCode, result.AllOutput);
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(root);
+        }
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
     public async Task RunAsync_PreservesArgumentBoundaries()
     {
         var fixtureRoot = CreateFixtureRoot();
@@ -159,8 +184,8 @@ public sealed class PwshScriptRunnerTests
                 // Git aliases execute through a shell; quote each fixture path independently.
                 var alias = "!pwsh " + string.Join(" ", arguments.Select(argument =>
                     "'" + argument.Replace("'", "'\"'\"'", StringComparison.Ordinal) + "'"));
-                runTask = Task.Run(() => GitFixtureRunner.RunGitCapture(fixtureRoot,
-                    "-c", "alias.retain-pipes=" + alias, "retain-pipes"));
+                runTask = GitFixtureRunner.RunGitCaptureAsync(fixtureRoot,
+                    "-c", "alias.retain-pipes=" + alias, "retain-pipes");
             }
             else
             {
@@ -205,17 +230,17 @@ public sealed class PwshScriptRunnerTests
 
     [TestMethod]
     [TestCategory("Process")]
-    public void GitFixture_PreservesArgumentsAndReportsNonzeroExit()
+    public async Task GitFixture_PreservesArgumentsAndReportsNonzeroExit()
     {
         var fixtureRoot = CreateFixtureRoot();
         try
         {
             var value = "alpha beta; semi'quote";
-            var output = GitFixtureRunner.RunGitCapture(fixtureRoot,
+            var output = await GitFixtureRunner.RunGitCaptureAsync(fixtureRoot,
                 "-c", "fixture.value=" + value, "config", "--get", "fixture.value");
             Assert.AreEqual(value, output.TrimEnd('\r', '\n'));
-            var exception = Assert.ThrowsExactly<InvalidOperationException>(() =>
-                GitFixtureRunner.RunGitCapture(fixtureRoot, "--not-a-git-option"));
+            var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+                GitFixtureRunner.RunGitCaptureAsync(fixtureRoot, "--not-a-git-option"));
             StringAssert.Contains(exception.Message, "exited 129");
             StringAssert.Contains(exception.Message, "stderr=[unknown option");
         }
