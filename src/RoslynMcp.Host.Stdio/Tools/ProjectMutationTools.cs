@@ -9,14 +9,13 @@ namespace RoslynMcp.Host.Stdio.Tools;
 /// <summary>
 /// MCP tool entry points for project-file mutation (Package/Project references,
 /// target frameworks, MSBuild properties, Directory.Packages.props entries).
-/// WS1 phase 1.6 — each <c>Preview*</c> shim delegates to
+/// Each <c>Preview*</c> shim delegates to
 /// <see cref="ToolDispatch.ReadByWorkspaceIdAsync{TDto}"/>, and
-/// <c>ApplyProjectMutation</c> uses the phase-1.6 delegate overload of
+/// <c>ApplyProjectMutation</c> uses the delegate overload of
 /// <see cref="ToolDispatch.ApplyByTokenAsync{TDto}(IWorkspaceExecutionGate, Func{string, string?}, string, Func{CancellationToken, Task{TDto}}, CancellationToken)"/>
 /// so it can reuse the shared dispatch body even though
 /// <see cref="IProjectMutationPreviewStore"/> doesn't derive from
-/// <c>IPreviewStore</c>. See <c>CodeActionTools</c> (canary, PR #305) and
-/// <c>ai_docs/plans/20260421T123658Z_post-audit-followups.md</c>.
+/// <c>IPreviewStore</c>.
 /// </summary>
 [McpServerToolType]
 public static class ProjectMutationTools

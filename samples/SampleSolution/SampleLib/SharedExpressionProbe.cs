@@ -12,8 +12,8 @@ public sealed class SharedExpressionProbe
 {
     public string Load(string filePath)
     {
-        // Lines 14-15 hold the candidate expression. Column positions are asserted by the
-        // test at src/RoslynMcp.Tests/ExtractSharedExpressionTests.cs.
+        // Both methods contain the candidate expression used by ExtractSharedExpressionTests;
+        // locate it from the current syntax rather than hardcoded source positions.
         var normalized =
             System.Uri.UnescapeDataString(filePath).Replace('/', System.IO.Path.DirectorySeparatorChar);
         return normalized;

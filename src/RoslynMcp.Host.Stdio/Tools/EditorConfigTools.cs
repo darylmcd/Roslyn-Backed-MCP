@@ -8,10 +8,7 @@ namespace RoslynMcp.Host.Stdio.Tools;
 /// <summary>
 /// MCP tool entry points for .editorconfig inspection and mutation. WS1 phase 1.5 —
 /// each shim body delegates to the corresponding <see cref="ToolDispatch"/> helper
-/// instead of carrying the 5–7 line dispatch boilerplate inline. See
-/// <c>CodeActionTools</c> (canary, PR #305), phases 1.3/1.4, and
-/// <c>ai_docs/plans/20260421T123658Z_post-audit-followups.md</c> for the migration
-/// rationale and the deferred-generator blocker.
+/// instead of carrying the 5–7 line dispatch boilerplate inline.
 /// </summary>
 [McpServerToolType]
 public static class EditorConfigTools

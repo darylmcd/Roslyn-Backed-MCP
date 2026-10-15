@@ -9,14 +9,16 @@ namespace RoslynMcp.Roslyn.Helpers;
 /// <remarks>
 /// <para>
 /// Extracted from <c>AtomicFileWriter</c> (<c>extract-atomicfilewriter-encoding-helper</c>).
-/// Encoding sniffing is not atomic-write plumbing, yet five non-atomic-write call sites —
-/// <c>EditorConfigService</c> (which writes via <see cref="File.WriteAllLines(string, IEnumerable{string}, Encoding)"/>),
+/// Encoding sniffing is independent of atomic-write plumbing. At extraction, five consumers —
+/// <c>EditorConfigService</c>,
 /// <c>ProjectMutationService</c>, <c>EditService</c>, <c>UndoService</c>, and
 /// <c>CompositeApplyOrchestrator</c> — depended on <c>AtomicFileWriter</c> purely as a sniffer.
 /// That inverted dependency also made <see cref="CsprojSemanticEquality"/> (scoped by its own doc
 /// header to csproj-XML semantic comparison) the de-facto BOM detector for <c>.editorconfig</c>
 /// and every mutation-write path. Detection now lives here; <c>CsprojSemanticEquality</c> is a
-/// consumer like everyone else.
+/// consumer like everyone else. <c>EditorConfigService</c> now renders bytes with a
+/// <see cref="StreamWriter"/> using the detected encoding, then publishes them through
+/// its owned file transaction.
 /// </para>
 /// <para>
 /// Detection is BOM-based only, delegated to <see cref="StreamReader"/>'s own byte-order-mark

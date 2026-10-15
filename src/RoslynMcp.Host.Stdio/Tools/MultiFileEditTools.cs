@@ -10,14 +10,12 @@ namespace RoslynMcp.Host.Stdio.Tools;
 
 /// <summary>
 /// MCP tool entry points for direct multi-file text-edit apply/preview operations.
-/// WS1 phase 1.6 — <c>ApplyMultiFilePreview</c> (pure dispatch) delegates to
+/// <c>ApplyMultiFilePreview</c> (pure dispatch) delegates to
 /// <see cref="ToolDispatch"/>'s token-aware write dispatch;
 /// <c>ApplyMultiFileEdit</c> and <c>PreviewMultiFileEdit</c> keep their hand-written
 /// bodies because they perform per-file async path validation inside the gate
 /// before the service call (validation must run under the gate's cancellation
-/// token, so the single-lambda dispatch shape doesn't fit). See
-/// <c>CodeActionTools</c> (canary, PR #305) and
-/// <c>ai_docs/plans/20260421T123658Z_post-audit-followups.md</c>.
+/// token, so the single-lambda dispatch shape doesn't fit).
 /// </summary>
 [McpServerToolType]
 public static class MultiFileEditTools

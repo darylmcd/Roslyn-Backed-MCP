@@ -14,11 +14,9 @@ namespace RoslynMcp.Host.Stdio.Tools;
 
 /// <summary>
 /// MCP tool entry points for scaffolding refactorings (scaffold_type / scaffold_test /
-/// scaffold_test_batch / scaffold_first_test_file). WS1 phase 1.6 — each shim body
+/// scaffold_test_batch / scaffold_first_test_file). each shim body
 /// delegates to the corresponding <see cref="ToolDispatch"/> helper instead of
-/// carrying the 7-line dispatch boilerplate inline. See <c>CodeActionTools</c>
-/// (canary, PR #305) and <c>ai_docs/plans/20260421T123658Z_post-audit-followups.md</c>
-/// for the migration rationale and the deferred-generator blocker.
+/// carrying the 7-line dispatch boilerplate inline.
 /// </summary>
 [McpServerToolType]
 public static class ScaffoldingTools
