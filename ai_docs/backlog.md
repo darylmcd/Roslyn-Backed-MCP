@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-15T19:24:47Z
+**updated_at:** 2026-10-15T19:35:06Z
 
 ## Agent contract
 
@@ -149,6 +149,7 @@
 | `preview-existing-document-insertion-refused` | Medium | — | **Restore valid insertion preview** — diagnose ready-workspace refusal for existing-document comment/property insertions; preserve preview/apply safety. [type: bug] [source: BioRemote executor20261011] | M | items/preview-existing-document-insertion-refused.md |
 | `fixture-git-add-hosted-deadline` | Medium | — | **Diagnose fixture Git staging deadlines** — reproduce Windows shard setup timeouts with process lifetime evidence and repair the shared runner root cause without loosening its deadline. [type: bug] [source: PR1781 hosted gate] | M | items/fixture-git-add-hosted-deadline.md |
 | `gated-executor-default-drops-early-kill` | Medium | — | Preserve nonempty early-kill patterns across executor implementations; remove the silent legacy fallback after re-deriving the published contract and updating owned callers and doubles. [type: bug] [source: adjacent source review] | M | items/gated-executor-default-drops-early-kill.md |
+| `type-consumer-not-found-public-guidance` | Medium | — | Preserve safe missing-type correction through the existing InvalidOperation envelope without echoing typeName; retain metadata and generic-arity guidance. | S | items/type-consumer-not-found-public-guidance.md |
 
 ## Low
 
