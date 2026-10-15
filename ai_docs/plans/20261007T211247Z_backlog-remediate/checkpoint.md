@@ -13,8 +13,9 @@
 | Metadata exception | Operator explicitly approved removal of four legacy profile prefixes from sketch anchors. Checksum-guarded patch changed only those anchors; AI-doc validation and the native reviewed-hash check passed. No global engine code changed. |
 | Preserved tracking | Restored four unpublished rows through backlog.mjs; retained the expanded restore/fork design hold and source checkpoints. Backlog lint has zero errors. |
 | Reconciliation | Canonical backlog writer closed the constructor row; native reconcile recorded its real merged PR and timestamp. Counts remain8merged/8pending/13deferred/1obsolete; this is not whole-plan completion. |
-| Prerequisites | Dependency PRs1781-1784 and Git fixture repair1785 merged with fresh local and hosted evidence; main is clean at8f74aaeb7f0d25fab25af72bab7d8643b4994440. |
-| Next | Publish final reconciliation after the separate fifteen-item batch lands; preserve other pending and held initiatives. No native executor admission or implementation-review receipt was fabricated for the direct repair. |
+| Prerequisites | Dependency PRs1781-1784, Git fixture repair1785 and constructor PR1779 merged with fresh local and hosted evidence. |
+| Fifteen-item batch | PR1786 merged2026-10-15T21:13:26Z as765290d4c829f4bbb644f15901462a5d97e2ed94. Source47a5606d passed full local4502/0failed/25platform skips and all hosted gates; all six Linux symlink controls passed. Main was clean at that merge after canonical cleanup. |
+| Next | Publish this final reconciliation after fresh local and hosted validation; preserve other pending and held initiatives. No native executor admission or implementation-review receipt was fabricated for the direct repair. |
 
 ## Historical construction re-plan 2026-10-13
 
