@@ -50,5 +50,7 @@
 | Platform inventory | Thirteen early-return guards repaired; five Linux-only cases on Windows, not eight as the old row claimed. Both skill regex prerequisites now assert nonempty matches. |
 | Existing independent defect | BoundedStore pre-insertion capacity defect remains tracked by bounded-store-capacity-atomic-insertion; no production store changes in this test-only batch. |
 | Fresh build | Non-incremental Release build passed with zero warnings/errors; rebuilt PDB matches restored production source. |
-| Closure staging | Canonical writer staged all15row closures with zero lint errors; closures remain conditional on final local and hosted gates and merge. Focused run pending. |
+| Closure staging | Canonical writer staged all15row closures with zero lint errors; closures remain conditional on final local and hosted gates and merge. Focused run passed682/0failed/16platform skips (698total). |
 | Delivery gate | Require focused proof, unsharded just ci, exact-head hosted validation, confirmed merge and clean main before reporting completion. |
+
+| Full-gate correction | Initial aggregate stopped at CRLF and two new import-order findings; normalized touched working files to LF and ran the formatter on both import lists. Fresh changed-file gate passed46files/0new/1tracked baseline import finding. No baseline edits or suppressed findings. |
