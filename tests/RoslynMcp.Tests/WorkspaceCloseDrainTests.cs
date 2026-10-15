@@ -10,6 +10,7 @@ using RoslynMcp.Host.Stdio.Runtime;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Contracts;
 using RoslynMcp.Roslyn.Helpers;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -148,7 +149,7 @@ public sealed class WorkspaceCloseDrainTests
         {
             KillQuietly(inDirProcess);
             KillQuietly(outOfDirProcess);
-            TryDeleteDirectory(workingDirectory);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(workingDirectory);
         }
     }
 
@@ -224,8 +225,8 @@ public sealed class WorkspaceCloseDrainTests
         {
             KillQuietly(inDirProcess);
             KillQuietly(siblingProcess);
-            TryDeleteDirectory(workingDirectory);
-            TryDeleteDirectory(siblingDirectory);
+            await CleanupFailureCollector.DeleteDirectoriesAsync(
+                [workingDirectory, siblingDirectory], TestFixtureFileSystem.DeleteDirectoryIfExists);
         }
     }
 
@@ -283,7 +284,7 @@ public sealed class WorkspaceCloseDrainTests
         }
         finally
         {
-            TryDeleteDirectory(workingDirectory);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(workingDirectory);
         }
     }
 
@@ -337,7 +338,7 @@ public sealed class WorkspaceCloseDrainTests
         finally
         {
             KillQuietly(launched);
-            TryDeleteDirectory(root);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(root);
         }
     }
 
@@ -382,7 +383,7 @@ public sealed class WorkspaceCloseDrainTests
         {
             KillQuietly(launched);
             alias?.Dispose();
-            TryDeleteDirectory(root);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(root);
         }
     }
 
@@ -433,7 +434,7 @@ public sealed class WorkspaceCloseDrainTests
         finally
         {
             KillQuietly(launched);
-            TryDeleteDirectory(workingDirectory);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(workingDirectory);
         }
     }
 
@@ -498,7 +499,7 @@ public sealed class WorkspaceCloseDrainTests
         finally
         {
             KillQuietly(inDirProcess);
-            TryDeleteDirectory(workingDirectory);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(workingDirectory);
         }
     }
 
@@ -553,7 +554,7 @@ public sealed class WorkspaceCloseDrainTests
         {
             enumerated?.Dispose();
             KillQuietly(parent);
-            TryDeleteDirectory(workingDirectory);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(workingDirectory);
         }
     }
 
@@ -602,7 +603,7 @@ public sealed class WorkspaceCloseDrainTests
         finally
         {
             KillQuietly(inDirProcess);
-            TryDeleteDirectory(workingDirectory);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(workingDirectory);
         }
     }
 
@@ -633,7 +634,7 @@ public sealed class WorkspaceCloseDrainTests
         finally
         {
             KillQuietly(process);
-            TryDeleteDirectory(directory);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(directory);
         }
     }
 
@@ -656,7 +657,7 @@ public sealed class WorkspaceCloseDrainTests
         finally
         {
             KillQuietly(process);
-            TryDeleteDirectory(directory);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(directory);
         }
     }
 
@@ -682,7 +683,7 @@ public sealed class WorkspaceCloseDrainTests
         }
         finally
         {
-            TryDeleteDirectory(directory);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(directory);
         }
     }
 
@@ -726,7 +727,7 @@ public sealed class WorkspaceCloseDrainTests
         finally
         {
             alias?.Dispose();
-            TryDeleteDirectory(root);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(root);
         }
     }
 
@@ -1083,20 +1084,6 @@ public sealed class WorkspaceCloseDrainTests
         }
     }
 
-    private static void TryDeleteDirectory(string path)
-    {
-        try
-        {
-            if (Directory.Exists(path))
-            {
-                Directory.Delete(path, recursive: true);
-            }
-        }
-        catch
-        {
-            // Best effort; temp dir, OS reaps it eventually.
-        }
-    }
 
     // ---------------------------------------------------------------------------
     // Fakes

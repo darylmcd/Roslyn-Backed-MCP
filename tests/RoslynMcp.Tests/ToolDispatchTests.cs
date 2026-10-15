@@ -1,5 +1,4 @@
 using System.Text.Json;
-using Microsoft.CodeAnalysis;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Catalog;
@@ -49,9 +48,9 @@ public sealed class ToolDispatchTests
     [TestMethod]
     public async Task ApplyByTokenAsync_IncompatibleProducer_RefusesBeforeServiceCall()
     {
-        var gate = new FakeGate();
+        var gate = new RecordingDispatchGate();
         var serviceCallRan = false;
-        var store = new FakePreviewStore(token: "tok-xroute", workspaceId: "ws-xr")
+        var store = new DispatchPreviewStore(token: "tok-xroute", workspaceId: "ws-xr")
         {
             Kind = PreviewKind.CodeFix,
         };
@@ -87,8 +86,8 @@ public sealed class ToolDispatchTests
     [TestMethod]
     public async Task ApplyByTokenAsync_MatchingProducer_Applies()
     {
-        var gate = new FakeGate();
-        var store = new FakePreviewStore(token: "tok-match", workspaceId: "ws-m")
+        var gate = new RecordingDispatchGate();
+        var store = new DispatchPreviewStore(token: "tok-match", workspaceId: "ws-m")
         {
             Kind = PreviewKind.SymbolRename,
         };
@@ -115,9 +114,9 @@ public sealed class ToolDispatchTests
     [TestMethod]
     public async Task ApplyByTokenAsync_UnspecifiedProducer_SkipsGuard_AndApplies()
     {
-        var gate = new FakeGate();
+        var gate = new RecordingDispatchGate();
         // Kind left at its default (Unspecified) — the interface-default / legacy-store shape.
-        var store = new FakePreviewStore(token: "tok-untagged", workspaceId: "ws-ut");
+        var store = new DispatchPreviewStore(token: "tok-untagged", workspaceId: "ws-ut");
 
         var result = await ToolDispatch.ApplyByTokenAsync<FakeResultDto>(
             gate,
@@ -163,9 +162,9 @@ public sealed class ToolDispatchTests
         PreviewKind routeKind,
         string invokedRoute)
     {
-        var gate = new FakeGate();
+        var gate = new RecordingDispatchGate();
         var serviceCallRan = false;
-        var store = new FakePreviewStore(token: "tok-foreign", workspaceId: "ws-fg")
+        var store = new DispatchPreviewStore(token: "tok-foreign", workspaceId: "ws-fg")
         {
             Kind = PreviewKind.SymbolRename,
         };
@@ -206,9 +205,9 @@ public sealed class ToolDispatchTests
     public async Task ApplyByTokenAsync_UnspecifiedProducer_StillRedeemsOnNewlyBoundRoute(
         PreviewKind routeKind)
     {
-        var gate = new FakeGate();
+        var gate = new RecordingDispatchGate();
         // Kind left at its default (Unspecified) — the out-of-tree / untagged store shape.
-        var store = new FakePreviewStore(token: "tok-oot", workspaceId: "ws-oot");
+        var store = new DispatchPreviewStore(token: "tok-oot", workspaceId: "ws-oot");
 
         var result = await ToolDispatch.ApplyByTokenAsync<FakeResultDto>(
             gate,
@@ -351,8 +350,8 @@ public sealed class ToolDispatchTests
     [TestMethod]
     public async Task ApplyByTokenAsync_ResolvesWorkspaceId_AndReturnsSerializedResult()
     {
-        var gate = new FakeGate();
-        var store = new FakePreviewStore(token: "tok-1", workspaceId: "ws-abc");
+        var gate = new RecordingDispatchGate();
+        var store = new DispatchPreviewStore(token: "tok-1", workspaceId: "ws-abc");
         var expected = new FakeResultDto("hello", 42);
 
         var result = await ToolDispatch.ApplyByTokenAsync<FakeResultDto>(
@@ -384,8 +383,8 @@ public sealed class ToolDispatchTests
         // auto-reload), ApplyByTokenAsync must throw PreviewTokenStaleException rather than
         // a bare KeyNotFoundException so ToolErrorHandler can emit category=PreviewTokenStale
         // with a re-issue-preview recovery hint instead of the generic NotFound envelope.
-        var gate = new FakeGate();
-        var store = new FakePreviewStore(token: "real-token", workspaceId: "ws-x");
+        var gate = new RecordingDispatchGate();
+        var store = new DispatchPreviewStore(token: "real-token", workspaceId: "ws-x");
 
         var ex = await Assert.ThrowsExactlyAsync<PreviewTokenStaleException>(() =>
             ToolDispatch.ApplyByTokenAsync<FakeResultDto>(
@@ -409,7 +408,7 @@ public sealed class ToolDispatchTests
     [TestMethod]
     public async Task PreviewWithWorkspaceIdAsync_RunsUnderWriteGate_AndReturnsSerializedResult()
     {
-        var gate = new FakeGate();
+        var gate = new RecordingDispatchGate();
         var expected = new FakeResultDto("preview-out", 7);
 
         var result = await ToolDispatch.PreviewWithWorkspaceIdAsync<FakeResultDto>(
@@ -430,7 +429,7 @@ public sealed class ToolDispatchTests
     [TestMethod]
     public async Task ReadByWorkspaceIdAsync_RunsUnderReadGate_AndReturnsSerializedResult()
     {
-        var gate = new FakeGate();
+        var gate = new RecordingDispatchGate();
         var expected = new FakeResultDto("read-out", 99);
 
         var result = await ToolDispatch.ReadByWorkspaceIdAsync<FakeResultDto>(
@@ -452,8 +451,8 @@ public sealed class ToolDispatchTests
     [TestMethod]
     public async Task ApplyByTokenAsync_PassesCancellationTokenToServiceCall()
     {
-        var gate = new FakeGate();
-        var store = new FakePreviewStore(token: "tok-ct", workspaceId: "ws-ct");
+        var gate = new RecordingDispatchGate();
+        var store = new DispatchPreviewStore(token: "tok-ct", workspaceId: "ws-ct");
         using var cts = new CancellationTokenSource();
         CancellationToken seenByService = CancellationToken.None;
 
@@ -494,8 +493,8 @@ public sealed class ToolDispatchTests
             {
                 SanctionedRoots = [Path.Combine(TestTempRoot.Current, "nonexistent-boundary")],
             };
-            var gate = new FakeGate();
-            var store = new FakePreviewStore(token: "tok-null-peek", workspaceId: "ws-np");
+            var gate = new RecordingDispatchGate();
+            var store = new DispatchPreviewStore(token: "tok-null-peek", workspaceId: "ws-np");
 
             var result = await ToolDispatch.ApplyByTokenAsync<FakeResultDto>(
                 gate,
@@ -531,8 +530,8 @@ public sealed class ToolDispatchTests
         try
         {
             SecurityOptionsSnapshot.Value = null;
-            var gate = new FakeGate();
-            var store = new FakePreviewStore(token: "tok-null-snap", workspaceId: "ws-ns")
+            var gate = new RecordingDispatchGate();
+            var store = new DispatchPreviewStore(token: "tok-null-snap", workspaceId: "ws-ns")
             {
                 ChangedPaths = [Path.Combine(TestTempRoot.Current, "anywhere", "outside.cs")],
             };
@@ -572,9 +571,9 @@ public sealed class ToolDispatchTests
         try
         {
             SecurityOptionsSnapshot.Value = new SecurityOptions { SanctionedRoots = [boundary] };
-            var gate = new FakeGate();
+            var gate = new RecordingDispatchGate();
             var serviceCallRan = false;
-            var store = new FakePreviewStore(token: "tok-oob", workspaceId: "ws-oob")
+            var store = new DispatchPreviewStore(token: "tok-oob", workspaceId: "ws-oob")
             {
                 ChangedPaths = [Path.Combine(TestTempRoot.Current, "elsewhere", "outside.cs")],
             };
@@ -619,101 +618,4 @@ public sealed class ToolDispatchTests
         StringAssert.Contains(envelope.RootElement.GetProperty("message").GetString(), "workspace_load");
     }
 
-    /// <summary>
-    /// Minimal stand-in for <see cref="IWorkspaceExecutionGate"/> that records which verb
-    /// was invoked and the workspaceId that was passed. <c>RunLoadGateAsync</c> and
-    /// <c>RemoveGate</c> are not exercised by <see cref="ToolDispatch"/> so they throw to
-    /// fail loudly if a future refactor accidentally routes through them.
-    /// </summary>
-    private sealed class FakeGate : IWorkspaceExecutionGate
-    {
-        public int ReadCallCount { get; private set; }
-        public int WriteCallCount { get; private set; }
-        public string? LastReadWorkspaceId { get; private set; }
-        public string? LastWriteWorkspaceId { get; private set; }
-
-        public async Task<T> RunReadAsync<T>(string workspaceId, Func<CancellationToken, Task<T>> action, CancellationToken ct)
-        {
-            ReadCallCount++;
-            LastReadWorkspaceId = workspaceId;
-            // Pass a fresh CTS-linked token so the PassesCancellationTokenToServiceCall test
-            // can distinguish "helper forwarded a token" from "helper dropped to default".
-            using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            return await action(linked.Token).ConfigureAwait(false);
-        }
-
-        public async Task<T> RunWriteAsync<T>(
-            string workspaceId,
-            Func<CancellationToken, Task<T>> action,
-            CancellationToken ct,
-            bool applyStalenessPolicy = true)
-        {
-            _ = applyStalenessPolicy;
-            WriteCallCount++;
-            LastWriteWorkspaceId = workspaceId;
-            using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            return await action(linked.Token).ConfigureAwait(false);
-        }
-
-        public Task<T> RunLoadGateAsync<T>(Func<CancellationToken, Task<T>> action, CancellationToken ct)
-            => throw new NotSupportedException("ToolDispatch must not route through RunLoadGateAsync.");
-
-        public void RemoveGate(string workspaceId)
-            => throw new NotSupportedException("ToolDispatch must not call RemoveGate.");
-    }
-
-    /// <summary>
-    /// Minimal stand-in for <see cref="IPreviewStore"/> exposing only
-    /// <c>PeekWorkspaceId</c> behavior — the only method <see cref="ToolDispatch"/>
-    /// consumes. All other members throw.
-    /// </summary>
-    private sealed class FakePreviewStore : IPreviewStore
-    {
-        private readonly string _token;
-        private readonly string _workspaceId;
-
-        public FakePreviewStore(string token, string workspaceId)
-        {
-            _token = token;
-            _workspaceId = workspaceId;
-        }
-
-        /// <summary>
-        /// preview-apply-token-write-path-toctou: write set the fake reports for its token, or
-        /// <see langword="null"/> (the default, matching the interface's default implementation)
-        /// for "unknown".
-        /// </summary>
-        public IReadOnlyList<string>? ChangedPaths { get; init; }
-
-        /// <summary>
-        /// preview-token-apply-route-provenance: producer family the fake reports for its token.
-        /// Defaults to <see cref="PreviewKind.Unspecified"/>, matching both the interface default
-        /// and an untagged producer.
-        /// </summary>
-        public PreviewKind Kind { get; init; } = PreviewKind.Unspecified;
-
-        public string? PeekWorkspaceId(string token) => token == _token ? _workspaceId : null;
-
-        public IReadOnlyList<string>? PeekChangedPaths(string token) => token == _token ? ChangedPaths : null;
-
-        public PreviewKind PeekKind(string token) => token == _token ? Kind : PreviewKind.Unspecified;
-
-        public string Store(string workspaceId, Solution modifiedSolution, int workspaceVersion, string description)
-            => throw new NotSupportedException();
-
-        public string Store(string workspaceId, Solution modifiedSolution, int workspaceVersion, string description, bool diffTruncated)
-            => throw new NotSupportedException();
-
-        public string Store(string workspaceId, Solution modifiedSolution, int workspaceVersion, string description, IReadOnlyList<FileChangeDto> changes)
-            => throw new NotSupportedException();
-
-        public (string WorkspaceId, Solution OriginalSolution, Solution ModifiedSolution, int WorkspaceVersion, string Description, bool DiffTruncated)? Retrieve(string token)
-            => throw new NotSupportedException();
-
-        public void Invalidate(string token) => throw new NotSupportedException();
-
-        public void InvalidateAll(string? workspaceId = null) => throw new NotSupportedException();
-
-        public void InvalidateOnVersionBump(string workspaceId, int newWorkspaceVersion) => throw new NotSupportedException();
-    }
 }

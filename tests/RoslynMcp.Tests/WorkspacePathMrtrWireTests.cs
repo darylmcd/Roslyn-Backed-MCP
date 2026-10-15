@@ -215,7 +215,7 @@ public sealed class WorkspacePathMrtrWireTests
         finally
         {
             SyntheticWorkspaceLoadTools.ResetWorkspaceStatusProbe(failureDetail: null);
-            TryDeleteDirectory(root);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(root);
         }
     }
 
@@ -927,7 +927,7 @@ public sealed class WorkspacePathMrtrWireTests
         finally
         {
             SyntheticWorkspaceLoadTools.ResetWorkspaceStatusProbe(failureDetail: null);
-            TryDeleteDirectory(root);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(root);
         }
     }
 
@@ -982,7 +982,7 @@ public sealed class WorkspacePathMrtrWireTests
         finally
         {
             SyntheticWorkspaceLoadTools.ResetWorkspaceStatusProbe(failureDetail: null);
-            TryDeleteDirectory(root);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(root);
         }
     }
 
@@ -1000,21 +1000,6 @@ public sealed class WorkspacePathMrtrWireTests
         return (root, Path.GetFullPath(solution), Path.GetFullPath(source));
     }
 
-    private static void TryDeleteDirectory(string path)
-    {
-        try
-        {
-            Directory.Delete(path, recursive: true);
-        }
-        catch (IOException)
-        {
-            // Test cleanup is best-effort; the per-run temp root is reclaimed by the test harness.
-        }
-        catch (UnauthorizedAccessException)
-        {
-            // Test cleanup is best-effort; the per-run temp root is reclaimed by the test harness.
-        }
-    }
 
     private static ElicitResult AcceptedPathResult(string path = _elicitedPath) => new()
     {

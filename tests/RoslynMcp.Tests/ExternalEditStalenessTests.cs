@@ -51,7 +51,7 @@ public sealed class ExternalEditStalenessTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public void ConfigComparisonRead_DoesNotBlockUndoDeletion()
     {
-        if (!OperatingSystem.IsWindows()) return;
+        if (!OperatingSystem.IsWindows()) Assert.Inconclusive("Requires Windows.");
 
         var configPath = Path.Combine(Path.GetTempPath(), $"roslyn-config-read-{Guid.NewGuid():N}.editorconfig");
         File.WriteAllText(configPath, "[*.cs]\nindent_size = 4\n");
@@ -265,7 +265,7 @@ public sealed class ExternalEditStalenessTests : IsolatedWorkspaceTestBase
     {
         // POSIX permits another writer to open the held inode. The Linux pathname
         // replacement invariant is covered by OwnedEditorConfigWrite_PosixRenameReplacementRefusesSuccess.
-        if (!OperatingSystem.IsWindows()) return;
+        if (!OperatingSystem.IsWindows()) Assert.Inconclusive("Requires Windows.");
 
         var root = Path.Combine(Path.GetTempPath(), $"roslyn-config-replace-{Guid.NewGuid():N}");
         Directory.CreateDirectory(root);
@@ -306,7 +306,7 @@ public sealed class ExternalEditStalenessTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public void OwnedEditorConfigWrite_PosixSameInodeEditBeforeWriteIsExternalEdit()
     {
-        if (!OperatingSystem.IsLinux()) return;
+        if (!OperatingSystem.IsLinux()) Assert.Inconclusive("Requires Linux.");
 
         var root = Path.Combine(Path.GetTempPath(), $"roslyn-config-inode-{Guid.NewGuid():N}");
         Directory.CreateDirectory(root);
@@ -344,7 +344,7 @@ public sealed class ExternalEditStalenessTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public void OwnedEditorConfigWrite_PosixRenameReplacementRefusesSuccess()
     {
-        if (!OperatingSystem.IsLinux()) return;
+        if (!OperatingSystem.IsLinux()) Assert.Inconclusive("Requires Linux.");
 
         var root = Path.Combine(Path.GetTempPath(), $"roslyn-config-rename-{Guid.NewGuid():N}");
         Directory.CreateDirectory(root);

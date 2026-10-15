@@ -154,7 +154,7 @@ public sealed class CompositeApplyOrchestratorTests
     [TestMethod]
     public async Task AtomicFileWriter_SymlinkSwapCannotRedirectWriteOrCommit()
     {
-        if (!OperatingSystem.IsLinux()) return;
+        if (!OperatingSystem.IsLinux()) Assert.Inconclusive("Requires Linux.");
         var path = Path.Combine(_tempDir, "target.cs");
         var foreignPath = Path.Combine(_tempDir, "foreign.cs");
         await File.WriteAllTextAsync(path, "original");
@@ -180,7 +180,7 @@ public sealed class CompositeApplyOrchestratorTests
     [TestMethod]
     public async Task AtomicFileWriter_DanglingSymlinkSwapIsReportedAndPreserved()
     {
-        if (!OperatingSystem.IsLinux()) return;
+        if (!OperatingSystem.IsLinux()) Assert.Inconclusive("Requires Linux.");
         var path = Path.Combine(_tempDir, "target.cs");
         var logger = new RecordingLogger<CompositeApplyOrchestrator>();
         string? tempPath = null;
@@ -203,7 +203,7 @@ public sealed class CompositeApplyOrchestratorTests
     [TestMethod]
     public async Task AtomicFileWriter_SymlinkedParentCanBeWritten()
     {
-        if (!OperatingSystem.IsLinux()) return;
+        if (!OperatingSystem.IsLinux()) Assert.Inconclusive("Requires Linux.");
         var physical = Path.Combine(_tempDir, "physical");
         Directory.CreateDirectory(physical);
         var alias = Path.Combine(_tempDir, "alias");
@@ -229,7 +229,7 @@ public sealed class CompositeApplyOrchestratorTests
     [DataRow(true)]
     public async Task AtomicFileWriter_ReplaceWaitsForWindowsReader(bool shareDelete)
     {
-        if (!OperatingSystem.IsWindows()) return;
+        if (!OperatingSystem.IsWindows()) Assert.Inconclusive("Requires Windows.");
 
         var path = Path.Combine(_tempDir, "target.editorconfig");
         await File.WriteAllTextAsync(path, "original");
@@ -249,7 +249,7 @@ public sealed class CompositeApplyOrchestratorTests
     [TestMethod]
     public async Task AtomicFileWriter_PersistentReaderFailsWithinBound_AndCleansTemp()
     {
-        if (!OperatingSystem.IsWindows()) return;
+        if (!OperatingSystem.IsWindows()) Assert.Inconclusive("Requires Windows.");
 
         var path = Path.Combine(_tempDir, "target.editorconfig");
         await File.WriteAllTextAsync(path, "original");
@@ -270,7 +270,7 @@ public sealed class CompositeApplyOrchestratorTests
     [TestMethod]
     public async Task AtomicFileWriter_CancellationStopsSharingWait_AndCleansTemp()
     {
-        if (!OperatingSystem.IsWindows()) return;
+        if (!OperatingSystem.IsWindows()) Assert.Inconclusive("Requires Windows.");
 
         var path = Path.Combine(_tempDir, "target.editorconfig");
         await File.WriteAllTextAsync(path, "original");
@@ -330,7 +330,7 @@ public sealed class CompositeApplyOrchestratorTests
     [TestMethod]
     public async Task AtomicFileWriter_LogsWarningWhenOwnedTempDeletionFails()
     {
-        if (!OperatingSystem.IsWindows()) return;
+        if (!OperatingSystem.IsWindows()) Assert.Inconclusive("Requires Windows.");
         var path = Path.Combine(_tempDir, "target.cs");
         string? tmp = null;
         var logger = new RecordingLogger<CompositeApplyOrchestrator>();

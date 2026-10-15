@@ -18,6 +18,9 @@ internal sealed class FailClosedWorkspaceManagerStub(params WorkspaceStatusDto[]
     public Func<string, Solution>? GetCurrentSolutionHandler { get; init; }
     public Func<string, int>? GetCurrentVersionHandler { get; init; }
 
+    public Func<string, bool>? ContainsWorkspaceHandler { get; init; }
+    public Func<string, bool>? IsStaleHandler { get; init; }
+
     // Consumers may establish passive cache-invalidation subscriptions during construction.
     // Accept add/remove without publishing events; operational members still fail closed.
     public event Action<string>? WorkspaceClosed { add { } remove { } }
@@ -34,8 +37,10 @@ internal sealed class FailClosedWorkspaceManagerStub(params WorkspaceStatusDto[]
     public Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct) =>
         throw Unsupported();
 
-    public bool ContainsWorkspace(string workspaceId) => throw Unsupported();
-    public bool IsStale(string workspaceId) => throw Unsupported();
+    public bool ContainsWorkspace(string workspaceId) =>
+        ContainsWorkspaceHandler is { } handler ? handler(workspaceId) : throw Unsupported();
+    public bool IsStale(string workspaceId) =>
+        IsStaleHandler is { } handler ? handler(workspaceId) : throw Unsupported();
     public bool Close(string workspaceId) => throw Unsupported();
     public WorkspaceStatusDto GetStatus(string workspaceId) =>
         GetStatusHandler is { } handler ? handler(workspaceId) : throw Unsupported();

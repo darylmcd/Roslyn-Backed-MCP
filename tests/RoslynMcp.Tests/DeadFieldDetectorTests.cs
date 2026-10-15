@@ -1,10 +1,8 @@
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.Text;
-using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -17,6 +15,23 @@ namespace RoslynMcp.Tests;
 [TestClass]
 public sealed class DeadFieldDetectorTests
 {
+    private readonly List<UnusedCodeAnalyzerTestHarness> _harnesses = [];
+
+    [TestCleanup]
+    public async Task CleanupAsync()
+    {
+        try
+        {
+            await CleanupFailureCollector.RunAsync(
+                "Failed to dispose analyzer fixtures.",
+                _harnesses.Select(harness => CleanupFailureCollector.FromAction(harness.Dispose)).ToArray());
+        }
+        finally
+        {
+            _harnesses.Clear();
+        }
+    }
+
     private const string WorkspaceId = "dead-field-test-ws";
 
     [TestMethod]
@@ -440,84 +455,14 @@ public sealed class DeadFieldDetectorTests
         Assert.AreEqual(2, hits.Count);
     }
 
-    private static UnusedCodeAnalyzer BuildAnalyzerWithSource(string source)
+    private UnusedCodeAnalyzer BuildAnalyzerWithSource(string source)
     {
-        var workspace = new AdhocWorkspace();
-        var projectId = ProjectId.CreateNewId();
-        var projectInfo = ProjectInfo.Create(
-            projectId,
-            VersionStamp.Create(),
-            name: "TestAsm",
-            assemblyName: "TestAsm",
-            language: LanguageNames.CSharp,
-            filePath: Path.Combine(Path.GetTempPath(), "TestAsm.csproj"),
-            compilationOptions: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary),
-            metadataReferences:
+        var workspace = UnusedCodeAnalyzerTestHarness.CreateWorkspace(source,
             [
                 MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
             ]);
-        workspace.AddProject(projectInfo);
-
-        var docId = DocumentId.CreateNewId(projectId);
-        var fileName = "Sample.cs";
-        var fullPath = Path.Combine(Path.GetTempPath(), fileName);
-        workspace.AddDocument(DocumentInfo.Create(
-            docId,
-            fileName,
-            filePath: fullPath,
-            loader: TextLoader.From(
-                TextAndVersion.Create(
-                    SourceText.From(source),
-                    VersionStamp.Create(),
-                    fullPath))));
-
-        var wsManager = new TestWorkspaceManager(WorkspaceId, workspace);
-        var cache = new CompilationCache(wsManager);
-        return new UnusedCodeAnalyzer(
-            wsManager,
-            cache,
-            NullLogger<UnusedCodeAnalyzer>.Instance);
-    }
-
-    private sealed class TestWorkspaceManager : IWorkspaceManager
-    {
-        private readonly string _workspaceId;
-        private readonly AdhocWorkspace _workspace;
-
-        public event Action<string>? WorkspaceClosed;
-        public event Action<string>? WorkspaceReloaded;
-
-        public TestWorkspaceManager(string workspaceId, AdhocWorkspace workspace)
-        {
-            _workspaceId = workspaceId;
-            _workspace = workspace;
-        }
-
-        public void RaiseWorkspaceClosed(string workspaceId) => WorkspaceClosed?.Invoke(workspaceId);
-        public void RaiseWorkspaceReloaded(string workspaceId) => WorkspaceReloaded?.Invoke(workspaceId);
-
-        public Solution GetCurrentSolution(string workspaceId)
-        {
-            return workspaceId == _workspaceId
-                ? _workspace.CurrentSolution
-                : throw new InvalidOperationException($"Unknown workspace {workspaceId}");
-        }
-
-        public int GetCurrentVersion(string workspaceId) => 1;
-        public void RestoreVersion(string workspaceId, int version) { }
-        public bool ContainsWorkspace(string workspaceId) => workspaceId == _workspaceId;
-        public bool IsStale(string workspaceId) => false;
-        public Project? GetProject(string workspaceId, string projectNameOrPath) => null;
-
-        public Task<WorkspaceStatusDto> LoadAsync(string path, EvictPolicy evictPolicy, CancellationToken ct) => throw new NotSupportedException();
-        public Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct) => throw new NotSupportedException();
-        public bool Close(string workspaceId) => throw new NotSupportedException();
-        public IReadOnlyList<WorkspaceStatusDto> ListWorkspaces() => throw new NotSupportedException();
-        public WorkspaceStatusDto GetStatus(string workspaceId) => throw new NotSupportedException();
-        public Task<WorkspaceStatusDto> GetStatusAsync(string workspaceId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-        public ProjectGraphDto GetProjectGraph(string workspaceId) => throw new NotSupportedException();
-        public Task<IReadOnlyList<GeneratedDocumentDto>> GetSourceGeneratedDocumentsAsync(string workspaceId, string? projectName, CancellationToken ct) => throw new NotSupportedException();
-        public Task<string?> GetSourceTextAsync(string workspaceId, string filePath, CancellationToken ct) => throw new NotSupportedException();
-        public bool TryApplyChanges(string workspaceId, Solution newSolution) => throw new NotSupportedException();
+        var harness = new UnusedCodeAnalyzerTestHarness(WorkspaceId, workspace);
+        _harnesses.Add(harness);
+        return harness.Analyzer;
     }
 }

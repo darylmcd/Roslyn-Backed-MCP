@@ -5,6 +5,7 @@ using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Services;
 using RoslynMcp.Tests.Support;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -334,7 +335,7 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
 
         await workspace.LoadAsync(CancellationToken.None);
         var timeoutService = new WorkspaceValidationService(
-            new SlowCompileCheckService(),
+            new CancellationOnlyCompileCheckService(),
             DiagnosticService,
             TestDiscoveryService,
             TestRunnerService,
@@ -607,17 +608,7 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
             throw new NotSupportedException("Diagnostic details are not exercised by the validation bundle.");
     }
 
-    private sealed class SlowCompileCheckService : ICompileCheckService
-    {
-        public async Task<CompileCheckDto> CheckAsync(
-            string workspaceId,
-            CompileCheckOptions options,
-            CancellationToken ct)
-        {
-            await Task.Delay(Timeout.InfiniteTimeSpan, ct);
-            throw new InvalidOperationException("unreachable");
-        }
-    }
+
 
     private sealed class ThrowingWorkspaceValidationService : IWorkspaceValidationService
     {

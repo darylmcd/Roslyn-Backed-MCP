@@ -119,15 +119,11 @@ public sealed class FormatRangeServiceTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public async Task FormatRangePreview_DirtyRange_EmitsNonEmptyDiff_ApplyMatches()
     {
-        var copiedSolutionPath = CreateSampleSolutionCopy();
-        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
-        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
-
         // Deliberately bad formatting: extra spaces around tokens that the Roslyn formatter
         // will collapse. The dirty region is lines 7-9 ("var doubled = input *  2 ;" with
         // double spaces and space-before-semicolon — these are not line-ending differences,
         // so DiffPlex will see them as line content changes).
-        var fixturePath = Path.Combine(sampleLibDir, "FormatRangeRegressionFixture.cs");
+        const string fixtureFileName = "FormatRangeRegressionFixture.cs";
         var content = string.Join("\r\n", new[]
         {
             "namespace SampleLib;",
@@ -143,51 +139,43 @@ public sealed class FormatRangeServiceTests : IsolatedWorkspaceTestBase
             "}",
             "",
         });
-        await File.WriteAllTextAsync(fixturePath, content);
+        await using var workspace = await CreateFormatRangeFixtureAsync(fixtureFileName, content);
+        var workspaceId = workspace.WorkspaceId;
+        var fixturePath = workspace.GetPath("SampleLib", fixtureFileName);
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
-        var workspaceId = loadResult.WorkspaceId;
+        // Range covers only the mis-indented body lines (7-9). Pre-fix this
+        // produced an empty `unifiedDiff` (no `@@` hunk) while apply still rewrote
+        // the file via the stored solution. Post-fix the preview enumerates the
+        // formatter's edits and apply produces the same on-disk text.
+        var preview = await RefactoringService.PreviewFormatRangeAsync(
+            workspaceId,
+            fixturePath,
+            startLine: 7, startColumn: 1,
+            endLine: 9, endColumn: 30,
+            CancellationToken.None);
 
-        try
-        {
-            // Range covers only the mis-indented body lines (7-9). Pre-fix this
-            // produced an empty `unifiedDiff` (no `@@` hunk) while apply still rewrote
-            // the file via the stored solution. Post-fix the preview enumerates the
-            // formatter's edits and apply produces the same on-disk text.
-            var preview = await RefactoringService.PreviewFormatRangeAsync(
-                workspaceId,
-                fixturePath,
-                startLine: 7, startColumn: 1,
-                endLine: 9, endColumn: 30,
-                CancellationToken.None);
+        Assert.IsNotNull(preview.PreviewToken);
+        Assert.AreEqual(1, preview.Changes.Count, "preview must report one changed file");
 
-            Assert.IsNotNull(preview.PreviewToken);
-            Assert.AreEqual(1, preview.Changes.Count, "preview must report one changed file");
+        var change = preview.Changes[0];
+        Assert.IsTrue(
+            change.UnifiedDiff.Contains("@@", StringComparison.Ordinal),
+            $"preview unifiedDiff must contain at least one hunk, got:\n{change.UnifiedDiff}");
 
-            var change = preview.Changes[0];
-            Assert.IsTrue(
-                change.UnifiedDiff.Contains("@@", StringComparison.Ordinal),
-                $"preview unifiedDiff must contain at least one hunk, got:\n{change.UnifiedDiff}");
+        // Apply the preview and compare on-disk text to the preview's expected text.
+        var preApplyText = await File.ReadAllTextAsync(fixturePath);
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
+        Assert.IsTrue(applyResult.Success, "apply must succeed");
 
-            // Apply the preview and compare on-disk text to the preview's expected text.
-            var preApplyText = await File.ReadAllTextAsync(fixturePath);
-            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
-            Assert.IsTrue(applyResult.Success, "apply must succeed");
+        var postApplyText = await File.ReadAllTextAsync(fixturePath);
+        Assert.AreNotEqual(preApplyText, postApplyText,
+            "apply must mutate the file when preview reports changes (non-empty diff)");
 
-            var postApplyText = await File.ReadAllTextAsync(fixturePath);
-            Assert.AreNotEqual(preApplyText, postApplyText,
-                "apply must mutate the file when preview reports changes (non-empty diff)");
-
-            // The formatter collapsed double-spaces and removed space-before-semicolon
-            // on the targeted lines.
-            StringAssert.Contains(postApplyText, "var doubled = input * 2;");
-            StringAssert.Contains(postApplyText, "var tripled = doubled + input;");
-            StringAssert.Contains(postApplyText, "return tripled;");
-        }
-        finally
-        {
-            WorkspaceManager.Close(workspaceId);
-        }
+        // The formatter collapsed double-spaces and removed space-before-semicolon
+        // on the targeted lines.
+        StringAssert.Contains(postApplyText, "var doubled = input * 2;");
+        StringAssert.Contains(postApplyText, "var tripled = doubled + input;");
+        StringAssert.Contains(postApplyText, "return tripled;");
     }
 
     [TestMethod]
@@ -203,41 +191,36 @@ public sealed class FormatRangeServiceTests : IsolatedWorkspaceTestBase
             "        return result;\r\n" +
             "    }\r\n" +
             "}\r\n";
-        var (workspaceId, fixturePath) = await CreateFormatRangeFixtureAsync(
+        await using var workspace = await CreateFormatRangeFixtureAsync(
             "FormatRangeLineShiftFixture.cs", content);
-        try
-        {
-            var document = WorkspaceManager.GetCurrentSolution(workspaceId).Projects
-                .SelectMany(project => project.Documents)
-                .Single(doc => string.Equals(doc.FilePath, fixturePath, StringComparison.OrdinalIgnoreCase));
-            var original = await document.GetTextAsync();
-            var formattedDocument = await Microsoft.CodeAnalysis.Formatting.Formatter.FormatAsync(document);
-            var formatted = await formattedDocument.GetTextAsync();
-            Assert.AreNotEqual(original.Lines.Count, formatted.Lines.Count,
-                "the regression fixture must independently produce an outside-range line-count delta");
+        var workspaceId = workspace.WorkspaceId;
+        var fixturePath = workspace.GetPath("SampleLib", "FormatRangeLineShiftFixture.cs");
+        var document = WorkspaceManager.GetCurrentSolution(workspaceId).Projects
+            .SelectMany(project => project.Documents)
+            .Single(doc => string.Equals(doc.FilePath, fixturePath, StringComparison.OrdinalIgnoreCase));
+        var original = await document.GetTextAsync();
+        var formattedDocument = await Microsoft.CodeAnalysis.Formatting.Formatter.FormatAsync(document);
+        var formatted = await formattedDocument.GetTextAsync();
+        Assert.AreNotEqual(original.Lines.Count, formatted.Lines.Count,
+            "the regression fixture must independently produce an outside-range line-count delta");
 
-            var preview = await RefactoringService.PreviewFormatRangeAsync(
-                workspaceId, fixturePath, 6, 1, 7, 30, CancellationToken.None);
-            Assert.AreEqual(1, preview.Changes.Count);
-            StringAssert.Contains(preview.Changes[0].UnifiedDiff, "@@");
+        var preview = await RefactoringService.PreviewFormatRangeAsync(
+            workspaceId, fixturePath, 6, 1, 7, 30, CancellationToken.None);
+        Assert.AreEqual(1, preview.Changes.Count);
+        StringAssert.Contains(preview.Changes[0].UnifiedDiff, "@@");
 
-            var apply = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
-            Assert.IsTrue(apply.Success);
-            var actual = await File.ReadAllTextAsync(fixturePath);
-            Assert.AreEqual(
-                RoslynMcp.Roslyn.Helpers.DiffGenerator.GenerateUnifiedDiff(content, actual, fixturePath),
-                preview.Changes[0].UnifiedDiff,
-                "the applied text must produce exactly the diff shown in the preview");
-            Assert.IsTrue(actual.StartsWith(content[..content.IndexOf("        var result", StringComparison.Ordinal)], StringComparison.Ordinal),
-                "the prefix, including the missing blank line after the namespace, must be byte-for-byte unchanged");
-            Assert.IsTrue(actual.EndsWith("    }\r\n}\r\n", StringComparison.Ordinal),
-                "the suffix outside the selected lines must be byte-for-byte unchanged");
-            StringAssert.Contains(actual, "var result = input + 1;");
-        }
-        finally
-        {
-            WorkspaceManager.Close(workspaceId);
-        }
+        var apply = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
+        Assert.IsTrue(apply.Success);
+        var actual = await File.ReadAllTextAsync(fixturePath);
+        Assert.AreEqual(
+            RoslynMcp.Roslyn.Helpers.DiffGenerator.GenerateUnifiedDiff(content, actual, fixturePath),
+            preview.Changes[0].UnifiedDiff,
+            "the applied text must produce exactly the diff shown in the preview");
+        Assert.IsTrue(actual.StartsWith(content[..content.IndexOf("        var result", StringComparison.Ordinal)], StringComparison.Ordinal),
+            "the prefix, including the missing blank line after the namespace, must be byte-for-byte unchanged");
+        Assert.IsTrue(actual.EndsWith("    }\r\n}\r\n", StringComparison.Ordinal),
+            "the suffix outside the selected lines must be byte-for-byte unchanged");
+        StringAssert.Contains(actual, "var result = input + 1;");
     }
 
     [TestMethod]
@@ -254,30 +237,25 @@ public sealed class FormatRangeServiceTests : IsolatedWorkspaceTestBase
             "}\r\n" +
             "\r\n\r\n" +
             "public class OutsideFixture { }\r\n";
-        var (workspaceId, fixturePath) = await CreateFormatRangeFixtureAsync(
+        await using var workspace = await CreateFormatRangeFixtureAsync(
             "FormatRangeInRangeInsertionFixture.cs", content);
-        try
-        {
-            var preview = await RefactoringService.PreviewFormatRangeAsync(
-                workspaceId, fixturePath, 1, 1, 6, 35, CancellationToken.None);
-            Assert.AreEqual(1, preview.Changes.Count);
-            var apply = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
-            Assert.IsTrue(apply.Success);
+        var workspaceId = workspace.WorkspaceId;
+        var fixturePath = workspace.GetPath("SampleLib", "FormatRangeInRangeInsertionFixture.cs");
+        var preview = await RefactoringService.PreviewFormatRangeAsync(
+            workspaceId, fixturePath, 1, 1, 6, 35, CancellationToken.None);
+        Assert.AreEqual(1, preview.Changes.Count);
+        var apply = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
+        Assert.IsTrue(apply.Success);
 
-            var actual = await File.ReadAllTextAsync(fixturePath);
-            var lines = Microsoft.CodeAnalysis.Text.SourceText.From(actual).Lines;
-            Assert.AreEqual("namespace SampleLib;", lines[0].ToString());
-            Assert.AreEqual(string.Empty, lines[1].ToString(),
-                "whole-document formatting must insert a blank line after the namespace");
-            Assert.AreEqual("public class FormatRangeInRangeInsertionFixture", lines[2].ToString());
-            StringAssert.Contains(actual, "return input + 1;");
-            Assert.IsTrue(actual.EndsWith("    }\r\n}\r\n\r\n\r\npublic class OutsideFixture { }\r\n", StringComparison.Ordinal),
-                "the suffix and outside blank-line run must stay byte-for-byte unchanged after the in-range insertion");
-        }
-        finally
-        {
-            WorkspaceManager.Close(workspaceId);
-        }
+        var actual = await File.ReadAllTextAsync(fixturePath);
+        var lines = Microsoft.CodeAnalysis.Text.SourceText.From(actual).Lines;
+        Assert.AreEqual("namespace SampleLib;", lines[0].ToString());
+        Assert.AreEqual(string.Empty, lines[1].ToString(),
+            "whole-document formatting must insert a blank line after the namespace");
+        Assert.AreEqual("public class FormatRangeInRangeInsertionFixture", lines[2].ToString());
+        StringAssert.Contains(actual, "return input + 1;");
+        Assert.IsTrue(actual.EndsWith("    }\r\n}\r\n\r\n\r\npublic class OutsideFixture { }\r\n", StringComparison.Ordinal),
+            "the suffix and outside blank-line run must stay byte-for-byte unchanged after the in-range insertion");
     }
 
     [TestMethod]
@@ -294,42 +272,37 @@ public sealed class FormatRangeServiceTests : IsolatedWorkspaceTestBase
             "        return input;\r\n" +
             "    }\r\n" +
             "}\r\n";
-        var (workspaceId, fixturePath) = await CreateFormatRangeFixtureAsync(
+        await using var workspace = await CreateFormatRangeFixtureAsync(
             "FormatRangeRepeatedFixture.cs", content);
-        try
-        {
-            var document = WorkspaceManager.GetCurrentSolution(workspaceId).Projects
-                .SelectMany(project => project.Documents)
-                .Single(doc => string.Equals(doc.FilePath, fixturePath, StringComparison.OrdinalIgnoreCase));
-            var original = await document.GetTextAsync();
-            var formattedDocument = await Microsoft.CodeAnalysis.Formatting.Formatter.FormatAsync(document);
-            var formatted = await formattedDocument.GetTextAsync();
-            Assert.AreNotEqual(original.Lines.Count, formatted.Lines.Count);
+        var workspaceId = workspace.WorkspaceId;
+        var fixturePath = workspace.GetPath("SampleLib", "FormatRangeRepeatedFixture.cs");
+        var document = WorkspaceManager.GetCurrentSolution(workspaceId).Projects
+            .SelectMany(project => project.Documents)
+            .Single(doc => string.Equals(doc.FilePath, fixturePath, StringComparison.OrdinalIgnoreCase));
+        var original = await document.GetTextAsync();
+        var formattedDocument = await Microsoft.CodeAnalysis.Formatting.Formatter.FormatAsync(document);
+        var formatted = await formattedDocument.GetTextAsync();
+        Assert.AreNotEqual(original.Lines.Count, formatted.Lines.Count);
 
-            // Roslyn normally returns fine text changes. Exercise the same real formatter
-            // result as one grouped change to prove projection does not rely on granularity.
-            var (projected, _) = RoslynMcp.Roslyn.Services.RefactoringService.ProjectFormattedRange(
-                original,
-                [new Microsoft.CodeAnalysis.Text.TextChange(
-                    new Microsoft.CodeAnalysis.Text.TextSpan(0, original.Length), formatted.ToString())],
-                startLine: 7, endLine: 7);
-            var expected = content.Replace(
-                "        input = input  + 1 ;\r\n        return input;",
-                "        input = input + 1;\r\n        return input;",
-                StringComparison.Ordinal);
-            Assert.AreEqual(expected, projected.ToString());
+        // Roslyn normally returns fine text changes. Exercise the same real formatter
+        // result as one grouped change to prove projection does not rely on granularity.
+        var (projected, _) = RoslynMcp.Roslyn.Services.RefactoringService.ProjectFormattedRange(
+            original,
+            [new Microsoft.CodeAnalysis.Text.TextChange(
+                new Microsoft.CodeAnalysis.Text.TextSpan(0, original.Length), formatted.ToString())],
+            startLine: 7, endLine: 7);
+        var expected = content.Replace(
+            "        input = input  + 1 ;\r\n        return input;",
+            "        input = input + 1;\r\n        return input;",
+            StringComparison.Ordinal);
+        Assert.AreEqual(expected, projected.ToString());
 
-            var preview = await RefactoringService.PreviewFormatRangeAsync(
-                workspaceId, fixturePath, 7, 1, 7, 35, CancellationToken.None);
-            Assert.AreEqual(1, preview.Changes.Count);
-            var apply = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
-            Assert.IsTrue(apply.Success);
-            Assert.AreEqual(expected, await File.ReadAllTextAsync(fixturePath));
-        }
-        finally
-        {
-            WorkspaceManager.Close(workspaceId);
-        }
+        var preview = await RefactoringService.PreviewFormatRangeAsync(
+            workspaceId, fixturePath, 7, 1, 7, 35, CancellationToken.None);
+        Assert.AreEqual(1, preview.Changes.Count);
+        var apply = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
+        Assert.IsTrue(apply.Success);
+        Assert.AreEqual(expected, await File.ReadAllTextAsync(fixturePath));
     }
 
     /// <summary>
@@ -341,16 +314,12 @@ public sealed class FormatRangeServiceTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public async Task FormatRangePreview_DirtyOutsideRange_LeavesUnrelatedRegionAlone()
     {
-        var copiedSolutionPath = CreateSampleSolutionCopy();
-        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
-        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
-
         // CleanMethod is well-formatted. DirtyMethod has bad whitespace (double-space
         // and space-before-semicolon). Range covers only CleanMethod — DirtyMethod's
         // dirty tokens must NOT be touched by the apply. Explicit \r\n line endings
         // match the on-disk encoding the formatter produces on Windows so the diff
         // baseline isn't muddied by line-ending normalization.
-        var fixturePath = Path.Combine(sampleLibDir, "FormatRangeOutOfBoundsFixture.cs");
+        const string fixtureFileName = "FormatRangeOutOfBoundsFixture.cs";
         var content = string.Join("\r\n", new[]
         {
             "namespace SampleLib;",
@@ -369,39 +338,31 @@ public sealed class FormatRangeServiceTests : IsolatedWorkspaceTestBase
             "}",
             "",
         });
-        await File.WriteAllTextAsync(fixturePath, content);
+        await using var workspace = await CreateFormatRangeFixtureAsync(fixtureFileName, content);
+        var workspaceId = workspace.WorkspaceId;
+        var fixturePath = workspace.GetPath("SampleLib", fixtureFileName);
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
-        var workspaceId = loadResult.WorkspaceId;
+        // Range covers only `CleanMethod` (lines 5-8). DirtyMethod (lines 10-13)
+        // must remain untouched even after apply.
+        var preview = await RefactoringService.PreviewFormatRangeAsync(
+            workspaceId,
+            fixturePath,
+            startLine: 5, startColumn: 1,
+            endLine: 8, endColumn: 6,
+            CancellationToken.None);
 
-        try
-        {
-            // Range covers only `CleanMethod` (lines 5-8). DirtyMethod (lines 10-13)
-            // must remain untouched even after apply.
-            var preview = await RefactoringService.PreviewFormatRangeAsync(
-                workspaceId,
-                fixturePath,
-                startLine: 5, startColumn: 1,
-                endLine: 8, endColumn: 6,
-                CancellationToken.None);
+        Assert.IsNotNull(preview.PreviewToken);
+        Assert.AreEqual(0, preview.Changes.Count,
+            "no changes expected when the requested range is already clean");
 
-            Assert.IsNotNull(preview.PreviewToken);
-            Assert.AreEqual(0, preview.Changes.Count,
-                "no changes expected when the requested range is already clean");
+        var preApplyText = await File.ReadAllTextAsync(fixturePath);
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
+        Assert.IsTrue(applyResult.Success);
 
-            var preApplyText = await File.ReadAllTextAsync(fixturePath);
-            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
-            Assert.IsTrue(applyResult.Success);
-
-            var postApplyText = await File.ReadAllTextAsync(fixturePath);
-            Assert.AreEqual(preApplyText, postApplyText,
-                "apply must be a no-op when preview reports no changes; DirtyMethod must remain dirty");
-            StringAssert.Contains(postApplyText, "return  input  + 1 ;");
-        }
-        finally
-        {
-            WorkspaceManager.Close(workspaceId);
-        }
+        var postApplyText = await File.ReadAllTextAsync(fixturePath);
+        Assert.AreEqual(preApplyText, postApplyText,
+            "apply must be a no-op when preview reports no changes; DirtyMethod must remain dirty");
+        StringAssert.Contains(postApplyText, "return  input  + 1 ;");
     }
 
     /// <summary>
@@ -422,10 +383,6 @@ public sealed class FormatRangeServiceTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public async Task FormatRangePreview_NormalizesAllWhitespaceAnomalies()
     {
-        var copiedSolutionPath = CreateSampleSolutionCopy();
-        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
-        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
-
         // Anomaly catalogue (each must be cleaned up by format_range_preview):
         //   L7  : tab-indented inside a method body that .editorconfig wants spaces
         //   L8  : trailing whitespace after a statement
@@ -434,7 +391,7 @@ public sealed class FormatRangeServiceTests : IsolatedWorkspaceTestBase
         //   L12 : another statement with trailing tab + spaces.
         //
         // Use \r\n explicitly so the diff baseline isn't affected by line-ending munging.
-        var fixturePath = Path.Combine(sampleLibDir, "FormatRangeWhitespaceFixture.cs");
+        const string fixtureFileName = "FormatRangeWhitespaceFixture.cs";
         var content =
             "namespace SampleLib;\r\n" +
             "\r\n" +
@@ -451,58 +408,46 @@ public sealed class FormatRangeServiceTests : IsolatedWorkspaceTestBase
             "        return c;\r\n" +
             "    }\r\n" +
             "}\r\n";
-        await File.WriteAllTextAsync(fixturePath, content);
+        await using var workspace = await CreateFormatRangeFixtureAsync(fixtureFileName, content);
+        var workspaceId = workspace.WorkspaceId;
+        var fixturePath = workspace.GetPath("SampleLib", fixtureFileName);
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
-        var workspaceId = loadResult.WorkspaceId;
+        // Range covers the full method body (L6..L14) so the formatter has every
+        // anomaly inside the requested span.
+        var preview = await RefactoringService.PreviewFormatRangeAsync(
+            workspaceId, fixturePath,
+            startLine: 6, startColumn: 1,
+            endLine: 14, endColumn: 6,
+            CancellationToken.None);
 
-        try
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
+        Assert.IsTrue(applyResult.Success, "apply must succeed");
+
+        var postApplyText = await File.ReadAllTextAsync(fixturePath);
+
+        // (1) tab indent normalized to 4 spaces
+        Assert.IsFalse(
+            postApplyText.Contains("\tvar a", StringComparison.Ordinal),
+            $"tab-indented line should be re-indented with spaces. Got:\n{postApplyText}");
+
+        // (2) trailing whitespace stripped
+        foreach (var line in postApplyText.Split("\r\n"))
         {
-            // Range covers the full method body (L6..L14) so the formatter has every
-            // anomaly inside the requested span.
-            var preview = await RefactoringService.PreviewFormatRangeAsync(
-                workspaceId, fixturePath,
-                startLine: 6, startColumn: 1,
-                endLine: 14, endColumn: 6,
-                CancellationToken.None);
-
-            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
-            Assert.IsTrue(applyResult.Success, "apply must succeed");
-
-            var postApplyText = await File.ReadAllTextAsync(fixturePath);
-
-            // (1) tab indent normalized to 4 spaces
-            Assert.IsFalse(
-                postApplyText.Contains("\tvar a", StringComparison.Ordinal),
-                $"tab-indented line should be re-indented with spaces. Got:\n{postApplyText}");
-
-            // (2) trailing whitespace stripped
-            foreach (var line in postApplyText.Split("\r\n"))
-            {
-                var endsWithWhitespace = line.Length > 0 && (line[^1] == ' ' || line[^1] == '\t');
-                Assert.IsFalse(endsWithWhitespace,
-                    $"trailing whitespace found on line: '{line.Replace("\t", "<TAB>").Replace(" ", "<SP>")}'\nFull text:\n{postApplyText}");
-            }
-
-            // (3) Multiple consecutive blank lines collapsed to at most one inside the body.
-            Assert.IsFalse(
-                postApplyText.Contains("\r\n\r\n\r\n", StringComparison.Ordinal),
-                $"more than one consecutive blank line survived inside the body. Got:\n{postApplyText}");
+            var endsWithWhitespace = line.Length > 0 && (line[^1] == ' ' || line[^1] == '\t');
+            Assert.IsFalse(endsWithWhitespace,
+                $"trailing whitespace found on line: '{line.Replace("\t", "<TAB>").Replace(" ", "<SP>")}'\nFull text:\n{postApplyText}");
         }
-        finally
-        {
-            WorkspaceManager.Close(workspaceId);
-        }
+
+        // (3) Multiple consecutive blank lines collapsed to at most one inside the body.
+        Assert.IsFalse(
+            postApplyText.Contains("\r\n\r\n\r\n", StringComparison.Ordinal),
+            $"more than one consecutive blank line survived inside the body. Got:\n{postApplyText}");
     }
 
     [TestMethod]
     public async Task FormatRangePreview_PreservesBlankLineRunsThatCrossRangeBoundary()
     {
-        var copiedSolutionPath = CreateSampleSolutionCopy();
-        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
-        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
-
-        var fixturePath = Path.Combine(sampleLibDir, "FormatRangeBoundaryFixture.cs");
+        const string fixtureFileName = "FormatRangeBoundaryFixture.cs";
         var content =
             "namespace SampleLib;\r\n" +
             "\r\n" +
@@ -515,32 +460,24 @@ public sealed class FormatRangeServiceTests : IsolatedWorkspaceTestBase
             "        return input + 1;\r\n" +
             "    }\r\n" +
             "}\r\n";
-        await File.WriteAllTextAsync(fixturePath, content);
+        await using var workspace = await CreateFormatRangeFixtureAsync(fixtureFileName, content);
+        var workspaceId = workspace.WorkspaceId;
+        var fixturePath = workspace.GetPath("SampleLib", fixtureFileName);
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
-        var workspaceId = loadResult.WorkspaceId;
+        var preview = await RefactoringService.PreviewFormatRangeAsync(
+            workspaceId, fixturePath,
+            startLine: 8, startColumn: 1,
+            endLine: 9, endColumn: 25,
+            CancellationToken.None);
 
-        try
-        {
-            var preview = await RefactoringService.PreviewFormatRangeAsync(
-                workspaceId, fixturePath,
-                startLine: 8, startColumn: 1,
-                endLine: 9, endColumn: 25,
-                CancellationToken.None);
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
+        Assert.IsTrue(applyResult.Success, "apply must succeed");
 
-            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
-            Assert.IsTrue(applyResult.Success, "apply must succeed");
-
-            var postApplyText = await File.ReadAllTextAsync(fixturePath);
-            Assert.AreEqual(content, postApplyText,
-                "blank-line runs that cross the requested range boundary must be preserved verbatim.");
-            Assert.IsTrue(postApplyText.Contains("\r\n\r\n\r\n", StringComparison.Ordinal),
-                $"the boundary-crossing blank-line run should remain intact. Got:\n{postApplyText}");
-        }
-        finally
-        {
-            WorkspaceManager.Close(workspaceId);
-        }
+        var postApplyText = await File.ReadAllTextAsync(fixturePath);
+        Assert.AreEqual(content, postApplyText,
+            "blank-line runs that cross the requested range boundary must be preserved verbatim.");
+        Assert.IsTrue(postApplyText.Contains("\r\n\r\n\r\n", StringComparison.Ordinal),
+            $"the boundary-crossing blank-line run should remain intact. Got:\n{postApplyText}");
     }
 
     [TestMethod]
@@ -747,13 +684,14 @@ public sealed class FormatRangeServiceTests : IsolatedWorkspaceTestBase
         Assert.AreEqual("before\n\n \n    dirty\nafter\n", projected.ToString());
     }
 
-    private static async Task<(string WorkspaceId, string FixturePath)> CreateFormatRangeFixtureAsync(
+    private static async Task<IsolatedWorkspaceScope> CreateFormatRangeFixtureAsync(
         string fileName, string content)
     {
-        var copiedSolutionPath = CreateSampleSolutionCopy();
-        var fixturePath = Path.Combine(Path.GetDirectoryName(copiedSolutionPath)!, "SampleLib", fileName);
-        await File.WriteAllTextAsync(fixturePath, content);
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
-        return (loadResult.WorkspaceId, fixturePath);
+        var workspace = CreateIsolatedWorkspaceCopy();
+        return await InitializeWithCleanupAsync(workspace, async (scope, ct) =>
+        {
+            await File.WriteAllTextAsync(scope.GetPath("SampleLib", fileName), content, ct);
+            await scope.LoadAsync(ct);
+        });
     }
 }

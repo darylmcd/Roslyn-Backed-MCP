@@ -25,6 +25,7 @@
 
 | Scope | If you are answering... | Open first | Then |
 |-------|--------------------------|------------|------|
+| `reference` | October 15 test integrity remediation of 15 rows | `plans/20261015-test-integrity-15.md` | Selected rows, complete fixes and delivery gates. |
 | `reference` | October 15 documentation and test-contract remediation of 15 rows | `plans/20261015-doc-contracts-15.md` | Selected rows and validation/delivery evidence. |
 | `reference` | Completed October 15 remediation of 15 rows and prerequisite PRs | `plans/20261015-backlog-15.md` | Implementation and merge evidence; return to backlog for new work. |
 | `in-repo` | "What should I work on next in this repo?" or any unnamed next-step question | `backlog.md` | Relevant file under `ai_docs/plans/` if a row or initiative names it. Registered plan: `plans/audit-21-analyzers/plan.md` (AUDIT-21 analyzer gap — **parked 2026-08-18**, not a live work source; unpark trigger: `plans/audit-21-analyzers/plan.md` header table, `Unpark trigger` row). |

@@ -1,3 +1,5 @@
+using RoslynMcp.Core.Models;
+using RoslynMcp.Tests.Helpers;
 using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Services;
@@ -246,68 +248,65 @@ public sealed class WorkspaceCapLruEvictionTests
             maxConcurrentWorkspaces: 1,
             evictionGate: new Lazy<IWorkspaceExecutionGate>(() => gate!));
 
+        // Allow the real MSBuild load of the second solution copy to finish under the eviction gate.
         gate = new WorkspaceExecutionGate(
             new ExecutionGateOptions { RequestTimeout = TimeSpan.FromMinutes(5) },
             manager);
 
-        var path1 = TestFixtureFileSystem.CreateSampleSolutionCopy(_repositoryRootPath, _sampleSolutionPath);
-        var path2 = TestFixtureFileSystem.CreateSampleSolutionCopy(_repositoryRootPath, _sampleSolutionPath);
-
+        using var operation = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+        string? path1 = null;
+        string? path2 = null;
+        var readerMayRelease = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task<(Exception? Error, bool StillTracked)>? readerTask = null;
+        Task<WorkspaceStatusDto>? evictingLoad = null;
+        Exception? primaryFailure = null;
         try
         {
-            var status1 = await manager.LoadAsync(path1, CancellationToken.None);
+            path1 = TestFixtureFileSystem.CreateSampleSolutionCopy(_repositoryRootPath, _sampleSolutionPath);
+            path2 = TestFixtureFileSystem.CreateSampleSolutionCopy(_repositoryRootPath, _sampleSolutionPath);
+            var status1 = await manager.LoadAsync(path1, operation.Token);
 
             // Deterministic hand-off (no Task.Delay): readerHoldsLock signals that the gate's
             // reader lock for workspace1 is held; readerMayRelease lets the reader finish only
             // after the eviction-triggering load has been observed blocked.
             var readerHoldsLock = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            var readerMayRelease = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
-            var readerTask = gate.RunReadAsync<(Exception? Error, bool StillTracked)>(
+            readerTask = gate.RunReadAsync<(Exception? Error, bool StillTracked)>(
                 status1.WorkspaceId,
-                async _ =>
+                async ct =>
                 {
+                    readerHoldsLock.SetResult();
+                    await readerMayRelease.Task.WaitAsync(ct);
+
+                    // Still inside the gated read — the reader lock has NOT been released, so
+                    // a gate-respecting eviction cannot have run yet.
                     try
                     {
-                        readerHoldsLock.SetResult();
-                        await readerMayRelease.Task.WaitAsync(_testTimeout);
-
-                        // Still inside the gated read — the reader lock has NOT been released, so
-                        // a gate-respecting eviction cannot have run yet.
-                        try
-                        {
-                            manager.GetProject(status1.WorkspaceId, "SampleLib");
-                            return (null, manager.ContainsWorkspace(status1.WorkspaceId));
-                        }
-                        catch (Exception ex)
-                        {
-                            return (ex, manager.ContainsWorkspace(status1.WorkspaceId));
-                        }
+                        manager.GetProject(status1.WorkspaceId, "SampleLib");
+                        return (null, manager.ContainsWorkspace(status1.WorkspaceId));
                     }
-                    finally
+                    catch (Exception ex)
                     {
-                        // Never strand the eviction on a reader that failed before releasing.
-                        readerMayRelease.TrySetResult();
+                        return (ex, manager.ContainsWorkspace(status1.WorkspaceId));
                     }
                 },
-                CancellationToken.None);
+                operation.Token);
 
-            await readerHoldsLock.Task.WaitAsync(_testTimeout);
+            await readerHoldsLock.Task.WaitAsync(operation.Token);
 
             // Start (do NOT await) the eviction-triggering load: it must now block on the
             // evicted candidate's writer lock until the reader above drains.
-            var evictingLoad = manager.LoadAsync(path2, EvictPolicy.Lru, CancellationToken.None);
+            evictingLoad = manager.LoadAsync(path2, EvictPolicy.Lru, operation.Token);
 
             Assert.IsTrue(manager.ContainsWorkspace(status1.WorkspaceId),
                 "Eviction must not remove a workspace whose gate reader lock is still held.");
             Assert.IsFalse(evictingLoad.IsCompleted,
                 "The triggering load cannot complete before the eviction it depends on, and the "
                 + "eviction is blocked behind the in-flight gated reader.");
+            readerMayRelease.TrySetResult();
 
-            readerMayRelease.SetResult();
-
-            var (observed, stillTrackedDuringRead) = await readerTask.WaitAsync(_testTimeout);
-            var status2 = await evictingLoad.WaitAsync(_testTimeout);
+            var (observed, stillTrackedDuringRead) = await readerTask.WaitAsync(operation.Token);
+            var status2 = await evictingLoad.WaitAsync(operation.Token);
 
             Assert.IsNull(observed,
                 "GetProject called from inside the gated read must not observe eviction now that "
@@ -321,15 +320,46 @@ public sealed class WorkspaceCapLruEvictionTests
             Assert.IsTrue(manager.ContainsWorkspace(status2.WorkspaceId),
                 "The triggering load must have taken the slot freed by the eviction.");
         }
+        catch (Exception failure)
+        {
+            primaryFailure = failure;
+            throw;
+        }
         finally
         {
-            TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path1)!);
-            TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path2)!);
+            // Cover readiness failure, synchronous load failure and failed assertions as well as success.
+            readerMayRelease.TrySetResult();
+            await CleanupFailureCollector.RunAfterFailureAsync(
+                "LRU fixture operations or cleanup failed.", primaryFailure,
+                CleanupFailureCollector.FromAction(operation.Cancel),
+                () => DrainAsync(readerTask),
+                () => DrainAsync(evictingLoad),
+                CleanupFailureCollector.FromAction(manager.Dispose),
+                CleanupFailureCollector.FromAction(gate.Dispose),
+                CleanupFailureCollector.FromAction(() =>
+                {
+                    if (path1 is not null) TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path1)!);
+                }),
+                CleanupFailureCollector.FromAction(() =>
+                {
+                    if (path2 is not null) TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path2)!);
+                }));
+        }
+
+        async ValueTask DrainAsync(Task? task)
+        {
+            if (task is null) return;
+            try
+            {
+                // Cancellation unwinds the linked gate wait; still await actual termination before deleting roots.
+                await task;
+            }
+            catch (OperationCanceledException) when (operation.IsCancellationRequested)
+            {
+                // Cancellation is requested deliberately by the owner during cleanup.
+            }
         }
     }
-
-    /// <summary>Fail fast rather than hang the suite if a hand-off regresses into a deadlock.</summary>
-    private static readonly TimeSpan _testTimeout = TimeSpan.FromMinutes(2);
 
     private static WorkspaceManager CreateManager(
         int maxConcurrentWorkspaces = 4,

@@ -1,12 +1,10 @@
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.FindSymbols;
-using Microsoft.CodeAnalysis.Text;
-using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -22,6 +20,23 @@ namespace RoslynMcp.Tests;
 [TestClass]
 public sealed class UnusedSymbolScanFailSafeTests
 {
+    private readonly List<UnusedCodeAnalyzerTestHarness> _harnesses = [];
+
+    [TestCleanup]
+    public async Task CleanupAsync()
+    {
+        try
+        {
+            await CleanupFailureCollector.RunAsync(
+                "Failed to dispose analyzer fixtures.",
+                _harnesses.Select(harness => CleanupFailureCollector.FromAction(harness.Dispose)).ToArray());
+        }
+        finally
+        {
+            _harnesses.Clear();
+        }
+    }
+
     private const string WorkspaceId = "unused-scan-fail-safe-test-ws";
 
     [TestMethod]
@@ -194,58 +209,16 @@ public sealed class UnusedSymbolScanFailSafeTests
         throw new InvalidOperationException($"Method '{methodName}' was not found in the test solution.");
     }
 
-    private static (UnusedCodeAnalyzer Analyzer, TestWorkspaceManager WorkspaceManager, PreviewStore PreviewStore) BuildAnalyzerWithSource(
+    private (UnusedCodeAnalyzer Analyzer, FailClosedWorkspaceManagerStub WorkspaceManager, PreviewStore PreviewStore) BuildAnalyzerWithSource(
         string source,
         Func<ISymbol, Solution, CancellationToken, Task<IEnumerable<ReferencedSymbol>>>? referenceFinder = null,
         IUnexpectedExceptionReporter? exceptionReporter = null)
     {
-        var workspace = new AdhocWorkspace();
-        var projectId = ProjectId.CreateNewId();
-        var projectInfo = ProjectInfo.Create(
-            projectId,
-            VersionStamp.Create(),
-            name: "TestAsm",
-            assemblyName: "TestAsm",
-            language: LanguageNames.CSharp,
-            filePath: Path.Combine(Path.GetTempPath(), "TestAsm.csproj"),
-            compilationOptions: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary),
-            metadataReferences:
-            [
-                MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
-            ]);
-        workspace.AddProject(projectInfo);
-
-        var docId = DocumentId.CreateNewId(projectId);
-        var fileName = "Sample.cs";
-        var fullPath = Path.Combine(Path.GetTempPath(), fileName);
-        workspace.AddDocument(DocumentInfo.Create(
-            docId,
-            fileName,
-            filePath: fullPath,
-            loader: TextLoader.From(
-                TextAndVersion.Create(
-                    SourceText.From(source),
-                    VersionStamp.Create(),
-                    fullPath))));
-
-        var wsManager = new TestWorkspaceManager(WorkspaceId, workspace);
-        var cache = new CompilationCache(wsManager);
-        var previewStore = new PreviewStore();
-
-        var analyzer = referenceFinder is null
-            ? new UnusedCodeAnalyzer(
-                wsManager,
-                cache,
-                NullLogger<UnusedCodeAnalyzer>.Instance,
-                exceptionReporter)
-            : new UnusedCodeAnalyzer(
-                wsManager,
-                cache,
-                NullLogger<UnusedCodeAnalyzer>.Instance,
-                referenceFinder,
-                exceptionReporter);
-
-        return (analyzer, wsManager, previewStore);
+        var workspace = UnusedCodeAnalyzerTestHarness.CreateWorkspace(source,
+            [MetadataReference.CreateFromFile(typeof(object).Assembly.Location)]);
+        var harness = new UnusedCodeAnalyzerTestHarness(WorkspaceId, workspace, referenceFinder, exceptionReporter);
+        _harnesses.Add(harness);
+        return (harness.Analyzer, harness.WorkspaceManager, new PreviewStore());
     }
 
     private sealed class RecordingUnexpectedExceptionReporter : IUnexpectedExceptionReporter
@@ -262,47 +235,5 @@ public sealed class UnusedSymbolScanFailSafeTests
             Categories.Add(category);
             return PublicExceptionDetailPolicy.ProjectUnexpected(exception, $"unused-scan-test-{ReportCount}");
         }
-    }
-
-    private sealed class TestWorkspaceManager : IWorkspaceManager
-    {
-        private readonly string _workspaceId;
-        private readonly AdhocWorkspace _workspace;
-
-        public event Action<string>? WorkspaceClosed;
-        public event Action<string>? WorkspaceReloaded;
-
-        public TestWorkspaceManager(string workspaceId, AdhocWorkspace workspace)
-        {
-            _workspaceId = workspaceId;
-            _workspace = workspace;
-        }
-
-        public void RaiseWorkspaceClosed(string workspaceId) => WorkspaceClosed?.Invoke(workspaceId);
-        public void RaiseWorkspaceReloaded(string workspaceId) => WorkspaceReloaded?.Invoke(workspaceId);
-
-        public Solution GetCurrentSolution(string workspaceId)
-        {
-            return workspaceId == _workspaceId
-                ? _workspace.CurrentSolution
-                : throw new InvalidOperationException($"Unknown workspace {workspaceId}");
-        }
-
-        public int GetCurrentVersion(string workspaceId) => 1;
-        public void RestoreVersion(string workspaceId, int version) { }
-        public bool ContainsWorkspace(string workspaceId) => workspaceId == _workspaceId;
-        public bool IsStale(string workspaceId) => false;
-        public Project? GetProject(string workspaceId, string projectNameOrPath) => null;
-
-        public Task<WorkspaceStatusDto> LoadAsync(string path, EvictPolicy evictPolicy, CancellationToken ct) => throw new NotSupportedException();
-        public Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct) => throw new NotSupportedException();
-        public bool Close(string workspaceId) => throw new NotSupportedException();
-        public IReadOnlyList<WorkspaceStatusDto> ListWorkspaces() => throw new NotSupportedException();
-        public WorkspaceStatusDto GetStatus(string workspaceId) => throw new NotSupportedException();
-        public Task<WorkspaceStatusDto> GetStatusAsync(string workspaceId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-        public ProjectGraphDto GetProjectGraph(string workspaceId) => throw new NotSupportedException();
-        public Task<IReadOnlyList<GeneratedDocumentDto>> GetSourceGeneratedDocumentsAsync(string workspaceId, string? projectName, CancellationToken ct) => throw new NotSupportedException();
-        public Task<string?> GetSourceTextAsync(string workspaceId, string filePath, CancellationToken ct) => throw new NotSupportedException();
-        public bool TryApplyChanges(string workspaceId, Solution newSolution) => throw new NotSupportedException();
     }
 }

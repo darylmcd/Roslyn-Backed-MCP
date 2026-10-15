@@ -415,7 +415,7 @@ public sealed class EditUndoCohesionTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public async Task SetEditorConfigOption_RevertWaitsForTransientReadHandle()
     {
-        if (!OperatingSystem.IsWindows()) return;
+        if (!OperatingSystem.IsWindows()) Assert.Inconclusive("Requires Windows.");
 
         await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
         var source = workspace.GetPath("SampleLib", "Dog.cs");
