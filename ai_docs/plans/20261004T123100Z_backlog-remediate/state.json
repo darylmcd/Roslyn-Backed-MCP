@@ -457,7 +457,7 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": "Operator-only preimplementation hold: published configured-root/client-roots RPC error categories change InvalidArgument to InvalidOperation; await explicit approval of ADR and major-release migration strategy. Pending question is not answered by elapsed time or generic continue. Reactivate only on a live approving decision; row remains open.",
+      "notes": "Operator-only preimplementation hold: published configured-root/client-roots RPC error categories change InvalidArgument to InvalidOperation; await explicit approval of ADR and major-release migration strategy. Pending question is not answered by elapsed time or generic continue. Reactivate only on a live approving decision; row remains open.\n2026-10-15 policy approval: Approve configured-root and client-roots RPC failures changing from InvalidArgument to InvalidOperation at the next major release, with ADR and migration guidance. Preserve caller boundary denials as InvalidArgument, exact marked exception identity, path redaction and cancellation. Keep deferred and open. ADR/migration delivery, native replan/review, implementation, red-first tests, both protocol-era wire regressions and current CI_POLICY validation remain required. See operator-decisions-20261015.md. Historical stanza requires sanctioned replan/review before execution; status unchanged.",
       "fileSetHash": "8fcede3179a81f04d31d460386a9e3950d8b2bd70ee582562f14d57f8525d7c1",
       "stanzaHash": "12ce06bdf57ad1125f5e92c5c246004cdb985b10835d774b72fa58dd4b333214",
       "reviewedStanzaHash": "12ce06bdf57ad1125f5e92c5c246004cdb985b10835d774b72fa58dd4b333214"
