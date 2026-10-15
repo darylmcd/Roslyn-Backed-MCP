@@ -229,6 +229,73 @@ public sealed class VerifyReleaseChildScriptTests
 
     [TestMethod]
     [TestCategory("Process")]
+    [DataRow(0, true)]
+    [DataRow(1, true)]
+    [DataRow(0, false)]
+    [DataRow(1, false)]
+    public async Task VerifyRelease_DocsWorkflowExecutesEachSelectedShardAndRequiresTrxAsync(int shardIndex, bool produceTrx)
+    {
+        var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
+        var fixtureRoot = Path.Combine(TestTempRoot.Current, nameof(VerifyReleaseChildScriptTests), Guid.NewGuid().ToString("N"));
+        try
+        {
+            var fixture = WriteFixture(repositoryRoot, fixtureRoot,
+                new ReleaseCase("docs workflow shard", null, FailureMode.None, false, null, true));
+            WriteFakeShardPlanner(fixtureRoot);
+            await File.WriteAllTextAsync(Path.Combine(fixtureRoot, "eng", "docs-only-test-classes.txt"),
+                "RoslynMcp.Tests.DocumentationContract\n");
+            var workflow = File.ReadAllText(Path.Combine(repositoryRoot, ".github", "workflows", "ci.yml")).Replace("\r\n", "\n");
+            var stepStart = workflow.IndexOf("- name: Verify release build (pull request)", StringComparison.Ordinal);
+            Assert.IsTrue(stepStart >= 0);
+            const string RunMarker = "        run: |\n";
+            var runStart = workflow.IndexOf(RunMarker, stepStart, StringComparison.Ordinal);
+            Assert.IsTrue(runStart >= 0);
+            runStart += RunMarker.Length;
+            var runEnd = workflow.IndexOf("\n      - ", runStart, StringComparison.Ordinal);
+            Assert.IsTrue(runEnd > runStart);
+            var command = string.Join('\n', workflow[runStart..runEnd].Split('\n')
+                .Select(line => line.StartsWith("          ", StringComparison.Ordinal) ? line[10..] : line))
+                .Replace("${{ matrix.leg.test_shard_index }}", shardIndex.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                .Replace("${{ matrix.leg.test_shard_count }}", "2")
+                .Replace("${{ matrix.leg.artifact_owner }}", shardIndex == 0 ? "true" : "false")
+                .Replace("${{ needs.route.outputs.docs_only }}", "true");
+            Assert.IsFalse(command.Contains("${{", StringComparison.Ordinal), "Every workflow expression must be resolved for this executed route.");
+            var wrapper = Path.Combine(fixtureRoot, "docs-workflow.ps1");
+            await File.WriteAllTextAsync(wrapper, ". (Join-Path $PSScriptRoot 'fake-dotnet.ps1')\n" + command);
+            fixture = fixture with { ScriptPath = wrapper };
+
+            var result = await RunVerifyReleaseAsync(fixture, false, trxMode: produceTrx ? null : "missing");
+            var diagnostic = $"shard={shardIndex} trx={produceTrx} stdout={result.StdOut} stderr={result.StdErr}";
+            var calls = File.ReadAllLines(fixture.DotnetArgumentsPath)
+                .Select(line => System.Text.Json.JsonSerializer.Deserialize<string[]>(line)!)
+                .Where(arguments => arguments[0] == "test").ToArray();
+            Assert.HasCount(1, calls, diagnostic);
+            var filterIndex = Array.IndexOf(calls[0], "--filter");
+            Assert.IsTrue(filterIndex >= 0, diagnostic);
+            var expectedClasses = shardIndex == 0
+                ? "ClassName=RoslynMcp.Tests.DocumentationContract|ClassName=RoslynMcp.Tests.ShardSentinel0"
+                : "ClassName=RoslynMcp.Tests.ShardSentinel1";
+            Assert.AreEqual($"({expectedClasses})&TestCategory!=Benchmark&TestCategory!=Network", calls[0][filterIndex + 1], diagnostic);
+            if (produceTrx)
+            {
+                Assert.AreEqual(0, result.ExitCode, diagnostic);
+                Assert.HasCount(1, Directory.GetFiles(Path.Combine(fixtureRoot, "artifacts", "test-results"), "*.trx"), diagnostic);
+            }
+            else
+            {
+                Assert.AreNotEqual(0, result.ExitCode, diagnostic);
+                StringAssert.Contains(PowerShellOutputNormalizer.Normalize(result.StdOut + result.StdErr),
+                    "without producing the required TRX result", diagnostic);
+            }
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
     public async Task VerifyRelease_TestShardOnlySkipsPolicyAndPublishAsync()
     {
         var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
@@ -262,7 +329,7 @@ public sealed class VerifyReleaseChildScriptTests
             StringAssert.Contains(dotnetArguments, "--filter", diagnostic);
             StringAssert.Contains(
                 dotnetArguments,
-                "(ClassName=RoslynMcp.Tests.ShardSentinel)&TestCategory!=Benchmark",
+                "(ClassName=RoslynMcp.Tests.DocumentationContract|ClassName=RoslynMcp.Tests.ShardSentinel0)&TestCategory!=Benchmark",
                 "The verifier must pass the selected exact class filter into dotnet test.");
             StringAssert.Contains(
                 dotnetArguments,
@@ -786,15 +853,24 @@ public sealed class VerifyReleaseChildScriptTests
                 [Parameter(Mandatory)][int]$TestShardIndex
             )
 
-            if ($TestShardCount -ne 2 -or $TestShardIndex -ne 0) {
+            if ($TestShardCount -ne 2 -or $TestShardIndex -lt 0 -or $TestShardIndex -gt 1) {
                 throw "Unexpected shard selection $TestShardIndex/$TestShardCount."
             }
 
             [pscustomobject]@{
                 SchemaVersion = 1
-                SelectedFilter = 'ClassName=RoslynMcp.Tests.ShardSentinel'
+                SelectedFilter = if ($TestShardIndex -eq 0) {
+                    'ClassName=RoslynMcp.Tests.DocumentationContract|ClassName=RoslynMcp.Tests.ShardSentinel0'
+                } else {
+                    'ClassName=RoslynMcp.Tests.ShardSentinel1'
+                }
+                TestClasses = @(
+                    [pscustomobject]@{ ClassName = 'RoslynMcp.Tests.DocumentationContract' },
+                    [pscustomobject]@{ ClassName = 'RoslynMcp.Tests.ShardSentinel0' },
+                    [pscustomobject]@{ ClassName = 'RoslynMcp.Tests.ShardSentinel1' }
+                )
                 Shards = @(
-                    [pscustomobject]@{ Index = 0; ClassCount = 1; StaticCaseWeight = 1 },
+                    [pscustomobject]@{ Index = 0; ClassCount = 2; StaticCaseWeight = 2 },
                     [pscustomobject]@{ Index = 1; ClassCount = 1; StaticCaseWeight = 1 }
                 )
             } | ConvertTo-Json -Depth 4
