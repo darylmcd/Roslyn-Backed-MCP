@@ -25,7 +25,7 @@
     <PackageVersion Include="Microsoft.Build" Version="17.14.28" />
     <PackageVersion Include="Microsoft.Build.Tasks.Core" Version="17.14.28" />
     <PackageVersion Include="Microsoft.Build.Utilities.Core" Version="17.14.28" />
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
     <PackageVersion Include="MSTest.TestAdapter" Version="4.5.1" />
     <PackageVersion Include="MSTest.TestFramework" Version="4.5.1" />
     <PackageVersion Include="coverlet.collector" Version="10.1.0" />
@@ -41,13 +41,13 @@
     <!-- Independently versioned package; do not align mechanically with the compiler family. -->
     <PackageVersion Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="5.6.0" />
     <PackageVersion Include="Nito.AsyncEx" Version="5.1.2" />
-    <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="10.0.401" />
+    <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="10.0.402" />
     <!-- Transitive security pin: the version selected by Microsoft.Build.* /
          Microsoft.CodeAnalysis.Workspaces.MSBuild carried the high-severity DoS
          advisories GHSA-37gx-xxp4-5rgx, GHSA-w3x6-4m5h-cxqf, GHSA-23rf-6693-g89p,
          GHSA-8q5v-6pqq-x66h, GHSA-cvvh-rhrc-wg4q, GHSA-g8r8-53c2-pm3f, and
          GHSA-mmjf-rqrv-855v. Keep the explicit pin on an audited release with no
          known advisories; the PackageVersion element is the version source. -->
-    <PackageVersion Include="System.Security.Cryptography.Xml" Version="10.0.12" />
+    <PackageVersion Include="System.Security.Cryptography.Xml" Version="10.0.13" />
   </ItemGroup>
 </Project>
