@@ -45,7 +45,7 @@
     <ItemGroup>
       <GitFixtureWorkerProbeOutput Include="../GitFixtureWorkerProbe/bin/$(Configuration)/$(TargetFramework)/*" />
     </ItemGroup>
-    <Copy SourceFiles="@(GitFixtureWorkerProbeOutput)" DestinationFolder="$(OutDir)GitFixtureWorkerProbe" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(GitFixtureWorkerProbeOutput)" DestinationFolder="$(OutDir)ProcessProbes/GitFixtureWorkerProbe" SkipUnchangedFiles="true" />
   </Target>
 
   <Target Name="PrepareTestFixtures"

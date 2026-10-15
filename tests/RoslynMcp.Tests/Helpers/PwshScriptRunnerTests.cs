@@ -16,7 +16,7 @@ public sealed class PwshScriptRunnerTests
         {
             var result = await PwshScriptRunner.RunExecutableAsync(
                 "dotnet",
-                [Path.Combine(AppContext.BaseDirectory, "GitFixtureWorkerProbe", "GitFixtureWorkerProbe.dll"),
+                [Path.Combine(AppContext.BaseDirectory, "ProcessProbes", "GitFixtureWorkerProbe", "GitFixtureWorkerProbe.dll"),
                  typeof(GitFixtureRunner).Assembly.Location, root],
                 environment: null,
                 timeout: TimeSpan.FromSeconds(45),
