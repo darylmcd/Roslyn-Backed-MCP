@@ -9,6 +9,8 @@ namespace RoslynMcp.Core.Models;
 /// <c>TextEditDto[]</c>: an array-typed record property hands every holder of the DTO a live
 /// mutable reference, so one caller doing <c>dto.Edits[0] = …</c> silently corrupts the edit
 /// sequence observed by every other holder of the same instance.
+/// This prevents mutation through the DTO property; the supplied collection is not copied,
+/// so its owner must keep its contents stable while the DTO is in use.
 /// </para>
 /// <para>
 /// The interface swap alone does NOT restore record value equality — the compiler-synthesized
@@ -22,7 +24,7 @@ namespace RoslynMcp.Core.Models;
 /// </para>
 /// </remarks>
 /// <param name="FilePath">The absolute path to the file being edited.</param>
-/// <param name="Edits">The text edits to apply, in any order.</param>
+/// <param name="Edits">Edits may be supplied in any application order. Element order participates in value equality and hashing.</param>
 public sealed record FileEditsDto(string FilePath, IReadOnlyList<TextEditDto> Edits)
 {
     /// <summary>

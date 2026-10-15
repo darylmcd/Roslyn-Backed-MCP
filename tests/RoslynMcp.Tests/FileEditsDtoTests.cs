@@ -8,7 +8,7 @@ namespace RoslynMcp.Tests;
 /// the property through `EqualityComparer&lt;TextEditDto[]&gt;.Default` — `Array` never overrides
 /// `object.Equals`, so two instances holding distinct-but-content-equal edit sequences always
 /// compared unequal, defeating the point of the record. The property is now
-/// `IReadOnlyList&lt;TextEditDto&gt;` (closing the aliased-array mutation surface) with explicit
+/// `IReadOnlyList&lt;TextEditDto&gt;` (preventing mutation through the DTO property) with explicit
 /// structural `Equals`/`GetHashCode` overrides (restoring value equality).
 /// </summary>
 [TestClass]
@@ -83,16 +83,18 @@ public sealed class FileEditsDtoTests
     }
 
     [TestMethod]
-    public void GetHashCode_IsOrderSensitive_NotCountBased()
+    public void Equality_IsOrderSensitive_EqualSequencesHaveEqualHashes()
     {
         var forward = new FileEditsDto(SamplePath, new[] { Edit(1, "a"), Edit(2, "b") });
         var reversed = new FileEditsDto(SamplePath, new[] { Edit(2, "b"), Edit(1, "a") });
 
         Assert.AreNotEqual(forward, reversed, "element order is part of the value");
-        Assert.AreNotEqual(
+        var equalForward = new FileEditsDto(SamplePath, new List<TextEditDto> { Edit(1, "a"), Edit(2, "b") });
+        Assert.AreEqual(forward, equalForward);
+        Assert.AreEqual(
             forward.GetHashCode(),
-            reversed.GetHashCode(),
-            "hash must fold each element in order, not merely the element count");
+            equalForward.GetHashCode(),
+            "equal sequences must hash equally; unequal values may collide");
     }
 
     [TestMethod]
