@@ -9,7 +9,7 @@ using RoslynMcp.Roslyn.Helpers;
 namespace RoslynMcp.Roslyn.Services;
 
 /// <summary>
-/// Item 3 implementation. Supports <c>add</c>, <c>remove</c>, <c>rename</c>, and
+/// Supports <c>add</c>, <c>remove</c>, <c>rename</c>, and
 /// <c>reorder</c> ops by rewriting both the method declaration and every callsite in one
 /// atomic preview. Reorder accepts a <c>NewOrder</c> permutation of parameter names or
 /// 0-based indices; mixed positional+named callsites raise an actionable error.
@@ -37,19 +37,7 @@ public sealed class ChangeSignatureService : IChangeSignatureService
         if (string.IsNullOrWhiteSpace(request.Op))
             throw new ArgumentException("ChangeSignatureRequest.Op is required.", nameof(request));
 
-        // change-signature-preview-metadataname-shape-error-actionability:
-        // Reject parenthesized metadataName up-front with an actionable error. The shape
-        // `Namespace.Type.Method(string)` is what an agent that copy/pastes a Roslyn
-        // ToDisplayString() output naturally produces, but `compilation.GetTypeByMetadataName`
-        // does NOT accept parentheses — it returns null, the fallback "split-at-last-dot"
-        // path also fails (containing-type-name still contains parens), and the service
-        // ultimately surfaces the misleading "requires a method symbol; resolved null"
-        // error which names the wrong cause. Pre-check is method-style-scoped (this
-        // service ONLY accepts method symbols, so the rejection cannot swallow a
-        // legitimate property-indexer-accessor or other non-method kind that
-        // `SymbolResolver.ResolveByMetadataNameAsync` is shared with from non-method
-        // tools). Shipped in PR #467 for
-        // `change-signature-preview-metadataname-shape-error-actionability`.
+        // Parenthesized display signatures are not metadata names; retain actionable guidance.
         if (locator.HasMetadataName && locator.MetadataName!.Contains('('))
         {
             throw new ArgumentException(
@@ -82,14 +70,10 @@ public sealed class ChangeSignatureService : IChangeSignatureService
             }
         }
 
-        // change-signature-primary-constructor-parameters: primary-constructor parameters live on
-        // the TypeDeclarationSyntax.ParameterList, which the declaration/callsite rewriters never
-        // visit, so every op used to fall through to the misleading "produced no changes" error.
-        // Refuse up-front with a specific message (also for a caret on the type itself).
-        if (symbol is INamedTypeSymbol namedType && HasPrimaryConstructor(namedType))
-            throw PrimaryConstructorRefusal(namedType);
-        if (symbol is IMethodSymbol { MethodKind: MethodKind.Constructor } primaryCtor
-            && IsPrimaryConstructor(primaryCtor))
+        if (symbol is INamedTypeSymbol namedType)
+            symbol = namedType.InstanceConstructors.SingleOrDefault(IsPrimaryConstructor) ?? symbol;
+        if (symbol is IMethodSymbol primaryCtor && IsPrimaryConstructor(primaryCtor)
+            && (primaryCtor.ContainingType.IsRecord || request.Op.ToLowerInvariant() is not ("add" or "remove")))
             throw PrimaryConstructorRefusal(primaryCtor.ContainingType);
 
         if (symbol is not IMethodSymbol method)
@@ -123,7 +107,10 @@ public sealed class ChangeSignatureService : IChangeSignatureService
         {
             if (reference.GetSyntax() is TypeDeclarationSyntax { ParameterList: { } list }
                 && !method.IsImplicitlyDeclared
-                && list.Parameters.Count == method.Parameters.Length)
+                && list.Parameters.Count == method.Parameters.Length
+                && method.Parameters.All(parameter => parameter.DeclaringSyntaxReferences.Any(parameterReference =>
+                    parameterReference.SyntaxTree == list.SyntaxTree
+                    && list.Parameters[parameter.Ordinal].Span.Contains(parameterReference.Span))))
             {
                 return true;
             }
@@ -131,9 +118,6 @@ public sealed class ChangeSignatureService : IChangeSignatureService
 
         return false;
     }
-
-    private static bool HasPrimaryConstructor(INamedTypeSymbol type) =>
-        type.InstanceConstructors.Any(IsPrimaryConstructor);
 
     private static InvalidOperationException PrimaryConstructorRefusal(INamedTypeSymbol type)
     {
@@ -171,7 +155,7 @@ public sealed class ChangeSignatureService : IChangeSignatureService
                 nameof(request));
 
         // change-signature-preview-brace-concat-on-add-op:
-        // Build the new parameter via SyntaxFactory.ParseParameter — the parser produces a
+        // Parse only the new parameter with SyntaxFactory.ParseParameterList — the parser produces a
         // properly-tokenized ParameterSyntax (type + space + identifier + optional `= value`).
         // The previous implementation used SyntaxFactory.Parameter + ParseTypeName(type + " ")
         // which left the parameter without inter-token trivia, so the rendered preview ran
@@ -181,44 +165,17 @@ public sealed class ChangeSignatureService : IChangeSignatureService
             : $"{request.ParameterType} {request.Name} = {request.DefaultValue}";
         var argText = request.DefaultValue ?? "default";
 
-        var (accumulator, changes, callsiteUpdates) = await ApplyAddRemoveAsync(
+        var (accumulator, changes, callsiteUpdates, warnings) = await ApplyAddRemoveAsync(
             solution, method,
             updateDeclaration: (existingList) =>
             {
-                // Build a fully-parsed parameter list from text so commas + parameter
-                // separators get correct trivia. Preserve the existing list's leading +
-                // trailing trivia (the close-paren's trailing trivia carries the
-                // whitespace before the method body's opening brace — losing it caused
-                // the brace-concat symptom from the audit).
-                return BuildParameterListFromTextChange(existingList, addParam: paramText, addAt: insertPosition, removeAt: null);
+                // Edit syntax nodes so retained parameter and separator trivia survives.
+                return EditParameterList(existingList, addParam: paramText, addAt: insertPosition, removeAt: null);
             },
-            updateCallsite: (args, isPositional) =>
-            {
-                if (isPositional)
-                {
-                    // change-signature-preview-add-unhelpful-error:
-                    // Existing callsites may pass fewer arguments than the method declares
-                    // (default-valued parameters are common, e.g. CancellationToken at the
-                    // end). args.Insert(insertPosition, ...) where insertPosition > args.Count
-                    // throws ArgumentOutOfRangeException with paramName='index' — that's the
-                    // unhelpful internal error the row reports. Clamp to args.Count so the
-                    // splice always lands at a valid index; semantically the new arg still
-                    // appends at the end of THIS callsite, which matches the declaration's
-                    // append-at-end behavior.
-                    var clampedInsert = Math.Min(insertPosition, args.Count);
-                    var newArg = SyntaxFactory.Argument(SyntaxFactory.ParseExpression(argText));
-                    return args.Insert(clampedInsert, newArg.WithLeadingTrivia(clampedInsert == 0 ? default : SyntaxFactory.Space));
-                }
-                // Caller uses named args — splice by name so we don't break existing positions.
-                var named = SyntaxFactory.Argument(
-                    SyntaxFactory.NameColon(SyntaxFactory.IdentifierName(request.Name!)),
-                    refKindKeyword: default,
-                    expression: SyntaxFactory.ParseExpression(argText));
-                return args.Add(named.WithLeadingTrivia(args.Count == 0 ? default : SyntaxFactory.Space));
-            },
+            updateCallsite: (context, args) => context.Add(args, insertPosition, request.Name!, argText),
             ct).ConfigureAwait(false);
 
-        return BuildPreviewDto(workspaceId, accumulator, changes, callsiteUpdates,
+        return BuildPreviewDto(workspaceId, accumulator, changes, callsiteUpdates, warnings,
             $"Add parameter '{request.Name}: {request.ParameterType}' at position {insertPosition} of {method.ToDisplayString()}");
     }
 
@@ -229,57 +186,29 @@ public sealed class ChangeSignatureService : IChangeSignatureService
         if (index < 0) throw new ArgumentException(
             $"op='remove' requires Position or Name to identify the parameter.", nameof(request));
 
-        var (accumulator, changes, callsiteUpdates) = await ApplyAddRemoveAsync(
+        var (accumulator, changes, callsiteUpdates, warnings) = await ApplyAddRemoveAsync(
             solution, method,
-            updateDeclaration: existingList => BuildParameterListFromTextChange(existingList, addParam: null, addAt: null, removeAt: index),
-            updateCallsite: (args, isPositional) =>
-            {
-                if (isPositional && index < args.Count)
-                    return args.RemoveAt(index);
-                var paramName = method.Parameters[index].Name;
-                for (var i = 0; i < args.Count; i++)
-                {
-                    var nameColon = args[i].NameColon;
-                    if (nameColon is not null && string.Equals(nameColon.Name.Identifier.ValueText, paramName, StringComparison.Ordinal))
-                        return args.RemoveAt(i);
-                }
-                return args; // not present at this callsite
-            },
+            updateDeclaration: existingList => EditParameterList(existingList, addParam: null, addAt: null, removeAt: index),
+            updateCallsite: (context, args) => context.Remove(args, index),
             ct).ConfigureAwait(false);
 
-        return BuildPreviewDto(workspaceId, accumulator, changes, callsiteUpdates,
+        return BuildPreviewDto(workspaceId, accumulator, changes, callsiteUpdates, warnings,
             $"Remove parameter '{method.Parameters[index].Name}' (position {index}) from {method.ToDisplayString()}");
     }
 
-    /// <summary>
-    /// Builds a new ParameterList by serializing the existing parameters to text, applying
-    /// add/remove edits, and reparsing through <see cref="SyntaxFactory.ParseParameterList"/>.
-    /// This produces correct comma + space trivia between every parameter — the raw
-    /// SeparatedSyntaxList API path loses these. Trivia on the enclosing list (and therefore
-    /// on the close-paren) is copied from the original list so the method-body brace stays
-    /// on its own line.
-    /// </summary>
-    private static ParameterListSyntax BuildParameterListFromTextChange(
-        ParameterListSyntax existingList,
-        string? addParam,
-        int? addAt,
-        int? removeAt)
+    private static ParameterListSyntax EditParameterList(
+        ParameterListSyntax existingList, string? addParam, int? addAt, int? removeAt)
     {
-        var paramTexts = new List<string>(existingList.Parameters.Count + 1);
-        for (var i = 0; i < existingList.Parameters.Count; i++)
+        var parameters = existingList.Parameters;
+        if (removeAt is int remove) parameters = parameters.RemoveAt(remove);
+        if (addAt is int insert && addParam is not null)
         {
-            if (removeAt is int r && r == i) continue;
-            if (addAt is int a && a == i && addParam is not null) paramTexts.Add(addParam);
-            paramTexts.Add(existingList.Parameters[i].ToString());
+            var parsed = SyntaxFactory.ParseParameterList("(" + addParam + ")");
+            if (parsed.ContainsDiagnostics || parsed.Parameters.Count != 1)
+                throw new PublicInvalidOperationException("The new parameter is not valid C# parameter syntax.");
+            parameters = parameters.Insert(insert, parsed.Parameters[0].WithLeadingTrivia(insert == 0 ? default : SyntaxFactory.Space));
         }
-        if (addAt is int aTail && aTail >= existingList.Parameters.Count && addParam is not null)
-        {
-            paramTexts.Add(addParam);
-        }
-
-        var newListText = "(" + string.Join(", ", paramTexts) + ")";
-        var newList = SyntaxFactory.ParseParameterList(newListText);
-        return newList.WithTriviaFrom(existingList);
+        return existingList.WithParameters(NormalizeParameterWhitespace(parameters));
     }
 
     /// <summary>
@@ -315,9 +244,9 @@ public sealed class ChangeSignatureService : IChangeSignatureService
     /// is rewritten to match. Per-callsite handling:
     /// </para>
     /// <list type="bullet">
-    ///   <item><description>All-positional callsite — arguments are reordered to match the new permutation.</description></item>
-    ///   <item><description>All-named callsite — left untouched (named args carry the binding by name; reorder has no semantic effect).</description></item>
-    ///   <item><description>Mixed positional + named callsite — refused with an actionable error citing the callsite location, because remapping the positional prefix can silently change which parameter a positional argument binds to.</description></item>
+    ///   <item><description>All-positional callsite — arguments are named without changing expression evaluation order.</description></item>
+    ///   <item><description>All-named callsite — retains argument order and bindings; omitted compiler-supplied values are materialized.</description></item>
+    ///   <item><description>Mixed positional + named callsite — refused with actionable guidance to normalize argument naming before retrying.</description></item>
     /// </list>
     /// <para>
     /// <c>params</c> arrays MUST remain in the trailing position (otherwise the C# parser
@@ -361,52 +290,15 @@ public sealed class ChangeSignatureService : IChangeSignatureService
                 $"op='reorder' NewOrder='{request.NewOrder}' is the identity permutation — no change to apply.",
                 nameof(request));
 
-        var (accumulator, changes, callsiteUpdates) = await ApplyAddRemoveAsync(
+        var (accumulator, changes, callsiteUpdates, warnings) = await ApplyAddRemoveAsync(
             solution, method,
             updateDeclaration: existingList => BuildReorderedParameterList(existingList, permutation),
-            updateCallsite: (args, isPositional) =>
-            {
-                if (args.Count == 0) return args;
-
-                // All-named callsite: leave untouched (named args bind by name regardless of order).
-                var allNamed = args.All(a => a.NameColon is not null);
-                if (allNamed) return args;
-
-                // Mixed positional + named: refuse via sentinel exception so the caller sees an
-                // actionable error rather than a silently-wrong rewrite.
-                if (!isPositional)
-                {
-                    throw new InvalidOperationException(
-                        "op='reorder' refuses to rewrite a callsite that mixes positional and named arguments " +
-                        "because remapping the positional prefix can change which parameter each positional " +
-                        "argument binds to. Convert the callsite to all-positional or all-named, then retry.");
-                }
-
-                // All-positional: build new list by walking permutation.
-                // If callsite passes fewer args than the method declares (default-valued tail),
-                // only reorder the indices that exist; trailing missing slots stay omitted.
-                // For simplicity: if any permuted index is >= args.Count, those are dropped
-                // (they were already absent at the callsite). Reordering otherwise.
-                var newArgs = SyntaxFactory.SeparatedList<ArgumentSyntax>();
-                for (var i = 0; i < permutation.Length; i++)
-                {
-                    var srcIdx = permutation[i];
-                    if (srcIdx < args.Count)
-                    {
-                        var arg = args[srcIdx];
-                        // Strip leading trivia from the source arg, then add a single space
-                        // separator (except for the first).
-                        var clean = arg.WithLeadingTrivia(i == 0 ? default : SyntaxFactory.Space);
-                        newArgs = newArgs.Add(clean);
-                    }
-                }
-                return newArgs;
-            },
+            updateCallsite: (context, args) => context.Reorder(args),
             ct).ConfigureAwait(false);
 
         var orderDescription = string.Join(", ",
             permutation.Select(i => method.Parameters[i].Name));
-        return BuildPreviewDto(workspaceId, accumulator, changes, callsiteUpdates,
+        return BuildPreviewDto(workspaceId, accumulator, changes, callsiteUpdates, warnings,
             $"Reorder parameters of {method.ToDisplayString()} to ({orderDescription})");
     }
 
@@ -468,20 +360,25 @@ public sealed class ChangeSignatureService : IChangeSignatureService
 
     /// <summary>
     /// Build a new <see cref="ParameterListSyntax"/> by reordering the existing parameters
-    /// according to <paramref name="permutation"/>. Reuses the parse-from-text approach from
-    /// add/remove so the comma+space trivia and enclosing parens trivia are correct.
+    /// according to <paramref name="permutation"/>. Retains original syntax nodes,
+    /// separator trivia, and enclosing parentheses.
     /// </summary>
     private static ParameterListSyntax BuildReorderedParameterList(
         ParameterListSyntax existingList, int[] permutation)
     {
-        var paramTexts = new List<string>(permutation.Length);
-        for (var i = 0; i < permutation.Length; i++)
+        var parameters = SyntaxFactory.SeparatedList(permutation.Select(i => existingList.Parameters[i]), existingList.Parameters.GetSeparators());
+        return existingList.WithParameters(NormalizeParameterWhitespace(parameters));
+    }
+
+    private static SeparatedSyntaxList<ParameterSyntax> NormalizeParameterWhitespace(SeparatedSyntaxList<ParameterSyntax> parameters)
+    {
+        return SyntaxFactory.SeparatedList(parameters.Select((parameter, index) =>
         {
-            paramTexts.Add(existingList.Parameters[permutation[i]].ToString());
-        }
-        var newListText = "(" + string.Join(", ", paramTexts) + ")";
-        var newList = SyntaxFactory.ParseParameterList(newListText);
-        return newList.WithTriviaFrom(existingList);
+            var trivia = parameter.GetLeadingTrivia();
+            if (trivia.All(t => t.IsKind(SyntaxKind.WhitespaceTrivia)))
+                return parameter.WithLeadingTrivia(index == 0 || parameters.GetSeparator(index - 1).TrailingTrivia.ToFullString().Any(char.IsWhiteSpace) ? default : SyntaxFactory.Space);
+            return parameter;
+        }), parameters.GetSeparators());
     }
 
     private static int ResolveParameterIndex(IMethodSymbol method, ChangeSignatureRequest request)
@@ -497,11 +394,11 @@ public sealed class ChangeSignatureService : IChangeSignatureService
         return -1;
     }
 
-    private async Task<(Solution Accumulator, List<FileChangeDto> Changes, List<CallsiteUpdateDto> CallsiteUpdates)> ApplyAddRemoveAsync(
+    private async Task<(Solution Accumulator, List<FileChangeDto> Changes, List<CallsiteUpdateDto> CallsiteUpdates, List<string> Warnings)> ApplyAddRemoveAsync(
         Solution solution,
         IMethodSymbol method,
         Func<ParameterListSyntax, ParameterListSyntax> updateDeclaration,
-        Func<SeparatedSyntaxList<ArgumentSyntax>, bool, SeparatedSyntaxList<ArgumentSyntax>> updateCallsite,
+        Func<ChangeSignatureAddRemovePreviewBuilder.BoundCallContext, SeparatedSyntaxList<ArgumentSyntax>, SeparatedSyntaxList<ArgumentSyntax>> updateCallsite,
         CancellationToken ct)
     {
         return await ChangeSignatureAddRemovePreviewBuilder.BuildAsync(
@@ -517,16 +414,17 @@ public sealed class ChangeSignatureService : IChangeSignatureService
         Solution accumulator,
         List<FileChangeDto> changes,
         List<CallsiteUpdateDto> callsiteUpdates,
+        List<string> warnings,
         string description)
     {
         if (changes.Count == 0)
-            throw new InvalidOperationException("change_signature_preview produced no changes — verify the symbol actually has callers.");
+            throw new PublicInvalidOperationException("The signature change produced no editable declaration changes. Choose a source declaration and a non-identity operation.");
         var token = _previewStore.Store(workspaceId, accumulator, _workspace.GetCurrentVersion(workspaceId), description);
         return new RefactoringPreviewDto(
             token,
             description,
             changes,
-            Warnings: null,
+            Warnings: warnings.Count == 0 ? null : warnings,
             CallsiteUpdates: callsiteUpdates.Count == 0 ? null : callsiteUpdates);
     }
 }
