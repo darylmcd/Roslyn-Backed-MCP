@@ -1,6 +1,32 @@
 # Planning checkpoint — 20261007T211247Z_backlog-remediate
 
-## Current operator disposition 2026-10-13
+## Current remediation 2026-10-15
+
+| Item | Current disposition |
+|---|---|
+| Authorization | Operator authorized direct implementation, repair and shipping of existing work; do not invoke the reworked backlog-remediate skill. |
+| Source | PR1779 head fc4dc8554d5eda6a9b2fe58e4ec2186591852545; existing source branch preserved. |
+| Design | ADR0026 supersedes private-core relocation: retain the original explicit-zero constructor and delegate the added signature to it; use a required fresh marker for last-parameter removal. |
+| Verification | All 324 constructor cases passed in the completed local run; hosted Windows/Linux/SDK-floor matrix passed. Full local run was red: five description assertions corrected afterward and two readiness assertions after dependency files changed mid-run. Require a fresh immutable final-head gate. |
+| Metadata exception | Operator explicitly approved removal of four legacy profile prefixes from sketch anchors. Checksum-guarded patch changed only those anchors; AI-doc validation and the native reviewed-hash check passed. No global engine code changed. |
+| Preserved tracking | Restored four unpublished rows through backlog.mjs; retained the expanded restore/fork design hold and source checkpoints. Backlog lint has zero errors. |
+| Next | Land prerequisite repairs through fresh exact-head gates; reconcile actual PR merge evidence through the native writer. Do not infer completion of other pending or held initiatives. |
+
+## Historical construction re-plan 2026-10-13
+
+| Item | Current disposition |
+|---|---|
+| Authorization | Operator requested construction-semantics brainstorming and re-plan of PR1779; preserve branch/evidence. Native replan-deferred records the exact instruction and prior deferred/review snapshots. |
+| Status | Construction initiative pending; replan epoch f9efab78-51d3-40c1-95f4-94df740791ca. Planning only; no executor dispatch, source edits, push or merge. |
+| Design | Separate edited-constructor and runtime-default identities at the declaration. Last removal uses a required nonzero marker constructor; explicit-zero addition retains the original runtime-zero entry and shares initialization once. Do not rewrite unknown default consumers or classify unproved computations as unsafe. |
+| Acceptance | Own item and exact stanza define primary/ordinary arity crossings, initializer/typed/static/metadata behavior, explicit-zero chains, collision-safe marker names/aliases, public output warning and exact-head validation. |
+| Preserved source | PR1779 head03d4af4b27af9ff9fb5bc1b871ebc2dd203ea6ba; same branch/worktree. Index treeccb59b7db26e33199f2b8c9c4919dad817544a80; builderSHA256a9df3bcc7eaa1387ed490eaa3ca9c7aebd6359eda70008da8d7dc3044a7e9d99; testsSHA256e0dc1b851a8c31aa7a4f9119a9b22bd16e2f7b6f25ec18da4bdbbd05c259a5af. |
+| Evidence | construction-probe-evidence.json records SDK10.0.401 feasibility outputs, original/candidate source/log hashes, preserved source hashes and a known JsonConstructor binding boundary. Historical full57/364-artifact checkpoint remains preserved below; no implementation-pass claim. |
+| Review | Fresh cold adversarial cycles0/1 passed-with-warnings:0blocks/11warnings/12info. Constructor design has no identified blocker; historical overlap/scheduling warnings and global graph-domain contract warning are retained. Final native reviewed hash checks apply; no implementation approval. |
+| Administrative gate | Current verify-ai-docs remains red on profile-prefixed global anchors in state.json; existing global row plan-sketch-evidence-path-portability owns the sanctioned writer correction. Never hand-edit history or suppress the verifier. |
+| Next step | Resolve metadata publication gate through existing global owner plan-sketch-evidence-path-portability before publishing plan state. Existing plan-review-active-conflict-cache owns scheduler/reviewer graph-domain mismatch; final live whole-plan cache agrees after native hash/amend. Implementation requires the reviewed retained branch and fresh full/implementation/hosted evidence; backlog remains open. |
+
+## Historical operator disposition 2026-10-13 — superseded by construction re-plan above
 
 | Item | Current disposition |
 |---|---|
