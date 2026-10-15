@@ -46,7 +46,7 @@ The previous `10.0.100` minimum was not executable: its compiler loads Roslyn 5.
 | `Microsoft.Build` | `17.14.28` | `Directory.Packages.props` | Microsoft.Build compile family; group all updates including majors |
 | `Microsoft.Build.Tasks.Core` | `17.14.28` | `Directory.Packages.props` | Microsoft.Build compile family; group all updates including majors |
 | `Microsoft.Build.Utilities.Core` | `17.14.28` | `Directory.Packages.props` | Microsoft.Build compile family; group all updates including majors |
-| `Microsoft.NET.Test.Sdk` | `18.10.1` | `Directory.Packages.props` | Test infrastructure; routine servicing group |
+| `Microsoft.NET.Test.Sdk` | `18.11.0` | `Directory.Packages.props` | Test infrastructure; routine servicing group |
 | `MSTest.TestAdapter` | `4.4.1` | `Directory.Packages.props` | MSTest family; move with framework including majors |
 | `MSTest.TestFramework` | `4.4.1` | `Directory.Packages.props` | MSTest family; move with adapter including majors |
 | `coverlet.collector` | `10.1.0` | `Directory.Packages.props` | Coverage-only |
@@ -54,8 +54,8 @@ The previous `10.0.100` minimum was not executable: its compiler loads Roslyn 5.
 | `NuGet.Frameworks` | `6.3.4` | `Directory.Packages.props` | Direct test pin required by MSBuildLocator asset policy |
 | `Microsoft.CodeAnalysis.BannedApiAnalyzers` | `5.6.0` | `Directory.Packages.props` | Independently versioned analyzer |
 | `Nito.AsyncEx` | `5.1.2` | `Directory.Packages.props` | Independent |
-| `Microsoft.SourceLink.GitHub` | `10.0.401` | `Directory.Packages.props` | Routine SDK-wave servicing |
-| `System.Security.Cryptography.Xml` | `10.0.12` | `Directory.Packages.props` | Security override; update central rationale and notices together |
+| `Microsoft.SourceLink.GitHub` | `10.0.402` | `Directory.Packages.props` | Routine SDK-wave servicing |
+| `System.Security.Cryptography.Xml` | `10.0.13` | `Directory.Packages.props` | Security override; update central rationale and notices together |
 
 **Samples:** `samples/GeneratedDocumentSolution/ConsumerLib.Generators` uses `VersionOverride="5.0.0"` for `Microsoft.CodeAnalysis.CSharp` intentionally; it is outside central-package parity and moves only when that sample scenario requires it.
 
