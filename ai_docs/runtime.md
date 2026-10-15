@@ -61,7 +61,7 @@ Plugin-relevant files in this repo:
 
 - `.claude-plugin/` — plugin manifest, marketplace descriptor, and `mcp.json` (launches the release-matched `Darylmcd.RoslynMcp` package through `dnx` with `ROSLYNMCP_SANCTIONED_ROOTS`)
 - `skills/` — bundled skill prompts
-- `hooks/` — PreToolUse and PostToolUse safety hooks
+- `hooks/` — advisory PostToolUse prompts for update status and post-apply verification; preview-token enforcement is server-side
 - MCP client registration: the plugin's `.claude-plugin/mcp.json` or user/session-scoped client config. Root `.mcp.json` is gitignored and not shipped; tracked `.cursor/mcp.json` and `.vscode/mcp.json` register a bare `roslynmcp` command. A config file's presence is not liveness evidence.
 
 Install via:

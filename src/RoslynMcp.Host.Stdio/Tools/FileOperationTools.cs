@@ -9,15 +9,13 @@ namespace RoslynMcp.Host.Stdio.Tools;
 
 /// <summary>
 /// MCP tool entry points for file-operation refactorings (create / delete / move).
-/// WS1 phase 1.6 — the three <c>Apply*</c> methods (pure dispatch) delegate to
+/// The three <c>Apply*</c> methods (pure dispatch) delegate to
 /// <see cref="ToolDispatch"/>'s token-aware write dispatch;
 /// the <c>Preview*</c> methods keep their hand-written bodies because they
 /// perform async <see cref="ClientRootPathValidator.ValidatePathAgainstRootsAsync"/>
 /// calls inside the gate before dispatching to the service (validation must run
 /// under the gate's cancellation token — the helper's single-lambda shape doesn't
-/// fit). See <c>CodeActionTools</c> (canary, PR #305) and
-/// <c>ai_docs/plans/20260421T123658Z_post-audit-followups.md</c> for the migration
-/// rationale and the deferred-generator blocker.
+/// fit).
 /// </summary>
 [McpServerToolType]
 public static class FileOperationTools

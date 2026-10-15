@@ -1,7 +1,6 @@
 // Tests for the ServerSurfaceCatalogAnalyzer (RMCP001 / RMCP002). See
 // analyzers/ServerSurfaceCatalogAnalyzer/ServerSurfaceCatalogAnalyzer.cs for the
-// analyzer implementation; these tests exercise the three scenarios documented in
-// ai_docs/plans/20260417T120000Z_backlog-sweep/plan.md initiative #2:
+// analyzer implementation; these tests isolate its three catalog-parity scenarios:
 //
 //   (a) attributed-but-missing-from-catalog  → expects RMCP001
 //   (b) listed-but-not-attributed            → expects RMCP002

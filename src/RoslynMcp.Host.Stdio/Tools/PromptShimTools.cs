@@ -30,8 +30,8 @@ public static class PromptShimTools
 
     /// <remarks>
     /// Example <c>promptName</c> values: <c>explain_error</c>, <c>refactor_and_validate</c>.
-    /// Enumerate the full set with <c>list_prompts</c> on the resources channel or by reading
-    /// <c>roslyn://server/catalog</c>. The response shape is
+    /// Enumerate the full set with <c>prompts/list</c> or by reading
+    /// <c>roslyn://server/catalog/prompts/{offset}/{limit}</c>. The response shape is
     /// <c>{ messages: [{role, text}], promptName, parameterCount }</c>.
     /// </remarks>
     [McpServerTool(Name = "get_prompt_text", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
@@ -40,7 +40,7 @@ public static class PromptShimTools
      Description("Render any registered MCP prompt as plain text via the tool channel, for clients that cannot use the prompts/get channel. Pass `promptName` plus a `parametersJson` object; returns messages as JSON.")]
     public static async Task<string> GetPromptText(
         IServiceProvider services,
-        [Description("The name of the prompt as registered with [McpServerPrompt(Name = \"...\")]. Use list_prompts on the resources channel or read roslyn://server/catalog for the full list.")] string promptName,
+        [Description("The name of the prompt as registered with [McpServerPrompt(Name = \"...\")]. Use prompts/list or read roslyn://server/catalog/prompts/{offset}/{limit} for the full list.")] string promptName,
         [Description("JSON object of named parameters the prompt expects (e.g. {\"workspaceId\":\"...\",\"filePath\":\"...\",\"line\":12}). Service-typed parameters (IDiagnosticService, IWorkspaceManager, etc.) are resolved automatically and must NOT appear here.")] string parametersJson = "{}",
         CancellationToken ct = default)
     {

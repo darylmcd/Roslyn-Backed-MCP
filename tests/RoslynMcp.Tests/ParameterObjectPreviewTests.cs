@@ -12,8 +12,7 @@ using RoslynMcp.Roslyn.Services;
 namespace RoslynMcp.Tests;
 
 /// <summary>
-/// Coverage for the v1 <c>parameter_object_preview</c> tool. The seven cases mirror the
-/// regression set named in <c>ai_docs/items/parameter-object-preview-design.md</c> §(f):
+/// Coverage for <c>parameter_object_preview</c>, including these regression shapes:
 /// (1) positional grouping, (2) named + mixed call sites, (3) default-value refusal,
 /// (4) ref/out refusal, (5) cross-project success, (6) cross-project missing-reference
 /// refusal, (7) end-to-end redemption through <c>apply_with_verify</c>. Two later cases

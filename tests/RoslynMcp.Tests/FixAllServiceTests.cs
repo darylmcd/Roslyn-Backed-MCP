@@ -515,7 +515,7 @@ public sealed class FixAllServiceTests
     }
 
     [TestMethod]
-    public void ThrowingCodeFixProvider_GetFixAllProvider_Throws_InvalidOperationException()
+    public async Task ThrowingCodeFixProvider_GetFixAllProvider_Throws_InvalidOperationException()
     {
         // Prove the shim actually throws the exception type the production catch handles.
         // Without this anchor, a refactor that swaps InvalidOperationException for another
@@ -526,10 +526,8 @@ public sealed class FixAllServiceTests
 
         // Directly invoke GetFixAsync with a null context — the throw fires before any context
         // member is touched, so we can prove behaviour without constructing a real Document.
-        var thrown = Assert.ThrowsExactly<InvalidOperationException>(() =>
-        {
-            _ = fixAllProvider.GetFixAsync(null!).GetAwaiter().GetResult();
-        });
+        var thrown = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+            fixAllProvider.GetFixAsync(null!));
 
         StringAssert.Contains(thrown.Message, "Sequence contains no elements");
     }

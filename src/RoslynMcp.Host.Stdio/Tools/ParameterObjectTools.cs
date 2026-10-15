@@ -10,8 +10,8 @@ namespace RoslynMcp.Host.Stdio.Tools;
 /// <c>parameter-object-preview-tool</c> v1 (experimental): groups N parameters of a
 /// method into a positional <c>sealed record</c> and rewrites every call site to flow
 /// the grouped argument values through the new record's primary constructor. Redeem the
-/// returned preview token through <c>apply_with_verify</c>. See
-/// <c>ai_docs/items/parameter-object-preview-design.md</c> for the contract.
+/// returned preview token through <c>apply_with_verify</c>; the request and service contracts
+/// define the generated DTO, cross-project reference requirements and refusal conditions.
 /// </summary>
 [McpServerToolType]
 public static class ParameterObjectTools
