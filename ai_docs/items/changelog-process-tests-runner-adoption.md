@@ -18,3 +18,5 @@
 
 The new changelog verifier and hook suites each need process isolation, but currently repeat the same pwsh resolution, redirected stream, timeout, kill, and immutable-result machinery already tracked by `powershell-script-test-runner-foundation`. Folding them into that foundation would exceed its bounded test-file scope.
 2026-08-29 adjacent review: CodexChangelogHookTests still performs private timeout tree-kill without awaiting process exit and redirected-stream drain after Kill. The shared-runner adoption must remove this duplicate lifecycle path; direct focused execution currently passes with a two-minute outer test ceiling.
+
+2026-10-15 review: ChangelogFragmentRequirementTests.RunVerifierAsync and CodexChangelogHookTests.InvokeHookAsync bound parent exit but await redirected reads without the deadline afterward; their timeout path requests Kill without observing exit/drain. Preserve hook stdin delivery while adopting shared owned-process cleanup. This is separate from the synchronous Git bridge removed in the current repair.

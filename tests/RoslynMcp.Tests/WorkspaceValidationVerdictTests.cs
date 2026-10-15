@@ -27,12 +27,11 @@ public sealed class WorkspaceValidationVerdictTests : IsolatedWorkspaceTestBase
     [DataRow(true)]
     public async Task CompilationCompleteness_PreservesFailuresAndScope(bool gitScope)
     {
-        if (!GitFixtureRunner.IsAvailable(out var reason))
-            Assert.Inconclusive($"Git unavailable: {reason}");
+        await GitFixtureRunner.RequireAvailableAsync();
 
         await using var workspace = CreateIsolatedWorkspaceCopy();
-        GitFixtureRunner.InitializeRepository(workspace.RootPath);
-        GitFixtureRunner.StageAndCommitAll(workspace.RootPath);
+        await GitFixtureRunner.InitializeRepositoryAsync(workspace.RootPath);
+        await GitFixtureRunner.StageAndCommitAllAsync(workspace.RootPath);
         var path = workspace.GetPath("SampleLib", "AnimalService.cs");
         await File.AppendAllTextAsync(path, "\n// verdict scope\n");
         await workspace.LoadAsync();
@@ -79,12 +78,11 @@ public sealed class WorkspaceValidationVerdictTests : IsolatedWorkspaceTestBase
     [DataRow(true)]
     public async Task TestPhaseTimeout_AndCallerCancellationStillPropagates(bool gitScope)
     {
-        if (!GitFixtureRunner.IsAvailable(out var reason))
-            Assert.Inconclusive($"Git unavailable: {reason}");
+        await GitFixtureRunner.RequireAvailableAsync();
 
         await using var workspace = CreateIsolatedWorkspaceCopy();
-        GitFixtureRunner.InitializeRepository(workspace.RootPath);
-        GitFixtureRunner.StageAndCommitAll(workspace.RootPath);
+        await GitFixtureRunner.InitializeRepositoryAsync(workspace.RootPath);
+        await GitFixtureRunner.StageAndCommitAllAsync(workspace.RootPath);
         var path = workspace.GetPath("SampleLib", "AnimalService.cs");
         await File.AppendAllTextAsync(path, "\n// timeout scope\n");
         await workspace.LoadAsync();
@@ -129,8 +127,8 @@ public sealed class WorkspaceValidationVerdictTests : IsolatedWorkspaceTestBase
     public async Task ValidationTool_TestRunOutlastsRequestDeadline_AndReleasesSourceReaders(bool gitScope, string mutation)
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
-        GitFixtureRunner.InitializeRepository(workspace.RootPath);
-        GitFixtureRunner.StageAndCommitAll(workspace.RootPath);
+        await GitFixtureRunner.InitializeRepositoryAsync(workspace.RootPath);
+        await GitFixtureRunner.StageAndCommitAllAsync(workspace.RootPath);
         var path = workspace.GetPath("SampleLib", "AnimalService.cs");
         await File.AppendAllTextAsync(path, "\n// request budget probe\n");
         await workspace.LoadAsync();
@@ -234,12 +232,11 @@ public sealed class WorkspaceValidationVerdictTests : IsolatedWorkspaceTestBase
     [DataRow(true)]
     public async Task TestRun_OutlastsValidationPhaseCap_AndPreservesRunnerResult(bool gitScope)
     {
-        if (!GitFixtureRunner.IsAvailable(out var reason))
-            Assert.Inconclusive($"Git unavailable: {reason}");
+        await GitFixtureRunner.RequireAvailableAsync();
 
         await using var workspace = CreateIsolatedWorkspaceCopy();
-        GitFixtureRunner.InitializeRepository(workspace.RootPath);
-        GitFixtureRunner.StageAndCommitAll(workspace.RootPath);
+        await GitFixtureRunner.InitializeRepositoryAsync(workspace.RootPath);
+        await GitFixtureRunner.StageAndCommitAllAsync(workspace.RootPath);
         var path = workspace.GetPath("SampleLib", "AnimalService.cs");
         await File.AppendAllTextAsync(path, "\n// long test run scope\n");
         // Prepare scope before loading so setup cannot deliver a delayed source-change
@@ -267,12 +264,11 @@ public sealed class WorkspaceValidationVerdictTests : IsolatedWorkspaceTestBase
     [DataRow(true)]
     public async Task Timeout_PreservesKnownAndUnknownPaths(bool gitScope)
     {
-        if (!GitFixtureRunner.IsAvailable(out var reason))
-            Assert.Inconclusive($"Git unavailable: {reason}");
+        await GitFixtureRunner.RequireAvailableAsync();
 
         await using var workspace = await CreateIsolatedWorkspaceAsync();
-        GitFixtureRunner.InitializeRepository(workspace.RootPath);
-        GitFixtureRunner.StageAndCommitAll(workspace.RootPath);
+        await GitFixtureRunner.InitializeRepositoryAsync(workspace.RootPath);
+        await GitFixtureRunner.StageAndCommitAllAsync(workspace.RootPath);
         var path = workspace.GetPath("SampleLib", "AnimalService.cs");
         var unknown = workspace.GetPath("NotInWorkspace.cs");
         await File.AppendAllTextAsync(path, "\n// timeout known scope\n");
@@ -297,16 +293,15 @@ public sealed class WorkspaceValidationVerdictTests : IsolatedWorkspaceTestBase
     [DataRow(false, true)]
     public async Task Timeout_PreservesTrackerScope(bool gitFallback, bool reconcile)
     {
-        if (!GitFixtureRunner.IsAvailable(out var reason))
-            Assert.Inconclusive($"Git unavailable: {reason}");
+        await GitFixtureRunner.RequireAvailableAsync();
 
         await using var workspace = await CreateIsolatedWorkspaceAsync();
         var path = workspace.GetPath("SampleLib", "AnimalService.cs");
         var reverted = workspace.GetPath("SampleLib", "IAnimal.cs");
         if (reconcile)
         {
-            GitFixtureRunner.InitializeRepository(workspace.RootPath);
-            GitFixtureRunner.StageAndCommitAll(workspace.RootPath);
+            await GitFixtureRunner.InitializeRepositoryAsync(workspace.RootPath);
+            await GitFixtureRunner.StageAndCommitAllAsync(workspace.RootPath);
             await File.AppendAllTextAsync(path, "\n// retained tracker scope\n");
         }
 
@@ -332,12 +327,11 @@ public sealed class WorkspaceValidationVerdictTests : IsolatedWorkspaceTestBase
     [DataRow(true)]
     public async Task ZeroRunWarning_OnlyAccompaniesZeroRunVerdict(bool gitScope)
     {
-        if (!GitFixtureRunner.IsAvailable(out var reason))
-            Assert.Inconclusive($"Git unavailable: {reason}");
+        await GitFixtureRunner.RequireAvailableAsync();
 
         await using var workspace = CreateIsolatedWorkspaceCopy();
-        GitFixtureRunner.InitializeRepository(workspace.RootPath);
-        GitFixtureRunner.StageAndCommitAll(workspace.RootPath);
+        await GitFixtureRunner.InitializeRepositoryAsync(workspace.RootPath);
+        await GitFixtureRunner.StageAndCommitAllAsync(workspace.RootPath);
         var path = workspace.GetPath("SampleLib", "AnimalService.cs");
         await File.AppendAllTextAsync(path, "\n// warning scope\n");
         await workspace.LoadAsync();

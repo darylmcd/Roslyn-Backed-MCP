@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using RoslynMcp.Tests.Helpers;
 using RoslynMcp.Tests.Support;
 
@@ -19,8 +18,8 @@ public sealed class ReleaseLagGuardTests
     [TestCategory("Process")]
     public async Task FreshFixedFragment_DoesNotWarn()
     {
-        RequireGit();
-        var root = CreateFixture("Fixed", DateTimeOffset.UtcNow);
+        await GitFixtureRunner.RequireAvailableAsync();
+        var root = await CreateFixtureAsync("Fixed", DateTimeOffset.UtcNow);
         try
         {
             var result = await RunVerifierAsync(root);
@@ -38,8 +37,8 @@ public sealed class ReleaseLagGuardTests
     [TestCategory("Process")]
     public async Task StaleFixedFragment_WarnsAndStillPasses()
     {
-        RequireGit();
-        var root = CreateFixture("Fixed", DateTimeOffset.UtcNow.AddDays(-30));
+        await GitFixtureRunner.RequireAvailableAsync();
+        var root = await CreateFixtureAsync("Fixed", DateTimeOffset.UtcNow.AddDays(-30));
         try
         {
             var result = await RunVerifierAsync(root);
@@ -59,8 +58,8 @@ public sealed class ReleaseLagGuardTests
     [TestCategory("Process")]
     public async Task StaleChangedFragment_DoesNotWarn()
     {
-        RequireGit();
-        var root = CreateFixture("Changed", DateTimeOffset.UtcNow.AddDays(-30));
+        await GitFixtureRunner.RequireAvailableAsync();
+        var root = await CreateFixtureAsync("Changed", DateTimeOffset.UtcNow.AddDays(-30));
         try
         {
             var result = await RunVerifierAsync(root);
@@ -78,8 +77,8 @@ public sealed class ReleaseLagGuardTests
     [TestCategory("Process")]
     public async Task ThresholdEnvVariable_OverridesDefaultAndInvalidValuesFallBack()
     {
-        RequireGit();
-        var root = CreateFixture("Fixed", DateTimeOffset.UtcNow.AddDays(-10));
+        await GitFixtureRunner.RequireAvailableAsync();
+        var root = await CreateFixtureAsync("Fixed", DateTimeOffset.UtcNow.AddDays(-10));
         try
         {
             var raised = await RunVerifierAsync(root, "30");
@@ -107,8 +106,8 @@ public sealed class ReleaseLagGuardTests
     [TestCategory("Process")]
     public async Task ShallowClone_SkipsGuardWithoutWarningOrFailure()
     {
-        RequireGit();
-        var source = CreateFixture("Fixed", DateTimeOffset.UtcNow.AddDays(-30));
+        await GitFixtureRunner.RequireAvailableAsync();
+        var source = await CreateFixtureAsync("Fixed", DateTimeOffset.UtcNow.AddDays(-30));
         var clone = Path.Combine(
             TestTempRoot.Current,
             nameof(ReleaseLagGuardTests),
@@ -116,7 +115,7 @@ public sealed class ReleaseLagGuardTests
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(clone)!);
-            GitFixtureRunner.RunGit(
+            await GitFixtureRunner.RunGitAsync(
                 Path.GetDirectoryName(clone)!,
                 "clone",
                 "-q",
@@ -126,7 +125,7 @@ public sealed class ReleaseLagGuardTests
                 clone);
             Assert.AreEqual(
                 "true",
-                GitFixtureRunner.RunGitCapture(clone, "rev-parse", "--is-shallow-repository").Trim());
+                (await GitFixtureRunner.RunGitCaptureAsync(clone, "rev-parse", "--is-shallow-repository")).Trim());
 
             var result = await RunVerifierAsync(clone);
 
@@ -141,7 +140,7 @@ public sealed class ReleaseLagGuardTests
         }
     }
 
-    private static string CreateFixture(string category, DateTimeOffset committedAt)
+    private static async Task<string> CreateFixtureAsync(string category, DateTimeOffset committedAt)
     {
         var root = Path.Combine(
             TestTempRoot.Current,
@@ -158,48 +157,26 @@ public sealed class ReleaseLagGuardTests
             Path.Combine(root, "changelog.d", FixedFragmentName),
             $"---\ncategory: {category}\n---\n\n- **{category}:** Fixture fragment.\n");
 
-        GitFixtureRunner.InitializeRepository(root);
-        GitFixtureRunner.RunGit(root, "add", "-A");
-        CommitAt(root, committedAt);
+        await GitFixtureRunner.InitializeRepositoryAsync(root);
+        await GitFixtureRunner.RunGitAsync(root, "add", "-A");
+        await CommitAtAsync(root, committedAt);
         return root;
     }
 
-    // GitFixtureRunner.RunGit has no environment parameter, so the backdated commit uses a
-    // test-local Process. GIT_COMMITTER_DATE is what the guard reads (%ct).
-    private static void CommitAt(string root, DateTimeOffset committedAt)
+    private static async Task CommitAtAsync(string root, DateTimeOffset committedAt)
     {
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = "git",
-            WorkingDirectory = root,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-        };
-        startInfo.ArgumentList.Add("commit");
-        startInfo.ArgumentList.Add("-q");
-        startInfo.ArgumentList.Add("-m");
-        startInfo.ArgumentList.Add("fixture baseline");
-        startInfo.Environment["GIT_COMMITTER_DATE"] = committedAt.ToString("o");
-        startInfo.Environment["GIT_AUTHOR_DATE"] = committedAt.ToString("o");
-
-        using var process = Process.Start(startInfo)
-            ?? throw new InvalidOperationException("Could not start git commit.");
-        var stdoutTask = process.StandardOutput.ReadToEndAsync();
-        var stderrTask = process.StandardError.ReadToEndAsync();
-        if (!process.WaitForExit(TimeSpan.FromSeconds(30)))
-        {
-            process.Kill(entireProcessTree: true);
-            throw new TimeoutException("git commit did not exit within 30 seconds.");
-        }
-
-        if (process.ExitCode != 0)
-        {
-            throw new InvalidOperationException(
-                $"git commit exited {process.ExitCode}. stdout=[{stdoutTask.GetAwaiter().GetResult()}] " +
-                $"stderr=[{stderrTask.GetAwaiter().GetResult()}]");
-        }
+        var result = await PwshScriptRunner.RunExecutableAsync(
+            "git",
+            ["commit", "-q", "-m", "fixture baseline"],
+            new Dictionary<string, string?>
+            {
+                ["GIT_COMMITTER_DATE"] = committedAt.ToString("o"),
+                ["GIT_AUTHOR_DATE"] = committedAt.ToString("o"),
+            },
+            workingDirectory: root,
+            timeout: TimeSpan.FromSeconds(30),
+            description: "git commit fixture baseline");
+        Assert.AreEqual(0, result.ExitCode, result.AllOutput);
     }
 
     private static Task<PwshScriptResult> RunVerifierAsync(string fixtureRoot, string? maxAgeDays = null)
@@ -220,9 +197,4 @@ public sealed class ReleaseLagGuardTests
             timeout: TimeSpan.FromSeconds(30),
             description: "changelog verifier");
 
-    private static void RequireGit()
-    {
-        if (!GitFixtureRunner.IsAvailable(out var failureReason))
-            Assert.Inconclusive($"git is required for release-lag fixtures: {failureReason}");
-    }
 }

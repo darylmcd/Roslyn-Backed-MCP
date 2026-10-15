@@ -55,43 +55,40 @@ public class WorkspaceForkGitIsolationTests
     [TestCategory("Process")]
     public async Task CopyDirectory_ConcurrentWorktreeForks_CannotMutateEitherAgentIndexAsync()
     {
-        if (!GitFixtureRunner.IsAvailable(out var reason))
-        {
-            Assert.Inconclusive(reason ?? "Git is unavailable.");
-        }
+        await GitFixtureRunner.RequireAvailableAsync();
 
         var root = Path.Combine(Path.GetTempPath(), nameof(WorkspaceForkGitIsolationTests), Guid.NewGuid().ToString("N"));
         try
         {
             var repository = Path.Combine(root, "repository");
             Directory.CreateDirectory(repository);
-            GitFixtureRunner.InitializeRepository(repository);
+            await GitFixtureRunner.InitializeRepositoryAsync(repository);
             File.WriteAllText(Path.Combine(repository, "Program.cs"), "class C {}");
-            GitFixtureRunner.RunGit(repository, "add", "Program.cs");
-            GitFixtureRunner.RunGit(repository, "commit", "-qm", "baseline");
+            await GitFixtureRunner.RunGitAsync(repository, "add", "Program.cs");
+            await GitFixtureRunner.RunGitAsync(repository, "commit", "-qm", "baseline");
             var agents = new[] { Path.Combine(root, "agent-a"), Path.Combine(root, "agent-b") };
             for (var i = 0; i < agents.Length; i++)
             {
-                GitFixtureRunner.RunGit(repository, "worktree", "add", "-b", $"agent-{i}", agents[i]);
+                await GitFixtureRunner.RunGitAsync(repository, "worktree", "add", "-b", $"agent-{i}", agents[i]);
                 File.WriteAllText(Path.Combine(agents[i], "Program.cs"), $"class Agent{i} {{}}");
-                GitFixtureRunner.RunGit(agents[i], "add", "Program.cs");
+                await GitFixtureRunner.RunGitAsync(agents[i], "add", "Program.cs");
             }
 
-            var before = agents.Select(agent => GitFixtureRunner.RunGitCapture(agent, "diff", "--cached")).ToArray();
-            await Task.WhenAll(agents.Select((agent, i) => Task.Run(() =>
+            var before = await Task.WhenAll(agents.Select(agent => GitFixtureRunner.RunGitCaptureAsync(agent, "diff", "--cached")));
+            await Task.WhenAll(agents.Select((agent, i) => Task.Run(async () =>
             {
                 var fork = Path.Combine(root, $"fork-{i}");
                 WorkspaceForkApplyService.CopyDirectory(agent, fork, CancellationToken.None);
                 Assert.IsFalse(File.Exists(Path.Combine(fork, ".git")), "A fork must not inherit an agent's gitdir pointer.");
                 File.WriteAllText(Path.Combine(fork, "Program.cs"), "class Fork {}");
                 // A fork may create its own repository, but must never share an agent's index.
-                GitFixtureRunner.InitializeRepository(fork);
-                GitFixtureRunner.RunGit(fork, "add", "Program.cs");
+                await GitFixtureRunner.InitializeRepositoryAsync(fork);
+                await GitFixtureRunner.RunGitAsync(fork, "add", "Program.cs");
             })));
 
             for (var i = 0; i < agents.Length; i++)
             {
-                Assert.AreEqual(before[i], GitFixtureRunner.RunGitCapture(agents[i], "diff", "--cached"));
+                Assert.AreEqual(before[i], await GitFixtureRunner.RunGitCaptureAsync(agents[i], "diff", "--cached"));
                 Assert.AreEqual($"class Agent{i} {{}}", File.ReadAllText(Path.Combine(agents[i], "Program.cs")));
             }
         }
