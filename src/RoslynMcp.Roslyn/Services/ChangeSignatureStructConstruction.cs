@@ -9,7 +9,7 @@ namespace RoslynMcp.Roslyn.Services;
 internal sealed class ChangeSignatureStructConstruction
 {
     internal const string OwnerTag = "signature-construction-owner";
-    internal const string SerializationSelectorTag = "signature-serialization-selector";
+    internal const string OriginalOnlyAttributeTag = "signature-original-constructor-attribute";
     private readonly bool _removingLast;
     private readonly string _markerName;
     private readonly string _parameterName;
@@ -17,7 +17,7 @@ internal sealed class ChangeSignatureStructConstruction
     private readonly bool _partial;
     private readonly ParameterListSyntax _updatedParameters;
     internal SyntaxAnnotation Annotation { get; } = new(OwnerTag);
-    internal IReadOnlyList<AttributeSyntax> SerializationSelectors { get; }
+    internal IReadOnlyList<AttributeSyntax> OriginalOnlyAttributes { get; }
 
     private ChangeSignatureStructConstruction(IMethodSymbol constructor, bool removingLast, ParameterListSyntax updated)
     {
@@ -25,8 +25,8 @@ internal sealed class ChangeSignatureStructConstruction
         _updatedParameters = updated;
         _partial = constructor.PartialDefinitionPart is not null || constructor.PartialImplementationPart is not null;
         _implementation = (constructor.PartialImplementationPart ?? constructor).DeclaringSyntaxReferences.Single();
-        SerializationSelectors = constructor.GetAttributes()
-            .Where(attribute => IsSerializationSelector(attribute.AttributeClass))
+        OriginalOnlyAttributes = constructor.GetAttributes()
+            .Where(attribute => !IsBridgeCallContract(attribute.AttributeClass))
             .Select(attribute => attribute.ApplicationSyntaxReference?.GetSyntax())
             .OfType<AttributeSyntax>().ToArray();
         var names = constructor.ContainingType.DeclaringSyntaxReferences
@@ -46,17 +46,32 @@ internal sealed class ChangeSignatureStructConstruction
         var removingLast = original.Parameters.Count > 0 && updated.Parameters.Count == 0;
         var addingToZero = original.Parameters.Count == 0 && updated.Parameters.Count > 0;
         if (!removingLast && !addingToZero) return null;
-        if (removingLast && constructor.GetAttributes().Any(attribute => IsSerializationSelector(attribute.AttributeClass)))
-            throw new PublicInvalidOperationException("Removing this constructor's last parameter cannot preserve its JsonConstructor parameter binding with an explicit construction marker. Retain a parameter or change the serialization contract separately.");
+        var selector = constructor.GetAttributes().Select(attribute => RuntimeSelectorName(attribute.AttributeClass))
+            .FirstOrDefault(name => name is not null);
+        if (removingLast && selector is not null)
+            throw new PublicInvalidOperationException($"Removing this constructor's last parameter cannot preserve its {selector} parameter binding with an explicit construction marker. Retain a parameter or change the activation contract separately.");
         return new ChangeSignatureStructConstruction(constructor, removingLast, updated);
     }
 
-    private static bool IsSerializationSelector(INamedTypeSymbol? type) => type?.ToDisplayString() switch
+    private static string? RuntimeSelectorName(INamedTypeSymbol? type) => type?.ToDisplayString() switch
     {
-        "System.Text.Json.Serialization.JsonConstructorAttribute" => type.ContainingAssembly.Identity.Name == "System.Text.Json",
-        "Newtonsoft.Json.JsonConstructorAttribute" => type.ContainingAssembly.Identity.Name == "Newtonsoft.Json",
-        _ => false,
+        "System.Text.Json.Serialization.JsonConstructorAttribute" when type.ContainingAssembly.Identity.Name == "System.Text.Json" => "JsonConstructor",
+        "Newtonsoft.Json.JsonConstructorAttribute" when type.ContainingAssembly.Identity.Name == "Newtonsoft.Json" => "JsonConstructor",
+        "Microsoft.Extensions.DependencyInjection.ActivatorUtilitiesConstructorAttribute"
+            when type.ContainingAssembly.Identity.Name == "Microsoft.Extensions.DependencyInjection.Abstractions" => "ActivatorUtilitiesConstructor",
+        _ => null,
     };
+
+    // Runtime attributes belong to the retained initialization owner. Copy only call-site
+    // contracts understood by the compiler/analyzers; duplicating arbitrary runtime attributes
+    // can create multiple selected constructors, even for a consumer unknown to this server.
+    private static bool IsBridgeCallContract(INamedTypeSymbol? type) => type?.ToDisplayString() is
+        "System.Diagnostics.CodeAnalysis.SetsRequiredMembersAttribute" or "System.ObsoleteAttribute"
+        or "System.Diagnostics.CodeAnalysis.ExperimentalAttribute"
+        or "System.Runtime.Versioning.RequiresPreviewFeaturesAttribute"
+        or "System.Diagnostics.CodeAnalysis.RequiresDynamicCodeAttribute"
+        or "System.Diagnostics.CodeAnalysis.RequiresUnreferencedCodeAttribute"
+        or "System.Diagnostics.CodeAnalysis.RequiresAssemblyFilesAttribute";
 
     private static string Fresh(HashSet<string> names, string prefix)
     {
@@ -81,13 +96,13 @@ internal sealed class ChangeSignatureStructConstruction
             SyntaxFactory.ParseTypeName(containingType + "." + _markerName))))
         : updated;
 
-    internal TypeDeclarationSyntax RewritePrimary(TypeDeclarationSyntax declaration, ParameterListSyntax updated, string declarationTag)
+    internal TypeDeclarationSyntax RewritePrimary(TypeDeclarationSyntax declaration, ParameterListSyntax original, ParameterListSyntax updated, string declarationTag)
     {
         var methodAttributes = declaration.AttributeLists.Where(list => list.Target?.Identifier.IsKind(SyntaxKind.MethodKeyword) == true).ToArray();
         var constructor = SyntaxFactory.ConstructorDeclaration(declaration.Identifier.WithoutTrivia()
                 .WithoutAnnotations(ChangeSignatureAddRemovePreviewBuilder.DiagnosticTag))
             .WithModifiers(SyntaxFactory.TokenList(SyntaxFactory.Token(SyntaxKind.PublicKeyword).WithTrailingTrivia(SyntaxFactory.Space)))
-            .WithParameterList(Parameters(updated)).WithBody(SyntaxFactory.Block())
+            .WithParameterList(_removingLast ? Parameters(updated) : original).WithBody(SyntaxFactory.Block())
             .WithAttributeLists(SyntaxFactory.List(methodAttributes.Select(list => list.WithTarget(null)
                 .WithOpenBracketToken(list.OpenBracketToken.WithTrailingTrivia(
                     list.OpenBracketToken.TrailingTrivia.AddRange(list.Target!.DescendantTrivia()))))))
@@ -108,12 +123,14 @@ internal sealed class ChangeSignatureStructConstruction
             {
                 var attributes = SyntaxFactory.List(original.AttributeLists
                     .Select(list => list.WithAttributes(SyntaxFactory.SeparatedList(list.Attributes.Where(attribute =>
-                        !attribute.HasAnnotations(SerializationSelectorTag)))))
+                        !attribute.HasAnnotations(OriginalOnlyAttributeTag)))))
                     .Where(list => list.Attributes.Count > 0));
                 var added = original.WithParameterList(_updatedParameters).WithAttributeLists(attributes);
-                if (original.Body is not null || original.ExpressionBody is not null)
+                if (original.Body is not null || original.ExpressionBody is not null
+                    || original.Modifiers.Any(SyntaxKind.ExternKeyword))
                     added = added.WithInitializer(SyntaxFactory.ConstructorInitializer(SyntaxKind.ThisConstructorInitializer,
                             SyntaxFactory.ArgumentList()))
+                        .WithModifiers(SyntaxFactory.TokenList(added.Modifiers.Where(modifier => !modifier.IsKind(SyntaxKind.ExternKeyword))))
                         .WithBody(SyntaxFactory.Block()).WithExpressionBody(null).WithSemicolonToken(default);
                 return ChangeSignatureAddRemovePreviewBuilder.PrepareGeneratedConstructor(added);
             }).ToArray();

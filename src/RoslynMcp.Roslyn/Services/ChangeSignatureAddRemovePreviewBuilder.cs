@@ -350,9 +350,9 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
                 if (constructionOwners.TryGetValue(document.Id, out var ownConstructionOwners))
                 {
                     foreach (var (node, plan) in ownConstructionOwners) AddAnnotation(annotations, node, plan.Annotation);
-                    foreach (var selector in ownConstructionOwners.Values.Distinct().SelectMany(plan => plan.SerializationSelectors)
+                    foreach (var selector in ownConstructionOwners.Values.Distinct().SelectMany(plan => plan.OriginalOnlyAttributes)
                         .Where(attribute => attribute.SyntaxTree == root.SyntaxTree))
-                        AddAnnotation(annotations, selector, new SyntaxAnnotation(ChangeSignatureStructConstruction.SerializationSelectorTag));
+                        AddAnnotation(annotations, selector, new SyntaxAnnotation(ChangeSignatureStructConstruction.OriginalOnlyAttributeTag));
                 }
 
                 // Bound scans cover constructors and primary-base calls that FindCallers omits.
@@ -496,7 +496,7 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
                             TypeDeclarationSyntax { ParameterList: { } primaryList } declaration
                                 when constructionOwners.TryGetValue(document.Id, out var owners)
                                     && owners.Values.SingleOrDefault(plan => original.HasAnnotation(plan.Annotation)) is { } plan
-                                => plan.RewritePrimary(declaration, updateDeclaration(primaryList), DeclarationTag),
+                                => plan.RewritePrimary(declaration, primaryList, updateDeclaration(primaryList), DeclarationTag),
                             TypeDeclarationSyntax { ParameterList: { } primaryList } declaration => declaration.WithParameterList(updateDeclaration(primaryList)),
                             _ => rewritten,
                         };
@@ -816,7 +816,7 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
         var cleaned = constructor.ReplaceSyntax(constructor.DescendantNodesAndSelf(),
             (_, rewritten) => rewritten.WithoutAnnotations(new[] { DeclarationTag, BindingTag, ArgumentTag,
                 ConditionalTag, AliasScopeTag, ChangeSignatureStructConstruction.OwnerTag,
-                ChangeSignatureStructConstruction.SerializationSelectorTag }
+                ChangeSignatureStructConstruction.OriginalOnlyAttributeTag }
                 .SelectMany(kind => rewritten.GetAnnotations(kind)).ToArray()),
             constructor.DescendantTokens(), (_, rewritten) => rewritten.WithoutAnnotations(DiagnosticTag).WithoutTrivia(),
             [], (_, rewritten) => rewritten);
