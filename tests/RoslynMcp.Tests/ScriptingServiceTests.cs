@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
@@ -255,7 +256,7 @@ public sealed class ScriptingServiceTests
             HeartbeatInterval: TimeSpan.FromMilliseconds(100),
             Budget: TimeSpan.FromSeconds(int.MaxValue));
 
-        await Assert.ThrowsExactlyAsync<ArgumentOutOfRangeException>(async () =>
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () =>
             await supervisor.ExecuteAsync(
                 _ =>
                 {
@@ -278,7 +279,7 @@ public sealed class ScriptingServiceTests
             NullLogger<ScriptingService>.Instance,
             new ScriptingServiceOptions { WatchdogGraceSeconds = 10 });
 
-        await Assert.ThrowsExactlyAsync<ArgumentOutOfRangeException>(async () =>
+        await Assert.ThrowsExactlyAsync<PublicArgumentOutOfRangeException>(async () =>
             await service.EvaluateAsync(
                 "while (true) { }",
                 imports: null,
@@ -299,7 +300,7 @@ public sealed class ScriptingServiceTests
             NullLogger<ScriptingService>.Instance,
             new ScriptingServiceOptions());
 
-        await Assert.ThrowsExactlyAsync<ArgumentOutOfRangeException>(async () =>
+        await Assert.ThrowsExactlyAsync<PublicArgumentOutOfRangeException>(async () =>
             await service.EvaluateAsync(
                 "42",
                 imports: null,

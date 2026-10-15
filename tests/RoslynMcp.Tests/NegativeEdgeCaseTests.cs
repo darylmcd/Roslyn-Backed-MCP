@@ -34,7 +34,7 @@ public sealed class NegativeEdgeCaseTests : SharedWorkspaceTestBase
     public async Task MalformedSymbolHandle_InvalidBase64_ThrowsArgumentException()
     {
         var locator = SymbolLocator.ByHandle("not-valid-base64!!!");
-        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
             SymbolNavigationService.GoToDefinitionAsync(WorkspaceId, locator, CancellationToken.None));
         StringAssert.Contains(ex.Message, "base64", StringComparison.OrdinalIgnoreCase);
     }
@@ -44,7 +44,7 @@ public sealed class NegativeEdgeCaseTests : SharedWorkspaceTestBase
     {
         var handle = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("this is not json"));
         var locator = SymbolLocator.ByHandle(handle);
-        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
             SymbolNavigationService.GoToDefinitionAsync(WorkspaceId, locator, CancellationToken.None));
         StringAssert.Contains(ex.Message, "JSON", StringComparison.OrdinalIgnoreCase);
     }

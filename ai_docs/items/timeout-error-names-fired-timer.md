@@ -50,3 +50,5 @@
 ## Notes
 
 - Size L (9 production files). Split seam: (1) the typed exception, the `ToolErrorHandler` rendering, the gate's request timeouts and the generic no-knob fallback (the new Core file, `ToolErrorHandler.cs`, `WorkspaceExecutionGate.cs`) clear the retro symptom on their own; (2) the command budgets and the fork restore name their knobs (`GatedCommandExecutor.cs`, `IGatedCommandExecutor.cs`, `BuildService.cs`, `TestRunnerService.cs`, `NuGetDependencyService.cs`, `WorkspaceForkApplyService.cs`).
+
+2026-10-15 live witness: Roslyn MCP test_run of change-signature/catalog related classes returned category Timeout, heldMs120050, with generic build/test/request-knob text and no result counts. Bounded12-case runtime probes succeeded before this broader call. Keep using MCP for bounded probes; the mandatory full unsharded just ci owns complete suite proof. No timeout increase or passing broad-call claim.

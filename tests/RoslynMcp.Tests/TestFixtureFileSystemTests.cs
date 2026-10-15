@@ -4,6 +4,96 @@ namespace RoslynMcp.Tests;
 public sealed class TestFixtureFileSystemTests
 {
     [TestMethod]
+    public void DeleteDirectoryIfExists_NativeJunctionPreservesTargetContentsAndAttributes()
+        => AssertLinkCleanupBoundary("junction");
+
+    [TestMethod]
+    [DataRow("directory-symlink")]
+    [DataRow("file-symlink")]
+    [DataRow("cycle")]
+    [DataRow("cycle-junction")]
+    [DataRow("root-junction")]
+    [DataRow("root-directory-symlink")]
+    [DataRow("dangling-directory-symlink")]
+    [DataRow("root-dangling-directory-symlink")]
+    public void DeleteDirectoryIfExists_LinksPreserveTargetContentsAndAttributes(string kind)
+        => AssertLinkCleanupBoundary(kind);
+
+    private static void AssertLinkCleanupBoundary(string kind)
+    {
+        var root = Path.Combine(TestTempRoot.Current, nameof(TestFixtureFileSystemTests), Guid.NewGuid().ToString("N"));
+        var owned = Path.Combine(root, "owned");
+        var outside = Path.Combine(root, "outside");
+        Directory.CreateDirectory(owned);
+        Directory.CreateDirectory(outside);
+        var marker = Path.Combine(outside, "marker.txt");
+        File.WriteAllText(marker, "separately-owned-target");
+        File.SetAttributes(marker, File.GetAttributes(marker) | FileAttributes.ReadOnly);
+        var originalAttributes = File.GetAttributes(marker);
+        var rootLink = kind.StartsWith("root-", StringComparison.Ordinal);
+        var link = rootLink ? Path.Combine(root, "linked-root") : Path.Combine(owned, "link");
+        var directoryLink = kind != "file-symlink";
+        try
+        {
+            try
+            {
+                if (kind.Contains("junction", StringComparison.Ordinal))
+                {
+                    if (!OperatingSystem.IsWindows())
+                    {
+                        Assert.Inconclusive("NTFS junctions require Windows; symbolic links cover the Unix boundary.");
+                        return;
+                    }
+                    WindowsDirectoryJunction.Create(link, kind == "cycle-junction" ? owned : outside);
+                }
+                else if (directoryLink)
+                    Directory.CreateSymbolicLink(link, kind switch
+                    {
+                        "cycle" => owned,
+                        "dangling-directory-symlink" => Path.Combine(root, "absent-target"),
+                        "root-dangling-directory-symlink" => Path.Combine(root, "absent-target"),
+                        _ => outside,
+                    });
+                else
+                    File.CreateSymbolicLink(link, marker);
+            }
+            catch (Exception exception) when (!kind.Contains("junction", StringComparison.Ordinal)
+                && exception is IOException or UnauthorizedAccessException or PlatformNotSupportedException)
+            {
+                Assert.Inconclusive($"Native {kind} creation unavailable: {exception.GetType().Name}: {exception.Message}");
+            }
+
+            var ownedReadOnly = Path.Combine(owned, "owned.txt");
+            File.WriteAllText(ownedReadOnly, "owned-read-only-control");
+            File.SetAttributes(ownedReadOnly, FileAttributes.ReadOnly);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(rootLink ? link : owned);
+
+            Assert.IsFalse(Directory.Exists(rootLink ? link : owned));
+            Assert.IsFalse(new DirectoryInfo(link).Exists, "Owned links, including dangling links, must be removed.");
+            Assert.IsFalse(new FileInfo(link).Exists, "Owned file links must be removed.");
+            Assert.IsFalse(Directory.GetFileSystemEntries(root).Contains(link, StringComparer.Ordinal),
+                "Dangling root links must be unlinked even when their targets do not exist.");
+            Assert.IsTrue(Directory.Exists(outside));
+            Assert.AreEqual("separately-owned-target", File.ReadAllText(marker));
+            Assert.AreEqual(originalAttributes, File.GetAttributes(marker), "Cleanup must not alter an external target's attributes.");
+        }
+        finally
+        {
+            // Unlink explicitly before generic cleanup, including when testing the old traversal.
+            // These nonrecursive operations remove only the link, never its target.
+            try
+            {
+                if (directoryLink) Directory.Delete(link, recursive: false);
+                else File.Delete(link);
+            }
+            catch (DirectoryNotFoundException) { }
+            catch (FileNotFoundException) { }
+            File.SetAttributes(marker, FileAttributes.Normal);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(root);
+        }
+    }
+
+    [TestMethod]
     public void WindowsDirectoryJunction_Create_ResolvesToTargetWithoutLaunchingAProcess()
     {
         if (!OperatingSystem.IsWindows())

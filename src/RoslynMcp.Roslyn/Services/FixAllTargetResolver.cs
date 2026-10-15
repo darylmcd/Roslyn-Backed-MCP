@@ -1,5 +1,6 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CodeFixes;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Roslyn.Services;
@@ -23,21 +24,21 @@ internal static class FixAllTargetResolver
             "document" => FixAllScope.Document,
             "project" => FixAllScope.Project,
             "solution" => FixAllScope.Solution,
-            _ => throw new ArgumentException(
-                $"Invalid scope '{scope}'. Must be 'document', 'project', or 'solution'.",
+            _ => throw new PublicArgumentException(
+                "scope must be 'document', 'project', or 'solution'.",
                 nameof(scope)),
         };
 
         if (parsedScope == FixAllScope.Document && string.IsNullOrWhiteSpace(filePath))
         {
-            throw new ArgumentException(
+            throw new PublicArgumentException(
                 "filePath is required when scope is 'document'.",
                 nameof(filePath));
         }
 
         if (parsedScope == FixAllScope.Project && string.IsNullOrWhiteSpace(projectName))
         {
-            throw new ArgumentException(
+            throw new PublicArgumentException(
                 "projectName is required when scope is 'project'. Use workspace_status to list loaded projects.",
                 nameof(projectName));
         }
@@ -57,7 +58,7 @@ internal static class FixAllTargetResolver
         if (request.Scope == FixAllScope.Project)
         {
             var project = ProjectFilterHelper.FilterProjects(solution, request.ProjectName).FirstOrDefault()
-                ?? throw new InvalidOperationException($"Project not found: {request.ProjectName}");
+                ?? throw WorkspaceProjectResolver.NotFound(solution.Projects.Select(candidate => candidate.Name));
             var document = project.Documents.FirstOrDefault()
                 ?? throw new InvalidOperationException("Project has no documents.");
             return new FixAllTarget(document, project);

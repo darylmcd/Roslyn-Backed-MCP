@@ -30,23 +30,30 @@ internal static class TestFixtureFileSystem
 
     public static void DeleteDirectoryIfExists(string path)
     {
-        if (!Directory.Exists(path))
-        {
-            return;
-        }
-
-        // `Directory.Delete(..., recursive: true)` fails on Windows when the tree contains
-        // read-only files (e.g. `.git/objects/**` loose objects after `git init`, which the
-        // git tooling marks read-only by convention). Clear the read-only attribute on every
-        // file first so the recursive delete succeeds. Equivalent to PowerShell's
-        // `Remove-Item -Recurse -Force`. Tests that run `git init` inside an
-        // `IsolatedWorkspaceScope` rely on this behavior at scope-dispose time.
+        // Git's owned loose objects can be read-only. Clear only regular owned files;
+        // neither attribute traversal nor Directory.Delete may follow fixture links.
         const int maxAttempts = 5;
         for (var attempt = 1; attempt <= maxAttempts; attempt++)
         {
             try
             {
+                FileAttributes attributes;
+                try
+                {
+                    attributes = File.GetAttributes(path);
+                }
+                catch (FileNotFoundException) { return; }
+                catch (DirectoryNotFoundException) { return; }
+
+                if ((attributes & FileAttributes.ReparsePoint) != 0)
+                {
+                    if ((attributes & FileAttributes.Directory) != 0) Directory.Delete(path, recursive: false);
+                    else File.Delete(path);
+                    return;
+                }
+                if ((attributes & FileAttributes.Directory) == 0) return;
                 ClearReadOnlyAttributes(path);
+                // The platform recursive delete removes nested reparse points themselves.
                 Directory.Delete(path, recursive: true);
                 return;
             }
@@ -111,10 +118,16 @@ internal static class TestFixtureFileSystem
 
     private static void ClearReadOnlyAttributes(string path)
     {
-        foreach (var file in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
+        var options = new EnumerationOptions
+        {
+            RecurseSubdirectories = true,
+            AttributesToSkip = FileAttributes.ReparsePoint,
+            IgnoreInaccessible = false,
+        };
+        foreach (var file in Directory.EnumerateFiles(path, "*", options))
         {
             var attributes = File.GetAttributes(file);
-            if ((attributes & FileAttributes.ReadOnly) != 0)
+            if ((attributes & (FileAttributes.ReadOnly | FileAttributes.ReparsePoint)) == FileAttributes.ReadOnly)
             {
                 File.SetAttributes(file, attributes & ~FileAttributes.ReadOnly);
             }

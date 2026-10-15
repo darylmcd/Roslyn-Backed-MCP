@@ -1,4 +1,5 @@
 using System.Text.Json;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
 
 namespace RoslynMcp.Tests;
@@ -200,13 +201,11 @@ public sealed class FindOverloadsTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task FindOverloads_ProjectName_UnknownProject_Throws_Distinct_From_TypeNotFound()
     {
-        // An unresolvable projectName must surface as its own clear failure (mirrors the
-        // "projectName '{0}' matched 0 projects" convention already used by compile_check), not
-        // collapse into the generic "type not found" KeyNotFoundException path — those two
-        // failure causes are not the same thing and callers need to be able to tell them apart.
+        // A project filter miss needs its own correction without echoing caller text.
+        // Keep it distinct from resolving a missing type in a valid project.
         const string bogusProject = "DefinitelyNotAProject__Bogus";
 
-        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(async () =>
+        var ex = await Assert.ThrowsExactlyAsync<PublicArgumentException>(async () =>
             await SymbolTools.FindOverloads(
                 WorkspaceExecutionGate,
                 SymbolRelationshipService,
@@ -217,7 +216,7 @@ public sealed class FindOverloadsTests : SharedWorkspaceTestBase
                 ct: CancellationToken.None));
 
         Assert.AreEqual("projectName", ex.ParamName);
-        StringAssert.Contains(ex.Message, bogusProject,
-            $"Error must echo the offending project name so the caller can correlate. Got: {ex.Message}");
+        StringAssert.Contains(ex.PublicMessage, "workspace_status");
+        Assert.IsFalse(ex.PublicMessage.Contains(bogusProject, StringComparison.Ordinal));
     }
 }

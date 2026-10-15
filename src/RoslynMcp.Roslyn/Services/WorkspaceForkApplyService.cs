@@ -195,8 +195,8 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService
 
         if (!string.Equals(entry.Value.WorkspaceId, workspaceId, StringComparison.Ordinal))
         {
-            throw new ArgumentException(
-                $"Preview token '{previewToken}' belongs to workspace '{entry.Value.WorkspaceId}', not '{workspaceId}'.",
+            throw new PublicArgumentException(
+                "previewToken belongs to a different workspace. Use its original workspaceId or create a new preview in the requested workspace.",
                 nameof(previewToken));
         }
 
@@ -271,7 +271,7 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService
 
         return normalized is "drop-on-success" or "drop-on-failure" or "drop-always" or "keep"
             ? normalized
-            : throw new ArgumentException(
+            : throw new PublicArgumentException(
                 "retention must be one of: drop-on-success, drop-on-failure, drop-always, keep.",
                 nameof(retention));
     }

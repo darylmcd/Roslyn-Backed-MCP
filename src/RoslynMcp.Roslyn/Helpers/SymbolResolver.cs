@@ -282,8 +282,8 @@ public static class SymbolResolver
         var position = SourcePosition.StrictCaret(text, line, column);
         var root = await syntaxTree.GetRootAsync(ct).ConfigureAwait(false);
 
-        // Try the token at the exact position first, then also try FindToken with
-        // findInsideTrivia to handle mid-identifier cursor positions (AUDIT-05).
+        // Resolve the token at the exact position, including positions inside identifiers.
+        // Only lenient mode may fall back to the preceding position after this lookup fails.
         var token = root.FindToken(position);
 
         // symbol-info-lenient-whitespace-resolution: in strict mode, reject the match when the
