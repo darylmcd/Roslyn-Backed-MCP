@@ -37,7 +37,6 @@ namespace RoslynMcp.Tests;
 public sealed class ValidateWorkspaceChangeTrackerReconcileTests : IsolatedWorkspaceTestBase
 {
     private static WorkspaceValidationService _validationService = null!;
-    private static string? _gitUnavailableReason;
 
     [ClassInitialize]
     public static void ClassInit(TestContext _)
@@ -64,16 +63,11 @@ public sealed class ValidateWorkspaceChangeTrackerReconcileTests : IsolatedWorks
     [TestMethod]
     public async Task ValidateAsync_NullChangedFilePaths_RevertedFile_ExcludedFromScope()
     {
-        if (!IsGitAvailable())
-        {
-            Assert.Inconclusive(
-                $"git unavailable — cannot run the reconcile path test. {_gitUnavailableReason}");
-            return;
-        }
+        await GitFixtureRunner.RequireAvailableAsync();
 
         await using var workspace = CreateIsolatedWorkspaceCopy();
-        GitFixtureRunner.InitializeRepository(workspace.RootPath);
-        GitFixtureRunner.StageAndCommitAll(workspace.RootPath);
+        await GitFixtureRunner.InitializeRepositoryAsync(workspace.RootPath);
+        await GitFixtureRunner.StageAndCommitAllAsync(workspace.RootPath);
 
         await workspace.LoadAsync(CancellationToken.None);
         var wsId = workspace.WorkspaceId;
@@ -101,11 +95,11 @@ public sealed class ValidateWorkspaceChangeTrackerReconcileTests : IsolatedWorks
         await File.WriteAllTextAsync(dogPath, originalContent);
 
         // Sanity: git agrees the file is now clean.
-        Assert.AreEqual("", GitFixtureRunner.RunGitCapture(
+        Assert.AreEqual("", (await GitFixtureRunner.RunGitCaptureAsync(
                 workspace.RootPath,
                 "status",
                 "--porcelain",
-                "SampleLib/Dog.cs").Trim(),
+                "SampleLib/Dog.cs")).Trim(),
             "Sanity: after the revert, git status must report the file clean.");
 
         // Call ValidateAsync with changedFilePaths=null. Post-fix the reverted file
@@ -130,16 +124,11 @@ public sealed class ValidateWorkspaceChangeTrackerReconcileTests : IsolatedWorks
     [TestMethod]
     public async Task ValidateAsync_NullChangedFilePaths_StillDirtyFile_KeptInScope()
     {
-        if (!IsGitAvailable())
-        {
-            Assert.Inconclusive(
-                $"git unavailable — cannot run the still-dirty test. {_gitUnavailableReason}");
-            return;
-        }
+        await GitFixtureRunner.RequireAvailableAsync();
 
         await using var workspace = CreateIsolatedWorkspaceCopy();
-        GitFixtureRunner.InitializeRepository(workspace.RootPath);
-        GitFixtureRunner.StageAndCommitAll(workspace.RootPath);
+        await GitFixtureRunner.InitializeRepositoryAsync(workspace.RootPath);
+        await GitFixtureRunner.StageAndCommitAllAsync(workspace.RootPath);
 
         await workspace.LoadAsync(CancellationToken.None);
         var wsId = workspace.WorkspaceId;
@@ -153,11 +142,11 @@ public sealed class ValidateWorkspaceChangeTrackerReconcileTests : IsolatedWorks
         Assert.IsTrue(editResult.Success, "Sanity: the seed edit must apply.");
 
         // Do NOT revert — file remains dirty. git status will report it Modified.
-        var statusOutput = GitFixtureRunner.RunGitCapture(
+        var statusOutput = (await GitFixtureRunner.RunGitCaptureAsync(
             workspace.RootPath,
             "status",
             "--porcelain",
-            "SampleLib/Dog.cs").Trim();
+            "SampleLib/Dog.cs")).Trim();
         Assert.IsFalse(string.IsNullOrEmpty(statusOutput),
             $"Sanity: git should report the edited file dirty; got [{statusOutput}].");
 
@@ -221,16 +210,11 @@ public sealed class ValidateWorkspaceChangeTrackerReconcileTests : IsolatedWorks
     [TestMethod]
     public async Task ValidateAsync_NonNullChangedFilePaths_ReconcileDoesNotFire()
     {
-        if (!IsGitAvailable())
-        {
-            Assert.Inconclusive(
-                $"git unavailable — cannot run the caller-scope guard test. {_gitUnavailableReason}");
-            return;
-        }
+        await GitFixtureRunner.RequireAvailableAsync();
 
         await using var workspace = CreateIsolatedWorkspaceCopy();
-        GitFixtureRunner.InitializeRepository(workspace.RootPath);
-        GitFixtureRunner.StageAndCommitAll(workspace.RootPath);
+        await GitFixtureRunner.InitializeRepositoryAsync(workspace.RootPath);
+        await GitFixtureRunner.StageAndCommitAllAsync(workspace.RootPath);
 
         await workspace.LoadAsync(CancellationToken.None);
         var wsId = workspace.WorkspaceId;
@@ -384,8 +368,6 @@ public sealed class ValidateWorkspaceChangeTrackerReconcileTests : IsolatedWorks
     // Helpers
     // ------------------------------------------------------------------
 
-    private static bool IsGitAvailable()
-        => GitFixtureRunner.IsAvailable(out _gitUnavailableReason);
 
     private static void RemoveGitEntry(string directory)
     {

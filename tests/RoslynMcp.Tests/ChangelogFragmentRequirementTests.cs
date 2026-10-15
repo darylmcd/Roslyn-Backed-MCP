@@ -77,7 +77,7 @@ public sealed class ChangelogFragmentRequirementTests
     [TestCategory("Process")]
     public async Task ChangeRequirement_CoversGitStatesAndStrictReleaseAssembly()
     {
-        RequireGit();
+        await GitFixtureRunner.RequireAvailableAsync();
         var cases = new[]
         {
             new RequirementCase("clean", RequirementFixtureKind.Clean, 0, "fragment verification passed"),
@@ -96,7 +96,7 @@ public sealed class ChangelogFragmentRequirementTests
 
         foreach (var testCase in cases)
         {
-            var fixtureRoot = CreateFixture(testCase.Kind);
+            var fixtureRoot = await CreateFixtureAsync(testCase.Kind);
             try
             {
                 var result = await RunVerifierAsync(fixtureRoot);
@@ -117,7 +117,7 @@ public sealed class ChangelogFragmentRequirementTests
     [TestCategory("Process")]
     public async Task FragmentGrammar_RequiresCanonicalFilenameAndCategoryBodyParity()
     {
-        RequireGit();
+        await GitFixtureRunner.RequireAvailableAsync();
         var cases = new List<GrammarCase>();
         cases.AddRange(new[] { "Fixed", "Changed", "Changed — BREAKING", "Added", "Maintenance" }
             .Select(category => new GrammarCase(
@@ -174,7 +174,7 @@ public sealed class ChangelogFragmentRequirementTests
 
         foreach (var testCase in cases)
         {
-            var fixtureRoot = CreateBaselineFixture(includeInheritedFragment: false);
+            var fixtureRoot = await CreateBaselineFixtureAsync(includeInheritedFragment: false);
             try
             {
                 File.WriteAllText(
@@ -194,12 +194,12 @@ public sealed class ChangelogFragmentRequirementTests
         }
     }
 
-    private static string CreateFixture(RequirementFixtureKind kind)
+    private static async Task<string> CreateFixtureAsync(RequirementFixtureKind kind)
     {
         var includeInheritedFragment = kind is RequirementFixtureKind.InheritedFragment
             or RequirementFixtureKind.AssembledRelease
             or RequirementFixtureKind.ReleasePlusSource;
-        var root = CreateBaselineFixture(includeInheritedFragment);
+        var root = await CreateBaselineFixtureAsync(includeInheritedFragment);
 
         switch (kind)
         {
@@ -210,20 +210,20 @@ public sealed class ChangelogFragmentRequirementTests
                 break;
             case RequirementFixtureKind.StagedSource:
                 File.AppendAllText(Path.Combine(root, "src", "fixture.txt"), "staged\n");
-                GitFixtureRunner.RunGit(root, "add", "src/fixture.txt");
+                await GitFixtureRunner.RunGitAsync(root, "add", "src/fixture.txt");
                 break;
             case RequirementFixtureKind.UntrackedSource:
                 File.WriteAllText(Path.Combine(root, "src", "untracked.txt"), "untracked\n");
                 break;
             case RequirementFixtureKind.CommittedBranchSource:
-                GitFixtureRunner.RunGit(root, "checkout", "-q", "-b", "fixture-change");
+                await GitFixtureRunner.RunGitAsync(root, "checkout", "-q", "-b", "fixture-change");
                 File.AppendAllText(Path.Combine(root, "src", "fixture.txt"), "committed\n");
-                GitFixtureRunner.RunGit(root, "add", "src/fixture.txt");
-                Commit(root, "fixture source change");
+                await GitFixtureRunner.RunGitAsync(root, "add", "src/fixture.txt");
+                await CommitAsync(root, "fixture source change");
                 break;
             case RequirementFixtureKind.MissingBase:
-                GitFixtureRunner.RunGit(root, "checkout", "-q", "-b", "fixture-no-base");
-                GitFixtureRunner.RunGit(root, "branch", "-D", "main");
+                await GitFixtureRunner.RunGitAsync(root, "checkout", "-q", "-b", "fixture-no-base");
+                await GitFixtureRunner.RunGitAsync(root, "branch", "-D", "main");
                 File.AppendAllText(Path.Combine(root, "src", "fixture.txt"), "missing base\n");
                 break;
             case RequirementFixtureKind.PlanningOnly:
@@ -257,7 +257,7 @@ public sealed class ChangelogFragmentRequirementTests
         return root;
     }
 
-    private static string CreateBaselineFixture(bool includeInheritedFragment)
+    private static async Task<string> CreateBaselineFixtureAsync(bool includeInheritedFragment)
     {
         var root = Path.Combine(
             TestTempRoot.Current,
@@ -289,9 +289,9 @@ public sealed class ChangelogFragmentRequirementTests
                 Fragment("Changed", "- **Changed:** Inherited fixture change."));
         }
 
-        GitFixtureRunner.RunGit(root, "init", "-q", "-b", "main");
-        GitFixtureRunner.RunGit(root, "add", "-A");
-        Commit(root, "fixture baseline");
+        await GitFixtureRunner.RunGitAsync(root, "init", "-q", "-b", "main");
+        await GitFixtureRunner.RunGitAsync(root, "add", "-A");
+        await CommitAsync(root, "fixture baseline");
         return root;
     }
 
@@ -310,8 +310,8 @@ public sealed class ChangelogFragmentRequirementTests
         }
     }
 
-    private static void Commit(string root, string message)
-        => GitFixtureRunner.RunGit(
+    private static async Task CommitAsync(string root, string message)
+        => await GitFixtureRunner.RunGitAsync(
             root,
             "-c",
             "user.email=fixture@roslynmcp.invalid",
@@ -360,11 +360,6 @@ public sealed class ChangelogFragmentRequirementTests
         return new ProcessResult(process.ExitCode, await stdoutTask, await stderrTask);
     }
 
-    private static void RequireGit()
-    {
-        if (!GitFixtureRunner.IsAvailable(out var failureReason))
-            Assert.Inconclusive($"git is required for changelog requirement fixtures: {failureReason}");
-    }
 
     private enum RequirementFixtureKind
     {

@@ -379,6 +379,7 @@ public sealed class TestShardPlanContractTests
                 "--Logger:trx;LogFileName=adapter.trx",
                 $"--ResultsDirectory:{resultsRoot}",
             ],
+            environment: null,
             workingDirectory: TestFixtureFileSystem.FindRepositoryRoot(),
             timeout: _processTimeout,
             description: "installed VSTest adapter");
@@ -398,6 +399,7 @@ public sealed class TestShardPlanContractTests
                 "--no-restore",
                 "--nologo",
             ],
+            environment: null,
             workingDirectory: TestFixtureFileSystem.FindRepositoryRoot(),
             timeout: _processTimeout,
             description: "shard-discovery fixture build");
