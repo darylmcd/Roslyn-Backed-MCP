@@ -18,11 +18,13 @@ public static class ChangeSignatureTools
     /// The preview changes the declaration and every call site together. Choose <c>op</c> and
     /// supply the matching operation-specific arguments before redeeming the returned token.
     /// Invalid declarations, remaining parameter references, and changed retained bindings are refused.
+    /// Struct last-parameter removal uses a marker constructor; adding to an explicit zero constructor
+    /// retains its original initialization path. Records and primary-constructor rename/reorder are refused.
     /// </remarks>
     [McpServerTool(Name = "change_signature_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("refactoring", "experimental", true, false,
-        "Preview method-parameter changes and class/struct primary-constructor add/remove with bound callsites updated atomically."),
-     Description("Preview method parameters or class/struct primary-constructor add/remove; updates every callsite under one preview token. Records and primary-constructor rename/reorder are unsupported.")]
+        "Preview method-parameter changes and class/struct primary-constructor add/remove atomically; last-parameter struct removal uses a marker constructor and explicit-zero addition retains runtime construction."),
+     Description("Preview method parameter changes or class/struct primary-constructor add/remove with every callsite under one preview token. Struct zero-construction semantics are preserved.")]
     public static Task<string> PreviewChangeSignature(
         IWorkspaceExecutionGate gate,
         IChangeSignatureService changeSignatureService,

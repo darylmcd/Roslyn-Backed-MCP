@@ -4,6 +4,7 @@ namespace RoslynMcp.Core.Services;
 
 /// <summary>
 /// Preview method parameter add/remove/rename/reorder, and add/remove class or struct primary-constructor parameters, with bound callsites updated atomically. Records and primary-constructor rename/reorder remain unsupported.
+/// Struct last-parameter removal uses an explicit marker constructor; adding to an explicit zero constructor retains it as the initialization owner.
 /// </summary>
 public interface IChangeSignatureService
 {

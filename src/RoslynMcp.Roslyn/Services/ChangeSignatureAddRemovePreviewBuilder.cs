@@ -16,7 +16,7 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
     private const string DeclarationTag = "signature-declaration";
     private const string BindingTag = "signature-binding";
     private const string ArgumentTag = "signature-argument";
-    private const string DiagnosticTag = "signature-diagnostic";
+    internal const string DiagnosticTag = "signature-diagnostic";
     private const string ConditionalTag = "signature-conditional";
     private const string AliasScopeTag = "signature-alias-scope";
 
@@ -30,6 +30,8 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
         private readonly List<(int Ordinal, bool Expanded)> _bindings;
 
         internal bool RemovesExtensionReceiver { get; private set; }
+        internal string TargetIdentity => SymbolIdentity(CanonicalDefinition(_method));
+        internal string ContainingTypeName() => MaterializedTypeName(_method.ContainingType, _model, _position, _requiredAliases);
 
         internal BoundCallContext(
             IMethodSymbol method, ImmutableArray<IArgumentOperation> operations,
@@ -139,7 +141,7 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
                 SyntaxFactory.TypeArgumentList(SyntaxFactory.SeparatedList(types))));
         }
 
-        private SeparatedSyntaxList<ArgumentSyntax> NameOriginalArguments(
+        internal SeparatedSyntaxList<ArgumentSyntax> NameOriginalArguments(
             SeparatedSyntaxList<ArgumentSyntax> arguments, int? removedOrdinal)
         {
             var result = SyntaxFactory.SeparatedList<ArgumentSyntax>();
@@ -242,6 +244,9 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
         CancellationToken ct)
     {
         var related = await CollectRelatedSymbolsAsync(method, solution, ct).ConfigureAwait(false);
+        var constructionPlans = new Dictionary<string, ChangeSignatureStructConstruction>(StringComparer.Ordinal);
+        var constructionDeclarations = new Dictionary<string, ChangeSignatureStructConstruction>(StringComparer.Ordinal);
+        var constructionOwners = new Dictionary<DocumentId, Dictionary<SyntaxNode, ChangeSignatureStructConstruction>>();
         var declarationKeys = new Dictionary<string, string>(StringComparer.Ordinal);
         var declarations = new Dictionary<DocumentId, Dictionary<SyntaxNode, SyntaxAnnotation>>();
         foreach (var symbol in related)
@@ -265,6 +270,18 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
                 if (!declarations.TryGetValue(document.Id, out var entries))
                     declarations[document.Id] = entries = [];
                 entries[declaration] = new SyntaxAnnotation(DeclarationTag, key);
+                var construction = constructionPlans.TryGetValue(identity, out var existingConstruction)
+                    ? existingConstruction : ChangeSignatureStructConstruction.Create(symbol, list, updateDeclaration(list));
+                if (construction is not null)
+                {
+                    constructionPlans[identity] = construction;
+                    constructionDeclarations[key] = construction;
+                    var owner = declaration is TypeDeclarationSyntax ? declaration
+                        : declaration.Ancestors().OfType<TypeDeclarationSyntax>().First();
+                    if (!constructionOwners.TryGetValue(document.Id, out var owners))
+                        constructionOwners[document.Id] = owners = [];
+                    if (construction.EmitsAt(declaration)) owners.TryAdd(owner, construction);
+                }
             }
         }
         if (declarations.Count == 0) throw Refuse("The target has no editable source declaration.");
@@ -330,6 +347,13 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
                 var documentEvidence = new List<BindingEvidence>();
                 if (declarations.TryGetValue(document.Id, out var ownDeclarations))
                     foreach (var (node, annotation) in ownDeclarations) AddAnnotation(annotations, node, annotation);
+                if (constructionOwners.TryGetValue(document.Id, out var ownConstructionOwners))
+                {
+                    foreach (var (node, plan) in ownConstructionOwners) AddAnnotation(annotations, node, plan.Annotation);
+                    foreach (var selector in ownConstructionOwners.Values.Distinct().SelectMany(plan => plan.SerializationSelectors)
+                        .Where(attribute => attribute.SyntaxTree == root.SyntaxTree))
+                        AddAnnotation(annotations, selector, new SyntaxAnnotation(ChangeSignatureStructConstruction.SerializationSelectorTag));
+                }
 
                 // Bound scans cover constructors and primary-base calls that FindCallers omits.
                 foreach (var node in root.DescendantNodes())
@@ -341,7 +365,8 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
                         {
                             var referenceAnnotation = new SyntaxAnnotation(BindingTag);
                             AddAnnotation(annotations, node, referenceAnnotation);
-                            documentEvidence.Add(CreateEvidence(referenceAnnotation, referenceTarget, node, model, declarationKeys));
+                            var referenceEvidence = CreateEvidence(referenceAnnotation, referenceTarget, node, model, declarationKeys);
+                            documentEvidence.Add(referenceEvidence);
                         }
                         continue;
                     }
@@ -384,8 +409,9 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
                     }
                     var annotation = new SyntaxAnnotation(BindingTag);
                     AddAnnotation(annotations, node, annotation);
-                    documentEvidence.Add(CreateEvidence(annotation, target, node, model, declarationKeys));
-                    if (!declarationKeys.ContainsKey(SymbolIdentity(CanonicalDefinition(target)))) continue;
+                    var binding = CreateEvidence(annotation, target, node, model, declarationKeys);
+                    documentEvidence.Add(binding);
+                    var editedCall = declarationKeys.ContainsKey(SymbolIdentity(CanonicalDefinition(target)));
                     var operation = originalOperation;
                     var arguments = operation switch
                     {
@@ -393,6 +419,13 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
                         IObjectCreationOperation creation => creation.Arguments,
                         _ => FindArgumentOperations(operation),
                     };
+                    var callerInfoCall = arguments.Any(argument => argument.ArgumentKind == ArgumentKind.DefaultValue
+                        && argument.Parameter?.GetAttributes().Any(attribute => attribute.AttributeClass?.ToDisplayString()
+                            is "System.Runtime.CompilerServices.CallerLineNumberAttribute"
+                                or "System.Runtime.CompilerServices.CallerFilePathAttribute"
+                                or "System.Runtime.CompilerServices.CallerMemberNameAttribute"
+                                or "System.Runtime.CompilerServices.CallerArgumentExpressionAttribute") == true);
+                    if (!editedCall && !callerInfoCall) continue;
                     var operationTarget = operation is IInvocationOperation boundInvocation
                         ? boundInvocation.TargetMethod : target;
                     calls[node] = new BoundCallContext(operationTarget, arguments, model, list.Arguments, node.SpanStart, requiredAliases);
@@ -430,6 +463,11 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
                         { Parameter = owner?.Parameter?.Name });
                     }
                 }
+                // Generated declarations can move caller-info sites even when those calls target another member.
+                // Freeze their original values only in documents containing actual signature edits.
+                if (!declarations.ContainsKey(document.Id)
+                    && !calls.Values.Any(context => declarationKeys.ContainsKey(context.TargetIdentity)))
+                    foreach (var call in calls.Keys.ToArray()) calls.Remove(call);
                 if (annotations.Count == 0 && diagnosticAnnotations.Count == 0) continue;
                 var marked = root.ReplaceSyntax(annotations.Keys,
                     (original, rewritten) => rewritten.WithAdditionalAnnotations(annotations[original].ToArray()),
@@ -439,7 +477,9 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
                 foreach (var (node, context) in calls)
                     replacements[annotations[node].Single(a => a.Kind == BindingTag)] = context;
                 var rewriteNodes = marked.GetAnnotatedNodes(DeclarationTag)
+                    .Concat(marked.GetAnnotatedNodes(ChangeSignatureStructConstruction.OwnerTag))
                     .Concat(marked.GetAnnotatedNodes(BindingTag).Where(n => n.GetAnnotations(BindingTag).Any(replacements.ContainsKey)))
+                    .Distinct()
                     .ToArray();
                 var affectedConditionals = new HashSet<SyntaxAnnotation>();
                 var count = 0;
@@ -449,8 +489,15 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
                     {
                         rewritten = rewritten switch
                         {
+                            ConstructorDeclarationSyntax declaration when original.GetAnnotations(DeclarationTag).FirstOrDefault()?.Data is { } key
+                                && constructionDeclarations.TryGetValue(key, out var plan)
+                                => plan.RewriteConstructor(declaration, updateDeclaration(declaration.ParameterList)),
                             BaseMethodDeclarationSyntax declaration => declaration.WithParameterList(updateDeclaration(declaration.ParameterList)),
-                            TypeDeclarationSyntax { ParameterList: { } primaryList } declaration => RewritePrimaryDeclaration(declaration, primaryList, updateDeclaration),
+                            TypeDeclarationSyntax { ParameterList: { } primaryList } declaration
+                                when constructionOwners.TryGetValue(document.Id, out var owners)
+                                    && owners.Values.SingleOrDefault(plan => original.HasAnnotation(plan.Annotation)) is { } plan
+                                => plan.RewritePrimary(declaration, updateDeclaration(primaryList), DeclarationTag),
+                            TypeDeclarationSyntax { ParameterList: { } primaryList } declaration => declaration.WithParameterList(updateDeclaration(primaryList)),
                             _ => rewritten,
                         };
                     }
@@ -458,8 +505,12 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
                     if (callAnnotation is not null && GetArguments(rewritten) is { } list)
                     {
                         var context = replacements[callAnnotation];
-                        var updated = updateCallsite(context, list.Arguments);
-                        if (!updated.Equals(list.Arguments)) count++;
+                        var editedCall = declarationKeys.ContainsKey(context.TargetIdentity);
+                        var updated = editedCall ? updateCallsite(context, list.Arguments)
+                            : context.NameOriginalArguments(list.Arguments, null);
+                        if (constructionPlans.TryGetValue(context.TargetIdentity, out var construction))
+                            updated = construction.Arguments(updated, context.ContainingTypeName());
+                        if (editedCall && !updated.Equals(list.Arguments)) count++;
                         rewritten = WithArguments(rewritten, list.WithArguments(updated));
                         if (rewritten is InvocationExpressionSyntax genericInvocation)
                             rewritten = genericInvocation.WithExpression(context.RetainTypeSubstitution(genericInvocation.Expression));
@@ -470,6 +521,10 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
                             if (conditionalCalls.TryGetValue(sourceCall, out var tags)) affectedConditionals.UnionWith(tags);
                         }
                     }
+                    if (rewritten is TypeDeclarationSyntax owner
+                        && constructionOwners.TryGetValue(document.Id, out var plans)
+                        && plans.Values.SingleOrDefault(plan => original.HasAnnotation(plan.Annotation)) is { } constructionPlan)
+                        rewritten = constructionPlan.Complete(owner, DeclarationTag);
                     return rewritten;
                 });
                 if (affectedConditionals.Count > 0)
@@ -704,7 +759,31 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
                     .WithLeadingTrivia(arrow.ArrowToken.LeadingTrivia).WithTrailingTrivia(arrow.ArrowToken.TrailingTrivia));
 
 
-        private StatementSyntax[] LowerExpressions(SeparatedSyntaxList<ExpressionSyntax> expressions) =>
+        public override SyntaxNode? VisitForStatement(ForStatementSyntax node)
+        {
+            var updated = (ForStatementSyntax)base.VisitForStatement(node)!;
+            if (!updated.Initializers.Concat(updated.Incrementors).OfType<ConditionalAccessExpressionSyntax>().Any(IsAffected)) return updated;
+            return LowerForExpressions(updated, Statement, Fresh);
+        }
+
+    }
+
+    private static StatementSyntax RouteContinues(StatementSyntax body, string label)
+    {
+        var continues = body.DescendantNodesAndSelf().OfType<ContinueStatementSyntax>()
+            .Where(c => !c.Ancestors().TakeWhile(a => a != body.Parent).Any(a => a is
+                ForStatementSyntax or ForEachStatementSyntax or ForEachVariableStatementSyntax or WhileStatementSyntax
+                or DoStatementSyntax or AnonymousFunctionExpressionSyntax or LocalFunctionStatementSyntax)).ToArray();
+        return body.ReplaceNodes(continues, (old, _) =>
+            SyntaxFactory.GotoStatement(SyntaxKind.GotoStatement, SyntaxFactory.IdentifierName(label))
+                .WithGotoKeyword(SyntaxFactory.Token(SyntaxKind.GotoKeyword).WithTrailingTrivia(SyntaxFactory.Space))
+                .WithSemicolonToken(old.SemicolonToken).WithTriviaFrom(old));
+    }
+
+    private static StatementSyntax LowerForExpressions(ForStatementSyntax updated,
+        Func<ExpressionSyntax, SyntaxToken, StatementSyntax> statement, Func<string, string> fresh)
+    {
+        StatementSyntax[] LowerExpressions(SeparatedSyntaxList<ExpressionSyntax> expressions) =>
             expressions.Select((expression, index) =>
             {
                 var token = SyntaxFactory.Token(SyntaxKind.SemicolonToken);
@@ -713,33 +792,36 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
                     var comma = expressions.GetSeparator(index);
                     token = token.WithLeadingTrivia(comma.LeadingTrivia).WithTrailingTrivia(comma.TrailingTrivia);
                 }
-                return Statement(expression, token);
+                return statement(expression, token);
             }).ToArray();
 
-        public override SyntaxNode? VisitForStatement(ForStatementSyntax node)
+        var initializers = LowerExpressions(updated.Initializers);
+        var incrementors = LowerExpressions(updated.Incrementors);
+        var body = updated.Statement;
+        if (incrementors.Length > 0)
         {
-            var updated = (ForStatementSyntax)base.VisitForStatement(node)!;
-            if (!updated.Initializers.Concat(updated.Incrementors).OfType<ConditionalAccessExpressionSyntax>().Any(IsAffected)) return updated;
-            var initializers = LowerExpressions(updated.Initializers);
-            var incrementors = LowerExpressions(updated.Incrementors);
-            var body = updated.Statement;
-            if (incrementors.Length > 0)
-            {
-                var label = Fresh("__signatureIterator");
-                var continues = body.DescendantNodesAndSelf().OfType<ContinueStatementSyntax>()
-                    .Where(c => !c.Ancestors().TakeWhile(a => a != body.Parent).Any(a => a is
-                        ForStatementSyntax or ForEachStatementSyntax or ForEachVariableStatementSyntax or WhileStatementSyntax
-                        or DoStatementSyntax or AnonymousFunctionExpressionSyntax or LocalFunctionStatementSyntax)).ToArray();
-                body = body.ReplaceNodes(continues, (old, _) =>
-                    SyntaxFactory.GotoStatement(SyntaxKind.GotoStatement, SyntaxFactory.IdentifierName(label))
-                        .WithGotoKeyword(SyntaxFactory.Token(SyntaxKind.GotoKeyword).WithTrailingTrivia(SyntaxFactory.Space))
-                        .WithSemicolonToken(old.SemicolonToken).WithTriviaFrom(old));
-                body = SyntaxFactory.Block(new[] { body, SyntaxFactory.LabeledStatement(label, SyntaxFactory.EmptyStatement()) }.Concat(incrementors));
-            }
-            updated = updated.WithStatement(body).WithInitializers(default).WithIncrementors(default);
-            if (node.Initializers.Count == 0) return updated;
-            return SyntaxFactory.Block(initializers.Append(updated));
+            var label = fresh("__signatureIterator");
+            body = RouteContinues(body, label);
+            body = SyntaxFactory.Block(new[] { body, SyntaxFactory.LabeledStatement(label, SyntaxFactory.EmptyStatement()) }.Concat(incrementors));
         }
+        var hadInitializers = updated.Initializers.Count > 0;
+        updated = updated.WithStatement(body).WithInitializers(default).WithIncrementors(default);
+        if (!hadInitializers) return updated;
+        return SyntaxFactory.Block(initializers.Append(updated));
+    }
+
+    internal static ConstructorDeclarationSyntax PrepareGeneratedConstructor(ConstructorDeclarationSyntax constructor)
+    {
+        var identity = constructor.GetAnnotations(DeclarationTag).ToArray();
+        var cleaned = constructor.ReplaceSyntax(constructor.DescendantNodesAndSelf(),
+            (_, rewritten) => rewritten.WithoutAnnotations(new[] { DeclarationTag, BindingTag, ArgumentTag,
+                ConditionalTag, AliasScopeTag, ChangeSignatureStructConstruction.OwnerTag,
+                ChangeSignatureStructConstruction.SerializationSelectorTag }
+                .SelectMany(kind => rewritten.GetAnnotations(kind)).ToArray()),
+            constructor.DescendantTokens(), (_, rewritten) => rewritten.WithoutAnnotations(DiagnosticTag).WithoutTrivia(),
+            [], (_, rewritten) => rewritten);
+        return cleaned.WithAdditionalAnnotations(identity).NormalizeWhitespace(eol: " ")
+            .WithLeadingTrivia(SyntaxFactory.Space).WithTrailingTrivia(SyntaxFactory.Space);
     }
 
     private static SyntaxNode RoundTripRoot(SyntaxNode root, Document document, CancellationToken ct)
@@ -788,14 +870,6 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
         var tree = diagnostic.Location.SourceTree!;
         return tree.FilePath + ":" + diagnostic.Location.SourceSpan + ":" +
             Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(tree.ToString())));
-    }
-
-    private static TypeDeclarationSyntax RewritePrimaryDeclaration(TypeDeclarationSyntax declaration,
-        ParameterListSyntax list, Func<ParameterListSyntax, ParameterListSyntax> updateDeclaration)
-    {
-        var updated = updateDeclaration(list);
-        return declaration.WithParameterList(declaration is StructDeclarationSyntax && updated.Parameters.Count == 0
-            ? null : updated);
     }
 
     private static void AddAnnotation(Dictionary<SyntaxNode, List<SyntaxAnnotation>> map, SyntaxNode node, SyntaxAnnotation annotation)
@@ -1180,11 +1254,6 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
                     : model.GetSymbolInfo(node, ct).Symbol as IMethodSymbol;
                 if (target is null) throw Refuse("A retained call or argument no longer has its original binding.");
                 var current = CreateEvidence(entry.Annotation, target, node, model, originals);
-                if (target.IsImplicitlyDeclared && target.MethodKind == MethodKind.Constructor
-                    && target.ContainingType.TypeKind == TypeKind.Struct && target.Parameters.Length == 0
-                    && target.ContainingType.DeclaringSyntaxReferences.Any(reference =>
-                        reference.GetSyntax().GetAnnotations(DeclarationTag).Any(a => a.Data == entry.Target)))
-                    current = current with { Target = entry.Target };
                 if (entry.Target != current.Target || entry.TypeArguments != current.TypeArguments
                     || entry.Type != current.Type || entry.ConvertedType != current.ConvertedType
                     || entry.Conversion != current.Conversion)
