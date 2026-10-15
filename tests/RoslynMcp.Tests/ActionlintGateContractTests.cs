@@ -455,9 +455,20 @@ public sealed class ActionlintGateContractTests
             arguments.Add(architectureForTest);
         }
 
+        // Fixtures own tool resolution. A developer's supported production override must
+        // not bypass their cache, archive, or download branches; explicit test overrides win.
+        var fixtureEnvironment = new Dictionary<string, string?>
+        {
+            ["ROSLYNMCP_ACTIONLINT_PATH"] = null,
+        };
+        if (environment is not null)
+        {
+            foreach (var (name, value) in environment) fixtureEnvironment[name] = value;
+        }
+
         return PwshScriptRunner.RunAsync(
             arguments,
-            environment: environment,
+            environment: fixtureEnvironment,
             timeout: timeout ?? TimeSpan.FromSeconds(30),
             description: "actionlint gate");
     }
