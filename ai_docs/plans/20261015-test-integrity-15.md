@@ -9,7 +9,7 @@
 | Base | 96f3ea722ceb8f663ce3b2c46058309df92e2914; clean main equal to origin/main; zero open PRs. |
 | Retained work | Extraction8a40da79 and restoreea969292 are clean source checkpoints with explicit execution holds. Preserve both and their open rows; no completion claim. |
 | Workflow | Direct implementation with delegated disjoint file ownership; no backlog-remediate skill. Serialize local runtime gates. |
-| Compatibility | Test infrastructure only; preserve production and wire contracts. |
+| Compatibility | Preserve production retry policy and released wire contracts; a required internal per-call delay seam supports deterministic native-I/O proof. |
 
 | # | Row | Complete repair |
 |---|---|---|
@@ -54,3 +54,15 @@
 | Delivery gate | Require focused proof, unsharded just ci, exact-head hosted validation, confirmed merge and clean main before reporting completion. |
 
 | Full-gate correction | Initial aggregate stopped at CRLF and two new import-order findings; normalized touched working files to LF and ran the formatter on both import lists. Fresh changed-file gate passed46files/0new/1tracked baseline import finding. No baseline edits or suppressed findings. |
+
+## Forced gate prerequisite
+
+| Field | Evidence |
+|---|---|
+| Row | atomic-file-writer-retry-test-wallclock-coupling, filed with canonical writer after the full gate failed. This is additional to the15selected rows. |
+| Failure | Head310498e5 persistent-reader test exceeded its30s stopwatch assertion at32s. Known-red suite was stopped; private invocation temp cleanup completed. No passing full result claimed. |
+| Complete fix | Keep production Task.Delay and native replacement/ownership checks; inject delay only through the existing internal writer seam. Assert exact9delays, native failure/cleanup, reader release and cancellation while awaiting backoff. |
+| Red proof | Intentional11attempt mutation rejected the tenth scheduled delay in atomic-retry-red.trx; original source restored with fresh timestamp. |
+| Final requirement | Fresh focused class, cold review, formatter, full unsharded local gate and exact-head hosted gates before merge. |
+
+| Focused prerequisite proof | Complete atomic-writer class passed27/0failed/3platform skips (30total), including exact schedule, real Task.Delay failure/cleanup, reader release and pending-backoff cancellation. Conditional row closure accompanies implementation; final gates remain required. |

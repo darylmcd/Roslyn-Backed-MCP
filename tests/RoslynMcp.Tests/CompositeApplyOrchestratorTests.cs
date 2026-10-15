@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using Microsoft.CodeAnalysis;
@@ -7,6 +6,7 @@ using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Diagnostics;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 using RoslynMcp.Tests.TestInfrastructure;
 
 namespace RoslynMcp.Tests;
@@ -232,54 +232,140 @@ public sealed class CompositeApplyOrchestratorTests
         if (!OperatingSystem.IsWindows()) Assert.Inconclusive("Requires Windows.");
 
         var path = Path.Combine(_tempDir, "target.editorconfig");
+        var tmp = Path.Combine(_tempDir, "reserved.tmp");
         await File.WriteAllTextAsync(path, "original");
-        Task replace;
-        using (var reader = new FileStream(path, FileMode.Open, FileAccess.Read,
-            shareDelete ? FileShare.ReadWrite | FileShare.Delete : FileShare.ReadWrite))
-        {
-            replace = AtomicFileWriter.WriteAllTextAsync(path, "replacement", CancellationToken.None);
-            var first = await Task.WhenAny(replace, Task.Delay(TimeSpan.FromMilliseconds(500)));
-            Assert.AreNotSame(replace, first);
-        }
+        using var stream = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write,
+            FileShare.Read | FileShare.Delete);
+        using var reader = new FileStream(path, FileMode.Open, FileAccess.Read,
+            shareDelete ? FileShare.ReadWrite | FileShare.Delete : FileShare.ReadWrite);
+        var delays = new List<int>();
 
-        await replace;
+        await AtomicFileWriter.WriteAtomicAtTempPathAsync(path, tmp, stream,
+            (_, reserved) => reserved.WriteAsync("replacement"u8.ToArray()).AsTask(), (delay, ct) =>
+        {
+            delays.Add(delay);
+            Assert.HasCount(1, delays, "Releasing the reader must allow the next real replacement attempt.");
+            Assert.AreEqual("original", File.ReadAllText(path), "The held reader must prevent replacement.");
+            Assert.IsTrue(File.Exists(tmp), "The retry must retain the reserved replacement file.");
+            Assert.AreEqual(CancellationToken.None, ct);
+            reader.Dispose();
+            return Task.CompletedTask;
+        }, CancellationToken.None, logger: null, exceptionReporter: null);
+
+        CollectionAssert.AreEqual(new[] { 25 }, delays);
         Assert.AreEqual("replacement", await File.ReadAllTextAsync(path));
+        AssertNoTempArtifacts(path);
     }
 
     [TestMethod]
-    public async Task AtomicFileWriter_PersistentReaderFailsWithinBound_AndCleansTemp()
+    public async Task AtomicFileWriter_PersistentReader_UsesExactBoundedRetrySchedule()
+    {
+        if (!OperatingSystem.IsWindows()) Assert.Inconclusive("Requires Windows.");
+
+        var path = Path.Combine(_tempDir, "target.editorconfig");
+        var tmp = Path.Combine(_tempDir, "reserved.tmp");
+        await File.WriteAllTextAsync(path, "original");
+        using var stream = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write,
+            FileShare.Read | FileShare.Delete);
+        using var reader = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        using var cancellation = new CancellationTokenSource();
+        var delays = new List<int>();
+
+        await Assert.ThrowsExactlyAsync<UnauthorizedAccessException>(() =>
+            AtomicFileWriter.WriteAtomicAtTempPathAsync(path, tmp, stream,
+            (_, reserved) => reserved.WriteAsync("replacement"u8.ToArray()).AsTask(), (delay, ct) =>
+            {
+                delays.Add(delay);
+                Assert.IsTrue(delays.Count <= 9, "A persistent reader must not schedule a tenth delay.");
+                Assert.AreEqual(cancellation.Token, ct, "Every delay must receive the caller's cancellation token.");
+                return Task.CompletedTask;
+            }, cancellation.Token, logger: null, exceptionReporter: null));
+
+        CollectionAssert.AreEqual(new[] { 25, 50, 100, 200, 400, 400, 400, 400, 400 }, delays);
+        Assert.AreEqual("original", await File.ReadAllTextAsync(path));
+        AssertNoTempArtifacts(path);
+    }
+
+    [TestMethod]
+    public async Task AtomicFileWriter_PersistentReaderFails_AndCleansTemp()
     {
         if (!OperatingSystem.IsWindows()) Assert.Inconclusive("Requires Windows.");
 
         var path = Path.Combine(_tempDir, "target.editorconfig");
         await File.WriteAllTextAsync(path, "original");
         using var reader = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-        var started = Stopwatch.StartNew();
         await Assert.ThrowsExactlyAsync<UnauthorizedAccessException>(() =>
             AtomicFileWriter.WriteAllTextAsync(path, "replacement", CancellationToken.None));
-        // The retry budget is 9 delays totalling about 2.4 s (ReplaceAfterTransientReaderAsync). Alone the
-        // test takes ~2 s, but under the full parallel suite (local gate and hosted runner) the timer
-        // delays stretch it to ~7 s, so a tight wall-clock bound measures machine load, not the retry
-        // contract. This bound only has to separate "bounded" from an unbounded wait; mirror the
-        // +30 s margin FormatterBaselineContractTests uses for the same reason.
-        Assert.IsTrue(started.Elapsed < TimeSpan.FromSeconds(30), "A persistent lock must fail within the retry bound.");
+        // The exact bounded schedule is pinned by PersistentReader_UsesExactBoundedRetrySchedule;
+        // this full writer call proves the native failure preserves content and cleans its temp.
         Assert.AreEqual("original", await File.ReadAllTextAsync(path));
         AssertNoTempArtifacts(path);
     }
 
     [TestMethod]
-    public async Task AtomicFileWriter_CancellationStopsSharingWait_AndCleansTemp()
+    public async Task AtomicFileWriter_CancellationDuringSharingRetry_StopsBeforeAnotherDelay_AndCleansTemp()
     {
         if (!OperatingSystem.IsWindows()) Assert.Inconclusive("Requires Windows.");
 
         var path = Path.Combine(_tempDir, "target.editorconfig");
+        var tmp = Path.Combine(_tempDir, "reserved.tmp");
         await File.WriteAllTextAsync(path, "original");
+        using var stream = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write,
+            FileShare.Read | FileShare.Delete);
         using var reader = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-        using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(200));
-        await Assert.ThrowsAsync<OperationCanceledException>(() =>
-            AtomicFileWriter.WriteAllTextAsync(path, "replacement", cancellation.Token));
-        Assert.AreEqual("original", await File.ReadAllTextAsync(path));
-        AssertNoTempArtifacts(path);
+        using var cancellation = new CancellationTokenSource();
+        var delays = new List<int>();
+        var delayEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var writeTask = AtomicFileWriter.WriteAtomicAtTempPathAsync(path, tmp, stream,
+            (_, reserved) => reserved.WriteAsync("replacement"u8.ToArray()).AsTask(), (delay, ct) =>
+            {
+                delays.Add(delay);
+                Assert.HasCount(1, delays, "Cancellation during a retry must prevent another delay.");
+                Assert.AreEqual(cancellation.Token, ct);
+                delayEntered.SetResult();
+                return Task.Delay(Timeout.Infinite, ct);
+            }, cancellation.Token, logger: null, exceptionReporter: null);
+        Exception? primaryFailure = null;
+        try
+        {
+            var first = await Task.WhenAny(delayEntered.Task, writeTask);
+            if (first == writeTask)
+            {
+                await writeTask; // Surface a native failure instead of waiting for a callback that cannot run.
+                Assert.Fail("A held reader must reach the sharing-retry delay before completing.");
+            }
+
+            await delayEntered.Task;
+            Assert.IsFalse(writeTask.IsCompleted, "The retry delay must remain pending until cancellation.");
+            cancellation.Cancel();
+            var failure = await Assert.ThrowsAsync<OperationCanceledException>(() => writeTask);
+            Assert.AreEqual(cancellation.Token, failure.CancellationToken);
+            CollectionAssert.AreEqual(new[] { 25 }, delays);
+            Assert.AreEqual("original", await File.ReadAllTextAsync(path));
+            AssertNoTempArtifacts(path);
+        }
+        catch (Exception failure)
+        {
+            primaryFailure = failure;
+            throw;
+        }
+        finally
+        {
+            await CleanupFailureCollector.RunAfterFailureAsync(
+                "Atomic-write retry cancellation or cleanup failed.", primaryFailure,
+                CleanupFailureCollector.FromAction(cancellation.Cancel),
+                async () =>
+                {
+                    try
+                    {
+                        await writeTask;
+                    }
+                    catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+                    {
+                        // Owner-requested cancellation is the expected terminal state; the writer is drained.
+                    }
+                });
+        }
     }
 
     [TestMethod]
