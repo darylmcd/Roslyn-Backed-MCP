@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-10T20:52:55Z
+**updated_at:** 2026-10-11T05:12:34Z
 
 ## Agent contract
 
@@ -154,6 +154,7 @@
 | `workspace-project-index-session-lifetime` | Medium | — | **Release project indexes with workspace lifetime** — prevent closed sessions and concurrent lookups from retaining obsolete project snapshots. [type: bug] [source: workspace-project-alias-lookup] | S | items/workspace-project-index-session-lifetime.md |
 | `bounded-store-capacity-atomic-insertion` | Medium | — | **Enforce bounded-store capacity** - make eviction and insertion preserve the configured entry cap under serial and concurrent writes. [type: bug] [source: fix-all-equivalence-key-unregistered-fallback] | S | items/bounded-store-capacity-atomic-insertion.md |
 | `editorconfig-option-assignment-grammar-validation` | Medium | — | Validate editorconfig keys and values as one provider-valid assignment before writing; prevent injected or lost assignments. [type: bug] [source: backlog-remediate writer re-vet] | M | items/editorconfig-option-assignment-grammar-validation.md |
+| `preview-existing-document-insertion-refused` | Medium | — | **Restore valid insertion preview** — diagnose ready-workspace refusal for existing-document comment/property insertions; preserve preview/apply safety. [type: bug] [source: BioRemote executor20261011] | M | items/preview-existing-document-insertion-refused.md |
 
 ## Low
 
