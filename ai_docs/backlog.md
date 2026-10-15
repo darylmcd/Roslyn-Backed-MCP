@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-11T05:12:34Z
+**updated_at:** 2026-10-15T18:37:39Z
 
 ## Agent contract
 
@@ -155,6 +155,9 @@
 | `bounded-store-capacity-atomic-insertion` | Medium | — | **Enforce bounded-store capacity** - make eviction and insertion preserve the configured entry cap under serial and concurrent writes. [type: bug] [source: fix-all-equivalence-key-unregistered-fallback] | S | items/bounded-store-capacity-atomic-insertion.md |
 | `editorconfig-option-assignment-grammar-validation` | Medium | — | Validate editorconfig keys and values as one provider-valid assignment before writing; prevent injected or lost assignments. [type: bug] [source: backlog-remediate writer re-vet] | M | items/editorconfig-option-assignment-grammar-validation.md |
 | `preview-existing-document-insertion-refused` | Medium | — | **Restore valid insertion preview** — diagnose ready-workspace refusal for existing-document comment/property insertions; preserve preview/apply safety. [type: bug] [source: BioRemote executor20261011] | M | items/preview-existing-document-insertion-refused.md |
+| `fixture-git-add-hosted-deadline` | Medium | — | **Diagnose fixture Git staging deadlines** — reproduce Windows shard setup timeouts with process lifetime evidence and repair the shared runner root cause without loosening its deadline. [type: bug] [source: PR1781 hosted gate] | M | items/fixture-git-add-hosted-deadline.md |
+| `gated-executor-default-drops-early-kill` | Medium | — | Preserve nonempty early-kill patterns across executor implementations; remove the silent legacy fallback after re-deriving the published contract and updating owned callers and doubles. [type: bug] [source: adjacent source review] | M | items/gated-executor-default-drops-early-kill.md |
+| `actionlint-fixture-inherited-override` | Medium | — | Isolate actionlint gate fixture processes from inherited binary overrides while preserving explicit override tests. | S | items/actionlint-fixture-inherited-override.md |
 
 ## Low
 
