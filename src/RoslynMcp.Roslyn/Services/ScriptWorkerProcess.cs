@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using RoslynMcp.Core.Services;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -36,7 +37,9 @@ internal sealed class ScriptWorkerProcess(ILogger logger) : IScriptWorkerProcess
         var serializedRequest = JsonSerializer.Serialize(request);
         if (serializedRequest.Length > MaxIpcCharacters)
         {
-            throw new ArgumentException("The script worker request exceeds the bounded IPC limit.", nameof(request));
+            throw new PublicArgumentException(
+                $"The script worker request exceeds the bounded IPC limit of {MaxIpcCharacters} serialized characters. Reduce code or imports.",
+                nameof(request));
         }
 
         var startInfo = CreateStartInfo();

@@ -31,6 +31,42 @@ public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
     public static void ClassCleanup() => DisposeServices();
 
     [TestMethod]
+    public async Task WorkspaceForkApply_InvalidRetentionPublishesChoicesWithoutCallerText()
+    {
+        const string sentinel = "PRIVATE-FORK-RETENTION";
+        var service = CreateForkApplyService(CreateValidationService());
+        var exception = await Assert.ThrowsAsync<ArgumentException>(() => service.ApplyAsync(
+            sentinel, sentinel, sentinel, false, null, null, CancellationToken.None));
+        Assert.IsInstanceOfType<IPublicMessageException>(exception);
+        using var envelope = JsonDocument.Parse(ToolErrorHandler.ClassifyAndFormat(exception, "workspace_fork_apply"));
+        Assert.AreEqual("InvalidArgument", envelope.RootElement.GetProperty("category").GetString());
+        Assert.AreEqual("ArgumentException", envelope.RootElement.GetProperty("exceptionType").GetString());
+        StringAssert.Contains(envelope.RootElement.GetProperty("message").GetString()!,
+            "drop-on-success, drop-on-failure, drop-always, keep");
+        Assert.IsFalse(envelope.RootElement.GetRawText().Contains(sentinel, StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public async Task WorkspaceForkApply_CrossWorkspaceTokenPublishesCorrectionWithoutIdentifiers()
+    {
+        await using var owner = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var other = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var token = await StoreDogPreviewAsync(owner.WorkspaceId, source => source.Replace("Woof", "ForkWoof", StringComparison.Ordinal));
+        var service = CreateForkApplyService(CreateValidationService());
+        var exception = await Assert.ThrowsAsync<ArgumentException>(() => service.ApplyAsync(
+            other.WorkspaceId, token, "keep", false, null, null, CancellationToken.None));
+        Assert.IsInstanceOfType<IPublicMessageException>(exception);
+        using var envelope = JsonDocument.Parse(ToolErrorHandler.ClassifyAndFormat(exception, "workspace_fork_apply"));
+        var json = envelope.RootElement.GetRawText();
+        Assert.AreEqual("InvalidArgument", envelope.RootElement.GetProperty("category").GetString());
+        Assert.AreEqual("ArgumentException", envelope.RootElement.GetProperty("exceptionType").GetString());
+        StringAssert.Contains(envelope.RootElement.GetProperty("message").GetString()!, "previewToken");
+        foreach (var identifier in new[] { owner.WorkspaceId, other.WorkspaceId, token })
+            Assert.IsFalse(json.Contains(identifier, StringComparison.Ordinal), json);
+        Assert.IsNotNull(PreviewStore.Retrieve(token), "Refusal must preserve the original preview.");
+    }
+
+    [TestMethod]
     public async Task WorkspaceForkApply_KeepSuccess_MutatesOnlyFork()
     {
         await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);

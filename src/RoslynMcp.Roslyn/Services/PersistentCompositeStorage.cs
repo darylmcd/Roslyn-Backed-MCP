@@ -311,7 +311,7 @@ public sealed class PersistentCompositeStorage
     {
         if (!IsValidToken(token))
         {
-            throw new ArgumentException(
+            throw new PublicArgumentException(
                 "Persistent preview tokens must be 32 hexadecimal GUID characters.",
                 nameof(token));
         }

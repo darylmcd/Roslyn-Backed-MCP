@@ -561,7 +561,7 @@ public sealed class ReferenceService : IReferenceService, IPreResolvedReferenceS
     {
         _logger.LogDebug("ReferenceService.FindReferencesBulkAsync: workspaceId={WorkspaceId} symbolCount={SymbolCount} includeDefinition={IncludeDefinition}", workspaceId, symbols.Count, includeDefinition);
         if (symbols.Count > 50)
-            throw new ArgumentException("Maximum of 50 symbols per bulk request.");
+            throw new PublicArgumentException("Maximum of 50 symbols per bulk request.", nameof(symbols));
 
         var solution = _workspace.GetCurrentSolution(workspaceId);
         // Outer fan-out: how many bulk symbols we resolve concurrently. Each task may itself
@@ -691,8 +691,8 @@ public sealed class ReferenceService : IReferenceService, IPreResolvedReferenceS
         // constructing bulk payloads with the wrong shape (missing `symbols` array or empty
         // locator objects). Surface a concrete JSON example so the first-try-fails cycle
         // becomes a first-try-succeeds cycle.
-        throw new ArgumentException(
-            "BulkSymbolLocator requires at least one of: symbolHandle, metadataName, or filePath+line+column (all four coordinates required for source lookup). " +
+        throw new PublicArgumentException(
+            "BulkSymbolLocator requires at least one of: symbolHandle, metadataName, or filePath+line+column (all three source components are required). " +
             "Common mistakes: using the wrong tool parameter name (must be `symbols` as an array of objects, not `symbolHandles`); " +
             "passing a flat string array instead of locator objects; omitting line/column when using filePath. " +
             "Example payload: { \"symbols\": [" +
@@ -700,6 +700,6 @@ public sealed class ReferenceService : IReferenceService, IPreResolvedReferenceS
             "{ \"symbolHandle\": \"<base64 handle from enclosing_symbol or document_symbols>\" }, " +
             "{ \"filePath\": \"C:/src/Foo.cs\", \"line\": 42, \"column\": 7 }" +
             "] }. " +
-            "Every entry must populate exactly ONE of the three locator strategies.");
+            "Use one locator strategy per entry.", "symbols");
     }
 }

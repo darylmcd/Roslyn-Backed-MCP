@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
@@ -32,7 +33,7 @@ public sealed class MsBuildEvaluationServiceTests : IsolatedWorkspaceTestBase
 
         const string missingProject = "ZZZ_DoesNotExistProject";
 
-        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+        await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
             service.EvaluatePropertyAsync(workspaceId, missingProject, "TargetFramework", CancellationToken.None));
 
         var warning = logger.Entries.SingleOrDefault(e => e.Level == LogLevel.Warning);
@@ -46,9 +47,8 @@ public sealed class MsBuildEvaluationServiceTests : IsolatedWorkspaceTestBase
 
 /// <summary>
 /// Minimal in-memory <see cref="ILogger{T}"/> double that records every emitted log entry.
-/// The test project has no capturing logger and every fixture builds services with
-/// <c>NullLogger&lt;T&gt;.Instance</c>, so observability assertions must supply their own.
-/// Shared by the swallowed-exception logging tests (Scaffolding / EditorConfig / MsBuild).
+/// Shared test infrastructure for service fixtures that assert emitted diagnostics.
+/// Supply this logger when an assertion needs captured entries instead of a null logger.
 /// </summary>
 internal sealed class CaptureLogger<T> : ILogger<T>
 {

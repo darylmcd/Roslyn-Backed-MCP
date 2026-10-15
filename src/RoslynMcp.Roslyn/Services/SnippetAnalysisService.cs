@@ -151,8 +151,8 @@ public sealed class SnippetAnalysisService : ISnippetAnalysisService
                  userStartLine, MembersPrefix.Length + 1),
             "program" or "" =>
                 ($"{usingBlock}\n{code}", userStartLine, 1),
-            _ => throw new ArgumentException(
-                $"Invalid snippet kind '{kind}'. Must be 'expression', 'statements', 'returnExpression', 'members', or 'program'.")
+            _ => throw new PublicArgumentException(
+                "kind must be 'expression', 'statements', 'returnExpression', 'members', or 'program'.", nameof(kind))
         };
     }
 

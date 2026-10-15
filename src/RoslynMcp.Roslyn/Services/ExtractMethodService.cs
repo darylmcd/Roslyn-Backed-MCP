@@ -237,9 +237,8 @@ public sealed class ExtractMethodService : IExtractMethodService
             // analysis-flow-error-detail-redaction: never publish raw Roslyn exception text
             // in the client-visible failure message; route through the shared secret-safe
             // projection and keep the original exception server-side as InnerException.
-            throw new InvalidOperationException(
-                FlowAnalysisFailurePolicy.CreateFailureMessage(
-                    exceptionReporter, ex, "Extract-method data flow analysis", startLine, endLine), ex);
+            throw FlowAnalysisFailurePolicy.CreateFailure(
+                exceptionReporter, ex, FlowAnalysisOperation.ExtractMethod, startLine, endLine);
         }
 
         if (dataFlow is null || !dataFlow.Succeeded)

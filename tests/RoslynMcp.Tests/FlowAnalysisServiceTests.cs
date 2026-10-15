@@ -1,3 +1,4 @@
+using RoslynMcp.Core.Services;
 using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
@@ -188,7 +189,7 @@ public class ExpressionBodiedSamples
         // analyze-data-flow-inverted-range: pre-fix, inverted ranges fell through to the
         // misleading "No statements found in the line range 200-100" InvalidOperation. Post-fix,
         // the service rejects the input upfront with a structured ArgumentException.
-        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
             FlowAnalysisService.AnalyzeDataFlowAsync(
                 WorkspaceId, TargetFilePath, startLine: 200, endLine: 100, CancellationToken.None));
         StringAssert.Contains(ex.Message, "<=");
@@ -197,7 +198,7 @@ public class ExpressionBodiedSamples
     [TestMethod]
     public async Task AnalyzeControlFlow_InvertedRange_ThrowsArgumentException()
     {
-        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
             FlowAnalysisService.AnalyzeControlFlowAsync(
                 WorkspaceId, TargetFilePath, startLine: 200, endLine: 100, CancellationToken.None));
         StringAssert.Contains(ex.Message, "<=");
@@ -206,7 +207,7 @@ public class ExpressionBodiedSamples
     [TestMethod]
     public async Task AnalyzeDataFlow_NegativeLine_ThrowsArgumentException()
     {
-        await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+        await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
             FlowAnalysisService.AnalyzeDataFlowAsync(
                 WorkspaceId, TargetFilePath, startLine: 0, endLine: 5, CancellationToken.None));
     }

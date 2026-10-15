@@ -41,9 +41,8 @@ public sealed class FlowAnalysisService : IFlowAnalysisService
             // analysis-flow-error-detail-redaction: never publish raw Roslyn exception text
             // in the client-visible failure message; route through the shared secret-safe
             // projection and keep the original exception server-side as InnerException.
-            throw new InvalidOperationException(
-                FlowAnalysisFailurePolicy.CreateFailureMessage(
-                    _exceptionReporter, ex, "Data flow analysis", startLine, endLine), ex);
+            throw FlowAnalysisFailurePolicy.CreateFailure(
+                _exceptionReporter, ex, FlowAnalysisOperation.DataFlow, startLine, endLine);
         }
 
         return new DataFlowAnalysisDto(
@@ -100,9 +99,8 @@ public sealed class FlowAnalysisService : IFlowAnalysisService
         catch (ArgumentException ex)
         {
             // analysis-flow-error-detail-redaction: see the data-flow catch above.
-            throw new InvalidOperationException(
-                FlowAnalysisFailurePolicy.CreateFailureMessage(
-                    _exceptionReporter, ex, "Control flow analysis", startLine, endLine), ex);
+            throw FlowAnalysisFailurePolicy.CreateFailure(
+                _exceptionReporter, ex, FlowAnalysisOperation.ControlFlow, startLine, endLine);
         }
 
         var entryPoints = result.EntryPoints
@@ -190,12 +188,11 @@ public sealed class FlowAnalysisService : IFlowAnalysisService
         // a structured InvalidArgument error instead of the misleading "No statements found in
         // the line range N-M" InvalidOperation message that resulted from the inverted predicate.
         if (startLine < 1)
-            throw new ArgumentException($"startLine ({startLine}) must be >= 1.", nameof(startLine));
+            throw new PublicArgumentException("startLine must be >= 1.", nameof(startLine));
         if (endLine < 1)
-            throw new ArgumentException($"endLine ({endLine}) must be >= 1.", nameof(endLine));
+            throw new PublicArgumentException("endLine must be >= 1.", nameof(endLine));
         if (startLine > endLine)
-            throw new ArgumentException(
-                $"startLine ({startLine}) must be <= endLine ({endLine}).", nameof(startLine));
+            throw new PublicArgumentException("startLine must be <= endLine.", nameof(startLine));
 
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var normalizedPath = PhysicalPathResolver.Resolve(filePath);

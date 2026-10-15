@@ -764,12 +764,6 @@
   {
     "Path": "src/RoslynMcp.Roslyn/Services/ExtractMethodService.cs",
     "Member": "M:RoslynMcp.Roslyn.Services.ExtractMethodService.AnalyzeFlowAndInferSignature(Microsoft.CodeAnalysis.SemanticModel,System.Collections.Generic.List{Microsoft.CodeAnalysis.CSharp.Syntax.StatementSyntax},Microsoft.CodeAnalysis.CSharp.Syntax.MemberDeclarationSyntax,RoslynMcp.Core.Services.IUnexpectedExceptionReporter,System.Int32,System.Int32)",
-    "Fingerprint": "1E4CCD51494C0EBDCB342E00EE47F34AC328AB94F2A543036545C032A43C273B",
-    "Count": 1
-  },
-  {
-    "Path": "src/RoslynMcp.Roslyn/Services/ExtractMethodService.cs",
-    "Member": "M:RoslynMcp.Roslyn.Services.ExtractMethodService.AnalyzeFlowAndInferSignature(Microsoft.CodeAnalysis.SemanticModel,System.Collections.Generic.List{Microsoft.CodeAnalysis.CSharp.Syntax.StatementSyntax},Microsoft.CodeAnalysis.CSharp.Syntax.MemberDeclarationSyntax,RoslynMcp.Core.Services.IUnexpectedExceptionReporter,System.Int32,System.Int32)",
     "Fingerprint": "39CCE66E9C69E6C1BDEFEB9C8182677CB63E05874A7CB1C4C4E7A9BDB277CEB2",
     "Count": 1
   },
@@ -978,24 +972,6 @@
     "Count": 1
   },
   {
-    "Path": "src/RoslynMcp.Roslyn/Services/FixAllTargetResolver.cs",
-    "Member": "M:RoslynMcp.Roslyn.Services.FixAllTargetResolver.Resolve(Microsoft.CodeAnalysis.Solution,RoslynMcp.Roslyn.Services.FixAllTargetRequest)",
-    "Fingerprint": "FF1A545BA78DDCAA9E3B7429F05968578CA401A40CAD3BEA3F49FC7AEB8245FE",
-    "Count": 1
-  },
-  {
-    "Path": "src/RoslynMcp.Roslyn/Services/FlowAnalysisService.cs",
-    "Member": "M:RoslynMcp.Roslyn.Services.FlowAnalysisService.AnalyzeControlFlowAsync(System.String,System.String,System.Int32,System.Int32,System.Threading.CancellationToken)",
-    "Fingerprint": "D26D637A61973D912715E04626470DE635217E40AE238D47B55F0A0A5E66D64B",
-    "Count": 1
-  },
-  {
-    "Path": "src/RoslynMcp.Roslyn/Services/FlowAnalysisService.cs",
-    "Member": "M:RoslynMcp.Roslyn.Services.FlowAnalysisService.AnalyzeDataFlowAsync(System.String,System.String,System.Int32,System.Int32,System.Threading.CancellationToken)",
-    "Fingerprint": "F15B63994BDCD559C02691CE9EB48018CD69A7FFC5C040A8F316E1AD77FC2E26",
-    "Count": 1
-  },
-  {
     "Path": "src/RoslynMcp.Roslyn/Services/FlowAnalysisService.cs",
     "Member": "M:RoslynMcp.Roslyn.Services.FlowAnalysisService.ResolveAnalysisRegionAsync(System.String,System.String,System.Int32,System.Int32,System.Threading.CancellationToken)",
     "Fingerprint": "489B09CD12833C3F05321D1FC636E85A9166436B0DABA9A2E1319E67325492B5",
@@ -1089,12 +1065,6 @@
     "Path": "src/RoslynMcp.Roslyn/Services/MsBuildEvaluationService.cs",
     "Member": "M:RoslynMcp.Roslyn.Services.MsBuildEvaluationService.ResolveRoslynProject(System.String,System.String)",
     "Fingerprint": "686232A1359741B08C1DE26B2B1DAFA5E87AE89B7BB4AD1889314571DAEB563E",
-    "Count": 1
-  },
-  {
-    "Path": "src/RoslynMcp.Roslyn/Services/MsBuildEvaluationService.cs",
-    "Member": "M:RoslynMcp.Roslyn.Services.MsBuildEvaluationService.ResolveRoslynProject(System.String,System.String)",
-    "Fingerprint": "E9699C43DB84CEBACE1D90076CAEC6BDD63A23D8DDF3ACD3528B148371A0EB8F",
     "Count": 1
   },
   {
@@ -1412,19 +1382,7 @@
   {
     "Path": "src/RoslynMcp.Roslyn/Services/RefactoringService.cs",
     "Member": "M:RoslynMcp.Roslyn.Services.RefactoringService.PreviewRenameAsync(System.String,RoslynMcp.Core.Models.SymbolLocator,System.String,System.Boolean,System.Threading.CancellationToken)",
-    "Fingerprint": "A6EEE3ACF83BE2D06031ADBC2B041695FF82E2EA71E7EDE7D588B32A2C09FD2E",
-    "Count": 1
-  },
-  {
-    "Path": "src/RoslynMcp.Roslyn/Services/RefactoringService.cs",
-    "Member": "M:RoslynMcp.Roslyn.Services.RefactoringService.PreviewRenameAsync(System.String,RoslynMcp.Core.Models.SymbolLocator,System.String,System.Boolean,System.Threading.CancellationToken)",
     "Fingerprint": "EAC51B36BE786F1B2FC2B94EAB8063A27603C405408306CD0486533504BDE98F",
-    "Count": 1
-  },
-  {
-    "Path": "src/RoslynMcp.Roslyn/Services/RefactoringService.cs",
-    "Member": "M:RoslynMcp.Roslyn.Services.RefactoringService.PreviewRenameOnSolutionAsync(Microsoft.CodeAnalysis.Solution,RoslynMcp.Core.Models.SymbolLocator,System.String,System.Threading.CancellationToken)",
-    "Fingerprint": "A6EEE3ACF83BE2D06031ADBC2B041695FF82E2EA71E7EDE7D588B32A2C09FD2E",
     "Count": 1
   },
   {
@@ -1491,12 +1449,6 @@
     "Path": "src/RoslynMcp.Roslyn/Services/ScriptWorkerProcess.cs",
     "Member": "M:RoslynMcp.Roslyn.Services.ScriptWorkerProcess.StartAsync(RoslynMcp.Roslyn.Services.ScriptWorkerRequest,System.Threading.CancellationToken)",
     "Fingerprint": "41DB48471D07D663BDFC0164C5649CD62A5C993E01AA1409C20E4364D1C81676",
-    "Count": 1
-  },
-  {
-    "Path": "src/RoslynMcp.Roslyn/Services/ScriptingService.cs",
-    "Member": "M:RoslynMcp.Roslyn.Services.ScriptingService.CreateExecutionSettings(System.Nullable{System.Int32})",
-    "Fingerprint": "8B8B6401BF40CADF5A90D24A0ECFB7E8D74A072222D17FB5E29D9A6AD6464FCF",
     "Count": 1
   },
   {
@@ -1893,12 +1845,6 @@
     "Path": "src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs",
     "Member": "M:RoslynMcp.Roslyn.Services.WorkspaceManager.TryApplyChanges(System.String,Microsoft.CodeAnalysis.Solution)",
     "Fingerprint": "56041ACD66ACD5C3C616D00A47490B9AC417A67E1FB2AADB21C0391788565D04",
-    "Count": 1
-  },
-  {
-    "Path": "src/RoslynMcp.Roslyn/Services/WorkspaceProjectResolver.cs",
-    "Member": "M:RoslynMcp.Roslyn.Services.WorkspaceProjectResolver.Resolve(RoslynMcp.Roslyn.Contracts.IWorkspaceManager,System.String,System.String)",
-    "Fingerprint": "683C8380CAA87E7EAC3AE953C7A4781ED2B133CE83E8889E298E15ADA27A2D81",
     "Count": 1
   },
   {

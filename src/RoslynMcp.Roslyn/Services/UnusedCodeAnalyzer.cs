@@ -1002,9 +1002,9 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
 
         if (!IsAcceptedDeadFieldUsageKind(usageKindFilter))
         {
-            throw new ArgumentException(
-                $"Unsupported usageKind '{usageKindFilter}'. Expected never-read, never-written, or never-either.",
-                nameof(usageKindFilter));
+            throw new PublicArgumentException(
+                "usageKind must be never-read, never-written, or never-either.",
+                "usageKind");
         }
     }
 
