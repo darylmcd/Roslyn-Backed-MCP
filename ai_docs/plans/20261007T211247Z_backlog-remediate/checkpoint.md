@@ -5,12 +5,16 @@
 | Item | Current disposition |
 |---|---|
 | Authorization | Operator authorized direct implementation, repair and shipping of existing work; do not invoke the reworked backlog-remediate skill. |
-| Source | PR1779 head fc4dc8554d5eda6a9b2fe58e4ec2186591852545; existing source branch preserved. |
+| Source | PR1779 merged2026-10-15T19:56:53Z as8f74aaeb7f0d25fab25af72bab7d8643b4994440; final reviewed source head8c303620bf625493fa41cbfe35f35a0c1d0a46d8. Canonical shipping cleaned the feature checkout and branch. |
 | Design | ADR0026 supersedes private-core relocation: retain the original explicit-zero constructor and delegate the added signature to it; use a required fresh marker for last-parameter removal. |
-| Verification | All 324 constructor cases passed in the completed local run; hosted Windows/Linux/SDK-floor matrix passed. Full local run was red: five description assertions corrected afterward and two readiness assertions after dependency files changed mid-run. Require a fresh immutable final-head gate. |
+| Focused proof | Earlier324 constructor cases passed before final metadata changes; all nine added metadata/empty-primary/native-ABI regressions failed on the old code, then the repaired25-case construction matrix passed. |
+| Final validation | Head8c303620 full local just ci passed4450/0failed/19skipped, including all333constructor cases; vulnerability audit clean. Hosted Windows/Linux matrix, SDK-floor probe and CodeQL passed. |
+| Prior invalid run | The earlier full run was red: five description assertions corrected afterward and two readiness assertions after dependency files changed mid-run. Its result does not substitute for the immutable final-head gate. |
 | Metadata exception | Operator explicitly approved removal of four legacy profile prefixes from sketch anchors. Checksum-guarded patch changed only those anchors; AI-doc validation and the native reviewed-hash check passed. No global engine code changed. |
 | Preserved tracking | Restored four unpublished rows through backlog.mjs; retained the expanded restore/fork design hold and source checkpoints. Backlog lint has zero errors. |
-| Next | Land prerequisite repairs through fresh exact-head gates; reconcile actual PR merge evidence through the native writer. Do not infer completion of other pending or held initiatives. |
+| Reconciliation | Canonical backlog writer closed the constructor row; native reconcile recorded its real merged PR and timestamp. Counts remain8merged/8pending/13deferred/1obsolete; this is not whole-plan completion. |
+| Prerequisites | Dependency PRs1781-1784 and Git fixture repair1785 merged with fresh local and hosted evidence; main is clean at8f74aaeb7f0d25fab25af72bab7d8643b4994440. |
+| Next | Publish final reconciliation after the separate fifteen-item batch lands; preserve other pending and held initiatives. No native executor admission or implementation-review receipt was fabricated for the direct repair. |
 
 ## Historical construction re-plan 2026-10-13
 

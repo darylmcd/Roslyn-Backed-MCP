@@ -858,7 +858,7 @@
     {
       "id": "change-signature-class-struct-primary-ctor-add-remove",
       "order": 17,
-      "status": "in-review",
+      "status": "merged",
       "backlogRowsClosed": [
         "change-signature-class-struct-primary-ctor-add-remove"
       ],
@@ -898,8 +898,8 @@
       "dependsOn": [],
       "branch": "remediation/change-signature-class-struct-primary-ctor-add-remove",
       "worktreePath": ".worktrees/change-signature-class-struct-primary-ctor-add-remove",
-      "mergedAt": null,
-      "notes": "Operator explicitly authorized design brainstorming and re-plan of this initiative on 2026-10-13; native audited replan retains the prior hold/review/evidence in replans history. Existing PR1779 https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1779 and branch remediation/change-signature-class-struct-primary-ctor-add-remove remain unchanged; published head03d4af4b27af9ff9fb5bc1b871ebc2dd203ea6ba and all staged/working source hashes are preserved. New plan separates edited/default construction identities across primary/ordinary arity crossings; source implementation, publication and merge are not part of this planning request. The generated marker output policy, concrete metadata refusals and full validation obligations are recorded in the own item/stanza; construction-probe-evidence.json records limited feasibility evidence, not an implementation pass. Fresh cold plan reviews0/1 passed-with-warnings, 0blocks/11warnings/12info; native final reviewed hash checks still required before implementation dispatch. Administrative publication gate remains red on profile-specific sketch anchors; existing global owners plan-sketch-evidence-path-portability and plan-review-active-conflict-cache remain responsible. No source/gate/landing approval is implied.\n2026-10-15 live operator authorized direct remediation and shipping without the reworked backlog-remediate skill. Source PR1779 head fc4dc8554d5eda6a9b2fe58e4ec2186591852545 implements ADR0026: retain the explicit zero constructor as initialization owner when adding parameters; marker constructor for last-parameter removal. This supersedes private-core relocation in the historical proposal. Seventeen focused runtime regressions passed after causal old-behavior failures. Full gate found description budget/trigger failures, now corrected; fresh final local and hosted gates remain required. User explicitly approved a checksum-guarded four-anchor portability patch because the native writer has no sketch-anchor repair operation; no other state fields were changed by that exception.",
+      "mergedAt": "2026-10-15T19:56:53Z",
+      "notes": null,
       "fileSetHash": "5639ed45f0325535e2eb6ac1c62b2f0508bdc5f9985ef2dd37d861cbb9dbbfff",
       "stanzaHash": "cff1016057a49018e1978d3b0e6f2ad3308823e6270f83ee042ba00788f6d787",
       "amendments": [
