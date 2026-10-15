@@ -335,6 +335,7 @@ public sealed class SurfaceCatalogTests
                 "get_completions",
                 "bulk_replace_type_apply",
                 "replace_invocation_preview",
+                "change_signature_preview",
                 "apply_composite_preview",
                 "server_info",
                 "get_symbol_outline",
@@ -351,6 +352,7 @@ public sealed class SurfaceCatalogTests
                      "get_completions",
                      "bulk_replace_type_apply",
                      "replace_invocation_preview",
+                     "change_signature_preview",
                  })
         {
             var changedSummaryTool = diff.Tools.Changed.Single(entry => entry.Name == summaryToolName);
@@ -388,7 +390,7 @@ public sealed class SurfaceCatalogTests
         Assert.AreEqual(5, diff.Summary.Added);
         Assert.AreEqual(0, diff.Summary.Removed);
         Assert.AreEqual(0, diff.Summary.Promoted);
-        Assert.AreEqual(11, diff.Summary.Changed);
+        Assert.AreEqual(12, diff.Summary.Changed);
     }
 
     [TestMethod]
@@ -409,6 +411,7 @@ public sealed class SurfaceCatalogTests
                 "get_completions",
                 "bulk_replace_type_apply",
                 "replace_invocation_preview",
+                "change_signature_preview",
                 "apply_composite_preview",
                 "server_info",
                 "get_symbol_outline",
