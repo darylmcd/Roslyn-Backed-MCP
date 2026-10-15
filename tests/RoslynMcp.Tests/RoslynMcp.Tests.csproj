@@ -15,6 +15,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="../GitFixtureWorkerProbe/GitFixtureWorkerProbe.csproj" ReferenceOutputAssembly="false" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="MSTest.TestAdapter" />
     <PackageReference Include="MSTest.TestFramework" />
@@ -39,6 +40,13 @@
          double-run when RoslynMcp.Host.Stdio's own transitive analyzer copy is already present. -->
     <ProjectReference Include="..\..\analyzers\ServerSurfaceCatalogAnalyzer\ServerSurfaceCatalogAnalyzer.csproj" />
   </ItemGroup>
+
+  <Target Name="CopyGitFixtureWorkerProbe" AfterTargets="Build">
+    <ItemGroup>
+      <GitFixtureWorkerProbeOutput Include="../GitFixtureWorkerProbe/bin/$(Configuration)/$(TargetFramework)/*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(GitFixtureWorkerProbeOutput)" DestinationFolder="$(OutDir)GitFixtureWorkerProbe" SkipUnchangedFiles="true" />
+  </Target>
 
   <Target Name="PrepareTestFixtures"
           BeforeTargets="VSTest"

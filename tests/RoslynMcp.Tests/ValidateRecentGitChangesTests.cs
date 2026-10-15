@@ -18,7 +18,7 @@ namespace RoslynMcp.Tests;
 // ValidateRecentGitChangesAsync_AmbientRepositoryOverrides_DoNotEscapeSolutionScope sets the
 // process-global GIT_DIR and GIT_WORK_TREE environment variables to missing paths for the
 // duration of a validation call. Every git child process started meanwhile by any concurrently
-// running class inherits them: GitFixtureRunner.RunGitCapture -> PwshScriptRunner.RunExecutableAsync
+// running class inherits them: GitFixtureRunner.RunGitCaptureAsync -> PwshScriptRunner.RunExecutableAsync
 // does not strip ambient GIT_* overrides (only GitChangedFilesCollector does), so a sibling
 // fixture's `git init` / `git add` / `git commit` would target the missing repository and fail.
 [TestClass]
@@ -26,7 +26,6 @@ namespace RoslynMcp.Tests;
 public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
 {
     private static WorkspaceValidationService _validationService = null!;
-    private static string? _gitUnavailableReason;
 
     [ClassInitialize]
     public static void ClassInit(TestContext _)
@@ -52,15 +51,11 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public async Task ValidateRecentGitChangesAsync_DirtyTree_ScopesToTouchedCsFiles()
     {
-        if (!IsGitAvailable())
-        {
-            Assert.Inconclusive($"git unavailable — cannot run the happy-path test. {_gitUnavailableReason}");
-            return;
-        }
+        await GitFixtureRunner.RequireAvailableAsync();
 
         await using var workspace = CreateIsolatedWorkspaceCopy();
-        GitFixtureRunner.InitializeRepository(workspace.RootPath);
-        GitFixtureRunner.StageAndCommitAll(workspace.RootPath); // seed HEAD so only our edits appear as Modified
+        await GitFixtureRunner.InitializeRepositoryAsync(workspace.RootPath);
+        await GitFixtureRunner.StageAndCommitAllAsync(workspace.RootPath); // seed HEAD so only our edits appear as Modified
 
         // Edit three existing `.cs` files so porcelain reports them as Modified — the
         // initial `git add -A && commit` above ensures nothing else is pending.
@@ -114,8 +109,7 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
     [DataRow("tracker", false)]
     public async Task Validation_PathIdentity_PreservesExactScope(string source, bool caseDistinct)
     {
-        if (!IsGitAvailable())
-            Assert.Inconclusive($"git unavailable: {_gitUnavailableReason}");
+        await GitFixtureRunner.RequireAvailableAsync();
 
         await using var workspace = CreateIsolatedWorkspaceCopy();
         var upper = workspace.GetPath("CaseProbe.cs");
@@ -147,9 +141,9 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
               <Project Path="Lower/Lower.csproj" />
             </Solution>
             """);
-        GitFixtureRunner.InitializeRepository(workspace.RootPath);
-        GitFixtureRunner.RunGit(workspace.RootPath, "add", "--", "CaseProbe.cs", lowerName, "Upper", "Lower");
-        GitFixtureRunner.StageAndCommitAll(workspace.RootPath);
+        await GitFixtureRunner.InitializeRepositoryAsync(workspace.RootPath);
+        await GitFixtureRunner.RunGitAsync(workspace.RootPath, "add", "--", "CaseProbe.cs", lowerName, "Upper", "Lower");
+        await GitFixtureRunner.StageAndCommitAllAsync(workspace.RootPath);
         await workspace.LoadAsync(CancellationToken.None);
         var documentPaths = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId)
             .Projects.SelectMany(project => project.Documents).Select(document => document.FilePath).ToArray();
@@ -209,14 +203,13 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
     [DataRow("literal-backslash")]
     public async Task GitScope_BuildOutputFilter_UsesPlatformPathIdentity(string shape)
     {
-        if (!IsGitAvailable())
-            Assert.Inconclusive($"git unavailable: {_gitUnavailableReason}");
+        await GitFixtureRunner.RequireAvailableAsync();
         if (shape == "literal-backslash" && OperatingSystem.IsWindows())
             Assert.Inconclusive("Windows does not support literal backslashes in file names.");
 
         await using var workspace = CreateIsolatedWorkspaceCopy();
-        GitFixtureRunner.InitializeRepository(workspace.RootPath);
-        GitFixtureRunner.StageAndCommitAll(workspace.RootPath);
+        await GitFixtureRunner.InitializeRepositoryAsync(workspace.RootPath);
+        await GitFixtureRunner.StageAndCommitAllAsync(workspace.RootPath);
         await workspace.LoadAsync(CancellationToken.None);
 
         string[] excluded = ["bin/Generated.cs", "obj/Generated.cs", "nested/bin/Generated.cs", "nested/obj/Generated.cs"];
@@ -243,7 +236,7 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
         }
         // Force-stage outputs so the filter is exercised even with the fixture's .gitignore.
         foreach (var relative in excluded.Concat(retained))
-            GitFixtureRunner.RunGit(workspace.RootPath, "add", "-f", "--", relative);
+            await GitFixtureRunner.RunGitAsync(workspace.RootPath, "add", "-f", "--", relative);
         var known = workspace.GetPath("SampleLib", "Dog.cs");
         await File.AppendAllTextAsync(known, "\n// known dirty source\n");
 
@@ -259,8 +252,7 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public async Task ValidateRecentGitChangesAsync_NestedSolution_UsesRepositoryRelativePaths()
     {
-        if (!IsGitAvailable())
-            Assert.Inconclusive($"git unavailable: {_gitUnavailableReason}");
+        await GitFixtureRunner.RequireAvailableAsync();
 
         await using var workspace = CreateIsolatedWorkspaceCopy();
         var nestedDirectory = workspace.GetPath("nested");
@@ -268,9 +260,9 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
         var nestedSolution = Path.Combine(nestedDirectory, "Nested.slnx");
         await File.WriteAllTextAsync(nestedSolution,
             "<Solution><Project Path=\"../SampleLib/SampleLib.csproj\" /></Solution>");
-        GitFixtureRunner.InitializeRepository(workspace.RootPath);
-        GitFixtureRunner.RunGit(workspace.RootPath, "add", "--", "nested/Nested.slnx");
-        GitFixtureRunner.StageAndCommitAll(workspace.RootPath);
+        await GitFixtureRunner.InitializeRepositoryAsync(workspace.RootPath);
+        await GitFixtureRunner.RunGitAsync(workspace.RootPath, "add", "--", "nested/Nested.slnx");
+        await GitFixtureRunner.StageAndCommitAllAsync(workspace.RootPath);
 
         var inside = Path.Combine(nestedDirectory, "Inside.cs");
         var outside = workspace.GetPath("SampleLib", "AnimalService.cs");
@@ -297,15 +289,11 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public async Task ValidateRecentGitChangesAsync_AmbientRepositoryOverrides_DoNotEscapeSolutionScope()
     {
-        if (!IsGitAvailable())
-        {
-            Assert.Inconclusive($"git unavailable — cannot run the process-environment test. {_gitUnavailableReason}");
-            return;
-        }
+        await GitFixtureRunner.RequireAvailableAsync();
 
         await using var workspace = CreateIsolatedWorkspaceCopy();
-        GitFixtureRunner.InitializeRepository(workspace.RootPath);
-        GitFixtureRunner.StageAndCommitAll(workspace.RootPath);
+        await GitFixtureRunner.InitializeRepositoryAsync(workspace.RootPath);
+        await GitFixtureRunner.StageAndCommitAllAsync(workspace.RootPath);
         var touchedFile = workspace.GetPath("SampleLib", "AnimalService.cs");
         await File.AppendAllTextAsync(touchedFile, $"{Environment.NewLine}// ambient git override {Guid.NewGuid():N}{Environment.NewLine}");
         await workspace.LoadAsync(CancellationToken.None);
@@ -335,15 +323,11 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public async Task ValidateRecentGitChangesAsync_SlowValidationPhase_ReturnsRetryableTimeoutWithGitScope()
     {
-        if (!IsGitAvailable())
-        {
-            Assert.Inconclusive($"git unavailable — cannot run the timeout-scope test. {_gitUnavailableReason}");
-            return;
-        }
+        await GitFixtureRunner.RequireAvailableAsync();
 
         await using var workspace = CreateIsolatedWorkspaceCopy();
-        GitFixtureRunner.InitializeRepository(workspace.RootPath);
-        GitFixtureRunner.StageAndCommitAll(workspace.RootPath);
+        await GitFixtureRunner.InitializeRepositoryAsync(workspace.RootPath);
+        await GitFixtureRunner.StageAndCommitAllAsync(workspace.RootPath);
 
         var touchedFile = workspace.GetPath("SampleLib", "AnimalService.cs");
         await File.AppendAllTextAsync(touchedFile, $"{Environment.NewLine}// timeout scope {Guid.NewGuid():N}{Environment.NewLine}");
@@ -389,15 +373,11 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public async Task ValidateRecentGitChangesAsync_GitStatusTimeout_ReportsGitStatusUnknownNotClean()
     {
-        if (!IsGitAvailable())
-        {
-            Assert.Inconclusive($"git unavailable — cannot run the git-status-timeout test. {_gitUnavailableReason}");
-            return;
-        }
+        await GitFixtureRunner.RequireAvailableAsync();
 
         await using var workspace = CreateIsolatedWorkspaceCopy();
-        GitFixtureRunner.InitializeRepository(workspace.RootPath);
-        GitFixtureRunner.StageAndCommitAll(workspace.RootPath);
+        await GitFixtureRunner.InitializeRepositoryAsync(workspace.RootPath);
+        await GitFixtureRunner.StageAndCommitAllAsync(workspace.RootPath);
 
         // Dirty the tree so a `clean` verdict would be provably wrong.
         var touchedFile = workspace.GetPath("SampleLib", "AnimalService.cs");
@@ -516,15 +496,11 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public async Task ValidateRecentGitChangesAsync_CleanRepo_EmptyScope_NoWarnings()
     {
-        if (!IsGitAvailable())
-        {
-            Assert.Inconclusive($"git unavailable — cannot run the clean-tree test. {_gitUnavailableReason}");
-            return;
-        }
+        await GitFixtureRunner.RequireAvailableAsync();
 
         await using var workspace = CreateIsolatedWorkspaceCopy();
-        GitFixtureRunner.InitializeRepository(workspace.RootPath);
-        GitFixtureRunner.StageAndCommitAll(workspace.RootPath);
+        await GitFixtureRunner.InitializeRepositoryAsync(workspace.RootPath);
+        await GitFixtureRunner.StageAndCommitAllAsync(workspace.RootPath);
 
         await workspace.LoadAsync(CancellationToken.None);
 
@@ -542,8 +518,6 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
     // Helpers
     // ------------------------------------------------------------------
 
-    private static bool IsGitAvailable()
-        => GitFixtureRunner.IsAvailable(out _gitUnavailableReason);
 
     /// <summary>
     /// Removes only the owned fixture's <c>.git</c> entry. Never walk into ancestors:
