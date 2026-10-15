@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-15T21:27:14Z
+**updated_at:** 2026-10-15T21:29:59Z
 
 ## Agent contract
 
@@ -50,7 +50,6 @@
 |----|-----|------|----|------|--------|
 | `logging-default-sink-disabled-stderr-swallowed` | High | logging-retention-destroys-repro-evidence | **Enable the bounded file sink by default for installed users** — ROSLYNMCP_OBSERVABILITY_SINK defaults to `disabled` and the plugin mcp.json never sets it, so an MCP host that swallows stderr leaves no evidence of a first failure. [type: quality] [source: logging-audit 20260930-1340] | M | items/logging-default-sink-disabled-stderr-swallowed.md |
 | `persistent-composite-workspace-identity-not-portable` | High | — | Resolve persisted composite tokens to the correct receiving workspace and source snapshot before claim or mutation. [type: bug] [source: token-lifecycle-independence-revet] | L | items/persistent-composite-workspace-identity-not-portable.md |
-| `ci-policy-docs-complete-shard-coverage` | High | — | Restore the complete class partition on both policy-documentation CI shards; remove the obsolete allowlist and zero-test bypass, and require real test evidence per shard. | M | items/ci-policy-docs-complete-shard-coverage.md |
 
 ## Medium
 
@@ -119,7 +118,7 @@
 | `change-signature-primary-ctor-rename-reorder` | Medium | change-signature-record-primary-ctor-add-remove | **Support rename and reorder on primary constructors in change_signature_preview** — classes, structs and records, including construction sites and named arguments. [type: bug] [source: change-signature-primary-constructor-parameters] | M | items/change-signature-primary-ctor-rename-reorder.md |
 | `load-profile-full-suite` | Medium | — | **Profile full-suite load and decide the test worker cap** — capture thread-pool queue length, workers and CPU during verify-release locally and on hosted windows shards; name the saturating classes. [type: test-infrastructure] [source: load-sensitive-timing-tests-full-suite] | M | items/load-profile-full-suite.md |
 | `timing-test-reaudit-wave` | Medium | — | **Re-audit the remaining wall-clock-sensitive tests** — replace fixed deadlines on timers and spawned children with injected clocks or event waits; start with the pwsh pipe-lifetime test. [type: test-infrastructure] [source: load-sensitive-timing-tests-full-suite] | L | items/timing-test-reaudit-wave.md |
-| `gate-timing-tests-fail-under-machine-load` | Medium | — | **Make wall-clock-bound tests deterministic under load** — CiTopology docs-only allowlist pwsh 30 s limit and WorkspaceValidationVerdict git-scope test fail under a loaded full-suite run. [type: bug] [source: backlog-remediate 20261001T130338Z] | M | items/gate-timing-tests-fail-under-machine-load.md |
+| `gate-timing-tests-fail-under-machine-load` | Medium | — | Make Git-scope and subprocess cancellation proof deterministic under load; preserve causal evidence and distinguish real scope defects from deadline exhaustion. | M | items/gate-timing-tests-fail-under-machine-load.md |
 | `workspace-close-global-build-server-shutdown` | Medium | — | **Scope explicit workspace drain** - replace machine-wide build-server shutdown with verified workspace-owned cleanup. [type: bug] [source: validation-isolation adjacent review 2026-10-04] | M | items/workspace-close-global-build-server-shutdown.md |
 | `test-temp-reaper-live-owner` | Medium | — | **Preserve live test temp roots** — require owner-lifetime evidence before reaping an old sibling directory. [type: bug] [source: addenda preflight 2026-10-04] | S | items/test-temp-reaper-live-owner.md |
 | `change-signature-service-refusals-public-message` | Medium | — | **Publish safe change-signature refusals** — replace unmarked caller errors with typed, path-free diagnostics. [type: bug] [source: change-signature-refusals-public-message] | S | items/change-signature-service-refusals-public-message.md |
