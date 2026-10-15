@@ -1,3 +1,5 @@
+using System.Collections.Immutable;
+
 namespace RoslynMcp.Core.Models;
 
 /// <summary>
@@ -5,12 +7,9 @@ namespace RoslynMcp.Core.Models;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <see cref="Edits"/> is deliberately typed as <see cref="IReadOnlyList{T}"/> rather than
-/// <c>TextEditDto[]</c>: an array-typed record property hands every holder of the DTO a live
-/// mutable reference, so one caller doing <c>dto.Edits[0] = …</c> silently corrupts the edit
-/// sequence observed by every other holder of the same instance.
-/// This prevents mutation through the DTO property; the supplied collection is not copied,
-/// so its owner must keep its contents stable while the DTO is in use.
+/// <see cref="Edits"/> stores an ordered read-only snapshot on construction and init assignment.
+/// Mutating the caller's collection cannot change the DTO's value or hash, and the exposed
+/// collection does not permit mutation through a mutable list interface.
 /// </para>
 /// <para>
 /// The interface swap alone does NOT restore record value equality — the compiler-synthesized
@@ -24,9 +23,24 @@ namespace RoslynMcp.Core.Models;
 /// </para>
 /// </remarks>
 /// <param name="FilePath">The absolute path to the file being edited.</param>
-/// <param name="Edits">Edits may be supplied in any application order. Element order participates in value equality and hashing.</param>
+/// <param name="Edits">Edits may be supplied in any application order and are copied into a read-only snapshot. Element order participates in value equality and hashing.</param>
 public sealed record FileEditsDto(string FilePath, IReadOnlyList<TextEditDto> Edits)
 {
+    private readonly ImmutableArray<TextEditDto> _edits = SnapshotEdits(Edits);
+
+    /// <summary>Ordered edit snapshot; init assignment copies the supplied collection.</summary>
+    public IReadOnlyList<TextEditDto> Edits
+    {
+        get => _edits;
+        init => _edits = SnapshotEdits(value);
+    }
+
+    private static ImmutableArray<TextEditDto> SnapshotEdits(IReadOnlyList<TextEditDto> edits)
+    {
+        ArgumentNullException.ThrowIfNull(edits);
+        return ImmutableArray.CreateRange(edits);
+    }
+
     /// <summary>
     /// Structural equality: <see cref="FilePath"/> compared ordinally (matching the
     /// synthesized behaviour it replaces) and <see cref="Edits"/> compared element-wise in
