@@ -12,12 +12,14 @@ public sealed class PwshScriptRunnerTests
     {
         await GitFixtureRunner.RequireAvailableAsync();
         var root = CreateFixtureRoot();
+        var probeRoot = Path.Combine(root, OperatingSystem.IsWindows() ? "quoted ' paths" : "quoted ' paths with\\backslash");
+        Directory.CreateDirectory(probeRoot);
         try
         {
             var result = await PwshScriptRunner.RunExecutableAsync(
                 "dotnet",
                 [Path.Combine(AppContext.BaseDirectory, "ProcessProbes", "GitFixtureWorkerProbe", "GitFixtureWorkerProbe.dll"),
-                 typeof(GitFixtureRunner).Assembly.Location, root],
+                 typeof(GitFixtureRunner).Assembly.Location, probeRoot],
                 environment: null,
                 timeout: TimeSpan.FromSeconds(45),
                 description: "isolated Git fixture worker probe");

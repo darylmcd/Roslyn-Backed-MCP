@@ -25,7 +25,7 @@ var entered = Path.Combine(root, "entered");
 var release = Path.Combine(root, "release");
 var trace = Path.Combine(root, "git-trace.jsonl");
 Environment.SetEnvironmentVariable("GIT_TRACE2_EVENT", trace);
-static string Quote(string value) => "'" + value.Replace('\\', '/').Replace("'", "'\"'\"'", StringComparison.Ordinal) + "'";
+static string Quote(string value) => "'" + value.Replace("'", "'\"'\"'", StringComparison.Ordinal) + "'";
 var alias = "!dotnet " + Quote(Assembly.GetExecutingAssembly().Location) + " child " + Quote(release) + " " + Quote(entered);
 ThreadPool.SetMinThreads(1, 1);
 if (!ThreadPool.SetMaxThreads(1, 1))
