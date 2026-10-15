@@ -56,7 +56,7 @@ public sealed class WorkspaceReadinessReportIntegrationTests : IsolatedWorkspace
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
         RemoveBuildArtifacts(workspace.RootPath);
-        InitializeGitFixture(workspace.RootPath);
+        await InitializeGitFixtureAsync(workspace.RootPath);
 
         var workspaceId = await workspace.LoadAsync();
         var json = await WorkspaceTools.GetWorkspaceReadinessReport(
@@ -123,7 +123,7 @@ public sealed class WorkspaceReadinessReportIntegrationTests : IsolatedWorkspace
     private static async Task BuildWorkspaceFixtureAsync(IsolatedWorkspaceScope workspace, CancellationToken ct)
     {
         RemoveBuildArtifacts(workspace.RootPath);
-        InitializeGitFixture(workspace.RootPath);
+        await InitializeGitFixtureAsync(workspace.RootPath);
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeoutCts.CancelAfter(ReadinessBuildTimeout);
         CommandExecutionDto execution;
@@ -159,15 +159,12 @@ public sealed class WorkspaceReadinessReportIntegrationTests : IsolatedWorkspace
         }
     }
 
-    private static void InitializeGitFixture(string rootPath)
+    private static async Task InitializeGitFixtureAsync(string rootPath)
     {
-        if (!GitFixtureRunner.IsAvailable(out var failureReason))
-        {
-            Assert.Inconclusive($"git is required to exercise the SourceLink-ready fixture: {failureReason}");
-        }
+        await GitFixtureRunner.RequireAvailableAsync();
 
-        GitFixtureRunner.InitializeRepository(rootPath, "https://example.invalid/fixture.git");
-        GitFixtureRunner.StageAndCommitAll(rootPath);
+        await GitFixtureRunner.InitializeRepositoryAsync(rootPath, "https://example.invalid/fixture.git");
+        await GitFixtureRunner.StageAndCommitAllAsync(rootPath);
     }
 
     private static bool IsKnownVerdict(string? verdict) =>

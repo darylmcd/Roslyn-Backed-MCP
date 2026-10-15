@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-15T19:59:06Z
+**updated_at:** 2026-10-15T20:03:08Z
 
 ## Agent contract
 
@@ -396,7 +396,6 @@
 | `argument-error-retired-family-design-links` | Low | — | **Preserve argument-error family design guidance** — replace fifteen live links to the deleted core-move item with a durable, source-verified contract. [type: docs] [source: backlog-remediate adjacent verification 2026-10-05] | M | items/argument-error-retired-family-design-links.md |
 | `test-workspace-fakes-hand-rolled-per-file` | Low | — | **Workspace interfaces are re-faked per test file** — 34 hand-written IWorkspaceManager and 23 IWorkspaceExecutionGate fakes restate the whole interface; slice the move onto shared Helpers doubles. [type: test-refactor] [source: test-rot-probe-20261009] | S | items/test-workspace-fakes-hand-rolled-per-file.md |
 | `test-try-delete-directory-copies` | Low | — | **TryDeleteDirectory with a bare catch is copied into 7 test files** — beside the shared TestFixtureFileSystem.DeleteDirectoryIfExists; a leaked fixture directory is invisible. Use the shared helper. [type: test-refactor] [source: test-rot-probe-20261009] | S | items/test-try-delete-directory-copies.md |
-| `test-require-git-triplicated` | Low | — | **RequireGit is duplicated in three test classes** — ChangelogFragmentRequirementTests, CodexChangelogHookTests and ReleaseLagGuardTests each define it; share one helper beside GitFixtureRunner. [type: test-refactor] [source: test-rot-probe-20261009] | L | items/test-require-git-triplicated.md |
 | `sanctioned-root-refusal-names-no-remedy` | Low | — | **The sanctioned-root refusal names no remedy** — workspace_load outside the boundary returns one sentence with no pointer to ROSLYNMCP_SANCTIONED_ROOTS or expandSanctionedRoots; a caller cannot self-correct. [type: bug] [source: test-rot-probe-20261009] | M | items/sanctioned-root-refusal-names-no-remedy.md |
 | `symbol-resolver-token-lookup-comment-parity` | Low | navigation-and-locator-argument-refusals-public-message | **Align SymbolResolver token lookup commentary** — replace the stale findInsideTrivia claim with the actual exact-position lookup and lenient preceding-token fallback; preserve behavior. [type: chore] [source: navigation cold self-review] | S | items/symbol-resolver-token-lookup-comment-parity.md |
 | `file-operation-preview-state-assertion-contract` | Low | — | Assert preview refusal behavior without reflecting private store representation; update every consumer. [type: test-refactor] [source: token-lifecycle-independence-revet] | S | items/file-operation-preview-state-assertion-contract.md |

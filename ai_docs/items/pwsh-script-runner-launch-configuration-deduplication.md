@@ -18,3 +18,5 @@
 ## Evidence
 
 2026-09-15 direct review: RunAsync and RunExecutableAsync independently construct the same redirected, noninteractive ProcessStartInfo and populate ArgumentList; configuration fixes currently require duplicate edits.
+
+2026-10-15: Git fixture async migration unifies RunAsync and RunExecutableAsync launch configuration and environment handling; formatter-baseline incremental/PID consumer acceptance remains open. Do not close this row from configuration deduplication alone.

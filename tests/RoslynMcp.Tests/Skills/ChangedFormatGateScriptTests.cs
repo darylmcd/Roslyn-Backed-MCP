@@ -520,7 +520,7 @@ public sealed class ChangedFormatGateScriptTests
     private static Task<PwshScriptResult> RunProcessAsync(
         string fileName, string workingDirectory, string[] arguments, TimeSpan? timeout = null) =>
         PwshScriptRunner.RunExecutableAsync(
-            fileName, arguments, workingDirectory, timeout ?? TimeSpan.FromMinutes(5),
+            fileName, arguments, null, workingDirectory, timeout ?? TimeSpan.FromMinutes(5),
             description: "changed-format fixture process");
 
     private static string Describe(string expectation, PwshScriptResult result) =>
