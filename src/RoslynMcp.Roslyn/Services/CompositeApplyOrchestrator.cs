@@ -257,7 +257,7 @@ internal static class AtomicFileWriter
         ct.ThrowIfCancellationRequested();
         var (tmp, stream) = ReserveUniqueTempPath(path);
         return WriteAtomicAtTempPathAsync(
-            path, tmp, stream, writeTempAsync, ct, logger, exceptionReporter);
+            path, tmp, stream, writeTempAsync, Task.Delay, ct, logger, exceptionReporter);
     }
 
     private static (string Path, FileStream Stream) ReserveUniqueTempPath(string path)
@@ -287,6 +287,7 @@ internal static class AtomicFileWriter
         string tmp,
         FileStream stream,
         Func<string, FileStream, Task> writeTempAsync,
+        Func<int, CancellationToken, Task> delayAsync,
         CancellationToken ct,
         ILogger? logger,
         IUnexpectedExceptionReporter? exceptionReporter)
@@ -297,7 +298,7 @@ internal static class AtomicFileWriter
             {
                 await writeTempAsync(tmp, stream).ConfigureAwait(false);
                 await stream.FlushAsync(ct).ConfigureAwait(false);
-                await ReplaceAfterTransientReaderAsync(tmp, path, stream, ct).ConfigureAwait(false);
+                await ReplaceAfterTransientReaderAsync(tmp, path, stream, delayAsync, ct).ConfigureAwait(false);
             }
             catch
             {
@@ -311,6 +312,7 @@ internal static class AtomicFileWriter
         string tmp,
         string path,
         FileStream stream,
+        Func<int, CancellationToken, Task> delayAsync,
         CancellationToken ct)
     {
         const int maxAttempts = 10;
@@ -332,7 +334,7 @@ internal static class AtomicFileWriter
             catch (Exception ex) when (attempt < maxAttempts &&
                                        IsRetryableWindowsReplacementFailure(ex))
             {
-                await Task.Delay(Math.Min(25 << (attempt - 1), 400), ct).ConfigureAwait(false);
+                await delayAsync(Math.Min(25 << (attempt - 1), 400), ct).ConfigureAwait(false);
             }
         }
     }

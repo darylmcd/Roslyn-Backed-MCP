@@ -140,12 +140,7 @@ public sealed class McpServerStressSkillFrontmatterTests
         // throughout the deep-review prompt. The trailing word boundary stops at `(`, `\`` (backtick),
         // ` `, `.`, `,`, `)`, end-of-line, etc.
         var matches = Regex.Matches(contents, @"mcp__roslyn__([a-zA-Z_][a-zA-Z0-9_]*)");
-        if (matches.Count == 0)
-        {
-            // No tool references in the body — that is fine for a thin alias. The frontmatter test
-            // already validates the structural contract.
-            return;
-        }
+        Assert.IsTrue(matches.Count > 0, "The skill must name Roslyn tools so surface validation exercises its contract.");
 
         var liveToolNames = new HashSet<string>(
             ServerSurfaceCatalog.Tools.Select(t => t.Name),

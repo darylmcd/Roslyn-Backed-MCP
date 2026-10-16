@@ -1,11 +1,10 @@
 using System.Net.Http;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.Text;
-using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -19,6 +18,23 @@ namespace RoslynMcp.Tests;
 [TestClass]
 public sealed class DuplicateHelperDetectionTests
 {
+    private readonly List<UnusedCodeAnalyzerTestHarness> _harnesses = [];
+
+    [TestCleanup]
+    public async Task CleanupAsync()
+    {
+        try
+        {
+            await CleanupFailureCollector.RunAsync(
+                "Failed to dispose analyzer fixtures.",
+                _harnesses.Select(harness => CleanupFailureCollector.FromAction(harness.Dispose)).ToArray());
+        }
+        finally
+        {
+            _harnesses.Clear();
+        }
+    }
+
     private const string WorkspaceId = "dup-helper-test-ws";
 
     [TestMethod]
@@ -417,7 +433,7 @@ public sealed class DuplicateHelperDetectionTests
         Assert.AreEqual("IsBlank", hits[0].SymbolName);
     }
 
-    private static async Task<IReadOnlyList<DuplicateHelperDto>> FindHitsWithLinqAsync(string source)
+    private async Task<IReadOnlyList<DuplicateHelperDto>> FindHitsWithLinqAsync(string source)
     {
         var linqReference = MetadataReference.CreateFromFile(typeof(Enumerable).Assembly.Location);
         var compileErrors = await GetCompilationErrorsAsync(source, linqReference);
@@ -460,15 +476,12 @@ public sealed class DuplicateHelperDetectionTests
     /// calls to <see cref="System.String"/> in <c>System.Private.CoreLib</c> for the
     /// detector's non-source-assembly check to fire.
     /// </summary>
-    private static UnusedCodeAnalyzer BuildAnalyzerWithSource(string source, params MetadataReference[] additionalMetadataReferences)
+    private UnusedCodeAnalyzer BuildAnalyzerWithSource(string source, params MetadataReference[] additionalMetadataReferences)
     {
         var workspace = CreateAdhocWorkspace(source, additionalMetadataReferences);
-        var wsManager = new TestWorkspaceManager(WorkspaceId, workspace);
-        var cache = new CompilationCache(wsManager);
-        return new UnusedCodeAnalyzer(
-            wsManager,
-            cache,
-            NullLogger<UnusedCodeAnalyzer>.Instance);
+        var harness = new UnusedCodeAnalyzerTestHarness(WorkspaceId, workspace);
+        _harnesses.Add(harness);
+        return harness.Analyzer;
     }
 
     private static AdhocWorkspace CreateAdhocWorkspace(string source, params MetadataReference[] additionalMetadataReferences)
@@ -498,38 +511,12 @@ public sealed class DuplicateHelperDetectionTests
 
         metadataRefs.AddRange(additionalMetadataReferences);
 
-        var workspace = new AdhocWorkspace();
-        var projectId = ProjectId.CreateNewId();
-        var projectInfo = ProjectInfo.Create(
-            projectId,
-            VersionStamp.Create(),
-            name: "TestAsm",
-            assemblyName: "TestAsm",
-            language: LanguageNames.CSharp,
-            filePath: Path.Combine(Path.GetTempPath(), "TestAsm.csproj"),
-            compilationOptions: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary),
-            metadataReferences: metadataRefs.ToArray());
-        workspace.AddProject(projectInfo);
-
-        var docId = DocumentId.CreateNewId(projectId);
-        var fileName = "Sample.cs";
-        var fullPath = Path.Combine(Path.GetTempPath(), fileName);
-        workspace.AddDocument(DocumentInfo.Create(
-            docId,
-            fileName,
-            filePath: fullPath,
-            loader: TextLoader.From(
-                TextAndVersion.Create(
-                    SourceText.From(source),
-                    VersionStamp.Create(),
-                    fullPath))));
-
-        return workspace;
+        return UnusedCodeAnalyzerTestHarness.CreateWorkspace(source, metadataRefs);
     }
 
     private static async Task<string> GetCompilationErrorsAsync(string source, params MetadataReference[] additionalMetadataReferences)
     {
-        var workspace = CreateAdhocWorkspace(source, additionalMetadataReferences);
+        using var workspace = CreateAdhocWorkspace(source, additionalMetadataReferences);
         var project = workspace.CurrentSolution.Projects.First();
         var compilation = await project.GetCompilationAsync().ConfigureAwait(false);
         var errors = compilation!.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).ToArray();
@@ -561,52 +548,5 @@ public sealed class DuplicateHelperDetectionTests
         }
 
         return MetadataReference.CreateFromImage(stream.ToArray());
-    }
-
-    /// <summary>
-    /// Minimal <see cref="IWorkspaceManager"/> stand-in — only the surface the analyzer
-    /// and the compilation cache touch is wired; the rest throws to surface accidental
-    /// coupling.
-    /// </summary>
-    private sealed class TestWorkspaceManager : IWorkspaceManager
-    {
-        private readonly string _workspaceId;
-        private readonly AdhocWorkspace _workspace;
-
-        public event Action<string>? WorkspaceClosed;
-        public event Action<string>? WorkspaceReloaded;
-
-        public TestWorkspaceManager(string workspaceId, AdhocWorkspace workspace)
-        {
-            _workspaceId = workspaceId;
-            _workspace = workspace;
-        }
-
-        public void RaiseWorkspaceClosed(string workspaceId) => WorkspaceClosed?.Invoke(workspaceId);
-        public void RaiseWorkspaceReloaded(string workspaceId) => WorkspaceReloaded?.Invoke(workspaceId);
-
-        public Solution GetCurrentSolution(string workspaceId)
-        {
-            return workspaceId == _workspaceId
-                ? _workspace.CurrentSolution
-                : throw new InvalidOperationException($"Unknown workspace {workspaceId}");
-        }
-
-        public int GetCurrentVersion(string workspaceId) => 1;
-        public void RestoreVersion(string workspaceId, int version) { }
-        public bool ContainsWorkspace(string workspaceId) => workspaceId == _workspaceId;
-        public bool IsStale(string workspaceId) => false;
-        public Project? GetProject(string workspaceId, string projectNameOrPath) => null;
-
-        public Task<WorkspaceStatusDto> LoadAsync(string path, EvictPolicy evictPolicy, CancellationToken ct) => throw new NotSupportedException();
-        public Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct) => throw new NotSupportedException();
-        public bool Close(string workspaceId) => throw new NotSupportedException();
-        public IReadOnlyList<WorkspaceStatusDto> ListWorkspaces() => throw new NotSupportedException();
-        public WorkspaceStatusDto GetStatus(string workspaceId) => throw new NotSupportedException();
-        public Task<WorkspaceStatusDto> GetStatusAsync(string workspaceId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-        public ProjectGraphDto GetProjectGraph(string workspaceId) => throw new NotSupportedException();
-        public Task<IReadOnlyList<GeneratedDocumentDto>> GetSourceGeneratedDocumentsAsync(string workspaceId, string? projectName, CancellationToken ct) => throw new NotSupportedException();
-        public Task<string?> GetSourceTextAsync(string workspaceId, string filePath, CancellationToken ct) => throw new NotSupportedException();
-        public bool TryApplyChanges(string workspaceId, Solution newSolution) => throw new NotSupportedException();
     }
 }

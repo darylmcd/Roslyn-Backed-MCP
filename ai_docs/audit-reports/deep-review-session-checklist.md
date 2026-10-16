@@ -19,7 +19,7 @@ Use with [`skills/mcp-server-surface-test/prompts/full.md`](../../skills/mcp-ser
 | Prior issue source | `ai_docs/backlog.md` when available; otherwise previous audit or issue tracker |
 | Client capability limits | Note whether this MCP client can invoke prompts and read resources directly |
 | Debug log channel | `yes` / `partial` / `no` — whether the client surfaces MCP `notifications/message` log entries |
-| Plugin skills repo path | Absolute/relative path to the Roslyn-Backed-MCP checkout used for Phase 16b (or `blocked — <reason>`) |
+| Static skills audit evidence | Optional independent /surface-audit result; outside the server-execution audit |
 
 ## Automated pre-checks (repository)
 
@@ -43,7 +43,6 @@ Capture Phase 0 facts before the audit gets noisy.
 | Repo shape (projects, tests, analyzers, DI, source generators, CPM, multi-targeting, network limits) | |
 | Client can read resources? | yes / no + notes |
 | Client can invoke prompts? | yes / no + notes |
-| Plugin skills repo reachable for Phase 16b? | yes / no + reason |
 
 ### 2. Coverage closure and ledger discipline
 
@@ -60,7 +59,7 @@ Track the live catalog, not the client UI. The ledger carries `tier` and `lastEl
 
 ### 3. Phase matrix
 
-Order matches the living prompt (**8b** after **8**; **9** after **10**; **16b** after **16**). Record families exercised, status mix, and **PASS / FLAG / FAIL**.
+Order matches the living prompt (**8b** after **8**; **9** after **10**). Record families exercised, status mix, and **PASS / FLAG / FAIL**.
 
 | Phase | Families exercised | PASS / FLAG / FAIL | Notes |
 |------|--------------------|--------------------|-------|
@@ -82,7 +81,6 @@ Order matches the living prompt (**8b** after **8**; **9** after **10**; **16b**
 | 14 | | | |
 | 15 | | | |
 | 16 | | | Prompt verification |
-| 16b | | | Plugin skills audit |
 | 17 | | | |
 | 18 | | | |
 
@@ -143,13 +141,9 @@ Report section 10. One row per exercised prompt.
 |--------|-----------|------------|--------------------|------------|----------------------|
 | *(fill for every exercised prompt)* | | | | | |
 
-### 10. Plugin skills audit (Phase 16b)
+### 10. Independent static skills audit
 
-Report section 11. Build this table from the live `skills/**/SKILL.md` inventory; do not hardcode a count in the worksheet. Mark `blocked` with a reason if the plugin repo is not reachable.
-
-| Skill | frontmatter_ok | tool_refs_valid (invalid_count) | dry_run | safety_rules |
-|-------|----------------|----------------------------------|---------|--------------|
-| *(fill one row per live skill)* | | | | |
+Use /surface-audit for SKILL.md frontmatter parity and tool-reference resolution against the live catalog. Cite its evidence separately when needed; it is outside this server-execution run.
 
 ### 11. Experimental promotion scorecard
 

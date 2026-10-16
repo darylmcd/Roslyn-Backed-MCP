@@ -26,7 +26,7 @@ namespace RoslynMcp.Tests;
 // donotparallelize-audit-wave-23: [DoNotParallelize] removed. Each test builds its own in-memory
 // client/server harness over a per-test ServiceCollection (no process-global MCP registration),
 // uses per-test recording fakes (RecordingReporter, CountingTestNameSuggestionProvider,
-// SamplingWorkspaceManager), and every real workspace is a per-test IsolatedWorkspaceScope copy
+// FailClosedWorkspaceManagerStub), and every real workspace is a per-test IsolatedWorkspaceScope copy
 // loaded and closed through WorkspaceManager — scaffold_test_preview is preview-only, so there is
 // no *_apply, no shared-workspace reload, and no write outside the test's own temp copy. No static
 // mutable fields or environment variables are touched. Validated by a bounded repeated (3x)
@@ -89,7 +89,7 @@ public sealed class SamplingMrtrWireTests : IsolatedWorkspaceTestBase
     {
         var originalWorkspaceId = Guid.NewGuid().ToString("N");
         var concurrentWorkspaceId = Guid.NewGuid().ToString("N");
-        var workspaceManager = new SamplingWorkspaceManager(WorkspaceStatus(originalWorkspaceId));
+        var workspaceManager = new FailClosedWorkspaceManagerStub(WorkspaceStatus(originalWorkspaceId));
         var samplingCount = 0;
         var scaffoldingService = new RecordingScaffoldingService();
 #pragma warning disable MCP9005 // Test fixture for the SDK sampling payload carried inside MRTR.
@@ -1137,45 +1137,6 @@ public sealed class Dog { public void Speak() { } }
             ScaffoldFirstTestFileDto request,
             CancellationToken ct) =>
             throw new NotSupportedException();
-    }
-
-    private sealed class SamplingWorkspaceManager(params WorkspaceStatusDto[] workspaces) : IWorkspaceManager
-    {
-        private WorkspaceStatusDto[] _workspaces = workspaces;
-
-        public event Action<string>? WorkspaceClosed { add { } remove { } }
-        public event Action<string>? WorkspaceReloaded { add { } remove { } }
-
-        public IReadOnlyList<WorkspaceStatusDto> ListWorkspaces() => Volatile.Read(ref _workspaces);
-        public void ReplaceWith(params WorkspaceStatusDto[] replacement) =>
-            Volatile.Write(ref _workspaces, replacement);
-        public Task<WorkspaceStatusDto> LoadAsync(string path, EvictPolicy evictPolicy, CancellationToken ct) =>
-            throw new NotSupportedException();
-        public Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct) =>
-            throw new NotSupportedException();
-        public bool ContainsWorkspace(string workspaceId) => false;
-        public bool IsStale(string workspaceId) => false;
-        public bool Close(string workspaceId) => throw new NotSupportedException();
-        public WorkspaceStatusDto GetStatus(string workspaceId) => throw new NotSupportedException();
-        public Task<WorkspaceStatusDto> GetStatusAsync(
-            string workspaceId,
-            CancellationToken cancellationToken = default) => throw new NotSupportedException();
-        public ProjectGraphDto GetProjectGraph(string workspaceId) => throw new NotSupportedException();
-        public Task<IReadOnlyList<GeneratedDocumentDto>> GetSourceGeneratedDocumentsAsync(
-            string workspaceId,
-            string? projectName,
-            CancellationToken ct) => throw new NotSupportedException();
-        public Task<string?> GetSourceTextAsync(
-            string workspaceId,
-            string filePath,
-            CancellationToken ct) => throw new NotSupportedException();
-        public int GetCurrentVersion(string workspaceId) => throw new NotSupportedException();
-        public Solution GetCurrentSolution(string workspaceId) => throw new NotSupportedException();
-        public Project? GetProject(string workspaceId, string projectNameOrPath) =>
-            throw new NotSupportedException();
-        public bool TryApplyChanges(string workspaceId, Solution newSolution) =>
-            throw new NotSupportedException();
-        public void RestoreVersion(string workspaceId, int version) => throw new NotSupportedException();
     }
 
     private static WorkspaceStatusDto WorkspaceStatus(string workspaceId) => new(

@@ -27,3 +27,5 @@
 
 - Expected production scope: the three consumers plus one shared helper; tests: existing three integration classes. Probe before implementing, and record any additional exact copies.
 - Sequence after the public-message corrections to avoid conflating error-policy fixes with this independent duplication cleanup.
+
+2026-10-15 source review: WorkspaceProjectResolver.cs:14-21 is another name-or-file-path OR predicate and compares candidate.FilePath with OrdinalIgnoreCase. Re-derive the previous acceptance requirement to preserve comparison: Linux case-distinct paths and physical aliases require platform-correct path identity, as the landed WorkspaceManager lookup already demonstrates. Include this consumer in the construct probe, retain its status-DTO/caller-error contract, and reproduce before claiming a fix; no runtime case reproduction was run for this observation.

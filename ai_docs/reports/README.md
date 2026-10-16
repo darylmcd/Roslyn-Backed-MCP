@@ -30,7 +30,7 @@ Each rollup should include:
 | Performance baseline rollup | Aggregated p50/p90 `_meta.elapsedMs` per tool across repos. Drives "is tool X within budget on real-world solutions" decisions. |
 | Experimental promotion rollup | Per-experimental-entry recommendation aggregated across repos. Feeds `docs/experimental-promotion-analysis.md`. Flag any entry with `deprecate` or repeated FAIL findings. |
 | Prompt verification rollup | Aggregated prompt-verification counts: exercised, blocked, hallucinated tools, idempotency failures. |
-| Skills audit rollup | Required when any input ran Phase 16b. Any invalid tool reference is a plugin ship blocker. |
+| Static skills audit | Owned by /surface-audit; cite its independent evidence when relevant. Invalid tool references remain plugin ship blockers. |
 | Deduped issues | Unique defect key (`tool + symptom + catalog-version + client-family`) and linked evidence |
 | Candidate closures | Prior ids and current evidence |
 | Backlog actions | Rows to open, update, or intentionally leave out |
@@ -39,8 +39,10 @@ Each rollup should include:
 
 **Rollup scaffolding:** author by hand when a release-gate sign-off requires a narrative rollup. The skill does not generate rollup markdown — for routine batches, `review-inbox/` + the backlog commit is the evidence trail.
 
-## Current files
+## Retention
 
-No standalone report artifacts are currently retained. The May 2026 intake moved live findings into `../backlog.md`, left fixed or stale findings out, and removed the consumed reports.
+Retain each report until a newer report names the same target through a `supersedes:` header or explicit citation. Retirement requires operator approval; it is never automatic.
+
+The latest-three rotation policy for raw audits does not apply to this directory.
 
 For the full deep-review workflow, start with `../procedures/deep-review-program.md`.

@@ -7,21 +7,21 @@ namespace RoslynMcp.Tests.Support;
 /// <list type="number">
 ///   <item>
 ///     Building a small on-disk git repo around the SampleSolution fixture —
-///     <see cref="StageFixtureBaseline"/> / <see cref="StageAndCommitAll"/> plus
-///     <see cref="RunGit"/>. Extracted from <c>ValidateRecentGitChangesTests</c>
+///     <see cref="StageFixtureBaselineAsync"/> / <see cref="StageAndCommitAllAsync"/> plus
+///     <see cref="RunGitAsync"/>. Extracted from <c>ValidateRecentGitChangesTests</c>
 ///     and <c>ValidateWorkspaceChangeTrackerReconcileTests</c> where the same
 ///     implementation was duplicated verbatim.
 ///   </item>
 ///   <item>
 ///     Read-only git queries against the REAL repository root — e.g.
 ///     <c>McpServerSurfaceTestSkillTests.CanonicalPromotionScorecard_IsGitTracked</c>
-///     calls <see cref="RunGitCapture"/> with <c>git ls-files</c> to assert a
+///     calls <see cref="RunGitCaptureAsync"/> with <c>git ls-files</c> to assert a
 ///     path's tracked state. Only non-mutating porcelain/plumbing queries are
 ///     acceptable against the real root; the staging and commit helpers above
 ///     are strictly for throwaway fixture directories.
 ///   </item>
 /// </list>
-/// <see cref="IsAvailable"/> gates both usages so a machine without git on PATH
+/// <see cref="RequireAvailableAsync"/> gates both usages so a machine without git on PATH
 /// yields an <c>Assert.Inconclusive</c> instead of a hard failure.
 /// </summary>
 internal static class GitFixtureRunner
@@ -41,26 +41,23 @@ internal static class GitFixtureRunner
         "SampleLib.Tests",
     };
 
-    public static bool IsAvailable(out string? failureReason)
+    public static async Task RequireAvailableAsync()
     {
         try
         {
-            _ = RunGitCapture(Environment.CurrentDirectory, "--version");
-            failureReason = null;
-            return true;
+            _ = await RunGitCaptureAsync(Environment.CurrentDirectory, "--version");
         }
-        catch (Exception ex)
+        catch (System.ComponentModel.Win32Exception exception) when (exception.NativeErrorCode is 2 or 3)
         {
-            failureReason = $"{ex.GetType().Name}: {ex.Message}";
-            return false;
+            Assert.Inconclusive($"git is required for repository fixtures: {exception.GetType().Name}: {exception.Message}");
         }
     }
 
-    public static void InitializeRepository(string directory, string? originUrl = null)
+    public static async Task InitializeRepositoryAsync(string directory, string? originUrl = null)
     {
         // Force a named initial branch so fixtures never inherit machine-specific
         // init.defaultBranch settings or remain on an ambiguous unborn HEAD.
-        RunGit(directory, "init", "-q", "-b", "main");
+        await RunGitAsync(directory, "init", "-q", "-b", "main");
         if (!Directory.Exists(Path.Combine(directory, ".git")))
         {
             throw new InvalidOperationException(
@@ -68,24 +65,24 @@ internal static class GitFixtureRunner
         }
 
         File.WriteAllText(Path.Combine(directory, ".gitignore"), "bin/\nobj/\n");
-        RunGit(directory, "config", "--local", "user.email", "ci@example.invalid");
-        RunGit(directory, "config", "--local", "user.name", "CI");
-        RunGit(directory, "config", "--local", "commit.gpgsign", "false");
-        RunGit(directory, "config", "--local", "core.autocrlf", "false");
+        await RunGitAsync(directory, "config", "--local", "user.email", "ci@example.invalid");
+        await RunGitAsync(directory, "config", "--local", "user.name", "CI");
+        await RunGitAsync(directory, "config", "--local", "commit.gpgsign", "false");
+        await RunGitAsync(directory, "config", "--local", "core.autocrlf", "false");
 
         if (!string.IsNullOrWhiteSpace(originUrl))
         {
-            RunGit(directory, "remote", "add", "origin", originUrl);
+            await RunGitAsync(directory, "remote", "add", "origin", originUrl);
         }
     }
 
-    public static void StageAndCommitAll(string directory)
+    public static async Task StageAndCommitAllAsync(string directory)
     {
-        StageFixtureBaseline(directory);
-        RunGit(directory, "commit", "-q", "-m", "seed");
+        await StageFixtureBaselineAsync(directory);
+        await RunGitAsync(directory, "commit", "-q", "-m", "seed");
     }
 
-    public static void StageFixtureBaseline(string directory)
+    public static async Task StageFixtureBaselineAsync(string directory)
     {
         var pathspecs = FixturePathSpecs
             .Where(path => File.Exists(Path.Combine(directory, path)) || Directory.Exists(Path.Combine(directory, path)))
@@ -100,22 +97,22 @@ internal static class GitFixtureRunner
         arguments[0] = "add";
         arguments[1] = "--";
         Array.Copy(pathspecs, 0, arguments, 2, pathspecs.Length);
-        RunGit(directory, arguments);
+        await RunGitAsync(directory, arguments);
     }
 
-    public static void RunGit(string workingDirectory, params string[] arguments)
-        => _ = RunGitCapture(workingDirectory, arguments);
+    public static async Task RunGitAsync(string workingDirectory, params string[] arguments)
+        => _ = await RunGitCaptureAsync(workingDirectory, arguments);
 
-    public static string RunGitCapture(string workingDirectory, params string[] arguments)
+    public static async Task<string> RunGitCaptureAsync(string workingDirectory, params string[] arguments)
     {
-        // Keep the synchronous fixture API; the shared runner owns the combined exit/drain
-        // deadline and cancels and observes both readers before disposing their streams.
-        var result = PwshScriptRunner.RunExecutableAsync(
+        // Await the shared exit/drain deadline without blocking a test worker.
+        var result = await PwshScriptRunner.RunExecutableAsync(
             "git",
             arguments,
-            workingDirectory,
+            environment: null,
+            workingDirectory: workingDirectory,
             timeout: TimeSpan.FromSeconds(30),
-            description: $"git {string.Join(' ', arguments)}").GetAwaiter().GetResult();
+            description: $"git {string.Join(' ', arguments)}");
         if (result.ExitCode != 0)
         {
             throw new InvalidOperationException(

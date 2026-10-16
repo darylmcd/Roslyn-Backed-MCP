@@ -1,8 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Text;
-using RoslynMcp.Core.Models;
-using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -349,61 +348,17 @@ public sealed class CodeMetricsNestingTests
                     VersionStamp.Create(),
                     fullPath))));
 
-        var wsManager = new TestWorkspaceManager(WorkspaceId, workspace, onGetCurrentSolution);
+        var wsManager = new FailClosedWorkspaceManagerStub
+        {
+            GetCurrentSolutionHandler = id =>
+            {
+                onGetCurrentSolution?.Invoke();
+                return id == WorkspaceId
+                    ? workspace.CurrentSolution
+                    : throw new InvalidOperationException($"Unknown workspace {id}");
+            },
+        };
         var service = new CodeMetricsService(wsManager);
         return (workspace, service, fullPath);
-    }
-
-    /// <summary>
-    /// Minimal <see cref="IWorkspaceManager"/> stand-in — mirrors the pattern in
-    /// DuplicateMethodDetectorTests. Only <see cref="GetCurrentSolution"/> is needed
-    /// for <see cref="CodeMetricsService"/>; the rest throw to surface accidental coupling.
-    /// </summary>
-    private sealed class TestWorkspaceManager : IWorkspaceManager
-    {
-        private readonly string _workspaceId;
-        private readonly AdhocWorkspace _workspace;
-        private readonly Action? _onGetCurrentSolution;
-
-        public event Action<string>? WorkspaceClosed;
-        public event Action<string>? WorkspaceReloaded;
-
-        public TestWorkspaceManager(
-            string workspaceId,
-            AdhocWorkspace workspace,
-            Action? onGetCurrentSolution = null)
-        {
-            _workspaceId = workspaceId;
-            _workspace = workspace;
-            _onGetCurrentSolution = onGetCurrentSolution;
-        }
-
-        public void RaiseWorkspaceClosed(string workspaceId) => WorkspaceClosed?.Invoke(workspaceId);
-        public void RaiseWorkspaceReloaded(string workspaceId) => WorkspaceReloaded?.Invoke(workspaceId);
-
-        public Solution GetCurrentSolution(string workspaceId)
-        {
-            _onGetCurrentSolution?.Invoke();
-            return workspaceId == _workspaceId
-                ? _workspace.CurrentSolution
-                : throw new InvalidOperationException($"Unknown workspace {workspaceId}");
-        }
-
-        public int GetCurrentVersion(string workspaceId) => 1;
-        public void RestoreVersion(string workspaceId, int version) { }
-        public bool ContainsWorkspace(string workspaceId) => workspaceId == _workspaceId;
-        public bool IsStale(string workspaceId) => false;
-        public Project? GetProject(string workspaceId, string projectNameOrPath) => null;
-
-        public Task<WorkspaceStatusDto> LoadAsync(string path, EvictPolicy evictPolicy, CancellationToken ct) => throw new NotSupportedException();
-        public Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct) => throw new NotSupportedException();
-        public bool Close(string workspaceId) => throw new NotSupportedException();
-        public IReadOnlyList<WorkspaceStatusDto> ListWorkspaces() => throw new NotSupportedException();
-        public WorkspaceStatusDto GetStatus(string workspaceId) => throw new NotSupportedException();
-        public Task<WorkspaceStatusDto> GetStatusAsync(string workspaceId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-        public ProjectGraphDto GetProjectGraph(string workspaceId) => throw new NotSupportedException();
-        public Task<IReadOnlyList<GeneratedDocumentDto>> GetSourceGeneratedDocumentsAsync(string workspaceId, string? projectName, CancellationToken ct) => throw new NotSupportedException();
-        public Task<string?> GetSourceTextAsync(string workspaceId, string filePath, CancellationToken ct) => throw new NotSupportedException();
-        public bool TryApplyChanges(string workspaceId, Solution newSolution) => throw new NotSupportedException();
     }
 }

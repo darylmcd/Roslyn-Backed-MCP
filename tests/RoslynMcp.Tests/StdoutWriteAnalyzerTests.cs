@@ -1,8 +1,6 @@
 // Tests for the StdoutWriteAnalyzer (RMCP010). See
 // analyzers/ServerSurfaceCatalogAnalyzer/StdoutWriteAnalyzer.cs for the analyzer
-// implementation; these tests exercise the scenarios documented in
-// ai_docs/plans/20260426T025255Z_backlog-sweep/plan.md initiative #1
-// (stdio-host-stdout-audit):
+// implementation; these tests exercise its stdout/stderr boundary:
 //
 //   (a) current Program.cs contents (Console.Out.Flush() + Console.Error.WriteLine
 //       in ReadEnv) pass — analyzer emits zero diagnostics

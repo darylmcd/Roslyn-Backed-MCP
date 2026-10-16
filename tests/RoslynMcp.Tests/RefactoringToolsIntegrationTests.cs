@@ -1,5 +1,6 @@
 using System.Text.Json;
 using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
 
 namespace RoslynMcp.Tests;
@@ -139,7 +140,7 @@ public sealed class RefactoringToolsIntegrationTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task RenamePreview_BareMemberMetadataName_Returns_Targeting_Guidance()
     {
-        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
             RefactoringService.PreviewRenameAsync(
                 WorkspaceId,
                 SymbolLocator.ByMetadataName("GetAllAnimals"),

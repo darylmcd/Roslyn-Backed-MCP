@@ -308,7 +308,7 @@ public sealed class EditorConfigServiceTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public async Task ParseEditorconfigCsKeys_ClosesReadHandleBeforeYielding()
     {
-        if (!OperatingSystem.IsWindows()) return;
+        if (!OperatingSystem.IsWindows()) Assert.Inconclusive("Requires Windows.");
 
         var configPath = Path.Combine(Path.GetTempPath(), $"roslyn-config-read-{Guid.NewGuid():N}.editorconfig");
         await File.WriteAllTextAsync(configPath, "[*.cs]\nindent_size = 4\n");

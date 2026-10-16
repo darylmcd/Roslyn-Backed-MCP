@@ -7,11 +7,9 @@ using RoslynMcp.Host.Stdio.Catalog;
 namespace RoslynMcp.Host.Stdio.Tools;
 
 /// <summary>
-/// MCP tool entry points for dead-code removal. WS1 phase 1.6 — each shim body
+/// MCP tool entry points for dead-code removal. each shim body
 /// delegates to the corresponding <see cref="ToolDispatch"/> helper instead of
-/// carrying the dispatch boilerplate inline. See <c>CodeActionTools</c> (canary,
-/// PR #305) and <c>ai_docs/plans/20260421T123658Z_post-audit-followups.md</c>
-/// for the migration rationale and the deferred-generator blocker.
+/// carrying the dispatch boilerplate inline.
 /// </summary>
 [McpServerToolType]
 public static class DeadCodeTools

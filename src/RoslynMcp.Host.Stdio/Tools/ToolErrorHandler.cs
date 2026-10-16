@@ -624,7 +624,7 @@ internal static class ToolErrorHandler
         // ParamName and the sentinel substring so other tools' 'pattern' parameters (e.g.
         // RestructureService's non-empty check) keep the generic fallback below.
         if (string.Equals(exception.ParamName, "pattern", StringComparison.Ordinal) &&
-            rawMessage.Contains("not a valid .NET regular expression", StringComparison.Ordinal))
+            rawMessage.Contains(RoslynMcp.Roslyn.Services.SemanticGrepService.InvalidRegexSentinel, StringComparison.Ordinal))
         {
             return "Parameter 'pattern' is not a valid .NET regular expression. Patterns use " +
                 "System.Text.RegularExpressions syntax, not ripgrep/PCRE. Check for unbalanced " +

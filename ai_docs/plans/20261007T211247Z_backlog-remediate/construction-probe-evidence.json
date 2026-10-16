@@ -1,0 +1,142 @@
+{
+  "schemaVersion": 1,
+  "initiativeId": "change-signature-class-struct-primary-ctor-add-remove",
+  "purpose": "Construction representation feasibility; not tool implementation, full-gate, reviewed-head or landing proof",
+  "generatedAt": "2026-10-13T16:48:20.704Z",
+  "sdk": "10.0.401",
+  "preservedSource": {
+    "head": "03d4af4b27af9ff9fb5bc1b871ebc2dd203ea6ba",
+    "indexTree": "ccb59b7db26e33199f2b8c9c4919dad817544a80",
+    "files": [
+      {
+        "path": "src/RoslynMcp.Roslyn/Services/ChangeSignatureAddRemovePreviewBuilder.cs",
+        "sha256": "a9df3bcc7eaa1387ed490eaa3ca9c7aebd6359eda70008da8d7dc3044a7e9d99",
+        "bytes": 174853
+      },
+      {
+        "path": "tests/RoslynMcp.Tests/ChangeSignaturePreviewTests.cs",
+        "sha256": "e0dc1b851a8c31aa7a4f9119a9b22bd16e2f7b6f25ec18da4bdbbd05c259a5af",
+        "bytes": 233029
+      }
+    ]
+  },
+  "initial": {
+    "sdk": "10.0.401",
+    "original": [
+      "external-first=0|",
+      "selected=7|4|SI",
+      "zeros=0|0|0|0|0|SI",
+      "collection=7|5|SIIA2A3",
+      "tree=7",
+      "typed=-9223372036854775808|0,0,0,65536|True|0",
+      "typed-zero=0|0,0,0,0|False",
+      "attributes=1"
+    ],
+    "carrier": [
+      "external-first=0|",
+      "selected=7|4|SI",
+      "zeros=0|0|0|0|0|SI",
+      "collection=7|5|SIIA2A3",
+      "tree=7",
+      "typed=-9223372036854775808|0,0,0,65536|True|0",
+      "typed-zero=0|0,0,0,0|False",
+      "attributes=1"
+    ],
+    "direct": [
+      "external-first=7|SI",
+      "selected=7|4|SII",
+      "zeros=7|7|7|7|7|SIIIIIII",
+      "collection=7|5|SIIIIIIIIA2A3",
+      "tree=7",
+      "typed=-9223372036854775808|0,0,0,65536|True|0",
+      "typed-zero=-9223372036854775808|0,0,0,65536|True",
+      "attributes=1"
+    ],
+    "carrierMatches": true,
+    "directDiverges": true,
+    "scope": "Scratch representation probes only, not implementation/full gates"
+  },
+  "extended": {
+    "original": [
+      "external-first=0|",
+      "selected=7|4|SI",
+      "zeros=0|0|0|0|0|SI",
+      "collection=7|5|SIIA2A3",
+      "tree=7",
+      "typed=-9223372036854775808|0,0,0,65536|True|0",
+      "typed-zero=0|0,0,0,0|False",
+      "explicit-zero=7|3|3|3",
+      "ref-struct=7|0",
+      "nested=7|0",
+      "json-selected=7",
+      "attributes=1"
+    ],
+    "carrier": [
+      "external-first=0|",
+      "selected=7|4|SI",
+      "zeros=0|0|0|0|0|SI",
+      "collection=7|5|SIIA2A3",
+      "tree=7",
+      "typed=-9223372036854775808|0,0,0,65536|True|0",
+      "typed-zero=0|0,0,0,0|False",
+      "explicit-zero=7|3|3|3",
+      "ref-struct=7|0",
+      "nested=7|0",
+      "json-selected=constructor-binding-refused",
+      "attributes=1"
+    ],
+    "carrierEquivalentExceptKnownJsonConstructor": true,
+    "addOriginal": [
+      "first=7|IB",
+      "selected=7|IBIB",
+      "others=7|7|IBIBIBIB"
+    ],
+    "addDirect": [
+      "first=0|",
+      "selected=7|IB",
+      "others=0|0|IB"
+    ],
+    "addSeparated": [
+      "first=7|IB",
+      "selected=7|IBIB",
+      "others=7|7|IBIBIBIB"
+    ],
+    "addSeparatedEquivalent": true,
+    "scope": "Representation-only, not implementation verification"
+  },
+  "artifactHashes": {
+    "original": {
+      "projectSha256": "6163696f35b1d3012ad27c0f1a0f33bb1e72a9aa18f4377f4a72323f0c424018",
+      "sourceSha256": "071fe2007701517eadea0499f1d82d9228ca4be62936ca831ba930eff01a3b61",
+      "logSha256": "ed31ec1144e4a44535abaef19a873fbd568e927a539b7df31dd9500642c212bb",
+      "extendedLogSha256": "a5ba225a17cedd88a3cabc4b435e0c0b656549b2c1a64337467e73075cdd089b"
+    },
+    "carrier": {
+      "projectSha256": "6163696f35b1d3012ad27c0f1a0f33bb1e72a9aa18f4377f4a72323f0c424018",
+      "sourceSha256": "ae5ceab161ce2d22af5923e22c463983b53d2f0e4d381bb16189417c6fbc7e70",
+      "logSha256": "6d8c42d8f85f422d3e759f6519a1964f2fe26e398c748c2e80a54afd106ef44b",
+      "extendedLogSha256": "b1b078c75dc08f796edeba21844dabcf10b59d71a9cc8564072ef3ab75435e82"
+    },
+    "direct": {
+      "projectSha256": "6163696f35b1d3012ad27c0f1a0f33bb1e72a9aa18f4377f4a72323f0c424018",
+      "sourceSha256": "8dd34cb42f5016fc649a7d70f3d05cf7d0332ed8fc8d20100551ea356ce1f2be",
+      "logSha256": "ce35bd169787efe26dca9a16aac5f5826253df47e3a71aa8404627ff970d1fe5"
+    },
+    "add-original": {
+      "projectSha256": "83f4a7fcb79a4d14c3efe178e1d3921495991b5f2b7a89b677ab81815183ca3a",
+      "sourceSha256": "0bbb0c586827847024c383b83c8d89b7be6d45205149b31748c9780a3185c6d9",
+      "logSha256": "881b91d2ff899122ad1b702c315283d4c0986039b315b77bebc8fefed547b2eb"
+    },
+    "add-direct": {
+      "projectSha256": "83f4a7fcb79a4d14c3efe178e1d3921495991b5f2b7a89b677ab81815183ca3a",
+      "sourceSha256": "bd81c2069945635caab19f99645cefd5d718bf44fc92143e56a547a1364d1a73",
+      "logSha256": "92f33ae869a727735f2c2474ba09e26e62430f4ad2152876344bcff763e8b0c0"
+    },
+    "add-separated": {
+      "projectSha256": "83f4a7fcb79a4d14c3efe178e1d3921495991b5f2b7a89b677ab81815183ca3a",
+      "sourceSha256": "a273b6b30ea8a43e80ba59af5ae1147a076613362c2f2d23340a436a389001fd",
+      "logSha256": "881b91d2ff899122ad1b702c315283d4c0986039b315b77bebc8fefed547b2eb"
+    }
+  },
+  "initialRunSourceNote": "Original/carrier source subsequently extended; initial log hashes are retained, current source hashes describe extended runs."
+}

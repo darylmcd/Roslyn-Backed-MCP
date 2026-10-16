@@ -343,7 +343,7 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
     {
         if (filePaths.Count > _options.MaxRelatedFiles)
         {
-            throw new ArgumentException(
+            throw new PublicArgumentException(
                 $"A maximum of {_options.MaxRelatedFiles} files may be analyzed at once for related tests.",
                 nameof(filePaths));
         }

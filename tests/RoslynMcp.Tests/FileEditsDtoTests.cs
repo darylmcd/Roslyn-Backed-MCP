@@ -3,13 +3,9 @@ using RoslynMcp.Core.Models;
 namespace RoslynMcp.Tests;
 
 /// <summary>
-/// Regression for `core-dto-fileeditsdto-array-to-readonlylist` (P4): `FileEditsDto.Edits` was
-/// declared as `TextEditDto[]`, so the compiler-synthesized record `Equals`/`GetHashCode` routed
-/// the property through `EqualityComparer&lt;TextEditDto[]&gt;.Default` — `Array` never overrides
-/// `object.Equals`, so two instances holding distinct-but-content-equal edit sequences always
-/// compared unequal, defeating the point of the record. The property is now
-/// `IReadOnlyList&lt;TextEditDto&gt;` (closing the aliased-array mutation surface) with explicit
-/// structural `Equals`/`GetHashCode` overrides (restoring value equality).
+/// Verifies ordered structural equality and stable read-only edit snapshots.
+/// Constructor and init inputs cannot mutate an existing DTO or its hash-set membership.
+/// Named construction, deconstruction and JSON retain the public record shape.
 /// </summary>
 [TestClass]
 public sealed class FileEditsDtoTests
@@ -18,6 +14,77 @@ public sealed class FileEditsDtoTests
 
     private static TextEditDto Edit(int startLine, string newText) =>
         new(startLine, 1, startLine, 5, newText);
+
+    [TestMethod]
+    [DataRow("array")]
+    [DataRow("list")]
+    public void Snapshot_ConstructorKeepsCallerMutationOutOfValueAndHashSet(string kind)
+    {
+        IList<TextEditDto> owner = kind == "array" ? new[] { Edit(1, "original") } : new List<TextEditDto> { Edit(1, "original") };
+        var dto = new FileEditsDto(FilePath: SamplePath, Edits: (IReadOnlyList<TextEditDto>)owner);
+        var indexed = new HashSet<FileEditsDto> { dto };
+        owner[0] = Edit(1, "changed");
+
+        Assert.AreEqual(Edit(1, "original"), dto.Edits[0]);
+        Assert.IsTrue(indexed.Contains(dto), "Caller mutation must not invalidate a DTO already used as a value key.");
+    }
+
+    [TestMethod]
+    [DataRow("array")]
+    [DataRow("list")]
+    public void Snapshot_WithAssignmentCopiesCallerCollection(string kind)
+    {
+        IList<TextEditDto> owner = kind == "array" ? new[] { Edit(2, "replacement") } : new List<TextEditDto> { Edit(2, "replacement") };
+        var original = new FileEditsDto(SamplePath, [Edit(1, "original")]);
+        var updated = original with { Edits = (IReadOnlyList<TextEditDto>)owner };
+        owner[0] = Edit(2, "changed");
+
+        Assert.AreEqual(Edit(2, "replacement"), updated.Edits[0]);
+        Assert.AreEqual(Edit(1, "original"), original.Edits[0]);
+    }
+
+    [TestMethod]
+    public void Snapshot_PublicListViewCannotMutateStoredEdits()
+    {
+        var dto = new FileEditsDto(SamplePath, new[] { Edit(1, "original") });
+        if (dto.Edits is IList<TextEditDto> list)
+            Assert.ThrowsExactly<NotSupportedException>(() => list[0] = Edit(1, "changed"));
+        Assert.AreEqual(Edit(1, "original"), dto.Edits[0]);
+    }
+
+    [TestMethod]
+    public void Snapshot_LegacySynchronizationViewCannotMutateStoredEdits()
+    {
+        var dto = new FileEditsDto(SamplePath, new[] { Edit(1, "original") });
+        if (dto.Edits is System.Collections.ICollection legacy)
+        {
+            object synchronizationRoot;
+            try { synchronizationRoot = legacy.SyncRoot; }
+            catch (NotSupportedException) { return; }
+            if (synchronizationRoot is IList<TextEditDto> mutable)
+            {
+                try { mutable[0] = Edit(1, "changed"); }
+                catch (NotSupportedException) { }
+            }
+        }
+        Assert.AreEqual(Edit(1, "original"), dto.Edits[0]);
+    }
+
+    [TestMethod]
+    public void Snapshot_RecordDeconstructionAndJsonRoundTripKeepPublicShape()
+    {
+        var dto = new FileEditsDto(FilePath: SamplePath, Edits: [Edit(1, "original")]);
+        var (path, edits) = dto;
+        Assert.AreEqual(SamplePath, path);
+        CollectionAssert.AreEqual(dto.Edits.ToArray(), edits.ToArray());
+        var options = new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase };
+        var json = System.Text.Json.JsonSerializer.Serialize(dto, options);
+        using var document = System.Text.Json.JsonDocument.Parse(json);
+        CollectionAssert.AreEquivalent(new[] { "filePath", "edits" }, document.RootElement.EnumerateObject().Select(property => property.Name).ToArray());
+        var roundTrip = System.Text.Json.JsonSerializer.Deserialize<FileEditsDto>(json, options);
+        Assert.AreEqual(dto, roundTrip);
+        Assert.AreEqual(dto.GetHashCode(), roundTrip!.GetHashCode());
+    }
 
     [TestMethod]
     public void Equals_SeparatelyAllocatedEqualArrays_AreEqualAndHashEqual()
@@ -83,16 +150,18 @@ public sealed class FileEditsDtoTests
     }
 
     [TestMethod]
-    public void GetHashCode_IsOrderSensitive_NotCountBased()
+    public void Equality_IsOrderSensitive_EqualSequencesHaveEqualHashes()
     {
         var forward = new FileEditsDto(SamplePath, new[] { Edit(1, "a"), Edit(2, "b") });
         var reversed = new FileEditsDto(SamplePath, new[] { Edit(2, "b"), Edit(1, "a") });
 
         Assert.AreNotEqual(forward, reversed, "element order is part of the value");
-        Assert.AreNotEqual(
+        var equalForward = new FileEditsDto(SamplePath, new List<TextEditDto> { Edit(1, "a"), Edit(2, "b") });
+        Assert.AreEqual(forward, equalForward);
+        Assert.AreEqual(
             forward.GetHashCode(),
-            reversed.GetHashCode(),
-            "hash must fold each element in order, not merely the element count");
+            equalForward.GetHashCode(),
+            "equal sequences must hash equally; unequal values may collide");
     }
 
     [TestMethod]

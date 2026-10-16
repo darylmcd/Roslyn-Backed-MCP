@@ -16,8 +16,8 @@ namespace RoslynMcp.Roslyn.Services;
 /// <c>parameter-object-preview-tool</c> implementation. Synthesizes a positional
 /// <c>sealed record</c> DTO for a chosen subset of a method's parameters and rewrites
 /// every call site to flow grouped argument values through the new record's primary
-/// constructor. See <c>ai_docs/items/parameter-object-preview-design.md</c> for the
-/// authoritative contract (refusal cases, cross-project policy, generated-DTO shape).
+/// constructor. Request and service contracts describe the generated DTO, existing-reference
+/// requirement and refusal conditions; successful previews use the standard refactoring store.
 /// </summary>
 public sealed class ParameterObjectService : IParameterObjectService
 {

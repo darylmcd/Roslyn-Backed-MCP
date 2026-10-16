@@ -1,16 +1,15 @@
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Microsoft.CodeAnalysis;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using ModelContextProtocol.Server;
-using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Catalog;
 using RoslynMcp.Host.Stdio.Resources;
 using RoslynMcp.Host.Stdio.Runtime;
 using RoslynMcp.Host.Stdio.Services;
 using RoslynMcp.Host.Stdio.Tools;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -335,6 +334,7 @@ public sealed class SurfaceCatalogTests
                 "get_completions",
                 "bulk_replace_type_apply",
                 "replace_invocation_preview",
+                "change_signature_preview",
                 "apply_composite_preview",
                 "server_info",
                 "get_symbol_outline",
@@ -351,6 +351,7 @@ public sealed class SurfaceCatalogTests
                      "get_completions",
                      "bulk_replace_type_apply",
                      "replace_invocation_preview",
+                     "change_signature_preview",
                  })
         {
             var changedSummaryTool = diff.Tools.Changed.Single(entry => entry.Name == summaryToolName);
@@ -388,7 +389,7 @@ public sealed class SurfaceCatalogTests
         Assert.AreEqual(5, diff.Summary.Added);
         Assert.AreEqual(0, diff.Summary.Removed);
         Assert.AreEqual(0, diff.Summary.Promoted);
-        Assert.AreEqual(11, diff.Summary.Changed);
+        Assert.AreEqual(12, diff.Summary.Changed);
     }
 
     [TestMethod]
@@ -409,6 +410,7 @@ public sealed class SurfaceCatalogTests
                 "get_completions",
                 "bulk_replace_type_apply",
                 "replace_invocation_preview",
+                "change_signature_preview",
                 "apply_composite_preview",
                 "server_info",
                 "get_symbol_outline",
@@ -608,7 +610,7 @@ public sealed class SurfaceCatalogTests
     public async Task ServerInfo_IncludesSurfaceSupportSummary()
     {
         var json = await ServerTools.GetServerInfo(
-            new FakeWorkspaceManager(),
+            new FailClosedWorkspaceManagerStub(),
             new NuGetVersionChecker(new TestHttpClientFactory()),
             new ServerProcessMetadata());
         using var doc = JsonDocument.Parse(json.TextPayload());
@@ -641,7 +643,7 @@ public sealed class SurfaceCatalogTests
     public async Task ServerInfo_IncludesResourceServerNameHints()
     {
         var json = await ServerTools.GetServerInfo(
-            new FakeWorkspaceManager(),
+            new FailClosedWorkspaceManagerStub(),
             new NuGetVersionChecker(new TestHttpClientFactory()),
             new ServerProcessMetadata());
         using var doc = JsonDocument.Parse(json.TextPayload());
@@ -890,29 +892,5 @@ public sealed class SurfaceCatalogTests
             McpServerPromptAttribute prompt => prompt.Name ?? throw new InvalidOperationException("Prompt name is required."),
             _ => throw new InvalidOperationException($"Unsupported attribute type: {typeof(TAttribute).Name}")
         };
-    }
-
-    private sealed class FakeWorkspaceManager : IWorkspaceManager
-    {
-        public event Action<string>? WorkspaceClosed { add { } remove { } }
-        public event Action<string>? WorkspaceReloaded { add { } remove { } }
-
-        public Task<WorkspaceStatusDto> LoadAsync(string path, EvictPolicy evictPolicy, CancellationToken ct) => throw new NotSupportedException();
-        public Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct) => throw new NotSupportedException();
-        public bool ContainsWorkspace(string workspaceId) => false;
-        public bool IsStale(string workspaceId) => false;
-        public bool Close(string workspaceId) => throw new NotSupportedException();
-        public IReadOnlyList<WorkspaceStatusDto> ListWorkspaces() => [];
-        public WorkspaceStatusDto GetStatus(string workspaceId) => throw new NotSupportedException();
-        public Task<WorkspaceStatusDto> GetStatusAsync(string workspaceId, CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-        public ProjectGraphDto GetProjectGraph(string workspaceId) => throw new NotSupportedException();
-        public Task<IReadOnlyList<GeneratedDocumentDto>> GetSourceGeneratedDocumentsAsync(string workspaceId, string? projectName, CancellationToken ct) => throw new NotSupportedException();
-        public Task<string?> GetSourceTextAsync(string workspaceId, string filePath, CancellationToken ct) => throw new NotSupportedException();
-        public int GetCurrentVersion(string workspaceId) => throw new NotSupportedException();
-        public void RestoreVersion(string workspaceId, int version) => throw new NotSupportedException();
-        public Solution GetCurrentSolution(string workspaceId) => throw new NotSupportedException();
-        public bool TryApplyChanges(string workspaceId, Solution newSolution) => throw new NotSupportedException();
-        public Project? GetProject(string workspaceId, string projectNameOrPath) => null;
     }
 }

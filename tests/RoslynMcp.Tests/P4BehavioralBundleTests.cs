@@ -201,14 +201,15 @@ public sealed class P4BehavioralBundleTests : SharedWorkspaceTestBase
     public async Task EvaluateMsBuildProperty_UnknownProject_ErrorListsLoadedProjects()
     {
         // Unknown project name must surface a loaded-projects list in the error.
-        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () =>
+        var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(async () =>
             await MsBuildEvaluationService.EvaluatePropertyAsync(
                 WorkspaceId,
                 projectName: "DoesNotExist.Xyz",
                 propertyName: "TargetFramework",
                 CancellationToken.None));
 
-        StringAssert.Contains(ex.Message, "DoesNotExist.Xyz", "Error must echo the bad project name.");
+        Assert.IsFalse(ex.Message.Contains("DoesNotExist.Xyz", StringComparison.Ordinal),
+            "Public guidance must not echo the caller's unknown project name.");
         StringAssert.Contains(ex.Message, "Loaded projects", "Error must list the loaded projects.");
         StringAssert.Contains(ex.Message, "SampleLib", "Error must include at least one real loaded project name.");
     }
@@ -216,14 +217,15 @@ public sealed class P4BehavioralBundleTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task EvaluateMsBuildProperty_EmptyProject_ThrowsArgumentExceptionWithExample()
     {
-        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(async () =>
+        var ex = await Assert.ThrowsExactlyAsync<PublicArgumentException>(async () =>
             await MsBuildEvaluationService.EvaluatePropertyAsync(
                 WorkspaceId,
                 projectName: "",
                 propertyName: "TargetFramework",
                 CancellationToken.None));
 
-        StringAssert.Contains(ex.Message, "'project'", "Error must name the 'project' parameter.");
+        Assert.AreEqual("projectName", ex.ParamName);
+        StringAssert.Contains(ex.Message, "'projectName'", "Error must name the 'projectName' parameter.");
         StringAssert.Contains(ex.Message, "workspace_status", "Error must point the caller at workspace_status.");
     }
 

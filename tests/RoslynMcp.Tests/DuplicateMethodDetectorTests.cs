@@ -5,6 +5,7 @@ using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -792,7 +793,7 @@ public sealed class DuplicateMethodDetectorTests
     {
         // Drive the tool wrapper (not the service) so the summary-mode serialization branch in
         // FindDuplicatedMethodsCore is exercised. The tool runs through the real
-        // WorkspaceExecutionGate against the AdhocWorkspace-backed TestWorkspaceManager.
+        // WorkspaceExecutionGate against the AdhocWorkspace-backed FailClosedWorkspaceManagerStub.
         var (service, gate) = BuildServiceAndGate(ThreeClusterSource);
         using var gateScope = gate;
 
@@ -886,7 +887,7 @@ public sealed class DuplicateMethodDetectorTests
 
     /// <summary>
     /// Builds the detector service AND a <see cref="WorkspaceExecutionGate"/> sharing one
-    /// <see cref="TestWorkspaceManager"/> so the tool wrapper (which routes through the gate)
+    /// <see cref="FailClosedWorkspaceManagerStub"/> so the tool wrapper (which routes through the gate)
     /// can be exercised end-to-end. Default <see cref="ExecutionGateOptions"/> are fine: the
     /// test manager reports <c>IsStale=false</c> and <c>ContainsWorkspace=true</c>, so the
     /// staleness/reload path never runs and the gate resolves to a plain read.
@@ -921,7 +922,7 @@ public sealed class DuplicateMethodDetectorTests
 
     private static DuplicateMethodDetectorService BuildServiceWithSourcesCore(
         out AdhocWorkspace workspace,
-        out TestWorkspaceManager wsManager,
+        out FailClosedWorkspaceManagerStub wsManager,
         params (string fileName, string source)[] docs)
     {
         workspace = new AdhocWorkspace();
@@ -950,7 +951,7 @@ public sealed class DuplicateMethodDetectorTests
                         fullPath))));
         }
 
-        wsManager = new TestWorkspaceManager(WorkspaceId, workspace);
+        wsManager = CreateWorkspaceManager(workspace);
         return new DuplicateMethodDetectorService(wsManager);
     }
 
@@ -1000,55 +1001,18 @@ public sealed class DuplicateMethodDetectorTests
                         fullPath))));
         }
 
-        var wsManager = new TestWorkspaceManager(WorkspaceId, adhoc);
+        var wsManager = CreateWorkspaceManager(adhoc);
         var service = new DuplicateMethodDetectorService(wsManager);
         return (service, adhoc);
     }
 
-    /// <summary>
-    /// Minimal <see cref="IWorkspaceManager"/> stand-in for the detector tests. Only
-    /// <see cref="GetCurrentSolution"/> and the two version hooks the compilation cache
-    /// calls are wired; the rest throw to surface accidental coupling.
-    /// </summary>
-    private sealed class TestWorkspaceManager : IWorkspaceManager
+    private static FailClosedWorkspaceManagerStub CreateWorkspaceManager(AdhocWorkspace workspace) => new()
     {
-        private readonly string _workspaceId;
-        private readonly AdhocWorkspace _workspace;
-
-        public event Action<string>? WorkspaceClosed;
-        public event Action<string>? WorkspaceReloaded;
-
-        public TestWorkspaceManager(string workspaceId, AdhocWorkspace workspace)
-        {
-            _workspaceId = workspaceId;
-            _workspace = workspace;
-        }
-
-        public void RaiseWorkspaceClosed(string workspaceId) => WorkspaceClosed?.Invoke(workspaceId);
-        public void RaiseWorkspaceReloaded(string workspaceId) => WorkspaceReloaded?.Invoke(workspaceId);
-
-        public Solution GetCurrentSolution(string workspaceId)
-        {
-            return workspaceId == _workspaceId
-                ? _workspace.CurrentSolution
-                : throw new InvalidOperationException($"Unknown workspace {workspaceId}");
-        }
-
-        public int GetCurrentVersion(string workspaceId) => 1;
-        public void RestoreVersion(string workspaceId, int version) { }
-        public bool ContainsWorkspace(string workspaceId) => workspaceId == _workspaceId;
-        public bool IsStale(string workspaceId) => false;
-        public Project? GetProject(string workspaceId, string projectNameOrPath) => null;
-
-        public Task<WorkspaceStatusDto> LoadAsync(string path, EvictPolicy evictPolicy, CancellationToken ct) => throw new NotSupportedException();
-        public Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct) => throw new NotSupportedException();
-        public bool Close(string workspaceId) => throw new NotSupportedException();
-        public IReadOnlyList<WorkspaceStatusDto> ListWorkspaces() => throw new NotSupportedException();
-        public WorkspaceStatusDto GetStatus(string workspaceId) => throw new NotSupportedException();
-        public Task<WorkspaceStatusDto> GetStatusAsync(string workspaceId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-        public ProjectGraphDto GetProjectGraph(string workspaceId) => throw new NotSupportedException();
-        public Task<IReadOnlyList<GeneratedDocumentDto>> GetSourceGeneratedDocumentsAsync(string workspaceId, string? projectName, CancellationToken ct) => throw new NotSupportedException();
-        public Task<string?> GetSourceTextAsync(string workspaceId, string filePath, CancellationToken ct) => throw new NotSupportedException();
-        public bool TryApplyChanges(string workspaceId, Solution newSolution) => throw new NotSupportedException();
-    }
+        GetCurrentSolutionHandler = id => id == WorkspaceId
+            ? workspace.CurrentSolution
+            : throw new InvalidOperationException($"Unknown workspace {id}"),
+        GetCurrentVersionHandler = _ => 1,
+        ContainsWorkspaceHandler = id => id == WorkspaceId,
+        IsStaleHandler = _ => false,
+    };
 }

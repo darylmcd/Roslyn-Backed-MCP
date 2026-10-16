@@ -8,10 +8,8 @@ using RoslynMcp.Roslyn.Contracts;
 namespace RoslynMcp.Host.Stdio.Tools;
 
 /// <summary>
-/// Item 3 (v1.18, <c>change-signature-add-parameter-cross-callsite</c>): add / remove /
-/// rename a method parameter and update every callsite atomically. Composite preview that
-/// rewrites both the declaration and every <see cref="Microsoft.CodeAnalysis.IMethodSymbol"/>
-/// caller's argument list.
+/// Preview method parameter changes and class/struct primary-constructor add/remove.
+/// Bound declarations and callsites are verified together before storing a token.
 /// </summary>
 [McpServerToolType]
 public static class ChangeSignatureTools
@@ -19,21 +17,24 @@ public static class ChangeSignatureTools
     /// <remarks>
     /// The preview changes the declaration and every call site together. Choose <c>op</c> and
     /// supply the matching operation-specific arguments before redeeming the returned token.
+    /// Invalid declarations, remaining parameter references, and changed retained bindings are refused.
+    /// Struct last-parameter removal uses a marker constructor; adding to an explicit zero constructor
+    /// retains its original initialization path. Records and primary-constructor rename/reorder are refused.
     /// </remarks>
     [McpServerTool(Name = "change_signature_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("refactoring", "experimental", true, false,
-        "Preview adding/removing/renaming/reordering a method parameter with all callsites updated atomically."),
-     Description("Preview adding, removing, renaming, or reordering method parameters. Atomically rewrites the declaration and every callsite under one preview token; supply op and its required arguments.")]
+        "Preview method-parameter changes and class/struct primary-constructor add/remove atomically; last-parameter struct removal uses a marker constructor and explicit-zero addition retains runtime construction."),
+     Description("Preview method parameter changes or class/struct primary-constructor add/remove with every callsite under one preview token. Struct zero-construction semantics are preserved.")]
     public static Task<string> PreviewChangeSignature(
         IWorkspaceExecutionGate gate,
         IChangeSignatureService changeSignatureService,
         [Description("Workspace session id from workspace_load.")] string workspaceId,
         [Description("Operation: 'add', 'remove', 'rename', or 'reorder'.")] string op,
-        [Description("Optional: absolute path to the source file containing the method declaration")] string? filePath = null,
-        [Description("Optional: 1-based line number of the method declaration")] int? line = null,
-        [Description("Optional: 1-based column number of the method declaration")] int? column = null,
+        [Description("Optional: absolute path to the source file containing the method, constructor, type declaration, or parameter")] string? filePath = null,
+        [Description("Optional: 1-based line number of the target declaration or parameter")] int? line = null,
+        [Description("Optional: 1-based column number of the target declaration or parameter")] int? column = null,
         [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
-        [Description("Optional: bare fully-qualified method name without parentheses (e.g. 'Foo.Bar.Baz'). For overloaded methods supply file/line/column to disambiguate, or use symbolHandle from symbol_search. Parenthesized signatures like 'Foo.Bar.Baz(string)' are NOT accepted.")] string? metadataName = null,
+        [Description("Optional: bare fully-qualified method or primary-constructor type name without parentheses (e.g. 'Foo.Bar.Baz'). For overloaded methods supply file/line/column to disambiguate, or use symbolHandle from symbol_search. Parenthesized signatures like 'Foo.Bar.Baz(string)' are NOT accepted.")] string? metadataName = null,
         [Description("Parameter name. For op='add': the new parameter's name. For op='remove': the existing parameter to drop (or use position). For op='rename': the current name.")] string? name = null,
         [Description("op='rename' only: the new parameter name.")] string? newName = null,
         [Description("op='add' only: the parameter type (e.g. 'string', 'IReadOnlyList<int>', 'CancellationToken').")] string? parameterType = null,

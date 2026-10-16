@@ -117,7 +117,7 @@ public sealed class RenameSummaryModeTests : SharedWorkspaceTestBase
         finally
         {
             WorkspaceManager.Close(localWorkspaceId);
-            TryDeleteDirectory(solutionDir);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(solutionDir);
         }
     }
 
@@ -149,18 +149,4 @@ public sealed class RenameSummaryModeTests : SharedWorkspaceTestBase
         Assert.IsTrue(anyHunkFound, "Default summary=false must emit at least one real unified-diff hunk.");
     }
 
-    private static void TryDeleteDirectory(string path)
-    {
-        try
-        {
-            if (Directory.Exists(path))
-            {
-                Directory.Delete(path, recursive: true);
-            }
-        }
-        catch
-        {
-            // Best-effort cleanup.
-        }
-    }
 }

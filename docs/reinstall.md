@@ -185,8 +185,8 @@ NuGet; retry the first plugin launch after indexing completes.
   Do not use name-wide `taskkill` or `killall`; unrelated MCP sessions may be active.
 - **An `*_apply` call is rejected.** Preview-token enforcement is server-side:
   call the matching `*_preview` first and pass its unexpired token. The plugin
-  hooks only remind you to run a compile check after applies (see
-  [`product-contract.md`](product-contract.md)).
+  advisory post-apply hooks only remind you to run a compile check after applies (see
+  [`hooks/hooks.json`](../hooks/hooks.json)).
 
 ## Related docs
 

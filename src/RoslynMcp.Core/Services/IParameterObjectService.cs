@@ -9,7 +9,7 @@ namespace RoslynMcp.Core.Services;
 /// preview adds the new record file and rewrites both the method declaration and every
 /// caller in one atomic snapshot, redeemable through the standard
 /// <see cref="IRefactoringService.ApplyRefactoringAsync(string, string, System.Threading.CancellationToken)"/>
-/// path. See <c>ai_docs/items/parameter-object-preview-design.md</c> for the contract.
+/// path; refused requests do not create a redeemable preview.
 /// </summary>
 public interface IParameterObjectService
 {
@@ -18,7 +18,7 @@ public interface IParameterObjectService
     /// the target method's signature plus every call site to flow grouped argument values
     /// through the new record. Refuses the preview structurally for default-value,
     /// <c>ref</c>/<c>out</c>/<c>in</c>/<c>params</c>, extension <c>this</c>, local-function,
-    /// and missing cross-project-reference cases — see the design note for the full list.
+    /// and missing cross-project-reference cases before staging changes.
     /// </summary>
     Task<RefactoringPreviewDto> PreviewParameterObjectAsync(
         string workspaceId,

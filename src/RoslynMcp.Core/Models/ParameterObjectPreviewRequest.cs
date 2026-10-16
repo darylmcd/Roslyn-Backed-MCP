@@ -9,8 +9,7 @@ namespace RoslynMcp.Core.Models;
 /// v1 is opinionated: the generated DTO is always a <c>sealed record</c> with positional
 /// primary-constructor parameters mirroring <see cref="ParameterNames"/> in caller-supplied
 /// order. Default-value omissions and by-ref parameters refuse the preview rather than
-/// risk semantic drift. See <c>ai_docs/items/parameter-object-preview-design.md</c> for
-/// the full contract.
+/// risk semantic drift. Cross-project targets must already be referenced by every caller project.
 /// </remarks>
 /// <param name="ParameterNames">
 /// Ordered list of parameter names on the target method to group into the new record.

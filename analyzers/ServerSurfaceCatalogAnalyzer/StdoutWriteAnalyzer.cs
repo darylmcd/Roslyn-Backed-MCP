@@ -6,8 +6,7 @@
 // `Console.WriteLine`, `Console.Out.Write`, `Trace.WriteLine`, etc. corrupts the
 // stream and silently breaks every downstream client.
 //
-// See ai_docs/plans/20260426T025255Z_backlog-sweep/plan.md initiative #1
-// (stdio-host-stdout-audit) for the rationale: the audit found zero current
+// The original stdout audit found zero
 // violations in `Program.cs` (only `Console.Out.Flush()` calls, which are
 // protocol-correct), so this analyzer is a forward-going invariant gate rather
 // than a fix-now. Diagnostic id: RMCP010.

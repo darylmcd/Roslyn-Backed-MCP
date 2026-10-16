@@ -5,8 +5,7 @@
 // against the [McpServerTool] / [McpServerResource] / [McpServerPrompt] attribute
 // decorations on methods in the same compilation.
 //
-// See ai_docs/plans/20260417T120000Z_backlog-sweep/plan.md initiative #2
-// (mcp-server-surface-catalog-parity-generator) for the rationale: drift was
+// Surface catalog drift was
 // only caught at test-run by SurfaceCatalogTests, which produced a slow
 // build-green→test-red signal for a problem the compiler could flag directly.
 

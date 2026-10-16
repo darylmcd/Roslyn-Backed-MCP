@@ -56,7 +56,7 @@ The 2026-08-24 pre-refactor baseline was test-bound:
 
 The local machine exposes 24 logical processors and 32 GB RAM. GitHub's standard public-repository `windows-latest` and `ubuntu-latest` runners currently expose 4 CPUs and 16 GB RAM. Standard hosted runners are free and unlimited for public repositories. See [GitHub-hosted runner specifications](https://docs.github.com/en/actions/reference/runners/github-hosted-runners).
 
-The first hosted two-shard calibration completed Windows in 19m50s and 16m29s, so it did not beat the repository-level median. Its TRX durations drove the four-shard topology. Uploaded per-leg TRX files remain the source for future balancing; do not treat a static case-count estimate as measured performance.
+The first hosted two-shard calibration completed Windows in 19m50s and 16m29s, so it did not beat the repository-level median. Its TRX durations drove the four-shard topology. The subsequent calibration is closed: see [Hosted Shard Weighting Decision](../CI_POLICY.md#hosted-shard-weighting-decision) for the retained weighting and re-check trigger. Revisit balancing only when that trigger is met, using fresh hosted per-leg TRX evidence.
 
 ## Residual local service removal
 

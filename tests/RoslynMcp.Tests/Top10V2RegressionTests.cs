@@ -173,13 +173,25 @@ public sealed class Top10V2RegressionTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public async Task ApplyWithVerify_GoodPreview_ReturnsApplied()
     {
-        // Use organize_usings on AnimalService.cs as a known-clean refactor that should not
-        // introduce errors. The workspace is shared, so we only verify status, not actual diff.
-        await using var workspace = await CreateIsolatedWorkspaceAsync();
-        var animalServicePath = workspace.GetPath("SampleLib", "AnimalService.cs");
+        // This test owns its copied solution, added fixture, preview and undo state.
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var fixturePath = workspace.GetPath("SampleLib", "ApplyVerifyCleanFixture.cs");
+        const string original = "namespace SampleLib;\npublic class ApplyVerifyCleanFixture { }\n";
+        const string expected = "namespace SampleLib;\npublic class ApplyVerifyRenamedFixture { }\n";
+        await File.WriteAllTextAsync(fixturePath, original);
+        await workspace.LoadAsync();
 
-        var preview = await RefactoringService.PreviewOrganizeUsingsAsync(
-            workspace.WorkspaceId, animalServicePath, CancellationToken.None);
+        var baseline = await CompileCheckService.CheckAsync(
+            workspace.WorkspaceId, new CompileCheckOptions(SeverityFilter: "error", Limit: 50),
+            CancellationToken.None);
+        Assert.AreEqual(0, baseline.ErrorCount, "The isolated workspace must compile cleanly before apply.");
+
+        var preview = await RefactoringService.PreviewRenameAsync(
+            workspace.WorkspaceId, SymbolLocator.BySource(fixturePath, 2, 14),
+            "ApplyVerifyRenamedFixture", CancellationToken.None);
+        Assert.AreEqual(1, preview.Changes.Count, "The preview must contain a real single-file edit.");
+        StringAssert.Contains(preview.Changes[0].UnifiedDiff, "@@");
+        Assert.AreEqual(original, await File.ReadAllTextAsync(fixturePath), "Preview must leave disk unchanged.");
 
         var workflowService = new ApplyUndoWorkflowService(
             RefactoringService, CompileCheckService, UndoService, PreviewStore);
@@ -189,8 +201,13 @@ public sealed class Top10V2RegressionTests : IsolatedWorkspaceTestBase
 
         using var doc = JsonDocument.Parse(json);
         var status = doc.RootElement.GetProperty("status").GetString();
-        Assert.IsTrue(status is "applied" or "rolled_back",
-            $"Expected applied or rolled_back; got {status}. Full JSON: {json}");
+        Assert.AreEqual("applied", status, $"A clean rename must apply without rollback. Full JSON: {json}");
+        CollectionAssert.AreEqual(new[] { fixturePath },
+            doc.RootElement.GetProperty("appliedFiles").EnumerateArray().Select(file => file.GetString()).ToArray());
+        Assert.AreEqual(0, doc.RootElement.GetProperty("preErrorCount").GetInt32());
+        Assert.AreEqual(0, doc.RootElement.GetProperty("postErrorCount").GetInt32());
+        Assert.AreEqual(expected, await File.ReadAllTextAsync(fixturePath),
+            "The applied file must contain exactly the previewed rename.");
     }
 
     // ── apply-with-verify-diff-not-counts ──

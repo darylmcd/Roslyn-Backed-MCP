@@ -21,3 +21,13 @@
 - Since 2026-09-30 every local repo lives at `D:\<repo>` (old `C:\Code-Repo\<repo>` had a non-root parent), so sibling worktrees like `D:\<repo>-audit-...` are rejected under `expandSanctionedRoots`.
 - PR #1685 moved the fixture in `IsPathUnderAnyRoot_Worktree_Subdir_Allowed_With_Flag` to `D:\Dev\TradeWise*` because a literal `D:\TradeWise` made it fail (run and observed by the agent).
 - Correction to the filing premise: the `mcp-server-surface-test` disposable worktree is NOT affected as written. `skills/mcp-server-surface-test/prompts/phases/setup-and-analysis.md:39` creates it at `.worktrees/surface-test-<ts>` inside the audited root, already under the sanctioned root. Only external sibling-worktree flows (agent audit/sweep worktrees outside the repo) hit the gap.
+
+## Operator decision 2026-10-15
+
+| Field | Record |
+|---|---|
+| Date | 2026-10-15 |
+| Authority | Live user approval of all three recommendations in this chat; record decisions while preserving implementation and validation holds. |
+| Approved policy | Approve opt-in prefix-scoped widening to sibling directories named <repo>-<nonempty suffix> for drive-root parents. Preserve existing expansion permissions, canonical physical-path checks and platform-correct comparison. Use the identical boundary during load and apply; reject unrelated siblings, repo2 names and junction/symlink escapes; never grant the whole drive. |
+| Remaining holds | Keep open. Implementation, security re-vet, expansion-grant/apply consistency, positive/negative regressions, real sibling-worktree load proof and current CI_POLICY validation remain required. This approval does not change non-drive-root widening policy. |
+| Authorization boundary | Policy decision recorded only; no execution admission, release, merge or completion claim. |

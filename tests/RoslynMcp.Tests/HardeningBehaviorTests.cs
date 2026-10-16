@@ -70,8 +70,9 @@ public sealed class HardeningBehaviorTests : SharedWorkspaceTestBase
             .Select(index => Path.Combine(Path.GetTempPath(), $"File{index}.cs"))
             .ToArray();
 
-        await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+        var exception = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
             TestDiscoveryService.FindRelatedTestsForFilesAsync(workspaceId, excessivePaths, 100, CancellationToken.None));
+        Assert.AreEqual("filePaths", exception.ParamName);
     }
 
     [TestMethod]

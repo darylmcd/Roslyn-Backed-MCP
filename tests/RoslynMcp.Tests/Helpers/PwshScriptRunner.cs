@@ -6,53 +6,26 @@ internal static class PwshScriptRunner
 {
     private static readonly TimeSpan CleanupTimeout = TimeSpan.FromSeconds(10);
 
-    internal static async Task<PwshScriptResult> RunAsync(
+    internal static Task<PwshScriptResult> RunAsync(
         IEnumerable<string> arguments,
         string? workingDirectory = null,
         IReadOnlyDictionary<string, string?>? environment = null,
         TimeSpan? timeout = null,
         CancellationToken cancellationToken = default,
         string description = "PowerShell")
-    {
-        ArgumentNullException.ThrowIfNull(arguments);
-        if (timeout is { } timeoutValue && timeoutValue <= TimeSpan.Zero)
-        {
-            throw new ArgumentOutOfRangeException(nameof(timeout), "The process timeout must be positive.");
-        }
-
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = OperatingSystem.IsWindows() ? "pwsh.exe" : "pwsh",
-            WorkingDirectory = workingDirectory ?? string.Empty,
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-        };
-        foreach (var argument in arguments)
-        {
-            startInfo.ArgumentList.Add(argument);
-        }
-
-        if (environment is not null)
-        {
-            foreach (var (name, value) in environment)
-            {
-                startInfo.Environment[name] = value;
-            }
-        }
-
-        return await RunConfiguredProcessAsync(
-            startInfo,
+        => RunExecutableAsync(
+            OperatingSystem.IsWindows() ? "pwsh.exe" : "pwsh",
+            arguments,
+            environment,
+            workingDirectory,
             timeout,
             cancellationToken,
-            description).ConfigureAwait(false);
-    }
+            description);
 
     internal static Task<PwshScriptResult> RunExecutableAsync(
         string fileName,
         IEnumerable<string> arguments,
+        IReadOnlyDictionary<string, string?>? environment,
         string? workingDirectory = null,
         TimeSpan? timeout = null,
         CancellationToken cancellationToken = default,
@@ -78,6 +51,14 @@ internal static class PwshScriptRunner
         foreach (var argument in arguments)
         {
             startInfo.ArgumentList.Add(argument);
+        }
+
+        if (environment is not null)
+        {
+            foreach (var (name, value) in environment)
+            {
+                startInfo.Environment[name] = value;
+            }
         }
 
         return RunConfiguredProcessAsync(

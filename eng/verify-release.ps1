@@ -5,7 +5,6 @@ param(
     [switch]$ExcludeNetworkTests,
     [switch]$RequireConsumedFragments,
     [switch]$TestShardOnly,
-    [switch]$DocsOnlyTestSelection,
     [int]$TestShardIndex = 0,
     [int]$TestShardCount = 1
 )
@@ -229,46 +228,6 @@ function Assert-TestResultFile {
     }
 }
 
-# Resolves the docs-only route's test-class allowlist against the classes discovered in the
-# compiled test assembly. Returns an object whose Classes property holds the allowlisted names,
-# or $null when the allowlist cannot be trusted (missing, empty, or naming a class absent from
-# the assembly). $null means "run the full suite": an unclassifiable allowlist costs time, never
-# coverage, and never fails the run on its own.
-function Resolve-DocsOnlyTestClasses {
-    param(
-        [Parameter(Mandatory)]
-        [string]$AllowlistPath,
-
-        [Parameter(Mandatory)]
-        [AllowEmptyCollection()]
-        [string[]]$DiscoveredClassNames
-    )
-
-    if (-not (Test-Path -LiteralPath $AllowlistPath -PathType Leaf)) {
-        Write-Warning "Docs-only test allowlist is missing: $AllowlistPath. Falling back to the full suite."
-        return $null
-    }
-
-    $allowlist = @(Get-Content -LiteralPath $AllowlistPath |
-        ForEach-Object { $_.Trim() } |
-        Where-Object { $_ -ne '' -and -not $_.StartsWith('#') })
-    if ($allowlist.Count -eq 0) {
-        Write-Warning "Docs-only test allowlist is empty: $AllowlistPath. Falling back to the full suite."
-        return $null
-    }
-
-    $discoveredClasses = [System.Collections.Generic.HashSet[string]]::new(
-        [string[]]$DiscoveredClassNames,
-        [System.StringComparer]::Ordinal)
-    $unknownClasses = @($allowlist | Where-Object { -not $discoveredClasses.Contains($_) })
-    if ($unknownClasses.Count -gt 0) {
-        Write-Warning ("Docs-only test allowlist names classes absent from the test assembly: {0}. Falling back to the full suite." -f ($unknownClasses -join ', '))
-        return $null
-    }
-
-    return [pscustomobject]@{ Classes = [string[]]$allowlist }
-}
-
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $solutionPath = Join-Path $repoRoot "RoslynMcp.slnx"
 $testProject = Join-Path $repoRoot "tests\RoslynMcp.Tests\RoslynMcp.Tests.csproj"
@@ -419,10 +378,6 @@ $testRunId = "{0}-shard-{1}-of-{2}-{3}" -f @(
     $TestShardCount,
     [Guid]::NewGuid().ToString('N'))
 $trxPath = Join-Path $testResultsDir "$testRunId.trx"
-$skipTestRun = $false
-if ($DocsOnlyTestSelection -and $TestShardCount -le 1) {
-    Write-Host 'Docs-only selection ignored: TestShardCount <= 1 cannot be classified; running the full suite.'
-}
 if ($TestShardCount -gt 1) {
     $targetPathArguments = @(
         'msbuild',
@@ -449,32 +404,7 @@ if ($TestShardCount -gt 1) {
         throw "Test shard $TestShardIndex produced an empty class filter."
     }
 
-    if ($DocsOnlyTestSelection) {
-        # Docs-only route: run the declared documentation-contract allowlist on shard 0 only.
-        # Selecting on one shard by construction avoids a zero-match shard (an empty vstest match
-        # writes no TRX and would trip Assert-TestResultFile). An allowlist that cannot be trusted
-        # (missing, empty, or naming an absent class) fails closed to the unsharded full suite on
-        # shard 0, so a bad allowlist costs time, never coverage.
-        $docsOnlySelection = Resolve-DocsOnlyTestClasses `
-            -AllowlistPath (Join-Path $PSScriptRoot 'docs-only-test-classes.txt') `
-            -DiscoveredClassNames @($testShardPlan.TestClasses | ForEach-Object { $_.ClassName })
-        if ($TestShardIndex -ne 0) {
-            $skipTestRun = $true
-            Write-Host "Docs-only selection: shard 0 owns the docs-only test run; nothing to run on shard $TestShardIndex"
-        }
-        elseif ($null -eq $docsOnlySelection) {
-            Write-Host 'Docs-only selection: allowlist unusable; running the full unsharded suite on shard 0.'
-        }
-        else {
-            $docsOnlyClasses = @($docsOnlySelection.Classes)
-            $docsOnlyFilter = (@($docsOnlyClasses | ForEach-Object { "ClassName=$_" })) -join '|'
-            $testFilter = "($docsOnlyFilter)&$testFilter"
-            Write-Host "Docs-only selection: running $($docsOnlyClasses.Count) allowlisted classes on shard 0."
-        }
-    }
-    else {
-        $testFilter = "($($testShardPlan.SelectedFilter))&$testFilter"
-    }
+    $testFilter = "($($testShardPlan.SelectedFilter))&$testFilter"
     $planPath = Join-Path $testResultsDir "$testRunId-plan.json"
     $planJson | Set-Content -LiteralPath $planPath -Encoding utf8
     Write-Host ("Test shard: {0}/{1} ({2} classes; static case weight {3})" -f @(
@@ -517,11 +447,9 @@ if (-not $NoCoverage) {
 }
 $testArguments += $testEnvironment
 
-if (-not $skipTestRun) {
-    & dotnet @testArguments
-    Invoke-DotnetStep "dotnet test"
-    Assert-TestResultFile -Path $trxPath
-}
+& dotnet @testArguments
+Invoke-DotnetStep "dotnet test"
+Assert-TestResultFile -Path $trxPath
 
 if (-not $TestShardOnly) {
     # PublishReadyToRun (CrossGen) can fail on CI runners when the SDK's crossgen2
@@ -551,9 +479,7 @@ if (-not $TestShardOnly) {
     Write-Host "Publish directory: $publishDir"
     Write-Host "Hash manifest: $hashManifestPath"
 }
-if (-not $skipTestRun) {
-    Write-Host "Test results (TRX): $trxPath"
-}
+Write-Host "Test results (TRX): $trxPath"
 if ($NoCoverage) {
     Write-Host "Code coverage: skipped (-NoCoverage)"
 } else {

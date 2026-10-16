@@ -1,4 +1,3 @@
-using Microsoft.CodeAnalysis;
 using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
@@ -21,10 +20,6 @@ namespace RoslynMcp.Tests;
 /// <see cref="PreviewKind"/>. The required dispatch arguments make a dropped binding fail to
 /// compile; these shim-level tests still catch a concrete but incorrect kind or route name.
 /// </para>
-/// <para>
-/// <c>FakeGate</c> / <c>FakePreviewStore</c> in <c>ToolDispatchTests</c> are private nested types,
-/// so equivalents are redeclared below rather than shared.
-/// </para>
 /// </remarks>
 [TestClass]
 public sealed class PreviewRouteBindingEditingTests
@@ -36,9 +31,9 @@ public sealed class PreviewRouteBindingEditingTests
     [TestMethod]
     public async Task MultiFileEditApply_IncompatibleProducer_RefusesBeforeServiceCall()
     {
-        var gate = new FakeGate();
-        var refactoring = new FakeRefactoring();
-        var store = new FakePreviewStore(token: "tok-mfe-x", workspaceId: "ws-mfe-x")
+        var gate = new ForwardingDispatchGate();
+        var refactoring = new RecordingApplyRefactoringService("MultiFile.cs");
+        var store = new DispatchPreviewStore(token: "tok-mfe-x", workspaceId: "ws-mfe-x")
         {
             Kind = PreviewKind.SymbolRename,
         };
@@ -59,9 +54,9 @@ public sealed class PreviewRouteBindingEditingTests
     [TestMethod]
     public async Task MultiFileEditApply_MatchingProducer_Applies()
     {
-        var gate = new FakeGate();
-        var refactoring = new FakeRefactoring();
-        var store = new FakePreviewStore(token: "tok-mfe-ok", workspaceId: "ws-mfe-ok")
+        var gate = new ForwardingDispatchGate();
+        var refactoring = new RecordingApplyRefactoringService("MultiFile.cs");
+        var store = new DispatchPreviewStore(token: "tok-mfe-ok", workspaceId: "ws-mfe-ok")
         {
             Kind = PreviewKind.MultiFileEdit,
         };
@@ -76,10 +71,10 @@ public sealed class PreviewRouteBindingEditingTests
     [TestMethod]
     public async Task MultiFileEditApply_UnspecifiedProducer_StaysPermissive()
     {
-        var gate = new FakeGate();
-        var refactoring = new FakeRefactoring();
+        var gate = new ForwardingDispatchGate();
+        var refactoring = new RecordingApplyRefactoringService("MultiFile.cs");
         // Kind left at its default (Unspecified) — an untagged producer or an out-of-tree store.
-        var store = new FakePreviewStore(token: "tok-mfe-untagged", workspaceId: "ws-mfe-ut");
+        var store = new DispatchPreviewStore(token: "tok-mfe-untagged", workspaceId: "ws-mfe-ut");
 
         var result = await MultiFileEditTools.ApplyMultiFilePreview(
             gate, refactoring, store, "tok-mfe-untagged", CancellationToken.None);
@@ -96,9 +91,9 @@ public sealed class PreviewRouteBindingEditingTests
     [TestMethod]
     public async Task ApplyCodeAction_IncompatibleProducer_RefusesBeforeServiceCall()
     {
-        var gate = new FakeGate();
-        var refactoring = new FakeRefactoring();
-        var store = new FakePreviewStore(token: "tok-ca-x", workspaceId: "ws-ca-x")
+        var gate = new ForwardingDispatchGate();
+        var refactoring = new RecordingApplyRefactoringService("MultiFile.cs");
+        var store = new DispatchPreviewStore(token: "tok-ca-x", workspaceId: "ws-ca-x")
         {
             Kind = PreviewKind.SymbolRename,
         };
@@ -119,9 +114,9 @@ public sealed class PreviewRouteBindingEditingTests
     [TestMethod]
     public async Task ApplyCodeAction_MatchingProducer_Applies()
     {
-        var gate = new FakeGate();
-        var refactoring = new FakeRefactoring();
-        var store = new FakePreviewStore(token: "tok-ca-ok", workspaceId: "ws-ca-ok")
+        var gate = new ForwardingDispatchGate();
+        var refactoring = new RecordingApplyRefactoringService("MultiFile.cs");
+        var store = new DispatchPreviewStore(token: "tok-ca-ok", workspaceId: "ws-ca-ok")
         {
             Kind = PreviewKind.CodeAction,
         };
@@ -136,9 +131,9 @@ public sealed class PreviewRouteBindingEditingTests
     [TestMethod]
     public async Task ApplyCodeAction_UnspecifiedProducer_StaysPermissive()
     {
-        var gate = new FakeGate();
-        var refactoring = new FakeRefactoring();
-        var store = new FakePreviewStore(token: "tok-ca-untagged", workspaceId: "ws-ca-ut");
+        var gate = new ForwardingDispatchGate();
+        var refactoring = new RecordingApplyRefactoringService("MultiFile.cs");
+        var store = new DispatchPreviewStore(token: "tok-ca-untagged", workspaceId: "ws-ca-ut");
 
         var result = await CodeActionTools.ApplyCodeAction(
             gate, refactoring, store, "tok-ca-untagged", CancellationToken.None);
@@ -148,99 +143,6 @@ public sealed class PreviewRouteBindingEditingTests
         StringAssert.Contains(result, "MultiFile.cs");
     }
 
-    // ------------------------------------------------------------------
-    // Fakes — equivalents of the private nested types in ToolDispatchTests.
-    // ------------------------------------------------------------------
-
-    private sealed class FakeGate : IWorkspaceExecutionGate
-    {
-        public async Task<T> RunReadAsync<T>(string workspaceId, Func<CancellationToken, Task<T>> action, CancellationToken ct)
-            => await action(ct).ConfigureAwait(false);
-
-        public async Task<T> RunWriteAsync<T>(
-            string workspaceId,
-            Func<CancellationToken, Task<T>> action,
-            CancellationToken ct,
-            bool applyStalenessPolicy = true)
-        {
-            _ = applyStalenessPolicy;
-            return await action(ct).ConfigureAwait(false);
-        }
-
-        public Task<T> RunLoadGateAsync<T>(Func<CancellationToken, Task<T>> action, CancellationToken ct)
-            => throw new NotSupportedException("Token apply must not route through RunLoadGateAsync.");
-
-        public void RemoveGate(string workspaceId)
-            => throw new NotSupportedException("Token apply must not call RemoveGate.");
-    }
-
-    private sealed class FakeRefactoring : IRefactoringService
-    {
-        public int ApplyCallCount { get; private set; }
-
-        public Task<ApplyResultDto> ApplyRefactoringAsync(string previewToken, string toolName, CancellationToken ct)
-        {
-            ApplyCallCount++;
-            return Task.FromResult(new ApplyResultDto(true, new[] { "MultiFile.cs" }, null));
-        }
-
-        public Task<ApplyResultDto> ApplyRefactoringAsync(string previewToken, string toolName, bool force, CancellationToken ct)
-            => ApplyRefactoringAsync(previewToken, toolName, ct);
-
-        public Task<RefactoringPreviewDto> PreviewRenameAsync(string workspaceId, SymbolLocator locator, string newName, CancellationToken ct)
-            => throw new NotSupportedException();
-
-        public Task<RefactoringPreviewDto> PreviewRenameAsync(string workspaceId, SymbolLocator locator, string newName, bool summary, CancellationToken ct)
-            => throw new NotSupportedException();
-
-        public Task<RefactoringPreviewDto> PreviewOrganizeUsingsAsync(string workspaceId, string filePath, CancellationToken ct)
-            => throw new NotSupportedException();
-
-        public Task<RefactoringPreviewDto> PreviewFormatDocumentAsync(string workspaceId, string filePath, CancellationToken ct)
-            => throw new NotSupportedException();
-
-        public Task<RefactoringPreviewDto> PreviewFormatRangeAsync(string workspaceId, string filePath, int startLine, int startColumn, int endLine, int endColumn, CancellationToken ct)
-            => throw new NotSupportedException();
-
-        public Task<RefactoringPreviewDto> PreviewCodeFixAsync(string workspaceId, string diagnosticId, string filePath, int line, int column, string? fixId, CancellationToken ct)
-            => throw new NotSupportedException();
-    }
-
-    private sealed class FakePreviewStore : IPreviewStore
-    {
-        private readonly string _token;
-        private readonly string _workspaceId;
-
-        public FakePreviewStore(string token, string workspaceId)
-        {
-            _token = token;
-            _workspaceId = workspaceId;
-        }
-
-        public PreviewKind Kind { get; init; } = PreviewKind.Unspecified;
-
-        public string? PeekWorkspaceId(string token) => token == _token ? _workspaceId : null;
-
-        public PreviewKind PeekKind(string token) => token == _token ? Kind : PreviewKind.Unspecified;
-
-        public string Store(string workspaceId, Solution modifiedSolution, int workspaceVersion, string description)
-            => throw new NotSupportedException();
-
-        public string Store(string workspaceId, Solution modifiedSolution, int workspaceVersion, string description, bool diffTruncated)
-            => throw new NotSupportedException();
-
-        public string Store(string workspaceId, Solution modifiedSolution, int workspaceVersion, string description, IReadOnlyList<FileChangeDto> changes)
-            => throw new NotSupportedException();
-
-        public (string WorkspaceId, Solution OriginalSolution, Solution ModifiedSolution, int WorkspaceVersion, string Description, bool DiffTruncated)? Retrieve(string token)
-            => throw new NotSupportedException();
-
-        public void Invalidate(string token) => throw new NotSupportedException();
-
-        public void InvalidateAll(string? workspaceId = null) => throw new NotSupportedException();
-
-        public void InvalidateOnVersionBump(string workspaceId, int newWorkspaceVersion) => throw new NotSupportedException();
-    }
 }
 
 /// <summary>

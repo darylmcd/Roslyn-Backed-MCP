@@ -32,8 +32,8 @@ public sealed class CodexChangelogHookTests
     [TestCategory("Process")]
     public async Task Hook_EnforcesPublicationBoundariesAndDelegatesToVerifier()
     {
-        RequireGit();
-        var fixtureRoot = CreateFixture();
+        await GitFixtureRunner.RequireAvailableAsync();
+        var fixtureRoot = await CreateFixtureAsync();
         try
         {
             var nonPublication = await InvokeHookAsync(
@@ -110,7 +110,7 @@ public sealed class CodexChangelogHookTests
         }
     }
 
-    private static string CreateFixture()
+    private static async Task<string> CreateFixtureAsync()
     {
         var root = Path.Combine(
             TestTempRoot.Current,
@@ -127,9 +127,9 @@ public sealed class CodexChangelogHookTests
         File.WriteAllText(Path.Combine(root, "changelog.d", "README.md"), "# Fixture fragments\n");
         File.WriteAllText(Path.Combine(root, "src", "fixture.txt"), "baseline\n");
 
-        GitFixtureRunner.RunGit(root, "init", "-q", "-b", "main");
-        GitFixtureRunner.RunGit(root, "add", "-A");
-        GitFixtureRunner.RunGit(
+        await GitFixtureRunner.RunGitAsync(root, "init", "-q", "-b", "main");
+        await GitFixtureRunner.RunGitAsync(root, "add", "-A");
+        await GitFixtureRunner.RunGitAsync(
             root,
             "-c",
             "user.email=fixture@roslynmcp.invalid",
@@ -226,11 +226,6 @@ public sealed class CodexChangelogHookTests
         Assert.IsTrue(string.IsNullOrWhiteSpace(result.StdErr), $"{scenario}: stderr={result.StdErr}");
     }
 
-    private static void RequireGit()
-    {
-        if (!GitFixtureRunner.IsAvailable(out var failureReason))
-            Assert.Inconclusive($"git is required for Codex hook fixtures: {failureReason}");
-    }
 
     private sealed record ProcessResult(int ExitCode, string StdOut, string StdErr);
 }

@@ -59,9 +59,9 @@ public sealed class PreviewRouteBindingFileOpsTests : IsolatedWorkspaceTestBase
     [DataRow(PreviewKind.FixAll, "fix_all_apply")]
     public async Task BoundRoute_ForeignProducer_RefusesBeforeServiceCall(PreviewKind routeKind, string expectedRoute)
     {
-        var gate = new FakeGate();
+        var gate = new ForwardingDispatchGate();
         var serviceCallRan = false;
-        var store = new FakePreviewStore(token: "tok-foreign", workspaceId: "ws-f")
+        var store = new DispatchPreviewStore(token: "tok-foreign", workspaceId: "ws-f")
         {
             Kind = PreviewKind.SymbolRename,
         };
@@ -94,8 +94,8 @@ public sealed class PreviewRouteBindingFileOpsTests : IsolatedWorkspaceTestBase
     [DataRow(PreviewKind.FixAll)]
     public async Task BoundRoute_MatchingProducer_Applies(PreviewKind routeKind)
     {
-        var gate = new FakeGate();
-        var store = new FakePreviewStore(token: "tok-match", workspaceId: "ws-m") { Kind = routeKind };
+        var gate = new ForwardingDispatchGate();
+        var store = new DispatchPreviewStore(token: "tok-match", workspaceId: "ws-m") { Kind = routeKind };
 
         var result = await ToolDispatch.ApplyByTokenAsync<FakeDto>(
             gate,
@@ -121,9 +121,9 @@ public sealed class PreviewRouteBindingFileOpsTests : IsolatedWorkspaceTestBase
     [DataRow(PreviewKind.FixAll)]
     public async Task BoundRoute_UnspecifiedProducer_StaysPermissive(PreviewKind routeKind)
     {
-        var gate = new FakeGate();
+        var gate = new ForwardingDispatchGate();
         // Kind left at its default — the interface-default / untagged-producer shape.
-        var store = new FakePreviewStore(token: "tok-untagged", workspaceId: "ws-ut");
+        var store = new DispatchPreviewStore(token: "tok-untagged", workspaceId: "ws-ut");
 
         var result = await ToolDispatch.ApplyByTokenAsync<FakeDto>(
             gate,
@@ -147,8 +147,8 @@ public sealed class PreviewRouteBindingFileOpsTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public async Task CreateToken_RedeemedViaMoveRoute_IsRefused()
     {
-        var gate = new FakeGate();
-        var store = new FakePreviewStore(token: "tok-cross", workspaceId: "ws-x")
+        var gate = new ForwardingDispatchGate();
+        var store = new DispatchPreviewStore(token: "tok-cross", workspaceId: "ws-x")
         {
             Kind = PreviewKind.FileCreate,
         };
@@ -309,76 +309,6 @@ public sealed class PreviewRouteBindingFileOpsTests : IsolatedWorkspaceTestBase
         Assert.AreEqual(PreviewKind.FileMove, PreviewStore.PeekKind(preview.PreviewToken));
     }
 
-    // ------------------------------------------------------------------
-    // Fakes — private nested, mirroring ToolDispatchTests' own shapes. Kept local rather than
-    // widened out of that file so neither test file constrains the other's fake.
-    // ------------------------------------------------------------------
-
     private sealed record FakeDto(string Status);
 
-    private sealed class FakeGate : IWorkspaceExecutionGate
-    {
-        public async Task<T> RunReadAsync<T>(string workspaceId, Func<CancellationToken, Task<T>> action, CancellationToken ct)
-            => await action(ct).ConfigureAwait(false);
-
-        public async Task<T> RunWriteAsync<T>(
-            string workspaceId,
-            Func<CancellationToken, Task<T>> action,
-            CancellationToken ct,
-            bool applyStalenessPolicy = true)
-        {
-            _ = applyStalenessPolicy;
-            return await action(ct).ConfigureAwait(false);
-        }
-
-        public Task<T> RunLoadGateAsync<T>(Func<CancellationToken, Task<T>> action, CancellationToken ct)
-            => throw new NotSupportedException("ToolDispatch must not route through RunLoadGateAsync.");
-
-        public void RemoveGate(string workspaceId)
-            => throw new NotSupportedException("ToolDispatch must not call RemoveGate.");
-    }
-
-    private sealed class FakePreviewStore : IPreviewStore
-    {
-        private readonly string _token;
-        private readonly string _workspaceId;
-
-        public FakePreviewStore(string token, string workspaceId)
-        {
-            _token = token;
-            _workspaceId = workspaceId;
-        }
-
-        /// <summary>
-        /// Producer family the fake reports. Defaults to <see cref="PreviewKind.Unspecified"/>,
-        /// matching both the interface default and an untagged producer.
-        /// </summary>
-        public PreviewKind Kind { get; init; } = PreviewKind.Unspecified;
-
-        public string? PeekWorkspaceId(string token) => token == _token ? _workspaceId : null;
-
-        // null = "write set unknown", so ToolDispatch skips boundary revalidation and these
-        // assertions isolate the provenance guard.
-        public IReadOnlyList<string>? PeekChangedPaths(string token) => null;
-
-        public PreviewKind PeekKind(string token) => token == _token ? Kind : PreviewKind.Unspecified;
-
-        public string Store(string workspaceId, Solution modifiedSolution, int workspaceVersion, string description)
-            => throw new NotSupportedException();
-
-        public string Store(string workspaceId, Solution modifiedSolution, int workspaceVersion, string description, bool diffTruncated)
-            => throw new NotSupportedException();
-
-        public string Store(string workspaceId, Solution modifiedSolution, int workspaceVersion, string description, IReadOnlyList<FileChangeDto> changes)
-            => throw new NotSupportedException();
-
-        public (string WorkspaceId, Solution OriginalSolution, Solution ModifiedSolution, int WorkspaceVersion, string Description, bool DiffTruncated)? Retrieve(string token)
-            => throw new NotSupportedException();
-
-        public void Invalidate(string token) => throw new NotSupportedException();
-
-        public void InvalidateAll(string? workspaceId = null) => throw new NotSupportedException();
-
-        public void InvalidateOnVersionBump(string workspaceId, int newWorkspaceVersion) => throw new NotSupportedException();
-    }
 }

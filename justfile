@@ -48,7 +48,7 @@ test-release: prepare-test-fixtures
 verify-docs:
     pwsh -NoProfile -File ./eng/verify-ai-docs.ps1
 
-# Check version-string drift across all six version files
+# Check version-string drift across all seven version files
 verify-version-drift:
     pwsh -NoProfile -File ./eng/verify-version-drift.ps1
 
@@ -96,6 +96,7 @@ clean:
 clean-all: clean
     rm -rf artifacts
 
+# Clean build outputs and artifacts directory
 [windows]
 clean-all: clean
     if (Test-Path -LiteralPath artifacts) { Remove-Item -LiteralPath artifacts -Recurse -Force }
@@ -106,19 +107,21 @@ clean-all: clean
 pack:
     dotnet pack {{ host-project }} -c Release -o {{ nupkg-dir }}
 
-# Update or install global `roslynmcp` from nuget.org (package id Darylmcd.RoslynMcp)
 # Stops one owned Layer 1 process (identified via ROSLYNMCP_REINSTALL_PROCESS_ID +
 # ROSLYNMCP_REINSTALL_PROCESS_STARTED_AT_UTC, matched by image path under the tool
 # store) before mutating, then fails closed naming any holder it cannot attribute.
+
+# Update or install global roslynmcp from nuget.org after releasing the exact owned process
 tool-update:
     pwsh -NoProfile -File ./eng/stop-owned-tool-store-process.ps1
     dotnet tool update -g Darylmcd.RoslynMcp || dotnet tool install -g Darylmcd.RoslynMcp
     dotnet tool list -g
 
-# Pack Release nupkg, then install that build as the global tool (maintainer / dogfood).
 # Uninstalls legacy package id RoslynMcp if present, then installs Darylmcd.RoslynMcp from nupkg/.
 # Set ROSLYNMCP_REINSTALL_PROCESS_ID and ROSLYNMCP_REINSTALL_PROCESS_STARTED_AT_UTC together
 # to identify one owned roslynmcp process that must exit before a Windows reinstall.
+
+# Pack Release nupkg and reinstall the global tool after releasing the exact owned process
 tool-install-local: pack
     pwsh -NoProfile -File ./eng/reinstall-local-tool.ps1 -PackageSource "{{ nupkg-dir }}" -ProjectPath "{{ host-project }}"
 
