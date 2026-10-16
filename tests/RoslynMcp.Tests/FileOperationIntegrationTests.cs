@@ -4,6 +4,7 @@ using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Middleware;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Helpers;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -332,10 +333,10 @@ public sealed class FileOperationIntegrationTests : IsolatedWorkspaceTestBase
 
     internal static void AssertNoStoredPreviews(RoslynMcp.Roslyn.Contracts.IPreviewStore previewStore, string workspaceId)
     {
-        var field = typeof(BoundedStore<RoslynMcp.Roslyn.Services.PreviewStore.PreviewEntry>)
-            .GetField("_entries", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
-        var entries = (IReadOnlyDictionary<string, RoslynMcp.Roslyn.Services.PreviewStore.PreviewEntry>)field.GetValue(previewStore)!;
-        Assert.IsFalse(entries.Values.Any(entry => entry.WorkspaceId == workspaceId),
+        Assert.IsInstanceOfType<TrackingPreviewStore>(previewStore,
+            "Refusal assertions require the test token observer registered in the test service graph.");
+        var tokens = ((TrackingPreviewStore)previewStore).GetRedeemableTokens(workspaceId);
+        Assert.AreEqual(0, tokens.Count,
             "A refused operation must not leave a redeemable preview.");
     }
 

@@ -1,19 +1,37 @@
 using Microsoft.CodeAnalysis;
-using RoslynMcp.Core.Models;
-using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
 /// <summary>
 /// Direct unit tests for <see cref="CompilationCache"/>. Uses an in-memory
 /// <see cref="AdhocWorkspace"/> so the cache can be exercised without spinning up a real
-/// MSBuildWorkspace, and a tiny <see cref="IWorkspaceManager"/> stub so we can drive the
+/// MSBuildWorkspace, and a fail-closed workspace-manager stub so we can drive the
 /// version counter directly to verify invalidation.
 /// </summary>
 [TestClass]
 public sealed class CompilationCacheTests
 {
+    private const string WorkspaceId = "test-ws";
+    private readonly List<IDisposable> _resources = [];
+
+    [TestCleanup]
+    public async Task CleanupAsync()
+    {
+        try
+        {
+            await CleanupFailureCollector.RunAsync(
+                "Failed to dispose compilation-cache fixtures.",
+                _resources.AsEnumerable().Reverse()
+                    .Select(resource => CleanupFailureCollector.FromAction(resource.Dispose)).ToArray());
+        }
+        finally
+        {
+            _resources.Clear();
+        }
+    }
+
     [TestMethod]
     public async Task ConcurrentFirstCallers_StartOneRawAndOneAnalyzerBuildPerKey()
     {
@@ -22,7 +40,7 @@ public sealed class CompilationCacheTests
         var analyzerRelease = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var rawStarts = 0;
         var analyzerStarts = 0;
-        var cache = new CompilationCache(
+        using var cache = new CompilationCache(
             ws,
             async _ =>
             {
@@ -38,12 +56,12 @@ public sealed class CompilationCacheTests
             });
 
         var rawCalls = StartConcurrentBurst(
-            () => cache.GetCompilationAsync(ws.WorkspaceId, project, CancellationToken.None));
+            () => cache.GetCompilationAsync(WorkspaceId, project, CancellationToken.None));
         rawRelease.SetResult();
         await Task.WhenAll(rawCalls).ConfigureAwait(false);
 
         var analyzerCalls = StartConcurrentBurst(
-            () => cache.GetCompilationWithAnalyzersAsync(ws.WorkspaceId, project, CancellationToken.None));
+            () => cache.GetCompilationWithAnalyzersAsync(WorkspaceId, project, CancellationToken.None));
         analyzerRelease.SetResult();
         await Task.WhenAll(analyzerCalls).ConfigureAwait(false);
 
@@ -54,10 +72,10 @@ public sealed class CompilationCacheTests
     [TestMethod]
     public async Task GetCompilationAsync_ReturnsSameInstance_OnRepeatedCall_AtSameVersion()
     {
-        var (cache, project, ws) = CreateCacheWithProject(initialVersion: 1);
+        var (cache, project, _) = CreateCacheWithProject(initialVersion: 1);
 
-        var first = await cache.GetCompilationAsync(ws.WorkspaceId, project, default);
-        var second = await cache.GetCompilationAsync(ws.WorkspaceId, project, default);
+        var first = await cache.GetCompilationAsync(WorkspaceId, project, default);
+        var second = await cache.GetCompilationAsync(WorkspaceId, project, default);
 
         Assert.IsNotNull(first);
         Assert.AreSame(first, second, "Cache should return the same Compilation instance for the same version.");
@@ -73,6 +91,7 @@ public sealed class CompilationCacheTests
         // entry rather than handing back the stale one.
         const string workspaceId = "test-ws";
         var adhoc = new AdhocWorkspace();
+        _resources.Add(adhoc);
         var projectId = ProjectId.CreateNewId();
         adhoc.AddProject(ProjectInfo.Create(
             projectId, VersionStamp.Create(),
@@ -80,8 +99,10 @@ public sealed class CompilationCacheTests
             language: LanguageNames.CSharp));
         var v1Project = adhoc.CurrentSolution.GetProject(projectId)!;
 
-        var ws = new FakeWorkspaceManager(workspaceId, initialVersion: 1);
+        var version = 1;
+        var ws = new FailClosedWorkspaceManagerStub { GetCurrentVersionHandler = _ => version };
         var cache = new CompilationCache(ws);
+        _resources.Add(cache);
 
         var first = await cache.GetCompilationAsync(workspaceId, v1Project, default);
         Assert.IsNotNull(first);
@@ -92,7 +113,7 @@ public sealed class CompilationCacheTests
         var newSolution = adhoc.CurrentSolution.AddDocument(
             docId, "Sample.cs", "namespace N { class C { } }");
         var v2Project = newSolution.GetProject(projectId)!;
-        ws.Version = 2;
+        version = 2;
 
         var second = await cache.GetCompilationAsync(workspaceId, v2Project, default);
         Assert.IsNotNull(second);
@@ -103,9 +124,9 @@ public sealed class CompilationCacheTests
     [TestMethod]
     public async Task GetCompilationAsync_ReturnsSolutionOwnedCompilation()
     {
-        var (cache, project, ws) = CreateCacheWithProject(initialVersion: 1);
+        var (cache, project, _) = CreateCacheWithProject(initialVersion: 1);
 
-        var cached = await cache.GetCompilationAsync(ws.WorkspaceId, project, default);
+        var cached = await cache.GetCompilationAsync(WorkspaceId, project, default);
         var owned = await project.GetCompilationAsync(default);
 
         Assert.AreSame(owned, cached,
@@ -127,31 +148,31 @@ public sealed class CompilationCacheTests
             },
             analyzerFactory: null);
 
-        var plain = await cache.GetCompilationAsync(ws.WorkspaceId, project, default);
+        var plain = await cache.GetCompilationAsync(WorkspaceId, project, default);
         Assert.AreEqual(1, starts, "The plain slot must populate on its own.");
 
-        var snapshot = await cache.GetCompilationSnapshotAsync(ws.WorkspaceId, project, default);
+        var snapshot = await cache.GetCompilationSnapshotAsync(WorkspaceId, project, default);
         Assert.AreEqual(2, starts,
             "The snapshot slot must not reuse the plain slot's entry; it caches its own product.");
         Assert.IsNotNull(snapshot);
         Assert.IsTrue(snapshot!.GeneratorDiagnostics.IsEmpty);
 
-        Assert.AreSame(plain, await cache.GetCompilationAsync(ws.WorkspaceId, project, default));
-        Assert.AreSame(snapshot, await cache.GetCompilationSnapshotAsync(ws.WorkspaceId, project, default));
+        Assert.AreSame(plain, await cache.GetCompilationAsync(WorkspaceId, project, default));
+        Assert.AreSame(snapshot, await cache.GetCompilationSnapshotAsync(WorkspaceId, project, default));
         Assert.AreEqual(2, starts, "Repeat reads at the same version must hit their own slot.");
 
-        cache.Invalidate(ws.WorkspaceId);
-        _ = await cache.GetCompilationAsync(ws.WorkspaceId, project, default);
-        _ = await cache.GetCompilationSnapshotAsync(ws.WorkspaceId, project, default);
+        cache.Invalidate(WorkspaceId);
+        _ = await cache.GetCompilationAsync(WorkspaceId, project, default);
+        _ = await cache.GetCompilationSnapshotAsync(WorkspaceId, project, default);
         Assert.AreEqual(4, starts, "Invalidate must clear both the plain and the snapshot slot.");
     }
 
     [TestMethod]
     public async Task GetCompilationWithAnalyzersAsync_ReturnsNull_WhenProjectHasNoAnalyzers()
     {
-        var (cache, project, ws) = CreateCacheWithProject(initialVersion: 1);
+        var (cache, project, _) = CreateCacheWithProject(initialVersion: 1);
 
-        var bound = await cache.GetCompilationWithAnalyzersAsync(ws.WorkspaceId, project, default);
+        var bound = await cache.GetCompilationWithAnalyzersAsync(WorkspaceId, project, default);
 
         Assert.IsNull(bound, "AdhocWorkspace projects have no AnalyzerReferences, so the cache must return null instead of fabricating an empty bound compilation.");
     }
@@ -159,8 +180,9 @@ public sealed class CompilationCacheTests
     [TestMethod]
     public void Invalidate_IsSafeToCall_OnEmptyCache()
     {
-        var ws = new FakeWorkspaceManager("test-ws", initialVersion: 1);
+        var ws = new FailClosedWorkspaceManagerStub { GetCurrentVersionHandler = _ => 1 };
         var cache = new CompilationCache(ws);
+        _resources.Add(cache);
 
         // Smoke test — Invalidate should be a no-op when nothing is cached for the workspace.
         // (Roslyn's Project-level Compilation cache makes a stronger "evicted-and-rebuilt"
@@ -169,10 +191,10 @@ public sealed class CompilationCacheTests
         cache.Invalidate("nonexistent-ws");
     }
 
-    private static (CompilationCache cache, Project project, FakeWorkspaceManager ws) CreateCacheWithProject(int initialVersion)
+    private (CompilationCache cache, Project project, FailClosedWorkspaceManagerStub ws) CreateCacheWithProject(int initialVersion)
     {
-        const string workspaceId = "test-ws";
         var adhoc = new AdhocWorkspace();
+        _resources.Add(adhoc);
         var projectId = ProjectId.CreateNewId();
         var projectInfo = ProjectInfo.Create(
             projectId,
@@ -183,8 +205,9 @@ public sealed class CompilationCacheTests
         adhoc.AddProject(projectInfo);
         var project = adhoc.CurrentSolution.GetProject(projectId)!;
 
-        var ws = new FakeWorkspaceManager(workspaceId, initialVersion);
+        var ws = new FailClosedWorkspaceManagerStub { GetCurrentVersionHandler = _ => initialVersion };
         var cache = new CompilationCache(ws);
+        _resources.Add(cache);
         return (cache, project, ws);
     }
 
@@ -201,47 +224,5 @@ public sealed class CompilationCacheTests
 
         start.SetResult();
         return callers;
-    }
-
-    /// <summary>
-    /// Minimal <see cref="IWorkspaceManager"/> stand-in. Only the methods the cache
-    /// actually calls (<see cref="GetCurrentVersion"/>) need real implementations; the rest
-    /// throw to surface accidental coupling immediately.
-    /// </summary>
-    private sealed class FakeWorkspaceManager : IWorkspaceManager
-    {
-        public string WorkspaceId { get; }
-        public int Version { get; set; }
-
-        public event Action<string>? WorkspaceClosed;
-        public event Action<string>? WorkspaceReloaded;
-
-        public FakeWorkspaceManager(string workspaceId, int initialVersion)
-        {
-            WorkspaceId = workspaceId;
-            Version = initialVersion;
-        }
-
-        public void RaiseWorkspaceClosed(string workspaceId) => WorkspaceClosed?.Invoke(workspaceId);
-        public void RaiseWorkspaceReloaded(string workspaceId) => WorkspaceReloaded?.Invoke(workspaceId);
-
-        public int GetCurrentVersion(string workspaceId) => Version;
-        public void RestoreVersion(string workspaceId, int version) => Version = version;
-
-        // ----- Unused by CompilationCache; throw to surface unexpected coupling -----
-        public Task<WorkspaceStatusDto> LoadAsync(string path, EvictPolicy evictPolicy, CancellationToken ct) => throw new NotSupportedException();
-        public Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct) => throw new NotSupportedException();
-        public bool ContainsWorkspace(string workspaceId) => workspaceId == WorkspaceId;
-        public bool IsStale(string workspaceId) => false;
-        public bool Close(string workspaceId) => throw new NotSupportedException();
-        public IReadOnlyList<WorkspaceStatusDto> ListWorkspaces() => throw new NotSupportedException();
-        public WorkspaceStatusDto GetStatus(string workspaceId) => throw new NotSupportedException();
-        public Task<WorkspaceStatusDto> GetStatusAsync(string workspaceId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-        public ProjectGraphDto GetProjectGraph(string workspaceId) => throw new NotSupportedException();
-        public Task<IReadOnlyList<GeneratedDocumentDto>> GetSourceGeneratedDocumentsAsync(string workspaceId, string? projectName, CancellationToken ct) => throw new NotSupportedException();
-        public Task<string?> GetSourceTextAsync(string workspaceId, string filePath, CancellationToken ct) => throw new NotSupportedException();
-        public Solution GetCurrentSolution(string workspaceId) => throw new NotSupportedException();
-        public bool TryApplyChanges(string workspaceId, Solution newSolution) => throw new NotSupportedException();
-        public Project? GetProject(string workspaceId, string projectNameOrPath) => null;
     }
 }

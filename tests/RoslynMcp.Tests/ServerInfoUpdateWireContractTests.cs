@@ -70,7 +70,7 @@ public sealed class ServerInfoUpdateWireContractTests
 
         foreach (var protocolVersion in new[] { _legacyProtocolVersion, (string?)null })
         {
-            await using var harness = await CreateHarnessAsync(new MutableVersionProvider(), protocolVersion);
+            await using var harness = await CreateHarnessAsync(new FixedLatestVersionProvider(null, VersionCheckStatus.NeverChecked, null), protocolVersion);
 
             var listed = await harness.Client.ListToolsAsync(new ListToolsRequestParams(), CancellationToken.None);
             var serverInfo = listed.Tools.Single(static tool => tool.Name == "server_info");
@@ -96,7 +96,7 @@ public sealed class ServerInfoUpdateWireContractTests
     {
         foreach (var protocolVersion in new[] { _legacyProtocolVersion, (string?)null })
         {
-            var provider = new MutableVersionProvider();
+            var provider = new FixedLatestVersionProvider(null, VersionCheckStatus.NeverChecked, null);
             await using var harness = await CreateHarnessAsync(provider, protocolVersion);
             var listed = await harness.Client.ListToolsAsync(new ListToolsRequestParams(), CancellationToken.None);
             var schema = JsonNode.Parse(listed.Tools.Single(static tool => tool.Name == "server_info").OutputSchema!.Value.GetRawText())!;
@@ -184,15 +184,4 @@ public sealed class ServerInfoUpdateWireContractTests
         DateTime? LastCheckedAt,
         string ExpectedStatus,
         bool ExpectedAvailable);
-
-    private sealed class MutableVersionProvider : ILatestVersionProvider
-    {
-        public string? Latest { get; set; }
-
-        public VersionCheckStatus LastCheckStatus { get; set; } = VersionCheckStatus.NeverChecked;
-
-        public DateTime? LastCheckedAt { get; set; }
-
-        public string? GetLatestVersion() => Latest;
-    }
 }

@@ -1,12 +1,11 @@
 using System.Text.Json;
-using Microsoft.CodeAnalysis;
-using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Diagnostics;
 using RoslynMcp.Host.Stdio.Runtime;
 using RoslynMcp.Host.Stdio.Services;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -158,8 +157,8 @@ public sealed class ServerInfoPathBoundaryTests
             SecurityOptionsSnapshot.Value = new SecurityOptions { SanctionedRoots = ["."] };
 
             var json = await ServerTools.GetServerInfo(
-                new FakeWorkspaceManager(),
-                new FakeVersionProvider(null),
+                new FailClosedWorkspaceManagerStub(),
+                new FixedLatestVersionProvider(null, VersionCheckStatus.Pending, null),
                 new ServerProcessMetadata());
 
             using var doc = JsonDocument.Parse(json.TextPayload());
@@ -191,8 +190,8 @@ public sealed class ServerInfoPathBoundaryTests
             SecurityOptionsSnapshot.Value = null;
 
             var json = await ServerTools.GetServerInfo(
-                new FakeWorkspaceManager(),
-                new FakeVersionProvider(null),
+                new FailClosedWorkspaceManagerStub(),
+                new FixedLatestVersionProvider(null, VersionCheckStatus.Pending, null),
                 new ServerProcessMetadata());
 
             using var doc = JsonDocument.Parse(json.TextPayload());
@@ -203,43 +202,5 @@ public sealed class ServerInfoPathBoundaryTests
         {
             SecurityOptionsSnapshot.Value = previous;
         }
-    }
-
-    /// <summary>
-    /// Minimal fake — only <see cref="IWorkspaceManager.ListWorkspaces"/> is reached by the
-    /// server_info path. Mirrors the per-file fakes in <c>ServerHeartbeatTests</c> and
-    /// <c>HostProcessMetadataTests</c> rather than introducing shared test infrastructure.
-    /// </summary>
-    private sealed class FakeWorkspaceManager : IWorkspaceManager
-    {
-        public event Action<string>? WorkspaceClosed { add { } remove { } }
-        public event Action<string>? WorkspaceReloaded { add { } remove { } }
-
-        public IReadOnlyList<WorkspaceStatusDto> ListWorkspaces() => [];
-
-        public Task<WorkspaceStatusDto> LoadAsync(string path, EvictPolicy evictPolicy, CancellationToken ct) => throw new NotSupportedException();
-        public Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct) => throw new NotSupportedException();
-        public bool ContainsWorkspace(string workspaceId) => false;
-        public bool IsStale(string workspaceId) => false;
-        public bool Close(string workspaceId) => throw new NotSupportedException();
-        public WorkspaceStatusDto GetStatus(string workspaceId) => throw new NotSupportedException();
-        public Task<WorkspaceStatusDto> GetStatusAsync(string workspaceId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-        public ProjectGraphDto GetProjectGraph(string workspaceId) => throw new NotSupportedException();
-        public Task<IReadOnlyList<GeneratedDocumentDto>> GetSourceGeneratedDocumentsAsync(string workspaceId, string? projectName, CancellationToken ct) => throw new NotSupportedException();
-        public Task<string?> GetSourceTextAsync(string workspaceId, string filePath, CancellationToken ct) => throw new NotSupportedException();
-        public int GetCurrentVersion(string workspaceId) => throw new NotSupportedException();
-        public void RestoreVersion(string workspaceId, int version) => throw new NotSupportedException();
-        public Solution GetCurrentSolution(string workspaceId) => throw new NotSupportedException();
-        public bool TryApplyChanges(string workspaceId, Solution newSolution) => throw new NotSupportedException();
-        public Project? GetProject(string workspaceId, string projectNameOrPath) => null;
-    }
-
-    private sealed class FakeVersionProvider(string? latest) : ILatestVersionProvider
-    {
-        public string? GetLatestVersion() => latest;
-        public VersionCheckStatus LastCheckStatus => latest is null
-            ? VersionCheckStatus.Pending
-            : VersionCheckStatus.Succeeded;
-        public DateTime? LastCheckedAt => latest is null ? null : DateTime.UtcNow;
     }
 }

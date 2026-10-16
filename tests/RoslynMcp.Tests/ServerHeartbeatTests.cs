@@ -1,10 +1,9 @@
 using System.Text.Json;
-using Microsoft.CodeAnalysis;
 using RoslynMcp.Core.Models;
-using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Runtime;
 using RoslynMcp.Host.Stdio.Services;
 using RoslynMcp.Host.Stdio.Tools;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -20,51 +19,18 @@ namespace RoslynMcp.Tests;
 [TestClass]
 public sealed class ServerHeartbeatTests
 {
-    /// <summary>
-    /// Minimal fake — only <see cref="IWorkspaceManager.ListWorkspaces"/> is invoked by
-    /// the heartbeat path. <see cref="_loadedCount"/> lets each test stage the response
-    /// without spinning up a real MSBuildWorkspace.
-    /// </summary>
-    private sealed class FakeWorkspaceManager(int loadedCount = 0) : IWorkspaceManager
-    {
-        private readonly int _loadedCount = loadedCount;
-
-        public event Action<string>? WorkspaceClosed { add { } remove { } }
-        public event Action<string>? WorkspaceReloaded { add { } remove { } }
-
-        public Task<WorkspaceStatusDto> LoadAsync(string path, EvictPolicy evictPolicy, CancellationToken ct) => throw new NotSupportedException();
-        public Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct) => throw new NotSupportedException();
-        public bool ContainsWorkspace(string workspaceId) => false;
-        public bool IsStale(string workspaceId) => false;
-        public bool Close(string workspaceId) => throw new NotSupportedException();
-
-        public IReadOnlyList<WorkspaceStatusDto> ListWorkspaces() =>
-            Enumerable.Range(0, _loadedCount)
-                .Select(i => new WorkspaceStatusDto(
-                    WorkspaceId: $"ws-{i}",
-                    LoadedPath: $"C:/fake/sln-{i}.sln",
-                    WorkspaceVersion: 1,
-                    SnapshotToken: $"ws-{i}:1",
-                    LoadedAtUtc: DateTimeOffset.UtcNow,
-                    ProjectCount: 1,
-                    DocumentCount: 1,
-                    Projects: Array.Empty<ProjectStatusDto>(),
-                    IsLoaded: true,
-                    IsStale: false,
-                    WorkspaceDiagnostics: Array.Empty<DiagnosticDto>()))
-                .ToArray();
-
-        public WorkspaceStatusDto GetStatus(string workspaceId) => throw new NotSupportedException();
-        public Task<WorkspaceStatusDto> GetStatusAsync(string workspaceId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-        public ProjectGraphDto GetProjectGraph(string workspaceId) => throw new NotSupportedException();
-        public Task<IReadOnlyList<GeneratedDocumentDto>> GetSourceGeneratedDocumentsAsync(string workspaceId, string? projectName, CancellationToken ct) => throw new NotSupportedException();
-        public Task<string?> GetSourceTextAsync(string workspaceId, string filePath, CancellationToken ct) => throw new NotSupportedException();
-        public int GetCurrentVersion(string workspaceId) => throw new NotSupportedException();
-        public void RestoreVersion(string workspaceId, int version) => throw new NotSupportedException();
-        public Solution GetCurrentSolution(string workspaceId) => throw new NotSupportedException();
-        public bool TryApplyChanges(string workspaceId, Solution newSolution) => throw new NotSupportedException();
-        public Project? GetProject(string workspaceId, string projectNameOrPath) => null;
-    }
+    private static WorkspaceStatusDto LoadedWorkspaceStatus() => new(
+        WorkspaceId: "ws-0",
+        LoadedPath: "C:/fake/sln-0.sln",
+        WorkspaceVersion: 1,
+        SnapshotToken: "ws-0:1",
+        LoadedAtUtc: DateTimeOffset.UtcNow,
+        ProjectCount: 1,
+        DocumentCount: 1,
+        Projects: Array.Empty<ProjectStatusDto>(),
+        IsLoaded: true,
+        IsStale: false,
+        WorkspaceDiagnostics: Array.Empty<DiagnosticDto>());
 
     [TestMethod]
     public async Task Heartbeat_NoWorkspaceLoaded_ReturnsIdleWithZeroCount()
@@ -73,7 +39,7 @@ public sealed class ServerHeartbeatTests
         // terminal label, not the previous "initializing" which incorrectly implied a
         // transient step that would auto-advance. The server only transitions via an
         // explicit workspace_load call.
-        var json = await ServerTools.GetServerHeartbeat(new FakeWorkspaceManager(loadedCount: 0), new ServerProcessMetadata());
+        var json = await ServerTools.GetServerHeartbeat(new FailClosedWorkspaceManagerStub(), new ServerProcessMetadata());
         using var doc = JsonDocument.Parse(json.TextPayload());
 
         var connection = doc.RootElement.GetProperty("connection");
@@ -86,7 +52,7 @@ public sealed class ServerHeartbeatTests
     [TestMethod]
     public async Task Heartbeat_OneWorkspaceLoaded_ReturnsReadyWithCountOne()
     {
-        var json = await ServerTools.GetServerHeartbeat(new FakeWorkspaceManager(loadedCount: 1), new ServerProcessMetadata());
+        var json = await ServerTools.GetServerHeartbeat(new FailClosedWorkspaceManagerStub(LoadedWorkspaceStatus()), new ServerProcessMetadata());
         using var doc = JsonDocument.Parse(json.TextPayload());
 
         var connection = doc.RootElement.GetProperty("connection");
@@ -106,14 +72,14 @@ public sealed class ServerHeartbeatTests
         // until workspace_load is called. A hard-gate prompt that polls through this
         // transition should observe exactly two distinct states in order: idle, ready.
         var processMetadata = new ServerProcessMetadata();
-        var preLoadJson = await ServerTools.GetServerHeartbeat(new FakeWorkspaceManager(loadedCount: 0), processMetadata);
+        var preLoadJson = await ServerTools.GetServerHeartbeat(new FailClosedWorkspaceManagerStub(), processMetadata);
         using var preLoadDoc = JsonDocument.Parse(preLoadJson.TextPayload());
         Assert.AreEqual(
             "idle",
             preLoadDoc.RootElement.GetProperty("connection").GetProperty("state").GetString(),
             "pre-load state must be 'idle' — reverts to the broken 'initializing' label if this fails.");
 
-        var postLoadJson = await ServerTools.GetServerHeartbeat(new FakeWorkspaceManager(loadedCount: 1), processMetadata);
+        var postLoadJson = await ServerTools.GetServerHeartbeat(new FailClosedWorkspaceManagerStub(LoadedWorkspaceStatus()), processMetadata);
         using var postLoadDoc = JsonDocument.Parse(postLoadJson.TextPayload());
         Assert.AreEqual(
             "ready",
@@ -129,7 +95,7 @@ public sealed class ServerHeartbeatTests
         // `deep-review-and-refactor.md`'s Phase -1 hard gate previously saw
         // `state=initializing` here and waited for it to flip without ever calling
         // workspace_load — that broken polling loop is what this fix closes.
-        var json = await ServerTools.GetServerInfo(new FakeWorkspaceManager(loadedCount: 0), new FakeVersionProvider(null), new ServerProcessMetadata());
+        var json = await ServerTools.GetServerInfo(new FailClosedWorkspaceManagerStub(), new FixedLatestVersionProvider(null, VersionCheckStatus.Pending, null), new ServerProcessMetadata());
         using var doc = JsonDocument.Parse(json.TextPayload());
 
         var connection = doc.RootElement.GetProperty("connection");
@@ -145,7 +111,7 @@ public sealed class ServerHeartbeatTests
         // Positive shape check: heartbeat intentionally omits version / catalog / update.
         // If a future refactor accidentally copies the entire server_info payload into
         // the heartbeat, this test catches it.
-        var heartbeatJson = await ServerTools.GetServerHeartbeat(new FakeWorkspaceManager(loadedCount: 1), new ServerProcessMetadata());
+        var heartbeatJson = await ServerTools.GetServerHeartbeat(new FailClosedWorkspaceManagerStub(LoadedWorkspaceStatus()), new ServerProcessMetadata());
         using var heartbeatDoc = JsonDocument.Parse(heartbeatJson.TextPayload());
 
         var root = heartbeatDoc.RootElement;
@@ -162,7 +128,7 @@ public sealed class ServerHeartbeatTests
         // The `connection` block on server_info must match the heartbeat's shape so
         // consumers can use whichever poll they prefer without shape surprises.
         var processMetadata = new ServerProcessMetadata();
-        var infoJson = await ServerTools.GetServerInfo(new FakeWorkspaceManager(loadedCount: 1), new FakeVersionProvider(null), processMetadata);
+        var infoJson = await ServerTools.GetServerInfo(new FailClosedWorkspaceManagerStub(LoadedWorkspaceStatus()), new FixedLatestVersionProvider(null, VersionCheckStatus.Pending, null), processMetadata);
         using var infoDoc = JsonDocument.Parse(infoJson.TextPayload());
         var infoConn = infoDoc.RootElement.GetProperty("connection");
 
@@ -170,7 +136,7 @@ public sealed class ServerHeartbeatTests
         Assert.AreEqual(1, infoConn.GetProperty("loadedWorkspaceCount").GetInt32());
         AssertIdentityFieldsPresent(infoConn);
 
-        var heartbeatJson = await ServerTools.GetServerHeartbeat(new FakeWorkspaceManager(loadedCount: 1), processMetadata);
+        var heartbeatJson = await ServerTools.GetServerHeartbeat(new FailClosedWorkspaceManagerStub(LoadedWorkspaceStatus()), processMetadata);
         using var heartbeatDoc = JsonDocument.Parse(heartbeatJson.TextPayload());
         var heartbeatConn = heartbeatDoc.RootElement.GetProperty("connection");
 
@@ -200,14 +166,5 @@ public sealed class ServerHeartbeatTests
             $"connection.serverStartedAt must be parseable as a DateTime (got '{rawStartedAt}').");
         Assert.IsTrue(startedAt <= DateTime.UtcNow.AddSeconds(5),
             "connection.serverStartedAt must not be in the future (small skew tolerated).");
-    }
-
-    private sealed class FakeVersionProvider(string? latest) : ILatestVersionProvider
-    {
-        public string? GetLatestVersion() => latest;
-        public VersionCheckStatus LastCheckStatus => latest is null
-            ? VersionCheckStatus.Pending
-            : VersionCheckStatus.Succeeded;
-        public DateTime? LastCheckedAt => latest is null ? null : DateTime.UtcNow;
     }
 }

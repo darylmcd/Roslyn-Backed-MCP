@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -104,6 +105,14 @@ internal sealed class TestServiceContainer : IDisposable
         services.AddSingleton(new ExecutionGateOptions { RateLimitMaxRequests = int.MaxValue });
         services.AddSingleton(new ScriptingServiceOptions());
         services.AddRoslynServices();
+
+        // Wrap the production factory so every producer and consumer shares the observed
+        // store. Assertions use token behavior rather than the store's private fields.
+        var previewRegistration = services.Single(descriptor => descriptor.ServiceType == typeof(IPreviewStore));
+        var previewFactory = previewRegistration.ImplementationFactory
+            ?? throw new InvalidOperationException("The production preview store must use its options-aware factory.");
+        services.Replace(ServiceDescriptor.Singleton<IPreviewStore>(sp =>
+            new TrackingPreviewStore((IPreviewStore)previewFactory(sp))));
 
         // Tests need the production graph but not a second copy of its watcher registration.
         // Factory registration makes this watcher provider-owned and therefore disposed exactly

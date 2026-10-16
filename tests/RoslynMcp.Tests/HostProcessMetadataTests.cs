@@ -1,7 +1,5 @@
 using System.Globalization;
 using System.Text.Json;
-using Microsoft.CodeAnalysis;
-using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Diagnostics;
 using RoslynMcp.Host.Stdio.Runtime;
@@ -90,11 +88,11 @@ public sealed class HostProcessMetadataTests
             Assert.AreEqual(metadata.StartedAtUtc, WorkspaceEvictionRegistry.ServerStartedAtUtc);
 
             var info = await ServerTools.GetServerInfo(
-                new FakeWorkspaceManager(),
-                new FakeVersionProvider(),
+                new FailClosedWorkspaceManagerStub(),
+                new FixedLatestVersionProvider(null, VersionCheckStatus.NeverChecked, null),
                 metadata);
             var heartbeat = await ServerTools.GetServerHeartbeat(
-                new FakeWorkspaceManager(),
+                new FailClosedWorkspaceManagerStub(),
                 metadata);
 
             using var infoDocument = JsonDocument.Parse(info.TextPayload());
@@ -371,9 +369,9 @@ public sealed class HostProcessMetadataTests
         publishedMetadata.PreviousProcessSnapshot.Publish(snapshot);
 
         var unrelatedInfo = await ServerTools.GetServerInfo(
-            new FakeWorkspaceManager(), new FakeVersionProvider(), unrelatedMetadata);
+            new FailClosedWorkspaceManagerStub(), new FixedLatestVersionProvider(null, VersionCheckStatus.NeverChecked, null), unrelatedMetadata);
         var unrelatedHeartbeat = await ServerTools.GetServerHeartbeat(
-            new FakeWorkspaceManager(), unrelatedMetadata);
+            new FailClosedWorkspaceManagerStub(), unrelatedMetadata);
 
         using (var unrelatedInfoDoc = JsonDocument.Parse(unrelatedInfo.TextPayload()))
         using (var unrelatedHeartbeatDoc = JsonDocument.Parse(unrelatedHeartbeat.TextPayload()))
@@ -387,7 +385,7 @@ public sealed class HostProcessMetadataTests
         }
 
         var publishedInfo = await ServerTools.GetServerInfo(
-            new FakeWorkspaceManager(), new FakeVersionProvider(), publishedMetadata);
+            new FailClosedWorkspaceManagerStub(), new FixedLatestVersionProvider(null, VersionCheckStatus.NeverChecked, null), publishedMetadata);
         using var publishedInfoDoc = JsonDocument.Parse(publishedInfo.TextPayload());
         var connection = publishedInfoDoc.RootElement.GetProperty("connection");
         Assert.AreEqual(13579, connection.GetProperty("previousStdioPid").GetInt32(),
@@ -419,7 +417,7 @@ public sealed class HostProcessMetadataTests
         var processMetadata = new ServerProcessMetadata();
         processMetadata.PreviousProcessSnapshot.Publish(snapshot);
 
-        var json = await ServerTools.GetServerInfo(new FakeWorkspaceManager(), new FakeVersionProvider(), processMetadata);
+        var json = await ServerTools.GetServerInfo(new FailClosedWorkspaceManagerStub(), new FixedLatestVersionProvider(null, VersionCheckStatus.NeverChecked, null), processMetadata);
 
         using var doc = JsonDocument.Parse(json.TextPayload());
         var connection = doc.RootElement.GetProperty("connection");
@@ -446,10 +444,10 @@ public sealed class HostProcessMetadataTests
         processMetadata.PreviousProcessSnapshot.Publish(snapshot);
 
         // First probe drains the provider.
-        _ = await ServerTools.GetServerInfo(new FakeWorkspaceManager(), new FakeVersionProvider(), processMetadata);
+        _ = await ServerTools.GetServerInfo(new FailClosedWorkspaceManagerStub(), new FixedLatestVersionProvider(null, VersionCheckStatus.NeverChecked, null), processMetadata);
 
         // Second probe must NOT carry previous-* fields.
-        var secondJson = await ServerTools.GetServerInfo(new FakeWorkspaceManager(), new FakeVersionProvider(), processMetadata);
+        var secondJson = await ServerTools.GetServerInfo(new FailClosedWorkspaceManagerStub(), new FixedLatestVersionProvider(null, VersionCheckStatus.NeverChecked, null), processMetadata);
         using var secondDoc = JsonDocument.Parse(secondJson.TextPayload());
         var secondConnection = secondDoc.RootElement.GetProperty("connection");
 
@@ -474,7 +472,7 @@ public sealed class HostProcessMetadataTests
         var processMetadata = new ServerProcessMetadata();
         processMetadata.PreviousProcessSnapshot.Publish(snapshot);
 
-        var json = await ServerTools.GetServerHeartbeat(new FakeWorkspaceManager(), processMetadata);
+        var json = await ServerTools.GetServerHeartbeat(new FailClosedWorkspaceManagerStub(), processMetadata);
 
         using var doc = JsonDocument.Parse(json.TextPayload());
         var connection = doc.RootElement.GetProperty("connection");
@@ -492,7 +490,7 @@ public sealed class HostProcessMetadataTests
         // as a presence check. A freshly constructed ServerProcessMetadata owns an unpublished
         // snapshot slot, so no other test's publish can reach this probe.
 
-        var json = await ServerTools.GetServerInfo(new FakeWorkspaceManager(), new FakeVersionProvider(), new ServerProcessMetadata());
+        var json = await ServerTools.GetServerInfo(new FailClosedWorkspaceManagerStub(), new FixedLatestVersionProvider(null, VersionCheckStatus.NeverChecked, null), new ServerProcessMetadata());
         using var doc = JsonDocument.Parse(json.TextPayload());
         var connection = doc.RootElement.GetProperty("connection");
 
@@ -532,7 +530,7 @@ public sealed class HostProcessMetadataTests
         processBMetadata.PreviousProcessSnapshot.Publish(loaded);
 
         // First probe.
-        var firstJson = await ServerTools.GetServerInfo(new FakeWorkspaceManager(), new FakeVersionProvider(), processBMetadata);
+        var firstJson = await ServerTools.GetServerInfo(new FailClosedWorkspaceManagerStub(), new FixedLatestVersionProvider(null, VersionCheckStatus.NeverChecked, null), processBMetadata);
         using var firstDoc = JsonDocument.Parse(firstJson.TextPayload());
         var firstConn = firstDoc.RootElement.GetProperty("connection");
         Assert.AreEqual(Environment.ProcessId, firstConn.GetProperty("previousStdioPid").GetInt32(),
@@ -540,45 +538,10 @@ public sealed class HostProcessMetadataTests
         Assert.AreEqual("graceful", firstConn.GetProperty("previousRecycleReason").GetString());
 
         // Second probe — fields must drop.
-        var secondJson = await ServerTools.GetServerInfo(new FakeWorkspaceManager(), new FakeVersionProvider(), processBMetadata);
+        var secondJson = await ServerTools.GetServerInfo(new FailClosedWorkspaceManagerStub(), new FixedLatestVersionProvider(null, VersionCheckStatus.NeverChecked, null), processBMetadata);
         using var secondDoc = JsonDocument.Parse(secondJson.TextPayload());
         var secondConn = secondDoc.RootElement.GetProperty("connection");
         Assert.IsFalse(secondConn.TryGetProperty("previousStdioPid", out _),
             "Second probe must not re-emit previous-* fields — consume-once is enforced by the provider.");
-    }
-
-    /// <summary>
-    /// Minimal fake — only ListWorkspaces is invoked by ServerTools.BuildConnection. Every
-    /// other member throws to surface mistakes if a future refactor accidentally calls them
-    /// from the connection-building path.
-    /// </summary>
-    private sealed class FakeWorkspaceManager : IWorkspaceManager
-    {
-        public event Action<string>? WorkspaceClosed { add { } remove { } }
-        public event Action<string>? WorkspaceReloaded { add { } remove { } }
-
-        public Task<WorkspaceStatusDto> LoadAsync(string path, EvictPolicy evictPolicy, CancellationToken ct) => throw new NotSupportedException();
-        public Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct) => throw new NotSupportedException();
-        public bool ContainsWorkspace(string workspaceId) => false;
-        public bool IsStale(string workspaceId) => false;
-        public bool Close(string workspaceId) => throw new NotSupportedException();
-        public IReadOnlyList<WorkspaceStatusDto> ListWorkspaces() => Array.Empty<WorkspaceStatusDto>();
-        public WorkspaceStatusDto GetStatus(string workspaceId) => throw new NotSupportedException();
-        public Task<WorkspaceStatusDto> GetStatusAsync(string workspaceId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-        public ProjectGraphDto GetProjectGraph(string workspaceId) => throw new NotSupportedException();
-        public Task<IReadOnlyList<GeneratedDocumentDto>> GetSourceGeneratedDocumentsAsync(string workspaceId, string? projectName, CancellationToken ct) => throw new NotSupportedException();
-        public Task<string?> GetSourceTextAsync(string workspaceId, string filePath, CancellationToken ct) => throw new NotSupportedException();
-        public int GetCurrentVersion(string workspaceId) => throw new NotSupportedException();
-        public void RestoreVersion(string workspaceId, int version) => throw new NotSupportedException();
-        public Solution GetCurrentSolution(string workspaceId) => throw new NotSupportedException();
-        public bool TryApplyChanges(string workspaceId, Solution newSolution) => throw new NotSupportedException();
-        public Project? GetProject(string workspaceId, string projectNameOrPath) => null;
-    }
-
-    private sealed class FakeVersionProvider : ILatestVersionProvider
-    {
-        public string? GetLatestVersion() => null;
-        public VersionCheckStatus LastCheckStatus => VersionCheckStatus.NeverChecked;
-        public DateTime? LastCheckedAt => null;
     }
 }

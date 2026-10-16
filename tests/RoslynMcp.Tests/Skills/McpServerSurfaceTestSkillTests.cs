@@ -389,10 +389,7 @@ public sealed class McpServerSurfaceTestSkillTests
         var contents = File.ReadAllText(skillPath);
 
         var matches = Regex.Matches(contents, @"mcp__roslyn__([a-zA-Z_][a-zA-Z0-9_]*)");
-        if (matches.Count == 0)
-        {
-            return;
-        }
+        Assert.IsTrue(matches.Count > 0, "The skill must name Roslyn tools so surface validation exercises its contract.");
 
         var liveToolNames = new HashSet<string>(
             ServerSurfaceCatalog.Tools.Select(t => t.Name),

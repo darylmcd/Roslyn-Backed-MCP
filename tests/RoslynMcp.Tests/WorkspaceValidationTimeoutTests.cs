@@ -4,6 +4,7 @@ using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Diagnostics;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 using RoslynMcp.Tests.TestInfrastructure;
 
 namespace RoslynMcp.Tests;
@@ -21,7 +22,7 @@ namespace RoslynMcp.Tests;
 /// This test class pins the structured-timeout contract on the <c>ValidateAsync</c>
 /// entry point by injecting a near-zero internal phase timeout
 /// (<c>validationPhaseTimeout: TimeSpan.FromMilliseconds(1)</c>) together with a
-/// <see cref="SlowCompileCheckService"/> stub that blocks until cancellation. The phase
+/// <see cref="CancellationOnlyCompileCheckService"/> stub that blocks until cancellation. The phase
 /// timeout fires, the catch added in this fix triggers, and the response carries the
 /// timeout DTO with <c>compileResult.cancelled=true</c> and a <c>warnings</c> entry
 /// naming the timed-out phase.
@@ -46,7 +47,7 @@ public sealed class WorkspaceValidationTimeoutTests : IsolatedWorkspaceTestBase
         // converts the OperationCanceledException into InternalValidationTimeoutException,
         // and the new catch in ValidateAsync converts that into the structured DTO.
         var timeoutService = new WorkspaceValidationService(
-            new SlowCompileCheckService(),
+            new CancellationOnlyCompileCheckService(),
             DiagnosticService,
             TestDiscoveryService,
             TestRunnerService,
@@ -95,7 +96,7 @@ public sealed class WorkspaceValidationTimeoutTests : IsolatedWorkspaceTestBase
         await using var workspace = await CreateIsolatedWorkspaceAsync();
 
         var timeoutService = new WorkspaceValidationService(
-            new SlowCompileCheckService(),
+            new CancellationOnlyCompileCheckService(),
             DiagnosticService,
             TestDiscoveryService,
             TestRunnerService,
@@ -125,7 +126,7 @@ public sealed class WorkspaceValidationTimeoutTests : IsolatedWorkspaceTestBase
         await using var workspace = await CreateIsolatedWorkspaceAsync();
 
         var service = new WorkspaceValidationService(
-            new SlowCompileCheckService(),
+            new CancellationOnlyCompileCheckService(),
             DiagnosticService,
             TestDiscoveryService,
             TestRunnerService,
@@ -215,23 +216,5 @@ public sealed class WorkspaceValidationTimeoutTests : IsolatedWorkspaceTestBase
         Assert.HasCount(operations.Length, sink.Events);
         Assert.IsTrue(sink.Events.All(e => e.Category == "WorkspaceValidation"));
         Assert.IsFalse(JsonSerializer.Serialize(sink.Events).Contains(sentinel, StringComparison.Ordinal));
-    }
-
-    /// <summary>
-    /// Local copy of the stub from <see cref="ValidateRecentGitChangesTests"/>: blocks on
-    /// <c>Task.Delay(Timeout.InfiniteTimeSpan)</c> so the only exit is cancellation. The
-    /// stub class isn't shared because the tests live in different fixtures and the stub
-    /// is trivial; duplicating it keeps the timeout-test files independently readable.
-    /// </summary>
-    private sealed class SlowCompileCheckService : ICompileCheckService
-    {
-        public async Task<CompileCheckDto> CheckAsync(
-            string workspaceId,
-            CompileCheckOptions options,
-            CancellationToken ct)
-        {
-            await Task.Delay(Timeout.InfiniteTimeSpan, ct);
-            throw new InvalidOperationException("unreachable");
-        }
     }
 }

@@ -467,7 +467,7 @@ public sealed class ReplaceInvocationTests : SharedWorkspaceTestBase
         finally
         {
             WorkspaceManager.Close(scopedWorkspaceId);
-            TryDeleteDirectory(solutionDir);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(solutionDir);
         }
     }
 
@@ -547,7 +547,7 @@ public sealed class ReplaceInvocationTests : SharedWorkspaceTestBase
         finally
         {
             WorkspaceManager.Close(scopedWorkspaceId);
-            TryDeleteDirectory(solutionDir);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(solutionDir);
         }
     }
 
@@ -575,7 +575,7 @@ public sealed class ReplaceInvocationTests : SharedWorkspaceTestBase
         finally
         {
             WorkspaceManager.Close(loadResult.WorkspaceId);
-            TryDeleteDirectory(Path.GetDirectoryName(copiedSolutionPath)!);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(copiedSolutionPath)!);
         }
     }
 
@@ -623,7 +623,7 @@ public sealed class ReplaceInvocationTests : SharedWorkspaceTestBase
         finally
         {
             WorkspaceManager.Close(loadResult.WorkspaceId);
-            TryDeleteDirectory(solutionDir);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(solutionDir);
         }
     }
 
@@ -651,22 +651,8 @@ public sealed class ReplaceInvocationTests : SharedWorkspaceTestBase
         finally
         {
             WorkspaceManager.Close(loadResult.WorkspaceId);
-            TryDeleteDirectory(Path.GetDirectoryName(copiedSolutionPath)!);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(copiedSolutionPath)!);
         }
     }
 
-    private static void TryDeleteDirectory(string path)
-    {
-        try
-        {
-            if (Directory.Exists(path))
-            {
-                Directory.Delete(path, recursive: true);
-            }
-        }
-        catch
-        {
-            // Best-effort cleanup.
-        }
-    }
 }
