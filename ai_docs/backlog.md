@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-16T01:29:22Z
+**updated_at:** 2026-10-16T01:45:38Z
 
 ## Agent contract
 
@@ -362,6 +362,8 @@
 | `sanctioned-root-refusal-names-no-remedy` | Low | — | **The sanctioned-root refusal names no remedy** — workspace_load outside the boundary returns one sentence with no pointer to ROSLYNMCP_SANCTIONED_ROOTS or expandSanctionedRoots; a caller cannot self-correct. [type: bug] [source: test-rot-probe-20261009] | M | items/sanctioned-root-refusal-names-no-remedy.md |
 | `test-run-worktree-package-isolation` | Low | — | **Support isolated package roots for MCP test execution** — carry safe per-worktree NuGet package-root authority into test subprocesses without server-global environment mutation. [type: feature] [source: primary-constructor executor environment boundary 2026-10-10] | L | items/test-run-worktree-package-isolation.md |
 | `project-list-refusals-missing-verbose-status` | Low | — | Give usable project-list recovery through workspace_status with verbose=true across copied public refusals. [type: bug] [source: correctness15 cold review] | L | items/project-list-refusals-missing-verbose-status.md |
+| `parameter-object-callsite-path-identity` | Low | — | Preserve separate parameter-object caller summaries for case-distinct Linux documents using filesystem-aware identity. [type: bug] [source: correctness15 eligibility review] | S | items/parameter-object-callsite-path-identity.md |
+| `compile-check-file-scope-path-identity` | Low | — | Preserve physical file-filter and owner identity for case-distinct Linux paths in compile_check. [type: bug] [source: correctness15 guidance review] | S | items/compile-check-file-scope-path-identity.md |
 
 ## Defer
 

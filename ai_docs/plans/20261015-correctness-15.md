@@ -7,7 +7,7 @@
 | Field | Decision |
 |---|---|
 | Base | Clean main000a1ce0f87ccacd3dad9f0d0be62b72dbc08db7 equals origin/main; zero open PRs after fetch. |
-| Existing work | Preserve clean extraction8a40da79 and restoreea969292 checkpoints and explicit deferred execution holds. Do not claim either complete. |
+| Existing work | Live operator reply supersedes extraction and restore holds. Complete and merge both initiatives first; retain15-item source checkpoint until those prerequisites land. |
 | Workflow | Direct implementation; disjoint delegated worktrees; serialized local runtime gates. Do not use backlog-remediate skill. |
 | Compatibility | Preserve published shapes, categories and exception identities. Improve correctness and safe authored diagnostics. |
 
@@ -36,3 +36,16 @@
 5. Require exact-head hosted Windows/Linux/SDK-floor and CodeQL green; merge and run canonical cleanup.
 6. Verify clean current main and no open PRs; preserve only explicitly deferred prior checkpoints.
 7. backlog: sync ai_docs/backlog.md through the canonical writer in the implementation PR.
+
+## Execution checkpoint
+
+| Evidence | Result |
+|---|---|
+| Store/cancellation regressions | Original13failed; fixed33passed. |
+| Workspace regressions | Original6failed; fixed80passed,1platformskip. |
+| Linux drain | Original sibling regression failed; fixed26passed,7platformskips. |
+| Public runner/pagination/guidance | Original9failed; final110passed. |
+| Compile-check/catalog companion | Original3hintregressions failed; corrected42passed. |
+| Cohesion/suggestion | Final comprehensive preflight run pending; earlier categorical corpus7failed before fix. |
+| Unrelated defects | Track parameter-object-callsite-path-identity and compile-check-file-scope-path-identity; no runtime completion claim. |
+| Delivery | Checkpoint only. Full local/hosted gates and merge pending after prior initiatives. |

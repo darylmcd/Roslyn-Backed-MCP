@@ -493,7 +493,7 @@ internal sealed class BatchTestScaffolder
             {
                 throw new PublicInvalidOperationException(
                     "Multiple test projects reference the service project and no unique convention match was found. " +
-                    "Pass testProjectName explicitly after listing projects with workspace_status.");
+                    "Use workspace_status with verbose=true to list projects, then pass testProjectName explicitly.");
             }
         }
         else
