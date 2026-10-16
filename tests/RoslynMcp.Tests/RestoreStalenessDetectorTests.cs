@@ -82,6 +82,46 @@ public sealed class RestoreStalenessDetectorTests
         """;
 
     [TestMethod]
+    [DataRow("{broken-private-assets-content")]
+    [DataRow("[]")]
+    [DataRow("{\"project\":42}")]
+    public void IsRestoreRequired_UnusableAssetsWithKnownPackages_ReturnsTrue(string contents)
+    {
+        var project = WriteProject("Unusable.csproj", PackageReferenceProject);
+        WriteAssets(project, "Newtonsoft.Json", "13.0.3");
+        File.WriteAllText(Path.Combine(Path.GetDirectoryName(project)!, "obj", "project.assets.json"), contents);
+
+        var logger = new ListLogger<RestoreStalenessDetector>();
+        Assert.IsTrue(new RestoreStalenessDetector().IsRestoreRequired(project, logger));
+        Assert.HasCount(1, logger.Entries);
+        Assert.IsNull(logger.Entries[0].Exception, "Assets diagnostics must not retain raw parse or I/O exceptions.");
+        Assert.IsFalse(logger.Entries[0].Message.Contains(project, StringComparison.Ordinal));
+        Assert.IsFalse(logger.Entries[0].Message.Contains("broken-private-assets-content", StringComparison.Ordinal));
+        Assert.IsNull(RestoreStalenessDetector.TryReadRestorePackagesPath(project),
+            "Restore planning must tolerate the same unusable assets.");
+    }
+
+    [TestMethod]
+    public void IsRestoreRequired_UnreadableAssetsWithKnownPackages_ReturnsTrue()
+    {
+        var project = WriteProject("LockedAssets.csproj", PackageReferenceProject);
+        WriteAssets(project, "Newtonsoft.Json", "13.0.3");
+        using var exclusive = new FileStream(Path.Combine(Path.GetDirectoryName(project)!, "obj", "project.assets.json"),
+            FileMode.Open, FileAccess.Read, FileShare.None);
+
+        Assert.IsTrue(new RestoreStalenessDetector().IsRestoreRequired(project, NullLogger.Instance));
+    }
+
+    [TestMethod]
+    public void IsRestoreRequired_UnreadableProject_DoesNotClaimKnownPackageFailure()
+    {
+        var project = WriteProject("LockedMetadata.csproj", PackageReferenceProject);
+        using var exclusive = new FileStream(project, FileMode.Open, FileAccess.Read, FileShare.None);
+
+        Assert.IsFalse(new RestoreStalenessDetector().IsRestoreRequired(project, NullLogger.Instance));
+    }
+
+    [TestMethod]
     public void HasMissingAssets_PackageReferenceWithoutAssetsFile_ReturnsTrue()
     {
         var projectFilePath = WriteProject("NeverRestored.csproj", PackageReferenceProject);

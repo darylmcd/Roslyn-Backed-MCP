@@ -234,7 +234,7 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
 
         // When the caller omitted changedFilePaths we fell back to the ChangeTracker's
         // append-only log; reconcile that list against `git status` before validating.
-        if (request.ChangedFilePaths is null or { Count: 0 } && changedFiles.Count > 0)
+        if (request.ChangedFilePaths is null && changedFiles.Count > 0)
         {
             changedFiles = await ReconcileChangeTrackerFilesAsync(request.WorkspaceId, changedFiles, ct)
                 .ConfigureAwait(false);
@@ -477,7 +477,7 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
     private (IReadOnlyList<string> Known, IReadOnlyList<string> Unknown) ResolveChangedFiles(
         string workspaceId, IReadOnlyList<string>? caller)
     {
-        if (caller is { Count: > 0 })
+        if (caller is not null)
         {
             var deduped = caller
                 .Where(p => !string.IsNullOrWhiteSpace(p))

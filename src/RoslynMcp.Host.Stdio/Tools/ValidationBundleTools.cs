@@ -44,13 +44,13 @@ public static class ValidationBundleTools
     }
 
     /// <remarks>
-    /// <para>Falls back to full-workspace scope and surfaces the fallback via the Warnings field when git is unavailable (not on PATH, solution outside a git repo, git exited non-zero).</para>
+    /// <para>Falls back to the session change tracker for related-test discovery and surfaces the fallback via the Warnings field when git is unavailable (not on PATH, solution outside a git repo, git exited non-zero).</para>
     /// <para>overallStatus is one of clean | compile-error | analyzer-error | test-failure | test-zero-run | compile-incomplete | git-status-unknown | workspace-changed | timeout.</para>
     /// <para>git-status-unknown is unique to this tool: it fires when the git status scope-collection itself timed out, so a would-be clean verdict was computed over an untrustworthy fallback scope rather than the real working tree - retry, or raise ROSLYNMCP_GIT_STATUS_TIMEOUT_SECONDS if git status is slow on this repo.</para>
     /// </remarks>
     [McpServerTool(Name = "validate_recent_git_changes", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("validation", "experimental", true, false,
-        "post-edit-validate-workspace-scoped-to-touched-files: auto-scoped validation companion that derives changedFilePaths from git status --porcelain, falls back to full-workspace scope with a warning when git is unavailable or the solution is outside a git repo."),
+        "post-edit-validate-workspace-scoped-to-touched-files: auto-scoped validation companion that derives changedFilePaths from git status --porcelain, falls back to session change-tracker scope with a warning when git is unavailable or the solution is outside a git repo."),
      Description("Post-edit validation bundle that auto-derives the changed-file set from `git status --porcelain` and forwards to validate_workspace. Prefer this over validate_workspace when you have uncommitted edits and want touched-file scope.")]
     public static async Task<string> ValidateRecentGitChanges(
         IWorkspaceExecutionGate gate,
