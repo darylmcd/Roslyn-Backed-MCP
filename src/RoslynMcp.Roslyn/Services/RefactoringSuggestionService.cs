@@ -1,6 +1,9 @@
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -11,16 +14,19 @@ namespace RoslynMcp.Roslyn.Services;
 public sealed class RefactoringSuggestionService : IRefactoringSuggestionService
 {
     private readonly ICodeMetricsService _metricsService;
+    private readonly IWorkspaceManager _workspace;
     private readonly ICohesionAnalysisService _cohesionService;
     private readonly IUnusedCodeAnalyzer _unusedCodeAnalyzer;
     private readonly ILogger<RefactoringSuggestionService> _logger;
 
     public RefactoringSuggestionService(
+        IWorkspaceManager workspace,
         ICodeMetricsService metricsService,
         ICohesionAnalysisService cohesionService,
         IUnusedCodeAnalyzer unusedCodeAnalyzer,
         ILogger<RefactoringSuggestionService> logger)
     {
+        _workspace = workspace;
         _metricsService = metricsService;
         _cohesionService = cohesionService;
         _unusedCodeAnalyzer = unusedCodeAnalyzer;
@@ -33,8 +39,9 @@ public sealed class RefactoringSuggestionService : IRefactoringSuggestionService
         var suggestions = new List<RefactoringSuggestionDto>();
 
         // Run all analyses in parallel
+        // Parameter-count candidates can have low complexity and must survive metric pagination.
         var complexityTask = _metricsService.GetComplexityMetricsAsync(
-            workspaceId, filePath: null, filePaths: null, projectFilter, minComplexity: 10, limit: 100, ct);
+            workspaceId, filePath: null, filePaths: null, projectFilter, minComplexity: null, limit: int.MaxValue, ct);
         var cohesionTask = _cohesionService.GetCohesionMetricsAsync(
             workspaceId, filePath: null, projectFilter, minMethods: 3, limit: 100,
             includeInterfaces: false, excludeTestProjects: true, ct);
@@ -81,16 +88,30 @@ public sealed class RefactoringSuggestionService : IRefactoringSuggestionService
         }
 
         // High parameter count → introduce parameter object
-        foreach (var m in complexityResults.Where(m => m.ParameterCount >= 7))
+        var solution = _workspace.GetCurrentSolution(workspaceId);
+        var parameterTargets = new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
+        foreach (var metric in complexityResults.Where(m => m.ParameterCount >= 7))
         {
+            var measuredMethod = await ResolveMeasuredMethodAsync(solution, metric, ct).ConfigureAwait(false);
+            var target = measuredMethod is null ? null : SymbolServiceHelpers.GetMethodDefinition(measuredMethod);
+            if (target is not null && !parameterTargets.Add(target)) continue;
+
+            var m = target is null ? metric : WithImplementationLocation(metric, target, ct);
+            var supportsParameterObject = target is not null
+                && await ParameterObjectService.HasViableParameterGroupAsync(solution, target, ct).ConfigureAwait(false);
+            var guidance = supportsParameterObject
+                ? "Consider introducing a parameter object."
+                : "Review the declaration and dispatch contract, then introduce a parameter object manually.";
             suggestions.Add(new RefactoringSuggestionDto(
                 Severity: "medium",
                 Category: "parameter-count",
-                Description: $"Method '{m.SymbolName}' has {m.ParameterCount} parameters. Consider introducing a parameter object.",
+                Description: $"Method '{m.SymbolName}' has {m.ParameterCount} parameters. {guidance}",
                 TargetSymbol: m.SymbolName,
                 FilePath: m.FilePath,
                 Line: m.Line,
-                RecommendedTools: ["extract_type_preview", "extract_type_apply", "compile_check"]));
+                RecommendedTools: supportsParameterObject
+                    ? ["parameter_object_preview", "apply_with_verify", "compile_check"]
+                    : ["compile_check"]));
         }
 
         // Low cohesion (LCOM4 >= 2) → extract type or split class.
@@ -122,7 +143,7 @@ public sealed class RefactoringSuggestionService : IRefactoringSuggestionService
                 RecommendedTools: ["find_unused_symbols", "remove_dead_code_preview", "remove_dead_code_apply"]));
         }
 
-        // Sort: high → medium → low, then by complexity descending
+        // Sort by severity, then put complexity suggestions first, retaining insertion order within ties.
         var sorted = suggestions
             .OrderBy(s => s.Severity switch { "high" => 0, "medium" => 1, "low" => 2, _ => 3 })
             .ThenByDescending(s => s.Category == "complexity" ? 1 : 0)
@@ -132,5 +153,41 @@ public sealed class RefactoringSuggestionService : IRefactoringSuggestionService
         _logger.LogDebug("Generated {Count} refactoring suggestions for workspace {WorkspaceId}", sorted.Count, workspaceId);
 
         return sorted;
+    }
+
+    private static async Task<IMethodSymbol?> ResolveMeasuredMethodAsync(
+        Solution solution, ComplexityMetricsDto metric, CancellationToken ct)
+    {
+        var candidates = new List<IMethodSymbol>();
+        foreach (var document in solution.Projects.SelectMany(project => project.Documents)
+            .Where(document => FileSystemPath.Comparer.Equals(document.FilePath, metric.FilePath)))
+        {
+            var root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false);
+            var model = await document.GetSemanticModelAsync(ct).ConfigureAwait(false);
+            if (root is null || model is null) continue;
+
+            foreach (var declaration in root.DescendantNodes().OfType<BaseMethodDeclarationSyntax>()
+                .Where(declaration => declaration.GetLocation().GetLineSpan().StartLinePosition.Line + 1 == metric.Line))
+            {
+                if (model.GetDeclaredSymbol(declaration, ct) is IMethodSymbol method
+                    && method.Name == metric.SymbolName && method.Parameters.Length == metric.ParameterCount)
+                    candidates.Add(method);
+            }
+        }
+
+        // Same-line overloads and linked documents can be ambiguous; never infer eligibility
+        // from a neighboring declaration or publish an automated workflow without a unique target.
+        return candidates.Count == 1 ? candidates[0] : null;
+    }
+
+    private static ComplexityMetricsDto WithImplementationLocation(
+        ComplexityMetricsDto metric, IMethodSymbol method, CancellationToken ct)
+    {
+        var implementation = method.PartialImplementationPart ?? method;
+        var declaration = implementation.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax(ct);
+        if (declaration is null) return metric;
+
+        var lineSpan = declaration.GetLocation().GetLineSpan();
+        return metric with { FilePath = lineSpan.Path, Line = lineSpan.StartLinePosition.Line + 1 };
     }
 }

@@ -6,6 +6,9 @@ namespace RoslynMcp.Roslyn.Helpers;
 
 internal static class SymbolServiceHelpers
 {
+    public static IMethodSymbol GetMethodDefinition(IMethodSymbol method) =>
+        (method.PartialDefinitionPart ?? method).OriginalDefinition;
+
     public static async Task<ISymbol?> GetContainingSymbolAsync(Document document, Location location, CancellationToken ct)
     {
         var semanticModel = await document.GetSemanticModelAsync(ct).ConfigureAwait(false);
