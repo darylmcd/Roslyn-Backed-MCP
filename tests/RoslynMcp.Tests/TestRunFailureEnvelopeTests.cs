@@ -896,6 +896,61 @@ public sealed class TestRunFailureEnvelopeTests
     private static CommandExecutionDto SucceededExecution() =>
         new("dotnet", ["test"], "C:/ws", "C:/ws/Sample.Tests.csproj", 0, true, 1, string.Empty, string.Empty);
 
+    [TestMethod]
+    [DataRow("FullyQualifiedName=PRIVATE-ZERO-MATCH-SENTINEL", true)]
+    [DataRow(null, false)]
+    [DataRow(" ", false)]
+    public async Task RunTestCommandAsync_ZeroTestsWithFilter_WarnsWithoutEchoingFilter(string? filter, bool expectsWarning)
+    {
+        var manager = new SingleTestProjectWorkspaceManager();
+        using var executor = new CannedExecutionExecutor(SucceededExecution());
+        var service = new TestRunnerService(manager, executor, NullLogger<TestRunnerService>.Instance,
+            new ThrowingTestDiscoveryService(new InvalidOperationException("not expected")));
+        var plan = await service.PrepareTestRunAsync("ws-zero", null, filter, CancellationToken.None);
+        var result = await service.RunTestCommandAsync(plan, CancellationToken.None);
+        Assert.AreEqual(0, result.Total);
+        Assert.IsTrue(result.Execution.Succeeded);
+        Assert.IsNull(result.FailureEnvelope);
+        if (expectsWarning)
+        {
+            Assert.HasCount(1, result.Warnings!);
+            StringAssert.Contains(result.Warnings![0], "filter");
+            StringAssert.Contains(result.Warnings[0], "zero tests");
+            Assert.IsFalse(result.Warnings[0].Contains("PRIVATE-ZERO-MATCH-SENTINEL", StringComparison.Ordinal));
+            var changed = service.CompleteTestRunWithoutWorkspace(result);
+            CollectionAssert.Contains(changed.Warnings!.ToArray(), result.Warnings[0]);
+            CollectionAssert.Contains(changed.Warnings!.ToArray(), TestRunWarnings.WorkspaceChangedDuringRun);
+            Assert.HasCount(2, service.CompleteTestRunWithoutWorkspace(changed).Warnings!);
+        }
+        else
+        {
+            Assert.IsNull(result.Warnings);
+        }
+    }
+
+    [TestMethod]
+    public async Task RunTestCommandAsync_MatchingFilter_DoesNotWarn()
+    {
+        var trx = WritePassedTrxFixture();
+        try
+        {
+            var execution = SucceededExecution() with { StdOut = "Results File: " + trx };
+            using var executor = new CannedExecutionExecutor(execution);
+            var service = new TestRunnerService(new SingleTestProjectWorkspaceManager(), executor,
+                NullLogger<TestRunnerService>.Instance,
+                new ThrowingTestDiscoveryService(new InvalidOperationException("not expected")));
+            var plan = await service.PrepareTestRunAsync("ws-match", null, "FullyQualifiedName=Sample.Test", CancellationToken.None);
+            var result = await service.RunTestCommandAsync(plan, CancellationToken.None);
+            Assert.AreEqual(1, result.Total);
+            Assert.AreEqual(1, result.Passed);
+            Assert.IsNull(result.Warnings);
+        }
+        finally
+        {
+            File.Delete(trx);
+        }
+    }
+
     private sealed class CallbackExecutionExecutor(Action onExecute, CommandExecutionDto execution) : IGatedCommandExecutor
     {
         public Task<CommandExecutionDto> ExecuteAsync(

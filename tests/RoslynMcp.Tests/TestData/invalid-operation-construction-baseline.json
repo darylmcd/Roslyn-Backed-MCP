@@ -1640,19 +1640,7 @@
   {
     "Path": "src/RoslynMcp.Roslyn/Services/TestRunnerService.cs",
     "Member": "M:RoslynMcp.Roslyn.Services.TestRunnerService.PrepareTestRunAsync(System.String,System.String,System.String,System.Threading.CancellationToken)",
-    "Fingerprint": "0314F80633E7AED688B52CD0D378729924BF3B0D9FD5232AEA42DE9003B43DFD",
-    "Count": 1
-  },
-  {
-    "Path": "src/RoslynMcp.Roslyn/Services/TestRunnerService.cs",
-    "Member": "M:RoslynMcp.Roslyn.Services.TestRunnerService.PrepareTestRunAsync(System.String,System.String,System.String,System.Threading.CancellationToken)",
     "Fingerprint": "56041ACD66ACD5C3C616D00A47490B9AC417A67E1FB2AADB21C0391788565D04",
-    "Count": 1
-  },
-  {
-    "Path": "src/RoslynMcp.Roslyn/Services/TestRunnerService.cs",
-    "Member": "M:RoslynMcp.Roslyn.Services.TestRunnerService.PrepareTestRunAsync(System.String,System.String,System.String,System.Threading.CancellationToken)",
-    "Fingerprint": "E7411410019C28BFA56A08A71126A137668AAE61A82D61EA8E193372AB77BBA0",
     "Count": 1
   },
   {

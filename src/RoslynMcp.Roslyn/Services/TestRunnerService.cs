@@ -96,15 +96,15 @@ public sealed partial class TestRunnerService : ITestRunnerService
             resolvedProject = _executor.ResolveProject(workspaceId, projectName);
             if (!resolvedProject.IsTestProject)
             {
-                throw new InvalidOperationException(
-                    $"Project '{projectName}' is not a test project. " +
-                    $"Available test projects: {string.Join(", ", testProjects.Select(p => p.Name))}");
+                throw new PublicInvalidOperationException(
+                    "The selected project is not a test project. Use workspace_status with verbose=true to find test projects, " +
+                    "then pass a test project's name as projectName.");
             }
         }
         else if (testProjects.Count == 0)
         {
-            throw new InvalidOperationException(
-                $"No test projects found in workspace '{workspaceId}'. " +
+            throw new PublicInvalidOperationException(
+                "No test projects found in the workspace. " +
                 "Ensure the workspace contains projects with a test SDK reference (e.g., MSTest, xUnit, NUnit).");
         }
         else if (testProjects.Count == 1)
@@ -126,7 +126,7 @@ public sealed partial class TestRunnerService : ITestRunnerService
             // caller. Refuse instead of guessing: the caller can pass projectName to target the
             // MTP-only project individually, or run each project's tests separately.
             throw new PublicInvalidOperationException(
-                $"Workspace '{workspaceId}' contains {testProjects.Count} test projects, and at least " +
+                $"The workspace contains {testProjects.Count} test projects, and at least " +
                 "one only supports Microsoft.Testing.Platform (MTP) — TUnit never registers with the " +
                 "classic VSTest adapter, and Microsoft does not support mixing VSTest and MTP projects " +
                 "in one 'dotnet test' invocation. Running the whole workspace would silently skip that " +
@@ -235,10 +235,19 @@ public sealed partial class TestRunnerService : ITestRunnerService
             // FLAG-N1: always pass through to the parser — it handles the no-TRX failure case
             // by emitting a structured TestRunFailureEnvelopeDto instead of throwing. See
             // test-run-failure-envelope backlog row (2026-04-08 MSB3027 Windows file-lock audits).
-            return DotnetOutputParser.ParseTestRun(execution, trxFiles) with
+            var result = DotnetOutputParser.ParseTestRun(execution, trxFiles) with
             {
                 CommandDurationMs = stopwatch.ElapsedMilliseconds,
             };
+            if (result.Total == 0 && execution.Succeeded && !string.IsNullOrWhiteSpace(plan.Filter))
+            {
+                result = result with
+                {
+                    Warnings = [.. result.Warnings ?? [],
+                        "The supplied filter reported zero tests. Check the filter using test_discover before treating this run as verification."],
+                };
+            }
+            return result;
         }
         finally
         {

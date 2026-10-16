@@ -93,7 +93,7 @@ internal sealed class BatchTestScaffolder
         var testProject = solution.Projects.FirstOrDefault(p =>
             string.Equals(p.Name, request.TestProjectName, StringComparison.OrdinalIgnoreCase) ||
             string.Equals(p.FilePath, request.TestProjectName, StringComparison.OrdinalIgnoreCase))
-            ?? throw new PublicInvalidOperationException("The destination test project is not loaded. Use workspace_status to list project names, then retry with a loaded testProjectName.");
+            ?? throw new PublicInvalidOperationException("The destination test project is not loaded. Use workspace_status with verbose=true to list project names, then retry with a loaded testProjectName.");
 
         return new BatchScaffoldContext(
             Project: project,

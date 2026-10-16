@@ -39,7 +39,7 @@ internal static class FixAllTargetResolver
         if (parsedScope == FixAllScope.Project && string.IsNullOrWhiteSpace(projectName))
         {
             throw new PublicArgumentException(
-                "projectName is required when scope is 'project'. Use workspace_status to list loaded projects.",
+                "projectName is required when scope is 'project'. Use workspace_status with verbose=true to list loaded projects.",
                 nameof(projectName));
         }
 

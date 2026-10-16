@@ -188,7 +188,7 @@ public sealed class FileOperationService : IFileOperationService
         return solution.Projects.FirstOrDefault(project =>
                    string.Equals(project.Name, projectName, StringComparison.OrdinalIgnoreCase) ||
                    string.Equals(project.FilePath, projectName, StringComparison.OrdinalIgnoreCase))
-               ?? throw new PublicInvalidOperationException("The requested project is not loaded. Use workspace_status to list project names, then retry with a loaded project.");
+               ?? throw new PublicInvalidOperationException("The requested project is not loaded. Use workspace_status with verbose=true to list project names, then retry with a loaded project.");
     }
 
     private static Microsoft.CodeAnalysis.Project ResolveDestinationProject(

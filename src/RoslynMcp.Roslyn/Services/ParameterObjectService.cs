@@ -731,7 +731,7 @@ public sealed class ParameterObjectService : IParameterObjectService
         var dtoProject = solution.Projects.FirstOrDefault(p =>
             string.Equals(p.Name, request.DtoProjectName, StringComparison.OrdinalIgnoreCase))
             ?? throw new PublicArgumentException(
-                "dtoProjectName was not found in the loaded solution. Use workspace_status to list project names, then retry.",
+                "dtoProjectName was not found in the loaded solution. Use workspace_status with verbose=true to list project names, then retry.",
                 "dtoProjectName");
 
         var crossProject = dtoProject.Id != methodProject.Id;

@@ -37,12 +37,12 @@ public sealed class CompileCheckZeroProjectsTests : SharedWorkspaceTestBase
             CompileCheckTools.CompileCheck(WorkspaceExecutionGate, CompileCheckService,
                 WorkspaceId, projectName: privateProject));
         Assert.AreEqual("projectName", ex.ParamName);
-        StringAssert.Contains(ex.PublicMessage, "workspace_status");
+        StringAssert.Contains(ex.PublicMessage, "workspace_status with verbose=true");
         Assert.IsFalse(ex.Message.Contains(privateProject, StringComparison.Ordinal));
         using var envelope = System.Text.Json.JsonDocument.Parse(ToolErrorHandler.ClassifyAndFormat(ex, "compile_check"));
         Assert.AreEqual("InvalidArgument", envelope.RootElement.GetProperty("category").GetString());
         Assert.AreEqual("ArgumentException", envelope.RootElement.GetProperty("exceptionType").GetString());
-        StringAssert.Contains(envelope.RootElement.GetProperty("message").GetString(), "workspace_status");
+        StringAssert.Contains(envelope.RootElement.GetProperty("message").GetString(), "workspace_status with verbose=true");
         Assert.IsFalse(envelope.RootElement.GetProperty("message").GetString()!.Contains(privateProject, StringComparison.Ordinal));
     }
 

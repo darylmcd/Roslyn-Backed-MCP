@@ -25,6 +25,7 @@
 
 | Scope | If you are answering... | Open first | Then |
 |-------|--------------------------|------------|------|
+| `in-repo` | Current correctness remediation of 15 rows | `plans/20261015-correctness-15.md` | Complete fixes, red-first proof and delivery gates. |
 | `reference` | October 15 test integrity remediation of 15 rows | `plans/20261015-test-integrity-15.md` | Selected rows, complete fixes and delivery gates. |
 | `reference` | October 15 documentation and test-contract remediation of 15 rows | `plans/20261015-doc-contracts-15.md` | Selected rows and validation/delivery evidence. |
 | `reference` | Completed October 15 remediation of 15 rows and prerequisite PRs | `plans/20261015-backlog-15.md` | Implementation and merge evidence; return to backlog for new work. |
