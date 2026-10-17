@@ -1,5 +1,6 @@
 using System.Runtime.ExceptionServices;
 using System.Xml.Linq;
+using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 
 namespace RoslynMcp.Tests;
@@ -12,7 +13,7 @@ public abstract class IsolatedWorkspaceTestBase : TestBase
         var rootPath = Path.GetDirectoryName(solutionPath)
             ?? throw new InvalidOperationException("Isolated workspace root could not be resolved.");
 
-        return new IsolatedWorkspaceScope(rootPath, solutionPath);
+        return new IsolatedWorkspaceScope(rootPath, solutionPath, WorkspaceManager);
     }
 
     protected static async Task<IsolatedWorkspaceScope> CreateIsolatedWorkspaceAsync(CancellationToken ct = default)
@@ -100,17 +101,19 @@ public abstract class IsolatedWorkspaceTestBase : TestBase
 
     protected internal sealed class IsolatedWorkspaceScope : IAsyncDisposable, IDisposable
     {
+        private readonly IWorkspaceManager _workspaceManager;
         private readonly Func<string, bool> _closeWorkspace;
         private readonly Action<string> _deleteRoot;
         private int _disposeState;
         private string? _workspaceId;
 
-        internal IsolatedWorkspaceScope(string rootPath, string solutionPath)
+        internal IsolatedWorkspaceScope(string rootPath, string solutionPath, IWorkspaceManager workspaceManager)
             : this(
                 rootPath,
                 solutionPath,
                 workspaceId: null,
-                WorkspaceManager.Close,
+                workspaceManager,
+                workspaceManager.Close,
                 DeleteDirectoryIfExists)
         {
         }
@@ -119,9 +122,11 @@ public abstract class IsolatedWorkspaceTestBase : TestBase
             string rootPath,
             string solutionPath,
             string? workspaceId,
+            IWorkspaceManager workspaceManager,
             Func<string, bool> closeWorkspace,
             Action<string> deleteRoot)
         {
+            _workspaceManager = workspaceManager;
             RootPath = rootPath;
             SolutionPath = solutionPath;
             _workspaceId = workspaceId;
@@ -139,7 +144,7 @@ public abstract class IsolatedWorkspaceTestBase : TestBase
         {
             if (_workspaceId is null)
             {
-                var status = await WorkspaceManager.LoadAsync(SolutionPath, ct).ConfigureAwait(false);
+                var status = await _workspaceManager.LoadAsync(SolutionPath, EvictPolicy.Strict, ct).ConfigureAwait(false);
                 _workspaceId = status.WorkspaceId;
             }
 
@@ -154,7 +159,7 @@ public abstract class IsolatedWorkspaceTestBase : TestBase
                 return;
             }
 
-            await WorkspaceManager.ReloadAsync(_workspaceId, ct).ConfigureAwait(false);
+            await _workspaceManager.ReloadAsync(_workspaceId, ct).ConfigureAwait(false);
         }
 
         public string GetPath(params string[] segments)

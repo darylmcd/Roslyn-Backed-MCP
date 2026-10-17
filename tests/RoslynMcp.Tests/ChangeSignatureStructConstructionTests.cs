@@ -1,11 +1,14 @@
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Contracts;
 using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
 
-public sealed partial class ChangeSignaturePreviewTests
+[TestClass]
+public sealed class ChangeSignatureStructConstructionTests : ChangeSignatureTestBase
 {
     [TestMethod]
     [DataRow("plain")]
@@ -19,11 +22,11 @@ public sealed partial class ChangeSignaturePreviewTests
             + (shape == "partial" ? "\npublic partial struct Construction { public int Other = SignatureProof.Next(); }" : "")
             + "\npublic static class SignatureProof { public static int Calls; public static int Next() => ++Calls; public static string Run() { Calls = 0; var edited = new Construction(); var runtime = System.Activator.CreateInstance<Construction>(); var json = System.Text.Json.JsonSerializer.Deserialize<Construction>(\"{}\"); return edited.Value + \"|\" + runtime.Value + \"|\" + json.Value + \"|\" + Calls; } }";
         var expected = shape == "partial" ? "1|3|5|6" : "1|2|3|3";
-        await using var workspace = CreateIsolatedWorkspaceCopy();
+        await using var workspace = CreateSingleProjectWorkspace();
         var path = workspace.GetPath("SampleLib", "SignatureProof.cs");
         await File.WriteAllTextAsync(path, source);
         await workspace.LoadAsync(CancellationToken.None);
-        var original = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        var original = Services.WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
         Assert.AreEqual(expected, await RunSignatureFixtureAsync(original, "SampleLib.SignatureProof"));
         if (shape == "json")
         {
@@ -33,10 +36,10 @@ public sealed partial class ChangeSignaturePreviewTests
                 .Count(constructor => constructor.GetAttributes().Any(attribute => attribute.AttributeClass?.ToDisplayString()
                     == "System.Text.Json.Serialization.JsonConstructorAttribute")));
         }
-        var preview = await _changeSignatureService.PreviewChangeSignatureAsync(workspace.WorkspaceId,
+        var preview = await ChangeSignature.PreviewChangeSignatureAsync(workspace.WorkspaceId,
             SymbolLocator.BySource(path, 2, declaration.IndexOf("Construction()", StringComparison.Ordinal) + 1),
             new ChangeSignatureRequest("add", Name: "added", ParameterType: "int"), CancellationToken.None);
-        var stored = PreviewStore.Retrieve(preview.PreviewToken);
+        var stored = Services.PreviewStore.Retrieve(preview.PreviewToken);
         Assert.IsNotNull(stored);
         Assert.AreEqual(expected, await RunSignatureFixtureAsync(stored.Value.ModifiedSolution, "SampleLib.SignatureProof"));
         if (shape == "json")
@@ -48,9 +51,9 @@ public sealed partial class ChangeSignaturePreviewTests
                     == "System.Text.Json.Serialization.JsonConstructorAttribute")));
         }
         Assert.AreEqual(1, preview.CallsiteUpdates?.Sum(call => call.CallsiteCount));
-        var applied = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
+        var applied = await Services.RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
         Assert.IsTrue(applied.Success, applied.Error);
-        Assert.AreEqual(expected, await RunSignatureFixtureAsync(WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId), "SampleLib.SignatureProof"));
+        Assert.AreEqual(expected, await RunSignatureFixtureAsync(Services.WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId), "SampleLib.SignatureProof"));
     }
 
     [TestMethod]
@@ -59,11 +62,11 @@ public sealed partial class ChangeSignaturePreviewTests
         var declaration = "public struct Construction { public int Value; [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.InternalCall)] public extern Construction(); }";
         var source = "namespace SampleLib;\n" + declaration
             + "\npublic static class SignatureProof { public static Construction Run() => new Construction(); }";
-        await using var workspace = CreateIsolatedWorkspaceCopy();
+        await using var workspace = CreateSingleProjectWorkspace();
         var path = workspace.GetPath("SampleLib", "SignatureProof.cs");
         await File.WriteAllTextAsync(path, source);
         await workspace.LoadAsync(CancellationToken.None);
-        var original = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        var original = Services.WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
         var originalCompilation = await original.Projects.Single(project => project.Name == "SampleLib").GetCompilationAsync();
         Assert.IsNotNull(originalCompilation);
         using var originalImage = new MemoryStream();
@@ -71,10 +74,10 @@ public sealed partial class ChangeSignaturePreviewTests
         var originalConstructor = originalCompilation.GetTypeByMetadataName("SampleLib.Construction")!.InstanceConstructors.Single();
         Assert.IsTrue(originalConstructor.IsExtern);
         var attributes = originalConstructor.GetAttributes().Select(attribute => attribute.ToString()).ToArray();
-        var preview = await _changeSignatureService.PreviewChangeSignatureAsync(workspace.WorkspaceId,
+        var preview = await ChangeSignature.PreviewChangeSignatureAsync(workspace.WorkspaceId,
             SymbolLocator.BySource(path, 2, declaration.IndexOf("Construction()", StringComparison.Ordinal) + 1),
             new ChangeSignatureRequest("add", Name: "added", ParameterType: "int"), CancellationToken.None);
-        var stored = PreviewStore.Retrieve(preview.PreviewToken);
+        var stored = Services.PreviewStore.Retrieve(preview.PreviewToken);
         Assert.IsNotNull(stored);
         var compilation = await stored.Value.ModifiedSolution.Projects.Single(project => project.Name == "SampleLib").GetCompilationAsync();
         Assert.IsNotNull(compilation);
@@ -114,7 +117,7 @@ public sealed partial class ChangeSignaturePreviewTests
             + "\npublic sealed class Dependency { } public sealed class Provider : System.IServiceProvider { public object? GetService(System.Type type) => type == typeof(Dependency) ? new Dependency() : null; }"
             + "\npublic static class SignatureProof { public static string Run() => new Construction(" + (operation == "add" ? "" : "new Dependency()")
             + ").Value + \"|\" + " + factory + ".Value; }";
-        await using var workspace = CreateIsolatedWorkspaceCopy();
+        await using var workspace = CreateSingleProjectWorkspace();
         var path = workspace.GetPath("SampleLib", "SignatureProof.cs");
         await File.WriteAllTextAsync(path, source);
         if (dependencyInjection)
@@ -128,10 +131,10 @@ public sealed partial class ChangeSignaturePreviewTests
             projectXml.Save(projectPath);
         }
         await workspace.LoadAsync(CancellationToken.None);
-        var original = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        var original = Services.WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
         Assert.AreEqual("7|7", await RunSignatureFixtureAsync(original, "SampleLib.SignatureProof"));
-        var probe = new SignatureStoreProbe(PreviewStore);
-        var service = new ChangeSignatureService(WorkspaceManager, probe, RefactoringService);
+        var probe = new SignatureStoreProbe(Services.PreviewStore);
+        var service = new ChangeSignatureService(Services.WorkspaceManager, probe, Services.RefactoringService);
         var locator = SymbolLocator.BySource(path, 2, declaration.IndexOf("Construction(", StringComparison.Ordinal) + 1);
         if (operation == "remove")
         {
@@ -139,7 +142,7 @@ public sealed partial class ChangeSignaturePreviewTests
             {
                 var accepted = await service.PreviewChangeSignatureAsync(
                     workspace.WorkspaceId, locator, new ChangeSignatureRequest("remove", Name: "unused"), CancellationToken.None);
-                var stored = PreviewStore.Retrieve(accepted.PreviewToken);
+                var stored = Services.PreviewStore.Retrieve(accepted.PreviewToken);
                 Assert.IsNotNull(stored);
                 // A premature acceptance must exercise the actual factory, exposing its broken binding.
                 _ = await RunSignatureFixtureAsync(stored.Value.ModifiedSolution, "SampleLib.SignatureProof");
@@ -151,17 +154,17 @@ public sealed partial class ChangeSignaturePreviewTests
         {
             var preview = await service.PreviewChangeSignatureAsync(workspace.WorkspaceId, locator,
                 new ChangeSignatureRequest("add", Name: "added", ParameterType: "int"), CancellationToken.None);
-            var stored = PreviewStore.Retrieve(preview.PreviewToken);
+            var stored = Services.PreviewStore.Retrieve(preview.PreviewToken);
             Assert.IsNotNull(stored);
             Assert.AreEqual("7|7", await RunSignatureFixtureAsync(stored.Value.ModifiedSolution, "SampleLib.SignatureProof"));
             Assert.AreEqual(1, probe.StoreCalls);
             Assert.AreEqual(1, preview.CallsiteUpdates?.Sum(call => call.CallsiteCount));
-            var applied = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
+            var applied = await Services.RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
             Assert.IsTrue(applied.Success, applied.Error);
-            Assert.AreEqual("7|7", await RunSignatureFixtureAsync(WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId), "SampleLib.SignatureProof"));
+            Assert.AreEqual("7|7", await RunSignatureFixtureAsync(Services.WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId), "SampleLib.SignatureProof"));
             return;
         }
-        Assert.AreSame(original, WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
+        Assert.AreSame(original, Services.WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
         Assert.AreEqual(source, await File.ReadAllTextAsync(path));
     }
 
@@ -185,19 +188,19 @@ public sealed partial class ChangeSignaturePreviewTests
         var source = "namespace SampleLib;\n" + declaration
             + "\npublic static class SignatureProof { public static string Run() => new " + type + "(2).Value + \"|\" + ZeroOnly.Read(); }";
         var untouched = "namespace SampleLib; public static class ZeroOnly { public static int Read() => System.Text.Json.JsonSerializer.Deserialize<" + type + ">(\"{}\").Value + new " + type + "().Value + System.Activator.CreateInstance<" + type + ">().Value; }";
-        await using var workspace = CreateIsolatedWorkspaceCopy();
+        await using var workspace = CreateSingleProjectWorkspace();
         var path = workspace.GetPath("SampleLib", "SignatureProof.cs");
         var zeroPath = workspace.GetPath("SampleLib", "ZeroOnly.cs");
         await File.WriteAllTextAsync(path, source);
         await File.WriteAllTextAsync(zeroPath, untouched);
         await workspace.LoadAsync(CancellationToken.None);
-        var original = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        var original = Services.WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
         Assert.AreEqual("7|0", await RunSignatureFixtureAsync(original, "SampleLib.SignatureProof"));
         var constructorColumn = shape == "ordinary" ? declaration.IndexOf("Construction(int", StringComparison.Ordinal) + 1
             : declaration.IndexOf("Construction", StringComparison.Ordinal) + 1;
-        var preview = await _changeSignatureService.PreviewChangeSignatureAsync(workspace.WorkspaceId,
+        var preview = await ChangeSignature.PreviewChangeSignatureAsync(workspace.WorkspaceId,
             SymbolLocator.BySource(path, 2, constructorColumn), new ChangeSignatureRequest("remove", Name: "unused"), CancellationToken.None);
-        var stored = PreviewStore.Retrieve(preview.PreviewToken);
+        var stored = Services.PreviewStore.Retrieve(preview.PreviewToken);
         Assert.IsNotNull(stored);
         async Task VerifyAsync(Solution solution)
         {
@@ -206,9 +209,9 @@ public sealed partial class ChangeSignaturePreviewTests
             Assert.AreEqual(untouched, (await zero.GetTextAsync()).ToString(), "Non-target construction must retain exact source text.");
         }
         await VerifyAsync(stored.Value.ModifiedSolution);
-        var applied = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
+        var applied = await Services.RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
         Assert.IsTrue(applied.Success, applied.Error);
-        await VerifyAsync(WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
+        await VerifyAsync(Services.WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
         Assert.AreEqual(untouched, await File.ReadAllTextAsync(zeroPath));
     }
 
@@ -286,20 +289,20 @@ public sealed partial class ChangeSignaturePreviewTests
         var declaration = "public struct Construction { public int Value { get; } [System.Text.Json.Serialization.JsonConstructor] public Construction(int value) { Value = 7; } }";
         var source = "namespace SampleLib;\n" + declaration
             + "\npublic static class SignatureProof { public static string Run() => new Construction(2).Value + \"|\" + System.Text.Json.JsonSerializer.Deserialize<Construction>(\"{\\\"Value\\\":2}\").Value; }";
-        await using var workspace = CreateIsolatedWorkspaceCopy();
+        await using var workspace = CreateSingleProjectWorkspace();
         var path = workspace.GetPath("SampleLib", "SignatureProof.cs");
         await File.WriteAllTextAsync(path, source);
         await workspace.LoadAsync(CancellationToken.None);
-        var original = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        var original = Services.WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
         Assert.AreEqual("7|7", await RunSignatureFixtureAsync(original, "SampleLib.SignatureProof"));
-        var probe = new SignatureStoreProbe(PreviewStore);
-        var service = new ChangeSignatureService(WorkspaceManager, probe, RefactoringService);
+        var probe = new SignatureStoreProbe(Services.PreviewStore);
+        var service = new ChangeSignatureService(Services.WorkspaceManager, probe, Services.RefactoringService);
         var error = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() => service.PreviewChangeSignatureAsync(
             workspace.WorkspaceId, SymbolLocator.BySource(path, 2, declaration.IndexOf("Construction(int", StringComparison.Ordinal) + 1),
             new ChangeSignatureRequest("remove", Name: "value"), CancellationToken.None));
         StringAssert.Contains(error.Message, "JsonConstructor");
         Assert.AreEqual(0, probe.StoreCalls);
-        Assert.AreSame(original, WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
+        Assert.AreSame(original, Services.WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
         Assert.AreEqual(source, await File.ReadAllTextAsync(path));
     }
 

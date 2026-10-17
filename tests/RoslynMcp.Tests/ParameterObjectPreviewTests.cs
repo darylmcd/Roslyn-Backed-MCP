@@ -2,12 +2,12 @@ using System.Reflection;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.CodeAnalysis;
-using RoslynMcp.Roslyn.Contracts;
-using RoslynMcp.Tests.Helpers;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
+using RoslynMcp.Roslyn.Contracts;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -21,13 +21,8 @@ namespace RoslynMcp.Tests;
 /// using directive applies cleanly via a <c>global::</c>-qualified reference.
 /// </summary>
 [TestClass]
-public sealed class ParameterObjectPreviewTests : TestBase
+public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
 {
-    [ClassInitialize]
-    public static void ClassInit(TestContext _) => InitializeServices();
-
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
 
     [TestMethod]
     public async Task PositionalGrouping_SingleProject_RewritesBothDeclarationAndCallsite()
@@ -47,7 +42,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
 
         try
         {
-            var preview = await ParameterObjectService.PreviewParameterObjectAsync(
+            var preview = await Services.ParameterObjectService.PreviewParameterObjectAsync(
                 workspaceId,
                 SymbolLocator.BySource(fixturePath, line: 5, column: 16), // 'Sum'
                 new ParameterObjectPreviewRequest(["a", "b", "c"], "SumArgs"),
@@ -69,7 +64,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
         finally
         {
-            WorkspaceManager.Close(workspaceId);
+            Services.WorkspaceManager.Close(workspaceId);
         }
     }
 
@@ -96,7 +91,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
 
         try
         {
-            var preview = await ParameterObjectService.PreviewParameterObjectAsync(
+            var preview = await Services.ParameterObjectService.PreviewParameterObjectAsync(
                 workspaceId,
                 SymbolLocator.BySource(fixturePath, line: 7, column: 16),
                 new ParameterObjectPreviewRequest(["a", "b", "c"], "SumArgs"),
@@ -111,7 +106,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
         finally
         {
-            WorkspaceManager.Close(workspaceId);
+            Services.WorkspaceManager.Close(workspaceId);
         }
     }
 
@@ -154,7 +149,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         try
         {
             var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
-                ParameterObjectService.PreviewParameterObjectAsync(
+                Services.ParameterObjectService.PreviewParameterObjectAsync(
                     workspaceId,
                     SymbolLocator.BySource(fixturePath, line: 9, column: 23),
                     new ParameterObjectPreviewRequest(
@@ -183,7 +178,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
         finally
         {
-            WorkspaceManager.Close(workspaceId);
+            Services.WorkspaceManager.Close(workspaceId);
         }
     }
 
@@ -221,7 +216,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         try
         {
             var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
-                ParameterObjectService.PreviewParameterObjectAsync(
+                Services.ParameterObjectService.PreviewParameterObjectAsync(
                     workspaceId,
                     SymbolLocator.BySource(fixturePath, line: 11, column: 16),
                     new ParameterObjectPreviewRequest(["called", "written"], "ComputeArgs"),
@@ -236,7 +231,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
         finally
         {
-            WorkspaceManager.Close(workspaceId);
+            Services.WorkspaceManager.Close(workspaceId);
         }
     }
 
@@ -273,7 +268,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         try
         {
             var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
-                ParameterObjectService.PreviewParameterObjectAsync(
+                Services.ParameterObjectService.PreviewParameterObjectAsync(
                     workspaceId,
                     SymbolLocator.BySource(fixturePath, line: 16, column: 16),
                     new ParameterObjectPreviewRequest(["called", "written"], "ComputeArgs"),
@@ -286,7 +281,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
         finally
         {
-            WorkspaceManager.Close(workspaceId);
+            Services.WorkspaceManager.Close(workspaceId);
         }
     }
 
@@ -321,7 +316,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
 
         try
         {
-            var preview = await ParameterObjectService.PreviewParameterObjectAsync(
+            var preview = await Services.ParameterObjectService.PreviewParameterObjectAsync(
                 workspaceId,
                 SymbolLocator.BySource(fixturePath, line: 16, column: 18),
                 new ParameterObjectPreviewRequest(["holder", "offset"], "ComputeArgs"),
@@ -331,7 +326,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
         finally
         {
-            WorkspaceManager.Close(workspaceId);
+            Services.WorkspaceManager.Close(workspaceId);
         }
     }
 
@@ -376,7 +371,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
 
         try
         {
-            var preview = await ParameterObjectService.PreviewParameterObjectAsync(
+            var preview = await Services.ParameterObjectService.PreviewParameterObjectAsync(
                 workspaceId,
                 SymbolLocator.BySource(fixturePath, line: 17, column: 16),
                 new ParameterObjectPreviewRequest(["holder", "items", "snapshot"], "ComputeArgs"),
@@ -390,14 +385,14 @@ public sealed class ParameterObjectPreviewTests : TestBase
             StringAssert.Contains(fixtureDiff, "new ComputeArgs(new PORefHolder(), new int[1], new POReadOnlySnapshot(3))");
 
             var workflowService = new ApplyUndoWorkflowService(
-                RefactoringService,
-                CompileCheckService,
-                UndoService,
-                PreviewStore);
+                Services.RefactoringService,
+                Services.CompileCheckService,
+                Services.UndoService,
+                Services.PreviewStore);
             var applyJson = await ApplyWithVerifyTool.ApplyWithVerify(
-                WorkspaceExecutionGate,
+                Services.WorkspaceExecutionGate,
                 workflowService,
-                PreviewStore,
+                Services.PreviewStore,
                 preview.PreviewToken,
                 rollbackOnError: true,
                 ct: CancellationToken.None);
@@ -420,7 +415,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
         finally
         {
-            WorkspaceManager.Close(workspaceId);
+            Services.WorkspaceManager.Close(workspaceId);
         }
     }
 
@@ -450,7 +445,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         try
         {
             var invalid = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
-                ParameterObjectService.PreviewParameterObjectAsync(
+                Services.ParameterObjectService.PreviewParameterObjectAsync(
                     workspaceId,
                     SymbolLocator.BySource(fixturePath, line: 5, column: 16),
                     new ParameterObjectPreviewRequest(["a", "b"], "Args", ParameterName: "bad-name"),
@@ -458,7 +453,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
             StringAssert.Contains(invalid.Message, "not a valid C# identifier");
 
             var invalidDefault = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
-                ParameterObjectService.PreviewParameterObjectAsync(
+                Services.ParameterObjectService.PreviewParameterObjectAsync(
                     workspaceId,
                     SymbolLocator.BySource(fixturePath, line: 5, column: 16),
                     new ParameterObjectPreviewRequest(["a", "b"], "Class"),
@@ -476,7 +471,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
         finally
         {
-            WorkspaceManager.Close(workspaceId);
+            Services.WorkspaceManager.Close(workspaceId);
         }
     }
 
@@ -517,7 +512,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
         finally
         {
-            WorkspaceManager.Close(workspaceId);
+            Services.WorkspaceManager.Close(workspaceId);
         }
     }
 
@@ -559,7 +554,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
         finally
         {
-            WorkspaceManager.Close(workspaceId);
+            Services.WorkspaceManager.Close(workspaceId);
         }
     }
 
@@ -581,21 +576,21 @@ public sealed class ParameterObjectPreviewTests : TestBase
 
         try
         {
-            var preview = await ParameterObjectService.PreviewParameterObjectAsync(
+            var preview = await Services.ParameterObjectService.PreviewParameterObjectAsync(
                 workspaceId,
                 SymbolLocator.BySource(fixturePath, line: 5, column: 16),
                 new ParameterObjectPreviewRequest(["finalize", "other"], "FinalizeArgs"),
                 CancellationToken.None);
 
             var workflowService = new ApplyUndoWorkflowService(
-                RefactoringService,
-                CompileCheckService,
-                UndoService,
-                PreviewStore);
+                Services.RefactoringService,
+                Services.CompileCheckService,
+                Services.UndoService,
+                Services.PreviewStore);
             var applyJson = await ApplyWithVerifyTool.ApplyWithVerify(
-                WorkspaceExecutionGate,
+                Services.WorkspaceExecutionGate,
                 workflowService,
-                PreviewStore,
+                Services.PreviewStore,
                 preview.PreviewToken,
                 rollbackOnError: true,
                 ct: CancellationToken.None);
@@ -611,7 +606,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
         finally
         {
-            WorkspaceManager.Close(workspaceId);
+            Services.WorkspaceManager.Close(workspaceId);
         }
     }
 
@@ -647,7 +642,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
 
         try
         {
-            var preview = await ParameterObjectService.PreviewParameterObjectAsync(
+            var preview = await Services.ParameterObjectService.PreviewParameterObjectAsync(
                 workspaceId,
                 SymbolLocator.BySource(fixturePath, line: 7, column: 19),
                 new ParameterObjectPreviewRequest(["a", "b"], "DescribeArgs"),
@@ -664,14 +659,14 @@ public sealed class ParameterObjectPreviewTests : TestBase
                 "The same-document caller after nameof and its nested invocation arguments must remain correctly targeted.");
 
             var workflowService = new ApplyUndoWorkflowService(
-                RefactoringService,
-                CompileCheckService,
-                UndoService,
-                PreviewStore);
+                Services.RefactoringService,
+                Services.CompileCheckService,
+                Services.UndoService,
+                Services.PreviewStore);
             var applyJson = await ApplyWithVerifyTool.ApplyWithVerify(
-                WorkspaceExecutionGate,
+                Services.WorkspaceExecutionGate,
                 workflowService,
-                PreviewStore,
+                Services.PreviewStore,
                 preview.PreviewToken,
                 rollbackOnError: true,
                 ct: CancellationToken.None);
@@ -690,7 +685,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
         finally
         {
-            WorkspaceManager.Close(workspaceId);
+            Services.WorkspaceManager.Close(workspaceId);
         }
     }
 
@@ -721,7 +716,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
 
         try
         {
-            var preview = await ParameterObjectService.PreviewParameterObjectAsync(
+            var preview = await Services.ParameterObjectService.PreviewParameterObjectAsync(
                 workspaceId,
                 SymbolLocator.BySource(fixturePath, line: 13, column: 16),
                 new ParameterObjectPreviewRequest(["a", "b"], "SumArgs"),
@@ -735,21 +730,21 @@ public sealed class ParameterObjectPreviewTests : TestBase
             StringAssert.Contains(declarationDiff, "[LinkName(\"a\")]");
 
             var workflowService = new ApplyUndoWorkflowService(
-                RefactoringService,
-                CompileCheckService,
-                UndoService,
-                PreviewStore);
+                Services.RefactoringService,
+                Services.CompileCheckService,
+                Services.UndoService,
+                Services.PreviewStore);
             var applyJson = await ApplyWithVerifyTool.ApplyWithVerify(
-                WorkspaceExecutionGate,
+                Services.WorkspaceExecutionGate,
                 workflowService,
-                PreviewStore,
+                Services.PreviewStore,
                 preview.PreviewToken,
                 rollbackOnError: true,
                 ct: CancellationToken.None);
             using var apply = JsonDocument.Parse(applyJson);
             Assert.AreEqual("applied", apply.RootElement.GetProperty("status").GetString(), applyJson);
 
-            var project = WorkspaceManager.GetCurrentSolution(workspaceId).Projects.Single(item => item.Name == "SampleLib");
+            var project = Services.WorkspaceManager.GetCurrentSolution(workspaceId).Projects.Single(item => item.Name == "SampleLib");
             var compilation = await project.GetCompilationAsync();
             Assert.IsNotNull(compilation);
             using var pe = new MemoryStream();
@@ -766,7 +761,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
         finally
         {
-            WorkspaceManager.Close(workspaceId);
+            Services.WorkspaceManager.Close(workspaceId);
         }
     }
 
@@ -790,7 +785,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         try
         {
             var error = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
-                () => ParameterObjectService.PreviewParameterObjectAsync(
+                () => Services.ParameterObjectService.PreviewParameterObjectAsync(
                     workspaceId,
                     SymbolLocator.BySource(fixturePath, line: 5, column: 17),
                     new ParameterObjectPreviewRequest(["value", "other"], "LogArgs"),
@@ -800,7 +795,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
         finally
         {
-            WorkspaceManager.Close(workspaceId);
+            Services.WorkspaceManager.Close(workspaceId);
         }
     }
 
@@ -823,7 +818,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
 
         try
         {
-            var preview = await ParameterObjectService.PreviewParameterObjectAsync(
+            var preview = await Services.ParameterObjectService.PreviewParameterObjectAsync(
                 workspaceId,
                 SymbolLocator.BySource(fixturePath, line: 5, column: 16),
                 new ParameterObjectPreviewRequest(["a", "b", "c"], "SumArgs"),
@@ -836,7 +831,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
         finally
         {
-            WorkspaceManager.Close(workspaceId);
+            Services.WorkspaceManager.Close(workspaceId);
         }
     }
 
@@ -859,7 +854,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         try
         {
             var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
-                ParameterObjectService.PreviewParameterObjectAsync(
+                Services.ParameterObjectService.PreviewParameterObjectAsync(
                     workspaceId,
                     SymbolLocator.BySource(fixturePath, line: 5, column: 16),
                     new ParameterObjectPreviewRequest(["a", "b", "c"], "SumArgs"),
@@ -868,7 +863,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
         finally
         {
-            WorkspaceManager.Close(workspaceId);
+            Services.WorkspaceManager.Close(workspaceId);
         }
     }
 
@@ -900,7 +895,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
         finally
         {
-            WorkspaceManager.Close(workspaceId);
+            Services.WorkspaceManager.Close(workspaceId);
         }
     }
 
@@ -968,7 +963,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
         finally
         {
-            WorkspaceManager.Close(workspaceId);
+            Services.WorkspaceManager.Close(workspaceId);
         }
     }
 
@@ -1004,7 +999,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
 
         try
         {
-            var preview = await ParameterObjectService.PreviewParameterObjectAsync(
+            var preview = await Services.ParameterObjectService.PreviewParameterObjectAsync(
                 workspaceId,
                 SymbolLocator.BySource(fixturePath, line: 7, column: 19),
                 new ParameterObjectPreviewRequest(["secret", "count"], "UseArgs"),
@@ -1017,7 +1012,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
         finally
         {
-            WorkspaceManager.Close(workspaceId);
+            Services.WorkspaceManager.Close(workspaceId);
         }
     }
 
@@ -1045,7 +1040,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
             }
             """);
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var loadResult = await Services.WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
         var workspaceId = loadResult.WorkspaceId;
         try
         {
@@ -1062,7 +1057,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
         finally
         {
-            WorkspaceManager.Close(workspaceId);
+            Services.WorkspaceManager.Close(workspaceId);
         }
     }
 
@@ -1099,11 +1094,11 @@ public sealed class ParameterObjectPreviewTests : TestBase
             }
             """);
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var loadResult = await Services.WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
         var workspaceId = loadResult.WorkspaceId;
         try
         {
-            var preview = await ParameterObjectService.PreviewParameterObjectAsync(
+            var preview = await Services.ParameterObjectService.PreviewParameterObjectAsync(
                 workspaceId,
                 SymbolLocator.BySource(libFile, line: 5, column: 16),
                 new ParameterObjectPreviewRequest(["a", "b", "c"], "SumArgs"),
@@ -1117,20 +1112,15 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
         finally
         {
-            WorkspaceManager.Close(workspaceId);
+            Services.WorkspaceManager.Close(workspaceId);
         }
     }
 
     [TestMethod]
     public async Task CrossProject_RefusesWhenCallerProjectMissingReference()
     {
-        // Place the method in SampleApp (which is NOT referenced by SampleLib.Tests) and
-        // request the DTO to land in SampleApp; then create a caller in SampleLib.Tests that
-        // can compile against SampleApp's type *only via* a fixture-lib reference. To keep the
-        // setup simple, we instead place the method in SampleLib.Tests (which references both)
-        // and request the DTO to live in SampleApp — SampleLib.Tests references SampleApp? Let's
-        // verify by inverse: method in SampleLib, dtoProjectName=SampleApp. SampleLib does NOT
-        // reference SampleApp, so the SampleLib declaration's project is missing the reference.
+        // The declaration stays in SampleLib, while the DTO is requested in SampleApp.
+        // SampleLib does not reference SampleApp, so the declaration cannot use that DTO.
         var copiedSolutionPath = CreateSampleSolutionCopy();
         var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
         var libDir = Path.Combine(solutionDir, "SampleLib");
@@ -1146,7 +1136,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
             }
             """);
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var loadResult = await Services.WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
         var workspaceId = loadResult.WorkspaceId;
         try
         {
@@ -1160,7 +1150,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
         finally
         {
-            WorkspaceManager.Close(workspaceId);
+            Services.WorkspaceManager.Close(workspaceId);
         }
     }
 
@@ -1182,21 +1172,21 @@ public sealed class ParameterObjectPreviewTests : TestBase
 
         try
         {
-            var preview = await ParameterObjectService.PreviewParameterObjectAsync(
+            var preview = await Services.ParameterObjectService.PreviewParameterObjectAsync(
                 workspaceId,
                 SymbolLocator.BySource(fixturePath, line: 5, column: 16),
                 new ParameterObjectPreviewRequest(["a", "b", "c"], "SumArgs"),
                 CancellationToken.None);
 
             var workflowService = new ApplyUndoWorkflowService(
-                RefactoringService,
-                CompileCheckService,
-                UndoService,
-                PreviewStore);
+                Services.RefactoringService,
+                Services.CompileCheckService,
+                Services.UndoService,
+                Services.PreviewStore);
             var applyJson = await ApplyWithVerifyTool.ApplyWithVerify(
-                WorkspaceExecutionGate,
+                Services.WorkspaceExecutionGate,
                 workflowService,
-                PreviewStore,
+                Services.PreviewStore,
                 preview.PreviewToken,
                 rollbackOnError: true,
                 ct: CancellationToken.None);
@@ -1222,7 +1212,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
         finally
         {
-            WorkspaceManager.Close(workspaceId);
+            Services.WorkspaceManager.Close(workspaceId);
         }
     }
 
@@ -1261,7 +1251,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         {
             var before = await File.ReadAllTextAsync(fixturePath);
 
-            var rename = await RefactoringService.PreviewRenameAsync(
+            var rename = await Services.RefactoringService.PreviewRenameAsync(
                 workspaceId,
                 SymbolLocator.BySource(fixturePath, line: 5, column: 16), // 'Sum'
                 "Total",
@@ -1270,9 +1260,9 @@ public sealed class ParameterObjectPreviewTests : TestBase
 
             var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
                 RefactoringTools.ApplyFormatDocument(
-                    WorkspaceExecutionGate,
-                    RefactoringService,
-                    PreviewStore,
+                    Services.WorkspaceExecutionGate,
+                    Services.RefactoringService,
+                    Services.PreviewStore,
                     rename.PreviewToken!,
                     CancellationToken.None));
 
@@ -1289,7 +1279,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
         finally
         {
-            WorkspaceManager.Close(workspaceId);
+            Services.WorkspaceManager.Close(workspaceId);
         }
     }
 
@@ -1311,7 +1301,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
 
         try
         {
-            var preview = await ParameterObjectService.PreviewParameterObjectAsync(
+            var preview = await Services.ParameterObjectService.PreviewParameterObjectAsync(
                 workspaceId,
                 SymbolLocator.BySource(fixturePath, line: 5, column: 16), // 'Sum'
                 new ParameterObjectPreviewRequest(["a", "b", "c"], "SumArgs", DtoNamespace: "SampleLib.Contracts"),
@@ -1335,7 +1325,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
         finally
         {
-            WorkspaceManager.Close(workspaceId);
+            Services.WorkspaceManager.Close(workspaceId);
         }
     }
 
@@ -1372,11 +1362,11 @@ public sealed class ParameterObjectPreviewTests : TestBase
             }
             """);
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var loadResult = await Services.WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
         var workspaceId = loadResult.WorkspaceId;
         try
         {
-            var preview = await ParameterObjectService.PreviewParameterObjectAsync(
+            var preview = await Services.ParameterObjectService.PreviewParameterObjectAsync(
                 workspaceId,
                 SymbolLocator.BySource(libFile, line: 5, column: 16), // 'Sum'
                 new ParameterObjectPreviewRequest(["a", "b", "c"], "QualArgs"),
@@ -1396,14 +1386,14 @@ public sealed class ParameterObjectPreviewTests : TestBase
                 "the DTO namespace is not in scope in the calling document, so the object creation must be qualified");
 
             var workflowService = new ApplyUndoWorkflowService(
-                RefactoringService,
-                CompileCheckService,
-                UndoService,
-                PreviewStore);
+                Services.RefactoringService,
+                Services.CompileCheckService,
+                Services.UndoService,
+                Services.PreviewStore);
             var applyJson = await ApplyWithVerifyTool.ApplyWithVerify(
-                WorkspaceExecutionGate,
+                Services.WorkspaceExecutionGate,
                 workflowService,
-                PreviewStore,
+                Services.PreviewStore,
                 preview.PreviewToken,
                 rollbackOnError: true,
                 ct: CancellationToken.None);
@@ -1422,7 +1412,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
         finally
         {
-            WorkspaceManager.Close(workspaceId);
+            Services.WorkspaceManager.Close(workspaceId);
         }
     }
 
@@ -1623,7 +1613,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
         finally
         {
-            WorkspaceManager.Close(workspaceId);
+            Services.WorkspaceManager.Close(workspaceId);
         }
     }
 
@@ -1651,7 +1641,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
 
         try
         {
-            var preview = await ParameterObjectService.PreviewParameterObjectAsync(
+            var preview = await Services.ParameterObjectService.PreviewParameterObjectAsync(
                 workspaceId,
                 SymbolLocator.BySource(fixturePath, line: 12, column: 30),
                 new ParameterObjectPreviewRequest(["a", "b"], "SumArgs"),
@@ -1662,7 +1652,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
         finally
         {
-            WorkspaceManager.Close(workspaceId);
+            Services.WorkspaceManager.Close(workspaceId);
         }
     }
 
@@ -1683,7 +1673,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
 
         try
         {
-            var preview = await ParameterObjectService.PreviewParameterObjectAsync(
+            var preview = await Services.ParameterObjectService.PreviewParameterObjectAsync(
                 workspaceId,
                 SymbolLocator.BySource(fixturePath, line: 5, column: 16),
                 new ParameterObjectPreviewRequest(
@@ -1701,7 +1691,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
         finally
         {
-            WorkspaceManager.Close(workspaceId);
+            Services.WorkspaceManager.Close(workspaceId);
         }
     }
 
@@ -1727,7 +1717,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
 
         try
         {
-            var preview = await ParameterObjectService.PreviewParameterObjectAsync(
+            var preview = await Services.ParameterObjectService.PreviewParameterObjectAsync(
                 workspaceId,
                 SymbolLocator.BySource(fixturePath, line: 5, column: 23),
                 new ParameterObjectPreviewRequest(["a", "b"], "SumArgs"),
@@ -1740,7 +1730,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
         finally
         {
-            WorkspaceManager.Close(workspaceId);
+            Services.WorkspaceManager.Close(workspaceId);
         }
     }
 
@@ -1768,7 +1758,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
 
         try
         {
-            var preview = await ParameterObjectService.PreviewParameterObjectAsync(
+            var preview = await Services.ParameterObjectService.PreviewParameterObjectAsync(
                 workspaceId,
                 SymbolLocator.BySource(fixturePath, line: 5, column: 16),
                 new ParameterObjectPreviewRequest(["a", "b", "c"], "SumArgs"),
@@ -1779,14 +1769,14 @@ public sealed class ParameterObjectPreviewTests : TestBase
             StringAssert.Contains(diff, "new SumArgs(1, 2, 3)", $"in-position named argument must bind to its own slot. Diff:\n{diff}");
 
             var workflowService = new ApplyUndoWorkflowService(
-                RefactoringService,
-                CompileCheckService,
-                UndoService,
-                PreviewStore);
+                Services.RefactoringService,
+                Services.CompileCheckService,
+                Services.UndoService,
+                Services.PreviewStore);
             var applyJson = await ApplyWithVerifyTool.ApplyWithVerify(
-                WorkspaceExecutionGate,
+                Services.WorkspaceExecutionGate,
                 workflowService,
-                PreviewStore,
+                Services.PreviewStore,
                 preview.PreviewToken,
                 rollbackOnError: true,
                 ct: CancellationToken.None);
@@ -1802,7 +1792,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
         finally
         {
-            WorkspaceManager.Close(workspaceId);
+            Services.WorkspaceManager.Close(workspaceId);
         }
     }
 
@@ -1829,7 +1819,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
 
         try
         {
-            var preview = await ParameterObjectService.PreviewParameterObjectAsync(
+            var preview = await Services.ParameterObjectService.PreviewParameterObjectAsync(
                 workspaceId,
                 SymbolLocator.BySource(fixturePath, line: 5, column: 23),
                 new ParameterObjectPreviewRequest(["a", "b"], "SumArgs"),
@@ -1844,7 +1834,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
         finally
         {
-            WorkspaceManager.Close(workspaceId);
+            Services.WorkspaceManager.Close(workspaceId);
         }
     }
 
@@ -1876,7 +1866,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
 
         try
         {
-            var preview = await ParameterObjectService.PreviewParameterObjectAsync(
+            var preview = await Services.ParameterObjectService.PreviewParameterObjectAsync(
                 workspaceId,
                 SymbolLocator.BySource(fixturePath, line: 5, column: 16),
                 new ParameterObjectPreviewRequest(["a", "b"], "SumArgs"),
@@ -1890,14 +1880,14 @@ public sealed class ParameterObjectPreviewTests : TestBase
                 $"all three variadic arguments must survive the rewrite. Diff:\n{diff}");
 
             var workflowService = new ApplyUndoWorkflowService(
-                RefactoringService,
-                CompileCheckService,
-                UndoService,
-                PreviewStore);
+                Services.RefactoringService,
+                Services.CompileCheckService,
+                Services.UndoService,
+                Services.PreviewStore);
             var applyJson = await ApplyWithVerifyTool.ApplyWithVerify(
-                WorkspaceExecutionGate,
+                Services.WorkspaceExecutionGate,
                 workflowService,
-                PreviewStore,
+                Services.PreviewStore,
                 preview.PreviewToken,
                 rollbackOnError: true,
                 ct: CancellationToken.None);
@@ -1913,7 +1903,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
         finally
         {
-            WorkspaceManager.Close(workspaceId);
+            Services.WorkspaceManager.Close(workspaceId);
         }
     }
 
@@ -1946,7 +1936,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         try
         {
             var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
-                ParameterObjectService.PreviewParameterObjectAsync(
+                Services.ParameterObjectService.PreviewParameterObjectAsync(
                     workspaceId,
                     SymbolLocator.BySource(fixturePath, line: 8, column: 16),
                     new ParameterObjectPreviewRequest(["a", "b", "c"], "SumArgs"),
@@ -1956,7 +1946,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
         finally
         {
-            WorkspaceManager.Close(workspaceId);
+            Services.WorkspaceManager.Close(workspaceId);
         }
     }
 
@@ -1985,7 +1975,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         try
         {
             var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
-                ParameterObjectService.PreviewParameterObjectAsync(
+                Services.ParameterObjectService.PreviewParameterObjectAsync(
                     workspaceId,
                     SymbolLocator.BySource(fixturePath, line: 5, column: 16),
                     new ParameterObjectPreviewRequest(["a", "b", "c"], "SumArgs"),
@@ -1994,7 +1984,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
         finally
         {
-            WorkspaceManager.Close(workspaceId);
+            Services.WorkspaceManager.Close(workspaceId);
         }
     }
 
@@ -2032,7 +2022,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         try
         {
             await Assert.ThrowsExactlyAsync<InvalidOperationException>(
-                () => ParameterObjectService.PreviewParameterObjectAsync(
+                () => Services.ParameterObjectService.PreviewParameterObjectAsync(
                     workspaceId,
                     SymbolLocator.BySource(fixturePath, line: 5, column: 16),
                     new ParameterObjectPreviewRequest(["a", "b", "c"], "SumArgs", DtoFolders: dtoFolders),
@@ -2045,7 +2035,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
         finally
         {
-            WorkspaceManager.Close(workspaceId);
+            Services.WorkspaceManager.Close(workspaceId);
         }
     }
 
@@ -2061,7 +2051,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         try
         {
             var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
-                () => ParameterObjectService.PreviewParameterObjectAsync(
+                () => Services.ParameterObjectService.PreviewParameterObjectAsync(
                     workspaceId,
                     SymbolLocator.BySource(fixturePath, line: 5, column: 16),
                     new ParameterObjectPreviewRequest(["a", "b", "c"], "SumArgs", DtoFolders: ["C:/Temp"]),
@@ -2070,7 +2060,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
         finally
         {
-            WorkspaceManager.Close(workspaceId);
+            Services.WorkspaceManager.Close(workspaceId);
         }
     }
 
@@ -2083,7 +2073,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         try
         {
             var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
-                () => ParameterObjectService.PreviewParameterObjectAsync(
+                () => Services.ParameterObjectService.PreviewParameterObjectAsync(
                     workspaceId,
                     SymbolLocator.BySource(fixturePath, line: 5, column: 16),
                     new ParameterObjectPreviewRequest(["a", "b", "c"], "SumArgs", DtoNamespace: "Sample-Lib.Generated"),
@@ -2091,7 +2081,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
             StringAssert.Contains(ex.Message, "Sample-Lib", "refusal must name the offending namespace part");
 
             var emptyPart = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
-                () => ParameterObjectService.PreviewParameterObjectAsync(
+                () => Services.ParameterObjectService.PreviewParameterObjectAsync(
                     workspaceId,
                     SymbolLocator.BySource(fixturePath, line: 5, column: 16),
                     new ParameterObjectPreviewRequest(["a", "b", "c"], "SumArgs", DtoNamespace: "SampleLib..Generated"),
@@ -2100,7 +2090,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
         finally
         {
-            WorkspaceManager.Close(workspaceId);
+            Services.WorkspaceManager.Close(workspaceId);
         }
     }
 
@@ -2117,7 +2107,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
 
         try
         {
-            var preview = await ParameterObjectService.PreviewParameterObjectAsync(
+            var preview = await Services.ParameterObjectService.PreviewParameterObjectAsync(
                 workspaceId,
                 SymbolLocator.BySource(fixturePath, line: 5, column: 16),
                 new ParameterObjectPreviewRequest(["a", "b", "c"], "SumArgs", DtoFolders: ["Models/Requests"]),
@@ -2131,7 +2121,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
         finally
         {
-            WorkspaceManager.Close(workspaceId);
+            Services.WorkspaceManager.Close(workspaceId);
         }
     }
 
@@ -2148,12 +2138,12 @@ public sealed class ParameterObjectPreviewTests : TestBase
         await File.WriteAllTextAsync(
             Path.Combine(libDir, "SumArgs.cs"),
             "namespace SampleLib;\n\npublic class UnrelatedOccupant { }\n");
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var loadResult = await Services.WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
 
         try
         {
             var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
-                () => ParameterObjectService.PreviewParameterObjectAsync(
+                () => Services.ParameterObjectService.PreviewParameterObjectAsync(
                     loadResult.WorkspaceId,
                     SymbolLocator.BySource(fixturePath, line: 5, column: 16),
                     new ParameterObjectPreviewRequest(["a", "b", "c"], "SumArgs"),
@@ -2163,7 +2153,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
         finally
         {
-            WorkspaceManager.Close(loadResult.WorkspaceId);
+            Services.WorkspaceManager.Close(loadResult.WorkspaceId);
         }
     }
 
@@ -2181,7 +2171,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         try
         {
             var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
-                () => ParameterObjectService.PreviewParameterObjectAsync(
+                () => Services.ParameterObjectService.PreviewParameterObjectAsync(
                     workspaceId,
                     SymbolLocator.BySource(fixturePath, line: 5, column: 16),
                     new ParameterObjectPreviewRequest(["a", "b", "c"], "SumArgs"),
@@ -2192,7 +2182,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
         finally
         {
-            WorkspaceManager.Close(workspaceId);
+            Services.WorkspaceManager.Close(workspaceId);
         }
     }
 
@@ -2217,7 +2207,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         try
         {
             var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
-                () => ParameterObjectService.PreviewParameterObjectAsync(
+                () => Services.ParameterObjectService.PreviewParameterObjectAsync(
                     workspaceId,
                     SymbolLocator.BySource(fixturePath, line: 7, column: 16),
                     new ParameterObjectPreviewRequest(["a", "b", "c"], "SumArgs"),
@@ -2227,7 +2217,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
         finally
         {
-            WorkspaceManager.Close(workspaceId);
+            Services.WorkspaceManager.Close(workspaceId);
         }
     }
 
@@ -2263,7 +2253,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
         finally
         {
-            WorkspaceManager.Close(workspaceId);
+            Services.WorkspaceManager.Close(workspaceId);
         }
     }
 
@@ -2291,7 +2281,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
         finally
         {
-            WorkspaceManager.Close(workspaceId);
+            Services.WorkspaceManager.Close(workspaceId);
         }
     }
 
@@ -2322,7 +2312,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
         finally
         {
-            WorkspaceManager.Close(workspaceId);
+            Services.WorkspaceManager.Close(workspaceId);
         }
     }
 
@@ -2335,7 +2325,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         try
         {
             var store = new RefusalPreviewStore();
-            var service = new ParameterObjectService(WorkspaceManager, store);
+            var service = new ParameterObjectService(Services.WorkspaceManager, store);
             using var source = new CancellationTokenSource();
             source.Cancel();
             await Assert.ThrowsAsync<OperationCanceledException>(() => ToolExecutionTestHarness.RunAsync(
@@ -2350,7 +2340,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
         finally
         {
-            WorkspaceManager.Close(workspaceId);
+            Services.WorkspaceManager.Close(workspaceId);
         }
     }
 
@@ -2405,13 +2395,13 @@ public sealed class ParameterObjectPreviewTests : TestBase
         _ => false,
     };
 
-    private static async Task<PublicArgumentException> AssertPublicArgumentRefusalAsync(
+    private async Task<PublicArgumentException> AssertPublicArgumentRefusalAsync(
         Func<ParameterObjectService, Task<RefactoringPreviewDto>> action,
         string expectedParameterName,
         string[] forbiddenValues)
     {
         var store = new RefusalPreviewStore();
-        var service = new ParameterObjectService(WorkspaceManager, store);
+        var service = new ParameterObjectService(Services.WorkspaceManager, store);
         var exception = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() => action(service));
         Assert.AreEqual(0, store.StoreCalls, "a refusal must not mint a preview token");
         Assert.AreEqual(expectedParameterName, exception.ParamName);
@@ -2475,14 +2465,13 @@ public sealed class ParameterObjectPreviewTests : TestBase
         public string? PeekWorkspaceId(string token) => throw new AssertFailedException("a refusal must not inspect a preview");
     }
 
-    private static async Task<(string WorkspaceId, string FixturePath, string FixtureDir)> SetupSingleProjectFixtureAsync(
+    private async Task<(string WorkspaceId, string FixturePath, string FixtureDir)> SetupSingleProjectFixtureAsync(
         string content,
         string fileName,
         bool allowUnsafe = false)
     {
-        var copiedSolutionPath = CreateSampleSolutionCopy();
-        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
-        var libDir = Path.Combine(solutionDir, "SampleLib");
+        var workspace = CreateSingleProjectWorkspace();
+        var libDir = workspace.GetPath("SampleLib");
         if (allowUnsafe)
         {
             var projectPath = Path.Combine(libDir, "SampleLib.csproj");
@@ -2495,8 +2484,8 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
         var fixturePath = Path.Combine(libDir, fileName);
         await File.WriteAllTextAsync(fixturePath, content);
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
-        return (loadResult.WorkspaceId, fixturePath, libDir);
+        var workspaceId = await workspace.LoadAsync(CancellationToken.None);
+        return (workspaceId, fixturePath, libDir);
     }
 
     private static int CountOccurrences(string haystack, string needle)
