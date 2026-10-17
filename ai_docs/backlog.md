@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-17T21:12:41Z
+**updated_at:** 2026-10-17T22:06:02Z
 
 ## Agent contract
 
@@ -149,8 +149,6 @@
 | `type-consumer-not-found-public-guidance` | Medium | — | Preserve safe missing-type correction through the existing InvalidOperation envelope without echoing typeName; retain metadata and generic-arity guidance. | S | items/type-consumer-not-found-public-guidance.md |
 | `restore-assets-read-failure-false-fresh` | Medium | — | **Distinguish failed assets reads from fresh restore state** — prevent malformed or unreadable assets with known package expectations from silently returning not-restore-required. [type: bug] [source: restore-callers cold source inspection 2026-10-10] | S | items/restore-assets-read-failure-false-fresh.md |
 | `test-run-service-refusals-public-message` | Medium | — | Publish safe authored test_run operation refusals through service and raw-wire contracts. [type: bug] [source: primary-constructor-executor] | S | items/test-run-service-refusals-public-message.md |
-| `test-change-signature-class-granularity` | Medium | test-preview-store-cross-class-eviction | Split the signature suite into independently schedulable behavior classes. [type: test-refactor] [source: test-efficiency-audit-20261017] | L | items/test-change-signature-class-granularity.md |
-| `test-single-project-refactoring-fixtures` | Medium | — | Use a minimal owned project for single-project refactoring cases. [type: test-refactor] [source: test-efficiency-audit-20261017] | S | items/test-single-project-refactoring-fixtures.md |
 | `test-restore-fixture-serialization` | Medium | — | Remove unjustified serialization from private restore-policy fixtures. [type: test-refactor] [source: test-efficiency-audit-20261017] | S | items/test-restore-fixture-serialization.md |
 | `test-validation-build-shared-fixture` | Medium | — | Move the validation build case onto an owned fixture. [type: test-refactor] [source: test-efficiency-audit-20261017] | S | items/test-validation-build-shared-fixture.md |
 | `test-diagnostic-perf-fixture-close-before-delete` | Medium | — | Close the diagnostic performance fixture before deleting it. [type: test-refactor] [source: test-efficiency-audit-20261017] | S | items/test-diagnostic-perf-fixture-close-before-delete.md |
