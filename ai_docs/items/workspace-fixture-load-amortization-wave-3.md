@@ -18,3 +18,5 @@
 ## Evidence
 
 The baseline TRX attributed 3m51 summed duration across 31 `ScaffoldingIntegrationTests` cases and 3m27 across 12 `CrossProjectRefactoringIntegrationTests` cases. Their roughly 25 and 12 full isolated workspace loads dominate setup, while the asserted behaviors remain distinct and valid.
+
+2026-10-17 re-vet at 000a1ce0: latest equivalent-source hosted ScaffoldingIntegration case sums are 229.8s Windows and 145.7s Linux. Preserve cross-project semantics and compare minimal fresh fixtures before introducing reset state. Evidence: ai_docs/reports/20261017-test-efficiency/report.md.
