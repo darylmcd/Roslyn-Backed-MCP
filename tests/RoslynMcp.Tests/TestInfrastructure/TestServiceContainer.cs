@@ -10,7 +10,7 @@ using RoslynMcp.Tests.Helpers;
 namespace RoslynMcp.Tests;
 
 /// <summary>
-/// Assembly-test services resolved from the production Roslyn composition root with explicit
+/// Test services resolved from the production Roslyn composition root with explicit
 /// test options. The owned provider is the sole disposal root; concrete TestBase-facing views
 /// are bridged from their production interface singletons so their identities cannot drift.
 /// </summary>

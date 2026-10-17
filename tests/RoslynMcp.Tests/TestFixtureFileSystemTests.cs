@@ -4,6 +4,39 @@ namespace RoslynMcp.Tests;
 public sealed class TestFixtureFileSystemTests
 {
     [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public void CopyFixture_MissingEntryPoint_RemovesPartialCopy(bool libraryOnly)
+    {
+        var sourceRoot = Path.Combine(TestTempRoot.Current, nameof(TestFixtureFileSystemTests), Guid.NewGuid().ToString("N"));
+        var sampleRoot = Path.Combine(sourceRoot, "sample");
+        var markerName = Guid.NewGuid().ToString("N") + ".txt";
+        Directory.CreateDirectory(Path.Combine(sampleRoot, "SampleLib"));
+        File.WriteAllText(Path.Combine(sampleRoot, "SampleLib", markerName), "copied before entry-point validation");
+        try
+        {
+            Assert.ThrowsExactly<InvalidOperationException>(() =>
+            {
+                var missingSolution = Path.Combine(sampleRoot, "SampleSolution.slnx");
+                if (libraryOnly)
+                    TestFixtureFileSystem.CreateSampleLibraryCopy(sourceRoot, missingSolution);
+                else
+                    TestFixtureFileSystem.CreateSampleSolutionCopy(sourceRoot, missingSolution);
+            });
+            Assert.IsFalse(Directory.EnumerateDirectories(TestTempRoot.Current)
+                .Any(root => File.Exists(Path.Combine(root, "SampleLib", markerName))),
+                "A failed fixture copy must remove the partially copied root.");
+        }
+        finally
+        {
+            foreach (var root in Directory.EnumerateDirectories(TestTempRoot.Current)
+                .Where(root => File.Exists(Path.Combine(root, "SampleLib", markerName))))
+                TestFixtureFileSystem.DeleteDirectoryIfExists(root);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(sourceRoot);
+        }
+    }
+
+    [TestMethod]
     public void DeleteDirectoryIfExists_NativeJunctionPreservesTargetContentsAndAttributes()
         => AssertLinkCleanupBoundary("junction");
 

@@ -157,6 +157,7 @@ public sealed class IsolatedWorkspaceTestBaseTests
             rootPath: "fixture-root",
             solutionPath: "fixture-root/SampleSolution.slnx",
             workspaceId: "workspace-1",
+            new Helpers.FailClosedWorkspaceManagerStub(),
             closeWorkspace,
             deleteRoot);
 

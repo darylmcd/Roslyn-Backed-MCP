@@ -5,27 +5,52 @@ internal static class TestFixtureFileSystem
     private static readonly StringComparer PathComponentComparer = StringComparer.OrdinalIgnoreCase;
     private static readonly string[] IgnoredDirectoryNames = ["bin"];
 
-    public static string CreateSampleSolutionCopy(string repositoryRootPath, string sampleSolutionPath)
+    public static string CreateSampleSolutionCopy(string repositoryRootPath, string sampleSolutionPath) =>
+        CreateSampleCopy(repositoryRootPath, sampleSolutionPath, libraryOnly: false).EntryPath;
+
+    public static (string RootPath, string EntryPath) CreateSampleLibraryCopy(
+        string repositoryRootPath, string sampleSolutionPath) =>
+        CreateSampleCopy(repositoryRootPath, sampleSolutionPath, libraryOnly: true);
+
+    private static (string RootPath, string EntryPath) CreateSampleCopy(
+        string repositoryRootPath, string sampleSolutionPath, bool libraryOnly)
     {
         var sampleRoot = Path.GetDirectoryName(sampleSolutionPath)
             ?? throw new InvalidOperationException("Sample solution root could not be resolved.");
         var tempRoot = Path.Combine(TestTempRoot.Current, Guid.NewGuid().ToString("N"));
-        CopyDirectory(sampleRoot, tempRoot);
-        CopyRepositorySupportFiles(repositoryRootPath, tempRoot);
-
-        var slnxPath = Path.Combine(tempRoot, "SampleSolution.slnx");
-        if (File.Exists(slnxPath))
+        try
         {
-            return slnxPath;
-        }
+            // Preserve library sources, restored references and repository compiler settings.
+            // Cross-project cases retain the full solution.
+            if (libraryOnly)
+                CopyDirectory(Path.Combine(sampleRoot, "SampleLib"), Path.Combine(tempRoot, "SampleLib"));
+            else
+                CopyDirectory(sampleRoot, tempRoot);
+            CopyRepositorySupportFiles(repositoryRootPath, tempRoot);
 
-        var slnPath = Path.Combine(tempRoot, "SampleSolution.sln");
-        if (File.Exists(slnPath))
+            var candidates = libraryOnly
+                ? new[] { Path.Combine("SampleLib", "SampleLib.csproj") }
+                : new[] { "SampleSolution.slnx", "SampleSolution.sln" };
+            foreach (var candidate in candidates)
+            {
+                var path = Path.Combine(tempRoot, candidate);
+                if (File.Exists(path))
+                    return (tempRoot, path);
+            }
+            throw new InvalidOperationException("Copied sample fixture is missing its project or solution file.");
+        }
+        catch (Exception initializationFailure)
         {
-            return slnPath;
+            try
+            {
+                DeleteDirectoryIfExists(tempRoot);
+            }
+            catch (Exception cleanupFailure)
+            {
+                throw new AggregateException("Fixture copy and cleanup both failed.", initializationFailure, cleanupFailure);
+            }
+            throw;
         }
-
-        throw new InvalidOperationException("Copied sample solution is missing a solution file.");
     }
 
     public static void DeleteDirectoryIfExists(string path)

@@ -23,7 +23,7 @@ public abstract class TestBase
     /// </summary>
     private static readonly ValidationServiceOptions TestValidationOptions = BindValidationOptionsFromEnvironment();
 
-    private static ValidationServiceOptions BindValidationOptionsFromEnvironment()
+    internal static ValidationServiceOptions BindValidationOptionsFromEnvironment()
     {
         var opts = new ValidationServiceOptions();
         if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_BUILD_TIMEOUT_SECONDS"), out var buildSeconds) && buildSeconds > 0)
