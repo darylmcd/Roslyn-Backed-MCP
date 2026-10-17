@@ -18,3 +18,5 @@
 ## Evidence
 
 The edit/undo cluster has no fixed waits but repeatedly copies and loads solutions under heavy disk/MSBuild contention. `EditUndoIntegrationTests` measured about 186 seconds in the full run and 34 seconds alone; the cases are distinct, so fixture amortization is safer than test deletion.
+
+2026-10-17 re-vet: prefer a smaller fresh project where sufficient before adding a state-reset protocol. Preserve byte/version/token/undo ownership. Evidence and corpus inventory: ai_docs/reports/20261017-test-efficiency/report.md.

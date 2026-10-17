@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-15T23:49:40Z
+**updated_at:** 2026-10-17T21:12:41Z
 
 ## Agent contract
 
@@ -149,6 +149,12 @@
 | `type-consumer-not-found-public-guidance` | Medium | — | Preserve safe missing-type correction through the existing InvalidOperation envelope without echoing typeName; retain metadata and generic-arity guidance. | S | items/type-consumer-not-found-public-guidance.md |
 | `restore-assets-read-failure-false-fresh` | Medium | — | **Distinguish failed assets reads from fresh restore state** — prevent malformed or unreadable assets with known package expectations from silently returning not-restore-required. [type: bug] [source: restore-callers cold source inspection 2026-10-10] | S | items/restore-assets-read-failure-false-fresh.md |
 | `test-run-service-refusals-public-message` | Medium | — | Publish safe authored test_run operation refusals through service and raw-wire contracts. [type: bug] [source: primary-constructor-executor] | S | items/test-run-service-refusals-public-message.md |
+| `test-change-signature-class-granularity` | Medium | test-preview-store-cross-class-eviction | Split the signature suite into independently schedulable behavior classes. [type: test-refactor] [source: test-efficiency-audit-20261017] | L | items/test-change-signature-class-granularity.md |
+| `test-single-project-refactoring-fixtures` | Medium | — | Use a minimal owned project for single-project refactoring cases. [type: test-refactor] [source: test-efficiency-audit-20261017] | S | items/test-single-project-refactoring-fixtures.md |
+| `test-restore-fixture-serialization` | Medium | — | Remove unjustified serialization from private restore-policy fixtures. [type: test-refactor] [source: test-efficiency-audit-20261017] | S | items/test-restore-fixture-serialization.md |
+| `test-validation-build-shared-fixture` | Medium | — | Move the validation build case onto an owned fixture. [type: test-refactor] [source: test-efficiency-audit-20261017] | S | items/test-validation-build-shared-fixture.md |
+| `test-diagnostic-perf-fixture-close-before-delete` | Medium | — | Close the diagnostic performance fixture before deleting it. [type: test-refactor] [source: test-efficiency-audit-20261017] | S | items/test-diagnostic-perf-fixture-close-before-delete.md |
+| `workspace-drift-platform-path-identity` | Medium | — | Preserve case-distinct paths in drift results using filesystem-aware identity. [type: bug] [source: test-efficiency-audit-20261017] | S | items/workspace-drift-platform-path-identity.md |
 
 ## Low
 
@@ -361,6 +367,11 @@
 | `test-workspace-fakes-hand-rolled-per-file` | Low | — | **Workspace interfaces are re-faked per test file** — 34 hand-written IWorkspaceManager and 23 IWorkspaceExecutionGate fakes restate the whole interface; slice the move onto shared Helpers doubles. [type: test-refactor] [source: test-rot-probe-20261009] | S | items/test-workspace-fakes-hand-rolled-per-file.md |
 | `sanctioned-root-refusal-names-no-remedy` | Low | — | **The sanctioned-root refusal names no remedy** — workspace_load outside the boundary returns one sentence with no pointer to ROSLYNMCP_SANCTIONED_ROOTS or expandSanctionedRoots; a caller cannot self-correct. [type: bug] [source: test-rot-probe-20261009] | M | items/sanctioned-root-refusal-names-no-remedy.md |
 | `test-run-worktree-package-isolation` | Low | — | **Support isolated package roots for MCP test execution** — carry safe per-worktree NuGet package-root authority into test subprocesses without server-global environment mutation. [type: feature] [source: primary-constructor executor environment boundary 2026-10-10] | L | items/test-run-worktree-package-isolation.md |
+| `test-generator-fixture-parallel-ownership` | Low | — | Verify private generator fixtures can leave the serialized tail. [type: test-refactor] [source: test-efficiency-audit-20261017] | S | items/test-generator-fixture-parallel-ownership.md |
+| `test-noop-class-cleanup-retirement` | Low | — | Retire no-op fixture cleanup hooks. [type: test-refactor] [source: test-efficiency-audit-20261017] | L | items/test-noop-class-cleanup-retirement.md |
+| `test-symbol-compilation-helper-dedupe` | Low | — | Share identical symbol compilation fixture setup. [type: test-refactor] [source: test-efficiency-audit-20261017] | S | items/test-symbol-compilation-helper-dedupe.md |
+| `test-tree-filter-duplicate-case` | Low | — | Consolidate identical tree-filter test cases. [type: test-refactor] [source: test-efficiency-audit-20261017] | S | items/test-tree-filter-duplicate-case.md |
+| `test-workspace-resource-duplicate-refusal` | Low | — | Consolidate identical unknown-workspace resource assertions. [type: test-refactor] [source: test-efficiency-audit-20261017] | S | items/test-workspace-resource-duplicate-refusal.md |
 
 ## Defer
 

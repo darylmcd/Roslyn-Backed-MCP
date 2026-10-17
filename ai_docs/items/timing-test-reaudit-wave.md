@@ -23,3 +23,5 @@
 ## Context
 
 - Split child of `load-sensitive-timing-tests-full-suite`; sequence with `load-profile-full-suite` evidence if it lands first.
+
+2026-10-17 full-corpus syntax scan: include EditorConfigServiceTests.cs:225 watcher-delivery sleep, Services/WorkspaceDriftServiceTests.cs:103,174 timestamp sleeps, PreviewStoreTests.cs:288 TTL sleep. Use observable event delivery or explicit mtime/clock control, not shorter waits. PwshScriptRunnerTests inherited-pipe cases measured about 25s/40s; retain actual native-pipe/teardown proof. See ai_docs/reports/20261017-test-efficiency/report.md.

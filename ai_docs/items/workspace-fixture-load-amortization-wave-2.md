@@ -18,3 +18,5 @@
 ## Evidence
 
 The baseline TRX attributed 4m36 summed duration across 33 `CompilationCacheAdoptionTests` cases and 4m27 across 30 `ProjectMutationIntegrationTests` cases. The suites make roughly 31 and 28 isolated workspace loads respectively. The tests cover distinct contracts; repeated full copy/load setup, not duplicate assertions, is the performance smell.
+
+2026-10-17 re-vet at 000a1ce0: latest equivalent-source hosted Windows case sums are 165.5s CompilationCacheAdoption and 245.3s ProjectMutationIntegration. Compare minimal fresh fixtures against the inherited class-reset design; preserve cache/lifecycle cases. Evidence: ai_docs/reports/20261017-test-efficiency/report.md.
