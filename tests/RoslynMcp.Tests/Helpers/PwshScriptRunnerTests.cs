@@ -8,6 +8,74 @@ public sealed class PwshScriptRunnerTests
 {
     [TestMethod]
     [TestCategory("Process")]
+    public async Task RunAsync_PreservesUtf32BomAndShortOutputAtEof()
+    {
+        var result = await PwshScriptRunner.RunAsync(
+            ["-NoProfile", "-Command", """
+                $encoding = [Text.Encoding]::UTF32
+                $out = [Console]::OpenStandardOutput()
+                $bytes = $encoding.GetPreamble() + $encoding.GetBytes('a')
+                $out.Write($bytes, 0, $bytes.Length)
+                [Console]::Error.Write('xyz')
+                """],
+            timeout: TimeSpan.FromSeconds(30),
+            description: "output-prefix EOF fixture");
+        Assert.AreEqual(0, result.ExitCode, result.AllOutput);
+        Assert.AreEqual("a", result.StdOut);
+        Assert.AreEqual("xyz", result.StdErr);
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
+    public async Task RunAsync_PreservesSplitMultibyteOutputAndBomEncoding()
+    {
+        var result = await PwshScriptRunner.RunAsync(
+            ["-NoProfile", "-Command", """
+                $text = "alpha`r`n" + [char]0x03b2 + [char]::ConvertFromUtf32(0x1f642) + "tail"
+                $utf8 = [Text.UTF8Encoding]::new($true)
+                $utf16 = [Text.UnicodeEncoding]::new($false, $true)
+                $out = [Console]::OpenStandardOutput()
+                $err = [Console]::OpenStandardError()
+                foreach ($byte in ($utf8.GetPreamble() + $utf8.GetBytes($text))) {
+                    $out.WriteByte($byte); $out.Flush(); Start-Sleep -Milliseconds 5
+                }
+                foreach ($byte in ($utf16.GetPreamble() + $utf16.GetBytes($text))) {
+                    $err.WriteByte($byte); $err.Flush(); Start-Sleep -Milliseconds 5
+                }
+                """],
+            timeout: TimeSpan.FromSeconds(30),
+            description: "split-encoding output fixture");
+        Assert.AreEqual(0, result.ExitCode, result.AllOutput);
+        Assert.AreEqual("alpha\r\nβ🙂tail", result.StdOut);
+        Assert.AreEqual(result.StdOut, result.StdErr);
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
+    [DataRow("held-pipes")]
+    [DataRow("large-output")]
+    public async Task RunAsync_LimitedWorkers_DrainsWithoutBlockingOtherProcesses(string scenario)
+    {
+        var root = CreateFixtureRoot();
+        try
+        {
+            var result = await PwshScriptRunner.RunExecutableAsync(
+                "dotnet",
+                [Path.Combine(AppContext.BaseDirectory, "ProcessProbes", "ProcessPipeWorkerProbe", "ProcessPipeWorkerProbe.dll"),
+                 typeof(PwshScriptRunner).Assembly.Location, root, scenario],
+                environment: null,
+                timeout: TimeSpan.FromSeconds(45),
+                description: "isolated output-worker probe");
+            Assert.AreEqual(0, result.ExitCode, result.AllOutput);
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(root);
+        }
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
     public async Task GitFixture_OneAvailableWorker_CompletesAfterNativeExit()
     {
         await GitFixtureRunner.RequireAvailableAsync();

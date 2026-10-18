@@ -1,0 +1,122 @@
+[
+  {
+    "name": "Set_Project_Property_Unsupported_Property_Refusal_Reaches_Client_Envelope_Verbatim",
+    "fixture": "single-project"
+  },
+  {
+    "name": "Add_Project_Reference_Self_Reference_Refusal_Reaches_Client_Envelope_Verbatim",
+    "fixture": "full-solution"
+  },
+  {
+    "name": "Add_Package_Reference_Preview_And_Apply_Updates_Isolated_Project_File",
+    "fixture": "single-project"
+  },
+  {
+    "name": "Add_Package_Reference_Preview_Preserves_ItemGroup_Indentation",
+    "fixture": "single-project"
+  },
+  {
+    "name": "Add_Project_Reference_Preview_And_Apply_Updates_Isolated_Project_File",
+    "fixture": "full-solution"
+  },
+  {
+    "name": "Add_Project_Reference_Preview_Rejects_Self_Reference_And_Cycle",
+    "fixture": "full-solution"
+  },
+  {
+    "name": "Set_Project_Property_Preview_And_Apply_Updates_Isolated_Project_File",
+    "fixture": "single-project"
+  },
+  {
+    "name": "FLAG_13B_Set_Project_Property_Preview_Emits_MultiLine_PropertyGroup",
+    "fixture": "single-project"
+  },
+  {
+    "name": "FLAG_13A_Add_Package_Reference_Preview_Emits_MultiLine_ItemGroup",
+    "fixture": "single-project"
+  },
+  {
+    "name": "project_mutation_preview_xml_formatting_AddPackageReference_KeepsPropertyGroupAndItemGroupOnSeparateLines",
+    "fixture": "single-project"
+  },
+  {
+    "name": "project_mutation_preview_xml_formatting_SetProjectProperty_KeepsNewPropertyOnOwnLine",
+    "fixture": "single-project"
+  },
+  {
+    "name": "project_mutation_preview_xml_formatting_AddCentralPackageVersion_KeepsItemGroupOnSeparateLine",
+    "fixture": "full-solution"
+  },
+  {
+    "name": "Add_And_Remove_Target_Framework_Preview_And_Apply_Updates_Isolated_Project_File",
+    "fixture": "single-project"
+  },
+  {
+    "name": "Add_Target_Framework_When_Centralized_In_DirectoryBuildProps_Injects_Into_Csproj",
+    "fixture": "single-project"
+  },
+  {
+    "name": "Set_Conditional_Property_Preview_And_Apply_Adds_Conditional_Property_Group",
+    "fixture": "single-project"
+  },
+  {
+    "name": "Set_Conditional_Property_Preview_Accepts_Expanded_Allowlist_Properties",
+    "fixture": "single-project"
+  },
+  {
+    "name": "Add_And_Remove_Central_Package_Version_Preview_And_Apply_Updates_Directory_Packages_Props",
+    "fixture": "full-solution"
+  },
+  {
+    "name": "Remove_Central_Package_Version_Preview_Warns_Naming_Every_Consumer_Including_Out_Of_Workspace",
+    "fixture": "full-solution"
+  },
+  {
+    "name": "Add_Package_Reference_Preview_When_Central_Package_Management_Is_Active_Omits_Version_And_Returns_Warning",
+    "fixture": "full-solution"
+  },
+  {
+    "name": "Add_Then_Remove_PackageReference_LeavesNoOrphanBlankLines",
+    "fixture": "single-project"
+  },
+  {
+    "name": "Add_Package_Reference_Preview_Rejects_Package_Already_Imported_From_Directory_Build_Props",
+    "fixture": "single-project"
+  },
+  {
+    "name": "Apply_Project_Mutation_Registers_On_Revert_Stack_And_Restores_Pre_Apply_Bytes",
+    "fixture": "single-project"
+  },
+  {
+    "name": "Apply_Project_Mutation_Then_Revert_Restores_Original_Bytes",
+    "fixture": "single-project"
+  },
+  {
+    "name": "Apply_Project_Mutation_Preserves_Original_File_Encoding",
+    "fixture": "single-project"
+  },
+  {
+    "name": "Set_Conditional_Property_Preview_Invalid_Condition_Error_Message_Includes_MSBuild_Quoting_Example",
+    "fixture": "single-project"
+  },
+  {
+    "name": "Set_Project_Property_Preview_Warns_When_Property_Already_Inherited_From_Directory_Build_Props",
+    "fixture": "single-project"
+  },
+  {
+    "name": "remove_preview_family_invalidoperation_for_missing_items_RemovePackageReference_AbsentPackage_ReturnsEmptyPreview",
+    "fixture": "single-project"
+  },
+  {
+    "name": "remove_preview_family_invalidoperation_for_missing_items_RemoveProjectReference_AbsentReference_ReturnsEmptyPreview",
+    "fixture": "full-solution"
+  },
+  {
+    "name": "remove_preview_family_invalidoperation_for_missing_items_RemoveTargetFramework_AbsentFramework_ReturnsEmptyPreview",
+    "fixture": "single-project"
+  },
+  {
+    "name": "remove_preview_family_invalidoperation_for_missing_items_RemoveCentralPackageVersion_AbsentPackage_ReturnsEmptyPreview",
+    "fixture": "full-solution"
+  }
+]

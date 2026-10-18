@@ -48,6 +48,13 @@ public abstract class OwnedRefactoringTestBase
         return path;
     }
 
+    private protected IsolatedWorkspaceTestBase.IsolatedWorkspaceScope CreateSolutionWorkspace()
+    {
+        var path = CreateSampleSolutionCopy();
+        return new IsolatedWorkspaceTestBase.IsolatedWorkspaceScope(
+            Path.GetDirectoryName(path)!, path, Services.WorkspaceManager);
+    }
+
     private protected IsolatedWorkspaceTestBase.IsolatedWorkspaceScope CreateSingleProjectWorkspace()
     {
         var fixtures = TestRepositoryFixtures.Discover();
