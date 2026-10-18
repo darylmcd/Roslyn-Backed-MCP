@@ -97,8 +97,41 @@ public sealed class RefactoringFixtureOwnershipTests
         }
     }
 
+    [TestMethod]
+    public async Task LibraryTestsFixture_PreservesSourceReferenceAndCommonRootAsync()
+    {
+        var fixture = new Probe();
+        try
+        {
+            fixture.InitializeOwnedServices();
+            await using var scope = fixture.CreateLibraryTests();
+            var workspaceId = await scope.LoadAsync();
+            var solution = fixture.Manager.GetCurrentSolution(workspaceId);
+            CollectionAssert.AreEquivalent(new[] { "SampleLib", "SampleLib.Tests" },
+                solution.Projects.Select(project => project.Name).ToArray());
+            Assert.AreEqual(scope.RootPath,
+                Path.GetDirectoryName(fixture.Manager.GetStatus(workspaceId).LoadedPath),
+                "Both projects must remain beneath the loaded solution's watched root.");
+            Assert.IsFalse(Directory.Exists(scope.GetPath("SampleApp")),
+                "An unrelated application must not be copied into the focused fixture.");
+            var library = solution.Projects.Single(project => project.Name == "SampleLib");
+            var tests = solution.Projects.Single(project => project.Name == "SampleLib.Tests");
+            Assert.AreEqual(library.Id, tests.ProjectReferences.Single().ProjectId,
+                "Scaffolding must retain a real source-project reference, not a metadata substitute.");
+            var compilation = await tests.GetCompilationAsync();
+            Assert.IsNotNull(compilation);
+            Assert.IsNotNull(compilation.GetTypeByMetadataName("SampleLib.Dog"));
+            Assert.IsFalse(compilation.GetDiagnostics().Any(d => d.Severity == DiagnosticSeverity.Error));
+        }
+        finally
+        {
+            await fixture.CleanupOwnedServicesAsync();
+        }
+    }
+
     private sealed class Probe : OwnedRefactoringTestBase
     {
+        public IsolatedWorkspaceTestBase.IsolatedWorkspaceScope CreateLibraryTests() => CreateLibraryTestsWorkspace();
         public IPreviewStore Store => Services.PreviewStore;
         public WorkspaceManager Manager => Services.WorkspaceManager;
         public IsolatedWorkspaceTestBase.IsolatedWorkspaceScope CreateWorkspace() => CreateSingleProjectWorkspace();

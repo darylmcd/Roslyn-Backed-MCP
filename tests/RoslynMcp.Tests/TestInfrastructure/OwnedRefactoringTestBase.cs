@@ -55,11 +55,18 @@ public abstract class OwnedRefactoringTestBase
             Path.GetDirectoryName(path)!, path, Services.WorkspaceManager);
     }
 
-    private protected IsolatedWorkspaceTestBase.IsolatedWorkspaceScope CreateSingleProjectWorkspace()
+    private protected IsolatedWorkspaceTestBase.IsolatedWorkspaceScope CreateSingleProjectWorkspace() =>
+        CreateCopiedWorkspace(TestFixtureFileSystem.CreateSampleLibraryCopy);
+
+    private protected IsolatedWorkspaceTestBase.IsolatedWorkspaceScope CreateLibraryTestsWorkspace() =>
+        CreateCopiedWorkspace(TestFixtureFileSystem.CreateSampleLibraryTestsCopy);
+
+    private IsolatedWorkspaceTestBase.IsolatedWorkspaceScope CreateCopiedWorkspace(
+        Func<string, string, (string RootPath, string EntryPath)> copy)
     {
         var fixtures = TestRepositoryFixtures.Discover();
-        var (root, project) = TestFixtureFileSystem.CreateSampleLibraryCopy(fixtures.RepositoryRootPath, fixtures.SampleSolutionPath);
+        var (root, entryPath) = copy(fixtures.RepositoryRootPath, fixtures.SampleSolutionPath);
         _roots.Add(root);
-        return new IsolatedWorkspaceTestBase.IsolatedWorkspaceScope(root, project, Services.WorkspaceManager);
+        return new IsolatedWorkspaceTestBase.IsolatedWorkspaceScope(root, entryPath, Services.WorkspaceManager);
     }
 }

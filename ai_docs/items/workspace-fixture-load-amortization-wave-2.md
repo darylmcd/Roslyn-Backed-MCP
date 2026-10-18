@@ -23,3 +23,5 @@
 - The inherited class-reset proposal is superseded by smaller fresh fixtures for mutation cases. Each test owns its production services and temp root; no state is reused between invocations.
 - Project-mutation implementation: 21 methods use SampleLib; nine methods retain SampleSolution. All original method/data/semantic tokens match after the explicit fixture/service substitutions.
 - CompilationCacheAdoptionTests remains pending; this row stays open.
+
+Project-mutation slice landed in PR #1793 (3be1740f). Final local gate: 4514 passed / 30 skipped / zero failed. Hosted run 39086176888 attempts 1 and 2 preserved all baseline identities and outcomes, with four additive runner regressions per OS. Mutation median improved 22.0% locally, 37.6% hosted Windows and 10.7% hosted Linux; no overall Linux CI speedup claimed. CompilationCacheAdoptionTests remains open.
