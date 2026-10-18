@@ -80,8 +80,8 @@ internal static class PwshScriptRunner
         // (notably Git), which must see EOF instead of inheriting a test host's open stdin pipe.
         process.StandardInput.Close();
         using var readerCancellation = new CancellationTokenSource();
-        var stdoutTask = process.StandardOutput.ReadToEndAsync(readerCancellation.Token);
-        var stderrTask = process.StandardError.ReadToEndAsync(readerCancellation.Token);
+        var stdoutTask = ProcessPipeReader.ReadToEndAsync(process.StandardOutput, readerCancellation.Token);
+        var stderrTask = ProcessPipeReader.ReadToEndAsync(process.StandardError, readerCancellation.Token);
         var outputTask = Task.WhenAll(stdoutTask, stderrTask);
         using var timeoutCancellation = timeout is null
             ? null
@@ -90,14 +90,19 @@ internal static class PwshScriptRunner
             cancellationToken,
             timeoutCancellation?.Token ?? CancellationToken.None);
 
+        var phase = "process exit";
         try
         {
             await process.WaitForExitAsync(waitCancellation.Token).ConfigureAwait(false);
+            phase = "output drain";
             var output = await outputTask.WaitAsync(waitCancellation.Token).ConfigureAwait(false);
             return new PwshScriptResult(process.ExitCode, output[0], output[1]);
         }
         catch (OperationCanceledException exception)
         {
+            var diagnostics = $"phase={phase}; processExited={process.HasExited}; " +
+                $"stdout={stdoutTask.Status}; stderr={stderrTask.Status}; " +
+                $"workerThreads={ThreadPool.ThreadCount}; queuedWork={ThreadPool.PendingWorkItemCount}";
             var output = await RequestTerminationAndDrainAsync(
                 process,
                 outputTask,
@@ -105,7 +110,7 @@ internal static class PwshScriptRunner
             if (timeoutCancellation?.IsCancellationRequested == true && !cancellationToken.IsCancellationRequested)
             {
                 throw new TimeoutException(
-                    $"{description} timed out after {timeout!.Value.TotalSeconds:g} seconds. Output:" +
+                    $"{description} timed out after {timeout!.Value.TotalSeconds:g} seconds. {diagnostics}. Output:" +
                     $"{Environment.NewLine}{output}",
                     exception);
             }

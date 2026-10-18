@@ -9,6 +9,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/GitFixtureWorkerProbe/GitFixtureWorkerProbe.csproj" />
+    <Project Path="tests/ProcessPipeWorkerProbe/ProcessPipeWorkerProbe.csproj" />
     <Project Path="tests/RoslynMcp.ShardDiscoveryFixtures/RoslynMcp.ShardDiscoveryFixtures.csproj" />
     <Project Path="tests/RoslynMcp.Tests/RoslynMcp.Tests.csproj" />
   </Folder>

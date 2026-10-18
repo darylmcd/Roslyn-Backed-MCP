@@ -15,6 +15,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="../ProcessPipeWorkerProbe/ProcessPipeWorkerProbe.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="../GitFixtureWorkerProbe/GitFixtureWorkerProbe.csproj" ReferenceOutputAssembly="false" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="MSTest.TestAdapter" />
@@ -46,6 +47,13 @@
       <GitFixtureWorkerProbeOutput Include="../GitFixtureWorkerProbe/bin/$(Configuration)/$(TargetFramework)/*" />
     </ItemGroup>
     <Copy SourceFiles="@(GitFixtureWorkerProbeOutput)" DestinationFolder="$(OutDir)ProcessProbes/GitFixtureWorkerProbe" SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="CopyProcessPipeWorkerProbe" AfterTargets="Build">
+    <ItemGroup>
+      <ProcessPipeWorkerProbeOutput Include="../ProcessPipeWorkerProbe/bin/$(Configuration)/$(TargetFramework)/*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(ProcessPipeWorkerProbeOutput)" DestinationFolder="$(OutDir)ProcessProbes/ProcessPipeWorkerProbe" SkipUnchangedFiles="true" />
   </Target>
 
   <Target Name="PrepareTestFixtures"

@@ -25,3 +25,5 @@
 - Split child of `load-sensitive-timing-tests-full-suite`; sequence with `load-profile-full-suite` evidence if it lands first.
 
 2026-10-17 full-corpus syntax scan: include EditorConfigServiceTests.cs:225 watcher-delivery sleep, Services/WorkspaceDriftServiceTests.cs:103,174 timestamp sleeps, PreviewStoreTests.cs:288 TTL sleep. Use observable event delivery or explicit mtime/clock control, not shorter waits. PwshScriptRunnerTests inherited-pipe cases measured about 25s/40s; retain actual native-pipe/teardown proof. See ai_docs/reports/20261017-test-efficiency/report.md.
+
+2026-10-17 mutation gate follow-up: one verifier output-drain timeout was not reproduced on clean base or in the instrumented suite. Controlled isolated probes established Windows synchronous-pipe worker starvation before and after native exit; both regressions failed on the old runner and passed with nonblocking available-byte reads. The same validation exposed and repaired fragmented BOM decoding. Preserve the original attribution limit, unchanged deadlines and inherited-pipe tests; evidence: ai_docs/reports/20261017-test-efficiency/output-drain.md.
