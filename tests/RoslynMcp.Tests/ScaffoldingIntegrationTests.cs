@@ -11,20 +11,8 @@ using RoslynMcp.Tests.TestInfrastructure;
 namespace RoslynMcp.Tests;
 
 [TestClass]
-public sealed class ScaffoldingIntegrationTests : IsolatedWorkspaceTestBase
+public sealed class ScaffoldingIntegrationTests : OwnedRefactoringTestBase
 {
-    [ClassInitialize]
-    public static void ClassInit(TestContext _)
-    {
-        InitializeServices();
-    }
-
-    [ClassCleanup]
-    public static void ClassCleanup()
-    {
-        DisposeServices();
-    }
-
     [TestMethod]
     [DataRow("referenceTestFile")]
     [DataRow("sibling fixture")]
@@ -59,15 +47,16 @@ public sealed class ScaffoldingIntegrationTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public async Task Scaffold_Type_Preview_And_Apply_Creates_New_Type_File()
     {
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateSingleProjectWorkspace();
+        await workspace.LoadAsync(CancellationToken.None);
         var targetFilePath = workspace.GetPath("SampleLib", "Generated", "Bird.cs");
 
-        var preview = await ScaffoldingService.PreviewScaffoldTypeAsync(
+        var preview = await Services.ScaffoldingService.PreviewScaffoldTypeAsync(
             workspace.WorkspaceId,
             new ScaffoldTypeDto("SampleLib", "Bird", "class", "SampleLib.Generated"),
             CancellationToken.None);
 
-        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
+        var applyResult = await Services.RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
 
         Assert.IsTrue(applyResult.Success, applyResult.Error);
         Assert.IsTrue(File.Exists(targetFilePath));
@@ -85,22 +74,23 @@ public sealed class ScaffoldingIntegrationTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public async Task Scaffold_Type_Preview_Token_Carries_FileCreate_Provenance_And_Redeems()
     {
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateSingleProjectWorkspace();
+        await workspace.LoadAsync(CancellationToken.None);
         var targetFilePath = workspace.GetPath("SampleLib", "Generated", "Bird.cs");
 
-        var preview = await ScaffoldingService.PreviewScaffoldTypeAsync(
+        var preview = await Services.ScaffoldingService.PreviewScaffoldTypeAsync(
             workspace.WorkspaceId,
             new ScaffoldTypeDto("SampleLib", "Bird", "class", "SampleLib.Generated"),
             CancellationToken.None);
 
-        Assert.AreEqual(PreviewKind.FileCreate, PreviewStore.PeekKind(preview.PreviewToken),
+        Assert.AreEqual(PreviewKind.FileCreate, Services.PreviewStore.PeekKind(preview.PreviewToken),
             "scaffold_type_preview delegates to PreviewCreateFileAsync, so its token must record the "
             + "file-creation producer family.");
 
         var json = await ScaffoldingTools.ApplyScaffoldType(
-            WorkspaceExecutionGate,
-            RefactoringService,
-            PreviewStore,
+            Services.WorkspaceExecutionGate,
+            Services.RefactoringService,
+            Services.PreviewStore,
             preview.PreviewToken,
             CancellationToken.None);
 
@@ -119,27 +109,28 @@ public sealed class ScaffoldingIntegrationTests : IsolatedWorkspaceTestBase
     [DataRow("scaffold_test_apply")]
     public async Task Scaffold_Apply_Routes_Refuse_ForeignFamily_Rename_Token(string route)
     {
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateSingleProjectWorkspace();
+        await workspace.LoadAsync(CancellationToken.None);
         var dogPath = workspace.GetPath("SampleLib", "Dog.cs");
         var originalContents = await File.ReadAllTextAsync(dogPath, CancellationToken.None);
 
-        var document = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId)
+        var document = Services.WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId)
             .Projects.SelectMany(project => project.Documents)
             .First(candidate => candidate.Name == "Dog.cs");
-        var renamePreview = await RefactoringService.PreviewRenameAsync(
+        var renamePreview = await Services.RefactoringService.PreviewRenameAsync(
             workspace.WorkspaceId,
             SymbolLocator.BySource(document.FilePath!, 5, 6),
             "Doggo",
             CancellationToken.None);
 
-        Assert.AreEqual(PreviewKind.SymbolRename, PreviewStore.PeekKind(renamePreview.PreviewToken));
+        Assert.AreEqual(PreviewKind.SymbolRename, Services.PreviewStore.PeekKind(renamePreview.PreviewToken));
 
         var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => route switch
         {
             "scaffold_type_apply" => ScaffoldingTools.ApplyScaffoldType(
-                WorkspaceExecutionGate, RefactoringService, PreviewStore, renamePreview.PreviewToken, CancellationToken.None),
+                Services.WorkspaceExecutionGate, Services.RefactoringService, Services.PreviewStore, renamePreview.PreviewToken, CancellationToken.None),
             _ => ScaffoldingTools.ApplyScaffoldTest(
-                WorkspaceExecutionGate, RefactoringService, PreviewStore, renamePreview.PreviewToken, CancellationToken.None),
+                Services.WorkspaceExecutionGate, Services.RefactoringService, Services.PreviewStore, renamePreview.PreviewToken, CancellationToken.None),
         });
 
         StringAssert.Contains(ex.Message, "rename_apply",
@@ -155,14 +146,15 @@ public sealed class ScaffoldingIntegrationTests : IsolatedWorkspaceTestBase
     {
         // BUG fix (scaffold-defaults-improvements / a): default class scaffold should be
         // `internal sealed class` instead of `public class` per modern .NET convention.
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateSingleProjectWorkspace();
+        await workspace.LoadAsync(CancellationToken.None);
         var targetFilePath = workspace.GetPath("SampleLib", "Generated", "Bird.cs");
 
-        var preview = await ScaffoldingService.PreviewScaffoldTypeAsync(
+        var preview = await Services.ScaffoldingService.PreviewScaffoldTypeAsync(
             workspace.WorkspaceId,
             new ScaffoldTypeDto("SampleLib", "Bird", "class", "SampleLib.Generated"),
             CancellationToken.None);
-        await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
+        await Services.RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
 
         var contents = await File.ReadAllTextAsync(targetFilePath, CancellationToken.None);
         StringAssert.Contains(contents, "internal sealed class Bird");
@@ -174,14 +166,15 @@ public sealed class ScaffoldingIntegrationTests : IsolatedWorkspaceTestBase
     public async Task Scaffold_Type_Interface_StaysPublic()
     {
         // Interfaces cannot be `sealed` and are typically intended for cross-assembly use.
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateSingleProjectWorkspace();
+        await workspace.LoadAsync(CancellationToken.None);
         var targetFilePath = workspace.GetPath("SampleLib", "Contracts", "IThing.cs");
 
-        var preview = await ScaffoldingService.PreviewScaffoldTypeAsync(
+        var preview = await Services.ScaffoldingService.PreviewScaffoldTypeAsync(
             workspace.WorkspaceId,
             new ScaffoldTypeDto("SampleLib", "IThing", "interface", "SampleLib.Contracts"),
             CancellationToken.None);
-        await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
+        await Services.RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
 
         var contents = await File.ReadAllTextAsync(targetFilePath, CancellationToken.None);
         StringAssert.Contains(contents, "public interface IThing");
@@ -194,7 +187,7 @@ public sealed class ScaffoldingIntegrationTests : IsolatedWorkspaceTestBase
         // collection interfaces should emit `Array.Empty<T>()` so the generated test runs
         // green. Previously every parameter was emitted as `default(T)`, throwing NRE on the
         // first call when the parameter was a non-null collection interface.
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateLibraryTestsWorkspace();
 
         // Inject a target type with a constructor that takes IEnumerable<int>.
         var fixturePath = workspace.GetPath("SampleLib", "BulkProcessor.cs");
@@ -224,13 +217,13 @@ public class BulkProcessor
 }
 """, CancellationToken.None);
 
-        await workspace.ReloadAsync(CancellationToken.None);
+        await workspace.LoadAsync(CancellationToken.None);
 
-        var preview = await ScaffoldingService.PreviewScaffoldTestAsync(
+        var preview = await Services.ScaffoldingService.PreviewScaffoldTestAsync(
             workspace.WorkspaceId,
             new ScaffoldTestDto("SampleLib.Tests", "BulkProcessor", "Sum"),
             CancellationToken.None);
-        await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
+        await Services.RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
 
         var contents = await File.ReadAllTextAsync(
             workspace.GetPath("SampleLib.Tests", "BulkProcessorGeneratedTests.cs"),
@@ -254,7 +247,7 @@ public class BulkProcessor
         //     referenced by the test project; `NSubstitute.Substitute.For<T>()` when it is.
         //   - concrete class with parameterless ctor → `new T()`.
         //   - concrete class without parameterless ctor → TODO placeholder.
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateLibraryTestsWorkspace();
 
         var fixturePath = workspace.GetPath("SampleLib", "NamespaceRelocationServiceFixture.cs");
         await File.WriteAllTextAsync(fixturePath, """
@@ -287,9 +280,9 @@ public sealed class NamespaceRelocationServiceFixture
 }
 """, CancellationToken.None);
 
-        await workspace.ReloadAsync(CancellationToken.None);
+        await workspace.LoadAsync(CancellationToken.None);
 
-        var preview = await ScaffoldingService.PreviewScaffoldTestAsync(
+        var preview = await Services.ScaffoldingService.PreviewScaffoldTestAsync(
             workspace.WorkspaceId,
             new ScaffoldTestDto(
                 "SampleLib.Tests",
@@ -297,7 +290,7 @@ public sealed class NamespaceRelocationServiceFixture
                 "Describe",
                 ReferenceTestFile: string.Empty),
             CancellationToken.None);
-        await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "scaffold_test_apply", CancellationToken.None);
+        await Services.RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "scaffold_test_apply", CancellationToken.None);
 
         var contents = await File.ReadAllTextAsync(
             workspace.GetPath("SampleLib.Tests", "NamespaceRelocationServiceFixtureGeneratedTests.cs"),
@@ -456,14 +449,15 @@ public sealed class Consumer
         // BUG fix (scaffold-defaults-improvements / b): when the namespace does not start
         // with the project name, the file should still land in folders matching the
         // namespace path — not at the project root.
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateSingleProjectWorkspace();
+        await workspace.LoadAsync(CancellationToken.None);
         var expectedPath = workspace.GetPath("SampleLib", "Acme", "Domain", "Widget.cs");
 
-        var preview = await ScaffoldingService.PreviewScaffoldTypeAsync(
+        var preview = await Services.ScaffoldingService.PreviewScaffoldTypeAsync(
             workspace.WorkspaceId,
             new ScaffoldTypeDto("SampleLib", "Widget", "class", "Acme.Domain"),
             CancellationToken.None);
-        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
+        var applyResult = await Services.RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
 
         Assert.IsTrue(applyResult.Success, applyResult.Error);
         Assert.IsTrue(File.Exists(expectedPath),
@@ -474,17 +468,18 @@ public sealed class Consumer
     [TestMethod]
     public async Task Scaffold_Test_Preview_And_Apply_Creates_New_Test_File()
     {
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateLibraryTestsWorkspace();
+        await workspace.LoadAsync(CancellationToken.None);
         var targetFilePath = workspace.GetPath("SampleLib.Tests", "DogGeneratedTests.cs");
 
-        var preview = await ScaffoldingService.PreviewScaffoldTestAsync(
+        var preview = await Services.ScaffoldingService.PreviewScaffoldTestAsync(
             workspace.WorkspaceId,
             // Opt out of sibling inference so this existing regression asserts the bare
             // scaffold output; the sibling-inference behaviour is covered by its own test.
             new ScaffoldTestDto("SampleLib.Tests", "Dog", "Speak", ReferenceTestFile: string.Empty),
             CancellationToken.None);
 
-        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
+        var applyResult = await Services.RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
 
         Assert.IsTrue(applyResult.Success, applyResult.Error);
         Assert.IsTrue(File.Exists(targetFilePath));
@@ -496,11 +491,12 @@ public sealed class Consumer
     [TestMethod]
     public async Task Scaffold_Test_Preview_UseSamplingFalse_DoesNotCallSuggestionProvider()
     {
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateLibraryTestsWorkspace();
+        await workspace.LoadAsync(CancellationToken.None);
         var targetFilePath = workspace.GetPath("SampleLib.Tests", "DogGeneratedTests.cs");
         var provider = new RecordingTestNameSuggestionProvider("Speak_WhenDogIsReady_ReturnsBark");
 
-        var preview = await ScaffoldingService.PreviewScaffoldTestAsync(
+        var preview = await Services.ScaffoldingService.PreviewScaffoldTestAsync(
             workspace.WorkspaceId,
             new ScaffoldTestDto(
                 "SampleLib.Tests",
@@ -511,7 +507,7 @@ public sealed class Consumer
             CancellationToken.None,
             provider);
 
-        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
+        var applyResult = await Services.RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
 
         Assert.IsTrue(applyResult.Success, applyResult.Error);
         Assert.AreEqual(0, provider.CallCount, "Sampling provider must not be called unless useSampling is true.");
@@ -524,7 +520,8 @@ public sealed class Consumer
     [TestMethod]
     public async Task Scaffold_Test_Preview_UseSamplingTrue_UsesSuggestedMethodName()
     {
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateLibraryTestsWorkspace();
+        await workspace.LoadAsync(CancellationToken.None);
         var siblingPath = workspace.GetPath("SampleLib.Tests", "DogExistingTests.cs");
         await File.WriteAllTextAsync(siblingPath, """
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -543,7 +540,7 @@ public sealed class DogExistingTests
         var targetFilePath = workspace.GetPath("SampleLib.Tests", "DogGeneratedTests.cs");
         var provider = new RecordingTestNameSuggestionProvider("Speak_WhenDogIsReady_ReturnsBark");
 
-        var preview = await ScaffoldingService.PreviewScaffoldTestAsync(
+        var preview = await Services.ScaffoldingService.PreviewScaffoldTestAsync(
             workspace.WorkspaceId,
             new ScaffoldTestDto(
                 "SampleLib.Tests",
@@ -554,7 +551,7 @@ public sealed class DogExistingTests
             CancellationToken.None,
             provider);
 
-        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
+        var applyResult = await Services.RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
 
         Assert.IsTrue(applyResult.Success, applyResult.Error);
         Assert.AreEqual(1, provider.CallCount, "Sampling provider should be called once for an opted-in method-focused scaffold.");
@@ -575,7 +572,8 @@ public sealed class DogExistingTests
     {
         const string sentinel = "SECRET-SENTINEL-sibling-name-read";
         const string secretSource = "SECRET-SOURCE-sibling-name-read";
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateLibraryTestsWorkspace();
+        await workspace.LoadAsync(CancellationToken.None);
         var readablePath = workspace.GetPath("SampleLib.Tests", "DogReadableTests.cs");
         var unreadablePath = workspace.GetPath("SampleLib.Tests", "DogUnreadableTests.cs");
         var secondUnreadablePath = workspace.GetPath("SampleLib.Tests", "DogAlsoUnreadableTests.cs");
@@ -599,12 +597,12 @@ public sealed class DogReadableTests
         var sink = new CapturingServerObservabilitySink();
         var reporter = new ServerObservabilityReporter(sink);
         var failure = new IOException(sentinel) { Source = secretSource };
-        var project = WorkspaceManager.GetStatus(workspace.WorkspaceId).Projects
+        var project = Services.WorkspaceManager.GetStatus(workspace.WorkspaceId).Projects
             .Single(project => string.Equals(project.Name, "SampleLib.Tests", StringComparison.Ordinal));
         var provider = new RecordingTestNameSuggestionProvider("Speak_WhenDogIsReady_ReturnsBark");
         var scaffolder = new SingleTestScaffolder(
-            WorkspaceManager,
-            FileOperationService,
+            Services.WorkspaceManager,
+            Services.FileOperationService,
             reporter,
             readAllText: path =>
                 (string.Equals(path, unreadablePath, StringComparison.OrdinalIgnoreCase) ||
@@ -658,19 +656,20 @@ public sealed class DogReadableTests
     public async Task Scaffold_Test_Preview_SiblingNameReadCancellationAndUnexpectedFailures_Propagate(
         string failureKind)
     {
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateLibraryTestsWorkspace();
+        await workspace.LoadAsync(CancellationToken.None);
         var siblingPath = workspace.GetPath("SampleLib.Tests", "DogFailureTests.cs");
         await File.WriteAllTextAsync(siblingPath, "// injected read failure", CancellationToken.None);
 
         Exception expected = failureKind == "cancellation"
             ? new OperationCanceledException("injected sibling read cancellation")
             : new InvalidOperationException("injected unexpected sibling read failure");
-        var project = WorkspaceManager.GetStatus(workspace.WorkspaceId).Projects
+        var project = Services.WorkspaceManager.GetStatus(workspace.WorkspaceId).Projects
             .Single(project => string.Equals(project.Name, "SampleLib.Tests", StringComparison.Ordinal));
         var provider = new RecordingTestNameSuggestionProvider("Speak_WhenDogIsReady_ReturnsBark");
         var scaffolder = new SingleTestScaffolder(
-            WorkspaceManager,
-            FileOperationService,
+            Services.WorkspaceManager,
+            Services.FileOperationService,
             readAllText: _ => throw expected);
 
         Task Act() => scaffolder.PreviewAsync(
@@ -697,7 +696,8 @@ public sealed class DogReadableTests
     [TestMethod]
     public async Task Scaffold_Test_Preview_SamplingReplay_PaysSemanticPreparationOnce()
     {
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateLibraryTestsWorkspace();
+        await workspace.LoadAsync(CancellationToken.None);
         var siblingPath = workspace.GetPath("SampleLib.Tests", "DogReplayTests.cs");
         await File.WriteAllTextAsync(siblingPath, """
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -718,8 +718,8 @@ public sealed class DogReplayTests
         // The decorator counts every entry into the semantic layer. Project resolution and framework
         // detection go through GetStatus on the facade, so this counter isolates exactly the work the
         // hoist is meant to keep off the replayed leg.
-        var countingWorkspace = new CountingWorkspaceManager(WorkspaceManager);
-        var scaffoldingService = new ScaffoldingService(countingWorkspace, FileOperationService, PreviewStore);
+        var countingWorkspace = new CountingWorkspaceManager(Services.WorkspaceManager);
+        var scaffoldingService = new ScaffoldingService(countingWorkspace, Services.FileOperationService, Services.PreviewStore);
         var provider = new ReplayTestNameSuggestionProvider("Speak_WhenDogIsReady_ReturnsBark");
         var request = new ScaffoldTestDto(
             "SampleLib.Tests",
@@ -745,7 +745,7 @@ public sealed class DogReplayTests
         // Leg 2: the replay carries the client's answer.
         var preview = await scaffoldingService.PreviewScaffoldTestAsync(
             workspace.WorkspaceId, request, CancellationToken.None, provider);
-        var applyResult = await RefactoringService.ApplyRefactoringAsync(
+        var applyResult = await Services.RefactoringService.ApplyRefactoringAsync(
             preview.PreviewToken, "test_apply", CancellationToken.None);
 
         Assert.IsTrue(applyResult.Success, applyResult.Error);
@@ -764,10 +764,11 @@ public sealed class DogReplayTests
     {
         const string sentinel = "sampled-name-secret-sentinel";
         const string privatePath = "C:/private/tenant/solution.slnx";
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateLibraryTestsWorkspace();
+        await workspace.LoadAsync(CancellationToken.None);
         var invalidSuggestion = $"{sentinel}:{privatePath}/{new string('x', 8_192)}";
 
-        var preview = await ScaffoldingService.PreviewScaffoldTestAsync(
+        var preview = await Services.ScaffoldingService.PreviewScaffoldTestAsync(
             workspace.WorkspaceId,
             new ScaffoldTestDto(
                 "SampleLib.Tests",
@@ -790,10 +791,11 @@ public sealed class DogReplayTests
     [TestMethod]
     public async Task Scaffold_Test_Preview_HugeValidSampledIdentifier_UsesBoundedFallback()
     {
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateLibraryTestsWorkspace();
+        await workspace.LoadAsync(CancellationToken.None);
         var oversizedValidIdentifier = new string('A', 1_000_000);
 
-        var preview = await ScaffoldingService.PreviewScaffoldTestAsync(
+        var preview = await Services.ScaffoldingService.PreviewScaffoldTestAsync(
             workspace.WorkspaceId,
             new ScaffoldTestDto(
                 "SampleLib.Tests",
@@ -817,11 +819,12 @@ public sealed class DogReplayTests
     [TestMethod]
     public async Task Scaffold_Test_Preview_SamplingProviderCancellation_Propagates()
     {
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateLibraryTestsWorkspace();
+        await workspace.LoadAsync(CancellationToken.None);
         var cancellation = new OperationCanceledException("sampling request cancelled");
 
         var thrown = await Assert.ThrowsExactlyAsync<OperationCanceledException>(() =>
-            ScaffoldingService.PreviewScaffoldTestAsync(
+            Services.ScaffoldingService.PreviewScaffoldTestAsync(
                 workspace.WorkspaceId,
                 new ScaffoldTestDto(
                     "SampleLib.Tests",
@@ -839,7 +842,7 @@ public sealed class DogReplayTests
     [TestMethod]
     public async Task Scaffold_Test_Private_Target_Method_Adds_Warning_And_Reflection_Call()
     {
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateLibraryTestsWorkspace();
         var targetTypePath = workspace.GetPath("SampleLib", "HiddenBehavior.cs");
         await File.WriteAllTextAsync(targetTypePath, """
 namespace SampleLib;
@@ -853,9 +856,9 @@ public class HiddenBehavior
 }
 """, CancellationToken.None);
 
-        await workspace.ReloadAsync(CancellationToken.None);
+        await workspace.LoadAsync(CancellationToken.None);
 
-        var preview = await ScaffoldingService.PreviewScaffoldTestAsync(
+        var preview = await Services.ScaffoldingService.PreviewScaffoldTestAsync(
             workspace.WorkspaceId,
             new ScaffoldTestDto("SampleLib.Tests", "HiddenBehavior", "BuildSecret", ReferenceTestFile: string.Empty),
             CancellationToken.None);
@@ -866,7 +869,7 @@ public class HiddenBehavior
             preview.Warnings[0],
             "Target method 'BuildSecret' is private — the scaffold uses reflection to invoke it;");
 
-        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
+        var applyResult = await Services.RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
 
         var contents = await File.ReadAllTextAsync(
@@ -885,7 +888,7 @@ public class HiddenBehavior
         // generate a `new TargetType()` call that compile-fails with CS0122. The fix detects
         // the cross-assembly internal-not-visible case during target resolution and emits a
         // warning + Inconclusive placeholder scaffold instead.
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateLibraryTestsWorkspace();
         var targetTypePath = workspace.GetPath("SampleLib", "InternalGate.cs");
         await File.WriteAllTextAsync(targetTypePath, """
 namespace SampleLib;
@@ -896,9 +899,9 @@ internal sealed class InternalGate
 }
 """, CancellationToken.None);
 
-        await workspace.ReloadAsync(CancellationToken.None);
+        await workspace.LoadAsync(CancellationToken.None);
 
-        var preview = await ScaffoldingService.PreviewScaffoldTestAsync(
+        var preview = await Services.ScaffoldingService.PreviewScaffoldTestAsync(
             workspace.WorkspaceId,
             new ScaffoldTestDto("SampleLib.Tests", "InternalGate", "Open", ReferenceTestFile: string.Empty),
             CancellationToken.None);
@@ -908,7 +911,7 @@ internal sealed class InternalGate
         StringAssert.Contains(preview.Warnings[0], "Target type 'SampleLib.InternalGate' is not accessible from 'SampleLib.Tests'");
         StringAssert.Contains(preview.Warnings[0], "InternalsVisibleTo");
 
-        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
+        var applyResult = await Services.RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
 
         var contents = await File.ReadAllTextAsync(
@@ -931,7 +934,7 @@ internal sealed class InternalGate
         // scaffold-test-internal-target-accessibility companion case: when InternalsVisibleTo
         // grants the test assembly access to the target's containing assembly, scaffolding
         // should produce the ordinary direct-call shape (no warning, no placeholder).
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateLibraryTestsWorkspace();
 
         var ivtPath = workspace.GetPath("SampleLib", "AssemblyInfo.IVT.cs");
         await File.WriteAllTextAsync(ivtPath, """
@@ -948,9 +951,9 @@ internal sealed class InternalGateVisible
 }
 """, CancellationToken.None);
 
-        await workspace.ReloadAsync(CancellationToken.None);
+        await workspace.LoadAsync(CancellationToken.None);
 
-        var preview = await ScaffoldingService.PreviewScaffoldTestAsync(
+        var preview = await Services.ScaffoldingService.PreviewScaffoldTestAsync(
             workspace.WorkspaceId,
             new ScaffoldTestDto("SampleLib.Tests", "InternalGateVisible", "Open", ReferenceTestFile: string.Empty),
             CancellationToken.None);
@@ -959,7 +962,7 @@ internal sealed class InternalGateVisible
             preview.Warnings,
             "When InternalsVisibleTo grants access, no inaccessibility warning should be emitted.");
 
-        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
+        var applyResult = await Services.RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
 
         var contents = await File.ReadAllTextAsync(
@@ -980,7 +983,7 @@ internal sealed class InternalGateVisible
         // public, but the target method is internal and the test assembly lacks
         // InternalsVisibleTo. Direct call would fail CS0122. Private methods stay on the
         // existing reflection-scaffold path; only the internal-not-visible case redirects.
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateLibraryTestsWorkspace();
         var targetTypePath = workspace.GetPath("SampleLib", "PublicGate.cs");
         await File.WriteAllTextAsync(targetTypePath, """
 namespace SampleLib;
@@ -991,9 +994,9 @@ public class PublicGate
 }
 """, CancellationToken.None);
 
-        await workspace.ReloadAsync(CancellationToken.None);
+        await workspace.LoadAsync(CancellationToken.None);
 
-        var preview = await ScaffoldingService.PreviewScaffoldTestAsync(
+        var preview = await Services.ScaffoldingService.PreviewScaffoldTestAsync(
             workspace.WorkspaceId,
             new ScaffoldTestDto("SampleLib.Tests", "PublicGate", "OpenInternal", ReferenceTestFile: string.Empty),
             CancellationToken.None);
@@ -1002,7 +1005,7 @@ public class PublicGate
         Assert.AreEqual(1, preview.Warnings.Count);
         StringAssert.Contains(preview.Warnings[0], "Target method 'SampleLib.PublicGate.OpenInternal' is not accessible");
 
-        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
+        var applyResult = await Services.RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
 
         var contents = await File.ReadAllTextAsync(
@@ -1028,7 +1031,7 @@ public class PublicGate
         // The sibling here uses real types from SampleLib (Shape from SampleLib.Hierarchy as
         // the constructor-injected dependency) so the test project's compilation can verify
         // the using-trim retains required namespaces via semantic resolution.
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateLibraryTestsWorkspace();
 
         // Seed a sibling test file that exercises the full pattern we want replicated, plus
         // a [TestCategory] tag that should be filtered (per the overbroad-inference fix).
@@ -1055,16 +1058,16 @@ public class ShapeRendererTests
 }
 """, CancellationToken.None);
 
-        await workspace.ReloadAsync(CancellationToken.None);
+        await workspace.LoadAsync(CancellationToken.None);
 
-        var preview = await ScaffoldingService.PreviewScaffoldTestAsync(
+        var preview = await Services.ScaffoldingService.PreviewScaffoldTestAsync(
             workspace.WorkspaceId,
             new ScaffoldTestDto(
                 "SampleLib.Tests",
                 "AnimalService",
                 ReferenceTestFile: siblingPath),
             CancellationToken.None);
-        var applyResult = await RefactoringService.ApplyRefactoringAsync(
+        var applyResult = await Services.RefactoringService.ApplyRefactoringAsync(
             preview.PreviewToken, "test_apply", CancellationToken.None);
 
         Assert.IsTrue(applyResult.Success, applyResult.Error);
@@ -1117,7 +1120,7 @@ public class ShapeRendererTests
         // Sibling-inference is narrowed to file-scoped namespace + base-class-name shape only;
         // attribute carry is filtered to drop convention tags; usings are trimmed via semantic
         // resolution to those required by the captured surface.
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateLibraryTestsWorkspace();
 
         // Seed a Playwright-style sibling fixture in the test project. This becomes the MRU
         // sibling auto-detected by scaffold_test_preview when no explicit reference is supplied.
@@ -1148,17 +1151,17 @@ public class PlaywrightFlowTests
 }
 """, CancellationToken.None);
 
-        await workspace.ReloadAsync(CancellationToken.None);
+        await workspace.LoadAsync(CancellationToken.None);
 
         // No explicit reference — the MRU auto-detection should pick the Playwright sibling.
         // The bug under fix would copy [TestCategory("Playwright")], [TestCategory("UI")], and
         // every using above into the AnimalService scaffold.
-        var preview = await ScaffoldingService.PreviewScaffoldTestAsync(
+        var preview = await Services.ScaffoldingService.PreviewScaffoldTestAsync(
             workspace.WorkspaceId,
             // ReferenceTestFile is null (default) — exercise the MRU auto-detection path.
             new ScaffoldTestDto("SampleLib.Tests", "AnimalService"),
             CancellationToken.None);
-        var applyResult = await RefactoringService.ApplyRefactoringAsync(
+        var applyResult = await Services.RefactoringService.ApplyRefactoringAsync(
             preview.PreviewToken, "test_apply", CancellationToken.None);
 
         Assert.IsTrue(applyResult.Success, applyResult.Error);
@@ -1201,11 +1204,12 @@ public class PlaywrightFlowTests
     [TestMethod]
     public async Task Scaffold_Test_Batch_Preview_And_Apply_Creates_Multiple_Test_Files()
     {
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateLibraryTestsWorkspace();
+        await workspace.LoadAsync(CancellationToken.None);
         var dogPath = workspace.GetPath("SampleLib.Tests", "DogGeneratedTests.cs");
         var animalServicePath = workspace.GetPath("SampleLib.Tests", "AnimalServiceGeneratedTests.cs");
 
-        var preview = await ScaffoldingService.PreviewScaffoldTestBatchAsync(
+        var preview = await Services.ScaffoldingService.PreviewScaffoldTestBatchAsync(
             workspace.WorkspaceId,
             new ScaffoldTestBatchDto(
                 "SampleLib.Tests",
@@ -1219,7 +1223,7 @@ public class PlaywrightFlowTests
         Assert.AreEqual(2, preview.Changes.Count,
             "Batch scaffold preview should aggregate one file-creation diff per target.");
 
-        var applyResult = await RefactoringService.ApplyRefactoringAsync(
+        var applyResult = await Services.RefactoringService.ApplyRefactoringAsync(
             preview.PreviewToken, "test_apply", CancellationToken.None);
 
         Assert.IsTrue(applyResult.Success, applyResult.Error);
@@ -1244,10 +1248,11 @@ public class PlaywrightFlowTests
     [TestMethod]
     public async Task Scaffold_Test_Batch_Token_Is_Untagged_And_Still_Redeems_Through_Scaffold_Test_Apply()
     {
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateLibraryTestsWorkspace();
+        await workspace.LoadAsync(CancellationToken.None);
         var dogPath = workspace.GetPath("SampleLib.Tests", "DogGeneratedTests.cs");
 
-        var preview = await ScaffoldingService.PreviewScaffoldTestBatchAsync(
+        var preview = await Services.ScaffoldingService.PreviewScaffoldTestBatchAsync(
             workspace.WorkspaceId,
             new ScaffoldTestBatchDto(
                 "SampleLib.Tests",
@@ -1255,13 +1260,13 @@ public class PlaywrightFlowTests
                 "auto"),
             CancellationToken.None);
 
-        Assert.AreEqual(PreviewKind.Unspecified, PreviewStore.PeekKind(preview.PreviewToken),
+        Assert.AreEqual(PreviewKind.Unspecified, Services.PreviewStore.PeekKind(preview.PreviewToken),
             "The batch scaffolder mints its own aggregate token and records no provenance.");
 
         var json = await ScaffoldingTools.ApplyScaffoldTest(
-            WorkspaceExecutionGate,
-            RefactoringService,
-            PreviewStore,
+            Services.WorkspaceExecutionGate,
+            Services.RefactoringService,
+            Services.PreviewStore,
             preview.PreviewToken,
             CancellationToken.None);
 
@@ -1273,7 +1278,7 @@ public class PlaywrightFlowTests
     [TestMethod]
     public async Task Scaffold_Test_Batch_NullableCtorArgs_EmitCompileSafeExpressions()
     {
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateLibraryTestsWorkspace();
         var fixturePath = workspace.GetPath("SampleLib", "Dog.cs");
         await File.AppendAllTextAsync(fixturePath, """
 
@@ -1321,9 +1326,9 @@ public sealed class NullableConstructorTarget
 }
 """, CancellationToken.None);
 
-        await workspace.ReloadAsync(CancellationToken.None);
+        await workspace.LoadAsync(CancellationToken.None);
 
-        var preview = await ScaffoldingService.PreviewScaffoldTestBatchAsync(
+        var preview = await Services.ScaffoldingService.PreviewScaffoldTestBatchAsync(
             workspace.WorkspaceId,
             new ScaffoldTestBatchDto(
                 "SampleLib.Tests",
@@ -1331,7 +1336,7 @@ public sealed class NullableConstructorTarget
                 "auto"),
             CancellationToken.None);
 
-        var applyResult = await RefactoringService.ApplyRefactoringAsync(
+        var applyResult = await Services.RefactoringService.ApplyRefactoringAsync(
             preview.PreviewToken,
             "scaffold_test_batch_apply",
             CancellationToken.None);
@@ -1363,10 +1368,11 @@ public sealed class NullableConstructorTarget
         // fix uses `TypeSymbol.Name` (unqualified) so only the simple identifier lands in
         // the class and file names, while the `using SampleLib.Hierarchy;` brings the type
         // into scope for the constructor call.
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateLibraryTestsWorkspace();
+        await workspace.LoadAsync(CancellationToken.None);
         var expectedFilePath = workspace.GetPath("SampleLib.Tests", "CircleGeneratedTests.cs");
 
-        var preview = await ScaffoldingService.PreviewScaffoldTestAsync(
+        var preview = await Services.ScaffoldingService.PreviewScaffoldTestAsync(
             workspace.WorkspaceId,
             new ScaffoldTestDto(
                 "SampleLib.Tests",
@@ -1374,7 +1380,7 @@ public sealed class NullableConstructorTarget
                 ReferenceTestFile: string.Empty),
             CancellationToken.None);
 
-        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
+        var applyResult = await Services.RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
 
         Assert.IsTrue(applyResult.Success, applyResult.Error);
         Assert.IsTrue(File.Exists(expectedFilePath),
@@ -1399,7 +1405,7 @@ public sealed class NullableConstructorTarget
         // `Namespace.Outer.Inner`, and the scaffold must still emit a single-identifier
         // class name. We inject a fixture with a nested type so the test is self-contained
         // and does not depend on sample-solution evolution.
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateLibraryTestsWorkspace();
         var fixturePath = workspace.GetPath("SampleLib", "NestedFixture.cs");
         await File.WriteAllTextAsync(fixturePath, """
 namespace SampleLib;
@@ -1413,11 +1419,11 @@ public class NestedHost
 }
 """, CancellationToken.None);
 
-        await workspace.ReloadAsync(CancellationToken.None);
+        await workspace.LoadAsync(CancellationToken.None);
 
         var expectedFilePath = workspace.GetPath("SampleLib.Tests", "NestedInnerGeneratedTests.cs");
 
-        var preview = await ScaffoldingService.PreviewScaffoldTestAsync(
+        var preview = await Services.ScaffoldingService.PreviewScaffoldTestAsync(
             workspace.WorkspaceId,
             new ScaffoldTestDto(
                 "SampleLib.Tests",
@@ -1426,7 +1432,7 @@ public class NestedHost
                 ReferenceTestFile: string.Empty),
             CancellationToken.None);
 
-        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
+        var applyResult = await Services.RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
 
         Assert.IsTrue(applyResult.Success, applyResult.Error);
         Assert.IsTrue(File.Exists(expectedFilePath),
@@ -1443,11 +1449,11 @@ public class NestedHost
     [TestMethod]
     public async Task Scaffold_Test_QualifiedDuplicateTarget_RejectsSimpleNameAndSelectsExactSingleSymbol()
     {
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateLibraryTestsWorkspace();
         await AddDuplicateWidgetFixtureAsync(workspace);
 
         var ambiguous = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
-            ScaffoldingService.PreviewScaffoldTestAsync(
+            Services.ScaffoldingService.PreviewScaffoldTestAsync(
                 workspace.WorkspaceId,
                 new ScaffoldTestDto(
                     "SampleLib.Tests",
@@ -1461,7 +1467,7 @@ public class NestedHost
         StringAssert.Contains(ambiguous.Message, "Beta.Widget");
 
         var provider = new RecordingTestNameSuggestionProvider("Describe_WhenAlphaWidgetIsReady_ReturnsAlpha");
-        var preview = await ScaffoldingService.PreviewScaffoldTestAsync(
+        var preview = await Services.ScaffoldingService.PreviewScaffoldTestAsync(
             workspace.WorkspaceId,
             new ScaffoldTestDto(
                 "SampleLib.Tests",
@@ -1472,7 +1478,7 @@ public class NestedHost
             CancellationToken.None,
             provider);
 
-        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
+        var applyResult = await Services.RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
 
         Assert.IsTrue(applyResult.Success, applyResult.Error);
         Assert.AreEqual(1, provider.CallCount,
@@ -1492,10 +1498,10 @@ public class NestedHost
     [TestMethod]
     public async Task Scaffold_Test_Batch_QualifiedDuplicateTarget_RejectsSimpleNameAndSelectsExactSymbol()
     {
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateLibraryTestsWorkspace();
         await AddDuplicateWidgetFixtureAsync(workspace);
 
-        var preview = await ScaffoldingService.PreviewScaffoldTestBatchAsync(
+        var preview = await Services.ScaffoldingService.PreviewScaffoldTestBatchAsync(
             workspace.WorkspaceId,
             new ScaffoldTestBatchDto(
                 "SampleLib.Tests",
@@ -1511,7 +1517,7 @@ public class NestedHost
         Assert.IsNotNull(preview.Warnings);
         StringAssert.Contains(string.Join(Environment.NewLine, preview.Warnings), "Ambiguous type 'Widget'");
 
-        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
+        var applyResult = await Services.RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
 
         Assert.IsTrue(applyResult.Success, applyResult.Error);
         var generatedPath = workspace.GetPath("SampleLib.Tests", "WidgetGeneratedTests.cs");
@@ -1527,7 +1533,7 @@ public class NestedHost
     {
         // scaffold-test-preview-static-target-body: a `static class` target should scaffold
         // a utility-shaped body — no `new StaticUtil()` and no `var subject = ...` Arrange line.
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateLibraryTestsWorkspace();
         var fixturePath = workspace.GetPath("SampleLib", "StaticUtil.cs");
         await File.WriteAllTextAsync(fixturePath, """
 namespace SampleLib;
@@ -1538,11 +1544,11 @@ public static class StaticUtil
 }
 """, CancellationToken.None);
 
-        await workspace.ReloadAsync(CancellationToken.None);
+        await workspace.LoadAsync(CancellationToken.None);
 
         var expectedFilePath = workspace.GetPath("SampleLib.Tests", "StaticUtilGeneratedTests.cs");
 
-        var preview = await ScaffoldingService.PreviewScaffoldTestAsync(
+        var preview = await Services.ScaffoldingService.PreviewScaffoldTestAsync(
             workspace.WorkspaceId,
             new ScaffoldTestDto(
                 "SampleLib.Tests",
@@ -1551,7 +1557,7 @@ public static class StaticUtil
                 ReferenceTestFile: string.Empty),
             CancellationToken.None);
 
-        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
+        var applyResult = await Services.RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
 
         Assert.IsTrue(applyResult.Success, applyResult.Error);
         var contents = await File.ReadAllTextAsync(expectedFilePath, CancellationToken.None);
@@ -1562,7 +1568,7 @@ public static class StaticUtil
             "Static-class scaffold must NOT emit a `subject` instance.");
     }
 
-    private static async Task AddDuplicateWidgetFixtureAsync(IsolatedWorkspaceScope workspace)
+    private static async Task AddDuplicateWidgetFixtureAsync(IsolatedWorkspaceTestBase.IsolatedWorkspaceScope workspace)
     {
         var fixturePath = workspace.GetPath("SampleLib", "DuplicateWidgetFixture.cs");
         await File.WriteAllTextAsync(fixturePath, """
@@ -1583,7 +1589,7 @@ namespace Beta
 }
 """, CancellationToken.None);
 
-        await workspace.ReloadAsync(CancellationToken.None);
+        await workspace.LoadAsync(CancellationToken.None);
     }
 
     [TestMethod]
@@ -1593,7 +1599,7 @@ namespace Beta
         // is `const` / static fields (classic "constants" holder e.g. `TenantConstants`) should
         // scaffold without `new TenantConstants()` — previously the scaffolder only inspected
         // methods, so constants-only types fell through to the instance template.
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateLibraryTestsWorkspace();
         var fixturePath = workspace.GetPath("SampleLib", "TenantConstants.cs");
         await File.WriteAllTextAsync(fixturePath, """
 namespace SampleLib;
@@ -1605,11 +1611,11 @@ public class TenantConstants
 }
 """, CancellationToken.None);
 
-        await workspace.ReloadAsync(CancellationToken.None);
+        await workspace.LoadAsync(CancellationToken.None);
 
         var expectedFilePath = workspace.GetPath("SampleLib.Tests", "TenantConstantsGeneratedTests.cs");
 
-        var preview = await ScaffoldingService.PreviewScaffoldTestAsync(
+        var preview = await Services.ScaffoldingService.PreviewScaffoldTestAsync(
             workspace.WorkspaceId,
             new ScaffoldTestDto(
                 "SampleLib.Tests",
@@ -1618,7 +1624,7 @@ public class TenantConstants
                 ReferenceTestFile: string.Empty),
             CancellationToken.None);
 
-        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
+        var applyResult = await Services.RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
 
         Assert.IsTrue(applyResult.Success, applyResult.Error);
         var contents = await File.ReadAllTextAsync(expectedFilePath, CancellationToken.None);
@@ -1635,7 +1641,7 @@ public class TenantConstants
         // scaffold-test-preview-static-target-body: a non-static class whose public surface is
         // entirely static members (methods + properties — e.g. `SnapshotContentHasher`) should
         // scaffold as a utility, not as an instance.
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateLibraryTestsWorkspace();
         var fixturePath = workspace.GetPath("SampleLib", "SnapshotContentHasher.cs");
         await File.WriteAllTextAsync(fixturePath, """
 namespace SampleLib;
@@ -1648,11 +1654,11 @@ public class SnapshotContentHasher
 }
 """, CancellationToken.None);
 
-        await workspace.ReloadAsync(CancellationToken.None);
+        await workspace.LoadAsync(CancellationToken.None);
 
         var expectedFilePath = workspace.GetPath("SampleLib.Tests", "SnapshotContentHasherGeneratedTests.cs");
 
-        var preview = await ScaffoldingService.PreviewScaffoldTestAsync(
+        var preview = await Services.ScaffoldingService.PreviewScaffoldTestAsync(
             workspace.WorkspaceId,
             new ScaffoldTestDto(
                 "SampleLib.Tests",
@@ -1661,7 +1667,7 @@ public class SnapshotContentHasher
                 ReferenceTestFile: string.Empty),
             CancellationToken.None);
 
-        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
+        var applyResult = await Services.RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
 
         Assert.IsTrue(applyResult.Success, applyResult.Error);
         var contents = await File.ReadAllTextAsync(expectedFilePath, CancellationToken.None);
@@ -1685,13 +1691,14 @@ public class SnapshotContentHasher
         //   → using System.IO;               (TextWriter)
         //   → using System.Text;             (StringBuilder)
         //   → using System.Collections.Generic; (IList<T>)
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateLibraryTestsWorkspace();
+        await workspace.LoadAsync(CancellationToken.None);
 
-        var preview = await ScaffoldingService.PreviewScaffoldTestAsync(
+        var preview = await Services.ScaffoldingService.PreviewScaffoldTestAsync(
             workspace.WorkspaceId,
             new ScaffoldTestDto("SampleLib.Tests", "MultiNamespaceService", "Flush"),
             CancellationToken.None);
-        await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
+        await Services.RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
 
         var generatedPath = workspace.GetPath("SampleLib.Tests", "MultiNamespaceServiceGeneratedTests.cs");
         var contents = await File.ReadAllTextAsync(generatedPath, CancellationToken.None);
@@ -1847,14 +1854,15 @@ public class SnapshotContentHasher
     [DataRow(false)]
     public async Task Batch_Refusals_Give_Actionable_Recovery_Without_Creating_Previews(bool empty)
     {
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
-        var original = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        await using var workspace = CreateLibraryTestsWorkspace();
+        await workspace.LoadAsync(CancellationToken.None);
+        var original = Services.WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
         ScaffoldTestBatchTargetDto[] targets = empty ? [] : [new ScaffoldTestBatchTargetDto("private-missing-target", "Missing")];
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => ScaffoldingService.PreviewScaffoldTestBatchAsync(
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => Services.ScaffoldingService.PreviewScaffoldTestBatchAsync(
             workspace.WorkspaceId, new ScaffoldTestBatchDto("SampleLib.Tests", targets, "auto"), CancellationToken.None));
         FileOperationIntegrationTests.AssertSafeRefusal(error, empty ? "at least one target" : "Verify", null, "private-missing-target", workspace.RootPath);
-        Assert.AreSame(original, WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
-        FileOperationIntegrationTests.AssertNoStoredPreviews(PreviewStore, workspace.WorkspaceId);
+        Assert.AreSame(original, Services.WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
+        FileOperationIntegrationTests.AssertNoStoredPreviews(Services.PreviewStore, workspace.WorkspaceId);
     }
 
 }

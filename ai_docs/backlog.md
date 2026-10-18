@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-18T00:50:12Z
+**updated_at:** 2026-10-18T02:25:43Z
 
 ## Agent contract
 
@@ -209,7 +209,7 @@
 | `edit-integration-fixture-load-amortization-wave-1` | Low | — | **Amortize isolated workspace loads in the first edit-test wave** — reuse one class-private fixture only with deterministic byte and preview/undo-state restoration before every case. [type: test performance] [source: 2026-08-24 TRX hotspot audit] | S | items/edit-integration-fixture-load-amortization-wave-1.md |
 | `test-document-path-helper-consolidation-wave-1` | Low | test-base-static-service-locator-decomposition | **Share the first wave of test document-path lookup** — replace copied workspace scans with one explicit helper that fails clearly on zero or ambiguous matches. [type: test refactor] [source: 2026-08-24 adjacent review] | S | items/test-document-path-helper-consolidation-wave-1.md |
 | `workspace-fixture-load-amortization-wave-2` | Low | — | Reduce owned cache and project-mutation fixture setup; mutation cases migrated, cache cases pending. [type: test-refactor] [source: test-efficiency-audit-20261017] | S | items/workspace-fixture-load-amortization-wave-2.md |
-| `workspace-fixture-load-amortization-wave-3` | Low | — | Amortize repeated isolated loads in scaffolding and cross-project refactoring tests with deterministic per-case state restoration. [type: test performance] [source: 2026-08-24 TRX hotspot audit] | S | items/workspace-fixture-load-amortization-wave-3.md |
+| `workspace-fixture-load-amortization-wave-3` | Low | — | Narrow and own the remaining cross-project refactoring fixtures while preserving every semantic assertion. [type: test performance] [source: 20261017 fixture audit] | S | items/workspace-fixture-load-amortization-wave-3.md |
 | `workspace-readiness-fixture-ready-state-isolation` | Low | — | **Automate readiness order proof** — keep isolated scenarios and add a bounded repeated runner that executes the class in deliberately different orders. [type: test correctness] [source: 2026-08-24 dependency review] | S | items/workspace-readiness-fixture-ready-state-isolation.md |
 | `code-pattern-analyzer-responsibility-split` | Low | — | **Split CodePatternAnalyzer responsibilities** — extract reflection-usage scanning from semantic-query parsing and search behind compatibility-preserving contracts. [type: refactor] [source: 2026-08-27 diagnostic scan review] | M | items/code-pattern-analyzer-responsibility-split.md |
 | `ci-merge-gate-publish-gate-shape-divergence` | Low | — | **Unsharded coverage exists only on a developer box** — add a scheduled unsharded Windows `verify-release.ps1` leg so pre-tag unsharded coverage does not depend on a workstation being healthy. [type: ci] [source: 2026-08-28 release-cut] | M | items/ci-merge-gate-publish-gate-shape-divergence.md |
@@ -371,6 +371,8 @@
 | `test-tree-filter-duplicate-case` | Low | — | Consolidate identical tree-filter test cases. [type: test-refactor] [source: test-efficiency-audit-20261017] | S | items/test-tree-filter-duplicate-case.md |
 | `test-workspace-resource-duplicate-refusal` | Low | — | Consolidate identical unknown-workspace resource assertions. [type: test-refactor] [source: test-efficiency-audit-20261017] | S | items/test-workspace-resource-duplicate-refusal.md |
 | `scorecard-script-process-ownership` | Low | — | Own scorecard test subprocess exit and bounded output draining through the shared async runner. [type: test-refactor] [source: output-drain investigation 20261017] | S | items/scorecard-script-process-ownership.md |
+| `edit-undo-cohesion-fixture-efficiency` | Low | — | Own and narrow the 24 edit/undo cohesion cases without removing assertions or changing deadlines. [type: test-refactor] [source: 20261017 test-efficiency audit] | S | items/edit-undo-cohesion-fixture-efficiency.md |
+| `editorconfig-create-undo-test-conditional-skip` | Low | — | Require the editorconfig creation undo case instead of conditionally skipping its assertions. [type: test-refactor] [source: 20261017 test-efficiency audit] | S | items/editorconfig-create-undo-test-conditional-skip.md |
 
 ## Defer
 

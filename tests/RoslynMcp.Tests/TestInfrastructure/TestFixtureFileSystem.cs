@@ -1,3 +1,5 @@
+using System.Xml.Linq;
+
 namespace RoslynMcp.Tests;
 
 internal static class TestFixtureFileSystem
@@ -5,32 +7,58 @@ internal static class TestFixtureFileSystem
     private static readonly StringComparer PathComponentComparer = StringComparer.OrdinalIgnoreCase;
     private static readonly string[] IgnoredDirectoryNames = ["bin"];
 
+    private enum SampleCopyKind { Solution, Library, LibraryTests }
+
     public static string CreateSampleSolutionCopy(string repositoryRootPath, string sampleSolutionPath) =>
-        CreateSampleCopy(repositoryRootPath, sampleSolutionPath, libraryOnly: false).EntryPath;
+        CreateSampleCopy(repositoryRootPath, sampleSolutionPath, SampleCopyKind.Solution).EntryPath;
 
     public static (string RootPath, string EntryPath) CreateSampleLibraryCopy(
         string repositoryRootPath, string sampleSolutionPath) =>
-        CreateSampleCopy(repositoryRootPath, sampleSolutionPath, libraryOnly: true);
+        CreateSampleCopy(repositoryRootPath, sampleSolutionPath, SampleCopyKind.Library);
+
+    public static (string RootPath, string EntryPath) CreateSampleLibraryTestsCopy(
+        string repositoryRootPath, string sampleSolutionPath) =>
+        CreateSampleCopy(repositoryRootPath, sampleSolutionPath, SampleCopyKind.LibraryTests);
 
     private static (string RootPath, string EntryPath) CreateSampleCopy(
-        string repositoryRootPath, string sampleSolutionPath, bool libraryOnly)
+        string repositoryRootPath, string sampleSolutionPath, SampleCopyKind kind)
     {
         var sampleRoot = Path.GetDirectoryName(sampleSolutionPath)
             ?? throw new InvalidOperationException("Sample solution root could not be resolved.");
         var tempRoot = Path.Combine(TestTempRoot.Current, Guid.NewGuid().ToString("N"));
         try
         {
-            // Preserve library sources, restored references and repository compiler settings.
-            // Cross-project cases retain the full solution.
-            if (libraryOnly)
-                CopyDirectory(Path.Combine(sampleRoot, "SampleLib"), Path.Combine(tempRoot, "SampleLib"));
-            else
+            // Preserve sources, restored references and repository compiler settings.
+            // The two-project solution retains the common watched root for both projects.
+            string[] projects = kind switch
+            {
+                SampleCopyKind.Library => ["SampleLib"],
+                SampleCopyKind.LibraryTests => ["SampleLib", "SampleLib.Tests"],
+                _ => [],
+            };
+            if (kind == SampleCopyKind.Solution)
                 CopyDirectory(sampleRoot, tempRoot);
+            else
+                foreach (var project in projects)
+                    CopyDirectory(Path.Combine(sampleRoot, project), Path.Combine(tempRoot, project));
             CopyRepositorySupportFiles(repositoryRootPath, tempRoot);
 
-            var candidates = libraryOnly
-                ? new[] { Path.Combine("SampleLib", "SampleLib.csproj") }
-                : new[] { "SampleSolution.slnx", "SampleSolution.sln" };
+            if (kind == SampleCopyKind.LibraryTests)
+            {
+                foreach (var project in projects)
+                    if (!File.Exists(Path.Combine(tempRoot, project, project + ".csproj")))
+                        throw new InvalidOperationException("Copied sample fixture is missing a required project file.");
+                new XElement("Solution", projects.Select(project =>
+                    new XElement("Project", new XAttribute("Path", $"{project}/{project}.csproj"))))
+                    .Save(Path.Combine(tempRoot, "LibraryTests.slnx"));
+            }
+
+            string[] candidates = kind switch
+            {
+                SampleCopyKind.Library => [Path.Combine("SampleLib", "SampleLib.csproj")],
+                SampleCopyKind.LibraryTests => ["LibraryTests.slnx"],
+                _ => ["SampleSolution.slnx", "SampleSolution.sln"],
+            };
             foreach (var candidate in candidates)
             {
                 var path = Path.Combine(tempRoot, candidate);
