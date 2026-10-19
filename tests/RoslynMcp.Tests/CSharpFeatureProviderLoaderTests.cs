@@ -3,8 +3,8 @@ using System.Runtime.Loader;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.Extensions.Logging;
-using RoslynMcp.Roslyn.Services;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
 
