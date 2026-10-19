@@ -69,6 +69,23 @@ public sealed class BoundedStoreEvictionTests
         Assert.IsNull(store.PeekWorkspaceId(cleared));
     }
 
+    [TestMethod]
+    public void Store_EvictsOldestInsertionWhenCreatedAtTiesAfterSlotReuse()
+    {
+        var store = new TestStore(3);
+        var tied = DateTime.UtcNow;
+        var first = store.Add(new TestEntry("ws", tied));
+        var second = store.Add(new TestEntry("ws", tied));
+        var third = store.Add(new TestEntry("ws", tied));
+        store.Invalidate(first);
+        var fourth = store.Add(new TestEntry("ws", tied)); // reuses the freed dictionary slot
+        var fifth = store.Add(new TestEntry("ws", tied));
+        Assert.IsNull(store.Get(second), "the oldest surviving insertion must be evicted");
+        Assert.IsNotNull(store.Get(third));
+        Assert.IsNotNull(store.Get(fourth));
+        Assert.IsNotNull(store.Get(fifth));
+    }
+
     private sealed record TestEntry(string WorkspaceId, DateTime CreatedAt) : IBoundedStoreEntry;
 
     private sealed class TestStore(int capacity) : BoundedStore<TestEntry>(capacity)

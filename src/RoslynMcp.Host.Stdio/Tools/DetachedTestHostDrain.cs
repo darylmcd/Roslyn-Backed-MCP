@@ -168,7 +168,7 @@ internal static class DetachedTestHostDrain
         if (FinalPathResolver.TryResolve(workingDirectory, out var finalPath, out var error))
         {
             var canonicalPrefix = ToDescendantPrefix(finalPath);
-            if (!string.Equals(canonicalPrefix, prefixes[0], StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(canonicalPrefix, prefixes[0], FileSystemPath.Comparison))
             {
                 prefixes.Add(canonicalPrefix);
             }

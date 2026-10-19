@@ -138,7 +138,7 @@ public sealed partial class TestRunnerService : ITestRunnerService
 
         if (string.IsNullOrWhiteSpace(targetPath))
         {
-            throw new InvalidOperationException($"Workspace '{workspaceId}' is not loaded.");
+            throw new PublicInvalidOperationException($"Workspace '{workspaceId}' is not loaded.");
         }
 
         // tunit-mtp-native-test-run: TUnit is MTP-only and never registers with the classic

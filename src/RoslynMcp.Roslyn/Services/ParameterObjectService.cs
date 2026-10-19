@@ -245,7 +245,7 @@ public sealed partial class ParameterObjectService : IParameterObjectService
             && string.Equals(parameter.Name, identifierValue, StringComparison.Ordinal));
         if (retainedCollision is not null)
         {
-            throw new PublicArgumentException(
+            throw ParameterObjectRefusals.Argument(
                 $"parameter_object_preview refuses: the requested parameterName collides with retained parameter '{retainedCollision.Name}'. " +
                 "Choose a distinct parameterName.",
                 "parameterName");
@@ -255,7 +255,7 @@ public sealed partial class ParameterObjectService : IParameterObjectService
             string.Equals(typeParameter.Name, identifierValue, StringComparison.Ordinal));
         if (typeParameterCollision is not null)
         {
-            throw new PublicArgumentException(
+            throw ParameterObjectRefusals.Argument(
                 $"parameter_object_preview refuses: the requested parameterName collides with method type parameter '{typeParameterCollision.Name}'. " +
                 "Choose a distinct parameterName.",
                 "parameterName");
@@ -303,7 +303,7 @@ public sealed partial class ParameterObjectService : IParameterObjectService
 
         if (declarationCollisions.Count > 0)
         {
-            throw new PublicArgumentException(
+            throw ParameterObjectRefusals.Argument(
                 "parameter_object_preview refuses: the requested parameterName collides with a declaration inside the target method and would capture or break rewritten references. " +
                 "Choose a distinct parameterName. Collisions: " +
                 string.Join("; ", declarationCollisions.Distinct(StringComparer.Ordinal)),
@@ -312,7 +312,7 @@ public sealed partial class ParameterObjectService : IParameterObjectService
 
         if (memberReferenceCollisions.Count > 0)
         {
-            throw new PublicArgumentException(
+            throw ParameterObjectRefusals.Argument(
                 "parameter_object_preview refuses: the requested parameterName would capture an existing unqualified member reference inside the target method. " +
                 "Choose a distinct parameterName or qualify the affected member reference. Collisions: " +
                 string.Join("; ", memberReferenceCollisions.Distinct(StringComparer.Ordinal)),

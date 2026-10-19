@@ -13,6 +13,10 @@ public abstract class BoundedStore<TEntry> where TEntry : IBoundedStoreEntry
 {
     private readonly object _gate = new();
     private readonly Dictionary<string, TEntry> _entries = new();
+    // Monotonic insertion order: CreatedAt can tie on a coarse clock, and Dictionary enumeration
+    // order is not insertion order once slots are reused, so eviction needs an explicit tie-break.
+    private readonly Dictionary<string, long> _sequence = new();
+    private long _nextSequence;
     private readonly TimeSpan _ttl;
     private readonly int _maxEntries;
 
@@ -30,6 +34,7 @@ public abstract class BoundedStore<TEntry> where TEntry : IBoundedStoreEntry
             MakeRoomForEntry();
             var token = Guid.NewGuid().ToString("N");
             _entries[token] = entry;
+            _sequence[token] = _nextSequence++;
             return token;
         }
     }
@@ -43,7 +48,7 @@ public abstract class BoundedStore<TEntry> where TEntry : IBoundedStoreEntry
 
             if (DateTime.UtcNow - entry.CreatedAt > _ttl)
             {
-                _entries.Remove(token);
+                RemoveEntry(token);
                 return default;
             }
 
@@ -55,7 +60,7 @@ public abstract class BoundedStore<TEntry> where TEntry : IBoundedStoreEntry
     {
         lock (_gate)
         {
-            _entries.Remove(token);
+            RemoveEntry(token);
         }
     }
 
@@ -66,13 +71,14 @@ public abstract class BoundedStore<TEntry> where TEntry : IBoundedStoreEntry
             if (workspaceId is null)
             {
                 _entries.Clear();
+                _sequence.Clear();
                 return;
             }
 
             foreach (var kvp in _entries.ToArray())
             {
                 if (string.Equals(kvp.Value.WorkspaceId, workspaceId, StringComparison.Ordinal))
-                    _entries.Remove(kvp.Key);
+                    RemoveEntry(kvp.Key);
             }
         }
     }
@@ -83,6 +89,7 @@ public abstract class BoundedStore<TEntry> where TEntry : IBoundedStoreEntry
     /// (e.g. <c>PreviewStore.InvalidateOnVersionBump</c>, which compares the post-bump
     /// workspace version against a per-entry pinned-range ceiling).
     /// </summary>
+    /// <remarks>The predicate runs while the store lock is held; it must not call back into the store.</remarks>
     protected void InvalidateWhere(Func<TEntry, bool> shouldDrop)
     {
         lock (_gate)
@@ -91,7 +98,7 @@ public abstract class BoundedStore<TEntry> where TEntry : IBoundedStoreEntry
             foreach (var kvp in _entries.ToArray())
             {
                 if (shouldDrop(kvp.Value))
-                    _entries.Remove(kvp.Key);
+                    RemoveEntry(kvp.Key);
             }
         }
     }
@@ -105,7 +112,7 @@ public abstract class BoundedStore<TEntry> where TEntry : IBoundedStoreEntry
 
             if (DateTime.UtcNow - entry.CreatedAt > _ttl)
             {
-                _entries.Remove(token);
+                RemoveEntry(token);
                 return null;
             }
 
@@ -119,8 +126,14 @@ public abstract class BoundedStore<TEntry> where TEntry : IBoundedStoreEntry
         foreach (var kvp in _entries.ToArray())
         {
             if (now - kvp.Value.CreatedAt > _ttl)
-                _entries.Remove(kvp.Key);
+                RemoveEntry(kvp.Key);
         }
+    }
+
+    private void RemoveEntry(string token)
+    {
+        _entries.Remove(token);
+        _sequence.Remove(token);
     }
 
     private void MakeRoomForEntry()
@@ -129,12 +142,13 @@ public abstract class BoundedStore<TEntry> where TEntry : IBoundedStoreEntry
 
         var toEvict = _entries
             .OrderBy(kvp => kvp.Value.CreatedAt)
+            .ThenBy(kvp => _sequence[kvp.Key])
             .Take(_entries.Count - _maxEntries + 1)
             .Select(kvp => kvp.Key)
             .ToList();
 
         foreach (var key in toEvict)
-            _entries.Remove(key);
+            RemoveEntry(key);
     }
 }
 
