@@ -11,5 +11,5 @@
   "keywords": ["csharp", "dotnet", "roslyn", "refactoring", "analysis", "mcp"],
   "mcpServers": "./.claude-plugin/mcp.json",
   "skills": "./skills/",
-  "agents": "./agents/"
+  "agents": ["./agents/audit-phase-runner.md"]
 }

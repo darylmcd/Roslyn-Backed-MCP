@@ -48,4 +48,30 @@ public sealed class PluginLaunchManifestContractTests
             package.GetProperty("registryBaseUrl").GetString());
         Assert.AreEqual("stdio", package.GetProperty("transport").GetProperty("type").GetString());
     }
+
+    [TestMethod]
+    public void PluginManifest_AgentsListsEveryAgentFileAsMarkdownPath()
+    {
+        // Claude Code rejects a directory here ("agents: Invalid string: must end with .md"; issue #1795).
+        var root = TestFixtureFileSystem.FindRepositoryRoot();
+        using var pluginDocument = JsonDocument.Parse(
+            File.ReadAllText(Path.Combine(root, ".claude-plugin", "plugin.json")));
+
+        var agents = pluginDocument.RootElement.GetProperty("agents");
+        Assert.AreEqual(JsonValueKind.Array, agents.ValueKind);
+        var declared = agents.EnumerateArray().Select(value => value.GetString()!).ToArray();
+
+        foreach (var path in declared)
+        {
+            StringAssert.StartsWith(path, "./agents/");
+            StringAssert.EndsWith(path, ".md");
+            Assert.IsTrue(File.Exists(Path.Combine(root, path)), $"Declared agent file is missing: {path}");
+        }
+
+        var onDisk = Directory.GetFiles(Path.Combine(root, "agents"), "*.md")
+            .Select(file => "./agents/" + Path.GetFileName(file))
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+        CollectionAssert.AreEqual(onDisk, declared.Order(StringComparer.Ordinal).ToArray());
+    }
 }
