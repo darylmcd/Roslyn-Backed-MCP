@@ -98,7 +98,7 @@ public sealed class AuditPhaseRunnerHandoffTests
     public void Runner_IsShippedInPluginPackage()
     {
         // The runner agent only reaches the plugin cache when the package allowlist includes
-        // agents/** AND plugin.json registers the agents directory; the skill dispatches to it
+        // agents/** AND plugin.json registers the agent file; the skill dispatches to it
         // by its plugin-namespaced name.
         var repoRoot = TestFixtureFileSystem.FindRepositoryRoot();
         var allowlist = File.ReadAllLines(Path.Combine(repoRoot, ".claude-plugin", "package-allowlist.txt"))
@@ -107,7 +107,7 @@ public sealed class AuditPhaseRunnerHandoffTests
         CollectionAssert.Contains(allowlist, "agents/**");
 
         var pluginManifest = File.ReadAllText(Path.Combine(repoRoot, ".claude-plugin", "plugin.json"));
-        StringAssert.Contains(pluginManifest, "\"agents\": \"./agents/\"");
+        StringAssert.Contains(pluginManifest, "./agents/audit-phase-runner.md");
 
         var skill = File.ReadAllText(Path.Combine(repoRoot, "skills", "mcp-server-surface-test", "SKILL.md"));
         StringAssert.Contains(skill, "roslyn-mcp:audit-phase-runner");
