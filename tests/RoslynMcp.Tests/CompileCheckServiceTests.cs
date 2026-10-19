@@ -1,5 +1,10 @@
 using System.Xml.Linq;
+using Microsoft.CodeAnalysis;
+using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -11,6 +16,26 @@ public sealed class CompileCheckServiceTests : IsolatedWorkspaceTestBase
 
     [ClassCleanup]
     public static void ClassCleanup() => DisposeServices();
+
+    [TestMethod]
+    public async Task CheckAsync_UnsupportedProject_GivesVerboseSupportGuidance()
+    {
+        using var workspace = new AdhocWorkspace();
+        var project = workspace.AddProject("Unsupported", "NoCompilation");
+        var status = new WorkspaceStatusDto("unsupported", null, 1, "snapshot", DateTimeOffset.UtcNow,
+            1, 0, [], true, false, []);
+        var manager = new FailClosedWorkspaceManagerStub
+        {
+            GetCurrentSolutionHandler = _ => project.Solution,
+            GetStatusAsyncHandler = _ => status,
+        };
+        var service = new CompileCheckService(manager, NullLogger<CompileCheckService>.Instance);
+        var result = await service.CheckAsync("unsupported", new CompileCheckOptions(), CancellationToken.None);
+        Assert.IsFalse(result.Success);
+        Assert.AreEqual(1, result.TotalProjects);
+        Assert.AreEqual(0, result.CompletedProjects);
+        StringAssert.Contains(result.RestoreHint, "workspace_status with verbose=true");
+    }
 
     [TestMethod]
     public async Task CheckAsync_FileFilterOwnedByOneProject_CompilesOnlyOwningProject()
@@ -71,6 +96,7 @@ public sealed class CompileCheckServiceTests : IsolatedWorkspaceTestBase
             "The zero-resolution arm must not widen to the full project list.");
         Assert.AreEqual(0, result.CompletedProjects);
         StringAssert.Contains(result.RestoreHint, "did not resolve to any loaded workspace document");
+        StringAssert.Contains(result.RestoreHint, "workspace_status with verbose=true");
         Assert.AreEqual(CompileCheckDto.ScopeFiles, result.RequestedScope);
         Assert.AreEqual(result.RequestedScope, result.ActualScope,
             "Nothing was compiled, so no widening to solution scope may be claimed.");

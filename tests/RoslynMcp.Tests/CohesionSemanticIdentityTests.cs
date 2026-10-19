@@ -65,6 +65,60 @@ public class GenericHelperCohesion
     public string Second() => Helper("two");
     private T Helper<T>(T value) => value;
 }
+
+public partial class HandwrittenPartialCohesion
+{
+    private int _value = 1;
+    public partial int Read();
+    private partial int Helper();
+    public int Other() => Helper();
+    public int Direct() => _value;
+}
+
+public partial class HandwrittenPartialCohesion
+{
+    public partial int Read() => _value;
+    private partial int Helper() => _value;
+}
+
+public class DirectCallCohesion
+{
+    public int First() => Second();
+    public int Second() => Helper();
+    private int Helper() => 1;
+    public int Unrelated() => 2;
+}
+
+public class HighestRankedCohesion
+{
+    public int First() => 1;
+    public int Second() => 2;
+    public int Third() => 3;
+    public int Fourth() => 4;
+    public int Fifth() => 5;
+}
+
+public class NameofCohesion
+{
+    private string _value = "value";
+    public string First() => nameof(Helper) + nameof(_value);
+    public string Second() => nameof(Helper) + nameof(_value);
+    private string Helper() => _value;
+}
+
+public class MethodGroupCohesion
+{
+    public string First() => ((System.Func<string>)Helper)();
+    public string Second() => Helper();
+    private string Helper() => "value";
+}
+
+public class UserNameofCohesion
+{
+    public string First() => @nameof(1);
+    public string Second() => @nameof(2);
+    private string @nameof(int value) => value.ToString();
+}
 """, ct);
                 await scope.LoadAsync(ct);
             }, CancellationToken.None);
@@ -155,6 +209,81 @@ public class GenericHelperCohesion
         Assert.IsTrue(metric.Clusters.Any(cluster =>
             cluster.Methods.Contains("First") && cluster.Methods.Contains("Second")),
             "Constructed calls to the same generic helper must retain their shared-call connection.");
+    }
+
+    [TestMethod]
+    public async Task HandwrittenPartialMethods_AnalyzeImplementationOnce_AndConnectCalls()
+    {
+        var metric = await GetMetricAsync("HandwrittenPartialCohesion");
+
+        Assert.AreEqual(4, metric.MethodCount);
+        Assert.AreEqual(1, metric.Lcom4Score);
+        CollectionAssert.AreEquivalent(new[] { "Read", "Helper", "Other", "Direct" },
+            metric.Clusters.Single().Methods.ToArray());
+        CollectionAssert.AreEqual(new[] { "_value" }, metric.Clusters.Single().SharedFields.ToArray());
+        var shared = await CohesionAnalysisService.FindSharedMembersAsync(
+            Scope.WorkspaceId, SymbolLocator.ByMetadataName("SampleLib.HandwrittenPartialCohesion"), CancellationToken.None);
+        var value = shared.Single(member => member.MemberName == "_value");
+        CollectionAssert.AreEquivalent(new[] { "Read", "Direct" }, value.CallingMethods.ToArray());
+    }
+
+    [TestMethod]
+    public async Task DirectCalls_ConnectPublicAndPrivateCallees_ButNotUnrelatedMethods()
+    {
+        var metric = await GetMetricAsync("DirectCallCohesion");
+
+        Assert.AreEqual(2, metric.Lcom4Score);
+        var callers = metric.Clusters.Single(cluster => cluster.Methods.Contains("First"));
+        CollectionAssert.AreEquivalent(new[] { "First", "Second", "Helper" }, callers.Methods.ToArray());
+        Assert.HasCount(0, callers.SharedFields);
+    }
+
+    [TestMethod]
+    public async Task SharedGenericHelper_ExplicitAndInferredCallsMatchWithoutMergingOverloads()
+    {
+        var shared = await CohesionAnalysisService.FindSharedMembersAsync(
+            Scope.WorkspaceId, SymbolLocator.ByMetadataName("SampleLib.GenericHelperCohesion"), CancellationToken.None);
+
+        var helper = shared.Single(member => member.MemberName == "Helper");
+        CollectionAssert.AreEquivalent(new[] { "First", "Second" }, helper.CallingMethods.ToArray());
+        var overloads = await CohesionAnalysisService.FindSharedMembersAsync(
+            Scope.WorkspaceId, SymbolLocator.ByMetadataName("SampleLib.OverloadedHelperCohesion"), CancellationToken.None);
+        Assert.HasCount(0, overloads);
+    }
+
+    [TestMethod]
+    public async Task NameofOperands_DoNotCreateCohesionOrSharedMemberDependencies()
+    {
+        var metric = await GetMetricAsync("NameofCohesion");
+        Assert.AreEqual(3, metric.Lcom4Score);
+        var shared = await CohesionAnalysisService.FindSharedMembersAsync(
+            Scope.WorkspaceId, SymbolLocator.ByMetadataName("SampleLib.NameofCohesion"), CancellationToken.None);
+        Assert.HasCount(0, shared);
+    }
+
+    [TestMethod]
+    [DataRow("MethodGroupCohesion", "Helper")]
+    [DataRow("UserNameofCohesion", "nameof")]
+    public async Task MethodGroups_KeepRealCohesionAndSharedMemberDependencies(string typeName, string helperName)
+    {
+        var metric = await GetMetricAsync(typeName);
+        Assert.AreEqual(1, metric.Lcom4Score);
+        var shared = await CohesionAnalysisService.FindSharedMembersAsync(
+            Scope.WorkspaceId, SymbolLocator.ByMetadataName($"SampleLib.{typeName}"), CancellationToken.None);
+        CollectionAssert.AreEquivalent(new[] { "First", "Second" },
+            shared.Single(member => member.MemberName == helperName).CallingMethods.ToArray());
+    }
+
+    [TestMethod]
+    public async Task ResultLimit_IsAppliedAfterSeverityRanking()
+    {
+        var metrics = await CohesionAnalysisService.GetCohesionMetricsAsync(
+            Scope.WorkspaceId, Scope.GetPath("SampleLib", "OverloadedCohesion.cs"),
+            projectFilter: null, minMethods: 2, limit: 1,
+            includeInterfaces: false, excludeTestProjects: true, CancellationToken.None);
+
+        Assert.HasCount(1, metrics);
+        Assert.AreEqual("HighestRankedCohesion", metrics[0].TypeName);
     }
 
     private static async Task<CohesionMetricsDto> GetMetricAsync(string typeName)

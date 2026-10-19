@@ -45,11 +45,13 @@ public sealed class ChangeTracker : IChangeTracker, IDisposable
         // pending pre-apply snapshot under the same sequence number we just assigned. Handler
         // exceptions are swallowed — a misbehaving subscriber must not break the apply path.
         var handler = ChangeRecorded;
-        if (handler is not null)
+        if (handler is null) return;
+        var notification = new ChangeRecordedEventArgs(workspaceId, seq, description, affectedFiles, toolName);
+        foreach (Action<ChangeRecordedEventArgs> subscriber in handler.GetInvocationList())
         {
             try
             {
-                handler(new ChangeRecordedEventArgs(workspaceId, seq, description, affectedFiles, toolName));
+                subscriber(notification);
             }
             catch (Exception ex)
             {

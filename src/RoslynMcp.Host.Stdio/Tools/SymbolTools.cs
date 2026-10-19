@@ -42,6 +42,9 @@ public static class SymbolTools
             throw new PublicArgumentException("Limit must be between 1 and 50.", nameof(limit));
         ParameterValidation.ValidatePagination(offset, limit, nameof(offset), nameof(limit));
 
+        if (offset > int.MaxValue - limit)
+            throw new PublicArgumentException("offset + limit must not exceed Int32.MaxValue.", nameof(offset));
+
         return gate.RunReadAsync(workspaceId, async c =>
         {
             // Guard: empty/whitespace queries would otherwise dump the full workspace symbol index

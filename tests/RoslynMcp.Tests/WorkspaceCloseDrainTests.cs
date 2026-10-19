@@ -103,6 +103,7 @@ public sealed class WorkspaceCloseDrainTests
 
         Process? inDirProcess = null;
         Process? outOfDirProcess = null;
+        Exception? primaryFailure = null;
         try
         {
             // A process whose executable lives UNDER workingDirectory: must be killed.
@@ -145,11 +146,18 @@ public sealed class WorkspaceCloseDrainTests
             // Additive contract: a fully handled drain keeps the original { success, workspaceId } shape.
             AssertNoUndrainedProcesses(doc);
         }
+        catch (Exception ex)
+        {
+            primaryFailure = ex;
+            throw;
+        }
         finally
         {
-            KillQuietly(inDirProcess);
-            KillQuietly(outOfDirProcess);
-            TestFixtureFileSystem.DeleteDirectoryIfExists(workingDirectory);
+            await CleanupFailureCollector.RunAfterFailureAsync(
+                "Process fixture cleanup failed.", primaryFailure,
+                () => TerminateOwnedProcessAsync(inDirProcess),
+                () => TerminateOwnedProcessAsync(outOfDirProcess),
+                CleanupFailureCollector.FromAction(() => TestFixtureFileSystem.DeleteDirectoryIfExists(workingDirectory)));
         }
     }
 
@@ -164,6 +172,52 @@ public sealed class WorkspaceCloseDrainTests
     // executable path string-prefix-matches and gets killed) and PASSES once the filter
     // requires a true descendant (workingDirectory + separator).
     // ---------------------------------------------------------------------------
+
+    [TestMethod]
+    public async Task CloseWorkspace_DrainProcessesTrue_PreservesCaseVariantSibling()
+    {
+        if (!OperatingSystem.IsLinux())
+            Assert.Inconclusive("Requires native Linux case-sensitive executable paths.");
+
+        var root = Path.Combine(TestTempRoot.Current, "rmcp-case-drain-" + Guid.NewGuid().ToString("N"));
+        var workspaceDirectory = Path.Combine(root, "ws");
+        Process? descendant = null;
+        Process? sibling = null;
+        Exception? primaryFailure = null;
+        try
+        {
+            descendant = StartLongLivedProcessUnder(Path.Combine(workspaceDirectory, "host"));
+            sibling = StartLongLivedProcessUnder(Path.Combine(root, "WS", "host"));
+            var descendantId = descendant.Id;
+            var siblingId = sibling.Id;
+            var json = await CloseWithProcessSeamAsync(new PassthroughGate(),
+                new FakeWorkspaceManagerForDrain(CreateStatus("case-workspace", Path.Combine(workspaceDirectory, "Sample.slnx"))),
+                new RecordingDotnetCommandRunner(), "case-workspace",
+                name => name == "testhost"
+                    ? new[] { GetByIdOrEmpty(descendantId), GetByIdOrEmpty(siblingId) }
+                        .Where(p => p is not null).Select(p => p!).ToArray()
+                    : []);
+
+            using var document = JsonDocument.Parse(json);
+            Assert.IsTrue(document.RootElement.GetProperty("success").GetBoolean());
+            Assert.IsTrue(descendant.WaitForExit(10_000), "The real descendant must still be drained.");
+            Assert.IsFalse(sibling.HasExited, "A distinct case-variant sibling must survive.");
+            AssertNoUndrainedProcesses(document);
+        }
+        catch (Exception ex)
+        {
+            primaryFailure = ex;
+            throw;
+        }
+        finally
+        {
+            await CleanupFailureCollector.RunAfterFailureAsync(
+                "Process fixture cleanup failed.", primaryFailure,
+                () => TerminateOwnedProcessAsync(descendant),
+                () => TerminateOwnedProcessAsync(sibling),
+                CleanupFailureCollector.FromAction(() => TestFixtureFileSystem.DeleteDirectoryIfExists(root)));
+        }
+    }
 
     [TestMethod]
     public async Task CloseWorkspace_DrainProcessesTrue_DoesNotKillSiblingPrefixWorktree()
@@ -182,6 +236,7 @@ public sealed class WorkspaceCloseDrainTests
 
         Process? inDirProcess = null;
         Process? siblingProcess = null;
+        Exception? primaryFailure = null;
         try
         {
             // True descendant of workingDirectory: must be killed.
@@ -221,12 +276,19 @@ public sealed class WorkspaceCloseDrainTests
                 "(workingDirectory + \"-sibling\") must be left running — it is not a true descendant.");
             AssertNoUndrainedProcesses(doc);
         }
+        catch (Exception ex)
+        {
+            primaryFailure = ex;
+            throw;
+        }
         finally
         {
-            KillQuietly(inDirProcess);
-            KillQuietly(siblingProcess);
-            await CleanupFailureCollector.DeleteDirectoriesAsync(
-                [workingDirectory, siblingDirectory], TestFixtureFileSystem.DeleteDirectoryIfExists);
+            await CleanupFailureCollector.RunAfterFailureAsync(
+                "Process fixture cleanup failed.", primaryFailure,
+                () => TerminateOwnedProcessAsync(inDirProcess),
+                () => TerminateOwnedProcessAsync(siblingProcess),
+                () => CleanupFailureCollector.DeleteDirectoriesAsync(
+                    [workingDirectory, siblingDirectory], TestFixtureFileSystem.DeleteDirectoryIfExists));
         }
     }
 
@@ -313,6 +375,7 @@ public sealed class WorkspaceCloseDrainTests
         var link = Path.Combine(root, "link");
 
         Process? launched = null;
+        Exception? primaryFailure = null;
         try
         {
             WindowsDirectoryJunction.Create(link, workingDirectory);
@@ -335,10 +398,17 @@ public sealed class WorkspaceCloseDrainTests
                 "A testhost launched through a junction into the physical workspace must be killed.");
             AssertNoUndrainedProcesses(doc);
         }
+        catch (Exception ex)
+        {
+            primaryFailure = ex;
+            throw;
+        }
         finally
         {
-            KillQuietly(launched);
-            TestFixtureFileSystem.DeleteDirectoryIfExists(root);
+            await CleanupFailureCollector.RunAfterFailureAsync(
+                "Process fixture cleanup failed.", primaryFailure,
+                () => TerminateOwnedProcessAsync(launched),
+                CleanupFailureCollector.FromAction(() => TestFixtureFileSystem.DeleteDirectoryIfExists(root)));
         }
     }
 
@@ -361,6 +431,7 @@ public sealed class WorkspaceCloseDrainTests
         Directory.CreateDirectory(root);
         WindowsDriveAlias? alias = null;
         Process? launched = null;
+        Exception? primaryFailure = null;
         try
         {
             alias = WindowsDriveAlias.Create(root);
@@ -379,11 +450,22 @@ public sealed class WorkspaceCloseDrainTests
                 launched,
                 "A testhost under a workspace loaded through a drive-letter alias must be killed.");
         }
+        catch (Exception ex)
+        {
+            primaryFailure = ex;
+            throw;
+        }
         finally
         {
-            KillQuietly(launched);
-            alias?.Dispose();
-            TestFixtureFileSystem.DeleteDirectoryIfExists(root);
+            await CleanupFailureCollector.RunAfterFailureAsync(
+                "Process fixture cleanup failed.", primaryFailure,
+                () => TerminateOwnedProcessAsync(launched),
+                CleanupFailureCollector.FromAction(() =>
+                {
+                    if (OperatingSystem.IsWindows())
+                        alias?.Dispose();
+                }),
+                CleanupFailureCollector.FromAction(() => TestFixtureFileSystem.DeleteDirectoryIfExists(root)));
         }
     }
 
@@ -408,6 +490,7 @@ public sealed class WorkspaceCloseDrainTests
 
         var workingDirectory = Path.Combine(Path.GetTempPath(), "rmcp-short-name-drain-" + Guid.NewGuid().ToString("N"));
         Process? launched = null;
+        Exception? primaryFailure = null;
         try
         {
             var executablePath = CopyLauncherUnder(Path.Combine(workingDirectory, "host"));
@@ -431,10 +514,17 @@ public sealed class WorkspaceCloseDrainTests
                 launched,
                 $"A testhost under the workspace must be killed when only the {shortSide} path uses the 8.3 short name.");
         }
+        catch (Exception ex)
+        {
+            primaryFailure = ex;
+            throw;
+        }
         finally
         {
-            KillQuietly(launched);
-            TestFixtureFileSystem.DeleteDirectoryIfExists(workingDirectory);
+            await CleanupFailureCollector.RunAfterFailureAsync(
+                "Process fixture cleanup failed.", primaryFailure,
+                () => TerminateOwnedProcessAsync(launched),
+                CleanupFailureCollector.FromAction(() => TestFixtureFileSystem.DeleteDirectoryIfExists(workingDirectory)));
         }
     }
 
@@ -458,6 +548,7 @@ public sealed class WorkspaceCloseDrainTests
         var loadedPath = Path.Combine(workingDirectory, "Sample.slnx");
 
         Process? inDirProcess = null;
+        Exception? primaryFailure = null;
         try
         {
             inDirProcess = StartLongLivedProcessUnder(Path.Combine(workingDirectory, "host"));
@@ -496,10 +587,17 @@ public sealed class WorkspaceCloseDrainTests
             Assert.AreEqual(expectedUnexpectedReports, reporter.Reports.Count,
                 "An access refusal is expected; only an exception from the path query is an unexpected failure.");
         }
+        catch (Exception ex)
+        {
+            primaryFailure = ex;
+            throw;
+        }
         finally
         {
-            KillQuietly(inDirProcess);
-            TestFixtureFileSystem.DeleteDirectoryIfExists(workingDirectory);
+            await CleanupFailureCollector.RunAfterFailureAsync(
+                "Process fixture cleanup failed.", primaryFailure,
+                () => TerminateOwnedProcessAsync(inDirProcess),
+                CleanupFailureCollector.FromAction(() => TestFixtureFileSystem.DeleteDirectoryIfExists(workingDirectory)));
         }
     }
 
@@ -520,6 +618,7 @@ public sealed class WorkspaceCloseDrainTests
         // after the exit. `enumerated` is the drain's own Process for the same pid.
         Process? parent = null;
         Process? enumerated = null;
+        Exception? primaryFailure = null;
         try
         {
             parent = StartLongLivedProcessUnder(Path.Combine(workingDirectory, "host"));
@@ -550,11 +649,18 @@ public sealed class WorkspaceCloseDrainTests
                 "A candidate that exited before inspection holds no locks and must not be reported.");
             Assert.AreEqual(0, reporter.Reports.Count, "An exited candidate is not a failure.");
         }
+        catch (Exception ex)
+        {
+            primaryFailure = ex;
+            throw;
+        }
         finally
         {
-            enumerated?.Dispose();
-            KillQuietly(parent);
-            TestFixtureFileSystem.DeleteDirectoryIfExists(workingDirectory);
+            await CleanupFailureCollector.RunAfterFailureAsync(
+                "Process fixture cleanup failed.", primaryFailure,
+                CleanupFailureCollector.FromAction(() => enumerated?.Dispose()),
+                () => TerminateOwnedProcessAsync(parent),
+                CleanupFailureCollector.FromAction(() => TestFixtureFileSystem.DeleteDirectoryIfExists(workingDirectory)));
         }
     }
 
@@ -572,6 +678,7 @@ public sealed class WorkspaceCloseDrainTests
         var loadedPath = Path.Combine(workingDirectory, "Sample.slnx");
 
         Process? inDirProcess = null;
+        Exception? primaryFailure = null;
         try
         {
             inDirProcess = StartLongLivedProcessUnder(Path.Combine(workingDirectory, "host"));
@@ -600,10 +707,17 @@ public sealed class WorkspaceCloseDrainTests
             Assert.AreEqual(1, reporter.Reports.Count,
                 "The budget overrun is still reported exactly once.");
         }
+        catch (Exception ex)
+        {
+            primaryFailure = ex;
+            throw;
+        }
         finally
         {
-            KillQuietly(inDirProcess);
-            TestFixtureFileSystem.DeleteDirectoryIfExists(workingDirectory);
+            await CleanupFailureCollector.RunAfterFailureAsync(
+                "Process fixture cleanup failed.", primaryFailure,
+                () => TerminateOwnedProcessAsync(inDirProcess),
+                CleanupFailureCollector.FromAction(() => TestFixtureFileSystem.DeleteDirectoryIfExists(workingDirectory)));
         }
     }
 
@@ -612,10 +726,11 @@ public sealed class WorkspaceCloseDrainTests
     // ---------------------------------------------------------------------------
 
     [TestMethod]
-    public void ProcessExecutablePathResolver_JustStartedProcess_ResolvesItsExecutable()
+    public async Task ProcessExecutablePathResolver_JustStartedProcess_ResolvesItsExecutable()
     {
         var directory = Path.Combine(Path.GetTempPath(), "rmcp-resolver-" + Guid.NewGuid().ToString("N"));
         Process? process = null;
+        Exception? primaryFailure = null;
         try
         {
             var executablePath = CopyLauncherUnder(directory);
@@ -631,18 +746,26 @@ public sealed class WorkspaceCloseDrainTests
                 Path.GetFullPath(resolution.Path!),
                 ignoreCase: OperatingSystem.IsWindows());
         }
+        catch (Exception ex)
+        {
+            primaryFailure = ex;
+            throw;
+        }
         finally
         {
-            KillQuietly(process);
-            TestFixtureFileSystem.DeleteDirectoryIfExists(directory);
+            await CleanupFailureCollector.RunAfterFailureAsync(
+                "Process fixture cleanup failed.", primaryFailure,
+                () => TerminateOwnedProcessAsync(process),
+                CleanupFailureCollector.FromAction(() => TestFixtureFileSystem.DeleteDirectoryIfExists(directory)));
         }
     }
 
     [TestMethod]
-    public void ProcessExecutablePathResolver_ProcessThatExitedWhileAHandleIsHeld_IsExited()
+    public async Task ProcessExecutablePathResolver_ProcessThatExitedWhileAHandleIsHeld_IsExited()
     {
         var directory = Path.Combine(Path.GetTempPath(), "rmcp-resolver-exited-" + Guid.NewGuid().ToString("N"));
         Process? process = null;
+        Exception? primaryFailure = null;
         try
         {
             process = StartLongLived(CopyLauncherUnder(directory));
@@ -654,10 +777,17 @@ public sealed class WorkspaceCloseDrainTests
 
             Assert.AreEqual(ProcessExecutablePathStatus.Exited, resolution.Status, resolution.Reason);
         }
+        catch (Exception ex)
+        {
+            primaryFailure = ex;
+            throw;
+        }
         finally
         {
-            KillQuietly(process);
-            TestFixtureFileSystem.DeleteDirectoryIfExists(directory);
+            await CleanupFailureCollector.RunAfterFailureAsync(
+                "Process fixture cleanup failed.", primaryFailure,
+                () => TerminateOwnedProcessAsync(process),
+                CleanupFailureCollector.FromAction(() => TestFixtureFileSystem.DeleteDirectoryIfExists(directory)));
         }
     }
 
@@ -886,6 +1016,61 @@ public sealed class WorkspaceCloseDrainTests
         Assert.AreEqual(0, commandRunner.CallCount, "The guard must fire before any drain work starts.");
     }
 
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task ProcessCleanup_ReportsFailureAndStillReleasesLaterProcessAndDirectory(bool timeout)
+    {
+        var root = Path.Combine(TestTempRoot.Current, "rmcp-cleanup-failure-" + Guid.NewGuid().ToString("N"));
+        Process? observer = null;
+        Exception? primaryFailure = null;
+        try
+        {
+            observer = StartLongLivedProcessUnder(root);
+            var owned = Process.GetProcessById(observer.Id);
+            var assertion = new AssertFailedException("primary assertion");
+            var refused = new InvalidOperationException("injected termination refusal");
+            var disposed = false;
+
+            var aggregate = await Assert.ThrowsExactlyAsync<AggregateException>(async () =>
+                await CleanupFailureCollector.RunAfterFailureAsync(
+                    "fixture cleanup failed", assertion,
+                    () => TerminateOwnedProcessCoreAsync(
+                        () =>
+                        {
+                            if (!timeout)
+                                throw refused;
+                        },
+                        () => false,
+                        () => disposed = true),
+                    () => TerminateOwnedProcessAsync(owned),
+                    CleanupFailureCollector.FromAction(() => TestFixtureFileSystem.DeleteDirectoryIfExists(root))));
+
+            Assert.IsTrue(disposed, "Disposal must run even when termination fails or times out.");
+            Assert.IsTrue(observer.HasExited, "A failed cleanup must not abandon the next owned child.");
+            Assert.IsFalse(Directory.Exists(root), "Directory cleanup must run after process cleanup errors.");
+            var failures = aggregate.Flatten().InnerExceptions;
+            Assert.HasCount(2, failures);
+            CollectionAssert.Contains(failures.ToArray(), assertion);
+            if (timeout)
+                Assert.IsInstanceOfType<TimeoutException>(failures.Single(failure => failure != assertion));
+            else
+                CollectionAssert.Contains(failures.ToArray(), refused);
+        }
+        catch (Exception ex)
+        {
+            primaryFailure = ex;
+            throw;
+        }
+        finally
+        {
+            await CleanupFailureCollector.RunAfterFailureAsync(
+                "Cleanup regression fixture failed.", primaryFailure,
+                () => TerminateOwnedProcessAsync(observer),
+                CleanupFailureCollector.FromAction(() => TestFixtureFileSystem.DeleteDirectoryIfExists(root)));
+        }
+    }
+
     // ---------------------------------------------------------------------------
     // Helpers
     // ---------------------------------------------------------------------------
@@ -1059,31 +1244,28 @@ public sealed class WorkspaceCloseDrainTests
         }
     }
 
-    private static void KillQuietly(Process? process)
-    {
-        if (process is null)
-        {
-            return;
-        }
+    private static ValueTask TerminateOwnedProcessAsync(Process? process) =>
+        process is null
+            ? ValueTask.CompletedTask
+            : TerminateOwnedProcessCoreAsync(
+                () =>
+                {
+                    if (!process.HasExited)
+                        process.Kill(entireProcessTree: true);
+                },
+                () => process.WaitForExit(5_000),
+                process.Dispose);
 
-        try
-        {
-            if (!process.HasExited)
+    private static ValueTask TerminateOwnedProcessCoreAsync(Action terminate, Func<bool> waitForExit, Action dispose) =>
+        CleanupFailureCollector.RunAsync(
+            "Owned process termination failed.",
+            CleanupFailureCollector.FromAction(() =>
             {
-                process.Kill(entireProcessTree: true);
-                process.WaitForExit(5_000);
-            }
-        }
-        catch
-        {
-            // Best effort cleanup.
-        }
-        finally
-        {
-            process.Dispose();
-        }
-    }
-
+                terminate();
+                if (!waitForExit())
+                    throw new TimeoutException("Owned test process did not exit within the cleanup budget.");
+            }),
+            CleanupFailureCollector.FromAction(dispose));
 
     // ---------------------------------------------------------------------------
     // Fakes

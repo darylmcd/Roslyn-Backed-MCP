@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using System.Reflection;
+using System.Runtime.ExceptionServices;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Services;
 
@@ -72,6 +73,7 @@ internal static class CSharpFeatureProviderLoader
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
+            RethrowCancellation(ex);
             ReportFailure(exceptionReporter, ex);
             var result = new FeatureProviderLoadResult<TProvider>(
                 [],
@@ -137,6 +139,7 @@ internal static class CSharpFeatureProviderLoader
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
+                RethrowCancellation(ex);
                 ReportFailure(exceptionReporter, ex);
                 failures.Add(new FeatureProviderLoadFailure(
                     FeatureProviderLoadFailureKind.ConstructorFailure,
@@ -147,6 +150,14 @@ internal static class CSharpFeatureProviderLoader
         var result = new FeatureProviderLoadResult<TProvider>(providers.ToImmutable(), failures.ToImmutable());
         LogSummary(logger, result);
         return result;
+    }
+
+    private static void RethrowCancellation(Exception exception)
+    {
+        while (exception is TargetInvocationException { InnerException: { } inner })
+            exception = inner;
+        if (exception is OperationCanceledException)
+            ExceptionDispatchInfo.Throw(exception);
     }
 
     private static void ReportFailure(

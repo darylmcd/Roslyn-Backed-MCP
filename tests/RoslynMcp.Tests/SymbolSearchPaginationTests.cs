@@ -38,6 +38,30 @@ public sealed class SymbolSearchPaginationTests : SharedWorkspaceTestBase
     // ── pagination envelope fields ──────────────────────────────────────────
 
     [TestMethod]
+    [DataRow(int.MaxValue, 1)]
+    [DataRow(int.MaxValue - 25, 50)]
+    public async Task SymbolSearch_OverflowingPageEnd_ReturnsPublicArgumentCorrection(int offset, int limit)
+    {
+        var exception = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
+            SymbolTools.SearchSymbols(null, WorkspaceExecutionGate, SymbolSearchService,
+                WorkspaceId, "Animal", offset: offset, limit: limit));
+        Assert.AreEqual("offset", exception.ParamName);
+        using var envelope = JsonDocument.Parse(ToolErrorHandler.ClassifyAndFormat(exception, "symbol_search"));
+        Assert.AreEqual("InvalidArgument", envelope.RootElement.GetProperty("category").GetString());
+        StringAssert.Contains(envelope.RootElement.GetProperty("message").GetString()!, "offset + limit");
+    }
+
+    [TestMethod]
+    public async Task SymbolSearch_RepresentablePageEnd_ReturnsEmptyTerminalPage()
+    {
+        var json = await SymbolTools.SearchSymbols(null, WorkspaceExecutionGate, SymbolSearchService,
+            WorkspaceId, "Animal", offset: int.MaxValue - 50, limit: 50);
+        using var envelope = JsonDocument.Parse(json);
+        Assert.AreEqual(0, envelope.RootElement.GetProperty("count").GetInt32());
+        Assert.IsFalse(envelope.RootElement.GetProperty("hasMore").GetBoolean());
+    }
+
+    [TestMethod]
     public async Task SymbolSearch_ResponseContainsPaginationFields()
     {
         // Any non-empty query into SampleSolution should return the pagination envelope.
