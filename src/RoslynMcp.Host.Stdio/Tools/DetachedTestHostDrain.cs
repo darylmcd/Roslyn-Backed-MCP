@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Host.Stdio.Runtime;
+using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -225,7 +226,7 @@ internal static class DetachedTestHostDrain
             return ProcessExecutablePathResolver.PathQueryFailedReason;
         }
 
-        if (!workingDirectoryPrefixes.Any(prefix => executablePath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
+        if (!workingDirectoryPrefixes.Any(prefix => executablePath.StartsWith(prefix, FileSystemPath.Comparison)))
         {
             return null;
         }

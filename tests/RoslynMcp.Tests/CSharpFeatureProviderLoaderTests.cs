@@ -4,12 +4,84 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Core.Services;
 
 namespace RoslynMcp.Tests;
 
 [TestClass]
 public sealed class CSharpFeatureProviderLoaderTests
 {
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public void CancellingConstructor_PropagatesCancellation(bool throughAssembly)
+    {
+        var logger = new CaptureLogger<CodeFixProviderRegistry>();
+        var reporter = new RecordingReporter();
+        var exception = Assert.ThrowsExactly<OperationCanceledException>(() =>
+        {
+            if (throughAssembly)
+                CSharpFeatureProviderLoader.LoadFromAssemblyFactory<TestProvider>(
+                    () => typeof(CancellingConstructorProvider).Assembly, logger, reporter,
+                    exportAttributeFullName: typeof(CancellationExportAttribute).FullName);
+            else
+                CSharpFeatureProviderLoader.LoadFromTypeSource<TestProvider>(
+                    () => [typeof(CancellingConstructorProvider)], logger, reporter);
+        });
+        Assert.IsTrue(exception.CancellationToken.IsCancellationRequested);
+        Assert.IsTrue(exception.StackTrace?.Contains(nameof(CancellingConstructorProvider), StringComparison.Ordinal) == true);
+        Assert.HasCount(0, logger.Entries);
+        Assert.HasCount(0, reporter.Reports);
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public void AssemblyFactory_WrappedCancellationPreservesException(bool nested)
+    {
+        var cancellation = new OperationCanceledException(new CancellationToken(true));
+        Exception wrapped = new TargetInvocationException(cancellation);
+        if (nested) wrapped = new TargetInvocationException(wrapped);
+        var logger = new CaptureLogger<CodeFixProviderRegistry>();
+        var actual = Assert.ThrowsExactly<OperationCanceledException>(() =>
+            CSharpFeatureProviderLoader.LoadFromAssemblyFactory<TestProvider>(() => throw wrapped, logger));
+        Assert.AreSame(cancellation, actual);
+        Assert.HasCount(0, logger.Entries);
+    }
+
+    [TestMethod]
+    public void OrdinaryConstructorFailure_RemainsReportedWithoutRawLogging()
+    {
+        var reporter = new RecordingReporter();
+        var logger = new CaptureLogger<CodeFixProviderRegistry>();
+        var result = CSharpFeatureProviderLoader.LoadFromTypeSource<TestProvider>(
+            () => [typeof(ThrowingConstructorProvider)], logger, reporter);
+        Assert.AreEqual(FeatureProviderLoadFailureKind.ConstructorFailure, result.Failures.Single().Kind);
+        var report = reporter.Reports.Single();
+        Assert.IsInstanceOfType<TargetInvocationException>(report);
+        Assert.IsTrue(logger.Entries.All(entry => entry.Exception is null &&
+            !entry.Message.Contains("sensitive constructor detail", StringComparison.Ordinal)));
+    }
+
+    private sealed class RecordingReporter : IUnexpectedExceptionReporter
+    {
+        public List<Exception> Reports { get; } = [];
+        public UnexpectedExceptionDetails ReportUnexpected(Exception exception, UnexpectedExceptionCategory category)
+        {
+            Reports.Add(exception);
+            Assert.AreEqual(UnexpectedExceptionCategory.AnalyzerLoad, category);
+            return PublicExceptionDetailPolicy.ProjectUnexpected(exception, correlationId: null);
+        }
+    }
+
+    private sealed class CancellationExportAttribute : Attribute;
+
+    [CancellationExport]
+    private sealed class CancellingConstructorProvider : TestProvider
+    {
+        public CancellingConstructorProvider() => throw new OperationCanceledException(new CancellationToken(true));
+    }
+
     [TestMethod]
     [DataRow(false)]
     [DataRow(true)]

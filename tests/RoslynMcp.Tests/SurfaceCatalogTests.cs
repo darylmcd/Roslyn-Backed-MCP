@@ -321,6 +321,7 @@ public sealed class SurfaceCatalogTests
             diff.Tools.Added.Select(entry => entry.Name).ToArray());
         CollectionAssert.Contains(diff.Resources.Added.Select(entry => entry.Name).ToArray(), "server_catalog_version_diff");
 
+        // validate_recent_git_changes also corrects its tracker fallback summary.
         // The full changed-tool set: get_completions, bulk_replace_type_apply, and
         // replace_invocation_preview changed summary; apply_composite_preview changed summary and
         // gained alias lifecycle metadata; server_info changed outputSchema; the three
@@ -335,6 +336,7 @@ public sealed class SurfaceCatalogTests
                 "bulk_replace_type_apply",
                 "replace_invocation_preview",
                 "change_signature_preview",
+                "validate_recent_git_changes",
                 "apply_composite_preview",
                 "server_info",
                 "get_symbol_outline",
@@ -352,6 +354,7 @@ public sealed class SurfaceCatalogTests
                      "bulk_replace_type_apply",
                      "replace_invocation_preview",
                      "change_signature_preview",
+                "validate_recent_git_changes",
                  })
         {
             var changedSummaryTool = diff.Tools.Changed.Single(entry => entry.Name == summaryToolName);
@@ -389,7 +392,7 @@ public sealed class SurfaceCatalogTests
         Assert.AreEqual(5, diff.Summary.Added);
         Assert.AreEqual(0, diff.Summary.Removed);
         Assert.AreEqual(0, diff.Summary.Promoted);
-        Assert.AreEqual(12, diff.Summary.Changed);
+        Assert.AreEqual(13, diff.Summary.Changed);
     }
 
     [TestMethod]
@@ -411,6 +414,7 @@ public sealed class SurfaceCatalogTests
                 "bulk_replace_type_apply",
                 "replace_invocation_preview",
                 "change_signature_preview",
+                "validate_recent_git_changes",
                 "apply_composite_preview",
                 "server_info",
                 "get_symbol_outline",

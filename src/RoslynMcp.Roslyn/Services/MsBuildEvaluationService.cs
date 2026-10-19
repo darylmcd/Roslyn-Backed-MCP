@@ -208,7 +208,7 @@ public sealed class MsBuildEvaluationService : IMsBuildEvaluationService
             throw new PublicArgumentException(
                 "The 'projectName' parameter is required. Pass the project name or absolute .csproj path, " +
                 "e.g. { \"workspaceId\": \"<id>\", \"projectName\": \"MyApp.Core\", \"propertyName\": \"TargetFramework\" }. " +
-                "Use workspace_status to list loaded projects.",
+                "Use workspace_status with verbose=true to list loaded projects.",
                 nameof(projectName));
         }
 

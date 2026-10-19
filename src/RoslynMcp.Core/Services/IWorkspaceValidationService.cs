@@ -19,7 +19,7 @@ public interface IWorkspaceValidationService
     Task<WorkspaceValidationDto> CompleteValidationTestsAsync(WorkspaceValidationPlan plan, CancellationToken ct);
 
     /// <summary>Compile and collect diagnostics across the whole workspace, then discover related tests for the resolved changed files.</summary>
-    /// <param name="changedFilePaths">Paths used for related-test discovery, not compiler or diagnostic filtering. Null or empty uses the change tracker, reconciled with Git when available.</param>
+    /// <param name="changedFilePaths">Paths used for related-test discovery, not compiler or diagnostic filtering. Null uses the change tracker, reconciled with Git when available. An explicit empty list skips related-test discovery and does not read or reconcile tracker state.</param>
     /// <param name="summary">
     /// (validate-workspace-output-cap-summary-mode) When <c>true</c>, drops the per-diagnostic
     /// <see cref="WorkspaceValidationDto.ErrorDiagnostics"/> list and per-test

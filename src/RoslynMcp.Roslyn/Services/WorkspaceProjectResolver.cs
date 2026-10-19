@@ -28,6 +28,6 @@ internal static class WorkspaceProjectResolver
         if (available.Length == 0) available = "(none)";
         return new PublicInvalidOperationException(
             $"Requested project was not found. Loaded projects: {available}. " +
-            "Use workspace_status to inspect loaded project names, then pass a matching projectName.");
+            "Use workspace_status with verbose=true to inspect loaded project names, then pass a matching projectName.");
     }
 }

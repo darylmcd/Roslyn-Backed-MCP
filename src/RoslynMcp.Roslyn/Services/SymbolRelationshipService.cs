@@ -273,7 +273,7 @@ public sealed class SymbolRelationshipService : ISymbolRelationshipService
         if (projectName is not null && !solution.Projects.Any(p => string.Equals(p.Name, projectName, StringComparison.Ordinal)))
         {
             throw new PublicArgumentException(
-                "projectName matched no loaded projects. Omit projectName or use workspace_status to inspect available project names.",
+                "projectName matched no loaded projects. Omit projectName or use workspace_status with verbose=true to inspect available project names.",
                 nameof(projectName));
         }
 

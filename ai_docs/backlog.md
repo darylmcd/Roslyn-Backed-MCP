@@ -373,6 +373,9 @@
 | `scorecard-script-process-ownership` | Low | — | Own scorecard test subprocess exit and bounded output draining through the shared async runner. [type: test-refactor] [source: output-drain investigation 20261017] | S | items/scorecard-script-process-ownership.md |
 | `edit-undo-cohesion-fixture-efficiency` | Low | — | Own and narrow the 24 edit/undo cohesion cases without removing assertions or changing deadlines. [type: test-refactor] [source: 20261017 test-efficiency audit] | S | items/edit-undo-cohesion-fixture-efficiency.md |
 | `editorconfig-create-undo-test-conditional-skip` | Low | — | Require the editorconfig creation undo case instead of conditionally skipping its assertions. [type: test-refactor] [source: 20261017 test-efficiency audit] | S | items/editorconfig-create-undo-test-conditional-skip.md |
+| `project-list-refusals-missing-verbose-status` | Low | — | Give usable project-list recovery through workspace_status with verbose=true across copied public refusals. [type: bug] [source: correctness15 cold review] | L | items/project-list-refusals-missing-verbose-status.md |
+| `parameter-object-callsite-path-identity` | Low | — | Preserve separate parameter-object caller summaries for case-distinct Linux documents using filesystem-aware identity. [type: bug] [source: correctness15 eligibility review] | S | items/parameter-object-callsite-path-identity.md |
+| `compile-check-file-scope-path-identity` | Low | — | Preserve physical file-filter and owner identity for case-distinct Linux paths in compile_check. [type: bug] [source: correctness15 guidance review] | S | items/compile-check-file-scope-path-identity.md |
 
 ## Defer
 

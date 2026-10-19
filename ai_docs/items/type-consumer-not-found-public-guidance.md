@@ -19,3 +19,5 @@
 - Source-only 2026-10-15 at maina591ebfc: FindTypeConsumersAsync constructs a plain InvalidOperationException when ResolveTypeByNameAsync returns null. Its useful metadata-name/generic-arity correction is discarded by the host's defensive plain-exception classifier.
 - The raw exception interpolates caller typeName; converting its type without rewriting the message would publish caller free text. No wire reproduction or leak claim is made for this filing.
 - Different category/target-resolution mechanism from the selected argument-guard row; existing argument corrections and successful consumer analysis remain in the current batch.
+
+2026-10-15 current-main re-vet at000a1ce0: TypeConsumersService.FindTypeConsumersAsync currently throws KeyNotFoundException for an unresolved type, not the InvalidOperationException described above. Re-derive actual published tool category before implementation; do not blindly change released category to satisfy stale acceptance. This independent row remains open and was excluded from the correctness15 batch.

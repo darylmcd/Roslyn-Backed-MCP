@@ -131,7 +131,7 @@ public sealed class ProjectFilterUnknownNamePatternTests : SharedWorkspaceTestBa
     private static void AssertProjectNameRejection(PublicArgumentException ex)
     {
         Assert.AreEqual("projectName", ex.ParamName);
-        StringAssert.Contains(ex.PublicMessage, "workspace_status");
+        StringAssert.Contains(ex.PublicMessage, "workspace_status with verbose=true");
         Assert.IsFalse(ex.Message.Contains(UnknownProject, StringComparison.Ordinal));
     }
 }

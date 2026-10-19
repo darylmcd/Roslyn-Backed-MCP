@@ -20,6 +20,7 @@ public sealed class ConsumerAnalysisService : IConsumerAnalysisService
     public async Task<ConsumerAnalysisDto?> FindConsumersAsync(
         string workspaceId, SymbolLocator locator, CancellationToken ct, IReadOnlyCollection<string>? projectFilter = null)
     {
+        ct.ThrowIfCancellationRequested();
         var solution = _workspace.GetCurrentSolution(workspaceId);
         // Throw on unresolved symbol so callers see a structured NotFound envelope
         // (matches find_references contract).
@@ -43,24 +44,9 @@ public sealed class ConsumerAnalysisService : IConsumerAnalysisService
             symbol is INamedTypeSymbol { IsStatic: true } host &&
             host.GetMembers().OfType<IMethodSymbol>().Any(m => m.IsExtensionMethod))
         {
-            var seen = new HashSet<(string?, TextSpan)>();
-            foreach (var member in host.GetMembers()
-                .OfType<IMethodSymbol>()
-                .Where(m => m.DeclaredAccessibility == Accessibility.Public))
-            {
-                if (ct.IsCancellationRequested) break;
-                var memberRefs = await SymbolFinder
-                    .FindReferencesAsync(member, solution, ct)
-                    .ConfigureAwait(false);
-                foreach (var loc in memberRefs.SelectMany(r => r.Locations))
-                {
-                    var key = (loc.Document?.FilePath, loc.Location.SourceSpan);
-                    if (seen.Add(key))
-                    {
-                        refLocations.Add(loc);
-                    }
-                }
-            }
+            await AddExtensionMemberReferencesAsync(host.GetMembers().OfType<IMethodSymbol>()
+                .Where(m => m.DeclaredAccessibility == Accessibility.Public), solution, refLocations, ct)
+                .ConfigureAwait(false);
         }
 
         // find-references-project-filter: scope consumer classification to the supplied projects.
@@ -79,29 +65,7 @@ public sealed class ConsumerAnalysisService : IConsumerAnalysisService
         var materialized = await ReferenceLocationMaterializer.MaterializeAsync(refLocations, ct).ConfigureAwait(false);
 
         // Group references by containing type and classify dependency kind
-        var consumerMap = new Dictionary<INamedTypeSymbol, HashSet<string>>(SymbolEqualityComparer.Default);
-
-        foreach (var item in materialized)
-        {
-            if (ct.IsCancellationRequested) break;
-            if (item.SyntaxRoot is null || item.SemanticModel is null) continue;
-
-            var node = item.SyntaxRoot.FindNode(item.Source.Location.SourceSpan);
-            var containingType = RoslynSymbolTraversal.FindContainingType(node, item.SemanticModel, ct);
-            if (containingType is null) continue;
-
-            // Don't include self-references
-            if (SymbolEqualityComparer.Default.Equals(containingType, symbol)) continue;
-
-            if (!consumerMap.TryGetValue(containingType, out var kinds))
-            {
-                kinds = new HashSet<string>(StringComparer.Ordinal);
-                consumerMap[containingType] = kinds;
-            }
-
-            var kind = ClassifyDependencyKind(node);
-            kinds.Add(kind);
-        }
+        var consumerMap = ClassifyConsumers(materialized, symbol, ct);
 
         var consumers = consumerMap.Select(kvp =>
         {
@@ -126,10 +90,67 @@ public sealed class ConsumerAnalysisService : IConsumerAnalysisService
         var summary = $"Type '{symbol.Name}' has {consumers.Count} consumer(s) across " +
                       $"{consumers.Select(c => c.ProjectName).Distinct().Count()} project(s).";
 
+        ct.ThrowIfCancellationRequested();
         return new ConsumerAnalysisDto(
             SymbolMapper.ToDto(symbol, solution),
             consumers,
             summary);
+    }
+
+    internal static async Task AddExtensionMemberReferencesAsync(
+        IEnumerable<IMethodSymbol> members, Solution solution, List<ReferenceLocation> refLocations, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        var seen = new HashSet<(string?, TextSpan)>();
+        foreach (var member in members)
+        {
+            ct.ThrowIfCancellationRequested();
+            var memberRefs = await SymbolFinder
+                .FindReferencesAsync(member, solution, ct)
+                .ConfigureAwait(false);
+            foreach (var loc in memberRefs.SelectMany(r => r.Locations))
+            {
+                ct.ThrowIfCancellationRequested();
+                var key = (loc.Document?.FilePath, loc.Location.SourceSpan);
+                if (seen.Add(key))
+                {
+                    refLocations.Add(loc);
+                }
+            }
+        }
+        ct.ThrowIfCancellationRequested();
+    }
+
+    internal static Dictionary<INamedTypeSymbol, HashSet<string>> ClassifyConsumers(
+        IEnumerable<MaterializedReference> materialized, ISymbol symbol, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        var consumerMap = new Dictionary<INamedTypeSymbol, HashSet<string>>(SymbolEqualityComparer.Default);
+
+        foreach (var item in materialized)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (item.SyntaxRoot is null || item.SemanticModel is null) continue;
+
+            var node = item.SyntaxRoot.FindNode(item.Source.Location.SourceSpan);
+            var containingType = RoslynSymbolTraversal.FindContainingType(node, item.SemanticModel, ct);
+            if (containingType is null) continue;
+
+            // Don't include self-references
+            if (SymbolEqualityComparer.Default.Equals(containingType, symbol)) continue;
+
+            if (!consumerMap.TryGetValue(containingType, out var kinds))
+            {
+                kinds = new HashSet<string>(StringComparer.Ordinal);
+                consumerMap[containingType] = kinds;
+            }
+
+            var kind = ClassifyDependencyKind(node);
+            kinds.Add(kind);
+        }
+
+        ct.ThrowIfCancellationRequested();
+        return consumerMap;
     }
 
     private static string ClassifyDependencyKind(SyntaxNode refNode)

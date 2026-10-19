@@ -23,6 +23,26 @@ public sealed class ChangeTrackerTests : IsolatedWorkspaceTestBase
         new SuppressionService(EditorConfigService, EditService, WorkspaceManager, CompileCheckService);
 
     [TestMethod]
+    public void RecordChange_IsolatesEachSubscriberFailureInRegistrationOrder()
+    {
+        var logger = new CaptureLogger<ChangeTracker>();
+        using var tracker = new ChangeTracker(new Helpers.FailClosedWorkspaceManagerStub(), logger);
+        var calls = new List<int>();
+        tracker.ChangeRecorded += _ => { calls.Add(1); throw new InvalidOperationException("first"); };
+        tracker.ChangeRecorded += args =>
+        {
+            calls.Add(2);
+            Assert.AreEqual(args.SequenceNumber, tracker.GetChanges("ws").Single().SequenceNumber);
+        };
+        tracker.ChangeRecorded += _ => { calls.Add(3); throw new OperationCanceledException(); };
+        tracker.ChangeRecorded += _ => calls.Add(4);
+        tracker.RecordChange("ws", "recorded", ["file.cs"], "test");
+        CollectionAssert.AreEqual(new[] { 1, 2, 3, 4 }, calls);
+        Assert.HasCount(1, tracker.GetChanges("ws"));
+        Assert.HasCount(2, logger.Entries);
+    }
+
+    [TestMethod]
     public async Task RenameApply_RecordsRenameToolName()
     {
         await using var workspace = await CreateIsolatedWorkspaceAsync();
