@@ -25,6 +25,50 @@ public sealed class WorkspaceValidationVerdictTests : IsolatedWorkspaceTestBase
     [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
+    public async Task ExplicitEmptyScope_DoesNotReadNonemptyTracker(bool gitScope)
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync();
+        if (gitScope)
+        {
+            await GitFixtureRunner.RequireAvailableAsync();
+            await GitFixtureRunner.InitializeRepositoryAsync(workspace.RootPath);
+            await GitFixtureRunner.StageAndCommitAllAsync(workspace.RootPath);
+        }
+        using var tracker = new ChangeTracker(WorkspaceManager);
+        tracker.RecordChange(workspace.WorkspaceId, "old edit",
+            [workspace.GetPath("SampleLib", "AnimalService.cs")], "test");
+        var counted = new CountingTracker(tracker);
+        var service = CreateService(Compile(), tracker: counted);
+
+        var result = gitScope
+            ? await service.ValidateRecentGitChangesAsync(workspace.WorkspaceId, runTests: false, CancellationToken.None)
+            : await service.ValidateAsync(workspace.WorkspaceId, [], runTests: false, CancellationToken.None);
+
+        Assert.HasCount(0, result.ChangedFilePaths);
+        Assert.AreEqual(0, counted.ReadCount, "An explicit empty scope must bypass the tracker and its Git reconciliation.");
+    }
+
+    private sealed class CountingTracker(IChangeTracker inner) : IChangeTracker
+    {
+        public int ReadCount { get; private set; }
+        public event Action<ChangeRecordedEventArgs>? ChangeRecorded
+        {
+            add => inner.ChangeRecorded += value;
+            remove => inner.ChangeRecorded -= value;
+        }
+        public void RecordChange(string workspaceId, string description, IReadOnlyList<string> files, string toolName) =>
+            inner.RecordChange(workspaceId, description, files, toolName);
+        public IReadOnlyList<WorkspaceChangeDto> GetChanges(string workspaceId)
+        {
+            ReadCount++;
+            return inner.GetChanges(workspaceId);
+        }
+        public void Clear(string workspaceId) => inner.Clear(workspaceId);
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
     public async Task CompilationCompleteness_PreservesFailuresAndScope(bool gitScope)
     {
         await GitFixtureRunner.RequireAvailableAsync();

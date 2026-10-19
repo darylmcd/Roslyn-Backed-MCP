@@ -222,14 +222,25 @@ internal class RestoreStalenessDetector
             return false;
         }
 
+        Dictionary<string, PackageExpectation> expectedPackages;
         try
         {
-            var expectedPackages = CollectExpectedPackages(projectFilePath);
-            if (expectedPackages.Count == 0)
-            {
-                return false;
-            }
+            expectedPackages = CollectExpectedPackages(projectFilePath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException)
+        {
+            logger.LogDebug("restore-drift metadata could not be read ({FailureType}); package expectations are unknown.",
+                ex.GetType().Name);
+            return false;
+        }
 
+        if (expectedPackages.Count == 0)
+        {
+            return false;
+        }
+
+        try
+        {
             var assets = LoadAssetsPackageVersions(projectFilePath);
             if (assets is null)
             {
@@ -262,7 +273,11 @@ internal class RestoreStalenessDetector
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException)
         {
-            logger.LogDebug(ex, "restore-drift detection skipped for '{ProjectFilePath}'", projectFilePath);
+            // Known package expectations cannot be verified against unusable assets. Preserve
+            // the restore-required signal without retaining file content, paths, or exception text.
+            logger.LogDebug("restore-drift assets could not be read ({FailureType}); restore is required.",
+                ex.GetType().Name);
+            return true;
         }
 
         return false;
@@ -402,7 +417,9 @@ internal class RestoreStalenessDetector
 
             using var stream = File.OpenRead(assetsPath);
             using var document = JsonDocument.Parse(stream);
-            if (document.RootElement.TryGetProperty("project", out var project) &&
+            if (document.RootElement.ValueKind == JsonValueKind.Object &&
+                document.RootElement.TryGetProperty("project", out var project) &&
+                project.ValueKind == JsonValueKind.Object &&
                 project.TryGetProperty("restore", out var restore) &&
                 restore.ValueKind == JsonValueKind.Object &&
                 restore.TryGetProperty("packagesPath", out var packagesPath) &&

@@ -1,5 +1,3 @@
-using System.Collections.Concurrent;
-
 namespace RoslynMcp.Core.Services;
 
 /// <summary>
@@ -13,7 +11,12 @@ namespace RoslynMcp.Core.Services;
 /// </typeparam>
 public abstract class BoundedStore<TEntry> where TEntry : IBoundedStoreEntry
 {
-    private readonly ConcurrentDictionary<string, TEntry> _entries = new();
+    private readonly object _gate = new();
+    private readonly Dictionary<string, TEntry> _entries = new();
+    // Monotonic insertion order: CreatedAt can tie on a coarse clock, and Dictionary enumeration
+    // order is not insertion order once slots are reused, so eviction needs an explicit tie-break.
+    private readonly Dictionary<string, long> _sequence = new();
+    private long _nextSequence;
     private readonly TimeSpan _ttl;
     private readonly int _maxEntries;
 
@@ -25,44 +28,58 @@ public abstract class BoundedStore<TEntry> where TEntry : IBoundedStoreEntry
 
     protected string StoreEntry(TEntry entry)
     {
-        CleanExpired();
-        EvictIfOverLimit();
-        var token = Guid.NewGuid().ToString("N");
-        _entries[token] = entry;
-        return token;
+        lock (_gate)
+        {
+            CleanExpired();
+            MakeRoomForEntry();
+            var token = Guid.NewGuid().ToString("N");
+            _entries[token] = entry;
+            _sequence[token] = _nextSequence++;
+            return token;
+        }
     }
 
     protected TEntry? RetrieveEntry(string token)
     {
-        if (!_entries.TryGetValue(token, out var entry))
-            return default;
-
-        if (DateTime.UtcNow - entry.CreatedAt > _ttl)
+        lock (_gate)
         {
-            _entries.TryRemove(token, out _);
-            return default;
-        }
+            if (!_entries.TryGetValue(token, out var entry))
+                return default;
 
-        return entry;
+            if (DateTime.UtcNow - entry.CreatedAt > _ttl)
+            {
+                RemoveEntry(token);
+                return default;
+            }
+
+            return entry;
+        }
     }
 
     public void Invalidate(string token)
     {
-        _entries.TryRemove(token, out _);
+        lock (_gate)
+        {
+            RemoveEntry(token);
+        }
     }
 
     public void InvalidateAll(string? workspaceId = null)
     {
-        if (workspaceId is null)
+        lock (_gate)
         {
-            _entries.Clear();
-            return;
-        }
+            if (workspaceId is null)
+            {
+                _entries.Clear();
+                _sequence.Clear();
+                return;
+            }
 
-        foreach (var kvp in _entries)
-        {
-            if (string.Equals(kvp.Value.WorkspaceId, workspaceId, StringComparison.Ordinal))
-                _entries.TryRemove(kvp.Key, out _);
+            foreach (var kvp in _entries.ToArray())
+            {
+                if (string.Equals(kvp.Value.WorkspaceId, workspaceId, StringComparison.Ordinal))
+                    RemoveEntry(kvp.Key);
+            }
         }
     }
 
@@ -72,52 +89,66 @@ public abstract class BoundedStore<TEntry> where TEntry : IBoundedStoreEntry
     /// (e.g. <c>PreviewStore.InvalidateOnVersionBump</c>, which compares the post-bump
     /// workspace version against a per-entry pinned-range ceiling).
     /// </summary>
+    /// <remarks>The predicate runs while the store lock is held; it must not call back into the store.</remarks>
     protected void InvalidateWhere(Func<TEntry, bool> shouldDrop)
     {
-        ArgumentNullException.ThrowIfNull(shouldDrop);
-        foreach (var kvp in _entries)
+        lock (_gate)
         {
-            if (shouldDrop(kvp.Value))
-                _entries.TryRemove(kvp.Key, out _);
+            ArgumentNullException.ThrowIfNull(shouldDrop);
+            foreach (var kvp in _entries.ToArray())
+            {
+                if (shouldDrop(kvp.Value))
+                    RemoveEntry(kvp.Key);
+            }
         }
     }
 
     public string? PeekWorkspaceId(string token)
     {
-        if (!_entries.TryGetValue(token, out var entry))
-            return null;
-
-        if (DateTime.UtcNow - entry.CreatedAt > _ttl)
+        lock (_gate)
         {
-            _entries.TryRemove(token, out _);
-            return null;
-        }
+            if (!_entries.TryGetValue(token, out var entry))
+                return null;
 
-        return entry.WorkspaceId;
+            if (DateTime.UtcNow - entry.CreatedAt > _ttl)
+            {
+                RemoveEntry(token);
+                return null;
+            }
+
+            return entry.WorkspaceId;
+        }
     }
 
     private void CleanExpired()
     {
         var now = DateTime.UtcNow;
-        foreach (var kvp in _entries)
+        foreach (var kvp in _entries.ToArray())
         {
             if (now - kvp.Value.CreatedAt > _ttl)
-                _entries.TryRemove(kvp.Key, out _);
+                RemoveEntry(kvp.Key);
         }
     }
 
-    private void EvictIfOverLimit()
+    private void RemoveEntry(string token)
     {
-        if (_entries.Count <= _maxEntries) return;
+        _entries.Remove(token);
+        _sequence.Remove(token);
+    }
+
+    private void MakeRoomForEntry()
+    {
+        if (_entries.Count < _maxEntries) return;
 
         var toEvict = _entries
             .OrderBy(kvp => kvp.Value.CreatedAt)
+            .ThenBy(kvp => _sequence[kvp.Key])
             .Take(_entries.Count - _maxEntries + 1)
             .Select(kvp => kvp.Key)
             .ToList();
 
         foreach (var key in toEvict)
-            _entries.TryRemove(key, out _);
+            RemoveEntry(key);
     }
 }
 

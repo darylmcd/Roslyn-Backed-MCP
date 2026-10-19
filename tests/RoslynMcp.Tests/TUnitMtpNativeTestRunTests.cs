@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
@@ -193,6 +194,8 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
 
             StringAssert.Contains(ex.Message, "Microsoft.Testing.Platform");
             StringAssert.Contains(ex.Message, "projectName");
+            var envelope = ToolErrorHandler.ClassifyAndFormat(ex, "test_run");
+            Assert.IsFalse(envelope.Contains(workspaceId, StringComparison.Ordinal), envelope);
         }
         finally
         {

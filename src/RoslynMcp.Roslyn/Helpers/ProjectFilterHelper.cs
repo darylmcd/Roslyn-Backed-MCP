@@ -31,7 +31,7 @@ internal static class ProjectFilterHelper
         }
 
         throw new PublicArgumentException(
-            "No loaded project matches parameter 'projectName'. Omit projectName or use workspace_status to list project names, then retry.",
+            "No loaded project matches parameter 'projectName'. Omit projectName or use workspace_status with verbose=true to list project names, then retry.",
             "projectName");
     }
 }

@@ -37,7 +37,7 @@ public sealed class ToolErrorHandlerParameterValidationTests
         using var doc = JsonDocument.Parse(payload);
         Assert.AreEqual("InvalidArgument", doc.RootElement.GetProperty("category").GetString());
         Assert.AreEqual("ArgumentException", doc.RootElement.GetProperty("exceptionType").GetString());
-        Assert.AreEqual("No loaded project matches parameter 'projectName'. Use workspace_status to list project names, then retry.",
+        Assert.AreEqual("No loaded project matches parameter 'projectName'. Use workspace_status with verbose=true to list project names, then retry.",
             doc.RootElement.GetProperty("message").GetString());
         Assert.IsFalse(payload.Contains("PRIVATE", StringComparison.Ordinal));
     }

@@ -12,7 +12,7 @@ namespace RoslynMcp.Tests;
 /// <summary>
 /// post-edit-validate-workspace-scoped-to-touched-files: covers the new
 /// <c>validate_recent_git_changes</c> companion that auto-derives <c>changedFilePaths</c>
-/// from <c>git status --porcelain</c> and falls back to full-workspace scope when git is
+/// from <c>git status --porcelain</c> and falls back to session change-tracker scope when git is
 /// unavailable or the solution is outside a git repo.
 /// </summary>
 // donotparallelize-audit-wave-33: retained.
