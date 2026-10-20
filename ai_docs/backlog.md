@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-20T19:23:58Z
+**updated_at:** 2026-10-20T21:36:27Z
 
 ## Agent contract
 
@@ -368,6 +368,7 @@
 | `tool-error-handler-lineRange-sentinels-retired` | Low | — | **Retire ToolErrorHandler message-sniffing sentinels for lineRange and startLine must be <=** — convert SourceTextRequestProjection and the other throwers to public types, then delete the sniffing. [type: refactor] [source: refusal publication review 20261020] | M | items/tool-error-handler-lineRange-sentinels-retired.md |
 | `composite-apply-orchestrator-extract-atomic-file-writer` | Low | — | **Move AtomicFileWriter out of CompositeApplyOrchestrator.cs into its own file** — a 250-line P/Invoke type shares the orchestrator file. [type: refactor] [source: path-identity sweep 20261020] | S | items/composite-apply-orchestrator-extract-atomic-file-writer.md |
 | `test-fake-undo-duplicate-doubles` | Low | — | **Promote the duplicate private FakeUndo IUndoService test double to a shared helper** — two copies exist. [type: test-refactor] [source: path-identity sweep 20261020] | S | items/test-fake-undo-duplicate-doubles.md |
+| `change-signature-linked-document-callsite-entries` | Low | — | **Aggregate change-signature callsite entries by physical file** — linked documents yield duplicate-FilePath CallsiteUpdateDto entries; reuse CallsiteUpdateProjection and decide the totalCallsites rule. [type: bug] [source: path-identity review 20261020] | S | items/change-signature-linked-document-callsite-entries.md |
 
 ## Defer
 
