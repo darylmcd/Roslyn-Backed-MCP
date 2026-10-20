@@ -7,8 +7,7 @@
 - `src/RoslynMcp.Roslyn/Services/SingleTestScaffolder.cs:95,205,327,481,511,1203`
 - `src/RoslynMcp.Roslyn/Services/BatchTestScaffolder.cs:95,314,548`
 - `src/RoslynMcp.Roslyn/Services/SymbolRefactorService.cs:80,442,598,1091,1101,1460`
-- `src/RoslynMcp.Roslyn/Services/BuildService.cs:187,192,269`
-- `src/RoslynMcp.Roslyn/Services/CompileCheckService.cs:312,368`
+- `src/RoslynMcp.Roslyn/Services/BuildService.cs:187,192,269` (CompileCheckService is tracked by compile-check-file-scope-path-identity)
 - `src/RoslynMcp.Roslyn/Helpers/AnalyzerReferenceIsolation.cs:50,86,343,413,447`
 - `src/RoslynMcp.Roslyn/Services/UnresolvedAnalyzerReferenceStripper.cs:112` (passes an IgnoreCase set into CsprojSemanticEquality, which uses FileSystemPath.Comparer at :239)
 

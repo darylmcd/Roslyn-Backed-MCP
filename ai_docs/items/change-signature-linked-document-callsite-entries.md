@@ -1,6 +1,6 @@
 # change-signature-linked-document-callsite-entries — Aggregate callsite entries by physical file
 
-**row:** `change-signature-linked-document-callsite-entries` · **pri:** `Low` · **size:** `S`
+**row:** `change-signature-linked-document-callsite-entries` · **pri:** `Low` · **size:** `M`
 
 ## Anchors
 
