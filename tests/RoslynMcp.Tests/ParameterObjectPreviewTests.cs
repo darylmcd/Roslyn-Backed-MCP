@@ -2318,6 +2318,56 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
 
 
     [TestMethod]
+    public async Task PositionalGrouping_CaseDistinctCallerFiles_KeepPlatformPathIdentity()
+    {
+        var (workspaceId, fixturePath, libDir) = await SetupSingleProjectFixtureAsync(
+            """
+            namespace SampleLib;
+
+            public class POCaseFixture
+            {
+                public static int Sum(int a, int b) => a + b;
+            }
+            """,
+            "POCaseFixture.cs",
+            beforeLoad: async dir =>
+            {
+                await File.WriteAllTextAsync(Path.Combine(dir, "POCaseCaller.cs"), """
+                    namespace SampleLib;
+                    public class POCaseCallerUpper { public int Run() => POCaseFixture.Sum(1, 2); }
+                    """);
+                if (!OperatingSystem.IsWindows())
+                {
+                    await File.WriteAllTextAsync(Path.Combine(dir, "pocasecaller.cs"), """
+                        namespace SampleLib;
+                        public class POCaseCallerLower { public int Run() => POCaseFixture.Sum(3, 4); }
+                        """);
+                }
+            });
+        try
+        {
+            var preview = await Services.ParameterObjectService.PreviewParameterObjectAsync(
+                workspaceId,
+                SymbolLocator.BySource(fixturePath, line: 5, column: 23), // 'Sum'
+                new ParameterObjectPreviewRequest(["a", "b"], "CaseArgs"),
+                CancellationToken.None);
+
+            var expectedFiles = OperatingSystem.IsWindows() ? 1 : 2;
+            Assert.HasCount(expectedFiles, preview.CallsiteUpdates!);
+            Assert.IsTrue(preview.CallsiteUpdates!.All(update => update.CallsiteCount == 1));
+            Assert.AreEqual(
+                expectedFiles,
+                preview.Changes.Count(change => Path.GetFileName(change.FilePath)
+                    .StartsWith("pocasecaller", StringComparison.OrdinalIgnoreCase)),
+                "Per-file callsite entries must match the per-file mutations.");
+        }
+        finally
+        {
+            Services.WorkspaceManager.Close(workspaceId);
+        }
+    }
+
+    [TestMethod]
     public async Task CancelledParameterObjectPreview_PropagatesCancellationWithoutStoringPreview()
     {
         var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
@@ -2468,7 +2518,8 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
     private async Task<(string WorkspaceId, string FixturePath, string FixtureDir)> SetupSingleProjectFixtureAsync(
         string content,
         string fileName,
-        bool allowUnsafe = false)
+        bool allowUnsafe = false,
+        Func<string, Task>? beforeLoad = null)
     {
         var workspace = CreateSingleProjectWorkspace();
         var libDir = workspace.GetPath("SampleLib");
@@ -2484,6 +2535,10 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
         }
         var fixturePath = Path.Combine(libDir, fileName);
         await File.WriteAllTextAsync(fixturePath, content);
+        if (beforeLoad is not null)
+        {
+            await beforeLoad(libDir);
+        }
         var workspaceId = await workspace.LoadAsync(CancellationToken.None);
         return (workspaceId, fixturePath, libDir);
     }

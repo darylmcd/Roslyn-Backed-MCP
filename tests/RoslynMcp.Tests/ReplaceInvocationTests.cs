@@ -115,6 +115,49 @@ public sealed class ReplaceInvocationTests : SharedWorkspaceTestBase
 
 
     [TestMethod]
+    public async Task ReplaceInvocation_CaseDistinctCallerFiles_KeepPlatformPathIdentity()
+    {
+        var path = CreateSampleSolutionCopy();
+        var libDir = Path.Combine(Path.GetDirectoryName(path)!, "SampleLib");
+        await File.WriteAllTextAsync(Path.Combine(libDir, "CaseTarget.cs"), """
+            namespace SampleLib;
+            public static class CaseTarget
+            {
+                public static int Old(int value) => value;
+                public static int New(int value) => value;
+            }
+            """);
+        await File.WriteAllTextAsync(Path.Combine(libDir, "CaseCaller.cs"), """
+            namespace SampleLib;
+            public static class CaseCallerUpper { public static int Run() => CaseTarget.Old(1); }
+            """);
+        if (!OperatingSystem.IsWindows())
+        {
+            await File.WriteAllTextAsync(Path.Combine(libDir, "casecaller.cs"), """
+                namespace SampleLib;
+                public static class CaseCallerLower { public static int Run() => CaseTarget.Old(2); }
+                """);
+        }
+
+        var loaded = await WorkspaceManager.LoadAsync(path, CancellationToken.None);
+        try
+        {
+            var preview = await BulkRefactoringService.PreviewReplaceInvocationAsync(
+                loaded.WorkspaceId, "SampleLib.CaseTarget.Old(int)", "SampleLib.CaseTarget.New(int)", null, CancellationToken.None);
+
+            var expectedFiles = OperatingSystem.IsWindows() ? 1 : 2;
+            Assert.HasCount(expectedFiles, preview.CallsiteUpdates!);
+            Assert.IsTrue(preview.CallsiteUpdates!.All(update => update.CallsiteCount == 1));
+            Assert.AreEqual(
+                expectedFiles,
+                preview.Changes.Count(change => Path.GetFileName(change.FilePath)
+                    .StartsWith("casecaller", StringComparison.OrdinalIgnoreCase)),
+                "Per-file callsite entries must match the per-file mutations.");
+        }
+        finally { WorkspaceManager.Close(loaded.WorkspaceId); }
+    }
+
+    [TestMethod]
     [DataRow("optional")]
     [DataRow("mixed")]
     public async Task ReplaceInvocation_NewNestedReachability_PreservesArgumentBindings(string shape)

@@ -1,3 +1,6 @@
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Text;
+using RoslynMcp.Tests.Helpers;
 using ModelContextProtocol.Protocol;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
@@ -57,6 +60,40 @@ public sealed class WorkspaceDriftServiceTests : IsolatedWorkspaceTestBase
             structured.GetRawText(),
             ((TextContentBlock)result.Content![0]).Text,
             "Structured and legacy text channels must retain the same projected payload.");
+    }
+
+    [TestMethod]
+    public async Task CheckDriftAsync_CaseDistinctDocuments_UsePlatformPathIdentityAndCollapseLinks()
+    {
+        const string workspaceId = "drift-case";
+        var root = Path.Combine(Path.GetTempPath(), "drift-" + Guid.NewGuid().ToString("N"));
+        var upperPath = Path.Combine(root, "Feature.cs");
+        var lowerPath = Path.Combine(root, "feature.cs");
+        using var workspace = new AdhocWorkspace();
+        var firstProject = ProjectId.CreateNewId();
+        var secondProject = ProjectId.CreateNewId();
+        var solution = workspace.CurrentSolution
+            .AddProject(ProjectInfo.Create(firstProject, VersionStamp.Create(), "First", "First", LanguageNames.CSharp))
+            .AddProject(ProjectInfo.Create(secondProject, VersionStamp.Create(), "Second", "Second", LanguageNames.CSharp))
+            .AddDocument(DocumentId.CreateNewId(firstProject), "Feature.cs", SourceText.From("class A { }"), filePath: upperPath)
+            .AddDocument(DocumentId.CreateNewId(secondProject), "Feature.cs", SourceText.From("class A { }"), filePath: upperPath)
+            .AddDocument(DocumentId.CreateNewId(secondProject), "feature.cs", SourceText.From("class B { }"), filePath: lowerPath);
+        var status = new WorkspaceStatusDto(
+            workspaceId, null, 1, "snapshot", DateTimeOffset.UtcNow, 2, 3, [], true, false, []);
+        var manager = new FailClosedWorkspaceManagerStub
+        {
+            GetStatusAsyncHandler = _ => status,
+            GetCurrentSolutionHandler = _ => solution,
+        };
+        var service = new Roslyn.Services.WorkspaceDriftService(manager);
+
+        // None of the paths exist on disk, so every document is reported as drifted.
+        var result = await service.CheckDriftAsync(workspaceId, CancellationToken.None);
+
+        var expected = OperatingSystem.IsWindows()
+            ? new[] { upperPath }
+            : new[] { upperPath, lowerPath }.OrderBy(p => p, StringComparer.Ordinal).ToArray();
+        CollectionAssert.AreEqual(expected, result.FilesDrifted.ToArray());
     }
 
     /// <summary>

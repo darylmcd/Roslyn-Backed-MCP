@@ -796,6 +796,124 @@ public sealed class CompositeApplyOrchestratorTests
         Assert.AreEqual("prior-applied", await File.ReadAllTextAsync(priorPath));
     }
 
+    [TestMethod]
+    public async Task ApplyComposite_CaseDistinctPaths_UsePlatformPathIdentity()
+    {
+        const string workspaceId = "ws-1";
+        var workspace = new RecordingWorkspaceManager();
+        using var changeTracker = new ChangeTracker(workspace);
+        using var undoService = new UndoService(
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<UndoService>.Instance,
+            workspace,
+            changeTracker);
+        var upperPath = Path.Combine(_tempDir, "Feature.cs");
+        var lowerPath = Path.Combine(_tempDir, "feature.cs");
+        await File.WriteAllTextAsync(upperPath, "upper-original");
+        if (!OperatingSystem.IsWindows())
+        {
+            await File.WriteAllTextAsync(lowerPath, "lower-original");
+        }
+
+        var store = new CompositePreviewStore();
+        var token = store.Store(
+            workspaceId,
+            1,
+            "composite",
+            [
+                new CompositeFileMutation(upperPath, "upper-applied", DeleteFile: false),
+                new CompositeFileMutation(lowerPath, "lower-applied", DeleteFile: false),
+            ]);
+        var orchestrator = new CompositeApplyOrchestrator(
+            workspace, store, changeTracker, undoService: undoService);
+
+        var result = await orchestrator.ApplyCompositeAsync(token, CancellationToken.None);
+
+        Assert.IsTrue(result.Success, result.Error);
+        var expectedFiles = OperatingSystem.IsWindows() ? 1 : 2;
+        Assert.HasCount(expectedFiles, result.AppliedFiles);
+        Assert.HasCount(expectedFiles, changeTracker.GetChanges(workspaceId)[^1].AffectedFiles);
+
+        Assert.IsTrue(await undoService.RevertAsync(workspaceId, CancellationToken.None));
+        Assert.AreEqual("upper-original", await File.ReadAllTextAsync(upperPath));
+        Assert.AreEqual(
+            OperatingSystem.IsWindows() ? "upper-original" : "lower-original",
+            await File.ReadAllTextAsync(lowerPath),
+            "Linux keeps an independent snapshot per case-distinct file; Windows addresses one file.");
+    }
+
+    [TestMethod]
+    public async Task ApplyComposite_PartialFailure_ReportsCaseDistinctAppliedFilesByPlatformIdentity()
+    {
+        var upperPath = Path.Combine(_tempDir, "Feature.cs");
+        var lowerPath = Path.Combine(_tempDir, "feature.cs");
+        var blocker = Path.Combine(_tempDir, "blocker-case-distinct");
+        await File.WriteAllTextAsync(blocker, "not a directory");
+        var store = new CompositePreviewStore();
+        var token = store.Store(
+            "ws-1",
+            1,
+            "composite",
+            [
+                new CompositeFileMutation(upperPath, "upper", DeleteFile: false),
+                new CompositeFileMutation(lowerPath, "lower", DeleteFile: false),
+                new CompositeFileMutation(Path.Combine(blocker, "child.cs"), "never", DeleteFile: false),
+            ]);
+        var orchestrator = new CompositeApplyOrchestrator(new RecordingWorkspaceManager(), store);
+
+        var result = await orchestrator.ApplyCompositeAsync(token, CancellationToken.None);
+
+        Assert.IsFalse(result.Success);
+        Assert.HasCount(OperatingSystem.IsWindows() ? 1 : 2, result.AppliedFiles);
+    }
+
+    [TestMethod]
+    public async Task RevertBySequence_CaseDistinctFiles_UsePlatformPathIdentity()
+    {
+        const string workspaceId = "ws-1";
+        var workspace = new RecordingWorkspaceManager();
+        using var changeTracker = new ChangeTracker(workspace);
+        using var undoService = new UndoService(
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<UndoService>.Instance,
+            workspace,
+            changeTracker);
+        var upperPath = Path.Combine(_tempDir, "Feature.cs");
+        var lowerPath = Path.Combine(_tempDir, "feature.cs");
+        await File.WriteAllTextAsync(upperPath, "original");
+        undoService.CaptureBeforeApply(
+            workspaceId, "apply A", preApplySolution: null,
+            [FileSnapshotDto.FromExistingBytes(upperPath, await File.ReadAllBytesAsync(upperPath))]);
+        await File.WriteAllTextAsync(upperPath, "applied-a");
+        changeTracker.RecordChange(workspaceId, "apply A", [upperPath], "apply_text_edit");
+        if (!OperatingSystem.IsWindows())
+        {
+            await File.WriteAllTextAsync(lowerPath, "lower-original");
+        }
+
+        undoService.CaptureBeforeApply(
+            workspaceId, "apply B", preApplySolution: null,
+            [FileSnapshotDto.FromExistingBytes(lowerPath, await File.ReadAllBytesAsync(lowerPath))]);
+        await File.WriteAllTextAsync(lowerPath, "applied-b");
+        changeTracker.RecordChange(workspaceId, "apply B", [lowerPath], "apply_text_edit");
+        var changes = changeTracker.GetChanges(workspaceId);
+
+        var revert = await undoService.RevertBySequenceAsync(
+            workspaceId, changes[0].SequenceNumber, CancellationToken.None);
+
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.IsFalse(revert.Reverted);
+            Assert.AreEqual("dependency-blocked", revert.Reason);
+            CollectionAssert.AreEqual(new[] { changes[1].SequenceNumber }, revert.BlockingSequences!.ToArray());
+        }
+        else
+        {
+            Assert.IsTrue(revert.Reverted, revert.Reason);
+            Assert.IsNull(revert.Reason);
+            Assert.AreEqual("original", await File.ReadAllTextAsync(upperPath));
+            Assert.AreEqual("applied-b", await File.ReadAllTextAsync(lowerPath));
+        }
+    }
+
     private sealed class RecordingLogger<T> : ILogger<T>
     {
         public List<(LogLevel Level, string Message, Exception? Exception)> Entries { get; } = [];
