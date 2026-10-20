@@ -18,6 +18,8 @@ Refusals use `PublicArgumentException` with fixed text naming the parameter and 
 | Key containing `=`, `:`, whitespace, `[`/`]`, leading `#`/`;`, `/` or other characters the provider does not accept | A different or inert key written | Same refusal, parameter `key` |
 | Value with inline `#` or `;` comment text | Written, then truncated by the provider | Same refusal, parameter `value` |
 | `diagnosticId` with whitespace, control characters or separators (`set_diagnostic_severity`, `add_pragma_suppression`, `verify_pragma_suppresses`, `pragma_scope_widen`) | Injected editorconfig or `#pragma` lines | Refusal, parameter `diagnosticId` |
+| `add_pragma_suppression` `diagnosticId` holding a comma-separated list (`CA1000,CA1001`, `CA1000, CA1001`) | Wrote a multi-id `#pragma`, but verify, widen and the idempotency guard never handled lists | Refused, parameter `diagnosticId`; one diagnostic id per call |
+| Leading or trailing line break on `key`, `value` or `diagnosticId` | Silently trimmed | Refused on the raw input: a surrounding break is an injected line, not whitespace |
 
 ## Compatibility and migration
 

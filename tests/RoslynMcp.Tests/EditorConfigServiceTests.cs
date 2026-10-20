@@ -154,6 +154,26 @@ public sealed class EditorConfigServiceTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
+    [DataRow("my_key\n", "v", "key")]
+    [DataRow("\nmy_key", "v", "key")]
+    [DataRow("my_key", "v\n", "value")]
+    [DataRow("my_key", "\r\nv", "value")]
+    public async Task SetOptionAsync_LeadingOrTrailingLineBreak_RefusesInsteadOfTrimming(string key, string value, string parameter)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var path = workspace.GetPath("SampleLib", "Dog.cs");
+        await workspace.LoadAsync(CancellationToken.None);
+        var filesBefore = SnapshotFiles(workspace.RootPath);
+
+        var error = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
+            EditorConfigService.SetOptionAsync(workspace.WorkspaceId, path, key, value, "set_editorconfig_option", CancellationToken.None));
+
+        Assert.AreEqual(parameter, error.ParamName);
+        var filesAfter = SnapshotFiles(workspace.RootPath);
+        CollectionAssert.AreEquivalent(filesBefore.Keys.ToArray(), filesAfter.Keys.ToArray());
+    }
+
+    [TestMethod]
     [DataRow("my_key", "")]
     [DataRow("my_key", "unset")]
     [DataRow("indent_style", "TAB")]

@@ -414,7 +414,8 @@ public sealed class SuppressionService : ISuppressionService, IPinnedSuppression
         }
 
         var trimmed = diagnosticId.Trim();
-        if (trimmed.Any(c => char.IsWhiteSpace(c) || char.IsControl(c)) ||
+        if (diagnosticId.Any(c => char.IsControl(c) || char.GetUnicodeCategory(c) is System.Globalization.UnicodeCategory.LineSeparator or System.Globalization.UnicodeCategory.ParagraphSeparator) ||
+            trimmed.Any(c => char.IsWhiteSpace(c) || c == ',') ||
             !EditorConfigAssignmentValidator.IsValidKey($"dotnet_diagnostic.{trimmed}.severity"))
         {
             throw new PublicArgumentException(

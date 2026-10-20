@@ -26,16 +26,21 @@ internal static class EditorConfigAssignmentValidator
         "Value must parse as exactly one editorconfig option value on a single line; line breaks " +
         "and inline '#' or ';' comments are not accepted. Use an empty value or 'unset' to clear an option.";
 
-    /// <summary>Throws <see cref="PublicArgumentException"/> unless the (trimmed) pair is one valid assignment.</summary>
+    /// <summary>
+    /// Throws <see cref="PublicArgumentException"/> unless the pair is one valid assignment.
+    /// Line breaks are refused on the RAW input (a leading or trailing break is an injected line,
+    /// not whitespace to trim); surrounding spaces are then trimmed as the writer does.
+    /// </summary>
     public static void Validate(string key, string value)
     {
-        if (!IsValidKey(key))
+        if (!IsSingleLine(key) || !IsValidKey(key.Trim()))
         {
             throw new PublicArgumentException(KeyRefusal, nameof(key));
         }
 
-        if (!IsSingleLine(value) || Parse(ProbeKey, value) is not { } valueProbe ||
-            !string.Equals(valueProbe.Value, value, StringComparison.OrdinalIgnoreCase))
+        var trimmedValue = value.Trim();
+        if (!IsSingleLine(value) || Parse(ProbeKey, trimmedValue) is not { } valueProbe ||
+            !string.Equals(valueProbe.Value, trimmedValue, StringComparison.OrdinalIgnoreCase))
         {
             throw new PublicArgumentException(ValueRefusal, nameof(value));
         }

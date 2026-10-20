@@ -195,6 +195,90 @@ public sealed class SuppressionServiceTests
     }
 
     [TestMethod]
+    [DataRow("add", "CS0168\nclass X{}")]
+    [DataRow("add", "CS0168\r")]
+    [DataRow("add", "\nCS0168")]
+    [DataRow("add", "CA1000,CA1001")]
+    [DataRow("add", "CA1000, CA1001")]
+    [DataRow("verify", "CS0168\nclass X{}")]
+    [DataRow("verify", "CS0168\n")]
+    [DataRow("verify", "CA1000,CA1001")]
+    [DataRow("verify", "CA1000, CA1001")]
+    [DataRow("widen", "CS0168\nclass X{}")]
+    [DataRow("widen", "CS0168\n")]
+    [DataRow("widen", "CA1000,CA1001")]
+    [DataRow("widen", "CA1000, CA1001")]
+    [DataRow("set", "CS0168\n")]
+    [DataRow("set", "CA1000,CA1001")]
+    public async Task PragmaAndSeverityTools_NonSingleDiagnosticId_RefuseBeforeDispatch(string operation, string diagnosticId)
+    {
+        var writes = 0;
+        var editor = new StubEditorConfig
+        {
+            OnSetOption = (_, _, key, value, _, _) =>
+            {
+                writes++;
+                return Task.FromResult(new EditorConfigWriteResultDto("", key, value, false));
+            }
+        };
+        var edits = new StubEditService
+        {
+            OnApply = (_, path, _, _, _, _) =>
+            {
+                writes++;
+                return Task.FromResult(new TextEditResultDto(true, path, 1, []));
+            }
+        };
+        var sut = new SuppressionService(editor, edits);
+        Task Invoke() => operation switch
+        {
+            "add" => sut.AddPragmaWarningDisableAsync("ws", "/tmp/PRIVATE.cs", 1, diagnosticId, CancellationToken.None),
+            "verify" => sut.VerifyPragmaSuppressesAsync("ws", "/tmp/PRIVATE.cs", 1, diagnosticId, CancellationToken.None),
+            "widen" => sut.WidenPragmaScopeAsync("ws", "/tmp/PRIVATE.cs", 1, diagnosticId, CancellationToken.None),
+            "set" => sut.SetDiagnosticSeverityAsync("ws", diagnosticId, "warning", "/tmp/PRIVATE.cs", CancellationToken.None),
+            _ => throw new AssertFailedException(operation),
+        };
+        var error = await Assert.ThrowsExactlyAsync<PublicArgumentException>(Invoke);
+        Assert.AreEqual("diagnosticId", error.ParamName);
+        StringAssert.Contains(error.PublicMessage, "single identifier");
+        Assert.AreEqual(0, writes);
+    }
+
+    [TestMethod]
+    [DataRow("CA1000")]
+    [DataRow("CS8618")]
+    [DataRow("IDE0005")]
+    [DataRow("RMCP001")]
+    [DataRow("SA1600")]
+    [DataRow("168")]
+    public async Task DiagnosticIdTools_ValidIds_AreAcceptedUnchanged(string id)
+    {
+        string? key = null;
+        TextEditDto? edit = null;
+        var editor = new StubEditorConfig
+        {
+            OnSetOption = (_, _, k, v, _, _) =>
+            {
+                key = k;
+                return Task.FromResult(new EditorConfigWriteResultDto("", k, v, false));
+            }
+        };
+        var edits = new StubEditService
+        {
+            OnApply = (_, path, e, _, _, _) =>
+            {
+                edit = e.Single();
+                return Task.FromResult(new TextEditResultDto(true, path, 1, []));
+            }
+        };
+        var sut = new SuppressionService(editor, edits);
+        await sut.SetDiagnosticSeverityAsync("ws", id, "warning", "/src/Program.cs", CancellationToken.None);
+        await sut.AddPragmaWarningDisableAsync("ws", "/src/Program.cs", 3, id, CancellationToken.None);
+        Assert.AreEqual($"dotnet_diagnostic.{id}.severity", key);
+        StringAssert.StartsWith(edit!.NewText, $"#pragma warning disable {id}");
+    }
+
+    [TestMethod]
     public async Task SetDiagnosticSeverityAsync_Delegates_ToEditorConfig_WithNormalizedKey()
     {
         string? capturedKey = null;

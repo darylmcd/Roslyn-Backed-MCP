@@ -353,7 +353,7 @@ public sealed class EditorConfigService : IEditorConfigService
         }
 
         // Refuse before any file or undo work unless the pair is exactly one provider-valid assignment.
-        EditorConfigAssignmentValidator.Validate(key.Trim(), value.Trim());
+        EditorConfigAssignmentValidator.Validate(key, value);
 
         var document = SymbolResolver.FindDocument(solution, sourceFilePath)
             ?? throw new FileNotFoundException($"Document not found in workspace: {sourceFilePath}");
