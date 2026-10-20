@@ -1,6 +1,7 @@
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Contracts;
+using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -87,7 +88,7 @@ public sealed class WorkspaceDriftService : IWorkspaceDriftService
         // Dedupe (the same file can appear in multiple projects via linked documents) and
         // sort for deterministic output.
         var orderedUnique = drifted
-            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Distinct(FileSystemPath.Comparer)
             .OrderBy(p => p, StringComparer.Ordinal)
             .ToArray();
 
