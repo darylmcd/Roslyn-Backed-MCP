@@ -146,7 +146,8 @@ public sealed class ReplaceInvocationTests : SharedWorkspaceTestBase
                 loaded.WorkspaceId, "SampleLib.CaseTarget.Old(int)", "SampleLib.CaseTarget.New(int)", null, CancellationToken.None);
 
             var expectedFiles = OperatingSystem.IsWindows() ? 1 : 2;
-            Assert.HasCount(expectedFiles, preview.CallsiteUpdates!);
+            var diagnostics = string.Join(" | ", WorkspaceManager.GetCurrentSolution(loaded.WorkspaceId).Projects.SelectMany(p => p.Documents).Select(d => d.FilePath).Where(f => f is not null && f.Contains("case", StringComparison.OrdinalIgnoreCase))) + " || updates: " + string.Join(", ", preview.CallsiteUpdates!.Select(u => $"{u.FilePath}={u.CallsiteCount}")) + " || changes: " + string.Join(", ", preview.Changes.Select(c => c.FilePath));
+            Assert.HasCount(expectedFiles, preview.CallsiteUpdates!, diagnostics);
             Assert.IsTrue(preview.CallsiteUpdates!.All(update => update.CallsiteCount == 1));
             Assert.AreEqual(
                 expectedFiles,
