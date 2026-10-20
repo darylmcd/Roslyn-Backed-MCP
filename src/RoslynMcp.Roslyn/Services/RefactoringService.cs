@@ -571,10 +571,10 @@ public sealed class RefactoringService : IRefactoringService
         int endLine,
         int endColumn)
     {
-        if (startLine < 1) throw new ArgumentException($"startLine must be >= 1 (got {startLine}).", nameof(startLine));
-        if (endLine < 1) throw new ArgumentException($"endLine must be >= 1 (got {endLine}).", nameof(endLine));
-        if (startColumn < 1) throw new ArgumentException($"startColumn must be >= 1 (got {startColumn}).", nameof(startColumn));
-        if (endColumn < 1) throw new ArgumentException($"endColumn must be >= 1 (got {endColumn}).", nameof(endColumn));
+        if (startLine < 1) throw new PublicArgumentException($"Parameter 'startLine' must be >= 1 (got {startLine}).", nameof(startLine));
+        if (endLine < 1) throw new PublicArgumentException($"Parameter 'endLine' must be >= 1 (got {endLine}).", nameof(endLine));
+        if (startColumn < 1) throw new PublicArgumentException($"Parameter 'startColumn' must be >= 1 (got {startColumn}).", nameof(startColumn));
+        if (endColumn < 1) throw new PublicArgumentException($"Parameter 'endColumn' must be >= 1 (got {endColumn}).", nameof(endColumn));
     }
 
     private static void ValidateFormatLineBounds(
@@ -583,9 +583,9 @@ public sealed class RefactoringService : IRefactoringService
         int endLine)
     {
         if (startLine > text.Lines.Count)
-            throw new ArgumentException($"startLine ({startLine}) is past the end of the file ({text.Lines.Count} lines).", nameof(startLine));
+            throw new PublicArgumentException($"Parameter 'startLine' ({startLine}) is past the end of the file ({text.Lines.Count} lines).", nameof(startLine));
         if (endLine > text.Lines.Count)
-            throw new ArgumentException($"endLine ({endLine}) is past the end of the file ({text.Lines.Count} lines).", nameof(endLine));
+            throw new PublicArgumentException($"Parameter 'endLine' ({endLine}) is past the end of the file ({text.Lines.Count} lines).", nameof(endLine));
     }
 
     private static void ValidateFormatRangeOrdering(
@@ -595,9 +595,9 @@ public sealed class RefactoringService : IRefactoringService
         int endColumn)
     {
         if (endLine < startLine)
-            throw new ArgumentException($"endLine ({endLine}) must be >= startLine ({startLine}).", nameof(endLine));
+            throw new PublicArgumentException($"Parameter 'endLine' ({endLine}) must be >= startLine ({startLine}).", nameof(endLine));
         if (startLine == endLine && startColumn > endColumn)
-            throw new ArgumentException($"startColumn ({startColumn}) must be <= endColumn ({endColumn}) when both are on the same line.", nameof(startColumn));
+            throw new PublicArgumentException($"Parameter 'startColumn' ({startColumn}) must be <= endColumn ({endColumn}) when both are on the same line.", nameof(startColumn));
     }
 
     private static async Task<Microsoft.CodeAnalysis.Text.SourceText> FormatRangeTextAsync(
@@ -1203,8 +1203,9 @@ public sealed class RefactoringService : IRefactoringService
             {
                 if (change.Span.Start < selection.End && change.Span.End > selection.Start)
                 {
-                    throw new InvalidOperationException(
-                        "Format-range preview could not map a formatter change across the requested range boundary.");
+                    throw new PublicInvalidOperationException(
+                        "format_range_preview could not isolate a formatter change that crosses the requested range boundary. " +
+                        "Widen startLine/endLine to include the whole statement, or use format_document_preview.");
                 }
                 continue;
             }
