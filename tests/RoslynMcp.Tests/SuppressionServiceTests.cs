@@ -114,6 +114,30 @@ public sealed class SuppressionServiceTests
     }
 
     [TestMethod]
+    [DataRow("CS0168\nindent_size = 2")]
+    [DataRow("CS0168\r[*]")]
+    [DataRow("CS0168 = x")]
+    public async Task SetDiagnosticSeverityAsync_NonIdentifierDiagnosticId_RefusesBeforeDispatch(string diagnosticId)
+    {
+        var dispatches = 0;
+        var editor = new StubEditorConfig
+        {
+            OnSetOption = (_, _, key, value, _, _) =>
+            {
+                dispatches++;
+                return Task.FromResult(new EditorConfigWriteResultDto("", key, value, false));
+            }
+        };
+        var sut = new SuppressionService(editor, new StubEditService());
+        var error = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
+            sut.SetDiagnosticSeverityAsync("ws", diagnosticId, "warning", "/tmp/a.cs", CancellationToken.None));
+        Assert.AreEqual("diagnosticId", error.ParamName);
+        StringAssert.Contains(error.Message, "Diagnostic id must be a single identifier");
+        Assert.IsFalse(error.Message.Contains("indent_size", StringComparison.Ordinal));
+        Assert.AreEqual(0, dispatches);
+    }
+
+    [TestMethod]
     [DataRow("error")]
     [DataRow("warning")]
     [DataRow("suggestion")]

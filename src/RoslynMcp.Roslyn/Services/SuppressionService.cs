@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Contracts;
+using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -61,10 +62,7 @@ public sealed class SuppressionService : ISuppressionService, IPinnedSuppression
     public Task<EditorConfigWriteResultDto> SetDiagnosticSeverityAsync(
         string workspaceId, string diagnosticId, string severity, string sourceFilePath, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(diagnosticId))
-        {
-            throw new PublicArgumentException("Diagnostic id is required.", nameof(diagnosticId));
-        }
+        var normalizedDiagnosticId = RequireDiagnosticId(diagnosticId);
 
         var normalizedSeverity = severity?.Trim();
         if (string.IsNullOrWhiteSpace(normalizedSeverity) ||
@@ -78,7 +76,7 @@ public sealed class SuppressionService : ISuppressionService, IPinnedSuppression
                 "Severity must be error, warning, suggestion, silent, or none.", nameof(severity));
         }
 
-        var key = $"dotnet_diagnostic.{diagnosticId.Trim()}.severity";
+        var key = $"dotnet_diagnostic.{normalizedDiagnosticId}.severity";
         return _editorConfig.SetOptionAsync(workspaceId, sourceFilePath, key, normalizedSeverity, "set_diagnostic_severity", ct);
     }
 
@@ -115,12 +113,7 @@ public sealed class SuppressionService : ISuppressionService, IPinnedSuppression
             throw new PublicArgumentOutOfRangeException("Line must be 1-based and positive.", nameof(line));
         }
 
-        if (string.IsNullOrWhiteSpace(diagnosticId))
-        {
-            throw new PublicArgumentException("Diagnostic id is required.", nameof(diagnosticId));
-        }
-
-        var normalizedId = diagnosticId.Trim();
+        var normalizedId = RequireDiagnosticId(diagnosticId);
 
         // Idempotency guard: if an active '#pragma warning disable {id}' already suppresses
         // this line, appending another identical pragma would accumulate duplicates on retry
@@ -405,10 +398,31 @@ public sealed class SuppressionService : ISuppressionService, IPinnedSuppression
         {
             throw new PublicArgumentOutOfRangeException("Line must be 1-based and positive.", nameof(line));
         }
+        RequireDiagnosticId(diagnosticId);
+    }
+
+    /// <summary>
+    /// Returns the trimmed id after proving it is a single token: it is spliced into a
+    /// <c>#pragma</c> source line and into an editorconfig key, so whitespace, line breaks
+    /// and separators would otherwise inject extra lines or change the key.
+    /// </summary>
+    private static string RequireDiagnosticId(string diagnosticId)
+    {
         if (string.IsNullOrWhiteSpace(diagnosticId))
         {
             throw new PublicArgumentException("Diagnostic id is required.", nameof(diagnosticId));
         }
+
+        var trimmed = diagnosticId.Trim();
+        if (trimmed.Any(c => char.IsWhiteSpace(c) || char.IsControl(c)) ||
+            !EditorConfigAssignmentValidator.IsValidKey($"dotnet_diagnostic.{trimmed}.severity"))
+        {
+            throw new PublicArgumentException(
+                "Diagnostic id must be a single identifier without whitespace, line breaks or separators.",
+                nameof(diagnosticId));
+        }
+
+        return trimmed;
     }
 
     private static Task<string> ReadSourceTextAsync(string filePath, CancellationToken ct) =>

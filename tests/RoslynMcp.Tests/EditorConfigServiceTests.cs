@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Services;
 using RoslynMcp.Tests.Helpers;
@@ -76,6 +77,107 @@ public sealed class EditorConfigServiceTests : IsolatedWorkspaceTestBase
                 Assert.IsFalse(WorkspaceManager.GetStatus(workspace.WorkspaceId).IsStale);
             }
         }
+    }
+
+    [TestMethod]
+    [DataRow("a\n[*.vb]\nx", "v", "key")]
+    [DataRow("a\r\nb", "v", "key")]
+    [DataRow("a\u2028b", "v", "key")]
+    [DataRow("a\u0085b", "v", "key")]
+    [DataRow("a=b", "v", "key")]
+    [DataRow("a:b", "v", "key")]
+    [DataRow("a b", "v", "key")]
+    [DataRow("[*.cs]", "v", "key")]
+    [DataRow("#x", "v", "key")]
+    [DataRow("key/slash", "v", "key")]
+    [DataRow("key\u200b", "v", "key")]
+    [DataRow("my_key", "warning\nindent_size = 2", "value")]
+    [DataRow("my_key", "v\r[*]", "value")]
+    [DataRow("my_key", "v\u0085x=1", "value")]
+    [DataRow("my_key", "v\u2028x=1", "value")]
+    [DataRow("my_key", "#hash", "value")]
+    [DataRow("my_key", "v ; trailing", "value")]
+    public async Task SetOptionAsync_NonAssignmentGrammar_RefusesWithoutMutatingState(string key, string value, string parameter)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var path = workspace.GetPath("SampleLib", "Dog.cs");
+        await workspace.LoadAsync(CancellationToken.None);
+        var filesBefore = SnapshotFiles(workspace.RootPath);
+        var undo = UndoService.GetLastOperation(workspace.WorkspaceId);
+        var changes = ChangeTracker.GetChanges(workspace.WorkspaceId).Count;
+        var version = WorkspaceManager.GetCurrentVersion(workspace.WorkspaceId);
+
+        var payload = await ToolExecutionTestHarness.RunAsync("set_editorconfig_option", async () =>
+        {
+            var ex = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
+                EditorConfigService.SetOptionAsync(workspace.WorkspaceId, path, key, value, "set_editorconfig_option", CancellationToken.None));
+            Assert.AreEqual(parameter, ex.ParamName);
+            throw ex;
+        });
+        using var json = JsonDocument.Parse(payload);
+        Assert.AreEqual("InvalidArgument", json.RootElement.GetProperty("category").GetString(), payload);
+        Assert.AreEqual("ArgumentException", json.RootElement.GetProperty("exceptionType").GetString(), payload);
+        StringAssert.Contains(json.RootElement.GetProperty("message").GetString()!, "single line", StringComparison.Ordinal);
+        Assert.IsFalse(payload.Contains("indent_size", StringComparison.Ordinal), payload);
+        Assert.IsFalse(payload.Contains("slash", StringComparison.Ordinal), payload);
+        var filesAfter = SnapshotFiles(workspace.RootPath);
+        CollectionAssert.AreEquivalent(filesBefore.Keys.ToArray(), filesAfter.Keys.ToArray());
+        foreach (var file in filesBefore.Keys)
+            CollectionAssert.AreEqual(filesBefore[file], filesAfter[file], file);
+        Assert.AreSame(undo, UndoService.GetLastOperation(workspace.WorkspaceId));
+        Assert.AreEqual(changes, ChangeTracker.GetChanges(workspace.WorkspaceId).Count);
+        Assert.AreEqual(version, WorkspaceManager.GetCurrentVersion(workspace.WorkspaceId));
+    }
+
+    private static Dictionary<string, byte[]> SnapshotFiles(string root) =>
+        Directory.GetFiles(root, "*", SearchOption.AllDirectories)
+            .ToDictionary(path => Path.GetRelativePath(root, path), File.ReadAllBytes);
+
+    [TestMethod]
+    [DataRow("a\nb")]
+    [DataRow("a=b")]
+    public async Task SetOptionAsync_NonAssignmentKey_LeavesExistingConfigBytesUnchanged(string key)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var path = workspace.GetPath("SampleLib", "Dog.cs");
+        var config = Path.Combine(workspace.RootPath, ".editorconfig");
+        var original = new UTF8Encoding(true).GetPreamble().Concat(Encoding.UTF8.GetBytes("[*.cs]\r\nindent_size = 4\r\n")).ToArray();
+        await File.WriteAllBytesAsync(config, original);
+        await workspace.LoadAsync(CancellationToken.None);
+        var undo = UndoService.GetLastOperation(workspace.WorkspaceId);
+
+        await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
+            EditorConfigService.SetOptionAsync(workspace.WorkspaceId, path, key, "v", "set_editorconfig_option", CancellationToken.None));
+
+        CollectionAssert.AreEqual(original, await File.ReadAllBytesAsync(config));
+        Assert.AreSame(undo, UndoService.GetLastOperation(workspace.WorkspaceId));
+    }
+
+    [TestMethod]
+    [DataRow("my_key", "")]
+    [DataRow("my_key", "unset")]
+    [DataRow("indent_style", "TAB")]
+    [DataRow("dotnet_diagnostic.CA1000.severity", "bogus")]
+    [DataRow("build_property.Foo", "bar")]
+    [DataRow("my_key", "a = b")]
+    [DataRow("ключ", "v")]
+    public async Task SetOptionAsync_ValidArbitraryAssignment_WritesExactlyOneLineAndReverts(string key, string value)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var path = workspace.GetPath("SampleLib", "Dog.cs");
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var filesBefore = SnapshotFiles(workspace.RootPath);
+
+        var written = await EditorConfigService.SetOptionAsync(workspace.WorkspaceId, path, key, value, "set_editorconfig_option", CancellationToken.None);
+
+        var lines = await File.ReadAllLinesAsync(written.EditorConfigPath);
+        Assert.AreEqual(1, lines.Count(l => l == $"{key} = {value}"));
+        Assert.IsTrue(await UndoService.RevertAsync(workspace.WorkspaceId, CancellationToken.None));
+        var filesAfter = SnapshotFiles(workspace.RootPath);
+        CollectionAssert.AreEquivalent(filesBefore.Keys.ToArray(), filesAfter.Keys.ToArray());
+        foreach (var file in filesBefore.Keys)
+            CollectionAssert.AreEqual(filesBefore[file], filesAfter[file], file);
     }
 
     [TestMethod]
