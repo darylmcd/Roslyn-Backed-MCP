@@ -352,6 +352,9 @@ public sealed class EditorConfigService : IEditorConfigService
             throw new PublicArgumentException("Key is required. Provide a non-blank editorconfig option name.", nameof(key));
         }
 
+        // Refuse before any file or undo work unless the pair is exactly one provider-valid assignment.
+        EditorConfigAssignmentValidator.Validate(key, value);
+
         var document = SymbolResolver.FindDocument(solution, sourceFilePath)
             ?? throw new FileNotFoundException($"Document not found in workspace: {sourceFilePath}");
         var normalizedSource = PhysicalPathResolver.Resolve(document.FilePath
