@@ -191,7 +191,7 @@ public sealed class UndoService : IUndoService, IDisposable
         // apply also touched, reverting the target would silently roll back part of those
         // later applies. Block the revert and surface the offending sequence numbers so the
         // caller can revert them first if desired.
-        var targetFiles = new HashSet<string>(target.AffectedFiles, StringComparer.OrdinalIgnoreCase);
+        var targetFiles = new HashSet<string>(target.AffectedFiles, FileSystemPath.Comparer);
         var blocking = new List<int>();
         foreach (var later in laterApplies)
         {
