@@ -53,11 +53,81 @@ public sealed class CaseDistinctCallsitePreviewTests
     {
         var updates = preview.CallsiteUpdates;
         Assert.IsNotNull(updates);
+        if (OperatingSystem.IsWindows())
+        {
+            // One physical file on Windows: the two documents aggregate into a single entry.
+            Assert.HasCount(1, updates);
+            Assert.AreEqual(2, updates[0].CallsiteCount);
+            return;
+        }
+
         Assert.HasCount(2, updates);
         CollectionAssert.AreEquivalent(
             new[] { upperPath, lowerPath },
             updates.Select(update => update.FilePath).ToArray());
         Assert.IsTrue(updates.All(update => update.CallsiteCount == 1));
+    }
+
+    [TestMethod]
+    public async Task ReplaceInvocation_LinkedDocument_AggregatesOneEntryPerPhysicalFile()
+    {
+        var (solution, callerPath) = BuildLinkedSolution(
+            "public static class Target { public static int Old(int value) => value; public static int New(int value) => value; }",
+            "Target.Old(1)");
+        var service = new BulkRefactoringService(CreateWorkspace(solution), new PreviewStore(), new PassThroughCompilationCache());
+
+        var preview = await service.PreviewReplaceInvocationAsync(
+            WorkspaceId, "Target.Old(int)", "Target.New(int)", null, CancellationToken.None);
+
+        AssertSingleLinkedEntry(preview, callerPath);
+    }
+
+    [TestMethod]
+    public async Task ParameterObject_LinkedDocument_AggregatesOneEntryPerPhysicalFile()
+    {
+        var (solution, callerPath) = BuildLinkedSolution(
+            "public static class Target { public static int Sum(int a, int b) => a + b; }",
+            "Target.Sum(1, 2)");
+        var service = new ParameterObjectService(CreateWorkspace(solution), new PreviewStore());
+
+        var preview = await service.PreviewParameterObjectAsync(
+            WorkspaceId,
+            SymbolLocator.ByMetadataName("Target.Sum"),
+            new ParameterObjectPreviewRequest(["a", "b"], "SumArgs"),
+            CancellationToken.None);
+
+        AssertSingleLinkedEntry(preview, callerPath);
+    }
+
+    private static void AssertSingleLinkedEntry(RefactoringPreviewDto preview, string callerPath)
+    {
+        var updates = preview.CallsiteUpdates;
+        Assert.IsNotNull(updates);
+        Assert.HasCount(1, updates, "A file linked into two projects is one physical file.");
+        Assert.AreEqual(callerPath, updates[0].FilePath);
+        Assert.AreEqual(2, updates[0].CallsiteCount, "Both project documents' callsites are summed.");
+    }
+
+    private static (Solution Solution, string CallerPath) BuildLinkedSolution(string targetSource, string callExpression)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "linked-" + Guid.NewGuid().ToString("N"));
+        var callerPath = Path.Combine(root, "Caller.cs");
+        var callerSource = SourceText.From(
+            $"public static class Caller {{ public static int Run() => {callExpression}; }}");
+        var reference = MetadataReference.CreateFromFile(typeof(object).Assembly.Location);
+        var first = ProjectId.CreateNewId();
+        var second = ProjectId.CreateNewId();
+        var solution = new AdhocWorkspace().CurrentSolution
+            .AddProject(ProjectInfo.Create(first, VersionStamp.Create(), "First", "First", LanguageNames.CSharp,
+                filePath: Path.Combine(root, "First.csproj"), metadataReferences: [reference]))
+            .AddProject(ProjectInfo.Create(second, VersionStamp.Create(), "Second", "Second", LanguageNames.CSharp,
+                filePath: Path.Combine(root, "Second.csproj"), metadataReferences: [reference],
+                projectReferences: [new ProjectReference(first)]))
+            .AddDocument(DocumentId.CreateNewId(first), "Target.cs",
+                SourceText.From(targetSource), filePath: Path.Combine(root, "Target.cs"))
+            .AddDocument(DocumentId.CreateNewId(first), "Caller.cs", callerSource, filePath: callerPath)
+            .AddDocument(DocumentId.CreateNewId(second), "Caller.cs", callerSource, filePath: callerPath);
+        return (solution, callerPath);
     }
 
     private static (Solution Solution, string UpperPath, string LowerPath) BuildSolution(
