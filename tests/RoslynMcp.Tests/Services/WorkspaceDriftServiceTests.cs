@@ -1,10 +1,10 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Text;
-using RoslynMcp.Tests.Helpers;
 using ModelContextProtocol.Protocol;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests.Services;
 

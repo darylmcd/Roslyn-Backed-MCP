@@ -92,7 +92,7 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
             return;
         }
 
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seen = new HashSet<string>(FileSystemPath.Comparer);
         var fileSnapshots = new List<FileSnapshotDto>(mutations.Count);
         foreach (var mutation in mutations)
         {
@@ -164,7 +164,7 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
     {
         await _workspace.ReloadAsync(workspaceId, ct).ConfigureAwait(false);
         _compositePreviewStore.Invalidate(previewToken);
-        var distinctFiles = appliedFiles.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var distinctFiles = appliedFiles.Distinct(FileSystemPath.Comparer).ToList();
         _changeTracker?.RecordChange(
             workspaceId,
             $"Composite operation ({distinctFiles.Count} files)",
@@ -179,7 +179,7 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
         int mutationCount)
     {
         // Completed mutations are not rolled back; the token remains valid for inspection/re-preview.
-        var applied = appliedFiles.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var applied = appliedFiles.Distinct(FileSystemPath.Comparer).ToList();
         var detail = UnexpectedExceptionReporting.Report(
             _exceptionReporter,
             failure,
@@ -364,8 +364,7 @@ internal static class AtomicFileWriter
             var heldPath = GetHandlePath(stream.SafeFileHandle);
             using var named = new FileStream(path, FileMode.Open, FileAccess.Read,
                 FileShare.ReadWrite | FileShare.Delete);
-            return GetHandlePath(named.SafeFileHandle).Equals(heldPath,
-                OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+            return GetHandlePath(named.SafeFileHandle).Equals(heldPath, FileSystemPath.Comparison);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
         {

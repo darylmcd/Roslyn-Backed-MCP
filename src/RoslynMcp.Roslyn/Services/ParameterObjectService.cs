@@ -108,14 +108,14 @@ public sealed partial class ParameterObjectService : IParameterObjectService
             dtoVisibilityIsPublic);
 
         var originalTexts = new Dictionary<DocumentId, string>();
-        var perFileCallsites = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var perDocumentCallsites = new Dictionary<DocumentId, int>();
 
         var accumulator = await RewriteMethodDeclarationAsync(
             solution, method, groupedParameters, dtoNamespace, request.NewTypeName, newParameterName, originalTexts, ct).ConfigureAwait(false);
 
         accumulator = await RewriteCallSitesAsync(
             accumulator, solution, method, groupedParameters, dtoNamespace, request.NewTypeName, callSites,
-            originalTexts, perFileCallsites, ct).ConfigureAwait(false);
+            originalTexts, perDocumentCallsites, ct).ConfigureAwait(false);
 
         // Add the new DTO document last so its diff is appended cleanly; we capture no
         // pre-existing text for it (it's an Added file).
@@ -136,8 +136,12 @@ public sealed partial class ParameterObjectService : IParameterObjectService
         var description = $"Group {groupedParameters.Count} parameter(s) of {method.ToDisplayString()} into new record '{request.NewTypeName}'";
         var token = _previewStore.Store(workspaceId, accumulator, _workspace.GetCurrentVersion(workspaceId), description, changes);
 
-        var callsiteUpdates = perFileCallsites
-            .Select(kvp => new CallsiteUpdateDto(kvp.Key, kvp.Value))
+        var callsiteUpdates = perDocumentCallsites
+            .Select(kvp =>
+            {
+                var document = solution.GetDocument(kvp.Key)!;
+                return new CallsiteUpdateDto(document.FilePath ?? document.Name, kvp.Value);
+            })
             .OrderBy(u => u.FilePath, StringComparer.Ordinal)
             .ToList();
 
@@ -1238,7 +1242,7 @@ public sealed partial class ParameterObjectService : IParameterObjectService
         var canonicalTarget = Path.GetFullPath(dtoFilePath);
         var occupied = dtoProject.Documents.Any(d =>
             d.FilePath is not null &&
-            string.Equals(Path.GetFullPath(d.FilePath), canonicalTarget, StringComparison.OrdinalIgnoreCase));
+            string.Equals(Path.GetFullPath(d.FilePath), canonicalTarget, FileSystemPath.Comparison));
         if (occupied)
             throw new InvalidOperationException(
                 $"parameter_object_preview refuses: project '{dtoProject.Name}' already contains a document at " +
@@ -1649,7 +1653,7 @@ public sealed partial class ParameterObjectService : IParameterObjectService
         string newTypeName,
         Dictionary<DocumentId, List<CallSiteBinding>> callSites,
         Dictionary<DocumentId, string> originalTexts,
-        Dictionary<string, int> perFileCallsites,
+        Dictionary<DocumentId, int> perDocumentCallsites,
         CancellationToken ct)
     {
         foreach (var (docId, bindings) in callSites)
@@ -1689,8 +1693,7 @@ public sealed partial class ParameterObjectService : IParameterObjectService
             if (rewrittenCount == 0) continue;
 
             accumulator = accumulator.WithDocumentText(docId, SourceText.From(newRoot.ToFullString()));
-            var filePath = doc.FilePath ?? doc.Name;
-            perFileCallsites[filePath] = perFileCallsites.TryGetValue(filePath, out var count)
+            perDocumentCallsites[docId] = perDocumentCallsites.TryGetValue(docId, out var count)
                 ? count + rewrittenCount
                 : rewrittenCount;
         }
