@@ -56,6 +56,7 @@ public sealed class RefactoringRefusalPublicationWireTests : IsolatedWorkspaceTe
                 ["endColumn"] = endColumn,
             }, parameter, correction, "InvalidArgument", "ArgumentException"));
 
+        Signature("op", "'op' is required", new() { ["op"] = "  " });
         Signature("op", "'op' is not supported", new() { ["op"] = Sentinel });
         Signature("name", "requires parameter 'name'", new() { ["op"] = "add", ["parameterType"] = Sentinel });
         Signature("parameterType", "requires parameter 'parameterType'", new() { ["op"] = "add", ["name"] = Sentinel });
@@ -76,6 +77,16 @@ public sealed class RefactoringRefusalPublicationWireTests : IsolatedWorkspaceTe
             ["column"] = null,
             ["metadataName"] = "SampleLib.RefactoringProbe.ComputeAndPrint(" + Sentinel + ")",
         });
+        Signature("op", "declared in source",
+            new()
+            {
+                ["op"] = "rename",
+                ["name"] = "value",
+                ["newName"] = Sentinel,
+                ["line"] = 15,
+                ["column"] = 20,
+            },
+            "InvalidOperation", "InvalidOperationException");
         Signature("op", "resolved a NamedType symbol",
             new() { ["op"] = "remove", ["name"] = Sentinel, ["line"] = 8, ["column"] = 14 },
             "InvalidOperation", "InvalidOperationException");

@@ -87,6 +87,27 @@ public sealed class ChangeSignatureRefusalPublicationTests : ChangeSignatureTest
     }
 
     [TestMethod]
+    public async Task RenameOfMetadataOnlyMethod_IsPublicInvalidOperationException()
+    {
+        await using var workspace = CreateSingleProjectWorkspace();
+        var path = workspace.GetPath("SampleLib", "SignatureRefusalFixture.cs");
+        const string line = "    public static bool F(string s) => string.IsNullOrEmpty(s);";
+        await File.WriteAllTextAsync(path,
+            "namespace SampleLib;\npublic static class SignatureRefusalFixture\n{\n" + line + "\n}\n");
+        await workspace.LoadAsync(CancellationToken.None);
+        var column = line.IndexOf("IsNullOrEmpty", StringComparison.Ordinal) + 2;
+
+        var error = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
+            ChangeSignature.PreviewChangeSignatureAsync(
+                workspace.WorkspaceId, SymbolLocator.BySource(path, 4, column),
+                new ChangeSignatureRequest("rename", Name: "value", NewName: Sentinel), CancellationToken.None));
+
+        StringAssert.Contains(error.PublicMessage, "declared in source");
+        Assert.IsFalse(error.PublicMessage.Contains(Sentinel, StringComparison.Ordinal), error.PublicMessage);
+        Assert.IsFalse(error.PublicMessage.Contains(path, StringComparison.Ordinal), error.PublicMessage);
+    }
+
+    [TestMethod]
     public void PrimaryConstructorRefusal_IsPublicInvalidOperationException_ByDeclaredReturnType()
     {
         var method = typeof(ChangeSignatureService).GetMethod(

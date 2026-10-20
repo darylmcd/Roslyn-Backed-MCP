@@ -233,7 +233,10 @@ public sealed class ChangeSignatureService : IChangeSignatureService
                 $"(parameters: {string.Join(", ", method.Parameters.Select(p => p.Name))}).", "name");
 
         var loc = paramSymbol.Locations.FirstOrDefault(l => l.IsInSource);
-        if (loc is null) throw InvalidOperationErrors.Internal("Parameter has no source location to rename from.");
+        if (loc is null)
+            throw new PublicInvalidOperationException(
+                "op='rename' requires a method declared in source; the resolved method comes from a referenced assembly. " +
+                "Point filePath/line/column at a source-declared method.");
         var lineSpan = loc.GetLineSpan();
         var renameLocator = SymbolLocator.BySource(loc.SourceTree!.FilePath, lineSpan.StartLinePosition.Line + 1, lineSpan.StartLinePosition.Character + 1);
         return await _refactoringService.PreviewRenameAsync(workspaceId, renameLocator, request.NewName, ct).ConfigureAwait(false);
