@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-19T17:32:33Z
+**updated_at:** 2026-10-20T14:05:02Z
 
 ## Agent contract
 
@@ -363,6 +363,7 @@
 | `compile-check-file-scope-path-identity` | Low | — | Preserve physical file-filter and owner identity for case-distinct Linux paths in compile_check. [type: bug] [source: correctness15 guidance review] | S | items/compile-check-file-scope-path-identity.md |
 | `path-comparison-hardcoded-ignorecase-services` | Low | — | Use filesystem-aware path comparison in remaining services that hardcode OrdinalIgnoreCase on paths. [type: bug] [source: correctness15 cold review] | L | items/path-comparison-hardcoded-ignorecase-services.md |
 | `cancellation-swallowed-partial-results-services` | Low | — | Make remaining traversal loops throw on cancellation instead of returning partial results. [type: bug] [source: correctness15 cold review] | L | items/cancellation-swallowed-partial-results-services.md |
+| `claude-initiative-executor-override-dead` | Low | — | **`.claude/agents/initiative-executor.md` overrides an agent deleted from ~/.claude on 2026-10-19** — delete it or rename its still-needed Roslyn guidance so nothing poses as an engine agent override. [type: chore] [source: remediation-simplification-20261020] | S | items/claude-initiative-executor-override-dead.md |
 
 ## Defer
 
