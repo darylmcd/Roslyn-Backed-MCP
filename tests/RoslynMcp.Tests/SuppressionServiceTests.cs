@@ -245,6 +245,37 @@ public sealed class SuppressionServiceTests
     }
 
     [TestMethod]
+    [DataRow(" CA1000 ")]
+    [DataRow("CA1000\t")]
+    [DataRow("\tCA1000")]
+    public async Task DiagnosticIdTools_PaddedWithSpacesOrTabs_AreTrimmedAndAccepted(string padded)
+    {
+        string? key = null;
+        TextEditDto? edit = null;
+        var editor = new StubEditorConfig
+        {
+            OnSetOption = (_, _, k, v, _, _) =>
+            {
+                key = k;
+                return Task.FromResult(new EditorConfigWriteResultDto("", k, v, false));
+            }
+        };
+        var edits = new StubEditService
+        {
+            OnApply = (_, path, e, _, _, _) =>
+            {
+                edit = e.Single();
+                return Task.FromResult(new TextEditResultDto(true, path, 1, []));
+            }
+        };
+        var sut = new SuppressionService(editor, edits);
+        await sut.SetDiagnosticSeverityAsync("ws", padded, "warning", "/src/Program.cs", CancellationToken.None);
+        await sut.AddPragmaWarningDisableAsync("ws", "/src/Program.cs", 3, padded, CancellationToken.None);
+        Assert.AreEqual("dotnet_diagnostic.CA1000.severity", key);
+        StringAssert.StartsWith(edit!.NewText, "#pragma warning disable CA1000");
+    }
+
+    [TestMethod]
     [DataRow("CA1000")]
     [DataRow("CS8618")]
     [DataRow("IDE0005")]
