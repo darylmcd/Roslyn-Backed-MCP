@@ -136,14 +136,7 @@ public sealed partial class ParameterObjectService : IParameterObjectService
         var description = $"Group {groupedParameters.Count} parameter(s) of {method.ToDisplayString()} into new record '{request.NewTypeName}'";
         var token = _previewStore.Store(workspaceId, accumulator, _workspace.GetCurrentVersion(workspaceId), description, changes);
 
-        var callsiteUpdates = perDocumentCallsites
-            .Select(kvp =>
-            {
-                var document = solution.GetDocument(kvp.Key)!;
-                return new CallsiteUpdateDto(document.FilePath ?? document.Name, kvp.Value);
-            })
-            .OrderBy(u => u.FilePath, StringComparer.Ordinal)
-            .ToList();
+        var callsiteUpdates = CallsiteUpdateProjection.Project(solution, perDocumentCallsites);
 
         return new RefactoringPreviewDto(
             token,

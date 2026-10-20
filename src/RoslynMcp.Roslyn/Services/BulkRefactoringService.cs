@@ -279,14 +279,7 @@ public sealed class BulkRefactoringService : IBulkRefactoringService
             $"Replace {totalCallsites} call-site(s) of '{oldMethodSymbol.ToDisplayString()}' with '{newMethodSymbol.ToDisplayString()}' " +
             $"(argument reorder: [{string.Join(", ", indexMap)}])";
 
-        var callsiteUpdates = perDocumentCallsites
-            .Select(kvp =>
-            {
-                var document = solution.GetDocument(kvp.Key)!;
-                return new CallsiteUpdateDto(document.FilePath ?? document.Name, kvp.Value);
-            })
-            .OrderBy(u => u.FilePath, StringComparer.Ordinal)
-            .ToList();
+        var callsiteUpdates = CallsiteUpdateProjection.Project(solution, perDocumentCallsites);
 
         // preview-token-apply-route-provenance: replace_invocation_preview redeems through the
         // SHARED bulk_replace_type_apply route, so it mints the same kind by design.
