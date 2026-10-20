@@ -655,20 +655,23 @@ public sealed class ChangeSignaturePreviewTests : ChangeSignatureTestBase
             NewName: null,
             DefaultValue: "default");
 
-        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(async () =>
+        var ex = await Assert.ThrowsExactlyAsync<PublicArgumentException>(async () =>
             await ChangeSignature.PreviewChangeSignatureAsync(
                 workspace.WorkspaceId, locator, request, CancellationToken.None));
 
-        // Error must cite Name, ParameterType, valid range, and the "omit Position" hint.
-        // Must NOT mention internal "index" identifier.
-        StringAssert.Contains(ex.Message, "cancellationToken",
-            $"error must cite caller-supplied Name; got: {ex.Message}");
-        StringAssert.Contains(ex.Message, "CancellationToken",
-            $"error must cite caller-supplied ParameterType; got: {ex.Message}");
+        // Error must name the wire parameter, the valid range, and the "omit position" hint,
+        // and must NOT echo the caller-supplied Name or ParameterType.
+        Assert.AreEqual("position", ex.ParamName);
+        StringAssert.Contains(ex.Message, "'position'",
+            $"error must cite the wire parameter; got: {ex.Message}");
         StringAssert.Contains(ex.Message, "0..2",
             $"error must cite the valid Position range; got: {ex.Message}");
-        StringAssert.Contains(ex.Message, "omit Position",
-            $"error must hint that omitting Position appends at end; got: {ex.Message}");
+        StringAssert.Contains(ex.Message, "omit position",
+            $"error must hint that omitting position appends at end; got: {ex.Message}");
+        Assert.IsFalse(ex.Message.Contains("cancellationToken", StringComparison.Ordinal),
+            $"error must not echo the caller-supplied name; got: {ex.Message}");
+        Assert.IsFalse(ex.Message.Contains("CancellationToken", StringComparison.Ordinal),
+            $"error must not echo the caller-supplied parameter type; got: {ex.Message}");
         Assert.IsFalse(ex.Message.Contains("Parameter 'index'", StringComparison.Ordinal),
             $"error must NOT leak the internal 'index' paramName; got: {ex.Message}");
     }
@@ -813,37 +816,44 @@ public sealed class ChangeSignaturePreviewTests : ChangeSignatureTestBase
         var locator = SymbolLocator.BySource(fixturePath, line: 5, column: 16);
 
         // Missing NewOrder.
-        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(async () =>
+        var ex = await Assert.ThrowsExactlyAsync<PublicArgumentException>(async () =>
             await ChangeSignature.PreviewChangeSignatureAsync(
                 workspace.WorkspaceId, locator, new ChangeSignatureRequest(Op: "reorder"), CancellationToken.None));
-        StringAssert.Contains(ex.Message, "NewOrder",
+        Assert.AreEqual("newOrder", ex.ParamName);
+        StringAssert.Contains(ex.Message, "newOrder",
             $"missing-NewOrder error must cite 'NewOrder'; got: {ex.Message}");
 
         // Wrong arity (2 tokens for 3-param method).
-        ex = await Assert.ThrowsExactlyAsync<ArgumentException>(async () =>
+        ex = await Assert.ThrowsExactlyAsync<PublicArgumentException>(async () =>
             await ChangeSignature.PreviewChangeSignatureAsync(
                 workspace.WorkspaceId, locator, new ChangeSignatureRequest(Op: "reorder", NewOrder: "a,b"), CancellationToken.None));
+        Assert.AreEqual("newOrder", ex.ParamName);
         StringAssert.Contains(ex.Message, "exactly once",
             $"wrong-arity error must explain that every parameter must appear exactly once; got: {ex.Message}");
 
         // Unknown name token.
-        ex = await Assert.ThrowsExactlyAsync<ArgumentException>(async () =>
+        ex = await Assert.ThrowsExactlyAsync<PublicArgumentException>(async () =>
             await ChangeSignature.PreviewChangeSignatureAsync(
                 workspace.WorkspaceId, locator, new ChangeSignatureRequest(Op: "reorder", NewOrder: "a,b,zz"), CancellationToken.None));
-        StringAssert.Contains(ex.Message, "zz",
-            $"unknown-token error must cite the offending token; got: {ex.Message}");
+        Assert.AreEqual("newOrder", ex.ParamName);
+        StringAssert.Contains(ex.Message, "entry 3",
+            $"unknown-token error must cite the offending entry position; got: {ex.Message}");
+        Assert.IsFalse(ex.Message.Contains("zz", StringComparison.Ordinal),
+            $"unknown-token error must not echo the caller's token; got: {ex.Message}");
 
         // Duplicate token.
-        ex = await Assert.ThrowsExactlyAsync<ArgumentException>(async () =>
+        ex = await Assert.ThrowsExactlyAsync<PublicArgumentException>(async () =>
             await ChangeSignature.PreviewChangeSignatureAsync(
                 workspace.WorkspaceId, locator, new ChangeSignatureRequest(Op: "reorder", NewOrder: "a,a,b"), CancellationToken.None));
+        Assert.AreEqual("newOrder", ex.ParamName);
         StringAssert.Contains(ex.Message, "more than once",
             $"duplicate-token error must explain the parameter is listed twice; got: {ex.Message}");
 
         // Identity permutation (no-op).
-        ex = await Assert.ThrowsExactlyAsync<ArgumentException>(async () =>
+        ex = await Assert.ThrowsExactlyAsync<PublicArgumentException>(async () =>
             await ChangeSignature.PreviewChangeSignatureAsync(
                 workspace.WorkspaceId, locator, new ChangeSignatureRequest(Op: "reorder", NewOrder: "a,b,c"), CancellationToken.None));
+        Assert.AreEqual("newOrder", ex.ParamName);
         StringAssert.Contains(ex.Message, "identity",
             $"identity-permutation error must call out the no-op; got: {ex.Message}");
     }
