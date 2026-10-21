@@ -87,3 +87,5 @@ Legacy fat-row snapshot (pre-v15). Design brief content migrated to **Notes — 
 ## Superseding note — inherited executor after PR #1556
 
 The migrated design brief below is historical evidence, not an implementation instruction. Its references to editing `.claude/agents/initiative-executor.md` are superseded by the current Anchors and Acceptance: measure the inherited global executor, and do not recreate a local override without a demonstrated repo-specific requirement.
+
+2026-10-21 baseline backlog lint reports unresolved <user>/.claude/agents/initiative-executor.md. The canonical global remediation engine/executor was retired on 2026-10-19; re-derive this experiment premise and replace or retire its obsolete executor anchor before planning. Existing claude-initiative-executor-override-dead tracks the local override separately.
