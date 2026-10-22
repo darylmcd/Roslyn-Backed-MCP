@@ -1,0 +1,236 @@
+[
+  {
+    "method": "ScaffoldingReadFailurePolicy_SingleAndBatchWarningsAreSecretSafe",
+    "cases": 2,
+    "fixture": "none",
+    "prepareBeforeLoad": false
+  },
+  {
+    "method": "Scaffold_Type_Preview_And_Apply_Creates_New_Type_File",
+    "cases": 1,
+    "fixture": "library",
+    "prepareBeforeLoad": false
+  },
+  {
+    "method": "Scaffold_Type_Preview_Token_Carries_FileCreate_Provenance_And_Redeems",
+    "cases": 1,
+    "fixture": "library",
+    "prepareBeforeLoad": false
+  },
+  {
+    "method": "Scaffold_Apply_Routes_Refuse_ForeignFamily_Rename_Token",
+    "cases": 2,
+    "fixture": "library",
+    "prepareBeforeLoad": false
+  },
+  {
+    "method": "Scaffold_Type_Default_Class_IsInternalSealed",
+    "cases": 1,
+    "fixture": "library",
+    "prepareBeforeLoad": false
+  },
+  {
+    "method": "Scaffold_Type_Interface_StaysPublic",
+    "cases": 1,
+    "fixture": "library",
+    "prepareBeforeLoad": false
+  },
+  {
+    "method": "Scaffold_Test_CollectionInterfaceCtorArg_UsesArrayEmpty",
+    "cases": 1,
+    "fixture": "library-tests-solution",
+    "prepareBeforeLoad": true
+  },
+  {
+    "method": "Scaffold_Test_DIService_WithInterfaceAndConcreteCtorArgs_EmitsPerArgPlaceholders",
+    "cases": 1,
+    "fixture": "library-tests-solution",
+    "prepareBeforeLoad": true
+  },
+  {
+    "method": "BuildArgExpression_InterfaceArg_WithNSubstitute_EmitsSubstituteFor",
+    "cases": 1,
+    "fixture": "none",
+    "prepareBeforeLoad": false
+  },
+  {
+    "method": "BuildArgExpression_CollectionArgs_EmitEmptyArray",
+    "cases": 1,
+    "fixture": "none",
+    "prepareBeforeLoad": false
+  },
+  {
+    "method": "BuildArgExpression_DictionaryArgs_EmitNewDictionary",
+    "cases": 1,
+    "fixture": "none",
+    "prepareBeforeLoad": false
+  },
+  {
+    "method": "Scaffold_Type_NamespaceNotMatchingProject_GetsFolderStructure",
+    "cases": 1,
+    "fixture": "library",
+    "prepareBeforeLoad": false
+  },
+  {
+    "method": "Scaffold_Test_Preview_And_Apply_Creates_New_Test_File",
+    "cases": 1,
+    "fixture": "library-tests-solution",
+    "prepareBeforeLoad": false
+  },
+  {
+    "method": "Scaffold_Test_Preview_UseSamplingFalse_DoesNotCallSuggestionProvider",
+    "cases": 1,
+    "fixture": "library-tests-solution",
+    "prepareBeforeLoad": false
+  },
+  {
+    "method": "Scaffold_Test_Preview_UseSamplingTrue_UsesSuggestedMethodName",
+    "cases": 1,
+    "fixture": "library-tests-solution",
+    "prepareBeforeLoad": false
+  },
+  {
+    "method": "Scaffold_Test_Preview_SiblingNameReadFailure_PreservesNamesAndAddsOneSecretSafeWarning",
+    "cases": 1,
+    "fixture": "library-tests-solution",
+    "prepareBeforeLoad": false
+  },
+  {
+    "method": "Scaffold_Test_Preview_SiblingNameReadCancellationAndUnexpectedFailures_Propagate",
+    "cases": 2,
+    "fixture": "library-tests-solution",
+    "prepareBeforeLoad": false
+  },
+  {
+    "method": "Scaffold_Test_Preview_SamplingReplay_PaysSemanticPreparationOnce",
+    "cases": 1,
+    "fixture": "library-tests-solution",
+    "prepareBeforeLoad": false
+  },
+  {
+    "method": "Scaffold_Test_Preview_InvalidSampledName_UsesSecretSafeBoundedWarning",
+    "cases": 1,
+    "fixture": "library-tests-solution",
+    "prepareBeforeLoad": false
+  },
+  {
+    "method": "Scaffold_Test_Preview_HugeValidSampledIdentifier_UsesBoundedFallback",
+    "cases": 1,
+    "fixture": "library-tests-solution",
+    "prepareBeforeLoad": false
+  },
+  {
+    "method": "Scaffold_Test_Preview_SamplingProviderCancellation_Propagates",
+    "cases": 1,
+    "fixture": "library-tests-solution",
+    "prepareBeforeLoad": false
+  },
+  {
+    "method": "Scaffold_Test_Private_Target_Method_Adds_Warning_And_Reflection_Call",
+    "cases": 1,
+    "fixture": "library-tests-solution",
+    "prepareBeforeLoad": true
+  },
+  {
+    "method": "Scaffold_Test_Internal_Target_Without_InternalsVisibleTo_Emits_Warning_And_Placeholder",
+    "cases": 1,
+    "fixture": "library-tests-solution",
+    "prepareBeforeLoad": true
+  },
+  {
+    "method": "Scaffold_Test_Internal_Target_With_InternalsVisibleTo_Generates_Direct_Call",
+    "cases": 1,
+    "fixture": "library-tests-solution",
+    "prepareBeforeLoad": true
+  },
+  {
+    "method": "Scaffold_Test_Internal_Method_On_Public_Type_Emits_Warning_And_Placeholder",
+    "cases": 1,
+    "fixture": "library-tests-solution",
+    "prepareBeforeLoad": true
+  },
+  {
+    "method": "Scaffold_Test_With_ReferenceTestFile_Replicates_FixturePattern_AndTrimsAttributesAndUsings",
+    "cases": 1,
+    "fixture": "library-tests-solution",
+    "prepareBeforeLoad": true
+  },
+  {
+    "method": "Scaffold_Test_With_PlaywrightSibling_DoesNotLeak_AttributesOrUsings",
+    "cases": 1,
+    "fixture": "library-tests-solution",
+    "prepareBeforeLoad": true
+  },
+  {
+    "method": "Scaffold_Test_Batch_Preview_And_Apply_Creates_Multiple_Test_Files",
+    "cases": 1,
+    "fixture": "library-tests-solution",
+    "prepareBeforeLoad": false
+  },
+  {
+    "method": "Scaffold_Test_Batch_Token_Is_Untagged_And_Still_Redeems_Through_Scaffold_Test_Apply",
+    "cases": 1,
+    "fixture": "library-tests-solution",
+    "prepareBeforeLoad": false
+  },
+  {
+    "method": "Scaffold_Test_Batch_NullableCtorArgs_EmitCompileSafeExpressions",
+    "cases": 1,
+    "fixture": "library-tests-solution",
+    "prepareBeforeLoad": true
+  },
+  {
+    "method": "Scaffold_Test_DottedTargetTypeName_TopLevel_Yields_SingleIdentifier_ClassName",
+    "cases": 1,
+    "fixture": "library-tests-solution",
+    "prepareBeforeLoad": false
+  },
+  {
+    "method": "Scaffold_Test_DottedTargetTypeName_NestedType_Yields_SingleIdentifier_ClassName",
+    "cases": 1,
+    "fixture": "library-tests-solution",
+    "prepareBeforeLoad": true
+  },
+  {
+    "method": "Scaffold_Test_QualifiedDuplicateTarget_RejectsSimpleNameAndSelectsExactSingleSymbol",
+    "cases": 1,
+    "fixture": "library-tests-solution",
+    "prepareBeforeLoad": true
+  },
+  {
+    "method": "Scaffold_Test_Batch_QualifiedDuplicateTarget_RejectsSimpleNameAndSelectsExactSymbol",
+    "cases": 1,
+    "fixture": "library-tests-solution",
+    "prepareBeforeLoad": true
+  },
+  {
+    "method": "Scaffold_Test_Preview_StaticClass_Omits_NewT_InArrange",
+    "cases": 1,
+    "fixture": "library-tests-solution",
+    "prepareBeforeLoad": true
+  },
+  {
+    "method": "Scaffold_Test_Preview_ConstantsOnlyClass_Omits_NewT_InArrange",
+    "cases": 1,
+    "fixture": "library-tests-solution",
+    "prepareBeforeLoad": true
+  },
+  {
+    "method": "Scaffold_Test_Preview_StaticMembersOnlyClass_Omits_NewT_InArrange",
+    "cases": 1,
+    "fixture": "library-tests-solution",
+    "prepareBeforeLoad": true
+  },
+  {
+    "method": "Scaffold_Test_EmitsUsings_ForCtorParamNamespaces",
+    "cases": 1,
+    "fixture": "library-tests-solution",
+    "prepareBeforeLoad": false
+  },
+  {
+    "method": "Batch_Refusals_Give_Actionable_Recovery_Without_Creating_Previews",
+    "cases": 2,
+    "fixture": "library-tests-solution",
+    "prepareBeforeLoad": false
+  }
+]

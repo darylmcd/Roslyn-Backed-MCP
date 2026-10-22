@@ -65,7 +65,7 @@ public static class CompileCheckTools
                 if (!string.IsNullOrWhiteSpace(projectName) && result.TotalProjects == 0)
                 {
                     throw new PublicArgumentException(
-                        "No loaded project matches parameter 'projectName'. Omit projectName or use workspace_status to list project names, then retry.",
+                        "No loaded project matches parameter 'projectName'. Omit projectName or use workspace_status with verbose=true to list project names, then retry.",
                         nameof(projectName));
                 }
 

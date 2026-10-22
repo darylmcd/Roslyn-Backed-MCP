@@ -80,3 +80,11 @@ Read this row before running the authoritative local gate. Re-measure it when th
 1. User named no specific repo / adapter / ecosystem / integration / cross-repo term -> scope = in-repo -> read `ai_docs/backlog.md`, then any named in-repo file under `ai_docs/plans/` -> STOP. Do not open `ai_docs/ecosystem/**`.
 2. User named another repo / adapter / ecosystem / integration / cross-repo work -> scope = cross-project -> this repo has no local `ai_docs/ecosystem/**`; say so explicitly and use only the external context the user named.
 3. Both scopes named -> answer each as a separate question; do not merge into one recommendation.
+
+## Machine-wide validation
+
+- On the shared Windows dev host, run `just machine-validate` for the full gate or `just machine-validate <recipe>` for a named build/test recipe.
+- The shared helper is `~/.claude/scripts/validation-gate.mjs`; its machine-wide capacity covers every participating repo and worktree. Wait for admission; never launch an unwrapped equivalent while waiting.
+- For a raw validation command, call `node <absolute-user-profile>/.claude/scripts/validation-gate.mjs -- <executable> [arguments...]`. Pass an interpreter explicitly for shell scripts.
+- Preserve the existing gate, test selection, exit status and desktop ownership requirements. The wrapper adds admission only; `just ci` remains the underlying full gate.
+- Full contract: `~/.claude/ai_docs/validation-gate.md`. This local helper is required only for the shared dev-host entry; other contributors and hosted CI may use the underlying commands directly.

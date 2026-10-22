@@ -8,27 +8,16 @@ using RoslynMcp.Host.Stdio.Tools;
 namespace RoslynMcp.Tests;
 
 [TestClass]
-public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
+public sealed class ProjectMutationIntegrationTests : OwnedRefactoringTestBase
 {
-    [ClassInitialize]
-    public static void ClassInit(TestContext _)
-    {
-        InitializeServices();
-    }
-
-    [ClassCleanup]
-    public static void ClassCleanup()
-    {
-        DisposeServices();
-    }
-
     [TestMethod]
     public async Task Set_Project_Property_Unsupported_Property_Refusal_Reaches_Client_Envelope_Verbatim()
     {
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateSingleProjectWorkspace();
+        await workspace.LoadAsync(CancellationToken.None);
 
         var exception = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(async () =>
-            await ProjectMutationService.PreviewSetProjectPropertyAsync(
+            await Services.ProjectMutationService.PreviewSetProjectPropertyAsync(
                 workspace.WorkspaceId,
                 new SetProjectPropertyDto("SampleLib", "OutputPath", "bin/custom"),
                 CancellationToken.None));
@@ -41,10 +30,11 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public async Task Add_Project_Reference_Self_Reference_Refusal_Reaches_Client_Envelope_Verbatim()
     {
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateSolutionWorkspace();
+        await workspace.LoadAsync(CancellationToken.None);
 
         var exception = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(async () =>
-            await ProjectMutationService.PreviewAddProjectReferenceAsync(
+            await Services.ProjectMutationService.PreviewAddProjectReferenceAsync(
                 workspace.WorkspaceId,
                 new AddProjectReferenceDto("SampleApp", "SampleApp"),
                 CancellationToken.None));
@@ -62,17 +52,18 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public async Task Add_Package_Reference_Preview_And_Apply_Updates_Isolated_Project_File()
     {
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateSingleProjectWorkspace();
+        await workspace.LoadAsync(CancellationToken.None);
         var projectFilePath = workspace.GetPath("SampleLib", "SampleLib.csproj");
 
-        var preview = await ProjectMutationService.PreviewAddPackageReferenceAsync(
+        var preview = await Services.ProjectMutationService.PreviewAddPackageReferenceAsync(
             workspace.WorkspaceId,
             new AddPackageReferenceDto("SampleLib", "Humanizer.Core", "2.14.1"),
             CancellationToken.None);
 
         Assert.IsTrue(preview.Changes.Any(change => string.Equals(change.FilePath, projectFilePath, StringComparison.OrdinalIgnoreCase)));
 
-        var applyResult = await ProjectMutationService.ApplyProjectMutationAsync(preview.PreviewToken, CancellationToken.None);
+        var applyResult = await Services.ProjectMutationService.ApplyProjectMutationAsync(preview.PreviewToken, CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
 
         var projectXml = XDocument.Load(projectFilePath);
@@ -83,7 +74,8 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public async Task Add_Package_Reference_Preview_Preserves_ItemGroup_Indentation()
     {
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateSingleProjectWorkspace();
+        await workspace.LoadAsync(CancellationToken.None);
         var projectFilePath = workspace.GetPath("SampleLib", "SampleLib.csproj");
         var originalProjectContent = await File.ReadAllTextAsync(projectFilePath, CancellationToken.None);
         var customizedProjectContent = originalProjectContent.Replace(
@@ -92,12 +84,12 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
             StringComparison.Ordinal);
         await File.WriteAllTextAsync(projectFilePath, customizedProjectContent, CancellationToken.None);
 
-        var preview = await ProjectMutationService.PreviewAddPackageReferenceAsync(
+        var preview = await Services.ProjectMutationService.PreviewAddPackageReferenceAsync(
             workspace.WorkspaceId,
             new AddPackageReferenceDto("SampleLib", "Humanizer.Core", "2.14.1"),
             CancellationToken.None);
 
-        var applyResult = await ProjectMutationService.ApplyProjectMutationAsync(preview.PreviewToken, CancellationToken.None);
+        var applyResult = await Services.ProjectMutationService.ApplyProjectMutationAsync(preview.PreviewToken, CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
 
         var projectContents = await File.ReadAllTextAsync(projectFilePath, CancellationToken.None);
@@ -107,17 +99,18 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public async Task Add_Project_Reference_Preview_And_Apply_Updates_Isolated_Project_File()
     {
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateSolutionWorkspace();
+        await workspace.LoadAsync(CancellationToken.None);
         var projectFilePath = workspace.GetPath("SampleApp", "SampleApp.csproj");
 
-        var preview = await ProjectMutationService.PreviewAddProjectReferenceAsync(
+        var preview = await Services.ProjectMutationService.PreviewAddProjectReferenceAsync(
             workspace.WorkspaceId,
             new AddProjectReferenceDto("SampleApp", "SampleLib.Tests"),
             CancellationToken.None);
 
         Assert.IsTrue(preview.Changes.Any(change => string.Equals(change.FilePath, projectFilePath, StringComparison.OrdinalIgnoreCase)));
 
-        var applyResult = await ProjectMutationService.ApplyProjectMutationAsync(preview.PreviewToken, CancellationToken.None);
+        var applyResult = await Services.ProjectMutationService.ApplyProjectMutationAsync(preview.PreviewToken, CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
 
         var projectXml = XDocument.Load(projectFilePath);
@@ -128,10 +121,11 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public async Task Add_Project_Reference_Preview_Rejects_Self_Reference_And_Cycle()
     {
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateSolutionWorkspace();
+        await workspace.LoadAsync(CancellationToken.None);
 
         var selfReference = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
-            ProjectMutationService.PreviewAddProjectReferenceAsync(
+            Services.ProjectMutationService.PreviewAddProjectReferenceAsync(
                 workspace.WorkspaceId,
                 new AddProjectReferenceDto("SampleLib", "SampleLib"),
                 CancellationToken.None));
@@ -141,7 +135,7 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
         // SampleApp already references SampleLib in the fixture. Adding the reverse edge
         // SampleLib -> SampleApp would create a two-project cycle.
         var cycle = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
-            ProjectMutationService.PreviewAddProjectReferenceAsync(
+            Services.ProjectMutationService.PreviewAddProjectReferenceAsync(
                 workspace.WorkspaceId,
                 new AddProjectReferenceDto("SampleLib", "SampleApp"),
                 CancellationToken.None));
@@ -152,15 +146,16 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public async Task Set_Project_Property_Preview_And_Apply_Updates_Isolated_Project_File()
     {
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateSingleProjectWorkspace();
+        await workspace.LoadAsync(CancellationToken.None);
         var projectFilePath = workspace.GetPath("SampleLib", "SampleLib.csproj");
 
-        var preview = await ProjectMutationService.PreviewSetProjectPropertyAsync(
+        var preview = await Services.ProjectMutationService.PreviewSetProjectPropertyAsync(
             workspace.WorkspaceId,
             new SetProjectPropertyDto("SampleLib", "LangVersion", "preview"),
             CancellationToken.None);
 
-        var applyResult = await ProjectMutationService.ApplyProjectMutationAsync(preview.PreviewToken, CancellationToken.None);
+        var applyResult = await Services.ProjectMutationService.ApplyProjectMutationAsync(preview.PreviewToken, CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
 
         var projectXml = XDocument.Load(projectFilePath);
@@ -173,9 +168,10 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
         // FLAG-13B regression: previously the diff added "<PropertyGroup><LangVersion>latest</LangVersion></PropertyGroup>"
         // on a single line. The fix uses XmlWriter with indentation, so the diff must show the
         // PropertyGroup elements on separate lines.
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateSingleProjectWorkspace();
+        await workspace.LoadAsync(CancellationToken.None);
 
-        var preview = await ProjectMutationService.PreviewSetProjectPropertyAsync(
+        var preview = await Services.ProjectMutationService.PreviewSetProjectPropertyAsync(
             workspace.WorkspaceId,
             new SetProjectPropertyDto("SampleLib", "LangVersion", "preview"),
             CancellationToken.None);
@@ -192,9 +188,10 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
         // FLAG-13A regression: previously the diff added "</ItemGroup><ItemGroup>" on a single
         // line. The fix uses XmlWriter with indentation, so the diff must keep ItemGroup tags
         // on separate lines.
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateSingleProjectWorkspace();
+        await workspace.LoadAsync(CancellationToken.None);
 
-        var preview = await ProjectMutationService.PreviewAddPackageReferenceAsync(
+        var preview = await Services.ProjectMutationService.PreviewAddPackageReferenceAsync(
             workspace.WorkspaceId,
             new AddPackageReferenceDto("SampleLib", "Humanizer.Core", "2.14.1"),
             CancellationToken.None);
@@ -210,14 +207,15 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
     {
         // project-mutation-preview-xml-formatting regression: the previous serializer left
         // </PropertyGroup> and the freshly-inserted <ItemGroup> on the same line because
-        // ProjectMutationService.GetOrCreateItemGroup used two sequential AddAfterSelf calls
+        // Services.ProjectMutationService.GetOrCreateItemGroup used two sequential AddAfterSelf calls
         // (LIFO ordering) instead of the FORMAT-BUG-003-fixed splice already present in
         // OrchestrationMsBuildXml. After consolidating onto OrchestrationMsBuildXml.GetOrCreateItemGroup,
         // the diff must show </PropertyGroup> and <ItemGroup> on separate lines AND the new
         // <PackageReference> indented as a child of <ItemGroup>, not glued to its opening tag.
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateSingleProjectWorkspace();
+        await workspace.LoadAsync(CancellationToken.None);
 
-        var preview = await ProjectMutationService.PreviewAddPackageReferenceAsync(
+        var preview = await Services.ProjectMutationService.PreviewAddPackageReferenceAsync(
             workspace.WorkspaceId,
             new AddPackageReferenceDto("SampleLib", "Humanizer.Core", "2.14.1"),
             CancellationToken.None);
@@ -243,9 +241,10 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
         // on a single line whenever the property is being added (vs updated). The fix routes
         // through AddChildElementPreservingIndentation so the new property is on its own line
         // with proper child indent.
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateSingleProjectWorkspace();
+        await workspace.LoadAsync(CancellationToken.None);
 
-        var preview = await ProjectMutationService.PreviewSetProjectPropertyAsync(
+        var preview = await Services.ProjectMutationService.PreviewSetProjectPropertyAsync(
             workspace.WorkspaceId,
             new SetProjectPropertyDto("SampleLib", "LangVersion", "preview"),
             CancellationToken.None);
@@ -271,9 +270,10 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
         // package-reference and property-set defects — applied to Directory.Packages.props
         // mutations. Previously the new <ItemGroup> wrapping the <PackageVersion> landed on
         // the same line as </PropertyGroup> and the child was collapsed inside the wrapper.
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateSolutionWorkspace();
+        await workspace.LoadAsync(CancellationToken.None);
 
-        var preview = await ProjectMutationService.PreviewAddCentralPackageVersionAsync(
+        var preview = await Services.ProjectMutationService.PreviewAddCentralPackageVersionAsync(
             workspace.WorkspaceId,
             new AddCentralPackageVersionDto("Humanizer.Core", "2.14.1"),
             CancellationToken.None);
@@ -292,26 +292,27 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public async Task Add_And_Remove_Target_Framework_Preview_And_Apply_Updates_Isolated_Project_File()
     {
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateSingleProjectWorkspace();
+        await workspace.LoadAsync(CancellationToken.None);
         var projectFilePath = workspace.GetPath("SampleLib", "SampleLib.csproj");
 
-        var addPreview = await ProjectMutationService.PreviewAddTargetFrameworkAsync(
+        var addPreview = await Services.ProjectMutationService.PreviewAddTargetFrameworkAsync(
             workspace.WorkspaceId,
             new AddTargetFrameworkDto("SampleLib", "net8.0"),
             CancellationToken.None);
 
-        var addResult = await ProjectMutationService.ApplyProjectMutationAsync(addPreview.PreviewToken, CancellationToken.None);
+        var addResult = await Services.ProjectMutationService.ApplyProjectMutationAsync(addPreview.PreviewToken, CancellationToken.None);
         Assert.IsTrue(addResult.Success, addResult.Error);
 
         var projectXml = XDocument.Load(projectFilePath);
         Assert.AreEqual("net10.0;net8.0", projectXml.Descendants("TargetFrameworks").First().Value);
 
-        var removePreview = await ProjectMutationService.PreviewRemoveTargetFrameworkAsync(
+        var removePreview = await Services.ProjectMutationService.PreviewRemoveTargetFrameworkAsync(
             workspace.WorkspaceId,
             new RemoveTargetFrameworkDto("SampleLib", "net8.0"),
             CancellationToken.None);
 
-        var removeResult = await ProjectMutationService.ApplyProjectMutationAsync(removePreview.PreviewToken, CancellationToken.None);
+        var removeResult = await Services.ProjectMutationService.ApplyProjectMutationAsync(removePreview.PreviewToken, CancellationToken.None);
         Assert.IsTrue(removeResult.Success, removeResult.Error);
 
         projectXml = XDocument.Load(projectFilePath);
@@ -321,7 +322,7 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public async Task Add_Target_Framework_When_Centralized_In_DirectoryBuildProps_Injects_Into_Csproj()
     {
-        await using var workspace = CreateIsolatedWorkspaceCopy();
+        await using var workspace = CreateSingleProjectWorkspace();
         await File.WriteAllTextAsync(
             Path.Combine(workspace.RootPath, "Directory.Build.props"),
             """
@@ -348,12 +349,12 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
 
         await workspace.LoadAsync(CancellationToken.None).ConfigureAwait(false);
 
-        var addPreview = await ProjectMutationService.PreviewAddTargetFrameworkAsync(
+        var addPreview = await Services.ProjectMutationService.PreviewAddTargetFrameworkAsync(
             workspace.WorkspaceId,
             new AddTargetFrameworkDto("SampleLib", "net8.0"),
             CancellationToken.None).ConfigureAwait(false);
 
-        var addResult = await ProjectMutationService.ApplyProjectMutationAsync(addPreview.PreviewToken, CancellationToken.None).ConfigureAwait(false);
+        var addResult = await Services.ProjectMutationService.ApplyProjectMutationAsync(addPreview.PreviewToken, CancellationToken.None).ConfigureAwait(false);
         Assert.IsTrue(addResult.Success, addResult.Error);
 
         var projectXml = XDocument.Load(projectFilePath);
@@ -365,16 +366,17 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public async Task Set_Conditional_Property_Preview_And_Apply_Adds_Conditional_Property_Group()
     {
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateSingleProjectWorkspace();
+        await workspace.LoadAsync(CancellationToken.None);
         var projectFilePath = workspace.GetPath("SampleLib", "SampleLib.csproj");
         const string condition = "'$(Configuration)'=='Release'";
 
-        var preview = await ProjectMutationService.PreviewSetConditionalPropertyAsync(
+        var preview = await Services.ProjectMutationService.PreviewSetConditionalPropertyAsync(
             workspace.WorkspaceId,
             new SetConditionalPropertyDto("SampleLib", "LangVersion", "preview", condition),
             CancellationToken.None);
 
-        var applyResult = await ProjectMutationService.ApplyProjectMutationAsync(preview.PreviewToken, CancellationToken.None);
+        var applyResult = await Services.ProjectMutationService.ApplyProjectMutationAsync(preview.PreviewToken, CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
 
         var projectXml = XDocument.Load(projectFilePath);
@@ -394,29 +396,30 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
         // were rejected with "not in allowlist". Post-fix, all five additions are accepted by the
         // shared ValidateAllowedProperty gate that fronts both set_conditional_property_preview
         // and set_project_property_preview.
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateSingleProjectWorkspace();
+        await workspace.LoadAsync(CancellationToken.None);
         var projectFilePath = workspace.GetPath("SampleLib", "SampleLib.csproj");
         const string condition = "'$(Configuration)'=='Release'";
 
-        var defineConstantsPreview = await ProjectMutationService.PreviewSetConditionalPropertyAsync(
+        var defineConstantsPreview = await Services.ProjectMutationService.PreviewSetConditionalPropertyAsync(
             workspace.WorkspaceId,
             new SetConditionalPropertyDto("SampleLib", "DefineConstants", "RELEASE;FEATURE_X", condition),
             CancellationToken.None);
-        var defineConstantsApply = await ProjectMutationService.ApplyProjectMutationAsync(defineConstantsPreview.PreviewToken, CancellationToken.None);
+        var defineConstantsApply = await Services.ProjectMutationService.ApplyProjectMutationAsync(defineConstantsPreview.PreviewToken, CancellationToken.None);
         Assert.IsTrue(defineConstantsApply.Success, defineConstantsApply.Error);
 
-        var optimizePreview = await ProjectMutationService.PreviewSetConditionalPropertyAsync(
+        var optimizePreview = await Services.ProjectMutationService.PreviewSetConditionalPropertyAsync(
             workspace.WorkspaceId,
             new SetConditionalPropertyDto("SampleLib", "Optimize", "true", condition),
             CancellationToken.None);
-        var optimizeApply = await ProjectMutationService.ApplyProjectMutationAsync(optimizePreview.PreviewToken, CancellationToken.None);
+        var optimizeApply = await Services.ProjectMutationService.ApplyProjectMutationAsync(optimizePreview.PreviewToken, CancellationToken.None);
         Assert.IsTrue(optimizeApply.Success, optimizeApply.Error);
 
-        var noWarnPreview = await ProjectMutationService.PreviewSetConditionalPropertyAsync(
+        var noWarnPreview = await Services.ProjectMutationService.PreviewSetConditionalPropertyAsync(
             workspace.WorkspaceId,
             new SetConditionalPropertyDto("SampleLib", "NoWarn", "CS1591;CS0168", condition),
             CancellationToken.None);
-        var noWarnApply = await ProjectMutationService.ApplyProjectMutationAsync(noWarnPreview.PreviewToken, CancellationToken.None);
+        var noWarnApply = await Services.ProjectMutationService.ApplyProjectMutationAsync(noWarnPreview.PreviewToken, CancellationToken.None);
         Assert.IsTrue(noWarnApply.Success, noWarnApply.Error);
 
         var projectXml = XDocument.Load(projectFilePath);
@@ -432,15 +435,16 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public async Task Add_And_Remove_Central_Package_Version_Preview_And_Apply_Updates_Directory_Packages_Props()
     {
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateSolutionWorkspace();
+        await workspace.LoadAsync(CancellationToken.None);
         var packagesPropsPath = workspace.GetPath("Directory.Packages.props");
 
-        var addPreview = await ProjectMutationService.PreviewAddCentralPackageVersionAsync(
+        var addPreview = await Services.ProjectMutationService.PreviewAddCentralPackageVersionAsync(
             workspace.WorkspaceId,
             new AddCentralPackageVersionDto("Humanizer.Core", "2.14.1"),
             CancellationToken.None);
 
-        var addResult = await ProjectMutationService.ApplyProjectMutationAsync(addPreview.PreviewToken, CancellationToken.None);
+        var addResult = await Services.ProjectMutationService.ApplyProjectMutationAsync(addPreview.PreviewToken, CancellationToken.None);
         Assert.IsTrue(addResult.Success, addResult.Error);
 
         var propsXml = XDocument.Load(packagesPropsPath);
@@ -448,14 +452,14 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
             string.Equals((string?)element.Attribute("Include"), "Humanizer.Core", StringComparison.OrdinalIgnoreCase) &&
             string.Equals((string?)element.Attribute("Version"), "2.14.1", StringComparison.OrdinalIgnoreCase)));
 
-        var removePreview = await ProjectMutationService.PreviewRemoveCentralPackageVersionAsync(
+        var removePreview = await Services.ProjectMutationService.PreviewRemoveCentralPackageVersionAsync(
             workspace.WorkspaceId,
             new RemoveCentralPackageVersionDto("Humanizer.Core"),
             CancellationToken.None);
 
         Assert.IsNull(removePreview.Warnings, "Removing a central version nothing references must not warn.");
 
-        var removeResult = await ProjectMutationService.ApplyProjectMutationAsync(removePreview.PreviewToken, CancellationToken.None);
+        var removeResult = await Services.ProjectMutationService.ApplyProjectMutationAsync(removePreview.PreviewToken, CancellationToken.None);
         Assert.IsTrue(removeResult.Success, removeResult.Error);
 
         propsXml = XDocument.Load(packagesPropsPath);
@@ -468,12 +472,13 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
     {
         // migrate-package-removes-shared-central-version: the removal stays available (explicit
         // operator intent) but must name each file that still references the package.
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
-        var addPreview = await ProjectMutationService.PreviewAddCentralPackageVersionAsync(
+        await using var workspace = CreateSolutionWorkspace();
+        await workspace.LoadAsync(CancellationToken.None);
+        var addPreview = await Services.ProjectMutationService.PreviewAddCentralPackageVersionAsync(
             workspace.WorkspaceId,
             new AddCentralPackageVersionDto("Humanizer.Core", "2.14.1"),
             CancellationToken.None);
-        var addResult = await ProjectMutationService.ApplyProjectMutationAsync(addPreview.PreviewToken, CancellationToken.None);
+        var addResult = await Services.ProjectMutationService.ApplyProjectMutationAsync(addPreview.PreviewToken, CancellationToken.None);
         Assert.IsTrue(addResult.Success, addResult.Error);
 
         const string referencingProject =
@@ -487,7 +492,7 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
             new XElement("PackageReference", new XAttribute("Include", "Humanizer.Core"))));
         workspaceProjectXml.Save(workspaceProject, SaveOptions.DisableFormatting);
 
-        var removePreview = await ProjectMutationService.PreviewRemoveCentralPackageVersionAsync(
+        var removePreview = await Services.ProjectMutationService.PreviewRemoveCentralPackageVersionAsync(
             workspace.WorkspaceId,
             new RemoveCentralPackageVersionDto("Humanizer.Core"),
             CancellationToken.None);
@@ -503,17 +508,18 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public async Task Add_Package_Reference_Preview_When_Central_Package_Management_Is_Active_Omits_Version_And_Returns_Warning()
     {
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateSolutionWorkspace();
+        await workspace.LoadAsync(CancellationToken.None);
         var projectFilePath = workspace.GetPath("SampleLib", "SampleLib.csproj");
 
-        var preview = await ProjectMutationService.PreviewAddPackageReferenceAsync(
+        var preview = await Services.ProjectMutationService.PreviewAddPackageReferenceAsync(
             workspace.WorkspaceId,
             new AddPackageReferenceDto("SampleLib", "Humanizer.Core", "2.14.1"),
             CancellationToken.None);
 
         CollectionAssert.Contains(preview.Warnings?.ToArray() ?? [], "Central package management is enabled. Add 'Humanizer.Core' to Directory.Packages.props before building or applying a central package version preview.");
 
-        var applyResult = await ProjectMutationService.ApplyProjectMutationAsync(preview.PreviewToken, CancellationToken.None);
+        var applyResult = await Services.ProjectMutationService.ApplyProjectMutationAsync(preview.PreviewToken, CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
 
         var projectXml = XDocument.Load(projectFilePath);
@@ -532,22 +538,23 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
         // file. We don't require byte-identical round-trip because XmlWriter's `Indent = true`
         // serialization can normalize whitespace differently from the source — the bug-relevant
         // check is "no orphan blank lines / empty groups".
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateSingleProjectWorkspace();
+        await workspace.LoadAsync(CancellationToken.None);
         var projectFilePath = workspace.GetPath("SampleLib", "SampleLib.csproj");
 
-        var addPreview = await ProjectMutationService.PreviewAddPackageReferenceAsync(
+        var addPreview = await Services.ProjectMutationService.PreviewAddPackageReferenceAsync(
             workspace.WorkspaceId,
             new AddPackageReferenceDto("SampleLib", "Humanizer.Core", "2.14.1"),
             CancellationToken.None);
-        var addResult = await ProjectMutationService.ApplyProjectMutationAsync(
+        var addResult = await Services.ProjectMutationService.ApplyProjectMutationAsync(
             addPreview.PreviewToken, CancellationToken.None);
         Assert.IsTrue(addResult.Success, addResult.Error);
 
-        var removePreview = await ProjectMutationService.PreviewRemovePackageReferenceAsync(
+        var removePreview = await Services.ProjectMutationService.PreviewRemovePackageReferenceAsync(
             workspace.WorkspaceId,
             new RemovePackageReferenceDto("SampleLib", "Humanizer.Core"),
             CancellationToken.None);
-        var removeResult = await ProjectMutationService.ApplyProjectMutationAsync(
+        var removeResult = await Services.ProjectMutationService.ApplyProjectMutationAsync(
             removePreview.PreviewToken, CancellationToken.None);
         Assert.IsTrue(removeResult.Success, removeResult.Error);
 
@@ -583,7 +590,7 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
         // Self-contained repro: the isolated workspace copy gets its own Directory.Build.props that
         // declares the package for every project, so the test does not depend on which packages the
         // repo-root Directory.Build.props happens to reference.
-        await using var workspace = CreateIsolatedWorkspaceCopy();
+        await using var workspace = CreateSingleProjectWorkspace();
         await File.WriteAllTextAsync(
             Path.Combine(workspace.RootPath, "Directory.Build.props"),
             """
@@ -597,7 +604,7 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
         _ = await workspace.LoadAsync(CancellationToken.None).ConfigureAwait(false);
 
         var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
-            ProjectMutationService.PreviewAddPackageReferenceAsync(
+            Services.ProjectMutationService.PreviewAddPackageReferenceAsync(
                 workspace.WorkspaceId,
                 new AddPackageReferenceDto("SampleLib", "Humanizer.Core", "2.14.1"),
                 CancellationToken.None));
@@ -613,21 +620,22 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
         // the pre-apply .csproj bytes on the IUndoService revert stack so revert_last_apply
         // restores the file byte-exact. Previously the apply path skipped CaptureBeforeApply
         // and revert silently returned reverted:false — silent data-loss for scripted pipelines.
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateSingleProjectWorkspace();
+        await workspace.LoadAsync(CancellationToken.None);
         var workspaceId = workspace.WorkspaceId;
         var projectFilePath = workspace.GetPath("SampleLib", "SampleLib.csproj");
 
-        ChangeTracker.Clear(workspaceId);
-        UndoService.Clear(workspaceId);
+        Services.ChangeTracker.Clear(workspaceId);
+        Services.UndoService.Clear(workspaceId);
 
         var preApplyBytes = await File.ReadAllTextAsync(projectFilePath, CancellationToken.None);
 
-        var preview = await ProjectMutationService.PreviewAddPackageReferenceAsync(
+        var preview = await Services.ProjectMutationService.PreviewAddPackageReferenceAsync(
             workspaceId,
             new AddPackageReferenceDto("SampleLib", "Humanizer.Core", "2.14.1"),
             CancellationToken.None);
 
-        var applyResult = await ProjectMutationService.ApplyProjectMutationAsync(preview.PreviewToken, CancellationToken.None);
+        var applyResult = await Services.ProjectMutationService.ApplyProjectMutationAsync(preview.PreviewToken, CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
 
         // Sanity: post-apply content differs from pre-apply.
@@ -635,11 +643,11 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
         Assert.AreNotEqual(preApplyBytes, postApplyBytes, "Apply must have mutated the .csproj on disk.");
 
         // The apply must have registered an undo entry.
-        var lastOp = UndoService.GetLastOperation(workspaceId);
+        var lastOp = Services.UndoService.GetLastOperation(workspaceId);
         Assert.IsNotNull(lastOp, "apply_project_mutation must register an undo entry — revert stack was empty.");
         StringAssert.Contains(lastOp!.Description, "Project mutation");
 
-        var reverted = await UndoService.RevertAsync(workspaceId, CancellationToken.None);
+        var reverted = await Services.UndoService.RevertAsync(workspaceId, CancellationToken.None);
         Assert.IsTrue(reverted, "revert_last_apply must succeed when apply_project_mutation registered correctly.");
 
         var revertedBytes = await File.ReadAllTextAsync(projectFilePath, CancellationToken.None);
@@ -658,7 +666,8 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
     [DataRow(true)]
     public async Task Apply_Project_Mutation_Then_Revert_Restores_Original_Bytes(bool useUtf16)
     {
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateSingleProjectWorkspace();
+        await workspace.LoadAsync(CancellationToken.None);
         var workspaceId = workspace.WorkspaceId;
         var projectFilePath = workspace.GetPath("SampleLib", "SampleLib.csproj");
 
@@ -672,12 +681,12 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
         await File.WriteAllBytesAsync(projectFilePath, originalBytes, CancellationToken.None);
         await workspace.ReloadAsync(CancellationToken.None);
 
-        var preview = await ProjectMutationService.PreviewAddPackageReferenceAsync(
+        var preview = await Services.ProjectMutationService.PreviewAddPackageReferenceAsync(
             workspaceId,
             new AddPackageReferenceDto("SampleLib", "Humanizer.Core", "2.14.1"),
             CancellationToken.None);
 
-        var applyResult = await ProjectMutationService.ApplyProjectMutationAsync(preview.PreviewToken, CancellationToken.None);
+        var applyResult = await Services.ProjectMutationService.ApplyProjectMutationAsync(preview.PreviewToken, CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
 
         var postApplyBytes = await File.ReadAllBytesAsync(projectFilePath, CancellationToken.None);
@@ -686,7 +695,7 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
             postApplyBytes,
             "Sanity check: apply must have mutated the .csproj before revert is meaningful.");
 
-        var reverted = await UndoService.RevertAsync(workspaceId, CancellationToken.None);
+        var reverted = await Services.UndoService.RevertAsync(workspaceId, CancellationToken.None);
         Assert.IsTrue(reverted, "revert_last_apply must succeed.");
 
         CollectionAssert.AreEqual(
@@ -709,7 +718,8 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
     [DataRow("utf16-bom")]
     public async Task Apply_Project_Mutation_Preserves_Original_File_Encoding(string encodingKind)
     {
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateSingleProjectWorkspace();
+        await workspace.LoadAsync(CancellationToken.None);
         var workspaceId = workspace.WorkspaceId;
         var projectFilePath = workspace.GetPath("SampleLib", "SampleLib.csproj");
 
@@ -728,12 +738,12 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
             CancellationToken.None);
         await workspace.ReloadAsync(CancellationToken.None);
 
-        var preview = await ProjectMutationService.PreviewAddPackageReferenceAsync(
+        var preview = await Services.ProjectMutationService.PreviewAddPackageReferenceAsync(
             workspaceId,
             new AddPackageReferenceDto("SampleLib", "Humanizer.Core", "2.14.1"),
             CancellationToken.None);
 
-        var applyResult = await ProjectMutationService.ApplyProjectMutationAsync(preview.PreviewToken, CancellationToken.None);
+        var applyResult = await Services.ProjectMutationService.ApplyProjectMutationAsync(preview.PreviewToken, CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
 
         var afterBytes = await File.ReadAllBytesAsync(projectFilePath, CancellationToken.None);
@@ -756,13 +766,14 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public async Task Set_Conditional_Property_Preview_Invalid_Condition_Error_Message_Includes_MSBuild_Quoting_Example()
     {
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateSingleProjectWorkspace();
+        await workspace.LoadAsync(CancellationToken.None);
 
         // Pass a condition that omits MSBuild-style single-quoting (the common first-time caller mistake).
         const string invalidCondition = "$(Configuration) == Release";
 
         var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
-            ProjectMutationService.PreviewSetConditionalPropertyAsync(
+            Services.ProjectMutationService.PreviewSetConditionalPropertyAsync(
                 workspace.WorkspaceId,
                 new SetConditionalPropertyDto("SampleLib", "LangVersion", "preview", invalidCondition),
                 CancellationToken.None));
@@ -778,7 +789,7 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
         // already set via the inherited MSBuild property graph (e.g. Directory.Build.props) but NOT
         // declared in the .csproj itself, the tool must warn — not throw — and still emit a diff
         // so the caller can inspect the redundancy and decide whether to proceed.
-        await using var workspace = CreateIsolatedWorkspaceCopy();
+        await using var workspace = CreateSingleProjectWorkspace();
 
         // Write a Directory.Build.props that sets Nullable=enable globally.
         await File.WriteAllTextAsync(
@@ -810,7 +821,7 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
         await workspace.LoadAsync(CancellationToken.None).ConfigureAwait(false);
 
         // Requesting Nullable=enable should NOT throw because the value matches — but should warn.
-        var preview = await ProjectMutationService.PreviewSetProjectPropertyAsync(
+        var preview = await Services.ProjectMutationService.PreviewSetProjectPropertyAsync(
             workspace.WorkspaceId,
             new SetProjectPropertyDto("SampleLib", "Nullable", "enable"),
             CancellationToken.None).ConfigureAwait(false);
@@ -836,9 +847,10 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
         // descriptive Description) rather than throwing InvalidOperationException. Mirrors
         // StringLiteralReplaceService.cs:94-106 — shape-probing callers can detect no-ops without
         // exception-handling overhead. Fixes gh #769 §13.29.
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateSingleProjectWorkspace();
+        await workspace.LoadAsync(CancellationToken.None);
 
-        var preview = await ProjectMutationService.PreviewRemovePackageReferenceAsync(
+        var preview = await Services.ProjectMutationService.PreviewRemovePackageReferenceAsync(
             workspace.WorkspaceId,
             new RemovePackageReferenceDto("SampleLib", "Definitely.Not.Installed.Package"),
             CancellationToken.None);
@@ -856,11 +868,12 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
     {
         // remove-preview-family-invalidoperation-for-missing-items: removing a project reference
         // that is not present must return a structured empty preview rather than throwing.
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateSolutionWorkspace();
+        await workspace.LoadAsync(CancellationToken.None);
 
         // SampleApp references SampleLib but NOT SampleLib.Tests. Probing for the absent edge
         // must short-circuit with an empty preview.
-        var preview = await ProjectMutationService.PreviewRemoveProjectReferenceAsync(
+        var preview = await Services.ProjectMutationService.PreviewRemoveProjectReferenceAsync(
             workspace.WorkspaceId,
             new RemoveProjectReferenceDto("SampleApp", "SampleLib.Tests"),
             CancellationToken.None);
@@ -881,9 +894,10 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
         // SampleLib has only net10.0 — probing for net8.0 in the single <TargetFramework> branch
         // hits the not-found path and must short-circuit before the "cannot remove the only"
         // guard fires.
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateSingleProjectWorkspace();
+        await workspace.LoadAsync(CancellationToken.None);
 
-        var preview = await ProjectMutationService.PreviewRemoveTargetFrameworkAsync(
+        var preview = await Services.ProjectMutationService.PreviewRemoveTargetFrameworkAsync(
             workspace.WorkspaceId,
             new RemoveTargetFrameworkDto("SampleLib", "net8.0"),
             CancellationToken.None);
@@ -901,9 +915,10 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
     {
         // remove-preview-family-invalidoperation-for-missing-items: removing a central package
         // version that is not present must return a structured empty preview rather than throwing.
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateSolutionWorkspace();
+        await workspace.LoadAsync(CancellationToken.None);
 
-        var preview = await ProjectMutationService.PreviewRemoveCentralPackageVersionAsync(
+        var preview = await Services.ProjectMutationService.PreviewRemoveCentralPackageVersionAsync(
             workspace.WorkspaceId,
             new RemoveCentralPackageVersionDto("Definitely.Not.Installed.Package"),
             CancellationToken.None);

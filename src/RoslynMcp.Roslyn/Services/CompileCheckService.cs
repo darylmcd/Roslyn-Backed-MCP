@@ -296,11 +296,11 @@ public sealed class CompileCheckService : ICompileCheckService
         {
             zeroProjectsHint = string.IsNullOrWhiteSpace(projectFilter)
                 ? "compile_check evaluated 0 projects. The workspace may have completed a reload without re-populating its project list — call workspace_reload explicitly and retry, or verify workspace_load succeeded."
-                : $"compile_check evaluated 0 projects: projectFilter '{projectFilter}' did not match any project in the workspace. Project names are matched case-insensitively against Project.Name (e.g. 'MyProject', not 'MyProject.csproj'). Call workspace_status for the current project list.";
+                : $"compile_check evaluated 0 projects: projectFilter '{projectFilter}' did not match any project in the workspace. Project names are matched case-insensitively against Project.Name (e.g. 'MyProject', not 'MyProject.csproj'). Call workspace_status with verbose=true for the current project list.";
         }
 
         var unavailableHint = acc.UnavailableProjects > 0
-            ? $"compile_check could not obtain a compilation for {acc.UnavailableProjects} selected project(s); validation is incomplete. Call workspace_status to inspect project support, then build_workspace for process-level validation."
+            ? $"compile_check could not obtain a compilation for {acc.UnavailableProjects} selected project(s); validation is incomplete. Call workspace_status with verbose=true to inspect project support, then build_workspace for process-level validation."
             : null;
         var joined = string.Join(" ", new[] { zeroProjectsHint, unavailableHint, restoreHint, fileScopeHint }
             .Where(static hint => !string.IsNullOrWhiteSpace(hint)));
@@ -355,7 +355,7 @@ public sealed class CompileCheckService : ICompileCheckService
         if (owningProjects.Count == 0)
         {
             return ([],
-                "compile_check file scope did not resolve to any loaded workspace document; no project was compiled and no diagnostics were evaluated. Verify the supplied file paths exist in the loaded workspace (call workspace_status), or omit the file scope to compile the full solution.");
+                "compile_check file scope did not resolve to any loaded workspace document; no project was compiled and no diagnostics were evaluated. Use workspace_status with verbose=true to inspect loaded project paths, verify the supplied file paths belong to those projects, or omit the file scope to compile the full solution.");
         }
 
         // Compile only owners; diagnostic filtering still excludes their unrequested files.

@@ -245,7 +245,7 @@ public sealed class ScaffoldingFirstTestFileTests : IsolatedWorkspaceTestBase
 
             StringAssert.Contains(ex.Message, "Multiple test projects reference",
                 "Error must explain ambiguity is the root cause.");
-            FileOperationIntegrationTests.AssertSafeRefusal(ex, "Pass testProjectName explicitly", null,
+            FileOperationIntegrationTests.AssertSafeRefusal(ex, "pass testProjectName explicitly", null,
                 "WebApi.Tests", "ConsoleHost.Tests", "SampleLib", workspace.RootPath);
         }
         finally

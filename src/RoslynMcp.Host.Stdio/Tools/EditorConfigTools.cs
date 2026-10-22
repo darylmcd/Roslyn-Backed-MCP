@@ -42,8 +42,8 @@ public static class EditorConfigTools
         IEditorConfigService editorConfigService,
         [Description("Workspace session id from workspace_load.")] string workspaceId,
         [Description("Absolute path to the C# source file whose .editorconfig should be updated.")] string filePath,
-        [Description("EditorConfig key (e.g. dotnet_diagnostic.CA1000.severity)")] string key,
-        [Description("Value (e.g. warning, suggestion, silent, none)")] string value,
+        [Description("EditorConfig key on one line (e.g. dotnet_diagnostic.CA1000.severity)")] string key,
+        [Description("Single-line value without inline '#'/';' comments (e.g. warning, suggestion, silent, none; empty or 'unset' clears)")] string value,
         CancellationToken ct = default)
         => ToolDispatch.PreviewWithWorkspaceIdAsync(
             gate,

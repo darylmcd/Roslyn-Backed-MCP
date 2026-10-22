@@ -155,3 +155,7 @@ verify-release:
 # Run the pull-request release lane (coverage and live-network tests are informational)
 verify-release-pr:
     pwsh -NoProfile -File ./eng/verify-release.ps1 -NoCoverage -ExcludeNetworkTests
+
+# Serialize agent validation across all participating repos on the Windows dev host.
+machine-validate target="ci":
+    node "{{home_directory()}}/.claude/scripts/validation-gate.mjs" -- just "{{target}}"{{ if os_family() == "windows" { '; exit $LASTEXITCODE' } else { '' } }}

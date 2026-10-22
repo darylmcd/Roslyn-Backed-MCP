@@ -35,16 +35,17 @@ public sealed class ChangeSignatureService : IChangeSignatureService
     {
         locator.Validate();
         if (string.IsNullOrWhiteSpace(request.Op))
-            throw new ArgumentException("ChangeSignatureRequest.Op is required.", nameof(request));
+            throw new PublicArgumentException(
+                "Parameter 'op' is required. Valid values: add, remove, rename, reorder.", "op");
 
         // Parenthesized display signatures are not metadata names; retain actionable guidance.
         if (locator.HasMetadataName && locator.MetadataName!.Contains('('))
         {
-            throw new ArgumentException(
-                $"metadataName must be a bare method name (e.g. 'Foo.Bar.Baz') with file/line/column for disambiguation, " +
-                $"OR a symbolHandle from symbol_search; received '{locator.MetadataName}' which contains a parenthesized " +
-                $"signature. Drop the '(...)' or use symbolHandle.",
-                nameof(locator));
+            throw new PublicArgumentException(
+                "Parameter 'metadataName' must be a bare method name (e.g. 'Foo.Bar.Baz') with file/line/column for " +
+                "disambiguation, OR a symbolHandle from symbol_search; a parenthesized signature is not accepted. " +
+                "Drop the '(...)' or use symbolHandle.",
+                "metadataName");
         }
 
         var solution = _workspace.GetCurrentSolution(workspaceId);
@@ -77,8 +78,9 @@ public sealed class ChangeSignatureService : IChangeSignatureService
             throw PrimaryConstructorRefusal(primaryCtor.ContainingType);
 
         if (symbol is not IMethodSymbol method)
-            throw new InvalidOperationException(
-                $"change_signature_preview requires a method symbol; resolved {symbol?.Kind.ToString() ?? "null"} instead.");
+            throw new PublicInvalidOperationException(
+                $"change_signature_preview requires a method, constructor, or primary-constructor type; the locator resolved " +
+                $"a {symbol?.Kind.ToString() ?? "null"} symbol instead. Point filePath/line/column at the declaration or pass a method symbolHandle.");
 
         return request.Op.ToLowerInvariant() switch
         {
@@ -86,9 +88,8 @@ public sealed class ChangeSignatureService : IChangeSignatureService
             "remove" => await PreviewRemoveParameterAsync(workspaceId, solution, method, request, ct).ConfigureAwait(false),
             "rename" => await PreviewRenameParameterAsync(workspaceId, method, request, ct).ConfigureAwait(false),
             "reorder" => await PreviewReorderParametersAsync(workspaceId, solution, method, request, ct).ConfigureAwait(false),
-            _ => throw new ArgumentException(
-                $"Unsupported op '{request.Op}'. Valid values: add, remove, rename, reorder.",
-                nameof(request)),
+            _ => throw new PublicArgumentException(
+                "Parameter 'op' is not supported. Valid values: add, remove, rename, reorder.", "op"),
         };
     }
 
@@ -119,7 +120,7 @@ public sealed class ChangeSignatureService : IChangeSignatureService
         return false;
     }
 
-    private static InvalidOperationException PrimaryConstructorRefusal(INamedTypeSymbol type)
+    private static PublicInvalidOperationException PrimaryConstructorRefusal(INamedTypeSymbol type)
     {
         var recordNote = type.IsRecord
             ? " For a record these parameters are also synthesized public properties, so a signature edit would change its public shape."
@@ -133,9 +134,9 @@ public sealed class ChangeSignatureService : IChangeSignatureService
         string workspaceId, Solution solution, IMethodSymbol method, ChangeSignatureRequest request, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(request.Name))
-            throw new ArgumentException("op='add' requires Name.", nameof(request));
+            throw new PublicArgumentException("op='add' requires parameter 'name' (the new parameter's name).", "name");
         if (string.IsNullOrWhiteSpace(request.ParameterType))
-            throw new ArgumentException("op='add' requires ParameterType.", nameof(request));
+            throw new PublicArgumentException("op='add' requires parameter 'parameterType'.", "parameterType");
 
         // change-signature-preview-add-unhelpful-error:
         // When the caller does not supply Position, default to end-append (the intent is
@@ -147,12 +148,11 @@ public sealed class ChangeSignatureService : IChangeSignatureService
         // "Parameter 'index' has an out-of-range value" and forced agents to guess.
         var insertPosition = request.Position ?? method.Parameters.Length;
         if (insertPosition < 0 || insertPosition > method.Parameters.Length)
-            throw new ArgumentException(
-                $"op='add' Position={insertPosition} is out of range for adding parameter " +
-                $"'{request.Name}: {request.ParameterType}' to {method.ToDisplayString()} " +
+            throw new PublicArgumentException(
+                $"op='add' parameter 'position' ({insertPosition}) is out of range for {method.ToDisplayString()} " +
                 $"(method has {method.Parameters.Length} existing parameter(s); " +
-                $"valid Position is 0..{method.Parameters.Length}, or omit Position to append at end).",
-                nameof(request));
+                $"valid position is 0..{method.Parameters.Length}, or omit position to append at end).",
+                "position");
 
         // change-signature-preview-brace-concat-on-add-op:
         // Parse only the new parameter with SyntaxFactory.ParseParameterList — the parser produces a
@@ -183,8 +183,10 @@ public sealed class ChangeSignatureService : IChangeSignatureService
         string workspaceId, Solution solution, IMethodSymbol method, ChangeSignatureRequest request, CancellationToken ct)
     {
         var index = ResolveParameterIndex(method, request);
-        if (index < 0) throw new ArgumentException(
-            $"op='remove' requires Position or Name to identify the parameter.", nameof(request));
+        if (index < 0) throw new PublicArgumentException(
+            $"op='remove' requires 'position' (0..{method.Parameters.Length - 1}) or 'name' matching a parameter of " +
+            $"{method.ToDisplayString()} (parameters: {string.Join(", ", method.Parameters.Select(p => p.Name))}).",
+            "position");
 
         var (accumulator, changes, callsiteUpdates, warnings) = await ApplyAddRemoveAsync(
             solution, method,
@@ -219,18 +221,22 @@ public sealed class ChangeSignatureService : IChangeSignatureService
         string workspaceId, IMethodSymbol method, ChangeSignatureRequest request, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(request.Name))
-            throw new ArgumentException("op='rename' requires Name (current parameter name).", nameof(request));
+            throw new PublicArgumentException("op='rename' requires parameter 'name' (the current parameter name).", "name");
         if (string.IsNullOrWhiteSpace(request.NewName))
-            throw new ArgumentException("op='rename' requires NewName.", nameof(request));
+            throw new PublicArgumentException("op='rename' requires parameter 'newName'.", "newName");
 
         var paramSymbol = method.Parameters.FirstOrDefault(p =>
             string.Equals(p.Name, request.Name, StringComparison.Ordinal));
         if (paramSymbol is null)
-            throw new ArgumentException(
-                $"Parameter '{request.Name}' not found on method {method.ToDisplayString()}.", nameof(request));
+            throw new PublicArgumentException(
+                $"Parameter 'name' does not match a parameter of {method.ToDisplayString()} " +
+                $"(parameters: {string.Join(", ", method.Parameters.Select(p => p.Name))}).", "name");
 
         var loc = paramSymbol.Locations.FirstOrDefault(l => l.IsInSource);
-        if (loc is null) throw new InvalidOperationException("Parameter has no source location to rename from.");
+        if (loc is null)
+            throw new PublicInvalidOperationException(
+                "op='rename' requires a method declared in source; the resolved method comes from a referenced assembly. " +
+                "Point filePath/line/column at a source-declared method.");
         var lineSpan = loc.GetLineSpan();
         var renameLocator = SymbolLocator.BySource(loc.SourceTree!.FilePath, lineSpan.StartLinePosition.Line + 1, lineSpan.StartLinePosition.Character + 1);
         return await _refactoringService.PreviewRenameAsync(workspaceId, renameLocator, request.NewName, ct).ConfigureAwait(false);
@@ -258,10 +264,10 @@ public sealed class ChangeSignatureService : IChangeSignatureService
         string workspaceId, Solution solution, IMethodSymbol method, ChangeSignatureRequest request, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(request.NewOrder))
-            throw new ArgumentException(
-                "op='reorder' requires NewOrder — a comma-separated permutation of the existing parameters " +
+            throw new PublicArgumentException(
+                "op='reorder' requires parameter 'newOrder' — a comma-separated permutation of the existing parameters " +
                 "(by name or 0-based index, e.g. 'b,a,c' or '1,0,2').",
-                nameof(request));
+                "newOrder");
 
         var permutation = ParseAndValidatePermutation(method, request.NewOrder!);
 
@@ -271,11 +277,11 @@ public sealed class ChangeSignatureService : IChangeSignatureService
             var origIdx = permutation[newIdx];
             if (method.Parameters[origIdx].IsParams && newIdx != permutation.Length - 1)
             {
-                throw new ArgumentException(
+                throw new PublicArgumentException(
                     $"op='reorder' cannot move the params parameter '{method.Parameters[origIdx].Name}' off the " +
                     $"trailing slot — C# requires params to be the last parameter. Keep '{method.Parameters[origIdx].Name}' " +
-                    $"at the end of NewOrder.",
-                    nameof(request));
+                    $"at the end of newOrder.",
+                    "newOrder");
             }
         }
 
@@ -286,9 +292,9 @@ public sealed class ChangeSignatureService : IChangeSignatureService
             if (permutation[i] != i) { isIdentity = false; break; }
         }
         if (isIdentity)
-            throw new ArgumentException(
-                $"op='reorder' NewOrder='{request.NewOrder}' is the identity permutation — no change to apply.",
-                nameof(request));
+            throw new PublicArgumentException(
+                "op='reorder' newOrder is the identity permutation — no change to apply.",
+                "newOrder");
 
         var (accumulator, changes, callsiteUpdates, warnings) = await ApplyAddRemoveAsync(
             solution, method,
@@ -311,12 +317,12 @@ public sealed class ChangeSignatureService : IChangeSignatureService
     {
         var tokens = newOrder.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         if (tokens.Length != method.Parameters.Length)
-            throw new ArgumentException(
-                $"op='reorder' NewOrder must list every parameter exactly once. " +
+            throw new PublicArgumentException(
+                $"op='reorder' newOrder must list every parameter exactly once. " +
                 $"Method {method.ToDisplayString()} has {method.Parameters.Length} parameter(s) " +
-                $"({string.Join(", ", method.Parameters.Select(p => p.Name))}); NewOrder supplied " +
+                $"({string.Join(", ", method.Parameters.Select(p => p.Name))}); newOrder supplied " +
                 $"{tokens.Length} token(s).",
-                nameof(newOrder));
+                "newOrder");
 
         var permutation = new int[tokens.Length];
         var seen = new HashSet<int>();
@@ -327,9 +333,9 @@ public sealed class ChangeSignatureService : IChangeSignatureService
             if (int.TryParse(token, out var asIndex))
             {
                 if (asIndex < 0 || asIndex >= method.Parameters.Length)
-                    throw new ArgumentException(
-                        $"op='reorder' NewOrder index {asIndex} is out of range (valid 0..{method.Parameters.Length - 1}).",
-                        nameof(newOrder));
+                    throw new PublicArgumentException(
+                        $"op='reorder' newOrder index {asIndex} is out of range (valid 0..{method.Parameters.Length - 1}).",
+                        "newOrder");
                 origIdx = asIndex;
             }
             else
@@ -344,15 +350,15 @@ public sealed class ChangeSignatureService : IChangeSignatureService
                     }
                 }
                 if (origIdx < 0)
-                    throw new ArgumentException(
-                        $"op='reorder' NewOrder token '{token}' does not match any parameter on " +
+                    throw new PublicArgumentException(
+                        $"op='reorder' newOrder entry {i + 1} does not match any parameter on " +
                         $"{method.ToDisplayString()} (parameters: {string.Join(", ", method.Parameters.Select(p => p.Name))}).",
-                        nameof(newOrder));
+                        "newOrder");
             }
             if (!seen.Add(origIdx))
-                throw new ArgumentException(
-                    $"op='reorder' NewOrder lists parameter '{method.Parameters[origIdx].Name}' more than once.",
-                    nameof(newOrder));
+                throw new PublicArgumentException(
+                    $"op='reorder' newOrder lists parameter '{method.Parameters[origIdx].Name}' more than once.",
+                    "newOrder");
             permutation[i] = origIdx;
         }
         return permutation;

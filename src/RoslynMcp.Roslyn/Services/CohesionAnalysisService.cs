@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Operations;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
@@ -79,8 +80,6 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
         foreach (var doc in documents)
         {
             ct.ThrowIfCancellationRequested();
-            if (results.Count >= limit) break;
-
             var semanticModel = await doc.GetSemanticModelAsync(ct).ConfigureAwait(false);
             var root = await doc.GetSyntaxRootAsync(ct).ConfigureAwait(false);
             if (semanticModel is null || root is null) continue;
@@ -89,8 +88,6 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
             foreach (var typeDecl in typeDeclarations)
             {
                 ct.ThrowIfCancellationRequested();
-                if (results.Count >= limit) break;
-
                 try
                 {
                     if (semanticModel.GetDeclaredSymbol(typeDecl, ct) is not INamedTypeSymbol typeSymbol
@@ -168,8 +165,7 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
         INamedTypeSymbol typeSymbol, string? filePath, int line, int? minMethods, bool includeInterfaces)
     {
         if (!includeInterfaces) return null;
-        var methodCount = typeSymbol.GetMembers().OfType<IMethodSymbol>()
-            .Count(m => m.MethodKind == MethodKind.Ordinary && !m.IsImplicitlyDeclared && !IsSourceGenPartial(m));
+        var methodCount = GetOrdinarySourceMethods(typeSymbol).Count();
         if (minMethods.HasValue && methodCount < minMethods.Value) return null;
         return new CohesionMetricsDto(
             TypeName: typeSymbol.Name,
@@ -196,9 +192,8 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
     private static List<IMethodSymbol>? TryCollectInstanceMethodsForCohesion(
         INamedTypeSymbol typeSymbol, int? minMethods)
     {
-        var instanceMethods = typeSymbol.GetMembers()
-            .OfType<IMethodSymbol>()
-            .Where(m => m.MethodKind == MethodKind.Ordinary && !m.IsStatic && !m.IsImplicitlyDeclared && !IsSourceGenPartial(m))
+        var instanceMethods = GetOrdinarySourceMethods(typeSymbol)
+            .Where(m => !m.IsStatic)
             .ToList();
 
         if (minMethods.HasValue && instanceMethods.Count < minMethods.Value) return null;
@@ -253,11 +248,8 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
     /// </summary>
     private static string? DetectLifecyclePattern(INamedTypeSymbol typeSymbol, int instanceFieldCount, CancellationToken ct)
     {
-        var publicMethods = typeSymbol.GetMembers()
-            .OfType<IMethodSymbol>()
-            .Where(m => m.MethodKind == MethodKind.Ordinary
-                        && m.DeclaredAccessibility == Accessibility.Public
-                        && !m.IsImplicitlyDeclared)
+        var publicMethods = GetOrdinarySourceMethods(typeSymbol)
+            .Where(m => m.DeclaredAccessibility == Accessibility.Public)
             .ToList();
 
         var actionTriad = DetectActionTriadPattern(typeSymbol, publicMethods);
@@ -332,6 +324,7 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
     /// </summary>
     private static bool IsExpressionBodiedOrSingleReturn(IMethodSymbol method, CancellationToken ct)
     {
+        method = method.PartialImplementationPart ?? method;
         if (method.DeclaringSyntaxReferences.Length == 0) return false;
 
         foreach (var syntaxRef in method.DeclaringSyntaxReferences)
@@ -359,7 +352,7 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
     /// <summary>
     /// For each method, build two maps:
     /// - <c>methodFieldMap</c>: the field/property names the method accesses (used for SharedFields output).
-    /// - <c>methodCallMap</c>: the private helper method symbols the method calls (used for cluster connectivity).
+    /// - <c>methodCallMap</c>: the owned method symbols the method calls (used for cluster connectivity).
     /// Splitting these prevents BUG-N9 where a private helper showed up both as a method node AND
     /// inside the SharedFields list of its caller's cluster.
     /// </summary>
@@ -387,7 +380,7 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
     /// </summary>
     private static bool IsSourceGenPartial(IMethodSymbol method)
     {
-        if (method.IsPartialDefinition) return true;
+        if (method.IsPartialDefinition && method.PartialImplementationPart is null) return true;
 
         // The implementation part may carry the attribute even when the definition does not.
         var implPart = method.PartialImplementationPart;
@@ -396,6 +389,13 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
             || (implPart is not null && HasSourceGenAttribute(implPart))
             || (defPart is not null && HasSourceGenAttribute(defPart));
     }
+
+    private static IEnumerable<IMethodSymbol> GetOrdinarySourceMethods(INamedTypeSymbol typeSymbol) =>
+        typeSymbol.GetMembers().OfType<IMethodSymbol>()
+            .Select(SymbolServiceHelpers.GetMethodDefinition)
+            .Where(method => method.MethodKind == MethodKind.Ordinary
+                && !method.IsImplicitlyDeclared && !IsSourceGenPartial(method))
+            .Distinct<IMethodSymbol>(SymbolEqualityComparer.Default);
 
     private static bool HasSourceGenAttribute(IMethodSymbol method)
     {
@@ -467,9 +467,8 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
     private static (List<IMethodSymbol> PublicMethods, List<ISymbol> PrivateMembers) CollectPublicMethodsAndPrivateMembers(
         INamedTypeSymbol typeSymbol)
     {
-        var publicMethods = typeSymbol.GetMembers()
-            .OfType<IMethodSymbol>()
-            .Where(m => m.MethodKind == MethodKind.Ordinary && (typeSymbol.IsStatic || !m.IsStatic) &&
+        var publicMethods = GetOrdinarySourceMethods(typeSymbol)
+            .Where(m => (typeSymbol.IsStatic || !m.IsStatic) &&
                         m.DeclaredAccessibility is Accessibility.Public or Accessibility.Internal)
             .ToList();
 
@@ -477,6 +476,8 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
             .Where(m => !m.IsImplicitlyDeclared && (typeSymbol.IsStatic || !m.IsStatic) &&
                         m.DeclaredAccessibility == Accessibility.Private &&
                         m is IMethodSymbol { MethodKind: MethodKind.Ordinary } or IFieldSymbol or IPropertySymbol)
+            .Select(member => member is IMethodSymbol method ? SymbolServiceHelpers.GetMethodDefinition(method) : member)
+            .Distinct(SymbolEqualityComparer.Default)
             .ToList();
 
         return (publicMethods, privateMembers);
@@ -514,7 +515,7 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
     /// <summary>
     /// Walks a method body and returns two disjoint sets:
     /// - <c>fields</c>: instance/static fields and properties on the containing type that the method reads or writes.
-    /// - <c>calls</c>: private helper methods on the containing type that the method calls.
+    /// - <c>calls</c>: ordinary methods on the containing type that the method calls.
     ///
     /// Keeping these separated fixes BUG-N9 — previously private-helper names were merged into
     /// the same set as field names, so the SharedFields output for an LCOM4 cluster ended up
@@ -532,6 +533,7 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
         var semanticModel = compilation.GetSemanticModel(methodNode.SyntaxTree);
         foreach (var identifier in methodNode.DescendantNodes().OfType<SimpleNameSyntax>())
         {
+            if (IsNameofOperand(identifier, semanticModel, ct)) continue;
             var referencedSymbol = semanticModel.GetSymbolInfo(identifier, ct).Symbol;
             if (referencedSymbol is null) continue;
 
@@ -543,12 +545,19 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
 
     private static SyntaxNode? FindSourceMethodNode(IMethodSymbol method, CancellationToken ct)
     {
+        method = method.PartialImplementationPart ?? method;
         var methodLocation = method.Locations.FirstOrDefault(l => l.IsInSource);
         if (methodLocation?.SourceTree is null) return null;
 
         var root = methodLocation.SourceTree.GetRoot(ct);
         return root.FindNode(methodLocation.SourceSpan);
     }
+
+    private static bool IsNameofOperand(
+        SimpleNameSyntax name, SemanticModel model, CancellationToken ct) =>
+        name.Ancestors().OfType<InvocationExpressionSyntax>().Any(invocation =>
+            invocation.Expression is IdentifierNameSyntax { Identifier.ValueText: "nameof" }
+            && model.GetOperation(invocation, ct) is INameOfOperation);
 
     private static void AddAccessedMember(
         ISymbol referencedSymbol, INamedTypeSymbol containingType,
@@ -561,10 +570,10 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
             return;
         }
 
-        var helperCall = GetPrivateHelperCall(referencedSymbol, containingType);
+        var helperCall = GetOwnedMethodCall(referencedSymbol, containingType);
         if (helperCall is not null)
         {
-            // Private method calls create transitive coupling but should NOT appear as
+            // Method calls create transitive coupling but should NOT appear as
             // SharedFields. They live in the call map, used only for cluster connectivity.
             calls.Add(helperCall);
         }
@@ -578,12 +587,11 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
             _ => null,
         };
 
-    private static IMethodSymbol? GetPrivateHelperCall(ISymbol referencedSymbol, INamedTypeSymbol containingType) =>
+    private static IMethodSymbol? GetOwnedMethodCall(ISymbol referencedSymbol, INamedTypeSymbol containingType) =>
         referencedSymbol is IMethodSymbol calledMethod
         && IsOwnedMember(calledMethod, containingType)
-        && calledMethod.DeclaredAccessibility == Accessibility.Private
         && calledMethod.MethodKind == MethodKind.Ordinary
-            ? calledMethod.OriginalDefinition
+            ? SymbolServiceHelpers.GetMethodDefinition(calledMethod)
             : null;
 
     private static bool IsOwnedMember(ISymbol member, INamedTypeSymbol containingType) =>
@@ -604,21 +612,22 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
         IMethodSymbol method, ISymbol member,
         Dictionary<SyntaxTree, SemanticModel> semanticModelMap, CancellationToken ct)
     {
-        var methodLocation = method.Locations.FirstOrDefault(l => l.IsInSource);
-        if (methodLocation?.SourceTree is null) return false;
+        var methodNode = FindSourceMethodNode(method, ct);
+        if (methodNode is null) return false;
 
         // dr-find-shared-members-locator-invalidargument: Use the semantic model
         // that matches the method's syntax tree to avoid cross-tree exceptions.
-        if (!semanticModelMap.TryGetValue(methodLocation.SourceTree, out var semanticModel))
+        if (!semanticModelMap.TryGetValue(methodNode.SyntaxTree, out var semanticModel))
             return false;
 
-        var root = methodLocation.SourceTree.GetRoot(ct);
-        var methodNode = root.FindNode(methodLocation.SourceSpan);
-
-        foreach (var identifier in methodNode.DescendantNodes().OfType<IdentifierNameSyntax>())
+        var memberIdentity = member is IMethodSymbol memberMethod ? SymbolServiceHelpers.GetMethodDefinition(memberMethod) : member;
+        foreach (var identifier in methodNode.DescendantNodes().OfType<SimpleNameSyntax>())
         {
-            var symbolInfo = semanticModel.GetSymbolInfo(identifier, ct);
-            if (SymbolEqualityComparer.Default.Equals(symbolInfo.Symbol, member))
+            if (IsNameofOperand(identifier, semanticModel, ct)) continue;
+            var referencedSymbol = semanticModel.GetSymbolInfo(identifier, ct).Symbol;
+            var referencedIdentity = referencedSymbol is IMethodSymbol referencedMethod
+                ? SymbolServiceHelpers.GetMethodDefinition(referencedMethod) : referencedSymbol;
+            if (SymbolEqualityComparer.Default.Equals(referencedIdentity, memberIdentity))
                 return true;
         }
 
@@ -630,7 +639,7 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
         Dictionary<IMethodSymbol, HashSet<IMethodSymbol>> methodCallMap)
     {
         // Build adjacency: two methods are connected if they share any field/property access OR
-        // any private-helper-method call. The two relationships are kept in separate maps so
+        // any owned-method call. The two relationships are kept in separate maps so
         // that cluster connectivity considers both, while SharedFields output only contains
         // real field/property names (BUG-N9).
         var methodSymbols = methodFieldMap.Keys.ToList();
@@ -655,7 +664,16 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
             if (!SymbolEqualityComparer.Default.Equals(ra, rb)) parent[ra] = rb;
         }
 
-        // Union methods that share at least one field/property OR a private-helper call.
+        foreach (var method in methodSymbols)
+        {
+            foreach (var calledMethod in methodCallMap[method])
+            {
+                if (parent.ContainsKey(calledMethod))
+                    Union(method, calledMethod);
+            }
+        }
+
+        // Union methods that share at least one field/property OR an owned-method call.
         for (int i = 0; i < methodSymbols.Count; i++)
         {
             for (int j = i + 1; j < methodSymbols.Count; j++)

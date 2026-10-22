@@ -1,0 +1,18 @@
+[
+  {
+    "shards": 2,
+    "classes": 419,
+    "staticCases": 4525,
+    "disjoint": true,
+    "complete": true,
+    "signatureCases": 333
+  },
+  {
+    "shards": 4,
+    "classes": 419,
+    "staticCases": 4525,
+    "disjoint": true,
+    "complete": true,
+    "signatureCases": 333
+  }
+]

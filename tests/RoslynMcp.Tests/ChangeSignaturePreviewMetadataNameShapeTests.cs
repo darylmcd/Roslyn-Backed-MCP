@@ -63,7 +63,7 @@ public sealed class ChangeSignaturePreviewMetadataNameShapeTests : IsolatedWorks
             NewName: null,
             DefaultValue: null);
 
-        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(async () =>
+        var ex = await Assert.ThrowsExactlyAsync<PublicArgumentException>(async () =>
             await _changeSignatureService.PreviewChangeSignatureAsync(
                 workspace.WorkspaceId, locator, request, CancellationToken.None));
 
@@ -76,10 +76,10 @@ public sealed class ChangeSignaturePreviewMetadataNameShapeTests : IsolatedWorks
         StringAssert.Contains(ex.Message, "symbolHandle",
             $"error must name `symbolHandle` as the alternative; got: {ex.Message}");
 
-        // Error must echo back the offending input so the agent can correlate with
-        // its own request payload.
-        StringAssert.Contains(ex.Message, "SampleLib.AnimalService.GetAllAnimals(string)",
-            $"error must echo the offending metadata name input; got: {ex.Message}");
+        // Error must name the wire parameter and must NOT echo the caller's input.
+        Assert.AreEqual("metadataName", ex.ParamName);
+        Assert.IsFalse(ex.Message.Contains("GetAllAnimals", StringComparison.Ordinal),
+            $"error must not echo the offending metadata name input; got: {ex.Message}");
 
         // Error must NOT use the misleading pre-fix wording.
         Assert.IsFalse(ex.Message.Contains("requires a method symbol", StringComparison.Ordinal),

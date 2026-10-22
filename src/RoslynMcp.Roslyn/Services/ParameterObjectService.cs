@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -19,7 +20,7 @@ namespace RoslynMcp.Roslyn.Services;
 /// constructor. Request and service contracts describe the generated DTO, existing-reference
 /// requirement and refusal conditions; successful previews use the standard refactoring store.
 /// </summary>
-public sealed class ParameterObjectService : IParameterObjectService
+public sealed partial class ParameterObjectService : IParameterObjectService
 {
     private static readonly HashSet<string> ReservedGeneratedRecordMemberNames = new(StringComparer.Ordinal)
     {
@@ -60,7 +61,8 @@ public sealed class ParameterObjectService : IParameterObjectService
             throw new InvalidOperationException(
                 $"parameter_object_preview requires a method symbol; resolved {symbol?.Kind.ToString() ?? "null"} instead.");
 
-        EnforceTargetMethodContractRefusals(method);
+        if (ParameterObjectTargetContract.GetRefusalReason(method) is { } refusalReason)
+            throw new PublicArgumentException(refusalReason, nameof(target));
 
         var groupedParameters = ResolveGroupedParameters(method, request);
         ValidateGeneratedMemberNames(groupedParameters, request.NewTypeName);
@@ -106,14 +108,14 @@ public sealed class ParameterObjectService : IParameterObjectService
             dtoVisibilityIsPublic);
 
         var originalTexts = new Dictionary<DocumentId, string>();
-        var perFileCallsites = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var perDocumentCallsites = new Dictionary<DocumentId, int>();
 
         var accumulator = await RewriteMethodDeclarationAsync(
             solution, method, groupedParameters, dtoNamespace, request.NewTypeName, newParameterName, originalTexts, ct).ConfigureAwait(false);
 
         accumulator = await RewriteCallSitesAsync(
             accumulator, solution, method, groupedParameters, dtoNamespace, request.NewTypeName, callSites,
-            originalTexts, perFileCallsites, ct).ConfigureAwait(false);
+            originalTexts, perDocumentCallsites, ct).ConfigureAwait(false);
 
         // Add the new DTO document last so its diff is appended cleanly; we capture no
         // pre-existing text for it (it's an Added file).
@@ -134,10 +136,7 @@ public sealed class ParameterObjectService : IParameterObjectService
         var description = $"Group {groupedParameters.Count} parameter(s) of {method.ToDisplayString()} into new record '{request.NewTypeName}'";
         var token = _previewStore.Store(workspaceId, accumulator, _workspace.GetCurrentVersion(workspaceId), description, changes);
 
-        var callsiteUpdates = perFileCallsites
-            .Select(kvp => new CallsiteUpdateDto(kvp.Key, kvp.Value))
-            .OrderBy(u => u.FilePath, StringComparer.Ordinal)
-            .ToList();
+        var callsiteUpdates = CallsiteUpdateProjection.Project(solution, perDocumentCallsites);
 
         return new RefactoringPreviewDto(
             token,
@@ -196,7 +195,7 @@ public sealed class ParameterObjectService : IParameterObjectService
             .ToArray();
         if (duplicateCollisions.Length > 0)
         {
-            throw new PublicArgumentException(
+            throw ParameterObjectRefusals.Argument(
                 "parameter_object_preview refuses: grouped parameter names would generate duplicate positional-record members after capitalization. " +
                 "Rename or omit one parameter from each collision. Collisions: " + string.Join("; ", duplicateCollisions),
                 nameof(grouped));
@@ -209,7 +208,7 @@ public sealed class ParameterObjectService : IParameterObjectService
             .ToArray();
         if (reservedCollisions.Length > 0)
         {
-            throw new PublicArgumentException(
+            throw ParameterObjectRefusals.Argument(
                 "parameter_object_preview refuses: one or more generated positional-record members collide with reserved, synthesized, or inherited record/object members. " +
                 "Rename or omit each source parameter. Collisions: " + string.Join("; ", reservedCollisions),
                 nameof(grouped));
@@ -221,7 +220,7 @@ public sealed class ParameterObjectService : IParameterObjectService
             .FirstOrDefault(candidate => string.Equals(candidate.GeneratedName, typeIdentifier, StringComparison.Ordinal));
         if (enclosingTypeCollision != default)
         {
-            throw new PublicArgumentException(
+            throw ParameterObjectRefusals.Argument(
                 "parameter_object_preview refuses: a generated positional-record member cannot have the same name as its enclosing record type. " +
                 $"Source parameter '{enclosingTypeCollision.SourceName}' generates member '{enclosingTypeCollision.GeneratedName}', which collides with the requested record type. " +
                 "Rename the type or omit the source parameter.",
@@ -243,7 +242,7 @@ public sealed class ParameterObjectService : IParameterObjectService
             && string.Equals(parameter.Name, identifierValue, StringComparison.Ordinal));
         if (retainedCollision is not null)
         {
-            throw new PublicArgumentException(
+            throw ParameterObjectRefusals.Argument(
                 $"parameter_object_preview refuses: the requested parameterName collides with retained parameter '{retainedCollision.Name}'. " +
                 "Choose a distinct parameterName.",
                 "parameterName");
@@ -253,7 +252,7 @@ public sealed class ParameterObjectService : IParameterObjectService
             string.Equals(typeParameter.Name, identifierValue, StringComparison.Ordinal));
         if (typeParameterCollision is not null)
         {
-            throw new PublicArgumentException(
+            throw ParameterObjectRefusals.Argument(
                 $"parameter_object_preview refuses: the requested parameterName collides with method type parameter '{typeParameterCollision.Name}'. " +
                 "Choose a distinct parameterName.",
                 "parameterName");
@@ -301,7 +300,7 @@ public sealed class ParameterObjectService : IParameterObjectService
 
         if (declarationCollisions.Count > 0)
         {
-            throw new PublicArgumentException(
+            throw ParameterObjectRefusals.Argument(
                 "parameter_object_preview refuses: the requested parameterName collides with a declaration inside the target method and would capture or break rewritten references. " +
                 "Choose a distinct parameterName. Collisions: " +
                 string.Join("; ", declarationCollisions.Distinct(StringComparer.Ordinal)),
@@ -310,7 +309,7 @@ public sealed class ParameterObjectService : IParameterObjectService
 
         if (memberReferenceCollisions.Count > 0)
         {
-            throw new PublicArgumentException(
+            throw ParameterObjectRefusals.Argument(
                 "parameter_object_preview refuses: the requested parameterName would capture an existing unqualified member reference inside the target method. " +
                 "Choose a distinct parameterName or qualify the affected member reference. Collisions: " +
                 string.Join("; ", memberReferenceCollisions.Distinct(StringComparer.Ordinal)),
@@ -368,8 +367,27 @@ public sealed class ParameterObjectService : IParameterObjectService
         IReadOnlyList<IParameterSymbol> grouped,
         CancellationToken ct)
     {
+        var unsupportedUses = await CollectUnsupportedParameterUsesAsync(solution, method, grouped, ct).ConfigureAwait(false);
+        if (unsupportedUses.Count > 0)
+        {
+            throw ParameterObjectRefusals.InvalidOperation(
+                "parameter_object_preview refuses: grouped parameters are written or aliased inside the target method. " +
+                "Generated positional-record properties cannot preserve variable-required semantics. " +
+                "Make these uses read-only or omit the affected parameters. Affected uses: " +
+                string.Join("; ", unsupportedUses.Select(use => use.Detail).Distinct(StringComparer.Ordinal)));
+        }
+    }
+
+    private sealed record UnsupportedParameterUse(int Ordinal, string Detail);
+
+    private static async Task<IReadOnlyList<UnsupportedParameterUse>> CollectUnsupportedParameterUsesAsync(
+        Solution solution,
+        IMethodSymbol method,
+        IReadOnlyList<IParameterSymbol> grouped,
+        CancellationToken ct)
+    {
         var groupedMembersByOrdinal = grouped.ToDictionary(parameter => parameter.Ordinal, parameter => parameter.Name);
-        var unsupportedUses = new List<string>();
+        var unsupportedUses = new List<UnsupportedParameterUse>();
 
         foreach (var declarationReference in method.DeclaringSyntaxReferences)
         {
@@ -401,19 +419,12 @@ public sealed class ParameterObjectService : IParameterObjectService
 
                 var lineSpan = reference.GetLocation().GetLineSpan();
                 var filePath = document.FilePath ?? document.Name;
-                unsupportedUses.Add(
-                    $"'{parameterName}' at {filePath}:{lineSpan.StartLinePosition.Line + 1} ({useKind})");
+                unsupportedUses.Add(new UnsupportedParameterUse(parameter.Ordinal,
+                    $"'{parameterName}' at {filePath}:{lineSpan.StartLinePosition.Line + 1} ({useKind})"));
             }
         }
 
-        if (unsupportedUses.Count > 0)
-        {
-            throw new InvalidOperationException(
-                "parameter_object_preview refuses: grouped parameters are written or aliased inside the target method. " +
-                "Generated positional-record properties cannot preserve variable-required semantics. " +
-                "Make these uses read-only or omit the affected parameters. Affected uses: " +
-                string.Join("; ", unsupportedUses.Distinct(StringComparer.Ordinal)));
-        }
+        return unsupportedUses;
     }
 
     private static string? ClassifyVariableRequiredUse(
@@ -614,94 +625,12 @@ public sealed class ParameterObjectService : IParameterObjectService
         return current;
     }
 
-    /// <summary>
-    /// Refuses target methods whose kind or dispatch contract the single-declaration
-    /// rewriter cannot rewrite atomically. Must run before any caller collection or
-    /// preview construction so no compile-breaking partial rewrite is ever stored as a
-    /// redeemable preview token.
-    /// </summary>
-    private static void EnforceTargetMethodContractRefusals(IMethodSymbol target)
-    {
-        if (target.MethodKind == MethodKind.LocalFunction)
-            throw new PublicArgumentException(
-                $"parameter_object_preview does not support local functions ({target.ToDisplayString()}); v1 scope is intra-class methods only.",
-                nameof(target));
-
-        if (target.MethodKind == MethodKind.ExplicitInterfaceImplementation || !target.ExplicitInterfaceImplementations.IsEmpty)
-            throw new PublicArgumentException(
-                $"parameter_object_preview refuses: '{target.ToDisplayString()}' explicitly implements an interface member. " +
-                "The interface declaration would keep the old signature, breaking the implementation relationship; " +
-                "change the interface first, then re-run against a free-standing method.",
-                nameof(target));
-
-        if (target.MethodKind is not (MethodKind.Ordinary or MethodKind.ReducedExtension))
-            throw new PublicArgumentException(
-                $"parameter_object_preview refuses: '{target.ToDisplayString()}' has method kind '{target.MethodKind}'. " +
-                "Constructors, destructors, accessors, operators, conversions, and delegate/anonymous functions " +
-                "cannot have their declaration and call sites rewritten atomically; only ordinary methods " +
-                "(including extension methods) are supported.",
-                nameof(target));
-
-        if (target.IsOverride)
-            throw new PublicArgumentException(
-                $"parameter_object_preview refuses: '{target.ToDisplayString()}' is an 'override'. " +
-                "Rewriting it in isolation would leave the base declaration and sibling overrides at the old arity, " +
-                "breaking the override relationship; restructure the whole hierarchy manually instead.",
-                nameof(target));
-
-        if (target.IsVirtual || target.IsAbstract)
-            throw new PublicArgumentException(
-                $"parameter_object_preview refuses: '{target.ToDisplayString()}' is a " +
-                $"{(target.IsAbstract ? "'abstract'" : "'virtual'")} dispatch root. " +
-                "Overrides in derived types would keep the old signature; restructure the whole hierarchy manually instead.",
-                nameof(target));
-
-        if (ImplementsInterfaceMember(target))
-            throw new PublicArgumentException(
-                $"parameter_object_preview refuses: '{target.ToDisplayString()}' implements an interface member. " +
-                "The interface declaration would keep the old signature, breaking the implementation relationship; " +
-                "change the interface first, then re-run against a free-standing method.",
-                nameof(target));
-
-        if (target.IsExtern || target.GetAttributes().Any(static attribute =>
-                attribute.AttributeClass?.ToDisplayString() is
-                    "System.Runtime.InteropServices.DllImportAttribute"
-                    or "System.Runtime.InteropServices.LibraryImportAttribute"))
-            throw new PublicArgumentException(
-                $"parameter_object_preview refuses: '{target.ToDisplayString()}' is an extern/PInvoke declaration. " +
-                "Its signature is bound to a native entry point and cannot be regrouped.",
-                nameof(target));
-
-        if (target.PartialDefinitionPart is not null || target.PartialImplementationPart is not null)
-            throw new PublicArgumentException(
-                $"parameter_object_preview refuses: '{target.ToDisplayString()}' is a partial method with paired " +
-                "definition/implementation declarations, which may bind different parameter names. " +
-                "Merge the partial declarations first, then re-run.",
-                nameof(target));
-    }
-
-    private static bool ImplementsInterfaceMember(IMethodSymbol target)
-        => SymbolServiceHelpers.GetImplementedInterfaceMembers(target).Any();
-
     private static void EnforceParameterShapeRefusals(IMethodSymbol method, IReadOnlyList<IParameterSymbol> grouped)
     {
-        foreach (var p in grouped)
+        foreach (var parameter in grouped)
         {
-            if (p.RefKind != RefKind.None)
-                throw new PublicArgumentException(
-                    $"parameter_object_preview refuses: parameter '{p.Name}' has by-ref kind '{p.RefKind}'. " +
-                    "Positional records cannot carry ref/out/in semantics; remove it from parameterNames.",
-                    nameof(grouped));
-            if (p.IsParams)
-                throw new PublicArgumentException(
-                    $"parameter_object_preview refuses: parameter '{p.Name}' is a 'params' array. " +
-                    "Variadic call shape does not survive grouping; remove it from parameterNames.",
-                    nameof(grouped));
-            if (method.IsExtensionMethod && p.Ordinal == 0)
-                throw new PublicArgumentException(
-                    $"parameter_object_preview refuses: parameter '{p.Name}' is the extension-method 'this' receiver. " +
-                    "Drop it from parameterNames; other parameters of the extension method remain eligible.",
-                    nameof(grouped));
+            if (ParameterObjectTargetContract.GetParameterShapeRefusal(method, parameter) is { } refusalReason)
+                throw new PublicArgumentException(refusalReason, nameof(grouped));
         }
     }
 
@@ -714,30 +643,33 @@ public sealed class ParameterObjectService : IParameterObjectService
 
         if (string.IsNullOrWhiteSpace(request.DtoProjectName))
         {
-            var effectiveAccessibilityRank = AccessibilityRank(method.DeclaredAccessibility);
-            for (var containingType = method.ContainingType;
-                 containingType is not null;
-                 containingType = containingType.ContainingType)
-            {
-                effectiveAccessibilityRank = Math.Min(
-                    effectiveAccessibilityRank,
-                    AccessibilityRank(containingType.DeclaredAccessibility));
-            }
-
-            var sameProjectVisibility = effectiveAccessibilityRank > InternalAccessibilityRank;
-            return (methodProject, sameProjectVisibility);
+            return (methodProject, GetSameProjectDtoVisibility(method));
         }
 
         var dtoProject = solution.Projects.FirstOrDefault(p =>
             string.Equals(p.Name, request.DtoProjectName, StringComparison.OrdinalIgnoreCase))
             ?? throw new PublicArgumentException(
-                "dtoProjectName was not found in the loaded solution. Use workspace_status to list project names, then retry.",
+                "dtoProjectName was not found in the loaded solution. Use workspace_status with verbose=true to list project names, then retry.",
                 "dtoProjectName");
 
         var crossProject = dtoProject.Id != methodProject.Id;
         // Cross-project: force public so the method's signature can reference it from another assembly.
         var visibility = crossProject || method.ContainingType.DeclaredAccessibility == Accessibility.Public;
         return (dtoProject, visibility);
+    }
+
+    private static bool GetSameProjectDtoVisibility(IMethodSymbol method)
+    {
+        var effectiveAccessibilityRank = AccessibilityRank(method.DeclaredAccessibility);
+        for (var containingType = method.ContainingType;
+             containingType is not null;
+             containingType = containingType.ContainingType)
+        {
+            effectiveAccessibilityRank = Math.Min(
+                effectiveAccessibilityRank,
+                AccessibilityRank(containingType.DeclaredAccessibility));
+        }
+        return effectiveAccessibilityRank > InternalAccessibilityRank;
     }
 
     /// <summary>
@@ -766,6 +698,19 @@ public sealed class ParameterObjectService : IParameterObjectService
         IReadOnlyList<IParameterSymbol> grouped,
         CancellationToken ct)
     {
+        var result = new Dictionary<DocumentId, List<CallSiteBinding>>();
+        await foreach (var context in CaptureCallSiteContextsAsync(solution, method, ct).ConfigureAwait(false))
+            AddCallSiteBinding(result, context, method, grouped, ct);
+        return result;
+    }
+
+    private sealed record CallSiteContext(
+        DocumentId DocumentId, SemanticModel Model, SyntaxNode Root,
+        InvocationExpressionSyntax Invocation, string FilePath);
+
+    private static async IAsyncEnumerable<CallSiteContext> CaptureCallSiteContextsAsync(
+        Solution solution, IMethodSymbol method, [EnumeratorCancellation] CancellationToken ct)
+    {
         var spansByDoc = new Dictionary<DocumentId, List<TextSpan>>();
         var callers = await SymbolFinder.FindCallersAsync(method, solution, ct).ConfigureAwait(false);
         foreach (var caller in callers)
@@ -786,7 +731,6 @@ public sealed class ParameterObjectService : IParameterObjectService
             }
         }
 
-        var result = new Dictionary<DocumentId, List<CallSiteBinding>>();
         foreach (var (docId, spans) in spansByDoc)
         {
             var doc = solution.GetDocument(docId);
@@ -795,11 +739,10 @@ public sealed class ParameterObjectService : IParameterObjectService
             var root = await doc.GetSyntaxRootAsync(ct).ConfigureAwait(false);
             var semanticModel = await doc.GetSemanticModelAsync(ct).ConfigureAwait(false);
             if (root is null || semanticModel is null)
-                throw new InvalidOperationException(
+                throw ParameterObjectRefusals.InvalidOperation(
                     $"parameter_object_preview refuses: caller document '{filePath}' has no syntax root or semantic model, " +
                     "so its references cannot be verified for an atomic rewrite.");
 
-            var bindings = new List<CallSiteBinding>();
             var seenInvocationSpans = new HashSet<TextSpan>();
             foreach (var span in spans)
             {
@@ -808,17 +751,39 @@ public sealed class ParameterObjectService : IParameterObjectService
                 if (invocation is null || !invocation.Expression.Span.Contains(span))
                 {
                     var line = node.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
-                    throw new InvalidOperationException(
+                    throw ParameterObjectRefusals.InvalidOperation(
                         $"parameter_object_preview refuses: '{method.ToDisplayString()}' is referenced without a direct invocation " +
                         $"(method group, delegate conversion, nameof, or doc-comment reference) at {filePath}:{line}. " +
                         "The rewrite is atomic-or-refused; convert or remove this reference first.");
                 }
                 if (!seenInvocationSpans.Add(invocation.Span)) continue;
-                bindings.Add(BindCallSite(semanticModel, root, invocation, method, grouped, filePath, ct));
+                yield return new CallSiteContext(docId, semanticModel, root, invocation, filePath);
             }
-            if (bindings.Count > 0) result[docId] = bindings;
         }
+    }
+
+    private static Dictionary<DocumentId, List<CallSiteBinding>> BindCallSites(
+        IReadOnlyList<CallSiteContext> contexts, IMethodSymbol method,
+        IReadOnlyList<IParameterSymbol> grouped, CancellationToken ct)
+    {
+        var result = new Dictionary<DocumentId, List<CallSiteBinding>>();
+        foreach (var context in contexts)
+            AddCallSiteBinding(result, context, method, grouped, ct);
         return result;
+    }
+
+    private static void AddCallSiteBinding(
+        Dictionary<DocumentId, List<CallSiteBinding>> result, CallSiteContext context,
+        IMethodSymbol method, IReadOnlyList<IParameterSymbol> grouped, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        if (!result.TryGetValue(context.DocumentId, out var bindings))
+        {
+            bindings = [];
+            result.Add(context.DocumentId, bindings);
+        }
+        bindings.Add(BindCallSite(context.Model, context.Root, context.Invocation,
+            method, grouped, context.FilePath, ct));
     }
 
     /// <summary>
@@ -838,19 +803,19 @@ public sealed class ParameterObjectService : IParameterObjectService
     {
         var line = invocation.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
         var site = $"{filePath}:{line}";
-        static InvalidOperationException Unmappable(string site) => new(
+        static InvalidOperationException Unmappable(string site) => ParameterObjectRefusals.InvalidOperation(
             $"parameter_object_preview refuses: the call at {site} has an argument shape that cannot be mapped " +
             "completely onto the target's parameters (unsupported params/collection expansion or synthesized argument).");
 
         if (semanticModel.GetOperation(invocation, ct) is not IInvocationOperation operation)
-            throw new InvalidOperationException(
+            throw ParameterObjectRefusals.InvalidOperation(
                 $"parameter_object_preview refuses: the call at {site} cannot be bound to an invocation operation, " +
                 "so its arguments cannot be mapped onto the target's parameters.");
 
         var normalizedTarget = (method.ReducedFrom ?? method).OriginalDefinition;
         var normalizedInvoked = (operation.TargetMethod.ReducedFrom ?? operation.TargetMethod).OriginalDefinition;
         if (!SymbolEqualityComparer.Default.Equals(normalizedInvoked, normalizedTarget))
-            throw new InvalidOperationException(
+            throw ParameterObjectRefusals.InvalidOperation(
                 $"parameter_object_preview refuses: the reference at {site} does not resolve to a direct invocation of " +
                 $"'{method.ToDisplayString()}'.");
 
@@ -949,7 +914,7 @@ public sealed class ParameterObjectService : IParameterObjectService
         {
             if (semanticModel.GetConstantValue(args[index].Expression, ct).HasValue) continue;
             if (index < previousNonConstantIndex)
-                throw new InvalidOperationException(
+                throw ParameterObjectRefusals.InvalidOperation(
                     $"parameter_object_preview refuses: rewriting the call at {site} would evaluate a non-constant argument " +
                     "expression in a different order than the source call (named arguments out of declaration order, or grouped " +
                     "parameters that interleave with retained ones). Reorder the arguments at the call site first.");
@@ -985,7 +950,7 @@ public sealed class ParameterObjectService : IParameterObjectService
         }
 
         if (missing.Count > 0)
-            throw new PublicArgumentException(MissingProjectReferenceMessage(
+            throw ParameterObjectRefusals.Argument(MissingProjectReferenceMessage(
                 "one or more caller projects do not reference the DTO project",
                 missing), "dtoProjectName");
     }
@@ -1026,7 +991,7 @@ public sealed class ParameterObjectService : IParameterObjectService
                     var declarer = typeParameter.DeclaringMethod is { } declaringMethod
                         ? $"method '{declaringMethod.ToDisplayString()}'"
                         : $"type '{typeParameter.DeclaringType?.ToDisplayString()}'";
-                    throw new PublicArgumentException(
+                    throw ParameterObjectRefusals.Argument(
                         $"parameter_object_preview refuses: parameter '{parameter.Name}' has type '{parameter.Type.ToDisplayString()}' " +
                         $"which depends on type parameter '{typeParameter.Name}' declared by {declarer}. " +
                         "The generated record is non-generic and its new top-level file cannot bind that type parameter; " +
@@ -1038,7 +1003,7 @@ public sealed class ParameterObjectService : IParameterObjectService
                     continue;
 
                 if (AccessibilityRank(named.DeclaredAccessibility) < neededRank)
-                    throw new PublicArgumentException(
+                    throw ParameterObjectRefusals.Argument(
                         $"parameter_object_preview refuses: parameter '{parameter.Name}' has type '{parameter.Type.ToDisplayString()}' " +
                         $"involving '{named.ToDisplayString()}', which is '{named.DeclaredAccessibility.ToString().ToLowerInvariant()}' — " +
                         $"less accessible than the generated '{recordVisibility}' record. " +
@@ -1051,7 +1016,7 @@ public sealed class ParameterObjectService : IParameterObjectService
                 {
                     var typeProjectName = solution.GetProject(named.ContainingAssembly, ct)?.Name
                         ?? named.ContainingAssembly.Name;
-                    throw new PublicArgumentException(
+                    throw ParameterObjectRefusals.Argument(
                         MissingProjectReferenceMessage(
                             $"parameter '{parameter.Name}' has type '{parameter.Type.ToDisplayString()}' involving " +
                             $"'{named.ToDisplayString()}', which is declared in '{typeProjectName}' and cannot be resolved by DTO project '{dtoProject.Name}'",
@@ -1067,7 +1032,7 @@ public sealed class ParameterObjectService : IParameterObjectService
     private const int InternalAccessibilityRank = 2;
 
     internal static Compilation RequireDtoCompilation(Compilation? compilation, string projectName) =>
-        compilation ?? throw new InvalidOperationException(
+        compilation ?? throw ParameterObjectRefusals.InvalidOperation(
             $"parameter_object_preview refuses: DTO project '{projectName}' does not provide a compilation. " +
             "Choose a compilable C# DTO project, then retry.");
 
@@ -1270,7 +1235,7 @@ public sealed class ParameterObjectService : IParameterObjectService
         var canonicalTarget = Path.GetFullPath(dtoFilePath);
         var occupied = dtoProject.Documents.Any(d =>
             d.FilePath is not null &&
-            string.Equals(Path.GetFullPath(d.FilePath), canonicalTarget, StringComparison.OrdinalIgnoreCase));
+            string.Equals(Path.GetFullPath(d.FilePath), canonicalTarget, FileSystemPath.Comparison));
         if (occupied)
             throw new InvalidOperationException(
                 $"parameter_object_preview refuses: project '{dtoProject.Name}' already contains a document at " +
@@ -1432,7 +1397,7 @@ public sealed class ParameterObjectService : IParameterObjectService
 
                 if (groupedNames.Contains(parameter.Name))
                 {
-                    throw new InvalidOperationException(
+                    throw ParameterObjectRefusals.InvalidOperation(
                         $"parameter_object_preview refuses: grouped parameter '{parameter.Name}' uses '{attribute.AttributeClass?.Name}'. " +
                         "That compiler-sensitive attribute cannot be transferred to a generated DTO constructor without changing its binding context; " +
                         "remove the parameter from parameterNames or remove the attribute first.");
@@ -1441,7 +1406,7 @@ public sealed class ParameterObjectService : IParameterObjectService
                 foreach (var linkedName in EnumerateStringConstants(attribute.ConstructorArguments))
                 {
                     if (!groupedNames.Contains(linkedName)) continue;
-                    throw new InvalidOperationException(
+                    throw ParameterObjectRefusals.InvalidOperation(
                         $"parameter_object_preview refuses: parameter '{parameter.Name}' uses '{attribute.AttributeClass?.Name}' " +
                         $"to link to grouped parameter '{linkedName}'. Moving that parameter into a DTO would change the compiler-observed contract; " +
                         "remove the linked parameter from parameterNames or remove the attribute first.");
@@ -1460,7 +1425,7 @@ public sealed class ParameterObjectService : IParameterObjectService
         for (var index = 0; index < original.Attributes.Count; index++)
         {
             var constructor = semanticModel.GetSymbolInfo(original.Attributes[index], ct).Symbol as IMethodSymbol
-                ?? throw new InvalidOperationException(
+                ?? throw ParameterObjectRefusals.InvalidOperation(
                     $"parameter_object_preview refuses: attribute '{original.Attributes[index].Name}' could not be resolved for safe transfer.");
             var current = rewritten.Attributes[index];
             var qualifiedName = SyntaxFactory.ParseName(
@@ -1681,7 +1646,7 @@ public sealed class ParameterObjectService : IParameterObjectService
         string newTypeName,
         Dictionary<DocumentId, List<CallSiteBinding>> callSites,
         Dictionary<DocumentId, string> originalTexts,
-        Dictionary<string, int> perFileCallsites,
+        Dictionary<DocumentId, int> perDocumentCallsites,
         CancellationToken ct)
     {
         foreach (var (docId, bindings) in callSites)
@@ -1721,8 +1686,7 @@ public sealed class ParameterObjectService : IParameterObjectService
             if (rewrittenCount == 0) continue;
 
             accumulator = accumulator.WithDocumentText(docId, SourceText.From(newRoot.ToFullString()));
-            var filePath = doc.FilePath ?? doc.Name;
-            perFileCallsites[filePath] = perFileCallsites.TryGetValue(filePath, out var count)
+            perDocumentCallsites[docId] = perDocumentCallsites.TryGetValue(docId, out var count)
                 ? count + rewrittenCount
                 : rewrittenCount;
         }

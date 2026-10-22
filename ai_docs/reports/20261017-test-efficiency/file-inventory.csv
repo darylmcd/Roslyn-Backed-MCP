@@ -1,0 +1,565 @@
+path,lines,test_method_attributes,data_rows,serialization_attributes,isolated_workspace_calls,sample_copy_calls,load_calls,delay_calls,noop_class_cleanup,disposition
+.github/workflows/ci.yml,364,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+.github/workflows/publish-nuget.yml,205,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+RoslynMcp.slnx,15,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+SampleApp/Program.cs,29,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+SampleApp/SampleApp.csproj,12,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+SampleLib.Generators/GreetingGenerator.cs,27,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+SampleLib.Generators/SampleLib.Generators.csproj,13,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+SampleLib.Tests/AnimalServiceTests.cs,29,2,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+SampleLib.Tests/SampleLib.Tests.csproj,16,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+SampleLib/AnimalExtensions.cs,9,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+SampleLib/AnimalService.cs,39,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+SampleLib/BacklogSamples.cs,22,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+SampleLib/Cat.cs,13,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+SampleLib/ConventionFixtures.cs,46,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+SampleLib/DiagnosticsProbe.cs,10,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+SampleLib/Dog.cs,13,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+SampleLib/Hierarchy/Circle.cs,10,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+SampleLib/Hierarchy/Rectangle.cs,17,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+SampleLib/Hierarchy/Shape.cs,8,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+SampleLib/IAnimal.cs,7,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+SampleLib/MultiNamespaceService.cs,34,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+SampleLib/RefactoringProbe.cs,31,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+SampleLib/SampleLib.csproj,8,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+SampleSolution.slnx,5,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+eng/aggregate-promotion-scorecards.ps1,436,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+eng/audit-experimental-age.ps1,166,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+eng/banned-skill-markers.json,67,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+eng/ci.runsettings,6,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+eng/collect-hosted-shard-timings.ps1,552,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+eng/format-baseline.json,912,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+eng/format-diagnostic-contract.ps1,8,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+eng/gen-mcp-tool-metadata.ps1,160,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+eng/generate-format-baseline.ps1,337,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+eng/get-test-shard-plan.ps1,366,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+eng/guard-release-managed-files.ps1,148,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+eng/intake-from-issues.py,187,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+eng/list-skills.ps1,130,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+eng/local-path-leak-validation.ps1,99,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+eng/markdown-link-validation.ps1,307,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+eng/prepare-test-fixtures.ps1,31,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+eng/process-audit-reports.ps1,150,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+eng/profile-large-solution.ps1,644,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+eng/propose-promotion-scorecard-backlog-rows.ps1,130,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+eng/publish-nuget.ps1,111,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+eng/reconciliation-cleanup-contract.ps1,25,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+eng/reinstall-local-tool.ps1,120,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+eng/resolve-ci-topology.ps1,284,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+eng/stage-review-inbox.ps1,282,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+eng/stop-owned-tool-store-process.ps1,165,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+eng/summarize-test-results.ps1,371,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+eng/update-claude-plugin.ps1,229,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+eng/update-third-party-notices.ps1,333,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+eng/verify-actionlint.ps1,299,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+eng/verify-ai-docs.ps1,555,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+eng/verify-breaking-version-bump.ps1,199,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+eng/verify-changed-format.ps1,334,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+eng/verify-changelog-fragments.ps1,332,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+eng/verify-install-layers.ps1,149,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+eng/verify-nuget-audit.ps1,34,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+eng/verify-package-family-parity.ps1,87,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+eng/verify-plugin-package-files.ps1,146,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+eng/verify-publish-version-context.ps1,123,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+eng/verify-registry-readiness.ps1,331,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+eng/verify-release-environment.ps1,111,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+eng/verify-release.ps1,540,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+eng/verify-skills-are-generic.ps1,179,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+eng/verify-skills-on-edit.ps1,42,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+eng/verify-surface-snapshot-freshness.ps1,137,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+eng/verify-upgrade-matrix.ps1,100,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+eng/verify-version-drift.ps1,125,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+justfile,157,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+samples/BuildFailureSolution/BrokenLib/BrokenClass.cs,9,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+samples/BuildFailureSolution/BrokenLib/BrokenLib.csproj,5,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+samples/BuildFailureSolution/BuildFailureSolution.slnx,3,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+samples/GeneratedDocumentSolution/ConsumerLib.Generators/ConsumerLib.Generators.csproj,14,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+samples/GeneratedDocumentSolution/ConsumerLib.Generators/GreetingGenerator.cs,26,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+samples/GeneratedDocumentSolution/ConsumerLib/ConsumerLib.csproj,12,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+samples/GeneratedDocumentSolution/ConsumerLib/Placeholder.cs,5,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+samples/GeneratedDocumentSolution/GeneratedDocumentSolution.slnx,4,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+samples/SampleSolution/SampleApp/Program.cs,43,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+samples/SampleSolution/SampleApp/SampleApp.csproj,12,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+samples/SampleSolution/SampleLib.Generators/GreetingGenerator.cs,27,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+samples/SampleSolution/SampleLib.Generators/SampleLib.Generators.csproj,13,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+samples/SampleSolution/SampleLib.Tests/AnimalFormatterTests.cs,37,2,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+samples/SampleSolution/SampleLib.Tests/AnimalServiceTests.cs,29,2,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+samples/SampleSolution/SampleLib.Tests/OpaqueConsumerTests.cs,16,1,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+samples/SampleSolution/SampleLib.Tests/SampleLib.Tests.csproj,16,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+samples/SampleSolution/SampleLib.Tests/WidgetTargetNameOnlyTests.cs,13,1,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+samples/SampleSolution/SampleLib/AnimalExtensions.cs,9,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+samples/SampleSolution/SampleLib/AnimalFormatter.cs,15,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+samples/SampleSolution/SampleLib/AnimalRecords.cs,13,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+samples/SampleSolution/SampleLib/AnimalService.cs,39,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+samples/SampleSolution/SampleLib/BacklogSamples.cs,22,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+samples/SampleSolution/SampleLib/Cat.cs,13,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+samples/SampleSolution/SampleLib/ConventionFixtures.cs,134,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+samples/SampleSolution/SampleLib/DiagnosticsProbe.cs,10,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+samples/SampleSolution/SampleLib/Dog.cs,13,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+samples/SampleSolution/SampleLib/ExtensionHostFixture.cs,44,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+samples/SampleSolution/SampleLib/Hierarchy/Circle.cs,10,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+samples/SampleSolution/SampleLib/Hierarchy/EquatablePoint.cs,28,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+samples/SampleSolution/SampleLib/Hierarchy/Rectangle.cs,17,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+samples/SampleSolution/SampleLib/Hierarchy/Shape.cs,8,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+samples/SampleSolution/SampleLib/IAnimal.cs,7,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+samples/SampleSolution/SampleLib/MultiNamespaceService.cs,34,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+samples/SampleSolution/SampleLib/OverloadAccessibilityProbe.cs,21,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+samples/SampleSolution/SampleLib/PartialImplFixture.Generated.g.cs,12,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+samples/SampleSolution/SampleLib/PartialImplFixture.cs,23,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+samples/SampleSolution/SampleLib/RefactoringProbe.cs,62,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+samples/SampleSolution/SampleLib/SampleLib.csproj,8,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+samples/SampleSolution/SampleLib/SharedExpressionProbe.cs,28,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+samples/SampleSolution/SampleLib/WidgetTarget.cs,6,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+samples/SampleSolution/SampleSolution.slnx,5,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+samples/SecurityTestProject/InsecureLib/InsecureCode.cs,34,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+samples/SecurityTestProject/InsecureLib/InsecureLib.csproj,12,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+samples/SecurityTestProject/SecurityTestProject.slnx,3,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+scripts/seed-issue-labels.ps1,108,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/GitFixtureWorkerProbe/GitFixtureWorkerProbe.csproj,7,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/GitFixtureWorkerProbe/Program.cs,64,0,0,0,0,0,0,2,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.ShardDiscoveryFixtures/DiscoveryFixtures.cs,40,3,2,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.ShardDiscoveryFixtures/RoslynMcp.ShardDiscoveryFixtures.csproj,14,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/ActionlintGateContractTests.cs,475,12,4,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/AliasToolsTests.cs,276,6,0,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/AnalysisFlowFailureRedactionTests.cs,123,4,3,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/AnalysisScanCompletenessTests.cs,295,4,6,0,4,0,0,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/AnalysisToolsTests.cs,417,12,2,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/AnalyzerInfoToolsTests.cs,208,6,0,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/AnalyzerShadowLoaderLifecycleTests.cs,831,9,2,1,0,3,2,3,False,fixture-size/lifetime review candidate; preserve isolation; serialization ownership review; see serialization inventory
+tests/RoslynMcp.Tests/ApplyTextEditVerifyTests.cs,514,9,3,0,9,0,0,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/ApplyUndoWorkflowServiceTests.cs,379,9,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/ApplyWithVerifyCancellationAndScopeTests.cs,578,9,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/ArgumentErrorsTests.cs,101,7,4,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/AssemblyCleanup.cs,17,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/AssemblyInfo.cs,9,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/AuditFixesTests.cs,244,13,0,0,0,0,0,1,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/AutoReloadCascadeHostCrashTests.cs,175,3,0,1,0,0,0,0,True,serialization ownership review; see serialization inventory; no-op cleanup retirement
+tests/RoslynMcp.Tests/BacklogFixTests.cs,274,17,0,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/BacklogPublicArgumentRefusalTests.cs,250,4,38,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/Batch1OutputSchemaTests.cs,346,11,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/Benchmarks/WorkspaceReadConcurrencyBenchmark.cs,90,1,0,0,0,0,0,1,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/BoundedStoreEvictionTests.cs,34,2,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/BreakingVersionGateTests.cs,579,7,4,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/BuildTestToolsShimTests.cs,193,8,0,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/BulkRefactoringTests.cs,283,7,0,1,0,2,2,0,True,fixture-size/lifetime review candidate; preserve isolation; serialization ownership review; see serialization inventory; no-op cleanup retirement
+tests/RoslynMcp.Tests/CSharpFeatureProviderLoaderTests.cs,138,2,7,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/CatalogDestructiveWarningTests.cs,137,5,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/CatalogTypeNameFormatterTests.cs,36,3,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/ChangeSignaturePreviewMetadataNameShapeTests.cs,133,2,0,0,2,0,2,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/ChangeSignaturePreviewTests.StructConstruction.cs,316,11,19,0,5,0,5,0,False,fixture-size/lifetime review candidate; preserve isolation
+tests/RoslynMcp.Tests/ChangeSignaturePreviewTests.cs,3364,91,269,0,41,0,41,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/ChangeTrackerTests.cs,293,10,0,0,9,0,0,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/ChangelogFragmentRequirementTests.cs,394,3,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/CiEvidenceTierConsumerContractTests.cs,125,2,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/CiRunnerParityContractTests.cs,419,14,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/CiTopologyDecisionContractTests.cs,534,19,11,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/CleanupFailureCollectorTests.cs,64,3,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/ClientRootPathValidatorTests.cs,1239,51,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/CodeActionServiceTests.cs,228,5,11,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/CodeFixProviderRegistryTests.cs,343,10,3,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/CodeMetricsNestingTests.cs,364,8,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/CodexChangelogHookTests.cs,231,2,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/CohesionAnalysisTests.cs,602,16,0,0,10,0,9,0,False,fixture-size/lifetime review candidate; preserve isolation
+tests/RoslynMcp.Tests/CohesionSemanticIdentityTests.cs,168,5,3,0,1,0,1,0,False,fixture-size/lifetime review candidate; preserve isolation
+tests/RoslynMcp.Tests/CompilationCacheAdoptionTests.cs,1280,33,0,0,32,0,0,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/CompilationCacheTests.cs,228,7,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/CompileCheckRestoreRequiredWireTests.cs,77,2,0,0,2,0,2,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/CompileCheckServiceTests.cs,240,7,2,0,7,0,6,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/CompileCheckZeroProjectsTests.cs,95,3,0,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/CompositeApplyOrchestratorTests.cs,861,22,11,0,0,0,0,1,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/CompositeSplitServiceDiPreviewTests.cs,702,9,0,0,9,0,9,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/ConsumerAnalysisTests.cs,110,5,0,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/CouplingAnalysisTests.cs,433,9,0,0,0,3,3,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/CrossProjectRefactoringIntegrationTests.cs,796,15,5,0,14,0,14,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/CsprojReserializationTests.cs,342,13,2,0,0,1,2,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/DeadCodeIntegrationTests.cs,231,7,0,1,0,1,1,0,True,fixture-size/lifetime review candidate; preserve isolation; serialization ownership review; see serialization inventory; no-op cleanup retirement
+tests/RoslynMcp.Tests/DeadFieldDetectorTests.cs,468,13,14,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/DeadLocalDetectorTests.cs,634,18,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/DeadLoggerFieldsTests.cs,85,3,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/DiLifetimeOverrideTests.cs,672,15,0,0,15,0,15,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/DiagnosticFixIntegrationTests.cs,454,7,16,1,0,1,1,0,True,fixture-size/lifetime review candidate; preserve isolation; serialization ownership review; see serialization inventory; no-op cleanup retirement
+tests/RoslynMcp.Tests/DiagnosticIdentitySetTests.cs,303,13,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/DiagnosticQueryServiceRegressionTests.cs,1055,14,12,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/DiagnosticServiceFilterTotalsTests.cs,457,14,12,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/DiagnosticServicePerfTests.cs,145,2,0,1,0,1,1,0,False,fixture-size/lifetime review candidate; preserve isolation; serialization ownership review; see serialization inventory
+tests/RoslynMcp.Tests/DiagnosticSourceGeneratorParityTests.cs,104,1,0,1,1,0,1,0,True,fixture-size/lifetime review candidate; preserve isolation; serialization ownership review; see serialization inventory; no-op cleanup retirement
+tests/RoslynMcp.Tests/DiffGeneratorTests.cs,149,13,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/DispatchTestFixtures.cs,152,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/DocumentSymbolsSymbolHandleTests.cs,135,3,0,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/DocumentationOwnershipContractTests.cs,90,3,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/DotnetCommandRunnerPipeLifetimeTests.cs,267,7,2,0,0,0,0,2,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/DotnetOutputParserBuildDiagnosticsTests.cs,86,6,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/DotnetTestModeResolverTests.cs,172,10,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/DryRunPreviewSideEffectAuditTests.cs,155,2,0,0,2,0,1,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/DuplicateHelperDetectionTests.cs,552,14,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/DuplicateMethodDetectorTests.cs,1018,17,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/EditUndoCohesionTests.cs,470,17,8,0,17,0,1,1,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/EditUndoIntegrationTests.cs,338,7,4,0,7,0,0,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/EditorConfigServiceTests.cs,794,21,5,0,18,0,4,1,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/ElicitationAllowlistPolicyTests.cs,186,15,7,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/ElicitationChoicePromptTests.cs,606,12,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/ErrorResponseObservabilityTests.cs,337,14,10,0,1,0,0,0,False,confirmed duplicate candidate; see report; fixture-size/lifetime review candidate; preserve isolation
+tests/RoslynMcp.Tests/ExceptionFlowServiceTests.cs,413,8,0,0,8,0,0,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/ExpandedSurfaceIntegrationTests.CoverageProcess.cs,103,2,0,1,0,0,0,0,True,serialization ownership review; see serialization inventory; no-op cleanup retirement
+tests/RoslynMcp.Tests/ExpandedSurfaceIntegrationTests.RepoSolutionAnalysis.cs,132,2,0,1,0,0,2,0,True,serialization ownership review; see serialization inventory; no-op cleanup retirement
+tests/RoslynMcp.Tests/ExpandedSurfaceIntegrationTests.ToolContract.cs,151,3,0,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/ExpandedSurfaceIntegrationTests.cs,1161,28,7,1,0,3,1,0,True,fixture-size/lifetime review candidate; preserve isolation; serialization ownership review; see serialization inventory; no-op cleanup retirement
+tests/RoslynMcp.Tests/ExperimentalSurfaceParameterNamingTests.cs,108,2,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/ExternalEditStalenessTests.cs,806,18,6,0,7,0,0,3,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/ExtractInterfaceSemanticUsingsTests.cs,612,7,0,0,0,7,7,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/ExtractMethodFormatRegressionTests.cs,289,3,0,0,0,1,1,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/ExtractMethodTests.cs,388,13,25,0,12,1,1,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/ExtractMethodThisExclusionTests.cs,164,2,0,0,0,2,2,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/ExtractSharedExpressionTests.cs,333,12,32,0,12,0,1,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/ExtractionApplyRouteBindingTests.cs,137,3,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/ExtractionArgumentRefusalWireTests.cs,362,4,14,0,3,0,1,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/FailClosedTestDoublesTests.cs,53,2,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/FetchMcpResourceReadinessTests.cs,145,4,0,1,0,0,0,0,True,confirmed duplicate candidate; see report; serialization ownership review; see serialization inventory; no-op cleanup retirement
+tests/RoslynMcp.Tests/FileEditsDtoTests.cs,177,13,4,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/FileOperationIntegrationTests.cs,343,11,24,0,10,0,0,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/FileSnapshotCaptureTests.cs,141,8,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/FileSystemPathTests.cs,65,3,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/FindImplementationsCorlibHintTests.cs,342,7,0,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/FindOverloadsTests.cs,222,9,0,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/FindOverridesCorlibSuppressionTests.cs,206,7,0,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/FindPropertyWritesHintLocatorShapeTests.cs,152,2,0,0,0,1,1,0,False,fixture-size/lifetime review candidate; preserve isolation
+tests/RoslynMcp.Tests/FindPropertyWritesPositionalRecordTests.cs,129,2,0,0,0,1,1,0,False,fixture-size/lifetime review candidate; preserve isolation
+tests/RoslynMcp.Tests/FindReferencesSummaryTests.cs,157,4,0,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/FindReflectionUsagesPaginationTests.cs,369,5,0,0,0,1,1,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/FixAllEquivalenceKeyIntegrationTests.cs,263,7,15,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/FixAllServiceGuidanceTests.cs,239,8,0,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/FixAllServiceIntegrationTests.cs,177,6,9,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/FixAllServiceTests.cs,616,19,12,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/FlowAnalysisServiceTests.cs,342,10,0,0,0,1,1,0,False,fixture-size/lifetime review candidate; preserve isolation
+tests/RoslynMcp.Tests/FormatRangeServiceTests.cs,697,27,0,0,7,0,1,0,False,fixture-size/lifetime review candidate; preserve isolation
+tests/RoslynMcp.Tests/FormatterBaselineContractTests.cs,1378,10,0,0,0,0,0,4,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/GateOperationDeadlineTests.cs,548,23,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/GeneratedJsonSchemaMatcherTests.cs,260,14,23,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/GeneratorProjectSymbolIdentityTests.cs,130,1,0,1,1,0,1,0,True,fixture-size/lifetime review candidate; preserve isolation; serialization ownership review; see serialization inventory; no-op cleanup retirement
+tests/RoslynMcp.Tests/GetSyntaxTreeBudgetTests.cs,117,3,0,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/GetSyntaxTreeRangeOverlapTests.cs,97,2,0,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/GlobalUsings.cs,1,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/GoToTypeDefinitionTests.cs,91,3,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/HardeningBehaviorTests.cs,181,5,0,1,0,2,3,1,True,fixture-size/lifetime review candidate; preserve isolation; serialization ownership review; see serialization inventory; no-op cleanup retirement
+tests/RoslynMcp.Tests/Helpers/CallToolResultTestExtensions.cs,16,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/Helpers/CancellationOnlyCompileCheckService.cs,17,0,0,0,0,0,0,1,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/Helpers/CleanupFailureCollector.cs,73,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/Helpers/FailClosedWorkspaceManagerStub.cs,75,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/Helpers/FixedLatestVersionProvider.cs,16,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/Helpers/GeneratedJsonSchemaMatcher.cs,773,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/Helpers/InMemoryMcpClientServerHarness.cs,550,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/Helpers/InMemoryMcpClientServerHarnessTests.cs,175,3,0,0,0,0,0,1,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/Helpers/McpRootsTestServerFactory.cs,138,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/Helpers/PassThroughWorkspaceExecutionGate.cs,30,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/Helpers/ProductionParityMcpHarness.cs,78,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/Helpers/PwshScriptRunner.cs,170,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/Helpers/PwshScriptRunnerTests.cs,318,6,5,0,0,0,0,2,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/Helpers/ToolExecutionTestHarness.cs,68,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/Helpers/TrackingPreviewStore.cs,67,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/Helpers/UnusedCodeAnalyzerTestHarness.cs,103,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/HighValueCoverageIntegrationTests.cs,176,8,0,0,0,0,1,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/HookConfigurationTests.cs,428,10,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/HostArgumentRefusalEnvelopeTests.cs,258,6,13,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/HostAssemblyMarkerTests.cs,29,1,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/HostProcessMetadataTests.cs,547,20,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/HostShutdownLifecycleTests.cs,84,1,2,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/IdentifierValidationTests.cs,71,12,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/InstallLayerRefreshContractTests.cs,321,7,5,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/IntegrationTests.EditApply.cs,105,4,0,0,4,0,0,0,False,fixture-size/lifetime review candidate; preserve isolation
+tests/RoslynMcp.Tests/IntegrationTests.SymbolNavigation.cs,223,14,0,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/IntegrationTests.WorkspaceCore.cs,104,8,0,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/InvalidOperationConstructionRatchetTests.cs,1000,40,63,0,0,0,1,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/InvalidOperationErrorsTests.cs,37,2,2,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/IsolatedWorkspaceTestBase.cs,221,0,0,0,1,1,7,0,False,fixture-size/lifetime review candidate; preserve isolation
+tests/RoslynMcp.Tests/IsolatedWorkspaceTestBaseTests.cs,193,7,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/JustfilePortabilityTests.cs,51,2,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/LocalToolReinstallProcessOwnershipTests.cs,212,2,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/LocationDtoMigrationTests.cs,115,3,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/LspSourceLocationAliasWireTests.cs,123,1,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/ManualNuGetPublishContractTests.cs,329,7,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/McpLoggingLifecycleWireTests.cs,330,2,0,0,0,0,0,1,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/MemberHierarchyCrossToolConsistencyTests.cs,124,2,0,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/MetaProjectionObservabilityTests.cs,130,5,4,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/MetadataNameLocatorTests.cs,237,8,0,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/MethodDescriptionDietDiagnosticsSecurityTests.cs,85,5,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/MethodDescriptionDietEditingMsBuildTests.cs,66,4,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/MethodDescriptionDietFixallBulkOperationsTests.cs,50,4,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/MethodDescriptionDietRatchetOnlyCleanSlicesTests.cs,52,4,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/MethodDescriptionDietRefactoringEditorconfigTests.cs,46,4,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/MethodDescriptionDietRestructureInterfaceTests.cs,49,4,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/MethodDescriptionDietScaffoldingMutationTests.cs,57,4,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/MethodDescriptionDietServerSurfaceTests.cs,62,4,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/MethodDescriptionDietSignatureExtractionTests.cs,57,4,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/MethodDescriptionDietSymbolAdvancedAnalysisTests.cs,59,4,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/MethodDescriptionDietTestToolingTests.cs,66,4,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/MethodDescriptionDietUndoWorkspaceLifecycleTests.cs,46,4,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/MissingWorkspaceRootRetirementTests.cs,317,4,0,0,0,4,4,4,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/MoveTypeDiskStateTests.cs,102,1,0,0,0,1,1,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/MsBuildEvaluationCacheTests.cs,177,3,0,0,0,0,3,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/MsBuildEvaluationServiceTests.cs,72,1,0,0,1,0,0,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/MutationAnalysisSideEffectsTests.cs,270,4,0,0,0,1,1,0,False,fixture-size/lifetime review candidate; preserve isolation
+tests/RoslynMcp.Tests/NamespaceRelocationTests.cs,524,12,8,0,12,0,9,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/NavigationArgumentRefusalTests.cs,171,3,12,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/NegativeEdgeCaseTests.cs,108,8,0,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/NuGetAuditGateTests.cs,276,5,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/NuGetDependencySummaryTests.cs,124,5,0,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/NuGetVersionCheckerTests.cs,262,6,0,0,0,0,0,1,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/NuGetVulnerabilityScanIntegrationTests.cs,296,4,0,1,0,0,0,0,True,serialization ownership review; see serialization inventory; no-op cleanup retirement
+tests/RoslynMcp.Tests/OrchestrationIntegrationTests.cs,689,14,0,0,12,0,11,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/P4BehavioralBundleTests.cs,284,9,0,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/PackageFamilyContractTests.cs,331,6,5,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/ParamDescriptionCanonicalFormCodeActionSuppressionTests.cs,39,2,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/ParameterDescriptionBudgetHarness.cs,193,2,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/ParameterDescriptionCanonicalizationTests.cs,94,1,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/ParameterObjectPreviewTests.cs,2515,48,45,0,0,6,6,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/ParameterValidationTests.cs,182,23,24,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/PerformanceBaselineTests.cs,179,7,0,1,0,1,1,0,True,fixture-size/lifetime review candidate; preserve isolation; serialization ownership review; see serialization inventory; no-op cleanup retirement
+tests/RoslynMcp.Tests/PerformanceBehaviorTests.cs,255,3,0,0,0,1,1,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/PluginInstallDocumentationContractTests.cs,36,1,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/PluginLaunchManifestContractTests.cs,51,1,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/PluginPackageAllowlistTests.cs,110,3,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/PositionProbeTests.cs,197,8,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/PostApplySymbolRotationTests.cs,87,2,0,0,0,2,2,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/PowerShellOutputNormalizerTests.cs,40,3,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/PragmaScopeManipulationTests.cs,425,9,0,0,1,0,0,0,False,fixture-size/lifetime review candidate; preserve isolation
+tests/RoslynMcp.Tests/PreviewApplyBoundaryRevalidationTests.cs,518,7,0,1,0,0,0,0,False,serialization ownership review; see serialization inventory
+tests/RoslynMcp.Tests/PreviewMultiFileEditSyntaxRegressionTests.cs,164,4,0,0,4,0,0,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/PreviewRouteBindingEditingTests.cs,244,8,0,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/PreviewRouteBindingFileOpsTests.cs,314,7,12,0,3,0,0,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/PreviewStoreAssertionTests.cs,64,2,5,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/PreviewStoreTests.cs,292,17,0,0,0,0,0,1,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/PreviewTokenCrossCouplingTests.cs,251,5,0,0,5,0,1,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/PreviewTokenStaleAcrossAutoReloadTests.cs,195,4,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/Progress/ProgressEmissionTests.cs,218,6,0,1,0,0,0,0,True,serialization ownership review; see serialization inventory; no-op cleanup retirement
+tests/RoslynMcp.Tests/ProjectFilterTests.cs,148,6,0,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/ProjectFilterUnknownNameMetricsTests.cs,138,10,0,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/ProjectFilterUnknownNamePatternTests.cs,137,11,0,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/ProjectFilterUnknownNameScanTests.cs,71,4,0,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/ProjectGraphHelpersTests.cs,66,4,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/ProjectMetadataParserIsTestProjectTests.cs,59,3,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/ProjectMetadataParserRequiresMtpNativeExecutionTests.cs,64,3,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/ProjectMetadataParserTryGetResolvedPackageVersionTests.cs,139,7,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/ProjectMutationIntegrationTests.cs,918,30,5,0,30,0,6,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/ProjectOutputTypeTests.cs,231,6,0,0,0,0,1,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/ProjectRelativePathValidationTests.cs,132,15,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/PromptCallErrorFilterTests.cs,488,12,2,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/PromptShimToolsTests.cs,257,8,2,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/PromptSmokeTests.cs,849,21,8,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/ProtocolVersionResultShapeWireTests.cs,159,1,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/PublicExceptionDetailPolicyTests.cs,76,2,6,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/PublicMessageExceptionTests.cs,99,7,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/PublishVersionContextTests.cs,337,12,3,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/PublishWorkflowContractTests.cs,63,1,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/ReadmeSurfaceCountTests.cs,392,5,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/RecordFieldAddSatelliteTests.cs,590,15,2,0,15,0,15,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/RecordFieldAdditionImpactTests.cs,287,5,3,0,0,2,2,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/RefactoringCoreDescriptionBudgetTests.cs,52,4,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/RefactoringSuggestionTests.cs,150,3,0,0,2,0,4,0,False,fixture-size/lifetime review candidate; preserve isolation
+tests/RoslynMcp.Tests/RefactoringToolsIntegrationTests.cs,284,12,0,0,0,2,2,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/ReferenceResponsePagerTests.cs,225,7,10,0,1,0,1,0,False,fixture-size/lifetime review candidate; preserve isolation
+tests/RoslynMcp.Tests/ReferenceServiceFindImplementationsTests.cs,85,2,0,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/ReleaseLagGuardTests.cs,200,5,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/ReleaseManagedFileGuardDocumentationTests.cs,85,2,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/RenameSummaryModeTests.cs,152,3,0,0,0,1,1,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/ReplaceInvocationTests.cs,658,11,45,0,0,9,9,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/RequestCorrelationContextTests.cs,75,2,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/ResourceReadWireContractTests.cs,459,4,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/RestoreStalenessDetectorTests.cs,376,17,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/RestructureServiceTests.cs,232,9,8,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/RoslynMcp.Tests.csproj,57,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/SamplingMrtrWireTests.cs,1154,16,11,0,5,0,5,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/ScaffoldingFirstTestFileTests.cs,535,11,2,0,9,0,3,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/ScaffoldingIntegrationTests.cs,1860,39,8,0,35,0,1,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/ScriptingOptionsEnvironmentBinderTests.cs,107,5,5,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/ScriptingServiceTests.cs,822,18,2,0,0,0,0,5,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/ScriptingSyncOverAsyncGuardTests.cs,35,1,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/SdkStyleCsprojInjectionTests.cs,164,6,0,0,0,1,2,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/SecurityDiagnosticIntegrationTests.cs,396,22,0,0,0,1,2,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/SelectionRangeCodeActionTests.cs,181,4,0,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/SemanticExpansionTests.cs,236,10,0,0,0,0,1,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/SemanticGrepServiceTests.cs,423,16,7,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/SemanticSearchFallbackTests.cs,190,8,0,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/ServerDiscoveryWireTests.cs,566,4,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/ServerHeartbeatTests.cs,170,6,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/ServerInfoPathBoundaryTests.cs,206,8,0,2,0,0,0,0,False,serialization ownership review; see serialization inventory
+tests/RoslynMcp.Tests/ServerInfoUpdateLatestTests.cs,256,9,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/ServerInfoUpdateWireContractTests.cs,187,2,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/ServerObservabilitySinkTests.cs,479,17,0,1,0,0,0,0,False,serialization ownership review; see serialization inventory
+tests/RoslynMcp.Tests/ServerSurfaceCatalogAnalyzerTests.cs,325,6,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/ServiceCollectionExtensionsTests.cs,197,6,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/ServiceCoverageTests.cs,359,16,0,1,0,0,0,0,True,serialization ownership review; see serialization inventory; no-op cleanup retirement
+tests/RoslynMcp.Tests/Services/GatedCommandExecutorTests.cs,200,5,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/Services/NavigationToolsNotFoundMessageTests.cs,212,6,0,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/Services/PersistentCompositeStorageTests.cs,360,17,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/Services/SymbolInfoNotFoundMessageTests.cs,175,4,0,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/Services/WorkspaceCacheCoordinatorTests.cs,195,5,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/Services/WorkspaceCacheStoreInvalidationTests.cs,201,7,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/Services/WorkspaceCacheStoreRoundTripTests.cs,198,5,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/Services/WorkspaceDriftServiceTests.cs,239,5,0,0,4,0,0,2,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/SharedWorkspaceTestBase.cs,9,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/Skills/AggregatePromotionScorecardsScriptTests.cs,574,9,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/Skills/ArchiveOldReportsScriptTests.cs,269,4,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/Skills/AuditPhaseRunnerHandoffTests.cs,128,6,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/Skills/ChangedFormatGateScriptTests.cs,531,16,2,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/Skills/DocumentationGateScriptTests.cs,151,4,32,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/Skills/ExperimentalAgeAuditScriptTests.cs,240,5,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/Skills/IssueTemplateAndLabelSeedTests.cs,295,10,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/Skills/McpServerStressSkillFrontmatterTests.cs,216,5,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/Skills/McpServerSurfaceTestSkillTests.cs,506,15,7,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/Skills/PromoteTierRoundTripTests.cs,287,4,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/Skills/RenderFindingScriptTests.cs,367,11,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/Skills/RoslynBookendPromptTests.cs,124,8,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/Skills/ShippedSkillBacklogCitationTests.cs,93,2,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/Skills/SkillFrontmatterInstalledAsTests.cs,148,1,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/Skills/SkillPrefixGenericityTests.cs,380,10,9,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/SliceFieldDetectionTests.cs,190,3,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/SolutionDiffHelperTests.cs,124,6,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/SolutionDiscoveryHelperTests.cs,435,21,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/SourceFileEncodingTests.cs,219,17,3,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/SourceTextRequestProjectionTests.cs,167,12,3,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/StartupDiagnosticsTests.cs,588,19,3,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/StaticListResultFilterTests.cs,147,4,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/StdoutWriteAnalyzerTests.cs,326,11,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/StringLiteralReplaceServiceTests.cs,219,8,2,0,5,0,5,0,False,fixture-size/lifetime review candidate; preserve isolation
+tests/RoslynMcp.Tests/StructuredCallContentProjectorTests.cs,303,9,13,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/StructuredCallElicitationCoordinatorTests.cs,421,10,4,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/StructuredCallToolFilterAutoLoadTests.cs,146,4,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/StructuredCallToolFilterElicitationTests.cs,38,1,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/StructuredCallToolFilterResolutionTests.cs,362,22,8,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/StructuredCallToolFilterTests.cs,410,11,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/StructuredContentRoundTripTests.cs,85,2,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/StructuredContentWireContractTests.cs,303,2,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/Support/GitFixtureRunner.cs,124,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/SuppressionArgumentRefusalWireTests.cs,106,1,8,0,1,0,0,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/SuppressionServiceTests.cs,691,17,24,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/SuppressionToolsTests.cs,121,2,2,0,1,0,0,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/SurfaceCatalogTests.cs,896,28,3,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/SurfaceSnapshotFreshnessGateTests.cs,138,3,3,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/SymbolDisambiguationElicitationTests.cs,705,8,3,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/SymbolDisambiguationMrtrWireTests.cs,396,8,17,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/SymbolImpactSweepBudgetTests.cs,172,5,0,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/SymbolLocatorTests.cs,76,6,4,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/SymbolMapperTests.cs,253,10,0,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/SymbolRefactorPreviewTests.cs,521,11,28,0,8,0,0,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/SymbolRelationshipsBuiltinTypeSuppressionTests.cs,100,2,0,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/SymbolResolverRenameCaretTests.cs,175,6,0,0,6,0,0,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/SymbolSearchPaginationTests.cs,358,12,3,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/SymbolServiceHelpersContainingSymbolTests.cs,153,6,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/SymbolTraversalTests.cs,231,7,0,0,0,0,0,0,False,confirmed duplicate candidate; see report
+tests/RoslynMcp.Tests/TUnitMtpNativeTestRunTests.cs,523,11,0,0,0,0,3,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/TestAssemblyFixtureTests.cs,181,5,0,0,0,1,0,0,False,fixture-size/lifetime review candidate; preserve isolation
+tests/RoslynMcp.Tests/TestBase.cs,236,0,0,0,0,1,0,0,False,fixture-size/lifetime review candidate; preserve isolation
+tests/RoslynMcp.Tests/TestCoverageErrorWireTests.cs,133,1,2,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/TestCoverageFailureEnvelopeTests.cs,453,7,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/TestCoveragePartialCoverletTests.cs,554,5,0,0,0,0,0,1,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/TestData/invalid-operation-construction-baseline.json,1862,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/TestDiscoverFqdnDriftTests.cs,204,8,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/TestDiscoveryFileIdentityTests.cs,169,8,2,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/TestFixtureFileSystemTests.cs,245,5,8,0,0,1,0,0,False,fixture-size/lifetime review candidate; preserve isolation
+tests/RoslynMcp.Tests/TestFixturePreparationContractTests.cs,197,2,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/TestInfrastructure/CapturingServerObservabilitySink.cs,13,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/TestInfrastructure/ListLogger.cs,21,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/TestInfrastructure/PowerShellOutputNormalizer.cs,51,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/TestInfrastructure/TestAssemblyFixture.cs,149,0,0,0,0,0,1,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/TestInfrastructure/TestFixtureFileSystem.cs,285,0,0,0,0,0,0,2,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/TestInfrastructure/TestHttpClientFactory.cs,28,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/TestInfrastructure/TestServiceContainer.cs,327,3,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/TestInfrastructure/TestTempRoot.cs,123,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/TestInfrastructure/WindowsDirectoryJunction.cs,148,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/TestInfrastructure/WindowsDriveAlias.cs,158,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/TestInfrastructure/WindowsShortPathName.cs,41,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/TestInfrastructure/WindowsSuspendedProcess.cs,146,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/TestInfrastructure/WorkspaceIdCache.cs,45,0,0,0,0,0,2,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/TestReferenceMapServiceTests.cs,260,10,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/TestResultsSummaryContractTests.cs,770,17,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/TestRunFailureEnvelopeTests.cs,1379,35,11,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/TestRunPublicProjectionTests.cs,673,10,2,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/TestRunTimeoutWireTests.cs,146,2,2,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/TestShardPlanContractTests.cs,435,4,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/TestTempRootTests.cs,151,7,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/ThirdPartyNoticeDriftTests.cs,244,3,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/ToolCallErrorWireContractTests.cs,690,10,16,0,3,3,3,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/ToolDescriptionBudgetHarness.cs,115,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/ToolDescriptionDietAnalysisMetricsTests.cs,48,3,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/ToolDescriptionDietWorkspaceValidationTests.cs,45,3,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/ToolDiResolutionTests.cs,193,4,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/ToolDispatchTests.cs,621,17,6,3,0,0,0,0,False,serialization ownership review; see serialization inventory
+tests/RoslynMcp.Tests/ToolErrorHandlerParameterValidationTests.cs,125,7,1,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/ToolErrorHandlerSpecificityTests.cs,153,7,2,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/ToolErrorHandlerWorkspaceReloadRaceTests.cs,89,3,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/ToolInputSchemaHygieneTests.cs,169,4,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/ToolParameterCanonicalFormTests.cs,206,3,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/ToolUpdateOwnedProcessShutdownTests.cs,321,6,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/Top10V2RegressionTests.cs,329,10,0,0,2,0,1,0,False,fixture-size/lifetime review candidate; preserve isolation
+tests/RoslynMcp.Tests/Top10V3RegressionTests.cs,178,6,4,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/TreeNodeFilterTranslatorTests.cs,239,20,0,0,0,0,0,0,False,confirmed duplicate candidate; see report
+tests/RoslynMcp.Tests/TriviaNormalizationHelperTests.cs,190,10,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/TruncatedPreviewApplyGateTests.cs,156,4,2,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/TypeConsumersServiceTests.cs,131,6,0,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/TypeExtractionTests.cs,1611,35,14,0,4,19,20,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/TypeMoveTests.cs,454,15,18,0,14,0,10,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/TypeNamespaceWalkerTests.cs,101,4,0,0,0,0,0,0,False,confirmed duplicate candidate; see report
+tests/RoslynMcp.Tests/UndoFileOperationsTests.cs,313,5,4,0,0,4,4,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/UndoIntegrationTests.cs,130,4,0,0,2,0,0,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/UndoServiceTests.cs,507,10,3,0,9,0,0,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/UnknownToolArgumentWireTests.cs,224,9,4,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/UnresolvedAnalyzerReferenceStripperTests.cs,138,2,0,0,2,0,0,0,False,fixture-size/lifetime review candidate; preserve isolation
+tests/RoslynMcp.Tests/UnresolvedAnalyzerReferenceTests.cs,110,3,0,0,3,0,3,0,False,fixture-size/lifetime review candidate; preserve isolation
+tests/RoslynMcp.Tests/UnusedSymbolScanFailSafeTests.cs,239,4,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/UnusedSymbolsTestBridgeExclusionTests.cs,151,6,0,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/UsingDirectiveSynthesizerTests.cs,61,2,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/Usings.cs,1,0,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/ValidateRecentGitChangesTests.cs,783,13,12,1,11,0,10,2,True,fixture-size/lifetime review candidate; preserve isolation; serialization ownership review; see serialization inventory; no-op cleanup retirement
+tests/RoslynMcp.Tests/ValidateWorkspaceChangeTrackerReconcileTests.cs,384,7,10,0,7,0,4,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/ValidateWorkspaceMarkdownFormatterTests.cs,243,6,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/ValidateWorkspaceSummaryTests.cs,147,6,0,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/ValidationBundleToolsTests.cs,462,14,32,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/ValidationIntegrationTests.cs,223,7,0,1,0,1,3,0,True,fixture-size/lifetime review candidate; preserve isolation; serialization ownership review; see serialization inventory; no-op cleanup retirement
+tests/RoslynMcp.Tests/ValidationIsolationContractTests.cs,25,1,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/ValidationServiceOptionsEnvironmentBinderTests.cs,70,4,6,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/ValidationToolsCompactTestRunTests.cs,163,3,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/ValidationToolsErrorWireTests.cs,132,2,0,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/ValidationToolsIntegrationTests.cs,512,17,0,1,0,0,0,0,True,serialization ownership review; see serialization inventory; no-op cleanup retirement
+tests/RoslynMcp.Tests/VerifyReleaseChildScriptTests.cs,1059,9,4,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/VersionDriftGateTests.cs,79,1,4,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/WindowsPathResourceTests.cs,154,9,0,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/WorkflowRecommendationToolsTests.cs,126,6,19,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/Workspace/WorkspaceCachePrewarmTests.cs,339,5,0,0,2,0,0,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/Workspace/WorkspaceForkApplyTests.cs,397,9,10,0,6,0,0,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/Workspace/WorkspaceLoadCacheFastPathTests.cs,261,4,0,0,0,1,6,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/WorkspaceCapLruEvictionTests.cs,376,5,0,0,0,8,6,0,False,fixture-size/lifetime review candidate; preserve isolation
+tests/RoslynMcp.Tests/WorkspaceCloseDrainTests.cs,1252,20,15,0,0,0,0,2,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/WorkspaceDispatchValidationPrecedenceTests.cs,117,1,21,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/WorkspaceEvictionAutoRetryTests.cs,655,9,0,0,0,16,4,0,False,fixture-size/lifetime review candidate; preserve isolation
+tests/RoslynMcp.Tests/WorkspaceExecutionGateTests.cs,1191,36,0,0,0,0,0,11,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/WorkspaceFilePathInferenceWireTests.cs,182,2,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/WorkspaceForkApplyCancellationTests.cs,159,5,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/WorkspaceForkGitIsolationTests.cs,100,2,3,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/WorkspaceIdOptionalSurfaceTests.cs,91,4,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/WorkspaceLifecycleArgumentRefusalTests.cs,164,8,10,0,0,0,3,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/WorkspaceLoadAutoRestoreTests.cs,299,10,0,1,0,1,1,0,True,fixture-size/lifetime review candidate; preserve isolation; serialization ownership review; see serialization inventory; no-op cleanup retirement
+tests/RoslynMcp.Tests/WorkspaceLoadDedupTests.cs,384,8,0,0,0,8,11,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/WorkspaceLoadRestoreBudgetTests.cs,219,7,0,1,0,1,1,0,True,fixture-size/lifetime review candidate; preserve isolation; serialization ownership review; see serialization inventory; no-op cleanup retirement
+tests/RoslynMcp.Tests/WorkspaceLoadRestoreFailureWireTests.cs,174,2,0,1,0,2,2,0,True,fixture-size/lifetime review candidate; preserve isolation; serialization ownership review; see serialization inventory; no-op cleanup retirement
+tests/RoslynMcp.Tests/WorkspaceLoadRestoreNextCallTests.cs,136,8,4,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/WorkspaceLoadRestorePackagesPathTests.cs,224,4,0,0,0,4,4,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/WorkspaceLoadRestoreRaceTests.cs,571,6,0,1,0,6,6,3,True,fixture-size/lifetime review candidate; preserve isolation; serialization ownership review; see serialization inventory; no-op cleanup retirement
+tests/RoslynMcp.Tests/WorkspaceManagerEvictionTests.cs,338,7,0,1,0,2,2,0,False,fixture-size/lifetime review candidate; preserve isolation; serialization ownership review; see serialization inventory
+tests/RoslynMcp.Tests/WorkspaceNotFoundWireContractTests.cs,173,3,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/WorkspacePathMrtrWireTests.cs,1217,19,6,0,0,0,0,1,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/WorkspaceProjectAliasLookupTests.cs,238,12,2,0,11,0,2,0,False,fixture-size/lifetime review candidate; preserve isolation
+tests/RoslynMcp.Tests/WorkspaceReadinessReportIntegrationTests.cs,198,4,0,1,3,0,4,0,True,fixture-size/lifetime review candidate; preserve isolation; serialization ownership review; see serialization inventory; no-op cleanup retirement
+tests/RoslynMcp.Tests/WorkspaceReadinessReportTests.cs,328,10,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/WorkspaceReloadedEventTests.cs,191,5,2,1,0,1,1,0,True,fixture-size/lifetime review candidate; preserve isolation; serialization ownership review; see serialization inventory; no-op cleanup retirement
+tests/RoslynMcp.Tests/WorkspaceReloadedNotFoundConflationTests.cs,124,3,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/WorkspaceResourceListNotificationWireTests.cs,143,1,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/WorkspaceResourceTests.cs,249,14,0,0,0,0,0,0,True,no-op cleanup retirement
+tests/RoslynMcp.Tests/WorkspaceSessionLoaderFailureTests.cs,101,1,0,0,0,0,1,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/WorkspaceStatusSummaryDtoTests.cs,161,9,13,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/WorkspaceSupportBundleTests.cs,425,9,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/WorkspaceToolchainClassifierTests.cs,141,7,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/WorkspaceToolsIntegrationTests.cs,502,21,0,1,0,0,0,0,True,serialization ownership review; see serialization inventory; no-op cleanup retirement
+tests/RoslynMcp.Tests/WorkspaceValidationOverallStatusTests.cs,555,20,0,0,0,0,0,0,False,structural scan complete; no specific efficiency change established
+tests/RoslynMcp.Tests/WorkspaceValidationTimeoutTests.cs,220,5,0,0,3,0,0,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/WorkspaceValidationVerdictTests.cs,432,9,23,0,8,0,5,2,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement
+tests/RoslynMcp.Tests/WorkspaceWarmServiceTests.cs,83,3,0,0,3,0,0,0,True,fixture-size/lifetime review candidate; preserve isolation; no-op cleanup retirement

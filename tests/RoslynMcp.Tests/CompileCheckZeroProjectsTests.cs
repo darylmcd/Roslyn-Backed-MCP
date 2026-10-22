@@ -37,12 +37,12 @@ public sealed class CompileCheckZeroProjectsTests : SharedWorkspaceTestBase
             CompileCheckTools.CompileCheck(WorkspaceExecutionGate, CompileCheckService,
                 WorkspaceId, projectName: privateProject));
         Assert.AreEqual("projectName", ex.ParamName);
-        StringAssert.Contains(ex.PublicMessage, "workspace_status");
+        StringAssert.Contains(ex.PublicMessage, "workspace_status with verbose=true");
         Assert.IsFalse(ex.Message.Contains(privateProject, StringComparison.Ordinal));
         using var envelope = System.Text.Json.JsonDocument.Parse(ToolErrorHandler.ClassifyAndFormat(ex, "compile_check"));
         Assert.AreEqual("InvalidArgument", envelope.RootElement.GetProperty("category").GetString());
         Assert.AreEqual("ArgumentException", envelope.RootElement.GetProperty("exceptionType").GetString());
-        StringAssert.Contains(envelope.RootElement.GetProperty("message").GetString(), "workspace_status");
+        StringAssert.Contains(envelope.RootElement.GetProperty("message").GetString(), "workspace_status with verbose=true");
         Assert.IsFalse(envelope.RootElement.GetProperty("message").GetString()!.Contains(privateProject, StringComparison.Ordinal));
     }
 
@@ -63,6 +63,7 @@ public sealed class CompileCheckZeroProjectsTests : SharedWorkspaceTestBase
         Assert.AreEqual(0, result.TotalProjects, "The filter should have matched zero projects.");
         Assert.IsFalse(result.Success, "Success must be false when zero projects are evaluated — previously this returned true, producing the false-green.");
         Assert.IsNotNull(result.RestoreHint, "RestoreHint must be populated with an actionable zero-projects message.");
+        StringAssert.Contains(result.RestoreHint, "workspace_status with verbose=true");
         Assert.IsTrue(
             result.RestoreHint!.Contains("projectFilter", StringComparison.OrdinalIgnoreCase) ||
             result.RestoreHint.Contains("0 projects", StringComparison.OrdinalIgnoreCase),

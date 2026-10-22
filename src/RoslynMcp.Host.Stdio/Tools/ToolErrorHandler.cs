@@ -602,7 +602,7 @@ internal static class ToolErrorHandler
 
         if (string.Equals(exception.ParamName, "projectName", StringComparison.Ordinal))
         {
-            return "No loaded project matches parameter 'projectName'. Use workspace_status to list project names, then retry.";
+            return "No loaded project matches parameter 'projectName'. Use workspace_status with verbose=true to list project names, then retry.";
         }
 
         if (string.Equals(exception.ParamName, "lineRange", StringComparison.Ordinal))

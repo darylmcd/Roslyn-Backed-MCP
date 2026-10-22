@@ -402,30 +402,6 @@
     "Count": 1
   },
   {
-    "Path": "src/RoslynMcp.Roslyn/Services/ChangeSignatureService.cs",
-    "Member": "M:RoslynMcp.Roslyn.Services.ChangeSignatureService.BuildPreviewDto(System.String,Microsoft.CodeAnalysis.Solution,System.Collections.Generic.List{RoslynMcp.Core.Models.FileChangeDto},System.Collections.Generic.List{RoslynMcp.Core.Models.CallsiteUpdateDto},System.String)",
-    "Fingerprint": "FEC1FB2861D1784EEF51B9E054F3873423A9BC5A6DC469DEBE932AD4DA990A2E",
-    "Count": 1
-  },
-  {
-    "Path": "src/RoslynMcp.Roslyn/Services/ChangeSignatureService.cs",
-    "Member": "M:RoslynMcp.Roslyn.Services.ChangeSignatureService.PreviewChangeSignatureAsync(System.String,RoslynMcp.Core.Models.SymbolLocator,RoslynMcp.Core.Services.ChangeSignatureRequest,System.Threading.CancellationToken)",
-    "Fingerprint": "334DACA01778F40757E790A37565D707819C02717007BFCCA53C575E7F0A1071",
-    "Count": 1
-  },
-  {
-    "Path": "src/RoslynMcp.Roslyn/Services/ChangeSignatureService.cs",
-    "Member": "M:RoslynMcp.Roslyn.Services.ChangeSignatureService.PreviewRenameParameterAsync(System.String,Microsoft.CodeAnalysis.IMethodSymbol,RoslynMcp.Core.Services.ChangeSignatureRequest,System.Threading.CancellationToken)",
-    "Fingerprint": "87DEBBE8FB7FF41CAEDD6BED7A0F8901EF06E83C032A6AFCC7334917A474CB42",
-    "Count": 1
-  },
-  {
-    "Path": "src/RoslynMcp.Roslyn/Services/ChangeSignatureService.cs",
-    "Member": "M:RoslynMcp.Roslyn.Services.ChangeSignatureService.PreviewReorderParametersAsync(System.String,Microsoft.CodeAnalysis.Solution,Microsoft.CodeAnalysis.IMethodSymbol,RoslynMcp.Core.Services.ChangeSignatureRequest,System.Threading.CancellationToken)",
-    "Fingerprint": "782724F8A681C745B1B47C0E143598BA343EA8409AFABE54CF79EDB097247C47",
-    "Count": 1
-  },
-  {
     "Path": "src/RoslynMcp.Roslyn/Services/ClassSplitOrchestrator.cs",
     "Member": "M:RoslynMcp.Roslyn.Services.ClassSplitOrchestrator.PreviewSplitClassAsync(System.String,System.String,System.String,System.Collections.Generic.IReadOnlyList{System.String},System.String,System.Threading.CancellationToken)",
     "Fingerprint": "43018289C99DF9A58349FD3F68BBE56A6547FBDE19FDCDE1DF38DAB0DB2D0002",
@@ -1392,12 +1368,6 @@
     "Count": 1
   },
   {
-    "Path": "src/RoslynMcp.Roslyn/Services/RefactoringService.cs",
-    "Member": "M:RoslynMcp.Roslyn.Services.RefactoringService.ProjectFormattedRange(Microsoft.CodeAnalysis.Text.SourceText,System.Collections.Generic.IEnumerable{Microsoft.CodeAnalysis.Text.TextChange},System.Int32,System.Int32)",
-    "Fingerprint": "946F32CF6ED97B5516E4141E7F87DF7C9524332F724961D55B206E1898AF3AD7",
-    "Count": 1
-  },
-  {
     "Path": "src/RoslynMcp.Roslyn/Services/RestructureService.cs",
     "Member": "M:RoslynMcp.Roslyn.Services.RestructureService.PreviewRestructureAsync(System.String,System.String,System.String,RoslynMcp.Core.Services.RestructureScope,System.Threading.CancellationToken)",
     "Fingerprint": "4904BACF4B731DC8D67723F65D74DDF7E4EC038175A859EE5C0513ECBB889643",
@@ -1640,19 +1610,7 @@
   {
     "Path": "src/RoslynMcp.Roslyn/Services/TestRunnerService.cs",
     "Member": "M:RoslynMcp.Roslyn.Services.TestRunnerService.PrepareTestRunAsync(System.String,System.String,System.String,System.Threading.CancellationToken)",
-    "Fingerprint": "0314F80633E7AED688B52CD0D378729924BF3B0D9FD5232AEA42DE9003B43DFD",
-    "Count": 1
-  },
-  {
-    "Path": "src/RoslynMcp.Roslyn/Services/TestRunnerService.cs",
-    "Member": "M:RoslynMcp.Roslyn.Services.TestRunnerService.PrepareTestRunAsync(System.String,System.String,System.String,System.Threading.CancellationToken)",
     "Fingerprint": "56041ACD66ACD5C3C616D00A47490B9AC417A67E1FB2AADB21C0391788565D04",
-    "Count": 1
-  },
-  {
-    "Path": "src/RoslynMcp.Roslyn/Services/TestRunnerService.cs",
-    "Member": "M:RoslynMcp.Roslyn.Services.TestRunnerService.PrepareTestRunAsync(System.String,System.String,System.String,System.Threading.CancellationToken)",
-    "Fingerprint": "E7411410019C28BFA56A08A71126A137668AAE61A82D61EA8E193372AB77BBA0",
     "Count": 1
   },
   {

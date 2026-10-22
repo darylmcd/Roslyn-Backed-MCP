@@ -251,23 +251,23 @@ public sealed class BulkRefactoringService : IBulkRefactoringService
             .GroupBy(loc => loc.Document.Id);
 
         var newSolution = solution;
-        var perFileCallsites = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var perDocumentCallsites = new Dictionary<DocumentId, int>();
 
         foreach (var docGroup in refsByDocument)
         {
             ct.ThrowIfCancellationRequested();
-            var (updatedSolution, count, filePath) = await RewriteInvocationsInDocumentAsync(
+            var (updatedSolution, count) = await RewriteInvocationsInDocumentAsync(
                 newSolution, docGroup.Key, docGroup, oldMethodSymbol, newMethodSymbol, ct)
                 .ConfigureAwait(false);
 
             newSolution = updatedSolution;
-            if (count > 0 && filePath is not null)
+            if (count > 0)
             {
-                perFileCallsites[filePath] = perFileCallsites.TryGetValue(filePath, out var existing) ? existing + count : count;
+                perDocumentCallsites[docGroup.Key] = perDocumentCallsites.TryGetValue(docGroup.Key, out var existing) ? existing + count : count;
             }
         }
 
-        var totalCallsites = perFileCallsites.Values.Sum();
+        var totalCallsites = perDocumentCallsites.Values.Sum();
         if (totalCallsites == 0)
         {
             throw new InvalidOperationException(
@@ -279,10 +279,7 @@ public sealed class BulkRefactoringService : IBulkRefactoringService
             $"Replace {totalCallsites} call-site(s) of '{oldMethodSymbol.ToDisplayString()}' with '{newMethodSymbol.ToDisplayString()}' " +
             $"(argument reorder: [{string.Join(", ", indexMap)}])";
 
-        var callsiteUpdates = perFileCallsites
-            .Select(kvp => new CallsiteUpdateDto(kvp.Key, kvp.Value))
-            .OrderBy(u => u.FilePath, StringComparer.Ordinal)
-            .ToList();
+        var callsiteUpdates = CallsiteUpdateProjection.Project(solution, perDocumentCallsites);
 
         // preview-token-apply-route-provenance: replace_invocation_preview redeems through the
         // SHARED bulk_replace_type_apply route, so it mints the same kind by design.
@@ -306,14 +303,14 @@ public sealed class BulkRefactoringService : IBulkRefactoringService
         var span = location.Location.SourceSpan;
         foreach (var (declFilePath, declSpan) in declarations)
         {
-            if (string.Equals(declFilePath, filePath, StringComparison.OrdinalIgnoreCase) && declSpan.Contains(span))
+            if (string.Equals(declFilePath, filePath, FileSystemPath.Comparison) && declSpan.Contains(span))
                 return true;
         }
 
         return false;
     }
 
-    private static async Task<(Solution Solution, int CallsiteCount, string? FilePath)> RewriteInvocationsInDocumentAsync(
+    private static async Task<(Solution Solution, int CallsiteCount)> RewriteInvocationsInDocumentAsync(
         Solution solution,
         DocumentId docId,
         IEnumerable<ReferenceLocation> locations,
@@ -322,10 +319,10 @@ public sealed class BulkRefactoringService : IBulkRefactoringService
         CancellationToken ct)
     {
         var doc = solution.GetDocument(docId);
-        if (doc is null) return (solution, 0, null);
+        if (doc is null) return (solution, 0);
 
         var root = await doc.GetSyntaxRootAsync(ct).ConfigureAwait(false);
-        if (root is null) return (solution, 0, null);
+        if (root is null) return (solution, 0);
 
         // Collect invocation rewrites keyed by the invocation node. Each ReferenceLocation
         // points at the member-access identifier (e.g. "Build" in "helper.Build(a, b, c)");
@@ -360,7 +357,7 @@ public sealed class BulkRefactoringService : IBulkRefactoringService
             rewrites[invocation] = operation;
         }
 
-        if (rewrites.Count == 0) return (solution, 0, doc.FilePath);
+        if (rewrites.Count == 0) return (solution, 0);
 
         root = root.ReplaceNodes(rewrites.Keys, (original, rewritten) =>
             RewriteInvocation(original, rewritten, rewrites[original], model, generator, newMethodSimpleName, newMethodSymbol)
@@ -381,7 +378,7 @@ public sealed class BulkRefactoringService : IBulkRefactoringService
                 updatedModel.GetDiagnostics(rewritten.Span, ct).Any(d => d.Severity == DiagnosticSeverity.Error))
                 throw new PublicInvalidOperationException("Invocation replacement cannot preserve a valid binding to the requested replacement method.");
         }
-        return (updatedSolution, rewrites.Count, doc.FilePath);
+        return (updatedSolution, rewrites.Count);
     }
 
     private static string? GetInvokedMethodSimpleName(InvocationExpressionSyntax invocation)

@@ -1,0 +1,43 @@
+{
+  "runs": [
+    {
+      "Run": "baseline/before-1.trx",
+      "Cases": 435,
+      "Passed": 435,
+      "Seconds": 694.46947,
+      "FirstCaseStart": "2026-10-17T16:20:54.8282951-05:00",
+      "LastCaseEnd": "2026-10-17T16:32:28.5659572-05:00",
+      "CaseWallSeconds": 693.737
+    },
+    {
+      "Run": "baseline/before-2.trx",
+      "Cases": 435,
+      "Passed": 435,
+      "Seconds": 839.1824148,
+      "FirstCaseStart": "2026-10-17T16:32:47.1969712-05:00",
+      "LastCaseEnd": "2026-10-17T16:46:45.6495633-05:00",
+      "CaseWallSeconds": 838.453
+    },
+    {
+      "Run": "after/after-1.trx",
+      "Cases": 435,
+      "Passed": 435,
+      "Seconds": 219.2202559,
+      "FirstCaseStart": "2026-10-17T16:53:37.2234156-05:00",
+      "LastCaseEnd": "2026-10-17T16:57:15.4460864-05:00",
+      "CaseWallSeconds": 218.223
+    },
+    {
+      "Run": "after/after-2.trx",
+      "Cases": 435,
+      "Passed": 435,
+      "Seconds": 203.8117623,
+      "FirstCaseStart": "2026-10-17T16:57:41.5081002-05:00",
+      "LastCaseEnd": "2026-10-17T17:01:03.9438396-05:00",
+      "CaseWallSeconds": 202.435
+    }
+  ],
+  "medianBeforeSeconds": 766.095,
+  "medianAfterSeconds": 210.329,
+  "reductionPercent": 72.54531096012897
+}

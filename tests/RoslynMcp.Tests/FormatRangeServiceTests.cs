@@ -38,12 +38,13 @@ public sealed class FormatRangeServiceTests : IsolatedWorkspaceTestBase
         await using var workspace = await CreateIsolatedWorkspaceAsync();
         var filePath = workspace.GetPath("SampleLib", "RefactoringProbe.cs");
 
-        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<RoslynMcp.Core.Services.PublicArgumentException>(() =>
             RefactoringService.PreviewFormatRangeAsync(
                 workspace.WorkspaceId, filePath,
                 startLine: 17, startColumn: 1,
                 endLine: 11, endColumn: 6,
                 CancellationToken.None));
+        Assert.AreEqual("endLine", ex.ParamName);
         StringAssert.Contains(ex.Message, ">=");
     }
 
@@ -53,7 +54,7 @@ public sealed class FormatRangeServiceTests : IsolatedWorkspaceTestBase
         await using var workspace = await CreateIsolatedWorkspaceAsync();
         var filePath = workspace.GetPath("SampleLib", "RefactoringProbe.cs");
 
-        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<RoslynMcp.Core.Services.PublicArgumentException>(() =>
             RefactoringService.PreviewFormatRangeAsync(
                 workspace.WorkspaceId, filePath,
                 startLine: 11, startColumn: 0,
@@ -68,13 +69,37 @@ public sealed class FormatRangeServiceTests : IsolatedWorkspaceTestBase
         await using var workspace = await CreateIsolatedWorkspaceAsync();
         var filePath = workspace.GetPath("SampleLib", "RefactoringProbe.cs");
 
-        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<RoslynMcp.Core.Services.PublicArgumentException>(() =>
             RefactoringService.PreviewFormatRangeAsync(
                 workspace.WorkspaceId, filePath,
                 startLine: 99999, startColumn: 1,
                 endLine: 99999, endColumn: 1,
                 CancellationToken.None));
         StringAssert.Contains(ex.Message, "past the end");
+    }
+
+    [TestMethod]
+    [DataRow(0, 1, 17, 6, "startLine", "'startLine' must be >= 1 (got 0)")]
+    [DataRow(11, 1, 0, 6, "endLine", "'endLine' must be >= 1 (got 0)")]
+    [DataRow(11, 0, 17, 6, "startColumn", "'startColumn' must be >= 1 (got 0)")]
+    [DataRow(11, 1, 17, 0, "endColumn", "'endColumn' must be >= 1 (got 0)")]
+    [DataRow(99999, 1, 99999, 1, "startLine", "'startLine' (99999) is past the end of the file")]
+    [DataRow(11, 1, 99999, 1, "endLine", "'endLine' (99999) is past the end of the file")]
+    [DataRow(17, 1, 11, 6, "endLine", "'endLine' (11) must be >= startLine (17)")]
+    [DataRow(11, 9, 11, 3, "startColumn", "'startColumn' (9) must be <= endColumn (3)")]
+    public async Task FormatRangePreview_RangeRefusals_ArePublicAndNameTheRealParameter(
+        int startLine, int startColumn, int endLine, int endColumn, string parameterName, string correction)
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync();
+        var filePath = workspace.GetPath("SampleLib", "RefactoringProbe.cs");
+
+        var ex = await Assert.ThrowsExactlyAsync<RoslynMcp.Core.Services.PublicArgumentException>(() =>
+            RefactoringService.PreviewFormatRangeAsync(
+                workspace.WorkspaceId, filePath, startLine, startColumn, endLine, endColumn, CancellationToken.None));
+
+        Assert.AreEqual(parameterName, ex.ParamName);
+        StringAssert.Contains(ex.PublicMessage, correction);
+        Assert.IsFalse(ex.PublicMessage.Contains(filePath, StringComparison.Ordinal), ex.PublicMessage);
     }
 
     [TestMethod]
@@ -580,9 +605,11 @@ public sealed class FormatRangeServiceTests : IsolatedWorkspaceTestBase
             new Microsoft.CodeAnalysis.Text.TextSpan(0, original.Length),
             "before\nsame\nafter\n");
 
-        Assert.ThrowsExactly<InvalidOperationException>(() =>
+        var error = Assert.ThrowsExactly<RoslynMcp.Core.Services.PublicInvalidOperationException>(() =>
             RoslynMcp.Roslyn.Services.RefactoringService.ProjectFormattedRange(
                 original, [grouped], startLine: 3, endLine: 3));
+        StringAssert.Contains(error.PublicMessage, "format_range_preview");
+        StringAssert.Contains(error.PublicMessage, "startLine/endLine");
     }
 
     [TestMethod]
@@ -595,9 +622,11 @@ public sealed class FormatRangeServiceTests : IsolatedWorkspaceTestBase
             Microsoft.CodeAnalysis.Text.TextSpan.FromBounds(crossingStart, crossingEnd),
             "\n\n    dirty");
 
-        Assert.ThrowsExactly<InvalidOperationException>(() =>
+        var error = Assert.ThrowsExactly<RoslynMcp.Core.Services.PublicInvalidOperationException>(() =>
             RoslynMcp.Roslyn.Services.RefactoringService.ProjectFormattedRange(
                 original, [grouped], startLine: 2, endLine: 2));
+        StringAssert.Contains(error.PublicMessage, "format_range_preview");
+        StringAssert.Contains(error.PublicMessage, "startLine/endLine");
     }
 
     [TestMethod]
