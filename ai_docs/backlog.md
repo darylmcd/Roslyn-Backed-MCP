@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-23T18:54:41Z
+**updated_at:** 2026-10-23T19:32:41Z
 
 ## Agent contract
 
@@ -109,7 +109,7 @@
 | `logging-dependency-boundary-duration-missing` | Medium | logging-jsonl-drops-structured-state | **Emit duration and outcome for subprocess and workspace-load boundaries** — the dotnet-command event has target+exit code but no duration; MSBuild workspace load has no boundary event. [type: quality] [source: logging-audit 20260930-1340] | M | items/logging-dependency-boundary-duration-missing.md |
 | `logging-process-vitals-absent` | Medium | — | **Expose process vitals in server_heartbeat and the JSON-lines stream** — memory, GC, thread-pool and execution-gate depth are visible nowhere an agent can read headlessly. [type: quality] [source: logging-audit 20260930-1340] | M | items/logging-process-vitals-absent.md |
 | `logging-observability-contract-doc-incomplete` | Medium | logging-jsonl-drops-structured-state,logging-event-id-collisions-no-catalog | **Complete the observability contract docs with agent recipes** — add file-name pattern, correlate/timing/health recipes and event table to consumer docs, and the A10 section to AGENTS.md. [type: docs] [source: logging-audit 20260930-1340] | S | items/logging-observability-contract-doc-incomplete.md |
-| `restore-callers-missing-packages-path` | Medium | workspace-restore-packages-path,project-reference-utf16-undo-qualification | Preserve assets-recorded package roots and the reviewed fork graph through one shared restore plan; retain nullable roots, source isolation and mixed-root dependency restores. [type: bug] [source: preserved re-plan] | L | items/restore-callers-missing-packages-path.md |
+| `restore-callers-missing-packages-path` | Medium | workspace-restore-packages-path,project-reference-utf16-undo-qualification,restore-fork-reviewed-project-graph | Preserve assets-recorded package roots and the reviewed fork graph through one shared restore plan; retain nullable roots, source isolation and mixed-root dependency restores. [type: bug] [source: preserved re-plan] | L | items/restore-callers-missing-packages-path.md |
 | `split-service-refuse-cross-partition-references` | Medium | — | **Preserve semantic references across service partitions** — replace name-only discovery with source-owned composition for dependent moved members; refuse only proven unrepresentable external shapes. [type: bug] [source: split-service-with-di-refuse-unsupported-method-shapes] | M | items/split-service-refuse-cross-partition-references.md |
 | `split-service-refuse-unsupported-method-signatures` | Medium | split-service-refuse-cross-partition-references | **Refuse split_service_with_di_preview for method shapes the stub cannot forward** — static, override/abstract, explicit-interface, ref-returning and generic-with-constraints methods, and generic source types. [type: bug] [source: split-service-with-di-refuse-unsupported-method-shapes] | M | items/split-service-refuse-unsupported-method-signatures.md |
 | `split-service-forward-ref-out-in-arguments` | Medium | split-service-refuse-unsupported-method-signatures | **Forward ref/out/in arguments with their modifiers in split_service_with_di forwarding stubs** — stubs emit bare identifiers, so ref/out/in parameters fail to compile. [type: bug] [source: split-service-with-di-refuse-unsupported-method-shapes] | S | items/split-service-forward-ref-out-in-arguments.md |
@@ -157,6 +157,12 @@
 | `undo-explicit-empty-capture` | Medium | restore-physical-project-mutation-rendering | Represent explicit empty undo captures as operations with no effects; qualify latest/by-sequence replay without erasing earlier or later edits. | S | items/undo-explicit-empty-capture.md |
 | `undo-sequence-claim-exclusivity` | Medium | undo-explicit-empty-capture | Refuse restoration after losing the by-sequence undo claim; prove one winning restore with deterministic concurrent-claim coverage. | S | items/undo-sequence-claim-exclusivity.md |
 | `undo-reload-failure-reports-success` | Medium | undo-sequence-claim-exclusivity | Make failed undo workspace reload/version restoration report failure and retain retryable capture/history across both restore paths. | S | items/undo-reload-failure-reports-success.md |
+| `restore-assets-json-kind-guards` | Medium | — | Guard incompatible JSON kinds across assets readers while preserving unknown-version, restore-required and sanitized diagnostic contracts. | M | items/restore-assets-json-kind-guards.md |
+| `restore-active-assets-layout-authority` | Medium | restore-assets-json-kind-guards | Share evaluated active assets-file authority across restore readers; stale default files must not mask alternate or missing active assets. | M | items/restore-active-assets-layout-authority.md |
+| `fork-document-text-encoding` | Medium | restore-active-assets-layout-authority | Preserve SourceText encoding and BOM through the shared changed/added document fork replay writer. | S | items/fork-document-text-encoding.md |
+| `restore-required-project-inventory` | Medium | fork-document-text-encoding | Restore source callers through one complete evaluated dependency inventory, preserving nullable roots and mixed-root isolation under one budget. | M | items/restore-required-project-inventory.md |
+| `fork-evaluated-source-isolation` | Medium | restore-required-project-inventory | Reject evaluated copied transitive imports, file inputs and output paths into the source before any fork restore or runner effect. | M | items/fork-evaluated-source-isolation.md |
+| `restore-fork-reviewed-project-graph` | Medium | fork-evaluated-source-isolation | Rebase and replay reviewed physical project effects, then verify evaluated fork graph fidelity before restore while preserving source authority. | M | items/restore-fork-reviewed-project-graph.md |
 
 ## Low
 
