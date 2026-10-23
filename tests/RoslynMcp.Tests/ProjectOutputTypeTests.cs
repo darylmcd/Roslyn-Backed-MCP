@@ -44,7 +44,7 @@ public sealed class ProjectOutputTypeTests : TestBase
             </Project>
             """);
 
-        var result = ProjectMetadataParser.GetEvaluatedOutputType(fixture.ProjectPath, NullLogger.Instance);
+        var result = ProjectMetadataParser.GetEvaluatedOutputType(fixture.ProjectPath, MsBuildMetadataHelper.DefaultGlobalProperties, NullLogger.Instance);
 
         Assert.AreEqual("Exe", result,
             "Microsoft.NET.Sdk.Web projects inherit OutputType=Exe from the SDK targets; the evaluator must surface it even when the XML omits the element.");
@@ -66,7 +66,7 @@ public sealed class ProjectOutputTypeTests : TestBase
             </Project>
             """);
 
-        var result = ProjectMetadataParser.GetEvaluatedOutputType(fixture.ProjectPath, NullLogger.Instance);
+        var result = ProjectMetadataParser.GetEvaluatedOutputType(fixture.ProjectPath, MsBuildMetadataHelper.DefaultGlobalProperties, NullLogger.Instance);
 
         Assert.AreEqual("Exe", result,
             "Microsoft.NET.Sdk.Worker projects inherit OutputType=Exe from the SDK targets; the evaluator must surface it.");
@@ -88,7 +88,7 @@ public sealed class ProjectOutputTypeTests : TestBase
             </Project>
             """);
 
-        var result = ProjectMetadataParser.GetEvaluatedOutputType(fixture.ProjectPath, NullLogger.Instance);
+        var result = ProjectMetadataParser.GetEvaluatedOutputType(fixture.ProjectPath, MsBuildMetadataHelper.DefaultGlobalProperties, NullLogger.Instance);
 
         Assert.AreEqual("Library", result,
             "Microsoft.NET.Sdk library projects default OutputType=Library; the evaluator must report that value, not silently misreport.");
@@ -111,7 +111,7 @@ public sealed class ProjectOutputTypeTests : TestBase
             </Project>
             """);
 
-        var result = ProjectMetadataParser.GetEvaluatedOutputType(fixture.ProjectPath, NullLogger.Instance);
+        var result = ProjectMetadataParser.GetEvaluatedOutputType(fixture.ProjectPath, MsBuildMetadataHelper.DefaultGlobalProperties, NullLogger.Instance);
 
         Assert.AreEqual("Exe", result,
             "Explicit <OutputType>Exe</OutputType> must round-trip through the evaluator unchanged.");
@@ -123,7 +123,7 @@ public sealed class ProjectOutputTypeTests : TestBase
         // The evaluator must not throw when handed a non-existent path; the caller falls
         // back to the XML-only path which itself returns "Library".
         var missingPath = Path.Combine(Path.GetTempPath(), $"does_not_exist_{Guid.NewGuid():N}.csproj");
-        var result = ProjectMetadataParser.GetEvaluatedOutputType(missingPath, NullLogger.Instance);
+        var result = ProjectMetadataParser.GetEvaluatedOutputType(missingPath, MsBuildMetadataHelper.DefaultGlobalProperties, NullLogger.Instance);
 
         Assert.IsNull(result, "A non-existent project path must return null, not throw or return a default value.");
     }

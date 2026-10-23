@@ -202,11 +202,11 @@ internal class RestoreStalenessDetector
         }
     }
 
-    public virtual bool DetectRestoreRequired(ImmutableArray<ProjectStatusDto> projects, ILogger logger)
+    public virtual bool DetectRestoreRequired(ImmutableArray<ProjectStatusDto> projects, IReadOnlyDictionary<string, string> globalProperties, ILogger logger)
     {
         foreach (var project in projects)
         {
-            if (IsRestoreRequired(project.FilePath, logger))
+            if (IsRestoreRequired(project.FilePath, globalProperties, logger))
             {
                 return true;
             }
@@ -215,7 +215,7 @@ internal class RestoreStalenessDetector
         return false;
     }
 
-    public virtual bool IsRestoreRequired(string projectFilePath, ILogger logger)
+    public virtual bool IsRestoreRequired(string projectFilePath, IReadOnlyDictionary<string, string> globalProperties, ILogger logger)
     {
         if (string.IsNullOrWhiteSpace(projectFilePath) || !File.Exists(projectFilePath))
         {
@@ -241,7 +241,7 @@ internal class RestoreStalenessDetector
 
         try
         {
-            var assets = LoadAssetsPackageVersions(projectFilePath);
+            var assets = LoadAssetsPackageVersions(projectFilePath, globalProperties);
             if (assets is null)
             {
                 logger.LogDebug("restore-drift assets are missing or have an unsupported structure; restore is required.");
@@ -410,7 +410,7 @@ internal class RestoreStalenessDetector
     {
         try
         {
-            var assetsPath = GetExistingAssetsPath(projectFilePath);
+            var assetsPath = GetExistingAssetsPath(projectFilePath, MsBuildMetadataHelper.DefaultGlobalProperties);
             if (assetsPath is null)
             {
                 return null;
@@ -457,7 +457,8 @@ internal class RestoreStalenessDetector
 
         try
         {
-            return CollectExpectedPackages(projectFilePath).Count > 0 && GetExistingAssetsPath(projectFilePath) is null;
+            return CollectExpectedPackages(projectFilePath).Count > 0 &&
+                   GetExistingAssetsPath(projectFilePath, MsBuildMetadataHelper.DefaultGlobalProperties) is null;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException)
         {
@@ -466,7 +467,7 @@ internal class RestoreStalenessDetector
         }
     }
 
-    private static string? GetExistingAssetsPath(string projectFilePath)
+    private static string? GetExistingAssetsPath(string projectFilePath, IReadOnlyDictionary<string, string> globalProperties)
     {
         var projectDirectory = Path.GetDirectoryName(projectFilePath);
         if (string.IsNullOrWhiteSpace(projectDirectory))
@@ -481,7 +482,7 @@ internal class RestoreStalenessDetector
             return defaultPath;
         }
 
-        var relocatedPath = TryEvaluateAssetsPath(projectFilePath, projectDirectory);
+        var relocatedPath = TryEvaluateAssetsPath(projectFilePath, projectDirectory, globalProperties);
         return relocatedPath is not null && File.Exists(relocatedPath) ? relocatedPath : null;
     }
 
@@ -492,11 +493,11 @@ internal class RestoreStalenessDetector
     /// Returns <see langword="null"/> when the project cannot be evaluated; the caller then treats
     /// the assets file as absent, which was the behaviour for every unlocatable file before this probe.
     /// </summary>
-    private static string? TryEvaluateAssetsPath(string projectFilePath, string projectDirectory)
+    private static string? TryEvaluateAssetsPath(string projectFilePath, string projectDirectory, IReadOnlyDictionary<string, string> globalProperties)
     {
         try
         {
-            var values = MsBuildMetadataHelper.EvaluateProperties(projectFilePath, "ProjectAssetsFile", "MSBuildProjectExtensionsPath");
+            var values = MsBuildMetadataHelper.EvaluateProperties(projectFilePath, globalProperties, "ProjectAssetsFile", "MSBuildProjectExtensionsPath");
             var assetsFile = values[0];
             if (string.IsNullOrWhiteSpace(assetsFile))
             {
@@ -517,9 +518,9 @@ internal class RestoreStalenessDetector
         }
     }
 
-    private static (Dictionary<string, HashSet<string>> PackageVersions, Dictionary<string, HashSet<string>> CentralPackageVersions)? LoadAssetsPackageVersions(string projectFilePath)
+    private static (Dictionary<string, HashSet<string>> PackageVersions, Dictionary<string, HashSet<string>> CentralPackageVersions)? LoadAssetsPackageVersions(string projectFilePath, IReadOnlyDictionary<string, string> globalProperties)
     {
-        var assetsPath = GetExistingAssetsPath(projectFilePath);
+        var assetsPath = GetExistingAssetsPath(projectFilePath, globalProperties);
         if (assetsPath is null)
         {
             return null;

@@ -67,7 +67,8 @@ internal static class ProjectMetadataParser
 
     public static IReadOnlyList<string> GetTargetFrameworks(RoslynProject project, XDocument? document, ILogger? logger = null)
     {
-        var evaluatedFrameworks = GetEvaluatedTargetFrameworks(project.FilePath, logger);
+        var evaluatedFrameworks = GetEvaluatedTargetFrameworks(project.FilePath,
+            MsBuildMetadataHelper.GetWorkspaceGlobalProperties(project.Solution.Workspace), logger);
         return evaluatedFrameworks.Count > 0 ? evaluatedFrameworks : GetTargetFrameworks(document);
     }
 
@@ -86,7 +87,7 @@ internal static class ProjectMetadataParser
         return allFrameworks.Count > 0 ? allFrameworks : ["unknown"];
     }
 
-    private static IReadOnlyList<string> GetEvaluatedTargetFrameworks(string? projectFilePath, ILogger? logger)
+    private static IReadOnlyList<string> GetEvaluatedTargetFrameworks(string? projectFilePath, IReadOnlyDictionary<string, string> globalProperties, ILogger? logger)
     {
         if (string.IsNullOrWhiteSpace(projectFilePath) || !File.Exists(projectFilePath))
         {
@@ -95,7 +96,7 @@ internal static class ProjectMetadataParser
 
         try
         {
-            var values = MsBuildMetadataHelper.EvaluateProperties(projectFilePath, "TargetFramework", "TargetFrameworks");
+            var values = MsBuildMetadataHelper.EvaluateProperties(projectFilePath, globalProperties, "TargetFramework", "TargetFrameworks");
             return ParseTargetFrameworkValues(values[0], values[1]);
         }
         catch (Exception ex)
@@ -220,7 +221,8 @@ internal static class ProjectMetadataParser
     /// </summary>
     public static string GetOutputType(RoslynProject project, XDocument? document, ILogger? logger = null)
     {
-        var evaluated = GetEvaluatedOutputType(project.FilePath, logger);
+        var evaluated = GetEvaluatedOutputType(project.FilePath,
+            MsBuildMetadataHelper.GetWorkspaceGlobalProperties(project.Solution.Workspace), logger);
         return !string.IsNullOrWhiteSpace(evaluated) ? evaluated : GetOutputType(document);
     }
 
@@ -229,7 +231,7 @@ internal static class ProjectMetadataParser
         return document?.Descendants("OutputType").FirstOrDefault()?.Value.Trim() ?? "Library";
     }
 
-    internal static string? GetEvaluatedOutputType(string? projectFilePath, ILogger? logger)
+    internal static string? GetEvaluatedOutputType(string? projectFilePath, IReadOnlyDictionary<string, string> globalProperties, ILogger? logger)
     {
         if (string.IsNullOrWhiteSpace(projectFilePath) || !File.Exists(projectFilePath))
         {
@@ -238,7 +240,7 @@ internal static class ProjectMetadataParser
 
         try
         {
-            var outputType = MsBuildMetadataHelper.EvaluateProperties(projectFilePath, "OutputType")[0];
+            var outputType = MsBuildMetadataHelper.EvaluateProperties(projectFilePath, globalProperties, "OutputType")[0];
             return string.IsNullOrWhiteSpace(outputType) ? null : outputType.Trim();
         }
         catch (Exception ex)

@@ -1,7 +1,9 @@
+using System.Collections.Immutable;
 using System.Runtime.CompilerServices;
 using System.Xml.Linq;
 using Microsoft.Build.Evaluation;
 using Microsoft.Build.Exceptions;
+using Microsoft.CodeAnalysis.MSBuild;
 
 namespace RoslynMcp.Roslyn.Helpers;
 
@@ -11,26 +13,33 @@ namespace RoslynMcp.Roslyn.Helpers;
 /// </summary>
 internal static class MsBuildMetadataHelper
 {
+    // Root capture and missing-assets readers accompany commands that restore with default settings.
+    public static IReadOnlyDictionary<string, string> DefaultGlobalProperties { get; } = ImmutableDictionary<string, string>.Empty;
+
+    public static IReadOnlyDictionary<string, string> GetWorkspaceGlobalProperties(Microsoft.CodeAnalysis.Workspace workspace) =>
+        workspace is MSBuildWorkspace msbuildWorkspace ? msbuildWorkspace.Properties : DefaultGlobalProperties;
+
     /// <summary>
     /// Evaluates <paramref name="projectFilePath"/> with MSBuild in a throwaway
-    /// <see cref="ProjectCollection"/> and returns the evaluated value of each requested property
+    /// <see cref="ProjectCollection"/> using the operation's explicit <paramref name="globalProperties"/>,
+    /// and returns the evaluated value of each requested property
     /// (empty string when unset), in the order of <paramref name="propertyNames"/>. Evaluation
     /// failures propagate (an <c>InvalidProjectFileException</c> as <see cref="InvalidOperationException"/>,
     /// I/O as-is) so each caller picks its own degradation policy.
     /// </summary>
-    public static string[] EvaluateProperties(string projectFilePath, params string[] propertyNames)
+    public static string[] EvaluateProperties(string projectFilePath, IReadOnlyDictionary<string, string> globalProperties, params string[] propertyNames)
     {
         // The MSBuild types live in a separate non-inlined method: the JIT resolves
         // Microsoft.Build when it compiles a method that mentions those types, which must happen
         // only after EnsureInitialized has registered the MSBuild assembly resolver.
         MsBuildInitializer.EnsureInitialized();
-        return EvaluatePropertiesCore(projectFilePath, propertyNames);
+        return EvaluatePropertiesCore(projectFilePath, globalProperties, propertyNames);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static string[] EvaluatePropertiesCore(string projectFilePath, string[] propertyNames)
+    private static string[] EvaluatePropertiesCore(string projectFilePath, IReadOnlyDictionary<string, string> globalProperties, string[] propertyNames)
     {
-        var projectCollection = new ProjectCollection();
+        var projectCollection = new ProjectCollection(new Dictionary<string, string>(globalProperties));
         try
         {
             var evaluated = projectCollection.LoadProject(projectFilePath);

@@ -1,3 +1,5 @@
+using System.Text.Json.Nodes;
+using System.Xml.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.MSBuild;
@@ -6,6 +8,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Support;
 
 namespace RoslynMcp.Tests.Workspace;
 
@@ -61,6 +64,101 @@ public sealed class WorkspaceReloadGlobalPropertiesTests
         Assert.AreSame(before, manager.GetCurrentSolution(status.WorkspaceId));
         Assert.AreEqual(version, manager.GetCurrentVersion(status.WorkspaceId));
         await AssertCompilerStateAsync(manager.GetCurrentSolution(status.WorkspaceId), configured: true);
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task ConfiguredRestoreDrift_UsesLoadedConfigurationAssets(bool releaseStale)
+    {
+        using var fixture = new ReloadFixture();
+        await PrepareConfiguredMetadataAsync(fixture, releaseStale);
+        using var manager = CreateManager(new WorkspaceSessionLoader());
+        var status = await manager.LoadAsync(fixture.ProjectPath, ConfiguredGlobals(), TestContext.CancellationToken);
+        var solution = manager.GetCurrentSolution(status.WorkspaceId);
+        await AssertCompilerStateAsync(solution, configured: true);
+        Assert.IsEmpty(((MSBuildWorkspace)solution.Workspace).Diagnostics,
+            "The drift comparison must not be masked by workspace-load diagnostics: " +
+            string.Join(Environment.NewLine, ((MSBuildWorkspace)solution.Workspace).Diagnostics.Select(diagnostic => diagnostic.Message)));
+
+        Assert.AreEqual(releaseStale, status.RestoreRequired,
+            "Restore drift must describe loaded Release assets, independently of inactive Debug assets.");
+    }
+
+    [TestMethod]
+    public async Task ConfiguredMetadata_TargetFrameworkMatchesLoadedProject()
+    {
+        using var fixture = new ReloadFixture();
+        await PrepareConfiguredMetadataAsync(fixture, releaseStale: false);
+        using var manager = CreateManager(new WorkspaceSessionLoader());
+        var status = await manager.LoadAsync(fixture.ProjectPath, ConfiguredGlobals(), TestContext.CancellationToken);
+        await AssertCompilerStateAsync(manager.GetCurrentSolution(status.WorkspaceId), configured: true);
+
+        CollectionAssert.AreEqual(new[] { "net10.0" }, status.Projects.Single().TargetFrameworks.ToArray());
+    }
+
+    [TestMethod]
+    public async Task ConfiguredMetadata_OutputTypeMatchesLoadedProject()
+    {
+        using var fixture = new ReloadFixture();
+        await PrepareConfiguredMetadataAsync(fixture, releaseStale: false);
+        using var manager = CreateManager(new WorkspaceSessionLoader());
+        var status = await manager.LoadAsync(fixture.ProjectPath, ConfiguredGlobals(), TestContext.CancellationToken);
+        var solution = manager.GetCurrentSolution(status.WorkspaceId);
+        await AssertCompilerStateAsync(solution, configured: true);
+        Assert.AreEqual(OutputKind.ConsoleApplication, solution.Projects.Single().CompilationOptions!.OutputKind);
+
+        Assert.AreEqual("Exe", status.Projects.Single().OutputType);
+    }
+
+    private static async Task PrepareConfiguredMetadataAsync(ReloadFixture fixture, bool releaseStale)
+    {
+        var projectDirectory = Path.GetDirectoryName(fixture.ProjectPath)!;
+        var root = Path.GetDirectoryName(projectDirectory)!;
+        var propsPath = Path.Combine(root, "Directory.Build.props");
+        var props = XDocument.Load(propsPath);
+        props.Root!.AddFirst(new XElement("PropertyGroup",
+            new XElement("Configuration", new XAttribute("Condition", "'$(Configuration)' == ''"), "Debug"),
+            new XElement("MSBuildProjectExtensionsPath", "obj/$(Configuration)/")));
+        props.Save(propsPath);
+
+        var project = XDocument.Load(fixture.ProjectPath);
+        project.Root!.Add(
+            new XElement("PropertyGroup", new XAttribute("Condition", "'$(Configuration)' == 'Debug'"),
+                new XElement("TargetFramework", "net9.0"), new XElement("OutputType", "Library")),
+            new XElement("PropertyGroup", new XAttribute("Condition", "'$(Configuration)' == 'Release'"),
+                new XElement("OutputType", "Exe")));
+        project.Save(fixture.ProjectPath);
+        File.WriteAllText(Path.Combine(projectDirectory, "Program.cs"),
+            "namespace ReloadQualification; internal static class EntryPoint { private static void Main() { } }");
+
+        var defaultAssets = Path.Combine(projectDirectory, "obj", "project.assets.json");
+        Assert.IsTrue(File.Exists(defaultAssets), "The fixture must begin with real restored assets.");
+        foreach (var configuration in new[] { "Release", "Debug" })
+        {
+            var configuredDirectory = Path.Combine(projectDirectory, "obj", configuration);
+            Directory.CreateDirectory(configuredDirectory);
+            var assetsPath = Path.Combine(configuredDirectory, "project.assets.json");
+            File.Copy(defaultAssets, assetsPath);
+            foreach (var import in Directory.EnumerateFiles(Path.GetDirectoryName(defaultAssets)!, "*.nuget.g.*"))
+            {
+                File.Copy(import, Path.Combine(configuredDirectory, Path.GetFileName(import)));
+            }
+
+            if ((configuration == "Release") == releaseStale)
+            {
+                var assets = JsonNode.Parse(File.ReadAllText(assetsPath))!;
+                var central = assets["project"]!["frameworks"]!["net10.0"]!["centralPackageVersions"]!;
+                Assert.IsNotNull(central["Microsoft.CodeAnalysis.BannedApiAnalyzers"]);
+                central["Microsoft.CodeAnalysis.BannedApiAnalyzers"] = "999.0.0";
+                File.WriteAllText(assetsPath, assets.ToJsonString());
+            }
+        }
+
+        File.Delete(defaultAssets);
+        Assert.IsFalse(File.Exists(defaultAssets), "A default assets file must not mask configuration selection.");
+        await GitFixtureRunner.InitializeRepositoryAsync(root, "https://github.com/example/metadata-fixture.git");
+        await GitFixtureRunner.StageAndCommitAllAsync(root);
     }
 
     private static Dictionary<string, string> ConfiguredGlobals() => new(StringComparer.OrdinalIgnoreCase)
