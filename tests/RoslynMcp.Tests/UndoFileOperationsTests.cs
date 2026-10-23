@@ -1,4 +1,5 @@
 using System.Text;
+using System.Xml.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -29,6 +30,154 @@ public sealed class UndoFileOperationsTests : IsolatedWorkspaceTestBase
     public static void ClassCleanup()
     {
         DisposeServices();
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task DocumentSetPersistence_ConflictingPhysicalContexts_RejectBeforeAnySourceEffect(bool removeSecond)
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "physical-reference-conflict", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var projectPath = Path.Combine(directory, "A.csproj");
+            var targetPath = Path.Combine(directory, "B.csproj");
+            var documentPath = Path.Combine(directory, "Existing.cs");
+            await File.WriteAllTextAsync(projectPath, "<Project><ItemGroup><ProjectReference Include=\"B.csproj\"><Aliases>old</Aliases></ProjectReference></ItemGroup></Project>");
+            await File.WriteAllTextAsync(targetPath, "<Project />");
+            await File.WriteAllTextAsync(documentPath, "class Original { }");
+            using var workspace = new AdhocWorkspace();
+            var first = ProjectId.CreateNewId();
+            var second = ProjectId.CreateNewId();
+            var target = ProjectId.CreateNewId();
+            var document = DocumentId.CreateNewId(first);
+            var original = workspace.CurrentSolution
+                .AddProject(ProjectInfo.Create(first, VersionStamp.Create(), "A-first", "A", LanguageNames.CSharp, filePath: projectPath))
+                .AddProject(ProjectInfo.Create(second, VersionStamp.Create(), "A-second", "A", LanguageNames.CSharp, filePath: projectPath))
+                .AddProject(ProjectInfo.Create(target, VersionStamp.Create(), "B", "B", LanguageNames.CSharp, filePath: targetPath))
+                .AddProjectReference(first, new ProjectReference(target, ["old"]))
+                .AddProjectReference(second, new ProjectReference(target, ["old"]))
+                .AddDocument(document, "Existing.cs", SourceText.From("class Original { }"), filePath: documentPath);
+            var modified = original
+                .WithProjectReferences(first, [new ProjectReference(target, ["first"])])
+                .WithProjectReferences(second, removeSecond ? [] : [new ProjectReference(target, ["second"])])
+                .WithDocumentText(document, SourceText.From("class Changed { }"));
+            var projectBytes = await File.ReadAllBytesAsync(projectPath);
+            var documentBytes = await File.ReadAllBytesAsync(documentPath);
+            var fileSystem = new ObservingDocumentSetFileSystem();
+            var service = new DocumentSetPersistenceService(WorkspaceManager, NullLogger.Instance, fileSystem);
+
+            var result = await service.PersistAsync("conflicting-contexts", original, modified,
+                modified.GetChanges(original), CancellationToken.None);
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual(0, fileSystem.Effects, "Rollback is insufficient: contradictory plans must be rejected before any create, write or delete.");
+            CollectionAssert.AreEqual(projectBytes, await File.ReadAllBytesAsync(projectPath));
+            CollectionAssert.AreEqual(documentBytes, await File.ReadAllBytesAsync(documentPath));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    private sealed class ObservingDocumentSetFileSystem : IDocumentSetFileSystem
+    {
+        public int Effects { get; private set; }
+        public bool FileExists(string path) => File.Exists(path);
+        public void CreateDirectory(string path)
+        {
+            Effects++;
+            Directory.CreateDirectory(path);
+        }
+        public void DeleteFile(string path)
+        {
+            Effects++;
+            File.Delete(path);
+        }
+        public Task<byte[]> ReadAllBytesAsync(string path, CancellationToken ct) => File.ReadAllBytesAsync(path, ct);
+        public Task<string> ReadAllTextAsync(string path, CancellationToken ct) => File.ReadAllTextAsync(path, ct);
+        public Task WriteAllBytesAsync(string path, byte[] bytes, CancellationToken ct)
+        {
+            Effects++;
+            return File.WriteAllBytesAsync(path, bytes, ct);
+        }
+        public Task WriteAllTextAsync(string path, string content, CancellationToken ct)
+        {
+            Effects++;
+            return File.WriteAllTextAsync(path, content, ct);
+        }
+    }
+
+    [TestMethod]
+    public async Task ProjectReferenceMetadata_PublicApplyMatchesUtf16Plan_AndUndoRestoresOriginalBytes()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        AddProjectToCopiedSolution(workspace.RootPath, "Contracts", "net10.0");
+        var projectPath = workspace.GetPath("SampleLib", "SampleLib.csproj");
+        var xml = XDocument.Parse(await File.ReadAllTextAsync(projectPath), LoadOptions.PreserveWhitespace);
+        xml.Root!.Add(new XElement("ItemGroup",
+            new XElement("ProjectReference", new XAttribute("Include", "../Contracts/Contracts.csproj"),
+                new XAttribute("Condition", "'$(TargetFramework)' == 'net10.0'"),
+                new XElement("Aliases", new XAttribute("Condition", "'$(TargetFramework)' == 'net10.0'"),
+                    new XAttribute("Label", "preserve-alias-label"), "old", new XComment("preserve-alias-comment")),
+                new XElement("Private", new XAttribute("Label", "preserve-private-label"), "false"),
+                new XComment("preserve-reference-comment"))));
+        var encoding = new UnicodeEncoding(bigEndian: false, byteOrderMark: true);
+        var originalBytes = encoding.GetPreamble().Concat(encoding.GetBytes(xml.ToString(SaveOptions.DisableFormatting))).ToArray();
+        await File.WriteAllBytesAsync(projectPath, originalBytes);
+        await workspace.LoadAsync(CancellationToken.None);
+        var original = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        var source = original.Projects.Single(project => project.Name == "SampleLib");
+        var target = original.Projects.Single(project => project.Name == "Contracts");
+        var oldReference = source.ProjectReferences.Single(reference => reference.ProjectId == target.Id);
+        CollectionAssert.AreEqual(new[] { "old" }, oldReference.Aliases.ToArray(), "The real MSBuild workspace must load the original reference metadata.");
+        var modified = original.RemoveProjectReference(source.Id, oldReference)
+            .AddProjectReference(source.Id, new ProjectReference(target.Id, ["reviewed"]));
+        var planned = (await ProjectReferenceMutationRenderer.PlanAsync(original, modified, CancellationToken.None)).Single();
+        var preview = await SolutionDiffHelper.ComputeChangesAsync(original, modified, CancellationToken.None);
+        Assert.HasCount(1, preview.Where(change => change.FilePath == projectPath).ToArray());
+        StringAssert.Contains(preview.Single(change => change.FilePath == projectPath).UnifiedDiff, "reviewed");
+        var token = PreviewStore.Store(workspace.WorkspaceId, modified,
+            WorkspaceManager.GetCurrentVersion(workspace.WorkspaceId), "replace reference metadata", false);
+        var siblingDocument = source.Documents.Single(document => document.Name == "Dog.cs");
+        var siblingPath = siblingDocument.FilePath!;
+        var siblingText = (await siblingDocument.GetTextAsync()).ToString() + "\n// unrelated sibling apply must survive metadata replacement\n";
+        var siblingSolution = original.WithDocumentText(siblingDocument.Id, SourceText.From(siblingText));
+        var siblingToken = PreviewStore.Store(workspace.WorkspaceId, siblingSolution,
+            WorkspaceManager.GetCurrentVersion(workspace.WorkspaceId), "unrelated sibling document edit", false);
+        var siblingResult = await RefactoringService.ApplyRefactoringAsync(siblingToken, "test_apply", CancellationToken.None);
+        Assert.IsTrue(siblingResult.Success, siblingResult.Error);
+        Assert.AreEqual(siblingText, await File.ReadAllTextAsync(siblingPath));
+        Assert.AreNotSame(original, WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId),
+            "The metadata token must rebase after the successful public sibling apply.");
+
+        var result = await RefactoringService.ApplyRefactoringAsync(token, "test_apply", CancellationToken.None);
+
+        Assert.IsTrue(result.Success, result.Error);
+        Assert.AreEqual(siblingText, await File.ReadAllTextAsync(siblingPath), "Metadata apply must preserve the sibling's source edit.");
+        Assert.AreEqual(siblingText, (await WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId)
+            .GetDocument(siblingDocument.Id)!.GetTextAsync()).ToString());
+        var persistedBytes = await File.ReadAllBytesAsync(projectPath);
+        CollectionAssert.AreEqual(planned.Modified, persistedBytes, "Public source apply must persist the exact bytes rendered for the preview.");
+        var persisted = CsprojSemanticEquality.CreateSnapshot(persistedBytes);
+        Assert.AreEqual(encoding.CodePage, persisted.TextEncoding.CodePage);
+        Assert.IsTrue(persisted.HasPreamble);
+        var reference = XDocument.Parse(persisted.Content).Descendants("ProjectReference").Single();
+        Assert.AreEqual("'$(TargetFramework)' == 'net10.0'", (string?)reference.Attribute("Condition"));
+        Assert.AreEqual("reviewed", reference.Element("Aliases")!.Value);
+        Assert.AreEqual("'$(TargetFramework)' == 'net10.0'", (string?)reference.Element("Aliases")!.Attribute("Condition"));
+        Assert.AreEqual("preserve-alias-label", (string?)reference.Element("Aliases")!.Attribute("Label"));
+        Assert.AreEqual("false", reference.Element("Private")!.Value);
+        Assert.AreEqual("preserve-private-label", (string?)reference.Element("Private")!.Attribute("Label"));
+        CollectionAssert.AreEquivalent(new[] { "preserve-alias-comment", "preserve-reference-comment" },
+            reference.DescendantNodes().OfType<XComment>().Select(comment => comment.Value).ToArray());
+
+        Assert.IsTrue(await UndoService.RevertAsync(workspace.WorkspaceId, CancellationToken.None));
+        CollectionAssert.AreEqual(originalBytes, await File.ReadAllBytesAsync(projectPath),
+            "Undo must restore the entire original project, including BOM, metadata and comments.");
+        Assert.AreEqual(siblingText, await File.ReadAllTextAsync(siblingPath), "Undo of the metadata apply must preserve the earlier sibling apply.");
     }
 
     [TestMethod]

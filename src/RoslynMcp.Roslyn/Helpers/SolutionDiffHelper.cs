@@ -1,5 +1,6 @@
-using RoslynMcp.Core.Models;
 using Microsoft.CodeAnalysis;
+using RoslynMcp.Core.Models;
+using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Roslyn.Helpers;
 
@@ -111,6 +112,13 @@ internal static class SolutionDiffHelper
                 var filePath = oldDoc.FilePath ?? oldDoc.Name;
                 TryAdd(new FileChangeDto(filePath, DiffGenerator.GenerateUnifiedDiff(oldText, string.Empty, filePath)));
             }
+        }
+
+        foreach (var mutation in await ProjectReferenceMutationRenderer.PlanAsync(oldSolution, newSolution, ct).ConfigureAwait(false))
+        {
+            var before = CsprojSemanticEquality.CreateSnapshot(mutation.Original).Content;
+            var after = CsprojSemanticEquality.CreateSnapshot(mutation.Modified).Content;
+            TryAdd(new FileChangeDto(mutation.Path, DiffGenerator.GenerateUnifiedDiff(before, after, mutation.Path)));
         }
 
         if (truncatedFiles.Count > 0)

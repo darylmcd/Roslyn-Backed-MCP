@@ -1008,6 +1008,25 @@ public sealed class RefactoringService : IRefactoringService
             return rebased;
         }
 
+        // Metadata replacements contain both a removal and an addition for one target.
+        // Remove the original edge first so its replacement is not suppressed by target identity.
+        foreach (var projectReference in projectChange.GetRemovedProjectReferences())
+        {
+            var referencedProject = originalSolution.GetProject(projectReference.ProjectId);
+            var rebasedReference = referencedProject is null
+                ? rebased.GetProject(projectReference.ProjectId)
+                : ResolveRebaseTargetProject(rebased, projectReference.ProjectId, referencedProject);
+            var existingReference = targetProject.ProjectReferences.FirstOrDefault(reference =>
+                reference.ProjectId == rebasedReference?.Id
+                && reference.Aliases.SequenceEqual(projectReference.Aliases)
+                && reference.EmbedInteropTypes == projectReference.EmbedInteropTypes);
+            if (existingReference is not null)
+            {
+                rebased = rebased.RemoveProjectReference(targetProject.Id, existingReference);
+                targetProject = rebased.GetProject(targetProject.Id)!;
+            }
+        }
+
         foreach (var projectReference in projectChange.GetAddedProjectReferences())
         {
             var referencedProject = modifiedSolution.GetProject(projectReference.ProjectId);
@@ -1016,26 +1035,13 @@ public sealed class RefactoringService : IRefactoringService
                 : ResolveRebaseTargetProject(rebased, projectReference.ProjectId, referencedProject);
             if (rebasedReference is not null
                 && !targetProject.ProjectReferences.Any(reference =>
-                    reference.ProjectId == rebasedReference.Id))
+                    reference.ProjectId == rebasedReference.Id
+                    && reference.Aliases.SequenceEqual(projectReference.Aliases)
+                    && reference.EmbedInteropTypes == projectReference.EmbedInteropTypes))
             {
                 rebased = rebased.AddProjectReference(
                     targetProject.Id,
                     new ProjectReference(rebasedReference.Id, projectReference.Aliases, projectReference.EmbedInteropTypes));
-                targetProject = rebased.GetProject(targetProject.Id)!;
-            }
-        }
-
-        foreach (var projectReference in projectChange.GetRemovedProjectReferences())
-        {
-            var referencedProject = originalSolution.GetProject(projectReference.ProjectId);
-            var rebasedReference = referencedProject is null
-                ? rebased.GetProject(projectReference.ProjectId)
-                : ResolveRebaseTargetProject(rebased, projectReference.ProjectId, referencedProject);
-            var existingReference = targetProject.ProjectReferences.FirstOrDefault(reference =>
-                reference.ProjectId == rebasedReference?.Id);
-            if (existingReference is not null)
-            {
-                rebased = rebased.RemoveProjectReference(targetProject.Id, existingReference);
                 targetProject = rebased.GetProject(targetProject.Id)!;
             }
         }

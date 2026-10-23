@@ -1,6 +1,6 @@
 # restore-callers-missing-packages-path — Preserve recorded roots and the reviewed fork graph
 
-**row:** `restore-callers-missing-packages-path` · **pri:** `Medium` · **size:** `L` · **deps:** `workspace-restore-packages-path`
+**row:** `restore-callers-missing-packages-path` · **pri:** `Medium` · **size:** `L` · **deps:** `workspace-restore-packages-path,restore-physical-project-mutation-rendering`
 
 ## Anchors
 
