@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-23T19:32:41Z
+**updated_at:** 2026-10-23T19:42:38Z
 
 ## Agent contract
 
@@ -163,6 +163,7 @@
 | `restore-required-project-inventory` | Medium | fork-document-text-encoding | Restore source callers through one complete evaluated dependency inventory, preserving nullable roots and mixed-root isolation under one budget. | M | items/restore-required-project-inventory.md |
 | `fork-evaluated-source-isolation` | Medium | restore-required-project-inventory | Reject evaluated copied transitive imports, file inputs and output paths into the source before any fork restore or runner effect. | M | items/fork-evaluated-source-isolation.md |
 | `restore-fork-reviewed-project-graph` | Medium | fork-evaluated-source-isolation | Rebase and replay reviewed physical project effects, then verify evaluated fork graph fidelity before restore while preserving source authority. | M | items/restore-fork-reviewed-project-graph.md |
+| `project-metadata-parser-broad-exception-fallbacks` | Medium | — | Narrow three metadata-parser catch-all fallbacks to expected evaluation/read/parse failures and propagate unexpected exceptions. | S | items/project-metadata-parser-broad-exception-fallbacks.md |
 
 ## Low
 
