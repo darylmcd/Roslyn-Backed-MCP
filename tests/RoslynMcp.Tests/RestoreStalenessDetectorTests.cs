@@ -32,6 +32,31 @@ public sealed class RestoreStalenessDetectorTests
     }
 
     [TestMethod]
+    [DataRow("null")]
+    [DataRow("[]")]
+    [DataRow("{\"project\":null}")]
+    [DataRow("{\"project\":{\"frameworks\":{\"net10.0\":null}}}")]
+    [DataRow("{\"project\":{\"frameworks\":{\"net10.0\":{\"dependencies\":[]}}}}")]
+    [DataRow("{\"project\":{\"frameworks\":{\"net10.0\":{\"dependencies\":{\"Newtonsoft.Json\":4}}}}}")]
+    [DataRow("{\"project\":{\"frameworks\":{\"net10.0\":{\"dependencies\":{\"Newtonsoft.Json\":{\"version\":[]}}}}}}")]
+    [DataRow("{\"project\":{\"frameworks\":{\"net10.0\":{\"centralPackageVersions\":[]}}}}")]
+    [DataRow("{\"project\":{\"frameworks\":{\"net10.0\":{\"centralPackageVersions\":{\"Newtonsoft.Json\":[]}}}}}")]
+    public void IsRestoreRequired_ValidJsonWrongShape_RequiresRestoreWithSanitizedDiagnostic(string json)
+    {
+        var project = WriteProject("Shape.csproj", PackageReferenceProject);
+        var assetsDirectory = Path.Combine(Path.GetDirectoryName(project)!, "obj");
+        Directory.CreateDirectory(assetsDirectory);
+        File.WriteAllText(Path.Combine(assetsDirectory, "project.assets.json"), json);
+        var logger = new ListLogger<RestoreStalenessDetector>();
+
+        Assert.IsTrue(new RestoreStalenessDetector().IsRestoreRequired(project, logger));
+        Assert.HasCount(1, logger.Entries);
+        Assert.IsNull(logger.Entries[0].Exception);
+        Assert.IsFalse(logger.Entries[0].Message.Contains(project, StringComparison.Ordinal));
+        Assert.IsFalse(logger.Entries[0].Message.Contains(json, StringComparison.Ordinal));
+    }
+
+    [TestMethod]
     public void IsRestoreRequired_NoPackageReferences_ReturnsFalse()
     {
         var projectFilePath = WriteProject(

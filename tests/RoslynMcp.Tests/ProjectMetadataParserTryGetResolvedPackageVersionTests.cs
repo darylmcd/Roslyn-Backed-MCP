@@ -113,6 +113,23 @@ public sealed class ProjectMetadataParserTryGetResolvedPackageVersionTests
     }
 
     [TestMethod]
+    [DataRow("[]")]
+    [DataRow("null")]
+    [DataRow("42")]
+    [DataRow("{\"libraries\":[]}")]
+    [DataRow("{\"libraries\":null}")]
+    [DataRow("{\"libraries\":true}")]
+    public void TryGetResolvedPackageVersion_UnexpectedJsonKind_ReturnsUnknown(string json)
+    {
+        var directory = CreateProjectDirectory();
+        Directory.CreateDirectory(Path.Combine(directory, "obj"));
+        File.WriteAllText(Path.Combine(directory, "Fixture.csproj"), "<Project />");
+        File.WriteAllText(Path.Combine(directory, "obj", "project.assets.json"), json);
+        Assert.IsNull(ProjectMetadataParser.TryGetResolvedPackageVersion(
+            Path.Combine(directory, "Fixture.csproj"), "TUnit.Engine"));
+    }
+
+    [TestMethod]
     public async Task Cleanup_DeleteFailureForOneRoot_SurfacesAggregateExceptionAfterAttemptingAllRoots()
     {
         var root1 = CreateProjectDirectory();

@@ -244,6 +244,7 @@ internal class RestoreStalenessDetector
             var assets = LoadAssetsPackageVersions(projectFilePath);
             if (assets is null)
             {
+                logger.LogDebug("restore-drift assets are missing or have an unsupported structure; restore is required.");
                 return true;
             }
 
@@ -526,7 +527,9 @@ internal class RestoreStalenessDetector
 
         using var stream = File.OpenRead(assetsPath);
         using var document = JsonDocument.Parse(stream);
-        if (!document.RootElement.TryGetProperty("project", out var project) ||
+        if (document.RootElement.ValueKind != JsonValueKind.Object ||
+            !document.RootElement.TryGetProperty("project", out var project) ||
+            project.ValueKind != JsonValueKind.Object ||
             !project.TryGetProperty("frameworks", out var frameworks) ||
             frameworks.ValueKind != JsonValueKind.Object)
         {
@@ -538,26 +541,53 @@ internal class RestoreStalenessDetector
 
         foreach (var framework in frameworks.EnumerateObject())
         {
-            if (framework.Value.TryGetProperty("dependencies", out var dependencies) &&
-                dependencies.ValueKind == JsonValueKind.Object)
+            if (framework.Value.ValueKind != JsonValueKind.Object)
             {
+                return null;
+            }
+
+            if (framework.Value.TryGetProperty("dependencies", out var dependencies))
+            {
+                if (dependencies.ValueKind != JsonValueKind.Object)
+                {
+                    return null;
+                }
+
                 foreach (var dependency in dependencies.EnumerateObject())
                 {
-                    if (!dependency.Value.TryGetProperty("version", out var versionElement) ||
-                        versionElement.ValueKind != JsonValueKind.String)
+                    if (dependency.Value.ValueKind != JsonValueKind.Object)
+                    {
+                        return null;
+                    }
+
+                    if (!dependency.Value.TryGetProperty("version", out var versionElement))
                     {
                         continue;
+                    }
+
+                    if (versionElement.ValueKind != JsonValueKind.String)
+                    {
+                        return null;
                     }
 
                     AddVersion(packageVersions, dependency.Name, versionElement.GetString());
                 }
             }
 
-            if (framework.Value.TryGetProperty("centralPackageVersions", out var centralVersions) &&
-                centralVersions.ValueKind == JsonValueKind.Object)
+            if (framework.Value.TryGetProperty("centralPackageVersions", out var centralVersions))
             {
+                if (centralVersions.ValueKind != JsonValueKind.Object)
+                {
+                    return null;
+                }
+
                 foreach (var centralVersion in centralVersions.EnumerateObject())
                 {
+                    if (centralVersion.Value.ValueKind != JsonValueKind.String)
+                    {
+                        return null;
+                    }
+
                     AddVersion(centralPackageVersions, centralVersion.Name, centralVersion.Value.GetString());
                 }
             }
