@@ -98,3 +98,20 @@ Completed source29 current writer controls: observation4/context4/taskfactory4/r
 2026-10-23 fresh cold derivation: source29 generated-trio failure is retained Missing identities at NativeSourceAdmission.IssueAsync. Static EvaluatedBuildGraph.DocumentFiles is evaluated item membership, not semantic membership; retain full static protection. Required repair needs role-tagged parser observations, actual native generated enrollment evidence, immediate producer before/after identities, ordered transitions, and exact original/final/context/native-Solution issuer linkage. Concrete scratch role plan: <user-profile>/.codex/scratch/roslyn-remediate-20261023/source-transition-role-plan.md. No permissive transition is implemented or approved. Current-session immutable NativeTaskExecutionUnavailableTests reproduces 2 passed/1 failed; bounded first diagnostic is inconclusive, no unchanged retry or fixture-success claim.
 
 Current-session diagnostic now proves MSB4275 in all three unavailable fixture rows. Both NativeTaskExecutionUnavailableTests and NativeOutputTaskSelectionTests declare two Override=true registrations per task; WriteCodeFragment replacement inherits the same malformed shape. Other three single-override fixtures remain legal. Preparation deliberately tolerates failed producer exit, so successful writer/body receipts alone falsely qualified selection controls. Required fix: preserve actual original child outcome as internal evidence, assert original success for success controls and explicit false for intentionally failing post-writer control, then remove both duplicate overrides while retaining architectures/factories/assertions. Temporary diagnostic production sources were restored byte-exact; baseline2P1F and diagnostic2P1F TRX retained in scratch20261023.
+
+### Parked draft - 2026-10-23
+
+| Boundary | Evidence / next acceptance |
+|---|---|
+| Draft | PR #1806: https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1806; source checkpoint 406caec4a0e725e777d19d2a7a95bb04cf77dceb; 794 changed files; not merge-ready. |
+| Stop reason | Retained complete repair exceeds one reviewable cluster and still lacks qualified source-transition and deployment authority; preserve scope instead of merging a weakened intermediate. |
+| Current qualification | Focused 52 passed; parser contracts 75 passed / 6 explicit OS-privilege skips; affected compiler/restore consumers 62 passed; zero failures across these current runs. |
+| Causal proof | Strengthened original producer-outcome controls failed four positive rows before duplicate overrides were removed; corrected originals and post-writer failure controls pass. |
+| Next source acceptance | Observe actual SDK/authored Csc enrollment and incremental provenance, then complete ordered producer before/after transitions and exact original/final/context/native-Solution issuer binding. |
+| Next deployment acceptance | Integrate the approved owned BuildHost design; qualify C#/VB, both child runtimes, transitive build/publish/tool-package closure and absent-child failure. |
+| Required gates | Full-diff independent review, unchanged deadline qualification, exact-head hosted checks and final merged-main aggregate remain pending. |
+| Remote build | DevBuild accepted build-release job ce1f0b4f-aaf6-41ea-a233-7ddf7b1d4983 at source checkpoint; subsequent job_get/server_info transport failed; outcome unknown. |
+| Dependency order | Preserve RESTORE -> EXTRACTION -> paused15; select no new batch rows while prerequisites remain open. |
+| Retained drafts | Full reviewed role/outcome drafts, source-enrollment inventory plan and owned BuildHost integration work under <user-profile>/.codex/scratch/roslyn-remediate-20261023/. |
+
+No row closure, full aggregate success, implementation-complete verdict, release or merge is claimed.
