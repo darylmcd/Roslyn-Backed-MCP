@@ -243,6 +243,7 @@ public sealed class PreviewTokenCrossCouplingTests : IsolatedWorkspaceTestBase
     [DataRow("aliases")]
     [DataRow("remove")]
     [DataRow("add")]
+    [DataRow("remove-embed-only")]
     public async Task Conflicting_ProjectReference_Preview_Rejects_Before_Source_Or_Create_Effects(string transition)
     {
         await using var workspace = await CreateReferenceWorkspaceAsync(transition != "add");
@@ -250,12 +251,12 @@ public sealed class PreviewTokenCrossCouplingTests : IsolatedWorkspaceTestBase
         var sourcePath = workspace.GetPath("SampleLib", "AnimalService.cs");
         var createdPath = workspace.GetPath("SampleLib", "PendingReferenceCreate.cs");
         var source = SymbolResolver.FindDocument(original, sourcePath)!;
-        var pending = ChangeReference(original, "Contracts", DesiredReference(original, transition))
+        var pending = ChangeReference(original, "Contracts", DesiredReference(original, transition == "remove-embed-only" ? "remove" : transition))
             .WithDocumentText(source.Id, SourceText.From((await source.GetTextAsync()).ToString() + "\n// Pending source effect.\n"))
             .AddDocument(DocumentId.CreateNewId(source.Project.Id), "PendingReferenceCreate.cs",
                 SourceText.From("namespace SampleLib; internal class PendingReferenceCreate {}\n"), filePath: createdPath);
         var token = StoreReferencePreview(workspace, pending);
-        var divergentReference = Reference(original, "Contracts", "DivergentAlias", true);
+        var divergentReference = Reference(original, "Contracts", transition == "remove-embed-only" ? "OriginalAlias" : "DivergentAlias", true);
         var sibling = ChangeReference(original, "Contracts", divergentReference);
         var siblingResult = await RefactoringService.ApplyRefactoringAsync(
             StoreReferencePreview(workspace, sibling), "test_apply", CancellationToken.None);
@@ -301,18 +302,18 @@ public sealed class PreviewTokenCrossCouplingTests : IsolatedWorkspaceTestBase
     [DataRow("implicit-global")]
     public async Task Reloaded_ProjectReference_Metadata_Uses_Semantic_Alias_Equality(string shape)
     {
-        var originalAliases = shape == "implicit-global" ? "" : "Alpha,Beta";
+        var originalAliases = shape == "implicit-global" ? "" : shape == "alias-order-desired" ? "OriginalAlias" : "Alpha,Beta";
         await using var workspace = await CreateReferenceWorkspaceAsync(true, originalAliases);
         var original = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
         var desiredAliases = shape == "alias-order-desired" ? "Alpha,Beta" : "DesiredAlias";
-        var desired = Reference(original, "Contracts", desiredAliases, shape == "alias-order-desired");
+        var desired = Reference(original, "Contracts", desiredAliases, false);
         var token = StoreReferencePreview(workspace, ChangeReference(original, "Contracts", desired));
         var projectPath = workspace.GetPath("SampleLib", "SampleLib.csproj");
         var xml = XDocument.Load(projectPath);
         var edge = xml.Descendants("ProjectReference").Single(element =>
             ((string?)element.Attribute("Include"))?.Replace('\\', '/').EndsWith("/Contracts.csproj", StringComparison.Ordinal) == true);
         edge.SetElementValue("Aliases", shape == "implicit-global" ? "global" : "Beta,Alpha");
-        edge.SetElementValue("EmbedInteropTypes", shape == "alias-order-desired" ? "true" : "false");
+        edge.SetElementValue("EmbedInteropTypes", "false");
         xml.Save(projectPath);
         await workspace.ReloadAsync();
         var current = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
