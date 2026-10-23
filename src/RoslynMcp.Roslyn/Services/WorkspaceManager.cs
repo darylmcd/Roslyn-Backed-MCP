@@ -1196,6 +1196,13 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         var swapped = false;
         try
         {
+            // Reload retains the evaluated session's globals, including the cache-probe policy.
+            // Read them under LoadLock so a concurrent reload cannot replace this workspace.
+            if (globalProperties is null && oldWorkspace is not null)
+            {
+                globalProperties = new Dictionary<string, string>(oldWorkspace.Properties, StringComparer.OrdinalIgnoreCase);
+            }
+
             // workspace-load-uses-cache-fast-path: probe the persistent cache before the
             // restore-race wait so a warm-cache hit can elide it. Computing the solution-content
             // hash + sdk-version (the first two key components) is cheap (one file read + an
