@@ -299,7 +299,7 @@ internal sealed class DocumentSetPersistenceService
 
         if (!applied)
         {
-            throw new InvalidOperationException(
+            throw InvalidOperationErrors.Internal(
                 $"TryApplyChanges rejected persisted document-set changes for workspace '{workspaceId}'.");
         }
     }

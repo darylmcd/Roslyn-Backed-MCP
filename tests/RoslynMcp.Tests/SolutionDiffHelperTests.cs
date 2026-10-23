@@ -1,8 +1,11 @@
+using System.Text.Json;
 using System.Xml.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Helpers;
 using RoslynMcp.Roslyn.Services;
 
@@ -11,6 +14,17 @@ namespace RoslynMcp.Tests;
 [TestClass]
 public class SolutionDiffHelperTests
 {
+    private static void AssertPublicRefusal(PublicInvalidOperationException refusal, string projectPath)
+    {
+        using var response = JsonDocument.Parse(ToolErrorHandler.ClassifyAndFormat(refusal, "refactor_preview"));
+        var root = response.RootElement;
+        Assert.AreEqual("InvalidOperation", root.GetProperty("category").GetString());
+        Assert.AreEqual(refusal.PublicMessage, root.GetProperty("message").GetString());
+        Assert.AreEqual(nameof(InvalidOperationException), root.GetProperty("exceptionType").GetString());
+        Assert.IsFalse(refusal.PublicMessage.Contains(projectPath, StringComparison.Ordinal));
+        Assert.IsFalse(refusal.PublicMessage.Contains(Path.GetDirectoryName(projectPath)!, StringComparison.Ordinal));
+    }
+
     [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
@@ -27,7 +41,8 @@ public class SolutionDiffHelperTests
             : original.AddProjectReference(first, new ProjectReference(fixture.B));
         var bytes = await File.ReadAllBytesAsync(fixture.Path);
 
-        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => ProjectReferenceMutationRenderer.PlanAsync(original, modified, CancellationToken.None));
+        var refusal = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() => ProjectReferenceMutationRenderer.PlanAsync(original, modified, CancellationToken.None));
+        AssertPublicRefusal(refusal, fixture.Path);
         CollectionAssert.AreEqual(bytes, await File.ReadAllBytesAsync(fixture.Path));
     }
 
@@ -64,7 +79,8 @@ public class SolutionDiffHelperTests
         var modified = original.AddDocument(DocumentId.CreateNewId(added), "Shared.cs", SourceText.From("class Shared { }"), filePath: path);
         var bytes = await File.ReadAllBytesAsync(fixture.Path);
 
-        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => ProjectReferenceMutationRenderer.PlanAsync(original, modified, CancellationToken.None));
+        var refusal = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() => ProjectReferenceMutationRenderer.PlanAsync(original, modified, CancellationToken.None));
+        AssertPublicRefusal(refusal, fixture.Path);
         CollectionAssert.AreEqual(bytes, await File.ReadAllBytesAsync(fixture.Path));
     }
 
@@ -87,7 +103,8 @@ public class SolutionDiffHelperTests
         var modified = original.WithProjectReferences(id, [new ProjectReference(fixture.B, ["new"], embedInteropTypes: true)]);
         var bytes = await File.ReadAllBytesAsync(fixture.Path);
 
-        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => ProjectReferenceMutationRenderer.PlanAsync(original, modified, CancellationToken.None));
+        var refusal = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() => ProjectReferenceMutationRenderer.PlanAsync(original, modified, CancellationToken.None));
+        AssertPublicRefusal(refusal, fixture.Path);
         CollectionAssert.AreEqual(bytes, await File.ReadAllBytesAsync(fixture.Path));
     }
 
@@ -106,7 +123,8 @@ public class SolutionDiffHelperTests
         var modified = original.AddProjectReference(added, new ProjectReference(fixture.B));
         var bytes = await File.ReadAllBytesAsync(fixture.Path);
 
-        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => ProjectReferenceMutationRenderer.PlanAsync(original, modified, CancellationToken.None));
+        var refusal = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() => ProjectReferenceMutationRenderer.PlanAsync(original, modified, CancellationToken.None));
+        AssertPublicRefusal(refusal, fixture.Path);
         CollectionAssert.AreEqual(bytes, await File.ReadAllBytesAsync(fixture.Path));
     }
 
@@ -131,7 +149,8 @@ public class SolutionDiffHelperTests
             modified = modified.WithDocumentText(unrelatedId, SourceText.From("class After { }"));
         var bytes = await File.ReadAllBytesAsync(fixture.Path);
 
-        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => ProjectReferenceMutationRenderer.PlanAsync(original, modified, CancellationToken.None));
+        var refusal = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() => ProjectReferenceMutationRenderer.PlanAsync(original, modified, CancellationToken.None));
+        AssertPublicRefusal(refusal, fixture.Path);
         CollectionAssert.AreEqual(bytes, await File.ReadAllBytesAsync(fixture.Path));
     }
 
@@ -157,7 +176,8 @@ public class SolutionDiffHelperTests
             modified = modified.WithDocumentText(unrelatedId, SourceText.From("class After { }"));
         var bytes = await File.ReadAllBytesAsync(fixture.Path);
 
-        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => ProjectReferenceMutationRenderer.PlanAsync(original, modified, CancellationToken.None));
+        var refusal = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() => ProjectReferenceMutationRenderer.PlanAsync(original, modified, CancellationToken.None));
+        AssertPublicRefusal(refusal, fixture.Path);
         CollectionAssert.AreEqual(bytes, await File.ReadAllBytesAsync(fixture.Path));
     }
 
@@ -232,7 +252,8 @@ public class SolutionDiffHelperTests
             .WithProjectReferences(second, removeSecond ? [] : [new ProjectReference(fixture.B, ["second"])]);
         var bytes = await File.ReadAllBytesAsync(fixture.Path);
 
-        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => ProjectReferenceMutationRenderer.PlanAsync(original, modified, CancellationToken.None));
+        var refusal = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() => ProjectReferenceMutationRenderer.PlanAsync(original, modified, CancellationToken.None));
+        AssertPublicRefusal(refusal, fixture.Path);
         CollectionAssert.AreEqual(bytes, await File.ReadAllBytesAsync(fixture.Path));
     }
 

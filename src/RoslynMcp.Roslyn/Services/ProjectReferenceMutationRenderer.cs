@@ -1,5 +1,6 @@
 using System.Xml.Linq;
 using Microsoft.CodeAnalysis;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Roslyn.Services;
@@ -44,7 +45,7 @@ internal static class ProjectReferenceMutationRenderer
     private static IEnumerable<IGrouping<string, ProjectChanges>> ChangedProjects(Solution original, Solution modified) =>
         modified.GetChanges(original).GetProjectChanges().Where(HasChanges)
             .GroupBy(change => change.NewProject.FilePath
-                ?? throw new InvalidOperationException("A reference-changing project requires an on-disk path."), FileSystemPath.Comparer)
+                ?? throw new PublicInvalidOperationException("A reference-changing project requires an on-disk path."), FileSystemPath.Comparer)
             .OrderBy(group => group.Key, FileSystemPath.Comparer);
 
     internal static bool HasChanges(ProjectChanges change) =>
@@ -59,11 +60,11 @@ internal static class ProjectReferenceMutationRenderer
         if (contexts.Length == 0)
             return snapshot.Bytes;
         var projectPath = contexts[0].NewProject.FilePath
-            ?? throw new InvalidOperationException("A reference-changing project requires an on-disk path.");
+            ?? throw InvalidOperationErrors.Internal("A reference-changing project requires an on-disk path.");
         var directory = Path.GetDirectoryName(projectPath)
-            ?? throw new InvalidOperationException("A project file requires a parent directory.");
+            ?? throw InvalidOperationErrors.Internal("A project file requires a parent directory.");
         var document = XDocument.Parse(snapshot.Content, LoadOptions.PreserveWhitespace);
-        var root = document.Root ?? throw new InvalidOperationException("The project file has no root element.");
+        var root = document.Root ?? throw InvalidOperationErrors.Internal("The project file has no root element.");
         var ns = root.Name.Namespace;
         var references = document.Descendants(ns + "ProjectReference").ToArray();
         var compileItems = document.Descendants(ns + "Compile").ToArray();
@@ -83,14 +84,14 @@ internal static class ProjectReferenceMutationRenderer
         void BindReference(XElement node, ReferenceIntent? intent)
         {
             if (referenceIntents.TryGetValue(node, out var previous) && !Equivalent(previous, intent))
-                throw new InvalidOperationException("Compilation contexts require contradictory edits to one physical project reference.");
+                throw new PublicInvalidOperationException("Compilation contexts require contradictory edits to one physical project reference.");
             referenceIntents[node] = intent;
         }
 
         void BindCompile(XElement node, bool keep)
         {
             if (compileIntents.TryGetValue(node, out var previous) && previous != keep)
-                throw new InvalidOperationException("Compilation contexts require contradictory edits to one physical Compile item.");
+                throw new PublicInvalidOperationException("Compilation contexts require contradictory edits to one physical Compile item.");
             compileIntents[node] = keep;
         }
 
@@ -136,19 +137,19 @@ internal static class ProjectReferenceMutationRenderer
                 var removed = Describe(reference, original);
                 var nodes = references.Where(node => Targets(node, removed.Target) && MetadataMatches(node, removed)).ToArray();
                 if (nodes.Length == 0)
-                    throw new InvalidOperationException("The removed project reference cannot be mapped to a concrete project-file item.");
+                    throw new PublicInvalidOperationException("The removed project reference cannot be mapped to a concrete project-file item.");
                 var candidates = added.Where(candidate => FileSystemPath.Comparer.Equals(candidate.Intent.Target, removed.Target)).ToArray();
                 if (candidates.Select(candidate => (candidate.Intent.Aliases, candidate.Intent.EmbedInteropTypes)).Distinct().Count() > 1)
                 {
                     var sameIdentity = candidates.Where(candidate => candidate.Reference.ProjectId == reference.ProjectId).ToArray();
                     if (sameIdentity.Length == 0)
-                        throw new InvalidOperationException("A project-reference replacement has ambiguous physical metadata intents.");
+                        throw new PublicInvalidOperationException("A project-reference replacement has ambiguous physical metadata intents.");
                     candidates = sameIdentity;
                 }
                 var replacements = candidates.Select(candidate => candidate.Intent)
                     .DistinctBy(intent => (intent.Aliases, intent.EmbedInteropTypes)).ToArray();
                 if (replacements.Length > 1)
-                    throw new InvalidOperationException("A project-reference replacement has ambiguous physical metadata intents.");
+                    throw new PublicInvalidOperationException("A project-reference replacement has ambiguous physical metadata intents.");
                 var replacement = replacements.SingleOrDefault();
                 foreach (var candidate in candidates)
                     paired.Add(candidate.Reference);
@@ -161,7 +162,7 @@ internal static class ProjectReferenceMutationRenderer
                     && MetadataMatches(node, candidate.Intent)).ToArray();
                 if (nodes.Any(IsConditional)
                     && !context.OldProject.ProjectReferences.Any(reference => Equivalent(Describe(reference, original), candidate.Intent)))
-                    throw new InvalidOperationException("An added reference cannot be mapped to an existing conditional item in this compilation context.");
+                    throw new PublicInvalidOperationException("An added reference cannot be mapped to an existing conditional item in this compilation context.");
                 foreach (var node in nodes)
                     BindReference(node, candidate.Intent);
                 if (nodes.Length == 0 && !additions.Any(intent => Equivalent(intent, candidate.Intent)))
@@ -171,10 +172,10 @@ internal static class ProjectReferenceMutationRenderer
             if (defaultCompile)
                 continue;
             var removedPaths = context.GetRemovedDocuments().Select(id => original.GetDocument(id)?.FilePath
-                ?? throw new InvalidOperationException("A removed document requires an on-disk path."))
+                ?? throw new PublicInvalidOperationException("A removed document requires an on-disk path."))
                 .ToHashSet(FileSystemPath.Comparer);
             var addedPaths = context.GetAddedDocuments().Select(id => modified.GetDocument(id)?.FilePath
-                ?? throw new InvalidOperationException("An added document requires an on-disk path."))
+                ?? throw new PublicInvalidOperationException("An added document requires an on-disk path."))
                 .ToHashSet(FileSystemPath.Comparer);
             foreach (var path in removedPaths)
                 foreach (var node in compileItems.Where(node => Targets(node, path)))
@@ -184,7 +185,7 @@ internal static class ProjectReferenceMutationRenderer
                 var nodes = compileItems.Where(node => Targets(node, path)).ToArray();
                 if (nodes.Any(IsConditional)
                     && !context.OldProject.Documents.Any(item => FileSystemPath.Comparer.Equals(item.FilePath, path)))
-                    throw new InvalidOperationException("An added document cannot be mapped to an existing conditional Compile item in this compilation context.");
+                    throw new PublicInvalidOperationException("An added document cannot be mapped to an existing conditional Compile item in this compilation context.");
                 foreach (var node in nodes)
                     BindCompile(node, true);
                 if (nodes.Length == 0)
@@ -203,11 +204,11 @@ internal static class ProjectReferenceMutationRenderer
                     modified.GetProject(reference.ProjectId)?.FilePath is { } target
                     && FileSystemPath.Comparer.Equals(Path.GetFullPath(target), intent.Target)
                     && Equivalent(Describe(reference, modified), intent)))
-                    throw new InvalidOperationException("A new unconditional project reference is not requested by every compilation context of the physical project.");
+                    throw new PublicInvalidOperationException("A new unconditional project reference is not requested by every compilation context of the physical project.");
             }
             foreach (var path in compileAdditions)
                 if (!project.Documents.Any(item => FileSystemPath.Comparer.Equals(item.FilePath, path)))
-                    throw new InvalidOperationException("A new unconditional Compile item is not requested by every compilation context of the physical project.");
+                    throw new PublicInvalidOperationException("A new unconditional Compile item is not requested by every compilation context of the physical project.");
         }
 
         var before = new XDocument(document);
@@ -247,7 +248,7 @@ internal static class ProjectReferenceMutationRenderer
 
     private static ReferenceIntent Describe(ProjectReference reference, Solution solution) => new(
         Path.GetFullPath(solution.GetProject(reference.ProjectId)?.FilePath
-            ?? throw new InvalidOperationException("A project reference requires a physical target.")),
+            ?? throw new PublicInvalidOperationException("A project reference requires a physical target.")),
         string.Join(",", reference.Aliases.DefaultIfEmpty("global").Order(StringComparer.Ordinal)), reference.EmbedInteropTypes);
 
     private static bool Equivalent(ReferenceIntent? left, ReferenceIntent? right) =>
@@ -270,7 +271,7 @@ internal static class ProjectReferenceMutationRenderer
             var definitions = element.Attributes().Count(attribute => string.Equals(attribute.Name.LocalName, name, StringComparison.OrdinalIgnoreCase))
                 + element.Elements().Count(child => string.Equals(child.Name.LocalName, name, StringComparison.OrdinalIgnoreCase));
             if (definitions > 1)
-                throw new InvalidOperationException($"Multiple {name} metadata definitions cannot be bound to one compilation context safely.");
+                throw new PublicInvalidOperationException($"Multiple {name} metadata definitions cannot be bound to one compilation context safely.");
         }
         var aliases = string.Join(",", ReadMetadata(element, "Aliases")
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).DefaultIfEmpty("global").Order(StringComparer.Ordinal));
