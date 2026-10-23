@@ -317,11 +317,14 @@ public sealed class WorkspaceReadinessReportTests
 
         public int GetCurrentVersion(string workspaceId) => GetStatus(workspaceId).WorkspaceVersion;
 
+        public Task<System.Collections.Immutable.ImmutableArray<RoslynMcp.Roslyn.Contracts.AdmittedModuleImage>> ReadAdmittedImagesAsync(
+            string workspaceId, Microsoft.CodeAnalysis.ProjectId projectId, Microsoft.CodeAnalysis.PortableExecutableReference reference, CancellationToken ct) =>
+            throw new NotSupportedException();
+
         public Solution GetCurrentSolution(string workspaceId) => throw new NotSupportedException();
 
         public Project? GetProject(string workspaceId, string projectNameOrPath) => throw new NotSupportedException();
 
-        public bool TryApplyChanges(string workspaceId, Solution newSolution) => throw new NotSupportedException();
 
         public void RestoreVersion(string workspaceId, int version) => throw new NotSupportedException();
     }

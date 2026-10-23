@@ -1,5 +1,7 @@
 # move-to-git-issues - current design for external audit findings
 
+**row:** `move-to-git-issues` · **pri:** `Low` · **size:** `S`
+
 <!-- purpose: Current design note for moving the audit-finding sharing path toward GitHub Issues while keeping the maintainer-local fragment workflow. -->
 <!-- scope: in-repo -->
 <!-- shipped-note: rows 1-3 shipped (PRs #591, #592, #593), released v1.35.1 (PR #595); end-to-end verification passed 2026-05-10; row 4 deferred per design note. Items/ files are marker-exempt — this is an informational note, not a v10 status marker. -->

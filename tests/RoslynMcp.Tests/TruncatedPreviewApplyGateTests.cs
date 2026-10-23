@@ -19,12 +19,6 @@ public sealed class TruncatedPreviewApplyGateTests : TestBase
         InitializeServices();
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup()
-    {
-        DisposeServices();
-    }
-
     [TestMethod]
     public async Task Apply_Refuses_Truncated_Preview_Without_Force()
     {
@@ -35,12 +29,7 @@ public sealed class TruncatedPreviewApplyGateTests : TestBase
         // if the apply is refused, which is exactly what this test asserts.
         var solution = WorkspaceManager.GetCurrentSolution(workspaceId);
         var version = WorkspaceManager.GetCurrentVersion(workspaceId);
-        var token = PreviewStore.Store(
-            workspaceId,
-            solution,
-            version,
-            description: "Item #4 truncation gate probe",
-            diffTruncated: true);
+        var token = PreviewStore.Store(workspaceId, solution, solution, version, description: "Item #4 truncation gate probe", [new FileChangeDto(SolutionDiffHelper.TruncatedSentinelFilePath, "aggregate truncated")], PreviewKind.Unspecified);
 
         var result = await RefactoringService.ApplyRefactoringAsync(token, "test_apply", force: false, CancellationToken.None);
 
@@ -59,12 +48,7 @@ public sealed class TruncatedPreviewApplyGateTests : TestBase
 
         var solution = WorkspaceManager.GetCurrentSolution(workspaceId);
         var version = WorkspaceManager.GetCurrentVersion(workspaceId);
-        var token = PreviewStore.Store(
-            workspaceId,
-            solution,
-            version,
-            description: "Item #4 truncation gate probe (force)",
-            diffTruncated: true);
+        var token = PreviewStore.Store(workspaceId, solution, solution, version, description: "Item #4 truncation gate probe (force)", [new FileChangeDto(SolutionDiffHelper.TruncatedSentinelFilePath, "aggregate truncated")], PreviewKind.Unspecified);
 
         // force=true opts in to the blind apply. Since we're applying the same Solution
         // that's already loaded, no real disk mutation occurs, but the apply call must
@@ -89,12 +73,7 @@ public sealed class TruncatedPreviewApplyGateTests : TestBase
 
         var solution = WorkspaceManager.GetCurrentSolution(workspaceId);
         var version = WorkspaceManager.GetCurrentVersion(workspaceId);
-        var token = PreviewStore.Store(
-            workspaceId,
-            solution,
-            version,
-            description: "Item #4 non-truncated probe",
-            diffTruncated: false);
+        var token = PreviewStore.Store(workspaceId, solution, solution, version, description: "Item #4 non-truncated probe", [], PreviewKind.Unspecified);
 
         var result = await RefactoringService.ApplyRefactoringAsync(token, "test_apply", force: false, CancellationToken.None);
 
@@ -125,13 +104,7 @@ public sealed class TruncatedPreviewApplyGateTests : TestBase
 
         var workspaceId = await GetOrLoadWorkspaceIdAsync(SampleSolutionPath, CancellationToken.None);
         var solution = WorkspaceManager.GetCurrentSolution(workspaceId);
-        var token = PreviewStore.Store(
-            workspaceId,
-            solution,
-            WorkspaceManager.GetCurrentVersion(workspaceId),
-            $"{kind} sentinel truncation probe",
-            truncatedChanges,
-            kind);
+        var token = PreviewStore.Store(workspaceId, solution, solution, WorkspaceManager.GetCurrentVersion(workspaceId), $"{kind} sentinel truncation probe", truncatedChanges, kind);
 
         var stored = PreviewStore.Retrieve(token);
         Assert.IsNotNull(stored);

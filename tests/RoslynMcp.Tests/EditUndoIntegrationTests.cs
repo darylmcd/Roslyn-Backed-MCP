@@ -14,9 +14,6 @@ public sealed class EditUndoIntegrationTests : IsolatedWorkspaceTestBase
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     public async Task ApplyTextEdit_ThenRevert_RestoresOriginalContent()
     {

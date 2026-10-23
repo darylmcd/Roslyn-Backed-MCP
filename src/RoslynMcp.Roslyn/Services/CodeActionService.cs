@@ -173,12 +173,13 @@ public sealed class CodeActionService : ICodeActionService
             throw new InvalidOperationException($"Code action '{selectedAction.Title}' does not produce workspace changes.");
 
         var newSolution = applyOp.ChangedSolution;
-        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
+        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, SolutionDiffReadContext.ForWorkspace(_workspace, workspaceId), ct).ConfigureAwait(false);
         var description = $"Code action: {selectedAction.Title}";
         // preview-token-apply-route-provenance: tag the token with its producer family so
         // apply_code_action can refuse a token minted elsewhere before mutating.
         var token = _previewStore.Store(
             workspaceId,
+            solution,
             newSolution,
             _workspace.GetCurrentVersion(workspaceId),
             description,

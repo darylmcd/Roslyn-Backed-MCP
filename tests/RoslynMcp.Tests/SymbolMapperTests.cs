@@ -29,9 +29,6 @@ public sealed class SymbolMapperTests : SharedWorkspaceTestBase
         WorkspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     public async Task ToDto_Interface_MapsKindAndFqName()
     {

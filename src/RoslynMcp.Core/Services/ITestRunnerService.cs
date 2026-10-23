@@ -1,3 +1,5 @@
+using System.Collections.Immutable;
+using System.Text.Json.Serialization;
 using RoslynMcp.Core.Models;
 
 namespace RoslynMcp.Core.Services;
@@ -12,9 +14,9 @@ namespace RoslynMcp.Core.Services;
 /// workspace state and run the long <c>dotnet test</c> command outside it:
 /// <see cref="PrepareTestRunAsync"/> (gated read), <see cref="RunTestCommandAsync"/> (no gate;
 /// bounded by the test timeout), and <see cref="CompleteTestRunAsync"/> (gated read).
-/// <see cref="RunTestsAsync"/> composes the three steps without any gate. The three step members
-/// default to a single <see cref="RunTestsAsync"/> call so implementations that only provide the
-/// composed form keep working.
+/// <see cref="RunTestsAsync"/> composes the three required steps without any gate. Implement each
+/// phase explicitly: preparation freezes evaluation and authorized dotnet configuration context;
+/// execution consumes that context without resolving a different target or dropping state.
 /// </para>
 /// </remarks>
 public interface ITestRunnerService
@@ -25,23 +27,20 @@ public interface ITestRunnerService
     /// Resolves the test target and the execution plan (including the Microsoft.Testing.Platform
     /// plan) and records the workspace version.
     /// </summary>
-    Task<TestRunPlan> PrepareTestRunAsync(string workspaceId, string? projectName, string? filter, CancellationToken ct) =>
-        Task.FromResult(new TestRunPlan(workspaceId, projectName, filter));
+    Task<TestRunPlan> PrepareTestRunAsync(string workspaceId, string? projectName, string? filter, CancellationToken ct);
 
     /// <summary>
     /// Runs the planned <c>dotnet test</c> and parses its results. Call outside the workspace
     /// gate: the command's own gates serialize it and its timeout covers queue wait plus
     /// execution. A timeout is reported as a <c>Timeout</c> failure envelope, not an exception.
     /// </summary>
-    Task<TestRunResultDto> RunTestCommandAsync(TestRunPlan plan, CancellationToken ct) =>
-        RunTestsAsync(plan.WorkspaceId, plan.ProjectName, plan.Filter, ct);
+    Task<TestRunResultDto> RunTestCommandAsync(TestRunPlan plan, CancellationToken ct);
 
     /// <summary>
     /// Adds the <see cref="TestRunWarnings.WorkspaceChangedDuringRun"/> warning when the workspace
     /// version moved while the command ran.
     /// </summary>
-    Task<TestRunResultDto> CompleteTestRunAsync(TestRunPlan plan, TestRunResultDto result, CancellationToken ct) =>
-        Task.FromResult(result);
+    Task<TestRunResultDto> CompleteTestRunAsync(TestRunPlan plan, TestRunResultDto result, CancellationToken ct);
 
     /// <summary>
     /// Completes the result without touching workspace state (workspace closed while the command
@@ -55,18 +54,22 @@ public interface ITestRunnerService
 /// <param name="WorkspaceId">Workspace the run belongs to.</param>
 /// <param name="ProjectName">Caller-supplied project selector, or <see langword="null"/> for the workspace.</param>
 /// <param name="Filter">Caller-supplied <c>dotnet test</c> filter, or <see langword="null"/>.</param>
-/// <param name="TargetPath">Resolved solution/project path, or <see langword="null"/> when the implementation resolves it later.</param>
+/// <param name="EvaluationProperties">Immutable captured MSBuild globals, excluded from public serialization.</param>
+/// <param name="Context">Immutable authorized nearest-global.json inventory, revalidated before execution.</param>
+/// <param name="TargetPath">Resolved solution/project path. Real command execution refuses a missing target; no-workspace result fixtures may use <see langword="null"/>.</param>
 /// <param name="RequiresMtpNative">Whether the target needs the Microsoft.Testing.Platform-native argument shape.</param>
-/// <param name="TreeNodeFilter">Translated MTP <c>--treenode-filter</c> expression, when a filter was supplied.</param>
-/// <param name="NoRestore">Whether the run must pass <c>--no-restore</c> because the plan already restored.</param>
+/// <param name="NativeTestArguments">Immutable framework-specific native protocol arguments, excluded from public serialization.</param>
+/// <param name="NoRestore">Whether the run must pass <c>--no-restore</c> because preparation bound an authorized restored dependency snapshot.</param>
 /// <param name="WorkspaceVersion">Workspace version observed when the plan was made.</param>
 public sealed record TestRunPlan(
     string WorkspaceId,
     string? ProjectName,
     string? Filter,
+    [property: JsonIgnore] ImmutableDictionary<string, string> EvaluationProperties,
+    [property: JsonIgnore] PreparedDotnetTestContext Context,
+    [property: JsonIgnore] ImmutableArray<string> NativeTestArguments,
     string? TargetPath = null,
     bool RequiresMtpNative = false,
-    string? TreeNodeFilter = null,
     bool NoRestore = false,
     int WorkspaceVersion = 0);
 

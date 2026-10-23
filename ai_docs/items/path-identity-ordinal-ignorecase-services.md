@@ -9,7 +9,6 @@
 - `src/RoslynMcp.Roslyn/Services/SymbolRefactorService.cs:80,442,598,1091,1101,1460`
 - `src/RoslynMcp.Roslyn/Services/BuildService.cs:187,192,269` (CompileCheckService is tracked by compile-check-file-scope-path-identity)
 - `src/RoslynMcp.Roslyn/Helpers/AnalyzerReferenceIsolation.cs:50,86,343,413,447`
-- `src/RoslynMcp.Roslyn/Services/UnresolvedAnalyzerReferenceStripper.cs:112` (passes an IgnoreCase set into CsprojSemanticEquality, which uses FileSystemPath.Comparer at :239)
 
 ## Acceptance
 
@@ -20,3 +19,5 @@
 ## Evidence
 
 - Cluster-C sweep (PR for composite-apply-platform-path-identity) found 47 further physical-path OrdinalIgnoreCase sites of the same mechanism outside the fixed functions. Static finding; no runtime reproduction.
+
+2026-10-22 current-source rederivation: UnresolvedAnalyzerReferenceStripper now projects unresolved references without constructing a physical-path set (Project at line12; file52lines). Its former IgnoreCase anchor is retired; the other listed service mechanisms remain open.

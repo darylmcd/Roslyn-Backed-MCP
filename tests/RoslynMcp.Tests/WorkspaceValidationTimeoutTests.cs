@@ -33,9 +33,6 @@ public sealed class WorkspaceValidationTimeoutTests : IsolatedWorkspaceTestBase
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     public async Task ValidateAsync_WhenPhaseExceedsInternalTimeout_ReturnsTimeoutDto()
     {

@@ -30,9 +30,6 @@ public sealed class PromptSmokeTests : SharedWorkspaceTestBase
         WorkspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     public async Task SuggestRefactoring_Returns_Text()
     {
@@ -597,9 +594,13 @@ public sealed class PromptSmokeTests : SharedWorkspaceTestBase
             Task.FromResult<string?>(string.Equals(workspaceId, _workspaceId, StringComparison.Ordinal) ? _sourceText : null);
 
         public int GetCurrentVersion(string workspaceId) => throw new NotSupportedException();
+        public Task<System.Collections.Immutable.ImmutableArray<RoslynMcp.Roslyn.Contracts.AdmittedModuleImage>> ReadAdmittedImagesAsync(
+            string workspaceId, Microsoft.CodeAnalysis.ProjectId projectId, Microsoft.CodeAnalysis.PortableExecutableReference reference, CancellationToken ct) =>
+            throw new NotSupportedException();
+
         public Solution GetCurrentSolution(string workspaceId) => throw new NotSupportedException();
         public Project? GetProject(string workspaceId, string projectNameOrPath) => null;
-        public bool TryApplyChanges(string workspaceId, Solution newSolution) => throw new NotSupportedException();
+
         public void RestoreVersion(string workspaceId, int version) => throw new NotSupportedException();
     }
 
@@ -680,9 +681,13 @@ public sealed class PromptSmokeTests : SharedWorkspaceTestBase
         public Task<string?> GetSourceTextAsync(string workspaceId, string filePath, CancellationToken ct) => throw new NotSupportedException();
 
         public int GetCurrentVersion(string workspaceId) => throw new NotSupportedException();
+        public Task<System.Collections.Immutable.ImmutableArray<RoslynMcp.Roslyn.Contracts.AdmittedModuleImage>> ReadAdmittedImagesAsync(
+            string workspaceId, Microsoft.CodeAnalysis.ProjectId projectId, Microsoft.CodeAnalysis.PortableExecutableReference reference, CancellationToken ct) =>
+            throw new NotSupportedException();
+
         public Solution GetCurrentSolution(string workspaceId) => throw new NotSupportedException();
         public Project? GetProject(string workspaceId, string projectNameOrPath) => null;
-        public bool TryApplyChanges(string workspaceId, Solution newSolution) => throw new NotSupportedException();
+
         public void RestoreVersion(string workspaceId, int version) => throw new NotSupportedException();
     }
 

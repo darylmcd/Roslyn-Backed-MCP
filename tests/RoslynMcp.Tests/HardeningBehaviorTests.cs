@@ -1,9 +1,10 @@
-using RoslynMcp.Core.Models;
-using RoslynMcp.Core.Services;
-using RoslynMcp.Roslyn.Services;
 using Microsoft.CodeAnalysis;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -21,9 +22,6 @@ public sealed class HardeningBehaviorTests : SharedWorkspaceTestBase
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     public async Task WorkspaceLoad_InvalidPath_DoesNotLeakSession()
     {
@@ -39,7 +37,7 @@ public sealed class HardeningBehaviorTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task WorkspaceManager_RejectsLoadsPastConfiguredLimit()
     {
-        using var manager = new WorkspaceManager(
+        using var manager = new WorkspaceManager(new RoslynMcp.Roslyn.Services.ForkInvocationPathPolicy(new RoslynMcp.Tests.Helpers.OwnedTestWorkspacePathPolicy()),
             NullLogger<WorkspaceManager>.Instance,
             new PreviewStore(),
             new FileWatcherService(NullLogger<FileWatcherService>.Instance),
@@ -50,7 +48,7 @@ public sealed class HardeningBehaviorTests : SharedWorkspaceTestBase
 
         try
         {
-            await manager.LoadAsync(firstPath, CancellationToken.None);
+            await manager.LoadAsync(firstPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(firstPath, new Dictionary<string, string>()), CancellationToken.None);
 
             await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
                 manager.LoadAsync(secondPath, CancellationToken.None));
@@ -78,7 +76,7 @@ public sealed class HardeningBehaviorTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task ValidationService_TimesOutLongRunningCommands()
     {
-        var fakeWorkspaceManager = new FakeWorkspaceManager();
+        var fakeWorkspaceManager = CreateWorkspaceManager();
         var executor = new GatedCommandExecutor(
             fakeWorkspaceManager,
             new HangingDotnetCommandRunner(),
@@ -130,9 +128,9 @@ public sealed class HardeningBehaviorTests : SharedWorkspaceTestBase
         Assert.IsFalse(entry.Message.Contains(secretFailureDetail, StringComparison.Ordinal));
     }
 
-    private sealed class HangingDotnetCommandRunner : IDotnetCommandRunner
+    private sealed class HangingDotnetCommandRunner : RoslynMcp.Tests.Helpers.CannedCommandRunner
     {
-        public async Task<CommandExecutionDto> RunAsync(
+        public override async Task<CommandExecutionDto> RunAsync(
             string workingDirectory,
             string targetPath,
             IReadOnlyList<string> arguments,
@@ -143,18 +141,9 @@ public sealed class HardeningBehaviorTests : SharedWorkspaceTestBase
         }
     }
 
-    private sealed class FakeWorkspaceManager : IWorkspaceManager
+    private static FailClosedWorkspaceManagerStub CreateWorkspaceManager()
     {
-        public event Action<string>? WorkspaceClosed { add { } remove { } }
-        public event Action<string>? WorkspaceReloaded { add { } remove { } }
-
-        public Task<WorkspaceStatusDto> LoadAsync(string path, EvictPolicy evictPolicy, CancellationToken ct) => throw new NotSupportedException();
-        public Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct) => throw new NotSupportedException();
-        public bool ContainsWorkspace(string workspaceId) => !string.IsNullOrWhiteSpace(workspaceId);
-        public bool IsStale(string workspaceId) => false;
-        public bool Close(string workspaceId) => throw new NotSupportedException();
-        public IReadOnlyList<WorkspaceStatusDto> ListWorkspaces() => [];
-        public WorkspaceStatusDto GetStatus(string workspaceId) =>
+        static WorkspaceStatusDto Status(string workspaceId) =>
             new(
                 WorkspaceId: workspaceId,
                 LoadedPath: "C:\\repo\\Sample.slnx",
@@ -167,15 +156,14 @@ public sealed class HardeningBehaviorTests : SharedWorkspaceTestBase
                 IsLoaded: true,
                 IsStale: false,
                 WorkspaceDiagnostics: []);
-        public Task<WorkspaceStatusDto> GetStatusAsync(string workspaceId, CancellationToken cancellationToken = default) =>
-            Task.FromResult(GetStatus(workspaceId));
-        public ProjectGraphDto GetProjectGraph(string workspaceId) => throw new NotSupportedException();
-        public Task<IReadOnlyList<GeneratedDocumentDto>> GetSourceGeneratedDocumentsAsync(string workspaceId, string? projectName, CancellationToken ct) => throw new NotSupportedException();
-        public Task<string?> GetSourceTextAsync(string workspaceId, string filePath, CancellationToken ct) => throw new NotSupportedException();
-        public int GetCurrentVersion(string workspaceId) => 1;
-        public void RestoreVersion(string workspaceId, int version) => throw new NotSupportedException();
-        public Solution GetCurrentSolution(string workspaceId) => throw new NotSupportedException();
-        public bool TryApplyChanges(string workspaceId, Solution newSolution) => throw new NotSupportedException();
-        public Project? GetProject(string workspaceId, string projectNameOrPath) => null;
+        return new FailClosedWorkspaceManagerStub
+        {
+            ContainsWorkspaceHandler = workspaceId => !string.IsNullOrWhiteSpace(workspaceId),
+            IsStaleHandler = _ => false,
+            GetStatusHandler = Status,
+            GetStatusAsyncHandler = Status,
+            GetCurrentVersionHandler = _ => 1,
+        };
     }
+
 }

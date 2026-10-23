@@ -17,14 +17,14 @@ namespace RoslynMcp.Tests;
 [TestClass]
 public sealed class TreeNodeFilterTranslatorTests
 {
-    private static readonly Version BelowOrFixThreshold = new(1, 45, 8); // real version this bug was found on
-    private static readonly Version AtOrFixThreshold = TreeNodeFilterTranslator.MinimumTUnitEngineVersionWithOrFilterFix;
-    private static readonly Version AboveOrFixThreshold = new(1, 65, 38); // real version this was re-verified on
+    private static readonly NuGet.Versioning.NuGetVersion BelowOrFixThreshold = new(1, 45, 8); // real version this bug was found on
+    private static readonly NuGet.Versioning.NuGetVersion AtOrFixThreshold = TreeNodeFilterTranslator.MinimumTUnitEngineVersionWithOrFilterFix;
+    private static readonly NuGet.Versioning.NuGetVersion AboveOrFixThreshold = new(1, 65, 38); // real version this was re-verified on
 
     [TestMethod]
     public void Translate_SingleFullyQualifiedNameEquals_ProducesFourSegmentPath()
     {
-        var result = TreeNodeFilterTranslator.Translate("FullyQualifiedName=MyNamespace.MyClass.MyMethod", resolvedTUnitEngineVersion: null);
+        var result = TreeNodeFilterTranslator.Translate("FullyQualifiedName=MyNamespace.MyClass.MyMethod", resolvedTUnitEngineVersions: null);
 
         Assert.AreEqual("/*/MyNamespace/MyClass/MyMethod", result);
     }
@@ -35,7 +35,7 @@ public sealed class TreeNodeFilterTranslatorTests
         // A complete fqn under "~" behaves identically to "=" here: SynthesizeDotnetTestFilter
         // always emits a full, unique fqn as the value, so "contains" degenerates to an exact
         // per-segment match — there is no partial/fuzzy matching to translate for that shape.
-        var result = TreeNodeFilterTranslator.Translate("FullyQualifiedName~MyNamespace.MyClass.MyMethod", resolvedTUnitEngineVersion: null);
+        var result = TreeNodeFilterTranslator.Translate("FullyQualifiedName~MyNamespace.MyClass.MyMethod", resolvedTUnitEngineVersions: null);
 
         Assert.AreEqual("/*/MyNamespace/MyClass/MyMethod", result);
     }
@@ -43,7 +43,7 @@ public sealed class TreeNodeFilterTranslatorTests
     [TestMethod]
     public void Translate_MultiPartNamespace_JoinsWithDots()
     {
-        var result = TreeNodeFilterTranslator.Translate("FullyQualifiedName~Foo.Bar.Baz.MyClass.MyMethod", resolvedTUnitEngineVersion: null);
+        var result = TreeNodeFilterTranslator.Translate("FullyQualifiedName~Foo.Bar.Baz.MyClass.MyMethod", resolvedTUnitEngineVersions: null);
 
         Assert.AreEqual("/*/Foo.Bar.Baz/MyClass/MyMethod", result);
     }
@@ -53,7 +53,7 @@ public sealed class TreeNodeFilterTranslatorTests
     {
         // A test class declared in the global namespace has no '.'-separated namespace prefix
         // to recover — wildcard that segment rather than guessing.
-        var result = TreeNodeFilterTranslator.Translate("FullyQualifiedName=MyClass.MyMethod", resolvedTUnitEngineVersion: null);
+        var result = TreeNodeFilterTranslator.Translate("FullyQualifiedName=MyClass.MyMethod", resolvedTUnitEngineVersions: null);
 
         Assert.AreEqual("/*/*/MyClass/MyMethod", result);
     }
@@ -61,7 +61,7 @@ public sealed class TreeNodeFilterTranslatorTests
     [TestMethod]
     public void Translate_PropertyNameIsCaseInsensitive()
     {
-        var result = TreeNodeFilterTranslator.Translate("fullyqualifiedname=MyNamespace.MyClass.MyMethod", resolvedTUnitEngineVersion: null);
+        var result = TreeNodeFilterTranslator.Translate("fullyqualifiedname=MyNamespace.MyClass.MyMethod", resolvedTUnitEngineVersions: null);
 
         Assert.AreEqual("/*/MyNamespace/MyClass/MyMethod", result);
     }
@@ -72,7 +72,7 @@ public sealed class TreeNodeFilterTranslatorTests
         var ex = Assert.ThrowsExactly<PublicInvalidOperationException>(() =>
             TreeNodeFilterTranslator.Translate(
                 "FullyQualifiedName~MyNamespace.MyClass.Method1|FullyQualifiedName~MyNamespace.MyClass.Method2",
-                resolvedTUnitEngineVersion: null));
+                resolvedTUnitEngineVersions: null));
 
         StringAssert.Contains(ex.Message, "more than one test");
         StringAssert.Contains(ex.Message, "TUnit.Engine");
@@ -85,7 +85,7 @@ public sealed class TreeNodeFilterTranslatorTests
         var ex = Assert.ThrowsExactly<PublicInvalidOperationException>(() =>
             TreeNodeFilterTranslator.Translate(
                 "FullyQualifiedName~MyNamespace.MyClass.Method1|FullyQualifiedName~MyNamespace.MyClass.Method2",
-                BelowOrFixThreshold));
+                [BelowOrFixThreshold]));
 
         StringAssert.Contains(ex.Message, "more than one test");
         StringAssert.Contains(ex.Message, BelowOrFixThreshold.ToString());
@@ -96,7 +96,7 @@ public sealed class TreeNodeFilterTranslatorTests
     {
         var result = TreeNodeFilterTranslator.Translate(
             "FullyQualifiedName~MyNamespace.MyClass.Method1|FullyQualifiedName~MyNamespace.MyClass.Method2",
-            AtOrFixThreshold);
+            [AtOrFixThreshold]);
 
         Assert.AreEqual("/*/MyNamespace/MyClass/(Method1|Method2)", result);
     }
@@ -107,7 +107,7 @@ public sealed class TreeNodeFilterTranslatorTests
         // Re-verified directly against a real TUnit 1.65.38 project.
         var result = TreeNodeFilterTranslator.Translate(
             "FullyQualifiedName~MyNamespace.MyClass.Method1|FullyQualifiedName~MyNamespace.MyClass.Method2",
-            AboveOrFixThreshold);
+            [AboveOrFixThreshold]);
 
         Assert.AreEqual("/*/MyNamespace/MyClass/(Method1|Method2)", result);
     }
@@ -121,7 +121,7 @@ public sealed class TreeNodeFilterTranslatorTests
         var ex = Assert.ThrowsExactly<PublicInvalidOperationException>(() =>
             TreeNodeFilterTranslator.Translate(
                 "FullyQualifiedName~MyNamespace.ClassA.Method1|FullyQualifiedName~MyNamespace.ClassB.Method2",
-                AboveOrFixThreshold));
+                [AboveOrFixThreshold]));
 
         StringAssert.Contains(ex.Message, "2 different namespace/class");
     }
@@ -132,7 +132,7 @@ public sealed class TreeNodeFilterTranslatorTests
         var ex = Assert.ThrowsExactly<PublicInvalidOperationException>(() =>
             TreeNodeFilterTranslator.Translate(
                 "FullyQualifiedName~MyNamespace.ClassA.Method1|FullyQualifiedName~MyNamespace.ClassB.Method2",
-                BelowOrFixThreshold));
+                [BelowOrFixThreshold]));
 
         StringAssert.Contains(ex.Message, "2 different namespace/class");
         Assert.IsFalse(
@@ -144,7 +144,7 @@ public sealed class TreeNodeFilterTranslatorTests
     public void Translate_AndOperator_ThrowsMentioningAnd()
     {
         var ex = Assert.ThrowsExactly<PublicInvalidOperationException>(() =>
-            TreeNodeFilterTranslator.Translate("FullyQualifiedName~Foo.Bar.Baz&TestCategory=Nightly", resolvedTUnitEngineVersion: null));
+            TreeNodeFilterTranslator.Translate("FullyQualifiedName~Foo.Bar.Baz&TestCategory=Nightly", resolvedTUnitEngineVersions: null));
 
         StringAssert.Contains(ex.Message, "AND");
     }
@@ -153,7 +153,7 @@ public sealed class TreeNodeFilterTranslatorTests
     public void Translate_ParenthesizedGrouping_Throws()
     {
         var ex = Assert.ThrowsExactly<PublicInvalidOperationException>(() =>
-            TreeNodeFilterTranslator.Translate("(FullyQualifiedName~Foo.Bar.Baz)", resolvedTUnitEngineVersion: null));
+            TreeNodeFilterTranslator.Translate("(FullyQualifiedName~Foo.Bar.Baz)", resolvedTUnitEngineVersions: null));
 
         StringAssert.Contains(ex.Message, "grouping");
     }
@@ -162,7 +162,7 @@ public sealed class TreeNodeFilterTranslatorTests
     public void Translate_NonFullyQualifiedNameProperty_ThrowsMentioningProperty()
     {
         var ex = Assert.ThrowsExactly<PublicInvalidOperationException>(() =>
-            TreeNodeFilterTranslator.Translate("TestCategory=Nightly", resolvedTUnitEngineVersion: null));
+            TreeNodeFilterTranslator.Translate("TestCategory=Nightly", resolvedTUnitEngineVersions: null));
 
         StringAssert.Contains(ex.Message, "FullyQualifiedName");
     }
@@ -171,7 +171,7 @@ public sealed class TreeNodeFilterTranslatorTests
     public void Translate_NegationOperator_Throws()
     {
         var ex = Assert.ThrowsExactly<PublicInvalidOperationException>(() =>
-            TreeNodeFilterTranslator.Translate("FullyQualifiedName!=Foo.Bar.Baz", resolvedTUnitEngineVersion: null));
+            TreeNodeFilterTranslator.Translate("FullyQualifiedName!=Foo.Bar.Baz", resolvedTUnitEngineVersions: null));
 
         StringAssert.Contains(ex.Message, "FullyQualifiedName");
     }
@@ -180,7 +180,7 @@ public sealed class TreeNodeFilterTranslatorTests
     public void Translate_BareValueWithNoDots_ThrowsExplainingMissingClassAndMethod()
     {
         var ex = Assert.ThrowsExactly<PublicInvalidOperationException>(() =>
-            TreeNodeFilterTranslator.Translate("FullyQualifiedName~JustAWord", resolvedTUnitEngineVersion: null));
+            TreeNodeFilterTranslator.Translate("FullyQualifiedName~JustAWord", resolvedTUnitEngineVersions: null));
 
         StringAssert.Contains(ex.Message, "class/method");
     }
@@ -192,7 +192,7 @@ public sealed class TreeNodeFilterTranslatorTests
         // discovered test must keep working once discovery-backed validation is wired in.
         var result = TreeNodeFilterTranslator.Translate(
             "FullyQualifiedName~MyNamespace.MyClass.MyMethod",
-            resolvedTUnitEngineVersion: null,
+            resolvedTUnitEngineVersions: null,
             knownFullyQualifiedTestNames: ["MyNamespace.MyClass.MyMethod", "MyNamespace.MyClass.OtherMethod"]);
 
         Assert.AreEqual("/*/MyNamespace/MyClass/MyMethod", result);
@@ -208,7 +208,7 @@ public sealed class TreeNodeFilterTranslatorTests
         var ex = Assert.ThrowsExactly<PublicInvalidOperationException>(() =>
             TreeNodeFilterTranslator.Translate(
                 "FullyQualifiedName~My.Tests.WidgetTests",
-                resolvedTUnitEngineVersion: null,
+                resolvedTUnitEngineVersions: null,
                 knownFullyQualifiedTestNames: ["My.Tests.WidgetTests.ShouldRender", "My.Tests.WidgetTests.ShouldValidate"]));
 
         StringAssert.Contains(ex.Message, "My.Tests.WidgetTests");
@@ -221,7 +221,7 @@ public sealed class TreeNodeFilterTranslatorTests
         var ex = Assert.ThrowsExactly<PublicInvalidOperationException>(() =>
             TreeNodeFilterTranslator.Translate(
                 "FullyQualifiedName=MyNamespace.MyClass.MyMethod",
-                resolvedTUnitEngineVersion: null,
+                resolvedTUnitEngineVersions: null,
                 knownFullyQualifiedTestNames: []));
 
         StringAssert.Contains(ex.Message, "MyNamespace.MyClass.MyMethod");
@@ -232,7 +232,7 @@ public sealed class TreeNodeFilterTranslatorTests
     {
         // Default (null) preserves every existing pure-parsing test above unchanged.
         var result = TreeNodeFilterTranslator.Translate(
-            "FullyQualifiedName=MyNamespace.MyClass.MyMethod", resolvedTUnitEngineVersion: null);
+            "FullyQualifiedName=MyNamespace.MyClass.MyMethod", resolvedTUnitEngineVersions: null);
 
         Assert.AreEqual("/*/MyNamespace/MyClass/MyMethod", result);
     }

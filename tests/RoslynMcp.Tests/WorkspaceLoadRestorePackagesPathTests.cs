@@ -3,6 +3,7 @@ using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -19,9 +20,6 @@ public sealed class WorkspaceLoadRestorePackagesPathTests : SharedWorkspaceTestB
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     public async Task AutoRestore_AssetsRecordScratchPackagesPath_PassesPackagesFlag()
     {
@@ -37,14 +35,12 @@ public sealed class WorkspaceLoadRestorePackagesPathTests : SharedWorkspaceTestB
                 {
                     WriteAssetsWithPackagesPath(project.FilePath, scratch);
                 }
+                var nodes = EvaluatedBuildGraph.Source(manager.GetCurrentSolution(status.WorkspaceId), CancellationToken.None).Nodes.Where(node => !node.IsOuterBuild).ToArray();
 
                 await WorkspaceTools.RestoreAndReloadIfRequiredAsync(
-                    executor, ValidationOptions, manager, status with { RestoreRequired = true }, autoRestore: true, NullLogger.Instance, CancellationToken.None);
+                    executor, ValidationOptions, manager, status with { RestoreRequired = true }, autoRestore: true, NullLogger.Instance, CancellationToken.None, timeProvider:System.TimeProvider.System);
 
-                Assert.HasCount(1, runner.Invocations, "One distinct recorded path must produce a single solution-level restore.");
-                CollectionAssert.AreEqual(
-                    new[] { "restore", solutionPath, "--nologo", "--packages", scratch },
-                    runner.Invocations[0].ToArray());
+                AssertNodeInvocations(nodes, runner.Invocations, _ => scratch);
             }
         }
         finally
@@ -67,15 +63,12 @@ public sealed class WorkspaceLoadRestorePackagesPathTests : SharedWorkspaceTestB
                 {
                     TestFixtureFileSystem.DeleteDirectoryIfExists(objDir);
                 }
+                var nodes = EvaluatedBuildGraph.Source(manager.GetCurrentSolution(status.WorkspaceId), CancellationToken.None).Nodes.Where(node => !node.IsOuterBuild).ToArray();
 
                 await WorkspaceTools.RestoreAndReloadIfRequiredAsync(
-                    executor, ValidationOptions, manager, status with { RestoreRequired = true }, autoRestore: true, NullLogger.Instance, CancellationToken.None);
+                    executor, ValidationOptions, manager, status with { RestoreRequired = true }, autoRestore: true, NullLogger.Instance, CancellationToken.None, timeProvider:System.TimeProvider.System);
 
-                Assert.HasCount(1, runner.Invocations);
-                CollectionAssert.AreEqual(
-                    new[] { "restore", solutionPath, "--nologo" },
-                    runner.Invocations[0].ToArray(),
-                    "First restore (no assets file) must keep the plain argument list.");
+                AssertNodeInvocations(nodes, runner.Invocations, _ => null);
             }
         }
         finally
@@ -107,21 +100,13 @@ public sealed class WorkspaceLoadRestorePackagesPathTests : SharedWorkspaceTestB
                         File.Delete(assets);
                     }
                 }
+                var nodes = EvaluatedBuildGraph.Source(manager.GetCurrentSolution(status.WorkspaceId), CancellationToken.None).Nodes.Where(node => !node.IsOuterBuild).ToArray();
 
                 await WorkspaceTools.RestoreAndReloadIfRequiredAsync(
-                    executor, ValidationOptions, manager, status with { RestoreRequired = true }, autoRestore: true, NullLogger.Instance, CancellationToken.None);
+                    executor, ValidationOptions, manager, status with { RestoreRequired = true }, autoRestore: true, NullLogger.Instance, CancellationToken.None, timeProvider:System.TimeProvider.System);
 
-                Assert.HasCount(status.Projects.Count, runner.Invocations, "Mixed package folders must restore each project separately.");
-                CollectionAssert.AreEqual(
-                    new[] { "restore", status.Projects[0].FilePath, "--nologo", "--packages", pathA, "--no-dependencies" },
-                    runner.Invocations[0].ToArray());
-                CollectionAssert.AreEqual(
-                    new[] { "restore", status.Projects[1].FilePath, "--nologo", "--packages", pathB, "--no-dependencies" },
-                    runner.Invocations[1].ToArray());
-                foreach (var tail in runner.Invocations.Skip(2))
-                {
-                    CollectionAssert.DoesNotContain(tail.ToList(), "--packages", "A project with no recorded path keeps the default folder.");
-                }
+                AssertNodeInvocations(nodes, runner.Invocations, node => node.ProjectPath == status.Projects[0].FilePath ? pathA
+                    : node.ProjectPath == status.Projects[1].FilePath ? pathB : null);
             }
         }
         finally
@@ -138,21 +123,22 @@ public sealed class WorkspaceLoadRestorePackagesPathTests : SharedWorkspaceTestB
         {
             var projectPath = Path.Combine(root, "App.csproj");
             Directory.CreateDirectory(Path.Combine(root, "obj"));
+            File.WriteAllText(projectPath, "<Project><PropertyGroup><ProjectAssetsFile>obj/project.assets.json</ProjectAssetsFile></PropertyGroup></Project>");
 
-            Assert.IsNull(RestoreStalenessDetector.TryReadRestorePackagesPath(projectPath), "No assets file.");
+            Assert.IsNull(RestoreStalenessDetector.TryReadRestorePackagesPath(projectPath, System.Collections.Immutable.ImmutableDictionary<string, string>.Empty), "No assets file.");
 
             var assetsPath = Path.Combine(root, "obj", "project.assets.json");
             File.WriteAllText(assetsPath, "{ not json");
-            Assert.IsNull(RestoreStalenessDetector.TryReadRestorePackagesPath(projectPath), "Malformed assets file.");
+            Assert.IsNull(RestoreStalenessDetector.TryReadRestorePackagesPath(projectPath, System.Collections.Immutable.ImmutableDictionary<string, string>.Empty), "Malformed assets file.");
 
             File.WriteAllText(assetsPath, "{\"project\":{\"restore\":{}}}");
-            Assert.IsNull(RestoreStalenessDetector.TryReadRestorePackagesPath(projectPath), "Property absent.");
+            Assert.IsNull(RestoreStalenessDetector.TryReadRestorePackagesPath(projectPath, System.Collections.Immutable.ImmutableDictionary<string, string>.Empty), "Property absent.");
 
             File.WriteAllText(assetsPath, "{\"project\":{\"restore\":{\"packagesPath\":\"  \"}}}");
-            Assert.IsNull(RestoreStalenessDetector.TryReadRestorePackagesPath(projectPath), "Blank value.");
+            Assert.IsNull(RestoreStalenessDetector.TryReadRestorePackagesPath(projectPath, System.Collections.Immutable.ImmutableDictionary<string, string>.Empty), "Blank value.");
 
             File.WriteAllText(assetsPath, "{\"project\":{\"restore\":{\"packagesPath\":\"D:/scratch\"}}}");
-            Assert.AreEqual("D:/scratch", RestoreStalenessDetector.TryReadRestorePackagesPath(projectPath));
+            Assert.AreEqual("D:/scratch", RestoreStalenessDetector.TryReadRestorePackagesPath(projectPath, System.Collections.Immutable.ImmutableDictionary<string, string>.Empty));
         }
         finally
         {
@@ -175,8 +161,9 @@ public sealed class WorkspaceLoadRestorePackagesPathTests : SharedWorkspaceTestB
         try
         {
             Directory.CreateDirectory(Path.Combine(root, "obj"));
+            File.WriteAllText(Path.Combine(root, "App.csproj"), "<Project><PropertyGroup><ProjectAssetsFile>obj/project.assets.json</ProjectAssetsFile></PropertyGroup></Project>");
             File.WriteAllText(Path.Combine(root, "obj", "project.assets.json"), json);
-            Assert.IsNull(RestoreStalenessDetector.TryReadRestorePackagesPath(Path.Combine(root, "App.csproj")));
+            Assert.IsNull(RestoreStalenessDetector.TryReadRestorePackagesPath(Path.Combine(root, "App.csproj"), System.Collections.Immutable.ImmutableDictionary<string, string>.Empty));
         }
         finally { DeleteDirectoryIfExists(root); }
     }
@@ -186,7 +173,7 @@ public sealed class WorkspaceLoadRestorePackagesPathTests : SharedWorkspaceTestB
     public void Planner_NullAndRecordedRoots_IsolatesEveryProject()
     {
         var plan = RestoreInvocationPlanner.Plan("App.slnx",
-            [new("A.csproj", "packages"), new("B.csproj", null)]);
+            [new("A.csproj", "packages", null, System.Collections.Immutable.ImmutableDictionary<string, string>.Empty, null), new("B.csproj", null, null, System.Collections.Immutable.ImmutableDictionary<string, string>.Empty, null)]);
         Assert.HasCount(2, plan);
         CollectionAssert.Contains(plan[0].Arguments.ToArray(), "--no-dependencies");
         CollectionAssert.AreEqual(new[] { "restore", "B.csproj", "--nologo", "--no-dependencies" }, plan[1].Arguments.ToArray());
@@ -194,35 +181,68 @@ public sealed class WorkspaceLoadRestorePackagesPathTests : SharedWorkspaceTestB
 
 
     [TestMethod]
-    public void Planner_DependencyClosure_ContainsOnlySelectedProjectAndTransitiveDependencies()
+    public void Planner_SelectedProject_CapturesOnlyItsEvaluatedTransitiveContexts()
     {
-        using var workspace = new Microsoft.CodeAnalysis.AdhocWorkspace();
-        var solution = workspace.CurrentSolution;
-        var ids = new[] { "C", "B", "A", "Unrelated" }.ToDictionary(n => n, n => Microsoft.CodeAnalysis.ProjectId.CreateNewId(n), StringComparer.Ordinal);
-        foreach (var (name, id) in ids)
-            solution = solution.AddProject(Microsoft.CodeAnalysis.ProjectInfo.Create(id, Microsoft.CodeAnalysis.VersionStamp.Create(),
-                name, name, Microsoft.CodeAnalysis.LanguageNames.CSharp, filePath: Path.GetFullPath(name + ".csproj")));
-        solution = solution.AddProjectReference(ids["A"], new Microsoft.CodeAnalysis.ProjectReference(ids["B"]))
-            .AddProjectReference(ids["B"], new Microsoft.CodeAnalysis.ProjectReference(ids["C"]));
-        CollectionAssert.AreEqual(new[] { Path.GetFullPath("C.csproj"), Path.GetFullPath("B.csproj"), Path.GetFullPath("A.csproj") },
-            RestoreInvocationPlanner.DependencyClosure(solution.GetProject(ids["A"])!).ToArray());
+        var root = Path.Combine(TestTempRoot.Current, nameof(WorkspaceLoadRestorePackagesPathTests), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            using var workspace = new Microsoft.CodeAnalysis.AdhocWorkspace();
+            var solution = workspace.CurrentSolution;
+            var ids = new[] { "C", "B", "A", "Unrelated" }.ToDictionary(name => name, name => Microsoft.CodeAnalysis.ProjectId.CreateNewId(name), StringComparer.Ordinal);
+            foreach (var (name, id) in ids)
+            {
+                var reference = name == "A" ? "B" : name == "B" ? "C" : null;
+                File.WriteAllText(Path.Combine(root, name + ".csproj"), reference is null ? "<Project />"
+                    : $"<Project><ItemGroup><ProjectReference Include=\"{reference}.csproj\" /></ItemGroup></Project>");
+                solution = solution.AddProject(Microsoft.CodeAnalysis.ProjectInfo.Create(id, Microsoft.CodeAnalysis.VersionStamp.Create(),
+                    name, name, Microsoft.CodeAnalysis.LanguageNames.CSharp, filePath: Path.Combine(root, name + ".csproj")));
+            }
+            solution = solution.AddProjectReference(ids["A"], new Microsoft.CodeAnalysis.ProjectReference(ids["B"]))
+                .AddProjectReference(ids["B"], new Microsoft.CodeAnalysis.ProjectReference(ids["C"]));
+            CollectionAssert.AreEqual(new[] { Path.Combine(root, "C.csproj"), Path.Combine(root, "B.csproj"), Path.Combine(root, "A.csproj") },
+                RestoreInvocationPlanner.Capture(solution.GetProject(ids["A"])!, CancellationToken.None).Select(project => project.ProjectPath).ToArray());
+        }
+        finally { DeleteDirectoryIfExists(root); }
     }
-
 
     [TestMethod]
     public void Planner_DependencyWithoutFilePath_RefusesIncompleteGraph()
     {
         using var workspace = new Microsoft.CodeAnalysis.AdhocWorkspace();
         var project = workspace.AddProject("InMemory", Microsoft.CodeAnalysis.LanguageNames.CSharp);
-        Assert.ThrowsExactly<InvalidOperationException>(() => RestoreInvocationPlanner.DependencyClosure(project));
+        Assert.ThrowsExactly<RoslynMcp.Core.Services.PublicInvalidOperationException>(() => RestoreInvocationPlanner.Capture(project, CancellationToken.None));
     }
 
     [TestMethod]
-    public void Planner_CaseVariants_UsesPlatformIdentity()
+    public void Planner_SharedAssets_UsesPlatformPackageRootIdentity()
     {
+        var assets = Path.GetFullPath("obj/project.assets.json");
+        RestoreInvocationPlanner.ProjectRestore[] captured =
+            [new("A.csproj", "packages", null, System.Collections.Immutable.ImmutableDictionary<string, string>.Empty, assets),
+                new("A.csproj", "PACKAGES", null, System.Collections.Immutable.ImmutableDictionary<string, string>.Empty, assets)];
+        if (OperatingSystem.IsWindows()) Assert.HasCount(1, RestoreInvocationPlanner.Plan("App.slnx", captured));
+        else Assert.ThrowsExactly<RoslynMcp.Core.Services.PublicInvalidOperationException>(() => RestoreInvocationPlanner.Plan("App.slnx", captured));
+    }
+
+    [TestMethod]
+    public void Planner_EqualLeafGlobalsAndRoots_DoNotAuthorizeSolutionEntryBatching()
+    {
+        var globals = System.Collections.Immutable.ImmutableDictionary<string, string>.Empty
+            .Add("Platform", "AnyCPU").Add("Configuration", "Debug").Add("BuildingSolutionFile", "true");
         var plan = RestoreInvocationPlanner.Plan("App.slnx",
-            [new("A.csproj", "packages"), new("B.csproj", "PACKAGES")]);
-        Assert.HasCount(OperatingSystem.IsWindows() ? 1 : 2, plan);
+            [new("A.csproj", "packages", null, globals, Path.GetFullPath("A/obj/project.assets.json")),
+                new("B.csproj", "packages", null, globals, Path.GetFullPath("B/obj/project.assets.json"))]);
+        CollectionAssert.AreEqual(new[] { "A.csproj", "B.csproj" }, plan.Select(invocation => invocation.TargetPath).ToArray());
+        foreach (var invocation in plan)
+            CollectionAssert.AreEqual(new[] { "restore", invocation.TargetPath, "--nologo", "--packages", "packages", "--no-dependencies" },
+                invocation.Arguments.Take(6).ToArray());
+        foreach (var invocation in plan)
+        {
+            CollectionAssert.AreEquivalent(new[] { "-p:Platform=AnyCPU", "-p:Configuration=Debug", "-p:BuildingSolutionFile=true" },
+                invocation.Arguments.Skip(6).ToArray());
+            Assert.IsFalse(invocation.Arguments.Contains("App.slnx"));
+        }
     }
 
     [TestMethod]
@@ -253,7 +273,7 @@ public sealed class WorkspaceLoadRestorePackagesPathTests : SharedWorkspaceTestB
                     <Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework><NuGetAudit>false</NuGetAudit></PropertyGroup>
                     <ItemGroup><PackageReference Include="RestoreProbe" Version="1.0.0"/>{reference}</ItemGroup></Project>
                     """);
-                projects.Add(new(path, Path.Combine(root, "packages-" + name)));
+                projects.Add(new(path, Path.Combine(root, "packages-" + name), null, System.Collections.Immutable.ImmutableDictionary<string, string>.Empty, Path.Combine(directory, "obj", "project.assets.json")));
             }
             var runner = new DotnetCommandRunner();
             // Establish real assets with independently recorded caches using isolated restores.
@@ -265,7 +285,7 @@ public sealed class WorkspaceLoadRestorePackagesPathTests : SharedWorkspaceTestB
             }
             File.WriteAllText(Path.Combine(root, "Both.slnx"), """<Solution><Project Path="A/A.csproj"/><Project Path="B/B.csproj"/></Solution>""");
             var plan = RestoreInvocationPlanner.Plan(Path.Combine(root, "Both.slnx"),
-                RestoreInvocationPlanner.Capture(projects.Select(p => p.ProjectPath)));
+                RestoreInvocationPlanner.Capture(projects.Select(p => p.ProjectPath), System.Collections.Immutable.ImmutableDictionary<string, string>.Empty, CancellationToken.None));
             foreach (var invocation in plan)
             {
                 var execution = await runner.RunAsync(root, invocation.TargetPath, invocation.Arguments, CancellationToken.None);
@@ -273,7 +293,7 @@ public sealed class WorkspaceLoadRestorePackagesPathTests : SharedWorkspaceTestB
             }
             foreach (var project in projects)
             {
-                Assert.AreEqual(project.PackagesPath, RestoreStalenessDetector.TryReadRestorePackagesPath(project.ProjectPath));
+                Assert.AreEqual(project.PackagesPath, RestoreStalenessDetector.TryReadRestorePackagesPath(project.ProjectPath, System.Collections.Immutable.ImmutableDictionary<string, string>.Empty));
                 Assert.IsTrue(Directory.Exists(Path.Combine(project.PackagesPath!, "restoreprobe", "1.0.0")));
             }
         }
@@ -289,15 +309,30 @@ public sealed class WorkspaceLoadRestorePackagesPathTests : SharedWorkspaceTestB
     private static async Task<(WorkspaceStatusDto Status, RecordingRestoreRunner Runner, GatedCommandExecutor Executor, WorkspaceManager Manager)> LoadAsync(
         string solutionPath)
     {
-        var manager = new WorkspaceManager(
+        var manager = new WorkspaceManager(new RoslynMcp.Roslyn.Services.ForkInvocationPathPolicy(new RoslynMcp.Tests.Helpers.OwnedTestWorkspacePathPolicy()),
             NullLogger<WorkspaceManager>.Instance,
             new PreviewStore(),
             new FileWatcherService(NullLogger<FileWatcherService>.Instance),
             new WorkspaceManagerOptions { MaxConcurrentWorkspaces = 4, RestoreRaceWaitMs = 0 });
-        var status = await manager.LoadAsync(solutionPath, CancellationToken.None);
+        var status = await manager.LoadAsync(solutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(solutionPath, new Dictionary<string, string>()), CancellationToken.None);
         var runner = new RecordingRestoreRunner();
         var executor = new GatedCommandExecutor(manager, runner, NullLogger<GatedCommandExecutor>.Instance);
         return (status, runner, executor, manager);
+    }
+
+    private static void AssertNodeInvocations(IReadOnlyList<EvaluatedBuildGraph.Node> nodes,
+        IReadOnlyList<IReadOnlyList<string>> invocations, Func<EvaluatedBuildGraph.Node, string?> root)
+    {
+        Assert.HasCount(nodes.Count, invocations);
+        for (var index = 0; index < nodes.Count; index++)
+        {
+            var node = nodes[index];
+            var prefix = new List<string> { "restore", node.ProjectPath, "--nologo" };
+            if (root(node) is { } packages) prefix.AddRange(["--packages", packages]);
+            prefix.Add("--no-dependencies");
+            CollectionAssert.AreEqual(MsBuildCommandProperties.Append(prefix, node.Globals), invocations[index].ToArray(),
+                "Every dependency-first project command must retain its exact evaluated property context.");
+        }
     }
 
     private static void WriteAssetsWithPackagesPath(string projectFilePath, string packagesPath)
@@ -311,7 +346,7 @@ public sealed class WorkspaceLoadRestorePackagesPathTests : SharedWorkspaceTestB
         File.WriteAllText(Path.Combine(objDirectory, "project.assets.json"), json);
     }
 
-    private sealed class RecordingRestoreRunner : IDotnetCommandRunner
+    private sealed class RecordingRestoreRunner : RoslynMcp.Tests.Helpers.CannedCommandRunner
     {
         private readonly List<IReadOnlyList<string>> _invocations = [];
 
@@ -326,7 +361,7 @@ public sealed class WorkspaceLoadRestorePackagesPathTests : SharedWorkspaceTestB
             }
         }
 
-        public Task<CommandExecutionDto> RunAsync(
+        public override Task<CommandExecutionDto> RunAsync(
             string workingDirectory,
             string targetPath,
             IReadOnlyList<string> arguments,

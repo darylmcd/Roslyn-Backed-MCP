@@ -39,9 +39,6 @@ public sealed class FixAllServiceGuidanceTests : SharedWorkspaceTestBase
         WorkspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     // ------------------------------------------------------------------
     // Unit tests on the guidance builders. These pin the text shape so
     // dependent tooling (audit reports, agent prompts) can rely on stable

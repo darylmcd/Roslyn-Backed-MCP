@@ -5,6 +5,7 @@ using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -34,9 +35,6 @@ public sealed class WorkspaceLoadRestoreRaceTests : SharedWorkspaceTestBase
 {
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
-
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
 
     /// <summary>
     /// Baseline: when no in-flight restore exists (no <c>obj/</c> artefacts) the wait path
@@ -71,7 +69,7 @@ public sealed class WorkspaceLoadRestoreRaceTests : SharedWorkspaceTestBase
                 "Precondition: scrubbed sample solution must not contain restore artefacts.");
 
             var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-            var status = await manager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+            var status = await manager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
             stopwatch.Stop();
 
             Assert.IsTrue(status.IsLoaded);
@@ -148,7 +146,7 @@ public sealed class WorkspaceLoadRestoreRaceTests : SharedWorkspaceTestBase
             }, writerCts.Token);
 
             var loadStartUtc = DateTime.UtcNow;
-            var status = await manager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+            var status = await manager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
             var loadCompletedUtc = DateTime.UtcNow;
 
             writerCts.Cancel();
@@ -227,7 +225,7 @@ public sealed class WorkspaceLoadRestoreRaceTests : SharedWorkspaceTestBase
             }, writerCts.Token);
 
             var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-            var status = await manager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+            var status = await manager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
             stopwatch.Stop();
 
             writerCts.Cancel();
@@ -265,7 +263,7 @@ public sealed class WorkspaceLoadRestoreRaceTests : SharedWorkspaceTestBase
 
             await RunRestoreAsync(commandRunner, copiedSolutionPath, CancellationToken.None);
 
-            var status = await manager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+            var status = await manager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
             Assert.IsFalse(status.RestoreRequired, "Freshly restored workspace should not report restore drift.");
 
             var packagesPropsPath = Path.Combine(copiedRoot, "Directory.Packages.props");
@@ -298,7 +296,7 @@ public sealed class WorkspaceLoadRestoreRaceTests : SharedWorkspaceTestBase
                 status,
                 autoRestore: true,
                 NullLogger.Instance,
-                CancellationToken.None)).Status;
+                CancellationToken.None, timeProvider:System.TimeProvider.System)).Status;
 
             Assert.IsFalse(status.RestoreRequired, "Auto-restore should clear restoreRequired after rerunning restore and reload.");
             Assert.AreEqual(
@@ -327,7 +325,7 @@ public sealed class WorkspaceLoadRestoreRaceTests : SharedWorkspaceTestBase
         try
         {
             using var manager = CreateIsolatedManager(restoreRaceWaitMs: 0);
-            var status = await manager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+            var status = await manager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
             var restoreRequired = status with { RestoreRequired = true };
             var runner = new GateProbeCommandRunner();
             using var executor = new GatedCommandExecutor(
@@ -338,7 +336,7 @@ public sealed class WorkspaceLoadRestoreRaceTests : SharedWorkspaceTestBase
             await runner.BuildStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
 
             var restore = WorkspaceTools.RestoreAndReloadIfRequiredAsync(
-                executor, ValidationOptions, manager, restoreRequired, autoRestore: true, NullLogger.Instance, CancellationToken.None);
+                executor, ValidationOptions, manager, restoreRequired, autoRestore: true, NullLogger.Instance, CancellationToken.None, timeProvider:System.TimeProvider.System);
 
             await Task.Delay(300);
             Assert.IsFalse(runner.RestoreStarted, "restore must not start while the workspace command gate is held.");
@@ -365,7 +363,7 @@ public sealed class WorkspaceLoadRestoreRaceTests : SharedWorkspaceTestBase
         try
         {
             using var manager = CreateIsolatedManager(restoreRaceWaitMs: 0);
-            var status = await manager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+            var status = await manager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
             var restoreRequired = status with { RestoreRequired = true };
             var runner = new GateProbeCommandRunner();
             using var executor = new GatedCommandExecutor(
@@ -380,7 +378,7 @@ public sealed class WorkspaceLoadRestoreRaceTests : SharedWorkspaceTestBase
                 var shortBudget = new ValidationServiceOptions { RestoreTimeout = TimeSpan.FromMilliseconds(200) };
                 await Assert.ThrowsExactlyAsync<TimeoutException>(() =>
                     WorkspaceTools.RestoreAndReloadIfRequiredAsync(
-                        executor, shortBudget, manager, restoreRequired, autoRestore: true, NullLogger.Instance, CancellationToken.None));
+                        executor, shortBudget, manager, restoreRequired, autoRestore: true, NullLogger.Instance, CancellationToken.None, timeProvider:System.TimeProvider.System));
                 Assert.IsFalse(runner.RestoreStarted, "queue wait must count against the restore budget; restore never starts.");
             }
             finally
@@ -399,7 +397,7 @@ public sealed class WorkspaceLoadRestoreRaceTests : SharedWorkspaceTestBase
     /// Fake runner: a "build" command blocks until released; a "restore" command records whether
     /// it started and whether the build was still in flight at that moment.
     /// </summary>
-    private sealed class GateProbeCommandRunner : IDotnetCommandRunner
+    private sealed class GateProbeCommandRunner : RoslynMcp.Tests.Helpers.CannedCommandRunner
     {
         private volatile bool _buildInFlight;
         private volatile bool _restoreStarted;
@@ -413,7 +411,7 @@ public sealed class WorkspaceLoadRestoreRaceTests : SharedWorkspaceTestBase
 
         public bool RestoreOverlappedBuild => _restoreOverlappedBuild;
 
-        public async Task<CommandExecutionDto> RunAsync(
+        public override async Task<CommandExecutionDto> RunAsync(
             string workingDirectory,
             string targetPath,
             IReadOnlyList<string> arguments,
@@ -460,7 +458,7 @@ public sealed class WorkspaceLoadRestoreRaceTests : SharedWorkspaceTestBase
 
     private static WorkspaceManager CreateIsolatedManager(int restoreRaceWaitMs)
     {
-        return new WorkspaceManager(
+        return new WorkspaceManager(new RoslynMcp.Roslyn.Services.ForkInvocationPathPolicy(new RoslynMcp.Tests.Helpers.OwnedTestWorkspacePathPolicy()),
             NullLogger<WorkspaceManager>.Instance,
             new PreviewStore(),
             new FileWatcherService(NullLogger<FileWatcherService>.Instance),

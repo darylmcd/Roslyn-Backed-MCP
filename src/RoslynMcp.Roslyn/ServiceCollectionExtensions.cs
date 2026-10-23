@@ -24,6 +24,7 @@ public static class ServiceCollectionExtensions
         // Direct WorkspaceManager construction intentionally retains its historical ownership
         // behavior for isolated callers and tests.
         services.AddSingleton<IWorkspaceManager>(sp => WorkspaceManager.CreateProviderOwned(
+            sp.GetRequiredService<ForkInvocationPathPolicy>(),
             sp.GetRequiredService<ILogger<WorkspaceManager>>(),
             sp.GetRequiredService<IPreviewStore>(),
             sp.GetRequiredService<IFileWatcherService>(),
@@ -154,7 +155,12 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IImpactSweepService, ImpactSweepService>();
         services.AddSingleton<ITestReferenceMapService, TestReferenceMapService>();
         services.AddSingleton<IWorkspaceValidationService, WorkspaceValidationService>();
-        services.AddSingleton<IWorkspaceForkApplyService, WorkspaceForkApplyService>();
+        services.AddSingleton<IWorkspaceForkApplyService>(sp => new WorkspaceForkApplyService(
+            sp.GetRequiredService<ForkInvocationPathPolicy>(), sp.GetRequiredService<IWorkspaceManager>(),
+            sp.GetRequiredService<IWorkspaceExecutionGate>(), sp.GetRequiredService<IPreviewStore>(),
+            sp.GetRequiredService<IWorkspaceValidationService>(), sp.GetRequiredService<ITestRunnerService>(),
+            sp.GetRequiredService<IDotnetCommandRunner>(), sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<WorkspaceForkApplyService>>(),
+            PhysicalGraphNamespace.ForkParent, TimeProvider.System));
         services.AddSingleton<IWorkspaceWarmService, WorkspaceWarmService>();
         services.AddSingleton<IWorkspaceDriftService, WorkspaceDriftService>();
         services.AddSingleton<IChangeSignatureService, ChangeSignatureService>();

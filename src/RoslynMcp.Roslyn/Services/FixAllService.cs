@@ -1,14 +1,14 @@
-using RoslynMcp.Core.Models;
-using RoslynMcp.Core.Services;
-using RoslynMcp.Roslyn.Contracts;
-using RoslynMcp.Roslyn.Helpers;
+using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CodeActions;
 using Microsoft.CodeAnalysis.CodeFixes;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging;
-using System.Collections.Immutable;
+using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Contracts;
+using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -274,7 +274,7 @@ public sealed class FixAllService : IFixAllService
         }
 
         var newSolution = applyOp.ChangedSolution;
-        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
+        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, SolutionDiffReadContext.ForWorkspace(_workspace, workspaceId), ct).ConfigureAwait(false);
         if (changes.Count == 0)
         {
             return BuildUnverifiedPreview(diagnosticId, scope, "The provider made no source changes.");
@@ -298,13 +298,11 @@ public sealed class FixAllService : IFixAllService
         var description = $"Fix all '{diagnosticId}' ({scope}): {fixedCount} occurrences";
         var token = _previewStore.Store(
             workspaceId,
+            solution,
             newSolution,
             _workspace.GetCurrentVersion(workspaceId),
             description,
-            // preview-token-apply-route-provenance: `diffTruncated: false` preserves the exact
-            // semantic of the prior 4-argument call (PreviewStore defaults the flag to false);
-            // `kind` lets fix_all_apply refuse a token minted by a different producer family.
-            diffTruncated: false,
+            changes,
             kind: PreviewKind.FixAll);
 
         return new FixAllPreviewDto(

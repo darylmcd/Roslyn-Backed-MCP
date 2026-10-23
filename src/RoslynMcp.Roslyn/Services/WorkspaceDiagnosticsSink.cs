@@ -20,6 +20,8 @@ internal sealed class WorkspaceDiagnosticsSink
 {
     private readonly ConcurrentQueue<DiagnosticDto> _queue = new();
     private readonly int _maxDiagnostics;
+    private readonly object _sync = new();
+    private (WorkspaceDiagnosticsSink Sink, string WorkspaceId, ILogger Logger)? _forward;
 
     public WorkspaceDiagnosticsSink(int maxDiagnostics)
     {
@@ -28,15 +30,45 @@ internal sealed class WorkspaceDiagnosticsSink
 
     public ConcurrentQueue<DiagnosticDto> Queue => _queue;
 
+    internal WorkspaceDiagnosticsSink CreateCandidate() => new(_maxDiagnostics);
+
+    internal void ForwardTo(WorkspaceDiagnosticsSink target, string workspaceId, ILogger logger)
+    {
+        lock (_sync)
+        {
+            if (_forward is not null || ReferenceEquals(this, target))
+                throw new InvalidOperationException("Candidate diagnostics already have an owner.");
+            while (_queue.TryDequeue(out var diagnostic)) target.Report(diagnostic, workspaceId, logger);
+            _forward = (target, workspaceId, logger);
+        }
+    }
+
+    private void Report(DiagnosticDto diagnostic, string workspaceId, ILogger logger)
+    {
+        lock (_sync)
+        {
+            if (_forward is { } forward)
+            {
+                forward.Sink.Report(diagnostic, forward.WorkspaceId, forward.Logger);
+                return;
+            }
+            _queue.Enqueue(diagnostic);
+            while (_queue.Count > _maxDiagnostics) _queue.TryDequeue(out _);
+            logger.LogWarning("Workspace {WorkspaceId} diagnostic: {Message}", workspaceId, diagnostic.Message);
+        }
+    }
+
     public void AttachTo(MSBuildWorkspace workspace, string workspaceId, ILogger logger)
     {
+        var redactor = new MsBuildCommandProperties.Redactor(MsBuildCommandProperties.Append([], workspace.Properties));
         workspace.RegisterWorkspaceFailedHandler(args =>
         {
             var severity = WorkspaceDiagnosticSeverityClassifier.Classify(
                 args.Diagnostic.Kind, args.Diagnostic.Message);
+            var message = redactor.Text(args.Diagnostic.Message);
             var dto = new DiagnosticDto(
                 Id: $"WORKSPACE_{args.Diagnostic.Kind}".ToUpperInvariant(),
-                Message: args.Diagnostic.Message,
+                Message: message,
                 Severity: severity,
                 Category: "Workspace",
                 FilePath: null,
@@ -45,16 +77,7 @@ internal sealed class WorkspaceDiagnosticsSink
                 EndLine: null,
                 EndColumn: null,
                 Location: null);
-            _queue.Enqueue(dto);
-            while (_queue.Count > _maxDiagnostics)
-            {
-                _queue.TryDequeue(out _);
-            }
-
-            logger.LogWarning(
-                "Workspace {WorkspaceId} diagnostic: {Message}",
-                workspaceId,
-                args.Diagnostic.Message);
+            Report(dto, workspaceId, logger);
         });
     }
 }

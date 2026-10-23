@@ -1,12 +1,12 @@
 # preview-store-explicit-internal-state — Preserve preview safety state at internal store producers
 
-**row:** `preview-store-explicit-internal-state` · **pri:** `Medium` · **size:** `M`
+**row:** `preview-store-explicit-internal-state` · **pri:** `Medium` · **size:** `L`
 
 ## Anchors
 
 - `src/RoslynMcp.Roslyn/Services/PreviewStore.cs:68` default-false Store; line 88 assigns Unspecified provenance.
 - `src/RoslynMcp.Roslyn/Contracts/IPreviewStore.cs:23` legacy contract; lines 56/89 drop explicit kind through interface fallback.
-- `src/RoslynMcp.Roslyn/Services/ChangeSignatureService.cs:524` signature preview producer discards computed diff safety state.
+- `src/RoslynMcp.Roslyn/Services/ChangeSignatureService.cs:429` signature preview producer discards computed diff safety state.
 - `src/RoslynMcp.Roslyn/Services/BatchTestScaffolder.cs:232` batch preview computes bounded changes, then line 236 stores without them.
 - `tests/RoslynMcp.Tests/PreviewStoreTests.cs` state preservation and contract tests.
 - `tests/RoslynMcp.Tests/ChangeSignaturePreviewTests.cs` signature preview/apply safety tests.
@@ -32,3 +32,16 @@
 - Live main contains no equivalent state-loss row; test-preview-store-cross-class-eviction concerns global capacity and different ownership semantics.
 
 2026-10-07 source re-vet at6599be65: ExtractMethodService shared-expression preview tail also calls Store(workspaceId, accumulator, _workspace.GetCurrentVersion(workspaceId), description) after bounded fileChanges are computed; legacy overload defaults diffTruncated:false/PreviewKind.Unspecified. Include this producer in the existing all-producer safety-state/provenance migration, preserving generic apply and public contract-care requirements. No Store change belongs to the separate extraction argument-guard initiative.
+
+2026-10-15 forced restore-graph prerequisite: native Workspace.CurrentSolution can differ from manager-authoritative evaluated metadata. All Store callers must supply explicit original snapshots as well as actual bounded diff state and intended producer kind; remove inference/default-state paths, migrate interface dispatch/fakes together. Direct plan20261015-restore-reviewed-graph.md and ADR0029 supersede the execution hold for this dependency. No completion claimed before original/fixed regressions and full delivery gates.
+
+# Preview snapshot/version pairing review addendum proposal
+
+| Field | Value |
+|---|---|
+| Existing row | preview-store-explicit-internal-state |
+| Evidence | CrossProjectRefactoringService.cs124 captures original solution;131 and other semantic calls await;200/297 Store receives subsequently fetched current version. PreviewStore.cs67-82 stores supplied tuple without consulting manager. |
+| Hosted protection | CrossProjectRefactoringTools.cs58/83 -> ToolDispatch.cs487 RunReadAsync; WorkspaceExecutionGate.cs281 reader lock spans callback. OrchestrationTools.cs78 similarly gated. |
+| Classification | Pre-existing direct-service concurrency concern; new namespace semantic await does not create an unprotected hosted path. No runtime reproduction and no hosted exploit claimed. |
+| Acceptance addition | Establish whether direct service callers must hold an execution lease. Enforce/document one complete authority boundary: capture original solution and version as one manager receipt and bind Store to it, or require validated caller lease. Deterministically suspend a producer, publish a competing update through supported service boundary, and prove no old-snapshot/new-version pairing can be issued. Preserve ordinary gated previews and sibling-edit rebase behavior. |
+| Scope discipline | Inventory only; do not implement or advance the paused batch from this finding. |

@@ -129,8 +129,8 @@ public sealed class CodeFixProviderRegistry : ICodeFixProviderRegistry
         {
             foreach (var reference in project.AnalyzerReferences)
             {
-                if (reference is not AnalyzerFileReference fileRef) continue;
-                var path = fileRef.FullPath;
+                if (AnalyzerReferenceIsolation.GetFileReference(reference) is not { } fileRef) continue;
+                var path = reference.FullPath;
                 if (string.IsNullOrWhiteSpace(path)) continue;
                 if (!seenReferencesByPath.TryGetValue(path, out var seenReferences))
                 {
@@ -141,10 +141,9 @@ public sealed class CodeFixProviderRegistry : ICodeFixProviderRegistry
                 if (!seenReferences.Add(fileRef)) continue;
 
                 // Preserve the reference's dependency resolver and isolated load context.
-                var providers = _byReference.GetValue(fileRef, reference =>
-                    new Lazy<FeatureProviderLoadResult<CodeFixProvider>>(
-                        () => _analyzerProviderLoader(reference)));
-                yield return providers.Value;
+                yield return AnalyzerReferenceIsolation.WithFileReference(reference, current =>
+                    _byReference.GetValue(current, owned => new Lazy<FeatureProviderLoadResult<CodeFixProvider>>(
+                        () => _analyzerProviderLoader(owned))).Value);
             }
         }
     }

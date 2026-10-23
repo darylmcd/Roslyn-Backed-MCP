@@ -26,12 +26,6 @@ public class DiagnosticFixIntegrationTests : SharedWorkspaceTestBase
         WorkspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup()
-    {
-        DisposeServices();
-    }
-
     [TestMethod]
     [DataRow("MCP002", "https://example.test/analyzer/MCP002", "https://example.test/analyzer/MCP002")]
     [DataRow("GEN001", "https://example.test/generator/GEN001", "https://example.test/generator/GEN001")]
@@ -214,7 +208,7 @@ public class DiagnosticFixIntegrationTests : SharedWorkspaceTestBase
 
         try
         {
-            var copiedWorkspace = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+            var copiedWorkspace = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
             var preview = await RefactoringService.PreviewCodeFixAsync(
                 copiedWorkspace.WorkspaceId,
                 diagnosticId: "CS8019",

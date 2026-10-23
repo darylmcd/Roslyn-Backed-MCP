@@ -62,7 +62,7 @@ internal static partial class TreeNodeFilterTranslator
     /// First TUnit.Engine version containing the fix for thomhurst/TUnit#6026. See the type doc
     /// comment for how this was pinned down and verified.
     /// </summary>
-    internal static readonly Version MinimumTUnitEngineVersionWithOrFilterFix = new(1, 46, 0);
+    internal static readonly NuGet.Versioning.NuGetVersion MinimumTUnitEngineVersionWithOrFilterFix = new(1, 46, 0);
 
     [GeneratedRegex(@"^\s*FullyQualifiedName\s*(=|~)\s*(.+?)\s*$", RegexOptions.IgnoreCase)]
     private static partial Regex FullyQualifiedNameAtomRegex();
@@ -70,9 +70,9 @@ internal static partial class TreeNodeFilterTranslator
     /// <summary>
     /// Translates <paramref name="vsTestFilter"/> into an MTP <c>--treenode-filter</c> expression.
     /// </summary>
-    /// <param name="resolvedTUnitEngineVersion">
+    /// <param name="resolvedTUnitEngineVersions">
     /// The target project's resolved <c>TUnit.Engine</c> version (see
-    /// <see cref="ProjectMetadataParser.TryGetResolvedPackageVersion"/>), or <see langword="null"/>
+    /// <see cref="ProjectMetadataParser.TryGetResolvedPackageVersions"/>), or <see langword="null"/>
     /// when it couldn't be determined (project not restored, or the assets file was unreadable).
     /// Gates whether a multi-method filter is safe to translate — see the type doc comment.
     /// </param>
@@ -92,8 +92,39 @@ internal static partial class TreeNodeFilterTranslator
     /// </exception>
     public static string Translate(
         string vsTestFilter,
-        Version? resolvedTUnitEngineVersion,
+        IReadOnlyList<NuGet.Versioning.NuGetVersion>? resolvedTUnitEngineVersions,
         IReadOnlyCollection<string>? knownFullyQualifiedTestNames = null)
+    {
+        var groups = ParseGroups(vsTestFilter, knownFullyQualifiedTestNames);
+        var atoms = vsTestFilter.Split('|');
+        var orFilterFixed = resolvedTUnitEngineVersions is { Count: > 0 }
+            && resolvedTUnitEngineVersions.All(version => version >= MinimumTUnitEngineVersionWithOrFilterFix);
+        if (atoms.Length > 1 && !orFilterFixed)
+        {
+            throw new PublicInvalidOperationException(
+                $"Filter '{vsTestFilter}' names more than one test ('|'). MTP's --treenode-filter can OR " +
+                "literal values within a single path segment, and MTP itself matches that correctly, but " +
+                "TUnit's own pre-filter had a bug (fixed in TUnit.Engine 1.46.0 — " +
+                "github.com/thomhurst/TUnit/issues/6026) that silently rejects every test for that exact " +
+                "shape on older versions. " +
+                (resolvedTUnitEngineVersions is null
+                    ? "This project's resolved TUnit.Engine version could not be determined (has it been restored?)."
+                    : $"This project resolves TUnit.Engine {string.Join(", ", resolvedTUnitEngineVersions)}.") +
+                " Call test_run once per test for now, or upgrade TUnit.Engine to 1.46.0 or later.");
+        }
+
+        var only = groups[0];
+        var namespaceSegment = only.Namespace ?? "*";
+        var methodSegment = only.Methods.Count == 1
+            ? only.Methods[0]
+            : $"({string.Join("|", only.Methods)})";
+        return $"/*/{namespaceSegment}/{only.ClassName}/{methodSegment}";
+    }
+
+    internal static void ValidateShape(string vsTestFilter, IReadOnlyCollection<string> knownFullyQualifiedTestNames) =>
+        _ = ParseGroups(vsTestFilter, knownFullyQualifiedTestNames);
+
+    private static List<FilterGroup> ParseGroups(string vsTestFilter, IReadOnlyCollection<string>? knownFullyQualifiedTestNames)
     {
         if (vsTestFilter.Contains('&') || vsTestFilter.Contains('(') || vsTestFilter.Contains(')'))
         {
@@ -152,31 +183,10 @@ internal static partial class TreeNodeFilterTranslator
                 "class-only shape that would be safe here. Run test_run once per namespace/class group instead.");
         }
 
-        var orFilterFixed = resolvedTUnitEngineVersion is not null
-            && resolvedTUnitEngineVersion >= MinimumTUnitEngineVersionWithOrFilterFix;
-        if (atoms.Length > 1 && !orFilterFixed)
-        {
-            throw new PublicInvalidOperationException(
-                $"Filter '{vsTestFilter}' names more than one test ('|'). MTP's --treenode-filter can OR " +
-                "literal values within a single path segment, and MTP itself matches that correctly, but " +
-                "TUnit's own pre-filter had a bug (fixed in TUnit.Engine 1.46.0 — " +
-                "github.com/thomhurst/TUnit/issues/6026) that silently rejects every test for that exact " +
-                "shape on older versions. " +
-                (resolvedTUnitEngineVersion is null
-                    ? "This project's resolved TUnit.Engine version could not be determined (has it been restored?)."
-                    : $"This project resolves TUnit.Engine {resolvedTUnitEngineVersion}.") +
-                " Call test_run once per test for now, or upgrade TUnit.Engine to 1.46.0 or later.");
-        }
-
-        var only = groups[0];
-        var namespaceSegment = only.Namespace ?? "*";
-        var methodSegment = only.Methods.Count == 1
-            ? only.Methods[0]
-            : $"({string.Join("|", only.Methods)})";
-        return $"/*/{namespaceSegment}/{only.ClassName}/{methodSegment}";
+        return groups;
     }
 
-    private static (string? Namespace, string ClassName, string Method) ParseAtom(string atom, string fullFilter)
+    internal static (string? Namespace, string ClassName, string Method) ParseAtom(string atom, string fullFilter)
     {
         var match = FullyQualifiedNameAtomRegex().Match(atom);
         if (!match.Success)

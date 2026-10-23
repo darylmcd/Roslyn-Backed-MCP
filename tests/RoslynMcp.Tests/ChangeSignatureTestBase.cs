@@ -77,22 +77,15 @@ public abstract class ChangeSignatureTestBase : OwnedRefactoringTestBase
     {
         public int StoreCalls { get; private set; }
 
-        public string Store(string workspaceId, Microsoft.CodeAnalysis.Solution modifiedSolution, int workspaceVersion, string description)
-        {
-            StoreCalls++;
-            return inner.Store(workspaceId, modifiedSolution, workspaceVersion, description);
-        }
+        public IReadOnlyList<string>? PeekChangedPaths(string token) => inner.PeekChangedPaths(token);
+        public PreviewKind PeekKind(string token) => inner.PeekKind(token);
 
-        public string Store(string workspaceId, Microsoft.CodeAnalysis.Solution modifiedSolution, int workspaceVersion, string description, bool diffTruncated)
+        public string Store(string workspaceId, Microsoft.CodeAnalysis.Solution originalSolution,
+            Microsoft.CodeAnalysis.Solution modifiedSolution, int workspaceVersion,
+            string description, IReadOnlyList<FileChangeDto> changes, PreviewKind kind)
         {
             StoreCalls++;
-            return inner.Store(workspaceId, modifiedSolution, workspaceVersion, description, diffTruncated);
-        }
-
-        public string Store(string workspaceId, Microsoft.CodeAnalysis.Solution modifiedSolution, int workspaceVersion, string description, IReadOnlyList<FileChangeDto> changes)
-        {
-            StoreCalls++;
-            return inner.Store(workspaceId, modifiedSolution, workspaceVersion, description, changes);
+            return inner.Store(workspaceId, originalSolution, modifiedSolution, workspaceVersion, description, changes, kind);
         }
 
         public (string WorkspaceId, Microsoft.CodeAnalysis.Solution OriginalSolution, Microsoft.CodeAnalysis.Solution ModifiedSolution,

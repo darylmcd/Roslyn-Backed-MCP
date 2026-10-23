@@ -1,11 +1,11 @@
-using RoslynMcp.Core.Models;
-using RoslynMcp.Core.Services;
-using RoslynMcp.Roslyn.Helpers;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging;
+using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -48,16 +48,15 @@ public sealed class FileOperationService : IFileOperationService
         var document = project.AddDocument(Path.GetFileName(fullPath), SourceText.From(normalizedContent), folders, fullPath);
         var newSolution = document.Project.Solution;
 
-        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
+        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, SolutionDiffReadContext.ForWorkspace(_workspace, workspaceId), ct).ConfigureAwait(false);
         var description = $"Create file '{Path.GetFileName(fullPath)}' in project '{project.Name}'";
         var token = _previewStore.Store(
             workspaceId,
+            solution,
             newSolution,
             _workspace.GetCurrentVersion(workspaceId),
             description,
             changes,
-            // preview-token-apply-route-provenance: record this preview's producer family so
-            // the paired *_apply route can refuse a token minted by a different family.
             kind: PreviewKind.FileCreate);
 
         _logger.LogInformation("Prepared create-file preview for {FilePath} in workspace {WorkspaceId}", fullPath, workspaceId);
@@ -109,16 +108,15 @@ public sealed class FileOperationService : IFileOperationService
             ?? throw new PublicInvalidOperationException("The requested file is not in the loaded workspace. Verify filePath names a loaded document, then reload the workspace if needed.");
 
         var newSolution = solution.RemoveDocument(document.Id);
-        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
+        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, SolutionDiffReadContext.ForWorkspace(_workspace, workspaceId), ct).ConfigureAwait(false);
         var description = $"Delete file '{Path.GetFileName(fullPath)}'";
         var token = _previewStore.Store(
             workspaceId,
+            solution,
             newSolution,
             _workspace.GetCurrentVersion(workspaceId),
             description,
             changes,
-            // preview-token-apply-route-provenance: record this preview's producer family so
-            // the paired *_apply route can refuse a token minted by a different family.
             kind: PreviewKind.FileDelete);
 
         _logger.LogInformation("Prepared delete-file preview for {FilePath} in workspace {WorkspaceId}", fullPath, workspaceId);
@@ -151,7 +149,7 @@ public sealed class FileOperationService : IFileOperationService
         var warnings = new List<string>();
         if (request.UpdateNamespace)
         {
-            var namespaceResult = await TryUpdateNamespaceAsync(sourceDocument, destinationProject, destinationPath, ct).ConfigureAwait(false);
+            var namespaceResult = await TryUpdateNamespaceAsync(sourceDocument, sourceText, destinationProject, destinationPath, ct).ConfigureAwait(false);
             if (namespaceResult.Text is not null)
             {
                 updatedText = namespaceResult.Text;
@@ -165,18 +163,19 @@ public sealed class FileOperationService : IFileOperationService
 
         var folders = GetFolders(destinationProject.FilePath, destinationPath);
         var createdDocument = destinationProject.AddDocument(Path.GetFileName(destinationPath), updatedText, folders, destinationPath);
-        var newSolution = createdDocument.Project.Solution.RemoveDocument(sourceDocument.Id);
+        var newSolution = createdDocument.Project.Solution
+            .WithDocumentSourceCodeKind(createdDocument.Id, sourceDocument.SourceCodeKind)
+            .RemoveDocument(sourceDocument.Id);
 
-        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
+        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, SolutionDiffReadContext.ForWorkspace(_workspace, workspaceId), ct).ConfigureAwait(false);
         var description = $"Move file '{Path.GetFileName(sourcePath)}' to '{destinationPath}'";
         var token = _previewStore.Store(
             workspaceId,
+            solution,
             newSolution,
             _workspace.GetCurrentVersion(workspaceId),
             description,
             changes,
-            // preview-token-apply-route-provenance: record this preview's producer family so
-            // the paired *_apply route can refuse a token minted by a different family.
             kind: PreviewKind.FileMove);
 
         _logger.LogInformation("Prepared move-file preview from {SourcePath} to {DestinationPath} in workspace {WorkspaceId}", sourcePath, destinationPath, workspaceId);
@@ -275,6 +274,7 @@ public sealed class FileOperationService : IFileOperationService
 
     private static async Task<(SourceText? Text, string? Warning)> TryUpdateNamespaceAsync(
         Document document,
+        SourceText sourceText,
         Microsoft.CodeAnalysis.Project destinationProject,
         string destinationPath,
         CancellationToken ct)
@@ -296,7 +296,8 @@ public sealed class FileOperationService : IFileOperationService
             var updatedRoot = compilationUnit.ReplaceNode(
                 fileScopedNamespace,
                 fileScopedNamespace.WithName(SyntaxFactory.ParseName(targetNamespace)));
-            return (updatedRoot.GetText(), "Namespace references outside the moved file are not automatically rewritten.");
+            return (SourceText.From(updatedRoot.ToFullString(), sourceText.Encoding, sourceText.ChecksumAlgorithm),
+                "Namespace references outside the moved file are not automatically rewritten.");
         }
 
         if (compilationUnit.Members.FirstOrDefault() is NamespaceDeclarationSyntax namespaceDeclaration)
@@ -304,7 +305,8 @@ public sealed class FileOperationService : IFileOperationService
             var updatedRoot = compilationUnit.ReplaceNode(
                 namespaceDeclaration,
                 namespaceDeclaration.WithName(SyntaxFactory.ParseName(targetNamespace)));
-            return (updatedRoot.GetText(), "Namespace references outside the moved file are not automatically rewritten.");
+            return (SourceText.From(updatedRoot.ToFullString(), sourceText.Encoding, sourceText.ChecksumAlgorithm),
+                "Namespace references outside the moved file are not automatically rewritten.");
         }
 
         return (null, "The file does not declare a namespace, so only the file path will change.");

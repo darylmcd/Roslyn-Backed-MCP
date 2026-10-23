@@ -35,9 +35,6 @@ public sealed class SymbolImpactSweepBudgetTests : SharedWorkspaceTestBase
             new RoslynMcp.Roslyn.Services.CompilationCache(WorkspaceManager));
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     public async Task SweepAsync_DefaultMode_PopulatesPreviewText()
     {

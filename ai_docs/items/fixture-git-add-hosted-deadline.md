@@ -4,7 +4,7 @@
 
 ## Anchors
 
-- `tests/RoslynMcp.Tests/Support/GitFixtureRunner.cs:103-138`
+- `tests/RoslynMcp.Tests/Support/GitFixtureRunner.cs:103`
 - `tests/RoslynMcp.Tests/Helpers/PwshScriptRunner.cs:102-170`
 - `tests/RoslynMcp.Tests/WorkspaceValidationVerdictTests.cs:25-35`
 - `tests/RoslynMcp.Tests/WorkspaceValidationVerdictTests.cs:85-95`

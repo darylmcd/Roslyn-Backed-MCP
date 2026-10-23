@@ -21,9 +21,6 @@ public sealed class HostArgumentRefusalEnvelopeTests : IsolatedWorkspaceTestBase
         WorkspaceId = await GetOrLoadWorkspaceIdAsync(SampleSolutionPath, CancellationToken.None);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     [DataRow(false, false, false, "filePath", "Provide one of:")]
     [DataRow(true, false, false, "line", "Missing: line, column.")]
@@ -89,7 +86,7 @@ public sealed class HostArgumentRefusalEnvelopeTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public async Task RealTools_EmitPublicCorrectionsWithoutCallerData()
     {
-        await using var harness = await ProductionParityMcpHarness.CreateAsync("host-argument-refusals", "2025-11-25");
+        await using var harness = await ProductionParityMcpHarness.CreateOwnedAsync("host-argument-refusals", "2025-11-25", TestFixtureFileSystem.FindRepositoryRoot());
         var (workspaceId, filePath, lineCount) = await LoadWireWorkspaceAsync(harness);
 
         for (var mask = 0; mask < 7; mask++)
@@ -151,7 +148,7 @@ public sealed class HostArgumentRefusalEnvelopeTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public async Task SourceTextPastEof_EmitsActualLineCountWithoutPath()
     {
-        await using var harness = await ProductionParityMcpHarness.CreateAsync("host-source-eof-refusal", "2025-11-25");
+        await using var harness = await ProductionParityMcpHarness.CreateOwnedAsync("host-source-eof-refusal", "2025-11-25", TestFixtureFileSystem.FindRepositoryRoot());
         var (workspaceId, filePath, lineCount) = await LoadWireWorkspaceAsync(harness);
         await AssertWireRefusalAsync(harness, "get_source_text",
             new Dictionary<string, object?> { ["workspaceId"] = workspaceId, ["filePath"] = filePath, ["startLine"] = lineCount + 1 },
@@ -161,7 +158,7 @@ public sealed class HostArgumentRefusalEnvelopeTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public async Task DiagnosticAliases_AdvertisedMatchingValuesProduceEquivalentSuccess()
     {
-        await using var harness = await ProductionParityMcpHarness.CreateAsync("host-diagnostic-alias-contract", "2025-11-25");
+        await using var harness = await ProductionParityMcpHarness.CreateOwnedAsync("host-diagnostic-alias-contract", "2025-11-25", TestFixtureFileSystem.FindRepositoryRoot());
         var (workspaceId, filePath, _) = await LoadWireWorkspaceAsync(harness);
         var listed = await harness.Client.ListToolsAsync(new ListToolsRequestParams(), CancellationToken.None);
         var schema = listed.Tools.Single(tool => tool.Name == "diagnostic_details").InputSchema;
@@ -204,11 +201,8 @@ public sealed class HostArgumentRefusalEnvelopeTests : IsolatedWorkspaceTestBase
     private static async Task<(string WorkspaceId, string FilePath, int LineCount)> LoadWireWorkspaceAsync(
         InMemoryMcpClientServerHarness harness)
     {
-        var loaded = await harness.Client.CallToolAsync("workspace_load",
-            new Dictionary<string, object?> { ["path"] = SampleSolutionPath, ["autoRestore"] = false },
-            cancellationToken: CancellationToken.None);
-        Assert.IsFalse(loaded.IsError == true);
-        var workspaceId = JsonNode.Parse(loaded.Content.OfType<TextContentBlock>().Single().Text)!["workspaceId"]!.GetValue<string>();
+        var workspaceId = await ProductionParityMcpHarness.LoadOwnedWorkspaceAsync(
+            harness, SampleSolutionPath, CancellationToken.None);
         var filePath = WorkspaceManager.GetCurrentSolution(WorkspaceId).Projects.SelectMany(p => p.Documents)
             .First(d => d.Name == "AnimalService.cs").FilePath!;
         var source = await WorkspaceManager.GetSourceTextAsync(WorkspaceId, filePath, CancellationToken.None);

@@ -17,12 +17,6 @@ public sealed class FileOperationIntegrationTests : IsolatedWorkspaceTestBase
         InitializeServices();
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup()
-    {
-        DisposeServices();
-    }
-
     [TestMethod]
     public async Task Create_File_Preview_And_Apply_Adds_File_To_Isolated_Workspace_Copy()
     {

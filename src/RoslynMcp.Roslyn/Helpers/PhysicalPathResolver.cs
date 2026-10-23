@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Text;
+using Microsoft.Win32.SafeHandles;
 using RoslynMcp.Core.Services;
 
 namespace RoslynMcp.Roslyn.Helpers;
@@ -180,6 +181,19 @@ public static class PhysicalPathResolver
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     private static extern uint QueryDosDeviceW(string deviceName, [Out] char[] targetPath, uint maxLength);
 
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true, ExactSpelling = true)]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    private static extern uint GetFileAttributesW(string fileName);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true, ExactSpelling = true)]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    private static extern SafeFileHandle CreateFileW(string fileName, uint desiredAccess, FileShare shareMode,
+        IntPtr securityAttributes, uint creationDisposition, uint flagsAndAttributes, IntPtr templateFile);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true, ExactSpelling = true)]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    private static extern uint GetFinalPathNameByHandleW(SafeFileHandle file, StringBuilder path, uint capacity, uint flags);
+
     private static string ResolveCore(
         string path,
         HashSet<string> activeLinkPaths,
@@ -203,6 +217,12 @@ public static class PhysicalPathResolver
         }
 
         var relativePath = absolutePath[pathRoot.Length..];
+        if (OperatingSystem.IsWindows() && pathRoot.Length == 3 && char.IsAsciiLetter(pathRoot[0])
+            && relativePath.Length != 0 && pathRoot[1] == ':' && pathRoot[2] == '\\'
+            && TryResolveUnchangedExistingPath(pathRoot, relativePath, out var unchanged))
+        {
+            return unchanged;
+        }
         // A DOS drive alias may point at a subdirectory. Its root remains the logical boundary
         // for parent traversal even though the backing path has a parent of its own.
         var aliasRoot = OperatingSystem.IsWindows() && GetDriveAliasTarget(pathRoot) is { } aliasTarget
@@ -235,7 +255,7 @@ public static class PhysicalPathResolver
             }
 
             var next = Path.Combine(current, component);
-            var rawLinkTarget = new FileInfo(next).LinkTarget;
+            var rawLinkTarget = GetCurrentLinkTarget(next);
             if (rawLinkTarget is null)
             {
                 current = next;
@@ -262,6 +282,102 @@ public static class PhysicalPathResolver
         }
 
         return Path.GetFullPath(current);
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static bool TryResolveUnchangedExistingPath(string lexicalRoot, string relativePath, out string resolved)
+    {
+        resolved = string.Empty;
+        var components = relativePath.Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
+            StringSplitOptions.RemoveEmptyEntries);
+        // Never let Win32 collapse parent traversal before following a link.
+        // Leave special/ambiguous Win32 spellings to the component resolver too.
+        if (components.Any(component => component is "." or ".." || component.Contains(':')
+            || component.EndsWith('.') || char.IsWhiteSpace(component[^1]))) return false;
+        var candidate = Path.TrimEndingDirectorySeparator(Path.GetFullPath(Path.Join(lexicalRoot, relativePath)));
+        using var handle = CreateFileW(candidate, 0, FileShare.Read | FileShare.Write | FileShare.Delete,
+            IntPtr.Zero, 3, 0x02000000, IntPtr.Zero); // OPEN_EXISTING; FILE_FLAG_BACKUP_SEMANTICS, following links.
+        if (handle.IsInvalid) return false;
+        if (!TryGetCanonicalWindowsHandlePath(handle, allowUnc: false, out var final)) return false;
+        // The handle is a fresh whole-path observation, not a retained authority.
+        // Changed spellings (links, short names, alternate drives) still use the
+        // original walker, preserving its output and error behavior.
+        if (!FileSystemPath.Comparer.Equals(final, candidate)) return false;
+        resolved = candidate;
+        return true;
+    }
+
+
+    [SupportedOSPlatform("windows")]
+    internal static SafeFileHandle OpenInputWindows(string path, bool metadataOnly, FileShare share)
+        => CreateFileW(path, metadataOnly ? 0u : 0x80000000u, share, IntPtr.Zero, 3,
+            0x02000000 | 0x00200000 | 0x40000000 | 0x08000000, IntPtr.Zero);
+
+    [SupportedOSPlatform("windows")]
+    internal static bool IsDiskHandleWindows(SafeFileHandle handle) => GetFileType(handle) == 1;
+
+    [DllImport("kernel32.dll", SetLastError = true, ExactSpelling = true)]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    private static extern uint GetFileType(SafeFileHandle handle);
+
+    [SupportedOSPlatform("windows")]
+    internal static bool TryGetCanonicalWindowsHandlePath(SafeFileHandle handle, bool allowUnc, out string resolved)
+    {
+        resolved = string.Empty;
+        if (TryReadHandlePath(handle, 1, out var final)
+            && final.Length >= 49 && final.StartsWith(@"\\?\Volume{", StringComparison.OrdinalIgnoreCase)
+            && Guid.TryParseExact(final.AsSpan(11, 36), "D", out _) && final[47] == '}' && final[48] == '\\')
+        {
+            var canonicalRoot = TryGetDriveRoot(final[..49]);
+            // Retain the exact GUID coordinate when the volume has no drive-letter mount.
+            resolved = CanonicalizeVolumeHandlePath(final, canonicalRoot);
+            return true;
+        }
+        // Remote UNC objects have no local volume GUID. Never accept an arbitrary
+        // DOS-drive fallback, which could hide an alternate drive or SUBST spelling.
+        if (allowUnc && TryReadHandlePath(handle, 0, out final)
+            && final.StartsWith(@"\\?\UNC\", StringComparison.OrdinalIgnoreCase))
+        {
+            resolved = Path.TrimEndingDirectorySeparator(@"\\" + final[8..]);
+            return true;
+        }
+        return false;
+    }
+
+    internal static string CanonicalizeVolumeHandlePath(string volumePath, string? driveRoot)
+        => Path.TrimEndingDirectorySeparator(driveRoot is null ? volumePath : Path.Join(driveRoot, volumePath[49..]));
+
+    [SupportedOSPlatform("windows")]
+    private static bool TryReadHandlePath(SafeFileHandle handle, uint flags, out string path)
+    {
+        path = string.Empty;
+        var buffer = new StringBuilder(512);
+        var length = GetFinalPathNameByHandleW(handle, buffer, (uint)buffer.Capacity, flags);
+        if (length >= buffer.Capacity)
+        {
+            buffer = new StringBuilder(checked((int)length));
+            length = GetFinalPathNameByHandleW(handle, buffer, (uint)buffer.Capacity, flags);
+        }
+        if (length == 0 || length >= buffer.Capacity) return false;
+        path = buffer.ToString();
+        return true;
+    }
+
+    private static string? GetCurrentLinkTarget(string path)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            // Query this component on every traversal. Ordinary Windows components
+            // cannot have a link target without the reparse-point attribute.
+            // No physical identity or authorization is retained between calls.
+            // Missing condition/output candidates are common. A failed attribute
+            // query must fall through to LinkTarget without throwing an extra
+            // managed exception for every missing component. It is not evidence
+            // of absence: link inspection may have different access semantics.
+            var attributes = GetFileAttributesW(path);
+            if (attributes != uint.MaxValue && (attributes & (uint)FileAttributes.ReparsePoint) == 0) return null;
+        }
+        return new FileInfo(path).LinkTarget;
     }
 
     private static string GetPhysicalParent(string path)

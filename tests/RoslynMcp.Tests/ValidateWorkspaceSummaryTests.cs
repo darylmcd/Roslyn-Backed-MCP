@@ -38,9 +38,6 @@ public sealed class ValidateWorkspaceSummaryTests : SharedWorkspaceTestBase
             ChangeTracker);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     public async Task ValidateAsync_DefaultMode_PopulatesErrorDiagnosticsAndDiscoveredTests()
     {

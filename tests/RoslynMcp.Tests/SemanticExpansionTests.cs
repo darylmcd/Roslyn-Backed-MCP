@@ -22,12 +22,6 @@ public class SemanticExpansionTests : SharedWorkspaceTestBase
         WorkspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup()
-    {
-        DisposeServices();
-    }
-
     [TestMethod]
     public async Task Find_Overrides_Finds_Rectangle_Describe()
     {
@@ -151,7 +145,7 @@ public class SemanticExpansionTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task Source_Generated_Documents_Are_Listed_For_Project()
     {
-        var generatedWorkspace = await WorkspaceManager.LoadAsync(GeneratedDocumentSolutionPath, CancellationToken.None);
+        var generatedWorkspace = await WorkspaceManager.LoadAsync(GeneratedDocumentSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(GeneratedDocumentSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
         var buildResult = await BuildService.BuildWorkspaceAsync(generatedWorkspace.WorkspaceId, CancellationToken.None);
         Assert.IsTrue(buildResult.Execution.Succeeded, buildResult.Execution.StdErr);
         var generatedDocuments = await WorkspaceManager.GetSourceGeneratedDocumentsAsync(

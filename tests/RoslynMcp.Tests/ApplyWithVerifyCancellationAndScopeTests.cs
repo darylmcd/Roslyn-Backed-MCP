@@ -5,6 +5,7 @@ using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Contracts;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -43,11 +44,16 @@ public sealed class ApplyWithVerifyCancellationAndScopeTests
 {
     private static ApplyUndoWorkflowService CreateService(
         ICompileCheckService compile,
-        IUndoService undo,
+        FakeUndo undo,
         IPreviewStore previewStore,
-        IRefactoringService? refactoring = null,
+        FakeRefactoring? refactoring = null,
         ILoggerFactory? loggerFactory = null)
-        => new(refactoring ?? new FakeRefactoring(), compile, undo, previewStore, loggerFactory);
+    {
+        var apply = refactoring ?? new FakeRefactoring();
+        apply.UndoOperation = new CallbackPreparedUndoOperation(
+            _ => throw new NotSupportedException("The apply returned an already-published operation."), undo.RestoreOwnedAsync);
+        return new(apply, compile, undo, previewStore, loggerFactory);
+    }
 
     // ── Cancellation-safe revert ──
 
@@ -79,16 +85,16 @@ public sealed class ApplyWithVerifyCancellationAndScopeTests
 
         Assert.AreSame(originalCancellation, thrown,
             "The ORIGINAL cancellation must surface, not a wrapped/replacement exception.");
-        Assert.AreEqual(1, undo.RevertCalls,
+        Assert.AreEqual(1, undo.CompensationCalls,
             "A best-effort revert must run exactly once after a post-apply cancellation.");
-        Assert.IsFalse(undo.LastRevertToken.IsCancellationRequested,
+        Assert.IsFalse(undo.LastCompensationToken.IsCancellationRequested,
             "The revert must use a FRESH, non-cancelled token — not the caller's cancelled token.");
-        Assert.AreNotEqual(cts.Token, undo.LastRevertToken,
+        Assert.AreNotEqual(cts.Token, undo.LastCompensationToken,
             "The revert token must not be the caller's (already-cancelled) token.");
     }
 
     [TestMethod]
-    public async Task Cancellation_BestEffortRevertThrows_IsLogged_AndOriginalCancellationSurfaces()
+    public async Task Cancellation_BestEffortCompensationThrows_IsLogged_AndOriginalCancellationSurfaces()
     {
         var cts = new CancellationTokenSource();
         var originalCancellation = new OperationCanceledException(cts.Token);
@@ -106,7 +112,7 @@ public sealed class ApplyWithVerifyCancellationAndScopeTests
         };
         // The best-effort revert itself blows up — this must be logged, must NOT be swallowed
         // silently, and must NOT mask the original cancellation.
-        var undo = new FakeUndo { RevertThrows = new InvalidOperationException("revert boom") };
+        var undo = new FakeUndo { CompensationThrows = new InvalidOperationException("revert boom") };
         var loggerFactory = new CapturingLoggerFactory();
         var previewStore = new FakePreviewStore("ws");
         var service = CreateService(compile, undo, previewStore, loggerFactory: loggerFactory);
@@ -116,7 +122,7 @@ public sealed class ApplyWithVerifyCancellationAndScopeTests
 
         Assert.AreSame(originalCancellation, thrown,
             "A failing best-effort revert must not mask the original cancellation.");
-        Assert.AreEqual(1, undo.RevertCalls, "The revert must have been attempted.");
+        Assert.AreEqual(1, undo.CompensationCalls, "The revert must have been attempted.");
         CollectionAssert.Contains(loggerFactory.Logger.Entries, LogLevel.Error,
             "A best-effort revert failure must be logged at Error, not swallowed (Directive #3).");
     }
@@ -148,7 +154,7 @@ public sealed class ApplyWithVerifyCancellationAndScopeTests
             service.ApplyWithVerifyAsync(previewToken: "tok", rollbackOnError: true, ct: cts.Token));
 
         Assert.AreEqual(0, refactoring.ApplyCalls, "Apply must not run when the baseline is cancelled.");
-        Assert.AreEqual(0, undo.RevertCalls,
+        Assert.AreEqual(0, undo.CompensationCalls,
             "No revert may be attempted for a cancellation that happens before anything is applied.");
     }
 
@@ -183,7 +189,7 @@ public sealed class ApplyWithVerifyCancellationAndScopeTests
             "The thrown exception must carry the caller's own token.");
         Assert.AreEqual(0, refactoring.ApplyCalls,
             "Apply must not run when the pre-apply baseline check reports Cancelled=true.");
-        Assert.AreEqual(0, undo.RevertCalls,
+        Assert.AreEqual(0, undo.CompensationCalls,
             "No revert may be attempted for a pre-apply cancellation — nothing was applied.");
     }
 
@@ -218,11 +224,11 @@ public sealed class ApplyWithVerifyCancellationAndScopeTests
 
         Assert.AreEqual(cts.Token, thrown.CancellationToken,
             "The thrown exception must carry the caller's own token.");
-        Assert.AreEqual(1, undo.RevertCalls,
+        Assert.AreEqual(1, undo.CompensationCalls,
             "A best-effort revert must run EXACTLY ONCE after a post-apply Cancelled=true DTO — not zero, not two.");
-        Assert.IsFalse(undo.LastRevertToken.IsCancellationRequested,
+        Assert.IsFalse(undo.LastCompensationToken.IsCancellationRequested,
             "The revert must use a FRESH, non-cancelled token — not the caller's cancelled token.");
-        Assert.AreNotEqual(cts.Token, undo.LastRevertToken,
+        Assert.AreNotEqual(cts.Token, undo.LastCompensationToken,
             "The revert token must not be the caller's (already-cancelled) token.");
     }
 
@@ -453,6 +459,15 @@ public sealed class ApplyWithVerifyCancellationAndScopeTests
 
     private sealed class FakeRefactoring : IRefactoringService
     {
+        public IPreparedUndoOperation? UndoOperation { get; set; }
+
+        public async Task<RefactoringApplyOperationResult> ApplyRefactoringWithUndoAsync(string previewToken, string toolName, bool force, CancellationToken ct)
+        {
+            var result = await ApplyRefactoringAsync(previewToken, toolName, force, ct);
+            return new RefactoringApplyOperationResult(result, result.Success
+                ? UndoOperation ?? throw new InvalidOperationException("The fake must bind an owned compensation operation.") : null);
+        }
+
         public int ApplyCalls;
         public ApplyResultDto Result = new(true, new[] { "Changed.cs" }, null);
 
@@ -489,23 +504,27 @@ public sealed class ApplyWithVerifyCancellationAndScopeTests
 
     private sealed class FakeUndo : IUndoService
     {
-        public int RevertCalls;
-        public CancellationToken LastRevertToken;
-        public bool RevertReturns = true;
-        public Exception? RevertThrows;
+        public int CompensationCalls;
+        public CancellationToken LastCompensationToken;
+        public bool CompensationReturns = true;
+        public Exception? CompensationThrows;
 
-        public Task<bool> RevertAsync(string workspaceId, CancellationToken cancellationToken = default)
+        public Task<bool> RestoreOwnedAsync(CancellationToken cancellationToken)
         {
-            RevertCalls++;
-            LastRevertToken = cancellationToken;
-            if (RevertThrows is not null)
+            CompensationCalls++;
+            LastCompensationToken = cancellationToken;
+            if (CompensationThrows is not null)
             {
-                throw RevertThrows;
+                throw CompensationThrows;
             }
-            return Task.FromResult(RevertReturns);
+            return Task.FromResult(CompensationReturns);
         }
 
-        public void CaptureBeforeApply(string workspaceId, string description, object? preApplySolution, IReadOnlyList<FileSnapshotDto>? fileSnapshots = null) { }
+        public Task<bool> RevertAsync(string workspaceId, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException("Verification must compensate its exact operation, never the global last undo.");
+
+        public Task<IPreparedUndoOperation> PrepareBeforeApplyAsync(IWorkspaceMutationOperation physicalOperation, CancellationToken ct) =>
+            throw new NotSupportedException("This workflow fake does not prepare apply transactions.");
 
         public UndoEntry? GetLastOperation(string workspaceId) => null;
 
@@ -537,14 +556,12 @@ public sealed class ApplyWithVerifyCancellationAndScopeTests
                 ? (_workspaceId, _original, _modified, 1, "fake preview", false)
                 : null;
 
-        public string Store(string workspaceId, Solution modifiedSolution, int workspaceVersion, string description)
-            => throw new NotImplementedException();
+        public IReadOnlyList<string>? PeekChangedPaths(string token) => null;
+        public PreviewKind PeekKind(string token) => PreviewKind.Unspecified;
 
-        public string Store(string workspaceId, Solution modifiedSolution, int workspaceVersion, string description, bool diffTruncated)
-            => throw new NotImplementedException();
-
-        public string Store(string workspaceId, Solution modifiedSolution, int workspaceVersion, string description, IReadOnlyList<FileChangeDto> changes)
-            => throw new NotImplementedException();
+        public string Store(string workspaceId, Solution originalSolution, Solution modifiedSolution, int workspaceVersion,
+            string description, IReadOnlyList<FileChangeDto> changes, PreviewKind kind)
+            => throw new NotSupportedException();
 
         public void Invalidate(string token) { }
 

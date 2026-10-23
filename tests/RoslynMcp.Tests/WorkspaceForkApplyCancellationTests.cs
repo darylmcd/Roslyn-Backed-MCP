@@ -5,12 +5,10 @@ namespace RoslynMcp.Tests;
 
 /// <summary>
 /// Regression for backlog row <c>workspace-fork-apply-robustness-cancellation</c>:
-/// <see cref="WorkspaceForkApplyService"/>'s private <c>CopyDirectory</c> /
-/// <c>DeleteDirectoryIfExists</c> recursive walks were synchronous and non-cancellable —
+/// The production copy-plan and cleanup walks must observe cancellation —
 /// a cancellation token passed to <c>workspace_fork_apply</c> was silently dropped once
-/// inside the copy/cleanup loops. These tests exercise the two helpers directly via
-/// reflection (an established pattern in this suite — see
-/// <c>DeadLoggerFieldsTests</c>/<c>ToolDiResolutionTests</c>) so the cancellation contract
+/// inside the copy/cleanup loops. These tests exercise the production bounded copy plan
+/// and the cleanup helper so the cancellation contract
 /// can be pinned without standing up the full <c>workspace_fork_apply</c> pipeline
 /// (real Roslyn workspace load + <c>dotnet restore</c>), and also pins the per-source-root
 /// <c>SemaphoreSlim</c> keying used to serialize concurrent fork-apply calls.
@@ -19,10 +17,6 @@ namespace RoslynMcp.Tests;
 public sealed class WorkspaceForkApplyCancellationTests
 {
     private static readonly Type ToolsType = typeof(WorkspaceForkApplyService);
-
-    private static readonly MethodInfo CopyDirectoryMethod = ToolsType.GetMethod(
-        "CopyDirectory", BindingFlags.NonPublic | BindingFlags.Static)
-        ?? throw new InvalidOperationException("CopyDirectory method not found via reflection.");
 
     private static readonly MethodInfo DeleteDirectoryIfExistsMethod = ToolsType.GetMethod(
         "DeleteDirectoryIfExists", BindingFlags.NonPublic | BindingFlags.Static)
@@ -44,7 +38,7 @@ public sealed class WorkspaceForkApplyCancellationTests
     }
 
     [TestMethod]
-    public void CopyDirectory_NotCancelled_CopiesAllFilesAndSubdirectoriesUnchanged()
+    public async Task CopyDirectory_NotCancelled_CopiesAllFilesAndSubdirectoriesUnchanged()
     {
         var sourceDir = Path.Combine(_tempRoot, "source");
         var destDir = Path.Combine(_tempRoot, "dest");
@@ -55,7 +49,7 @@ public sealed class WorkspaceForkApplyCancellationTests
         Directory.CreateDirectory(nested);
         File.WriteAllText(Path.Combine(nested, "c.txt"), "c");
 
-        InvokeCopyDirectory(sourceDir, destDir, CancellationToken.None);
+        await InvokeCopyDirectoryAsync(sourceDir, destDir, CancellationToken.None);
 
         Assert.AreEqual("a", File.ReadAllText(Path.Combine(destDir, "a.txt")));
         Assert.AreEqual("b", File.ReadAllText(Path.Combine(destDir, "b.txt")));
@@ -63,7 +57,7 @@ public sealed class WorkspaceForkApplyCancellationTests
     }
 
     [TestMethod]
-    public void CopyDirectory_CancelledBeforeWalk_ThrowsOperationCanceledAndCopiesNothing()
+    public async Task CopyDirectory_CancelledBeforeWalk_ThrowsOperationCanceledAndCopiesNothing()
     {
         var sourceDir = Path.Combine(_tempRoot, "source");
         var destDir = Path.Combine(_tempRoot, "dest");
@@ -74,10 +68,9 @@ public sealed class WorkspaceForkApplyCancellationTests
         using var cts = new CancellationTokenSource();
         cts.Cancel();
 
-        var thrown = Assert.ThrowsExactly<TargetInvocationException>(
-            () => InvokeCopyDirectory(sourceDir, destDir, cts.Token));
-        Assert.IsInstanceOfType<OperationCanceledException>(thrown.InnerException,
-            "Cancellation must surface as OperationCanceledException, not be silently swallowed by the copy loop.");
+        var thrown = await Assert.ThrowsExactlyAsync<OperationCanceledException>(
+            () => InvokeCopyDirectoryAsync(sourceDir, destDir, cts.Token));
+        Assert.AreEqual(cts.Token, thrown.CancellationToken);
         Assert.IsFalse(File.Exists(Path.Combine(destDir, "a.txt")),
             "A cancelled copy must not proceed to copy files — the check is at the top of each loop iteration.");
     }
@@ -151,8 +144,8 @@ public sealed class WorkspaceForkApplyCancellationTests
             "The keyed lock must be evicted and disposed after the last caller exits.");
     }
 
-    private static void InvokeCopyDirectory(string sourceDir, string destinationDir, CancellationToken ct) =>
-        CopyDirectoryMethod.Invoke(null, [sourceDir, destinationDir, ct]);
+    private static Task InvokeCopyDirectoryAsync(string sourceDir, string destinationDir, CancellationToken ct) =>
+        RoslynMcp.Tests.Helpers.BoundedForkCopyFixture.CopyAsync(sourceDir, destinationDir, ct);
 
     private static void InvokeDeleteDirectoryIfExists(string path, CancellationToken ct) =>
         DeleteDirectoryIfExistsMethod.Invoke(null, [path, ct]);

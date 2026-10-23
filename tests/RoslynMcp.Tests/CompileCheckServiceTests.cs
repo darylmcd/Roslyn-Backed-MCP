@@ -14,9 +14,6 @@ public sealed class CompileCheckServiceTests : IsolatedWorkspaceTestBase
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     public async Task CheckAsync_UnsupportedProject_GivesVerboseSupportGuidance()
     {

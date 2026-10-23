@@ -1,5 +1,6 @@
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests.Services;
 
@@ -18,33 +19,6 @@ namespace RoslynMcp.Tests.Services;
 [TestClass]
 public sealed class WorkspaceCacheStoreInvalidationTests
 {
-    private string _cacheRoot = null!;
-    private WorkspaceCacheStore _store = null!;
-
-    [TestInitialize]
-    public void Setup()
-    {
-        _cacheRoot = Path.Combine(TestTempRoot.Current, "WorkspaceCacheStoreInvalidation", Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(_cacheRoot);
-        _store = new WorkspaceCacheStore(_cacheRoot);
-    }
-
-    [TestCleanup]
-    public void Teardown()
-    {
-        try
-        {
-            if (Directory.Exists(_cacheRoot))
-            {
-                Directory.Delete(_cacheRoot, recursive: true);
-            }
-        }
-        catch
-        {
-            // Best-effort cleanup — another test runner instance may hold a lock.
-        }
-    }
-
     /// <summary>
     /// Primary scenario from the plan's risk #1 ("on-disk format becomes a compatibility
     /// surface"): bumping the SDK version component of the key invalidates cleanly. A new
@@ -54,21 +28,24 @@ public sealed class WorkspaceCacheStoreInvalidationTests
     [TestMethod]
     public async Task SdkVersionBump_InvalidatesPriorEntry()
     {
-        var solutionHash = "sln-stable";
-        var graphHash = "graph-stable";
-        var beforeBump = new WorkspaceCacheKey(solutionHash, ".NET 10.0.0", graphHash);
-        var afterBump = new WorkspaceCacheKey(solutionHash, ".NET 10.0.1", graphHash);
-        var entry = SampleEntry(@"C:\repo\Original.csproj");
+        await WithStoreAsync(async store =>
+        {
+            var solutionHash = "sln-stable";
+            var graphHash = "graph-stable";
+            var beforeBump = new WorkspaceCacheKey(solutionHash, ".NET 10.0.0", graphHash);
+            var afterBump = new WorkspaceCacheKey(solutionHash, ".NET 10.0.1", graphHash);
+            var entry = SampleEntry(@"C:\repo\Original.csproj");
 
-        Assert.IsTrue(await _store.PutAsync(beforeBump, entry, CancellationToken.None));
+            Assert.IsTrue(await store.PutAsync(beforeBump, entry, CancellationToken.None));
 
-        // Pre-bump: hit on the original key.
-        var preBumpRead = await _store.TryGetAsync(beforeBump, CancellationToken.None);
-        Assert.IsNotNull(preBumpRead, "Sanity: the original key should hit before bumping the SDK version.");
+            // Pre-bump: hit on the original key.
+            var preBumpRead = await store.TryGetAsync(beforeBump, CancellationToken.None);
+            Assert.IsNotNull(preBumpRead, "Sanity: the original key should hit before bumping the SDK version.");
 
-        // Post-bump: miss on the new key — never observe the prior entry under the new SDK.
-        var postBumpRead = await _store.TryGetAsync(afterBump, CancellationToken.None);
-        Assert.IsNull(postBumpRead, "An SDK-version bump must invalidate the prior cache entry; a stale graph hash post-bump is a runtime poisoning.");
+            // Post-bump: miss on the new key — never observe the prior entry under the new SDK.
+            var postBumpRead = await store.TryGetAsync(afterBump, CancellationToken.None);
+            Assert.IsNull(postBumpRead, "An SDK-version bump must invalidate the prior cache entry; a stale graph hash post-bump is a runtime poisoning.");
+        });
     }
 
     /// <summary>
@@ -78,18 +55,21 @@ public sealed class WorkspaceCacheStoreInvalidationTests
     [TestMethod]
     public async Task SolutionHashBump_InvalidatesPriorEntry()
     {
-        var sdk = ".NET 10.0.0";
-        var graphHash = "graph-stable";
-        var firstSolution = new WorkspaceCacheKey("sln-A", sdk, graphHash);
-        var secondSolution = new WorkspaceCacheKey("sln-B", sdk, graphHash);
+        await WithStoreAsync(async store =>
+        {
+            var sdk = ".NET 10.0.0";
+            var graphHash = "graph-stable";
+            var firstSolution = new WorkspaceCacheKey("sln-A", sdk, graphHash);
+            var secondSolution = new WorkspaceCacheKey("sln-B", sdk, graphHash);
 
-        await _store.PutAsync(firstSolution, SampleEntry(@"C:\A.csproj"), CancellationToken.None);
+            await store.PutAsync(firstSolution, SampleEntry(@"C:\A.csproj"), CancellationToken.None);
 
-        var firstSolutionRead = await _store.TryGetAsync(firstSolution, CancellationToken.None);
-        Assert.IsNotNull(firstSolutionRead);
+            var firstSolutionRead = await store.TryGetAsync(firstSolution, CancellationToken.None);
+            Assert.IsNotNull(firstSolutionRead);
 
-        var secondSolutionRead = await _store.TryGetAsync(secondSolution, CancellationToken.None);
-        Assert.IsNull(secondSolutionRead, "A different solution hash must miss even when SDK + graph hashes match.");
+            var secondSolutionRead = await store.TryGetAsync(secondSolution, CancellationToken.None);
+            Assert.IsNull(secondSolutionRead, "A different solution hash must miss even when SDK + graph hashes match.");
+        });
     }
 
     /// <summary>
@@ -100,15 +80,18 @@ public sealed class WorkspaceCacheStoreInvalidationTests
     [TestMethod]
     public async Task GraphHashBump_InvalidatesPriorEntry()
     {
-        var solutionHash = "sln";
-        var sdk = ".NET 10.0.0";
-        var oldGraph = new WorkspaceCacheKey(solutionHash, sdk, "graph-2-projects");
-        var newGraph = new WorkspaceCacheKey(solutionHash, sdk, "graph-3-projects");
+        await WithStoreAsync(async store =>
+        {
+            var solutionHash = "sln";
+            var sdk = ".NET 10.0.0";
+            var oldGraph = new WorkspaceCacheKey(solutionHash, sdk, "graph-2-projects");
+            var newGraph = new WorkspaceCacheKey(solutionHash, sdk, "graph-3-projects");
 
-        await _store.PutAsync(oldGraph, SampleEntry(@"C:\Old.csproj"), CancellationToken.None);
+            await store.PutAsync(oldGraph, SampleEntry(@"C:\Old.csproj"), CancellationToken.None);
 
-        Assert.IsNotNull(await _store.TryGetAsync(oldGraph, CancellationToken.None), "Sanity: original graph hash should hit.");
-        Assert.IsNull(await _store.TryGetAsync(newGraph, CancellationToken.None), "A graph-hash bump (project added/removed) must miss the cache.");
+            Assert.IsNotNull(await store.TryGetAsync(oldGraph, CancellationToken.None), "Sanity: original graph hash should hit.");
+            Assert.IsNull(await store.TryGetAsync(newGraph, CancellationToken.None), "A graph-hash bump (project added/removed) must miss the cache.");
+        });
     }
 
     /// <summary>
@@ -119,14 +102,17 @@ public sealed class WorkspaceCacheStoreInvalidationTests
     [TestMethod]
     public async Task InvalidateAsync_RemovesEntry()
     {
-        var key = new WorkspaceCacheKey("sln", ".NET 10.0.0", "graph");
-        await _store.PutAsync(key, SampleEntry(@"C:\Project.csproj"), CancellationToken.None);
+        await WithStoreAsync(async store =>
+        {
+            var key = new WorkspaceCacheKey("sln", ".NET 10.0.0", "graph");
+            await store.PutAsync(key, SampleEntry(@"C:\Project.csproj"), CancellationToken.None);
 
-        Assert.IsNotNull(await _store.TryGetAsync(key, CancellationToken.None), "Sanity: the entry should be present before invalidation.");
+            Assert.IsNotNull(await store.TryGetAsync(key, CancellationToken.None), "Sanity: the entry should be present before invalidation.");
 
-        await _store.InvalidateAsync(key, CancellationToken.None);
+            await store.InvalidateAsync(key, CancellationToken.None);
 
-        Assert.IsNull(await _store.TryGetAsync(key, CancellationToken.None), "After InvalidateAsync the key must miss the cache.");
+            Assert.IsNull(await store.TryGetAsync(key, CancellationToken.None), "After InvalidateAsync the key must miss the cache.");
+        });
     }
 
     /// <summary>
@@ -136,13 +122,16 @@ public sealed class WorkspaceCacheStoreInvalidationTests
     [TestMethod]
     public async Task InvalidateAsync_OnMissingKey_IsNoOp()
     {
-        var key = new WorkspaceCacheKey("never-written", ".NET 10.0.0", "graph");
+        await WithStoreAsync(async store =>
+        {
+            var key = new WorkspaceCacheKey("never-written", ".NET 10.0.0", "graph");
 
-        await _store.InvalidateAsync(key, CancellationToken.None);
+            await store.InvalidateAsync(key, CancellationToken.None);
 
-        // Side-effect: the directory tree may or may not exist depending on whether anything
-        // else wrote to this root, but no exception was thrown — that's the whole assertion.
-        Assert.IsNull(await _store.TryGetAsync(key, CancellationToken.None));
+            // Side-effect: the directory tree may or may not exist depending on whether anything
+            // else wrote to this root, but no exception was thrown — that's the whole assertion.
+            Assert.IsNull(await store.TryGetAsync(key, CancellationToken.None));
+        });
     }
 
     /// <summary>
@@ -153,20 +142,23 @@ public sealed class WorkspaceCacheStoreInvalidationTests
     [TestMethod]
     public async Task FormatVersionMismatch_TreatsAsMiss()
     {
-        var key = new WorkspaceCacheKey("sln", ".NET 10.0.0", "graph");
-        await _store.PutAsync(key, SampleEntry(@"C:\Project.csproj"), CancellationToken.None);
+        await WithStoreAsync(async store =>
+        {
+            var key = new WorkspaceCacheKey("sln", ".NET 10.0.0", "graph");
+            await store.PutAsync(key, SampleEntry(@"C:\Project.csproj"), CancellationToken.None);
 
-        // Locate the on-disk entry by asking the store, then rewrite it with a fictional
-        // future format version.
-        var entryPath = _store.ResolveEntryPath(key);
-        Assert.IsTrue(File.Exists(entryPath), "The store must produce a discoverable entry path for an existing entry.");
+            // Locate the on-disk entry by asking the store, then rewrite it with a fictional
+            // future format version.
+            var entryPath = store.ResolveEntryPath(key);
+            Assert.IsTrue(File.Exists(entryPath), "The store must produce a discoverable entry path for an existing entry.");
 
-        const string futureVersionJson = """{"formatVersion":99,"projectGraph":[],"metadataReferences":[],"capturedAtUtc":"2026-05-05T00:00:00Z"}""";
-        await File.WriteAllTextAsync(entryPath, futureVersionJson);
+            const string futureVersionJson = """{"formatVersion":99,"projectGraph":[],"metadataReferences":[],"capturedAtUtc":"2026-05-05T00:00:00Z"}""";
+            await File.WriteAllTextAsync(entryPath, futureVersionJson);
 
-        var read = await _store.TryGetAsync(key, CancellationToken.None);
+            var read = await store.TryGetAsync(key, CancellationToken.None);
 
-        Assert.IsNull(read, "A format-version mismatch must read as a miss so the cache can be re-populated under the current schema.");
+            Assert.IsNull(read, "A format-version mismatch must read as a miss so the cache can be re-populated under the current schema.");
+        });
     }
 
     /// <summary>
@@ -177,15 +169,37 @@ public sealed class WorkspaceCacheStoreInvalidationTests
     [TestMethod]
     public async Task CorruptJson_TreatsAsMiss()
     {
-        var key = new WorkspaceCacheKey("sln", ".NET 10.0.0", "graph");
-        await _store.PutAsync(key, SampleEntry(@"C:\Project.csproj"), CancellationToken.None);
+        await WithStoreAsync(async store =>
+        {
+            var key = new WorkspaceCacheKey("sln", ".NET 10.0.0", "graph");
+            await store.PutAsync(key, SampleEntry(@"C:\Project.csproj"), CancellationToken.None);
 
-        var entryPath = _store.ResolveEntryPath(key);
-        await File.WriteAllTextAsync(entryPath, "this is not valid json {{{");
+            var entryPath = store.ResolveEntryPath(key);
+            await File.WriteAllTextAsync(entryPath, "this is not valid json {{{");
 
-        var read = await _store.TryGetAsync(key, CancellationToken.None);
+            var read = await store.TryGetAsync(key, CancellationToken.None);
 
-        Assert.IsNull(read, "Corrupt JSON must read as a miss; the cache must never propagate a parse failure to the consumer.");
+            Assert.IsNull(read, "Corrupt JSON must read as a miss; the cache must never propagate a parse failure to the consumer.");
+        });
+    }
+
+
+    private static async Task WithStoreAsync(Func<WorkspaceCacheStore, Task> body)
+    {
+        var root = Path.Combine(TestTempRoot.Current, "WorkspaceCacheStoreInvalidation", Guid.NewGuid().ToString("N"));
+        Exception? primary = null;
+        try
+        {
+            Directory.CreateDirectory(root);
+            var store = new WorkspaceCacheStore(root);
+            await body(store);
+        }
+        catch (Exception failure) { primary = failure; throw; }
+        finally
+        {
+            await CleanupFailureCollector.RunAfterFailureAsync("Cache invalidation fixture cleanup failed.", primary,
+                CleanupFailureCollector.FromAction(() => TestFixtureFileSystem.DeleteDirectoryIfExists(root)));
+        }
     }
 
     private static WorkspaceCacheEntry SampleEntry(string projectPath) =>

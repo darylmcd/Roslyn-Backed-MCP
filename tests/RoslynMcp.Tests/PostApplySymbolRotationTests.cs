@@ -14,15 +14,12 @@ public sealed class PostApplySymbolRotationTests : SharedWorkspaceTestBase
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     public async Task RenameApply_Returns_MutatedSymbol_With_New_Name_And_Fresh_Handle()
     {
         var copiedSolutionPath = CreateSampleSolutionCopy();
         var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
         var workspaceId = loadResult.WorkspaceId;
 
         try
@@ -60,7 +57,7 @@ public sealed class PostApplySymbolRotationTests : SharedWorkspaceTestBase
         // one) still resolves because neither MetadataName nor DisplayName changed.
         var copiedSolutionPath = CreateSampleSolutionCopy();
         var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
         var workspaceId = loadResult.WorkspaceId;
 
         try

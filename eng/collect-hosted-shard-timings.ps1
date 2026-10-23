@@ -66,6 +66,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'trx-reader.ps1')
 
 trap {
     [Console]::Error.WriteLine($_.Exception.Message)
@@ -185,29 +186,8 @@ function ConvertTo-ReportCell {
 function Read-TrxCaseDuration {
     param([Parameter(Mandatory)][string]$Path)
 
-    $settings = [System.Xml.XmlReaderSettings]::new()
-    $settings.DtdProcessing = [System.Xml.DtdProcessing]::Prohibit
-    $settings.XmlResolver = $null
-    $settings.IgnoreComments = $true
-
-    $document = [System.Xml.XmlDocument]::new()
-    $document.XmlResolver = $null
-    $reader = $null
-    try {
-        $reader = [System.Xml.XmlReader]::Create($Path, $settings)
-        $document.Load($reader)
-    }
-    catch {
-        # Name the file and the underlying cause: one invocation reads every leg of every sampled
-        # run, so a bare "malformed" verdict cannot be acted on, and a locked or permission-denied
-        # file would otherwise be reported as malformed content.
-        throw "Malformed MSTest TRX input '$Path': $($_.Exception.Message)"
-    }
-    finally {
-        if ($null -ne $reader) {
-            $reader.Dispose()
-        }
-    }
+    try { $document = Read-TrxDocument -Path $Path }
+    catch { throw "Malformed MSTest TRX input '$Path': $($_.Exception.Message)" }
 
     if ($null -eq $document.DocumentElement -or
         $document.DocumentElement.LocalName -ne 'TestRun') {
@@ -236,15 +216,7 @@ function Read-TrxCaseDuration {
             throw 'Malformed MSTest TRX result cannot be joined to a test definition.'
         }
 
-        [TimeSpan]$duration = [TimeSpan]::Zero
-        $durationText = $result.GetAttribute('duration')
-        if (-not [string]::IsNullOrWhiteSpace($durationText) -and
-            -not [TimeSpan]::TryParse($durationText, $invariantCulture, [ref]$duration)) {
-            throw 'Malformed MSTest TRX result contains an invalid duration.'
-        }
-        if ($duration.Ticks -lt 0) {
-            throw 'Malformed MSTest TRX result contains a negative duration.'
-        }
+        $duration = Read-TrxDuration -Result $result
 
         $sumTicks += $duration.Ticks
         $caseCount++

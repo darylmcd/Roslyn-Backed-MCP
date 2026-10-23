@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging.Abstractions;
+using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Runtime;
 using RoslynMcp.Host.Stdio.Security;
@@ -515,7 +516,7 @@ public class ClientRootPathValidatorTests
             Assert.IsTrue(restore.Succeeded,
                 $"The solution fixture must restore. ExitCode={restore.ExitCode} StdErr={restore.StdErr}");
 
-            using var manager = new WorkspaceManager(
+            using var manager = new WorkspaceManager(new RoslynMcp.Roslyn.Services.ForkInvocationPathPolicy(new RoslynMcp.Tests.Helpers.OwnedTestWorkspacePathPolicy()),
                 NullLogger<WorkspaceManager>.Instance,
                 new PreviewStore(),
                 new FileWatcherService(NullLogger<FileWatcherService>.Instance),
@@ -552,12 +553,13 @@ public class ClientRootPathValidatorTests
                 .PreviewRestructureAsync(workspaceId, "42", "43",
                     new RestructureScope(linkedExternalSource, null), CancellationToken.None);
             Assert.AreEqual(1, restructure.Changes.Count);
-            var edited = current.WithDocumentText(externalDocument.Id, SourceText.From("public class Changed { }"));
-            Assert.ThrowsExactly<InvalidOperationException>(() => manager.TryApplyChanges(workspaceId, edited));
-            var persistence = new DocumentSetPersistenceService(manager, NullLogger.Instance);
-            var persisted = await persistence.PersistAsync(
-                workspaceId, current, edited, edited.GetChanges(current), CancellationToken.None);
-            Assert.IsFalse(persisted.Success, "Document-set persistence must reject the alias before writing.");
+            var editService = new EditService(manager, NullLogger<EditService>.Instance);
+            await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => editService.ApplyTextEditsAsync(
+                workspaceId, externalDocument.FilePath!, [new TextEditDto(1, 1, 1, 1, "// changed\n")],
+                "apply_text_edit", CancellationToken.None));
+            await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+                ((IWorkspaceRecoveryAuthority)manager).CaptureRecoveryAsync(workspaceId, "aliased source",
+                    [FileSnapshotDto.FromExistingBytes(linkedExternalSource, File.ReadAllBytes(externalSourcePath))], CancellationToken.None));
             Assert.AreEqual(externalSource, File.ReadAllText(externalSourcePath),
                 "An aliased external document must never be written through MSBuildWorkspace.");
 
@@ -575,13 +577,13 @@ public class ClientRootPathValidatorTests
             Assert.AreEqual(externalSource, File.ReadAllText(externalSourcePath));
 
             using var undo = new UndoService(NullLogger<UndoService>.Instance, manager);
-            undo.CaptureBeforeApply(workspaceId, "alias rejection", preApplySolution: null,
+            await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => ((IWorkspaceRecoveryAuthority)manager).CaptureRecoveryAsync(workspaceId, "alias rejection",
             [
-                new FileSnapshotDto(programPath, "public class RestoredProgram { }"),
-                new FileSnapshotDto(linkedExternalSource, "public class RestoredExternal { }")
-            ]);
+                FileSnapshotDto.FromExistingBytes(programPath, File.ReadAllBytes(programPath)),
+                FileSnapshotDto.FromExistingBytes(linkedExternalSource, File.ReadAllBytes(externalSourcePath))
+            ], CancellationToken.None));
             Assert.IsFalse(await undo.RevertAsync(workspaceId, CancellationToken.None),
-                "Snapshot undo must reject every aliased target before its first restore.");
+                "Rejected preparation must leave no published undo authority.");
             Assert.AreEqual("public class Program { }", File.ReadAllText(programPath));
             Assert.AreEqual(externalSource, File.ReadAllText(externalSourcePath));
         }

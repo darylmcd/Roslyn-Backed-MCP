@@ -16,9 +16,6 @@ public sealed class ChangeTrackerTests : IsolatedWorkspaceTestBase
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     private static SuppressionService CreateSuppressionService() =>
         new SuppressionService(EditorConfigService, EditService, WorkspaceManager, CompileCheckService);
 

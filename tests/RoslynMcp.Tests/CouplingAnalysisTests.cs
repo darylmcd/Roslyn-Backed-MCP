@@ -25,9 +25,6 @@ public sealed class CouplingAnalysisTests : SharedWorkspaceTestBase
         WorkspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     public async Task GetCouplingMetrics_ReturnsMetrics_ForSampleWorkspace()
     {
@@ -147,7 +144,7 @@ public class TypeC
 }
 """, CancellationToken.None);
 
-            var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+            var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
             workspaceId = status.WorkspaceId;
 
             var metrics = await CouplingAnalysisService.GetCouplingMetricsAsync(
@@ -213,7 +210,7 @@ public class OrphanType
 }
 """, CancellationToken.None);
 
-            var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+            var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
             workspaceId = status.WorkspaceId;
 
             var metrics = await CouplingAnalysisService.GetCouplingMetricsAsync(
@@ -270,7 +267,7 @@ public class ConcreteThing : ThingBase, IThing
 }
 """, CancellationToken.None);
 
-            var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+            var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
             workspaceId = status.WorkspaceId;
 
             var metrics = await CouplingAnalysisService.GetCouplingMetricsAsync(

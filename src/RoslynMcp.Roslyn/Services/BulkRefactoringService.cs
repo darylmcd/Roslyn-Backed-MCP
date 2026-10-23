@@ -1,13 +1,13 @@
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Editing;
+using Microsoft.CodeAnalysis.FindSymbols;
+using Microsoft.CodeAnalysis.Operations;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Contracts;
 using RoslynMcp.Roslyn.Helpers;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.CodeAnalysis.FindSymbols;
-using Microsoft.CodeAnalysis.Operations;
-using Microsoft.CodeAnalysis.Editing;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -71,11 +71,11 @@ public sealed class BulkRefactoringService : IBulkRefactoringService
                 $"No replaceable references found for '{oldTypeName}' with scope '{normalizedScope}'.");
         }
 
-        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
+        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, SolutionDiffReadContext.ForWorkspace(_workspace, workspaceId), ct).ConfigureAwait(false);
         var description = $"Replace {replacementCount} reference(s) of '{oldTypeName}' with '{newTypeName}' (scope: {normalizedScope})";
         // preview-token-apply-route-provenance: tag the producer family so bulk_replace_type_apply
         // can refuse a foreign token before mutating the workspace.
-        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes, PreviewKind.BulkReplaceType);
+        var token = _previewStore.Store(workspaceId, solution, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes, PreviewKind.BulkReplaceType);
 
         return new RefactoringPreviewDto(token, description, changes, null);
     }
@@ -274,7 +274,7 @@ public sealed class BulkRefactoringService : IBulkRefactoringService
                 $"No call-sites of '{oldMethod}' were rewritten. The method may have no callers, or every reference resolved to a declaration / nameof / cref rather than an invocation.");
         }
 
-        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
+        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, SolutionDiffReadContext.ForWorkspace(_workspace, workspaceId), ct).ConfigureAwait(false);
         var description =
             $"Replace {totalCallsites} call-site(s) of '{oldMethodSymbol.ToDisplayString()}' with '{newMethodSymbol.ToDisplayString()}' " +
             $"(argument reorder: [{string.Join(", ", indexMap)}])";
@@ -283,7 +283,7 @@ public sealed class BulkRefactoringService : IBulkRefactoringService
 
         // preview-token-apply-route-provenance: replace_invocation_preview redeems through the
         // SHARED bulk_replace_type_apply route, so it mints the same kind by design.
-        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes, PreviewKind.BulkReplaceType);
+        var token = _previewStore.Store(workspaceId, solution, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes, PreviewKind.BulkReplaceType);
 
         return new RefactoringPreviewDto(
             token,

@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using RoslynMcp.Core.Services;
 
 namespace RoslynMcp.Host.Stdio.Security;
 
@@ -35,10 +36,10 @@ internal static class LegacyClientRootsNarrowingAdapter
         catch (Exception ex) when (ex is InvalidOperationException or McpException)
         {
             logger?.LogWarning(ex, "Client roots lookup failed; rejecting path access");
-            throw new ArgumentException(
+            throw WorkspacePathPolicyRefusal.Mark(new ArgumentException(
                 "Path validation failed because the client roots narrowing boundary could not be obtained.",
                 nameof(server),
-                ex);
+                ex), WorkspacePathPolicyRefusalKind.ClientRootsUnavailable);
         }
 
         var rootPaths = new List<string>(response.Roots.Count);

@@ -35,9 +35,6 @@ public sealed class FindReferencesSummaryTests : SharedWorkspaceTestBase
         WorkspaceId = await GetOrLoadWorkspaceIdAsync(SampleSolutionPath, CancellationToken.None);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     public async Task FindReferences_DefaultMode_PopulatesPreviewText()
     {

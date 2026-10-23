@@ -32,12 +32,6 @@ public sealed class MetadataNameLocatorTests : SharedWorkspaceTestBase
         WorkspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup()
-    {
-        DisposeServices();
-    }
-
     [TestMethod]
     public async Task FindReferences_Accepts_MetadataName_Without_Source_Position()
     {

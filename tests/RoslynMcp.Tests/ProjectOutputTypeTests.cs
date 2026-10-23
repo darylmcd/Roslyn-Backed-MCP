@@ -22,10 +22,40 @@ public sealed class ProjectOutputTypeTests : TestBase
         InitializeServices();
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup()
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task Status_UsesOneSelectedImportedContextForFrameworkTestKindAndOutput(bool selected)
     {
-        DisposeServices();
+        using var fixture = CreateProjectFixture("Context.csproj", """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup><TargetFrameworks>net9.0;net10.0</TargetFrameworks><NuGetAudit>false</NuGetAudit></PropertyGroup>
+              <Import Project="Status.props" />
+            </Project>
+            """);
+        await File.WriteAllTextAsync(Path.Combine(Path.GetDirectoryName(fixture.ProjectPath)!, "Status.props"), """
+            <Project>
+              <PropertyGroup><OutputType>Library</OutputType></PropertyGroup>
+              <PropertyGroup Condition="'$(StatusFlavor)' == 'selected' And '$(TargetFramework)' == 'net10.0'">
+                <OutputType>Exe</OutputType><IsTestProject>true</IsTestProject>
+              </PropertyGroup>
+            </Project>
+            """);
+        var properties = RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(fixture.ProjectPath,
+            new Dictionary<string, string> { ["TargetFramework"] = "net10.0", ["StatusFlavor"] = selected ? "selected" : "other" });
+        var loaded = await WorkspaceManager.LoadAsync(fixture.ProjectPath, properties, CancellationToken.None);
+        try
+        {
+            Assert.IsTrue(loaded.IsLoaded);
+            var project = loaded.Projects.Single();
+            CollectionAssert.AreEqual(new[] { "net10.0" }, project.TargetFrameworks.ToArray());
+            Assert.AreEqual(selected, project.IsTestProject);
+            Assert.AreEqual(selected ? "Exe" : "Library", project.OutputType);
+            var status = await WorkspaceManager.GetStatusAsync(loaded.WorkspaceId, CancellationToken.None);
+            Assert.AreEqual(project.OutputType, status.Projects.Single().OutputType);
+            Assert.AreEqual(project.IsTestProject, status.Projects.Single().IsTestProject);
+        }
+        finally { WorkspaceManager.Close(loaded.WorkspaceId); }
     }
 
     [TestMethod]
@@ -44,7 +74,7 @@ public sealed class ProjectOutputTypeTests : TestBase
             </Project>
             """);
 
-        var result = ProjectMetadataParser.GetEvaluatedOutputType(fixture.ProjectPath, NullLogger.Instance);
+        var result = ProjectMetadataParser.GetEvaluatedOutputType(fixture.ProjectPath, System.Collections.Immutable.ImmutableDictionary<string, string>.Empty, NullLogger.Instance);
 
         Assert.AreEqual("Exe", result,
             "Microsoft.NET.Sdk.Web projects inherit OutputType=Exe from the SDK targets; the evaluator must surface it even when the XML omits the element.");
@@ -66,7 +96,7 @@ public sealed class ProjectOutputTypeTests : TestBase
             </Project>
             """);
 
-        var result = ProjectMetadataParser.GetEvaluatedOutputType(fixture.ProjectPath, NullLogger.Instance);
+        var result = ProjectMetadataParser.GetEvaluatedOutputType(fixture.ProjectPath, System.Collections.Immutable.ImmutableDictionary<string, string>.Empty, NullLogger.Instance);
 
         Assert.AreEqual("Exe", result,
             "Microsoft.NET.Sdk.Worker projects inherit OutputType=Exe from the SDK targets; the evaluator must surface it.");
@@ -88,7 +118,7 @@ public sealed class ProjectOutputTypeTests : TestBase
             </Project>
             """);
 
-        var result = ProjectMetadataParser.GetEvaluatedOutputType(fixture.ProjectPath, NullLogger.Instance);
+        var result = ProjectMetadataParser.GetEvaluatedOutputType(fixture.ProjectPath, System.Collections.Immutable.ImmutableDictionary<string, string>.Empty, NullLogger.Instance);
 
         Assert.AreEqual("Library", result,
             "Microsoft.NET.Sdk library projects default OutputType=Library; the evaluator must report that value, not silently misreport.");
@@ -111,7 +141,7 @@ public sealed class ProjectOutputTypeTests : TestBase
             </Project>
             """);
 
-        var result = ProjectMetadataParser.GetEvaluatedOutputType(fixture.ProjectPath, NullLogger.Instance);
+        var result = ProjectMetadataParser.GetEvaluatedOutputType(fixture.ProjectPath, System.Collections.Immutable.ImmutableDictionary<string, string>.Empty, NullLogger.Instance);
 
         Assert.AreEqual("Exe", result,
             "Explicit <OutputType>Exe</OutputType> must round-trip through the evaluator unchanged.");
@@ -123,7 +153,7 @@ public sealed class ProjectOutputTypeTests : TestBase
         // The evaluator must not throw when handed a non-existent path; the caller falls
         // back to the XML-only path which itself returns "Library".
         var missingPath = Path.Combine(Path.GetTempPath(), $"does_not_exist_{Guid.NewGuid():N}.csproj");
-        var result = ProjectMetadataParser.GetEvaluatedOutputType(missingPath, NullLogger.Instance);
+        var result = ProjectMetadataParser.GetEvaluatedOutputType(missingPath, System.Collections.Immutable.ImmutableDictionary<string, string>.Empty, NullLogger.Instance);
 
         Assert.IsNull(result, "A non-existent project path must return null, not throw or return a default value.");
     }
@@ -139,8 +169,7 @@ public sealed class ProjectOutputTypeTests : TestBase
         // Microsoft.NET.Sdk.Web project that omits <OutputType> from its XML:
         //
         //   Surface 1 — workspace_reload  (WorkspaceManager.GetStatusAsync → ProjectStatusDto.OutputType)
-        //              uses ProjectMetadataParser.GetOutputType(project, projectDoc, logger)
-        //              which delegates to GetEvaluatedOutputType.
+        //              reads OutputType from the same evaluated graph as the other status fields.
         //   Surface 2 — get_msbuild_properties (MsBuildEvaluationService.GetEvaluatedPropertiesAsync)
         //              uses ProjectCollection.LoadProject directly.
         //
@@ -156,7 +185,7 @@ public sealed class ProjectOutputTypeTests : TestBase
             </Project>
             """);
 
-        var loadStatus = await WorkspaceManager.LoadAsync(fixture.ProjectPath, CancellationToken.None);
+        var loadStatus = await WorkspaceManager.LoadAsync(fixture.ProjectPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(fixture.ProjectPath, new Dictionary<string, string>()), CancellationToken.None);
         try
         {
             // Surface 1: workspace_reload result. The single project in the loaded csproj
@@ -188,7 +217,7 @@ public sealed class ProjectOutputTypeTests : TestBase
                 "get_msbuild_properties surface must report OutputType=Exe for Microsoft.NET.Sdk.Web projects (SDK-defaulted value).");
             Assert.AreEqual(workspaceReloadOutputType, msbuildOutputType,
                 $"Cross-surface mismatch: workspace_reload reported '{workspaceReloadOutputType}' but get_msbuild_properties reported '{msbuildOutputType}'. " +
-                "Both surfaces draw from MSBuild evaluation and must agree — divergence indicates a regression in ProjectMetadataParser.GetOutputType or MsBuildEvaluationService.");
+                "Both surfaces draw from MSBuild evaluation and must agree — divergence indicates a regression in evaluated status projection or MsBuildEvaluationService.");
         }
         finally
         {
@@ -212,20 +241,6 @@ public sealed class ProjectOutputTypeTests : TestBase
     {
         public string ProjectPath { get; } = projectPath;
 
-        public void Dispose()
-        {
-            try
-            {
-                if (Directory.Exists(rootPath))
-                {
-                    Directory.Delete(rootPath, recursive: true);
-                }
-            }
-            catch
-            {
-                // Best-effort cleanup. Locked files just leak a temp directory that the
-                // OS will reclaim on the next sweep.
-            }
-        }
+        public void Dispose() => TestFixtureFileSystem.DeleteDirectoryIfExists(rootPath);
     }
 }

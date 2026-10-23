@@ -48,9 +48,6 @@ public sealed class AutoReloadCascadeHostCrashTests : SharedWorkspaceTestBase
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     /// <summary>
     /// Core classifier contract: a <see cref="StaleWorkspaceTransitionException"/> thrown
     /// from a tool handler must surface as <c>category="StaleWorkspaceTransition"</c>

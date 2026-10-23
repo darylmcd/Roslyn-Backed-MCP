@@ -1,7 +1,5 @@
-using System.Runtime.InteropServices;
 using System.Text;
 using Microsoft.Extensions.Logging;
-using Microsoft.Win32.SafeHandles;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
@@ -16,6 +14,7 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
     private readonly ILogger<CompositeApplyOrchestrator>? _logger;
     private readonly IUnexpectedExceptionReporter? _exceptionReporter;
     private readonly IUndoService? _undoService;
+    private readonly SourceTransitionWriter _transitionAsync;
 
     public CompositeApplyOrchestrator(
         IWorkspaceManager workspace,
@@ -31,6 +30,16 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
         _logger = logger;
         _exceptionReporter = exceptionReporter;
         _undoService = undoService;
+        _transitionAsync = static (path, expected, desired, operation, authority, token) => operation.TransitionSourceAsync(path, expected, desired, PhysicalSourceTransitionMode.FreshReplacement, authority, null, token);
+    }
+
+    internal CompositeApplyOrchestrator(IWorkspaceManager workspace, ICompositePreviewStore store,
+        IChangeTracker? tracker, ILogger<CompositeApplyOrchestrator>? logger,
+        IUnexpectedExceptionReporter? reporter, IUndoService? undo,
+        SourceTransitionWriter transitionAsync)
+        : this(workspace, store, tracker, logger, reporter, undo)
+    {
+        _transitionAsync = transitionAsync;
     }
 
     public async Task<ApplyResultDto> ApplyCompositeAsync(string previewToken, CancellationToken ct)
@@ -51,131 +60,158 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
                 "Preview token yielded no file mutations — the composite preview produced no file-level changes. Re-issue the preview with a different operation set.");
         }
 
-        var appliedFiles = new List<string>();
+        IReadOnlyList<FileSnapshotDto> files = [];
+        IPreparedUndoOperation? operation = null;
+        PhysicalMutationRecovery? recovery = null;
+        IWorkspaceMutationLease? lease = null;
+        IPhysicalRestorationAuthority? desiredGraph = null;
+        Exception? primaryFailure = null;
+        var phaseCompleted = false;
+        var recoveryOwner = _workspace as IWorkspaceRecoveryAuthority
+            ?? throw InvalidOperationErrors.Internal("The workspace does not support physical recovery authority.");
+        var completedMutations = 0;
         try
         {
-            // Validate the complete set before capturing undo or writing any file. Imported
-            // documents may be readable through an alias but must not become write targets.
+            await recoveryOwner.AuthorizePathsAsync(workspaceId, mutations.Select(mutation => mutation.FilePath).ToArray(), ct).ConfigureAwait(false);
+            foreach (var mutation in mutations) WorkspaceManager.EnsurePhysicalPath(mutation.FilePath);
+            mutations = mutations.Select(mutation => mutation with { FilePath = Path.GetFullPath(mutation.FilePath) }).ToArray();
+            files = await CaptureUndoFilesAsync(workspaceId, mutations, ct).ConfigureAwait(false);
+            recovery = await recoveryOwner.CaptureRecoveryAsync(workspaceId, $"Composite operation ({mutations.Count} mutations)", files, ct).ConfigureAwait(false);
+            operation = _undoService is null ? null : await _undoService.PrepareBeforeApplyAsync(recovery, ct).ConfigureAwait(false);
+            var intendedFiles = files.ToDictionary(file => file.FilePath, FileSystemPath.Comparer);
+            var transitions = new List<(FileSnapshotDto Before, FileSnapshotDto Intended)>();
             foreach (var mutation in mutations)
             {
-                WorkspaceManager.EnsurePhysicalPath(mutation.FilePath);
+                var before = intendedFiles[mutation.FilePath];
+                var intended = mutation.DeleteFile ? new FileSnapshotDto(mutation.FilePath, null)
+                    : FileSnapshotDto.FromExistingBytes(mutation.FilePath, SolutionFileMutationPlanner.Encode(mutation.UpdatedContent ?? string.Empty,
+                        SourceFileEncoding.FromBytes(SnapshotBytes(before))));
+                transitions.Add((before, intended));
+                intendedFiles[mutation.FilePath] = intended;
             }
-
-            await CaptureUndoSnapshotAsync(workspaceId, mutations, ct).ConfigureAwait(false);
-            await ApplyMutationsAsync(mutations, appliedFiles, ct).ConfigureAwait(false);
-            return await CompleteApplyAsync(
-                previewToken,
-                workspaceId,
-                appliedFiles,
-                ct).ConfigureAwait(false);
+            // Native operations carry a captured layout. Prepare their desired graph before
+            // any source-parent namespace can be introduced by physical publication.
+            lease = await recoveryOwner.BeginMutationAsync(recovery, ct).ConfigureAwait(false);
+            if (recovery.CapturedLayout is not null)
+                desiredGraph = await recoveryOwner.StageRestorationAsync(recovery, intendedFiles.Values.ToArray(),
+                    recovery.CapturedLayout, ct).ConfigureAwait(false);
+            foreach (var (before, intended) in transitions)
+            {
+                await PhysicalMutationFileGuard.AssertMatchesAsync(before.FilePath, SnapshotBytes(before),
+                    (path, token) => ReadAuthorizedBytesAsync(workspaceId, path, token), ct).ConfigureAwait(false);
+                lease.BeforeWrite(intended);
+                await ApplyMutationAsync(workspaceId, before, intended, recovery, ct).ConfigureAwait(false);
+                completedMutations++;
+            }
+            var remaining = await RemainingWrittenPathsAsync(workspaceId, files, ct).ConfigureAwait(false);
+            if (remaining.Count == 0)
+            {
+                await lease.AbortAsync(CancellationToken.None).ConfigureAwait(false);
+                _compositePreviewStore.Invalidate(previewToken);
+                return new ApplyResultDto(true, [], null);
+            }
+            if (desiredGraph is not null)
+                await recoveryOwner.CommitRestorationAsync(recovery, desiredGraph.Expected, retainedRecovery: false, ct).ConfigureAwait(false);
+            else
+                await recoveryOwner.CommitMutationAsync(recovery, expected: null, ct).ConfigureAwait(false);
+            foreach (var intended in intendedFiles.Values)
+                await PhysicalMutationFileGuard.AssertMatchesAsync(intended.FilePath, SnapshotBytes(intended),
+                    (path, token) => ReadAuthorizedBytesAsync(workspaceId, path, token), ct).ConfigureAwait(false);
+            lease.Complete(intendedFiles.Values.ToArray());
+            lease.Dispose();
+            phaseCompleted = true;
+            if (operation is not null) await operation.PublishAsync(ct).ConfigureAwait(false);
+            _compositePreviewStore.Invalidate(previewToken);
+            var distinct = remaining.ToArray();
+            _changeTracker?.RecordChange(workspaceId, recovery.Description,
+                distinct, "apply_composite_preview");
+            return new ApplyResultDto(true, distinct, null);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+        catch (Exception failure) when (failure is IOException or UnauthorizedAccessException or InvalidOperationException or OperationCanceledException)
         {
-            return ProjectFailure(ex, appliedFiles, mutations.Count);
+            primaryFailure = failure;
+            // A partial composite deliberately retains its writes. Publish only that operation's
+            // recovery target; a zero-effect failure leaves the previous undo target untouched.
+            var remaining = await RemainingWrittenPathsAsync(workspaceId, files, CancellationToken.None).ConfigureAwait(false);
+            if (recovery is not null && (remaining.Count > 0 || recovery.HasRetainedSourceTransitions || recovery.HasUnverifiedSourceNamespaces))
+            {
+                if (operation is not null) operation.RetainRecovery();
+                else recoveryOwner.RetainRecovery(recovery);
+            }
+            else if (!phaseCompleted && lease is not null) await lease.AbortAsync(CancellationToken.None).ConfigureAwait(false);
+            if (failure is OperationCanceledException or IPublicMessageException) throw;
+            return ProjectFailure(failure, remaining, completedMutations, mutations.Count);
         }
+        catch (Exception failure) { primaryFailure = failure; throw; }
+        finally { OwnedResourceCleanup.DisposePreservingFailure("Composite physical ownership cleanup failed.", primaryFailure, lease, desiredGraph); }
     }
 
-    /// <summary>
-    /// apply-composite-no-undo-capture: registers ONE pre-apply snapshot covering every file the
-    /// composite touches, before the first write, so <c>revert_last_apply</c> restores this
-    /// composite instead of the previous apply. The snapshot is committed to revert history when
-    /// <see cref="CompleteApplyAsync"/> records the change. Files the composite creates snapshot
-    /// as absent (revert deletes them); files it deletes snapshot their bytes (revert recreates them).
-    /// </summary>
-    private async Task CaptureUndoSnapshotAsync(
-        string workspaceId,
-        IReadOnlyList<CompositeFileMutation> mutations,
-        CancellationToken ct)
+    private async Task<IReadOnlyList<FileSnapshotDto>> CaptureUndoFilesAsync(
+        string workspaceId, IReadOnlyList<CompositeFileMutation> mutations, CancellationToken ct)
     {
-        if (_undoService is null)
-        {
-            return;
-        }
-
         var seen = new HashSet<string>(FileSystemPath.Comparer);
-        var fileSnapshots = new List<FileSnapshotDto>(mutations.Count);
+        var files = new List<FileSnapshotDto>();
         foreach (var mutation in mutations)
         {
-            // First occurrence wins: a later mutation of the same path must not re-snapshot state
-            // that an earlier mutation in this composite would already have changed.
-            var normalizedPath = Path.GetFullPath(mutation.FilePath);
-            if (seen.Add(normalizedPath))
+            var path = Path.GetFullPath(mutation.FilePath);
+            if (!seen.Add(path)) continue;
+            var bytes = await ReadAuthorizedBytesAsync(workspaceId, path, ct).ConfigureAwait(false);
+            files.Add(bytes is null ? new FileSnapshotDto(path, null) : FileSnapshotDto.FromExistingBytes(path, bytes));
+        }
+        return files;
+    }
+
+    private async Task<IReadOnlyList<string>> RemainingWrittenPathsAsync(
+        string workspaceId, IReadOnlyList<FileSnapshotDto> files, CancellationToken ct)
+    {
+        var remaining = new List<string>();
+        foreach (var original in files)
+        {
+            var path = original.FilePath;
+            try
             {
-                fileSnapshots.Add(await FileSnapshotCapture.CaptureAsync(normalizedPath, fallbackTextFactory: null, ct)
-                    .ConfigureAwait(false));
+                await (_workspace as IWorkspaceRecoveryAuthority
+                    ?? throw InvalidOperationErrors.Internal("The workspace does not support physical recovery authority.")).AuthorizePathsAsync(workspaceId, [path], ct).ConfigureAwait(false);
+                var bytes = await FileSnapshotCapture.ReadIfPresentAsync(path, PhysicalInputReader.ReadAllBytesAsync, ct).ConfigureAwait(false);
+                var changed = original.OriginalText is null ? bytes is not null
+                    : bytes is null || original.OriginalBytes.IsDefault
+                    || !bytes.AsSpan().SequenceEqual(original.OriginalBytes.AsSpan());
+                if (changed) remaining.Add(path);
+            }
+            catch (Exception failure) when (failure is IOException or UnauthorizedAccessException or InvalidOperationException)
+            {
+                var detail = UnexpectedExceptionReporting.Report(_exceptionReporter, failure, UnexpectedExceptionCategory.CompositeApply).Public;
+                _logger?.LogWarning("Could not inspect a composite target; retaining its inventory entry. correlationId={CorrelationId}", detail.CorrelationId);
+                remaining.Add(path);
             }
         }
-
-        _undoService.CaptureBeforeApply(
-            workspaceId,
-            $"Composite operation ({fileSnapshots.Count} files)",
-            preApplySolution: null,
-            fileSnapshots);
+        return remaining;
     }
 
-    private async Task ApplyMutationsAsync(
-        IReadOnlyList<CompositeFileMutation> mutations,
-        ICollection<string> appliedFiles,
-        CancellationToken ct)
+    private async Task<byte[]?> ReadAuthorizedBytesAsync(string workspaceId, string path, CancellationToken ct)
     {
-        foreach (var mutation in mutations)
-        {
-            await ApplyMutationAsync(mutation, ct).ConfigureAwait(false);
-            appliedFiles.Add(mutation.FilePath);
-        }
+        await (_workspace as IWorkspaceRecoveryAuthority
+            ?? throw InvalidOperationErrors.Internal("The workspace does not support physical recovery authority."))
+            .AuthorizePathsAsync(workspaceId, [path], ct).ConfigureAwait(false);
+        return await FileSnapshotCapture.ReadIfPresentAsync(path, PhysicalInputReader.ReadAllBytesAsync, ct).ConfigureAwait(false);
     }
 
-    private async Task ApplyMutationAsync(CompositeFileMutation mutation, CancellationToken ct)
+    private static byte[]? SnapshotBytes(FileSnapshotDto snapshot) => snapshot.OriginalText is null ? null
+        : !snapshot.OriginalBytes.IsDefault ? snapshot.OriginalBytes.ToArray()
+        : throw InvalidOperationErrors.Internal("Composite physical ownership requires exact captured bytes.");
+
+    private Task ApplyMutationAsync(string workspaceId, FileSnapshotDto before, FileSnapshotDto intended,
+        PhysicalMutationRecovery operation, CancellationToken ct)
     {
-        if (mutation.DeleteFile)
-        {
-            if (File.Exists(mutation.FilePath))
-            {
-                File.Delete(mutation.FilePath);
-            }
-
-            return;
-        }
-
-        var directory = Path.GetDirectoryName(mutation.FilePath);
-        if (!string.IsNullOrWhiteSpace(directory))
-        {
-            Directory.CreateDirectory(directory);
-        }
-
-        // Existing source files retain their on-disk encoding; new files remain UTF-8 without BOM.
-        var preApplyBytes = File.Exists(mutation.FilePath)
-            ? await File.ReadAllBytesAsync(mutation.FilePath, ct).ConfigureAwait(false)
-            : null;
-        await AtomicFileWriter.WriteAllTextAsync(
-            mutation.FilePath,
-            mutation.UpdatedContent ?? string.Empty,
-            ct,
-            _logger,
-            encoding: SourceFileEncoding.FromBytes(preApplyBytes),
-            exceptionReporter: _exceptionReporter).ConfigureAwait(false);
+        var authority = _workspace as IWorkspaceRecoveryAuthority
+            ?? throw InvalidOperationErrors.Internal("The workspace does not support physical recovery authority.");
+        return _transitionAsync(intended.FilePath, SnapshotBytes(before), SnapshotBytes(intended), operation,
+            authority, ct);
     }
-
-    private async Task<ApplyResultDto> CompleteApplyAsync(
-        string previewToken,
-        string workspaceId,
-        IReadOnlyCollection<string> appliedFiles,
-        CancellationToken ct)
-    {
-        await _workspace.ReloadAsync(workspaceId, ct).ConfigureAwait(false);
-        _compositePreviewStore.Invalidate(previewToken);
-        var distinctFiles = appliedFiles.Distinct(FileSystemPath.Comparer).ToList();
-        _changeTracker?.RecordChange(
-            workspaceId,
-            $"Composite operation ({distinctFiles.Count} files)",
-            distinctFiles,
-            "apply_composite_preview");
-        return new ApplyResultDto(true, distinctFiles, null);
-    }
-
     private ApplyResultDto ProjectFailure(
         Exception failure,
         IReadOnlyCollection<string> appliedFiles,
+        int completedMutations,
         int mutationCount)
     {
         // Completed mutations are not rolled back; the token remains valid for inspection/re-preview.
@@ -184,277 +220,19 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
             _exceptionReporter,
             failure,
             UnexpectedExceptionCategory.CompositeApply).Public;
-        var failingTarget = $"mutation[{appliedFiles.Count}]";
+        var failingTarget = completedMutations < mutationCount ? $"mutation[{completedMutations}]" : "workspace completion";
         _logger?.LogWarning(
             "Composite apply failed after {AppliedCount} of {TotalCount} mutation(s); failing target: {FailingTarget}. " +
             "Prior writes are left in place (no rollback); correlationId={CorrelationId}.",
-            appliedFiles.Count,
+            completedMutations,
             mutationCount,
             failingTarget,
             detail.CorrelationId);
         var message = appliedFiles.Count > 0
             ? $"Partial composite apply: {applied.Count} file(s) were written before the failure at {failingTarget}. " +
               $"Inspect appliedFiles, resolve the filesystem failure, and re-preview. correlationId={detail.CorrelationId}"
-            : "Composite apply failed before any files were written. Resolve the filesystem failure and retry with the same token. " +
+            : "Composite apply failed with no remaining recorded file writes. Resolve the failure and re-preview if needed. " +
               $"correlationId={detail.CorrelationId}";
         return new ApplyResultDto(false, applied, message);
-    }
-}
-
-/// <summary>
-/// Writes through a same-directory temporary sibling before atomically replacing the target.
-/// Cleanup failures are secret-safe warnings and never mask the primary write failure.
-/// </summary>
-internal static class AtomicFileWriter
-{
-    /// <summary>
-    /// Stable category token for secret-safe temp-cleanup diagnostics.
-    /// </summary>
-    private const string TempCleanupCategory = "CompositeApplyTempCleanup";
-
-    /// <summary>
-    /// Atomically writes <paramref name="content"/> to <paramref name="path"/>.
-    /// </summary>
-    /// <param name="encoding">Existing source encoding, or null for UTF-8 without BOM.</param>
-    public static async Task WriteAllTextAsync(
-        string path,
-        string content,
-        CancellationToken ct,
-        ILogger? logger = null,
-        Encoding? encoding = null,
-        IUnexpectedExceptionReporter? exceptionReporter = null)
-        => await WriteAtomicAsync(
-            path,
-            async (_, stream) =>
-            {
-                await using var writer = new StreamWriter(stream, encoding ?? new UTF8Encoding(false), leaveOpen: true);
-                await writer.WriteAsync(content.AsMemory(), ct).ConfigureAwait(false);
-            },
-            ct,
-            logger,
-            exceptionReporter).ConfigureAwait(false);
-
-    public static async Task WriteAllBytesAsync(
-        string path,
-        byte[] content,
-        CancellationToken ct,
-        ILogger? logger = null,
-        IUnexpectedExceptionReporter? exceptionReporter = null)
-        => await WriteAtomicAsync(
-            path,
-            (_, stream) => stream.WriteAsync(content, ct).AsTask(),
-            ct,
-            logger,
-            exceptionReporter).ConfigureAwait(false);
-
-    internal static Task WriteAtomicAsync(
-        string path,
-        Func<string, FileStream, Task> writeTempAsync,
-        CancellationToken ct,
-        ILogger? logger,
-        IUnexpectedExceptionReporter? exceptionReporter)
-    {
-        ct.ThrowIfCancellationRequested();
-        var (tmp, stream) = ReserveUniqueTempPath(path);
-        return WriteAtomicAtTempPathAsync(
-            path, tmp, stream, writeTempAsync, Task.Delay, ct, logger, exceptionReporter);
-    }
-
-    private static (string Path, FileStream Stream) ReserveUniqueTempPath(string path)
-    {
-        var directory = Path.GetDirectoryName(Path.GetFullPath(path))
-            ?? throw new InvalidOperationException("The target has no containing directory.");
-        for (var attempt = 0; attempt < 10; attempt++)
-        {
-            var candidate = Path.Combine(directory, ".rmcp-" + Path.GetRandomFileName() + ".tmp");
-            try
-            {
-                var reservation = new FileStream(candidate, FileMode.CreateNew, FileAccess.Write,
-                    FileShare.Read | FileShare.Delete);
-                return (candidate, reservation);
-            }
-            catch (IOException) when (File.Exists(candidate))
-            {
-                // The create-new operation is atomic; a collision gets another name.
-            }
-        }
-
-        throw new IOException("Could not reserve a unique atomic-write temporary file.");
-    }
-
-    internal static async Task WriteAtomicAtTempPathAsync(
-        string path,
-        string tmp,
-        FileStream stream,
-        Func<string, FileStream, Task> writeTempAsync,
-        Func<int, CancellationToken, Task> delayAsync,
-        CancellationToken ct,
-        ILogger? logger,
-        IUnexpectedExceptionReporter? exceptionReporter)
-    {
-        using (stream)
-        {
-            try
-            {
-                await writeTempAsync(tmp, stream).ConfigureAwait(false);
-                await stream.FlushAsync(ct).ConfigureAwait(false);
-                await ReplaceAfterTransientReaderAsync(tmp, path, stream, delayAsync, ct).ConfigureAwait(false);
-            }
-            catch
-            {
-                TryDeleteTemp(tmp, path, stream, logger, exceptionReporter);
-                throw;
-            }
-        }
-    }
-
-    private static async Task ReplaceAfterTransientReaderAsync(
-        string tmp,
-        string path,
-        FileStream stream,
-        Func<int, CancellationToken, Task> delayAsync,
-        CancellationToken ct)
-    {
-        const int maxAttempts = 10;
-        for (var attempt = 1; ; attempt++)
-        {
-            ct.ThrowIfCancellationRequested();
-            // The check detects a temp name replaced while the callback ran or a reader held
-            // the destination. An uncooperative process can still rename between this check
-            // and the path-based move; the post-move check makes that conflict observable.
-            if (!TempHandleStillNamesPath(tmp, stream))
-                throw new IOException("Atomic-write temporary file ownership changed before replacement.");
-            try
-            {
-                File.Move(tmp, path, overwrite: true);
-                if (!TempHandleStillNamesPath(path, stream))
-                    throw new IOException("Atomic-write destination ownership changed after replacement.");
-                return;
-            }
-            catch (Exception ex) when (attempt < maxAttempts &&
-                                       IsRetryableWindowsReplacementFailure(ex))
-            {
-                await delayAsync(Math.Min(25 << (attempt - 1), 400), ct).ConfigureAwait(false);
-            }
-        }
-    }
-
-    private static bool IsRetryableWindowsReplacementFailure(Exception exception)
-    {
-        if (!OperatingSystem.IsWindows()) return false;
-        if (exception is IOException io && IsSharingViolation(io)) return true;
-        // On Windows, File.Move(overwrite: true) reports access denied for a held
-        // destination even when the reader shares writes and deletes. The retry is
-        // bounded; a real ACL denial still surfaces after the last attempt.
-        return exception is UnauthorizedAccessException { HResult: unchecked((int)0x80070005) };
-    }
-
-    private static bool IsSharingViolation(IOException exception) =>
-        exception.HResult is unchecked((int)0x80070020) or unchecked((int)0x80070021);
-
-    private static bool TempHandleStillNamesPath(string path, FileStream stream)
-    {
-        if (stream.SafeFileHandle.IsClosed || stream.SafeFileHandle.IsInvalid) return false;
-        try
-        {
-            // A rename or replacement changes the held handle's current name. A symlink at
-            // the reserved name is never owned, even if it resolves to identical bytes.
-            var attributes = File.GetAttributes(path);
-            if ((attributes & FileAttributes.ReparsePoint) != 0) return false;
-            var heldPath = GetHandlePath(stream.SafeFileHandle);
-            using var named = new FileStream(path, FileMode.Open, FileAccess.Read,
-                FileShare.ReadWrite | FileShare.Delete);
-            return GetHandlePath(named.SafeFileHandle).Equals(heldPath, FileSystemPath.Comparison);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
-        {
-            return false;
-        }
-    }
-
-    private static string GetHandlePath(SafeFileHandle handle)
-    {
-        if (OperatingSystem.IsLinux())
-        {
-            var fdPath = "/proc/self/fd/" + handle.DangerousGetHandle().ToInt32();
-            return Path.GetFullPath(new FileInfo(fdPath).LinkTarget
-                ?? throw new IOException("Could not resolve atomic-write handle."));
-        }
-
-        if (OperatingSystem.IsWindows())
-        {
-            var buffer = new StringBuilder(32768);
-            var length = GetFinalPathNameByHandle(handle, buffer, (uint)buffer.Capacity, 0);
-            if (length == 0 || length >= buffer.Capacity)
-                throw new IOException("Could not resolve atomic-write handle.");
-            return NormalizeWindowsHandlePath(buffer.ToString());
-        }
-
-        if (OperatingSystem.IsMacOS())
-        {
-            const int fGetPath = 50;
-            var buffer = new byte[1024];
-            if (FcntlGetPath(handle.DangerousGetHandle().ToInt32(), fGetPath, buffer) != 0)
-                throw new IOException("Could not resolve atomic-write handle.");
-            var end = Array.IndexOf(buffer, (byte)0);
-            return Path.GetFullPath(Encoding.UTF8.GetString(buffer, 0, end < 0 ? buffer.Length : end));
-        }
-
-        throw new NotSupportedException("Atomic-write handle identity is unavailable on this platform.");
-    }
-
-    internal static string NormalizeWindowsHandlePath(string value)
-    {
-        if (value.StartsWith(@"\\?\UNC\", StringComparison.OrdinalIgnoreCase))
-            return @"\\" + value[8..];
-        return value.StartsWith(@"\\?\", StringComparison.Ordinal) ? value[4..] : value;
-    }
-
-    [DllImport("kernel32.dll", EntryPoint = "GetFinalPathNameByHandleW", CharSet = CharSet.Unicode,
-        SetLastError = true, ExactSpelling = true)]
-    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    private static extern uint GetFinalPathNameByHandle(SafeFileHandle handle, StringBuilder path,
-        uint length, uint flags);
-
-    [DllImport("libc", EntryPoint = "fcntl", SetLastError = true, ExactSpelling = true)]
-    private static extern int FcntlGetPath(int fd, int command, byte[] path);
-
-    private static void TryDeleteTemp(
-        string tmp,
-        string path,
-        FileStream stream,
-        ILogger? logger,
-        IUnexpectedExceptionReporter? exceptionReporter)
-    {
-        try
-        {
-            if (!TempHandleStillNamesPath(tmp, stream))
-                throw new IOException("Atomic-write temporary file ownership changed before cleanup.");
-            // File.Delete is a no-op when the name is absent; File.Exists misses dangling links.
-            File.Delete(tmp);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            // Best-effort cleanup — a stray temp is non-fatal and must not mask the original failure.
-            // The primary write exception is still re-thrown by the caller; this only records that the
-            // orphaned temp artifact could not be removed so it is not left on disk silently.
-            // The caught exception and the absolute temp/target paths are deliberately NOT logged
-            // (atomic-file-cleanup-error-detail-redaction): only the stable cleanup category, the
-            // target's file name, and the shared secret-safe projection reach the sinks.
-            if (logger is not null)
-            {
-                var diagnostic = UnexpectedExceptionReporting.Report(
-                    exceptionReporter,
-                    ex,
-                    UnexpectedExceptionCategory.CompositeApply).Server;
-                logger.LogWarning(
-                    "{CleanupCategory}: temporary artifact cleanup for {TargetFile} was incomplete after a failed write; an artifact may remain on disk. correlationId={CorrelationId} exceptionTypes={ExceptionTypes} stackFrameCount={StackFrameCount}",
-                    TempCleanupCategory,
-                    Path.GetFileName(path),
-                    diagnostic.CorrelationId,
-                    string.Join(" -> ", diagnostic.ExceptionTypes),
-                    diagnostic.StackFrameCount);
-            }
-        }
     }
 }

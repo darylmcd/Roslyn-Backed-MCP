@@ -27,9 +27,6 @@ public sealed class NuGetDependencySummaryTests : SharedWorkspaceTestBase
         WorkspaceId = await GetOrLoadWorkspaceIdAsync(SampleSolutionPath, CancellationToken.None);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     public async Task GetNuGetDependencies_DefaultMode_PopulatesVerbosePackagesAndProjects()
     {

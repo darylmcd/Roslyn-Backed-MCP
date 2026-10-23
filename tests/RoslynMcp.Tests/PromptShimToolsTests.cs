@@ -39,9 +39,6 @@ public sealed class PromptShimToolsTests : SharedWorkspaceTestBase
         WorkspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     public async Task GetPromptText_DeadCodeAudit_BindsServiceJsonAndDefault_RendersText()
     {

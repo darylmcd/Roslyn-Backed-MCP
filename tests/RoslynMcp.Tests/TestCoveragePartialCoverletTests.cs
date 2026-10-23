@@ -6,6 +6,7 @@ using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -115,6 +116,31 @@ public sealed class TestCoveragePartialCoverletTests
 
     private sealed class BudgetRecordingExecutor(TimeSpan delayAfterFirstCall) : IGatedCommandExecutor
     {
+        public Task<BuildCommandRun> ExecuteBuildAsync(BuildCommandPlan plan, TimeSpan timeout, CancellationToken ct) =>
+            throw new NotSupportedException("This fixture does not execute builds.");
+
+        public async Task<CommandExecutionDto> ExecuteAuthorizedAsync(
+            string workspaceId, string targetPath, IReadOnlyList<string> arguments, TimeSpan timeout,
+            Func<CancellationToken, Task> authorizeStart, CancellationToken ct)
+        {
+            await authorizeStart(ct).ConfigureAwait(false);
+            return await ExecuteAsync(workspaceId, targetPath, arguments, timeout, ct).ConfigureAwait(false);
+        }
+        public Task<TestRunResultDto> ExecuteTestAsync(
+            string workspaceId, string targetPath, IReadOnlyList<string> arguments,
+            Func<CommandExecutionDto, CancellationToken, Task<TestRunResultDto>> collectResults,
+            TimeSpan timeout, IReadOnlyList<EarlyKillPattern>? earlyKillPatterns, Func<CancellationToken, Task> authorizeStart, CancellationToken ct) =>
+            throw new NotSupportedException("This fixture does not execute tests.");
+
+        public Task<CommandExecutionDto> ExecuteAsync(
+            string workspaceId, string targetPath, IReadOnlyList<string> arguments, TimeSpan timeout,
+            IReadOnlyList<EarlyKillPattern>? earlyKillPatterns, CancellationToken ct)
+        {
+            if (earlyKillPatterns is { Count: > 0 })
+                throw new NotSupportedException("This fixture does not simulate streaming early-kill patterns.");
+            return ExecuteAsync(workspaceId, targetPath, arguments, timeout, ct);
+        }
+
         public List<TimeSpan> Budgets { get; } = [];
 
         public async Task<CommandExecutionDto> ExecuteAsync(
@@ -361,8 +387,12 @@ public sealed class TestCoveragePartialCoverletTests
             throw new NotSupportedException();
         public int GetCurrentVersion(string workspaceId) => 1;
         public void RestoreVersion(string workspaceId, int version) => throw new NotSupportedException();
+        public Task<System.Collections.Immutable.ImmutableArray<RoslynMcp.Roslyn.Contracts.AdmittedModuleImage>> ReadAdmittedImagesAsync(
+            string workspaceId, Microsoft.CodeAnalysis.ProjectId projectId, Microsoft.CodeAnalysis.PortableExecutableReference reference, CancellationToken ct) =>
+            throw new NotSupportedException();
+
         public Solution GetCurrentSolution(string workspaceId) => throw new NotSupportedException();
-        public bool TryApplyChanges(string workspaceId, Solution newSolution) => throw new NotSupportedException();
+
         public Project? GetProject(string workspaceId, string projectNameOrPath) => null;
 
         private WorkspaceStatusDto BuildStatus(string workspaceId) =>
@@ -397,7 +427,7 @@ public sealed class TestCoveragePartialCoverletTests
     /// per-project loop calls this once per with-coverlet project; each call drops a
     /// uniquely-named coverage file so the aggregator sees multiple inputs.
     /// </summary>
-    private sealed class CoberturaWritingDotnetCommandRunner : IDotnetCommandRunner
+    private sealed class CoberturaWritingDotnetCommandRunner : RoslynMcp.Tests.Helpers.CannedCommandRunner
     {
         private int _invocationCount;
 
@@ -408,7 +438,7 @@ public sealed class TestCoveragePartialCoverletTests
         /// </summary>
         public string? LastResultsDirectory { get; private set; }
 
-        public Task<CommandExecutionDto> RunAsync(
+        public override Task<CommandExecutionDto> RunAsync(
             string workingDirectory,
             string targetPath,
             IReadOnlyList<string> arguments,
@@ -478,7 +508,7 @@ public sealed class TestCoveragePartialCoverletTests
     /// the all-projects-lack-coverlet test to assert the fail-fast path doesn't invoke
     /// <c>dotnet test</c>.
     /// </summary>
-    private sealed class ThrowingDotnetCommandRunner : IDotnetCommandRunner
+    private sealed class ThrowingDotnetCommandRunner : RoslynMcp.Tests.Helpers.CannedCommandRunner
     {
         private readonly Exception _toThrow;
 
@@ -487,7 +517,7 @@ public sealed class TestCoveragePartialCoverletTests
             _toThrow = toThrow;
         }
 
-        public Task<CommandExecutionDto> RunAsync(
+        public override Task<CommandExecutionDto> RunAsync(
             string workingDirectory,
             string targetPath,
             IReadOnlyList<string> arguments,

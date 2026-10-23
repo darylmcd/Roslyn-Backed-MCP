@@ -25,6 +25,7 @@ public static class MsBuildInitializer
         lock (_lock)
         {
             if (_initialized) return;
+            Services.BuildInputProvenance.CaptureBootstrapPackageCaches();
             if (!MSBuildLocator.IsRegistered)
             {
                 MSBuildLocator.RegisterDefaults();

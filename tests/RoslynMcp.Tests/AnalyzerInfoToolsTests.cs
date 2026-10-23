@@ -34,9 +34,6 @@ public sealed class AnalyzerInfoToolsTests : SharedWorkspaceTestBase
         WorkspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     /// <summary>
     /// Back-to-back calls against the same workspace must return identical <c>totalRules</c>.
     /// The original early-exit guard caused project-iteration-order sensitivity that could

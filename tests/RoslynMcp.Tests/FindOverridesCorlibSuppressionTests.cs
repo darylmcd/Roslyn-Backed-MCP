@@ -37,9 +37,6 @@ public sealed class FindOverridesCorlibSuppressionTests : SharedWorkspaceTestBas
         ShapePath = Path.Combine(sampleRoot, "SampleLib", "Hierarchy", "Shape.cs");
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     // -------- Service-layer suppression --------
 
     /// <summary>

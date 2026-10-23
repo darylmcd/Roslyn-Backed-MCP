@@ -15,6 +15,26 @@ namespace RoslynMcp.Tests;
 [TestClass]
 public sealed class FileSnapshotCaptureTests
 {
+    [TestMethod]
+    public async Task CaptureAsync_DirectoryIsNotAnAbsentFile()
+    {
+        var fallbackCalled = false;
+        await Assert.ThrowsExactlyAsync<UnauthorizedAccessException>(() => FileSnapshotCapture.CaptureAsync(
+            _tempDir, () => { fallbackCalled = true; return "absent fallback"; }, CancellationToken.None));
+        Assert.IsFalse(fallbackCalled, "An unreadable existing input cannot become an absent-file snapshot.");
+    }
+
+    [TestMethod]
+    public async Task CaptureAsync_LockedExistingFilePreservesReadFailure()
+    {
+        if (!OperatingSystem.IsWindows()) Assert.Inconclusive("Native Windows share-denial contract.");
+        var path = Path.Combine(_tempDir, "exclusive.cs");
+        await File.WriteAllTextAsync(path, "immutable entry");
+        await using var locked = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        await Assert.ThrowsExactlyAsync<IOException>(() => FileSnapshotCapture.CaptureAsync(path,
+            () => throw new AssertFailedException("Read failures must not call the absent-file fallback."), CancellationToken.None));
+    }
+
     private string _tempDir = string.Empty;
 
     [TestInitialize]
@@ -27,21 +47,7 @@ public sealed class FileSnapshotCaptureTests
     [TestCleanup]
     public void Cleanup()
     {
-        try
-        {
-            if (Directory.Exists(_tempDir))
-            {
-                Directory.Delete(_tempDir, recursive: true);
-            }
-        }
-        catch (IOException)
-        {
-            // Best-effort temp cleanup.
-        }
-        catch (UnauthorizedAccessException)
-        {
-            // Best-effort temp cleanup.
-        }
+        Directory.Delete(_tempDir, recursive: true);
     }
 
     [TestMethod]

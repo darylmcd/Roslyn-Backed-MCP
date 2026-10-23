@@ -61,43 +61,8 @@ public sealed class PreviewStore : BoundedStore<PreviewStore.PreviewEntry>, IPre
     }
 
     /// <summary>
-    /// Legacy overload — assumes the preview's diff was not truncated. Kept so unrelated
-    /// callers (e.g. tests) don't need to adjust. New production callers should use the
-    /// overload that accepts <paramref name="diffTruncated"/> (Item #4).
-    /// </summary>
-    public string Store(string workspaceId, Solution modifiedSolution, int workspaceVersion, string description)
-        => Store(workspaceId, modifiedSolution, workspaceVersion, description, diffTruncated: false);
-
-    /// <summary>
-    /// Item #4 — stores a preview along with a flag indicating whether the preview's
-    /// on-the-wire diff was truncated by <see cref="SolutionDiffHelper.DefaultMaxTotalChars"/>
-    /// or per-file truncation. The apply path refuses to redeem a token marked
-    /// <paramref name="diffTruncated"/>=true unless the caller explicitly opts in to a
-    /// blind apply via <c>force: true</c>.
-    /// </summary>
-    /// <remarks>
-    /// preview-token-cross-coupling-bundle: the captured <c>OriginalSolution</c> snapshot is
-    /// derived from <paramref name="modifiedSolution"/>'s <see cref="Solution.Workspace"/>
-    /// current solution at Store time. Callers that already have an explicit original
-    /// solution should prefer the overload that takes it directly, but the derived path
-    /// is correct for all in-tree call sites: every preview service produces
-    /// <paramref name="modifiedSolution"/> by mutating the workspace's <c>CurrentSolution</c>,
-    /// so <c>Solution.Workspace.CurrentSolution</c> at Store time IS the original.
-    /// </remarks>
-    public string Store(string workspaceId, Solution modifiedSolution, int workspaceVersion, string description, bool diffTruncated)
-        => Store(workspaceId, modifiedSolution, workspaceVersion, description, diffTruncated, PreviewKind.Unspecified);
-
-    /// <summary>
-    /// preview-token-apply-route-provenance: as above, but records the producer family that
-    /// created the preview so an apply route can verify provenance before mutating.
-    /// </summary>
-    public string Store(string workspaceId, Solution modifiedSolution, int workspaceVersion, string description, bool diffTruncated, PreviewKind kind)
-        => Store(workspaceId, modifiedSolution.Workspace.CurrentSolution, modifiedSolution, workspaceVersion, description, diffTruncated, kind);
-
-    /// <summary>
-    /// preview-token-cross-coupling-bundle: explicit-original-solution overload. Use this
-    /// when the caller needs to record a different base snapshot than the workspace's
-    /// current solution at Store time.
+    /// Stores the exact immutable snapshots used to produce the displayed bounded diff and
+    /// records its producer family. Both aggregate and per-file truncation block blind apply.
     /// </summary>
     public string Store(
         string workspaceId,
@@ -105,78 +70,18 @@ public sealed class PreviewStore : BoundedStore<PreviewStore.PreviewEntry>, IPre
         Solution modifiedSolution,
         int workspaceVersion,
         string description,
-        bool diffTruncated)
-        => Store(workspaceId, originalSolution, modifiedSolution, workspaceVersion, description, diffTruncated, PreviewKind.Unspecified);
-
-    /// <summary>
-    /// preview-token-apply-route-provenance: explicit-original-solution overload that also records
-    /// the producer family. All other <c>Store</c> overloads funnel here.
-    /// </summary>
-    public string Store(
-        string workspaceId,
-        Solution originalSolution,
-        Solution modifiedSolution,
-        int workspaceVersion,
-        string description,
-        bool diffTruncated,
+        IReadOnlyList<FileChangeDto> changes,
         PreviewKind kind)
         => StoreEntry(new PreviewEntry(
             workspaceId,
             originalSolution,
             modifiedSolution,
             workspaceVersion,
-            // format-range-apply-preview-token-lifetime: pin the redeemable version range at
-            // Store time so InvalidateOnVersionBump can drop only entries whose range has been
-            // exceeded, rather than wiping every token on every reload.
             MaxRedeemableVersion: workspaceVersion + _maxVersionSpan,
             description,
-            diffTruncated,
+            PreviewDiffSafety.ContainsTruncation(changes),
             kind,
             DateTime.UtcNow));
-
-    /// <summary>
-    /// Convenience: when the caller has a freshly-computed <see cref="FileChangeDto"/> list
-    /// from <see cref="SolutionDiffHelper.ComputeChangesAsync"/>, derive the truncated flag
-    /// from the sentinel entry so the caller doesn't have to remember to inspect it.
-    /// </summary>
-    public string Store(
-        string workspaceId,
-        Solution modifiedSolution,
-        int workspaceVersion,
-        string description,
-        IReadOnlyList<FileChangeDto> changes)
-        => Store(workspaceId, modifiedSolution, workspaceVersion, description, changes, PreviewKind.Unspecified);
-
-    /// <summary>
-    /// preview-token-apply-route-provenance: as above, but records the producer family that
-    /// created the preview. This is the overload in-tree producers should call.
-    /// </summary>
-    public string Store(
-        string workspaceId,
-        Solution modifiedSolution,
-        int workspaceVersion,
-        string description,
-        IReadOnlyList<FileChangeDto> changes,
-        PreviewKind kind)
-        => Store(
-            workspaceId,
-            modifiedSolution,
-            workspaceVersion,
-            description,
-            diffTruncated: ContainsTruncatedSentinel(changes),
-            kind);
-
-    private static bool ContainsTruncatedSentinel(IReadOnlyList<FileChangeDto> changes)
-    {
-        foreach (var change in changes)
-        {
-            if (string.Equals(change.FilePath, SolutionDiffHelper.TruncatedSentinelFilePath, StringComparison.Ordinal))
-            {
-                return true;
-            }
-        }
-        return false;
-    }
 
     /// <summary>
     /// preview-token-cross-coupling-bundle (BREAKING): the returned tuple now exposes
@@ -210,46 +115,7 @@ public sealed class PreviewStore : BoundedStore<PreviewStore.PreviewEntry>, IPre
         var entry = RetrieveEntry(token);
         if (entry is null) return null;
 
-        var paths = new List<string>();
-        var changes = entry.ModifiedSolution.GetChanges(entry.OriginalSolution);
-        foreach (var projectChanges in changes.GetProjectChanges())
-        {
-            foreach (var documentId in projectChanges.GetChangedDocuments())
-            {
-                AddDocumentPath(paths, projectChanges.NewProject.GetDocument(documentId));
-            }
-            foreach (var documentId in projectChanges.GetAddedDocuments())
-            {
-                AddDocumentPath(paths, projectChanges.NewProject.GetDocument(documentId));
-            }
-            foreach (var documentId in projectChanges.GetRemovedDocuments())
-            {
-                AddDocumentPath(paths, projectChanges.OldProject.GetDocument(documentId));
-            }
-        }
-
-        // A preview that introduces a whole new project (e.g. scaffold flows) writes every
-        // document of that project; enumerate them too rather than silently under-reporting.
-        foreach (var addedProject in changes.GetAddedProjects())
-        {
-            foreach (var document in addedProject.Documents)
-            {
-                AddDocumentPath(paths, document);
-            }
-        }
-
-        // Removing a whole project deletes every source document it owned. Project-level
-        // removals are not repeated in GetProjectChanges(), so enumerate them explicitly just
-        // like additions or the redemption-time write-set check would silently omit deletions.
-        foreach (var removedProject in changes.GetRemovedProjects())
-        {
-            foreach (var document in removedProject.Documents)
-            {
-                AddDocumentPath(paths, document);
-            }
-        }
-
-        return paths;
+        return SolutionFileMutationPlanner.ChangedPaths(entry.OriginalSolution, entry.ModifiedSolution);
     }
 
     /// <summary>
@@ -263,16 +129,6 @@ public sealed class PreviewStore : BoundedStore<PreviewStore.PreviewEntry>, IPre
     {
         var entry = RetrieveEntry(token);
         return entry?.Kind ?? PreviewKind.Unspecified;
-    }
-
-    private static void AddDocumentPath(List<string> paths, Document? document)
-    {
-        if (document?.FilePath is { Length: > 0 } filePath
-            // The truncated-diff sentinel is a synthetic marker, not a real write target.
-            && !string.Equals(filePath, SolutionDiffHelper.TruncatedSentinelFilePath, StringComparison.Ordinal))
-        {
-            paths.Add(filePath);
-        }
     }
 
     /// <inheritdoc />

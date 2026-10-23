@@ -38,12 +38,6 @@ public sealed class PerformanceBaselineTests : SharedWorkspaceTestBase
         WorkspaceId = await GetOrLoadWorkspaceIdAsync(SampleSolutionPath, CancellationToken.None);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup()
-    {
-        DisposeServices();
-    }
-
     [TestMethod]
     public async Task SymbolSearch_Completes_Within_Budget()
     {
@@ -163,7 +157,7 @@ public sealed class PerformanceBaselineTests : SharedWorkspaceTestBase
         try
         {
             var sw = Stopwatch.StartNew();
-            var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+            var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
             sw.Stop();
 
             Assert.IsTrue(sw.ElapsedMilliseconds < 30_000,

@@ -41,9 +41,6 @@ public sealed class SamplingMrtrWireTests : IsolatedWorkspaceTestBase
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     [Timeout(30_000, CooperativeCancellation = true)]
     public async Task ModernSession_SamplingRoundTrip_UsesRequestScopedInput()

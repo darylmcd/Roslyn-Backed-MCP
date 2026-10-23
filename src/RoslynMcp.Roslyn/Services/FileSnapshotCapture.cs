@@ -1,28 +1,17 @@
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Roslyn.Services;
 
 /// <summary>
-/// Single owner of the pre-apply file-snapshot policy for every mutation path that captures a
-/// <see cref="FileSnapshotDto"/>
-/// (<c>file-snapshot-capture-helper-consolidation</c>): given the bytes a file held before
-/// the mutation — or the knowledge that it held none — produce the
-/// <see cref="FileSnapshotDto"/> <c>revert_last_apply</c> needs.
+/// Captures pre-apply snapshots while distinguishing known absence from read failures.
 /// <para>
-/// The policy is one line, but it was hand-rolled as an independent ternary at every call
-/// site (<see cref="EditService"/> twice, <see cref="EditorConfigService"/>,
-/// <see cref="ProjectMutationService"/>, <c>RefactoringService.AddFileSnapshotAsync</c> and
-/// <c>RefactoringService.AddProjectFileSnapshotAsync</c>), so a fix to one never reached the
-/// others. All of them now delegate here, and no production call site outside this type
-/// names <see cref="FileSnapshotDto.FromExistingBytes"/>.
+/// Callers that already own exact bytes may construct a byte snapshot directly. Callers
+/// needing a physical read use the shared missing-only reader after live authorization.
 /// </para>
 /// <para>
-/// Two entry points exist because some callers already read the bytes for a SECOND purpose —
-/// <c>AtomicFileWriter.ResolveWriteEncoding</c>, or a three-way missing-file branch — and
-/// must not read the file twice: they call <see cref="FromBytesOrFallback"/> with the bytes
-/// they already hold, while callers with nothing pre-read call <see cref="CaptureAsync"/>
-/// (which itself delegates to <see cref="FromBytesOrFallback"/> on both branches, so the
-/// ternary exists exactly once).
+/// <see cref="FromBytesOrFallback"/> applies the byte-versus-text policy without rereading;
+/// <see cref="CaptureAsync"/> reads once and delegates to that policy.
 /// </para>
 /// </summary>
 internal static class FileSnapshotCapture
@@ -70,12 +59,17 @@ internal static class FileSnapshotCapture
         Func<string?>? fallbackTextFactory,
         CancellationToken ct)
     {
-        if (!File.Exists(filePath))
-        {
-            return FromBytesOrFallback(filePath, bytes: null, fallbackTextFactory?.Invoke());
-        }
+        var bytes = await ReadIfPresentAsync(filePath, PhysicalInputReader.ReadAllBytesAsync, ct).ConfigureAwait(false);
+        return FromBytesOrFallback(filePath, bytes, bytes is null ? fallbackTextFactory?.Invoke() : null);
+    }
 
-        var bytes = await File.ReadAllBytesAsync(filePath, ct).ConfigureAwait(false);
-        return FromBytesOrFallback(filePath, bytes, fallbackText: null);
+    /// <summary>Distinguishes known absence from unreadable physical input for all transaction readers.</summary>
+    internal static async Task<T?> ReadIfPresentAsync<T>(string path,
+        Func<string, CancellationToken, Task<T>> read, CancellationToken ct) where T : class
+    {
+        ct.ThrowIfCancellationRequested();
+        try { return await read(path, ct).ConfigureAwait(false); }
+        catch (FileNotFoundException) { return null; }
+        catch (DirectoryNotFoundException) { return null; }
     }
 }

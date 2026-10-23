@@ -23,9 +23,6 @@ public sealed class AnalysisToolsTests : SharedWorkspaceTestBase
         WorkspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     private static string FindDocumentPath(string name)
     {
         var solution = WorkspaceManager.GetCurrentSolution(WorkspaceId);

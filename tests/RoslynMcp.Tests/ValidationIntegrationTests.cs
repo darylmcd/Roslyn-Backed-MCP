@@ -1,6 +1,7 @@
 using System.Reflection;
 using Microsoft.CodeAnalysis.Diagnostics;
 using RoslynMcp.Core.Models;
+using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -31,12 +32,6 @@ public class ValidationIntegrationTests : SharedWorkspaceTestBase
     {
         InitializeServices();
         WorkspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
-    }
-
-    [ClassCleanup]
-    public static void ClassCleanup()
-    {
-        DisposeServices();
     }
 
     [TestMethod]
@@ -102,7 +97,7 @@ public class ValidationIntegrationTests : SharedWorkspaceTestBase
         };
         var loaded = await WorkspaceManager.LoadAsync(
             repositorySolutionPath,
-            globalProperties,
+            RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(repositorySolutionPath, globalProperties),
             CancellationToken.None);
 
         try
@@ -110,7 +105,6 @@ public class ValidationIntegrationTests : SharedWorkspaceTestBase
             var solution = WorkspaceManager.GetCurrentSolution(loaded.WorkspaceId);
             var hostProject = solution.Projects.First(project => project.Name == "RoslynMcp.Host.Stdio");
             var analyzerReference = hostProject.AnalyzerReferences
-                .OfType<AnalyzerFileReference>()
                 .FirstOrDefault(reference =>
                     reference.FullPath?.Contains("ServerSurfaceCatalogAnalyzer", StringComparison.OrdinalIgnoreCase) == true);
 
@@ -167,7 +161,7 @@ public class ValidationIntegrationTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task Build_Workspace_Returns_Parsed_Diagnostics_For_Broken_Solution()
     {
-        var buildFailureWorkspace = await WorkspaceManager.LoadAsync(BuildFailureSolutionPath, CancellationToken.None);
+        var buildFailureWorkspace = await WorkspaceManager.LoadAsync(BuildFailureSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(BuildFailureSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
 
         var result = await BuildService.BuildWorkspaceAsync(buildFailureWorkspace.WorkspaceId, CancellationToken.None);
 
@@ -193,7 +187,7 @@ public class ValidationIntegrationTests : SharedWorkspaceTestBase
             var failingContents = originalContents.Replace("Assert.AreEqual(2, count);", "Assert.AreEqual(3, count);");
             await File.WriteAllTextAsync(testFilePath, failingContents, CancellationToken.None);
 
-            var copiedWorkspace = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+            var copiedWorkspace = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
             var result = await TestRunnerService.RunTestsAsync(
                 copiedWorkspace.WorkspaceId,
                 projectName: "SampleLib.Tests",
@@ -216,8 +210,8 @@ public class ValidationIntegrationTests : SharedWorkspaceTestBase
         }
     }
 
-    private static object? GetAnalyzerAssemblyLoader(AnalyzerFileReference reference) =>
+    private static object? GetAnalyzerAssemblyLoader(AnalyzerReference reference) =>
         typeof(AnalyzerFileReference)
             .GetField("_assemblyLoader", BindingFlags.Instance | BindingFlags.NonPublic)
-            ?.GetValue(reference);
+            ?.GetValue(AnalyzerReferenceIsolation.GetFileReference(reference));
 }

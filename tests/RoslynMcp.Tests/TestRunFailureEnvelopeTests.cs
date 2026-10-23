@@ -22,6 +22,58 @@ namespace RoslynMcp.Tests;
 [TestClass]
 public sealed class TestRunFailureEnvelopeTests
 {
+    private static AdhocWorkspace? _fakeWorkspace;
+    private static AdhocWorkspace FakeWorkspace => _fakeWorkspace ?? throw new AssertFailedException("The fixture workspace was not initialized.");
+
+    private static IWorkspacePathPolicy? _fixturePolicy;
+    private static IWorkspacePathPolicy FixturePolicy => _fixturePolicy ?? throw new AssertFailedException("The native fixture configuration authority was not initialized.");
+    private static string _fakeProjectRoot = null!;
+    private static string _fakeProjectPath = null!;
+    private static string _fakeAssetsPath = null!;
+    [ClassInitialize]
+    public static async Task InitializeFakeWorkspace(TestContext context)
+    {
+        _fakeProjectRoot = Path.Combine(TestTempRoot.Current, nameof(TestRunFailureEnvelopeTests), Guid.NewGuid().ToString("N"));
+        try
+        {
+            _fakeWorkspace = new AdhocWorkspace();
+            NativeSdkRestoreFixture.InitializeDirectory(_fakeProjectRoot);
+            _fakeProjectPath = Path.Combine(_fakeProjectRoot, "Sample.Tests.csproj");
+            NativeSdkRestoreFixture.WriteProject(_fakeProjectPath, "<Project><PropertyGroup><TargetFramework>net10.0</TargetFramework><IsTestProject>true</IsTestProject>"
+                + "<ProjectAssetsFile>$(MSBuildProjectDirectory)/obj/project.assets.json</ProjectAssetsFile></PropertyGroup></Project>");
+            _fakeAssetsPath = Path.Combine(_fakeProjectRoot, "obj", "project.assets.json");
+            Directory.CreateDirectory(Path.GetDirectoryName(_fakeAssetsPath)!);
+            File.WriteAllText(_fakeAssetsPath, """
+                { "version": 3, "targets": { "net10.0": {} }, "libraries": {}, "packageFolders": {},
+                  "projectFileDependencyGroups": { "net10.0": [] },
+                  "project": { "frameworks": { "net10.0": { "targetAlias": "net10.0" } } } }
+                """);
+            _fixturePolicy = await NativeSdkRestoreFixture.CreatePolicyAsync(_fakeProjectPath, context.CancellationToken);
+            FakeWorkspace.AddProject(ProjectInfo.Create(ProjectId.CreateNewId(), VersionStamp.Create(), "Sample.Tests", "Sample.Tests", LanguageNames.CSharp, filePath: _fakeProjectPath));
+        }
+        catch (Exception primary)
+        {
+            DisposeFixture(primary);
+            throw;
+        }
+    }
+
+    [ClassCleanup]
+    public static void DisposeFakeWorkspace() => DisposeFixture(null);
+
+    private static void DisposeFixture(Exception? primary)
+    {
+        var workspace = _fakeWorkspace;
+        _fakeWorkspace = null;
+        var root = _fakeProjectRoot;
+        _fakeProjectRoot = string.Empty;
+        OwnedResourceCleanup.Dispose("Failed to release test-run fixture.", primary, workspace,
+            OwnedResourceCleanup.FromAction(() =>
+            {
+                if (!string.IsNullOrEmpty(root)) TestFixtureFileSystem.DeleteDirectoryIfExists(root);
+            }));
+    }
+
     private static CommandExecutionDto FakeExecution(int exitCode, string stdOut, string stdErr, string? earlyKillReason = null) =>
         new(
             Command: "dotnet",
@@ -34,6 +86,19 @@ public sealed class TestRunFailureEnvelopeTests
             StdOut: stdOut,
             StdErr: stdErr,
             EarlyKillReason: earlyKillReason);
+
+    private static Task<CommandExecutionDto> CompleteFixtureRestoreAsync(string targetPath,
+        IReadOnlyList<string> arguments, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        Assert.AreEqual("restore", arguments.FirstOrDefault(), "Preparation must reach the explicit restore protocol.");
+        Assert.IsTrue(FileSystemPath.Comparer.Equals(targetPath, _fakeProjectPath));
+        using var assets = JsonDocument.Parse(File.ReadAllBytes(_fakeAssetsPath));
+        Assert.IsTrue(assets.RootElement.GetProperty("targets").TryGetProperty("net10.0", out _));
+        Assert.AreEqual(0, assets.RootElement.GetProperty("libraries").EnumerateObject().Count());
+        return Task.FromResult(new CommandExecutionDto("dotnet", arguments.ToArray(), _fakeProjectRoot, targetPath,
+            0, true, 0, "Fixture dependency-free restore completed.", ""));
+    }
 
     [TestMethod]
     public void ParseTestRun_SuccessWithNoTrx_LeavesEnvelopeNull()
@@ -113,6 +178,7 @@ public sealed class TestRunFailureEnvelopeTests
     public void ParseTestRun_NonzeroExitWithTrx_PreservesCountsAndEmitsExecutionFailure()
     {
         var trxPath = WritePassedTrxFixture();
+        Exception? primary = null;
         try
         {
             var execution = FakeExecution(
@@ -120,7 +186,7 @@ public sealed class TestRunFailureEnvelopeTests
                 stdOut: "Passed Sample.Test\nBuild FAILED.",
                 stdErr: "CS0103: The name 'Missing' does not exist in the current context");
 
-            var result = DotnetOutputParser.ParseTestRun(execution, [trxPath]);
+            var result = DotnetOutputParser.ParseTestRun(execution, [XmlFileLoader.Load(trxPath)]);
 
             Assert.AreEqual(1, result.Total, "A failed process must not erase valid TRX counters.");
             Assert.AreEqual(1, result.Passed);
@@ -130,9 +196,11 @@ public sealed class TestRunFailureEnvelopeTests
             Assert.AreEqual("BuildFailure", result.FailureEnvelope!.ErrorKind);
             Assert.IsFalse(result.FailureEnvelope.IsRetryable);
         }
+        catch (Exception failure) { primary = failure; throw; }
         finally
         {
-            File.Delete(trxPath);
+            OwnedResourceCleanup.Dispose("Failed to delete TRX fixture.", primary,
+                OwnedResourceCleanup.FromAction(() => File.Delete(trxPath)));
         }
     }
 
@@ -234,7 +302,7 @@ public sealed class TestRunFailureEnvelopeTests
         StringAssert.Contains(timeout.Message, "C:/private");
 
         var sink = new CapturingObservabilitySink();
-        var service = new TestRunnerService(
+        var service = new TestRunnerService(new ForkInvocationPathPolicy(FixturePolicy),
             new SingleTestProjectWorkspaceManager(),
             new ThrowingExecutionExecutor(timeout),
             NullLogger<TestRunnerService>.Instance,
@@ -312,36 +380,39 @@ public sealed class TestRunFailureEnvelopeTests
     [DataRow("cancelled", true)]
     public async Task RunTests_CleanupFails_PreservesPrimaryOutcomeAsync(string outcome, bool accessDenied)
     {
-        using var cancellation = new CancellationTokenSource();
-        var primaryCancellation = new OperationCanceledException(cancellation.Token);
-        var sink = new CapturingObservabilitySink();
-        var trxPath = WritePassedTrxFixture();
+        CancellationTokenSource? cancellation = null;
+        IGatedCommandExecutor? executor = null;
+        string? trxPath = null;
         string? resultsPath = null;
+        Exception? primary = null;
         try
         {
-            IGatedCommandExecutor executor = outcome switch
+            cancellation = new CancellationTokenSource();
+            var primaryCancellation = new OperationCanceledException(cancellation.Token);
+            var sink = new CapturingObservabilitySink();
+            trxPath = WritePassedTrxFixture();
+            executor = outcome switch
             {
                 "timeout" => new ThrowingExecutionExecutor(new TimeoutException("primary timeout")),
-                "cancelled" => new ThrowingExecutionExecutor(primaryCancellation),
+                "cancelled" => new CallbackExecutionExecutor(() => { cancellation.Cancel(); throw primaryCancellation; }, SucceededExecution()),
                 _ => new CannedExecutionExecutor(FakeExecution(
-                    outcome == "passed" ? 0 : 1, $"Results File: {trxPath}", "Build FAILED.")),
+                    outcome == "passed" ? 0 : 1, $"Results File: {trxPath}", "Build FAILED."), File.ReadAllText(trxPath)),
             };
-            var service = new TestRunnerService(
+            var service = new TestRunnerService(new ForkInvocationPathPolicy(FixturePolicy),
                 new SingleTestProjectWorkspaceManager(), executor,
                 NullLogger<TestRunnerService>.Instance,
                 new ThrowingTestDiscoveryService(new InvalidOperationException("Unexpected discovery.")),
                 options: null, exceptionReporter: new ServerObservabilityReporter(sink),
                 deleteResultsDirectory: path =>
                 {
-                    resultsPath = path;
+                    resultsPath = path.Path;
                     throw accessDenied
                         ? new UnauthorizedAccessException($"cleanup-path-sentinel {path}")
                         : new IOException($"cleanup-path-sentinel {path}");
-                });
+                }, timeProvider: TimeProvider.System);
 
             if (outcome == "cancelled")
             {
-                cancellation.Cancel();
                 var exception = await Assert.ThrowsExactlyAsync<OperationCanceledException>(() =>
                     service.RunTestsAsync("ws-cleanup", null, null, cancellation.Token));
                 Assert.AreSame(primaryCancellation, exception);
@@ -372,11 +443,16 @@ public sealed class TestRunFailureEnvelopeTests
             Assert.IsFalse(diagnostic.Contains("cleanup-path-sentinel", StringComparison.Ordinal), diagnostic);
             Assert.IsFalse(diagnostic.Contains("RoslynMcpTestResults", StringComparison.Ordinal), diagnostic);
         }
+        catch (Exception failure) { primary = failure; throw; }
         finally
         {
-            File.Delete(trxPath);
-            if (resultsPath is not null)
-                Directory.Delete(resultsPath, recursive: true);
+            OwnedResourceCleanup.Dispose("Failed to release cleanup-failure fixture.", primary,
+                executor, cancellation,
+                OwnedResourceCleanup.FromAction(() => { if (trxPath is not null) File.Delete(trxPath); }),
+                OwnedResourceCleanup.FromAction(() =>
+                {
+                    if (resultsPath is not null) Directory.Delete(resultsPath, recursive: true);
+                }));
         }
     }
 
@@ -388,12 +464,15 @@ public sealed class TestRunFailureEnvelopeTests
             "roslynmcp-stale-trx",
             Guid.NewGuid().ToString("N"));
         var historicalResultsDirectory = Path.Combine(workingDirectory, "TestResults", "historical-run");
-        Directory.CreateDirectory(historicalResultsDirectory);
-        var historicalTrx = WritePassedTrxFixture();
-        File.Move(historicalTrx, Path.Combine(historicalResultsDirectory, "historical.trx"));
-
+        string? historicalTrx = null;
+        Exception? primary = null;
         try
         {
+            Directory.CreateDirectory(historicalResultsDirectory);
+            historicalTrx = WritePassedTrxFixture();
+            File.Move(historicalTrx, Path.Combine(historicalResultsDirectory, "historical.trx"));
+            historicalTrx = null;
+
             var execution = new CommandExecutionDto(
                 Command: "dotnet",
                 Arguments: ["test", "Sample.Tests.csproj"],
@@ -404,7 +483,7 @@ public sealed class TestRunFailureEnvelopeTests
                 DurationMs: 1234,
                 StdOut: "CS0103: The name 'Oops' does not exist in the current context.\nBuild FAILED.",
                 StdErr: string.Empty);
-            var service = CreateService(new CannedExecutionExecutor(execution));
+            var service = CreateService(new CannedExecutionExecutor(execution, null));
 
             var result = await service.RunTestsAsync(
                 "ws-stale-trx",
@@ -418,23 +497,27 @@ public sealed class TestRunFailureEnvelopeTests
             Assert.IsNotNull(result.FailureEnvelope);
             Assert.AreEqual("BuildFailure", result.FailureEnvelope!.ErrorKind);
         }
+        catch (Exception failure) { primary = failure; throw; }
         finally
         {
-            Directory.Delete(workingDirectory, recursive: true);
+            OwnedResourceCleanup.Dispose("Failed to release historical TRX fixture.", primary,
+                OwnedResourceCleanup.FromAction(() => { if (historicalTrx is not null) File.Delete(historicalTrx); }),
+                OwnedResourceCleanup.FromAction(() => TestFixtureFileSystem.DeleteDirectoryIfExists(workingDirectory)));
         }
     }
 
     [TestMethod]
-    public async Task RunTests_ExplicitStdOutResultsFile_RemainsCurrentRunFallback()
+    public async Task RunTests_InvocationReport_IsCollectedAfterCommand()
     {
         var trxPath = WritePassedTrxFixture();
+        Exception? primary = null;
         try
         {
             var execution = FakeExecution(
                 exitCode: 0,
                 stdOut: $"Results File: {trxPath}{Environment.NewLine}Test Run Successful.",
                 stdErr: string.Empty);
-            var service = CreateService(new CannedExecutionExecutor(execution));
+            var service = CreateService(new CannedExecutionExecutor(execution, File.ReadAllText(trxPath)));
 
             var result = await service.RunTestsAsync(
                 "ws-stdout-trx",
@@ -446,14 +529,16 @@ public sealed class TestRunFailureEnvelopeTests
             Assert.AreEqual(1, result.Passed);
             Assert.IsNull(result.FailureEnvelope);
         }
+        catch (Exception failure) { primary = failure; throw; }
         finally
         {
-            File.Delete(trxPath);
+            OwnedResourceCleanup.Dispose("Failed to delete TRX fixture.", primary,
+                OwnedResourceCleanup.FromAction(() => File.Delete(trxPath)));
         }
     }
 
     private static TestRunnerService CreateService(IGatedCommandExecutor executor) =>
-        new(
+        new(new ForkInvocationPathPolicy(FixturePolicy),
             new SingleTestProjectWorkspaceManager(),
             executor,
             NullLogger<TestRunnerService>.Instance,
@@ -490,10 +575,11 @@ public sealed class TestRunFailureEnvelopeTests
         var hugeStackTrace = "   at RoslynMcp.Tests.SomeFixture.TestMethod() line 1\n" + new string('s', 5000);
         var trxPath = WriteTrxFixture([("RoslynMcp.Tests.SomeFixture.TestMethod", hugeMessage, hugeStackTrace)]);
 
+        Exception? primary = null;
         try
         {
             var execution = FakeExecution(exitCode: 1, stdOut: "Test run complete.", stdErr: string.Empty);
-            var result = DotnetOutputParser.ParseTestRun(execution, [trxPath]);
+            var result = DotnetOutputParser.ParseTestRun(execution, [XmlFileLoader.Load(trxPath)]);
 
             Assert.AreEqual(1, result.Failures.Count);
             var failure = result.Failures[0];
@@ -511,9 +597,11 @@ public sealed class TestRunFailureEnvelopeTests
                 "Truncation must keep the HEAD (the throw-site frame), not the tail.");
             StringAssert.EndsWith(failure.StackTrace, _truncationMarker);
         }
+        catch (Exception failure) { primary = failure; throw; }
         finally
         {
-            File.Delete(trxPath);
+            OwnedResourceCleanup.Dispose("Failed to delete TRX fixture.", primary,
+                OwnedResourceCleanup.FromAction(() => File.Delete(trxPath)));
         }
     }
 
@@ -525,10 +613,11 @@ public sealed class TestRunFailureEnvelopeTests
         var exactStackTrace = new string('s', 1500);
         var trxPath = WriteTrxFixture([("RoslynMcp.Tests.SomeFixture.AtLimit", exactMessage, exactStackTrace)]);
 
+        Exception? primary = null;
         try
         {
             var execution = FakeExecution(exitCode: 1, stdOut: string.Empty, stdErr: string.Empty);
-            var result = DotnetOutputParser.ParseTestRun(execution, [trxPath]);
+            var result = DotnetOutputParser.ParseTestRun(execution, [XmlFileLoader.Load(trxPath)]);
 
             Assert.AreEqual(1, result.Failures.Count);
             Assert.AreEqual(exactMessage, result.Failures[0].Message,
@@ -536,9 +625,11 @@ public sealed class TestRunFailureEnvelopeTests
             Assert.AreEqual(exactStackTrace, result.Failures[0].StackTrace,
                 "A stack trace exactly at the cap must pass through byte-identical, with no marker.");
         }
+        catch (Exception failure) { primary = failure; throw; }
         finally
         {
-            File.Delete(trxPath);
+            OwnedResourceCleanup.Dispose("Failed to delete TRX fixture.", primary,
+                OwnedResourceCleanup.FromAction(() => File.Delete(trxPath)));
         }
     }
 
@@ -550,18 +641,21 @@ public sealed class TestRunFailureEnvelopeTests
         var trxPath = WriteTrxFixture(
             [("RoslynMcp.Tests.SomeFixture.NoStack", "Assert failed.", null)]);
 
+        Exception? primary = null;
         try
         {
             var execution = FakeExecution(exitCode: 1, stdOut: string.Empty, stdErr: string.Empty);
-            var result = DotnetOutputParser.ParseTestRun(execution, [trxPath]);
+            var result = DotnetOutputParser.ParseTestRun(execution, [XmlFileLoader.Load(trxPath)]);
 
             Assert.AreEqual(1, result.Failures.Count);
             Assert.AreEqual("Assert failed.", result.Failures[0].Message);
             Assert.IsNull(result.Failures[0].StackTrace);
         }
+        catch (Exception failure) { primary = failure; throw; }
         finally
         {
-            File.Delete(trxPath);
+            OwnedResourceCleanup.Dispose("Failed to delete TRX fixture.", primary,
+                OwnedResourceCleanup.FromAction(() => File.Delete(trxPath)));
         }
     }
 
@@ -798,24 +892,42 @@ public sealed class TestRunFailureEnvelopeTests
             """;
 
         var path = Path.Combine(Path.GetTempPath(), $"roslynmcp-testrun-fixture-{Guid.NewGuid():N}.trx");
-        File.WriteAllText(path, xml);
+        try
+        {
+            File.WriteAllText(path, xml);
+        }
+        catch (Exception primary)
+        {
+            OwnedResourceCleanup.Dispose("Failed to release partial TRX fixture.", primary,
+                OwnedResourceCleanup.FromAction(() => File.Delete(path)));
+            throw;
+        }
         return path;
     }
 
     private static string WritePassedTrxFixture()
     {
         var path = Path.Combine(Path.GetTempPath(), $"rmcp-passed-{Guid.NewGuid():N}.trx");
-        File.WriteAllText(path, """
-            <?xml version="1.0" encoding="utf-8"?>
-            <TestRun xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
-              <Results>
-                <UnitTestResult testName="Sample.Test" outcome="Passed" />
-              </Results>
-              <ResultSummary outcome="Failed">
-                <Counters total="1" executed="1" passed="1" failed="0" notExecuted="0" />
-              </ResultSummary>
-            </TestRun>
-            """);
+        try
+        {
+            File.WriteAllText(path, """
+                <?xml version="1.0" encoding="utf-8"?>
+                <TestRun xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+                  <Results>
+                    <UnitTestResult testName="Sample.Test" outcome="Passed" />
+                  </Results>
+                  <ResultSummary outcome="Passed">
+                    <Counters total="1" executed="1" passed="1" failed="0" notExecuted="0" />
+                  </ResultSummary>
+                </TestRun>
+                """);
+        }
+        catch (Exception primary)
+        {
+            OwnedResourceCleanup.Dispose("Failed to release partial TRX fixture.", primary,
+                OwnedResourceCleanup.FromAction(() => File.Delete(path)));
+            throw;
+        }
         return path;
     }
 
@@ -827,23 +939,23 @@ public sealed class TestRunFailureEnvelopeTests
     [TestMethod]
     public async Task RunTestCommandAsync_PlanWithoutTargetPath_ThrowsArgumentException()
     {
-        var service = new TestRunnerService(
+        var service = new TestRunnerService(new ForkInvocationPathPolicy(FixturePolicy),
             new SingleTestProjectWorkspaceManager(),
-            new CannedExecutionExecutor(SucceededExecution()),
+            new CannedExecutionExecutor(SucceededExecution(), null),
             NullLogger<TestRunnerService>.Instance,
             new ThrowingTestDiscoveryService(new InvalidOperationException("not expected")));
 
         var thrown = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
-            service.RunTestCommandAsync(new TestRunPlan("ws-no-target", null, null), CancellationToken.None));
+            service.RunTestCommandAsync(new TestRunPlan("ws-no-target", null, null, System.Collections.Immutable.ImmutableDictionary<string, string>.Empty, RoslynMcp.Tests.Helpers.SyntheticTestRunPlans.OwnedDefaultContext, []), CancellationToken.None));
         Assert.AreEqual("plan", thrown.ParamName);
     }
 
     [TestMethod]
     public async Task RunTestCommandAsync_SetsCommandDurationOnResult()
     {
-        var service = new TestRunnerService(
+        var service = new TestRunnerService(new ForkInvocationPathPolicy(FixturePolicy),
             new SingleTestProjectWorkspaceManager(),
-            new CannedExecutionExecutor(SucceededExecution()),
+            new CannedExecutionExecutor(SucceededExecution(), null),
             NullLogger<TestRunnerService>.Instance,
             new ThrowingTestDiscoveryService(new InvalidOperationException("not expected")));
 
@@ -859,7 +971,7 @@ public sealed class TestRunFailureEnvelopeTests
     public async Task RunTestsAsync_WorkspaceClosedDuringRun_ReturnsParsedResultWithWarning()
     {
         var manager = new SingleTestProjectWorkspaceManager();
-        var service = new TestRunnerService(
+        var service = new TestRunnerService(new ForkInvocationPathPolicy(FixturePolicy),
             manager,
             new CallbackExecutionExecutor(() => manager.Closed = true, SucceededExecution()),
             NullLogger<TestRunnerService>.Instance,
@@ -875,9 +987,9 @@ public sealed class TestRunFailureEnvelopeTests
     public async Task CompleteTestRunAsync_VersionMoved_AddsWarningOnce()
     {
         var manager = new SingleTestProjectWorkspaceManager();
-        var service = new TestRunnerService(
+        var service = new TestRunnerService(new ForkInvocationPathPolicy(FixturePolicy),
             manager,
-            new CannedExecutionExecutor(SucceededExecution()),
+            new CannedExecutionExecutor(SucceededExecution(), null),
             NullLogger<TestRunnerService>.Instance,
             new ThrowingTestDiscoveryService(new InvalidOperationException("not expected")));
 
@@ -903,8 +1015,8 @@ public sealed class TestRunFailureEnvelopeTests
     public async Task RunTestCommandAsync_ZeroTestsWithFilter_WarnsWithoutEchoingFilter(string? filter, bool expectsWarning)
     {
         var manager = new SingleTestProjectWorkspaceManager();
-        using var executor = new CannedExecutionExecutor(SucceededExecution());
-        var service = new TestRunnerService(manager, executor, NullLogger<TestRunnerService>.Instance,
+        using var executor = new CannedExecutionExecutor(SucceededExecution(), null);
+        var service = new TestRunnerService(new ForkInvocationPathPolicy(FixturePolicy), manager, executor, NullLogger<TestRunnerService>.Instance,
             new ThrowingTestDiscoveryService(new InvalidOperationException("not expected")));
         var plan = await service.PrepareTestRunAsync("ws-zero", null, filter, CancellationToken.None);
         var result = await service.RunTestCommandAsync(plan, CancellationToken.None);
@@ -932,11 +1044,12 @@ public sealed class TestRunFailureEnvelopeTests
     public async Task RunTestCommandAsync_MatchingFilter_DoesNotWarn()
     {
         var trx = WritePassedTrxFixture();
+        Exception? primary = null;
         try
         {
             var execution = SucceededExecution() with { StdOut = "Results File: " + trx };
-            using var executor = new CannedExecutionExecutor(execution);
-            var service = new TestRunnerService(new SingleTestProjectWorkspaceManager(), executor,
+            using var executor = new CannedExecutionExecutor(execution, File.ReadAllText(trx));
+            var service = new TestRunnerService(new ForkInvocationPathPolicy(FixturePolicy), new SingleTestProjectWorkspaceManager(), executor,
                 NullLogger<TestRunnerService>.Instance,
                 new ThrowingTestDiscoveryService(new InvalidOperationException("not expected")));
             var plan = await service.PrepareTestRunAsync("ws-match", null, "FullyQualifiedName=Sample.Test", CancellationToken.None);
@@ -945,14 +1058,68 @@ public sealed class TestRunFailureEnvelopeTests
             Assert.AreEqual(1, result.Passed);
             Assert.IsNull(result.Warnings);
         }
+        catch (Exception failure) { primary = failure; throw; }
         finally
         {
-            File.Delete(trx);
+            OwnedResourceCleanup.Dispose("Failed to delete TRX fixture.", primary,
+                OwnedResourceCleanup.FromAction(() => File.Delete(trx)));
         }
+    }
+
+    private static async Task<CommandExecutionDto> ExecuteFixtureRestoreAsync(
+        string targetPath, IReadOnlyList<string> arguments,
+        Func<CancellationToken, Task> authorizeStart, CancellationToken ct)
+    {
+        await authorizeStart(ct).ConfigureAwait(false);
+        return await CompleteFixtureRestoreAsync(targetPath, arguments, ct).ConfigureAwait(false);
+    }
+
+    private static async Task<TestRunResultDto> ExecuteFixtureTestAsync(
+        IReadOnlyList<string> arguments, Func<CancellationToken, Task> authorizeStart,
+        Func<Task<CommandExecutionDto>> execute,
+        Func<CommandExecutionDto, CancellationToken, Task<TestRunResultDto>> collectResults,
+        string? reportXml, CancellationToken ct)
+    {
+        await authorizeStart(ct).ConfigureAwait(false);
+        Assert.AreEqual("test", arguments.FirstOrDefault());
+        CollectionAssert.Contains(arguments.ToArray(), "--no-restore");
+        if (reportXml is not null)
+        {
+            var results = arguments[arguments.ToList().IndexOf("--results-directory") + 1];
+            await File.WriteAllTextAsync(Path.Combine(results, "fixture.trx"), reportXml, ct);
+        }
+        var execution = await execute().ConfigureAwait(false);
+        return MsBuildCommandProperties.Redact(await collectResults(execution, ct).ConfigureAwait(false), arguments);
     }
 
     private sealed class CallbackExecutionExecutor(Action onExecute, CommandExecutionDto execution) : IGatedCommandExecutor
     {
+        public Task<BuildCommandRun> ExecuteBuildAsync(BuildCommandPlan plan, TimeSpan timeout, CancellationToken ct) =>
+            throw new NotSupportedException("This fixture does not execute builds.");
+
+        public async Task<CommandExecutionDto> ExecuteAuthorizedAsync(
+            string workspaceId, string targetPath, IReadOnlyList<string> arguments, TimeSpan timeout,
+            Func<CancellationToken, Task> authorizeStart, CancellationToken ct)
+        => await ExecuteFixtureRestoreAsync(targetPath, arguments, authorizeStart, ct).ConfigureAwait(false);
+        public async Task<TestRunResultDto> ExecuteTestAsync(
+            string workspaceId, string targetPath, IReadOnlyList<string> arguments,
+            Func<CommandExecutionDto, CancellationToken, Task<TestRunResultDto>> collectResults,
+            TimeSpan timeout, IReadOnlyList<EarlyKillPattern>? earlyKillPatterns, Func<CancellationToken, Task> authorizeStart, CancellationToken ct)
+        => await ExecuteFixtureTestAsync(arguments, authorizeStart,
+            () => ExecuteAsync(workspaceId, targetPath, arguments, timeout, earlyKillPatterns, ct),
+            collectResults, null, ct).ConfigureAwait(false);
+
+        public Task<CommandExecutionDto> ExecuteAsync(
+            string workspaceId, string targetPath, IReadOnlyList<string> arguments, TimeSpan timeout,
+            IReadOnlyList<EarlyKillPattern>? earlyKillPatterns, CancellationToken ct)
+        {
+            // Canned final process outcomes do not simulate streaming; retain supplied patterns for assertions.
+            RecordedPatterns = earlyKillPatterns;
+            return ExecuteAsync(workspaceId, targetPath, arguments, timeout, ct);
+        }
+
+        public IReadOnlyList<EarlyKillPattern>? RecordedPatterns { get; private set; }
+
         public Task<CommandExecutionDto> ExecuteAsync(
             string workspaceId,
             string targetPath,
@@ -972,7 +1139,7 @@ public sealed class TestRunFailureEnvelopeTests
         }
     }
 
-    private sealed class LargeFailureSetTestRunnerService : ITestRunnerService
+    private sealed class LargeFailureSetTestRunnerService : RoslynMcp.Tests.Helpers.CannedTestRunner
     {
         private readonly int _total;
         private readonly int _passed;
@@ -992,7 +1159,7 @@ public sealed class TestRunFailureEnvelopeTests
             _maxLengthDetail = maxLengthDetail;
         }
 
-        public Task<TestRunResultDto> RunTestsAsync(
+        public override Task<TestRunResultDto> RunTestsAsync(
             string workspaceId, string? projectName, string? filter, CancellationToken ct)
         {
             var failures = Enumerable.Range(0, _failureCount)
@@ -1024,9 +1191,9 @@ public sealed class TestRunFailureEnvelopeTests
         }
     }
 
-    private sealed class TimeoutEnvelopeTestRunnerService : ITestRunnerService
+    private sealed class TimeoutEnvelopeTestRunnerService : RoslynMcp.Tests.Helpers.CannedTestRunner
     {
-        public Task<TestRunResultDto> RunTestsAsync(
+        public override Task<TestRunResultDto> RunTestsAsync(
             string workspaceId, string? projectName, string? filter, CancellationToken ct)
         {
             var shell = new CommandExecutionDto(
@@ -1054,6 +1221,32 @@ public sealed class TestRunFailureEnvelopeTests
     /// </summary>
     private sealed class ThrowingExecutionExecutor(Exception exception) : IGatedCommandExecutor
     {
+        public Task<BuildCommandRun> ExecuteBuildAsync(BuildCommandPlan plan, TimeSpan timeout, CancellationToken ct) =>
+            throw new NotSupportedException("This fixture does not execute builds.");
+
+        public async Task<CommandExecutionDto> ExecuteAuthorizedAsync(
+            string workspaceId, string targetPath, IReadOnlyList<string> arguments, TimeSpan timeout,
+            Func<CancellationToken, Task> authorizeStart, CancellationToken ct)
+        => await ExecuteFixtureRestoreAsync(targetPath, arguments, authorizeStart, ct).ConfigureAwait(false);
+        public async Task<TestRunResultDto> ExecuteTestAsync(
+            string workspaceId, string targetPath, IReadOnlyList<string> arguments,
+            Func<CommandExecutionDto, CancellationToken, Task<TestRunResultDto>> collectResults,
+            TimeSpan timeout, IReadOnlyList<EarlyKillPattern>? earlyKillPatterns, Func<CancellationToken, Task> authorizeStart, CancellationToken ct)
+        => await ExecuteFixtureTestAsync(arguments, authorizeStart,
+            () => ExecuteAsync(workspaceId, targetPath, arguments, timeout, earlyKillPatterns, ct),
+            collectResults, null, ct).ConfigureAwait(false);
+
+        public Task<CommandExecutionDto> ExecuteAsync(
+            string workspaceId, string targetPath, IReadOnlyList<string> arguments, TimeSpan timeout,
+            IReadOnlyList<EarlyKillPattern>? earlyKillPatterns, CancellationToken ct)
+        {
+            // Canned final process outcomes do not simulate streaming; retain supplied patterns for assertions.
+            RecordedPatterns = earlyKillPatterns;
+            return ExecuteAsync(workspaceId, targetPath, arguments, timeout, ct);
+        }
+
+        public IReadOnlyList<EarlyKillPattern>? RecordedPatterns { get; private set; }
+
         public Task<CommandExecutionDto> ExecuteAsync(
             string workspaceId,
             string targetPath,
@@ -1069,8 +1262,34 @@ public sealed class TestRunFailureEnvelopeTests
         }
     }
 
-    private sealed class CannedExecutionExecutor(CommandExecutionDto execution) : IGatedCommandExecutor
+    private sealed class CannedExecutionExecutor(CommandExecutionDto execution, string? reportXml) : IGatedCommandExecutor
     {
+        public Task<BuildCommandRun> ExecuteBuildAsync(BuildCommandPlan plan, TimeSpan timeout, CancellationToken ct) =>
+            throw new NotSupportedException("This fixture does not execute builds.");
+
+        public async Task<CommandExecutionDto> ExecuteAuthorizedAsync(
+            string workspaceId, string targetPath, IReadOnlyList<string> arguments, TimeSpan timeout,
+            Func<CancellationToken, Task> authorizeStart, CancellationToken ct)
+        => await ExecuteFixtureRestoreAsync(targetPath, arguments, authorizeStart, ct).ConfigureAwait(false);
+        public async Task<TestRunResultDto> ExecuteTestAsync(
+            string workspaceId, string targetPath, IReadOnlyList<string> arguments,
+            Func<CommandExecutionDto, CancellationToken, Task<TestRunResultDto>> collectResults,
+            TimeSpan timeout, IReadOnlyList<EarlyKillPattern>? earlyKillPatterns, Func<CancellationToken, Task> authorizeStart, CancellationToken ct)
+        => await ExecuteFixtureTestAsync(arguments, authorizeStart,
+            () => ExecuteAsync(workspaceId, targetPath, arguments, timeout, earlyKillPatterns, ct),
+            collectResults, reportXml, ct).ConfigureAwait(false);
+
+        public Task<CommandExecutionDto> ExecuteAsync(
+            string workspaceId, string targetPath, IReadOnlyList<string> arguments, TimeSpan timeout,
+            IReadOnlyList<EarlyKillPattern>? earlyKillPatterns, CancellationToken ct)
+        {
+            // Canned final process outcomes do not simulate streaming; retain supplied patterns for assertions.
+            RecordedPatterns = earlyKillPatterns;
+            return ExecuteAsync(workspaceId, targetPath, arguments, timeout, ct);
+        }
+
+        public IReadOnlyList<EarlyKillPattern>? RecordedPatterns { get; private set; }
+
         public Task<CommandExecutionDto> ExecuteAsync(
             string workspaceId,
             string targetPath,
@@ -1093,9 +1312,7 @@ public sealed class TestRunFailureEnvelopeTests
     /// </summary>
     private sealed class SingleTestProjectWorkspaceManager : IWorkspaceManager
     {
-        private static readonly string _fixturePath = OperatingSystem.IsWindows()
-            ? "C:/ws/Sample.Tests.csproj"
-            : "/ws/Sample.Tests.csproj";
+        private static string _fixturePath => _fakeProjectPath;
 
         public event Action<string>? WorkspaceClosed { add { } remove { } }
         public event Action<string>? WorkspaceReloaded { add { } remove { } }
@@ -1140,8 +1357,12 @@ public sealed class TestRunFailureEnvelopeTests
         public int GetCurrentVersion(string workspaceId) =>
             Closed ? throw ((IWorkspaceManager)this).CreateWorkspaceNotFoundException(workspaceId) : Version;
         public void RestoreVersion(string workspaceId, int version) => throw new NotSupportedException();
-        public Solution GetCurrentSolution(string workspaceId) => throw new NotSupportedException();
-        public bool TryApplyChanges(string workspaceId, Solution newSolution) => throw new NotSupportedException();
+        public Task<System.Collections.Immutable.ImmutableArray<RoslynMcp.Roslyn.Contracts.AdmittedModuleImage>> ReadAdmittedImagesAsync(
+            string workspaceId, Microsoft.CodeAnalysis.ProjectId projectId, Microsoft.CodeAnalysis.PortableExecutableReference reference, CancellationToken ct) =>
+            throw new NotSupportedException();
+
+        public Solution GetCurrentSolution(string workspaceId) => FakeWorkspace.CurrentSolution;
+
         public Project? GetProject(string workspaceId, string projectNameOrPath) => null;
     }
 
@@ -1361,7 +1582,7 @@ public sealed class TestRunFailureEnvelopeTests
         public void RemoveGate(string workspaceId) { }
     }
 
-    private sealed class ThrowingTestRunnerService : ITestRunnerService
+    private sealed class ThrowingTestRunnerService : RoslynMcp.Tests.Helpers.CannedTestRunner
     {
         private readonly Exception _exception;
 
@@ -1370,7 +1591,7 @@ public sealed class TestRunFailureEnvelopeTests
             _exception = exception;
         }
 
-        public Task<TestRunResultDto> RunTestsAsync(
+        public override Task<TestRunResultDto> RunTestsAsync(
             string workspaceId,
             string? projectName,
             string? filter,

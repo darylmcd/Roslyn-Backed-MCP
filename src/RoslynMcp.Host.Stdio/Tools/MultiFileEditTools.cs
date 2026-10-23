@@ -28,12 +28,12 @@ public static class MultiFileEditTools
     /// single-project, or to the full solution when it spans several — and the new-error set is
     /// attached as Verification (pre-existing errors are filtered out). When
     /// <c>autoRevertOnError</c> is true AND new errors appeared, the whole batch is rolled back
-    /// through that single batch-level undo snapshot.
+    /// through the exact batch operation owned by this call.
     /// </remarks>
     [McpServerTool(Name = "apply_multi_file_edit", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
      McpToolMetadata("editing", "experimental", false, true,
         "Apply direct text edits to multiple files; optional verify + auto-revert on new compile errors."),
-     Description("Apply text edits to multiple files under one atomic pre-apply snapshot. Prefer preview_multi_file_edit + preview_multi_file_edit_apply for review workflows.")]
+     Description("Validate the complete ordered text-edit batch before effects, compose repeated-file edits, and persist one atomic transaction. Prefer preview_multi_file_edit + preview_multi_file_edit_apply for review workflows.")]
     public static Task<string> ApplyMultiFileEdit(
         McpServer server,
         IWorkspaceExecutionGate gate,
@@ -41,9 +41,9 @@ public static class MultiFileEditTools
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Array of file edits. Each has filePath (string) and edits (array of TextEditDto with startLine, startColumn, endLine, endColumn, newText)")] FileEditsDto[] fileEdits,
         CancellationToken ct = default,
-        [Description("When false (default), each C# file is parsed after edits; parser errors block that file's apply.")] bool skipSyntaxCheck = false,
+        [Description("When false (default), each C# file is parsed after edits; parser errors reject the entire batch before any file is changed.")] bool skipSyntaxCheck = false,
         [Description("When true, run compile_check once after the batch completes (scoped to the single owning project when possible) and attach the result under Verification. Pre-existing errors are filtered out, so only NEW errors appear in the outcome. Default false.")] bool verify = false,
-        [Description("When true AND verify surfaces new compile errors, automatically revert the entire batch through the single-slot undo path this call populated. Ignored when verify is false. Default false.")] bool autoRevertOnError = false)
+        [Description("When true AND verify surfaces new compile errors, compensate the entire batch through the exact undo operation owned by this call. Ignored when verify is false. Default false.")] bool autoRevertOnError = false)
     {
         return gate.RunWriteAsync(workspaceId, async c =>
         {

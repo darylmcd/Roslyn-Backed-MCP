@@ -13,6 +13,7 @@ using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn;
 using RoslynMcp.Roslyn.Helpers;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -36,7 +37,7 @@ namespace RoslynMcp.Tests;
 // through AnalyzerReferenceIsolation, whose lease root is Path.Combine(Path.GetTempPath(),
 // ShadowRootDirectoryName) — a machine-global directory OUTSIDE TestTempRoot.Current, shared
 // by every WorkspaceManager load in the process (WorkspaceSessionLoader.CreateAndOpenAsync
-// calls RetargetFileReferencesToShadowLoader on every load, including the assembly-shared
+// prepares authorized analyzer snapshots on each certified load, including the assembly-shared
 // Fixture WorkspaceManager other test classes use concurrently). SweepAbandonedRoots also
 // enumerates that same shared parent directly. Concurrent runs would race the shared
 // filesystem tree and the collectible-ALC file-lock reclamation this class asserts.
@@ -50,8 +51,30 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
     private static string ShadowSharedParent =>
         Path.Combine(Path.GetTempPath(), AnalyzerReferenceIsolation.ShadowRootDirectoryName);
 
+    private static async Task<AnalyzerReferenceIsolation.RetargetResult> RetargetAuthorizedAsync(
+        Solution solution, string workspaceId, ILogger logger)
+    {
+        var policy = new OwnedTestWorkspacePathPolicy();
+        Task Authorize(IReadOnlyList<string> paths, CancellationToken ct) => policy.ValidateAsync(workspaceId, paths, ct);
+        Task<byte[]?> Read(string path, CancellationToken ct) => FileSnapshotCapture.ReadIfPresentAsync(path, File.ReadAllBytesAsync, ct);
+        var catalog = await AnalyzerInputCatalog.CaptureAsync(solution, [], Authorize, Read, (digestPath, digestToken) => FileContentDigest.FromReaderAsync(digestPath, Read, digestToken), CancellationToken.None);
+        var preflight = AnalyzerReferenceIsolation.CaptureBindingPreflight(solution, catalog, CancellationToken.None);
+        var result = await AnalyzerReferenceIsolation.RetargetFileReferencesToShadowLoaderAsync(solution, solution, workspaceId, catalog, preflight, logger, CancellationToken.None);
+        try
+        {
+            Assert.AreEqual(AnalyzerReferenceIsolation.BindingStatus.Bound, result.Status);
+            result.AssertCurrent(CancellationToken.None);
+            return result;
+        }
+        catch (Exception failure)
+        {
+            OwnedResourceCleanup.Dispose("Untransferred analyzer retarget result cleanup failed.", failure, result.Lease);
+            throw;
+        }
+    }
+
     [TestMethod]
-    public void Retarget_LeasesAreUniquelyKeyedPerLoad_AndDisposeIsIdempotent()
+    public async Task Retarget_LeasesAreUniquelyKeyedPerLoad_AndDisposeIsIdempotent()
     {
         if (!OperatingSystem.IsWindows())
         {
@@ -60,15 +83,19 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
         }
 
         var projectRoot = Path.Combine(TestTempRoot.Current, "analyzer-owned-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(projectRoot);
+        AdhocWorkspace? adhoc = null;
+        AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease? lease1 = null;
+        AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease? lease2 = null;
+        Exception? primary = null;
         try
         {
+            Directory.CreateDirectory(projectRoot);
             // Two retargets for the SAME workspace id must produce distinct shadow roots — the
             // per-lease key is what makes disposing an old lease after a reload safe against the
             // new lease's files.
             var analyzerPath = Path.Combine(projectRoot, "OwnedAnalyzer.dll");
             File.Copy(typeof(WorkspaceSessionLoader).Assembly.Location, analyzerPath);
-            using var adhoc = new AdhocWorkspace();
+            adhoc = new AdhocWorkspace();
             var project = adhoc.AddProject(ProjectInfo.Create(
                 ProjectId.CreateNewId(),
                 VersionStamp.Create(),
@@ -79,10 +106,14 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
             var reference = new AnalyzerFileReference(analyzerPath, StubAnalyzerAssemblyLoader.Instance);
             var solution = project.Solution.AddAnalyzerReference(project.Id, reference);
 
-            var lease1 = AnalyzerReferenceIsolation.RetargetFileReferencesToShadowLoader(
+            var first = await RetargetAuthorizedAsync(
                 solution, "lease-unit-probe", NullLogger.Instance);
-            var lease2 = AnalyzerReferenceIsolation.RetargetFileReferencesToShadowLoader(
+            lease1 = first.Lease;
+            var second = await RetargetAuthorizedAsync(
                 solution, "lease-unit-probe", NullLogger.Instance);
+            lease2 = second.Lease;
+            Assert.AreSame(reference, solution.GetProject(project.Id)!.AnalyzerReferences.Single());
+            Assert.AreNotSame(reference, first.Solution.GetProject(project.Id)!.AnalyzerReferences.Single());
 
             Assert.AreEqual(1, lease1.RetargetedReferenceCount);
             Assert.IsNotNull(lease1.ShadowRoot);
@@ -99,14 +130,17 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
             lease2.Dispose();
             lease2.Dispose();
         }
+        catch (Exception failure) { primary = failure; throw; }
         finally
         {
-            TestFixtureFileSystem.DeleteDirectoryIfExists(projectRoot);
+            await CleanupFailureCollector.RunAfterFailureAsync("Unique analyzer lease fixture cleanup failed.", primary,
+                CleanupFailureCollector.FromAction(() => OwnedResourceCleanup.Dispose("Unique analyzer leases failed to release.", null, adhoc, lease1, lease2)),
+                CleanupFailureCollector.FromAction(() => TestFixtureFileSystem.DeleteDirectoryIfExists(projectRoot)));
         }
     }
 
     [TestMethod]
-    public void Retarget_ExternalAnalyzer_UsesSharedProcessShadowLoader()
+    public async Task Retarget_ExternalAnalyzer_UsesSharedProcessShadowLoader()
     {
         if (!OperatingSystem.IsWindows())
         {
@@ -114,11 +148,25 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
             return;
         }
 
-        var projectRoot = Path.Combine(TestTempRoot.Current, "analyzer-external-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(projectRoot);
+        var fixtureRoot = Path.Combine(TestTempRoot.Current, "analyzer-external-" + Guid.NewGuid().ToString("N"));
+        var projectRoot = Path.Combine(fixtureRoot, "project");
+        var externalRoot = Path.Combine(fixtureRoot, "external");
+        AdhocWorkspace? adhoc = null;
+        AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease? lease = null;
+        AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease? secondLease = null;
+        Exception? primary = null;
         try
         {
-            using var adhoc = new AdhocWorkspace();
+            Directory.CreateDirectory(projectRoot);
+            Directory.CreateDirectory(externalRoot);
+            var externalAnalyzer = Path.Combine(externalRoot, "ExternalAnalyzer.dll");
+            File.Copy(typeof(WorkspaceSessionLoader).Assembly.Location, externalAnalyzer);
+            CollectionAssert.AreEqual(await File.ReadAllBytesAsync(typeof(WorkspaceSessionLoader).Assembly.Location),
+                await File.ReadAllBytesAsync(externalAnalyzer));
+            Assert.AreEqual(typeof(WorkspaceSessionLoader).Assembly.GetName().FullName,
+                AssemblyName.GetAssemblyName(externalAnalyzer).FullName);
+            Assert.IsFalse(FileSystemPath.IsStrictDescendant(projectRoot, externalAnalyzer));
+            adhoc = new AdhocWorkspace();
             var project = adhoc.AddProject(ProjectInfo.Create(
                 ProjectId.CreateNewId(),
                 VersionStamp.Create(),
@@ -128,28 +176,36 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
                 filePath: Path.Combine(projectRoot, "ExternalProbe.csproj")));
             var originalLoader = StubAnalyzerAssemblyLoader.Instance;
             var reference = new AnalyzerFileReference(
-                typeof(WorkspaceSessionLoader).Assembly.Location,
+                externalAnalyzer,
                 originalLoader);
             var solution = project.Solution.AddAnalyzerReference(project.Id, reference);
 
-            using var lease = AnalyzerReferenceIsolation.RetargetFileReferencesToShadowLoader(
+            var first = await RetargetAuthorizedAsync(
                 solution, "external-unit-probe", NullLogger.Instance);
-            var processLoader = GetAnalyzerAssemblyLoader(reference);
-            using var secondLease = AnalyzerReferenceIsolation.RetargetFileReferencesToShadowLoader(
+            lease = first.Lease;
+            var firstReference = first.Solution.GetProject(project.Id)!.AnalyzerReferences.Single();
+            var processLoader = GetAnalyzerAssemblyLoader(firstReference);
+            var second = await RetargetAuthorizedAsync(
                 solution, "external-unit-probe-2", NullLogger.Instance);
+            secondLease = second.Lease;
+            var secondReference = second.Solution.GetProject(project.Id)!.AnalyzerReferences.Single();
 
             Assert.AreEqual(0, lease.RetargetedReferenceCount,
                 "External references are owned by the process, not the collectible lease.");
             Assert.IsNull(lease.ShadowRoot,
                 "A workspace with only external analyzers must not allocate a collectible lease root.");
-            Assert.AreNotSame(originalLoader, GetAnalyzerAssemblyLoader(reference),
-                "External analyzer references must be retargeted away from the original package path.");
-            Assert.AreSame(processLoader, GetAnalyzerAssemblyLoader(reference),
+            Assert.AreSame(originalLoader, GetAnalyzerAssemblyLoader(reference), "The native reference must remain untouched.");
+            Assert.AreNotSame(originalLoader, GetAnalyzerAssemblyLoader(firstReference),
+                "The published reference must use the held shadow image.");
+            Assert.AreSame(processLoader, GetAnalyzerAssemblyLoader(secondReference),
                 "Repeated retargets must share the process loader.");
         }
+        catch (Exception failure) { primary = failure; throw; }
         finally
         {
-            TestFixtureFileSystem.DeleteDirectoryIfExists(projectRoot);
+            await CleanupFailureCollector.RunAfterFailureAsync("External analyzer lease fixture cleanup failed.", primary,
+                CleanupFailureCollector.FromAction(() => OwnedResourceCleanup.Dispose("External analyzer leases failed to release.", null, adhoc, lease, secondLease)),
+                CleanupFailureCollector.FromAction(() => TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot)));
         }
     }
 
@@ -169,26 +225,30 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
             repoRoot, Path.Combine(repoRoot, "samples", "SampleSolution", "SampleSolution.slnx"));
         var copiedRoot = Path.GetDirectoryName(solutionPath)!;
         var packageRoot = Path.Combine(TestTempRoot.Current, "external-generator-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(packageRoot);
-
+        WorkspaceManager? manager = null;
+        WorkspaceExecutionGate? gate = null;
+        FileWatcherService? watcher = null;
+        Exception? primaryFailure = null;
         try
         {
+            Directory.CreateDirectory(packageRoot);
             var generatorPath = InjectExternalGenerator(copiedRoot, packageRoot);
             MsBuildInitializer.EnsureInitialized();
-            using var manager = new WorkspaceManager(
+            watcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance);
+            manager = new WorkspaceManager(new RoslynMcp.Roslyn.Services.ForkInvocationPathPolicy(new RoslynMcp.Tests.Helpers.OwnedTestWorkspacePathPolicy()),
                 NullLogger<WorkspaceManager>.Instance,
                 new PreviewStore(),
-                new FileWatcherService(NullLogger<FileWatcherService>.Instance),
+                watcher,
                 new WorkspaceManagerOptions { MaxConcurrentWorkspaces = 4 },
                 cacheStore: null,
                 sessionLoader: new WorkspaceSessionLoader());
-            using var gate = new WorkspaceExecutionGate(new ExecutionGateOptions(), manager);
+            gate = new WorkspaceExecutionGate(new ExecutionGateOptions(), manager);
             var runner = new SuccessfulDrainRunner();
 
             string? firstShadowPath = null;
             for (var load = 0; load < 2; load++)
             {
-                var status = await manager.LoadAsync(solutionPath, CancellationToken.None);
+                var status = await manager.LoadAsync(solutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(solutionPath, new Dictionary<string, string>()), CancellationToken.None);
                 Assert.IsTrue(status.IsLoaded);
                 var project = manager.GetCurrentSolution(status.WorkspaceId).Projects
                     .Single(candidate => candidate.Name == "SampleLib");
@@ -198,7 +258,7 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
                     tree.ToString().Contains("ExternalGeneratorMarker", StringComparison.Ordinal)),
                     "The external generator must run through SourceGeneratorCompilation.");
 
-                var reference = project.AnalyzerReferences.OfType<AnalyzerFileReference>()
+                var reference = project.AnalyzerReferences
                     .Single(candidate => string.Equals(candidate.FullPath, generatorPath, StringComparison.OrdinalIgnoreCase));
                 var generator = reference.GetGenerators(LanguageNames.CSharp).Single();
                 var loadedAssembly = generator.GetType().Assembly;
@@ -229,10 +289,18 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
             Directory.Delete(packageRoot, recursive: true);
             Assert.IsFalse(Directory.Exists(packageRoot), "The original package folder must be deletable.");
         }
+        catch (Exception failure)
+        {
+            primaryFailure = failure;
+            throw;
+        }
         finally
         {
-            TestFixtureFileSystem.DeleteDirectoryIfExists(packageRoot);
-            TestFixtureFileSystem.DeleteDirectoryIfExists(copiedRoot);
+            await CleanupFailureCollector.RunAfterFailureAsync("External generator lifecycle fixture cleanup failed.", primaryFailure,
+                CleanupFailureCollector.FromAction(() => OwnedResourceCleanup.Dispose("External generator resources failed to release.", null,
+                    gate, manager, manager is null ? watcher : null)),
+                CleanupFailureCollector.FromAction(() => TestFixtureFileSystem.DeleteDirectoryIfExists(packageRoot)),
+                CleanupFailureCollector.FromAction(() => TestFixtureFileSystem.DeleteDirectoryIfExists(copiedRoot)));
         }
     }
 
@@ -250,23 +318,32 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
             repoRoot, Path.Combine(repoRoot, "samples", "SampleSolution", "SampleSolution.slnx"));
         var copiedRoot = Path.GetDirectoryName(solutionPath)!;
         var packageRoot = Path.Combine(TestTempRoot.Current, "concurrent-generator-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(packageRoot);
+        AdhocWorkspace? adhoc = null;
+        Exception? primary = null;
         try
         {
+            Directory.CreateDirectory(packageRoot);
             var generatorPath = InjectExternalGenerator(copiedRoot, packageRoot);
-            using var adhoc = new AdhocWorkspace();
+            adhoc = new AdhocWorkspace();
             var project = adhoc.AddProject(ProjectInfo.Create(
                 ProjectId.CreateNewId(), VersionStamp.Create(), "ConcurrentProbe", "ConcurrentProbe",
                 LanguageNames.CSharp, filePath: Path.Combine(copiedRoot, "ConcurrentProbe.csproj")));
 
-            var firstLoads = await Task.WhenAll(Enumerable.Range(0, 16).Select(_ => Task.Run(() =>
+            var firstLoads = await Task.WhenAll(Enumerable.Range(0, 16).Select(_ => Task.Run(async () =>
             {
                 var reference = new AnalyzerFileReference(generatorPath, StubAnalyzerAssemblyLoader.Instance);
                 var solution = project.Solution.AddAnalyzerReference(project.Id, reference);
-                using var lease = AnalyzerReferenceIsolation.RetargetFileReferencesToShadowLoader(
+                var prepared = await RetargetAuthorizedAsync(
                     solution, "concurrent-external-probe", NullLogger.Instance);
-                var generator = reference.GetGenerators(LanguageNames.CSharp).Single();
-                return (Loader: GetAnalyzerAssemblyLoader(reference), Location: generator.GetType().Assembly.Location);
+                Exception? loadFailure = null;
+                try
+                {
+                    var published = prepared.Solution.GetProject(project.Id)!.AnalyzerReferences.Single();
+                    var generator = published.GetGenerators(LanguageNames.CSharp).Single();
+                    return (Loader: GetAnalyzerAssemblyLoader(published), Location: generator.GetType().Assembly.Location);
+                }
+                catch (Exception failure) { loadFailure = failure; throw; }
+                finally { OwnedResourceCleanup.Dispose("Concurrent analyzer load cleanup failed.", loadFailure, prepared.Lease); }
             })));
 
             Assert.IsTrue(firstLoads.All(result => ReferenceEquals(result.Loader, firstLoads[0].Loader)),
@@ -279,10 +356,13 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
             Assert.IsFalse(firstLoads[0].Location.StartsWith(packageRoot, StringComparison.OrdinalIgnoreCase));
             Directory.Delete(packageRoot, recursive: true);
         }
+        catch (Exception failure) { primary = failure; throw; }
         finally
         {
-            TestFixtureFileSystem.DeleteDirectoryIfExists(packageRoot);
-            TestFixtureFileSystem.DeleteDirectoryIfExists(copiedRoot);
+            await CleanupFailureCollector.RunAfterFailureAsync("Concurrent analyzer fixture cleanup failed.", primary,
+                CleanupFailureCollector.FromAction(() => adhoc?.Dispose()),
+                CleanupFailureCollector.FromAction(() => TestFixtureFileSystem.DeleteDirectoryIfExists(packageRoot)),
+                CleanupFailureCollector.FromAction(() => TestFixtureFileSystem.DeleteDirectoryIfExists(copiedRoot)));
         }
     }
 
@@ -324,11 +404,11 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
         return path;
     }
 
-    private sealed class SuccessfulDrainRunner : IDotnetCommandRunner
+    private sealed class SuccessfulDrainRunner : RoslynMcp.Tests.Helpers.CannedCommandRunner
     {
         public int CallCount { get; private set; }
 
-        public Task<CommandExecutionDto> RunAsync(
+        public override Task<CommandExecutionDto> RunAsync(
             string workingDirectory, string targetPath, IReadOnlyList<string> arguments, CancellationToken ct)
         {
             CallCount++;
@@ -339,7 +419,7 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
     }
 
     [TestMethod]
-    public void SweepAbandonedRoots_LockedStaleLease_LogsRedactedFailureAndContinues()
+    public async Task SweepAbandonedRoots_LockedStaleLease_LogsRedactedFailureAndContinues()
     {
         if (!OperatingSystem.IsWindows())
         {
@@ -353,11 +433,11 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
         var workspaceDirectory = Path.Combine(sharedParent, "workspace-probe");
         var leaseDirectory = Path.Combine(workspaceDirectory, "stale-lease");
         var lockedFilePath = Path.Combine(leaseDirectory, "locked.dll");
-        Directory.CreateDirectory(leaseDirectory);
-
         FileStream? lockedFile = null;
+        Exception? primary = null;
         try
         {
+            Directory.CreateDirectory(leaseDirectory);
             lockedFile = new FileStream(
                 lockedFilePath,
                 FileMode.CreateNew,
@@ -391,35 +471,41 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
             Assert.IsTrue(Directory.Exists(leaseDirectory),
                 "A failed best-effort sweep must leave the locked lease for a later retry.");
         }
+        catch (Exception failure) { primary = failure; throw; }
         finally
         {
-            lockedFile?.Dispose();
-            TestFixtureFileSystem.DeleteDirectoryIfExists(sharedParent);
+            await CleanupFailureCollector.RunAfterFailureAsync("Locked analyzer sweep fixture cleanup failed.", primary,
+                CleanupFailureCollector.FromAction(() => lockedFile?.Dispose()),
+                CleanupFailureCollector.FromAction(() => TestFixtureFileSystem.DeleteDirectoryIfExists(sharedParent)));
         }
     }
 
     [TestMethod]
-    public void SweepAbandonedRoots_StaleProcessCopyRoot_IsReclaimed()
+    public async Task SweepAbandonedRoots_StaleProcessCopyRoot_IsReclaimed()
     {
         var sharedParent = Path.Combine(
             TestTempRoot.Current, "analyzer-process-sweep-" + Guid.NewGuid().ToString("N"));
         var processCopyRoot = Path.Combine(sharedParent, "process-exited", "copies");
-        Directory.CreateDirectory(processCopyRoot);
-        File.WriteAllText(Path.Combine(processCopyRoot, "unused.dll"), "stale copy");
+        Exception? primary = null;
         try
         {
+            Directory.CreateDirectory(processCopyRoot);
+            File.WriteAllText(Path.Combine(processCopyRoot, "unused.dll"), "stale copy");
             var staleTimestamp = DateTime.UtcNow - TimeSpan.FromDays(2);
             Directory.SetCreationTimeUtc(processCopyRoot, staleTimestamp);
             Directory.SetLastWriteTimeUtc(processCopyRoot, staleTimestamp);
 
             AnalyzerReferenceIsolation.SweepAbandonedRoots(sharedParent, NullLogger.Instance);
 
-            Assert.IsFalse(Directory.Exists(processCopyRoot),
-                "A process copy root from an exited host must be reclaimed by the two-level sweep.");
+            Assert.AreEqual(!OperatingSystem.IsWindows(), Directory.Exists(processCopyRoot),
+                "The sweep removes Windows objects and retains final POSIX directory names.");
+            Assert.IsFalse(File.Exists(Path.Combine(processCopyRoot, "unused.dll")), "Stale analyzer payload must actually be reclaimed.");
         }
+        catch (Exception failure) { primary = failure; throw; }
         finally
         {
-            TestFixtureFileSystem.DeleteDirectoryIfExists(sharedParent);
+            await CleanupFailureCollector.RunAfterFailureAsync("Stale analyzer process copy cleanup failed.", primary,
+                CleanupFailureCollector.FromAction(() => TestFixtureFileSystem.DeleteDirectoryIfExists(sharedParent)));
         }
     }
 
@@ -436,20 +522,13 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
             TestTempRoot.Current, "analyzer-live-process-sweep-" + Guid.NewGuid().ToString("N"));
         var processDirectory = Path.Combine(sharedParent, "process-other-host");
         var copyRoot = Path.Combine(processDirectory, "copies");
-        Directory.CreateDirectory(copyRoot);
-        File.WriteAllText(Path.Combine(copyRoot, "unloaded.dll"), "unmapped copy");
         var readyPath = Path.Combine(TestTempRoot.Current, "process-owner-ready-" + Guid.NewGuid().ToString("N"));
         // cmd.exe starts in milliseconds, unlike a PowerShell cold start that exceeded the ready
         // deadline on loaded hosted runners. The group-wide `9>>` redirection keeps the lock file
         // open for the lifetime of the group, which is all the sweeper's exclusive-open probe
         // (FileShare.None) needs to treat the root as owned by a live host.
         var ownerScriptPath = Path.Combine(TestTempRoot.Current, "process-owner-" + Guid.NewGuid().ToString("N") + ".cmd");
-        File.WriteAllText(
-            ownerScriptPath,
-            "@echo off\r\n" +
-            "( (echo ready>\"%RMCP_OWNER_READY%\") & ping -n 120 127.0.0.1 >nul ) 9>>\"%RMCP_OWNER_ROOT%\\.owner.lock\"\r\n");
-
-        using var owner = new Process
+        var owner = new Process
         {
             StartInfo = new ProcessStartInfo
             {
@@ -461,10 +540,16 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
         };
         owner.StartInfo.Environment["RMCP_OWNER_ROOT"] = processDirectory;
         owner.StartInfo.Environment["RMCP_OWNER_READY"] = readyPath;
-
+        var started = false;
+        Exception? primary = null;
         try
         {
-            Assert.IsTrue(owner.Start(), "The second host must start.");
+            Directory.CreateDirectory(copyRoot);
+            File.WriteAllText(Path.Combine(copyRoot, "unloaded.dll"), "unmapped copy");
+            File.WriteAllText(ownerScriptPath, "@echo off\r\n" +
+                "( (echo ready>\"%RMCP_OWNER_READY%\") & ping -n 120 127.0.0.1 >nul ) 9>>\"%RMCP_OWNER_ROOT%\\.owner.lock\"\r\n");
+            started = owner.Start();
+            Assert.IsTrue(started, "The second host must start.");
             var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(15);
             while (!File.Exists(readyPath) && !owner.HasExited && DateTime.UtcNow < deadline)
             {
@@ -500,17 +585,20 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
             Assert.IsFalse(Directory.Exists(processDirectory),
                 "The exited host's ownership marker and empty process parent must be reclaimed.");
         }
+        catch (Exception failure) { primary = failure; throw; }
         finally
         {
-            if (!owner.HasExited)
-            {
-                owner.Kill(entireProcessTree: true);
-                owner.WaitForExit(10_000);
-            }
-
-            File.Delete(readyPath);
-            File.Delete(ownerScriptPath);
-            TestFixtureFileSystem.DeleteDirectoryIfExists(sharedParent);
+            await CleanupFailureCollector.RunAfterFailureAsync("Live analyzer host fixture cleanup failed.", primary,
+                CleanupFailureCollector.FromAction(() =>
+                {
+                    if (!started || owner.HasExited) return;
+                    owner.Kill(entireProcessTree: true);
+                    Assert.IsTrue(owner.WaitForExit(10_000), "The fixture's owned host must exit before releasing its process handle.");
+                }),
+                CleanupFailureCollector.FromAction(owner.Dispose),
+                CleanupFailureCollector.FromAction(() => File.Delete(readyPath)),
+                CleanupFailureCollector.FromAction(() => File.Delete(ownerScriptPath)),
+                CleanupFailureCollector.FromAction(() => TestFixtureFileSystem.DeleteDirectoryIfExists(sharedParent)));
         }
     }
 
@@ -534,21 +622,24 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
         var solutionPath = TestFixtureFileSystem.CreateSampleSolutionCopy(
             repoRoot, Path.Combine(repoRoot, "samples", "SampleSolution", "SampleSolution.slnx"));
         var copiedRoot = Path.GetDirectoryName(solutionPath)!;
-
+        WorkspaceManager? manager = null;
+        FileWatcherService? watcher = null;
+        Exception? primaryFailure = null;
         try
         {
             var analyzerAssemblyPath = InjectFixtureAnalyzer(copiedRoot);
 
             MsBuildInitializer.EnsureInitialized();
-            using var manager = new WorkspaceManager(
+            watcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance);
+            manager = new WorkspaceManager(new RoslynMcp.Roslyn.Services.ForkInvocationPathPolicy(new RoslynMcp.Tests.Helpers.OwnedTestWorkspacePathPolicy()),
                 NullLogger<WorkspaceManager>.Instance,
                 new PreviewStore(),
-                new FileWatcherService(NullLogger<FileWatcherService>.Instance),
+                watcher,
                 new WorkspaceManagerOptions { MaxConcurrentWorkspaces = 4 },
                 cacheStore: null,
                 sessionLoader: new WorkspaceSessionLoader());
 
-            var status = await manager.LoadAsync(solutionPath, CancellationToken.None);
+            var status = await manager.LoadAsync(solutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(solutionPath, new Dictionary<string, string>()), CancellationToken.None);
             Assert.IsTrue(status.IsLoaded, "Fixture solution must load before exercising the lease lifecycle.");
             var workspaceDirectory = Path.Combine(ShadowSharedParent, status.WorkspaceId);
 
@@ -583,9 +674,17 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
                 closeReclaimed,
                 $"The workspace's shadow roots were still locked after close + bounded wait — the load contexts did not unload. Last error: {closeError}; firstContextAlive={firstContextRef.IsAlive}; secondContextAlive={secondContextRef.IsAlive}; allContexts=[{string.Join(", ", System.Runtime.Loader.AssemblyLoadContext.All.Select(c => c.GetType().Name))}]");
         }
+        catch (Exception failure)
+        {
+            primaryFailure = failure;
+            throw;
+        }
         finally
         {
-            TestFixtureFileSystem.DeleteDirectoryIfExists(copiedRoot);
+            await CleanupFailureCollector.RunAfterFailureAsync("Analyzer shadow lifecycle fixture cleanup failed.", primaryFailure,
+                CleanupFailureCollector.FromAction(() => OwnedResourceCleanup.Dispose("Analyzer lifecycle manager cleanup failed.", null,
+                    manager, manager is null ? watcher : null)),
+                CleanupFailureCollector.FromAction(() => TestFixtureFileSystem.DeleteDirectoryIfExists(copiedRoot)));
         }
     }
 
@@ -603,11 +702,11 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
             "analyzer-shadow-reclamation-timeout-" + Guid.NewGuid().ToString("N"));
         var leaseDirectory = Path.Combine(workspaceDirectory, "locked-lease");
         var lockedFilePath = Path.Combine(leaseDirectory, "locked.dll");
-        Directory.CreateDirectory(leaseDirectory);
-
         FileStream? lockedFile = null;
+        Exception? primary = null;
         try
         {
+            Directory.CreateDirectory(leaseDirectory);
             lockedFile = new FileStream(
                 lockedFilePath,
                 FileMode.CreateNew,
@@ -626,10 +725,12 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
                 lastError.StartsWith("UnauthorizedAccessException: ", StringComparison.Ordinal),
                 $"The timeout must retain the final deletion failure type and message. Actual: {lastError}");
         }
+        catch (Exception failure) { primary = failure; throw; }
         finally
         {
-            lockedFile?.Dispose();
-            TestFixtureFileSystem.DeleteDirectoryIfExists(workspaceDirectory);
+            await CleanupFailureCollector.RunAfterFailureAsync("Analyzer reclamation timeout fixture cleanup failed.", primary,
+                CleanupFailureCollector.FromAction(() => lockedFile?.Dispose()),
+                CleanupFailureCollector.FromAction(() => TestFixtureFileSystem.DeleteDirectoryIfExists(workspaceDirectory)));
         }
     }
 
@@ -706,7 +807,6 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
         var solution = manager.GetCurrentSolution(workspaceId);
         var fixtureProject = solution.Projects.First(project => project.Name == "SampleLib");
         var analyzerReference = fixtureProject.AnalyzerReferences
-            .OfType<AnalyzerFileReference>()
             .FirstOrDefault(reference =>
                 string.Equals(Path.GetFileName(reference.FullPath), analyzerFileName, StringComparison.OrdinalIgnoreCase));
 
@@ -728,10 +828,10 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
             ? Directory.EnumerateDirectories(workspaceDirectory).ToList()
             : [];
 
-    private static object? GetAnalyzerAssemblyLoader(AnalyzerFileReference reference) =>
+    private static object? GetAnalyzerAssemblyLoader(AnalyzerReference reference) =>
         typeof(AnalyzerFileReference)
             .GetField("_assemblyLoader", BindingFlags.Instance | BindingFlags.NonPublic)?
-            .GetValue(reference);
+            .GetValue(AnalyzerReferenceIsolation.GetFileReference(reference));
 
     /// <summary>
     /// Bounded GC-assisted wait for shadow-root reclamation. A lease directory that survives

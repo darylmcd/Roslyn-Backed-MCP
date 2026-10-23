@@ -24,9 +24,6 @@ public sealed class TypeMoveTests : IsolatedWorkspaceTestBase
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     [DataRow("public class Outer { private class Target {} } public class Sibling {}", "Nested types")]
     [DataRow("public class Outer { private class Target {} } public class Target {}", "ambiguous")]

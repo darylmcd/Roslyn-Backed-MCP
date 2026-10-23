@@ -1,6 +1,6 @@
-using System.Xml.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Text;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
@@ -54,17 +54,25 @@ public sealed class ExtractAndWireOrchestrator : IExtractAndWireOrchestrator
 
         var extractionEntry = _previewStore.Retrieve(extractionPreview.PreviewToken)
             ?? throw new InvalidOperationException("The intermediate extract-interface preview token could not be resolved.");
-        var modifiedSolution = extractionEntry.ModifiedSolution;
         _previewStore.Invalidate(extractionPreview.PreviewToken);
+        if (!ReferenceEquals(extractionEntry.OriginalSolution, currentSolution)
+            || extractionEntry.WorkspaceVersion != workspaceVersion || extractionEntry.WorkspaceId != workspaceId)
+            throw new StaleWorkspaceTransitionException(workspaceId, "The intermediate extraction preview does not belong to the original snapshot.");
+        RequireCurrent();
+        var modifiedSolution = extractionEntry.ModifiedSolution;
+        var addedInterfaceId = modifiedSolution.GetChanges(currentSolution).GetProjectChanges()
+            .SelectMany(change => change.GetAddedDocuments()).Single();
+        var interfaceReference = await ExtractedInterfaceReference.ReadAsync(
+            modifiedSolution.GetDocument(addedInterfaceId)!, ct).ConfigureAwait(false);
 
-        var mutations = await BuildMutationsFromSolutionAsync(currentSolution, modifiedSolution, ct).ConfigureAwait(false);
-        var changes = (await SolutionDiffHelper.ComputeChangesAsync(currentSolution, modifiedSolution, ct).ConfigureAwait(false)).ToList();
         var warnings = extractionPreview.Warnings?.ToList() ?? [];
+
+        var consumerProjects = new HashSet<ProjectId>();
 
         if (updateDiRegistrations)
         {
             var registrations = await _diRegistrationService.GetDiRegistrationsAsync(workspaceId, null, ct).ConfigureAwait(false);
-            var candidateFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var candidateFiles = new HashSet<string>(FileSystemPath.Comparer);
             foreach (var registration in registrations.Where(registration =>
                          string.Equals(ShortTypeName(registration.ImplementationType), typeName, StringComparison.Ordinal) ||
                          string.Equals(ShortTypeName(registration.ServiceType), typeName, StringComparison.Ordinal)))
@@ -83,32 +91,62 @@ public sealed class ExtractAndWireOrchestrator : IExtractAndWireOrchestrator
 
             foreach (var candidateFile in candidateFiles)
             {
-                if (!File.Exists(candidateFile))
+                var documentIds = DocumentPathLookup.GetDocumentIds(modifiedSolution, candidateFile);
+                if (documentIds.IsEmpty)
+                    throw new PublicInvalidOperationException("A registration edit requires an owned source document.");
+                var firstDocument = modifiedSolution.GetDocument(documentIds[0])!;
+                var snapshotText = await firstDocument.GetTextAsync(ct).ConfigureAwait(false);
+                var contentToRewrite = snapshotText.ToString();
+                var updatedContent = RewriteDiRegistration(contentToRewrite, typeName, interfaceReference.ToString());
+                if (string.Equals(contentToRewrite, updatedContent, StringComparison.Ordinal)) continue;
+                foreach (var documentId in documentIds)
                 {
-                    continue;
+                    var document = modifiedSolution.GetDocument(documentId)!;
+                    var text = await document.GetTextAsync(ct).ConfigureAwait(false);
+                    if (!string.Equals(text.ToString(), contentToRewrite, StringComparison.Ordinal))
+                        throw new PublicInvalidOperationException("Linked registration documents disagree on the reviewed source content.");
+                    modifiedSolution = modifiedSolution.WithDocumentText(documentId,
+                        SourceText.From(updatedContent, text.Encoding, text.ChecksumAlgorithm));
+                    consumerProjects.Add(document.Project.Id);
                 }
-
-                var originalContent = await File.ReadAllTextAsync(candidateFile, ct).ConfigureAwait(false);
-                var updatedContent = RewriteDiRegistration(originalContent, typeName, resolvedInterfaceName);
-                if (string.Equals(originalContent, updatedContent, StringComparison.Ordinal))
-                {
-                    continue;
-                }
-
-                UpsertMutation(mutations, candidateFile, updatedContent);
-                changes.RemoveAll(change => string.Equals(change.FilePath, candidateFile, StringComparison.OrdinalIgnoreCase));
-                changes.Add(new FileChangeDto(candidateFile, DiffGenerator.GenerateUnifiedDiff(originalContent, updatedContent, candidateFile)));
             }
         }
 
-        if (mutations.Count == 0)
+        if (consumerProjects.Count > 0)
+        {
+            var originalBindings = await OriginalNameBindings.CaptureAsync(modifiedSolution, ct).ConfigureAwait(false);
+            modifiedSolution = originalBindings.Solution;
+            foreach (var consumer in consumerProjects)
+                modifiedSolution = ProjectGraphHelpers.EnsureProjectReference(modifiedSolution, consumer, addedInterfaceId.ProjectId);
+            modifiedSolution = await originalBindings.RestoreAsync(modifiedSolution, ct).ConfigureAwait(false);
+        }
+
+        var plan = await SolutionDiffHelper.CreateMutationPlanAsync(currentSolution, modifiedSolution,
+            SolutionDiffReadContext.ForWorkspace(_workspace, workspaceId), allowVirtualPaths: false, ct).ConfigureAwait(false);
+        // One planner owns both persisted edits and displayed diffs, including linked-file
+        // agreement and exact project-reference aliases/interop metadata.
+        var mutations = plan.Select(mutation => new CompositeFileMutation(mutation.Path,
+            mutation.After is null ? null : mutation.NewText, DeleteFile: mutation.After is null)).ToArray();
+        var changes = SolutionDiffHelper.ComputeChanges(plan);
+
+        if (mutations.Length == 0)
         {
             throw new InvalidOperationException("The extract-and-wire orchestration did not produce any file changes.");
         }
 
         var description = $"Extract interface '{resolvedInterfaceName}' from '{typeName}' and wire consumers";
+        RequireCurrent();
+        PreviewDiffSafety.RequireComplete(changes);
         var token = _compositePreviewStore.Store(workspaceId, workspaceVersion, description, mutations);
         return new RefactoringPreviewDto(token, description, changes, warnings.Count == 0 ? null : warnings);
+
+        void RequireCurrent()
+        {
+            ct.ThrowIfCancellationRequested();
+            if (!ReferenceEquals(currentSolution, _workspace.GetCurrentSolution(workspaceId))
+                || workspaceVersion != _workspace.GetCurrentVersion(workspaceId))
+                throw new StaleWorkspaceTransitionException(workspaceId, "The workspace changed while composing the extraction preview.");
+        }
     }
 
     /// <summary>
@@ -173,18 +211,6 @@ public sealed class ExtractAndWireOrchestrator : IExtractAndWireOrchestrator
         }
     }
 
-    private static void UpsertMutation(List<CompositeFileMutation> mutations, string filePath, string updatedContent)
-    {
-        var existingIndex = mutations.FindIndex(mutation => string.Equals(mutation.FilePath, filePath, StringComparison.OrdinalIgnoreCase));
-        if (existingIndex >= 0)
-        {
-            mutations[existingIndex] = new CompositeFileMutation(filePath, updatedContent);
-            return;
-        }
-
-        mutations.Add(new CompositeFileMutation(filePath, updatedContent));
-    }
-
     private static string RewriteDiRegistration(string originalContent, string typeName, string interfaceName)
     {
         return originalContent
@@ -201,136 +227,4 @@ public sealed class ExtractAndWireOrchestrator : IExtractAndWireOrchestrator
         return lastDot >= 0 ? trimmed[(lastDot + 1)..] : trimmed;
     }
 
-    private static async Task<List<CompositeFileMutation>> BuildMutationsFromSolutionAsync(
-        Solution currentSolution,
-        Solution modifiedSolution,
-        CancellationToken ct)
-    {
-        var mutations = new List<CompositeFileMutation>();
-        var solutionChanges = modifiedSolution.GetChanges(currentSolution);
-
-        foreach (var projectChange in solutionChanges.GetProjectChanges())
-        {
-            foreach (var documentId in projectChange.GetAddedDocuments())
-            {
-                var document = modifiedSolution.GetDocument(documentId);
-                if (document?.FilePath is null)
-                {
-                    continue;
-                }
-
-                var text = await document.GetTextAsync(ct).ConfigureAwait(false);
-                mutations.Add(new CompositeFileMutation(document.FilePath, text.ToString()));
-            }
-
-            foreach (var documentId in projectChange.GetChangedDocuments())
-            {
-                var document = modifiedSolution.GetDocument(documentId);
-                if (document?.FilePath is null)
-                {
-                    continue;
-                }
-
-                var text = await document.GetTextAsync(ct).ConfigureAwait(false);
-                mutations.Add(new CompositeFileMutation(document.FilePath, text.ToString()));
-            }
-
-            foreach (var documentId in projectChange.GetRemovedDocuments())
-            {
-                var document = currentSolution.GetDocument(documentId);
-                if (document?.FilePath is null)
-                {
-                    continue;
-                }
-
-                mutations.Add(new CompositeFileMutation(document.FilePath, null, DeleteFile: true));
-            }
-
-            AppendProjectReferenceMutation(currentSolution, modifiedSolution, projectChange, mutations);
-        }
-
-        return mutations;
-    }
-
-    private static void AppendProjectReferenceMutation(
-        Solution currentSolution,
-        Solution modifiedSolution,
-        ProjectChanges projectChange,
-        List<CompositeFileMutation> mutations)
-    {
-        var modifiedProject = modifiedSolution.GetProject(projectChange.ProjectId);
-        if (modifiedProject?.FilePath is null || !File.Exists(modifiedProject.FilePath))
-        {
-            return;
-        }
-
-        var addedProjectReferences = projectChange.GetAddedProjectReferences().ToArray();
-        var removedProjectReferences = projectChange.GetRemovedProjectReferences().ToArray();
-        if (addedProjectReferences.Length == 0 && removedProjectReferences.Length == 0)
-        {
-            return;
-        }
-
-        var document = XDocument.Parse(File.ReadAllText(modifiedProject.FilePath), LoadOptions.PreserveWhitespace);
-        var projectDirectory = Path.GetDirectoryName(modifiedProject.FilePath)
-            ?? throw new InvalidOperationException("Project file path must have a parent directory.");
-        var changed = false;
-
-        foreach (var projectReference in addedProjectReferences)
-        {
-            var referencedProject = modifiedSolution.GetProject(projectReference.ProjectId);
-            if (referencedProject?.FilePath is null)
-            {
-                continue;
-            }
-
-            var relativePath = Path.GetRelativePath(projectDirectory, referencedProject.FilePath);
-            if (document.Descendants("ProjectReference").Any(element =>
-                    string.Equals(NormalizeInclude((string?)element.Attribute("Include")), NormalizeInclude(relativePath), StringComparison.OrdinalIgnoreCase)))
-            {
-                continue;
-            }
-
-            OrchestrationMsBuildXml.GetOrCreateItemGroup(document, "ProjectReference")
-                .Add(new XElement("ProjectReference", new XAttribute("Include", relativePath)));
-            changed = true;
-        }
-
-        foreach (var projectReference in removedProjectReferences)
-        {
-            var referencedProject = currentSolution.GetProject(projectReference.ProjectId) ?? modifiedSolution.GetProject(projectReference.ProjectId);
-            var targetFileName = Path.GetFileName(referencedProject?.FilePath);
-            if (string.IsNullOrWhiteSpace(targetFileName))
-            {
-                continue;
-            }
-
-            var element = document.Descendants("ProjectReference").FirstOrDefault(candidate =>
-            {
-                var include = (string?)candidate.Attribute("Include");
-                return !string.IsNullOrWhiteSpace(include) &&
-                       string.Equals(Path.GetFileName(include), targetFileName, StringComparison.OrdinalIgnoreCase);
-            });
-
-            if (element is null)
-            {
-                continue;
-            }
-
-            element.Remove();
-            changed = true;
-        }
-
-        if (!changed)
-        {
-            return;
-        }
-
-        UpsertMutation(mutations, modifiedProject.FilePath, document.ToString(SaveOptions.DisableFormatting));
-    }
-
-    private static string NormalizeInclude(string? include)
-    {
-        return (include ?? string.Empty).Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
-    }
 }

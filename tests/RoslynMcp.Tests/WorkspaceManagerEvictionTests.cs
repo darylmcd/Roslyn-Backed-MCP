@@ -108,7 +108,7 @@ public sealed class WorkspaceManagerEvictionTests
 
         try
         {
-            var status = await manager.LoadAsync(path, CancellationToken.None);
+            var status = await manager.LoadAsync(path, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(path, new Dictionary<string, string>()), CancellationToken.None);
             Assert.IsTrue(manager.Close(status.WorkspaceId),
                 "Close must succeed for a freshly-loaded workspace.");
 
@@ -289,7 +289,7 @@ public sealed class WorkspaceManagerEvictionTests
 
         try
         {
-            var loaded = await manager.LoadAsync(path, CancellationToken.None);
+            var loaded = await manager.LoadAsync(path, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(path, new Dictionary<string, string>()), CancellationToken.None);
             Assert.AreNotEqual(string.Empty, loaded.WorkspaceId,
                 "LoadAsync must return a non-empty id (sanity).");
 
@@ -329,7 +329,7 @@ public sealed class WorkspaceManagerEvictionTests
 
     private static WorkspaceManager CreateManager()
     {
-        return new WorkspaceManager(
+        return new WorkspaceManager(new RoslynMcp.Roslyn.Services.ForkInvocationPathPolicy(new RoslynMcp.Tests.Helpers.OwnedTestWorkspacePathPolicy()),
             NullLogger<WorkspaceManager>.Instance,
             new PreviewStore(),
             new FileWatcherService(NullLogger<FileWatcherService>.Instance),

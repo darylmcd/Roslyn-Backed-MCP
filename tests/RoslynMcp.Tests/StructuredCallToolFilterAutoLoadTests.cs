@@ -105,7 +105,7 @@ public sealed class StructuredCallToolFilterAutoLoadTests
 
         using var scope = AmbientGateMetrics.BeginRequest();
 
-        using var manager = new WorkspaceManager(
+        using var manager = new WorkspaceManager(new RoslynMcp.Roslyn.Services.ForkInvocationPathPolicy(new RoslynMcp.Tests.Helpers.OwnedTestWorkspacePathPolicy()),
             NullLogger<WorkspaceManager>.Instance, new PreviewStore(),
             new FileWatcherService(NullLogger<FileWatcherService>.Instance),
             new WorkspaceManagerOptions { MaxConcurrentWorkspaces = 4 });

@@ -78,6 +78,7 @@ public sealed class PackageMigrationOrchestrator : IPackageMigrationOrchestrator
         }
 
         var description = $"Migrate package '{oldPackageId}' to '{newPackageId}'";
+        PreviewDiffSafety.RequireComplete(changes);
         var token = _compositePreviewStore.Store(workspaceId, workspaceVersion, description, mutations);
         return new RefactoringPreviewDto(token, description, changes, warnings.Count == 0 ? null : warnings);
     }

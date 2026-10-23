@@ -4,6 +4,7 @@ using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -23,9 +24,6 @@ public sealed class WorkspaceLoadRestoreFailureWireTests : SharedWorkspaceTestBa
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     public async Task RestoreFailure_ThroughToolErrorEnvelope_ReturnsPathFreePublicReason()
     {
@@ -34,14 +32,14 @@ public sealed class WorkspaceLoadRestoreFailureWireTests : SharedWorkspaceTestBa
         try
         {
             using var manager = CreateIsolatedManager();
-            var status = await manager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+            var status = await manager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
             var restoreRequired = status with { RestoreRequired = true };
             using var executor = new GatedCommandExecutor(
                 manager, new FailingRestoreRunner(), NullLogger<GatedCommandExecutor>.Instance);
 
             var thrown = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
                 WorkspaceTools.RestoreAndReloadIfRequiredAsync(
-                    executor, ValidationOptions, manager, restoreRequired, autoRestore: true, NullLogger.Instance, CancellationToken.None));
+                    executor, ValidationOptions, manager, restoreRequired, autoRestore: true, NullLogger.Instance, CancellationToken.None, timeProvider:System.TimeProvider.System));
 
             // Detail stays on the inner exception for logs.
             Assert.IsNotNull(thrown.InnerException);
@@ -79,7 +77,7 @@ public sealed class WorkspaceLoadRestoreFailureWireTests : SharedWorkspaceTestBa
         try
         {
             using var manager = CreateIsolatedManager();
-            var status = await manager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+            var status = await manager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
             var restoreRequired = status with { RestoreRequired = true };
             var runner = new HoldingRunner();
             using var executor = new GatedCommandExecutor(
@@ -94,7 +92,7 @@ public sealed class WorkspaceLoadRestoreFailureWireTests : SharedWorkspaceTestBa
                 var shortBudget = new ValidationServiceOptions { RestoreTimeout = TimeSpan.FromMilliseconds(200) };
                 var thrown = await Assert.ThrowsExactlyAsync<TimeoutException>(() =>
                     WorkspaceTools.RestoreAndReloadIfRequiredAsync(
-                        executor, shortBudget, manager, restoreRequired, autoRestore: true, NullLogger.Instance, CancellationToken.None));
+                        executor, shortBudget, manager, restoreRequired, autoRestore: true, NullLogger.Instance, CancellationToken.None, timeProvider:System.TimeProvider.System));
 
                 var json = ToolErrorHandler.ClassifyAndFormat(thrown, "workspace_load");
                 using var doc = JsonDocument.Parse(json);
@@ -119,6 +117,7 @@ public sealed class WorkspaceLoadRestoreFailureWireTests : SharedWorkspaceTestBa
 
     private static WorkspaceManager CreateIsolatedManager() =>
         new(
+            new RoslynMcp.Roslyn.Services.ForkInvocationPathPolicy(new RoslynMcp.Tests.Helpers.OwnedTestWorkspacePathPolicy()),
             NullLogger<WorkspaceManager>.Instance,
             new PreviewStore(),
             new FileWatcherService(NullLogger<FileWatcherService>.Instance),
@@ -129,9 +128,9 @@ public sealed class WorkspaceLoadRestoreFailureWireTests : SharedWorkspaceTestBa
             });
 
     /// <summary>Every command fails (exit code 1) with output that embeds the target path and a marker.</summary>
-    private sealed class FailingRestoreRunner : IDotnetCommandRunner
+    private sealed class FailingRestoreRunner : RoslynMcp.Tests.Helpers.CannedCommandRunner
     {
-        public Task<CommandExecutionDto> RunAsync(
+        public override Task<CommandExecutionDto> RunAsync(
             string workingDirectory,
             string targetPath,
             IReadOnlyList<string> arguments,
@@ -149,13 +148,13 @@ public sealed class WorkspaceLoadRestoreFailureWireTests : SharedWorkspaceTestBa
     }
 
     /// <summary>A "build" command blocks until released, holding the workspace command gate.</summary>
-    private sealed class HoldingRunner : IDotnetCommandRunner
+    private sealed class HoldingRunner : RoslynMcp.Tests.Helpers.CannedCommandRunner
     {
         public TaskCompletionSource BuildStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public TaskCompletionSource ReleaseBuild { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public async Task<CommandExecutionDto> RunAsync(
+        public override async Task<CommandExecutionDto> RunAsync(
             string workingDirectory,
             string targetPath,
             IReadOnlyList<string> arguments,

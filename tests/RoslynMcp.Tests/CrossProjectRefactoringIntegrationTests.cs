@@ -14,12 +14,6 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
         InitializeServices();
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup()
-    {
-        DisposeServices();
-    }
-
     [TestMethod]
     public async Task Extract_Interface_Preview_And_Apply_Creates_Interface_File_And_Project_Reference()
     {
@@ -28,6 +22,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
         var sourceFilePath = workspace.GetPath("SampleLib", "AnimalService.cs");
         var sourceProjectFilePath = workspace.GetPath("SampleLib", "SampleLib.csproj");
         var interfaceFilePath = workspace.GetPath("Contracts", "IAnimalService.cs");
+        await RestoreCopiedSolutionAsync(workspace.SolutionPath, new Dictionary<string, string>(), CancellationToken.None);
         await workspace.LoadAsync(CancellationToken.None);
 
         var preview = await CrossProjectRefactoringService.PreviewExtractInterfaceAsync(
@@ -65,6 +60,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
         AddProjectToCopiedSolution(workspace.RootPath, "Contracts", "net10.0");
         var sourceFilePath = workspace.GetPath("SampleLib", "AnimalService.cs");
         var sourceProjectFilePath = workspace.GetPath("SampleLib", "SampleLib.csproj");
+        await RestoreCopiedSolutionAsync(workspace.SolutionPath, new Dictionary<string, string>(), CancellationToken.None);
         await workspace.LoadAsync(CancellationToken.None);
 
         var preview = await CrossProjectRefactoringService.PreviewExtractInterfaceAsync(
@@ -108,6 +104,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
         var sourceFilePath = workspace.GetPath("SampleLib", "Dog.cs");
         var targetFilePath = workspace.GetPath("AnimalsShared", "Dog.cs");
         var sourceProjectFilePath = workspace.GetPath("SampleLib", "SampleLib.csproj");
+        await RestoreCopiedSolutionAsync(workspace.SolutionPath, new Dictionary<string, string>(), CancellationToken.None);
         await workspace.LoadAsync(CancellationToken.None);
 
         var preview = await CrossProjectRefactoringService.PreviewMoveTypeToProjectAsync(
@@ -139,6 +136,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
         AddProjectToCopiedSolution(workspace.RootPath, "AnimalsShared", "net10.0");
         var sourceFilePath = workspace.GetPath("SampleLib", "Dog.cs");
         var targetFilePath = workspace.GetPath("AnimalsShared", "Dog.cs");
+        await RestoreCopiedSolutionAsync(workspace.SolutionPath, new Dictionary<string, string>(), CancellationToken.None);
         await workspace.LoadAsync(CancellationToken.None);
 
         var preview = await CrossProjectRefactoringService.PreviewMoveTypeToProjectAsync(
@@ -168,6 +166,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
 
         var sourceFilePath = workspace.GetPath("SampleLib", "AnimalService.cs");
         var interfaceFilePath = workspace.GetPath("Contracts", "IAnimalService.cs");
+        await RestoreCopiedSolutionAsync(workspace.SolutionPath, new Dictionary<string, string>(), CancellationToken.None);
         await workspace.LoadAsync(CancellationToken.None);
 
         var preview = await CrossProjectRefactoringService.PreviewDependencyInversionAsync(
@@ -218,6 +217,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
                 }
             }
             """);
+        await RestoreCopiedSolutionAsync(workspace.SolutionPath, new Dictionary<string, string>(), CancellationToken.None);
 
         await workspace.LoadAsync(CancellationToken.None);
 
@@ -240,7 +240,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
             $"Existing base-list append must not put the comma at the start of the new line.\nFile contents:\n{sourceContents}");
         StringAssert.Contains(
             normalized,
-            "public class JobQueue : IJobQueue<JobRequest>,\n    IJobQueueInverted",
+            "public class JobQueue : IJobQueue<JobRequest>,\n    global::Contracts.IJobQueueInverted",
             $"Interface list should use comma-trailing formatting.\nFile contents:\n{sourceContents}");
     }
 
@@ -257,6 +257,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
         AddProjectToCopiedSolution(workspace.RootPath, "Contracts", "net10.0");
         var sourceFilePath = workspace.GetPath("SampleLib", "AnimalService.cs");
         var interfaceFilePath = workspace.GetPath("Contracts", "IAnimalService.cs");
+        await RestoreCopiedSolutionAsync(workspace.SolutionPath, new Dictionary<string, string>(), CancellationToken.None);
         await workspace.LoadAsync(CancellationToken.None);
 
         var preview = await CrossProjectRefactoringService.PreviewExtractInterfaceAsync(
@@ -357,6 +358,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
 
             """;
         File.WriteAllText(sourceFilePath, distinctiveSource);
+        await RestoreCopiedSolutionAsync(workspace.SolutionPath, new Dictionary<string, string>(), CancellationToken.None);
 
         await workspace.LoadAsync(CancellationToken.None);
 
@@ -398,7 +400,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
             $"Source blank-line structure was collapsed (FORMAT-BUG-002 regression).\nFile contents:\n{sourceContents}");
 
         // (4) The targeted `: IAnimalService` edit was applied with correct spacing.
-        StringAssert.Contains(sourceContents, "class AnimalService : IAnimalService");
+        StringAssert.Contains(sourceContents, "class AnimalService : global::Contracts.IAnimalService");
         Assert.IsFalse(
             sourceContents.Contains("IAnimalService{", StringComparison.Ordinal),
             $"Source class has `{{` glued onto the interface base type (regression).\nFile contents:\n{sourceContents}");
@@ -476,6 +478,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
         File.WriteAllText(sourceFilePath, sourceWithSiblingNamespaceDependency);
 
         var interfaceFilePath = workspace.GetPath("Contracts", "IAnimalService.cs");
+        await RestoreCopiedSolutionAsync(workspace.SolutionPath, new Dictionary<string, string>(), CancellationToken.None);
         await workspace.LoadAsync(CancellationToken.None);
 
         var preview = await CrossProjectRefactoringService.PreviewExtractInterfaceAsync(
@@ -554,6 +557,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
         File.WriteAllText(sourceFilePath, sourceWithGenericArg);
 
         var interfaceFilePath = workspace.GetPath("Contracts", "IAnimalService.cs");
+        await RestoreCopiedSolutionAsync(workspace.SolutionPath, new Dictionary<string, string>(), CancellationToken.None);
         await workspace.LoadAsync(CancellationToken.None);
 
         var preview = await CrossProjectRefactoringService.PreviewExtractInterfaceAsync(
@@ -600,6 +604,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
             $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net10.0</TargetFramework>\n    <Nullable>enable</Nullable>\n    <ImplicitUsings>enable</ImplicitUsings>\n  </PropertyGroup>\n  <ItemGroup>\n    <ProjectReference Include=\"{sampleLibRelativePath}\" />\n  </ItemGroup>\n</Project>\n");
 
         var sourceFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+        await RestoreCopiedSolutionAsync(workspace.SolutionPath, new Dictionary<string, string>(), CancellationToken.None);
         await workspace.LoadAsync(CancellationToken.None);
 
         var exception = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(async () =>
@@ -635,6 +640,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
         AddProjectToCopiedSolution(workspace.RootPath, "Contracts", "net10.0");
         var sourceFilePath = workspace.GetPath("SampleLib", "Dog.cs");
         File.WriteAllText(workspace.GetPath("Contracts", "Dog.cs"), "// pre-existing placeholder\n");
+        await RestoreCopiedSolutionAsync(workspace.SolutionPath, new Dictionary<string, string>(), CancellationToken.None);
         await workspace.LoadAsync(CancellationToken.None);
 
         var exception = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(async () =>
@@ -659,6 +665,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
         var interfacesDirectory = workspace.GetPath("Contracts", "Interfaces");
         Directory.CreateDirectory(interfacesDirectory);
         File.WriteAllText(Path.Combine(interfacesDirectory, "IAnimalService.cs"), "// pre-existing placeholder\n");
+        await RestoreCopiedSolutionAsync(workspace.SolutionPath, new Dictionary<string, string>(), CancellationToken.None);
         await workspace.LoadAsync(CancellationToken.None);
 
         var exception = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(async () =>
@@ -718,7 +725,8 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
         // Restore so MSBuild's transitive project-reference flow makes SampleLib (and
         // AnimalService) visible to Downstream through MidLib — without it the transitive hop is
         // inactive and AnimalService would not resolve in Downstream at all.
-        await RestoreWorkspaceAsync(workspace, CancellationToken.None);
+
+        await RestoreCopiedSolutionAsync(workspace.SolutionPath, new Dictionary<string, string>(), CancellationToken.None);
         await workspace.LoadAsync(CancellationToken.None);
 
         var preview = await CrossProjectRefactoringService.PreviewDependencyInversionAsync(

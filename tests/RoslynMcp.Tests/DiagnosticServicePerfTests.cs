@@ -40,15 +40,14 @@ public sealed class DiagnosticServicePerfTests : TestBase
         InitializeServices();
         var copiedSolutionPath = CreateSampleSolutionCopy();
         _copiedSolutionRoot = Path.GetDirectoryName(copiedSolutionPath)!;
-        var copied = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var copied = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
         _workspaceId = copied.WorkspaceId;
     }
 
     [ClassCleanup]
     public static void ClassCleanup()
     {
-        try { DeleteDirectoryIfExists(_copiedSolutionRoot); }
-        finally { DisposeServices(); }
+        DeleteDirectoryIfExists(_copiedSolutionRoot);
     }
 
     [TestMethod]

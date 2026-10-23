@@ -23,6 +23,7 @@ $attributions = @{
     'Microsoft.Extensions.Http' = @{ Category = 'Runtime Dependencies'; License = 'MIT'; Project = 'https://github.com/dotnet/runtime' }
     'Microsoft.Extensions.Logging' = @{ Category = 'Runtime Dependencies'; License = 'MIT'; Project = 'https://github.com/dotnet/runtime' }
     'Microsoft.Extensions.Logging.Console' = @{ Category = 'Runtime Dependencies'; License = 'MIT'; Project = 'https://github.com/dotnet/runtime' }
+    'NuGet.Versioning' = @{ Category = 'Runtime Dependencies'; License = 'Apache-2.0'; Project = 'https://github.com/NuGet/NuGet.Client' }
     'DiffPlex' = @{ Category = 'Runtime Dependencies'; License = 'Apache-2.0'; Project = 'https://github.com/mmanela/diffplex' }
     'Nito.AsyncEx' = @{ Category = 'Runtime Dependencies'; License = 'MIT'; Project = 'https://github.com/StephenCleary/AsyncEx' }
     'System.Security.Cryptography.Xml' = @{ Category = 'Runtime Dependencies'; License = 'MIT'; Project = 'https://github.com/dotnet/runtime' }
@@ -32,6 +33,9 @@ $attributions = @{
     'Microsoft.Build.Framework' = @{ Category = 'Build-Time Dependencies'; License = 'MIT'; Project = 'https://github.com/dotnet/msbuild' }
     'Microsoft.Build.Tasks.Core' = @{ Category = 'Build-Time Dependencies'; License = 'MIT'; Project = 'https://github.com/dotnet/msbuild' }
     'Microsoft.Build.Utilities.Core' = @{ Category = 'Build-Time Dependencies'; License = 'MIT'; Project = 'https://github.com/dotnet/msbuild' }
+    'Microsoft.VisualStudio.SolutionPersistence' = @{ Category = 'Build-Time Dependencies'; License = 'MIT'; Project = 'https://github.com/microsoft/vs-solutionpersistence' }
+    'NuGet.Frameworks' = @{ Category = 'Build-Time Dependencies'; License = 'Apache-2.0'; Project = 'https://github.com/NuGet/NuGet.Client' }
+    'NuGet.Packaging' = @{ Category = 'Build-Time Dependencies'; License = 'Apache-2.0'; Project = 'https://github.com/NuGet/NuGet.Client' }
     'Microsoft.CodeAnalysis.BannedApiAnalyzers' = @{ Category = 'Build-Time Dependencies'; License = 'MIT'; Project = 'https://github.com/dotnet/roslyn-analyzers' }
     'Microsoft.SourceLink.GitHub' = @{ Category = 'Build-Time Dependencies'; License = 'MIT'; Project = 'https://github.com/dotnet/sourcelink' }
 
@@ -41,7 +45,6 @@ $attributions = @{
     'MSTest.TestFramework' = @{ Category = 'Test Dependencies'; License = 'MIT'; Project = 'https://github.com/microsoft/testfx' }
     'coverlet.collector' = @{ Category = 'Test Dependencies'; License = 'MIT'; Project = 'https://github.com/coverlet-coverage/coverlet' }
     'Microsoft.CodeAnalysis.CSharp.Analyzer.Testing.MSTest' = @{ Category = 'Test Dependencies'; License = 'MIT'; Project = 'https://github.com/dotnet/roslyn-sdk' }
-    'NuGet.Frameworks' = @{ Category = 'Test Dependencies'; License = 'Apache-2.0'; Project = 'https://github.com/NuGet/NuGet.Client' }
 }
 $script:noticeAssetRecords = $null
 

@@ -16,6 +16,47 @@ public sealed class TestFixtureFileSystemTests
         }, includeLibraryProject: false);
 
     [TestMethod]
+    [DataRow(".", false)]
+    [DataRow(" ", false)]
+    [DataRow(".", true)]
+    [DataRow(" ", true)]
+    public async Task DeleteDirectoryIfExists_LiteralNamesPreserveSeparatelyOwnedSibling(string suffix, bool literalRoot)
+    {
+        if (!OperatingSystem.IsWindows()) Assert.Inconclusive("Literal Win32 extended names require Windows.");
+        var root = Path.Combine(TestTempRoot.Current, nameof(TestFixtureFileSystemTests), Guid.NewGuid().ToString("N"));
+        var ordinary = Path.Combine(root, "owned");
+        var literal = @"\\?\" + ordinary + suffix;
+        var outside = Path.Combine(ordinary, "sentinel");
+        var ownedFile = Path.Combine(literalRoot ? literal : @"\\?\" + Path.Combine(ordinary, "child" + suffix), "owned.txt");
+        Exception? primary = null;
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(ownedFile)!);
+            Directory.CreateDirectory(ordinary);
+            File.WriteAllText(outside, "separately owned");
+            File.SetAttributes(outside, FileAttributes.ReadOnly);
+            var attributes = File.GetAttributes(outside);
+            File.WriteAllText(ownedFile, "owned literal");
+            File.SetAttributes(ownedFile, FileAttributes.ReadOnly);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(literalRoot ? literal : ordinary);
+            Assert.IsFalse(File.Exists(ownedFile));
+            if (literalRoot)
+            {
+                Assert.AreEqual("separately owned", File.ReadAllText(outside));
+                Assert.AreEqual(attributes, File.GetAttributes(outside));
+            }
+            else Assert.IsFalse(Directory.Exists(ordinary));
+        }
+        catch (Exception failure) { primary = failure; throw; }
+        finally
+        {
+            // Keep literal spellings even when qualifying the old cleanup implementation.
+            await Helpers.CleanupFailureCollector.RunAfterFailureAsync("Literal cleanup control cleanup failed.", primary,
+                Helpers.CleanupFailureCollector.FromAction(() => TestFixtureFileSystem.DeleteDirectoryIfExists(@"\\?\" + root)));
+        }
+    }
+
+    [TestMethod]
     public void CopyLibraryTestsFixture_MissingTestProject_RemovesPartialCopy() =>
         AssertMissingEntryPointCleanup(
             (root, solution) => TestFixtureFileSystem.CreateSampleLibraryTestsCopy(root, solution),

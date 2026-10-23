@@ -37,9 +37,6 @@ public sealed class P4BehavioralBundleTests : SharedWorkspaceTestBase
         WorkspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     // ── find-type-usages-cref-classification ──
 
     [TestMethod]

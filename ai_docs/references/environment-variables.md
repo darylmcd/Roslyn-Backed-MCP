@@ -37,7 +37,7 @@ Optional overrides are read at startup from `src/RoslynMcp.Host.Stdio/Program.cs
 | `ROSLYNMCP_SCRIPT_STUCK_WARNING_SECONDS` | `ScriptingServiceOptions.StuckWarningSeconds` | 5 seconds |
 | `ROSLYNMCP_SCRIPT_WATCHDOG_GRACE_SECONDS` | `ScriptingServiceOptions.WatchdogGraceSeconds` — grace after cooperative cancellation before isolated-worker termination | 10 seconds |
 | `ROSLYNMCP_RESTORE_RACE_WAIT_MS` | `WorkspaceManagerOptions.RestoreRaceWaitMs` — max wait for a concurrent out-of-process `dotnet restore` to settle before `workspace_load` snapshots; `0` disables the wait (non-negative integer) | 2000 milliseconds |
-| `ROSLYNMCP_FORK_TTL_HOURS` | `WorkspaceForkApplyService` — age after which expired `.roslynmcp/forks/` directories are swept; `0` disables the sweep | 24 hours |
+| `ROSLYNMCP_FORK_TTL_HOURS` | `WorkspaceForkApplyService` — age after which expired operation directories under the captured OS-temporary `roslynmcp-forks/` service parent are swept; `0` disables the sweep | 24 hours |
 | `ROSLYNMCP_FORK_RESTORE_TIMEOUT_MINUTES` | `WorkspaceForkApplyService` — timeout for the restore step of `workspace_fork_apply` | 2 minutes |
 | `ROSLYNMCP_FORK_DOTNET_PATH` | `WorkspaceForkApplyService` — `dotnet` executable used for fork restore | `dotnet` |
 

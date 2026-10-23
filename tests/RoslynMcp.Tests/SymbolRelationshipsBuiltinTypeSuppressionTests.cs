@@ -33,12 +33,6 @@ public sealed class SymbolRelationshipsBuiltinTypeSuppressionTests : SharedWorks
         _animalServicePath = Path.Combine(sampleSolutionRoot, "SampleLib", "AnimalService.cs");
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup()
-    {
-        DisposeServices();
-    }
-
     /// <summary>
     /// Cursor on <c>void</c> token in <c>AnimalService.MakeThemSpeak</c> (line 16, col 12) with
     /// <c>preferDeclaringMember=false</c>: the resolved symbol is <c>System.Void</c>

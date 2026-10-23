@@ -27,7 +27,7 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
     [TestMethod]
     public async Task PositionalGrouping_SingleProject_RewritesBothDeclarationAndCallsite()
     {
-        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+        var (workspace, fixturePath, _) = await SetupSingleProjectFixtureAsync(
             """
             namespace SampleLib;
 
@@ -39,6 +39,8 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             }
             """,
             "POPosFixture.cs");
+        var workspaceId = workspace.WorkspaceId;
+        Exception? primaryFailure = null;
 
         try
         {
@@ -62,16 +64,17 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             Assert.IsNotNull(addedDiff, "preview must include the new DTO file");
             StringAssert.Contains(addedDiff, "public sealed record SumArgs(int A, int B, int C)");
         }
+        catch (Exception failure) { primaryFailure = failure; throw; }
         finally
         {
-            Services.WorkspaceManager.Close(workspaceId);
+            RoslynMcp.Roslyn.Helpers.OwnedResourceCleanup.DisposePreservingFailure("Parameter object fixture cleanup failed.", primaryFailure, workspace);
         }
     }
 
     [TestMethod]
     public async Task BlockBody_RewritesOnlyGroupedParameterSymbols()
     {
-        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+        var (workspace, fixturePath, _) = await SetupSingleProjectFixtureAsync(
             """
             namespace SampleLib;
 
@@ -88,6 +91,8 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             }
             """,
             "POBlockBodyFixture.cs");
+        var workspaceId = workspace.WorkspaceId;
+        Exception? primaryFailure = null;
 
         try
         {
@@ -104,16 +109,17 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
                 diff.Contains("this.sumArgs.A", StringComparison.Ordinal),
                 "The same-named field must remain bound to the field symbol.");
         }
+        catch (Exception failure) { primaryFailure = failure; throw; }
         finally
         {
-            Services.WorkspaceManager.Close(workspaceId);
+            RoslynMcp.Roslyn.Helpers.OwnedResourceCleanup.DisposePreservingFailure("Parameter object fixture cleanup failed.", primaryFailure, workspace);
         }
     }
 
     [TestMethod]
     public async Task WrittenOrAliasedGroupedParameters_RefusePreviewWithActionableUses()
     {
-        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+        var (workspace, fixturePath, _) = await SetupSingleProjectFixtureAsync(
             """
             namespace SampleLib;
 
@@ -145,6 +151,8 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             """,
             "POWrittenFixture.cs",
             allowUnsafe: true);
+        var workspaceId = workspace.WorkspaceId;
+        Exception? primaryFailure = null;
 
         try
         {
@@ -176,9 +184,10 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             StringAssert.Contains(ex.Message, "'refReceiver'");
             StringAssert.Contains(ex.Message, "(ref extension receiver)");
         }
+        catch (Exception failure) { primaryFailure = failure; throw; }
         finally
         {
-            Services.WorkspaceManager.Close(workspaceId);
+            RoslynMcp.Roslyn.Helpers.OwnedResourceCleanup.DisposePreservingFailure("Parameter object fixture cleanup failed.", primaryFailure, workspace);
         }
     }
 
@@ -191,7 +200,7 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
     [TestMethod]
     public async Task MutableValueTypeParameterMutations_RefusePreviewWithActionableUses()
     {
-        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+        var (workspace, fixturePath, _) = await SetupSingleProjectFixtureAsync(
             """
             namespace SampleLib;
 
@@ -212,6 +221,8 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             }
             """,
             "POValueTypeFixture.cs");
+        var workspaceId = workspace.WorkspaceId;
+        Exception? primaryFailure = null;
 
         try
         {
@@ -229,16 +240,17 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             StringAssert.Contains(ex.Message, "POValueTypeFixture.cs:13");
             StringAssert.Contains(ex.Message, "POValueTypeFixture.cs:14");
         }
+        catch (Exception failure) { primaryFailure = failure; throw; }
         finally
         {
-            Services.WorkspaceManager.Close(workspaceId);
+            RoslynMcp.Roslyn.Helpers.OwnedResourceCleanup.DisposePreservingFailure("Parameter object fixture cleanup failed.", primaryFailure, workspace);
         }
     }
 
     [TestMethod]
     public async Task NestedMutableValueTypeParameterMutations_RefusePreview()
     {
-        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+        var (workspace, fixturePath, _) = await SetupSingleProjectFixtureAsync(
             """
             namespace SampleLib;
 
@@ -264,6 +276,8 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             }
             """,
             "PONestedValueTypeFixture.cs");
+        var workspaceId = workspace.WorkspaceId;
+        Exception? primaryFailure = null;
 
         try
         {
@@ -279,16 +293,17 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             StringAssert.Contains(exception.Message, "'written'");
             StringAssert.Contains(exception.Message, "(value-type member assignment)");
         }
+        catch (Exception failure) { primaryFailure = failure; throw; }
         finally
         {
-            Services.WorkspaceManager.Close(workspaceId);
+            RoslynMcp.Roslyn.Helpers.OwnedResourceCleanup.DisposePreservingFailure("Parameter object fixture cleanup failed.", primaryFailure, workspace);
         }
     }
 
     [TestMethod]
     public async Task ReferenceTypedSegmentInsideValueType_KeepsPreviewEligible()
     {
-        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+        var (workspace, fixturePath, _) = await SetupSingleProjectFixtureAsync(
             """
             namespace SampleLib;
 
@@ -313,6 +328,8 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             }
             """,
             "POReferenceSegmentFixture.cs");
+        var workspaceId = workspace.WorkspaceId;
+        Exception? primaryFailure = null;
 
         try
         {
@@ -324,9 +341,10 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
 
             Assert.IsNotNull(preview.PreviewToken);
         }
+        catch (Exception failure) { primaryFailure = failure; throw; }
         finally
         {
-            Services.WorkspaceManager.Close(workspaceId);
+            RoslynMcp.Roslyn.Helpers.OwnedResourceCleanup.DisposePreservingFailure("Parameter object fixture cleanup failed.", primaryFailure, workspace);
         }
     }
 
@@ -339,7 +357,7 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
     [TestMethod]
     public async Task ReferenceTypeAndReadOnlyStructParameters_PreviewSucceedsAndApplies()
     {
-        var (workspaceId, fixturePath, fixtureDir) = await SetupSingleProjectFixtureAsync(
+        var (workspace, fixturePath, fixtureDir) = await SetupSingleProjectFixtureAsync(
             """
             namespace SampleLib;
 
@@ -368,6 +386,8 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             }
             """,
             "POEligibleFixture.cs");
+        var workspaceId = workspace.WorkspaceId;
+        Exception? primaryFailure = null;
 
         try
         {
@@ -413,9 +433,10 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             StringAssert.Contains(fixtureText, "computeArgs.Items[0] = 2");
             StringAssert.Contains(fixtureText, "new ComputeArgs(new PORefHolder(), new int[1], new POReadOnlySnapshot(3))");
         }
+        catch (Exception failure) { primaryFailure = failure; throw; }
         finally
         {
-            Services.WorkspaceManager.Close(workspaceId);
+            RoslynMcp.Roslyn.Helpers.OwnedResourceCleanup.DisposePreservingFailure("Parameter object fixture cleanup failed.", primaryFailure, workspace);
         }
     }
 
@@ -425,7 +446,7 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
     public async Task NewParameterName_InvalidRetainedOrLocalCollision_RefusesPreview(
         int methodLine, string expectedMessage, string expectedDetail)
     {
-        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+        var (workspace, fixturePath, _) = await SetupSingleProjectFixtureAsync(
             """
             namespace SampleLib;
 
@@ -441,6 +462,8 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             }
             """,
             "PONameFixture.cs");
+        var workspaceId = workspace.WorkspaceId;
+        Exception? primaryFailure = null;
 
         try
         {
@@ -469,9 +492,10 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             StringAssert.Contains(collision.Message, expectedMessage);
             StringAssert.Contains(collision.Message, expectedDetail);
         }
+        catch (Exception failure) { primaryFailure = failure; throw; }
         finally
         {
-            Services.WorkspaceManager.Close(workspaceId);
+            RoslynMcp.Roslyn.Helpers.OwnedResourceCleanup.DisposePreservingFailure("Parameter object fixture cleanup failed.", primaryFailure, workspace);
         }
     }
 
@@ -483,7 +507,7 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
         string newTypeName,
         string expectedMember)
     {
-        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+        var (workspace, fixturePath, _) = await SetupSingleProjectFixtureAsync(
             """
             namespace SampleLib;
 
@@ -497,6 +521,8 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             }
             """,
             "POMemberCaptureFixture.cs");
+        var workspaceId = workspace.WorkspaceId;
+        Exception? primaryFailure = null;
 
         try
         {
@@ -510,9 +536,10 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             StringAssert.Contains(ex.Message, "would capture an existing unqualified member reference");
             StringAssert.Contains(ex.Message, expectedMember);
         }
+        catch (Exception failure) { primaryFailure = failure; throw; }
         finally
         {
-            Services.WorkspaceManager.Close(workspaceId);
+            RoslynMcp.Roslyn.Helpers.OwnedResourceCleanup.DisposePreservingFailure("Parameter object fixture cleanup failed.", primaryFailure, workspace);
         }
     }
 
@@ -530,7 +557,7 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
         string expectedCategory,
         string expectedDetail)
     {
-        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+        var (workspace, fixturePath, _) = await SetupSingleProjectFixtureAsync(
             $$"""
             namespace SampleLib;
 
@@ -540,6 +567,8 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             }
             """,
             "POMemberNameFixture.cs");
+        var workspaceId = workspace.WorkspaceId;
+        Exception? primaryFailure = null;
 
         try
         {
@@ -552,16 +581,17 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             StringAssert.Contains(ex.Message, expectedCategory);
             StringAssert.Contains(ex.Message, expectedDetail);
         }
+        catch (Exception failure) { primaryFailure = failure; throw; }
         finally
         {
-            Services.WorkspaceManager.Close(workspaceId);
+            RoslynMcp.Roslyn.Helpers.OwnedResourceCleanup.DisposePreservingFailure("Parameter object fixture cleanup failed.", primaryFailure, workspace);
         }
     }
 
     [TestMethod]
     public async Task FinalizeGeneratedMember_IsLegalAndAppliesCleanly()
     {
-        var (workspaceId, fixturePath, fixtureDir) = await SetupSingleProjectFixtureAsync(
+        var (workspace, fixturePath, fixtureDir) = await SetupSingleProjectFixtureAsync(
             """
             namespace SampleLib;
 
@@ -573,6 +603,8 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             }
             """,
             "POLegalMemberFixture.cs");
+        var workspaceId = workspace.WorkspaceId;
+        Exception? primaryFailure = null;
 
         try
         {
@@ -604,9 +636,10 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             var dtoText = await File.ReadAllTextAsync(Path.Combine(fixtureDir, "FinalizeArgs.cs"));
             StringAssert.Contains(dtoText, "public sealed record FinalizeArgs(int Finalize, int Other);");
         }
+        catch (Exception failure) { primaryFailure = failure; throw; }
         finally
         {
-            Services.WorkspaceManager.Close(workspaceId);
+            RoslynMcp.Roslyn.Helpers.OwnedResourceCleanup.DisposePreservingFailure("Parameter object fixture cleanup failed.", primaryFailure, workspace);
         }
     }
 
@@ -625,7 +658,7 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
                 }
               """
             : "public string Describe(int a, int b) => nameof(a) + \":\" + (a + b);";
-        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+        var (workspace, fixturePath, _) = await SetupSingleProjectFixtureAsync(
             $$"""
             namespace SampleLib;
 
@@ -639,6 +672,8 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             }
             """,
             "PONameofFixture.cs");
+        var workspaceId = workspace.WorkspaceId;
+        Exception? primaryFailure = null;
 
         try
         {
@@ -683,16 +718,17 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
                 $"{expectedBodyPrefix} \"a\" + \":\" + (describeArgs.A + describeArgs.B)");
             StringAssert.Contains(appliedText, "Describe(new DescribeArgs(Identity(1), Identity(2)))");
         }
+        catch (Exception failure) { primaryFailure = failure; throw; }
         finally
         {
-            Services.WorkspaceManager.Close(workspaceId);
+            RoslynMcp.Roslyn.Helpers.OwnedResourceCleanup.DisposePreservingFailure("Parameter object fixture cleanup failed.", primaryFailure, workspace);
         }
     }
 
     [TestMethod]
     public async Task DeclarationAttributes_PreserveGroupedNameAcrossDtoAndRetainedMetadata()
     {
-        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+        var (workspace, fixturePath, _) = await SetupSingleProjectFixtureAsync(
             """
             namespace SampleLib;
 
@@ -713,6 +749,8 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             }
             """,
             "POAttributeFixture.cs");
+        var workspaceId = workspace.WorkspaceId;
+        Exception? primaryFailure = null;
 
         try
         {
@@ -759,16 +797,17 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             var dtoConstructor = assembly.GetType("SampleLib.SumArgs")!.GetConstructors().Single();
             AssertLinkName(dtoConstructor.GetParameters().Single(parameter => parameter.Name == "A").GetCustomAttributesData(), "a");
         }
+        catch (Exception failure) { primaryFailure = failure; throw; }
         finally
         {
-            Services.WorkspaceManager.Close(workspaceId);
+            RoslynMcp.Roslyn.Helpers.OwnedResourceCleanup.DisposePreservingFailure("Parameter object fixture cleanup failed.", primaryFailure, workspace);
         }
     }
 
     [TestMethod]
     public async Task CallerArgumentExpressionLinkToGroupedParameter_RefusesActionably()
     {
-        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+        var (workspace, fixturePath, _) = await SetupSingleProjectFixtureAsync(
             """
             namespace SampleLib;
 
@@ -781,6 +820,8 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             }
             """,
             "POCallerExpressionFixture.cs");
+        var workspaceId = workspace.WorkspaceId;
+        Exception? primaryFailure = null;
 
         try
         {
@@ -793,16 +834,17 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             StringAssert.Contains(error.Message, "CallerArgumentExpressionAttribute");
             StringAssert.Contains(error.Message, "value");
         }
+        catch (Exception failure) { primaryFailure = failure; throw; }
         finally
         {
-            Services.WorkspaceManager.Close(workspaceId);
+            RoslynMcp.Roslyn.Helpers.OwnedResourceCleanup.DisposePreservingFailure("Parameter object fixture cleanup failed.", primaryFailure, workspace);
         }
     }
 
     [TestMethod]
     public async Task NamedAndMixedCallSites_RewriteToPositionalDtoConstructor()
     {
-        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+        var (workspace, fixturePath, _) = await SetupSingleProjectFixtureAsync(
             """
             namespace SampleLib;
 
@@ -815,6 +857,8 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             }
             """,
             "PONamedFixture.cs");
+        var workspaceId = workspace.WorkspaceId;
+        Exception? primaryFailure = null;
 
         try
         {
@@ -829,16 +873,17 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             var occurrences = CountOccurrences(diff, "new SumArgs(1, 2, 3)");
             Assert.AreEqual(2, occurrences, $"Expected both call sites rewritten to positional. Diff:\n{diff}");
         }
+        catch (Exception failure) { primaryFailure = failure; throw; }
         finally
         {
-            Services.WorkspaceManager.Close(workspaceId);
+            RoslynMcp.Roslyn.Helpers.OwnedResourceCleanup.DisposePreservingFailure("Parameter object fixture cleanup failed.", primaryFailure, workspace);
         }
     }
 
     [TestMethod]
     public async Task DefaultValueOmissionAtCallSite_RefusesPreview()
     {
-        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+        var (workspace, fixturePath, _) = await SetupSingleProjectFixtureAsync(
             """
             namespace SampleLib;
 
@@ -850,6 +895,8 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             }
             """,
             "PODefaultFixture.cs");
+        var workspaceId = workspace.WorkspaceId;
+        Exception? primaryFailure = null;
 
         try
         {
@@ -861,16 +908,17 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
                     CancellationToken.None));
             StringAssert.Contains(ex.Message, "omits 'b'");
         }
+        catch (Exception failure) { primaryFailure = failure; throw; }
         finally
         {
-            Services.WorkspaceManager.Close(workspaceId);
+            RoslynMcp.Roslyn.Helpers.OwnedResourceCleanup.DisposePreservingFailure("Parameter object fixture cleanup failed.", primaryFailure, workspace);
         }
     }
 
     [TestMethod]
     public async Task RefOutParameter_RefusesEntirePreview()
     {
-        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+        var (workspace, fixturePath, _) = await SetupSingleProjectFixtureAsync(
             """
             namespace SampleLib;
 
@@ -882,6 +930,8 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             }
             """,
             "PORefFixture.cs");
+        var workspaceId = workspace.WorkspaceId;
+        Exception? primaryFailure = null;
 
         try
         {
@@ -893,9 +943,10 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
                     CancellationToken.None), "grouped", [fixturePath]);
             StringAssert.Contains(ex.Message, "by-ref kind");
         }
+        catch (Exception failure) { primaryFailure = failure; throw; }
         finally
         {
-            Services.WorkspaceManager.Close(workspaceId);
+            RoslynMcp.Roslyn.Helpers.OwnedResourceCleanup.DisposePreservingFailure("Parameter object fixture cleanup failed.", primaryFailure, workspace);
         }
     }
 
@@ -947,7 +998,9 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
         string expectedTypeFragment,
         string expectedParameterFragment)
     {
-        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(fixtureSource, fileName);
+        var (workspace, fixturePath, _) = await SetupSingleProjectFixtureAsync(fixtureSource, fileName);
+        var workspaceId = workspace.WorkspaceId;
+        Exception? primaryFailure = null;
 
         try
         {
@@ -961,9 +1014,10 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             StringAssert.Contains(ex.Message, expectedTypeFragment);
             StringAssert.Contains(ex.Message, expectedParameterFragment);
         }
+        catch (Exception failure) { primaryFailure = failure; throw; }
         finally
         {
-            Services.WorkspaceManager.Close(workspaceId);
+            RoslynMcp.Roslyn.Helpers.OwnedResourceCleanup.DisposePreservingFailure("Parameter object fixture cleanup failed.", primaryFailure, workspace);
         }
     }
 
@@ -980,7 +1034,7 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
     [TestMethod]
     public async Task InternalMethodOnPublicType_GeneratesInternalRecordForInternalParameterType()
     {
-        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+        var (workspace, fixturePath, _) = await SetupSingleProjectFixtureAsync(
             """
             namespace SampleLib;
 
@@ -996,6 +1050,8 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             }
             """,
             "POInternalMethodFixture.cs");
+        var workspaceId = workspace.WorkspaceId;
+        Exception? primaryFailure = null;
 
         try
         {
@@ -1010,9 +1066,10 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             Assert.IsNotNull(dtoDiff);
             StringAssert.Contains(dtoDiff, "internal sealed record UseArgs");
         }
+        catch (Exception failure) { primaryFailure = failure; throw; }
         finally
         {
-            Services.WorkspaceManager.Close(workspaceId);
+            RoslynMcp.Roslyn.Helpers.OwnedResourceCleanup.DisposePreservingFailure("Parameter object fixture cleanup failed.", primaryFailure, workspace);
         }
     }
 
@@ -1023,25 +1080,29 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
         // when the DTO is routed to SampleLib — but the parameter type below is declared in
         // SampleApp, which SampleLib does NOT reference, so the emitted record could never
         // resolve the type name. The preview must refuse before storing a token.
-        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var workspace = CreateSolutionWorkspace();
+        var copiedSolutionPath = workspace.SolutionPath;
         var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
         var appDir = Path.Combine(solutionDir, "SampleApp");
-
         var appFile = Path.Combine(appDir, "POAvailFixture.cs");
-        await File.WriteAllTextAsync(appFile,
-            """
-            namespace SampleApp;
+        await IsolatedWorkspaceTestBase.InitializeWithCleanupAsync(workspace, async (scope, token) =>
+        {
+            await File.WriteAllTextAsync(appFile,
+                """
+                namespace SampleApp;
 
-            public sealed class POAppOnlyType;
+                public sealed class POAppOnlyType;
 
-            public class POAvailFixture
-            {
-                public void Run(POAppOnlyType first, POAppOnlyType second) { _ = first; _ = second; }
-            }
-            """);
+                public class POAvailFixture
+                {
+                    public void Run(POAppOnlyType first, POAppOnlyType second) { _ = first; _ = second; }
+                }
+                """);
 
-        var loadResult = await Services.WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
-        var workspaceId = loadResult.WorkspaceId;
+            await scope.LoadAsync(token);
+        }, CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        Exception? primaryFailure = null;
         try
         {
             var ex = await AssertPublicArgumentRefusalAsync(service =>
@@ -1055,9 +1116,10 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             StringAssert.Contains(ex.Message, "SampleLib -> SampleApp");
             StringAssert.Contains(ex.PublicMessage, "use add_project_reference_preview");
         }
+        catch (Exception failure) { primaryFailure = failure; throw; }
         finally
         {
-            Services.WorkspaceManager.Close(workspaceId);
+            RoslynMcp.Roslyn.Helpers.OwnedResourceCleanup.DisposePreservingFailure("Parameter object fixture cleanup failed.", primaryFailure, workspace);
         }
     }
 
@@ -1066,36 +1128,40 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
     {
         // SampleApp already references SampleLib in the SampleSolution fixture, so a method
         // declared in SampleLib with a SampleApp call site exercises the reference-present path.
-        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var workspace = CreateSolutionWorkspace();
+        var copiedSolutionPath = workspace.SolutionPath;
         var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
         var libDir = Path.Combine(solutionDir, "SampleLib");
         var appDir = Path.Combine(solutionDir, "SampleApp");
-
         var libFile = Path.Combine(libDir, "POCrossLib.cs");
-        await File.WriteAllTextAsync(libFile,
-            """
-            namespace SampleLib;
-
-            public class POCrossLib
-            {
-                public int Sum(int a, int b, int c) => a + b + c;
-            }
-            """);
         var appFile = Path.Combine(appDir, "POCrossApp.cs");
-        await File.WriteAllTextAsync(appFile,
-            """
-            using SampleLib;
+        await IsolatedWorkspaceTestBase.InitializeWithCleanupAsync(workspace, async (scope, token) =>
+        {
+            await File.WriteAllTextAsync(libFile,
+                """
+                namespace SampleLib;
 
-            namespace SampleApp;
+                public class POCrossLib
+                {
+                    public int Sum(int a, int b, int c) => a + b + c;
+                }
+                """);
+            await File.WriteAllTextAsync(appFile,
+                """
+                using SampleLib;
 
-            public static class POCrossApp
-            {
-                public static int Run() => new POCrossLib().Sum(1, 2, 3);
-            }
-            """);
+                namespace SampleApp;
 
-        var loadResult = await Services.WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
-        var workspaceId = loadResult.WorkspaceId;
+                public static class POCrossApp
+                {
+                    public static int Run() => new POCrossLib().Sum(1, 2, 3);
+                }
+                """);
+
+            await scope.LoadAsync(token);
+        }, CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        Exception? primaryFailure = null;
         try
         {
             var preview = await Services.ParameterObjectService.PreviewParameterObjectAsync(
@@ -1110,9 +1176,10 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             Assert.IsNotNull(appDiff, "cross-project caller must be rewritten");
             StringAssert.Contains(appDiff, "new SumArgs(1, 2, 3)");
         }
+        catch (Exception failure) { primaryFailure = failure; throw; }
         finally
         {
-            Services.WorkspaceManager.Close(workspaceId);
+            RoslynMcp.Roslyn.Helpers.OwnedResourceCleanup.DisposePreservingFailure("Parameter object fixture cleanup failed.", primaryFailure, workspace);
         }
     }
 
@@ -1121,23 +1188,27 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
     {
         // The declaration stays in SampleLib, while the DTO is requested in SampleApp.
         // SampleLib does not reference SampleApp, so the declaration cannot use that DTO.
-        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var workspace = CreateSolutionWorkspace();
+        var copiedSolutionPath = workspace.SolutionPath;
         var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
         var libDir = Path.Combine(solutionDir, "SampleLib");
-
         var libFile = Path.Combine(libDir, "POCrossMissingLib.cs");
-        await File.WriteAllTextAsync(libFile,
-            """
-            namespace SampleLib;
+        await IsolatedWorkspaceTestBase.InitializeWithCleanupAsync(workspace, async (scope, token) =>
+        {
+            await File.WriteAllTextAsync(libFile,
+                """
+                namespace SampleLib;
 
-            public class POCrossMissingLib
-            {
-                public int Sum(int a, int b, int c) => a + b + c;
-            }
-            """);
+                public class POCrossMissingLib
+                {
+                    public int Sum(int a, int b, int c) => a + b + c;
+                }
+                """);
 
-        var loadResult = await Services.WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
-        var workspaceId = loadResult.WorkspaceId;
+            await scope.LoadAsync(token);
+        }, CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        Exception? primaryFailure = null;
         try
         {
             var ex = await AssertPublicArgumentRefusalAsync(service =>
@@ -1148,16 +1219,17 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
                     CancellationToken.None), "dtoProjectName", [libFile]);
             StringAssert.Contains(ex.Message, "SampleLib -> SampleApp");
         }
+        catch (Exception failure) { primaryFailure = failure; throw; }
         finally
         {
-            Services.WorkspaceManager.Close(workspaceId);
+            RoslynMcp.Roslyn.Helpers.OwnedResourceCleanup.DisposePreservingFailure("Parameter object fixture cleanup failed.", primaryFailure, workspace);
         }
     }
 
     [TestMethod]
     public async Task ApplyWithVerify_RedeemsPreviewAndWritesChangesToDisk()
     {
-        var (workspaceId, fixturePath, fixtureDir) = await SetupSingleProjectFixtureAsync(
+        var (workspace, fixturePath, fixtureDir) = await SetupSingleProjectFixtureAsync(
             """
             namespace SampleLib;
 
@@ -1169,6 +1241,8 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             }
             """,
             "POApplyFixture.cs");
+        var workspaceId = workspace.WorkspaceId;
+        Exception? primaryFailure = null;
 
         try
         {
@@ -1210,9 +1284,10 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             StringAssert.Contains(fixtureText, "sumArgs.A + sumArgs.B + sumArgs.C");
             StringAssert.Contains(fixtureText, "new SumArgs(1, 2, 3)");
         }
+        catch (Exception failure) { primaryFailure = failure; throw; }
         finally
         {
-            Services.WorkspaceManager.Close(workspaceId);
+            RoslynMcp.Roslyn.Helpers.OwnedResourceCleanup.DisposePreservingFailure("Parameter object fixture cleanup failed.", primaryFailure, workspace);
         }
     }
 
@@ -1234,7 +1309,7 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
     [TestMethod]
     public async Task NamedApplyRoute_RejectsTokenFromAnotherProducer_WithoutMutatingDisk()
     {
-        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+        var (workspace, fixturePath, _) = await SetupSingleProjectFixtureAsync(
             """
             namespace SampleLib;
 
@@ -1246,6 +1321,8 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             }
             """,
             "POXRouteFixture.cs");
+        var workspaceId = workspace.WorkspaceId;
+        Exception? primaryFailure = null;
 
         try
         {
@@ -1277,16 +1354,17 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             Assert.AreEqual(before, after,
                 "A wrong-route redemption must be refused BEFORE any file is written.");
         }
+        catch (Exception failure) { primaryFailure = failure; throw; }
         finally
         {
-            Services.WorkspaceManager.Close(workspaceId);
+            RoslynMcp.Roslyn.Helpers.OwnedResourceCleanup.DisposePreservingFailure("Parameter object fixture cleanup failed.", primaryFailure, workspace);
         }
     }
 
     [TestMethod]
     public async Task ExplicitDtoNamespace_QualifiesDeclarationAndCallsiteReferences()
     {
-        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+        var (workspace, fixturePath, _) = await SetupSingleProjectFixtureAsync(
             """
             namespace SampleLib;
 
@@ -1298,6 +1376,8 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             }
             """,
             "PONsFixture.cs");
+        var workspaceId = workspace.WorkspaceId;
+        Exception? primaryFailure = null;
 
         try
         {
@@ -1323,9 +1403,10 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             Assert.IsNotNull(addedDiff, "preview must include the new DTO file");
             StringAssert.Contains(addedDiff, "namespace SampleLib.Contracts;");
         }
+        catch (Exception failure) { primaryFailure = failure; throw; }
         finally
         {
-            Services.WorkspaceManager.Close(workspaceId);
+            RoslynMcp.Roslyn.Helpers.OwnedResourceCleanup.DisposePreservingFailure("Parameter object fixture cleanup failed.", primaryFailure, workspace);
         }
     }
 
@@ -1336,34 +1417,38 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
         // through a fully-qualified receiver and carries NO `using SampleLib;`, so the DTO's
         // namespace is not in scope in the calling document — an unqualified
         // `new QualArgs(...)` there would produce CS0246 on apply.
-        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var workspace = CreateSolutionWorkspace();
+        var copiedSolutionPath = workspace.SolutionPath;
         var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
         var libDir = Path.Combine(solutionDir, "SampleLib");
         var appDir = Path.Combine(solutionDir, "SampleApp");
-
         var libFile = Path.Combine(libDir, "POQualLib.cs");
-        await File.WriteAllTextAsync(libFile,
-            """
-            namespace SampleLib;
-
-            public class POQualLib
-            {
-                public int Sum(int a, int b, int c) => a + b + c;
-            }
-            """);
         var appFile = Path.Combine(appDir, "POQualApp.cs");
-        await File.WriteAllTextAsync(appFile,
-            """
-            namespace SampleApp;
+        await IsolatedWorkspaceTestBase.InitializeWithCleanupAsync(workspace, async (scope, token) =>
+        {
+            await File.WriteAllTextAsync(libFile,
+                """
+                namespace SampleLib;
 
-            public static class POQualApp
-            {
-                public static int Run() => new SampleLib.POQualLib().Sum(1, 2, 3);
-            }
-            """);
+                public class POQualLib
+                {
+                    public int Sum(int a, int b, int c) => a + b + c;
+                }
+                """);
+            await File.WriteAllTextAsync(appFile,
+                """
+                namespace SampleApp;
 
-        var loadResult = await Services.WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
-        var workspaceId = loadResult.WorkspaceId;
+                public static class POQualApp
+                {
+                    public static int Run() => new SampleLib.POQualLib().Sum(1, 2, 3);
+                }
+                """);
+
+            await scope.LoadAsync(token);
+        }, CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        Exception? primaryFailure = null;
         try
         {
             var preview = await Services.ParameterObjectService.PreviewParameterObjectAsync(
@@ -1410,9 +1495,10 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             var appText = await File.ReadAllTextAsync(appFile);
             StringAssert.Contains(appText, "new global::SampleLib.QualArgs(1, 2, 3)");
         }
+        catch (Exception failure) { primaryFailure = failure; throw; }
         finally
         {
-            Services.WorkspaceManager.Close(workspaceId);
+            RoslynMcp.Roslyn.Helpers.OwnedResourceCleanup.DisposePreservingFailure("Parameter object fixture cleanup failed.", primaryFailure, workspace);
         }
     }
 
@@ -1595,9 +1681,11 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
         string[] parameterNames,
         string expectedFragment)
     {
-        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+        var (workspace, fixturePath, _) = await SetupSingleProjectFixtureAsync(
             source,
             "POContractFixture.cs");
+        var workspaceId = workspace.WorkspaceId;
+        Exception? primaryFailure = null;
 
         try
         {
@@ -1611,16 +1699,17 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             if (caseName == "override")
                 StringAssert.Contains(ex.PublicMessage, "restructure the whole hierarchy manually instead");
         }
+        catch (Exception failure) { primaryFailure = failure; throw; }
         finally
         {
-            Services.WorkspaceManager.Close(workspaceId);
+            RoslynMcp.Roslyn.Helpers.OwnedResourceCleanup.DisposePreservingFailure("Parameter object fixture cleanup failed.", primaryFailure, workspace);
         }
     }
 
     [TestMethod]
     public async Task UserDefinedDllImportAttribute_DoesNotTriggerPInvokeRefusal()
     {
-        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+        var (workspace, fixturePath, _) = await SetupSingleProjectFixtureAsync(
             """
             namespace Other
             {
@@ -1638,6 +1727,8 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             }
             """,
             "POCustomAttributeFixture.cs");
+        var workspaceId = workspace.WorkspaceId;
+        Exception? primaryFailure = null;
 
         try
         {
@@ -1650,16 +1741,17 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             Assert.IsNotNull(preview.PreviewToken,
                 "A same-simple-name user attribute must not be classified as Runtime.InteropServices PInvoke metadata.");
         }
+        catch (Exception failure) { primaryFailure = failure; throw; }
         finally
         {
-            Services.WorkspaceManager.Close(workspaceId);
+            RoslynMcp.Roslyn.Helpers.OwnedResourceCleanup.DisposePreservingFailure("Parameter object fixture cleanup failed.", primaryFailure, workspace);
         }
     }
 
     [TestMethod]
     public async Task NestedNamespace_DtoInOuterNamespace_UsesUnqualifiedTypeAtDeclarationAndCaller()
     {
-        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+        var (workspace, fixturePath, _) = await SetupSingleProjectFixtureAsync(
             """
             namespace SampleLib.Inner;
 
@@ -1670,6 +1762,8 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             }
             """,
             "PONestedNamespaceFixture.cs");
+        var workspaceId = workspace.WorkspaceId;
+        Exception? primaryFailure = null;
 
         try
         {
@@ -1689,9 +1783,10 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             Assert.IsFalse(fixtureDiff.Contains("global::SampleLib.SumArgs", StringComparison.Ordinal),
                 "C# namespace lookup searches outward from SampleLib.Inner, so qualification is unnecessary.");
         }
+        catch (Exception failure) { primaryFailure = failure; throw; }
         finally
         {
-            Services.WorkspaceManager.Close(workspaceId);
+            RoslynMcp.Roslyn.Helpers.OwnedResourceCleanup.DisposePreservingFailure("Parameter object fixture cleanup failed.", primaryFailure, workspace);
         }
     }
 
@@ -1702,7 +1797,7 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
     [TestMethod]
     public async Task PlainExtensionMethod_NonReceiverParameters_StillGroup()
     {
-        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+        var (workspace, fixturePath, _) = await SetupSingleProjectFixtureAsync(
             """
             namespace SampleLib;
 
@@ -1714,6 +1809,8 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             }
             """,
             "POExtensionGroupFixture.cs");
+        var workspaceId = workspace.WorkspaceId;
+        Exception? primaryFailure = null;
 
         try
         {
@@ -1728,9 +1825,10 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             Assert.IsNotNull(fixtureDiff);
             StringAssert.Contains(fixtureDiff, "SumArgs sumArgs", "declaration should take the new record param");
         }
+        catch (Exception failure) { primaryFailure = failure; throw; }
         finally
         {
-            Services.WorkspaceManager.Close(workspaceId);
+            RoslynMcp.Roslyn.Helpers.OwnedResourceCleanup.DisposePreservingFailure("Parameter object fixture cleanup failed.", primaryFailure, workspace);
         }
     }
 
@@ -1743,7 +1841,7 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
     [TestMethod]
     public async Task InPositionNamedArgument_FollowedByPositionals_RewritesAndApplies()
     {
-        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+        var (workspace, fixturePath, _) = await SetupSingleProjectFixtureAsync(
             """
             namespace SampleLib;
 
@@ -1755,6 +1853,8 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             }
             """,
             "POInPositionFixture.cs");
+        var workspaceId = workspace.WorkspaceId;
+        Exception? primaryFailure = null;
 
         try
         {
@@ -1790,9 +1890,10 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             var appliedText = await File.ReadAllTextAsync(fixturePath);
             StringAssert.Contains(appliedText, "Sum(new SumArgs(1, 2, 3))");
         }
+        catch (Exception failure) { primaryFailure = failure; throw; }
         finally
         {
-            Services.WorkspaceManager.Close(workspaceId);
+            RoslynMcp.Roslyn.Helpers.OwnedResourceCleanup.DisposePreservingFailure("Parameter object fixture cleanup failed.", primaryFailure, workspace);
         }
     }
 
@@ -1804,7 +1905,7 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
     [TestMethod]
     public async Task ReducedExtensionReceiver_CallSite_BindsWithoutSlotShift()
     {
-        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+        var (workspace, fixturePath, _) = await SetupSingleProjectFixtureAsync(
             """
             namespace SampleLib;
 
@@ -1816,6 +1917,8 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             }
             """,
             "POReducedExtFixture.cs");
+        var workspaceId = workspace.WorkspaceId;
+        Exception? primaryFailure = null;
 
         try
         {
@@ -1832,9 +1935,10 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
                 "\"x\".Sum(new SumArgs(1, 2))",
                 $"the reduced receiver must stay the receiver and not shift argument slots. Diff:\n{diff}");
         }
+        catch (Exception failure) { primaryFailure = failure; throw; }
         finally
         {
-            Services.WorkspaceManager.Close(workspaceId);
+            RoslynMcp.Roslyn.Helpers.OwnedResourceCleanup.DisposePreservingFailure("Parameter object fixture cleanup failed.", primaryFailure, workspace);
         }
     }
 
@@ -1846,7 +1950,7 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
     [TestMethod]
     public async Task UngroupedTrailingParams_AllVariadicArgumentsSurviveAndApply()
     {
-        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+        var (workspace, fixturePath, _) = await SetupSingleProjectFixtureAsync(
             """
             namespace SampleLib;
 
@@ -1863,6 +1967,8 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             }
             """,
             "POParamsFixture.cs");
+        var workspaceId = workspace.WorkspaceId;
+        Exception? primaryFailure = null;
 
         try
         {
@@ -1901,9 +2007,10 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             var appliedText = await File.ReadAllTextAsync(fixturePath);
             StringAssert.Contains(appliedText, "Sum(new SumArgs(1, 2), 10, 20, 30)");
         }
+        catch (Exception failure) { primaryFailure = failure; throw; }
         finally
         {
-            Services.WorkspaceManager.Close(workspaceId);
+            RoslynMcp.Roslyn.Helpers.OwnedResourceCleanup.DisposePreservingFailure("Parameter object fixture cleanup failed.", primaryFailure, workspace);
         }
     }
 
@@ -1917,7 +2024,7 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
     [TestMethod]
     public async Task OutOfOrderNonConstantNamedArguments_RefusePreview()
     {
-        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+        var (workspace, fixturePath, _) = await SetupSingleProjectFixtureAsync(
             """
             namespace SampleLib;
 
@@ -1932,6 +2039,8 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             }
             """,
             "POEvalOrderFixture.cs");
+        var workspaceId = workspace.WorkspaceId;
+        Exception? primaryFailure = null;
 
         try
         {
@@ -1944,9 +2053,10 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             StringAssert.Contains(ex.Message, "different order");
             StringAssert.Contains(ex.Message, "non-constant argument");
         }
+        catch (Exception failure) { primaryFailure = failure; throw; }
         finally
         {
-            Services.WorkspaceManager.Close(workspaceId);
+            RoslynMcp.Roslyn.Helpers.OwnedResourceCleanup.DisposePreservingFailure("Parameter object fixture cleanup failed.", primaryFailure, workspace);
         }
     }
 
@@ -1959,7 +2069,7 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
     [TestMethod]
     public async Task MethodGroupReference_RefusesPreview()
     {
-        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+        var (workspace, fixturePath, _) = await SetupSingleProjectFixtureAsync(
             """
             namespace SampleLib;
 
@@ -1971,6 +2081,8 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             }
             """,
             "POMethodGroupFixture.cs");
+        var workspaceId = workspace.WorkspaceId;
+        Exception? primaryFailure = null;
 
         try
         {
@@ -1982,9 +2094,10 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
                     CancellationToken.None));
             StringAssert.Contains(ex.Message, "without a direct invocation");
         }
+        catch (Exception failure) { primaryFailure = failure; throw; }
         finally
         {
-            Services.WorkspaceManager.Close(workspaceId);
+            RoslynMcp.Roslyn.Helpers.OwnedResourceCleanup.DisposePreservingFailure("Parameter object fixture cleanup failed.", primaryFailure, workspace);
         }
     }
 
@@ -2016,8 +2129,10 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
     [DataRow(new[] { "Mod\0els" }, DisplayName = "invalid file-name char")]
     public async Task HostileDtoFolders_RefusePreviewWithNoTokenAndNoFile(string[] dtoFolders)
     {
-        var (workspaceId, fixturePath, fixtureDir) = await SetupSingleProjectFixtureAsync(
+        var (workspace, fixturePath, fixtureDir) = await SetupSingleProjectFixtureAsync(
             BoundaryFixtureSource, "POBoundaryFixture.cs");
+        var workspaceId = workspace.WorkspaceId;
+        Exception? primaryFailure = null;
 
         try
         {
@@ -2033,9 +2148,10 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
                 Directory.EnumerateFiles(solutionDir, "SumArgs.cs", SearchOption.AllDirectories).Any(),
                 "a refused preview must not materialize the DTO file anywhere in the solution tree");
         }
+        catch (Exception failure) { primaryFailure = failure; throw; }
         finally
         {
-            Services.WorkspaceManager.Close(workspaceId);
+            RoslynMcp.Roslyn.Helpers.OwnedResourceCleanup.DisposePreservingFailure("Parameter object fixture cleanup failed.", primaryFailure, workspace);
         }
     }
 
@@ -2045,8 +2161,10 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
         if (!OperatingSystem.IsWindows())
             Assert.Inconclusive("Drive-relative rooting (C:...) is a Windows path semantic.");
 
-        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+        var (workspace, fixturePath, _) = await SetupSingleProjectFixtureAsync(
             BoundaryFixtureSource, "POBoundaryFixture.cs");
+        var workspaceId = workspace.WorkspaceId;
+        Exception? primaryFailure = null;
 
         try
         {
@@ -2058,17 +2176,20 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
                     CancellationToken.None));
             StringAssert.Contains(ex.Message, "C:/Temp", "refusal must name the offending entry");
         }
+        catch (Exception failure) { primaryFailure = failure; throw; }
         finally
         {
-            Services.WorkspaceManager.Close(workspaceId);
+            RoslynMcp.Roslyn.Helpers.OwnedResourceCleanup.DisposePreservingFailure("Parameter object fixture cleanup failed.", primaryFailure, workspace);
         }
     }
 
     [TestMethod]
     public async Task NonIdentifierDtoNamespace_RefusesPreview()
     {
-        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+        var (workspace, fixturePath, _) = await SetupSingleProjectFixtureAsync(
             BoundaryFixtureSource, "POBoundaryFixture.cs");
+        var workspaceId = workspace.WorkspaceId;
+        Exception? primaryFailure = null;
 
         try
         {
@@ -2088,9 +2209,10 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
                     CancellationToken.None));
             StringAssert.Contains(emptyPart.Message, "empty namespace part");
         }
+        catch (Exception failure) { primaryFailure = failure; throw; }
         finally
         {
-            Services.WorkspaceManager.Close(workspaceId);
+            RoslynMcp.Roslyn.Helpers.OwnedResourceCleanup.DisposePreservingFailure("Parameter object fixture cleanup failed.", primaryFailure, workspace);
         }
     }
 
@@ -2102,8 +2224,10 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
     [TestMethod]
     public async Task NestedPathDtoFoldersEntry_SplitsIntoSegmentsAndSucceeds()
     {
-        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+        var (workspace, fixturePath, _) = await SetupSingleProjectFixtureAsync(
             BoundaryFixtureSource, "POBoundaryFixture.cs");
+        var workspaceId = workspace.WorkspaceId;
+        Exception? primaryFailure = null;
 
         try
         {
@@ -2119,57 +2243,66 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
                 preview.Changes.Any(c => c.FilePath.EndsWith(expectedTail, StringComparison.OrdinalIgnoreCase)),
                 $"DTO must land under {expectedTail}. Paths: {string.Join(", ", preview.Changes.Select(c => c.FilePath))}");
         }
+        catch (Exception failure) { primaryFailure = failure; throw; }
         finally
         {
-            Services.WorkspaceManager.Close(workspaceId);
+            RoslynMcp.Roslyn.Helpers.OwnedResourceCleanup.DisposePreservingFailure("Parameter object fixture cleanup failed.", primaryFailure, workspace);
         }
     }
 
     [TestMethod]
     public async Task ExistingDocumentAtDtoPath_RefusesPreview()
     {
-        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var workspace = CreateSolutionWorkspace();
+        var copiedSolutionPath = workspace.SolutionPath;
         var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
         var libDir = Path.Combine(solutionDir, "SampleLib");
         var fixturePath = Path.Combine(libDir, "POBoundaryFixture.cs");
-        await File.WriteAllTextAsync(fixturePath, BoundaryFixtureSource);
-        // Occupy the DTO destination with a document that is part of the project but
-        // declares no SumArgs type, so the document check (not the type check) must fire.
-        await File.WriteAllTextAsync(
-            Path.Combine(libDir, "SumArgs.cs"),
-            "namespace SampleLib;\n\npublic class UnrelatedOccupant { }\n");
-        var loadResult = await Services.WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
-
+        await IsolatedWorkspaceTestBase.InitializeWithCleanupAsync(workspace, async (scope, token) =>
+        {
+            await File.WriteAllTextAsync(fixturePath, BoundaryFixtureSource);
+            // Occupy the DTO destination with a document that is part of the project but
+            // declares no SumArgs type, so the document check (not the type check) must fire.
+            await File.WriteAllTextAsync(
+                Path.Combine(libDir, "SumArgs.cs"),
+                "namespace SampleLib;\n\npublic class UnrelatedOccupant { }\n");
+            await scope.LoadAsync(token);
+        }, CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        Exception? primaryFailure = null;
         try
         {
             var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
                 () => Services.ParameterObjectService.PreviewParameterObjectAsync(
-                    loadResult.WorkspaceId,
+                    workspaceId,
                     SymbolLocator.BySource(fixturePath, line: 5, column: 16),
                     new ParameterObjectPreviewRequest(["a", "b", "c"], "SumArgs"),
                     CancellationToken.None));
             StringAssert.Contains(ex.Message, "already contains a document");
             StringAssert.Contains(ex.Message, "SumArgs.cs");
         }
+        catch (Exception failure) { primaryFailure = failure; throw; }
         finally
         {
-            Services.WorkspaceManager.Close(loadResult.WorkspaceId);
+            RoslynMcp.Roslyn.Helpers.OwnedResourceCleanup.DisposePreservingFailure("Parameter object fixture cleanup failed.", primaryFailure, workspace);
         }
     }
 
     [TestMethod]
     public async Task ExistingFileOnDiskOutsideProject_RefusesPreviewAndLeavesFileIntact()
     {
-        var (workspaceId, fixturePath, fixtureDir) = await SetupSingleProjectFixtureAsync(
+        var (workspace, fixturePath, fixtureDir) = await SetupSingleProjectFixtureAsync(
             BoundaryFixtureSource, "POBoundaryFixture.cs");
+        var workspaceId = workspace.WorkspaceId;
+        Exception? primaryFailure = null;
         // Written AFTER the workspace load, so the file exists on disk but is not a
         // project document — only the File.Exists guard can catch it.
         var strayPath = Path.Combine(fixtureDir, "SumArgs.cs");
         const string strayContent = "// pre-existing content that must never be overwritten\n";
-        await File.WriteAllTextAsync(strayPath, strayContent);
 
         try
         {
+            await File.WriteAllTextAsync(strayPath, strayContent);
             var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
                 () => Services.ParameterObjectService.PreviewParameterObjectAsync(
                     workspaceId,
@@ -2180,16 +2313,17 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             Assert.AreEqual(strayContent, await File.ReadAllTextAsync(strayPath),
                 "the pre-existing file must be untouched by a refused preview");
         }
+        catch (Exception failure) { primaryFailure = failure; throw; }
         finally
         {
-            Services.WorkspaceManager.Close(workspaceId);
+            RoslynMcp.Roslyn.Helpers.OwnedResourceCleanup.DisposePreservingFailure("Parameter object fixture cleanup failed.", primaryFailure, workspace);
         }
     }
 
     [TestMethod]
     public async Task ExistingTypeWithSameName_RefusesPreview()
     {
-        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+        var (workspace, fixturePath, _) = await SetupSingleProjectFixtureAsync(
             """
             namespace SampleLib;
 
@@ -2203,6 +2337,8 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             }
             """,
             "POBoundaryTypeFixture.cs");
+        var workspaceId = workspace.WorkspaceId;
+        Exception? primaryFailure = null;
 
         try
         {
@@ -2215,9 +2351,10 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
             StringAssert.Contains(ex.Message, "SampleLib.SumArgs");
             StringAssert.Contains(ex.Message, "already exists in project");
         }
+        catch (Exception failure) { primaryFailure = failure; throw; }
         finally
         {
-            Services.WorkspaceManager.Close(workspaceId);
+            RoslynMcp.Roslyn.Helpers.OwnedResourceCleanup.DisposePreservingFailure("Parameter object fixture cleanup failed.", primaryFailure, workspace);
         }
     }
 
@@ -2241,8 +2378,10 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
     public async Task InvalidArgumentRequest_PublishesSafeActionableRefusal(
         ParameterObjectPreviewRequest request, string parameterName, string expectedMessage)
     {
-        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+        var (workspace, fixturePath, _) = await SetupSingleProjectFixtureAsync(
             BoundaryFixtureSource, "POBoundaryFixture.cs");
+        var workspaceId = workspace.WorkspaceId;
+        Exception? primaryFailure = null;
         try
         {
             var ex = await AssertPublicArgumentRefusalAsync(service =>
@@ -2251,16 +2390,17 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
                 parameterName, [fixturePath, HostileArgumentText, "submitted-secret-marker", @"C:\private", @"\\host\share", "/private/request"]);
             StringAssert.Contains(ex.PublicMessage, expectedMessage);
         }
+        catch (Exception failure) { primaryFailure = failure; throw; }
         finally
         {
-            Services.WorkspaceManager.Close(workspaceId);
+            RoslynMcp.Roslyn.Helpers.OwnedResourceCleanup.DisposePreservingFailure("Parameter object fixture cleanup failed.", primaryFailure, workspace);
         }
     }
 
     [TestMethod]
     public async Task NewParameterName_MethodTypeParameterCollision_RefusesPublicly()
     {
-        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+        var (workspace, fixturePath, _) = await SetupSingleProjectFixtureAsync(
             """
             namespace SampleLib;
 
@@ -2269,6 +2409,8 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
                 public int Sum<T>(int a, int b) => a + b;
             }
             """, "POTypeParameterNameFixture.cs");
+        var workspaceId = workspace.WorkspaceId;
+        Exception? primaryFailure = null;
         try
         {
             var ex = await AssertPublicArgumentRefusalAsync(service =>
@@ -2279,9 +2421,10 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
                 "parameterName", [fixturePath, "@T"]);
             StringAssert.Contains(ex.PublicMessage, "method type parameter 'T'");
         }
+        catch (Exception failure) { primaryFailure = failure; throw; }
         finally
         {
-            Services.WorkspaceManager.Close(workspaceId);
+            RoslynMcp.Roslyn.Helpers.OwnedResourceCleanup.DisposePreservingFailure("Parameter object fixture cleanup failed.", primaryFailure, workspace);
         }
     }
 
@@ -2291,7 +2434,7 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
     public async Task GroupedParameterShape_RefusesPublicly(
         string declaration, string firstParameter, string secondParameter, string expectedMessage)
     {
-        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+        var (workspace, fixturePath, _) = await SetupSingleProjectFixtureAsync(
             $$"""
             namespace SampleLib;
 
@@ -2300,6 +2443,8 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
                 {{declaration}}
             }
             """, "POShapeFixture.cs");
+        var workspaceId = workspace.WorkspaceId;
+        Exception? primaryFailure = null;
         try
         {
             var ex = await AssertPublicArgumentRefusalAsync(service =>
@@ -2310,9 +2455,10 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
                 "grouped", [fixturePath]);
             StringAssert.Contains(ex.PublicMessage, expectedMessage);
         }
+        catch (Exception failure) { primaryFailure = failure; throw; }
         finally
         {
-            Services.WorkspaceManager.Close(workspaceId);
+            RoslynMcp.Roslyn.Helpers.OwnedResourceCleanup.DisposePreservingFailure("Parameter object fixture cleanup failed.", primaryFailure, workspace);
         }
     }
 
@@ -2320,8 +2466,10 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
     [TestMethod]
     public async Task CancelledParameterObjectPreview_PropagatesCancellationWithoutStoringPreview()
     {
-        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+        var (workspace, fixturePath, _) = await SetupSingleProjectFixtureAsync(
             BoundaryFixtureSource, "POBoundaryFixture.cs");
+        var workspaceId = workspace.WorkspaceId;
+        Exception? primaryFailure = null;
         try
         {
             var store = new RefusalPreviewStore();
@@ -2338,9 +2486,10 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
                 }));
             Assert.AreEqual(0, store.StoreCalls);
         }
+        catch (Exception failure) { primaryFailure = failure; throw; }
         finally
         {
-            Services.WorkspaceManager.Close(workspaceId);
+            RoslynMcp.Roslyn.Helpers.OwnedResourceCleanup.DisposePreservingFailure("Parameter object fixture cleanup failed.", primaryFailure, workspace);
         }
     }
 
@@ -2440,17 +2589,15 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
     {
         public int StoreCalls { get; private set; }
 
-        public string Store(string workspaceId, Solution modifiedSolution, int workspaceVersion, string description)
+        public IReadOnlyList<string>? PeekChangedPaths(string token) => throw new AssertFailedException("a refusal must not inspect a preview");
+        public PreviewKind PeekKind(string token) => throw new AssertFailedException("a refusal must not inspect a preview");
+
+        public string Store(string workspaceId, Solution originalSolution, Solution modifiedSolution, int workspaceVersion,
+            string description, IReadOnlyList<FileChangeDto> changes, PreviewKind kind)
         {
             StoreCalls++;
             throw new AssertFailedException("a refused operation must not store a preview");
         }
-
-        public string Store(string workspaceId, Solution modifiedSolution, int workspaceVersion, string description, bool diffTruncated)
-            => Store(workspaceId, modifiedSolution, workspaceVersion, description);
-
-        public string Store(string workspaceId, Solution modifiedSolution, int workspaceVersion, string description, IReadOnlyList<FileChangeDto> changes)
-            => Store(workspaceId, modifiedSolution, workspaceVersion, description);
 
         public (string WorkspaceId, Solution OriginalSolution, Solution ModifiedSolution, int WorkspaceVersion, string Description, bool DiffTruncated)? Retrieve(string token)
             => throw new AssertFailedException("a refusal must not retrieve a preview");
@@ -2465,27 +2612,26 @@ public sealed class ParameterObjectPreviewTests : OwnedRefactoringTestBase
         public string? PeekWorkspaceId(string token) => throw new AssertFailedException("a refusal must not inspect a preview");
     }
 
-    private async Task<(string WorkspaceId, string FixturePath, string FixtureDir)> SetupSingleProjectFixtureAsync(
-        string content,
-        string fileName,
-        bool allowUnsafe = false)
+    private async Task<(IsolatedWorkspaceTestBase.IsolatedWorkspaceScope Workspace, string FixturePath, string FixtureDir)> SetupSingleProjectFixtureAsync(
+        string content, string fileName, bool allowUnsafe = false)
     {
         var workspace = CreateSingleProjectWorkspace();
         var libDir = workspace.GetPath("SampleLib");
-        if (allowUnsafe)
-        {
-            var projectPath = Path.Combine(libDir, "SampleLib.csproj");
-            var projectText = await File.ReadAllTextAsync(projectPath);
-            projectText = projectText.Replace(
-                "    <Nullable>enable</Nullable>",
-                "    <Nullable>enable</Nullable>\n    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>",
-                StringComparison.Ordinal);
-            await File.WriteAllTextAsync(projectPath, projectText);
-        }
         var fixturePath = Path.Combine(libDir, fileName);
-        await File.WriteAllTextAsync(fixturePath, content);
-        var workspaceId = await workspace.LoadAsync(CancellationToken.None);
-        return (workspaceId, fixturePath, libDir);
+        await IsolatedWorkspaceTestBase.InitializeWithCleanupAsync(workspace, async (scope, token) =>
+        {
+            if (allowUnsafe)
+            {
+                var projectPath = scope.GetPath("SampleLib", "SampleLib.csproj");
+                var project = System.Xml.Linq.XDocument.Load(projectPath);
+                project.Root!.Add(new System.Xml.Linq.XElement("PropertyGroup",
+                    new System.Xml.Linq.XElement("AllowUnsafeBlocks", "true")));
+                await File.WriteAllTextAsync(projectPath, project.ToString(), token);
+            }
+            await File.WriteAllTextAsync(fixturePath, content, token);
+            await scope.LoadAsync(token);
+        }, CancellationToken.None);
+        return (workspace, fixturePath, libDir);
     }
 
     private static int CountOccurrences(string haystack, string needle)

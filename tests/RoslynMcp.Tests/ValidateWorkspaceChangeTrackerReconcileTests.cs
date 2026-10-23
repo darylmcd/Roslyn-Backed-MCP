@@ -51,9 +51,6 @@ public sealed class ValidateWorkspaceChangeTrackerReconcileTests : IsolatedWorks
             ChangeTracker);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     // ------------------------------------------------------------------
     // Repro for gh #738: a file mutated through the tracker is then reverted
     // on disk (simulating `git checkout -- foo.cs`); the validate-workspace

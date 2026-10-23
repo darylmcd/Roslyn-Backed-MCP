@@ -60,9 +60,6 @@ public sealed class CompilationCacheAdoptionTests : IsolatedWorkspaceTestBase
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     /// <summary>
     /// Regression cover for the shared-task poisoning hazard called out in the
     /// <c>compilation-cache-adoption-read-side</c> item doc: a cached entry is shared by every
@@ -1145,6 +1142,34 @@ public sealed class CompilationCacheAdoptionTests : IsolatedWorkspaceTestBase
     /// </summary>
     private sealed class CannedBuildOutputExecutor(string stdOut) : IGatedCommandExecutor
     {
+        public async Task<BuildCommandRun> ExecuteBuildAsync(BuildCommandPlan plan, TimeSpan timeout, CancellationToken ct)
+        {
+            var execution = await ExecuteAsync(plan.WorkspaceId, plan.TargetPath, plan.Arguments, timeout, ct);
+            return new BuildCommandRun(plan, execution, execution.DurationMs);
+        }
+
+        public async Task<CommandExecutionDto> ExecuteAuthorizedAsync(
+            string workspaceId, string targetPath, IReadOnlyList<string> arguments, TimeSpan timeout,
+            Func<CancellationToken, Task> authorizeStart, CancellationToken ct)
+        {
+            await authorizeStart(ct).ConfigureAwait(false);
+            return await ExecuteAsync(workspaceId, targetPath, arguments, timeout, ct).ConfigureAwait(false);
+        }
+        public Task<TestRunResultDto> ExecuteTestAsync(
+            string workspaceId, string targetPath, IReadOnlyList<string> arguments,
+            Func<CommandExecutionDto, CancellationToken, Task<TestRunResultDto>> collectResults,
+            TimeSpan timeout, IReadOnlyList<EarlyKillPattern>? earlyKillPatterns, Func<CancellationToken, Task> authorizeStart, CancellationToken ct) =>
+            throw new NotSupportedException("This fixture does not execute tests.");
+
+        public Task<CommandExecutionDto> ExecuteAsync(
+            string workspaceId, string targetPath, IReadOnlyList<string> arguments, TimeSpan timeout,
+            IReadOnlyList<EarlyKillPattern>? earlyKillPatterns, CancellationToken ct)
+        {
+            if (earlyKillPatterns is { Count: > 0 })
+                throw new NotSupportedException("This fixture does not simulate streaming early-kill patterns.");
+            return ExecuteAsync(workspaceId, targetPath, arguments, timeout, ct);
+        }
+
         public Task<CommandExecutionDto> ExecuteAsync(
             string workspaceId,
             string targetPath,

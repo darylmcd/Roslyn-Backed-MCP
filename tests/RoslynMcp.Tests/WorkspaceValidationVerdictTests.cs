@@ -19,9 +19,6 @@ public sealed class WorkspaceValidationVerdictTests : IsolatedWorkspaceTestBase
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
@@ -192,12 +189,14 @@ public sealed class WorkspaceValidationVerdictTests : IsolatedWorkspaceTestBase
             ? ValidationBundleTools.ValidateRecentGitChanges(gate, service, workspace.WorkspaceId, runTests: true)
             : ValidationBundleTools.ValidateWorkspace(gate, service, workspace.WorkspaceId, [path], runTests: true);
         Task<bool>? writeTask = null;
+        var writerEntered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         try
         {
             await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
             clock.Advance(TimeSpan.FromSeconds(6));
-            writeTask = gate.RunWriteAsync(workspace.WorkspaceId, _ =>
+            writeTask = gate.RunWriteAsync(workspace.WorkspaceId, async _ =>
             {
+                writerEntered.TrySetResult(true);
                 if (mutation == "closed")
                     WorkspaceManager.Close(workspace.WorkspaceId);
                 else if (mutation == "changed")
@@ -205,12 +204,16 @@ public sealed class WorkspaceValidationVerdictTests : IsolatedWorkspaceTestBase
                     var solution = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
                     var document = solution.GetDocument(solution.GetDocumentIdsWithFilePath(path).Single());
                     Assert.IsNotNull(document);
-                    Assert.IsTrue(WorkspaceManager.TryApplyChanges(workspace.WorkspaceId,
-                        solution.WithDocumentText(document.Id, SourceText.From("namespace SampleLib; public class AnimalService {}"))));
+                    await PhysicalMutationFixture.ApplyAsync(WorkspaceManager, workspace.WorkspaceId,
+                        solution.WithDocumentText(document.Id, SourceText.From("namespace SampleLib; public class AnimalService {}")), CancellationToken.None);
                 }
-                return Task.FromResult(true);
+                return true;
             }, CancellationToken.None, applyStalenessPolicy: false);
-            Assert.IsTrue(await writeTask.WaitAsync(TimeSpan.FromSeconds(2)));
+            // Bound lock acquisition, independently of the real physical transaction's
+            // native graph preparation. Keep the test runner held through publication.
+            Assert.IsTrue(await writerEntered.Task.WaitAsync(TimeSpan.FromSeconds(2)));
+            Assert.IsTrue(await writeTask);
+            Assert.IsFalse(task.IsCompleted, "The test runner must remain held while the source mutation completes.");
         }
         finally
         {
@@ -471,6 +474,15 @@ public sealed class WorkspaceValidationVerdictTests : IsolatedWorkspaceTestBase
 
     private sealed class DelegateRunner(Func<CancellationToken, Task<TestRunResultDto>> run) : ITestRunnerService
     {
+        public Task<TestRunPlan> PrepareTestRunAsync(string workspaceId, string? projectName, string? filter, CancellationToken ct) =>
+            throw new NotSupportedException("This composed-run fixture does not support prepared execution.");
+
+        public Task<TestRunResultDto> RunTestCommandAsync(TestRunPlan plan, CancellationToken ct) =>
+            throw new NotSupportedException("This composed-run fixture does not support prepared execution.");
+
+        public Task<TestRunResultDto> CompleteTestRunAsync(TestRunPlan plan, TestRunResultDto result, CancellationToken ct) =>
+            throw new NotSupportedException("This composed-run fixture does not support prepared execution.");
+
         public Task<TestRunResultDto> RunTestsAsync(string workspaceId, string? projectName, string? filter, CancellationToken ct) => run(ct);
     }
 }

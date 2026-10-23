@@ -32,12 +32,6 @@ public sealed class WorkspaceReloadedEventTests : TestBase
         InitializeServices();
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup()
-    {
-        DisposeServices();
-    }
-
     [TestMethod]
     public async Task Reload_Fires_WorkspaceReloaded_Event_With_Current_WorkspaceId()
     {
@@ -129,7 +123,7 @@ public sealed class WorkspaceReloadedEventTests : TestBase
         var logger = new ListLogger<WorkspaceManager>();
         using var watcher = new FileWatcherService(
             Microsoft.Extensions.Logging.Abstractions.NullLogger<FileWatcherService>.Instance);
-        using var manager = new WorkspaceManager(
+        using var manager = new WorkspaceManager(new RoslynMcp.Roslyn.Services.ForkInvocationPathPolicy(new RoslynMcp.Tests.Helpers.OwnedTestWorkspacePathPolicy()),
             logger,
             new PreviewStore(),
             watcher,
@@ -137,7 +131,7 @@ public sealed class WorkspaceReloadedEventTests : TestBase
 
         try
         {
-            var status = await manager.LoadAsync(solutionPath, CancellationToken.None);
+            var status = await manager.LoadAsync(solutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(solutionPath, new Dictionary<string, string>()), CancellationToken.None);
             var observed = false;
             void ThrowingHandler(string _) => throw new InvalidOperationException(secretSentinel);
             void ObservingHandler(string id) => observed = id == status.WorkspaceId;

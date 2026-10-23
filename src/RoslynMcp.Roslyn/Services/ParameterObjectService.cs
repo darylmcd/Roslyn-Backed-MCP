@@ -134,7 +134,7 @@ public sealed partial class ParameterObjectService : IParameterObjectService
                 "parameter_object_preview produced no changes — verify the target method actually has parameters to group.");
 
         var description = $"Group {groupedParameters.Count} parameter(s) of {method.ToDisplayString()} into new record '{request.NewTypeName}'";
-        var token = _previewStore.Store(workspaceId, accumulator, _workspace.GetCurrentVersion(workspaceId), description, changes);
+        var token = _previewStore.Store(workspaceId, solution, accumulator, _workspace.GetCurrentVersion(workspaceId), description, changes, PreviewKind.ParameterObject);
 
         var callsiteUpdates = CallsiteUpdateProjection.Project(solution, perDocumentCallsites);
 

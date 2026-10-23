@@ -1,6 +1,5 @@
 using System.Collections.Immutable;
 using System.Text.Json;
-using System.Xml.Linq;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Roslyn.Helpers;
@@ -11,9 +10,9 @@ namespace RoslynMcp.Roslyn.Services;
 /// Detects whether a loaded workspace is stale with respect to <c>dotnet restore</c> — both the
 /// in-flight-restore race (concurrent out-of-process restore mutating <c>obj/</c> artefacts while
 /// MSBuild opens the solution) and the after-the-fact drift check (installed package versions in
-/// <c>project.assets.json</c> no longer matching the csproj's requested versions). Extracted from
-/// <see cref="WorkspaceManager.LoadIntoSessionAsync"/> — workspace-manager-decompose-restore-and-
-/// analyzer-subsystems — as a zero-external-caller, purely code-moved collaborator.
+/// <c>project.assets.json</c> no longer matching the evaluated project's requested versions).
+/// Uses the captured evaluation context and active dependency graph; known package expectations
+/// require restore when their assets cannot be read or verified.
 /// </summary>
 /// <remarks>
 /// Not sealed so a future failure-path test double can derive and override the virtual surface,
@@ -45,8 +44,8 @@ internal class RestoreStalenessDetector
     /// solution.
     /// </summary>
     /// <remarks>
-    /// Enumerates <c>obj/project.assets.json</c> and <c>obj/*.dgspec.json</c> under the
-    /// workspace root, polls their <see cref="File.GetLastWriteTimeUtc"/>, and returns once
+    /// Evaluates active project/dependency restore inputs with the captured globals, then polls
+    /// their actual assets and dependency-specification paths, polls their <see cref="File.GetLastWriteTimeUtc"/>, and returns once
     /// every file's mtime has been stable for <see cref="RestoreRaceStableWindowMs"/> ms — or
     /// the <paramref name="restoreRaceWaitMs"/> cap fires. No-op when the cap is zero, when no
     /// artefacts exist (typical on a pristine checkout before first build), or when all
@@ -55,6 +54,8 @@ internal class RestoreStalenessDetector
     /// </remarks>
     public virtual async Task WaitForStableRestoreArtifactsAsync(
         string fullPath,
+        IReadOnlyDictionary<string, string> globals,
+        Func<IReadOnlyList<string>, CancellationToken, Task> authorize,
         int restoreRaceWaitMs,
         ILogger logger,
         CancellationToken ct)
@@ -66,31 +67,35 @@ internal class RestoreStalenessDetector
         }
 
         var rootDirectory = Path.GetDirectoryName(fullPath);
-        if (string.IsNullOrWhiteSpace(rootDirectory) || !Directory.Exists(rootDirectory))
-        {
-            return;
-        }
+        if (string.IsNullOrWhiteSpace(rootDirectory)) return;
+        await authorize([fullPath, rootDirectory], ct).ConfigureAwait(false);
+        using var rootScope = PhysicalDirectoryScope.OpenRouteIfPresent(rootDirectory);
+        if (rootScope is null) return;
+        rootScope.AssertCurrentPath();
 
-        // Enumerate each project's obj/ directory artefacts once up-front and track their
-        // timestamps in a small dictionary. EnumerateFiles is recursive but bounded by the
-        // solution's own directory tree, so on real solutions this is a few dozen tiny stats.
-        var artefacts = EnumerateRestoreArtefacts(rootDirectory);
-        if (artefacts.Count == 0)
+        // Capture evaluated locations before sampling; an old obj tree must not shadow a
+        // configured intermediate directory or a dependency outside the solution folder.
+        var artefacts = RestoreArtifactLocator.Find(fullPath, globals, ct);
+        rootScope.AssertCurrentPath();
+        if (artefacts.Count == 0) return;
+        await authorize(artefacts, ct).ConfigureAwait(false);
+        if (!artefacts.Any(path => ReadLastWriteTimeUtc(path, ct) != DateTime.MinValue))
         {
             return;
         }
 
         var deadline = DateTime.UtcNow.AddMilliseconds(capMs);
-        var lastSnapshot = new Dictionary<string, DateTime>(artefacts.Count, StringComparer.OrdinalIgnoreCase);
-        var stableSince = new Dictionary<string, DateTime>(artefacts.Count, StringComparer.OrdinalIgnoreCase);
+        var lastSnapshot = new Dictionary<string, DateTime>(artefacts.Count, FileSystemPath.Comparer);
+        var stableSince = new Dictionary<string, DateTime>(artefacts.Count, FileSystemPath.Comparer);
 
         // Seed the snapshot. A file that does not exist yet is tracked as DateTime.MinValue
         // so the stability check catches the "appears mid-poll" case (restore creating the
         // first project.assets.json while we race it).
         var seedNow = DateTime.UtcNow;
+        await authorize(artefacts, ct).ConfigureAwait(false);
         foreach (var path in artefacts)
         {
-            lastSnapshot[path] = SafeGetLastWriteTimeUtc(path);
+            lastSnapshot[path] = ReadLastWriteTimeUtc(path, ct);
             stableSince[path] = seedNow;
         }
 
@@ -100,10 +105,11 @@ internal class RestoreStalenessDetector
 
             var now = DateTime.UtcNow;
             var allStable = true;
+            await authorize(artefacts, ct).ConfigureAwait(false);
 
             foreach (var path in artefacts)
             {
-                var currentMtime = SafeGetLastWriteTimeUtc(path);
+                var currentMtime = ReadLastWriteTimeUtc(path, ct);
                 if (currentMtime != lastSnapshot[path])
                 {
                     // Mtime moved — reset the stability window for this file.
@@ -129,7 +135,7 @@ internal class RestoreStalenessDetector
                 logger.LogWarning(
                     "workspace_load: restore-race wait hit {CapMs} ms cap for '{Path}' without reaching a stable mtime window. Proceeding with load — callers may observe CS1705 drift; re-run workspace_reload after the concurrent restore finishes if so.",
                     capMs,
-                    fullPath);
+                    MsBuildCommandProperties.Redact(fullPath, MsBuildCommandProperties.Append([], globals)));
                 return;
             }
 
@@ -147,256 +153,98 @@ internal class RestoreStalenessDetector
         }
     }
 
-    private static List<string> EnumerateRestoreArtefacts(string rootDirectory)
-    {
-        // Enumerate every obj/ directory under the solution root. EnumerateDirectories with
-        // SearchOption.AllDirectories is bounded by the solution tree; a typical solution
-        // has one obj/ directory per project. We then look only for the two files Roslyn /
-        // MSBuild actually consume during OpenSolutionAsync — project.assets.json and the
-        // project's <Project>.dgspec.json — so deep nested Debug/Release/TFM subdirectories
-        // do not inflate the probe set.
-        var results = new List<string>();
-        try
-        {
-            foreach (var objDir in Directory.EnumerateDirectories(rootDirectory, "obj", SearchOption.AllDirectories))
-            {
-                try
-                {
-                    var assetsPath = Path.Combine(objDir, "project.assets.json");
-                    if (File.Exists(assetsPath))
-                    {
-                        results.Add(assetsPath);
-                    }
-
-                    foreach (var dgspec in Directory.EnumerateFiles(objDir, "*.dgspec.json", SearchOption.TopDirectoryOnly))
-                    {
-                        results.Add(dgspec);
-                    }
-                }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                {
-                    // Tolerate transient IO errors (a concurrent restore may delete/recreate
-                    // subdirectories). The probe is best-effort; skip and continue.
-                }
-            }
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            // Best-effort: if we cannot enumerate at all, skip the wait entirely.
-        }
-
-        return results;
-    }
-
-    private static DateTime SafeGetLastWriteTimeUtc(string path)
+    private static DateTime ReadLastWriteTimeUtc(string path, CancellationToken ct)
     {
         try
         {
-            // File.Exists check collapses the "file deleted mid-probe" case into MinValue,
-            // which the caller treats as a change in the next sample (restore rewrote it).
-            return File.Exists(path) ? File.GetLastWriteTimeUtc(path) : DateTime.MinValue;
+            return PhysicalInputReader.ReadFileLastWriteTimeUtcIfPresent(path, ct) ?? DateTime.MinValue;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception failure) when (failure is IOException or UnauthorizedAccessException)
         {
             return DateTime.MinValue;
         }
     }
 
-    public virtual bool DetectRestoreRequired(ImmutableArray<ProjectStatusDto> projects, ILogger logger)
+    public virtual async Task<bool> DetectRestoreRequiredAsync(Microsoft.CodeAnalysis.Solution solution,
+        Func<IReadOnlyList<string>, CancellationToken, Task> authorize, ILogger logger, CancellationToken ct)
     {
-        foreach (var project in projects)
+        var selectingPaths = solution.Projects.Select(project => project.FilePath).OfType<string>()
+            .Concat(solution.FilePath is { } entry ? new[] { entry } : []).Distinct(FileSystemPath.Comparer).ToArray();
+        await authorize(selectingPaths, ct).ConfigureAwait(false);
+        EvaluatedBuildGraph.Graph graph;
+        try { graph = EvaluatedBuildGraph.Source(solution, ct); }
+        catch (InvalidOperationException failure)
         {
-            if (IsRestoreRequired(project.FilePath, logger))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    public virtual bool IsRestoreRequired(string projectFilePath, ILogger logger)
-    {
-        if (string.IsNullOrWhiteSpace(projectFilePath) || !File.Exists(projectFilePath))
-        {
+            logger.LogDebug("Restore graph evaluation unavailable ({FailureType})", failure.GetType().Name);
             return false;
         }
-
-        Dictionary<string, PackageExpectation> expectedPackages;
-        try
+        foreach (var node in graph.Nodes.Where(node => !node.IsOuterBuild))
         {
-            expectedPackages = CollectExpectedPackages(projectFilePath);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException)
-        {
-            logger.LogDebug("restore-drift metadata could not be read ({FailureType}); package expectations are unknown.",
-                ex.GetType().Name);
-            return false;
-        }
-
-        if (expectedPackages.Count == 0)
-        {
-            return false;
-        }
-
-        try
-        {
-            var assets = LoadAssetsPackageVersions(projectFilePath);
-            if (assets is null)
-            {
-                return true;
-            }
-
-            foreach (var (packageId, expectation) in expectedPackages)
-            {
-                if (!assets.Value.PackageVersions.TryGetValue(packageId, out var assetVersions))
-                {
-                    return true;
-                }
-
-                if (!string.IsNullOrWhiteSpace(expectation.RequestedVersion) &&
-                    !PackageVersionMatches(expectation.RequestedVersion!, assetVersions))
-                {
-                    return true;
-                }
-
-                if (expectation.UsesCentralVersion)
-                {
-                    if (string.IsNullOrWhiteSpace(expectation.RequestedVersion) ||
-                        !assets.Value.CentralPackageVersions.TryGetValue(packageId, out var centralVersions) ||
-                        !PackageVersionMatches(expectation.RequestedVersion!, centralVersions))
-                    {
-                        return true;
-                    }
-                }
-            }
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException)
-        {
-            // Known package expectations cannot be verified against unusable assets. Preserve
-            // the restore-required signal without retaining file content, paths, or exception text.
-            logger.LogDebug("restore-drift assets could not be read ({FailureType}); restore is required.",
-                ex.GetType().Name);
-            return true;
-        }
-
-        return false;
-    }
-
-    private static Dictionary<string, PackageExpectation> CollectExpectedPackages(string projectFilePath)
-    {
-        var expected = new Dictionary<string, PackageExpectation>(StringComparer.OrdinalIgnoreCase);
-        var centralPackages = LoadCentralPackageVersions(MsBuildMetadataHelper.FindDirectoryPackagesProps(projectFilePath));
-
-        foreach (var documentPath in EnumeratePackageReferenceDocuments(projectFilePath))
-        {
-            XDocument document;
+            var context = node.Inputs;
+            if (context.Packages.Count == 0) continue;
+            if (context.AssetsPath is not { } assetsPath) return true;
+            await authorize([assetsPath], ct).ConfigureAwait(false);
             try
             {
-                document = XmlFileLoader.Load(documentPath, LoadOptions.PreserveWhitespace);
+                using var input = PhysicalInputReader.OpenRead(assetsPath, ct);
+                using var document = await JsonDocument.ParseAsync(input.Stream, cancellationToken: ct).ConfigureAwait(false);
+                if (PackagesRequireRestore(context, ParseAssetsPackageVersions(context, document))) return true;
             }
-            catch (System.Xml.XmlException)
+            catch (Exception failure) when (failure is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException)
             {
-                continue;
-            }
-
-            foreach (var element in document
-                         .Descendants()
-                         .Where(candidate => string.Equals(candidate.Name.LocalName, "PackageReference", StringComparison.OrdinalIgnoreCase)))
-            {
-                var packageId = GetXmlValue(element, "Include") ?? GetXmlValue(element, "Update");
-                if (string.IsNullOrWhiteSpace(packageId))
-                {
-                    continue;
-                }
-
-                var explicitVersion =
-                    GetXmlValue(element, "VersionOverride") ??
-                    GetChildValue(element, "VersionOverride") ??
-                    GetXmlValue(element, "Version") ??
-                    GetChildValue(element, "Version");
-
-                centralPackages.TryGetValue(packageId, out var centralVersion);
-                var usesCentralVersion = string.IsNullOrWhiteSpace(explicitVersion) &&
-                                         !string.IsNullOrWhiteSpace(centralVersion);
-                expected[packageId] = new PackageExpectation(
-                    usesCentralVersion ? centralVersion : explicitVersion,
-                    usesCentralVersion);
+                logger.LogDebug("restore-drift assets could not be read ({FailureType}); restore is required.", failure.GetType().Name);
+                return true;
             }
         }
-
-        return expected;
+        return false;
     }
 
-    private static IEnumerable<string> EnumeratePackageReferenceDocuments(string projectFilePath)
+    public virtual bool IsRestoreRequired(string projectFilePath, IReadOnlyDictionary<string, string> globals, ILogger logger)
     {
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var buildPropsPath = FindNearestFile(projectFilePath, "Directory.Build.props");
-        if (!string.IsNullOrWhiteSpace(buildPropsPath) && seen.Add(buildPropsPath))
-        {
-            yield return buildPropsPath;
-        }
-
-        if (seen.Add(projectFilePath))
-        {
-            yield return projectFilePath;
-        }
-
-        var buildTargetsPath = FindNearestFile(projectFilePath, "Directory.Build.targets");
-        if (!string.IsNullOrWhiteSpace(buildTargetsPath) && seen.Add(buildTargetsPath))
-        {
-            yield return buildTargetsPath;
-        }
-    }
-
-    private static string? FindNearestFile(string path, string fileName)
-    {
-        var directory = Path.GetDirectoryName(path);
-        while (!string.IsNullOrWhiteSpace(directory))
-        {
-            var candidate = Path.Combine(directory, fileName);
-            if (File.Exists(candidate))
-            {
-                return candidate;
-            }
-
-            directory = Directory.GetParent(directory)?.FullName;
-        }
-
-        return null;
-    }
-
-    private static Dictionary<string, string> LoadCentralPackageVersions(string? packagesPropsPath)
-    {
-        var centralPackages = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        if (string.IsNullOrWhiteSpace(packagesPropsPath) || !File.Exists(packagesPropsPath))
-        {
-            return centralPackages;
-        }
-
-        XDocument document;
+        if (string.IsNullOrWhiteSpace(projectFilePath) || !File.Exists(projectFilePath)) return false;
         try
         {
-            document = XmlFileLoader.Load(packagesPropsPath, LoadOptions.PreserveWhitespace);
+            var graph = EvaluatedBuildGraph.FromRoots([projectFilePath], globals, ImmutableDictionary<string, byte[]>.Empty, CancellationToken.None);
+            return EvaluatedBuildGraph.ActiveEntries(graph)
+                .Any(node => ContextRequiresRestoreSafely(node.Inputs, logger));
         }
-        catch (System.Xml.XmlException)
+        catch (InvalidOperationException failure)
         {
-            return centralPackages;
+            logger.LogDebug("Restore input evaluation unavailable ({FailureType})", failure.GetType().Name);
+            return false;
         }
+    }
 
-        foreach (var element in document
-                     .Descendants()
-                     .Where(candidate => string.Equals(candidate.Name.LocalName, "PackageVersion", StringComparison.OrdinalIgnoreCase)))
+    private static bool ContextRequiresRestoreSafely(MsBuildMetadataHelper.RestoreInputs context, ILogger logger)
+    {
+        try
         {
-            var packageId = GetXmlValue(element, "Include");
-            var version = GetXmlValue(element, "Version") ?? GetChildValue(element, "Version");
-            if (!string.IsNullOrWhiteSpace(packageId) && !string.IsNullOrWhiteSpace(version))
-            {
-                centralPackages[packageId] = version;
-            }
+            if (context.Packages.Count == 0) return false;
+            return PackagesRequireRestore(context, LoadAssetsPackageVersions(context));
         }
+        catch (Exception failure) when (failure is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException)
+        {
+            // Evaluated package expectations are known; unreadable assets cannot establish freshness.
+            // Report only the failure type, never assets content, paths or exception text.
+            logger.LogDebug("restore-drift assets could not be read ({FailureType}); restore is required.",
+                failure.GetType().Name);
+            return true;
+        }
+    }
 
-        return centralPackages;
+    private static bool PackagesRequireRestore(MsBuildMetadataHelper.RestoreInputs context,
+        (Dictionary<string, HashSet<string>> PackageVersions, Dictionary<string, HashSet<string>> CentralPackageVersions)? assets)
+    {
+        if (assets is null) return true;
+        foreach (var package in context.Packages)
+        {
+            if (!assets.Value.PackageVersions.TryGetValue(package.Id, out var actual) ||
+                !string.IsNullOrWhiteSpace(package.RequestedVersion) && !PackageVersionMatches(package.RequestedVersion, actual)) return true;
+            if (package.UsesCentralVersion && (string.IsNullOrWhiteSpace(package.RequestedVersion) ||
+                !assets.Value.CentralPackageVersions.TryGetValue(package.Id, out var central) ||
+                !PackageVersionMatches(package.RequestedVersion, central))) return true;
+        }
+        return false;
     }
 
     /// <summary>
@@ -405,36 +253,40 @@ internal class RestoreStalenessDetector
     /// example a worktree scratch folder). Returns <see langword="null"/> when the assets file, the
     /// property, or a non-empty string value is absent (first restore) or the file cannot be read.
     /// </summary>
-    public static string? TryReadRestorePackagesPath(string projectFilePath)
+    public static string? TryReadRestorePackagesPath(string projectFilePath, IReadOnlyDictionary<string, string> globals)
     {
+        try { return ReadRequiredRestorePackagesPathFromAssets(GetExistingAssetsPath(projectFilePath, globals), CancellationToken.None); }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidOperationException) { return null; }
+    }
+
+    internal static string? ReadRequiredRestorePackagesPathFromAssets(string? assetsPath, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        if (assetsPath is null) return null;
         try
         {
-            var assetsPath = GetExistingAssetsPath(projectFilePath);
-            if (assetsPath is null)
-            {
-                return null;
-            }
-
-            using var stream = File.OpenRead(assetsPath);
-            using var document = JsonDocument.Parse(stream);
-            if (document.RootElement.ValueKind == JsonValueKind.Object &&
-                document.RootElement.TryGetProperty("project", out var project) &&
-                project.ValueKind == JsonValueKind.Object &&
-                project.TryGetProperty("restore", out var restore) &&
-                restore.ValueKind == JsonValueKind.Object &&
-                restore.TryGetProperty("packagesPath", out var packagesPath) &&
-                packagesPath.ValueKind == JsonValueKind.String &&
-                !string.IsNullOrWhiteSpace(packagesPath.GetString()))
-            {
-                return packagesPath.GetString();
-            }
+            using var input = PhysicalInputReader.OpenRead(assetsPath, ct);
+            using var document = JsonDocument.Parse(input.Stream);
+            ct.ThrowIfCancellationRequested();
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object) throw InvalidAssets();
+            if (!root.TryGetProperty("project", out var project)) return null;
+            if (project.ValueKind != JsonValueKind.Object) throw InvalidAssets();
+            if (!project.TryGetProperty("restore", out var restore)) return null;
+            if (restore.ValueKind != JsonValueKind.Object) throw InvalidAssets();
+            if (!restore.TryGetProperty("packagesPath", out var packagesPath)) return null;
+            if (packagesPath.ValueKind != JsonValueKind.String) throw InvalidAssets();
+            return string.IsNullOrWhiteSpace(packagesPath.GetString()) ? null : packagesPath.GetString();
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        catch (FileNotFoundException) { return null; }
+        catch (DirectoryNotFoundException) { return null; }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException)
         {
-            // Unreadable assets file: treated as a first restore (no --packages override).
+            throw InvalidAssets();
         }
 
-        return null;
+        static RoslynMcp.Core.Services.PublicInvalidOperationException InvalidAssets() => new(
+            "The existing restore assets do not establish readable package-root authority. Repair or explicitly remove the unusable assets, restore the project, and retry.");
     }
 
     /// <summary>
@@ -444,106 +296,75 @@ internal class RestoreStalenessDetector
     /// assets file is located where MSBuild would write it, so <c>UseArtifactsOutput</c> and a
     /// custom <c>BaseIntermediateOutputPath</c>/<c>MSBuildProjectExtensionsPath</c> are not
     /// misread as missing. Like <see cref="IsRestoreRequired"/>, detection is best-effort: an
-    /// unreadable or unevaluable project is reported as not-missing (logged at debug) so the
-    /// default restore probe can never fail a load that would otherwise succeed.
+    /// missing, unreadable or malformed definitions return false. A readable well-formed definition
+    /// whose evaluation fails conservatively requires restore; unknown evaluation is not healthy.
+    /// The authoritative graph/restore path reports the precise safe evaluation refusal.
     /// </summary>
-    public static bool HasMissingAssets(string projectFilePath, ILogger logger)
+    internal static async Task<bool> HasMissingAssetsAsync(EvaluatedBuildGraph.Graph graph,
+        Func<IReadOnlyList<string>, CancellationToken, Task> authorize, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(projectFilePath) || !File.Exists(projectFilePath))
+        foreach (var node in graph.Nodes.Where(node => !node.IsOuterBuild && node.Inputs.Packages.Count > 0))
         {
-            return false;
+            if (node.Inputs.AssetsPath is not { } path) return true;
+            await authorize([path], ct).ConfigureAwait(false);
+            if (PhysicalInputReader.ReadFileLastWriteTimeUtcIfPresent(path, ct) is null) return true;
         }
+        return false;
+    }
 
+    public static bool HasMissingAssets(string projectFilePath, IReadOnlyDictionary<string, string> globals, ILogger logger)
+    {
+        if (string.IsNullOrWhiteSpace(projectFilePath) || !File.Exists(projectFilePath)) return false;
+        var readableDefinition = false;
         try
         {
-            return CollectExpectedPackages(projectFilePath).Count > 0 && GetExistingAssetsPath(projectFilePath) is null;
+            // Establish readability only. Never infer active items or dependency edges from XML.
+            XmlFileLoader.Load(projectFilePath, System.Xml.Linq.LoadOptions.None);
+            readableDefinition = true;
+            return MsBuildMetadataHelper.EvaluateProjectContexts(projectFilePath, globals)
+                .Any(context => context.Packages.Count > 0 && (context.AssetsPath is null || !File.Exists(context.AssetsPath)));
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Xml.XmlException or JsonException or InvalidOperationException)
         {
-            logger.LogDebug(ex, "missing-assets detection skipped for '{ProjectFilePath}'", projectFilePath);
-            return false;
+            var redactor = new MsBuildCommandProperties.Redactor(MsBuildCommandProperties.Append([], globals));
+            logger.LogDebug(redactor.Failure(ex), "missing-assets detection could not establish {FailureStage} for '{ProjectFilePath}'; restore required: {RestoreRequired}",
+                readableDefinition ? "evaluated inputs" : "readable XML", redactor.Text(projectFilePath), readableDefinition);
+            return readableDefinition;
         }
     }
 
-    private static string? GetExistingAssetsPath(string projectFilePath)
+    private static string? GetExistingAssetsPath(string projectFilePath, IReadOnlyDictionary<string, string> globals)
     {
-        var projectDirectory = Path.GetDirectoryName(projectFilePath);
-        if (string.IsNullOrWhiteSpace(projectDirectory))
-        {
-            return null;
-        }
-
-        // Fast path: the default layout needs no MSBuild evaluation.
-        var defaultPath = Path.Combine(projectDirectory, "obj", "project.assets.json");
-        if (File.Exists(defaultPath))
-        {
-            return defaultPath;
-        }
-
-        var relocatedPath = TryEvaluateAssetsPath(projectFilePath, projectDirectory);
-        return relocatedPath is not null && File.Exists(relocatedPath) ? relocatedPath : null;
+        var path = MsBuildMetadataHelper.ResolveAssetsPath(projectFilePath, globals);
+        return path is not null && File.Exists(path) ? path : null;
     }
 
-    /// <summary>
-    /// Evaluates the project to find where restore writes <c>project.assets.json</c>
-    /// (<c>ProjectAssetsFile</c>, else <c>MSBuildProjectExtensionsPath</c>), which differs from
-    /// <c>obj/</c> under <c>UseArtifactsOutput</c> or a custom <c>BaseIntermediateOutputPath</c>.
-    /// Returns <see langword="null"/> when the project cannot be evaluated; the caller then treats
-    /// the assets file as absent, which was the behaviour for every unlocatable file before this probe.
-    /// </summary>
-    private static string? TryEvaluateAssetsPath(string projectFilePath, string projectDirectory)
+    private static (Dictionary<string, HashSet<string>> PackageVersions, Dictionary<string, HashSet<string>> CentralPackageVersions)? LoadAssetsPackageVersions(MsBuildMetadataHelper.RestoreInputs context)
     {
-        try
-        {
-            var values = MsBuildMetadataHelper.EvaluateProperties(projectFilePath, "ProjectAssetsFile", "MSBuildProjectExtensionsPath");
-            var assetsFile = values[0];
-            if (string.IsNullOrWhiteSpace(assetsFile))
-            {
-                var extensionsPath = values[1];
-                if (string.IsNullOrWhiteSpace(extensionsPath))
-                {
-                    return null;
-                }
-
-                assetsFile = Path.Combine(extensionsPath, "project.assets.json");
-            }
-
-            return Path.GetFullPath(assetsFile.Trim(), projectDirectory);
-        }
-        catch (InvalidOperationException)
-        {
-            return null;
-        }
-    }
-
-    private static (Dictionary<string, HashSet<string>> PackageVersions, Dictionary<string, HashSet<string>> CentralPackageVersions)? LoadAssetsPackageVersions(string projectFilePath)
-    {
-        var assetsPath = GetExistingAssetsPath(projectFilePath);
-        if (assetsPath is null)
+        var assetsPath = context.AssetsPath;
+        if (assetsPath is null || !File.Exists(assetsPath))
         {
             return null;
         }
 
         using var stream = File.OpenRead(assetsPath);
         using var document = JsonDocument.Parse(stream);
+        return ParseAssetsPackageVersions(context, document);
+    }
+
+    private static (Dictionary<string, HashSet<string>> PackageVersions, Dictionary<string, HashSet<string>> CentralPackageVersions)? ParseAssetsPackageVersions(
+        MsBuildMetadataHelper.RestoreInputs context, JsonDocument document)
+    {
         if (document.RootElement.ValueKind != JsonValueKind.Object ||
-            !document.RootElement.TryGetProperty("project", out var project) ||
-            project.ValueKind != JsonValueKind.Object ||
-            !project.TryGetProperty("frameworks", out var frameworks) ||
-            frameworks.ValueKind != JsonValueKind.Object)
-        {
-            return null;
-        }
+            !ProjectMetadataParser.TryGetAssetsFramework(document.RootElement, string.IsNullOrWhiteSpace(context.TargetFramework) ? context.TargetFrameworkMoniker : context.TargetFramework, out _, out var selectedFramework)) return null;
 
         var packageVersions = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
         var centralPackageVersions = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var framework in frameworks.EnumerateObject())
+        foreach (var framework in new[] { selectedFramework })
         {
-            if (framework.Value.ValueKind != JsonValueKind.Object)
-                return null;
 
-            if (framework.Value.TryGetProperty("dependencies", out var dependencies) &&
+            if (framework.TryGetProperty("dependencies", out var dependencies) &&
                 dependencies.ValueKind == JsonValueKind.Object)
             {
                 foreach (var dependency in dependencies.EnumerateObject())
@@ -559,7 +380,7 @@ internal class RestoreStalenessDetector
                 }
             }
 
-            if (framework.Value.TryGetProperty("centralPackageVersions", out var centralVersions) &&
+            if (framework.TryGetProperty("centralPackageVersions", out var centralVersions) &&
                 centralVersions.ValueKind == JsonValueKind.Object)
             {
                 foreach (var centralVersion in centralVersions.EnumerateObject())
@@ -591,35 +412,10 @@ internal class RestoreStalenessDetector
 
     private static bool PackageVersionMatches(string expectedVersion, IReadOnlySet<string> actualVersions)
     {
-        var expected = expectedVersion.Trim();
-        if (string.IsNullOrWhiteSpace(expected))
-        {
-            return false;
-        }
-
-        if (actualVersions.Contains(expected))
-        {
-            return true;
-        }
-
-        if (expected.StartsWith("[", StringComparison.Ordinal) || expected.StartsWith("(", StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        return actualVersions.Contains($"[{expected}, )");
-    }
-
-    private static string? GetXmlValue(XElement element, string localName)
-    {
-        return element.Attributes().FirstOrDefault(attribute =>
-            string.Equals(attribute.Name.LocalName, localName, StringComparison.OrdinalIgnoreCase))?.Value?.Trim();
-    }
-
-    private static string? GetChildValue(XElement element, string localName)
-    {
-        return element.Elements().FirstOrDefault(child =>
-            string.Equals(child.Name.LocalName, localName, StringComparison.OrdinalIgnoreCase))?.Value?.Trim();
+        if (!NuGet.Versioning.VersionRange.TryParse(expectedVersion, out var expected)) return false;
+        return actualVersions.Any(text => NuGet.Versioning.VersionRange.TryParse(text, out var actual)
+            && NuGet.Versioning.VersionRangeComparer.VersionRelease.Equals(expected, actual)
+            && Equals(expected.Float, actual.Float));
     }
 
     // restore-required-vs-build-conflation: a WORKSPACE_UNRESOLVED_ANALYZER warning indicates a
@@ -655,5 +451,4 @@ internal class RestoreStalenessDetector
         return suspiciousDiagnostics >= 3;
     }
 
-    private readonly record struct PackageExpectation(string? RequestedVersion, bool UsesCentralVersion);
 }

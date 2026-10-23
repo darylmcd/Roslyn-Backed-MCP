@@ -32,13 +32,13 @@ public sealed class InvalidOperationConstructionRatchetTests
     public async Task ProductionConstructions_DoNotGrowOrReplacePinnedIdentitiesAsync()
     {
         var root = TestFixtureFileSystem.FindRepositoryRoot();
-        using var services = TestServiceContainer.Create(new ValidationServiceOptions());
+        using var services = TestServiceContainer.Create(new ValidationServiceOptions(), new ForkInvocationPathPolicy(new RoslynMcp.Tests.Helpers.OwnedTestWorkspacePathPolicy()));
         var solutions = new List<Solution>();
         foreach (var configuration in new[] { "Debug", "Release" })
         {
             var status = await services.WorkspaceManager.LoadAsync(
                 Path.Combine(root, "RoslynMcp.slnx"),
-                new Dictionary<string, string> { ["Configuration"] = configuration },
+                RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(Path.Combine(root, "RoslynMcp.slnx"), new Dictionary<string, string> { ["Configuration"] = configuration }),
                 CancellationToken.None);
             solutions.Add(services.WorkspaceManager.GetCurrentSolution(status.WorkspaceId));
         }

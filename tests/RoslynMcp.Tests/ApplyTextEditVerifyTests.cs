@@ -21,9 +21,6 @@ public sealed class ApplyTextEditVerifyTests : IsolatedWorkspaceTestBase
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     // ------------------------------------------------------------------
     // Default-path preservation: verify omitted → no Verification field.
     // ------------------------------------------------------------------

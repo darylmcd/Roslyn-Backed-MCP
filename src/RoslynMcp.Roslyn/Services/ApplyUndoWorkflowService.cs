@@ -134,12 +134,12 @@ public sealed class ApplyUndoWorkflowService : IApplyUndoWorkflowService
     /// path and the returned-Cancelled=true DTO check below so both cancellation-observation points
     /// revert identically.
     /// </summary>
-    private async Task BestEffortRevertAfterCancellationAsync(string workspaceId)
+    private async Task BestEffortRevertAfterCancellationAsync(string workspaceId, IPreparedUndoOperation? operation)
     {
         using var revertCts = new CancellationTokenSource(_revertBudget);
         try
         {
-            var recovered = await _undoService.RevertAsync(workspaceId, revertCts.Token).ConfigureAwait(false);
+            var recovered = operation is not null && await operation.RestoreAsync(revertCts.Token).ConfigureAwait(false);
             if (!recovered)
             {
                 _logger?.LogError(
@@ -169,7 +169,8 @@ public sealed class ApplyUndoWorkflowService : IApplyUndoWorkflowService
             workspaceId,
             projectFilter,
             ct).ConfigureAwait(false);
-        var applyResult = await _refactoringService.ApplyRefactoringAsync(previewToken, "apply_with_verify", ct).ConfigureAwait(false);
+        var applied = await _refactoringService.ApplyRefactoringWithUndoAsync(previewToken, "apply_with_verify", force: false, ct).ConfigureAwait(false);
+        var applyResult = applied.Result;
         if (!applyResult.Success)
         {
             return new ApplyVerifyOutcome.ApplyFailed(applyResult.Error);
@@ -180,6 +181,7 @@ public sealed class ApplyUndoWorkflowService : IApplyUndoWorkflowService
             projectFilter,
             preBaseline,
             applyResult,
+            applied.UndoOperation,
             rollbackOnError,
             ct).ConfigureAwait(false);
     }
@@ -224,6 +226,7 @@ public sealed class ApplyUndoWorkflowService : IApplyUndoWorkflowService
         string? projectFilter,
         CompilationErrorSnapshot preBaseline,
         ApplyResultDto applyResult,
+        IPreparedUndoOperation? operation,
         bool rollbackOnError,
         CancellationToken ct)
     {
@@ -237,7 +240,7 @@ public sealed class ApplyUndoWorkflowService : IApplyUndoWorkflowService
                 ct).ConfigureAwait(false);
             if (postCheck.Cancelled)
             {
-                await BestEffortRevertAfterCancellationAsync(workspaceId).ConfigureAwait(false);
+                await BestEffortRevertAfterCancellationAsync(workspaceId, operation).ConfigureAwait(false);
                 revertedForCancelledDto = true;
                 ct.ThrowIfCancellationRequested();
                 throw new OperationCanceledException(ct);
@@ -259,7 +262,7 @@ public sealed class ApplyUndoWorkflowService : IApplyUndoWorkflowService
                     applyResult.AppliedFiles, newErrors, preBaseline.ErrorCount, postCheck.ErrorCount);
             }
 
-            var reverted = await _undoService.RevertAsync(workspaceId, ct).ConfigureAwait(false);
+            var reverted = operation is not null && await operation.RestoreAsync(ct).ConfigureAwait(false);
             return new ApplyVerifyOutcome.RolledBack(
                 reverted, applyResult.AppliedFiles, newErrors, preBaseline.ErrorCount, postCheck.ErrorCount);
         }
@@ -267,7 +270,7 @@ public sealed class ApplyUndoWorkflowService : IApplyUndoWorkflowService
         {
             if (!revertedForCancelledDto)
             {
-                await BestEffortRevertAfterCancellationAsync(workspaceId).ConfigureAwait(false);
+                await BestEffortRevertAfterCancellationAsync(workspaceId, operation).ConfigureAwait(false);
             }
 
             throw;

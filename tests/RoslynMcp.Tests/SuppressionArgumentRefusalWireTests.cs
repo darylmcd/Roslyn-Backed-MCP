@@ -1,10 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
-using RoslynMcp.Core.Services;
-using RoslynMcp.Roslyn.Services;
 using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
@@ -16,9 +13,6 @@ public sealed class SuppressionArgumentRefusalWireTests : IsolatedWorkspaceTestB
 
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
-
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
 
     [TestMethod]
     [DataRow("2025-11-25", "diagnosticId")]
@@ -33,14 +27,10 @@ public sealed class SuppressionArgumentRefusalWireTests : IsolatedWorkspaceTestB
     {
         await using var workspace = await CreateIsolatedWorkspaceAsync();
         var root = Path.GetDirectoryName(workspace.SolutionPath)!;
-        await using var harness = await ProductionParityMcpHarness.CreateAsync(
-            "suppression-refusals", version,
-            services => services.AddSingleton(new SecurityOptions { SanctionedRoots = [root] }));
-        var loaded = await harness.Client.CallToolAsync("workspace_load",
-            new Dictionary<string, object?> { ["path"] = workspace.SolutionPath, ["autoRestore"] = false },
-            cancellationToken: CancellationToken.None);
-        Assert.IsFalse(loaded.IsError == true);
-        var id = JsonNode.Parse(loaded.Content.OfType<TextContentBlock>().Single().Text)!["workspaceId"]!.GetValue<string>();
+        await using var harness = await ProductionParityMcpHarness.CreateOwnedAsync(
+            "suppression-refusals", version, root);
+        var id = await ProductionParityMcpHarness.LoadOwnedWorkspaceAsync(
+            harness, workspace.SolutionPath, CancellationToken.None);
         var path = workspace.GetPath("SampleLib", "AnimalService.cs");
         var before = Snapshot(root);
         foreach (var item in Cases().Where(item => item.Parameter == parameter))

@@ -4,6 +4,8 @@ using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Services;
 
+using RoslynMcp.Tests.Helpers;
+
 namespace RoslynMcp.Tests;
 
 [TestClass]
@@ -972,21 +974,6 @@ public class WorkspaceExecutionGateTests
             "All three parallel readers must return their expected values without timing out.");
     }
 
-    private sealed class ConcurrencyTracker
-    {
-        private int _current;
-        public int MaxConcurrent { get; private set; }
-
-        public void Enter()
-        {
-            var n = Interlocked.Increment(ref _current);
-            // Volatile.Read+Write to keep MaxConcurrent observable from any thread without a lock.
-            if (n > MaxConcurrent) MaxConcurrent = n;
-        }
-
-        public void Leave() => Interlocked.Decrement(ref _current);
-    }
-
     // workspace-restore-budget: the gate publishes its per-request deadline (same instant and
     // clock as its timeout source) so gated actions can size budgets against it.
     [TestMethod]
@@ -1184,8 +1171,12 @@ public class WorkspaceExecutionGateTests
         public Task<string?> GetSourceTextAsync(string workspaceId, string filePath, CancellationToken ct) => Task.FromResult<string?>(null);
         public int GetCurrentVersion(string workspaceId) => 1;
         public void RestoreVersion(string workspaceId, int version) { }
+        public Task<System.Collections.Immutable.ImmutableArray<RoslynMcp.Roslyn.Contracts.AdmittedModuleImage>> ReadAdmittedImagesAsync(
+            string workspaceId, Microsoft.CodeAnalysis.ProjectId projectId, Microsoft.CodeAnalysis.PortableExecutableReference reference, CancellationToken ct) =>
+            throw new NotSupportedException();
+
         public Microsoft.CodeAnalysis.Solution GetCurrentSolution(string workspaceId) => throw new NotSupportedException();
-        public bool TryApplyChanges(string workspaceId, Microsoft.CodeAnalysis.Solution newSolution) => throw new NotSupportedException();
+
         public Microsoft.CodeAnalysis.Project? GetProject(string workspaceId, string projectNameOrPath) => null;
     }
 }

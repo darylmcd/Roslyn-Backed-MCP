@@ -33,6 +33,11 @@ failures and zero-test runs. Compile, diagnostics, and discovery retain their
 internal phase cap and retryable timeout boundary. Caller cancellation still
 propagates; unexpected runner exceptions still produce `test-failure`.
 
+Positive TRX counts prove reported test outcomes, not successful command completion.
+Workspace and fork verdicts share the same test-result classification: after timeout,
+failed-test and zero-run precedence, a failed command, nonzero exit, early termination,
+or failure envelope returns `test-failure` even when the reported tests passed.
+
 Capture compilation, diagnostics, discovery, and workspace generation under the
 source read gate. Release that gate and its `RequestTimeout` before testing; only
 the caller's cancellation token and the runner's `TestTimeout` apply to test

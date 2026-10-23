@@ -18,12 +18,6 @@ public sealed class MoveTypeDiskStateTests : TestBase
         InitializeServices();
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup()
-    {
-        DisposeServices();
-    }
-
     [TestMethod]
     public async Task MoveType_Apply_Creates_Only_The_File_In_The_Preview_Diff()
     {
@@ -52,7 +46,7 @@ public sealed class MoveTypeDiskStateTests : TestBase
             }
             """);
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
         var workspaceId = loadResult.WorkspaceId;
 
         try

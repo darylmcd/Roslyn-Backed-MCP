@@ -26,6 +26,7 @@ internal sealed class TestServiceContainer : IDisposable
 
     public required IPreviewStore PreviewStore { get; init; }
     public required WorkspaceManager WorkspaceManager { get; init; }
+    public required ForkInvocationPathPolicy PathPolicy { get; init; }
     public required IFileWatcherService FileWatcher { get; init; }
     public required SymbolNavigationService SymbolNavigationService { get; init; }
     public required SymbolSearchService SymbolSearchService { get; init; }
@@ -87,15 +88,18 @@ internal sealed class TestServiceContainer : IDisposable
     public required InterfaceExtractionService InterfaceExtractionService { get; init; }
     public required ExceptionFlowService ExceptionFlowService { get; init; }
     public required WorkspaceWarmService WorkspaceWarmService { get; init; }
+    public required WorkspaceForkApplyService WorkspaceForkApplyService { get; init; }
+    public required IWorkspaceValidationService WorkspaceValidationService { get; init; }
     public required WorkspaceDriftService WorkspaceDriftService { get; init; }
     public required ParameterObjectService ParameterObjectService { get; init; }
 
     /// <summary>Number of successful first-entry attempts into the provider disposal root.</summary>
     internal int DisposalEntryCount => Volatile.Read(ref _disposeState);
 
-    public static TestServiceContainer Create(ValidationServiceOptions validationOptions)
+    public static TestServiceContainer Create(ValidationServiceOptions validationOptions, ForkInvocationPathPolicy pathPolicy)
     {
         ArgumentNullException.ThrowIfNull(validationOptions);
+        ArgumentNullException.ThrowIfNull(pathPolicy);
 
         var services = new ServiceCollection();
         services.AddLogging(static logging => logging.ClearProviders());
@@ -104,6 +108,8 @@ internal sealed class TestServiceContainer : IDisposable
         services.AddSingleton(new PreviewStoreOptions());
         services.AddSingleton(new ExecutionGateOptions { RateLimitMaxRequests = int.MaxValue });
         services.AddSingleton(new ScriptingServiceOptions());
+        services.AddSingleton(pathPolicy);
+        services.AddSingleton<IWorkspacePathPolicy>(sp => sp.GetRequiredService<ForkInvocationPathPolicy>());
         services.AddRoslynServices();
 
         // Wrap the production factory so every producer and consumer shares the observed
@@ -128,6 +134,7 @@ internal sealed class TestServiceContainer : IDisposable
             {
                 PreviewStore = provider.GetRequiredService<IPreviewStore>(),
                 WorkspaceManager = ResolveConcrete<IWorkspaceManager, WorkspaceManager>(provider),
+                PathPolicy = provider.GetRequiredService<ForkInvocationPathPolicy>(),
                 FileWatcher = provider.GetRequiredService<IFileWatcherService>(),
                 SymbolNavigationService = ResolveConcrete<ISymbolNavigationService, SymbolNavigationService>(provider),
                 SymbolSearchService = ResolveConcrete<ISymbolSearchService, SymbolSearchService>(provider),
@@ -189,6 +196,8 @@ internal sealed class TestServiceContainer : IDisposable
                 InterfaceExtractionService = ResolveConcrete<IInterfaceExtractionService, InterfaceExtractionService>(provider),
                 ExceptionFlowService = ResolveConcrete<IExceptionFlowService, ExceptionFlowService>(provider),
                 WorkspaceWarmService = ResolveConcrete<IWorkspaceWarmService, WorkspaceWarmService>(provider),
+                WorkspaceForkApplyService = ResolveConcrete<IWorkspaceForkApplyService, WorkspaceForkApplyService>(provider),
+                WorkspaceValidationService = provider.GetRequiredService<IWorkspaceValidationService>(),
                 WorkspaceDriftService = ResolveConcrete<IWorkspaceDriftService, WorkspaceDriftService>(provider),
                 ParameterObjectService = ResolveConcrete<IParameterObjectService, ParameterObjectService>(provider)
             };
@@ -221,7 +230,7 @@ public sealed class TestServiceContainerTests
     [TestMethod]
     public void Create_ApplyUndoWorkflowReusesExposedServices()
     {
-        using var services = TestServiceContainer.Create(new ValidationServiceOptions());
+        using var services = TestServiceContainer.Create(new ValidationServiceOptions(), new ForkInvocationPathPolicy(new OwnedTestWorkspacePathPolicy()));
         Assert.AreSame(services.RefactoringService, GetRequiredPrivateField(services.ApplyUndoWorkflowService, "_refactoringService"));
         Assert.AreSame(services.CompileCheckService, GetRequiredPrivateField(services.ApplyUndoWorkflowService, "_compileCheckService"));
         Assert.AreSame(services.UndoService, GetRequiredPrivateField(services.ApplyUndoWorkflowService, "_undoService"));
@@ -231,7 +240,7 @@ public sealed class TestServiceContainerTests
     [TestMethod]
     public void Create_RefactoringSuggestionsReuseExposedAnalysisServices()
     {
-        using var services = TestServiceContainer.Create(new ValidationServiceOptions());
+        using var services = TestServiceContainer.Create(new ValidationServiceOptions(), new ForkInvocationPathPolicy(new OwnedTestWorkspacePathPolicy()));
 
         Assert.AreSame(
             services.CodeMetricsService,
@@ -252,6 +261,8 @@ public sealed class TestServiceContainerTests
         services.AddLogging(static logging => logging.ClearProviders());
         services.AddSingleton(new WorkspaceManagerOptions { MaxConcurrentWorkspaces = 4 });
         services.AddSingleton(new ExecutionGateOptions { RateLimitMaxRequests = int.MaxValue });
+        services.AddSingleton(new ForkInvocationPathPolicy(new RoslynMcp.Tests.Helpers.OwnedTestWorkspacePathPolicy()));
+        services.AddSingleton<IWorkspacePathPolicy>(sp => sp.GetRequiredService<ForkInvocationPathPolicy>());
         services.AddRoslynServices();
         services.RemoveAll<IFileWatcherService>();
         services.AddSingleton<IFileWatcherService>(_ => watcher);

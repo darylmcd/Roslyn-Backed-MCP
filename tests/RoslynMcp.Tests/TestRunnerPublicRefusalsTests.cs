@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Microsoft.CodeAnalysis;
 using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
@@ -19,9 +20,6 @@ public sealed class TestRunnerPublicRefusalsTests : SharedWorkspaceTestBase
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     [DataRow(false, "workspace_status with verbose=true")]
     [DataRow(true, "test SDK")]
@@ -31,9 +29,14 @@ public sealed class TestRunnerPublicRefusalsTests : SharedWorkspaceTestBase
             0, [], ["net10.0"], false, Sentinel, "Library");
         var status = new WorkspaceStatusDto(Sentinel, project.FilePath, 1, "snapshot", DateTimeOffset.UtcNow,
             1, 0, [project], true, false, []);
-        var manager = new FailClosedWorkspaceManagerStub { GetStatusAsyncHandler = _ => status };
+        using var workspace = new AdhocWorkspace();
+        var manager = new FailClosedWorkspaceManagerStub
+        {
+            GetStatusAsyncHandler = _ => status,
+            GetCurrentSolutionHandler = _ => workspace.CurrentSolution
+        };
         using var executor = new ProjectOnlyExecutor(project);
-        var runner = new TestRunnerService(manager, executor, NullLogger<TestRunnerService>.Instance, TestDiscoveryService);
+        var runner = new TestRunnerService(PathPolicy, manager, executor, NullLogger<TestRunnerService>.Instance, TestDiscoveryService);
         var exception = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
             runner.PrepareTestRunAsync(Sentinel, noProjects ? null : Sentinel, null, CancellationToken.None));
         var json = ToolErrorHandler.ClassifyAndFormat(exception, "test_run");
@@ -52,15 +55,12 @@ public sealed class TestRunnerPublicRefusalsTests : SharedWorkspaceTestBase
     [DataRow("2026-07-28", true, "test SDK")]
     public async Task TestRun_RealServiceRefusal_PreservesRawWireContract(string era, bool noProjects, string correction)
     {
-        await using var harness = await ProductionParityMcpHarness.CreateAsync("test-run-public-refusals", era);
         var root = TestFixtureFileSystem.FindRepositoryRoot();
         var solution = noProjects
             ? Path.Combine(root, "samples", "BuildFailureSolution", "BuildFailureSolution.slnx")
             : SampleSolutionPath;
-        var loaded = await harness.Client.CallToolAsync("workspace_load",
-            new Dictionary<string, object?> { ["path"] = solution, ["autoRestore"] = false });
-        Assert.IsFalse(loaded.IsError == true);
-        var id = JsonNode.Parse(loaded.Content.OfType<TextContentBlock>().Single().Text)!["workspaceId"]!.GetValue<string>();
+        await using var harness = await ProductionParityMcpHarness.CreateOwnedAsync("test-run-public-refusals", era, root);
+        var id = await ProductionParityMcpHarness.LoadOwnedWorkspaceAsync(harness, solution, CancellationToken.None);
         foreach (var verbose in new[] { false, true })
         {
             var status = await harness.Client.CallToolAsync("workspace_status",
@@ -100,6 +100,26 @@ public sealed class TestRunnerPublicRefusalsTests : SharedWorkspaceTestBase
         public Task<CommandExecutionDto> ExecuteAsync(string workspaceId, string targetPath,
             IReadOnlyList<string> arguments, TimeSpan timeout, CancellationToken ct) =>
             throw new AssertFailedException("A refused request must not execute a process.");
+        public Task<CommandExecutionDto> ExecuteAsync(string workspaceId, string targetPath,
+            IReadOnlyList<string> arguments, TimeSpan timeout,
+            IReadOnlyList<EarlyKillPattern>? earlyKillPatterns, CancellationToken ct) =>
+            throw new AssertFailedException("A refused request must not execute a streaming process.");
+
+        public Task<TestRunResultDto> ExecuteTestAsync(string workspaceId, string targetPath,
+            IReadOnlyList<string> arguments,
+            Func<CommandExecutionDto, CancellationToken, Task<TestRunResultDto>> collectResults, TimeSpan timeout,
+            IReadOnlyList<EarlyKillPattern>? earlyKillPatterns,
+            Func<CancellationToken, Task> authorizeStart, CancellationToken ct) =>
+            throw new AssertFailedException("A refused request must not execute a test process.");
+
+        public Task<CommandExecutionDto> ExecuteAuthorizedAsync(string workspaceId, string targetPath,
+            IReadOnlyList<string> arguments, TimeSpan timeout,
+            Func<CancellationToken, Task> authorizeStart, CancellationToken ct) =>
+            throw new AssertFailedException("A refused request must not execute an authorized process.");
+
+        public Task<BuildCommandRun> ExecuteBuildAsync(BuildCommandPlan plan, TimeSpan timeout, CancellationToken ct) =>
+            throw new AssertFailedException("A refused request must not execute a build process.");
+
         public void Dispose() { }
     }
 }

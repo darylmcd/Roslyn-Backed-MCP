@@ -146,12 +146,8 @@ public sealed class PreviewRouteBindingEditingTests
 }
 
 /// <summary>
-/// preview-token-route-binding-multifile-codeaction: producer round-trip. Guards the
-/// wrong-overload silent-drop risk — <c>IPreviewStore</c> carries several <c>Store</c> shapes and
-/// the kind-discarding default body means tagging the WRONG one compiles but records
-/// <see cref="PreviewKind.Unspecified"/>, which would leave the route permanently permissive
-/// while the shim-level tests above still pass. These cases mint a real token through the real
-/// producer and read the kind back off the real store.
+/// Producer round-trip: real services must persist their intended provenance through the
+/// required IPreviewStore contract, so route binding remains effective beyond shim tests.
 /// </summary>
 // donotparallelize-audit-wave-20: [DoNotParallelize] removed. Both methods only read the shared
 // SampleSolution through the synchronized WorkspaceIdCache and mint a preview token into the
@@ -171,9 +167,6 @@ public sealed class PreviewRouteBindingEditingProducerTests : SharedWorkspaceTes
         InitializeServices();
         SampleWorkspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
     }
-
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
 
     private static string FindDocumentPath(string name)
     {

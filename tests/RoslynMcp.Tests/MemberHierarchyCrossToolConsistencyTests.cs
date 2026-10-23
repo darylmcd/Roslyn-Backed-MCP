@@ -38,9 +38,6 @@ public sealed class MemberHierarchyCrossToolConsistencyTests : SharedWorkspaceTe
         WorkspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     public async Task IDisposableDispose_OverridesEmpty_SiblingImplsPopulated_AcrossTools()
     {

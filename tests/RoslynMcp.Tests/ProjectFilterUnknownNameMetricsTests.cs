@@ -22,9 +22,6 @@ public sealed class ProjectFilterUnknownNameMetricsTests : SharedWorkspaceTestBa
         WorkspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     public async Task GetComplexityMetrics_UnknownProject_ThrowsInvalidProjectName()
     {

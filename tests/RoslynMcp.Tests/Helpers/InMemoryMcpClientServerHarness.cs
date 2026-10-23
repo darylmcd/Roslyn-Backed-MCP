@@ -87,6 +87,9 @@ internal sealed class InMemoryMcpClientServerHarness : IAsyncDisposable
         _disposalFailureContext = disposalFailureContext;
     }
 
+    internal IServiceProvider ServerServices => _serverRuntime.Services
+        ?? throw new InvalidOperationException("This harness does not own a direct server service provider.");
+
     public McpServer Server => _serverRuntime.Server;
     public McpClient Client { get; }
 

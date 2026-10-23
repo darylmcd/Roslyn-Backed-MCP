@@ -1,9 +1,9 @@
-using RoslynMcp.Core.Models;
-using RoslynMcp.Core.Services;
-using RoslynMcp.Roslyn.Helpers;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.FindSymbols;
+using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -99,10 +99,10 @@ public sealed class DeadCodeService : IDeadCodeService
             }
         }
 
-        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, updatedSolution, ct).ConfigureAwait(false);
+        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, updatedSolution, SolutionDiffReadContext.ForWorkspace(_workspace, workspaceId), ct).ConfigureAwait(false);
         // preview-token-apply-route-provenance: tag the producer family so remove_dead_code_apply
         // can refuse a foreign token before mutating the workspace.
-        var token = _previewStore.Store(workspaceId, updatedSolution, _workspace.GetCurrentVersion(workspaceId), "Remove dead code symbols", changes, PreviewKind.RemoveDeadCode);
+        var token = _previewStore.Store(workspaceId, solution, updatedSolution, _workspace.GetCurrentVersion(workspaceId), "Remove dead code symbols", changes, PreviewKind.RemoveDeadCode);
         return new RefactoringPreviewDto(token, "Remove dead code symbols", changes, warnings.Count > 0 ? warnings : null);
     }
 

@@ -17,15 +17,12 @@ public sealed class MissingWorkspaceRootRetirementTests : SharedWorkspaceTestBas
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     public async Task DeletedWorkspaceRoot_RetiresSessionAndRaisesClosedOnce()
     {
         var solutionPath = CreateSampleSolutionCopy();
         var root = Path.GetDirectoryName(solutionPath)!;
-        var status = await WorkspaceManager.LoadAsync(solutionPath, CancellationToken.None);
+        var status = await WorkspaceManager.LoadAsync(solutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(solutionPath, new Dictionary<string, string>()), CancellationToken.None);
         var closedCount = 0;
         var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         void OnClosed(string workspaceId)
@@ -64,7 +61,7 @@ public sealed class MissingWorkspaceRootRetirementTests : SharedWorkspaceTestBas
     {
         var solutionPath = CreateSampleSolutionCopy();
         var root = Path.GetDirectoryName(solutionPath)!;
-        var status = await WorkspaceManager.LoadAsync(solutionPath, CancellationToken.None);
+        var status = await WorkspaceManager.LoadAsync(solutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(solutionPath, new Dictionary<string, string>()), CancellationToken.None);
         var readStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var releaseRead = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -128,7 +125,7 @@ public sealed class MissingWorkspaceRootRetirementTests : SharedWorkspaceTestBas
 
         try
         {
-            var status = await manager.LoadAsync(solutionPath, CancellationToken.None);
+            var status = await manager.LoadAsync(solutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(solutionPath, new Dictionary<string, string>()), CancellationToken.None);
             File.Delete(solutionPath);
             watcher.RaiseRootMissing(status.WorkspaceId);
 
@@ -169,7 +166,7 @@ public sealed class MissingWorkspaceRootRetirementTests : SharedWorkspaceTestBas
 
         try
         {
-            var status = await manager.LoadAsync(solutionPath, CancellationToken.None);
+            var status = await manager.LoadAsync(solutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(solutionPath, new Dictionary<string, string>()), CancellationToken.None);
             File.Delete(solutionPath);
             watcher.RaiseRootMissing(status.WorkspaceId);
             await gate.Entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
@@ -201,6 +198,7 @@ public sealed class MissingWorkspaceRootRetirementTests : SharedWorkspaceTestBas
         IWorkspaceExecutionGate gate,
         TimeProvider? timeProvider = null) =>
         new(
+            new RoslynMcp.Roslyn.Services.ForkInvocationPathPolicy(new RoslynMcp.Tests.Helpers.OwnedTestWorkspacePathPolicy()),
             NullLogger<WorkspaceManager>.Instance,
             new PreviewStore(),
             watcher,

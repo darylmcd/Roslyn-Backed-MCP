@@ -17,7 +17,7 @@ namespace RoslynMcp.Roslyn.Contracts;
 /// </para>
 /// <para>
 /// Cache invalidation is keyed on the monotonic <see cref="IWorkspaceManager.GetCurrentVersion"/>
-/// counter. <see cref="IWorkspaceManager.TryApplyChanges"/> bumps the version on every successful
+/// counter. The physical workspace transaction bumps the version on every successful
 /// apply, and a workspace reload bumps it as well, so any mutation transparently invalidates
 /// previously cached compilations. Workspace close calls <see cref="Invalidate"/> to free
 /// the dictionary slots.

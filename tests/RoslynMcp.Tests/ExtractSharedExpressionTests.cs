@@ -15,9 +15,6 @@ public sealed class ExtractSharedExpressionTests : IsolatedWorkspaceTestBase
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     /// <summary>
     /// Primary validation per the plan: two methods share the normalization expression;
     /// the preview must synthesize a helper and rewrite both call sites so each method

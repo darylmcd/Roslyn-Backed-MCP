@@ -1271,7 +1271,7 @@ public sealed class WorkspaceCloseDrainTests
     // Fakes
     // ---------------------------------------------------------------------------
 
-    private sealed class RecordingDotnetCommandRunner : IDotnetCommandRunner
+    private sealed class RecordingDotnetCommandRunner : RoslynMcp.Tests.Helpers.CannedCommandRunner
     {
         public int CallCount { get; private set; }
         public IReadOnlyList<string>? LastArguments { get; private set; }
@@ -1279,7 +1279,7 @@ public sealed class WorkspaceCloseDrainTests
         public string Outcome { get; init; } = "success";
         public CancellationTokenSource? CallerCancellation { get; init; }
 
-        public async Task<CommandExecutionDto> RunAsync(
+        public override async Task<CommandExecutionDto> RunAsync(
             string workingDirectory,
             string targetPath,
             IReadOnlyList<string> arguments,
@@ -1423,11 +1423,14 @@ public sealed class WorkspaceCloseDrainTests
         public int GetCurrentVersion(string workspaceId) =>
             status?.WorkspaceVersion ?? throw new KeyNotFoundException();
 
+        public Task<System.Collections.Immutable.ImmutableArray<RoslynMcp.Roslyn.Contracts.AdmittedModuleImage>> ReadAdmittedImagesAsync(
+            string workspaceId, Microsoft.CodeAnalysis.ProjectId projectId, Microsoft.CodeAnalysis.PortableExecutableReference reference, CancellationToken ct) =>
+            throw new NotSupportedException();
+
         public Solution GetCurrentSolution(string workspaceId) => throw new NotSupportedException();
 
         public Project? GetProject(string workspaceId, string projectNameOrPath) => null;
 
-        public bool TryApplyChanges(string workspaceId, Solution newSolution) => throw new NotSupportedException();
 
         public void RestoreVersion(string workspaceId, int version) { }
     }

@@ -1,4 +1,5 @@
 using System.Xml.Linq;
+using Microsoft.CodeAnalysis;
 using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Tests;
@@ -10,12 +11,6 @@ public sealed class OrchestrationIntegrationTests : IsolatedWorkspaceTestBase
     public static void ClassInit(TestContext _)
     {
         InitializeServices();
-    }
-
-    [ClassCleanup]
-    public static void ClassCleanup()
-    {
-        DisposeServices();
     }
 
     [TestMethod]
@@ -557,6 +552,7 @@ public sealed class OrchestrationIntegrationTests : IsolatedWorkspaceTestBase
 
         var sourceFilePath = workspace.GetPath("SampleLib", "AnimalService.cs");
         var interfaceFilePath = workspace.GetPath("Contracts", "IAnimalService.cs");
+        await RestoreCopiedSolutionAsync(workspace.SolutionPath, new Dictionary<string, string>(), CancellationToken.None);
         await workspace.LoadAsync(CancellationToken.None);
 
         var preview = await ExtractAndWireOrchestrator.PreviewExtractAndWireInterfaceAsync(
@@ -573,7 +569,27 @@ public sealed class OrchestrationIntegrationTests : IsolatedWorkspaceTestBase
         Assert.IsTrue(File.Exists(interfaceFilePath));
 
         var registrationsContents = await File.ReadAllTextAsync(registrationsFile, CancellationToken.None);
-        Assert.IsTrue(registrationsContents.Contains("AddSingleton<IAnimalService, AnimalService>()", StringComparison.Ordinal));
+        Assert.IsTrue(registrationsContents.Contains("AddSingleton<global::Contracts.IAnimalService, AnimalService>()", StringComparison.Ordinal));
+        var appliedSolution = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        var registrationsDocument = appliedSolution.Projects.SelectMany(project => project.Documents)
+            .Single(document => document.FilePath == registrationsFile);
+        var registrationsRoot = await registrationsDocument.GetSyntaxRootAsync();
+        var registration = registrationsRoot!.DescendantNodes()
+            .OfType<Microsoft.CodeAnalysis.CSharp.Syntax.GenericNameSyntax>()
+            .Single(name => name.Identifier.ValueText == "AddSingleton");
+        var registrationsModel = await registrationsDocument.GetSemanticModelAsync();
+        Assert.IsNotNull(registrationsModel);
+        var serviceType = registrationsModel.GetTypeInfo(registration.TypeArgumentList.Arguments[0]).Type;
+        Assert.IsNotNull(serviceType);
+        Assert.AreNotEqual(TypeKind.Error, serviceType.TypeKind);
+        var expectedService = registrationsModel.Compilation.GetTypeByMetadataName("Contracts.IAnimalService");
+        Assert.IsNotNull(expectedService);
+        Assert.IsTrue(SymbolEqualityComparer.Default.Equals(expectedService, serviceType));
+        Assert.AreEqual("Contracts", serviceType.ContainingAssembly.Name);
+        var contractsProject = appliedSolution.Projects.Single(project => project.Name == "Contracts");
+        Assert.IsTrue(registrationsDocument.Project.ProjectReferences.Any(reference => reference.ProjectId == contractsProject.Id));
+        Assert.IsTrue(XDocument.Load(appProjectFile).Descendants("ProjectReference")
+            .Any(element => ((string?)element.Attribute("Include"))?.Contains("Contracts.csproj", StringComparison.Ordinal) == true));
     }
 
     [TestMethod]
@@ -601,6 +617,7 @@ public sealed class OrchestrationIntegrationTests : IsolatedWorkspaceTestBase
         File.WriteAllText(
             sourceFilePath,
             "using System.Collections.Generic;\nusing Contracts;\n\nnamespace SampleLib;\n\npublic class AnimalService : IAnimalService\n{\n    public List<IAnimal> GetAllAnimals()\n    {\n        return [new Dog(), new Cat()];\n    }\n    public void MakeThemSpeak(System.Collections.Generic.IEnumerable<IAnimal> animals) { }\n    public int CountAnimals(List<IAnimal> animals) => animals.Count;\n    public int CountAnimals(System.Collections.Generic.IEnumerable<IAnimal> animals) => 0;\n}\n");
+        await RestoreCopiedSolutionAsync(workspace.SolutionPath, new Dictionary<string, string>(), CancellationToken.None);
 
         await workspace.LoadAsync(CancellationToken.None);
 

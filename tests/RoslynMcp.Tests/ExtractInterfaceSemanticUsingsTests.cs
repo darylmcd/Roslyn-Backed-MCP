@@ -30,12 +30,6 @@ public sealed class ExtractInterfaceSemanticUsingsTests : TestBase
         InitializeServices();
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup()
-    {
-        DisposeServices();
-    }
-
     [TestMethod]
     public async Task ExtractInterface_Emits_Using_For_Parameter_Type_Namespace()
     {
@@ -80,7 +74,7 @@ public sealed class ExtractInterfaceSemanticUsingsTests : TestBase
             }
             """);
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
         var workspaceId = loadResult.WorkspaceId;
 
         try
@@ -175,7 +169,7 @@ public sealed class ExtractInterfaceSemanticUsingsTests : TestBase
             }
             """);
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
         var workspaceId = loadResult.WorkspaceId;
 
         try
@@ -260,7 +254,7 @@ public sealed class ExtractInterfaceSemanticUsingsTests : TestBase
             }
             """);
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
         var workspaceId = loadResult.WorkspaceId;
 
         try
@@ -348,7 +342,7 @@ public sealed class ExtractInterfaceSemanticUsingsTests : TestBase
             }
             """);
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
         var workspaceId = loadResult.WorkspaceId;
 
         try
@@ -449,7 +443,7 @@ public sealed class ExtractInterfaceSemanticUsingsTests : TestBase
             }
             """);
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
         var workspaceId = loadResult.WorkspaceId;
 
         try
@@ -523,7 +517,7 @@ public sealed class ExtractInterfaceSemanticUsingsTests : TestBase
             }
             """);
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
         var workspaceId = loadResult.WorkspaceId;
 
         try
@@ -560,7 +554,7 @@ public sealed class ExtractInterfaceSemanticUsingsTests : TestBase
         var copiedSolutionPath = CreateSampleSolutionCopy();
         var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
         var sourceFilePath = Path.Combine(solutionDir, "SampleLib", "AnimalService.cs");
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
         var workspaceId = loadResult.WorkspaceId;
         var expected = new KeyNotFoundException("synthetic unexpected cache failure");
         var service = new InterfaceExtractionService(

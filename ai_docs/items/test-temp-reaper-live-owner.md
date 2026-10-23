@@ -19,3 +19,5 @@
 - `IsStale` compares root directory creation/write timestamps to `StaleRunAge`; writing descendant files does not establish root-level activity or prove process death.
 - The fresh-sibling test covers age only. The old-sibling test permits deletion without owner evidence. A live test process can therefore lose an old root.
 - Found while reverifying the addenda's claim that the reaper preserves live siblings; independent of the documentation repair.
+
+2026-10-17 implementation and focused evidence: see ai_docs/reports/20261017-test-infrastructure-simplification-audit.md, Implemented simplifications and focused verification. The report identifies completed mechanisms, remaining acceptance and exact evidence directories. Required full local/hosted qualification and shipping remain outstanding; this note does not close the row or advance the paused batch.

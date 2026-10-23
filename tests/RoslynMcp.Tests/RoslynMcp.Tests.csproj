@@ -6,8 +6,8 @@
     <IsTestProject>true</IsTestProject>
     <!-- Microsoft.Build.Locator's MSBL001 guards the Host.Stdio startup path
          (MSBuildLocator.RegisterDefaults() needs the SDK's MSBuild, not a package copy).
-         The test assembly never invokes the locator directly — it exercises Roslyn via
-         fixtures that hand a pre-resolved MSBuildWorkspace to the code under test.
+         Native API controls bootstrap the SDK through MsBuildInitializer before
+         entering non-inlined native callsites; compile-only MSBuild references exclude runtime assets.
          Analyzer tests also load NuGet client assemblies through Microsoft.CodeAnalysis.Testing's
          reference-pack resolver, which trips MSBL001.
          The officially-supported escape hatch is this property from the locator targets. -->
@@ -17,6 +17,10 @@
   <ItemGroup>
     <ProjectReference Include="../ProcessPipeWorkerProbe/ProcessPipeWorkerProbe.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="../GitFixtureWorkerProbe/GitFixtureWorkerProbe.csproj" ReferenceOutputAssembly="false" />
+    <!-- Compile the native condition protocol controls against the same central
+         MSBuild floor; runtime assemblies still come only from MSBuildLocator. -->
+    <PackageReference Include="Microsoft.Build" ExcludeAssets="runtime" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.Build.Framework" ExcludeAssets="runtime" PrivateAssets="all" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="MSTest.TestAdapter" />
     <PackageReference Include="MSTest.TestFramework" />

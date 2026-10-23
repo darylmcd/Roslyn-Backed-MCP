@@ -29,12 +29,6 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
         WorkspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup()
-    {
-        DisposeServices();
-    }
-
     [TestMethod]
     public async Task GetCompletions_Returns_Service_Members()
     {
@@ -1128,7 +1122,7 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
 
     private static async Task<string> LoadWorkspaceCopyAsync(string workspacePath)
     {
-        var status = await WorkspaceManager.LoadAsync(workspacePath, CancellationToken.None);
+        var status = await WorkspaceManager.LoadAsync(workspacePath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(workspacePath, new Dictionary<string, string>()), CancellationToken.None);
         return status.WorkspaceId;
     }
 

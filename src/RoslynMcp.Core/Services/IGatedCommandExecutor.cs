@@ -20,10 +20,8 @@ public interface IGatedCommandExecutor : IDisposable
         CancellationToken ct);
 
     /// <summary>
-    /// Item 4: streaming variant that kills the spawned process early when any of
-    /// <paramref name="earlyKillPatterns"/> matches stdout or stderr. Default implementation
-    /// ignores the patterns and delegates to <see cref="ExecuteAsync(string, string, IReadOnlyList{string}, TimeSpan, CancellationToken)"/>
-    /// so unit tests and legacy executors keep compiling.
+    /// Streaming variant that kills the process when an early-kill pattern matches.
+    /// Implementations must preserve the supplied patterns.
     /// </summary>
     Task<CommandExecutionDto> ExecuteAsync(
         string workspaceId,
@@ -31,8 +29,26 @@ public interface IGatedCommandExecutor : IDisposable
         IReadOnlyList<string> arguments,
         TimeSpan timeout,
         IReadOnlyList<EarlyKillPattern>? earlyKillPatterns,
-        CancellationToken ct) =>
-        ExecuteAsync(workspaceId, targetPath, arguments, timeout, ct);
+        CancellationToken ct);
+
+    /// <summary>Parses raw test output inside execution, then redacts every outward result string.</summary>
+    Task<TestRunResultDto> ExecuteTestAsync(
+        string workspaceId, string targetPath, IReadOnlyList<string> arguments,
+        Func<CommandExecutionDto, CancellationToken, Task<TestRunResultDto>> collectResults,
+        TimeSpan timeout, IReadOnlyList<EarlyKillPattern>? earlyKillPatterns,
+        Func<CancellationToken, Task> authorizeStart, CancellationToken ct);
+
+    /// <summary>
+    /// Runs an authority-bound producer. Revalidate its captured inputs and current grants
+    /// after acquiring both command gates, immediately before invoking the command runner.
+    /// Authorization shares the command timeout and must complete before any process effects.
+    /// </summary>
+    Task<CommandExecutionDto> ExecuteAuthorizedAsync(
+        string workspaceId, string targetPath, IReadOnlyList<string> arguments, TimeSpan timeout,
+        Func<CancellationToken, Task> authorizeStart, CancellationToken ct);
+
+    /// <summary>Parses raw build diagnostics before redaction, retaining private identities for span enrichment.</summary>
+    Task<BuildCommandRun> ExecuteBuildAsync(BuildCommandPlan plan, TimeSpan timeout, CancellationToken ct);
 
     /// <summary>
     /// Resolves a project by name or path within a workspace.

@@ -2,6 +2,8 @@
 
   <PropertyGroup>
     <RootNamespace>RoslynMcp.Roslyn</RootNamespace>
+    <!-- Hash held Roslyn metadata memory to bind admitted metadata to immutable PE images. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
@@ -14,6 +16,9 @@
     <PackageReference Include="DiffPlex" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" />
     <PackageReference Include="Nito.AsyncEx" />
+    <PackageReference Include="NuGet.Versioning" />
+    <PackageReference Include="NuGet.Frameworks" ExcludeAssets="runtime" PrivateAssets="all" />
+    <PackageReference Include="NuGet.Packaging" ExcludeAssets="runtime" PrivateAssets="all" />
   </ItemGroup>
 
   <!-- MSBuildLocator requires MSBuild packages to exclude runtime assets -->
@@ -22,6 +27,7 @@
     <PackageReference Include="Microsoft.Build" ExcludeAssets="runtime" PrivateAssets="all" />
     <PackageReference Include="Microsoft.Build.Tasks.Core" ExcludeAssets="runtime" PrivateAssets="all" />
     <PackageReference Include="Microsoft.Build.Utilities.Core" ExcludeAssets="runtime" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.VisualStudio.SolutionPersistence" ExcludeAssets="runtime" PrivateAssets="all" />
   </ItemGroup>
 
   <!-- Direct security override for the transitive System.Security.Cryptography.Xml dependency.

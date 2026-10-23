@@ -20,9 +20,6 @@ public sealed class WorkspaceDriftServiceTests : IsolatedWorkspaceTestBase
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     public async Task WorkspaceDriftCheck_UsesStructuredReadDispatch_AndPreservesInputs()
     {

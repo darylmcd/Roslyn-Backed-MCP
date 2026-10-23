@@ -27,3 +27,11 @@
 - Inspected retained historical artifact `C:/Users/<user>/AppData/Local/Temp/snipcue-remediate-20261004/20261004T122130Z_backlog-remediate/whitespace-preview-0522-evidence.json`: multi-file preview reports 13 changes with empty unifiedDiff; format response reports changes=[] and records before/after artifact paths/hashes. No fresh preview/apply or DLL execution occurred during re-vet; source establishes the omission independently.
 - `DiffGeneratorTests.cs:9` names `Identical_Texts_Returns_Header_Only`; line 17 asserts `Assert.AreEqual(string.Empty, result);`.
 - Live main contains no equivalent shared whitespace-diff row. refactor-preview-trivia-nits concerns syntax/trivia producers, not shared comparison omission.
+
+2026-10-23 live formatting preview twice returned changes=[] for NativeDocumentDegradedAuthorityTests.cs although the current loaded source contains an unindented fixture assignment directly inside try and .editorconfig requires four-space indentation. This is current tool evidence, not an implementation gate result; retain this separate tracked preview defect while formatting the active cleanup change.
+
+2026-10-23 live follow-through: format_document_apply on the empty-change preview reported the source file applied. The parent compared the before/after file text to qualify whether the actual formatting mutation was omitted from preview; this is a tooling proof, not a repository validation gate.
+
+2026-10-23 current TestRunnerService.NativeProtocols.cs format_document_preview token cddb427b67b4496bbe868cd32a1c7944 again reports changes[] despite current cold-read visibly unindented owning trybody98-216 and protocol body237 onward. Exact original saved native-protocols-before-format25.cs; applying formatter then byte/leading-whitespace comparison next. No false empty diff approval claim.
+
+2026-10-23 applied cddb427b67b4496bbe868cd32a1c7944 after saving exact NativeProtocols original: success appliedFiles actualsource; before/after bytes differ, all356 lines identical after trimStart (leading whitespace only). Confirms current preview omits real formatting diff; no source semantic changes from this formatting step.

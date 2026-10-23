@@ -23,6 +23,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'trx-reader.ps1')
 
 trap {
     [Console]::Error.WriteLine($_.Exception.Message)
@@ -102,26 +103,8 @@ function Publish-Summary {
 function Read-TrxCases {
     param([Parameter(Mandatory)][string]$Path)
 
-    $settings = [System.Xml.XmlReaderSettings]::new()
-    $settings.DtdProcessing = [System.Xml.DtdProcessing]::Prohibit
-    $settings.XmlResolver = $null
-    $settings.IgnoreComments = $true
-
-    $document = [System.Xml.XmlDocument]::new()
-    $document.XmlResolver = $null
-    $reader = $null
-    try {
-        $reader = [System.Xml.XmlReader]::Create($Path, $settings)
-        $document.Load($reader)
-    }
-    catch {
-        throw 'Malformed MSTest TRX input.'
-    }
-    finally {
-        if ($null -ne $reader) {
-            $reader.Dispose()
-        }
-    }
+    try { $document = Read-TrxDocument -Path $Path }
+    catch { throw 'Malformed MSTest TRX input.' }
 
     if ($null -eq $document.DocumentElement -or
         $document.DocumentElement.LocalName -ne 'TestRun') {
@@ -164,18 +147,7 @@ function Read-TrxCases {
             throw 'Malformed MSTest TRX result cannot be joined to a test definition.'
         }
 
-        [TimeSpan]$duration = [TimeSpan]::Zero
-        $durationText = $result.GetAttribute('duration')
-        if (-not [string]::IsNullOrWhiteSpace($durationText) -and
-            -not [TimeSpan]::TryParse(
-                $durationText,
-                [System.Globalization.CultureInfo]::InvariantCulture,
-                [ref]$duration)) {
-            throw 'Malformed MSTest TRX result contains an invalid duration.'
-        }
-        if ($duration.Ticks -lt 0) {
-            throw 'Malformed MSTest TRX result contains a negative duration.'
-        }
+        $duration = Read-TrxDuration -Result $result
 
         $definition = $definitions[$testId]
         [pscustomobject]@{

@@ -31,9 +31,6 @@ public sealed class ChangeSignaturePreviewMetadataNameShapeTests : IsolatedWorks
             RefactoringService);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     /// <summary>
     /// Parenthesized metadata names — the shape an agent gets when copy/pasting a Roslyn
     /// <c>ToDisplayString()</c> output — must produce an actionable rejection that names

@@ -244,7 +244,7 @@ public sealed class WorkspaceEvictionAutoRetryTests
 
         try
         {
-            var liveStatus = await manager.LoadAsync(path1, EvictPolicy.Strict, CancellationToken.None);
+            var liveStatus = await manager.LoadAsync(path1, EvictPolicy.Strict, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(path1, new Dictionary<string, string>()), CancellationToken.None);
             var bogusId = $"never-loaded-{Guid.NewGuid():N}";
 
             // Unit-level pin on the branch itself: a never-loaded id yields no eviction record,
@@ -388,7 +388,7 @@ public sealed class WorkspaceEvictionAutoRetryTests
         try
         {
             // Live workspace — the gate precheck must PASS so the eviction is observed mid-call.
-            var liveStatus = await manager.LoadAsync(path1, EvictPolicy.Strict, CancellationToken.None);
+            var liveStatus = await manager.LoadAsync(path1, EvictPolicy.Strict, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(path1, new Dictionary<string, string>()), CancellationToken.None);
 
             var thrown = await Assert.ThrowsExactlyAsync<WorkspaceEvictedException>(
                 () => ValidationTools.RunTests(
@@ -539,8 +539,8 @@ public sealed class WorkspaceEvictionAutoRetryTests
     /// </summary>
     private static async Task<string> StageEvictionAsync(WorkspaceManager manager, string path1, string path2)
     {
-        var status1 = await manager.LoadAsync(path1, EvictPolicy.Strict, CancellationToken.None);
-        await manager.LoadAsync(path2, EvictPolicy.Lru, CancellationToken.None);
+        var status1 = await manager.LoadAsync(path1, EvictPolicy.Strict, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(path1, new Dictionary<string, string>()), CancellationToken.None);
+        await manager.LoadAsync(path2, EvictPolicy.Lru, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(path2, new Dictionary<string, string>()), CancellationToken.None);
 
         Assert.IsFalse(manager.ContainsWorkspace(status1.WorkspaceId),
             "Fixture precondition: the first workspace must have been LRU-evicted.");
@@ -550,7 +550,7 @@ public sealed class WorkspaceEvictionAutoRetryTests
 
     private static WorkspaceManager CreateManager(int maxConcurrentWorkspaces)
     {
-        return new WorkspaceManager(
+        return new WorkspaceManager(new RoslynMcp.Roslyn.Services.ForkInvocationPathPolicy(new RoslynMcp.Tests.Helpers.OwnedTestWorkspacePathPolicy()),
             NullLogger<WorkspaceManager>.Instance,
             new PreviewStore(),
             new FileWatcherService(NullLogger<FileWatcherService>.Instance),
@@ -561,11 +561,11 @@ public sealed class WorkspaceEvictionAutoRetryTests
     /// Records the workspace id each invocation was routed to and returns a canned successful
     /// run, so the test can assert the retry leg targeted the rehydrated session.
     /// </summary>
-    private sealed class RecordingTestRunnerService : ITestRunnerService
+    private sealed class RecordingTestRunnerService : RoslynMcp.Tests.Helpers.CannedTestRunner
     {
         public List<string> ObservedWorkspaceIds { get; } = [];
 
-        public Task<TestRunResultDto> RunTestsAsync(
+        public override Task<TestRunResultDto> RunTestsAsync(
             string workspaceId,
             string? projectName,
             string? filter,
@@ -597,7 +597,7 @@ public sealed class WorkspaceEvictionAutoRetryTests
     /// <c>ContainsWorkspace</c> precheck passed. Counts invocations so the test can prove the
     /// unrecoverable path does not silently re-run the suite.
     /// </summary>
-    private sealed class EvictingTestRunnerService : ITestRunnerService
+    private sealed class EvictingTestRunnerService : RoslynMcp.Tests.Helpers.CannedTestRunner
     {
         private readonly WorkspaceEvictedException _eviction;
 
@@ -605,7 +605,7 @@ public sealed class WorkspaceEvictionAutoRetryTests
 
         public int InvocationCount { get; private set; }
 
-        public Task<TestRunResultDto> RunTestsAsync(
+        public override Task<TestRunResultDto> RunTestsAsync(
             string workspaceId,
             string? projectName,
             string? filter,

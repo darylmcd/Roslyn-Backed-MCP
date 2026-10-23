@@ -29,12 +29,6 @@ public sealed class ScaffoldingFirstTestFileTests : IsolatedWorkspaceTestBase
         InitializeServices();
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup()
-    {
-        DisposeServices();
-    }
-
     [TestMethod]
     public async Task FirstTestFile_Emits_Fixture_With_OneSmokeTest_Per_PublicMethod()
     {

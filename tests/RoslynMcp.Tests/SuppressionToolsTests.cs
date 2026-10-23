@@ -19,9 +19,6 @@ public sealed class SuppressionToolsTests : IsolatedWorkspaceTestBase
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     public void SetDiagnosticSeverity_MetadataAdvertisesExactlySupportedSeverities()
     {

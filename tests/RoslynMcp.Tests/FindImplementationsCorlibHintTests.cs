@@ -38,9 +38,6 @@ public sealed class FindImplementationsCorlibHintTests : SharedWorkspaceTestBase
         WorkspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     // -------- Predicate-level --------
 
     /// <summary>

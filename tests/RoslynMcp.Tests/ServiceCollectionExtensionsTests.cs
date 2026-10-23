@@ -18,6 +18,8 @@ public sealed class ServiceCollectionExtensionsTests
     {
         var services = new ServiceCollection();
         services.AddLogging(b => b.ClearProviders());
+        services.AddSingleton(new ForkInvocationPathPolicy(new RoslynMcp.Tests.Helpers.OwnedTestWorkspacePathPolicy()));
+        services.AddSingleton<IWorkspacePathPolicy>(sp => sp.GetRequiredService<ForkInvocationPathPolicy>());
         services.AddRoslynServices();
 
         using var sp = services.BuildServiceProvider();
@@ -45,6 +47,8 @@ public sealed class ServiceCollectionExtensionsTests
     {
         var services = new ServiceCollection();
         services.AddLogging(b => b.ClearProviders());
+        services.AddSingleton(new ForkInvocationPathPolicy(new RoslynMcp.Tests.Helpers.OwnedTestWorkspacePathPolicy()));
+        services.AddSingleton<IWorkspacePathPolicy>(sp => sp.GetRequiredService<ForkInvocationPathPolicy>());
         services.AddRoslynServices();
 
         using var sp = services.BuildServiceProvider();
@@ -160,6 +164,8 @@ public sealed class ServiceCollectionExtensionsTests
             var services = new ServiceCollection();
             services.AddLogging(b => b.ClearProviders());
             services.AddSingleton(new PreviewStoreOptions { PersistDirectory = tempDir });
+            services.AddSingleton(new ForkInvocationPathPolicy(new RoslynMcp.Tests.Helpers.OwnedTestWorkspacePathPolicy()));
+            services.AddSingleton<IWorkspacePathPolicy>(sp => sp.GetRequiredService<ForkInvocationPathPolicy>());
             services.AddRoslynServices();
 
             using var sp = services.BuildServiceProvider();

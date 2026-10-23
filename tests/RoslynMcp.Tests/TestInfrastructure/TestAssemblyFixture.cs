@@ -80,7 +80,7 @@ internal sealed class TestAssemblyFixture : IAsyncDisposable
     internal int DisposalEntryCount => Volatile.Read(ref _ownedResourceDisposalCount);
 
     public static TestAssemblyFixture Create(ValidationServiceOptions validationOptions) =>
-        new(TestServiceContainer.Create(validationOptions), TestRepositoryFixtures.Discover());
+        new(TestServiceContainer.Create(validationOptions, new ForkInvocationPathPolicy(new OwnedTestWorkspacePathPolicy())), TestRepositoryFixtures.Discover());
 
     /// <summary>
     /// Returns a real, connected MCP server whose server-owned security options explicitly

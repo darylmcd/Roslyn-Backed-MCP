@@ -25,9 +25,6 @@ public sealed class BacklogFixTests : SharedWorkspaceTestBase
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     // ── Unexpected failures keep diagnostic detail server-side ──
 
     [TestMethod]

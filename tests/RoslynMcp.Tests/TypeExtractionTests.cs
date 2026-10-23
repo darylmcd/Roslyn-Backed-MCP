@@ -27,9 +27,6 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestCleanup]
     public async Task TestCleanup() =>
         await CleanupFailureCollector.DeleteDirectoriesAsync(
@@ -167,7 +164,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
                 "",
             }));
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
         var wsId = loadResult.WorkspaceId;
 
         try
@@ -219,7 +216,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
                 "",
             }));
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
         var wsId = loadResult.WorkspaceId;
 
         // Sanction a root that is a SIBLING of solutionDir, not an ancestor of fixturePath.
@@ -291,7 +288,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
                 "",
             }));
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
         var wsId = loadResult.WorkspaceId;
 
         try
@@ -334,7 +331,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
                 "",
             }));
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
         var wsId = loadResult.WorkspaceId;
 
         try
@@ -420,7 +417,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
                 "",
             }));
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
         var wsId = loadResult.WorkspaceId;
 
         try
@@ -520,7 +517,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
                 "",
             }));
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
         var wsId = loadResult.WorkspaceId;
 
         try
@@ -589,7 +586,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
                 "",
             }));
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
         var wsId = loadResult.WorkspaceId;
 
         try
@@ -653,7 +650,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
                 "",
             }));
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
         var wsId = loadResult.WorkspaceId;
 
         try
@@ -722,7 +719,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
                 "",
             }));
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
         var wsId = loadResult.WorkspaceId;
 
         try
@@ -812,7 +809,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
                 "",
             }));
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
         var wsId = loadResult.WorkspaceId;
 
         try
@@ -841,7 +838,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         await File.WriteAllTextAsync(fixturePath,
             string.Join("\r\n", new[] { "namespace SampleLib;", "" }.Concat(bodyLines).Append("")));
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
         var wsId = loadResult.WorkspaceId;
 
         try
@@ -881,7 +878,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
                 "",
             }));
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
         var wsId = loadResult.WorkspaceId;
 
         try
@@ -943,7 +940,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
                 "",
             }));
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
         var wsId = loadResult.WorkspaceId;
 
         try
@@ -995,7 +992,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
                 "",
             }));
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
         var wsId = loadResult.WorkspaceId;
 
         try
@@ -1047,7 +1044,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
                 "",
             }));
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
         var wsId = loadResult.WorkspaceId;
 
         try
@@ -1104,7 +1101,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
                 "",
             }));
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
         var wsId = loadResult.WorkspaceId;
 
         try
@@ -1157,7 +1154,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
                 "",
             }));
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
         var wsId = loadResult.WorkspaceId;
 
         try
@@ -1313,7 +1310,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
                 public PartialFixture() { }
             }
             """);
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
 
         try
         {
@@ -1494,7 +1491,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         var solutionDirectory = Path.GetDirectoryName(copiedSolutionPath)!;
         var filePath = Path.Combine(solutionDirectory, "SampleLib", fileName);
         await File.WriteAllTextAsync(filePath, source);
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
         return (loadResult.WorkspaceId, filePath, solutionDirectory);
     }
 
