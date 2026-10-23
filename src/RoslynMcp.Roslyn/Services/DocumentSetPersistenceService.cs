@@ -99,6 +99,14 @@ internal sealed class DocumentSetPersistenceService
                 .Where(path => !string.IsNullOrWhiteSpace(path))!,
             _logger,
             ct).ConfigureAwait(false);
+        // Resolve every physical project-file intent against the original snapshots before
+        // document writes or MSBuildWorkspace effects can change the XML being planned.
+        var projectFileMutations = ProjectReferenceMutationRenderer.Plan(
+            currentSolution,
+            modifiedSolution,
+            allCsprojSnapshots,
+            ct);
+        var sdkProjectCsprojSnapshots = SnapshotSdkProjectCsprojs(solutionChanges, allCsprojSnapshots);
         var fileSnapshots = await SnapshotPotentiallyMutatedFilesAsync(
             currentSolution,
             modifiedSolution,
@@ -107,10 +115,11 @@ internal sealed class DocumentSetPersistenceService
             ct).ConfigureAwait(false);
 
         return new DocumentSetPersistenceState(
-            new Dictionary<string, CsprojSemanticEquality.ProjectFileSnapshot>(FileSystemPath.Comparer),
-            new List<string>(),
+            sdkProjectCsprojSnapshots,
+            projectFileMutations.Select(mutation => mutation.Path).ToList(),
             allCsprojSnapshots,
-            fileSnapshots);
+            fileSnapshots,
+            projectFileMutations);
     }
 
     private async Task PersistCoreAsync(
@@ -133,11 +142,10 @@ internal sealed class DocumentSetPersistenceService
 
         await ApplyChangesAsync(
             workspaceId,
-            currentSolution,
             modifiedSolution,
-            solutionChanges,
             persistenceState.SdkProjectCsprojSnapshots,
             persistenceState.AllCsprojSnapshots,
+            persistenceState.ProjectFileMutations,
             ct).ConfigureAwait(false);
     }
 
@@ -148,21 +156,7 @@ internal sealed class DocumentSetPersistenceService
         DocumentSetPersistenceState persistenceState,
         CancellationToken ct)
     {
-        await PersistProjectReferenceChangesAsync(
-            currentSolution,
-            modifiedSolution,
-            projectChange,
-            persistenceState.AppliedFiles,
-            ct).ConfigureAwait(false);
-
         var addedDocuments = projectChange.GetAddedDocuments().ToList();
-        SnapshotSdkProjectCsproj(
-            modifiedSolution,
-            projectChange.ProjectId,
-            addedDocuments.Count > 0,
-            persistenceState.SdkProjectCsprojSnapshots,
-            persistenceState.AllCsprojSnapshots);
-
         await PersistAddedDocumentsAsync(
             modifiedSolution,
             addedDocuments,
@@ -179,33 +173,35 @@ internal sealed class DocumentSetPersistenceService
             persistenceState.AppliedFiles);
     }
 
-    private void SnapshotSdkProjectCsproj(
-        Solution modifiedSolution,
-        ProjectId projectId,
-        bool hasAddedDocuments,
-        Dictionary<string, CsprojSemanticEquality.ProjectFileSnapshot> sdkProjectCsprojSnapshots,
+    private static Dictionary<string, CsprojSemanticEquality.ProjectFileSnapshot> SnapshotSdkProjectCsprojs(
+        SolutionChanges solutionChanges,
         IReadOnlyDictionary<string, CsprojSemanticEquality.ProjectFileSnapshot> allCsprojSnapshots)
     {
-        if (!hasAddedDocuments)
+        var sdkProjectCsprojSnapshots =
+            new Dictionary<string, CsprojSemanticEquality.ProjectFileSnapshot>(FileSystemPath.Comparer);
+        foreach (var projectChange in solutionChanges.GetProjectChanges())
         {
-            return;
+            if (!projectChange.GetAddedDocuments().Any()
+                || projectChange.NewProject.FilePath is not { } projectPath
+                || sdkProjectCsprojSnapshots.ContainsKey(projectPath))
+            {
+                continue;
+            }
+
+            if (!allCsprojSnapshots.TryGetValue(projectPath, out var snapshot))
+            {
+                throw new IOException(
+                    $"Could not snapshot project file '{projectPath}' before persistence.");
+            }
+
+            var document = XDocument.Parse(snapshot.Content, LoadOptions.PreserveWhitespace);
+            if (ProjectMetadataParser.IsSdkStyleWithDefaultCompileItems(document))
+            {
+                sdkProjectCsprojSnapshots[projectPath] = snapshot;
+            }
         }
 
-        var project = modifiedSolution.GetProject(projectId);
-        if (project?.FilePath is null
-            || sdkProjectCsprojSnapshots.ContainsKey(project.FilePath)
-            || !ProjectMetadataParser.IsSdkStyleWithDefaultCompileItems(project.FilePath, _logger))
-        {
-            return;
-        }
-
-        if (!allCsprojSnapshots.TryGetValue(project.FilePath, out var snapshot))
-        {
-            throw new IOException(
-                $"Could not snapshot SDK-style project file '{project.FilePath}' before persistence.");
-        }
-
-        sdkProjectCsprojSnapshots[project.FilePath] = snapshot;
+        return sdkProjectCsprojSnapshots;
     }
 
     private async Task PersistAddedDocumentsAsync(
@@ -278,89 +274,62 @@ internal sealed class DocumentSetPersistenceService
 
     private async Task ApplyChangesAsync(
         string workspaceId,
-        Solution currentSolution,
         Solution modifiedSolution,
-        SolutionChanges solutionChanges,
         Dictionary<string, CsprojSemanticEquality.ProjectFileSnapshot> sdkProjectCsprojSnapshots,
         IReadOnlyDictionary<string, CsprojSemanticEquality.ProjectFileSnapshot> allCsprojSnapshots,
+        IReadOnlyList<ProjectReferenceMutationRenderer.Mutation> projectFileMutations,
         CancellationToken ct)
     {
+        // MSBuildWorkspace must see the original references while it applies its change set.
         var applied = _workspace.TryApplyChanges(workspaceId, modifiedSolution);
+        var plannedPaths = projectFileMutations.Select(mutation => mutation.Path)
+            .ToHashSet(FileSystemPath.Comparer);
 
-        await RestoreSdkProjectSnapshotsAsync(sdkProjectCsprojSnapshots, ct).ConfigureAwait(false);
+        await RestoreSdkProjectSnapshotsAsync(sdkProjectCsprojSnapshots, plannedPaths, ct).ConfigureAwait(false);
+        var skipTriviaPaths = sdkProjectCsprojSnapshots.Keys.ToHashSet(FileSystemPath.Comparer);
+        skipTriviaPaths.UnionWith(plannedPaths);
         await CsprojSemanticEquality.RestoreTriviaOnlyDriftAsync(
             allCsprojSnapshots,
-            sdkProjectCsprojSnapshots.Keys.ToHashSet(FileSystemPath.Comparer),
+            skipTriviaPaths,
             _logger,
             operationTag: "csproj-reserialization-msbuildworkspace",
             ct: ct,
             throwOnFailure: true).ConfigureAwait(false);
-        await RestoreProjectReferenceWritesAsync(
-            currentSolution,
-            modifiedSolution,
-            solutionChanges,
-            allCsprojSnapshots,
-            ct).ConfigureAwait(false);
+        await PersistProjectFileMutationsAsync(projectFileMutations, ct).ConfigureAwait(false);
 
         if (!applied)
         {
-            throw new InvalidOperationException(
+            throw InvalidOperationErrors.Internal(
                 $"TryApplyChanges rejected persisted document-set changes for workspace '{workspaceId}'.");
         }
     }
 
-    private async Task RestoreProjectReferenceWritesAsync(
-        Solution currentSolution,
-        Solution modifiedSolution,
-        SolutionChanges solutionChanges,
-        IReadOnlyDictionary<string, CsprojSemanticEquality.ProjectFileSnapshot> originalSnapshots,
+    private async Task PersistProjectFileMutationsAsync(
+        IReadOnlyList<ProjectReferenceMutationRenderer.Mutation> projectFileMutations,
         CancellationToken ct)
     {
-        foreach (var projectChange in solutionChanges.GetProjectChanges())
+        foreach (var mutation in projectFileMutations)
         {
-            if (!projectChange.GetAddedProjectReferences().Any()
-                && !projectChange.GetRemovedProjectReferences().Any())
+            var currentBytes = await _fileSystem.ReadAllBytesAsync(mutation.Path, ct).ConfigureAwait(false);
+            if (!currentBytes.AsSpan().SequenceEqual(mutation.Modified))
             {
-                continue;
-            }
-
-            var projectPath = modifiedSolution.GetProject(projectChange.ProjectId)?.FilePath;
-            if (projectPath is null || !originalSnapshots.TryGetValue(projectPath, out var original))
-            {
-                throw new IOException(
-                    $"Could not restore the original encoding for project file '{projectPath}'.");
-            }
-
-            var currentBytes = await _fileSystem.ReadAllBytesAsync(projectPath, ct).ConfigureAwait(false);
-            var current = CsprojSemanticEquality.CreateSnapshot(currentBytes);
-            var document = XDocument.Parse(current.Content, LoadOptions.PreserveWhitespace);
-            var projectDirectory = Path.GetDirectoryName(projectPath)
-                ?? throw new InvalidOperationException("Project file path must have a parent directory.");
-            AddProjectReferences(
-                document,
-                projectDirectory,
-                modifiedSolution,
-                projectChange.GetAddedProjectReferences());
-            RemoveProjectReferences(
-                document,
-                projectDirectory,
-                currentSolution,
-                modifiedSolution,
-                projectChange.GetRemovedProjectReferences());
-            var encodedBytes = original.Encode(document);
-            if (!currentBytes.AsSpan().SequenceEqual(encodedBytes))
-            {
-                await _fileSystem.WriteAllBytesAsync(projectPath, encodedBytes, ct).ConfigureAwait(false);
+                await _fileSystem.WriteAllBytesAsync(mutation.Path, mutation.Modified, ct).ConfigureAwait(false);
             }
         }
     }
 
     private async Task RestoreSdkProjectSnapshotsAsync(
         Dictionary<string, CsprojSemanticEquality.ProjectFileSnapshot> sdkProjectCsprojSnapshots,
+        IReadOnlySet<string> plannedPaths,
         CancellationToken ct)
     {
         foreach (var (csprojPath, original) in sdkProjectCsprojSnapshots)
         {
+            if (plannedPaths.Contains(csprojPath))
+            {
+                continue;
+            }
+
             var currentBytes = await _fileSystem.ReadAllBytesAsync(csprojPath, ct).ConfigureAwait(false);
             if (!currentBytes.AsSpan().SequenceEqual(original.Bytes))
             {
@@ -370,120 +339,6 @@ internal sealed class DocumentSetPersistenceService
                     csprojPath);
             }
         }
-    }
-
-    private async Task PersistProjectReferenceChangesAsync(
-        Solution currentSolution,
-        Solution modifiedSolution,
-        ProjectChanges projectChange,
-        List<string> appliedFiles,
-        CancellationToken ct)
-    {
-        var modifiedProject = modifiedSolution.GetProject(projectChange.ProjectId);
-        if (modifiedProject?.FilePath is null || !_fileSystem.FileExists(modifiedProject.FilePath))
-        {
-            return;
-        }
-
-        var addedProjectReferences = projectChange.GetAddedProjectReferences().ToArray();
-        var removedProjectReferences = projectChange.GetRemovedProjectReferences().ToArray();
-        if (addedProjectReferences.Length == 0 && removedProjectReferences.Length == 0)
-        {
-            return;
-        }
-
-        var originalBytes = await _fileSystem
-            .ReadAllBytesAsync(modifiedProject.FilePath, ct)
-            .ConfigureAwait(false);
-        var originalSnapshot = CsprojSemanticEquality.CreateSnapshot(originalBytes);
-        var document = XDocument.Parse(originalSnapshot.Content, LoadOptions.PreserveWhitespace);
-        var projectDirectory = Path.GetDirectoryName(modifiedProject.FilePath)
-            ?? throw new InvalidOperationException("Project file path must have a parent directory.");
-        var changed = AddProjectReferences(
-            document,
-            projectDirectory,
-            modifiedSolution,
-            addedProjectReferences);
-        changed |= RemoveProjectReferences(
-            document,
-            projectDirectory,
-            currentSolution,
-            modifiedSolution,
-            removedProjectReferences);
-
-        if (!changed)
-        {
-            return;
-        }
-
-        await _fileSystem.WriteAllBytesAsync(
-            modifiedProject.FilePath,
-            originalSnapshot.Encode(document),
-            ct).ConfigureAwait(false);
-        appliedFiles.Add(modifiedProject.FilePath);
-    }
-
-    private static bool AddProjectReferences(
-        XDocument document,
-        string projectDirectory,
-        Solution modifiedSolution,
-        IEnumerable<ProjectReference> addedProjectReferences)
-    {
-        var changed = false;
-        foreach (var projectReference in addedProjectReferences)
-        {
-            var referencedProject = modifiedSolution.GetProject(projectReference.ProjectId);
-            if (referencedProject?.FilePath is null
-                || document.Descendants("ProjectReference").Any(element =>
-                    ProjectReferenceTargetsPath(
-                        (string?)element.Attribute("Include"),
-                        projectDirectory,
-                        referencedProject.FilePath)))
-            {
-                continue;
-            }
-
-            var relativePath = Path.GetRelativePath(projectDirectory, referencedProject.FilePath);
-            OrchestrationMsBuildXml.GetOrCreateItemGroup(document, "ProjectReference")
-                .Add(new XElement("ProjectReference", new XAttribute("Include", relativePath)));
-            changed = true;
-        }
-
-        return changed;
-    }
-
-    private static bool RemoveProjectReferences(
-        XDocument document,
-        string projectDirectory,
-        Solution currentSolution,
-        Solution modifiedSolution,
-        IEnumerable<ProjectReference> removedProjectReferences)
-    {
-        var changed = false;
-        foreach (var projectReference in removedProjectReferences)
-        {
-            var referencedProject = currentSolution.GetProject(projectReference.ProjectId)
-                ?? modifiedSolution.GetProject(projectReference.ProjectId);
-            if (referencedProject?.FilePath is null)
-            {
-                continue;
-            }
-
-            var element = document.Descendants("ProjectReference").FirstOrDefault(candidate =>
-                ProjectReferenceTargetsPath(
-                    (string?)candidate.Attribute("Include"),
-                    projectDirectory,
-                    referencedProject.FilePath));
-            if (element is null)
-            {
-                continue;
-            }
-
-            element.Remove();
-            changed = true;
-        }
-
-        return changed;
     }
 
     private async Task<IReadOnlyDictionary<string, FileMutationSnapshot>> SnapshotPotentiallyMutatedFilesAsync(
@@ -630,7 +485,8 @@ internal sealed class DocumentSetPersistenceService
         Dictionary<string, CsprojSemanticEquality.ProjectFileSnapshot> sdkProjectCsprojSnapshots,
         List<string> appliedFiles,
         IReadOnlyDictionary<string, CsprojSemanticEquality.ProjectFileSnapshot> allCsprojSnapshots,
-        IReadOnlyDictionary<string, FileMutationSnapshot> fileSnapshots)
+        IReadOnlyDictionary<string, FileMutationSnapshot> fileSnapshots,
+        IReadOnlyList<ProjectReferenceMutationRenderer.Mutation> projectFileMutations)
     {
         public Dictionary<string, CsprojSemanticEquality.ProjectFileSnapshot> SdkProjectCsprojSnapshots { get; } =
             sdkProjectCsprojSnapshots;
@@ -638,6 +494,8 @@ internal sealed class DocumentSetPersistenceService
         public IReadOnlyDictionary<string, CsprojSemanticEquality.ProjectFileSnapshot> AllCsprojSnapshots { get; } =
             allCsprojSnapshots;
         public IReadOnlyDictionary<string, FileMutationSnapshot> FileSnapshots { get; } = fileSnapshots;
+        public IReadOnlyList<ProjectReferenceMutationRenderer.Mutation> ProjectFileMutations { get; } =
+            projectFileMutations;
 
         public IReadOnlyList<string> GetDistinctAppliedFiles() =>
             AppliedFiles.Distinct(FileSystemPath.Comparer).ToList();

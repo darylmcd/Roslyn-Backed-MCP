@@ -214,6 +214,9 @@ public sealed class PreviewStore : BoundedStore<PreviewStore.PreviewEntry>, IPre
         var changes = entry.ModifiedSolution.GetChanges(entry.OriginalSolution);
         foreach (var projectChanges in changes.GetProjectChanges())
         {
+            if (ProjectReferenceMutationRenderer.HasChanges(projectChanges)
+                && projectChanges.NewProject.FilePath is { } projectPath)
+                paths.Add(projectPath);
             foreach (var documentId in projectChanges.GetChangedDocuments())
             {
                 AddDocumentPath(paths, projectChanges.NewProject.GetDocument(documentId));
@@ -249,7 +252,7 @@ public sealed class PreviewStore : BoundedStore<PreviewStore.PreviewEntry>, IPre
             }
         }
 
-        return paths;
+        return paths.Distinct(FileSystemPath.Comparer).ToArray();
     }
 
     /// <summary>

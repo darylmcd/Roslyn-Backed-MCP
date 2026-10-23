@@ -1,4 +1,5 @@
 using System.Text;
+using System.Xml.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -29,6 +30,84 @@ public sealed class UndoFileOperationsTests : IsolatedWorkspaceTestBase
     public static void ClassCleanup()
     {
         DisposeServices();
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task DocumentSetPersistence_ConflictingPhysicalContexts_RejectBeforeAnySourceEffect(bool removeSecond)
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "physical-reference-conflict", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var projectPath = Path.Combine(directory, "A.csproj");
+            var targetPath = Path.Combine(directory, "B.csproj");
+            var documentPath = Path.Combine(directory, "Existing.cs");
+            await File.WriteAllTextAsync(projectPath, "<Project><ItemGroup><ProjectReference Include=\"B.csproj\"><Aliases>old</Aliases></ProjectReference></ItemGroup></Project>");
+            await File.WriteAllTextAsync(targetPath, "<Project />");
+            await File.WriteAllTextAsync(documentPath, "class Original { }");
+            using var workspace = new AdhocWorkspace();
+            var first = ProjectId.CreateNewId();
+            var second = ProjectId.CreateNewId();
+            var target = ProjectId.CreateNewId();
+            var document = DocumentId.CreateNewId(first);
+            var original = workspace.CurrentSolution
+                .AddProject(ProjectInfo.Create(first, VersionStamp.Create(), "A-first", "A", LanguageNames.CSharp, filePath: projectPath))
+                .AddProject(ProjectInfo.Create(second, VersionStamp.Create(), "A-second", "A", LanguageNames.CSharp, filePath: projectPath))
+                .AddProject(ProjectInfo.Create(target, VersionStamp.Create(), "B", "B", LanguageNames.CSharp, filePath: targetPath))
+                .AddProjectReference(first, new ProjectReference(target, ["old"]))
+                .AddProjectReference(second, new ProjectReference(target, ["old"]))
+                .AddDocument(document, "Existing.cs", SourceText.From("class Original { }"), filePath: documentPath);
+            var modified = original
+                .WithProjectReferences(first, [new ProjectReference(target, ["first"])])
+                .WithProjectReferences(second, removeSecond ? [] : [new ProjectReference(target, ["second"])])
+                .WithDocumentText(document, SourceText.From("class Changed { }"));
+            var projectBytes = await File.ReadAllBytesAsync(projectPath);
+            var documentBytes = await File.ReadAllBytesAsync(documentPath);
+            var fileSystem = new ObservingDocumentSetFileSystem();
+            var service = new DocumentSetPersistenceService(WorkspaceManager, NullLogger.Instance, fileSystem);
+
+            var result = await service.PersistAsync("conflicting-contexts", original, modified,
+                modified.GetChanges(original), CancellationToken.None);
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual(0, fileSystem.Effects, "Rollback is insufficient: contradictory plans must be rejected before any create, write or delete.");
+            CollectionAssert.AreEqual(projectBytes, await File.ReadAllBytesAsync(projectPath));
+            CollectionAssert.AreEqual(documentBytes, await File.ReadAllBytesAsync(documentPath));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    private sealed class ObservingDocumentSetFileSystem : IDocumentSetFileSystem
+    {
+        public int Effects { get; private set; }
+        public bool FileExists(string path) => File.Exists(path);
+        public void CreateDirectory(string path)
+        {
+            Effects++;
+            Directory.CreateDirectory(path);
+        }
+        public void DeleteFile(string path)
+        {
+            Effects++;
+            File.Delete(path);
+        }
+        public Task<byte[]> ReadAllBytesAsync(string path, CancellationToken ct) => File.ReadAllBytesAsync(path, ct);
+        public Task<string> ReadAllTextAsync(string path, CancellationToken ct) => File.ReadAllTextAsync(path, ct);
+        public Task WriteAllBytesAsync(string path, byte[] bytes, CancellationToken ct)
+        {
+            Effects++;
+            return File.WriteAllBytesAsync(path, bytes, ct);
+        }
+        public Task WriteAllTextAsync(string path, string content, CancellationToken ct)
+        {
+            Effects++;
+            return File.WriteAllTextAsync(path, content, ct);
+        }
     }
 
     [TestMethod]
