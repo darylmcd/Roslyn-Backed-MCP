@@ -346,30 +346,25 @@ public sealed class RefactoringService : IRefactoringService
             modifiedSolution,
             currentSolution,
             ct).ConfigureAwait(false);
-        // An already-applied reference intent can rebase to the exact current snapshot.
-        // Consume it without asking MSBuild to apply its own snapshot or replacing undo.
-        if (ReferenceEquals(preparation.ModifiedSolution, currentSolution))
-        {
-            _previewStore.Invalidate(previewToken);
-            var unchangedSymbol = await ResolvePostApplySymbolAsync(
-                workspaceId,
-                previewToken,
-                ct).ConfigureAwait(false);
-            return new ApplyResultDto(true, [], null, unchangedSymbol);
-        }
-
         _undoService?.CaptureBeforeApply(
             workspaceId,
             description,
             currentSolution,
             preparation.FileSnapshots);
 
-        var (success, appliedFiles) = await _documentSetPersistence.PersistAsync(
-            workspaceId,
-            currentSolution,
-            preparation.ModifiedSolution,
-            preparation.SolutionChanges,
-            ct).ConfigureAwait(false);
+        // An already-applied intent needs no persistence, but still receives its own
+        // undo capture and completes through the common audit and token lifecycle.
+        var success = true;
+        IReadOnlyList<string> appliedFiles = [];
+        if (!ReferenceEquals(preparation.ModifiedSolution, currentSolution))
+        {
+            (success, appliedFiles) = await _documentSetPersistence.PersistAsync(
+                workspaceId,
+                currentSolution,
+                preparation.ModifiedSolution,
+                preparation.SolutionChanges,
+                ct).ConfigureAwait(false);
+        }
 
         _previewStore.Invalidate(previewToken);
 

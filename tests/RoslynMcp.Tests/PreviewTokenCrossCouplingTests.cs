@@ -322,10 +322,14 @@ public sealed class PreviewTokenCrossCouplingTests : IsolatedWorkspaceTestBase
         {
             await AssertReferenceStateAsync(workspace, "Contracts", desired);
         }
+        ChangeTracker.Clear(workspace.WorkspaceId);
 
         var result = await RefactoringService.ApplyRefactoringAsync(token, "test_apply", CancellationToken.None);
 
         Assert.IsTrue(result.Success, result.Error);
+        var changes = ChangeTracker.GetChanges(workspace.WorkspaceId);
+        Assert.HasCount(1, changes, "A successful apply must retain its tool audit record even when already satisfied.");
+        Assert.AreEqual("test_apply", changes[0].ToolName);
         if (shape == "alias-order-desired")
         {
             Assert.AreSame(current, WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
@@ -335,6 +339,43 @@ public sealed class PreviewTokenCrossCouplingTests : IsolatedWorkspaceTestBase
         }
         await AssertReferenceStateAsync(workspace, "Contracts", desired);
         await AssertReferenceStateAsync(workspace, "OtherContracts", Reference(original, "OtherContracts", "OriginalOther", false));
+    }
+
+    [TestMethod]
+    public async Task Already_Satisfied_Apply_Undo_Does_Not_Revert_Earlier_Real_Apply()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var original = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        var path = workspace.GetPath("SampleLib", "Dog.cs");
+        var document = SymbolResolver.FindDocument(original, path)!;
+        var originalText = (await document.GetTextAsync()).ToString();
+        var editedText = originalText + "\n// Earlier real apply must survive no-op undo.\n";
+        ChangeTracker.Clear(workspace.WorkspaceId);
+        var first = await RefactoringService.ApplyRefactoringAsync(
+            StoreReferencePreview(workspace, original.WithDocumentText(document.Id, SourceText.From(editedText))),
+            "real_apply", CancellationToken.None);
+        Assert.IsTrue(first.Success, first.Error);
+
+        var current = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        var noOp = await RefactoringService.ApplyRefactoringAsync(
+            StoreReferencePreview(workspace, current), "noop_apply", CancellationToken.None);
+        Assert.IsTrue(noOp.Success, noOp.Error);
+        Assert.HasCount(0, noOp.AppliedFiles);
+        var changes = ChangeTracker.GetChanges(workspace.WorkspaceId);
+        Assert.HasCount(2, changes);
+        Assert.AreEqual("noop_apply", changes[1].ToolName);
+
+        var undoNoOp = await UndoService.RevertBySequenceAsync(
+            workspace.WorkspaceId, changes[1].SequenceNumber, CancellationToken.None);
+        Assert.IsTrue(undoNoOp.Reverted, undoNoOp.Reason);
+        Assert.AreEqual(editedText, await File.ReadAllTextAsync(path));
+        var afterNoOpUndo = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        Assert.AreEqual(editedText, (await SymbolResolver.FindDocument(afterNoOpUndo, path)!.GetTextAsync()).ToString());
+
+        var undoFirst = await UndoService.RevertBySequenceAsync(
+            workspace.WorkspaceId, changes[0].SequenceNumber, CancellationToken.None);
+        Assert.IsTrue(undoFirst.Reverted, undoFirst.Reason);
+        Assert.AreEqual(originalText, await File.ReadAllTextAsync(path));
     }
 
     private static async Task<IsolatedWorkspaceScope> CreateReferenceWorkspaceAsync(bool includeContracts, string aliases = "OriginalAlias")
