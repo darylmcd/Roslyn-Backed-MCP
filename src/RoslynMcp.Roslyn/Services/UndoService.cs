@@ -106,17 +106,13 @@ public sealed class UndoService : IUndoService, IDisposable
         if (!_snapshots.TryGetValue(workspaceId, out var snapshot))
             return false;
 
-        var workspace = _workspaceManager;
-
         // Fast path: the caller provided an explicit file-snapshot list. Restore those
         // files directly — authoritative, independent of the workspace solution state.
         // Legacy (else) path: solution-based restore with a snapshot-wide walk so
         // empty-GetChanges no longer silently wins. A thrown OperationCanceledException
         // propagates out of here without reaching the consume block below, so cancellation
         // also leaves _snapshots/_history untouched (retryable) by construction.
-        bool reverted = snapshot.FileSnapshots is { Count: > 0 }
-            ? await RevertFromFileSnapshotsAsync(workspaceId, workspace, snapshot, cancellationToken).ConfigureAwait(false)
-            : await RevertFromSolutionSnapshotAsync(workspaceId, workspace, snapshot, cancellationToken).ConfigureAwait(false);
+        var reverted = await RevertSnapshotAsync(workspaceId, snapshot, cancellationToken).ConfigureAwait(false);
 
         if (!reverted)
             return false;
@@ -241,14 +237,7 @@ public sealed class UndoService : IUndoService, IDisposable
         bool reverted;
         try
         {
-            if (target.FileSnapshots is { Count: > 0 })
-            {
-                reverted = await RevertFromFileSnapshotsAsync(workspaceId, _workspaceManager, target, cancellationToken).ConfigureAwait(false);
-            }
-            else
-            {
-                reverted = await RevertFromSolutionSnapshotAsync(workspaceId, _workspaceManager, target, cancellationToken).ConfigureAwait(false);
-            }
+            reverted = await RevertSnapshotAsync(workspaceId, target, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -331,6 +320,26 @@ public sealed class UndoService : IUndoService, IDisposable
     private void OnChangeRecorded(ChangeRecordedEventArgs e)
     {
         CommitPendingCapture(e.WorkspaceId, e.SequenceNumber, e.AffectedFiles);
+    }
+
+    private Task<bool> RevertSnapshotAsync(
+        string workspaceId,
+        UndoSnapshot snapshot,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        // No solution plus an explicitly empty file capture owns no effects. Missing
+        // captures and solution-backed empty lists retain their existing restore paths.
+        if (snapshot.PreApplySolution is null
+            && snapshot.FileSnapshots is { Count: 0 }
+            && snapshot.AffectedFiles.Count == 0)
+        {
+            return Task.FromResult(true);
+        }
+
+        return snapshot.FileSnapshots is { Count: > 0 }
+            ? RevertFromFileSnapshotsAsync(workspaceId, _workspaceManager, snapshot, cancellationToken)
+            : RevertFromSolutionSnapshotAsync(workspaceId, _workspaceManager, snapshot, cancellationToken);
     }
 
     private async Task<bool> RevertFromFileSnapshotsAsync(

@@ -1,5 +1,10 @@
+using System.Text.Json;
 using System.Xml.Linq;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Text;
 using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Tests;
@@ -180,6 +185,324 @@ public sealed class PreviewTokenCrossCouplingTests : IsolatedWorkspaceTestBase
                 Path.GetFileName((string?)element.Attribute("Include")),
                 "Contracts.csproj",
                 StringComparison.OrdinalIgnoreCase)));
+    }
+
+    [TestMethod]
+    [DataRow("aliases", false, false)]
+    [DataRow("embed", false, false)]
+    [DataRow("remove", false, false)]
+    [DataRow("add", false, false)]
+    [DataRow("aliases", true, false)]
+    [DataRow("embed", true, false)]
+    [DataRow("remove", true, false)]
+    [DataRow("add", true, false)]
+    [DataRow("aliases", false, true)]
+    [DataRow("remove", false, true)]
+    public async Task Stale_ProjectReference_Preview_Preserves_Metadata_And_Sibling_Changes(
+        string transition, bool siblingAlreadyAppliedDesiredReference, bool siblingChangesOtherReference)
+    {
+        await using var workspace = await CreateReferenceWorkspaceAsync(transition != "add");
+        var original = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        var desired = ChangeReference(original, "Contracts", DesiredReference(original, transition));
+        var token = StoreReferencePreview(workspace, desired);
+
+        var sibling = siblingAlreadyAppliedDesiredReference ? desired : original;
+        var expectedOtherReference = Reference(original, "OtherContracts",
+            siblingChangesOtherReference ? "SiblingAlias" : "OriginalOther", siblingChangesOtherReference);
+        if (siblingChangesOtherReference)
+        {
+            sibling = ChangeReference(sibling, "OtherContracts", expectedOtherReference);
+        }
+        var sourcePath = workspace.GetPath("SampleLib", "AnimalService.cs");
+        var source = SymbolResolver.FindDocument(sibling, sourcePath)!;
+        var siblingText = (await source.GetTextAsync()).ToString() + "\n// Sibling edit must survive reference rebase.\n";
+        sibling = sibling.WithDocumentText(source.Id, SourceText.From(siblingText));
+        var siblingResult = await RefactoringService.ApplyRefactoringAsync(
+            StoreReferencePreview(workspace, sibling), "test_apply", CancellationToken.None);
+        Assert.IsTrue(siblingResult.Success, siblingResult.Error);
+        await AssertReferenceStateAsync(workspace, "OtherContracts", expectedOtherReference);
+        var projectBytesAfterSibling = await File.ReadAllBytesAsync(workspace.GetPath("SampleLib", "SampleLib.csproj"));
+
+        var result = await RefactoringService.ApplyRefactoringAsync(token, "test_apply", CancellationToken.None);
+
+        Assert.IsTrue(result.Success, result.Error);
+        await AssertReferenceStateAsync(workspace, "Contracts", DesiredReference(original, transition));
+        await AssertReferenceStateAsync(workspace, "OtherContracts", expectedOtherReference);
+        Assert.AreEqual(siblingText, await File.ReadAllTextAsync(sourcePath));
+        var currentSource = SymbolResolver.FindDocument(WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId), sourcePath)!;
+        Assert.AreEqual(siblingText, (await currentSource.GetTextAsync()).ToString());
+        if (siblingAlreadyAppliedDesiredReference)
+        {
+            CollectionAssert.AreEqual(projectBytesAfterSibling,
+                await File.ReadAllBytesAsync(workspace.GetPath("SampleLib", "SampleLib.csproj")),
+                "An already applied reference delta must not rewrite the project file.");
+        }
+    }
+
+    [TestMethod]
+    [DataRow("aliases")]
+    [DataRow("remove")]
+    [DataRow("add")]
+    [DataRow("remove-embed-only")]
+    public async Task Conflicting_ProjectReference_Preview_Rejects_Before_Source_Or_Create_Effects(string transition)
+    {
+        await using var workspace = await CreateReferenceWorkspaceAsync(transition != "add");
+        var original = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        var sourcePath = workspace.GetPath("SampleLib", "AnimalService.cs");
+        var createdPath = workspace.GetPath("SampleLib", "PendingReferenceCreate.cs");
+        var source = SymbolResolver.FindDocument(original, sourcePath)!;
+        var pending = ChangeReference(original, "Contracts", DesiredReference(original, transition == "remove-embed-only" ? "remove" : transition))
+            .WithDocumentText(source.Id, SourceText.From((await source.GetTextAsync()).ToString() + "\n// Pending source effect.\n"))
+            .AddDocument(DocumentId.CreateNewId(source.Project.Id), "PendingReferenceCreate.cs",
+                SourceText.From("namespace SampleLib; internal class PendingReferenceCreate {}\n"), filePath: createdPath);
+        var token = StoreReferencePreview(workspace, pending);
+        var divergentReference = Reference(original, "Contracts", transition == "remove-embed-only" ? "OriginalAlias" : "DivergentAlias", true);
+        var sibling = ChangeReference(original, "Contracts", divergentReference);
+        var siblingResult = await RefactoringService.ApplyRefactoringAsync(
+            StoreReferencePreview(workspace, sibling), "test_apply", CancellationToken.None);
+        Assert.IsTrue(siblingResult.Success, siblingResult.Error);
+        await AssertReferenceStateAsync(workspace, "Contracts", divergentReference);
+        var current = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        var sourceBytes = await File.ReadAllBytesAsync(sourcePath);
+        var projectPath = workspace.GetPath("SampleLib", "SampleLib.csproj");
+        var projectBytes = await File.ReadAllBytesAsync(projectPath);
+        var referenceSnapshot = ReferenceSnapshot(current);
+
+        var error = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(async () =>
+            await RefactoringService.ApplyRefactoringAsync(token, "test_apply", CancellationToken.None));
+        var json = ToolErrorHandler.ClassifyAndFormat(error, "refactoring_apply");
+        using var envelope = JsonDocument.Parse(json);
+        var publishedMessage = envelope.RootElement.GetProperty("message").GetString()!;
+        Assert.IsTrue(envelope.RootElement.GetProperty("error").GetBoolean(), json);
+        Assert.AreEqual("InvalidOperation", envelope.RootElement.GetProperty("category").GetString(), json);
+        Assert.AreEqual(error.PublicMessage, publishedMessage, json);
+        Assert.IsFalse(string.IsNullOrWhiteSpace(error.PublicMessage));
+        StringAssert.Contains(error.PublicMessage, "project reference");
+        StringAssert.Contains(error.PublicMessage, "preview");
+        foreach (var path in new[] { workspace.RootPath, sourcePath, projectPath, createdPath })
+        {
+            Assert.IsFalse(publishedMessage.Contains(path, StringComparison.OrdinalIgnoreCase), json);
+            Assert.IsFalse(publishedMessage.Contains(path.Replace('\\', '/'), StringComparison.OrdinalIgnoreCase), json);
+        }
+        Assert.IsFalse(json.Contains("stackTrace", StringComparison.Ordinal), json);
+
+        CollectionAssert.AreEqual(sourceBytes, await File.ReadAllBytesAsync(sourcePath));
+        CollectionAssert.AreEqual(projectBytes, await File.ReadAllBytesAsync(projectPath));
+        Assert.IsFalse(File.Exists(createdPath), "Conflict rejection must precede file creation.");
+        var after = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        CollectionAssert.AreEqual(referenceSnapshot, ReferenceSnapshot(after));
+        Assert.AreEqual((await SymbolResolver.FindDocument(current, sourcePath)!.GetTextAsync()).ToString(),
+            (await SymbolResolver.FindDocument(after, sourcePath)!.GetTextAsync()).ToString());
+        Assert.IsNull(SymbolResolver.FindDocument(after, createdPath));
+    }
+
+    [TestMethod]
+    [DataRow("alias-order-base")]
+    [DataRow("alias-order-desired")]
+    [DataRow("implicit-global")]
+    public async Task Reloaded_ProjectReference_Metadata_Uses_Semantic_Alias_Equality(string shape)
+    {
+        var originalAliases = shape == "implicit-global" ? "" : shape == "alias-order-desired" ? "OriginalAlias" : "Alpha,Beta";
+        await using var workspace = await CreateReferenceWorkspaceAsync(true, originalAliases);
+        var original = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        var desiredAliases = shape == "alias-order-desired" ? "Alpha,Beta" : "DesiredAlias";
+        var desired = Reference(original, "Contracts", desiredAliases, false);
+        var token = StoreReferencePreview(workspace, ChangeReference(original, "Contracts", desired));
+        var projectPath = workspace.GetPath("SampleLib", "SampleLib.csproj");
+        var xml = XDocument.Load(projectPath);
+        var edge = xml.Descendants("ProjectReference").Single(element =>
+            ((string?)element.Attribute("Include"))?.Replace('\\', '/').EndsWith("/Contracts.csproj", StringComparison.Ordinal) == true);
+        edge.SetElementValue("Aliases", shape == "implicit-global" ? "global" : "Beta,Alpha");
+        edge.SetElementValue("EmbedInteropTypes", "false");
+        xml.Save(projectPath);
+        await workspace.ReloadAsync();
+        var current = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        var projectBytes = await File.ReadAllBytesAsync(projectPath);
+        if (shape == "alias-order-desired")
+        {
+            await AssertReferenceStateAsync(workspace, "Contracts", desired);
+        }
+        ChangeTracker.Clear(workspace.WorkspaceId);
+
+        var result = await RefactoringService.ApplyRefactoringAsync(token, "test_apply", CancellationToken.None);
+
+        Assert.IsTrue(result.Success, result.Error);
+        var changes = ChangeTracker.GetChanges(workspace.WorkspaceId);
+        Assert.HasCount(1, changes, "A successful apply must retain its tool audit record even when already satisfied.");
+        Assert.AreEqual("test_apply", changes[0].ToolName);
+        if (shape == "alias-order-desired")
+        {
+            Assert.AreSame(current, WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
+            CollectionAssert.AreEqual(projectBytes, await File.ReadAllBytesAsync(projectPath));
+            Assert.AreEqual(0, result.AppliedFiles.Count);
+            Assert.IsNull(PreviewStore.Retrieve(token));
+        }
+        await AssertReferenceStateAsync(workspace, "Contracts", desired);
+        await AssertReferenceStateAsync(workspace, "OtherContracts", Reference(original, "OtherContracts", "OriginalOther", false));
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task Already_Satisfied_Apply_Undo_Does_Not_Revert_Earlier_Or_Later_Real_Apply(bool applyLaterEdit)
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var original = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        var path = workspace.GetPath("SampleLib", "Dog.cs");
+        var document = SymbolResolver.FindDocument(original, path)!;
+        var originalText = (await document.GetTextAsync()).ToString();
+        var editedText = originalText + "\n// Earlier real apply must survive no-op undo.\n";
+        ChangeTracker.Clear(workspace.WorkspaceId);
+        var first = await RefactoringService.ApplyRefactoringAsync(
+            StoreReferencePreview(workspace, original.WithDocumentText(document.Id, SourceText.From(editedText))),
+            "real_apply", CancellationToken.None);
+        Assert.IsTrue(first.Success, first.Error);
+
+        var current = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        var noOp = await RefactoringService.ApplyRefactoringAsync(
+            StoreReferencePreview(workspace, current), "noop_apply", CancellationToken.None);
+        Assert.IsTrue(noOp.Success, noOp.Error);
+        Assert.HasCount(0, noOp.AppliedFiles);
+        var changes = ChangeTracker.GetChanges(workspace.WorkspaceId);
+        Assert.HasCount(2, changes);
+        Assert.AreEqual("noop_apply", changes[1].ToolName);
+
+        var laterPath = workspace.GetPath("SampleLib", "Cat.cs");
+        var laterOriginal = await File.ReadAllTextAsync(laterPath);
+        var laterText = laterOriginal + "\n// Later real apply must survive no-op undo.\n";
+        int? laterSequence = null;
+        if (applyLaterEdit)
+        {
+            var beforeLater = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+            var laterDocument = SymbolResolver.FindDocument(beforeLater, laterPath)!;
+            Assert.AreEqual(laterOriginal, (await laterDocument.GetTextAsync()).ToString());
+            var later = await RefactoringService.ApplyRefactoringAsync(
+                StoreReferencePreview(workspace, beforeLater.WithDocumentText(laterDocument.Id, SourceText.From(laterText))),
+                "later_apply", CancellationToken.None);
+            Assert.IsTrue(later.Success, later.Error);
+            laterSequence = ChangeTracker.GetChanges(workspace.WorkspaceId).Last().SequenceNumber;
+        }
+        var beforeNoOpUndo = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        var beforeNoOpUndoVersion = WorkspaceManager.GetCurrentVersion(workspace.WorkspaceId);
+
+        var undoNoOp = await UndoService.RevertBySequenceAsync(
+            workspace.WorkspaceId, changes[1].SequenceNumber, CancellationToken.None);
+        Assert.IsTrue(undoNoOp.Reverted, undoNoOp.Reason);
+        Assert.AreEqual(editedText, await File.ReadAllTextAsync(path));
+        var afterNoOpUndo = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        Assert.AreSame(beforeNoOpUndo, afterNoOpUndo);
+        Assert.AreEqual(beforeNoOpUndoVersion, WorkspaceManager.GetCurrentVersion(workspace.WorkspaceId));
+        Assert.AreEqual(editedText, (await SymbolResolver.FindDocument(afterNoOpUndo, path)!.GetTextAsync()).ToString());
+        Assert.AreEqual(applyLaterEdit ? laterText : laterOriginal, await File.ReadAllTextAsync(laterPath));
+        Assert.AreEqual(applyLaterEdit ? laterText : laterOriginal,
+            (await SymbolResolver.FindDocument(afterNoOpUndo, laterPath)!.GetTextAsync()).ToString());
+
+        if (laterSequence is { } sequence)
+        {
+            var undoLater = await UndoService.RevertBySequenceAsync(workspace.WorkspaceId, sequence, CancellationToken.None);
+            Assert.IsTrue(undoLater.Reverted, undoLater.Reason);
+            Assert.AreEqual(laterOriginal, await File.ReadAllTextAsync(laterPath));
+            Assert.AreEqual(editedText, await File.ReadAllTextAsync(path));
+        }
+
+        var undoFirst = await UndoService.RevertBySequenceAsync(
+            workspace.WorkspaceId, changes[0].SequenceNumber, CancellationToken.None);
+        Assert.IsTrue(undoFirst.Reverted, undoFirst.Reason);
+        Assert.AreEqual(originalText, await File.ReadAllTextAsync(path));
+    }
+
+    private static async Task<IsolatedWorkspaceScope> CreateReferenceWorkspaceAsync(bool includeContracts, string aliases = "OriginalAlias")
+    {
+        var workspace = CreateIsolatedWorkspaceCopy();
+        return await InitializeWithCleanupAsync(workspace, async (scope, ct) =>
+        {
+            foreach (var name in new[] { "Contracts", "OtherContracts" })
+            {
+                AddProjectToCopiedSolution(scope.RootPath, name, "net10.0");
+                await File.WriteAllTextAsync(scope.GetPath(name, "Interop.cs"),
+                    "using System.Runtime.InteropServices;\n" +
+                    "[assembly: ImportedFromTypeLib(\"ReferenceFixture\")]\n" +
+                    "[assembly: Guid(\"5697EF2B-1751-4311-8D46-04636AF03FE6\")]\n" +
+                    "namespace " + name + ";\n" +
+                    "[ComImport, Guid(\"9E865C62-3092-4542-B07C-8097DB911D32\"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]\n" +
+                    "public interface IContract { void Invoke(); }\n", ct);
+            }
+            var projectPath = scope.GetPath("SampleLib", "SampleLib.csproj");
+            var xml = XDocument.Load(projectPath);
+            var references = new XElement("ItemGroup", ReferenceXml("OtherContracts", "OriginalOther", false));
+            if (includeContracts)
+            {
+                references.Add(ReferenceXml("Contracts", aliases, false));
+            }
+            xml.Root!.Add(references);
+            xml.Save(projectPath);
+            await scope.LoadAsync(ct);
+        });
+    }
+
+    private static XElement ReferenceXml(string name, string aliases, bool embed) =>
+        new("ProjectReference", new XAttribute("Include", $"../{name}/{name}.csproj"),
+            new XElement("Aliases", aliases), new XElement("EmbedInteropTypes", embed ? "true" : "false"));
+
+    private static ProjectReference Reference(Solution solution, string name, string aliases, bool embed) =>
+        new(solution.Projects.Single(project => project.Name == name).Id,
+            aliases.Length == 0 ? [] : [.. aliases.Split(',')], embed);
+
+    private static ProjectReference? DesiredReference(Solution original, string transition) => transition switch
+    {
+        "aliases" => Reference(original, "Contracts", "DesiredAlias", false),
+        "embed" => Reference(original, "Contracts", "OriginalAlias", true),
+        "remove" => null,
+        "add" => Reference(original, "Contracts", "DesiredAlias", true),
+        _ => throw new AssertFailedException($"Unknown reference transition: {transition}")
+    };
+
+    private static Solution ChangeReference(Solution solution, string name, ProjectReference? desired)
+    {
+        var source = solution.Projects.Single(project => project.Name == "SampleLib");
+        var target = solution.Projects.Single(project => project.Name == name);
+        return solution.WithProjectReferences(source.Id,
+            source.ProjectReferences.Where(reference => reference.ProjectId != target.Id)
+                .Concat(desired is null ? [] : new[] { desired }));
+    }
+
+    private static string StoreReferencePreview(IsolatedWorkspaceScope workspace, Solution modified) =>
+        PreviewStore.Store(workspace.WorkspaceId, modified,
+            WorkspaceManager.GetCurrentVersion(workspace.WorkspaceId), "Project reference regression");
+
+    private static string[] NormalizedAliases(IEnumerable<string> aliases)
+    {
+        var values = aliases.ToArray();
+        return values.Length == 0 ? ["global"] : values.Order(StringComparer.Ordinal).ToArray();
+    }
+
+    private static string[] ReferenceSnapshot(Solution solution) =>
+        solution.Projects.Single(project => project.Name == "SampleLib").ProjectReferences
+            .Select(reference => $"{solution.GetProject(reference.ProjectId)!.FilePath}|{string.Join(',', NormalizedAliases(reference.Aliases))}|{reference.EmbedInteropTypes}")
+            .Order(StringComparer.Ordinal).ToArray();
+
+    private static async Task AssertReferenceStateAsync(IsolatedWorkspaceScope workspace, string target, ProjectReference? expected)
+    {
+        var solution = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        var targetId = solution.Projects.Single(project => project.Name == target).Id;
+        var references = solution.Projects.Single(project => project.Name == "SampleLib").ProjectReferences
+            .Where(reference => reference.ProjectId == targetId).ToArray();
+        var xml = XDocument.Parse(await File.ReadAllTextAsync(workspace.GetPath("SampleLib", "SampleLib.csproj")));
+        var edges = xml.Descendants("ProjectReference").Where(element =>
+            ((string?)element.Attribute("Include"))?.Replace('\\', '/').EndsWith($"/{target}.csproj", StringComparison.Ordinal) == true).ToArray();
+        Assert.AreEqual(expected is null ? 0 : 1, references.Length, $"Workspace reference count for {target}");
+        Assert.AreEqual(expected is null ? 0 : 1, edges.Length, $"Persisted reference count for {target}");
+        if (expected is null)
+        {
+            return;
+        }
+        CollectionAssert.AreEqual(NormalizedAliases(expected.Aliases), NormalizedAliases(references[0].Aliases));
+        Assert.AreEqual(expected.EmbedInteropTypes, references[0].EmbedInteropTypes);
+        var persistedAliases = (string?)edges[0].Element("Aliases") ?? (string?)edges[0].Attribute("Aliases") ?? "";
+        CollectionAssert.AreEqual(NormalizedAliases(expected.Aliases),
+            NormalizedAliases(persistedAliases.Split([',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)));
+        var persistedEmbed = (string?)edges[0].Element("EmbedInteropTypes") ?? (string?)edges[0].Attribute("EmbedInteropTypes");
+        Assert.AreEqual(expected.EmbedInteropTypes, string.Equals(persistedEmbed, "true", StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>

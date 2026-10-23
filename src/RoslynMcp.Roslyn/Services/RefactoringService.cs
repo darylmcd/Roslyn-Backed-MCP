@@ -326,10 +326,9 @@ public sealed class RefactoringService : IRefactoringService
         // NOT invalidate this token. Below we rebase the preview's INTENDED diff
         // (`ModifiedSolution.GetChanges(OriginalSolution)`) onto the CURRENT workspace
         // solution via `RebaseModifiedSolutionOntoCurrent` — edits to files the sibling
-        // didn't touch replay cleanly; edits that collide with a sibling's edits win
-        // last-write semantics. If the underlying workspace was closed or reloaded, the
-        // IPreviewStore has already dropped the token via its lifecycle hook and Retrieve
-        // above returned null.
+        // didn't touch replay cleanly. Conflicting project-reference metadata is refused.
+        // Closing the workspace drops its tokens; reload retains tokens within their
+        // pinned version range, so their snapshots also require rebasing.
 
         // Item #4 — severity-high-output-would-ship-as-is-and-fail-code and the
         // "preview truncated while apply still mutates disk" concern. The agent reviewing
@@ -347,18 +346,26 @@ public sealed class RefactoringService : IRefactoringService
             modifiedSolution,
             currentSolution,
             ct).ConfigureAwait(false);
+        var alreadySatisfied = ReferenceEquals(preparation.ModifiedSolution, currentSolution);
         _undoService?.CaptureBeforeApply(
             workspaceId,
             description,
-            currentSolution,
-            preparation.FileSnapshots);
+            alreadySatisfied ? null : currentSolution,
+            alreadySatisfied ? [] : preparation.FileSnapshots);
 
-        var (success, appliedFiles) = await _documentSetPersistence.PersistAsync(
-            workspaceId,
-            currentSolution,
-            preparation.ModifiedSolution,
-            preparation.SolutionChanges,
-            ct).ConfigureAwait(false);
+        // An already-applied intent owns no effects: its explicitly empty undo capture
+        // preserves other applies while the common audit and token lifecycle completes.
+        var success = true;
+        IReadOnlyList<string> appliedFiles = [];
+        if (!alreadySatisfied)
+        {
+            (success, appliedFiles) = await _documentSetPersistence.PersistAsync(
+                workspaceId,
+                currentSolution,
+                preparation.ModifiedSolution,
+                preparation.SolutionChanges,
+                ct).ConfigureAwait(false);
+        }
 
         _previewStore.Invalidate(previewToken);
 
@@ -1008,36 +1015,53 @@ public sealed class RefactoringService : IRefactoringService
             return rebased;
         }
 
-        foreach (var projectReference in projectChange.GetAddedProjectReferences())
+        IEnumerable<ProjectReference> MapReferences(IEnumerable<ProjectReference> references, Solution snapshot)
         {
-            var referencedProject = modifiedSolution.GetProject(projectReference.ProjectId);
-            var rebasedReference = referencedProject is null
-                ? rebased.GetProject(projectReference.ProjectId)
-                : ResolveRebaseTargetProject(rebased, projectReference.ProjectId, referencedProject);
-            if (rebasedReference is not null
-                && !targetProject.ProjectReferences.Any(reference =>
-                    reference.ProjectId == rebasedReference.Id))
+            foreach (var reference in references)
             {
-                rebased = rebased.AddProjectReference(
-                    targetProject.Id,
-                    new ProjectReference(rebasedReference.Id, projectReference.Aliases, projectReference.EmbedInteropTypes));
-                targetProject = rebased.GetProject(targetProject.Id)!;
+                var referencedProject = snapshot.GetProject(reference.ProjectId);
+                var currentTarget = referencedProject is null
+                    ? rebased.GetProject(reference.ProjectId)
+                    : ResolveRebaseTargetProject(rebased, reference.ProjectId, referencedProject);
+                if (currentTarget is not null)
+                {
+                    yield return new ProjectReference(currentTarget.Id, reference.Aliases, reference.EmbedInteropTypes);
+                }
             }
         }
 
-        foreach (var projectReference in projectChange.GetRemovedProjectReferences())
+        static HashSet<(string Aliases, bool EmbedInteropTypes)> MetadataSet(IEnumerable<ProjectReference> references) =>
+            references.Select(reference => (
+                string.Join(",", reference.Aliases.DefaultIfEmpty("global").Order(StringComparer.Ordinal)),
+                reference.EmbedInteropTypes)).ToHashSet();
+
+        var originalReferences = MapReferences(projectChange.OldProject.ProjectReferences, originalSolution).ToArray();
+        var desiredReferences = MapReferences(projectChange.NewProject.ProjectReferences, modifiedSolution).ToArray();
+        var affectedTargets = MapReferences(projectChange.GetRemovedProjectReferences(), originalSolution)
+            .Concat(MapReferences(projectChange.GetAddedProjectReferences(), modifiedSolution))
+            .Select(reference => reference.ProjectId).Distinct().ToArray();
+
+        foreach (var targetId in affectedTargets)
         {
-            var referencedProject = originalSolution.GetProject(projectReference.ProjectId);
-            var rebasedReference = referencedProject is null
-                ? rebased.GetProject(projectReference.ProjectId)
-                : ResolveRebaseTargetProject(rebased, projectReference.ProjectId, referencedProject);
-            var existingReference = targetProject.ProjectReferences.FirstOrDefault(reference =>
-                reference.ProjectId == rebasedReference?.Id);
-            if (existingReference is not null)
+            var desired = desiredReferences.Where(reference => reference.ProjectId == targetId).ToArray();
+            var currentMetadata = MetadataSet(targetProject.ProjectReferences.Where(reference => reference.ProjectId == targetId));
+            if (currentMetadata.SetEquals(MetadataSet(desired)))
             {
-                rebased = rebased.RemoveProjectReference(targetProject.Id, existingReference);
-                targetProject = rebased.GetProject(targetProject.Id)!;
+                continue;
             }
+
+            var originalMetadata = MetadataSet(originalReferences.Where(reference => reference.ProjectId == targetId));
+            if (!currentMetadata.SetEquals(originalMetadata))
+            {
+                throw new PublicInvalidOperationException(
+                    "A project reference changed since this preview was created. Create a new preview before applying it.");
+            }
+
+            // Remove this target's original entries before installing its desired metadata.
+            // References to every other target retain the current sibling's values.
+            rebased = rebased.WithProjectReferences(targetProject.Id,
+                targetProject.ProjectReferences.Where(reference => reference.ProjectId != targetId).Concat(desired));
+            targetProject = rebased.GetProject(targetProject.Id)!;
         }
 
         return rebased;
