@@ -342,7 +342,9 @@ public sealed class PreviewTokenCrossCouplingTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
-    public async Task Already_Satisfied_Apply_Undo_Does_Not_Revert_Earlier_Real_Apply()
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task Already_Satisfied_Apply_Undo_Does_Not_Revert_Earlier_Or_Later_Real_Apply(bool applyLaterEdit)
     {
         await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
         var original = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
@@ -365,12 +367,43 @@ public sealed class PreviewTokenCrossCouplingTests : IsolatedWorkspaceTestBase
         Assert.HasCount(2, changes);
         Assert.AreEqual("noop_apply", changes[1].ToolName);
 
+        var laterPath = workspace.GetPath("SampleLib", "Cat.cs");
+        var laterOriginal = await File.ReadAllTextAsync(laterPath);
+        var laterText = laterOriginal + "\n// Later real apply must survive no-op undo.\n";
+        int? laterSequence = null;
+        if (applyLaterEdit)
+        {
+            var beforeLater = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+            var laterDocument = SymbolResolver.FindDocument(beforeLater, laterPath)!;
+            Assert.AreEqual(laterOriginal, (await laterDocument.GetTextAsync()).ToString());
+            var later = await RefactoringService.ApplyRefactoringAsync(
+                StoreReferencePreview(workspace, beforeLater.WithDocumentText(laterDocument.Id, SourceText.From(laterText))),
+                "later_apply", CancellationToken.None);
+            Assert.IsTrue(later.Success, later.Error);
+            laterSequence = ChangeTracker.GetChanges(workspace.WorkspaceId).Last().SequenceNumber;
+        }
+        var beforeNoOpUndo = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        var beforeNoOpUndoVersion = WorkspaceManager.GetCurrentVersion(workspace.WorkspaceId);
+
         var undoNoOp = await UndoService.RevertBySequenceAsync(
             workspace.WorkspaceId, changes[1].SequenceNumber, CancellationToken.None);
         Assert.IsTrue(undoNoOp.Reverted, undoNoOp.Reason);
         Assert.AreEqual(editedText, await File.ReadAllTextAsync(path));
         var afterNoOpUndo = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        Assert.AreSame(beforeNoOpUndo, afterNoOpUndo);
+        Assert.AreEqual(beforeNoOpUndoVersion, WorkspaceManager.GetCurrentVersion(workspace.WorkspaceId));
         Assert.AreEqual(editedText, (await SymbolResolver.FindDocument(afterNoOpUndo, path)!.GetTextAsync()).ToString());
+        Assert.AreEqual(applyLaterEdit ? laterText : laterOriginal, await File.ReadAllTextAsync(laterPath));
+        Assert.AreEqual(applyLaterEdit ? laterText : laterOriginal,
+            (await SymbolResolver.FindDocument(afterNoOpUndo, laterPath)!.GetTextAsync()).ToString());
+
+        if (laterSequence is { } sequence)
+        {
+            var undoLater = await UndoService.RevertBySequenceAsync(workspace.WorkspaceId, sequence, CancellationToken.None);
+            Assert.IsTrue(undoLater.Reverted, undoLater.Reason);
+            Assert.AreEqual(laterOriginal, await File.ReadAllTextAsync(laterPath));
+            Assert.AreEqual(editedText, await File.ReadAllTextAsync(path));
+        }
 
         var undoFirst = await UndoService.RevertBySequenceAsync(
             workspace.WorkspaceId, changes[0].SequenceNumber, CancellationToken.None);

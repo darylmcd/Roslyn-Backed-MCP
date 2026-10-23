@@ -346,17 +346,18 @@ public sealed class RefactoringService : IRefactoringService
             modifiedSolution,
             currentSolution,
             ct).ConfigureAwait(false);
+        var alreadySatisfied = ReferenceEquals(preparation.ModifiedSolution, currentSolution);
         _undoService?.CaptureBeforeApply(
             workspaceId,
             description,
-            currentSolution,
-            preparation.FileSnapshots);
+            alreadySatisfied ? null : currentSolution,
+            alreadySatisfied ? [] : preparation.FileSnapshots);
 
-        // An already-applied intent needs no persistence, but still receives its own
-        // undo capture and completes through the common audit and token lifecycle.
+        // An already-applied intent owns no effects: its explicitly empty undo capture
+        // preserves other applies while the common audit and token lifecycle completes.
         var success = true;
         IReadOnlyList<string> appliedFiles = [];
-        if (!ReferenceEquals(preparation.ModifiedSolution, currentSolution))
+        if (!alreadySatisfied)
         {
             (success, appliedFiles) = await _documentSetPersistence.PersistAsync(
                 workspaceId,
