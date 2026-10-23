@@ -34,7 +34,9 @@ internal static class ProjectMetadataParser
         {
             using var stream = File.OpenRead(assetsPath);
             using var document = JsonDocument.Parse(stream);
-            if (!document.RootElement.TryGetProperty("libraries", out var libraries))
+            if (document.RootElement.ValueKind != JsonValueKind.Object ||
+                !document.RootElement.TryGetProperty("libraries", out var libraries) ||
+                libraries.ValueKind != JsonValueKind.Object)
             {
                 return null;
             }
