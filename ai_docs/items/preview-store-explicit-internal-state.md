@@ -32,3 +32,5 @@
 - Live main contains no equivalent state-loss row; test-preview-store-cross-class-eviction concerns global capacity and different ownership semantics.
 
 2026-10-07 source re-vet at6599be65: ExtractMethodService shared-expression preview tail also calls Store(workspaceId, accumulator, _workspace.GetCurrentVersion(workspaceId), description) after bounded fileChanges are computed; legacy overload defaults diffTruncated:false/PreviewKind.Unspecified. Include this producer in the existing all-producer safety-state/provenance migration, preserving generic apply and public contract-care requirements. No Store change belongs to the separate extraction argument-guard initiative.
+
+2026-10-23 baseline backlog lint flags the stale ChangeSignatureService.cs:524 anchor in this item (436 lines). Re-derive this anchor against live symbols before planning this held row; this filing does not change the design hold or production source.

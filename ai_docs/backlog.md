@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-20T21:37:09Z
+**updated_at:** 2026-10-23T14:27:41Z
 
 ## Agent contract
 
@@ -146,6 +146,7 @@
 | `path-identity-ordinal-ignorecase-services` | Medium | — | **Replace unconditional OrdinalIgnoreCase file-path identity with FileSystemPath in the remaining services** — scaffolders, SymbolRefactor, Build/CompileCheck, AnalyzerReferenceIsolation and others collapse case-distinct Linux paths. [type: bug] [source: path-identity sweep 20261020] | L | items/path-identity-ordinal-ignorecase-services.md |
 | `refactoring-service-plain-caller-refusals` | Medium | — | **Classify RefactoringService plain InvalidOperationException refusals as public caller corrections or Internal** — rename-of-metadata-symbol is duplicated, and :671 embeds an absolute path. [type: bug] [source: refusal publication review 20261020] | M | items/refactoring-service-plain-caller-refusals.md |
 | `editorconfig-reader-fidelity` | Medium | — | **Make the editorconfig reader agree with the Roslyn parser** — empty values are dropped, line splitting ignores NEL/LS/PS, a nonexistent dotnet_diagnostic.severity key is used, and the file is parsed twice per read. [type: bug] [source: editorconfig grammar PR review 20261020] | M | items/editorconfig-reader-fidelity.md |
+| `external-overload-candidate-handle-roundtrip` | Medium | — | Make external overload candidate handles immediately roundtrip through reference and definition lookup in the same workspace. [type: bug] [source: devbuild-remediation-semantic-sweep-20261021] | M | items/external-overload-candidate-handle-roundtrip.md |
 
 ## Low
 
