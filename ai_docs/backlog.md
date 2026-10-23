@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-23T18:05:32Z
+**updated_at:** 2026-10-23T18:54:41Z
 
 ## Agent contract
 
@@ -156,6 +156,7 @@
 | `undo-audit-commit-reuses-completed-capture` | Medium | undo-explicit-empty-capture | Bind audit promotion to its owned pending undo capture; prevent capture-free records from reusing completed or failed operations. | S | items/undo-audit-commit-reuses-completed-capture.md |
 | `undo-explicit-empty-capture` | Medium | restore-physical-project-mutation-rendering | Represent explicit empty undo captures as operations with no effects; qualify latest/by-sequence replay without erasing earlier or later edits. | S | items/undo-explicit-empty-capture.md |
 | `undo-sequence-claim-exclusivity` | Medium | undo-explicit-empty-capture | Refuse restoration after losing the by-sequence undo claim; prove one winning restore with deterministic concurrent-claim coverage. | S | items/undo-sequence-claim-exclusivity.md |
+| `undo-reload-failure-reports-success` | Medium | undo-sequence-claim-exclusivity | Make failed undo workspace reload/version restoration report failure and retain retryable capture/history across both restore paths. | S | items/undo-reload-failure-reports-success.md |
 
 ## Low
 
@@ -373,6 +374,7 @@
 | `composite-apply-orchestrator-extract-atomic-file-writer` | Low | — | **Move AtomicFileWriter out of CompositeApplyOrchestrator.cs into its own file** — a 250-line P/Invoke type shares the orchestrator file. [type: refactor] [source: path-identity sweep 20261020] | S | items/composite-apply-orchestrator-extract-atomic-file-writer.md |
 | `test-fake-undo-duplicate-doubles` | Low | — | **Promote the duplicate private FakeUndo IUndoService test double to a shared helper** — two copies exist. [type: test-refactor] [source: path-identity sweep 20261020] | S | items/test-fake-undo-duplicate-doubles.md |
 | `change-signature-linked-document-callsite-entries` | Low | — | **Aggregate change-signature callsite entries by physical file** — linked documents yield duplicate-FilePath CallsiteUpdateDto entries; reuse CallsiteUpdateProjection and decide the totalCallsites rule. [type: bug] [source: path-identity review 20261020] | M | items/change-signature-linked-document-callsite-entries.md |
+| `rebase-persistence-routing-comment` | Low | — | Correct stale rebase/apply persistence routing comments against current symbols, including the nonexistent PersistDocumentSetChangesAsync pointer. | S | items/rebase-persistence-routing-comment.md |
 
 ## Defer
 
