@@ -1,4 +1,5 @@
 ---
 category: Fixed
 ---
-- **Fixed:** Preserve each project's recorded NuGet package folder during test-runner, workspace auto-restore and isolated fork restores, including mixed package roots.
+
+- **Fixed:** Restore callers preserve each project's recorded package root, authorize test filters after restore, and replay reviewed project references into isolated forks with complete project-file previews and guarded assets parsing.

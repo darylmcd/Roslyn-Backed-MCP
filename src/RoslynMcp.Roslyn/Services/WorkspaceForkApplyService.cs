@@ -128,24 +128,37 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService
             var preparedFork = await _workspaceExecutionGate.RunWriteAsync(workspaceId, async c =>
             {
                 var preview = RetrieveValidatedPreview(previewToken, workspaceId);
+                ForkGraphPreparation.ValidateSnapshotShape(preview.OriginalSolution, preview.ModifiedSolution, source.Root, c);
+                var current = _workspaceManager.GetCurrentSolution(workspaceId);
+                var modified = await RefactoringService.RebaseModifiedSolutionOntoCurrentAsync(
+                    preview.OriginalSolution, preview.ModifiedSolution, current, c).ConfigureAwait(false);
+                ForkGraphPreparation.ValidateSnapshot(current, modified, source.Root, c);
+                var mutations = await ProjectReferenceMutationRenderer.PlanAsync(current, modified, c).ConfigureAwait(false);
+                var sourceProjects = RestoreInvocationPlanner.Capture(modified.Projects.Select(project =>
+                    project.FilePath ?? throw new InvalidOperationException("Fork restore requires an on-disk project path.")));
                 var path = CreateForkDirectory(source.Root, forkName);
                 forkPath = path;
                 CopyDirectory(source.Root, path, c);
                 var appliedFiles = await ReplayPreviewIntoForkAsync(
-                    preview.OriginalSolution, preview.ModifiedSolution, source.Root, path, c)
+                    current, modified, source.Root, path, c)
                     .ConfigureAwait(false);
-                var projects = preview.ModifiedSolution.Projects.Select(project =>
+                var appliedPaths = appliedFiles.ToList();
+                foreach (var mutation in mutations)
                 {
-                    var sourcePath = project.FilePath
-                        ?? throw new InvalidOperationException("Fork restore requires an on-disk path for every preview project.");
-                    var forkProjectPath = MapSourcePathToFork(sourcePath, source.Root, path);
+                    var forkProjectPath = MapSourcePathToFork(mutation.Path, source.Root, path);
+                    await File.WriteAllBytesAsync(forkProjectPath, mutation.Modified, c).ConfigureAwait(false);
+                    appliedPaths.Add(forkProjectPath);
+                }
+                await RelocateAbsoluteProjectReferencesAsync(modified, source.Root, path, c).ConfigureAwait(false);
+                await ForkGraphPreparation.VerifyAsync(current, modified, source.Root, path, c).ConfigureAwait(false);
+                var projects = sourceProjects.Select(project =>
+                {
+                    var forkProjectPath = MapSourcePathToFork(project.ProjectPath, source.Root, path);
                     if (!File.Exists(forkProjectPath))
                         throw new InvalidOperationException("A preview project is not present in the copied fork graph.");
-                    var originalPath = preview.OriginalSolution.GetProject(project.Id)?.FilePath;
-                    return new RestoreInvocationPlanner.ProjectRestore(forkProjectPath,
-                        originalPath is null ? null : RestoreStalenessDetector.TryReadRestorePackagesPath(originalPath));
+                    return new RestoreInvocationPlanner.ProjectRestore(forkProjectPath, project.PackagesPath);
                 }).ToArray();
-                return (Path: path, AppliedFiles: appliedFiles, Projects: projects);
+                return (Path: path, AppliedFiles: (IReadOnlyList<string>)appliedPaths.Distinct(FileSystemPath.Comparer).ToArray(), Projects: projects);
             }, ct, applyStalenessPolicy: false).ConfigureAwait(false);
             var forkLoadedPath = MapSourcePathToFork(source.LoadedPath, source.Root, preparedFork.Path);
             await RestoreForkAsync(RestoreInvocationPlanner.Plan(forkLoadedPath, preparedFork.Projects), ct).ConfigureAwait(false);
@@ -656,15 +669,43 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService
         }
 
         var forkFilePath = MapSourcePathToFork(document.FilePath, sourceRoot, forkRoot);
-        var text = (await document.GetTextAsync(ct).ConfigureAwait(false)).ToString();
+        var text = await document.GetTextAsync(ct).ConfigureAwait(false);
         var directory = Path.GetDirectoryName(forkFilePath);
         if (!string.IsNullOrWhiteSpace(directory))
         {
             Directory.CreateDirectory(directory);
         }
 
-        await File.WriteAllTextAsync(forkFilePath, text, ct).ConfigureAwait(false);
+        await using (var writer = new StreamWriter(forkFilePath, append: false, text.Encoding ?? new System.Text.UTF8Encoding(false)))
+        {
+            text.Write(writer, ct);
+            await writer.FlushAsync(ct).ConfigureAwait(false);
+        }
         appliedFiles.Add(forkFilePath);
+    }
+
+    private static async Task RelocateAbsoluteProjectReferencesAsync(
+        Solution solution, string sourceRoot, string forkRoot, CancellationToken ct)
+    {
+        foreach (var sourcePath in solution.Projects.Select(project => project.FilePath!).Distinct(FileSystemPath.Comparer))
+        {
+            var forkPath = MapSourcePathToFork(sourcePath, sourceRoot, forkRoot);
+            var bytes = await File.ReadAllBytesAsync(forkPath, ct).ConfigureAwait(false);
+            var snapshot = CsprojSemanticEquality.CreateSnapshot(bytes);
+            var document = System.Xml.Linq.XDocument.Parse(snapshot.Content, System.Xml.Linq.LoadOptions.PreserveWhitespace);
+            var changed = false;
+            foreach (var reference in document.Descendants().Where(element => element.Name.LocalName == "ProjectReference"))
+            {
+                var include = reference.Attribute("Include");
+                if (include is null || !Path.IsPathFullyQualified(include.Value)
+                    || !FileSystemPath.IsStrictDescendant(sourceRoot, include.Value))
+                    continue;
+                include.Value = Path.GetRelativePath(Path.GetDirectoryName(forkPath)!, MapSourcePathToFork(include.Value, sourceRoot, forkRoot));
+                changed = true;
+            }
+            if (changed)
+                await File.WriteAllBytesAsync(forkPath, snapshot.Encode(document), ct).ConfigureAwait(false);
+        }
     }
 
     private static string MapSourcePathToFork(

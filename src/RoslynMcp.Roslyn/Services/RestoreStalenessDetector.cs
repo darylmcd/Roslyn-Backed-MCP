@@ -244,6 +244,7 @@ internal class RestoreStalenessDetector
             var assets = LoadAssetsPackageVersions(projectFilePath);
             if (assets is null)
             {
+                logger.LogDebug("restore-drift assets are missing or have an unusable structure; restore is required.");
                 return true;
             }
 
@@ -465,7 +466,7 @@ internal class RestoreStalenessDetector
         }
     }
 
-    private static string? GetExistingAssetsPath(string projectFilePath)
+    internal static string? GetExistingAssetsPath(string projectFilePath)
     {
         var projectDirectory = Path.GetDirectoryName(projectFilePath);
         if (string.IsNullOrWhiteSpace(projectDirectory))
@@ -473,15 +474,19 @@ internal class RestoreStalenessDetector
             return null;
         }
 
-        // Fast path: the default layout needs no MSBuild evaluation.
+        // A stale default-layout file can survive a move to a configured assets directory.
+        // The evaluated active layout must win, including when its assets do not exist yet.
+        var relocatedPath = TryEvaluateAssetsPath(projectFilePath, projectDirectory);
+        if (relocatedPath is not null)
+            return File.Exists(relocatedPath) ? relocatedPath : null;
+
         var defaultPath = Path.Combine(projectDirectory, "obj", "project.assets.json");
         if (File.Exists(defaultPath))
         {
             return defaultPath;
         }
 
-        var relocatedPath = TryEvaluateAssetsPath(projectFilePath, projectDirectory);
-        return relocatedPath is not null && File.Exists(relocatedPath) ? relocatedPath : null;
+        return null;
     }
 
     /// <summary>
