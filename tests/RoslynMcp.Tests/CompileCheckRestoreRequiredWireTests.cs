@@ -14,9 +14,6 @@ public sealed class CompileCheckRestoreRequiredWireTests : IsolatedWorkspaceTest
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     public async Task CompileCheckTool_RestoreRequired_EmitsWorkspaceReloadNextCall()
     {

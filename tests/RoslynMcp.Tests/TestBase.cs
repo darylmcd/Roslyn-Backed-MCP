@@ -63,6 +63,7 @@ public abstract class TestBase
 
     protected static IPreviewStore PreviewStore => Fixture.Services.PreviewStore;
     protected static WorkspaceManager WorkspaceManager => Fixture.Services.WorkspaceManager;
+    protected static ForkInvocationPathPolicy PathPolicy => Fixture.Services.PathPolicy;
     protected static IFileWatcherService FileWatcher => Fixture.Services.FileWatcher;
     protected static SymbolNavigationService SymbolNavigationService => Fixture.Services.SymbolNavigationService;
     protected static SymbolSearchService SymbolSearchService => Fixture.Services.SymbolSearchService;
@@ -174,16 +175,6 @@ public abstract class TestBase
         // will fail loudly rather than exhaust memory. TestServiceContainer.Create owns that
         // option; this method only publishes the assembly-owned fixture.
         Volatile.Write(ref _fixture, TestAssemblyFixture.Create(TestValidationOptions));
-    }
-
-    /// <summary>
-    /// No-op since the test assembly now owns service lifetime. Disposal happens in
-    /// <see cref="AssemblyLifecycle.Cleanup"/> after all tests complete. Kept for source
-    /// compatibility with existing <c>[ClassCleanup]</c> hooks across test classes.
-    /// </summary>
-    protected static void DisposeServices()
-    {
-        // Intentional no-op. See AssemblyLifecycle.Cleanup.
     }
 
     /// <summary>

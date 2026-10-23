@@ -45,7 +45,7 @@ public sealed class HintLocatorShapeProbe
 }
 """, CancellationToken.None);
 
-        var status = await WorkspaceManager.LoadAsync(CopiedSolutionPath, CancellationToken.None);
+        var status = await WorkspaceManager.LoadAsync(CopiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(CopiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
         WorkspaceId = status.WorkspaceId;
     }
 
@@ -60,8 +60,7 @@ public sealed class HintLocatorShapeProbe
                     WorkspaceManager.Close(WorkspaceId);
                 }
             }),
-            CleanupFailureCollector.FromAction(() => DeleteDirectoryIfExists(CopiedRoot)),
-            CleanupFailureCollector.FromAction(DisposeServices));
+            CleanupFailureCollector.FromAction(() => DeleteDirectoryIfExists(CopiedRoot)));
 
     /// <summary>
     /// metadataName + non-property resolution: caller passed only <c>metadataName</c>, the symbol

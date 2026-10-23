@@ -18,20 +18,14 @@ public sealed class RefactoringRefusalPublicationWireTests : IsolatedWorkspaceTe
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     [DataRow("2025-11-25")]
     [DataRow("2026-07-28")]
     public async Task SignatureAndFormatRangeRefusals_PreserveDualEraWireContract(string version)
     {
-        await using var harness = await ProductionParityMcpHarness.CreateAsync("refactoring-refusal-publication", version);
-        var loaded = await harness.Client.CallToolAsync("workspace_load",
-            new Dictionary<string, object?> { ["path"] = SampleSolutionPath, ["autoRestore"] = false },
-            cancellationToken: CancellationToken.None);
-        Assert.IsFalse(loaded.IsError == true);
-        var id = JsonNode.Parse(loaded.Content.OfType<TextContentBlock>().Single().Text)!["workspaceId"]!.GetValue<string>();
+        await using var harness = await ProductionParityMcpHarness.CreateOwnedAsync("refactoring-refusal-publication", version, TestFixtureFileSystem.FindRepositoryRoot());
+        var id = await ProductionParityMcpHarness.LoadOwnedWorkspaceAsync(
+            harness, SampleSolutionPath, CancellationToken.None);
         var root = Path.GetDirectoryName(SampleSolutionPath)!;
         var path = Path.Combine(root, "SampleLib", "RefactoringProbe.cs");
 

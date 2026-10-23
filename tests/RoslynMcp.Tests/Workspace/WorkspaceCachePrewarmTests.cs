@@ -27,9 +27,6 @@ public sealed class WorkspaceCachePrewarmTests : IsolatedWorkspaceTestBase
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     public async Task LoadWorkspace_WithPrewarmTrue_WarmsWorkspaceAndReturnsWarmSummary()
     {
@@ -279,6 +276,31 @@ public sealed class WorkspaceCachePrewarmTests : IsolatedWorkspaceTestBase
 
     private sealed class ThrowingGatedCommandExecutor : IGatedCommandExecutor
     {
+        public Task<BuildCommandRun> ExecuteBuildAsync(BuildCommandPlan plan, TimeSpan timeout, CancellationToken ct) =>
+            throw new NotSupportedException("This fixture does not execute builds.");
+
+        public async Task<CommandExecutionDto> ExecuteAuthorizedAsync(
+            string workspaceId, string targetPath, IReadOnlyList<string> arguments, TimeSpan timeout,
+            Func<CancellationToken, Task> authorizeStart, CancellationToken ct)
+        {
+            await authorizeStart(ct).ConfigureAwait(false);
+            return await ExecuteAsync(workspaceId, targetPath, arguments, timeout, ct).ConfigureAwait(false);
+        }
+        public Task<TestRunResultDto> ExecuteTestAsync(
+            string workspaceId, string targetPath, IReadOnlyList<string> arguments,
+            Func<CommandExecutionDto, CancellationToken, Task<TestRunResultDto>> collectResults,
+            TimeSpan timeout, IReadOnlyList<EarlyKillPattern>? earlyKillPatterns, Func<CancellationToken, Task> authorizeStart, CancellationToken ct) =>
+            throw new NotSupportedException("This fixture does not execute tests.");
+
+        public Task<CommandExecutionDto> ExecuteAsync(
+            string workspaceId, string targetPath, IReadOnlyList<string> arguments, TimeSpan timeout,
+            IReadOnlyList<EarlyKillPattern>? earlyKillPatterns, CancellationToken ct)
+        {
+            if (earlyKillPatterns is { Count: > 0 })
+                throw new NotSupportedException("This fixture does not simulate streaming early-kill patterns.");
+            return ExecuteAsync(workspaceId, targetPath, arguments, timeout, ct);
+        }
+
         public Task<CommandExecutionDto> ExecuteAsync(
             string workspaceId,
             string targetPath,
@@ -328,11 +350,14 @@ public sealed class WorkspaceCachePrewarmTests : IsolatedWorkspaceTestBase
 
         public int GetCurrentVersion(string workspaceId) => status.WorkspaceVersion;
 
+        public Task<System.Collections.Immutable.ImmutableArray<RoslynMcp.Roslyn.Contracts.AdmittedModuleImage>> ReadAdmittedImagesAsync(
+            string workspaceId, Microsoft.CodeAnalysis.ProjectId projectId, Microsoft.CodeAnalysis.PortableExecutableReference reference, CancellationToken ct) =>
+            throw new NotSupportedException();
+
         public Solution GetCurrentSolution(string workspaceId) => throw new NotSupportedException();
 
         public Project? GetProject(string workspaceId, string projectNameOrPath) => null;
 
-        public bool TryApplyChanges(string workspaceId, Solution newSolution) => throw new NotSupportedException();
 
         public void RestoreVersion(string workspaceId, int version) { }
     }

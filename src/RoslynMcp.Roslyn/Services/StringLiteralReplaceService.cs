@@ -145,7 +145,7 @@ public sealed class StringLiteralReplaceService : IStringLiteralReplaceService
         }
 
         var description = $"Replace {totalHits} string literal(s) across {changes.Count} file(s)";
-        var token = _previewStore.Store(workspaceId, accumulator, _workspace.GetCurrentVersion(workspaceId), description);
+        var token = _previewStore.Store(workspaceId, solution, accumulator, _workspace.GetCurrentVersion(workspaceId), description, changes, PreviewKind.ReplaceStringLiterals);
         return new RefactoringPreviewDto(token, description, changes, null);
     }
 

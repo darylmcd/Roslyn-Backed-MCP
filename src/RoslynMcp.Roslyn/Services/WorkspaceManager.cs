@@ -19,7 +19,7 @@ namespace RoslynMcp.Roslyn.Services;
 /// solution-mutation operations. Each session is independently versioned and monitored
 /// for file-system staleness via <see cref="RoslynMcp.Core.Services.IFileWatcherService"/>.
 /// </summary>
-public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
+public sealed partial class WorkspaceManager : IWorkspaceManager, IPhysicalSolutionCommitter, IWorkspaceEvaluationLoader, IWorkspaceRecoveryAuthority, IDisposable
 {
     private const int MaxDiagnosticsPerWorkspace = 200;
 
@@ -27,16 +27,6 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         LoggerMessage.Define<string, string, int>(
             LogLevel.Information, new EventId(1, nameof(LogWorkspaceLoaded)),
             "Loaded workspace {WorkspaceId} from {Path}, version {Version}");
-
-    private static readonly Action<ILogger, string, int, Exception?> LogChangesApplied =
-        LoggerMessage.Define<string, int>(
-            LogLevel.Information, new EventId(2, nameof(LogChangesApplied)),
-            "Applied workspace changes to {WorkspaceId}, new version {Version}");
-
-    private static readonly Action<ILogger, string, Exception?> LogChangesApplyFailed =
-        LoggerMessage.Define<string>(
-            LogLevel.Warning, new EventId(3, nameof(LogChangesApplyFailed)),
-            "Failed to apply workspace changes for {WorkspaceId}");
 
     private static readonly Action<ILogger, string, Exception?> LogWorkspaceClosed =
         LoggerMessage.Define<string>(
@@ -65,17 +55,9 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
     /// for failure-path testing via <see cref="WorkspaceSessionLoader"/>'s virtual surface.
     /// </summary>
     private readonly WorkspaceSessionLoader _sessionLoader;
-    /// <summary>
-    /// workspace-manager-decompose-restore-and-analyzer-subsystems: restore-staleness detection
-    /// (restore-race wait + package-version drift check), extracted alongside
-    /// <see cref="_analyzerReferenceStripper"/> so the concern is independently testable.
-    /// </summary>
+    private readonly ForkInvocationPathPolicy _pathPolicy;
+    /// <summary>Evaluates restore staleness independently from workspace publication.</summary>
     private readonly RestoreStalenessDetector _restoreStalenessDetector;
-    /// <summary>
-    /// workspace-manager-decompose-restore-and-analyzer-subsystems: unresolved-analyzer-
-    /// reference stripping, extracted from <see cref="LoadIntoSessionAsync"/>.
-    /// </summary>
-    private readonly UnresolvedAnalyzerReferenceStripper _analyzerReferenceStripper;
     /// <summary>
     /// lru-eviction-gate-layer-execution: lazily-resolved back-reference to the execution gate,
     /// used to run cap-pressure LRU eviction under the evicted workspace's per-workspace WRITER
@@ -95,6 +77,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
     private readonly Lazy<IWorkspaceExecutionGate>? _evictionGate;
     private readonly TimeProvider _timeProvider;
     private readonly ConcurrentDictionary<string, WorkspaceSession> _sessions = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, PhysicalMutationRecovery> _recoveries = new(StringComparer.Ordinal);
     /// <summary>
     /// mcp-error-category-workspace-evicted-on-host-recycle + workspace-id-recovery-hints:
     /// tracks workspace ids that were closed (or disposed) IN THIS PROCESS along with their
@@ -121,6 +104,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
     public event Action<string>? WorkspaceReloaded;
 
     public WorkspaceManager(
+        ForkInvocationPathPolicy pathPolicy,
         ILogger<WorkspaceManager> logger,
         IPreviewStore previewStore,
         IFileWatcherService fileWatcher,
@@ -128,6 +112,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         IWorkspaceCacheStore? cacheStore = null,
         Lazy<IWorkspaceExecutionGate>? evictionGate = null)
         : this(
+            pathPolicy,
             logger,
             previewStore,
             fileWatcher,
@@ -145,6 +130,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
     /// disposal to the provider so one singleton has one disposal owner.
     /// </summary>
     internal static WorkspaceManager CreateProviderOwned(
+        ForkInvocationPathPolicy pathPolicy,
         ILogger<WorkspaceManager> logger,
         IPreviewStore previewStore,
         IFileWatcherService fileWatcher,
@@ -152,6 +138,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         IWorkspaceCacheStore? cacheStore,
         Lazy<IWorkspaceExecutionGate>? evictionGate) =>
         new(
+            pathPolicy,
             logger,
             previewStore,
             fileWatcher,
@@ -169,6 +156,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
     /// failure).
     /// </summary>
     internal WorkspaceManager(
+        ForkInvocationPathPolicy pathPolicy,
         ILogger<WorkspaceManager> logger,
         IPreviewStore previewStore,
         IFileWatcherService fileWatcher,
@@ -176,11 +164,12 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         IWorkspaceCacheStore? cacheStore,
         WorkspaceSessionLoader? sessionLoader,
         RestoreStalenessDetector? restoreStalenessDetector = null,
-        UnresolvedAnalyzerReferenceStripper? analyzerReferenceStripper = null,
         Lazy<IWorkspaceExecutionGate>? evictionGate = null,
         bool ownsFileWatcher = true,
         TimeProvider? timeProvider = null)
     {
+        ArgumentNullException.ThrowIfNull(pathPolicy);
+        _pathPolicy = pathPolicy;
         _logger = logger;
         _previewStore = previewStore;
         _fileWatcher = fileWatcher;
@@ -189,7 +178,6 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         _cacheCoordinator = cacheStore is null ? null : new WorkspaceCacheCoordinator(cacheStore, logger);
         _sessionLoader = sessionLoader ?? new WorkspaceSessionLoader();
         _restoreStalenessDetector = restoreStalenessDetector ?? new RestoreStalenessDetector();
-        _analyzerReferenceStripper = analyzerReferenceStripper ?? new UnresolvedAnalyzerReferenceStripper();
         _evictionGate = evictionGate;
         _timeProvider = timeProvider ?? TimeProvider.System;
         var max = _options.MaxConcurrentWorkspaces > 0 ? _options.MaxConcurrentWorkspaces : 8;
@@ -266,13 +254,27 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         CancellationToken ct)
         => LoadAsync(path, EvictPolicy.Strict, globalProperties, ct);
 
-    public async Task<WorkspaceStatusDto> LoadAsync(
+    public Task<WorkspaceStatusDto> LoadAsync(
         string path,
         EvictPolicy evictPolicy,
         IDictionary<string, string>? globalProperties,
         CancellationToken ct)
+        => LoadCoreAsync(path, evictPolicy, globalProperties, SupplementalPackageReadAuthority.None, null, ct);
+
+    private async Task<WorkspaceStatusDto> LoadCoreAsync(
+        string path,
+        EvictPolicy evictPolicy,
+        IDictionary<string, string>? globalProperties,
+        SupplementalPackageReadAuthority supplementalPackages,
+        ForkInvocationAuthority? invocation,
+        CancellationToken ct)
     {
-        var fullPath = ValidateWorkspacePath(path);
+        var forkInvocation = RequireInvocation(invocation);
+        forkInvocation?.RequireSupplemental(supplementalPackages);
+        var fullPath = forkInvocation is null ? ValidateWorkspacePath(path) : ValidateWorkspacePathLexically(path);
+        if (_recoveries.Values.Any(recovery => FileSystemPath.Comparer.Equals(recovery.PreApplySolution.FilePath, fullPath)
+            || recovery.PreApplySolution.Projects.Any(project => FileSystemPath.Comparer.Equals(project.FilePath, fullPath))))
+            throw new PublicInvalidOperationException("Recover the failed physical operation before loading another evaluation of its source graph.");
 
         // workspace-session-deduplication: if the caller is loading a path that is already
         // tracked by a live session, return that session's status instead of spinning up a
@@ -284,7 +286,8 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         // When the caller passes MSBuild global properties (e.g. Configuration=Release), skip
         // dedup so the new evaluation actually runs — an existing session was loaded with
         // different globals and would not satisfy the caller's request.
-        var skipDedup = globalProperties is { Count: > 0 };
+        var skipDedup = forkInvocation is not null || globalProperties is { Count: > 0 }
+            || !ReferenceEquals(supplementalPackages, SupplementalPackageReadAuthority.None);
         if (!skipDedup)
         {
             var existing = FindSessionByLoadedPath(fullPath);
@@ -320,7 +323,8 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
                 //
                 // If all sessions are mid-load, fall through to the Strict error path.
                 var lruCandidate = _sessions.Values
-                    .Where(s => s.LoadLock.CurrentCount > 0)
+                    .Where(s => s.LoadLock.CurrentCount > 0 && !_recoveries.ContainsKey(s.WorkspaceId)
+                        && s.WorkspaceId != forkInvocation?.SourceWorkspaceId && !supplementalPackages.ProtectsSource(s.WorkspaceId))
                     .OrderBy(s => s.LastAccessedUtc)
                     .FirstOrDefault();
 
@@ -368,9 +372,20 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         var workspaceId = Guid.NewGuid().ToString("N");
         var session = new WorkspaceSession(workspaceId);
         var sessionAdded = false;
+        var loadSucceeded = false;
+        Exception? loadFailure = null;
         try
         {
-            await LoadIntoSessionAsync(session, fullPath, globalProperties, ct).ConfigureAwait(false);
+            if (forkInvocation is not null)
+            {
+                forkInvocation.BindAllocated(session, fullPath, globalProperties);
+                await _pathPolicy.ValidateAsync(workspaceId, [fullPath], ct).ConfigureAwait(false);
+                var physical = ValidateWorkspacePath(fullPath);
+                if (!FileSystemPath.Comparer.Equals(physical, fullPath))
+                    throw new WorkspaceMutationOwnershipException("The fork entry point changed its physical identity.");
+            }
+            await LoadIntoSessionAsync(session, fullPath, globalProperties, expected: null, preservePreviews: false,
+                supplementalPackages, invocation, ct).ConfigureAwait(false);
 
             // Second dedup check, this time for the race window between our scan above and
             // another concurrent LoadAsync call that won the semaphore with the same path.
@@ -387,7 +402,6 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
                         raceWinner.WorkspaceId,
                         fullPath,
                         workspaceId);
-                    session.Dispose();
                     raceWinner.TouchAccess();
                     return BuildStatus(raceWinner);
                 }
@@ -399,8 +413,18 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             }
 
             sessionAdded = true;
+            forkInvocation?.Registered(session);
             _fileWatcher.Watch(workspaceId, session.LoadedPath!);
-            return BuildStatus(session);
+            if (forkInvocation is not null) await forkInvocation.AssertCurrentAsync(ct).ConfigureAwait(false);
+            var published = session.Capture()?.Solution
+                ?? throw InvalidOperationErrors.Internal("The loaded workspace has no published native snapshot.");
+            if (!NativeCompilerContextCertificate.TryGet(published, out var publishedContext) || publishedContext is null)
+                throw InvalidOperationErrors.Internal("The loaded workspace has no owned load-freshness evidence.");
+            await publishedContext.AssertLoadCurrentAsync(published, workspaceId, _pathPolicy, supplementalPackages, null, ct).ConfigureAwait(false);
+            forkInvocation?.AssertCurrent();
+            var status = BuildStatus(session);
+            loadSucceeded = true;
+            return status;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -419,19 +443,33 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
                 }
             }
 
-            session.Dispose();
+            loadFailure = ex;
             throw;
         }
-        catch
+        catch (Exception ex)
         {
-            session.Dispose();
+            loadFailure = ex;
             throw;
         }
         finally
         {
-            if (!sessionAdded)
+            if (!loadSucceeded)
             {
-                _workspaceSlots.Release();
+                var ownsRegistration = sessionAdded && _sessions.TryRemove(new KeyValuePair<string, WorkspaceSession>(workspaceId, session));
+                if (!sessionAdded || ownsRegistration)
+                {
+                    try
+                    {
+                        OwnedResourceCleanup.DisposePreservingFailure("Failed to release an unpublished workspace session.", loadFailure,
+                            OwnedResourceCleanup.FromAction(() =>
+                            {
+                                if (!ownsRegistration) return;
+                                lock (_mutationLock) _mutationEpochs.Remove(session);
+                                _fileWatcher.Unwatch(workspaceId);
+                            }), session);
+                    }
+                    finally { _workspaceSlots.Release(); }
+                }
             }
         }
     }
@@ -498,16 +536,29 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             // "slot consumed by a concurrent caller" fallback.
             return;
         }
+        catch (WorkspaceCloseCleanupException failure) when (failure.IsFor(this, workspaceId))
+        {
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure.RemoveGatePreservingFailure(gate)).Throw();
+            throw;
+        }
 
         gate.RemoveGate(workspaceId);
     }
 
-    public async Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct)
+    public Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct)
+        => ReloadCoreAsync(workspaceId, null, ct);
+
+    Task<WorkspaceStatusDto> IWorkspaceEvaluationLoader.ReloadWithInvocationAuthorityAsync(string workspaceId,
+        ForkInvocationAuthority invocation, CancellationToken ct) => ReloadCoreAsync(workspaceId, invocation, ct);
+
+    private async Task<WorkspaceStatusDto> ReloadCoreAsync(string workspaceId, ForkInvocationAuthority? invocation, CancellationToken ct)
     {
+        RequireInvocation(invocation);
+        EnsureMutationAllowed(workspaceId, CurrentPhysicalPaths(workspaceId));
         var session = GetRequiredSession(workspaceId);
         await LoadIntoSessionAsync(session, session.LoadedPath ?? throw new InvalidOperationException(
             $"Workspace '{workspaceId}' is not loaded."),
-            ct).ConfigureAwait(false);
+            invocation, ct).ConfigureAwait(false);
         _fileWatcher.ClearStale(workspaceId);
         // Item #7: explicit reload signal for per-workspace caches. The version bump inside
         // LoadIntoSessionAsync is enough for caches that version-check on every read, but
@@ -519,10 +570,77 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         return BuildStatus(session);
     }
 
-    public bool Close(string workspaceId) => CloseCore(workspaceId, recordEviction: true);
+    Task<WorkspaceStatusDto> IWorkspaceEvaluationLoader.LoadWithPropertiesAsync(string path,
+        IDictionary<string, string> properties, SupplementalPackageReadAuthority supplementalPackages, ForkInvocationAuthority? invocation, CancellationToken ct) =>
+        LoadCoreAsync(path, EvictPolicy.Lru, properties, supplementalPackages, invocation, ct);
+
+    Task IPhysicalSolutionCommitter.CommitPhysicalSolutionAsync(string workspaceId, Solution? expected, CancellationToken ct)
+    {
+        EnsureMutationAllowed(workspaceId, expected is null ? CurrentPhysicalPaths(workspaceId)
+            : SolutionFileMutationPlanner.ChangedPaths(GetCurrentSolution(workspaceId), expected));
+        return CommitPhysicalSolutionCoreAsync(workspaceId, expected, recovery: null, ct);
+    }
+
+    private async Task CommitPhysicalSolutionCoreAsync(string workspaceId, Solution? expected, PhysicalMutationRecovery? recovery, CancellationToken ct)
+    {
+        if (expected is null)
+        {
+            await CommitPhysicalGraphCoreAsync(workspaceId, null, recovery, ct).ConfigureAwait(false);
+            return;
+        }
+        var session = GetRequiredSession(workspaceId);
+        var layout = await PhysicalGraphLayout.CreateAsync(workspaceId, session.LoadedPath
+            ?? throw InvalidOperationErrors.Internal("Physical publication requires a loaded entry point."), expected, _pathPolicy, ct).ConfigureAwait(false);
+        await _pathPolicy.ValidateAsync(workspaceId, layout.Packages.PathsRequiringCurrentGrant(layout.InputFiles), ct).ConfigureAwait(false);
+        var identities = System.Collections.Immutable.ImmutableArray.CreateBuilder<PhysicalInputIdentity>();
+        foreach (var path in layout.InputFiles.Where(path => !layout.ConfigurationInputs.Any(input => FileSystemPath.Comparer.Equals(input.FilePath, path))
+            && !layout.ConditionInputs.Any(input => FileSystemPath.Comparer.Equals(input.FilePath, path))))
+            identities.Add(await PhysicalInputIdentity.CaptureAsync(path, ct).ConfigureAwait(false));
+        identities.AddRange(layout.ConfigurationInputs);
+        identities.AddRange(layout.ConditionInputs);
+        identities.AddRange(layout.Packages.Inputs);
+        var properties = BuildPathRelocation.KnownPathProperties;
+        var expectation = new PhysicalGraphExpectation(expected, static path => path, properties,
+            EvaluatedExecutionIdentity.Capture(expected, static path => path, properties, ct),
+            PhysicalInputIdentity.MergeConsistent(identities), layout.Packages, layout.SdkInputs);
+        await CommitPhysicalGraphCoreAsync(workspaceId, expectation, recovery, ct).ConfigureAwait(false);
+    }
+
+    private async Task CommitPhysicalGraphCoreAsync(string workspaceId, PhysicalGraphExpectation? expected, PhysicalMutationRecovery? recovery, CancellationToken ct)
+    {
+        lock (_mutationLock)
+        {
+            if (recovery?.HasRetainedSourceTransitions == true ||
+                _activeMutations.TryGetValue(workspaceId, out var active) && active.HasRetainedSourceTransitions)
+                throw new WorkspaceMutationOwnershipException("Source transition custody must be resolved before publishing the physical workspace.");
+            if (expected is null && (recovery?.HasUnverifiedSourceNamespaces == true ||
+                _activeMutations.TryGetValue(workspaceId, out var changed) && changed.HasUnverifiedSourceNamespaces))
+                throw new WorkspaceMutationOwnershipException("Source namespace changes require an independently prepared graph expectation.");
+        }
+        var session = GetRequiredSession(workspaceId);
+        var path = session.LoadedPath ?? throw InvalidOperationErrors.Internal("The physical workspace has no loaded path.");
+        var properties = session.Workspace?.Properties.ToDictionary(pair => pair.Key, pair => pair.Value);
+        await LoadIntoSessionAsync(session, path, properties, expected, preservePreviews: true,
+            SupplementalPackageReadAuthority.None, null, ct).ConfigureAwait(false);
+        lock (_mutationLock)
+        {
+            recovery?.SourceNamespacesVerified();
+            if (_activeMutations.TryGetValue(workspaceId, out var completed)) completed.SourceNamespacesVerified();
+        }
+        if (recovery is not null) _recoveries.TryRemove(new KeyValuePair<string, PhysicalMutationRecovery>(workspaceId, recovery));
+        _fileWatcher.ClearStale(workspaceId);
+        RaiseWorkspaceReloaded(workspaceId);
+    }
+
+    public bool Close(string workspaceId)
+    {
+        EnsureMutationAllowed(workspaceId, []);
+        return CloseCore(workspaceId, recordEviction: true);
+    }
 
     private bool CloseCore(string workspaceId, bool recordEviction)
     {
+        if (_recoveries.ContainsKey(workspaceId)) return false;
         if (!_sessions.TryRemove(workspaceId, out var session))
         {
             return false;
@@ -532,17 +650,25 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         // record the original loadedAt and loadedPath before the session is disposed so a
         // subsequent lookup against this id can surface the structured
         // WorkspaceEvictedException with the timestamp AND the rehydration path populated.
-        if (recordEviction)
+        try
         {
-            RecordEviction(workspaceId, session.LoadedAtUtc, session.LoadedPath);
+            OwnedResourceCleanup.Dispose("Workspace session cleanup failed.", null,
+                OwnedResourceCleanup.FromAction(() => { lock (_mutationLock) _mutationEpochs.Remove(session); }),
+                OwnedResourceCleanup.FromAction(() =>
+                {
+                    if (recordEviction) RecordEviction(workspaceId, session.LoadedAtUtc, session.LoadedPath);
+                }),
+                OwnedResourceCleanup.FromAction(() => _fileWatcher.Unwatch(workspaceId)),
+                OwnedResourceCleanup.FromAction(() => _previewStore.InvalidateAll(workspaceId)),
+                session,
+                OwnedResourceCleanup.FromAction(() => _workspaceSlots.Release()),
+                OwnedResourceCleanup.FromAction(() => RaiseWorkspaceClosed(workspaceId)),
+                OwnedResourceCleanup.FromAction(() => LogWorkspaceClosed(_logger, workspaceId, null)));
         }
-
-        _fileWatcher.Unwatch(workspaceId);
-        _previewStore.InvalidateAll(workspaceId);
-        session.Dispose();
-        _workspaceSlots.Release();
-        RaiseWorkspaceClosed(workspaceId);
-        LogWorkspaceClosed(_logger, workspaceId, null);
+        catch (AggregateException failure)
+        {
+            throw new WorkspaceCloseCleanupException(this, workspaceId, failure.InnerExceptions);
+        }
         return true;
     }
 
@@ -581,7 +707,12 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
 
                 if (_evictionGate is null)
                 {
-                    CloseCore(workspaceId, recordEviction: false);
+                    try { CloseCore(workspaceId, recordEviction: false); }
+                    catch (WorkspaceCloseCleanupException failure) when (failure.IsFor(this, workspaceId))
+                    {
+                        _logger.LogWarning(failure,
+                            "Retired workspace {WorkspaceId}, but resource cleanup failed", workspaceId);
+                    }
                     return;
                 }
 
@@ -602,6 +733,12 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
                 }
                 catch (KeyNotFoundException)
                 {
+                    return;
+                }
+                catch (WorkspaceCloseCleanupException failure) when (failure.IsFor(this, workspaceId))
+                {
+                    _logger.LogWarning(failure.RemoveGatePreservingFailure(gate),
+                        "Retired workspace {WorkspaceId}, but resource cleanup failed", workspaceId);
                     return;
                 }
                 catch (Exception exception) when (!_lifetimeCancellation.IsCancellationRequested)
@@ -934,44 +1071,22 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
 
     public void RestoreVersion(string workspaceId, int version)
     {
-        GetRequiredSession(workspaceId).SetVersion(version);
+        EnsureMutationAllowed(workspaceId, []);
+        var session = GetRequiredSession(workspaceId);
+        session.SetVersion(version);
+        AdvanceMutationEpoch(session);
     }
 
     public Solution GetCurrentSolution(string workspaceId)
     {
         var session = GetRequiredSession(workspaceId);
-        var workspace = session.Workspace;
-        if (workspace is null)
-        {
-            // autoreload-cascade-stdio-host-crash: a null workspace observed after the session
-            // was registered means a reload failed mid-flight (or is executing on another turn
-            // and has not yet completed the atomic swap). Surface as StaleWorkspaceTransition
-            // so the caller sees a retry-able envelope rather than a generic invalid-operation
-            // that historically let the raw exception terminate the stdio host.
-            throw new StaleWorkspaceTransitionException(
-                workspaceId,
-                $"Workspace '{workspaceId}' is in the middle of a reload transition or its last " +
-                "reload failed. Retry the read after workspace_reload settles, or call " +
-                "workspace_reload explicitly to re-establish a valid snapshot.");
-        }
-
-        try
-        {
-            return workspace.CurrentSolution;
-        }
-        catch (ObjectDisposedException ex)
-        {
-            // Defensive: even with the atomic swap in LoadIntoSessionAsync, if a caller held a
-            // captured reference to the previous workspace across a reload, reading its solution
-            // can observe the disposed instance. Translate that to a structured transition error
-            // (retry-able) rather than letting it bubble as a generic InternalError that killed
-            // the stdio host in the 2026-04-24 cascade.
-            throw new StaleWorkspaceTransitionException(
-                workspaceId,
-                $"Workspace '{workspaceId}' snapshot reference was disposed during a concurrent " +
-                "reload. Retry the read to observe the fresh snapshot.",
-                ex);
-        }
+        var loaded = session.Capture();
+        if (loaded is null)
+            throw new StaleWorkspaceTransitionException(workspaceId,
+                "The workspace has no published loaded graph. Retry after workspace_reload settles.");
+        // The immutable snapshot remains readable if the native workspace is disposed after
+        // this capture. Never combine a workspace and solution from different publications.
+        return loaded.Solution;
     }
 
     /// <summary>
@@ -1030,7 +1145,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         if (string.IsNullOrWhiteSpace(projectNameOrPath)) return null;
 
         var session = GetRequiredSession(workspaceId);
-        var solution = session.Workspace?.CurrentSolution;
+        var solution = session.Capture()?.Solution;
         if (solution is null) return null;
 
         var version = session.Version;
@@ -1061,50 +1176,6 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         return new ProjectIndexEntry(version, names, lexicalPaths, physicalCandidates);
     }
 
-    public bool TryApplyChanges(string workspaceId, Solution newSolution)
-    {
-        var session = GetRequiredSession(workspaceId);
-        if (session.Workspace is null)
-        {
-            throw new InvalidOperationException($"Workspace '{workspaceId}' is not loaded.");
-        }
-
-        EnsureChangedDocumentPathsArePhysical(session.Workspace.CurrentSolution, newSolution);
-        var result = session.Workspace.TryApplyChanges(newSolution);
-        if (result)
-        {
-            session.DocumentPaths = BuildDocumentPathIndex(session.Workspace.CurrentSolution);
-            session.IncrementVersion();
-            // workspace-stale-after-external-edit-feedback: attribute the pending watcher fire
-            // (MSBuildWorkspace.TryApplyChanges writes .cs/.csproj files to disk on its way
-            // out) to reason="apply" BEFORE the watcher event lands. Last-writer-wins inside
-            // the stale window, so a racing watcher event for an unrelated external edit may
-            // still overwrite "apply" with "external-edit" — which is the correct escalation.
-            _fileWatcher.MarkStale(workspaceId, StaleReasons.Apply);
-            // preview-token-cross-coupling-bundle (BREAKING): do NOT InvalidateAll sibling
-            // preview tokens on a successful apply. Each PreviewEntry holds its own immutable
-            // Roslyn Solution snapshot captured at preview time; sibling `*_apply` calls must
-            // not destroy those references. The apply path rebases each token's snapshot
-            // against the CURRENT solution via `modifiedSolution.GetChanges(currentSolution)`
-            // at redemption time (RefactoringService.ApplyRefactoringAsync), so unrelated
-            // workspace moves don't need to invalidate tokens.
-            //
-            // format-range-apply-preview-token-lifetime: sibling-apply bumps the session
-            // version (above) but does NOT call any preview-store invalidation here — pruning
-            // is reload- and close-driven only. The pinned-range eviction triggered by the
-            // next reload uses the live `session.Version` so any version bumps that have
-            // happened in the meantime (sibling apply, prior reload) count against each
-            // token's pinned ceiling at that point.
-            LogChangesApplied(_logger, workspaceId, session.Version, null);
-        }
-        else
-        {
-            LogChangesApplyFailed(_logger, workspaceId, null);
-        }
-
-        return result;
-    }
-
     public void Dispose()
     {
         Task[] retirementTasks;
@@ -1116,49 +1187,53 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             }
 
             _disposing = true;
-            _fileWatcher.WorkspaceRootMissing -= OnWorkspaceRootMissing;
-            _lifetimeCancellation.Cancel();
             retirementTasks = _rootRetirementTasks.Values.ToArray();
         }
 
-        // IDisposable is synchronous, so join lifecycle-owned background work before touching
-        // sessions or the slot semaphore. Retirement tasks never capture a synchronization
-        // context and observe the lifetime token, making this join bounded and deadlock-free.
-        Task.WhenAll(retirementTasks).GetAwaiter().GetResult();
-        if (_ownsFileWatcher)
-        {
-            _fileWatcher.Dispose();
-        }
-
-        // Capture session ids before dispose so we can raise WorkspaceClosed for each one.
-        // This lets singletons like ICompilationCache free per-workspace state on host shutdown
-        // (or test-assembly teardown) instead of leaking until process exit.
-        var ids = _sessions.Keys.ToArray();
-        foreach (var session in _sessions.Values)
-        {
-            // mcp-error-category-workspace-evicted-on-host-recycle + workspace-id-recovery-hints:
-            // record each session's loadedAt and loadedPath before dispose. Disposal during
-            // Dispose is the in-process equivalent of a graceful host recycle for callers in
-            // the SAME process — they should see WorkspaceEvicted, not NotFound, on subsequent
-            // lookups (e.g. test-fixture cleanup and re-init scenarios), with the rehydration
-            // path embedded for one-shot recovery.
-            RecordEviction(session.WorkspaceId, session.LoadedAtUtc, session.LoadedPath);
-            session.Dispose();
-        }
-        var n = _sessions.Count;
-        _sessions.Clear();
-        for (var i = 0; i < n; i++)
-        {
-            _workspaceSlots.Release();
-        }
-
-        foreach (var id in ids)
-        {
-            RaiseWorkspaceClosed(id);
-        }
-
-        _workspaceSlots.Dispose();
-        _lifetimeCancellation.Dispose();
+        // Join lifecycle-owned retirement work before releasing sessions and capacity.
+        // Synchronous Dispose from a retirement notification requires separate reentrancy
+        // qualification; tracked by workspace-retirement-dispose-reentrancy.
+        OwnedResourceCleanup.Dispose("Workspace manager shutdown cleanup failed.", null,
+            OwnedResourceCleanup.FromAction(() => _fileWatcher.WorkspaceRootMissing -= OnWorkspaceRootMissing),
+            OwnedResourceCleanup.FromAction(() => _lifetimeCancellation.Cancel()),
+            OwnedResourceCleanup.FromAction(() => Task.WhenAll(retirementTasks).GetAwaiter().GetResult()),
+            _ownsFileWatcher ? _fileWatcher : null,
+            OwnedResourceCleanup.FromAction(() =>
+            {
+                var sessions = _sessions.ToArray();
+                OwnedResourceCleanup.Dispose("Workspace shutdown session cleanup failed.", null,
+                    sessions.Select(pair => OwnedResourceCleanup.FromAction(() =>
+                    {
+                        if (!_sessions.TryRemove(pair)) return;
+                        var session = pair.Value;
+                        OwnedResourceCleanup.Dispose("Workspace shutdown resource cleanup failed.", null,
+                            OwnedResourceCleanup.FromAction(() => RecordEviction(pair.Key, session.LoadedAtUtc, session.LoadedPath)),
+                            session,
+                            OwnedResourceCleanup.FromAction(() => _workspaceSlots.Release()),
+                            OwnedResourceCleanup.FromAction(() => RaiseWorkspaceClosed(pair.Key)));
+                    })).ToArray());
+            }),
+            OwnedResourceCleanup.FromAction(() =>
+            {
+                lock (_mutationLock)
+                {
+                    var sourceOperations = _recoveries.Values.Concat(_activeMutations.Values).Distinct().ToArray();
+                    try
+                    {
+                        OwnedResourceCleanup.Dispose("Workspace source custody shutdown failed.", null,
+                            sourceOperations.Select(operation => OwnedResourceCleanup.FromAction(operation.ReleaseSourceTransitionHandles)).ToArray());
+                    }
+                    finally
+                    {
+                        _recoveries.Clear();
+                        _activeMutations.Clear();
+                        _mutationEpochs.Clear();
+                        _mutationStates.Clear();
+                    }
+                }
+            }),
+            _workspaceSlots,
+            _lifetimeCancellation);
     }
 
     private static void StampCacheHitMetric(WorkspaceCacheWriteResult? result)
@@ -1169,15 +1244,23 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         }
     }
 
-    private Task LoadIntoSessionAsync(WorkspaceSession session, string path, CancellationToken ct)
-        => LoadIntoSessionAsync(session, path, globalProperties: null, ct);
+    private Task LoadIntoSessionAsync(WorkspaceSession session, string path, ForkInvocationAuthority? invocation, CancellationToken ct)
+        => LoadIntoSessionAsync(session, path,
+            session.Workspace?.Properties.ToDictionary(pair => pair.Key, pair => pair.Value),
+            expected: null, preservePreviews: false, SupplementalPackageReadAuthority.None, invocation, ct);
 
     private async Task LoadIntoSessionAsync(
         WorkspaceSession session,
         string path,
         IDictionary<string, string>? globalProperties,
+        PhysicalGraphExpectation? expected,
+        bool preservePreviews,
+        SupplementalPackageReadAuthority supplementalPackages,
+        ForkInvocationAuthority? invocation,
         CancellationToken ct)
     {
+        var forkInvocation = RequireInvocation(invocation);
+        forkInvocation?.RequireDestination(session, path, globalProperties);
         await session.LoadLock.WaitAsync(ct).ConfigureAwait(false);
         // autoreload-cascade-stdio-host-crash: build the new workspace + diagnostics queue into
         // locals, then swap them onto the session atomically on success. Previously we disposed
@@ -1194,70 +1277,85 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         var oldWorkspace = session.Workspace;
         var oldLease = session.AnalyzerLease;
         var swapped = false;
+        Exception? nativeLoadFailure = null;
+        Task AuthorizeLoadInputsAsync(IReadOnlyList<string> paths, CancellationToken token) =>
+            _pathPolicy.ValidateAsync(session.WorkspaceId, paths, token);
         try
         {
-            // workspace-load-uses-cache-fast-path: probe the persistent cache before the
-            // restore-race wait so a warm-cache hit can elide it. Computing the solution-content
-            // hash + sdk-version (the first two key components) is cheap (one file read + an
-            // SHA-256). The third key component — the MSBuild graph hash — is only known after
-            // OpenSolutionAsync, so the cache-key triple is finalized post-load and we look up
-            // by (solution, sdk) here as a candidate-set probe. The probe is best-effort: any
-            // failure leaves cachedCandidate null and the cold path runs unchanged.
+            if (expected is not null) await expected.AssertBuildInputsAsync(session.WorkspaceId, _pathPolicy, ct).ConfigureAwait(false);
+            // Hash only the current-authorized entry and deserialize the owned cache
+            // candidate. Untrusted cached coordinates are compared after native load;
+            // they never authorize or initiate physical reference observations.
             WorkspaceCacheProbe? cachedProbe = null;
             // Skip cache probe when caller passed global property overrides — different
             // Configuration / RuntimeIdentifier / etc. produce different MSBuild graph hashes
-            // and the post-load comparison would invalidate any hit anyway. Probing under
-            // overrides also risks short-circuiting the restore-race wait against a graph that
-            // was captured under different globals.
+            // and the post-load graph/reference comparison validates the actual
+            // overridden snapshot before any cache hit is reported.
             if (_cacheCoordinator is not null && globalProperties is not { Count: > 0 })
             {
-                cachedProbe = await _cacheCoordinator.TryProbeAsync(path, ct).ConfigureAwait(false);
+                cachedProbe = await _cacheCoordinator.TryProbeAsync(path, AuthorizeLoadInputsAsync, ct).ConfigureAwait(false);
             }
 
-            // dr-9-10-initial-does-not-wait-for-concurrent-to-finaliz: if a concurrent
-            // out-of-process `dotnet restore` is mutating `obj/project.assets.json` or
-            // `obj/*.dgspec.json` while we call OpenSolutionAsync, MSBuild latches onto an
-            // in-flight assets file and Roslyn captures stale MetadataReference handles
-            // (surfacing as CS1705 later, per the 2026-04-15 samplesolution experimental
-            // promotion audit). Poll the relevant obj/ artefacts and wait for their mtimes
-            // to stabilise before opening. Bounded by RestoreRaceWaitMs (default 2000 ms,
-            // 0 disables entirely); no-op when no such files exist.
-            //
-            // workspace-load-uses-cache-fast-path: when a usable cache entry exists for this
-            // (solution, sdk) pair AND every cached metadata-reference is still on disk with the
-            // same mtime, the warm process already saw stable artefacts on the prior load — skip
-            // the wait. Cache validation against the actual MSBuild graph happens after
-            // OpenSolutionAsync (the cache key's third component requires the post-load graph),
-            // so a probe-stage fast-path that is later invalidated by the post-load comparison
-            // costs at most one missed restore-race wait — which is exactly the cost the wait is
-            // designed to bound (max RestoreRaceWaitMs). Acceptable degradation.
-            var skipRestoreRaceWait = cachedProbe is not null && cachedProbe.MetadataReferencesStillStable;
-            if (!skipRestoreRaceWait)
-            {
-                await _restoreStalenessDetector.WaitForStableRestoreArtifactsAsync(path, _options.RestoreRaceWaitMs, _logger, ct).ConfigureAwait(false);
-            }
+            // A persisted candidate has no current native reference authority. It must
+            // never bypass the restore-race wait before the native snapshot exists.
+            await _restoreStalenessDetector.WaitForStableRestoreArtifactsAsync(path,
+                globalProperties is null ? new Dictionary<string, string>() : new Dictionary<string, string>(globalProperties),
+                AuthorizeLoadInputsAsync, _options.RestoreRaceWaitMs, _logger, ct).ConfigureAwait(false);
 
             // workspace-manager-loadintosession-split: delegate MSBuild creation + global-
             // properties wiring + Open + analyzer-reference retargeting to the loader. The
             // loader self-disposes on failure before returning, so the manager only handles
             // disposal of post-loader-success state (strip-analyzers, project-statuses,
             // cache-write failures).
-            (newWorkspace, newLease) = await _sessionLoader.CreateAndOpenAsync(
+            var loaded = await _sessionLoader.CreateAndOpenAsync(
                 session.WorkspaceId,
                 path,
                 globalProperties,
+                _pathPolicy,
                 diagnosticsSink,
                 _logger,
+                supplementalPackages, null,
                 ct).ConfigureAwait(false);
+            newWorkspace = loaded.Workspace;
+            newLease = loaded.Lease;
 
             // unresolved-analyzer-reference-crash: strip UnresolvedAnalyzerReference entries
             // from every project before any downstream caller can see them. SymbolFinder,
             // Compilation.GetDiagnostics, and Roslyn-internal switches over AnalyzerReference
             // subtypes throw "Unexpected value 'UnresolvedAnalyzerReference'" otherwise. The
             // earlier per-service guards in CompilationCache/FixAllService are now unnecessary.
-            await _analyzerReferenceStripper.StripAsync(session.WorkspaceId, newWorkspace, diagnosticsSink.Queue, MaxDiagnosticsPerWorkspace, _logger, ct).ConfigureAwait(false);
+            var analyzerProjection = await EvaluatedProjectGraph.WithPersistedReferenceMetadataAsync(
+                session.WorkspaceId, loaded.Context, _pathPolicy, ct).ConfigureAwait(false);
+            var loadedSolution = analyzerProjection.Solution;
+            var redactor = new MsBuildCommandProperties.Redactor(MsBuildCommandProperties.Append([], newWorkspace.Properties));
+            var compilerContextUnavailable = loaded.Context.Availability != NativeCompilerContextAvailability.Certified;
+            var preparationDiagnostics = analyzerProjection.Diagnostics.AsEnumerable();
+            if (compilerContextUnavailable)
+                preparationDiagnostics = preparationDiagnostics.Append(new DiagnosticDto(
+                    Id: "WORKSPACE_COMPILER_CONTEXT_UNAVAILABLE",
+                    Message: loaded.Context.RecoveryGuidance,
+                    Severity: WorkspaceDiagnosticSeverityClassifier.Classify(WorkspaceDiagnosticKind.Warning, ""),
+                    Category: "Workspace", FilePath: null, StartLine: null, StartColumn: null,
+                    EndLine: null, EndColumn: null, Location: null));
+            foreach (var diagnostic in preparationDiagnostics)
+            {
+                diagnosticsSink.Queue.Enqueue(diagnostic with
+                {
+                    Message = redactor.Text(diagnostic.Message),
+                    FilePath = diagnostic.FilePath is null ? null : redactor.Text(diagnostic.FilePath)
+                });
+                while (diagnosticsSink.Queue.Count > MaxDiagnosticsPerWorkspace) diagnosticsSink.Queue.TryDequeue(out _);
+            }
+            EnsureWorkspacePathsArePhysical(loadedSolution, requirePhysicalDocuments: !compilerContextUnavailable);
+            if (expected is not null)
+            {
+                await expected.AssertBuildInputsAsync(session.WorkspaceId, _pathPolicy, ct).ConfigureAwait(false);
+                await SolutionFileMutationPlanner.AssertEquivalentAsync(expected.Solution, loadedSolution,
+                    expected.MapPath, static path => path, verifyDocuments: true, expected.PathProperties, ct).ConfigureAwait(false);
+                expected.ExecutionIdentity.AssertEquivalent(loadedSolution, ct);
+                await expected.AssertBuildInputsAsync(session.WorkspaceId, _pathPolicy, ct).ConfigureAwait(false);
+            }
 
-            EnsureWorkspacePathsArePhysical(newWorkspace.CurrentSolution);
 
             // workspace-load-uses-cache-fast-path: capture the post-load project graph + per-
             // project metadata-reference list for cache write-back. Building the graph first
@@ -1267,9 +1365,12 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             // the load. Validating the cache means: (a) graph hash matches what we just observed,
             // and (b) metadata-reference timestamps still match disk. Either mismatch downgrades
             // the result to a cache miss and writes a fresh entry.
-            var projectStatuses = BuildProjectStatuses(newWorkspace.CurrentSolution);
-            var documentPaths = BuildDocumentPathIndex(newWorkspace.CurrentSolution);
-            var restoreRequired = _restoreStalenessDetector.DetectRestoreRequired(projectStatuses, _logger) ||
+            var projectStatuses = BuildProjectStatuses(loadedSolution, ct);
+            var documentPaths = BuildDocumentPathIndex(loadedSolution);
+            // Capability restrictions require grants or physical paths, not a restore.
+            // Keep restore readiness tied to the selecting package-input epoch.
+            var restoreRequired = loaded.Context.Availability == NativeCompilerContextAvailability.InvalidRestoreAssets
+                                  || await _restoreStalenessDetector.DetectRestoreRequiredAsync(loadedSolution, AuthorizeLoadedInputsAsync, _logger, ct).ConfigureAwait(false) ||
                                   RestoreStalenessDetector.HasRestoreRequiredWorkspaceDiagnostics(diagnosticsSink.Queue);
             // restore-required-vs-build-conflation: an unresolved-analyzer warning is a missing
             // BUILD output, distinct from a missing NuGet package. Track it separately so the
@@ -1277,15 +1378,24 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             // rather than a no-op `dotnet restore`.
             var buildRequired = WorkspaceDiagnosticClassifier.HasBuildRequired(diagnosticsSink.Queue);
 
-            if (_cacheCoordinator is not null && cachedProbe is not null)
+            Task AuthorizeLoadedInputsAsync(IReadOnlyList<string> paths, CancellationToken token) =>
+                loaded.Context.AuthorizeCurrentInputsAsync(loadedSolution, session.WorkspaceId, _pathPolicy, paths, token);
+
+            if (_cacheCoordinator is not null && compilerContextUnavailable)
             {
-                var result = await _cacheCoordinator.ResolveAndWriteAsync(newWorkspace.CurrentSolution, cachedProbe, ct)
+                // Metadata caching is optional; semantic-only snapshots do not mint
+                // intrinsic SDK/image read authority for nonessential cache work.
+                StampCacheHitMetric(new WorkspaceCacheWriteResult(CacheHit: false));
+            }
+            else if (_cacheCoordinator is not null && cachedProbe is not null)
+            {
+                var result = await _cacheCoordinator.ResolveAndWriteAsync(loadedSolution, cachedProbe, AuthorizeLoadedInputsAsync, ct)
                     .ConfigureAwait(false);
                 StampCacheHitMetric(result);
             }
             else if (_cacheCoordinator is not null)
             {
-                var result = await _cacheCoordinator.WriteFreshEntryAsync(newWorkspace.CurrentSolution, path, ct)
+                var result = await _cacheCoordinator.WriteFreshEntryAsync(loadedSolution, path, AuthorizeLoadedInputsAsync, ct)
                     .ConfigureAwait(false);
                 StampCacheHitMetric(result);
             }
@@ -1293,57 +1403,60 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             // autoreload-cascade-stdio-host-crash: atomic swap. Assign all session state AFTER
             // the new workspace is fully loaded so concurrent readers never observe a mid-reload
             // session (disposed workspace, empty project list, or mismatched LoadedPath).
-            session.Workspace = newWorkspace;
-            session.AnalyzerLease = newLease;
-            session.WorkspaceDiagnostics = diagnosticsSink.Queue;
-            session.ProjectStatuses = projectStatuses;
-            session.DocumentPaths = documentPaths;
-            session.LoadedPath = path;
-            session.RestoreRequired = restoreRequired;
-            session.BuildRequired = buildRequired;
-            session.LoadedAtUtc = DateTimeOffset.UtcNow;
-            session.IncrementVersion();
-            // format-range-apply-preview-token-lifetime: drop only the tokens whose pinned
-            // workspace-version range has been exceeded by this reload bump (default span = 1,
-            // so a preview → single-reload → apply sequence inside the TTL window still
-            // redeems). Replaces the prior unconditional `InvalidateAll` that surfaced as
-            // "Preview token not found or expired" on every `*_apply` racing a watcher-driven
-            // auto-reload. The captured Roslyn `Solution` snapshots are immutable graphs and
-            // remain readable after the prior `MSBuildWorkspace` is disposed below — the apply
-            // path's `RebaseModifiedSolutionOntoCurrentAsync` matches documents by file path,
-            // so the post-reload `ProjectId`/`DocumentId` lineage divergence is handled.
-            _previewStore.InvalidateOnVersionBump(session.WorkspaceId, session.Version);
+            await supplementalPackages.AssertCurrentAsync(ct).ConfigureAwait(false);
+            if (forkInvocation is not null) await forkInvocation.AssertCurrentAsync(ct).ConfigureAwait(false);
+            await loaded.Context.AssertLoadCurrentAsync(loadedSolution, session.WorkspaceId, _pathPolicy, supplementalPackages, expected is null ? null : PhysicalInputClosure.FromExpectation(expected), ct).ConfigureAwait(false);
+            forkInvocation?.AssertCurrent();
+            void Publish()
+            {
+                session.Publish(newWorkspace!, loadedSolution);
+                swapped = true;
+                session.AnalyzerLease = newLease;
+                session.WorkspaceDiagnostics = diagnosticsSink.Queue;
+                session.ProjectStatuses = projectStatuses;
+                session.DocumentPaths = documentPaths;
+                session.LoadedPath = path;
+                session.RestoreRequired = restoreRequired;
+                session.BuildRequired = buildRequired;
+                session.LoadedAtUtc = DateTimeOffset.UtcNow;
+                session.IncrementVersion();
+                AdvanceMutationEpoch(session);
+                // format-range-apply-preview-token-lifetime: drop only the tokens whose pinned
+                // workspace-version range has been exceeded by this reload bump (default span = 1,
+                // so a preview → single-reload → apply sequence inside the TTL window still
+                // redeems). Replaces the prior unconditional `InvalidateAll` that surfaced as
+                // "Preview token not found or expired" on every `*_apply` racing a watcher-driven
+                // auto-reload. The captured Roslyn `Solution` snapshots are immutable graphs and
+                // remain readable after the prior `MSBuildWorkspace` is disposed below — the apply
+                // path's `RebaseModifiedSolutionOntoCurrentAsync` matches documents by file path,
+                // so the post-reload `ProjectId`/`DocumentId` lineage divergence is handled.
+                if (!preservePreviews)
+                    _previewStore.InvalidateOnVersionBump(session.WorkspaceId, session.Version);
 
-            swapped = true;
+            }
+            if (forkInvocation is null) Publish();
+            else forkInvocation.Publish(session, Publish);
             LogWorkspaceLoaded(_logger, session.WorkspaceId, path, session.Version, null);
+        }
+        catch (Exception failure)
+        {
+            nativeLoadFailure = failure;
+            throw;
         }
         finally
         {
-            if (swapped)
+            try
             {
-                // Successful swap: oldWorkspace/oldLease were captured before the swap and are
-                // no longer referenced by the session. Safe to dispose — lease after workspace
-                // so Roslyn has released the old analyzer references first.
-                oldWorkspace?.Dispose();
-                // Null before disposing the lease: this async frame's local would otherwise
-                // keep the old solution graph (and its loaded analyzer assemblies) rooted
-                // while the lease's GC-assisted delete retries run.
-                oldWorkspace = null;
-                oldLease?.Dispose();
+                // Clear the workspace reference before releasing its analyzer lease so
+                // collectible assemblies are not rooted by this async frame during cleanup.
+                OwnedResourceCleanup.DisposePreservingFailure("Failed to release native workspace load resources.", nativeLoadFailure,
+                    OwnedResourceCleanup.FromAction(() =>
+                    {
+                        try { if (swapped) oldWorkspace?.Dispose(); else newWorkspace?.Dispose(); }
+                        finally { if (swapped) oldWorkspace = null; else newWorkspace = null; }
+                    }), swapped ? oldLease : newLease);
             }
-            else
-            {
-                // Load failed mid-way after the loader returned: dispose the half-initialized
-                // new workspace (and its analyzer shadow lease) and leave the session's prior
-                // state untouched. Readers continue to see the previous valid workspace rather
-                // than a broken one (or null). If the loader itself threw, it already disposed
-                // both — `newWorkspace`/`newLease` are null here so this is a no-op — the
-                // autoreload-cascade invariant holds.
-                newWorkspace?.Dispose();
-                newWorkspace = null;
-                newLease?.Dispose();
-            }
-            session.LoadLock.Release();
+            finally { session.LoadLock.Release(); }
         }
     }
 
@@ -1472,6 +1585,18 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
     /// </summary>
     public bool HasSession(string workspaceId) => _sessions.ContainsKey(workspaceId);
 
+    private static string ValidateWorkspacePathLexically(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || !Path.IsPathFullyQualified(path))
+            throw new PublicArgumentException(WorkspaceSessionLoader.SupportedPathCorrection, nameof(path));
+        var fullPath = Path.GetFullPath(path);
+        if (!fullPath.EndsWith(".sln", StringComparison.OrdinalIgnoreCase)
+            && !fullPath.EndsWith(".slnx", StringComparison.OrdinalIgnoreCase)
+            && !fullPath.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
+            throw new PublicArgumentException(WorkspaceSessionLoader.SupportedPathCorrection, nameof(path));
+        return fullPath;
+    }
+
     private static string ValidateWorkspacePath(string path)
     {
         if (string.IsNullOrWhiteSpace(path))
@@ -1495,11 +1620,14 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         return fullPath;
     }
 
-    private static void EnsureWorkspacePathsArePhysical(Solution solution)
+    private static void EnsureWorkspacePathsArePhysical(Solution solution, bool requirePhysicalDocuments)
     {
         foreach (var project in solution.Projects)
         {
             EnsurePhysicalPath(project.FilePath);
+            // Unavailable certificates preserve native semantic documents, including
+            // aliases, but cannot authorize compiler images or physical mutations.
+            if (!requirePhysicalDocuments) continue;
             var projectDirectory = Path.GetDirectoryName(project.FilePath);
             foreach (var document in project.Documents
                          .Concat<TextDocument>(project.AdditionalDocuments)
@@ -1521,12 +1649,15 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
 
     internal static void EnsureChangedDocumentPathsArePhysical(Solution current, Solution next)
     {
-        foreach (var project in next.Projects)
-        {
+        foreach (var project in current.Projects.Concat(next.Projects))
             EnsurePhysicalPath(project.FilePath);
-        }
 
         var changes = next.GetChanges(current);
+        if (changes.GetAddedProjects().Any() || changes.GetRemovedProjects().Any())
+        {
+            EnsurePhysicalPath(current.FilePath);
+            EnsurePhysicalPath(next.FilePath);
+        }
         foreach (var project in changes.GetAddedProjects().Concat(changes.GetRemovedProjects()))
         {
             foreach (var document in project.Documents
@@ -1568,14 +1699,19 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
     internal static void EnsurePhysicalPath(string? path)
     {
         if (string.IsNullOrWhiteSpace(path)) return;
+        if (!Path.IsPathFullyQualified(path))
+            throw new PublicInvalidOperationException("Workspace physical paths must be fully qualified.");
 
         var physicalPath = PhysicalPathResolver.Resolve(path);
-        if (FileSystemPath.Comparer.Equals(path, physicalPath)) return;
+        var lexicalPath = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+        if (FileSystemPath.Comparer.Equals(lexicalPath, physicalPath)) return;
 
-        throw new InvalidOperationException(
-            "Workspace project or modified document path has a filesystem-link component. " +
-            "Load and edit through the physical path.");
+        throw PhysicalPathRequired();
     }
+
+    internal static InvalidOperationException PhysicalPathRequired() => new(
+        "Workspace project or modified document path has a filesystem-link component. " +
+        "Load and edit through the physical path.");
 
     private static bool IsPathUnderDirectory(string path, string? directory)
     {
@@ -1594,11 +1730,27 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             .Select(path => PhysicalPathResolver.Resolve(path!))
             .ToImmutableHashSet(FileSystemPath.Comparer);
 
-    private ImmutableArray<ProjectStatusDto> BuildProjectStatuses(Solution solution)
+    private ImmutableArray<ProjectStatusDto> BuildProjectStatuses(Solution solution, CancellationToken ct)
     {
+        if (solution.ProjectIds.Count == 0) return [];
+        var graph = EvaluatedBuildGraph.Source(solution, ct);
         return solution.Projects.Select(project =>
         {
+            var contexts = EvaluatedBuildGraph.MatchingContexts(project, graph).Select(node => node.Inputs).ToArray();
+            if (contexts.Length == 0) throw new PublicInvalidOperationException("The loaded semantic project has no matching evaluated context.");
             var projectDoc = Helpers.ProjectMetadataParser.LoadProjectDocument(project.FilePath, _logger);
+            var outputTypes = contexts.Select(context => Helpers.ProjectMetadataParser.GetOutputType(context, projectDoc))
+                .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+            var outputType = outputTypes.Length == 1 ? outputTypes[0] : project.CompilationOptions?.OutputKind switch
+            {
+                OutputKind.ConsoleApplication => "Exe",
+                OutputKind.WindowsApplication => "WinExe",
+                OutputKind.DynamicallyLinkedLibrary => "Library",
+                OutputKind.NetModule => "Module",
+                OutputKind.WindowsRuntimeMetadata => "WinMDObj",
+                OutputKind.WindowsRuntimeApplication => "AppContainerExe",
+                _ => "unknown"
+            };
             return new ProjectStatusDto(
                 // project-graph-missing-metadata-fields: never emit an empty Name / FilePath
                 // into the status DTO. ResolveProjectName falls back through AssemblyName →
@@ -1615,23 +1767,37 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
                             : Helpers.ProjectMetadataParser.ResolveProjectName(referenced);
                     })
                     .ToList(),
-                TargetFrameworks: Helpers.ProjectMetadataParser.GetTargetFrameworks(project, projectDoc, _logger),
-                IsTestProject: Helpers.ProjectMetadataParser.IsTestProject(projectDoc),
+                TargetFrameworks: contexts.SelectMany(context => Helpers.ProjectMetadataParser.GetTargetFrameworks(context, projectDoc))
+                    .Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
+                // Status reports test capability across matching contexts; producers still require a unique context.
+                IsTestProject: Helpers.ProjectMetadataParser.IsTestProject(contexts),
                 AssemblyName: Helpers.ProjectMetadataParser.GetAssemblyName(project),
-                OutputType: Helpers.ProjectMetadataParser.GetOutputType(project, projectDoc, _logger));
+                OutputType: outputType);
         }).ToImmutableArray();
     }
 
     private sealed class WorkspaceSession(string workspaceId) : IDisposable
     {
         private int _version;
+        private int _disposed;
 
         public string WorkspaceId { get; } = workspaceId;
         public SemaphoreSlim LoadLock { get; } = new(1, 1);
         public ConcurrentQueue<DiagnosticDto> WorkspaceDiagnostics { get; set; } = new();
         public ImmutableArray<ProjectStatusDto> ProjectStatuses { get; set; } = ImmutableArray<ProjectStatusDto>.Empty;
         public ImmutableHashSet<string> DocumentPaths { get; set; } = ImmutableHashSet.Create<string>(FileSystemPath.Comparer);
-        public MSBuildWorkspace? Workspace { get; set; }
+        public sealed record LoadedGraph(MSBuildWorkspace Workspace, Solution Solution);
+        private LoadedGraph? _loaded;
+        public MSBuildWorkspace? Workspace
+        {
+            get => Volatile.Read(ref _loaded)?.Workspace;
+            set => Volatile.Write(ref _loaded, value is null ? null : new LoadedGraph(value, value.CurrentSolution));
+        }
+        public LoadedGraph? Capture() => Volatile.Read(ref _loaded);
+        public void Publish(MSBuildWorkspace workspace, Solution solution)
+        {
+            Volatile.Write(ref _loaded, new LoadedGraph(workspace, solution));
+        }
 
         /// <summary>
         /// analyzer-shadow-loader-lifecycle: owns the per-load analyzer shadow-copy loaders'
@@ -1654,16 +1820,18 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
 
         public void Dispose()
         {
-            Workspace?.Dispose();
-            // Lease after workspace so Roslyn has released the analyzer references before the
-            // load contexts are unloaded and the shadow root is deleted; the Workspace field is
-            // nulled first so this frame's session reference does not keep the solution graph
-            // (and through it the loaded analyzer assemblies) rooted while the lease's
-            // GC-assisted delete retries run. Lease disposal is idempotent, so the
-            // eviction/close/host-shutdown paths can all reach here safely.
-            Workspace = null;
-            AnalyzerLease?.Dispose();
-            LoadLock.Dispose();
+            if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+            MSBuildWorkspace? workspace = Interlocked.Exchange(ref _loaded, null)?.Workspace;
+            var lease = AnalyzerLease;
+            AnalyzerLease = null;
+            // Release the workspace reference before its analyzer lease so the solution
+            // graph does not retain collectible assemblies during owned loader cleanup.
+            OwnedResourceCleanup.Dispose("Workspace session resource cleanup failed.", null,
+                OwnedResourceCleanup.FromAction(() =>
+                {
+                    try { workspace?.Dispose(); }
+                    finally { workspace = null; }
+                }), lease, LoadLock);
         }
     }
 }

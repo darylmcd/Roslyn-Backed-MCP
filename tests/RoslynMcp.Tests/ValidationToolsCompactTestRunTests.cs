@@ -136,9 +136,9 @@ public sealed class ValidationToolsCompactTestRunTests
         Skipped: 0,
         Failures: [new TestFailureDto("SomeTest", "Ns.SomeTest", "assert failed", null)]);
 
-    private sealed class StubTestRunnerService(TestRunResultDto result) : ITestRunnerService
+    private sealed class StubTestRunnerService(TestRunResultDto result) : RoslynMcp.Tests.Helpers.CannedTestRunner
     {
-        public Task<TestRunResultDto> RunTestsAsync(
+        public override Task<TestRunResultDto> RunTestsAsync(
             string workspaceId,
             string? projectName,
             string? filter,

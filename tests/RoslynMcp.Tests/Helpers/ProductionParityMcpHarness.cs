@@ -10,16 +10,40 @@ using RoslynMcp.Host.Stdio.Catalog;
 using RoslynMcp.Host.Stdio.Middleware;
 using RoslynMcp.Roslyn;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Roslyn.Contracts;
 
 namespace RoslynMcp.Tests.Helpers;
 
 /// <summary>
 /// Builds an in-memory client/server pair over the full host composition with the same message
 /// and request filters <c>Program.cs</c> registers, so raw-wire contract tests observe the frames a
-/// real client receives. The filesystem boundary is the repository root.
+/// real client receives. CreateAsync uses the repository boundary unless explicitly configured;
+/// CreateOwnedAsync requires a fixture root and supplies its concrete owned native path policy.
+/// LoadOwnedWorkspaceAsync initializes the real manager directly with captured native globals;
+/// it is fixture setup and does not provide workspace_load wire coverage.
 /// </summary>
 internal static class ProductionParityMcpHarness
 {
+    /// <summary>Uses the production host composition with an explicit owned native fixture boundary.</summary>
+    internal static Task<InMemoryMcpClientServerHarness> CreateOwnedAsync(
+        string transportName, string? protocolVersion, string fixtureRoot) =>
+        CreateAsync(transportName, protocolVersion, services =>
+        {
+            services.AddSingleton(new SecurityOptions { SanctionedRoots = [fixtureRoot] });
+            services.AddSingleton(new ForkInvocationPathPolicy(new OwnedTestWorkspacePathPolicy([fixtureRoot])));
+        });
+
+    /// <summary>Preloads fixture state in the harness's real manager with explicit native MSBuild globals.</summary>
+    internal static async Task<string> LoadOwnedWorkspaceAsync(
+        InMemoryMcpClientServerHarness harness, string path, CancellationToken ct)
+    {
+        var manager = harness.ServerServices.GetRequiredService<IWorkspaceManager>();
+        Assert.IsInstanceOfType<WorkspaceManager>(manager, "The production contract must resolve the real provider-owned manager for native fixture setup.");
+        var status = await ((WorkspaceManager)manager).LoadAsync(path,
+            OwnedNativeLoadContext.Properties(path, new Dictionary<string, string>()), ct);
+        return status.WorkspaceId;
+    }
+
     /// <param name="transportName">Label for the in-memory transport and disposal diagnostics.</param>
     /// <param name="protocolVersion">Requested protocol version, or <see langword="null"/> for the latest.</param>
     /// <param name="configureServices">

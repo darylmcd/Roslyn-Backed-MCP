@@ -21,12 +21,6 @@ public sealed class DiLifetimeOverrideTests : IsolatedWorkspaceTestBase
         InitializeServices();
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup()
-    {
-        DisposeServices();
-    }
-
     [TestMethod]
     public async Task ShowLifetimeOverrides_Off_Default_Result_Matches_Legacy_Shape()
     {

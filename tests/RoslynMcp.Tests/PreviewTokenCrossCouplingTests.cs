@@ -9,7 +9,7 @@ namespace RoslynMcp.Tests;
 /// <c>dr-9-6-preview-token-issued-in-turn-t-invalidated-by-a</c> + FLAG
 /// <c>severity-flag-unexpected-coupling-of-preview-tokens</c>). Before the fix, the
 /// <see cref="PreviewStore"/> shared a single workspace-version stamp across all tokens
-/// and <see cref="WorkspaceManager.TryApplyChanges"/> called <c>InvalidateAll</c> on every
+/// and the physical apply transaction called <c>InvalidateAll</c> on every
 /// successful apply — so any sibling <c>*_apply</c> in the same turn would invalidate
 /// every outstanding preview token. The fix captures an isolated per-token
 /// <see cref="Microsoft.CodeAnalysis.Solution"/> snapshot pair (<c>OriginalSolution</c> +
@@ -23,12 +23,6 @@ public sealed class PreviewTokenCrossCouplingTests : IsolatedWorkspaceTestBase
     public static void ClassInit(TestContext _)
     {
         InitializeServices();
-    }
-
-    [ClassCleanup]
-    public static void ClassCleanup()
-    {
-        DisposeServices();
     }
 
     /// <summary>
@@ -141,6 +135,7 @@ public sealed class PreviewTokenCrossCouplingTests : IsolatedWorkspaceTestBase
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
         AddProjectToCopiedSolution(workspace.RootPath, "Contracts", "net10.0");
+        await RestoreCopiedSolutionAsync(workspace.SolutionPath, new Dictionary<string, string>(), CancellationToken.None);
         await workspace.LoadAsync(CancellationToken.None);
 
         var sourceFilePath = workspace.GetPath("SampleLib", "AnimalService.cs");

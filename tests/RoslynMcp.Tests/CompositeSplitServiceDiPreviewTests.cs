@@ -18,12 +18,6 @@ public sealed class CompositeSplitServiceDiPreviewTests : IsolatedWorkspaceTestB
         InitializeServices();
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup()
-    {
-        DisposeServices();
-    }
-
     [TestMethod]
     public async Task Split_Service_With_Di_Preview_Emits_Partitions_Facade_And_Di_Registration_Rewrite()
     {

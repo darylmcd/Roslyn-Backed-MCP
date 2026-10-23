@@ -10,9 +10,6 @@ public sealed class NamespaceRelocationTests : IsolatedWorkspaceTestBase
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     private static NamespaceRelocationService CreateService()
     {
         return new NamespaceRelocationService(

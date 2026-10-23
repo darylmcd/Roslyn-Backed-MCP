@@ -1,172 +1,119 @@
+using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
 using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
-/// <summary>
-/// tunit-mtp-native-test-run: dotnet test resolves its execution mode from the nearest
-/// global.json's "test.runner" setting, walking up from the target project's directory exactly
-/// like the dotnet CLI's own SDK-resolution walk. DotnetTestModeResolver mirrors that walk so
-/// TestRunnerService can tell whether a repo has opted into the .NET 10 SDK's native MTP
-/// dotnet-test mode before attempting to run an MTP-only test framework (TUnit) — verified by
-/// direct repro that there is no working fallback when it hasn't.
-/// </summary>
 [TestClass]
 public sealed class DotnetTestModeResolverTests
 {
-    private readonly List<string> _createdRoots = [];
-
-    [TestCleanup]
-    public async Task Cleanup() =>
-        await CleanupFailureCollector.DeleteDirectoriesAsync(_createdRoots);
-
-    private string CreateTempDirectory()
+    [TestMethod]
+    [DataRow("{}", false)]
+    [DataRow("{\"test\":{\"runner\":\"VSTest\"}}", false)]
+    [DataRow("{/* SDK-independent test configuration */\"test\":{\"runner\":\"Microsoft.Testing.Platform\",},}", true)]
+    public async Task AuthorizedNearestConfiguration_SelectsModeWithoutDependingOnSdkVersion(string json, bool mtp)
     {
-        var root = Path.Combine(Path.GetTempPath(), "DotnetTestModeResolverTests", Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(root);
-        _createdRoots.Add(root);
-        return root;
+        using var fixture = new Fixture();
+        await File.WriteAllTextAsync(Path.Combine(fixture.Root, "global.json"), json);
+        var context = await DotnetTestModeResolver.ResolveAsync("mode", fixture.Project, fixture.Policy, CancellationToken.None);
+        Assert.AreEqual(mtp, context.UsesNativeMtp);
+        Assert.AreEqual(Path.Combine(fixture.Root, "global.json"), context.GlobalJsonPath);
+        Assert.AreEqual(2, context.Candidates.Length);
+        Assert.IsFalse(context.Candidates[0].Exists);
+        await DotnetTestModeResolver.ValidateAsync("mode", fixture.Project, context, fixture.Policy, CancellationToken.None);
     }
 
     [TestMethod]
-    public void UsesNativeMtpDotnetTest_NoGlobalJsonAnywhere_ReturnsFalse()
+    public async Task UnauthorizedAncestor_RefusesInsteadOfAssumingVSTestOrReadingInheritedConfiguration()
     {
-        var projectDir = CreateTempDirectory();
-
-        Assert.IsFalse(DotnetTestModeResolver.UsesNativeMtpDotnetTest(projectDir));
+        using var fixture = new Fixture();
+        var failure = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
+            DotnetTestModeResolver.ResolveAsync("mode", fixture.Project, fixture.Policy, CancellationToken.None));
+        StringAssert.Contains(failure.Message, "Place an explicit global.json");
+        Assert.IsNull(failure.InnerException);
+        Assert.AreEqual(3, fixture.Policy.Requests.Count);
     }
 
     [TestMethod]
-    public void UsesNativeMtpDotnetTest_GlobalJsonInSameDirectory_OptsIn_ReturnsTrue()
+    [DataRow("{")]
+    [DataRow("[]")]
+    [DataRow("{\"test\":17}")]
+    [DataRow("{\"test\":{\"runner\":17}}")]
+    [DataRow("{\"test\":{\"runner\":\"synthetic-private-unknown-runner\"}}")]
+    public async Task InvalidAuthorizedConfiguration_RefusesWithoutLeakingRawContents(string json)
     {
-        var projectDir = CreateTempDirectory();
-        File.WriteAllText(
-            Path.Combine(projectDir, "global.json"),
-            """{ "test": { "runner": "Microsoft.Testing.Platform" } }""");
-
-        Assert.IsTrue(DotnetTestModeResolver.UsesNativeMtpDotnetTest(projectDir));
+        using var fixture = new Fixture();
+        await File.WriteAllTextAsync(Path.Combine(fixture.Root, "global.json"), json);
+        var failure = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
+            DotnetTestModeResolver.ResolveAsync("mode", fixture.Project, fixture.Policy, CancellationToken.None));
+        Assert.IsFalse(failure.ToString().Contains("synthetic-private-unknown-runner", StringComparison.Ordinal));
+        Assert.IsNull(failure.InnerException);
     }
 
     [TestMethod]
-    public void UsesNativeMtpDotnetTest_GlobalJsonInParentDirectory_WalksUp_ReturnsTrue()
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task PreparedContext_RejectsChangedSelectedOrNewNearerConfiguration(bool createNearer)
     {
-        var repoRoot = CreateTempDirectory();
-        var projectDir = Path.Combine(repoRoot, "src", "MyTests");
-        Directory.CreateDirectory(projectDir);
-        File.WriteAllText(
-            Path.Combine(repoRoot, "global.json"),
-            """{ "test": { "runner": "Microsoft.Testing.Platform" } }""");
-
-        Assert.IsTrue(DotnetTestModeResolver.UsesNativeMtpDotnetTest(projectDir));
+        using var fixture = new Fixture();
+        var selected = Path.Combine(fixture.Root, "global.json");
+        await File.WriteAllTextAsync(selected, "{}");
+        var context = await DotnetTestModeResolver.ResolveAsync("mode", fixture.Project, fixture.Policy, CancellationToken.None);
+        await File.WriteAllTextAsync(createNearer ? Path.Combine(fixture.Project, "global.json") : selected,
+            "{\"test\":{\"runner\":\"Microsoft.Testing.Platform\"}}");
+        await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
+            DotnetTestModeResolver.ValidateAsync("mode", fixture.Project, context, fixture.Policy, CancellationToken.None));
     }
 
     [TestMethod]
-    public void UsesNativeMtpDotnetTest_GlobalJsonWithoutTestSection_ReturnsFalse()
+    public async Task OwnedConfigurationOverlay_ResolvesDesiredBytesWithoutReadingOrWritingAppliedContents()
     {
-        var projectDir = CreateTempDirectory();
-        File.WriteAllText(
-            Path.Combine(projectDir, "global.json"),
-            """{ "sdk": { "version": "10.0.100" } }""");
-
-        Assert.IsFalse(DotnetTestModeResolver.UsesNativeMtpDotnetTest(projectDir));
+        using var fixture = new Fixture();
+        var path = Path.Combine(fixture.Root, "global.json");
+        const string applied = "{\"test\":{\"runner\":\"Microsoft.Testing.Platform\"}}";
+        await File.WriteAllTextAsync(path, applied);
+        var owned = new Dictionary<string, FileSnapshotDto>(FileSystemPath.Comparer)
+        {
+            [path] = FileSnapshotDto.FromExistingBytes(path, System.Text.Encoding.UTF8.GetBytes("{}"))
+        };
+        var context = await DotnetTestModeResolver.ResolveOverlayAsync("mode", fixture.Project, owned, fixture.Policy, CancellationToken.None);
+        Assert.IsFalse(context.UsesNativeMtp);
+        Assert.AreEqual(applied, File.ReadAllText(path));
+        Assert.AreEqual(path, context.GlobalJsonPath);
     }
 
     [TestMethod]
-    public void UsesNativeMtpDotnetTest_GlobalJsonRunnerNotMtp_ReturnsFalse()
+    public async Task NearestOwnedConfiguration_StopsBeforeUnauthorizedParent()
     {
-        var projectDir = CreateTempDirectory();
-        File.WriteAllText(
-            Path.Combine(projectDir, "global.json"),
-            """{ "test": { "runner": "VSTest" } }""");
-
-        Assert.IsFalse(DotnetTestModeResolver.UsesNativeMtpDotnetTest(projectDir));
+        using var fixture = new Fixture();
+        await File.WriteAllTextAsync(Path.Combine(fixture.Project, "global.json"), "{}");
+        var context = await DotnetTestModeResolver.ResolveAsync("mode", fixture.Project, fixture.Policy, CancellationToken.None);
+        Assert.IsFalse(context.UsesNativeMtp);
+        Assert.AreEqual(1, fixture.Policy.Requests.Count);
+        Assert.AreEqual(1, context.Candidates.Length);
     }
 
-    [TestMethod]
-    public void UsesNativeMtpDotnetTest_MalformedGlobalJson_ReturnsFalseWithoutThrowing()
+    private sealed class Fixture : IDisposable
     {
-        var projectDir = CreateTempDirectory();
-        File.WriteAllText(Path.Combine(projectDir, "global.json"), "{ not valid json");
-
-        Assert.IsFalse(DotnetTestModeResolver.UsesNativeMtpDotnetTest(projectDir));
+        internal string Root { get; } = Path.Combine(TestTempRoot.Current, nameof(DotnetTestModeResolverTests), Guid.NewGuid().ToString("N"));
+        internal string Project => Path.Combine(Root, "Project");
+        internal BoundaryPolicy Policy { get; }
+        internal Fixture()
+        {
+            Directory.CreateDirectory(Project);
+            Policy = new BoundaryPolicy(Root);
+        }
+        public void Dispose() => TestFixtureFileSystem.DeleteDirectoryIfExists(Root);
     }
-
-    [TestMethod]
-    public void UsesNativeMtpDotnetTest_NearestGlobalJsonWins_StopsAtFirstMatch()
+    private sealed class BoundaryPolicy(string root) : IWorkspacePathPolicy
     {
-        // The nearest global.json to the project must win, even if an ancestor further up
-        // opts into native MTP mode — this mirrors the dotnet CLI's own SDK-resolution walk,
-        // which stops at the first global.json found.
-        var repoRoot = CreateTempDirectory();
-        File.WriteAllText(
-            Path.Combine(repoRoot, "global.json"),
-            """{ "test": { "runner": "Microsoft.Testing.Platform" } }""");
-        var projectDir = Path.Combine(repoRoot, "src", "MyTests");
-        Directory.CreateDirectory(projectDir);
-        File.WriteAllText(
-            Path.Combine(Path.Combine(repoRoot, "src"), "global.json"),
-            """{ "sdk": { "version": "10.0.100" } }""");
-
-        Assert.IsFalse(DotnetTestModeResolver.UsesNativeMtpDotnetTest(projectDir));
-    }
-
-    [TestMethod]
-    public void UsesNativeMtpDotnetTest_GlobalJsonWithComments_StillParses()
-    {
-        // global.json officially allows JS/C#-style comments and trailing commas
-        // (learn.microsoft.com/dotnet/core/tools/global-json#comments-in-globaljson); a naive
-        // JsonDocument.Parse rejects them, which would silently misclassify a validly-commented,
-        // correctly-opted-in repo as VSTest mode.
-        var projectDir = CreateTempDirectory();
-        File.WriteAllText(
-            Path.Combine(projectDir, "global.json"),
-            """
-            {
-              // opt into the native MTP test runner
-              "test": { "runner": "Microsoft.Testing.Platform", /* trailing comma below */ },
-            }
-            """);
-
-        Assert.IsTrue(DotnetTestModeResolver.UsesNativeMtpDotnetTest(projectDir));
-    }
-
-    [TestMethod]
-    public void UsesNativeMtpDotnetTest_RunnerValueIsNotAString_ReturnsFalseWithoutThrowing()
-    {
-        // JsonElement.GetString() throws InvalidOperationException for a non-string ValueKind,
-        // and that exception type isn't in ReadsNativeMtpRunner's catch filter — an unguarded
-        // call would let a malformed "runner" value crash out of what's otherwise documented as
-        // a safe, best-effort "assume VSTest mode" fallback.
-        var projectDir = CreateTempDirectory();
-        File.WriteAllText(
-            Path.Combine(projectDir, "global.json"),
-            """{ "test": { "runner": 1 } }""");
-
-        Assert.IsFalse(DotnetTestModeResolver.UsesNativeMtpDotnetTest(projectDir));
-    }
-
-    [TestMethod]
-    public async Task Cleanup_DeleteFailureForOneRoot_SurfacesAggregateExceptionAfterAttemptingAllRoots()
-    {
-        var root1 = CreateTempDirectory();
-        var root2 = CreateTempDirectory();
-        var expectedFailure = new IOException("Injected delete failure.");
-
-        var ex = await Assert.ThrowsExactlyAsync<AggregateException>(async () =>
-            await CleanupFailureCollector.DeleteDirectoriesAsync(
-                [root1, root2],
-                root =>
-                {
-                    if (string.Equals(root, root1, StringComparison.Ordinal))
-                    {
-                        throw expectedFailure;
-                    }
-
-                    Directory.Delete(root, recursive: true);
-                }));
-
-        Assert.AreEqual(1, ex.InnerExceptions.Count);
-        Assert.AreSame(expectedFailure, ex.InnerExceptions[0]);
-        Assert.IsFalse(Directory.Exists(root2), "The second root's delete must still be attempted despite the first root's failure.");
+        internal List<string> Requests { get; } = [];
+        public async Task ValidateAsync(string workspaceId, IReadOnlyList<string> paths, CancellationToken ct)
+        {
+            Requests.AddRange(paths);
+            if (paths.Any(path => !FileSystemPath.IsStrictDescendant(root, path)))
+                throw new UnauthorizedAccessException("Synthetic current authority boundary.");
+            await new OwnedTestWorkspacePathPolicy().ValidateAsync(workspaceId, paths, ct);
+        }
     }
 }

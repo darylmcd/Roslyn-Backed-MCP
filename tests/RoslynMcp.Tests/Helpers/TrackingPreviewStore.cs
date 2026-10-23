@@ -26,20 +26,9 @@ internal sealed class TrackingPreviewStore(IPreviewStore inner) : IPreviewStore
             if (inner.PeekWorkspaceId(token) is null) _tokens.TryRemove(token, out _);
     }
 
-    public string Store(string workspaceId, Solution modifiedSolution, int workspaceVersion, string description) =>
-        Track(workspaceId, inner.Store(workspaceId, modifiedSolution, workspaceVersion, description));
-
-    public string Store(string workspaceId, Solution modifiedSolution, int workspaceVersion, string description, bool diffTruncated) =>
-        Track(workspaceId, inner.Store(workspaceId, modifiedSolution, workspaceVersion, description, diffTruncated));
-
-    public string Store(string workspaceId, Solution modifiedSolution, int workspaceVersion, string description, bool diffTruncated, PreviewKind kind) =>
-        Track(workspaceId, inner.Store(workspaceId, modifiedSolution, workspaceVersion, description, diffTruncated, kind));
-
-    public string Store(string workspaceId, Solution modifiedSolution, int workspaceVersion, string description, IReadOnlyList<FileChangeDto> changes) =>
-        Track(workspaceId, inner.Store(workspaceId, modifiedSolution, workspaceVersion, description, changes));
-
-    public string Store(string workspaceId, Solution modifiedSolution, int workspaceVersion, string description, IReadOnlyList<FileChangeDto> changes, PreviewKind kind) =>
-        Track(workspaceId, inner.Store(workspaceId, modifiedSolution, workspaceVersion, description, changes, kind));
+    public string Store(string workspaceId, Solution originalSolution, Solution modifiedSolution, int workspaceVersion,
+        string description, IReadOnlyList<FileChangeDto> changes, PreviewKind kind)
+        => Track(workspaceId, inner.Store(workspaceId, originalSolution, modifiedSolution, workspaceVersion, description, changes, kind));
 
     public (string WorkspaceId, Solution OriginalSolution, Solution ModifiedSolution, int WorkspaceVersion, string Description, bool DiffTruncated)? Retrieve(string token) => inner.Retrieve(token);
 

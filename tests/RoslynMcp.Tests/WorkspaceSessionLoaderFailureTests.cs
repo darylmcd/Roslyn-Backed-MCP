@@ -50,7 +50,7 @@ public sealed class WorkspaceSessionLoaderFailureTests
     public async Task LoaderThrowsOnReload_SessionPreservesOldWorkspace_AndCurrentSolutionStillReadable()
     {
         var loader = new ThrowAfterFirstCallLoader();
-        using var manager = new WorkspaceManager(
+        using var manager = new WorkspaceManager(new RoslynMcp.Roslyn.Services.ForkInvocationPathPolicy(new RoslynMcp.Tests.Helpers.OwnedTestWorkspacePathPolicy()),
             NullLogger<WorkspaceManager>.Instance,
             new PreviewStore(),
             new FileWatcherService(NullLogger<FileWatcherService>.Instance),
@@ -58,7 +58,7 @@ public sealed class WorkspaceSessionLoaderFailureTests
             cacheStore: null,
             sessionLoader: loader);
 
-        var status = await manager.LoadAsync(s_sampleSolutionPath, CancellationToken.None);
+        var status = await manager.LoadAsync(s_sampleSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(s_sampleSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
         Assert.AreEqual(1, loader.CallCount, "Initial LoadAsync must invoke the loader exactly once.");
         Assert.IsTrue(status.IsLoaded, "Initial load must succeed before exercising the throwing reload path.");
 
@@ -80,13 +80,14 @@ public sealed class WorkspaceSessionLoaderFailureTests
     {
         public int CallCount { get; private set; }
 
-        public override async Task<(MSBuildWorkspace Workspace, AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease Lease)> CreateAndOpenAsync(
+        public override async Task<(MSBuildWorkspace Workspace, AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease Lease, NativeCompilerContextCertificate Context, NativeSourceAdmission.SourceAdmissionReceipt? SourceAdmission)> CreateAndOpenAsync(
             string workspaceId,
             string path,
             IDictionary<string, string>? globalProperties,
+            IWorkspacePathPolicy pathPolicy,
             WorkspaceDiagnosticsSink diagnostics,
             ILogger logger,
-            CancellationToken ct)
+            SupplementalPackageReadAuthority supplementalPackages, NativeSourceAdmission? sourceAdmission, CancellationToken ct)
         {
             CallCount++;
             if (CallCount > 1)
@@ -95,7 +96,7 @@ public sealed class WorkspaceSessionLoaderFailureTests
                     "Simulated loader failure on call #" + CallCount + " (workspace=" + workspaceId + ").");
             }
             return await base.CreateAndOpenAsync(
-                workspaceId, path, globalProperties, diagnostics, logger, ct).ConfigureAwait(false);
+                workspaceId, path, globalProperties, pathPolicy, diagnostics, logger, supplementalPackages, sourceAdmission, ct).ConfigureAwait(false);
         }
     }
 }

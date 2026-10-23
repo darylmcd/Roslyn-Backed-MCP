@@ -16,12 +16,6 @@ public sealed class DeadCodeIntegrationTests : SharedWorkspaceTestBase
         InitializeServices();
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup()
-    {
-        DisposeServices();
-    }
-
     [TestMethod]
     public async Task Remove_Dead_Code_Preview_And_Apply_Removes_Unused_Field()
     {
@@ -41,7 +35,7 @@ public sealed class DeadCodeIntegrationTests : SharedWorkspaceTestBase
                 Environment.NewLine + Environment.NewLine + "    private void UnusedTestOnlyMethod()" + Environment.NewLine + "    {" + Environment.NewLine + "    }" + Environment.NewLine);
             await File.WriteAllTextAsync(dogFilePath, seededContents, CancellationToken.None);
 
-            var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+            var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
             var workspaceId = status.WorkspaceId;
             var unusedSymbols = await UnusedCodeAnalyzer.FindUnusedSymbolsAsync(
                 workspaceId,

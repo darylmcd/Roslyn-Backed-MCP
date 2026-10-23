@@ -21,12 +21,6 @@ public class IntegrationTests_WorkspaceCore : SharedWorkspaceTestBase
         WorkspaceId = await GetOrLoadWorkspaceIdAsync(SampleSolutionPath, CancellationToken.None);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup()
-    {
-        DisposeServices();
-    }
-
     [TestMethod]
     public void Workspace_Load_Returns_WorkspaceId_And_Metadata()
     {

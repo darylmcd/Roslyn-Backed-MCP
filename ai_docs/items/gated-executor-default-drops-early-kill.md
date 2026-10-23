@@ -22,3 +22,5 @@
 ## Context
 
 - Found while rechecking the preserved test-run package-isolation row. Independent of environment authority and the selected fifteen-item batch.
+
+Live2026-10-15: forced companion of restore command safety migration. Remove the same pattern-dropping default in IDotnetCommandRunner as well as IGatedCommandExecutor; migrate every owned implementation/double and preserve actual argument/cancellation/timeout/ownership behavior. Require causal interface proof, not signatures alone.

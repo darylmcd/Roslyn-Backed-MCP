@@ -6,6 +6,7 @@ using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Contracts;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests.Services;
 
@@ -158,9 +159,9 @@ public sealed class GatedCommandExecutorTests
     /// Stub runner — <see cref="GatedCommandExecutor.ExecuteAsync(string, string, IReadOnlyList{string}, TimeSpan, CancellationToken)"/>
     /// calls it once per invocation; returns a trivial success result without spawning a process.
     /// </summary>
-    private sealed class StubCommandRunner : IDotnetCommandRunner
+    private sealed class StubCommandRunner : RoslynMcp.Tests.Helpers.CannedCommandRunner
     {
-        public Task<CommandExecutionDto> RunAsync(
+        public override Task<CommandExecutionDto> RunAsync(
             string workingDirectory, string targetPath, IReadOnlyList<string> arguments, CancellationToken ct)
             => Task.FromResult(new CommandExecutionDto(
                 "dotnet", arguments, workingDirectory, targetPath, 0, true, 1, string.Empty, string.Empty));
@@ -192,8 +193,12 @@ public sealed class GatedCommandExecutorTests
         public Task<IReadOnlyList<GeneratedDocumentDto>> GetSourceGeneratedDocumentsAsync(string workspaceId, string? projectName, CancellationToken ct) => throw new NotSupportedException();
         public Task<string?> GetSourceTextAsync(string workspaceId, string filePath, CancellationToken ct) => throw new NotSupportedException();
         public int GetCurrentVersion(string workspaceId) => throw new NotSupportedException();
+        public Task<System.Collections.Immutable.ImmutableArray<RoslynMcp.Roslyn.Contracts.AdmittedModuleImage>> ReadAdmittedImagesAsync(
+            string workspaceId, Microsoft.CodeAnalysis.ProjectId projectId, Microsoft.CodeAnalysis.PortableExecutableReference reference, CancellationToken ct) =>
+            throw new NotSupportedException();
+
         public Solution GetCurrentSolution(string workspaceId) => throw new NotSupportedException();
-        public bool TryApplyChanges(string workspaceId, Solution newSolution) => throw new NotSupportedException();
+
         public void RestoreVersion(string workspaceId, int version) => throw new NotSupportedException();
         public Project? GetProject(string workspaceId, string projectNameOrPath) => throw new NotSupportedException();
     }

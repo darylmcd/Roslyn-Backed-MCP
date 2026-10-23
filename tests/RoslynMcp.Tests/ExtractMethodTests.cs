@@ -13,9 +13,6 @@ public sealed class ExtractMethodTests : IsolatedWorkspaceTestBase
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     /// <summary>
     /// Extract 3 statements (lines 13-15) from ComputeAndPrint into a new method.
     /// Verifies preview produces a diff with the new method and the call site.
@@ -139,7 +136,7 @@ public sealed class ExtractMethodTests : IsolatedWorkspaceTestBase
             "");
         await File.WriteAllTextAsync(fixturePath, source);
 
-        var loadResult = await WorkspaceManager.LoadAsync(solutionPath, CancellationToken.None);
+        var loadResult = await WorkspaceManager.LoadAsync(solutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(solutionPath, new Dictionary<string, string>()), CancellationToken.None);
         try
         {
             var preview = await ExtractMethodService.PreviewExtractMethodAsync(

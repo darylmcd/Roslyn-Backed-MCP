@@ -4,7 +4,7 @@
 
 ## Anchors
 
-- `src/RoslynMcp.Host.Stdio/Tools/ClientRootPathValidator.cs:89-188`
+- `src/RoslynMcp.Host.Stdio/Tools/ClientRootPathValidator.cs:78`
 - `src/RoslynMcp.Host.Stdio/Security/LegacyClientRootsNarrowingAdapter.cs:38`
 - `src/RoslynMcp.Host.Stdio/Security/ConfiguredRootBoundary.cs:58`
 - `tests/RoslynMcp.Tests/ClientRootPathValidatorTests.cs`

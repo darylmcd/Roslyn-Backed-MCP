@@ -16,9 +16,6 @@ public sealed class PreviewMultiFileEditSyntaxRegressionTests : IsolatedWorkspac
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     public async Task PreviewMultiFile_F17NamespaceCommentBrace_ThrowsWhenSyntaxCheckEnabled()
     {

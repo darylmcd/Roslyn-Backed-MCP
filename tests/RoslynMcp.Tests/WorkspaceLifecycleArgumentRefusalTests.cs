@@ -18,6 +18,7 @@ public sealed class WorkspaceLifecycleArgumentRefusalTests
     private const string Sentinel = "caller-private-lifecycle-sentinel";
 
     private static WorkspaceManager CreateManager() => new(
+        new RoslynMcp.Roslyn.Services.ForkInvocationPathPolicy(new RoslynMcp.Tests.Helpers.OwnedTestWorkspacePathPolicy()),
         NullLogger<WorkspaceManager>.Instance, new PreviewStore(),
         new FileWatcherService(NullLogger<FileWatcherService>.Instance));
 
@@ -47,7 +48,7 @@ public sealed class WorkspaceLifecycleArgumentRefusalTests
                 () => manager.LoadAsync(path, CancellationToken.None));
             var loaderError = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
                 new WorkspaceSessionLoader().CreateAndOpenAsync("isolated-loader", path, null,
-                    new WorkspaceDiagnosticsSink(16), NullLogger.Instance, CancellationToken.None));
+                    new OwnedTestWorkspacePathPolicy(), new WorkspaceDiagnosticsSink(16), NullLogger.Instance, SupplementalPackageReadAuthority.None, null, CancellationToken.None));
             AssertRefusal(managerError, "path", ExtensionCorrection, path);
             AssertRefusal(loaderError, "path", ExtensionCorrection, path);
             Assert.AreEqual(managerError.PublicMessage, loaderError.PublicMessage);

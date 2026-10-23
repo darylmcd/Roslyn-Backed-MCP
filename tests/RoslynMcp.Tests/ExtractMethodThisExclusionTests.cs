@@ -21,12 +21,6 @@ public sealed class ExtractMethodThisExclusionTests : TestBase
         InitializeServices();
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup()
-    {
-        DisposeServices();
-    }
-
     [TestMethod]
     public async Task ExtractMethod_From_InstanceMethod_Reading_Field_Does_Not_Add_This_Parameter()
     {
@@ -55,7 +49,7 @@ public sealed class ExtractMethodThisExclusionTests : TestBase
             }
             """);
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
         var workspaceId = loadResult.WorkspaceId;
 
         try
@@ -121,7 +115,7 @@ public sealed class ExtractMethodThisExclusionTests : TestBase
             }
             """);
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
         var workspaceId = loadResult.WorkspaceId;
 
         try

@@ -1,15 +1,12 @@
-using System.Xml.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Contracts;
 using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Roslyn.Services;
 
-/// <summary>
-/// Persists Roslyn document-set and project-reference changes while preserving
-/// semantically unchanged project-file bytes.
-/// </summary>
+/// <summary>Stages the complete physical mutation plan before publishing loaded workspace authority.</summary>
 internal sealed class DocumentSetPersistenceService
 {
     private readonly IWorkspaceManager _workspace;
@@ -17,14 +14,9 @@ internal sealed class DocumentSetPersistenceService
     private readonly IDocumentSetFileSystem _fileSystem;
 
     public DocumentSetPersistenceService(IWorkspaceManager workspace, ILogger logger)
-        : this(workspace, logger, PhysicalDocumentSetFileSystem.Instance)
-    {
-    }
+        : this(workspace, logger, PhysicalDocumentSetFileSystem.Instance) { }
 
-    internal DocumentSetPersistenceService(
-        IWorkspaceManager workspace,
-        ILogger logger,
-        IDocumentSetFileSystem fileSystem)
+    internal DocumentSetPersistenceService(IWorkspaceManager workspace, ILogger logger, IDocumentSetFileSystem fileSystem)
     {
         _workspace = workspace;
         _logger = logger;
@@ -32,648 +24,200 @@ internal sealed class DocumentSetPersistenceService
     }
 
     public async Task<(bool Success, IReadOnlyList<string> AppliedFiles)> PersistAsync(
-        string workspaceId,
-        Solution currentSolution,
-        Solution modifiedSolution,
-        SolutionChanges solutionChanges,
-        CancellationToken ct)
+        string workspaceId, Solution currentSolution, Solution modifiedSolution,
+        SolutionChanges solutionChanges, IReadOnlyList<FileSnapshotDto> beforeSnapshots,
+        PhysicalMutationRecovery physicalOperation, CancellationToken ct)
     {
-        DocumentSetPersistenceState? persistenceState = null;
-
         try
         {
-            // PersistCoreAsync writes document bytes before TryApplyChanges. Reject linked
-            // document paths before the first snapshot or write, including imported files.
+            var authority = _workspace as IWorkspaceRecoveryAuthority
+                ?? throw InvalidOperationErrors.Internal("Physical persistence requires workspace-owned recovery authority.");
+            var currentPaths = currentSolution.Projects.Select(project => project.FilePath).Append(currentSolution.FilePath)
+                .Concat(currentSolution.Projects.SelectMany(SolutionFileMutationPlanner.AllDocuments).Select(document => document.FilePath))
+                .OfType<string>().Where(path => physicalOperation.CapturedLayout is null || !physicalOperation.CapturedLayout.IsImmutablePath(path));
+            await authority.AuthorizePathsAsync(workspaceId, currentPaths.Concat(beforeSnapshots.Select(file => file.FilePath))
+                .Distinct(FileSystemPath.Comparer).ToArray(), ct).ConfigureAwait(false);
             WorkspaceManager.EnsureChangedDocumentPathsArePhysical(currentSolution, modifiedSolution);
-            persistenceState = await CreatePersistenceStateAsync(
-                currentSolution,
-                modifiedSolution,
-                solutionChanges,
-                ct).ConfigureAwait(false);
-            await PersistCoreAsync(
-                workspaceId,
-                currentSolution,
-                modifiedSolution,
-                solutionChanges,
-                persistenceState,
-                ct).ConfigureAwait(false);
-
-            return (true, persistenceState.GetDistinctAppliedFiles());
+            var references = await RestoredCompilerInputAuthority.CaptureReferenceAuthorityAsync(
+                currentSolution, currentSolution.ProjectIds.ToArray(),
+                (path, token) => ReadAuthorizedAsync(workspaceId, path, token),
+                (path, token) => ReadDigestAuthorizedAsync(workspaceId, path, token),
+                (paths, token) => authority.AuthorizePathsAsync(workspaceId, paths, token), ct).ConfigureAwait(false);
+            await SolutionFileMutationPlanner.AssertCurrentDiskAuthorityAsync(currentSolution, references, ct).ConfigureAwait(false);
+            var mutations = await SolutionFileMutationPlanner.CreateAsync(currentSolution, modifiedSolution,
+                (path, token) => ReadAuthorizedAsync(workspaceId, path, token),
+                references, includeDocuments: true, allowVirtualPaths: false, ct).ConfigureAwait(false);
+            var snapshots = beforeSnapshots.ToDictionary(file => Path.GetFullPath(file.FilePath), FileSystemPath.Comparer);
+            foreach (var mutation in mutations)
+            {
+                if (!snapshots.TryGetValue(Path.GetFullPath(mutation.Path), out var snapshot)
+                    || (snapshot.OriginalText is null ? mutation.Before is not null
+                        : mutation.Before is null || (!snapshot.OriginalBytes.IsDefault
+                            ? !snapshot.OriginalBytes.AsSpan().SequenceEqual(mutation.Before)
+                            : snapshot.OriginalText != CsprojSemanticEquality.CreateSnapshot(mutation.Before).Content)))
+                    throw new PublicInvalidOperationException("Source bytes changed after undo preparation; reload before applying the preview.");
+            }
+            return await PersistMutationsAsync(workspaceId,
+                SolutionFileMutationPlanner.WithPhysicalDocumentText(modifiedSolution, mutations), mutations, physicalOperation, ct).ConfigureAwait(false);
         }
-        catch (Exception ex)
+        catch (Exception failure) when (failure is not IPublicMessageException
+            && failure is (IOException or UnauthorizedAccessException or InvalidOperationException))
         {
-            if (persistenceState is not null)
-            {
-                await RollBackAsync(
-                    workspaceId,
-                    persistenceState.FileSnapshots,
-                    ex).ConfigureAwait(false);
-            }
-
-            if (ex is OperationCanceledException)
-            {
-                throw;
-            }
-
-            if (ex is not IOException
-                && ex is not UnauthorizedAccessException
-                && ex is not InvalidOperationException)
-            {
-                throw;
-            }
-
-            _logger.LogWarning(ex, "Failed to persist document set changes for workspace {WorkspaceId}", workspaceId);
+            _logger.LogWarning(failure, "Failed to prepare changes for workspace {WorkspaceId}", workspaceId);
             return (false, []);
         }
     }
 
-    private async Task<DocumentSetPersistenceState> CreatePersistenceStateAsync(
-        Solution currentSolution,
-        Solution modifiedSolution,
-        SolutionChanges solutionChanges,
-        CancellationToken ct)
+    internal async Task<(bool Success, IReadOnlyList<string> AppliedFiles)> PersistMutationsAsync(
+        string workspaceId, Solution? expected, IReadOnlyList<SolutionFileMutationPlanner.Mutation> exactPlan,
+        PhysicalMutationRecovery physicalOperation, CancellationToken ct)
     {
-        var allCsprojSnapshots = await CsprojSemanticEquality.SnapshotProjectsAsync(
-            currentSolution.Projects
-                .Select(project => project.FilePath)
-                .Where(path => !string.IsNullOrWhiteSpace(path))!,
-            _logger,
-            ct).ConfigureAwait(false);
-        var fileSnapshots = await SnapshotPotentiallyMutatedFilesAsync(
-            currentSolution,
-            modifiedSolution,
-            solutionChanges,
-            allCsprojSnapshots.Keys,
-            ct).ConfigureAwait(false);
-
-        return new DocumentSetPersistenceState(
-            new Dictionary<string, CsprojSemanticEquality.ProjectFileSnapshot>(FileSystemPath.Comparer),
-            new List<string>(),
-            allCsprojSnapshots,
-            fileSnapshots);
-    }
-
-    private async Task PersistCoreAsync(
-        string workspaceId,
-        Solution currentSolution,
-        Solution modifiedSolution,
-        SolutionChanges solutionChanges,
-        DocumentSetPersistenceState persistenceState,
-        CancellationToken ct)
-    {
-        foreach (var projectChange in solutionChanges.GetProjectChanges())
+        var touched = new List<SolutionFileMutationPlanner.Mutation>();
+        IWorkspaceMutationLease? lease = null;
+        IPhysicalRestorationAuthority? desiredGraph = null;
+        Exception? primaryFailure = null;
+        var recoveryAuthority = _workspace as IWorkspaceRecoveryAuthority
+            ?? throw InvalidOperationErrors.Internal("Physical persistence requires workspace-owned recovery authority.");
+        try
         {
-            await PersistProjectDocumentChangesAsync(
-                currentSolution,
-                modifiedSolution,
-                projectChange,
-                persistenceState,
-                ct).ConfigureAwait(false);
-        }
-
-        await ApplyChangesAsync(
-            workspaceId,
-            currentSolution,
-            modifiedSolution,
-            solutionChanges,
-            persistenceState.SdkProjectCsprojSnapshots,
-            persistenceState.AllCsprojSnapshots,
-            ct).ConfigureAwait(false);
-    }
-
-    private async Task PersistProjectDocumentChangesAsync(
-        Solution currentSolution,
-        Solution modifiedSolution,
-        ProjectChanges projectChange,
-        DocumentSetPersistenceState persistenceState,
-        CancellationToken ct)
-    {
-        await PersistProjectReferenceChangesAsync(
-            currentSolution,
-            modifiedSolution,
-            projectChange,
-            persistenceState.AppliedFiles,
-            ct).ConfigureAwait(false);
-
-        var addedDocuments = projectChange.GetAddedDocuments().ToList();
-        SnapshotSdkProjectCsproj(
-            modifiedSolution,
-            projectChange.ProjectId,
-            addedDocuments.Count > 0,
-            persistenceState.SdkProjectCsprojSnapshots,
-            persistenceState.AllCsprojSnapshots);
-
-        await PersistAddedDocumentsAsync(
-            modifiedSolution,
-            addedDocuments,
-            persistenceState.AppliedFiles,
-            ct).ConfigureAwait(false);
-        await PersistChangedDocumentsAsync(
-            modifiedSolution,
-            projectChange.GetChangedDocuments(),
-            persistenceState.AppliedFiles,
-            ct).ConfigureAwait(false);
-        PersistRemovedDocuments(
-            currentSolution,
-            projectChange.GetRemovedDocuments(),
-            persistenceState.AppliedFiles);
-    }
-
-    private void SnapshotSdkProjectCsproj(
-        Solution modifiedSolution,
-        ProjectId projectId,
-        bool hasAddedDocuments,
-        Dictionary<string, CsprojSemanticEquality.ProjectFileSnapshot> sdkProjectCsprojSnapshots,
-        IReadOnlyDictionary<string, CsprojSemanticEquality.ProjectFileSnapshot> allCsprojSnapshots)
-    {
-        if (!hasAddedDocuments)
-        {
-            return;
-        }
-
-        var project = modifiedSolution.GetProject(projectId);
-        if (project?.FilePath is null
-            || sdkProjectCsprojSnapshots.ContainsKey(project.FilePath)
-            || !ProjectMetadataParser.IsSdkStyleWithDefaultCompileItems(project.FilePath, _logger))
-        {
-            return;
-        }
-
-        if (!allCsprojSnapshots.TryGetValue(project.FilePath, out var snapshot))
-        {
-            throw new IOException(
-                $"Could not snapshot SDK-style project file '{project.FilePath}' before persistence.");
-        }
-
-        sdkProjectCsprojSnapshots[project.FilePath] = snapshot;
-    }
-
-    private async Task PersistAddedDocumentsAsync(
-        Solution modifiedSolution,
-        IReadOnlyCollection<DocumentId> addedDocuments,
-        List<string> appliedFiles,
-        CancellationToken ct)
-    {
-        foreach (var documentId in addedDocuments)
-        {
-            var document = modifiedSolution.GetDocument(documentId);
-            if (document?.FilePath is null)
+            await recoveryAuthority.AuthorizePathsAsync(workspaceId, exactPlan.Select(mutation => mutation.Path).ToArray(), ct).ConfigureAwait(false);
+            foreach (var mutation in exactPlan) WorkspaceManager.EnsurePhysicalPath(mutation.Path);
+            var mutations = exactPlan.Select(mutation => mutation with { Path = Path.GetFullPath(mutation.Path) })
+                .Where(mutation => mutation.Before is null ? mutation.After is not null
+                : mutation.After is null || !mutation.Before.AsSpan().SequenceEqual(mutation.After)).ToArray();
+            var ownedFiles = physicalOperation.Files.ToDictionary(file => file.FilePath, FileSystemPath.Comparer);
+            foreach (var mutation in mutations)
+                if (!ownedFiles.TryGetValue(mutation.Path, out var file)
+                    || (mutation.Before is null ? file.OriginalText is not null
+                        : file.OriginalBytes.IsDefault || !file.OriginalBytes.AsSpan().SequenceEqual(mutation.Before)))
+                    throw InvalidOperationErrors.Internal("The physical plan must match its operation's exact captured file ownership.");
+            recoveryAuthority.EnsureMutationAllowed(workspaceId, mutations.Select(mutation => mutation.Path).ToArray());
+            await recoveryAuthority.AuthorizePathsAsync(workspaceId, mutations.Select(mutation => mutation.Path).ToArray(), ct).ConfigureAwait(false);
+            foreach (var mutation in mutations)
             {
-                continue;
+                WorkspaceManager.EnsurePhysicalPath(mutation.Path);
+                var actual = await FileSnapshotCapture.ReadIfPresentAsync(mutation.Path, _fileSystem.ReadAllBytesAsync, ct).ConfigureAwait(false);
+                if (mutation.Before is null ? actual is not null : actual is null || !mutation.Before.AsSpan().SequenceEqual(actual))
+                    throw new PublicInvalidOperationException("Source bytes changed after transaction preparation; reload before applying changes.");
             }
-
-            var directory = Path.GetDirectoryName(document.FilePath);
-            if (!string.IsNullOrWhiteSpace(directory))
+            if (mutations.Length == 0) return (true, []);
+            if (physicalOperation.WorkspaceId != workspaceId)
+                throw InvalidOperationErrors.Internal("Physical mutation authority belongs to another workspace.");
+            lease = await recoveryAuthority.BeginMutationAsync(physicalOperation, ct).ConfigureAwait(false);
+            if (physicalOperation.CapturedLayout is not null)
             {
-                _fileSystem.CreateDirectory(directory);
+                var finalFiles = physicalOperation.Files.ToDictionary(file => file.FilePath, FileSystemPath.Comparer);
+                foreach (var mutation in mutations)
+                    finalFiles[mutation.Path] = mutation.After is null ? new FileSnapshotDto(mutation.Path, null)
+                        : FileSnapshotDto.FromExistingBytes(mutation.Path, mutation.After);
+                desiredGraph = await recoveryAuthority.StageRestorationAsync(physicalOperation, finalFiles.Values.ToArray(),
+                    physicalOperation.CapturedLayout, ct).ConfigureAwait(false);
+                if (expected is not null)
+                    await SolutionFileMutationPlanner.AssertEquivalentAsync(desiredGraph.Expected.Solution, expected,
+                        desiredGraph.Expected.MapPath, static path => path, verifyDocuments: true,
+                        desiredGraph.Expected.PathProperties, ct).ConfigureAwait(false);
             }
-
-            var text = (await document.GetTextAsync(ct).ConfigureAwait(false)).ToString();
-            await _fileSystem.WriteAllTextAsync(document.FilePath, text, ct).ConfigureAwait(false);
-            appliedFiles.Add(document.FilePath);
-        }
-    }
-
-    private async Task PersistChangedDocumentsAsync(
-        Solution modifiedSolution,
-        IEnumerable<DocumentId> changedDocuments,
-        List<string> appliedFiles,
-        CancellationToken ct)
-    {
-        foreach (var documentId in changedDocuments)
-        {
-            var document = modifiedSolution.GetDocument(documentId);
-            if (document?.FilePath is null)
+            foreach (var mutation in mutations)
             {
-                continue;
+                ct.ThrowIfCancellationRequested();
+                await PhysicalMutationFileGuard.AssertMatchesAsync(mutation.Path, mutation.Before,
+                    (path, token) => ReadAuthorizedAsync(workspaceId, path, token), ct).ConfigureAwait(false);
+                touched.Add(mutation);
+                lease.BeforeWrite(mutation.After is null ? new FileSnapshotDto(mutation.Path, null)
+                    : FileSnapshotDto.FromExistingBytes(mutation.Path, mutation.After));
+                await WriteAsync(workspaceId, mutation.Path, mutation.Before, mutation.After, physicalOperation, ct).ConfigureAwait(false);
             }
-
-            var text = (await document.GetTextAsync(ct).ConfigureAwait(false)).ToString();
-            await _fileSystem.WriteAllTextAsync(document.FilePath, text, ct).ConfigureAwait(false);
-            appliedFiles.Add(document.FilePath);
-        }
-    }
-
-    private void PersistRemovedDocuments(
-        Solution currentSolution,
-        IEnumerable<DocumentId> removedDocuments,
-        List<string> appliedFiles)
-    {
-        foreach (var documentId in removedDocuments)
-        {
-            var document = currentSolution.GetDocument(documentId);
-            if (document?.FilePath is null)
-            {
-                continue;
-            }
-
-            if (_fileSystem.FileExists(document.FilePath))
-            {
-                _fileSystem.DeleteFile(document.FilePath);
-            }
-
-            appliedFiles.Add(document.FilePath);
-        }
-    }
-
-    private async Task ApplyChangesAsync(
-        string workspaceId,
-        Solution currentSolution,
-        Solution modifiedSolution,
-        SolutionChanges solutionChanges,
-        Dictionary<string, CsprojSemanticEquality.ProjectFileSnapshot> sdkProjectCsprojSnapshots,
-        IReadOnlyDictionary<string, CsprojSemanticEquality.ProjectFileSnapshot> allCsprojSnapshots,
-        CancellationToken ct)
-    {
-        var applied = _workspace.TryApplyChanges(workspaceId, modifiedSolution);
-
-        await RestoreSdkProjectSnapshotsAsync(sdkProjectCsprojSnapshots, ct).ConfigureAwait(false);
-        await CsprojSemanticEquality.RestoreTriviaOnlyDriftAsync(
-            allCsprojSnapshots,
-            sdkProjectCsprojSnapshots.Keys.ToHashSet(FileSystemPath.Comparer),
-            _logger,
-            operationTag: "csproj-reserialization-msbuildworkspace",
-            ct: ct,
-            throwOnFailure: true).ConfigureAwait(false);
-        await RestoreProjectReferenceWritesAsync(
-            currentSolution,
-            modifiedSolution,
-            solutionChanges,
-            allCsprojSnapshots,
-            ct).ConfigureAwait(false);
-
-        if (!applied)
-        {
-            throw new InvalidOperationException(
-                $"TryApplyChanges rejected persisted document-set changes for workspace '{workspaceId}'.");
-        }
-    }
-
-    private async Task RestoreProjectReferenceWritesAsync(
-        Solution currentSolution,
-        Solution modifiedSolution,
-        SolutionChanges solutionChanges,
-        IReadOnlyDictionary<string, CsprojSemanticEquality.ProjectFileSnapshot> originalSnapshots,
-        CancellationToken ct)
-    {
-        foreach (var projectChange in solutionChanges.GetProjectChanges())
-        {
-            if (!projectChange.GetAddedProjectReferences().Any()
-                && !projectChange.GetRemovedProjectReferences().Any())
-            {
-                continue;
-            }
-
-            var projectPath = modifiedSolution.GetProject(projectChange.ProjectId)?.FilePath;
-            if (projectPath is null || !originalSnapshots.TryGetValue(projectPath, out var original))
-            {
-                throw new IOException(
-                    $"Could not restore the original encoding for project file '{projectPath}'.");
-            }
-
-            var currentBytes = await _fileSystem.ReadAllBytesAsync(projectPath, ct).ConfigureAwait(false);
-            var current = CsprojSemanticEquality.CreateSnapshot(currentBytes);
-            var document = XDocument.Parse(current.Content, LoadOptions.PreserveWhitespace);
-            var projectDirectory = Path.GetDirectoryName(projectPath)
-                ?? throw new InvalidOperationException("Project file path must have a parent directory.");
-            AddProjectReferences(
-                document,
-                projectDirectory,
-                modifiedSolution,
-                projectChange.GetAddedProjectReferences());
-            RemoveProjectReferences(
-                document,
-                projectDirectory,
-                currentSolution,
-                modifiedSolution,
-                projectChange.GetRemovedProjectReferences());
-            var encodedBytes = original.Encode(document);
-            if (!currentBytes.AsSpan().SequenceEqual(encodedBytes))
-            {
-                await _fileSystem.WriteAllBytesAsync(projectPath, encodedBytes, ct).ConfigureAwait(false);
-            }
-        }
-    }
-
-    private async Task RestoreSdkProjectSnapshotsAsync(
-        Dictionary<string, CsprojSemanticEquality.ProjectFileSnapshot> sdkProjectCsprojSnapshots,
-        CancellationToken ct)
-    {
-        foreach (var (csprojPath, original) in sdkProjectCsprojSnapshots)
-        {
-            var currentBytes = await _fileSystem.ReadAllBytesAsync(csprojPath, ct).ConfigureAwait(false);
-            if (!currentBytes.AsSpan().SequenceEqual(original.Bytes))
-            {
-                await _fileSystem.WriteAllBytesAsync(csprojPath, original.Bytes, ct).ConfigureAwait(false);
-                _logger.LogDebug(
-                    "Restored SDK-style csproj {Path} after TryApplyChanges injected an explicit Compile item.",
-                    csprojPath);
-            }
-        }
-    }
-
-    private async Task PersistProjectReferenceChangesAsync(
-        Solution currentSolution,
-        Solution modifiedSolution,
-        ProjectChanges projectChange,
-        List<string> appliedFiles,
-        CancellationToken ct)
-    {
-        var modifiedProject = modifiedSolution.GetProject(projectChange.ProjectId);
-        if (modifiedProject?.FilePath is null || !_fileSystem.FileExists(modifiedProject.FilePath))
-        {
-            return;
-        }
-
-        var addedProjectReferences = projectChange.GetAddedProjectReferences().ToArray();
-        var removedProjectReferences = projectChange.GetRemovedProjectReferences().ToArray();
-        if (addedProjectReferences.Length == 0 && removedProjectReferences.Length == 0)
-        {
-            return;
-        }
-
-        var originalBytes = await _fileSystem
-            .ReadAllBytesAsync(modifiedProject.FilePath, ct)
-            .ConfigureAwait(false);
-        var originalSnapshot = CsprojSemanticEquality.CreateSnapshot(originalBytes);
-        var document = XDocument.Parse(originalSnapshot.Content, LoadOptions.PreserveWhitespace);
-        var projectDirectory = Path.GetDirectoryName(modifiedProject.FilePath)
-            ?? throw new InvalidOperationException("Project file path must have a parent directory.");
-        var changed = AddProjectReferences(
-            document,
-            projectDirectory,
-            modifiedSolution,
-            addedProjectReferences);
-        changed |= RemoveProjectReferences(
-            document,
-            projectDirectory,
-            currentSolution,
-            modifiedSolution,
-            removedProjectReferences);
-
-        if (!changed)
-        {
-            return;
-        }
-
-        await _fileSystem.WriteAllBytesAsync(
-            modifiedProject.FilePath,
-            originalSnapshot.Encode(document),
-            ct).ConfigureAwait(false);
-        appliedFiles.Add(modifiedProject.FilePath);
-    }
-
-    private static bool AddProjectReferences(
-        XDocument document,
-        string projectDirectory,
-        Solution modifiedSolution,
-        IEnumerable<ProjectReference> addedProjectReferences)
-    {
-        var changed = false;
-        foreach (var projectReference in addedProjectReferences)
-        {
-            var referencedProject = modifiedSolution.GetProject(projectReference.ProjectId);
-            if (referencedProject?.FilePath is null
-                || document.Descendants("ProjectReference").Any(element =>
-                    ProjectReferenceTargetsPath(
-                        (string?)element.Attribute("Include"),
-                        projectDirectory,
-                        referencedProject.FilePath)))
-            {
-                continue;
-            }
-
-            var relativePath = Path.GetRelativePath(projectDirectory, referencedProject.FilePath);
-            OrchestrationMsBuildXml.GetOrCreateItemGroup(document, "ProjectReference")
-                .Add(new XElement("ProjectReference", new XAttribute("Include", relativePath)));
-            changed = true;
-        }
-
-        return changed;
-    }
-
-    private static bool RemoveProjectReferences(
-        XDocument document,
-        string projectDirectory,
-        Solution currentSolution,
-        Solution modifiedSolution,
-        IEnumerable<ProjectReference> removedProjectReferences)
-    {
-        var changed = false;
-        foreach (var projectReference in removedProjectReferences)
-        {
-            var referencedProject = currentSolution.GetProject(projectReference.ProjectId)
-                ?? modifiedSolution.GetProject(projectReference.ProjectId);
-            if (referencedProject?.FilePath is null)
-            {
-                continue;
-            }
-
-            var element = document.Descendants("ProjectReference").FirstOrDefault(candidate =>
-                ProjectReferenceTargetsPath(
-                    (string?)candidate.Attribute("Include"),
-                    projectDirectory,
-                    referencedProject.FilePath));
-            if (element is null)
-            {
-                continue;
-            }
-
-            element.Remove();
-            changed = true;
-        }
-
-        return changed;
-    }
-
-    private async Task<IReadOnlyDictionary<string, FileMutationSnapshot>> SnapshotPotentiallyMutatedFilesAsync(
-        Solution currentSolution,
-        Solution modifiedSolution,
-        SolutionChanges solutionChanges,
-        IEnumerable<string> allCsprojPaths,
-        CancellationToken ct)
-    {
-        var paths = new HashSet<string>(allCsprojPaths, FileSystemPath.Comparer);
-
-        foreach (var projectChange in solutionChanges.GetProjectChanges())
-        {
-            AddPath(paths, currentSolution.GetProject(projectChange.ProjectId)?.FilePath);
-            AddPath(paths, modifiedSolution.GetProject(projectChange.ProjectId)?.FilePath);
-
-            foreach (var documentId in projectChange.GetAddedDocuments())
-            {
-                AddPath(paths, modifiedSolution.GetDocument(documentId)?.FilePath);
-            }
-
-            foreach (var documentId in projectChange.GetChangedDocuments())
-            {
-                AddPath(paths, currentSolution.GetDocument(documentId)?.FilePath);
-                AddPath(paths, modifiedSolution.GetDocument(documentId)?.FilePath);
-            }
-
-            foreach (var documentId in projectChange.GetRemovedDocuments())
-            {
-                AddPath(paths, currentSolution.GetDocument(documentId)?.FilePath);
-            }
-        }
-
-        var snapshots = new Dictionary<string, FileMutationSnapshot>(FileSystemPath.Comparer);
-        foreach (var path in paths.OrderBy(static path => path, FileSystemPath.Comparer))
-        {
-            if (_fileSystem.FileExists(path))
-            {
-                var bytes = await _fileSystem.ReadAllBytesAsync(path, ct).ConfigureAwait(false);
-                snapshots[path] = new FileMutationSnapshot(Existed: true, Bytes: bytes);
-            }
+            if (desiredGraph is not null)
+                await recoveryAuthority.CommitRestorationAsync(physicalOperation, desiredGraph.Expected, retainedRecovery: false, ct).ConfigureAwait(false);
             else
-            {
-                snapshots[path] = new FileMutationSnapshot(Existed: false, Bytes: null);
-            }
+                await recoveryAuthority.CommitMutationAsync(physicalOperation, expected, ct).ConfigureAwait(false);
+            foreach (var mutation in mutations)
+                await PhysicalMutationFileGuard.AssertMatchesAsync(mutation.Path, mutation.After,
+                    (path, token) => ReadAuthorizedAsync(workspaceId, path, token), ct).ConfigureAwait(false);
+            var byPath = mutations.ToDictionary(mutation => mutation.Path, FileSystemPath.Comparer);
+            lease.Complete(physicalOperation.Files.Select(file => byPath.TryGetValue(file.FilePath, out var mutation)
+                ? mutation.After is null ? new FileSnapshotDto(file.FilePath, null) : FileSnapshotDto.FromExistingBytes(file.FilePath, mutation.After)
+                : file).ToArray());
+            return (true, mutations.Select(mutation => mutation.Path).Distinct(FileSystemPath.Comparer).ToArray());
         }
-
-        return snapshots;
-    }
-
-    private static void AddPath(ISet<string> paths, string? path)
-    {
-        if (!string.IsNullOrWhiteSpace(path))
+        catch (Exception failure)
         {
-            paths.Add(Path.GetFullPath(path));
-        }
-    }
-
-    private async Task RollBackAsync(
-        string workspaceId,
-        IReadOnlyDictionary<string, FileMutationSnapshot> snapshots,
-        Exception persistenceFailure)
-    {
-        var rollbackFailures = new List<Exception>();
-        foreach (var (path, snapshot) in snapshots)
-        {
-            try
+            primaryFailure = failure;
+            var failures = new List<Exception> { failure };
+            foreach (var mutation in touched.AsEnumerable().Reverse())
             {
-                if (snapshot.Existed)
+                try
                 {
-                    var directory = Path.GetDirectoryName(path);
-                    if (!string.IsNullOrWhiteSpace(directory))
-                    {
-                        _fileSystem.CreateDirectory(directory);
-                    }
-
-                    await _fileSystem.WriteAllBytesAsync(
-                        path,
-                        snapshot.Bytes
-                            ?? throw new InvalidOperationException(
-                                $"Snapshot for existing file '{path}' did not contain bytes."),
-                        CancellationToken.None).ConfigureAwait(false);
+                    await PhysicalMutationFileGuard.RestoreEntryIfOwnedAsync(mutation.Path, mutation.Before, mutation.After,
+                        (path, token) => ReadAuthorizedAsync(workspaceId, path, token),
+                        (path, expectedBytes, bytes, token) => WriteAsync(workspaceId, path, expectedBytes, bytes, physicalOperation, token), CancellationToken.None).ConfigureAwait(false);
                 }
-                else if (_fileSystem.FileExists(path))
-                {
-                    _fileSystem.DeleteFile(path);
-                }
+                catch (Exception rollbackFailure) { failures.Add(rollbackFailure); }
             }
-            catch (Exception ex)
+            if (lease is not null)
             {
-                rollbackFailures.Add(ex);
+                try
+                {
+                    if (failures.Count == 1) await lease.AbortAsync(CancellationToken.None).ConfigureAwait(false);
+                    else recoveryAuthority.RetainRecovery(physicalOperation);
+                }
+                catch (Exception retentionFailure) { failures.Add(retentionFailure); }
             }
+            if (failures.Count > 1)
+            {
+                primaryFailure = new AggregateException("Physical persistence failed and restoring original files also failed.", failures);
+                throw primaryFailure;
+            }
+            if (failure is OperationCanceledException or IPublicMessageException) throw;
+            if (failure is not IOException and not UnauthorizedAccessException and not InvalidOperationException) throw;
+            _logger.LogWarning(failure, "Failed to persist changes for workspace {WorkspaceId}", workspaceId);
+            return (false, []);
         }
-
-        try
-        {
-            await _workspace.ReloadAsync(workspaceId, CancellationToken.None).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            rollbackFailures.Add(ex);
-        }
-
-        if (rollbackFailures.Count == 0)
-        {
-            return;
-        }
-
-        rollbackFailures.Insert(0, persistenceFailure);
-        throw new AggregateException(
-            $"Document-set persistence failed and rollback could not fully restore workspace '{workspaceId}'.",
-            rollbackFailures);
+        finally { OwnedResourceCleanup.DisposePreservingFailure("Physical persistence ownership cleanup failed.", primaryFailure, lease, desiredGraph); }
     }
 
-    internal static bool ProjectReferenceTargetsPath(
-        string? include,
-        string projectDirectory,
-        string targetProjectPath)
+    private Task WriteAsync(string workspaceId, string path, byte[]? expected, byte[]? bytes,
+        PhysicalMutationRecovery operation, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(include))
-        {
-            return false;
-        }
-
-        try
-        {
-            var includedProjectPath = Path.GetFullPath(include, projectDirectory);
-            var normalizedTargetPath = Path.GetFullPath(targetProjectPath);
-            return string.Equals(includedProjectPath, normalizedTargetPath, FileSystemPath.Comparison);
-        }
-        catch (Exception ex) when (
-            ex is ArgumentException
-            or NotSupportedException
-            or PathTooLongException)
-        {
-            // MSBuild expressions such as $(SomeRoot) cannot be resolved safely without
-            // evaluating the project. Treat them as non-matches rather than deleting a
-            // similarly named reference.
-            return false;
-        }
+        var authority = _workspace as IWorkspaceRecoveryAuthority
+            ?? throw InvalidOperationErrors.Internal("Physical writes require workspace-owned recovery authority.");
+        return _fileSystem.TransitionAsync(path, expected, bytes, operation,
+            authority, ct);
     }
+    private Task<byte[]?> ReadAuthorizedAsync(string workspaceId, string path, CancellationToken ct)
+        => ReadAuthorizedAsync(workspaceId, path, _fileSystem.ReadAllBytesAsync, ct);
 
-    private sealed class DocumentSetPersistenceState(
-        Dictionary<string, CsprojSemanticEquality.ProjectFileSnapshot> sdkProjectCsprojSnapshots,
-        List<string> appliedFiles,
-        IReadOnlyDictionary<string, CsprojSemanticEquality.ProjectFileSnapshot> allCsprojSnapshots,
-        IReadOnlyDictionary<string, FileMutationSnapshot> fileSnapshots)
+    private Task<FileContentDigest?> ReadDigestAuthorizedAsync(string workspaceId, string path, CancellationToken ct)
+        => ReadAuthorizedAsync(workspaceId, path, _fileSystem.ReadDigestAsync, ct);
+
+    private async Task<T?> ReadAuthorizedAsync<T>(string workspaceId, string path, Func<string, CancellationToken, Task<T>> read, CancellationToken ct) where T : class
     {
-        public Dictionary<string, CsprojSemanticEquality.ProjectFileSnapshot> SdkProjectCsprojSnapshots { get; } =
-            sdkProjectCsprojSnapshots;
-        public List<string> AppliedFiles { get; } = appliedFiles;
-        public IReadOnlyDictionary<string, CsprojSemanticEquality.ProjectFileSnapshot> AllCsprojSnapshots { get; } =
-            allCsprojSnapshots;
-        public IReadOnlyDictionary<string, FileMutationSnapshot> FileSnapshots { get; } = fileSnapshots;
-
-        public IReadOnlyList<string> GetDistinctAppliedFiles() =>
-            AppliedFiles.Distinct(FileSystemPath.Comparer).ToList();
+        var authority = _workspace as IWorkspaceRecoveryAuthority
+            ?? throw InvalidOperationErrors.Internal("Physical reads require workspace-owned recovery authority.");
+        await authority.AuthorizePathsAsync(workspaceId, [path], ct).ConfigureAwait(false);
+        WorkspaceManager.EnsurePhysicalPath(path);
+        return await FileSnapshotCapture.ReadIfPresentAsync(path, read, ct).ConfigureAwait(false);
     }
 
-    private sealed record FileMutationSnapshot(bool Existed, byte[]? Bytes);
+    internal static bool ProjectReferenceTargetsPath(string? include, string projectDirectory, string targetProjectPath) =>
+        SolutionFileMutationPlanner.ProjectReferenceTargetsPath(include, projectDirectory, targetProjectPath);
 }
 
 internal interface IDocumentSetFileSystem
 {
-    bool FileExists(string path);
-    void CreateDirectory(string path);
-    void DeleteFile(string path);
     Task<byte[]> ReadAllBytesAsync(string path, CancellationToken ct);
-    Task<string> ReadAllTextAsync(string path, CancellationToken ct);
-    Task WriteAllBytesAsync(string path, byte[] bytes, CancellationToken ct);
-    Task WriteAllTextAsync(string path, string content, CancellationToken ct);
+    Task<FileContentDigest> ReadDigestAsync(string path, CancellationToken ct);
+    Task TransitionAsync(string path, byte[]? expected, byte[]? desired, PhysicalMutationRecovery operation,
+        IWorkspaceRecoveryAuthority authority, CancellationToken ct);
 }
 
 internal sealed class PhysicalDocumentSetFileSystem : IDocumentSetFileSystem
 {
     public static PhysicalDocumentSetFileSystem Instance { get; } = new();
-
-    private PhysicalDocumentSetFileSystem()
-    {
-    }
-
-    public bool FileExists(string path) => File.Exists(path);
-    public void CreateDirectory(string path) => Directory.CreateDirectory(path);
-    public void DeleteFile(string path) => File.Delete(path);
-    public Task<byte[]> ReadAllBytesAsync(string path, CancellationToken ct) =>
-        File.ReadAllBytesAsync(path, ct);
-    public Task<string> ReadAllTextAsync(string path, CancellationToken ct) =>
-        File.ReadAllTextAsync(path, ct);
-    public Task WriteAllBytesAsync(string path, byte[] bytes, CancellationToken ct) =>
-        File.WriteAllBytesAsync(path, bytes, ct);
-    public Task WriteAllTextAsync(string path, string content, CancellationToken ct) =>
-        File.WriteAllTextAsync(path, content, ct);
+    private PhysicalDocumentSetFileSystem() { }
+    public Task<byte[]> ReadAllBytesAsync(string path, CancellationToken ct) => PhysicalInputReader.ReadAllBytesAsync(path, ct);
+    public Task<FileContentDigest> ReadDigestAsync(string path, CancellationToken ct) => PhysicalInputReader.ReadDigestAsync(path, ct);
+    public Task TransitionAsync(string path, byte[]? expected, byte[]? desired, PhysicalMutationRecovery operation,
+        IWorkspaceRecoveryAuthority authority, CancellationToken ct)
+        => operation.TransitionSourceAsync(path, expected, desired, PhysicalSourceTransitionMode.PreserveExistingObject, authority, null, ct);
 }

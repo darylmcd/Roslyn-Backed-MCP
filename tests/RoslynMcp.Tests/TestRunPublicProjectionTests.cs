@@ -615,9 +615,9 @@ public sealed class TestRunPublicProjectionTests
         StringAssert.Contains(execution.StdErr, _sensitiveFilter);
     }
 
-    private sealed class FixedTestRunnerService(TestRunResultDto result) : ITestRunnerService
+    private sealed class FixedTestRunnerService(TestRunResultDto result) : RoslynMcp.Tests.Helpers.CannedTestRunner
     {
-        public Task<TestRunResultDto> RunTestsAsync(
+        public override Task<TestRunResultDto> RunTestsAsync(
             string workspaceId, string? projectName, string? filter, CancellationToken ct) =>
             Task.FromResult(result);
     }

@@ -26,9 +26,6 @@ public sealed class ExtractMethodFormatRegressionTests : TestBase
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     /// <summary>
     /// dr-9-7: the call site must use the project's editorconfig spacing (`var x = M(a, b);`),
     /// the synthesized method declaration must be indented to match its sibling members,
@@ -259,7 +256,7 @@ public sealed class ExtractMethodFormatRegressionTests : TestBase
         var fixturePath = Path.Combine(sampleLibDir, fileName);
         await File.WriteAllTextAsync(fixturePath, sourceText);
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
         return (loadResult.WorkspaceId, fixturePath, solutionDir);
     }
 

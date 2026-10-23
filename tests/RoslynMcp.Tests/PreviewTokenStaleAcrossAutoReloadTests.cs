@@ -55,7 +55,7 @@ public sealed class PreviewTokenStaleAcrossAutoReloadTests
         using var workspace = new Microsoft.CodeAnalysis.AdhocWorkspace();
         var solution = workspace.CurrentSolution;
         const string workspaceId = "ws-repro";
-        var token = store.Store(workspaceId, solution, workspaceVersion: 1, "scaffold_test_preview");
+        var token = store.Store(workspaceId, solution, solution, workspaceVersion: 1, "scaffold_test_preview", [], PreviewKind.Unspecified);
 
         // Confirm the token is initially valid (guards against test setup drift).
         Assert.IsNotNull(store.PeekWorkspaceId(token),

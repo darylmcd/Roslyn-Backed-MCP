@@ -1,4 +1,7 @@
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Text;
+using RoslynMcp.Core.Models;
+using RoslynMcp.Roslyn.Helpers;
 using RoslynMcp.Roslyn.Services;
 using RoslynMcp.Tests.Helpers;
 
@@ -17,10 +20,10 @@ public sealed class RefactoringFixtureOwnershipTests
             first.InitializeOwnedServices();
             second.InitializeOwnedServices();
             using var workspace = new AdhocWorkspace();
-            var token = first.Store.Store("first", workspace.CurrentSolution, 1, "live preview");
+            var token = StoreFixturePreview(first.Store, "first", workspace.CurrentSolution, 1, "live preview");
             var secondTokens = new List<string>();
             for (var i = 0; i < 64; i++)
-                secondTokens.Add(second.Store.Store("second", workspace.CurrentSolution, 1, "unrelated preview"));
+                secondTokens.Add(StoreFixturePreview(second.Store, "second", workspace.CurrentSolution, 1, "unrelated preview"));
             Assert.IsNotNull(first.Store.Retrieve(token), "Another fixture must not evict this fixture's live token.");
             Assert.IsTrue(secondTokens.Any(candidate => second.Store.Retrieve(candidate) is null),
                 "The owning fixture must retain production eviction behavior.");
@@ -53,13 +56,13 @@ public sealed class RefactoringFixtureOwnershipTests
             Assert.AreNotEqual(TypeKind.Error, compilation.GetSpecialType(SpecialType.System_String).TypeKind);
             Assert.IsFalse(compilation.GetDiagnostics().Any(d => d.Severity == DiagnosticSeverity.Error));
 
-            var token = store.Store(workspaceId, solution, manager.GetCurrentVersion(workspaceId), "reload boundary");
+            var token = StoreFixturePreview(store, workspaceId, solution, manager.GetCurrentVersion(workspaceId), "reload boundary");
             await scope.ReloadAsync();
             Assert.IsNotNull(store.Retrieve(token), "One reload remains inside the production version span.");
             await scope.ReloadAsync();
             Assert.IsNull(store.Retrieve(token), "The owning manager must invalidate previews beyond their version span.");
 
-            var closingToken = store.Store(workspaceId, manager.GetCurrentSolution(workspaceId),
+            var closingToken = StoreFixturePreview(store, workspaceId, manager.GetCurrentSolution(workspaceId),
                 manager.GetCurrentVersion(workspaceId), "close boundary");
             bool? rootExistedAtClose = null;
             manager.WorkspaceClosed += id =>
@@ -127,6 +130,23 @@ public sealed class RefactoringFixtureOwnershipTests
         {
             await fixture.CleanupOwnedServicesAsync();
         }
+    }
+
+    private static string StoreFixturePreview(IPreviewStore store, string workspaceId,
+        Solution original, int version, string description)
+    {
+        var candidate = original;
+        var project = candidate.Projects.FirstOrDefault();
+        var projectId = project?.Id ?? ProjectId.CreateNewId();
+        if (project is null)
+            candidate = candidate.AddProject(projectId, "PreviewOwner", "PreviewOwner", LanguageNames.CSharp);
+        var path = Path.Combine(project?.FilePath is { } projectPath
+            ? Path.GetDirectoryName(projectPath)! : TestTempRoot.Current, "OwnershipPreview.cs");
+        const string content = "internal class OwnershipPreview { }\n";
+        candidate = candidate.AddDocument(DocumentId.CreateNewId(projectId), "OwnershipPreview.cs",
+            SourceText.From(content), filePath: path);
+        return store.Store(workspaceId, original, candidate, version, description,
+            [new FileChangeDto(path, DiffGenerator.GenerateUnifiedDiff(string.Empty, content, path))], PreviewKind.FileCreate);
     }
 
     private sealed class Probe : OwnedRefactoringTestBase

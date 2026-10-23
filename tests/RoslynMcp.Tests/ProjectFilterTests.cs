@@ -36,9 +36,6 @@ public sealed class ProjectFilterTests : SharedWorkspaceTestBase
         WorkspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     public async Task FindReferences_NullProjectFilter_MatchesUnfilteredBaseline()
     {

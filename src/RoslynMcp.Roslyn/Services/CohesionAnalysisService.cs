@@ -66,14 +66,14 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
         {
             var normalizedPath = PhysicalPathResolver.Resolve(filePath);
             documents = solution.Projects
-                .Where(p => !excludeTestProjects || !ProjectMetadataParser.IsTestProject(p))
+                .Where(p => !excludeTestProjects || !ProjectMetadataParser.IsTestProject(p, ct))
                 .SelectMany(p => p.Documents)
                 .Where(d => d.FilePath is not null && PhysicalPathResolver.Resolve(d.FilePath).Equals(normalizedPath, FileSystemPath.Comparison));
         }
         else
         {
             var projects = ProjectFilterHelper.ResolveProjects(solution, projectFilter)
-                .Where(p => !excludeTestProjects || !ProjectMetadataParser.IsTestProject(p));
+                .Where(p => !excludeTestProjects || !ProjectMetadataParser.IsTestProject(p, ct));
             documents = projects.SelectMany(p => p.Documents);
         }
 

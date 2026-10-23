@@ -93,6 +93,7 @@ public sealed class ClassSplitOrchestrator : IClassSplitOrchestrator
         };
 
         var description = $"Split class '{typeName}' into partial file '{newFileName}'";
+        PreviewDiffSafety.RequireComplete(changes);
         var token = _compositePreviewStore.Store(workspaceId, _workspace.GetCurrentVersion(workspaceId), description, mutations);
         return new RefactoringPreviewDto(token, description, changes, null);
     }

@@ -1,23 +1,22 @@
 namespace RoslynMcp.Core.Services;
 
 /// <summary>
-/// Persistent on-disk cache for the heavy parts of MSBuild workspace evaluation
-/// (the project graph + per-project metadata-reference list). Lets a fresh
-/// <c>roslynmcp</c> process skip MSBuild SDK resolution and re-discovery when an
-/// equivalent solution snapshot has already been observed in a prior session.
+/// Persistent hints for project-graph coordinates and metadata-reference timestamps.
+/// Consumers still load the native workspace and compare its current coordinates;
+/// persisted entries never authorize paths, replace native discovery or certify compiler inputs.
 /// </summary>
 /// <remarks>
 /// Cache key is the triple <c>(solutionHash, sdkVersion, msbuildGraphHash)</c>:
 /// <list type="bullet">
 ///   <item>
 ///     <description><c>solutionHash</c> — content hash of the .sln/.slnx file at load time.
-///     Different solutions in the same repo never collide.</description>
+///     Entries remain untrusted even when this component matches.</description>
 ///   </item>
 ///   <item>
 ///     <description><c>sdkVersion</c> — typically
 ///     <see cref="System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription"/>.
-///     A new SDK install invalidates the cache automatically; reflects the path-style
-///     mismatch invariant required by the workspace-cache-store-infrastructure plan.</description>
+///     This describes the running host runtime, not the selected MSBuild SDK.
+///     SDK selection and compiler-input authority require independent current evidence.</description>
 ///   </item>
 ///   <item>
 ///     <description><c>msbuildGraphHash</c> — hash of the project graph that MSBuild evaluation
@@ -91,16 +90,16 @@ public interface IWorkspaceCacheStore
 }
 
 /// <summary>
-/// Composite cache key — the triple that uniquely identifies a cached workspace snapshot.
+/// Lookup key for persisted workspace hints; matching keys do not establish snapshot identity.
 /// </summary>
 /// <param name="SolutionHash">
-/// Content hash of the solution file (.sln or .slnx). Stable across timestamp updates;
-/// only changes when project list / configurations change.
+/// Content hash of the solution file (.sln or .slnx). Stable across timestamp-only updates;
+/// any changed file bytes change this input to the lookup key.
 /// </param>
 /// <param name="SdkVersion">
-/// Identifier of the running runtime/SDK that produced the cached graph. Use
+/// Identifier of the running host runtime that produced the cached hints. Use
 /// <see cref="System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription"/>
-/// or equivalent — anything stable across same-SDK invocations.
+/// or equivalent. The selected MSBuild SDK is verified independently by the native loader.
 /// </param>
 /// <param name="MsbuildGraphHash">
 /// Hash of the evaluated MSBuild project graph (project paths + references) at load time.
@@ -109,18 +108,16 @@ public interface IWorkspaceCacheStore
 public sealed record WorkspaceCacheKey(string SolutionHash, string SdkVersion, string MsbuildGraphHash);
 
 /// <summary>
-/// Cached workspace snapshot — the heavy bits of MSBuild evaluation that are expensive
-/// to recompute but cheap to deserialize.
+/// Persisted graph and metadata timestamp hints, independently checked against a fresh native load.
 /// </summary>
 /// <param name="ProjectGraph">
 /// The evaluated MSBuild project graph: per-project absolute paths and project-to-project
-/// references. Reseeds <c>WorkspaceManager</c>'s graph without re-running MSBuild SDK
-/// resolution on the cold-load path.
+/// references. Used only for comparison with the independently loaded native graph.
 /// </param>
 /// <param name="MetadataReferences">
 /// Per-project metadata-reference list (assembly-path + file-mtime). Used to detect
-/// upstream-build invalidation; an mtime change on any referenced assembly invalidates
-/// the cache for that project's compilation but not the project graph.
+/// candidate timestamp drift after native graph/reference coordinates agree and current
+/// path grants authorize the metadata reads. Timestamps do not certify executable bytes.
 /// </param>
 /// <param name="CapturedAtUtc">
 /// UTC timestamp the snapshot was captured. Surfaced for diagnostics; not used in the
@@ -128,8 +125,8 @@ public sealed record WorkspaceCacheKey(string SolutionHash, string SdkVersion, s
 /// </param>
 /// <remarks>
 /// What is NOT cached: <see cref="Microsoft.CodeAnalysis.Compilation"/> snapshots,
-/// analyzer state, semantic models. Those rebuild on demand from sources after the
-/// workspace seeds itself with the cached graph.
+/// analyzer state, semantic models or compiler authority. The native loader produces
+/// the workspace independently of these persisted hints.
 /// </remarks>
 public sealed record WorkspaceCacheEntry(
     IReadOnlyList<CachedProjectGraphNode> ProjectGraph,

@@ -40,9 +40,6 @@ public sealed class PreviewRouteBindingFileOpsTests : IsolatedWorkspaceTestBase
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     // ------------------------------------------------------------------
     // Consumer half — route enforcement.
     // ------------------------------------------------------------------
@@ -111,8 +108,8 @@ public sealed class PreviewRouteBindingFileOpsTests : IsolatedWorkspaceTestBase
 
     /// <summary>
     /// Binding a route must NOT break untagged producers or out-of-tree stores: a token whose
-    /// recorded kind is <see cref="PreviewKind.Unspecified"/> ("no provenance claim", the
-    /// <c>IPreviewStore.PeekKind</c> default) still redeems on every bound route.
+    /// explicitly recorded kind is <see cref="PreviewKind.Unspecified"/> ("no provenance claim")
+    /// still redeems on every bound route.
     /// </summary>
     [TestMethod]
     [DataRow(PreviewKind.FileCreate)]
@@ -122,7 +119,7 @@ public sealed class PreviewRouteBindingFileOpsTests : IsolatedWorkspaceTestBase
     public async Task BoundRoute_UnspecifiedProducer_StaysPermissive(PreviewKind routeKind)
     {
         var gate = new ForwardingDispatchGate();
-        // Kind left at its default — the interface-default / untagged-producer shape.
+        // The fake explicitly returns Unspecified to model an internal snapshot without a provenance claim.
         var store = new DispatchPreviewStore(token: "tok-untagged", workspaceId: "ws-ut");
 
         var result = await ToolDispatch.ApplyByTokenAsync<FakeDto>(

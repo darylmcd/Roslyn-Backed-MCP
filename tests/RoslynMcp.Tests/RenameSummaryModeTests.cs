@@ -29,12 +29,6 @@ public sealed class RenameSummaryModeTests : SharedWorkspaceTestBase
         WorkspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup()
-    {
-        DisposeServices();
-    }
-
     [TestMethod]
     public async Task Rename_Summary_Mode_Replaces_UnifiedDiff_With_OneLine_Summary()
     {
@@ -80,7 +74,7 @@ public sealed class RenameSummaryModeTests : SharedWorkspaceTestBase
         // shared one.
         var copiedSolutionPath = CreateSampleSolutionCopy();
         var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
         var localWorkspaceId = loadResult.WorkspaceId;
 
         try

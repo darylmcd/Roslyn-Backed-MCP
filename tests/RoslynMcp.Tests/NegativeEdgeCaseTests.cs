@@ -20,9 +20,6 @@ public sealed class NegativeEdgeCaseTests : SharedWorkspaceTestBase
         WorkspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     public void InvalidWorkspaceId_ThrowsKeyNotFoundException()
     {

@@ -50,9 +50,6 @@ public sealed class ToolCallErrorWireContractTests : IsolatedWorkspaceTestBase
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     public async Task UnexpectedToolException_SerializesAsRedactedIsErrorResult()
     {
@@ -184,8 +181,8 @@ public sealed class ToolCallErrorWireContractTests : IsolatedWorkspaceTestBase
         try
         {
             using var manager = CreateIsolatedWorkspaceManager();
-            var firstWorkspace = await manager.LoadAsync(firstSolutionPath, CancellationToken.None);
-            var secondWorkspace = await manager.LoadAsync(secondSolutionPath, CancellationToken.None);
+            var firstWorkspace = await manager.LoadAsync(firstSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(firstSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
+            var secondWorkspace = await manager.LoadAsync(secondSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(secondSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
 
             try
             {
@@ -362,7 +359,7 @@ public sealed class ToolCallErrorWireContractTests : IsolatedWorkspaceTestBase
         try
         {
             using var manager = CreateIsolatedWorkspaceManager();
-            var workspace = await manager.LoadAsync(solutionPath, CancellationToken.None);
+            var workspace = await manager.LoadAsync(solutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(solutionPath, new Dictionary<string, string>()), CancellationToken.None);
             try
             {
                 foreach (var protocol in Protocols())
@@ -500,7 +497,7 @@ public sealed class ToolCallErrorWireContractTests : IsolatedWorkspaceTestBase
     private static WorkspaceManager CreateIsolatedWorkspaceManager()
     {
         var fileWatcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance);
-        return new WorkspaceManager(
+        return new WorkspaceManager(new RoslynMcp.Roslyn.Services.ForkInvocationPathPolicy(new RoslynMcp.Tests.Helpers.OwnedTestWorkspacePathPolicy()),
             NullLogger<WorkspaceManager>.Instance,
             new PreviewStore(),
             fileWatcher,

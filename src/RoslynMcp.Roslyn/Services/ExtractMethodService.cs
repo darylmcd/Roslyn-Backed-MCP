@@ -128,11 +128,10 @@ public sealed class ExtractMethodService : IExtractMethodService
         var formattedRoot = await formattedDocument.GetSyntaxRootAsync(ct).ConfigureAwait(false)
             ?? throw new InvalidOperationException("Formatted document produced no syntax root.");
         var newSolution = solution.WithDocumentSyntaxRoot(document.Id, formattedRoot);
-        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
+        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, SolutionDiffReadContext.ForWorkspace(_workspace, workspaceId), ct).ConfigureAwait(false);
         var description = $"Extract {statementsInSelection.Count} statement(s) into method '{methodName}'";
         var token = _previewStore.Store(
-            // Item #4 — pass changes so the store knows whether the diff was truncated.
-            workspaceId, newSolution,
+            workspaceId, solution, newSolution,
             _workspace.GetCurrentVersion(workspaceId), description, changes, PreviewKind.ExtractMethod);
 
         _logger.LogDebug("Extract method preview: {Description}", description);
@@ -685,7 +684,7 @@ public sealed class ExtractMethodService : IExtractMethodService
         var description =
             $"Extract shared expression into helper '{helperName}' and rewrite {hits.Count} site(s) across {fileChanges.Count} file(s)";
         var token = _previewStore.Store(
-            workspaceId, accumulator, _workspace.GetCurrentVersion(workspaceId), description);
+            workspaceId, solution, accumulator, _workspace.GetCurrentVersion(workspaceId), description, fileChanges, PreviewKind.ExtractMethod);
 
         _logger.LogDebug("Extract shared expression preview: {Description}", description);
 

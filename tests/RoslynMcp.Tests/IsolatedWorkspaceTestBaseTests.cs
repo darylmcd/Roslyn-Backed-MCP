@@ -1,5 +1,6 @@
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -150,16 +151,51 @@ public sealed class IsolatedWorkspaceTestBaseTests
         Assert.AreEqual(1, deleteCalls);
     }
 
+    [TestMethod]
+    public async Task ScopeLoad_UsesOwnedCallbackOnceAndClosesItsWorkspace()
+    {
+        var manager = new FailClosedWorkspaceManagerStub();
+        using var cancellation = new CancellationTokenSource();
+        var loads = 0;
+        string? closed = null;
+        await using (var scope = new IsolatedWorkspaceTestBase.IsolatedWorkspaceScope(
+            rootPath: "fixture-root",
+            solutionPath: "fixture-root/Owned.slnx",
+            workspaceId: null,
+            manager,
+            (path, ct) =>
+            {
+                loads++;
+                Assert.AreEqual("fixture-root/Owned.slnx", path);
+                Assert.AreEqual(cancellation.Token, ct);
+                return Task.FromResult(new WorkspaceStatusDto(
+                    "owned-workspace", path, 1, "snapshot", DateTimeOffset.UtcNow,
+                    0, 0, [], true, false, []));
+            },
+            workspaceId => { closed = workspaceId; return true; },
+            _ => { }))
+        {
+            Assert.AreEqual("owned-workspace", await scope.LoadAsync(cancellation.Token));
+            Assert.AreEqual("owned-workspace", await scope.LoadAsync(cancellation.Token));
+            Assert.AreEqual(1, loads);
+        }
+        Assert.AreEqual("owned-workspace", closed);
+    }
+
     private static IsolatedWorkspaceTestBase.IsolatedWorkspaceScope CreateScope(
         Func<string, bool> closeWorkspace,
         Action<string> deleteRoot)
-        => new(
+    {
+        var manager = new FailClosedWorkspaceManagerStub();
+        return new(
             rootPath: "fixture-root",
             solutionPath: "fixture-root/SampleSolution.slnx",
             workspaceId: "workspace-1",
-            new Helpers.FailClosedWorkspaceManagerStub(),
+            manager,
+            (path, ct) => manager.LoadAsync(path, EvictPolicy.Strict, ct),
             closeWorkspace,
             deleteRoot);
+    }
 
     private sealed class FixtureResource(Exception? cleanupFailure = null) : IAsyncDisposable
     {
@@ -176,11 +212,11 @@ public sealed class IsolatedWorkspaceTestBaseTests
 
     private sealed class FixtureException(string message) : Exception(message);
 
-    private sealed class FixtureCommandRunner(CommandExecutionDto result) : IDotnetCommandRunner
+    private sealed class FixtureCommandRunner(CommandExecutionDto result) : RoslynMcp.Tests.Helpers.CannedCommandRunner
     {
         public IReadOnlyList<string> Arguments { get; private set; } = [];
 
-        public Task<CommandExecutionDto> RunAsync(
+        public override Task<CommandExecutionDto> RunAsync(
             string workingDirectory,
             string targetPath,
             IReadOnlyList<string> arguments,

@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -10,7 +12,7 @@ internal sealed class WorkspaceIdCache
 
     internal int Count => _workspaceIds.Count;
 
-    public async Task<string> GetOrLoadAsync(IWorkspaceManager workspaceManager, string solutionPath, CancellationToken ct = default)
+    public async Task<string> GetOrLoadAsync(WorkspaceManager workspaceManager, string solutionPath, CancellationToken ct = default)
     {
         if (_workspaceIds.TryGetValue(solutionPath, out var cachedId)
             && workspaceManager.ContainsWorkspace(cachedId))
@@ -28,7 +30,8 @@ internal sealed class WorkspaceIdCache
             }
 
             _workspaceIds.TryRemove(solutionPath, out _);
-            var status = await workspaceManager.LoadAsync(solutionPath, EvictPolicy.Strict, ct).ConfigureAwait(false);
+            var status = await workspaceManager.LoadAsync(solutionPath, EvictPolicy.Strict,
+                OwnedNativeLoadContext.Properties(solutionPath, new Dictionary<string, string>()), ct).ConfigureAwait(false);
             _workspaceIds[solutionPath] = status.WorkspaceId;
             return status.WorkspaceId;
         }

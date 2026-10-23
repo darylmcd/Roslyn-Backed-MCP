@@ -41,9 +41,6 @@ public sealed class SymbolRefactorPreviewTests : IsolatedWorkspaceTestBase
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     public async Task SingleRenameOp_Preview_DoesNotWriteToDisk_AndChangeTrackerStaysEmpty()
     {

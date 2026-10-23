@@ -78,7 +78,7 @@ internal sealed class DispatchPreviewStore : IPreviewStore
 
     /// <summary>
     /// preview-apply-token-write-path-toctou: write set the fake reports for its token, or
-    /// <see langword="null"/> (the default, matching the interface's default implementation)
+    /// <see langword="null"/> (the fake's explicit default)
     /// for "unknown".
     /// </summary>
     public IReadOnlyList<string>? ChangedPaths { get; init; }
@@ -96,13 +96,8 @@ internal sealed class DispatchPreviewStore : IPreviewStore
 
     public PreviewKind PeekKind(string token) => token == _token ? Kind : PreviewKind.Unspecified;
 
-    public string Store(string workspaceId, Solution modifiedSolution, int workspaceVersion, string description)
-        => throw new NotSupportedException();
-
-    public string Store(string workspaceId, Solution modifiedSolution, int workspaceVersion, string description, bool diffTruncated)
-        => throw new NotSupportedException();
-
-    public string Store(string workspaceId, Solution modifiedSolution, int workspaceVersion, string description, IReadOnlyList<FileChangeDto> changes)
+    public string Store(string workspaceId, Solution originalSolution, Solution modifiedSolution, int workspaceVersion,
+        string description, IReadOnlyList<FileChangeDto> changes, PreviewKind kind)
         => throw new NotSupportedException();
 
     public (string WorkspaceId, Solution OriginalSolution, Solution ModifiedSolution, int WorkspaceVersion, string Description, bool DiffTruncated)? Retrieve(string token)
@@ -128,6 +123,9 @@ internal class RecordingApplyRefactoringService : IRefactoringService
         ApplyCallCount++;
         return Task.FromResult(new ApplyResultDto(true, new[] { _appliedFile }, null));
     }
+
+    public virtual Task<RefactoringApplyOperationResult> ApplyRefactoringWithUndoAsync(string previewToken, string toolName, bool force, CancellationToken ct) =>
+        throw new NotSupportedException("This apply-routing fixture does not supply operation-owned compensation.");
 
     public virtual Task<ApplyResultDto> ApplyRefactoringAsync(string previewToken, string toolName, bool force, CancellationToken ct)
         => ApplyRefactoringAsync(previewToken, toolName, ct);

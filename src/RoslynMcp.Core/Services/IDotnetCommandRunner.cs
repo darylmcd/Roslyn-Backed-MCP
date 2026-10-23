@@ -37,16 +37,14 @@ public interface IDotnetCommandRunner
     /// When any pattern matches a line of stdout or stderr while the process is still running,
     /// the runner kills the process tree and stamps
     /// <see cref="CommandExecutionDto.EarlyKillReason"/> with the pattern's reason string.
-    /// Implementations should fall back to the base <see cref="RunAsync(string, string, IReadOnlyList{string}, CancellationToken)"/>
-    /// semantics when <paramref name="earlyKillPatterns"/> is <see langword="null"/> or empty.
+    /// Implementations must preserve requested patterns. A null or empty list requests ordinary execution.
     /// </summary>
     Task<CommandExecutionDto> RunAsync(
         string workingDirectory,
         string targetPath,
         IReadOnlyList<string> arguments,
         IReadOnlyList<EarlyKillPattern>? earlyKillPatterns,
-        CancellationToken ct) =>
-        RunAsync(workingDirectory, targetPath, arguments, ct);
+        CancellationToken ct);
 
     /// <summary>
     /// Runs a dotnet-compatible executable selected by the caller. The default implementation

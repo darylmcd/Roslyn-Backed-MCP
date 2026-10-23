@@ -1237,16 +1237,9 @@ public class PlaywrightFlowTests
         StringAssert.Contains(animalServiceContents, "GetAllAnimals_Needs_Test");
     }
 
-    /// <summary>
-    /// preview-token-route-binding-orchestration-family: the permissive arm.
-    /// <c>scaffold_test_batch_preview</c> aggregates its own solution snapshot rather than
-    /// delegating to <c>PreviewCreateFileAsync</c>, so its token stays
-    /// <see cref="PreviewKind.Unspecified"/>. There is no <c>scaffold_test_batch_apply</c> route —
-    /// batch tokens are redeemed through <c>scaffold_test_apply</c>, which is now bound — so the
-    /// untagged-is-permissive contract is what keeps that flow working.
-    /// </summary>
+    /// <summary>Batch scaffolding shares the file-creation family consumed by scaffold_test_apply.</summary>
     [TestMethod]
-    public async Task Scaffold_Test_Batch_Token_Is_Untagged_And_Still_Redeems_Through_Scaffold_Test_Apply()
+    public async Task Scaffold_Test_Batch_Token_Records_FileCreate_And_Redeems_Through_Scaffold_Test_Apply()
     {
         await using var workspace = CreateLibraryTestsWorkspace();
         await workspace.LoadAsync(CancellationToken.None);
@@ -1260,8 +1253,8 @@ public class PlaywrightFlowTests
                 "auto"),
             CancellationToken.None);
 
-        Assert.AreEqual(PreviewKind.Unspecified, Services.PreviewStore.PeekKind(preview.PreviewToken),
-            "The batch scaffolder mints its own aggregate token and records no provenance.");
+        Assert.AreEqual(PreviewKind.FileCreate, Services.PreviewStore.PeekKind(preview.PreviewToken),
+            "The batch scaffolder must preserve its file-creation provenance.");
 
         var json = await ScaffoldingTools.ApplyScaffoldTest(
             Services.WorkspaceExecutionGate,
@@ -1272,7 +1265,7 @@ public class PlaywrightFlowTests
 
         StringAssert.Contains(json, "\"success\": true");
         Assert.IsTrue(File.Exists(dogPath),
-            "An untagged token must stay redeemable through a bound apply route.");
+            "The file-creation token must redeem through its compatible scaffold route.");
     }
 
     [TestMethod]
@@ -1781,8 +1774,11 @@ public class SnapshotContentHasher
     /// <see cref="GetCurrentSolution"/> is the only door to a <see cref="Compilation"/>, so its call
     /// count measures the preparation the sampling hoist must keep off a replayed leg.
     /// </summary>
-    private sealed class CountingWorkspaceManager(IWorkspaceManager inner) : IWorkspaceManager
+    private sealed class CountingWorkspaceManager(IWorkspaceManager inner) : IWorkspaceManager, IWorkspacePathAuthority
     {
+        Task IWorkspacePathAuthority.AuthorizePathsAsync(string workspaceId, IReadOnlyList<string> paths, CancellationToken ct) =>
+            ((IWorkspacePathAuthority)inner).AuthorizePathsAsync(workspaceId, paths, ct);
+
         private int _getCurrentSolutionCount;
 
         public int GetCurrentSolutionCount => Volatile.Read(ref _getCurrentSolutionCount);
@@ -1798,6 +1794,10 @@ public class SnapshotContentHasher
             add => inner.WorkspaceReloaded += value;
             remove => inner.WorkspaceReloaded -= value;
         }
+
+        public Task<System.Collections.Immutable.ImmutableArray<RoslynMcp.Roslyn.Contracts.AdmittedModuleImage>> ReadAdmittedImagesAsync(
+            string workspaceId, Microsoft.CodeAnalysis.ProjectId projectId, Microsoft.CodeAnalysis.PortableExecutableReference reference, CancellationToken ct) =>
+            inner.ReadAdmittedImagesAsync(workspaceId, projectId, reference, ct);
 
         public Solution GetCurrentSolution(string workspaceId)
         {
@@ -1843,8 +1843,6 @@ public class SnapshotContentHasher
         public Project? GetProject(string workspaceId, string projectNameOrPath) =>
             inner.GetProject(workspaceId, projectNameOrPath);
 
-        public bool TryApplyChanges(string workspaceId, Solution newSolution) =>
-            inner.TryApplyChanges(workspaceId, newSolution);
 
         public void RestoreVersion(string workspaceId, int version) => inner.RestoreVersion(workspaceId, version);
     }

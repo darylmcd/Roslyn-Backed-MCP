@@ -34,9 +34,6 @@ public sealed class WindowsPathResourceTests : SharedWorkspaceTestBase
         WorkspaceId = await GetOrLoadWorkspaceIdAsync(SampleSolutionPath, CancellationToken.None);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     public async Task GetSourceFile_UnencodedWindowsPath_Resolves()
     {

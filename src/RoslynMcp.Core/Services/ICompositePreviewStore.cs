@@ -5,7 +5,8 @@ namespace RoslynMcp.Core.Services;
 /// without requiring a Roslyn <c>Solution</c> snapshot.
 /// </summary>
 /// <remarks>
-/// Tokens expire after a fixed TTL and become invalid if the workspace version advances.
+/// Tokens expire after a fixed TTL. Workspace lifecycle invalidation is owned by the store integration;
+/// ordinary version advances preserve sibling previews.
 /// </remarks>
 public interface ICompositePreviewStore
 {

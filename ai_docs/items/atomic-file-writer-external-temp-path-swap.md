@@ -4,8 +4,8 @@
 
 ## Anchors
 
-- `src/RoslynMcp.Roslyn/Services/CompositeApplyOrchestrator.cs:250-380`
-- `tests/RoslynMcp.Tests/CompositeApplyOrchestratorTests.cs:65-250`
+- `src/RoslynMcp.Roslyn/Services/CompositeApplyOrchestrator.cs`
+- `tests/RoslynMcp.Tests/CompositeApplyOrchestratorTests.cs`
 
 ## Acceptance
 
@@ -16,3 +16,5 @@
 ## Evidence
 
 - PR #1678 makes each atomic write use a unique, held temporary file and rejects substitutions detected before replacement. `File.Move(tempPath, targetPath)` still resolves `tempPath` after the identity check. A noncooperating external process with write access to the directory can replace that pathname in the gap. The former fixed `.tmp` helper had the same path-based race; the new helper closes honest concurrent-write collisions and detectable substitutions, not this adversarial interval.
+
+- 2026-10-23: semantic references found no production consumer of the retired AtomicFileWriter. Current uncommitted source removes it and its 16 helper-only test methods, preserving actual Composite/undo tests and native parser-handle overwrite proof. Runtime qualification and merge remain pending; row remains open.

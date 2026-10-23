@@ -16,7 +16,7 @@ namespace RoslynMcp.Tests.Services;
 // read-only SymbolTools.GetSymbolInfo (read-gated) against the shared sample workspace obtained
 // through the synchronized WorkspaceIdCache, and each lookup is expected to miss. No
 // LoadAsync/ReloadAsync/Close, no *_apply, no static, environment or filesystem mutation
-// (DisposeServices is a no-op). Verified with 3x repeated concurrent runs alongside wave-27
+// (service disposal is owned by AssemblyLifecycle). Verified with 3x repeated concurrent runs alongside wave-27
 // siblings and parallel-enabled classes, green every time.
 [TestClass]
 public sealed class SymbolInfoNotFoundMessageTests : SharedWorkspaceTestBase
@@ -29,9 +29,6 @@ public sealed class SymbolInfoNotFoundMessageTests : SharedWorkspaceTestBase
         InitializeServices();
         WorkspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
     }
-
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
 
     /// <summary>
     /// metadataName-only locator: the most common motivator for the bug — agents resolved a

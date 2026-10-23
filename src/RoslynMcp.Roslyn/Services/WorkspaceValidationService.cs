@@ -596,12 +596,9 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
             return "compile-error";
         if (errors.Count > 0)
             return "analyzer-error";
-        if (runTests && testRunResult?.FailureEnvelope?.ErrorKind == "Timeout")
-            return "timeout";
-        if (runTests && testRunResult is not null && testRunResult.Failed > 0)
-            return "test-failure";
-        if (runTests && testRunResult is not null && testRunResult.Total == 0)
-            return "test-zero-run";
+        if (runTests && testRunResult is not null && TestExecutionVerdict.Status(testRunResult) is { } testStatus
+            && testStatus != "clean")
+            return testStatus;
         if (IsCompileIncomplete(compile))
             return "compile-incomplete";
         return "clean";

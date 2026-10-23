@@ -25,9 +25,6 @@ public sealed class CodeActionServiceTests : SharedWorkspaceTestBase
         SampleWorkspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     private static string FindDocumentPath(string name)
     {
         var solution = WorkspaceManager.GetCurrentSolution(SampleWorkspaceId);

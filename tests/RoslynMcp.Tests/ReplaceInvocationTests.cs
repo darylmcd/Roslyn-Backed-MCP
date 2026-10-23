@@ -103,7 +103,7 @@ public sealed class ReplaceInvocationTests : SharedWorkspaceTestBase
                     Old((1, "x")) + Old(new int[1,1]) + EmptyOld() + ShortOld(1) + Inner.Old(1);
             }
             """);
-        var loaded = await WorkspaceManager.LoadAsync(path, CancellationToken.None);
+        var loaded = await WorkspaceManager.LoadAsync(path, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(path, new Dictionary<string, string>()), CancellationToken.None);
         try
         {
             var preview = await BulkRefactoringService.PreviewReplaceInvocationAsync(loaded.WorkspaceId, oldName, newName, null, CancellationToken.None);
@@ -140,7 +140,7 @@ public sealed class ReplaceInvocationTests : SharedWorkspaceTestBase
                 public static int ParamsCall() => ParamsOld(1, (2, "y"), (3, "z"));
             }
             """);
-        var loaded = await WorkspaceManager.LoadAsync(path, CancellationToken.None);
+        var loaded = await WorkspaceManager.LoadAsync(path, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(path, new Dictionary<string, string>()), CancellationToken.None);
         try
         {
             var signatures = shape == "optional"
@@ -273,7 +273,7 @@ public sealed class ReplaceInvocationTests : SharedWorkspaceTestBase
                 public static int ExtensionNew(this int receiver, int count = 8, int value = 0) => receiver * 100 + value * 10 + count;
             }
             """);
-        var loaded = await WorkspaceManager.LoadAsync(path, CancellationToken.None);
+        var loaded = await WorkspaceManager.LoadAsync(path, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(path, new Dictionary<string, string>()), CancellationToken.None);
         try
         {
             var original = WorkspaceManager.GetCurrentSolution(loaded.WorkspaceId);
@@ -332,7 +332,7 @@ public sealed class ReplaceInvocationTests : SharedWorkspaceTestBase
                 public static int Call() => Old(1, 2);
             }
             """);
-        var loaded = await WorkspaceManager.LoadAsync(path, CancellationToken.None);
+        var loaded = await WorkspaceManager.LoadAsync(path, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(path, new Dictionary<string, string>()), CancellationToken.None);
         try
         {
             var version = WorkspaceManager.GetCurrentVersion(loaded.WorkspaceId);
@@ -361,9 +361,6 @@ public sealed class ReplaceInvocationTests : SharedWorkspaceTestBase
 
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
-
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
 
     /// <summary>
     /// Three call-forms exist in real code and must all be rewritten:
@@ -412,7 +409,7 @@ public sealed class ReplaceInvocationTests : SharedWorkspaceTestBase
             }
             """);
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
         var scopedWorkspaceId = loadResult.WorkspaceId;
 
         try
@@ -505,7 +502,7 @@ public sealed class ReplaceInvocationTests : SharedWorkspaceTestBase
             }
             """);
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
         var scopedWorkspaceId = loadResult.WorkspaceId;
 
         try
@@ -560,7 +557,7 @@ public sealed class ReplaceInvocationTests : SharedWorkspaceTestBase
     public async Task ReplaceInvocation_MissingParens_ThrowsArgument()
     {
         var copiedSolutionPath = CreateSampleSolutionCopy();
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
 
         try
         {
@@ -608,7 +605,7 @@ public sealed class ReplaceInvocationTests : SharedWorkspaceTestBase
             }
             """);
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
 
         try
         {
@@ -636,7 +633,7 @@ public sealed class ReplaceInvocationTests : SharedWorkspaceTestBase
     public async Task ReplaceInvocation_InvalidScope_ThrowsArgument()
     {
         var copiedSolutionPath = CreateSampleSolutionCopy();
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
 
         try
         {

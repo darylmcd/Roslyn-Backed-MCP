@@ -29,12 +29,6 @@ public sealed class UnusedSymbolsTestBridgeExclusionTests : SharedWorkspaceTestB
         InitializeServices();
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup()
-    {
-        DisposeServices();
-    }
-
     [TestMethod]
     public async Task FindUnusedSymbols_Default_ExcludesForTestSuffix()
     {

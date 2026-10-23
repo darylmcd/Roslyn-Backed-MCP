@@ -51,9 +51,6 @@ public sealed class BulkRefactoringTests : SharedWorkspaceTestBase
         WorkspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     public async Task BulkReplaceType_Preview_ReturnsChanges()
     {
@@ -111,7 +108,7 @@ public sealed class BulkRefactoringTests : SharedWorkspaceTestBase
                 """,
                 CancellationToken.None);
 
-            var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+            var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
             scopedWorkspaceId = status.WorkspaceId;
             var preview = await BulkRefactoringService.PreviewReplaceInvocationAsync(
                 scopedWorkspaceId,
@@ -209,7 +206,7 @@ public sealed class BulkRefactoringTests : SharedWorkspaceTestBase
             }
             """);
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
         var scopedWorkspaceId = loadResult.WorkspaceId;
 
         Exception? primaryFailure = null;

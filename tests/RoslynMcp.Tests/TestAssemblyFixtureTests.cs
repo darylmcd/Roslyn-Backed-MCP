@@ -99,7 +99,7 @@ public sealed class TestAssemblyFixtureSharingBetaTests : TestBase
         // A standalone fixture, so the assembly-owned one stays live for the rest of the run. It
         // never requests a path-authorized server, so no MCP server is stood up.
         var fixture = new TestAssemblyFixture(
-            TestServiceContainer.Create(new ValidationServiceOptions()),
+            TestServiceContainer.Create(new ValidationServiceOptions(), new ForkInvocationPathPolicy(new OwnedTestWorkspacePathPolicy())),
             Fixture.RepositoryFixtures);
         Exception? primaryFailure = null;
 

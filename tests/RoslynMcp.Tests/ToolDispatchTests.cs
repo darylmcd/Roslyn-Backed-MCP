@@ -261,8 +261,6 @@ public sealed class ToolDispatchTests
                 $"surface; '{applyRoute}' is not a catalog entry.");
             Assert.IsFalse(applyEntry!.ReadOnly,
                 $"PreviewKind.{kind} must resolve to a mutating apply route.");
-            Assert.AreNotEqual("apply_with_verify", applyRoute,
-                $"PreviewKind.{kind} must resolve to its OWN named apply route, not the generic fallback.");
         }
     }
 
@@ -295,6 +293,14 @@ public sealed class ToolDispatchTests
             (PreviewKind.MoveTypeToFile, "move_type_to_file_preview", "move_type_to_file_apply"),
             (PreviewKind.BulkReplaceType, "bulk_replace_type_preview", "bulk_replace_type_apply"),
             (PreviewKind.RemoveDeadCode, "remove_dead_code_preview", "remove_dead_code_apply"),
+            (PreviewKind.ChangeSignature, "change_signature_preview", "apply_with_verify"),
+            (PreviewKind.ParameterObject, "parameter_object_preview", "apply_with_verify"),
+            (PreviewKind.Restructure, "restructure_preview", "apply_with_verify"),
+            (PreviewKind.ReplaceStringLiterals, "replace_string_literals_preview", "apply_with_verify"),
+            (PreviewKind.MoveTypeToProject, "move_type_to_project_preview", "apply_with_verify"),
+            (PreviewKind.CrossProjectExtractInterface, "extract_interface_cross_project_preview", "apply_with_verify"),
+            (PreviewKind.DependencyInversion, "dependency_inversion_preview", "apply_with_verify"),
+            (PreviewKind.ChangeTypeNamespace, "change_type_namespace_preview", "apply_with_verify"),
         ];
 
         foreach (var (kind, previewTool, applyRoute) in expected)

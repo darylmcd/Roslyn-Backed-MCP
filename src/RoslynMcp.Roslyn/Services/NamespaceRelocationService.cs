@@ -152,16 +152,18 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
                 "Re-run `get_namespace_dependencies` after apply to confirm the cycle is closed.");
         }
 
-        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, updatedSolution, ct).ConfigureAwait(false);
+        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, updatedSolution, SolutionDiffReadContext.ForWorkspace(_workspace, workspaceId), ct).ConfigureAwait(false);
         var description = isRelocating
             ? $"Change namespace of '{typeName}' from '{fromNamespace}' to '{toNamespace}' (file -> {Path.GetFileName(resolvedDestinationPath)})"
             : $"Change namespace of '{typeName}' from '{fromNamespace}' to '{toNamespace}'";
         var token = _previewStore.Store(
             workspaceId,
+            solution,
             updatedSolution,
             _workspace.GetCurrentVersion(workspaceId),
             description,
-            changes);
+            changes,
+            PreviewKind.ChangeTypeNamespace);
 
         _logger.LogInformation(
             "Prepared change-type-namespace preview for {TypeName} from {From} to {To} in workspace {WorkspaceId}",

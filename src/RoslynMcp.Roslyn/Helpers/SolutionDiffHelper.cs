@@ -1,5 +1,6 @@
-using RoslynMcp.Core.Models;
 using Microsoft.CodeAnalysis;
+using RoslynMcp.Core.Models;
+using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Roslyn.Helpers;
 
@@ -32,14 +33,36 @@ internal static class SolutionDiffHelper
     /// </summary>
     /// <param name="oldSolution">The baseline solution snapshot.</param>
     /// <param name="newSolution">The modified solution snapshot to compare against.</param>
+    /// <param name="readContext">Required physical-read authorization or explicit materialized-snapshot-only policy.</param>
     /// <param name="ct">Cancellation token.</param>
     public static async Task<IReadOnlyList<FileChangeDto>> ComputeChangesAsync(
         Solution oldSolution,
         Solution newSolution,
+        SolutionDiffReadContext readContext,
         CancellationToken ct)
     {
+        var mutations = await CreateMutationPlanAsync(oldSolution, newSolution, readContext,
+            allowVirtualPaths: true, ct).ConfigureAwait(false);
+        return ComputeChanges(mutations);
+    }
+
+    internal static async Task<IReadOnlyList<SolutionFileMutationPlanner.Mutation>> CreateMutationPlanAsync(
+        Solution oldSolution, Solution newSolution, SolutionDiffReadContext readContext,
+        bool allowVirtualPaths, CancellationToken ct)
+    {
+        (oldSolution, newSolution) = await readContext.PrepareAsync(oldSolution, newSolution, ct).ConfigureAwait(false);
+        var owners = newSolution.GetChanges(oldSolution).GetProjectChanges()
+            .Where(SolutionFileMutationPlanner.RequiresPhysicalProjectRender).Select(change => change.OldProject.Id).ToArray();
+        var referenceAuthority = owners.Length == 0 ? CompilerReferenceAuthority.ForNonRenderingDelta(oldSolution, newSolution)
+            : await RestoredCompilerInputAuthority.CaptureReferenceAuthorityAsync(oldSolution, owners,
+                readContext.ReadBytesAsync, readContext.ReadDigestAsync, readContext.AuthorizePathsAsync, ct).ConfigureAwait(false);
+        return await SolutionFileMutationPlanner.CreateAsync(oldSolution, newSolution,
+            readContext.ReadBytesAsync, referenceAuthority, includeDocuments: true, allowVirtualPaths, ct).ConfigureAwait(false);
+    }
+
+    internal static IReadOnlyList<FileChangeDto> ComputeChanges(IReadOnlyList<SolutionFileMutationPlanner.Mutation> mutations)
+    {
         var changes = new List<FileChangeDto>();
-        var solutionChanges = newSolution.GetChanges(oldSolution);
         var totalChars = 0;
         var truncatedFiles = new List<string>();
 
@@ -64,53 +87,10 @@ internal static class SolutionDiffHelper
             return true;
         }
 
-        foreach (var projectChange in solutionChanges.GetProjectChanges())
+        foreach (var mutation in mutations)
         {
-            foreach (var docId in projectChange.GetChangedDocuments())
-            {
-                var oldDoc = oldSolution.GetDocument(docId);
-                var newDoc = newSolution.GetDocument(docId);
-                if (oldDoc is null || newDoc is null)
-                {
-                    continue;
-                }
-
-                var oldText = (await oldDoc.GetTextAsync(ct).ConfigureAwait(false)).ToString();
-                var newText = (await newDoc.GetTextAsync(ct).ConfigureAwait(false)).ToString();
-                if (oldText == newText)
-                {
-                    continue;
-                }
-
-                var filePath = oldDoc.FilePath ?? newDoc.FilePath ?? oldDoc.Name;
-                TryAdd(new FileChangeDto(filePath, DiffGenerator.GenerateUnifiedDiff(oldText, newText, filePath)));
-            }
-
-            foreach (var docId in projectChange.GetAddedDocuments())
-            {
-                var newDoc = newSolution.GetDocument(docId);
-                if (newDoc is null)
-                {
-                    continue;
-                }
-
-                var newText = (await newDoc.GetTextAsync(ct).ConfigureAwait(false)).ToString();
-                var filePath = newDoc.FilePath ?? newDoc.Name;
-                TryAdd(new FileChangeDto(filePath, DiffGenerator.GenerateUnifiedDiff(string.Empty, newText, filePath)));
-            }
-
-            foreach (var docId in projectChange.GetRemovedDocuments())
-            {
-                var oldDoc = oldSolution.GetDocument(docId);
-                if (oldDoc is null)
-                {
-                    continue;
-                }
-
-                var oldText = (await oldDoc.GetTextAsync(ct).ConfigureAwait(false)).ToString();
-                var filePath = oldDoc.FilePath ?? oldDoc.Name;
-                TryAdd(new FileChangeDto(filePath, DiffGenerator.GenerateUnifiedDiff(oldText, string.Empty, filePath)));
-            }
+            TryAdd(new FileChangeDto(mutation.Path,
+                DiffGenerator.GenerateUnifiedDiff(mutation.OldText, mutation.NewText, mutation.Path)));
         }
 
         if (truncatedFiles.Count > 0)

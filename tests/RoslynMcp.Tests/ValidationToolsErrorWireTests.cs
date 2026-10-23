@@ -31,9 +31,6 @@ public sealed class ValidationToolsErrorWireTests : SharedWorkspaceTestBase
         _workspaceId = await LoadSharedSampleWorkspaceAsync();
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     [Timeout(60_000, CooperativeCancellation = true)]
     public async Task BuildProject_UnknownProject_ReturnsWireIsErrorWithCategoryAndSchemaHint()

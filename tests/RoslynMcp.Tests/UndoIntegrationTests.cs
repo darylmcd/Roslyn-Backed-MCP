@@ -11,12 +11,6 @@ public sealed class UndoIntegrationTests : IsolatedWorkspaceTestBase
         InitializeServices();
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup()
-    {
-        DisposeServices();
-    }
-
     [TestMethod]
     public async Task Revert_Last_Apply_Restores_Previous_State()
     {

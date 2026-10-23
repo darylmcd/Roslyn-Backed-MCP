@@ -228,10 +228,10 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
 
         try
         {
-            // Item 1: stale-gate policy. Checked once per call, before the per-workspace lock is
-            // acquired, so an auto-reload path runs under the same load gate as explicit
-            // workspace_reload calls — the reload's own write-locking is handled by
-            // WorkspaceManager. workspace_close skips this: reloading requires the on-disk
+            // Item 1: stale-gate policy runs before the requested operation lock.
+            // Automatic reload acquires this workspace's existing writer lock and
+            // releases it before the operation acquires its own read/write lock.
+            // workspace_close skips this: reloading requires the on-disk
             // solution, which may already be deleted while the in-memory session is still
             // registered (F21 / missing worktree).
             //
@@ -474,7 +474,14 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
             return false;
         }
 
-        // AutoReload: reload under the existing load-gate path so writes can't race with us.
+        // Reload replaces the native workspace and retires its analyzer lease.
+        // Drain existing readers before replacement, using the same writer lock
+        // as explicit reload/close. Do not recursively enter the execution gate.
+        var rwLock = _rwLocks.Get(workspaceId);
+        using var writer = await rwLock.WriterLockAsync(ct).ConfigureAwait(false);
+        if (!_workspaceManager.ContainsWorkspace(workspaceId) || !_workspaceManager.IsStale(workspaceId))
+            return false;
+
         // dr-9-9-response-claims: only stamp the "auto-reloaded" signal when reload actually
         // succeeded. Pre-fix, the finally block stamped unconditionally — a reload that
         // short-circuited on KeyNotFoundException (workspace closed between stale check and

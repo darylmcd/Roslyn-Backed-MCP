@@ -27,7 +27,7 @@ namespace RoslynMcp.Tests.Workspace;
 // WorkspaceCacheStore under a per-test GUID directory in TestTempRoot.Current, and its own
 // SampleSolution copy, so workspace ids, cache entries and fixture files are all test-private.
 // AmbientGateMetrics is AsyncLocal-scoped; InitializeServices is lock-guarded and idempotent and
-// DisposeServices is a no-op; MSBuild registration is the lock-guarded MsBuildInitializer. No
+// service disposal is owned by AssemblyLifecycle; MSBuild registration is the lock-guarded MsBuildInitializer. No
 // *_apply, reload of a shared session, environment or static mutation. Validated by a bounded
 // repeated (3x) concurrent run alongside its wave-36 siblings and parallel-enabled
 // workspace-loading classes, green every time.
@@ -36,9 +36,6 @@ public sealed class WorkspaceLoadCacheFastPathTests : TestBase
 {
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
-
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
 
     private string _cacheRoot = null!;
     private string _solutionCopyRoot = null!;
@@ -64,18 +61,7 @@ public sealed class WorkspaceLoadCacheFastPathTests : TestBase
     public void Teardown()
     {
         TestFixtureFileSystem.DeleteDirectoryIfExists(_solutionCopyRoot);
-        try
-        {
-            if (Directory.Exists(_cacheRoot))
-            {
-                Directory.Delete(_cacheRoot, recursive: true);
-            }
-        }
-        catch
-        {
-            // Best-effort cleanup. A locked file under the cache root just leaks a temp
-            // directory; the next OS-level cleanup will reclaim it.
-        }
+        TestFixtureFileSystem.DeleteDirectoryIfExists(_cacheRoot);
     }
 
     /// <summary>
@@ -229,7 +215,11 @@ public sealed class WorkspaceLoadCacheFastPathTests : TestBase
     /// </summary>
     private static DisposableManager CreateManager(IWorkspaceCacheStore? cacheStore)
     {
-        var manager = new WorkspaceManager(
+        // Leave globals empty so the real cache probe is enabled. The native default
+        // user-extension namespace receives explicit caller authority in this fixture.
+        var userExtensions = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Microsoft", "MSBuild");
+        var manager = new WorkspaceManager(new ForkInvocationPathPolicy(new RoslynMcp.Tests.Helpers.OwnedTestWorkspacePathPolicy(
+                [TestTempRoot.Current, RepositoryRootPath, userExtensions])),
             NullLogger<WorkspaceManager>.Instance,
             new PreviewStore(),
             new FileWatcherService(NullLogger<FileWatcherService>.Instance),

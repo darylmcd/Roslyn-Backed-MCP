@@ -20,3 +20,5 @@
 ## Context
 
 Spin-off from `apply-composite-no-undo-capture` (PR #1619), which added the capture.
+
+2026-10-15 forced restore companion: parent observed original-main prepared-caller corpus with 3 failures and 1 passing partial-write control. Required semantics: zero-effect failure preserves the previous undo; remaining partial writes retain operation-specific canonical recovery authority independently of optional undo, with mutation blocked until recovery. Prepared undo and shared physical recovery source implementation is under active refinement; focused and full gates remain pending. Do not close from source review. Active plan: ai_docs/plans/20261015-restore-reviewed-graph.md; ADR 0029 records the breaking migration.

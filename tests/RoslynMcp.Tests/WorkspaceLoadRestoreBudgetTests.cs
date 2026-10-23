@@ -21,9 +21,6 @@ public sealed class WorkspaceLoadRestoreBudgetTests : SharedWorkspaceTestBase
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     public async Task Restore_WithoutAmbientDeadline_UsesRestoreTimeoutAlone()
     {
@@ -33,10 +30,9 @@ public sealed class WorkspaceLoadRestoreBudgetTests : SharedWorkspaceTestBase
             var options = new ValidationServiceOptions { RestoreTimeout = TimeSpan.FromSeconds(90) };
 
             await WorkspaceTools.RestoreAndReloadIfRequiredAsync(
-                executor, options, manager, status, autoRestore: true, NullLogger.Instance, CancellationToken.None);
+                executor, options, manager, status, autoRestore: true, NullLogger.Instance, CancellationToken.None, timeProvider:System.TimeProvider.System);
 
-            Assert.AreEqual(1, executor.Timeouts.Count);
-            AssertBudgetNear(TimeSpan.FromSeconds(90), executor.Timeouts[0]);
+            AssertNodeBudgets(status, executor, TimeSpan.FromSeconds(90));
         });
     }
 
@@ -56,9 +52,9 @@ public sealed class WorkspaceLoadRestoreBudgetTests : SharedWorkspaceTestBase
             clock.Advance(TimeSpan.FromSeconds(10)); // 90s of the request left -> 60s for restore
 
             await WorkspaceTools.RestoreAndReloadIfRequiredAsync(
-                executor, options, manager, status, autoRestore: true, NullLogger.Instance, CancellationToken.None);
+                executor, options, manager, status, autoRestore: true, NullLogger.Instance, CancellationToken.None, timeProvider:System.TimeProvider.System);
 
-            AssertBudgetNear(TimeSpan.FromSeconds(60), executor.Timeouts.Single());
+            AssertNodeBudgets(status, executor, TimeSpan.FromSeconds(60));
         });
     }
 
@@ -72,9 +68,9 @@ public sealed class WorkspaceLoadRestoreBudgetTests : SharedWorkspaceTestBase
             using var deadline = RequestDeadline.Begin(new FakeTimeProvider(), TimeSpan.FromMinutes(10));
 
             await WorkspaceTools.RestoreAndReloadIfRequiredAsync(
-                executor, options, manager, status, autoRestore: true, NullLogger.Instance, CancellationToken.None);
+                executor, options, manager, status, autoRestore: true, NullLogger.Instance, CancellationToken.None, timeProvider:System.TimeProvider.System);
 
-            AssertBudgetNear(TimeSpan.FromSeconds(45), executor.Timeouts.Single());
+            AssertNodeBudgets(status, executor, TimeSpan.FromSeconds(45));
         });
     }
 
@@ -89,7 +85,7 @@ public sealed class WorkspaceLoadRestoreBudgetTests : SharedWorkspaceTestBase
 
             var thrown = await Assert.ThrowsExactlyAsync<TimeoutException>(() =>
                 WorkspaceTools.RestoreAndReloadIfRequiredAsync(
-                    executor, options, manager, status, autoRestore: true, NullLogger.Instance, CancellationToken.None));
+                    executor, options, manager, status, autoRestore: true, NullLogger.Instance, CancellationToken.None, timeProvider:System.TimeProvider.System));
 
             Assert.AreEqual(0, executor.Timeouts.Count, "no dotnet restore may be spawned when no budget remains.");
             StringAssert.Contains(thrown.Message, "ROSLYNMCP_RESTORE_TIMEOUT_SECONDS");
@@ -110,7 +106,7 @@ public sealed class WorkspaceLoadRestoreBudgetTests : SharedWorkspaceTestBase
 
             await Assert.ThrowsExactlyAsync<TimeoutException>(() =>
                 WorkspaceTools.RestoreAndReloadIfRequiredAsync(
-                    executor, options, manager, status, autoRestore: true, NullLogger.Instance, CancellationToken.None));
+                    executor, options, manager, status, autoRestore: true, NullLogger.Instance, CancellationToken.None, timeProvider:System.TimeProvider.System));
 
             Assert.AreEqual(0, executor.Timeouts.Count);
         });
@@ -127,7 +123,7 @@ public sealed class WorkspaceLoadRestoreBudgetTests : SharedWorkspaceTestBase
 
             await Assert.ThrowsAsync<OperationCanceledException>(() =>
                 WorkspaceTools.RestoreAndReloadIfRequiredAsync(
-                    executor, new ValidationServiceOptions(), manager, status, autoRestore: true, NullLogger.Instance, cts.Token));
+                    executor, new ValidationServiceOptions(), manager, status, autoRestore: true, NullLogger.Instance, cts.Token, timeProvider:System.TimeProvider.System));
         });
     }
 
@@ -155,17 +151,42 @@ public sealed class WorkspaceLoadRestoreBudgetTests : SharedWorkspaceTestBase
                 {
                     clock.Advance(TimeSpan.FromSeconds(50)); // 70s left on the load deadline
                     await WorkspaceTools.RestoreAndReloadIfRequiredAsync(
-                        executor, options, manager, status, autoRestore: true, NullLogger.Instance, innerCt);
+                        executor, options, manager, status, autoRestore: true, NullLogger.Instance, innerCt, timeProvider:System.TimeProvider.System);
                     return 0;
                 }, outerCt, applyStalenessPolicy: false), CancellationToken.None);
 
-            AssertBudgetNear(TimeSpan.FromSeconds(40), executor.Timeouts.Single());
+            AssertNodeBudgets(status, executor, TimeSpan.FromSeconds(40));
         });
+    }
+
+    [TestMethod]
+    public async Task Restore_MultiProjectCommands_CannotResetTheAmbientDeadlineAfterFirstCommand()
+    {
+        await WithRestoreRequiredWorkspace(async (manager, status) =>
+        {
+            Assert.IsGreaterThan(1, status.ProjectCount);
+            var clock = new FakeTimeProvider();
+            using var deadline = RequestDeadline.Begin(clock, TimeSpan.FromSeconds(100));
+            var executor = new RecordingExecutor { AfterExecution = () => clock.Advance(TimeSpan.FromSeconds(80)) };
+            var options = new ValidationServiceOptions { RestoreTimeout = TimeSpan.FromMinutes(5), RestoreReloadReserve = TimeSpan.FromSeconds(30) };
+            await Assert.ThrowsExactlyAsync<TimeoutException>(() => WorkspaceTools.RestoreAndReloadIfRequiredAsync(
+                executor, options, manager, status, autoRestore: true, NullLogger.Instance, CancellationToken.None, timeProvider:System.TimeProvider.System));
+            Assert.HasCount(1, executor.Timeouts);
+            AssertBudgetNear(TimeSpan.FromSeconds(70), executor.Timeouts[0]);
+        });
+    }
+
+    private static void AssertNodeBudgets(WorkspaceStatusDto status, RecordingExecutor executor, TimeSpan expected)
+    {
+        Assert.HasCount(status.ProjectCount, executor.Timeouts);
+        foreach (var budget in executor.Timeouts) AssertBudgetNear(expected, budget);
+        for (var index = 1; index < executor.Timeouts.Count; index++)
+            Assert.IsTrue(executor.Timeouts[index] <= executor.Timeouts[index - 1], "A later project must consume the same phase's remaining budget.");
     }
 
     private static void AssertBudgetNear(TimeSpan expected, TimeSpan actual)
     {
-        // The phase clock is a real Stopwatch, so allow a little elapsed wall time.
+        // These callers use TimeProvider.System, so allow a little elapsed wall time.
         Assert.IsTrue(
             actual <= expected && actual >= expected - TimeSpan.FromSeconds(5),
             $"Expected a budget just under {expected}, got {actual}.");
@@ -177,12 +198,12 @@ public sealed class WorkspaceLoadRestoreBudgetTests : SharedWorkspaceTestBase
         var copiedRoot = Path.GetDirectoryName(copiedSolutionPath)!;
         try
         {
-            using var manager = new WorkspaceManager(
+            using var manager = new WorkspaceManager(new RoslynMcp.Roslyn.Services.ForkInvocationPathPolicy(new RoslynMcp.Tests.Helpers.OwnedTestWorkspacePathPolicy()),
                 NullLogger<WorkspaceManager>.Instance,
                 new PreviewStore(),
                 new FileWatcherService(NullLogger<FileWatcherService>.Instance),
                 new WorkspaceManagerOptions { MaxConcurrentWorkspaces = 4, RestoreRaceWaitMs = 0 });
-            var status = await manager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+            var status = await manager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
             await body(manager, status with { RestoreRequired = true });
         }
         finally
@@ -194,7 +215,33 @@ public sealed class WorkspaceLoadRestoreBudgetTests : SharedWorkspaceTestBase
     /// <summary>Records each invocation's timeout and succeeds; honors a cancelled token like the real executor.</summary>
     private sealed class RecordingExecutor : IGatedCommandExecutor
     {
+        public Task<BuildCommandRun> ExecuteBuildAsync(BuildCommandPlan plan, TimeSpan timeout, CancellationToken ct) =>
+            throw new NotSupportedException("This fixture does not execute builds.");
+
+        public async Task<CommandExecutionDto> ExecuteAuthorizedAsync(
+            string workspaceId, string targetPath, IReadOnlyList<string> arguments, TimeSpan timeout,
+            Func<CancellationToken, Task> authorizeStart, CancellationToken ct)
+        {
+            await authorizeStart(ct).ConfigureAwait(false);
+            return await ExecuteAsync(workspaceId, targetPath, arguments, timeout, ct).ConfigureAwait(false);
+        }
+        public Task<TestRunResultDto> ExecuteTestAsync(
+            string workspaceId, string targetPath, IReadOnlyList<string> arguments,
+            Func<CommandExecutionDto, CancellationToken, Task<TestRunResultDto>> collectResults,
+            TimeSpan timeout, IReadOnlyList<EarlyKillPattern>? earlyKillPatterns, Func<CancellationToken, Task> authorizeStart, CancellationToken ct) =>
+            throw new NotSupportedException("This fixture does not execute tests.");
+
+        public Task<CommandExecutionDto> ExecuteAsync(
+            string workspaceId, string targetPath, IReadOnlyList<string> arguments, TimeSpan timeout,
+            IReadOnlyList<EarlyKillPattern>? earlyKillPatterns, CancellationToken ct)
+        {
+            if (earlyKillPatterns is { Count: > 0 })
+                throw new NotSupportedException("This fixture does not simulate streaming early-kill patterns.");
+            return ExecuteAsync(workspaceId, targetPath, arguments, timeout, ct);
+        }
+
         public List<TimeSpan> Timeouts { get; } = [];
+        public Action? AfterExecution { get; init; }
 
         public Task<CommandExecutionDto> ExecuteAsync(
             string workspaceId,
@@ -205,6 +252,7 @@ public sealed class WorkspaceLoadRestoreBudgetTests : SharedWorkspaceTestBase
         {
             ct.ThrowIfCancellationRequested();
             Timeouts.Add(timeout);
+            AfterExecution?.Invoke();
             return Task.FromResult(new CommandExecutionDto(
                 "dotnet", arguments, Path.GetDirectoryName(targetPath)!, targetPath, 0, true, 0, string.Empty, string.Empty));
         }

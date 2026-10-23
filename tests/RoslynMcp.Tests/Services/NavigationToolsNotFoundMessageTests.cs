@@ -34,9 +34,6 @@ public sealed class NavigationToolsNotFoundMessageTests : SharedWorkspaceTestBas
         WorkspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     /// <summary>
     /// <c>callers_callees</c> with a <c>metadataName</c>-only locator that does not resolve.
     /// Pre-fix the message claimed the symbol was missing "at the specified location" — there was

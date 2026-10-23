@@ -22,12 +22,6 @@ public sealed class CompileCheckZeroProjectsTests : SharedWorkspaceTestBase
         WorkspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup()
-    {
-        DisposeServices();
-    }
-
 
     [TestMethod]
     public async Task CompileCheckTool_UnknownProject_PublishesInputFreeGuidance()

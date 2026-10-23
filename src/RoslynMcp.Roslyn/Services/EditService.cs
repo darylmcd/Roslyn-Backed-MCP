@@ -53,6 +53,7 @@ public sealed class EditService : IEditService
         bool autoRevertOnError = false,
         string? canonicalWritePath = null)
     {
+        await RequireRecoveryAuthority().AuthorizePathsAsync(workspaceId, [canonicalWritePath ?? filePath], ct).ConfigureAwait(false);
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var (document, sourceText) = await ResolveDocumentAndTextAsync(solution, filePath, ct).ConfigureAwait(false);
 
@@ -100,30 +101,17 @@ public sealed class EditService : IEditService
                 () => sourceText.ToString(),
                 ct).ConfigureAwait(false),
         };
-        _undoService?.CaptureBeforeApply(
-            workspaceId,
-            $"Apply text edit to {Path.GetFileName(filePath)}",
-            solution,
-            fileSnapshots);
-
-        var coreResult = await ApplyTextEditsCoreAsync(workspaceId, filePath, edits, solution, document, sourceText, newSourceText, toolName, ct, canonicalWritePath: pinnedWritePath).ConfigureAwait(false);
-
-        // Only wire up verify when the core apply actually wrote the edit. When the
-        // core path returns Success=false (e.g. MSBuildWorkspace.TryApplyChanges
-        // rejected the change), the undo entry still contains the pre-edit snapshot,
-        // but nothing happened on disk — running compile_check here would add noise.
-        if (!verify || !coreResult.Success)
-        {
-            return coreResult;
-        }
-
-        var verification = await RunVerifyAndMaybeRevertAsync(
-            workspaceId,
-            projectFilter,
-            preErrorBaseline!,
-            autoRevertOnError,
-            ct).ConfigureAwait(false);
-
+        var physicalOperation = await CaptureMutationAsync(workspaceId, $"Apply text edit to {Path.GetFileName(filePath)}", fileSnapshots, ct).ConfigureAwait(false);
+        var undo = _undoService is null ? null : await _undoService.PrepareBeforeApplyAsync(physicalOperation, ct).ConfigureAwait(false);
+        var coreResult = await ApplyTextEditsCoreAsync(workspaceId, filePath, edits, solution,
+            document, sourceText, newSourceText, fileSnapshots, physicalOperation, ct, pinnedWritePath).ConfigureAwait(false);
+        if (!coreResult.Success || coreResult.Changes.Count == 0) return coreResult;
+        if (undo is not null) await undo.PublishAsync(ct).ConfigureAwait(false);
+        _changeTracker?.RecordChange(workspaceId, physicalOperation.Description,
+            [filePath], toolName);
+        if (!verify) return coreResult;
+        var verification = await RunVerifyAndMaybeRevertAsync(workspaceId, projectFilter,
+            preErrorBaseline!, autoRevertOnError, undo, ct).ConfigureAwait(false);
         return coreResult with { Verification = verification };
     }
 
@@ -136,144 +124,43 @@ public sealed class EditService : IEditService
         bool verify = false,
         bool autoRevertOnError = false)
     {
-        var initialSolution = _workspace.GetCurrentSolution(workspaceId);
-        var perFileSnapshots = await ResolveBatchSnapshotsAsync(
-            initialSolution,
-            fileEdits,
-            ct).ConfigureAwait(false);
-
-        // semantic-edit-with-compile-check-wrapper: pre-edit baseline runs ONCE across
-        // the union of owning projects (project-level filter is still cheaper than a
-        // full-solution compile). A null projectFilter means "compile every project"
-        // — required when the batch spans more than one project.
-        var batchProjectFilter = verify ? ResolveSingleProjectFilter(perFileSnapshots) : null;
-        var preErrorBaseline = verify
-            ? await CapturePreEditBaselineAsync(workspaceId, batchProjectFilter, ct).ConfigureAwait(false)
-            : null;
-
-        // Single snapshot at the top so revert_last_apply rolls back the ENTIRE batch atomically
-        // (from an undo perspective; individual disk writes still happen sequentially).
-        var fileSnapshots = new List<FileSnapshotDto>(perFileSnapshots.Count);
-        foreach (var t in perFileSnapshots)
+        await RequireRecoveryAuthority().AuthorizePathsAsync(workspaceId, fileEdits.Select(edit => edit.FilePath).Distinct(FileSystemPath.Comparer).ToArray(), ct).ConfigureAwait(false);
+        var initial = _workspace.GetCurrentSolution(workspaceId);
+        var (intended, changes) = await SimulatePreviewAsync(initial, fileEdits, ct, skipSyntaxCheck).ConfigureAwait(false);
+        var projects = intended.GetChanges(initial).GetProjectChanges().Select(change => change.NewProject.Name)
+            .Distinct(StringComparer.Ordinal).ToArray();
+        var projectFilter = projects.Length == 1 ? projects[0] : null;
+        var preBaseline = verify ? await CapturePreEditBaselineAsync(workspaceId, projectFilter, ct).ConfigureAwait(false) : null;
+        var files = new List<FileSnapshotDto>();
+        foreach (var path in changes.Select(change => change.FilePath).Distinct(FileSystemPath.Comparer))
         {
-            fileSnapshots.Add(await FileSnapshotCapture.CaptureAsync(
-                t.NormalizedPath,
-                () => t.SourceText.ToString(),
-                ct).ConfigureAwait(false));
+            var (document, text) = await ResolveDocumentAndTextAsync(initial, path, ct).ConfigureAwait(false);
+            files.Add(await FileSnapshotCapture.CaptureAsync(document.FilePath
+                ?? throw new InvalidOperationException("An edited document has no physical path."),
+                () => text.ToString(), ct).ConfigureAwait(false));
         }
-        _undoService?.CaptureBeforeApply(
-            workspaceId,
-            $"Apply edits to {fileEdits.Count} file(s)",
-            initialSolution,
-            fileSnapshots);
-
-        var results = await ApplyBatchFilesAsync(
-            workspaceId,
-            fileEdits,
-            toolName,
-            skipSyntaxCheck,
-            ct).ConfigureAwait(false);
-
-        // workspace-changes-atomic-batch-split-without-batchid (gh #740): emit ONE
-        // change-tracker entry covering the whole batch, mirroring
-        // CompositeApplyOrchestrator's post-loop single-entry pattern at
-        // CompositeApplyOrchestrator.cs:82-83. The per-file Core path's RecordChange is
-        // suppressed via suppressChangeTrackerRecord:true above so a 2-file batch
-        // produces a single workspace_changes / IUndoService.CommitPendingCapture
-        // pair rather than splitting into N independent ledger entries.
-        var batchAffectedFiles = results.Select(r => r.FilePath).ToList();
-        _changeTracker?.RecordChange(workspaceId,
-            $"Apply text edits to {fileEdits.Count} file(s)",
-            batchAffectedFiles,
-            toolName);
-
-        VerifyOutcomeDto? verification = null;
-        if (verify)
-        {
-            verification = await RunVerifyAndMaybeRevertAsync(
-                workspaceId,
-                batchProjectFilter,
-                preErrorBaseline!,
-                autoRevertOnError,
-                ct).ConfigureAwait(false);
-        }
-
-        return new MultiFileEditResultDto(true, results.Count, results, verification);
+        var physicalOperation = await CaptureMutationAsync(workspaceId, $"Apply text edits to {fileEdits.Count} file(s)", files, ct).ConfigureAwait(false);
+        var undo = _undoService is null ? null : await _undoService.PrepareBeforeApplyAsync(physicalOperation, ct).ConfigureAwait(false);
+        var persisted = await new DocumentSetPersistenceService(_workspace, _logger).PersistAsync(
+            workspaceId, initial, intended, intended.GetChanges(initial), files, physicalOperation, ct).ConfigureAwait(false);
+        if (!persisted.Success) return new MultiFileEditResultDto(false, 0, []);
+        var results = fileEdits.Select((edit, index) => new FileEditSummaryDto(edit.FilePath,
+            string.IsNullOrEmpty(changes[index].UnifiedDiff) ? 0 : edit.Edits.Count,
+            string.IsNullOrEmpty(changes[index].UnifiedDiff) ? null : changes[index].UnifiedDiff)).ToArray();
+        if (persisted.AppliedFiles.Count == 0) return new MultiFileEditResultDto(true, 0, results);
+        if (undo is not null) await undo.PublishAsync(ct).ConfigureAwait(false);
+        _changeTracker?.RecordChange(workspaceId, physicalOperation.Description,
+            persisted.AppliedFiles, toolName);
+        var verification = verify ? await RunVerifyAndMaybeRevertAsync(workspaceId, projectFilter,
+            preBaseline!, autoRevertOnError, undo, ct).ConfigureAwait(false) : null;
+        return new MultiFileEditResultDto(true, persisted.AppliedFiles.Count, results, verification);
     }
 
-    private async Task<List<(Document Document, SourceText SourceText, string NormalizedPath)>> ResolveBatchSnapshotsAsync(
-        Solution initialSolution,
-        IReadOnlyList<FileEditsDto> fileEdits,
-        CancellationToken ct)
-    {
-        var snapshots = new List<(Document, SourceText, string)>();
-        foreach (var fileEdit in fileEdits)
-        {
-            var (document, sourceText) = await ResolveDocumentAndTextAsync(
-                initialSolution,
-                fileEdit.FilePath,
-                ct).ConfigureAwait(false);
-            ValidateEdits(fileEdit.Edits, sourceText);
-            snapshots.Add((document, sourceText, Path.GetFullPath(fileEdit.FilePath)));
-        }
+    private IWorkspaceRecoveryAuthority RequireRecoveryAuthority() => _workspace as IWorkspaceRecoveryAuthority
+        ?? throw InvalidOperationErrors.Internal("Text edits require workspace-owned physical recovery authority.");
 
-        return snapshots;
-    }
-
-    private static string? ResolveSingleProjectFilter(
-        IEnumerable<(Document Document, SourceText SourceText, string NormalizedPath)> snapshots)
-    {
-        var ownerProjects = snapshots
-            .Select(snapshot => snapshot.Document.Project.Name)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Take(2)
-            .ToList();
-        return ownerProjects.Count == 1 ? ownerProjects[0] : null;
-    }
-
-    private async Task<List<FileEditSummaryDto>> ApplyBatchFilesAsync(
-        string workspaceId,
-        IReadOnlyList<FileEditsDto> fileEdits,
-        string toolName,
-        bool skipSyntaxCheck,
-        CancellationToken ct)
-    {
-        var results = new List<FileEditSummaryDto>();
-        foreach (var fileEdit in fileEdits)
-        {
-            var current = _workspace.GetCurrentSolution(workspaceId);
-            var (document, sourceText) = await ResolveDocumentAndTextAsync(
-                current,
-                fileEdit.FilePath,
-                ct).ConfigureAwait(false);
-            var merged = BuildPatchedSourceText(sourceText, fileEdit.Edits);
-            if (!skipSyntaxCheck
-                && string.Equals(Path.GetExtension(fileEdit.FilePath), ".cs", StringComparison.OrdinalIgnoreCase)
-                && GetCSharpSyntaxErrors(merged, fileEdit.FilePath).Count > 0)
-            {
-                results.Add(new FileEditSummaryDto(fileEdit.FilePath, 0, null));
-                continue;
-            }
-
-            var result = await ApplyTextEditsCoreAsync(
-                workspaceId,
-                fileEdit.FilePath,
-                fileEdit.Edits,
-                current,
-                document,
-                sourceText,
-                merged,
-                toolName,
-                ct,
-                suppressChangeTrackerRecord: true).ConfigureAwait(false);
-            var diff = result.Changes.Count > 0
-                ? string.Join("\n", result.Changes.Select(change => change.UnifiedDiff))
-                : null;
-            results.Add(new FileEditSummaryDto(fileEdit.FilePath, result.EditsApplied, diff));
-        }
-
-        return results;
-    }
+    private Task<PhysicalMutationRecovery> CaptureMutationAsync(string workspaceId, string description, IReadOnlyList<FileSnapshotDto> files, CancellationToken ct) =>
+        RequireRecoveryAuthority().CaptureRecoveryAsync(workspaceId, description, files, ct);
 
     /// <summary>
     /// Item 5: preview a multi-file edit batch without writing to disk. Simulates every file's
@@ -295,21 +182,21 @@ public sealed class EditService : IEditService
         }
 
         var initialSolution = _workspace.GetCurrentSolution(workspaceId);
-        var (accumulator, changes, warnings) =
+        var (accumulator, changes) =
             await SimulatePreviewAsync(initialSolution, fileEdits, ct, skipSyntaxCheck).ConfigureAwait(false);
 
         var description = $"Preview multi-file edit across {changes.Count} file(s)";
         // preview-token-apply-route-provenance: tag the token with its producer family so
         // preview_multi_file_edit_apply can refuse a token minted elsewhere before mutating.
-        // diffTruncated: false reproduces exactly what the untagged 4-argument overload forwarded.
         var token = _previewStore.Store(
             workspaceId,
+            initialSolution,
             accumulator,
             _workspace.GetCurrentVersion(workspaceId),
             description,
-            diffTruncated: false,
+            changes,
             kind: PreviewKind.MultiFileEdit);
-        return new RefactoringPreviewDto(token, description, changes, warnings.Count > 0 ? warnings : null);
+        return new RefactoringPreviewDto(token, description, changes, Warnings: null);
     }
 
     /// <summary>
@@ -322,63 +209,31 @@ public sealed class EditService : IEditService
     /// only in how they package this result.
     /// </summary>
     /// <remarks>
-    /// Pre-validation runs to completion BEFORE any simulation so a malformed edit aborts the whole
-    /// preview and the token-issuing caller never leaves a dangling token behind.
+    /// Every edit is validated against its accumulated input before any disk write or token publication.
     /// </remarks>
-    private static async Task<(Solution Accumulator, List<FileChangeDto> Changes, List<string> Warnings)> SimulatePreviewAsync(
-        Solution inputSolution,
-        IReadOnlyList<FileEditsDto> fileEdits,
-        CancellationToken ct,
-        bool skipSyntaxCheck)
+    private static async Task<(Solution Accumulator, List<FileChangeDto> Changes)> SimulatePreviewAsync(
+        Solution inputSolution, IReadOnlyList<FileEditsDto> fileEdits, CancellationToken ct, bool skipSyntaxCheck)
     {
-        var perFile = new List<(Document Document, SourceText SourceText, string FilePath, IReadOnlyList<TextEditDto> Edits)>();
-        foreach (var fileEdit in fileEdits)
-        {
-            var (document, sourceText) = await ResolveDocumentAndTextAsync(inputSolution, fileEdit.FilePath, ct).ConfigureAwait(false);
-            ValidateEdits(fileEdit.Edits, sourceText);
-            perFile.Add((document, sourceText, fileEdit.FilePath, fileEdit.Edits));
-        }
-
+        ArgumentNullException.ThrowIfNull(fileEdits);
         var accumulator = inputSolution;
-        var changes = new List<FileChangeDto>();
-        var warnings = new List<string>();
-
-        foreach (var (document, sourceText, filePath, edits) in perFile)
+        var changes = new List<FileChangeDto>(fileEdits.Count);
+        foreach (var edit in fileEdits)
         {
-            var merged = BuildPatchedSourceText(sourceText, edits);
-            if (!skipSyntaxCheck
-                && string.Equals(Path.GetExtension(filePath), ".cs", StringComparison.OrdinalIgnoreCase))
+            var (document, sourceText) = await ResolveDocumentAndTextAsync(accumulator, edit.FilePath, ct).ConfigureAwait(false);
+            ValidateEdits(edit.Edits, sourceText);
+            var merged = BuildPatchedSourceText(sourceText, edit.Edits);
+            if (!skipSyntaxCheck && string.Equals(Path.GetExtension(edit.FilePath), ".cs", StringComparison.OrdinalIgnoreCase))
             {
-                var syntaxErrors = GetCSharpSyntaxErrors(merged, filePath);
-                if (syntaxErrors.Count > 0)
-                {
-                    throw new InvalidOperationException(
-                        $"preview_multi_file_edit: simulated edits for '{filePath}' produce {syntaxErrors.Count} syntax error(s). " +
-                        "Pass skipSyntaxCheck=true if the intermediate state is intentional.");
-                }
+                var errors = GetCSharpSyntaxErrors(merged, edit.FilePath);
+                if (errors.Count > 0) throw new PublicInvalidOperationException(
+                    $"Multi-file edits produce {errors.Count} syntax error(s). Pass skipSyntaxCheck=true if the intermediate state is intentional.");
             }
-
-            // Find the document in the accumulating solution so its updated text flows into the
-            // next file's diff comparison.
-            var docInAccum = accumulator.GetDocument(document.Id);
-            if (docInAccum is null)
-            {
-                // Document was removed by a prior edit in the batch — skip with a warning.
-                warnings.Add($"Skipped '{filePath}': document no longer present in the working solution.");
-                continue;
-            }
-            accumulator = accumulator.WithDocumentText(docInAccum.Id, merged);
-
-            var unified = DiffGenerator.GenerateUnifiedDiff(sourceText.ToString(), merged.ToString(), filePath);
-            changes.Add(new FileChangeDto(filePath, unified));
+            accumulator = accumulator.WithDocumentText(document.Id, merged);
+            changes.Add(new FileChangeDto(edit.FilePath,
+                DiffGenerator.GenerateUnifiedDiff(sourceText.ToString(), merged.ToString(), edit.FilePath)));
         }
-
-        if (changes.Count == 0)
-        {
-            throw new InvalidOperationException("preview_multi_file_edit produced no diffs. See Warnings for per-file reasons.");
-        }
-
-        return (accumulator, changes, warnings);
+        if (changes.Count == 0) throw new PublicInvalidOperationException("A multi-file edit requires at least one file.");
+        return (accumulator, changes);
     }
 
     /// <summary>
@@ -404,11 +259,11 @@ public sealed class EditService : IEditService
             throw new InvalidOperationException("preview_multi_file_edit requires at least one file edit.");
         }
 
-        var (accumulator, changes, warnings) =
+        var (accumulator, changes) =
             await SimulatePreviewAsync(inputSolution, fileEdits, ct, skipSyntaxCheck).ConfigureAwait(false);
 
         var description = $"Preview multi-file edit across {changes.Count} file(s)";
-        return (accumulator, changes, description, warnings.Count > 0 ? warnings : null);
+        return (accumulator, changes, description, null);
     }
 
     /// <summary>
@@ -667,71 +522,22 @@ public sealed class EditService : IEditService
         return lastCharInSpan == '\r' ? "\r" : string.Empty;
     }
 
-    /// <summary>
-    /// Inner edit-application path that does NOT touch the undo stack. The caller is
-    /// responsible for snapshotting before invoking this method (single-file path
-    /// snapshots once; multi-file path snapshots once at the batch boundary).
-    /// </summary>
-    /// <param name="suppressChangeTrackerRecord">
-    /// When true, skip the per-file <c>_changeTracker.RecordChange(...)</c> call so the
-    /// caller can emit a single batch-level entry covering all affected files. Used by
-    /// <see cref="ApplyMultiFileTextEditsAsync"/> so a 2-file batch produces ONE ledger
-    /// entry rather than splitting into per-file entries
-    /// (<c>workspace-changes-atomic-batch-split-without-batchid</c>, gh #740).
-    /// Mirrors <see cref="CompositeApplyOrchestrator"/>'s post-loop single-entry pattern.
-    /// </param>
-    /// <param name="canonicalWritePath">
-    /// Optional boundary-canonicalized target the physical write must land on, pinned by the caller's
-    /// path validation (<c>path-boundary-link-swap-toctou</c>). <c>null</c> writes to the resolved
-    /// document's own path.
-    /// </param>
+    /// <summary>Persists one prepared edit without publishing undo or ledger state.</summary>
     private async Task<TextEditResultDto> ApplyTextEditsCoreAsync(
-        string workspaceId,
-        string filePath,
-        IReadOnlyList<TextEditDto> edits,
-        Solution solution,
-        Document document,
-        SourceText sourceText,
-        SourceText newSourceText,
-        string toolName,
-        CancellationToken ct,
-        bool suppressChangeTrackerRecord = false,
-        string? canonicalWritePath = null)
+        string workspaceId, string filePath, IReadOnlyList<TextEditDto> edits,
+        Solution solution, Document document, SourceText sourceText, SourceText newSourceText,
+        IReadOnlyList<FileSnapshotDto> files, PhysicalMutationRecovery physicalOperation, CancellationToken ct, string? canonicalWritePath)
     {
-        var normalizedPath = Path.GetFullPath(filePath);
-        var originalText = sourceText.ToString();
-
-        var newDocument = document.WithText(newSourceText);
-        var newSolution = newDocument.Project.Solution;
-
-        var applied = _workspace.TryApplyChanges(workspaceId, newSolution);
-        if (!applied)
-        {
-            return new TextEditResultDto(false, filePath, 0, [], null);
-        }
-
-        // BUG-N1: Mirror RefactoringService — MSBuildWorkspace may not flush text edits to disk.
-        var persisted = await PersistDocumentTextToDiskAsync(workspaceId, normalizedPath, ct, canonicalWritePath).ConfigureAwait(false);
-        if (!persisted)
-        {
-            return new TextEditResultDto(false, filePath, 0, [], null);
-        }
-
-        // Compute bounded unified diff (hunk-based, 16 KB cap, truncation marker on overflow).
-        // Previously emitted every line with "+ " / "- " / "  " prefixes — produced unbounded
-        // output for large files and a format that was "unified-diff-like" rather than valid.
-        var newText = newSourceText.ToString();
-        var unified = DiffGenerator.GenerateUnifiedDiff(originalText, newText, filePath);
-        var fileChange = new FileChangeDto(filePath, unified);
-
-        if (!suppressChangeTrackerRecord)
-        {
-            _changeTracker?.RecordChange(workspaceId,
-                $"Apply text edit to {Path.GetFileName(filePath)}",
-                [filePath], toolName);
-        }
-
-        return new TextEditResultDto(true, filePath, edits.Count, [fileChange], null);
+        if (canonicalWritePath is not null && !FileSystemPath.Comparer.Equals(document.FilePath, canonicalWritePath))
+            throw new PublicInvalidOperationException("The pinned edit target differs from the loaded document. Reload and recreate the edit.");
+        var modified = document.WithText(newSourceText).Project.Solution;
+        var result = await new DocumentSetPersistenceService(_workspace, _logger).PersistAsync(
+            workspaceId, solution, modified, modified.GetChanges(solution), files, physicalOperation, ct).ConfigureAwait(false);
+        if (!result.Success) return new TextEditResultDto(false, filePath, 0, [], null);
+        if (result.AppliedFiles.Count == 0) return new TextEditResultDto(true, filePath, 0, [], null);
+        var change = new FileChangeDto(filePath,
+            DiffGenerator.GenerateUnifiedDiff(sourceText.ToString(), newSourceText.ToString(), filePath));
+        return new TextEditResultDto(true, filePath, edits.Count, [change], null);
     }
 
     private static IReadOnlyList<TextEditSyntaxErrorDto> GetCSharpSyntaxErrors(SourceText newSourceText, string filePath)
@@ -774,51 +580,6 @@ public sealed class EditService : IEditService
         return list;
     }
 
-    /// <summary>
-    /// Flushes the workspace document's current text to disk.
-    /// </summary>
-    /// <param name="canonicalWritePath">
-    /// When non-null, the boundary-canonicalized target the caller's path validation already pinned;
-    /// the write lands there instead of on <c>document.FilePath</c>. Document lookup resolves both the
-    /// logical request and Roslyn's physically pinned identity through <see cref="SymbolResolver"/>;
-    /// encoding still comes from the document's own SourceText
-    /// (<c>workspace-load-path-canonicalization</c>, <c>path-boundary-link-swap-toctou</c>).
-    /// </param>
-    private async Task<bool> PersistDocumentTextToDiskAsync(
-        string workspaceId,
-        string normalizedPath,
-        CancellationToken ct,
-        string? canonicalWritePath = null)
-    {
-        var solution = _workspace.GetCurrentSolution(workspaceId);
-        var document = SymbolResolver.FindDocument(solution, normalizedPath);
-
-        if (document?.FilePath is null)
-            return false;
-
-        try
-        {
-            // mutation-write-paths-drop-original-encoding: keep the SourceText object rather than
-            // collapsing it to a string immediately — SourceText.Encoding carries the encoding
-            // Roslyn detected when the document was loaded from disk (and SourceText.WithChanges
-            // propagates it through the edit), so threading it into the write keeps a UTF-8-BOM or
-            // UTF-16 source file byte-faithful instead of silently re-encoding it as UTF-8-no-BOM.
-            var sourceText = await document.GetTextAsync(ct).ConfigureAwait(false);
-            await AtomicFileWriter.WriteAllTextAsync(
-                canonicalWritePath ?? document.FilePath,
-                sourceText.ToString(),
-                ct,
-                logger: _logger,
-                encoding: SourceFileEncoding.FromSourceText(sourceText.Encoding)).ConfigureAwait(false);
-            return true;
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            _logger.LogWarning(ex, "Failed to persist document to disk: {Path}", document.FilePath);
-            return false;
-        }
-    }
-
     // --------------------------------------------------------------------------
     // semantic-edit-with-compile-check-wrapper: verify + auto-revert support
     // --------------------------------------------------------------------------
@@ -859,21 +620,19 @@ public sealed class EditService : IEditService
     /// Post-edit verify leg: runs <c>compile_check</c> on the same scope as the baseline,
     /// subtracts the pre-existing errors to produce the introduced-error set, then either
     /// returns the verify outcome (when no new errors OR <paramref name="autoRevertOnError"/>
-    /// is false) or calls <c>revert_last_apply</c> to roll back the single-slot snapshot
-    /// this call just captured.
+    /// is false) or compensates through the exact undo operation captured by this call.
+    /// A superseding operation refuses compensation.
     /// </summary>
     /// <remarks>
-    /// Single-shot semantics: this revert targets ONLY the snapshot that the current
-    /// call placed on the undo stack. Prior-turn edits are never touched — the undo
-    /// service is already single-slot per workspace, so the capture earlier in this
-    /// method overwrote whatever was there. Running <c>RevertAsync</c> restores the
-    /// pre-edit state that was captured inside this call's frame, not an earlier one.
+    /// Compensation uses the exact operation owned by this call; a superseding operation
+    /// cannot redirect rollback to a different undo target.
     /// </remarks>
     private async Task<VerifyOutcomeDto> RunVerifyAndMaybeRevertAsync(
         string workspaceId,
         string? projectFilter,
         CompilationErrorSnapshot preEditBaseline,
         bool autoRevertOnError,
+        IPreparedUndoOperation? undoOperation,
         CancellationToken ct)
     {
         // The null-check here would only fire in a misconfigured test DI; production
@@ -914,11 +673,11 @@ public sealed class EditService : IEditService
                 "so the workspace is preserved for inspection. Call revert_last_apply to roll back this edit.");
         }
 
-        // autoRevertOnError=true AND new errors appeared. Roll back the single-slot
-        // snapshot this call captured. _undoService may legitimately be null in
+        // New errors require compensation through this call's owned undo operation.
+        // A superseding operation cannot redirect it. _undoService may be null in
         // test contexts that construct EditService without an undo stack — surface
         // that as a structured outcome rather than a NullReferenceException.
-        if (_undoService is null)
+        if (undoOperation is null)
         {
             return CreateVerifyOutcome(
                 "revert_failed",
@@ -930,7 +689,7 @@ public sealed class EditService : IEditService
                 "The edit remained applied. Wire IUndoService via AddRoslynMcpCoreServices.");
         }
 
-        var reverted = await _undoService.RevertAsync(workspaceId, ct).ConfigureAwait(false);
+        var reverted = await undoOperation.RestoreAsync(ct).ConfigureAwait(false);
         return reverted
             ? CreateVerifyOutcome(
                 "reverted",

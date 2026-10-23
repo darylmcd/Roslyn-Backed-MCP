@@ -14,21 +14,16 @@ public sealed class ExtractionArgumentRefusalWireTests : IsolatedWorkspaceTestBa
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     [DataRow("2025-11-25")]
     [DataRow("2026-07-28")]
     public async Task PublicRefusals_ActualServicesPreserveDualEraWireContract(string version)
     {
-        await using var harness = await ProductionParityMcpHarness.CreateAsync("extraction-argument-refusals", version);
-        var loaded = await harness.Client.CallToolAsync("workspace_load",
-            new Dictionary<string, object?> { ["path"] = SampleSolutionPath, ["autoRestore"] = false },
-            cancellationToken: CancellationToken.None);
-        Assert.IsFalse(loaded.IsError == true);
-        var id = JsonNode.Parse(loaded.Content.OfType<TextContentBlock>().Single().Text)!["workspaceId"]!.GetValue<string>();
-        var root = Path.GetDirectoryName(SampleSolutionPath)!;
+        await using var fixture = CreateIsolatedWorkspaceCopy();
+        await using var harness = await ProductionParityMcpHarness.CreateOwnedAsync("extraction-argument-refusals", version, fixture.RootPath);
+        var id = await ProductionParityMcpHarness.LoadOwnedWorkspaceAsync(
+            harness, fixture.SolutionPath, CancellationToken.None);
+        var root = fixture.RootPath;
         var path = Path.Combine(root, "SampleLib", "RefactoringProbe.cs");
         var cases = CreateCases(id, root, path);
         var observed = new List<(WireCase Case, JsonObject Frame)>();

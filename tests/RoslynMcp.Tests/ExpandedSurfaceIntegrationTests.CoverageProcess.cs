@@ -24,12 +24,6 @@ public sealed class ExpandedSurfaceIntegrationTests_CoverageProcess : SharedWork
         WorkspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup()
-    {
-        DisposeServices();
-    }
-
     [TestMethod]
     public async Task TestCoverageTool_Returns_Structured_Response()
     {

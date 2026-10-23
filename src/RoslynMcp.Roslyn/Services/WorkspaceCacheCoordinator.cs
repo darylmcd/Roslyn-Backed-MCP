@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -15,101 +16,56 @@ internal sealed class WorkspaceCacheCoordinator
         _logger = logger;
     }
 
-    /// <summary>
-    /// Probe-stage cache lookup performed before MSBuild opens the solution. Captures the
-    /// (solutionHash, sdkVersion) prefix of the cache-key triple; the graph hash is validated
-    /// after load by <see cref="ResolveAndWriteAsync"/>.
-    /// </summary>
-    public async Task<WorkspaceCacheProbe?> TryProbeAsync(string fullPath, CancellationToken ct)
+    /// <summary>Reads a current-authorized entry hash and an owned-cache candidate; cached paths confer no read authority.</summary>
+    public async Task<WorkspaceCacheProbe?> TryProbeAsync(string fullPath,
+        Func<IReadOnlyList<string>, CancellationToken, Task> authorize, CancellationToken ct)
     {
-        try
-        {
-            var solutionHash = await ComputeSolutionContentHashAsync(fullPath, ct).ConfigureAwait(false);
-            if (solutionHash is null) return null;
-
-            var sdkVersion = ResolveSdkVersionForCacheKey();
-            var candidate = await TryEnumerateNewestCacheEntryAsync(solutionHash, sdkVersion, ct).ConfigureAwait(false);
-            if (candidate is null)
-            {
-                return new WorkspaceCacheProbe(
-                    solutionHash, sdkVersion, CachedEntry: null, MetadataReferencesStillStable: false);
-            }
-
-            var stable = MetadataReferencesStillStableOnDisk(candidate);
-            return new WorkspaceCacheProbe(solutionHash, sdkVersion, candidate, stable);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            _logger?.LogDebug(ex, "Workspace cache probe failed for '{Path}'; cold-load path will run.", fullPath);
-            return null;
-        }
+        var solutionHash = await ComputeSolutionContentHashAsync(fullPath, authorize, ct).ConfigureAwait(false);
+        if (solutionHash is null) return null;
+        var sdkVersion = ResolveSdkVersionForCacheKey();
+        var candidate = await TryEnumerateNewestCacheEntryAsync(solutionHash, sdkVersion, ct).ConfigureAwait(false);
+        return new WorkspaceCacheProbe(solutionHash, sdkVersion, candidate);
     }
 
-    /// <summary>
-    /// Post-load reconciliation. Confirms a probe-stage candidate against the actual graph and
-    /// writes the current graph/metadata entry under the canonical graph key.
-    /// </summary>
-    public async Task<WorkspaceCacheWriteResult?> ResolveAndWriteAsync(
-        Solution solution,
-        WorkspaceCacheProbe probe,
-        CancellationToken ct)
+    /// <summary>Validates a candidate against actual graph/reference coordinates before observing only current loaded references.</summary>
+    public async Task<WorkspaceCacheWriteResult?> ResolveAndWriteAsync(Solution solution, WorkspaceCacheProbe probe,
+        Func<IReadOnlyList<string>, CancellationToken, Task> authorize, CancellationToken ct)
     {
-        try
-        {
-            var actualGraph = BuildCachedGraphFromSolution(solution);
-            var actualMetadataRefs = BuildCachedMetadataRefsFromSolution(solution);
-            var actualGraphHash = ComputeMsbuildGraphHash(actualGraph);
-            var canonicalKey = new WorkspaceCacheKey(probe.SolutionHash, probe.SdkVersion, actualGraphHash);
-            var cacheHit = false;
-
-            if (probe.CachedEntry is not null)
-            {
-                var cachedGraphHash = ComputeMsbuildGraphHash(probe.CachedEntry.ProjectGraph);
-                if (string.Equals(cachedGraphHash, actualGraphHash, StringComparison.Ordinal)
-                    && probe.MetadataReferencesStillStable)
-                {
-                    cacheHit = true;
-                }
-            }
-
-            var entryToWrite = new WorkspaceCacheEntry(actualGraph, actualMetadataRefs, DateTime.UtcNow);
-            _ = await _cacheStore.PutAsync(canonicalKey, entryToWrite, ct).ConfigureAwait(false);
-            return new WorkspaceCacheWriteResult(cacheHit);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            _logger?.LogDebug(ex, "Workspace cache write failed for '{SolutionHash}'; cold path stands.", probe.SolutionHash);
-            return null;
-        }
+        var actualGraph = BuildCachedGraphFromSolution(solution);
+        var actualGraphHash = ComputeMsbuildGraphHash(actualGraph);
+        var coordinateMatch = probe.CachedEntry is { } candidate
+            && string.Equals(ComputeMsbuildGraphHash(candidate.ProjectGraph), actualGraphHash, StringComparison.Ordinal)
+            && MetadataCoordinatesMatch(candidate.MetadataReferences, solution);
+        var actualMetadata = await BuildCachedMetadataRefsFromSolutionAsync(solution, authorize, ct).ConfigureAwait(false);
+        if (actualMetadata is null) return null;
+        var cacheHit = coordinateMatch && MetadataTimestampsMatch(probe.CachedEntry!.MetadataReferences, actualMetadata);
+        var key = new WorkspaceCacheKey(probe.SolutionHash, probe.SdkVersion, actualGraphHash);
+        return await PutAsync(key, new(actualGraph, actualMetadata, DateTime.UtcNow), cacheHit, ct).ConfigureAwait(false);
     }
 
-    /// <summary>
-    /// Cold-path cache write used when the probe found no candidate for the solution/sdk pair.
-    /// </summary>
-    public async Task<WorkspaceCacheWriteResult?> WriteFreshEntryAsync(
-        Solution solution,
-        string fullPath,
-        CancellationToken ct)
+    public async Task<WorkspaceCacheWriteResult?> WriteFreshEntryAsync(Solution solution, string fullPath,
+        Func<IReadOnlyList<string>, CancellationToken, Task> authorize, CancellationToken ct)
+    {
+        var solutionHash = await ComputeSolutionContentHashAsync(fullPath, authorize, ct).ConfigureAwait(false);
+        if (solutionHash is null) return null;
+        var graph = BuildCachedGraphFromSolution(solution);
+        var metadata = await BuildCachedMetadataRefsFromSolutionAsync(solution, authorize, ct).ConfigureAwait(false);
+        if (metadata is null) return null;
+        var key = new WorkspaceCacheKey(solutionHash, ResolveSdkVersionForCacheKey(), ComputeMsbuildGraphHash(graph));
+        return await PutAsync(key, new(graph, metadata, DateTime.UtcNow), cacheHit: false, ct).ConfigureAwait(false);
+    }
+
+    private async Task<WorkspaceCacheWriteResult?> PutAsync(WorkspaceCacheKey key, WorkspaceCacheEntry entry, bool cacheHit, CancellationToken ct)
     {
         try
         {
-            var solutionHash = await ComputeSolutionContentHashAsync(fullPath, ct).ConfigureAwait(false);
-            if (solutionHash is null) return null;
-
-            var sdkVersion = ResolveSdkVersionForCacheKey();
-            var graph = BuildCachedGraphFromSolution(solution);
-            var metadataRefs = BuildCachedMetadataRefsFromSolution(solution);
-            var graphHash = ComputeMsbuildGraphHash(graph);
-
-            var key = new WorkspaceCacheKey(solutionHash, sdkVersion, graphHash);
-            var entry = new WorkspaceCacheEntry(graph, metadataRefs, DateTime.UtcNow);
-
             _ = await _cacheStore.PutAsync(key, entry, ct).ConfigureAwait(false);
-            return new WorkspaceCacheWriteResult(CacheHit: false);
+            return new(cacheHit);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception failure) when (failure is not OperationCanceledException)
         {
-            _logger?.LogDebug(ex, "Workspace cache write failed for '{Path}'; cold path stands.", fullPath);
+            // Only cache-owned IO is best effort. Current-input authorization is outside this catch.
+            _logger?.LogDebug(failure, "Workspace cache write failed; current native load remains available.");
             return null;
         }
     }
@@ -168,17 +124,17 @@ internal sealed class WorkspaceCacheCoordinator
         }
     }
 
-    internal static async Task<string?> ComputeSolutionContentHashAsync(string fullPath, CancellationToken ct)
+    internal static async Task<string?> ComputeSolutionContentHashAsync(string fullPath,
+        Func<IReadOnlyList<string>, CancellationToken, Task> authorize, CancellationToken ct)
     {
+        await authorize([fullPath], ct).ConfigureAwait(false);
         try
         {
-            var bytes = await File.ReadAllBytesAsync(fullPath, ct).ConfigureAwait(false);
-            var hash = System.Security.Cryptography.SHA256.HashData(bytes);
-            return Convert.ToHexString(hash).ToLowerInvariant();
+            var bytes = await PhysicalInputReader.ReadAllBytesAsync(fullPath, ct).ConfigureAwait(false);
+            return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)).ToLowerInvariant();
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception failure) when (failure is IOException or UnauthorizedAccessException)
         {
-            _ = ex;
             return null;
         }
     }
@@ -225,60 +181,64 @@ internal sealed class WorkspaceCacheCoordinator
         return graph;
     }
 
-    internal static IReadOnlyList<CachedProjectMetadataReferences> BuildCachedMetadataRefsFromSolution(Solution solution)
+    internal static async Task<IReadOnlyList<CachedProjectMetadataReferences>?> BuildCachedMetadataRefsFromSolutionAsync(
+        Solution solution, Func<IReadOnlyList<string>, CancellationToken, Task> authorize, CancellationToken ct)
     {
-        var result = new List<CachedProjectMetadataReferences>(solution.ProjectIds.Count);
-        foreach (var project in solution.Projects.OrderBy(p => p.FilePath, StringComparer.OrdinalIgnoreCase))
+        var projects = solution.Projects.Where(project => !string.IsNullOrEmpty(project.FilePath))
+            .OrderBy(project => project.FilePath, FileSystemPath.Comparer).ToArray();
+        var paths = projects.SelectMany(project => project.MetadataReferences).OfType<PortableExecutableReference>()
+            .Select(reference => reference.FilePath).OfType<string>().Where(path => path.Length != 0)
+            .Distinct(FileSystemPath.Comparer).ToArray();
+        await authorize(paths, ct).ConfigureAwait(false);
+        // No awaited work separates this exact batch grant from the held-file metadata snapshot.
+        var timestamps = new Dictionary<string, DateTime>(FileSystemPath.Comparer);
+        try
         {
-            if (string.IsNullOrEmpty(project.FilePath)) continue;
-            var refs = new List<CachedMetadataReference>(project.MetadataReferences.Count);
-            foreach (var mref in project.MetadataReferences.OfType<PortableExecutableReference>())
+            foreach (var path in paths)
             {
-                if (string.IsNullOrEmpty(mref.FilePath)) continue;
-                DateTime mtime;
-                try
-                {
-                    mtime = File.GetLastWriteTimeUtc(mref.FilePath);
-                }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                {
-                    _ = ex;
-                    continue;
-                }
-                refs.Add(new CachedMetadataReference(mref.FilePath, mtime));
+                ct.ThrowIfCancellationRequested();
+                if (PhysicalInputReader.ReadFileLastWriteTimeUtcIfPresent(path, ct) is not { } timestamp) return null;
+                timestamps.Add(path, timestamp);
             }
-            result.Add(new CachedProjectMetadataReferences(project.FilePath, refs));
         }
+        catch (Exception failure) when (failure is IOException or UnauthorizedAccessException)
+        {
+            // An incomplete selected-reference snapshot cannot validate or refresh a cache entry.
+            return null;
+        }
+        return projects.Select(project => new CachedProjectMetadataReferences(project.FilePath!,
+            project.MetadataReferences.OfType<PortableExecutableReference>().Select(reference => reference.FilePath)
+                .OfType<string>().Where(timestamps.ContainsKey).Select(path => new CachedMetadataReference(path, timestamps[path])).ToArray())).ToArray();
+    }
+
+    private static bool MetadataCoordinatesMatch(IReadOnlyList<CachedProjectMetadataReferences> cached, Solution actual)
+    {
+        var expected = Coordinates(cached);
+        var observed = Coordinates(actual.Projects.Where(project => !string.IsNullOrEmpty(project.FilePath))
+            .Select(project => new CachedProjectMetadataReferences(project.FilePath!, project.MetadataReferences
+                .OfType<PortableExecutableReference>().Select(reference => reference.FilePath).OfType<string>()
+                .Where(path => path.Length != 0).Select(path => new CachedMetadataReference(path, default)).ToArray())).ToArray());
+        return expected.Count == observed.Count && expected.All(pair => observed.TryGetValue(pair.Key, out var paths) && pair.Value.SetEquals(paths));
+    }
+
+    private static Dictionary<string, HashSet<string>> Coordinates(IReadOnlyList<CachedProjectMetadataReferences> metadata)
+    {
+        var result = new Dictionary<string, HashSet<string>>(FileSystemPath.Comparer);
+        foreach (var project in metadata)
+            foreach (var reference in project.References)
+            {
+                if (!result.TryGetValue(project.ProjectPath, out var paths)) result.Add(project.ProjectPath, paths = new(FileSystemPath.Comparer));
+                paths.Add(reference.AssemblyPath);
+            }
         return result;
     }
 
-    internal static bool MetadataReferencesStillStableOnDisk(WorkspaceCacheEntry entry)
-    {
-        foreach (var projectRefs in entry.MetadataReferences)
-        {
-            foreach (var mref in projectRefs.References)
-            {
-                try
-                {
-                    if (!File.Exists(mref.AssemblyPath)) return false;
-                    var mtime = File.GetLastWriteTimeUtc(mref.AssemblyPath);
-                    if (mtime != mref.LastWriteTimeUtc) return false;
-                }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                {
-                    _ = ex;
-                    return false;
-                }
-            }
-        }
-        return true;
-    }
+    private static bool MetadataTimestampsMatch(IReadOnlyList<CachedProjectMetadataReferences> cached,
+        IReadOnlyList<CachedProjectMetadataReferences> actual) => actual.All(project => project.References.All(reference =>
+            cached.Where(candidate => FileSystemPath.Comparer.Equals(candidate.ProjectPath, project.ProjectPath))
+                .SelectMany(candidate => candidate.References).Where(candidate => FileSystemPath.Comparer.Equals(candidate.AssemblyPath, reference.AssemblyPath))
+                .All(candidate => candidate.LastWriteTimeUtc == reference.LastWriteTimeUtc)));
 }
 
-internal sealed record WorkspaceCacheProbe(
-    string SolutionHash,
-    string SdkVersion,
-    WorkspaceCacheEntry? CachedEntry,
-    bool MetadataReferencesStillStable);
-
+internal sealed record WorkspaceCacheProbe(string SolutionHash, string SdkVersion, WorkspaceCacheEntry? CachedEntry);
 internal sealed record WorkspaceCacheWriteResult(bool CacheHit);

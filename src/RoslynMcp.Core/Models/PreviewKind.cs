@@ -7,8 +7,7 @@ namespace RoslynMcp.Core.Models;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Semantics are permissive-by-default so producers can be tagged incrementally without a flag
-/// day: <see cref="Unspecified"/> means "no provenance recorded" and MUST be accepted by every
+/// Explicit internal snapshots may use the permissive kind: <see cref="Unspecified"/> means "no provenance recorded" and MUST be accepted by every
 /// apply route. A concrete member is enforceable — a route that knows which kind it consumes may
 /// reject a token whose kind is concrete and different.
 /// </para>
@@ -22,7 +21,7 @@ public enum PreviewKind
 {
     /// <summary>
     /// No provenance recorded. Permissive: every apply route accepts a token with this kind.
-    /// This is the default for producers that have not yet been tagged.
+    /// Production producers supply their concrete family explicitly.
     /// </summary>
     Unspecified = 0,
 
@@ -89,4 +88,28 @@ public enum PreviewKind
 
     /// <summary>A dead-code removal preview.</summary>
     RemoveDeadCode,
+
+    /// <summary>A change_signature_preview preview redeemed through apply_with_verify.</summary>
+    ChangeSignature,
+
+    /// <summary>A parameter_object_preview preview redeemed through apply_with_verify.</summary>
+    ParameterObject,
+
+    /// <summary>A restructure_preview preview redeemed through apply_with_verify.</summary>
+    Restructure,
+
+    /// <summary>A replace_string_literals_preview preview redeemed through apply_with_verify.</summary>
+    ReplaceStringLiterals,
+
+    /// <summary>A move_type_to_project_preview preview redeemed through apply_with_verify.</summary>
+    MoveTypeToProject,
+
+    /// <summary>A extract_interface_cross_project_preview preview redeemed through apply_with_verify.</summary>
+    CrossProjectExtractInterface,
+
+    /// <summary>A dependency_inversion_preview preview redeemed through apply_with_verify.</summary>
+    DependencyInversion,
+
+    /// <summary>A change_type_namespace_preview preview redeemed through apply_with_verify.</summary>
+    ChangeTypeNamespace,
 }

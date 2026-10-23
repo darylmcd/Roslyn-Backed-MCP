@@ -41,9 +41,6 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
             ChangeTracker);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     // ------------------------------------------------------------------
     // Happy path: a dirty working tree with 3 edited `.cs` files must scope
     // the validation to just those file-owning projects (proved by the
@@ -269,7 +266,7 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
         var outside = workspace.GetPath("SampleLib", "AnimalService.cs");
         await File.WriteAllTextAsync(inside, "// nested untracked source\n");
         await File.AppendAllTextAsync(outside, "\n// changed outside the solution directory\n");
-        var status = await WorkspaceManager.LoadAsync(nestedSolution, CancellationToken.None);
+        var status = await WorkspaceManager.LoadAsync(nestedSolution, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(nestedSolution, new Dictionary<string, string>()), CancellationToken.None);
         try
         {
             var result = await _validationService.ValidateRecentGitChangesAsync(

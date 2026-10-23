@@ -70,7 +70,7 @@ public static class ValidationBundleTools
     }
 
     /// <remarks>
-    /// <para>The fork is created under .roslynmcp/forks beneath the workspace root and loaded as its own workspace.</para>
+    /// <para>The fork is created in an owned child of the dedicated temporary roslynmcp-forks service parent and loaded as its own workspace.</para>
     /// <para>retention values: drop-on-success (default), drop-on-failure, drop-always, keep.</para>
     /// </remarks>
     [McpServerTool(Name = "workspace_fork_apply", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false),

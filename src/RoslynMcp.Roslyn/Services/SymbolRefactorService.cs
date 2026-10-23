@@ -92,7 +92,9 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
                     throw new PublicArgumentException("Each operation must be non-null.", nameof(operations));
 
                 var (nextSolution, stepChanges, stepDescription) =
-                    await ExecuteOperationOnSolutionAsync(accumulator, op, ct).ConfigureAwait(false);
+                    await ExecuteOperationOnSolutionAsync(workspaceId, accumulator, op, ct).ConfigureAwait(false);
+
+                PreviewDiffSafety.RequireComplete(stepChanges);
 
                 descriptions.Add($"[{i + 1}/{operations.Count}] {op.Kind}: {stepDescription}");
                 accumulator = nextSolution;
@@ -127,6 +129,7 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
         var mutations = await BuildCompositeMutationsAsync(initialSolution, accumulator, ct).ConfigureAwait(false);
 
         var description = "Composite refactor:\n  " + string.Join("\n  ", descriptions);
+        PreviewDiffSafety.RequireComplete(aggregatedDiffs.Values.ToArray());
         var token = _compositePreviewStore.Store(
             workspaceId, _workspace.GetCurrentVersion(workspaceId), description, mutations);
 
@@ -138,11 +141,11 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
     }
 
     private async Task<(Solution NewSolution, IReadOnlyList<FileChangeDto> Changes, string Description)>
-        ExecuteOperationOnSolutionAsync(Solution inputSolution, SymbolRefactorOperation op, CancellationToken ct)
+        ExecuteOperationOnSolutionAsync(string workspaceId, Solution inputSolution, SymbolRefactorOperation op, CancellationToken ct)
     {
         return op.Kind?.ToLowerInvariant() switch
         {
-            "rename" => await ExecuteRenameOnSolutionAsync(inputSolution, op, ct).ConfigureAwait(false),
+            "rename" => await ExecuteRenameOnSolutionAsync(workspaceId, inputSolution, op, ct).ConfigureAwait(false),
             "edit" => await ExecuteEditOnSolutionAsync(inputSolution, op, ct).ConfigureAwait(false),
             "restructure" => await ExecuteRestructureOnSolutionAsync(inputSolution, op, ct).ConfigureAwait(false),
             _ => throw new PublicArgumentException(
@@ -151,13 +154,13 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
     }
 
     private Task<(Solution NewSolution, IReadOnlyList<FileChangeDto> Changes, string Description)>
-        ExecuteRenameOnSolutionAsync(Solution inputSolution, SymbolRefactorOperation op, CancellationToken ct)
+        ExecuteRenameOnSolutionAsync(string workspaceId, Solution inputSolution, SymbolRefactorOperation op, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(op.NewName))
             throw new PublicArgumentException("kind='rename' requires NewName.", nameof(op.NewName));
         var locator = new SymbolLocator(op.FilePath, op.Line, op.Column, op.SymbolHandle, op.MetadataName);
         locator.Validate();
-        return _refactoringServiceConcrete.PreviewRenameOnSolutionAsync(inputSolution, locator, op.NewName, ct);
+        return _refactoringServiceConcrete.PreviewRenameOnSolutionAsync(workspaceId, inputSolution, locator, op.NewName, ct);
     }
 
     private async Task<(Solution NewSolution, IReadOnlyList<FileChangeDto> Changes, string Description)>
@@ -264,6 +267,7 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
 
         var description = $"Split service '{sourceType}' into {partitions.Count} partition(s) with forwarding facade"
             + (hasRegistrationRewrite ? " and DI-registration rewrite" : "");
+        PreviewDiffSafety.RequireComplete(changes);
         var token = _compositePreviewStore.Store(workspaceId, _workspace.GetCurrentVersion(workspaceId), description, mutations);
 
         return new RefactoringPreviewDto(

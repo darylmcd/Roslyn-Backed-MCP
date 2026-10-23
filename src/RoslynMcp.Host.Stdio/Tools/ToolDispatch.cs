@@ -234,6 +234,14 @@ internal static class ToolDispatch
             // producers deliberately collapse onto one member.
             [PreviewKind.BulkReplaceType] = "bulk_replace_type_preview",
             [PreviewKind.RemoveDeadCode] = "remove_dead_code_preview",
+            [PreviewKind.ChangeSignature] = "change_signature_preview",
+            [PreviewKind.ParameterObject] = "parameter_object_preview",
+            [PreviewKind.Restructure] = "restructure_preview",
+            [PreviewKind.ReplaceStringLiterals] = "replace_string_literals_preview",
+            [PreviewKind.MoveTypeToProject] = "move_type_to_project_preview",
+            [PreviewKind.CrossProjectExtractInterface] = "extract_interface_cross_project_preview",
+            [PreviewKind.DependencyInversion] = "dependency_inversion_preview",
+            [PreviewKind.ChangeTypeNamespace] = "change_type_namespace_preview",
         };
 
     /// <summary>

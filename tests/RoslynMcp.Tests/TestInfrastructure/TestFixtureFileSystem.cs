@@ -83,6 +83,14 @@ internal static class TestFixtureFileSystem
 
     public static void DeleteDirectoryIfExists(string path)
     {
+        if (OperatingSystem.IsWindows())
+        {
+            // Keep literal child names returned by enumeration in the same
+            // extended namespace when clearing attributes and deleting them.
+            path = Path.GetFullPath(path);
+            if (!path.StartsWith(@"\\?\", StringComparison.Ordinal) && !path.StartsWith(@"\\.\", StringComparison.Ordinal))
+                path = path.StartsWith(@"\\", StringComparison.Ordinal) ? @"\\?\UNC\" + path[2..] : @"\\?\" + path;
+        }
         // Git's owned loose objects can be read-only. Clear only regular owned files;
         // neither attribute traversal nor Directory.Delete may follow fixture links.
         const int maxAttempts = 5;

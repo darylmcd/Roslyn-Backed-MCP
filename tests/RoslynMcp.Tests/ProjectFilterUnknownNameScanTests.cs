@@ -23,9 +23,6 @@ public sealed class ProjectFilterUnknownNameScanTests : SharedWorkspaceTestBase
         WorkspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     public async Task FormatCheck_UnknownProjectName_ThrowsInsteadOfReportingClean()
     {

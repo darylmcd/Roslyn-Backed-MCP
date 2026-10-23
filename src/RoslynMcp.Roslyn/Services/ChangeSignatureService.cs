@@ -175,7 +175,7 @@ public sealed class ChangeSignatureService : IChangeSignatureService
             updateCallsite: (context, args) => context.Add(args, insertPosition, request.Name!, argText),
             ct).ConfigureAwait(false);
 
-        return BuildPreviewDto(workspaceId, accumulator, changes, callsiteUpdates, warnings,
+        return BuildPreviewDto(workspaceId, solution, accumulator, changes, callsiteUpdates, warnings,
             $"Add parameter '{request.Name}: {request.ParameterType}' at position {insertPosition} of {method.ToDisplayString()}");
     }
 
@@ -194,7 +194,7 @@ public sealed class ChangeSignatureService : IChangeSignatureService
             updateCallsite: (context, args) => context.Remove(args, index),
             ct).ConfigureAwait(false);
 
-        return BuildPreviewDto(workspaceId, accumulator, changes, callsiteUpdates, warnings,
+        return BuildPreviewDto(workspaceId, solution, accumulator, changes, callsiteUpdates, warnings,
             $"Remove parameter '{method.Parameters[index].Name}' (position {index}) from {method.ToDisplayString()}");
     }
 
@@ -304,7 +304,7 @@ public sealed class ChangeSignatureService : IChangeSignatureService
 
         var orderDescription = string.Join(", ",
             permutation.Select(i => method.Parameters[i].Name));
-        return BuildPreviewDto(workspaceId, accumulator, changes, callsiteUpdates, warnings,
+        return BuildPreviewDto(workspaceId, solution, accumulator, changes, callsiteUpdates, warnings,
             $"Reorder parameters of {method.ToDisplayString()} to ({orderDescription})");
     }
 
@@ -417,6 +417,7 @@ public sealed class ChangeSignatureService : IChangeSignatureService
 
     private RefactoringPreviewDto BuildPreviewDto(
         string workspaceId,
+        Solution originalSolution,
         Solution accumulator,
         List<FileChangeDto> changes,
         List<CallsiteUpdateDto> callsiteUpdates,
@@ -425,7 +426,7 @@ public sealed class ChangeSignatureService : IChangeSignatureService
     {
         if (changes.Count == 0)
             throw new PublicInvalidOperationException("The signature change produced no editable declaration changes. Choose a source declaration and a non-identity operation.");
-        var token = _previewStore.Store(workspaceId, accumulator, _workspace.GetCurrentVersion(workspaceId), description);
+        var token = _previewStore.Store(workspaceId, originalSolution, accumulator, _workspace.GetCurrentVersion(workspaceId), description, changes, PreviewKind.ChangeSignature);
         return new RefactoringPreviewDto(
             token,
             description,

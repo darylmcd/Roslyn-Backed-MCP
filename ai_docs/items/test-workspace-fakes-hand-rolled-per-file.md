@@ -24,3 +24,7 @@
 ## Context
 
 - regression_shape: an interface fake restated in every test file that needs one. Sized as a slicing row: the full migration is far beyond one PR.
+
+2026-10-17 full-tree audit: current passive duplication remains in HardeningBehaviorTests.cs:158 and PerformanceBehaviorTests.cs:208; the latter retains a silent RestoreVersion no-op. Prefer existing FailClosedWorkspaceManagerStub required handlers, retaining stateful/lease-intercepting fakes explicitly. See reports/20261017-test-infrastructure-simplification-audit.md. This supersedes the duplicate workspace-test-double-failclosed-consolidation filing; no implementation completion claimed.
+
+2026-10-17 implementation and focused evidence: see ai_docs/reports/20261017-test-infrastructure-simplification-audit.md, Implemented simplifications and focused verification. The report identifies completed mechanisms, remaining acceptance and exact evidence directories. Required full local/hosted qualification and shipping remain outstanding; this note does not close the row or advance the paused batch.

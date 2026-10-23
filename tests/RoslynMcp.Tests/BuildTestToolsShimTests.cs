@@ -35,9 +35,6 @@ public sealed class BuildTestToolsShimTests : SharedWorkspaceTestBase
         WorkspaceId = await GetOrLoadWorkspaceIdAsync(SampleSolutionPath, CancellationToken.None);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     public async Task ScaffoldingTools_PreviewScaffoldType_Returns_Json()
     {

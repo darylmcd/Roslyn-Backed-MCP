@@ -1,4 +1,5 @@
 using Microsoft.CodeAnalysis;
+using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -56,7 +57,7 @@ internal sealed class DiagnosticDocumentLookup(ICompilationCache compilationCach
         DiagnosticLookupTarget target,
         CancellationToken ct)
     {
-        var documentIds = solution.GetDocumentIdsWithFilePath(target.FilePath);
+        var documentIds = DocumentPathLookup.GetDocumentIds(solution, target.FilePath);
         if (documentIds.IsDefaultOrEmpty)
         {
             return null;
@@ -228,7 +229,7 @@ internal sealed class DiagnosticDocumentLookup(ICompilationCache compilationCach
         return string.Equals(
                 Path.GetFullPath(lineSpan.Path),
                 Path.GetFullPath(target.FilePath),
-                StringComparison.OrdinalIgnoreCase)
+                FileSystemPath.Comparison)
             && lineSpan.StartLinePosition.Line + 1 == target.Line
             && lineSpan.StartLinePosition.Character + 1 == target.Column;
     }

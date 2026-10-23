@@ -22,12 +22,6 @@ public sealed class SdkStyleCsprojInjectionTests : TestBase
         InitializeServices();
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup()
-    {
-        DisposeServices();
-    }
-
     [TestMethod]
     public void IsSdkStyleWithDefaultCompileItems_AttributeForm_IsTrue()
     {
@@ -106,7 +100,7 @@ public sealed class SdkStyleCsprojInjectionTests : TestBase
         // <Compile Include="IsolatedFile.cs" /> entry; after the fix the csproj is untouched.
         var copiedSolutionPath = CreateSampleSolutionCopy();
         var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
-        var workspaceId = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None)
+        var workspaceId = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None)
             .ContinueWith(t => t.Result.WorkspaceId);
 
         try

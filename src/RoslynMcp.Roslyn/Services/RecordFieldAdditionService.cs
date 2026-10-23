@@ -169,7 +169,7 @@ public sealed class RecordFieldAdditionService : IRecordFieldAdditionService
             var node = rich.SyntaxRoot.FindNode(sourceSpan, getInnermostNodeForTie: true);
             if (node is null) continue;
 
-            if (IsTestDocument(rich.Source.Document))
+            if (IsTestDocument(rich.Source.Document, ct))
             {
                 var path = rich.Source.Document.FilePath;
                 if (!string.IsNullOrEmpty(path)) testFiles.Add(path);
@@ -643,12 +643,11 @@ public sealed class RecordFieldAdditionService : IRecordFieldAdditionService
         _ => null,
     };
 
-    private static bool IsTestDocument(Document document)
+    private static bool IsTestDocument(Document document, CancellationToken ct)
     {
-        // Heuristic: same one CouplingAnalysis / ImpactSweep use — IsTestProject metadata flag
-        // wins, otherwise file name heuristic. The metadata check requires reading the project's
-        // XML so we cache via IsTestProject(Project).
-        if (ProjectMetadataParser.IsTestProject(document.Project)) return true;
+        // Native evaluated test-project metadata takes precedence over the file-name heuristic.
+        // Evaluation observes the caller's cancellation token.
+        if (ProjectMetadataParser.IsTestProject(document.Project, ct)) return true;
         var name = Path.GetFileNameWithoutExtension(document.FilePath);
         if (string.IsNullOrEmpty(name)) return false;
         return name.EndsWith("Tests", StringComparison.Ordinal)

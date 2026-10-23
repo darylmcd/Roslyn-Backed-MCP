@@ -34,99 +34,7 @@ namespace RoslynMcp.Roslyn.Services;
 /// </remarks>
 internal interface IEditorConfigWriteCoordinator
 {
-    T RunOwnedWrite<T>(string workspaceId, string path, Func<EditorConfigFileTransaction, T> write);
-}
-
-/// <summary>Holds the config file against competing writes while its snapshot is parsed and changed.</summary>
-internal sealed class EditorConfigFileTransaction : IDisposable
-{
-    private readonly FileStream _stream;
-
-    internal EditorConfigFileTransaction(string path, byte[]? expectedBytes)
-    {
-        CreatedNewFile = expectedBytes is null;
-        _stream = new FileStream(path,
-            CreatedNewFile ? FileMode.CreateNew : FileMode.Open,
-            FileAccess.ReadWrite, FileShare.Read);
-        try
-        {
-            if (OperatingSystem.IsLinux())
-            {
-                // POSIX sharing flags do not exclude another process. Cooperating
-                // writers can honor this advisory range lock for the transaction.
-                _stream.Lock(0, long.MaxValue);
-            }
-            OriginalBytes = CreatedNewFile ? null : ReadCurrentBytes();
-            if (!EditorConfigBytes.AreEqual(expectedBytes, OriginalBytes))
-            {
-                throw new EditorConfigConcurrentEditException();
-            }
-        }
-        catch
-        {
-            _stream.Dispose();
-            throw;
-        }
-    }
-
-    internal bool CreatedNewFile { get; }
-    internal byte[]? OriginalBytes { get; }
-    internal bool WriteStarted { get; private set; }
-    internal byte[]? OwnedBytes { get; private set; }
-
-    internal void WriteBytes(byte[] bytes)
-    {
-        // On POSIX an uncooperative writer can ignore the advisory lock. Check the
-        // held inode again immediately before changing it, and refuse known drift.
-        var expectedBytes = WriteStarted ? OwnedBytes : CreatedNewFile ? [] : OriginalBytes;
-        if (!EditorConfigBytes.AreEqual(expectedBytes, ReadCurrentBytes()))
-        {
-            throw new EditorConfigConcurrentEditException();
-        }
-        WriteStarted = true;
-        try
-        {
-            _stream.Position = 0;
-            _stream.SetLength(0);
-            _stream.Write(bytes);
-            _stream.Flush(flushToDisk: true);
-        }
-        finally
-        {
-            // A failed write may leave a partial file. Capture those exact server-owned
-            // bytes before releasing the handle so a later external replacement is distinct.
-            OwnedBytes = ReadCurrentBytes();
-        }
-    }
-
-    internal void RestoreOriginalBytes()
-    {
-        try
-        {
-            _stream.Position = 0;
-            _stream.SetLength(0);
-            if (OriginalBytes is not null)
-            {
-                _stream.Write(OriginalBytes);
-            }
-            _stream.Flush(flushToDisk: true);
-        }
-        finally
-        {
-            // Keep the last bytes actually written even when restoration itself fails.
-            OwnedBytes = ReadCurrentBytes();
-        }
-    }
-
-    private byte[] ReadCurrentBytes()
-    {
-        _stream.Position = 0;
-        using var buffer = new MemoryStream();
-        _stream.CopyTo(buffer);
-        return buffer.ToArray();
-    }
-
-    public void Dispose() => _stream.Dispose();
+    Task RunOwnedWriteAsync(EditorConfigWriteOperation operation, CancellationToken ct);
 }
 
 /// <summary>Byte-exact comparison of .editorconfig snapshots shared by the transaction and the watcher.</summary>
@@ -276,15 +184,14 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
         }
     }
 
-    T IEditorConfigWriteCoordinator.RunOwnedWrite<T>(
-        string workspaceId, string path, Func<EditorConfigFileTransaction, T> write)
+    Task IEditorConfigWriteCoordinator.RunOwnedWriteAsync(EditorConfigWriteOperation operation, CancellationToken ct)
     {
-        if (!_watchers.TryGetValue(workspaceId, out var entry))
+        if (!_watchers.TryGetValue(operation.WorkspaceId, out var entry))
         {
-            throw new InvalidOperationException($"Workspace '{workspaceId}' is not watched.");
+            throw new InvalidOperationException($"Workspace '{operation.WorkspaceId}' is not watched.");
         }
 
-        return entry.RunOwnedWrite(path, write);
+        return entry.RunOwnedWriteAsync(operation, ct);
     }
 
     public void ClearStale(string workspaceId)
@@ -386,6 +293,8 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
         private string? _staleReason;
         private readonly object _reasonLock = new();
         private readonly Dictionary<string, byte[]?> _ownedConfigBytes = new(FileSystemPath.Comparer);
+        private readonly SemaphoreSlim _ownedWrites = new(1, 1);
+        private string? _pendingConfigPath;
         // Intentionally unguarded: AddWatcher is called only from FileWatcherService.Watch() on a
         // single thread during entry construction, and the FileSystemWatcher event callbacks
         // (Changed/Created/Deleted/Renamed -> MarkStaleIfRelevant) only ever touch the
@@ -422,136 +331,131 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
 
         public void AddWatcher(FileSystemWatcher watcher) => _watchers.Add(watcher);
 
-        public T RunOwnedWrite<T>(string path, Func<EditorConfigFileTransaction, T> write)
+        public async Task RunOwnedWriteAsync(EditorConfigWriteOperation operation, CancellationToken ct)
         {
-            var physicalPath = PhysicalPathResolver.Resolve(path);
-            lock (_reasonLock)
+            await _ownedWrites.WaitAsync(ct).ConfigureAwait(false);
+            var path = operation.Path;
+            var before = operation.OriginalBytes;
+            var desired = operation.DesiredBytes;
+            try
             {
-                var before = ReadBytesOrNull(physicalPath);
-                if (_ownedConfigBytes.TryGetValue(physicalPath, out var previous) &&
-                    !EditorConfigBytes.AreEqual(previous, before))
+                await operation.AuthorizeCurrentAsync(ct).ConfigureAwait(false);
+                lock (_reasonLock)
                 {
-                    _ownedConfigBytes.Remove(physicalPath);
-                    MarkStaleWithReason(StaleReasons.ExternalEdit);
-                }
-                EditorConfigFileTransaction? transaction = null;
-                try
-                {
-                    try
+                    var current = operation.ReadCurrentPhysical();
+                    if (!EditorConfigBytes.AreEqual(before, current))
                     {
-                        transaction = new EditorConfigFileTransaction(physicalPath, before);
-                    }
-                    catch (IOException ex)
-                    {
-                        throw new EditorConfigConcurrentEditException(ex);
-                    }
-                    var result = write(transaction);
-                    var writtenBytes = transaction.OwnedBytes
-                        ?? throw new InvalidOperationException("The coordinated .editorconfig write did not write bytes.");
-                    transaction.Dispose();
-                    transaction = null;
-                    _ownedConfigBytes[physicalPath] = writtenBytes;
-                    var readable = TryReadBytesOrNull(physicalPath, out var current);
-                    if (!readable || !EditorConfigBytes.AreEqual(writtenBytes, current))
-                    {
+                        _ownedConfigBytes.Remove(path);
                         MarkStaleWithReason(StaleReasons.ExternalEdit);
                         throw new EditorConfigConcurrentEditException();
                     }
-                    else if (_staleReason != StaleReasons.ExternalEdit)
+                    if (_ownedConfigBytes.TryGetValue(path, out var previous) && !EditorConfigBytes.AreEqual(previous, current))
                     {
-                        MarkStaleWithReason(StaleReasons.Apply);
-                    }
-                    return result;
-                }
-                catch (Exception ex)
-                {
-                    var writeStarted = transaction?.WriteStarted == true;
-                    var createdWithoutWrite = transaction is { CreatedNewFile: true, WriteStarted: false };
-                    var pathMatchedOwnedBytes = false;
-                    Exception? restorationFailure = null;
-                    if (writeStarted && transaction?.OwnedBytes is { } writtenBytes)
-                    {
-                        try
-                        {
-                            // Check the pathname before restoring the held handle: on POSIX
-                            // a rename can replace the pathname while the old inode is locked.
-                            pathMatchedOwnedBytes = EditorConfigBytes.AreEqual(writtenBytes, ReadBytesOrNull(physicalPath));
-                            if (pathMatchedOwnedBytes)
-                            {
-                                transaction.RestoreOriginalBytes();
-                            }
-                        }
-                        catch (Exception restoreEx) when (restoreEx is IOException or UnauthorizedAccessException or ObjectDisposedException)
-                        {
-                            restorationFailure = restoreEx;
-                        }
-                    }
-                    var ownedBytes = transaction?.OwnedBytes;
-                    transaction?.Dispose();
-                    var readable = TryReadBytesOrNull(physicalPath, out var after);
-                    Exception? cleanupFailure = null;
-                    if ((createdWithoutWrite || (pathMatchedOwnedBytes && transaction?.CreatedNewFile == true)) &&
-                        after is { Length: 0 })
-                    {
-                        // Opening a new file is itself a mutation. If the callback failed
-                        // before writing, remove that empty file instead of stranding it.
-                        try
-                        {
-                            File.Delete(physicalPath);
-                            after = null;
-                        }
-                        catch (Exception cleanupEx) when (cleanupEx is IOException or UnauthorizedAccessException)
-                        {
-                            cleanupFailure = cleanupEx;
-                        }
-                    }
-                    if (!readable ||
-                        (writeStarted && !pathMatchedOwnedBytes && !EditorConfigBytes.AreEqual(before, after)) ||
-                        (writeStarted && !EditorConfigBytes.AreEqual(ownedBytes, after) && !EditorConfigBytes.AreEqual(before, after)) ||
-                        (!writeStarted && !createdWithoutWrite && !EditorConfigBytes.AreEqual(before, after)) ||
-                        (!writeStarted && createdWithoutWrite && after is { Length: > 0 }))
-                    {
-                        _ownedConfigBytes.Remove(physicalPath);
+                        _ownedConfigBytes.Remove(path);
                         MarkStaleWithReason(StaleReasons.ExternalEdit);
                     }
-                    else if (readable && EditorConfigBytes.AreEqual(before, after))
+                    _pendingConfigPath = path;
+                }
+                try
+                {
+                    await operation.ApplyAsync(ct).ConfigureAwait(false);
+                    await operation.AuthorizeCurrentAsync(ct).ConfigureAwait(false);
+                    lock (_reasonLock)
                     {
-                        // A failed write can still queue a watcher event. Its unchanged bytes
-                        // are not a workspace change and must not turn the workspace stale.
-                        _ownedConfigBytes[physicalPath] = after;
+                        var current = operation.ReadCurrentPhysical();
+                        if (!EditorConfigBytes.AreEqual(desired, current))
+                        {
+                            _ownedConfigBytes.Remove(path);
+                            MarkStaleWithReason(StaleReasons.ExternalEdit);
+                            throw new EditorConfigConcurrentEditException();
+                        }
+                        PublishOwnedBytes(path, before, current);
                     }
-                    else
+                }
+                catch (Exception primary)
+                {
+                    var failures = new List<Exception> { primary };
+                    var mayCompensate = false;
+                    try
                     {
-                        _ownedConfigBytes[physicalPath] = after;
-                        if (_staleReason != StaleReasons.ExternalEdit)
-                        {
-                            MarkStaleWithReason(StaleReasons.Apply);
-                        }
-                        var failures = new List<Exception> { ex };
-                        if (restorationFailure is not null)
-                        {
-                            failures.Add(restorationFailure);
-                        }
-                        if (cleanupFailure is not null)
-                        {
-                            failures.Add(cleanupFailure);
-                        }
-                        throw new EditorConfigUnrecoveredWriteException(
-                            failures.Count == 1 ? ex : new AggregateException(failures));
+                        await operation.AuthorizeCurrentAsync(CancellationToken.None).ConfigureAwait(false);
+                        lock (_reasonLock)
+                            mayCompensate = operation.Applied && !EditorConfigBytes.AreEqual(before, desired)
+                                && EditorConfigBytes.AreEqual(desired, operation.ReadCurrentPhysical());
                     }
-                    if (cleanupFailure is not null)
+                    catch (Exception inspectionFailure) { failures.Add(inspectionFailure); }
+                    if (mayCompensate)
                     {
-                        throw new AggregateException(ex, cleanupFailure);
+                        try { await operation.CompensateAsync(CancellationToken.None).ConfigureAwait(false); }
+                        catch (Exception inverseFailure) { failures.Add(inverseFailure); }
                     }
+                    var unrecovered = operation.HasRetainedTransitions;
+                    try
+                    {
+                        await operation.AuthorizeCurrentAsync(CancellationToken.None).ConfigureAwait(false);
+                        lock (_reasonLock)
+                        {
+                            var current = operation.ReadCurrentPhysical();
+                            if (EditorConfigBytes.AreEqual(before, current)) PublishOwnedBytes(path, before, current);
+                            else if (operation.Applied && EditorConfigBytes.AreEqual(desired, current))
+                            {
+                                PublishOwnedBytes(path, before, current);
+                                unrecovered = true;
+                            }
+                            else
+                            {
+                                _ownedConfigBytes.Remove(path);
+                                MarkStaleWithReason(StaleReasons.ExternalEdit);
+                                _pendingConfigPath = null;
+                            }
+                        }
+                    }
+                    catch (Exception finalInspectionFailure)
+                    {
+                        failures.Add(finalInspectionFailure);
+                        lock (_reasonLock)
+                        {
+                            _ownedConfigBytes.Remove(path);
+                            MarkStaleWithReason(StaleReasons.ExternalEdit);
+                            _pendingConfigPath = null;
+                        }
+                    }
+                    if (unrecovered)
+                        throw new EditorConfigUnrecoveredWriteException(failures.Count == 1 ? primary : new AggregateException(failures));
+                    if (failures.Count > 1) throw new AggregateException("Config write failed with additional ownership or recovery failures.", failures);
                     throw;
                 }
             }
+            finally
+            {
+                lock (_reasonLock)
+                {
+                    if (_pendingConfigPath is not null)
+                    {
+                        _ownedConfigBytes.Remove(path);
+                        MarkStaleWithReason(StaleReasons.ExternalEdit);
+                        _pendingConfigPath = null;
+                    }
+                }
+                _ownedWrites.Release();
+            }
+        }
+
+        private void PublishOwnedBytes(string path, byte[]? before, byte[]? current)
+        {
+            _ownedConfigBytes[path] = current;
+            if (_staleReason != StaleReasons.ExternalEdit && !EditorConfigBytes.AreEqual(before, current))
+                MarkStaleWithReason(StaleReasons.Apply);
+            _pendingConfigPath = null;
         }
 
         public void MarkFileChange(string path)
         {
             lock (_reasonLock)
             {
+                // The final granted no-follow read reconciles all events for this exact
+                // pending operation. Unrelated paths retain immediate external attribution.
+                if (FileSystemPath.Comparer.Equals(path, _pendingConfigPath)) return;
                 if (Path.GetFileName(path).Equals(".editorconfig", StringComparison.OrdinalIgnoreCase))
                 {
                     string physicalPath;

@@ -30,7 +30,7 @@ public class SecurityDiagnosticIntegrationTests : SharedWorkspaceTestBase
         WorkspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
 
         var secTestPath = Path.Combine(RepositoryRootPath, "samples", "SecurityTestProject", "SecurityTestProject.slnx");
-        var insecureStatus = await WorkspaceManager.LoadAsync(secTestPath, CancellationToken.None);
+        var insecureStatus = await WorkspaceManager.LoadAsync(secTestPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(secTestPath, new Dictionary<string, string>()), CancellationToken.None);
         InsecureWorkspaceId = insecureStatus.WorkspaceId;
 
         var msBuildEvaluation = new MsBuildEvaluationService(WorkspaceManager);
@@ -39,12 +39,6 @@ public class SecurityDiagnosticIntegrationTests : SharedWorkspaceTestBase
             WorkspaceManager,
             msBuildEvaluation,
             NullLogger<SecurityDiagnosticService>.Instance);
-    }
-
-    [ClassCleanup]
-    public static void ClassCleanup()
-    {
-        DisposeServices();
     }
 
     // ── Registry Tests ──
@@ -187,7 +181,7 @@ public class SecurityDiagnosticIntegrationTests : SharedWorkspaceTestBase
         try
         {
             InjectSecurityPackageReferences(Path.Combine(copiedRoot, "SampleLib", "SampleLib.csproj"));
-            copiedWorkspaceId = (await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None)).WorkspaceId;
+            copiedWorkspaceId = (await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None)).WorkspaceId;
 
             var status = await SecurityService.GetAnalyzerStatusAsync(copiedWorkspaceId, CancellationToken.None);
 

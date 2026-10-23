@@ -189,7 +189,7 @@ public class TestDiscoverFqdnDriftTests
         var filter = TestDiscoveryService.SynthesizeDotnetTestFilter([fqn]);
         var treeNodeFilter = TreeNodeFilterTranslator.Translate(
             filter,
-            resolvedTUnitEngineVersion: null,
+            resolvedTUnitEngineVersions: null,
             knownFullyQualifiedTestNames: [fqn]);
 
         Assert.AreEqual("Repro.Tests.Outer+Inner.NestedTest", fqn);

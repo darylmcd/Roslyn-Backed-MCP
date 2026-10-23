@@ -147,7 +147,8 @@ public sealed class ChangeSignatureAliasesTests : ChangeSignatureTestBase
                 var alias = Microsoft.CodeAnalysis.CSharp.SyntaxFactory.ParseCompilationUnit("using first = System.String; ").Usings.Single();
                 updated = updated.WithDocumentSyntaxRoot(sourceDocument.Id, root.WithUsings(root.Usings.Add(alias)));
             }
-            Assert.IsTrue(Services.WorkspaceManager.TryApplyChanges(workspace.WorkspaceId, updated));
+            await RoslynMcp.Tests.Helpers.PhysicalMutationFixture.ApplyAsync(
+                Services.WorkspaceManager, workspace.WorkspaceId, updated, CancellationToken.None);
             original = Services.WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
             foreach (var sourceDocument in original.Projects.Single(p => p.Name == "SampleLib").Documents)
                 Assert.IsTrue(((Microsoft.CodeAnalysis.CSharp.Syntax.CompilationUnitSyntax)(await sourceDocument.GetSyntaxRootAsync())!)

@@ -84,9 +84,6 @@ public static class ReflectionUsageFixture
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     /// <summary>
     /// Materializes a fresh sample-solution copy with the synthetic reflection fixture
     /// in <c>SampleLib/ReflectionUsageFixture.cs</c>, loads the isolated workspace, and
@@ -102,7 +99,7 @@ public static class ReflectionUsageFixture
         var fixturePath = Path.Combine(copiedRoot, "SampleLib", ReflectionFixtureFileName);
         await File.WriteAllTextAsync(fixturePath, ReflectionFixtureSource, CancellationToken.None);
 
-        var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
         return (status.WorkspaceId, copiedRoot);
     }
 

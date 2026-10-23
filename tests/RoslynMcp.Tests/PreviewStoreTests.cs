@@ -16,62 +16,128 @@ public class PreviewStoreTests
     }
 
     [TestMethod]
+    public void StoreContract_RequiresExplicitSnapshotsDiffAndProducerKind()
+    {
+        foreach (var type in new[] { typeof(PreviewStore), typeof(RoslynMcp.Roslyn.Contracts.IPreviewStore) })
+        {
+            var methods = type.GetMethods().Where(method => method.Name == "Store").ToArray();
+            Assert.HasCount(1, methods, "Every store call must supply all safety state.");
+            var parameters = methods[0].GetParameters();
+            Assert.HasCount(7, parameters);
+            Assert.AreEqual(typeof(Solution), parameters[1].ParameterType);
+            Assert.AreEqual(typeof(Solution), parameters[2].ParameterType);
+            Assert.AreEqual(typeof(IReadOnlyList<FileChangeDto>), parameters[5].ParameterType);
+            Assert.AreEqual(typeof(PreviewKind), parameters[6].ParameterType);
+            Assert.IsTrue(parameters.All(parameter => !parameter.IsOptional));
+        }
+    }
+
+    [TestMethod]
+    public void StoreContract_InterfaceRequiresStatefulImplementations()
+    {
+        var contract = typeof(RoslynMcp.Roslyn.Contracts.IPreviewStore);
+        foreach (var name in new[] { "Store", "PeekKind", "PeekChangedPaths" })
+            Assert.IsTrue(contract.GetMethod(name)!.IsAbstract,
+                $"{name} must not silently discard state through a default interface body.");
+    }
+
+    [TestMethod]
+    [DataRow("+@@ truncated @@")]
+    [DataRow("-@@ truncated @@")]
+    [DataRow(" @@ truncated @@")]
+    [DataRow("+var text = \"@@ truncated @@\";")]
+    public void Store_SourceTextResemblingTruncationMarker_DoesNotBlockApply(string diffLine)
+    {
+        using var workspace = new AdhocWorkspace();
+        var solution = workspace.CurrentSolution;
+        var token = _store.Store("workspace", solution, solution, 1, "marker text",
+            [new FileChangeDto("probe.cs", "--- a/probe.cs\n+++ b/probe.cs\n" + diffLine + "\r\n")], PreviewKind.CodeFix);
+        Assert.IsFalse(_store.Retrieve(token)!.Value.DiffTruncated);
+    }
+
+    [TestMethod]
+    public void Store_PerFileTruncationRetainsSafetyAndInterfaceProvenance()
+    {
+        using var workspace = new AdhocWorkspace();
+        RoslynMcp.Roslyn.Contracts.IPreviewStore store = _store;
+        var original = workspace.CurrentSolution;
+        var diff = RoslynMcp.Roslyn.Helpers.DiffGenerator.GenerateUnifiedDiff(
+            "before", new string('x', 500), "probe.cs", maxChars: 64);
+        StringAssert.Contains(diff, "@@ truncated @@");
+        var token = store.Store("workspace", original, original, 1, "bounded", [new FileChangeDto("probe.cs", diff)], PreviewKind.CodeFix);
+        var entry = store.Retrieve(token);
+        Assert.IsNotNull(entry);
+        Assert.IsTrue(entry.Value.DiffTruncated);
+        Assert.AreEqual(PreviewKind.CodeFix, store.PeekKind(token));
+    }
+
+    [TestMethod]
+    public void Store_ExplicitOriginalPreservesAuthoritativeGraphInsteadOfNativeWorkspace()
+    {
+        using var workspace = new AdhocWorkspace();
+        var id = ProjectId.CreateNewId();
+        var authoritative = workspace.CurrentSolution.AddProject(id, "Authoritative", "Authoritative", LanguageNames.CSharp);
+        var modified = authoritative.WithProjectAssemblyName(id, "Modified");
+        var token = _store.Store("workspace", authoritative, modified, 1, "authoritative", [], PreviewKind.CodeFix);
+        var entry = _store.Retrieve(token);
+        Assert.IsNotNull(entry);
+        Assert.AreSame(authoritative, entry.Value.OriginalSolution);
+        Assert.AreSame(modified, entry.Value.ModifiedSolution);
+    }
+
+    [TestMethod]
     public void Store_And_Retrieve_Returns_Entry()
     {
-        var workspace = new AdhocWorkspace();
+        using var workspace = new AdhocWorkspace();
         var solution = workspace.CurrentSolution;
 
-        var token = _store.Store("workspace-1", solution, 1, "test");
+        var token = _store.Store("workspace-1", solution, solution, 1, "test", [], PreviewKind.Unspecified);
         var result = _store.Retrieve(token);
 
         Assert.IsNotNull(result);
         Assert.AreEqual("test", result.Value.Description);
         Assert.AreEqual("workspace-1", result.Value.WorkspaceId);
-        workspace.Dispose();
     }
 
     [TestMethod]
     public void Retrieve_Returns_Workspace_Version_For_External_Validation()
     {
-        var workspace = new AdhocWorkspace();
+        using var workspace = new AdhocWorkspace();
         var solution = workspace.CurrentSolution;
 
-        var token = _store.Store("workspace-1", solution, 1, "test");
+        var token = _store.Store("workspace-1", solution, solution, 1, "test", [], PreviewKind.Unspecified);
         var result = _store.Retrieve(token);
 
         Assert.IsNotNull(result);
         Assert.AreEqual(1, result.Value.WorkspaceVersion);
-        workspace.Dispose();
     }
 
     [TestMethod]
     public void Retrieve_After_Invalidate_Returns_Null()
     {
-        var workspace = new AdhocWorkspace();
+        using var workspace = new AdhocWorkspace();
         var solution = workspace.CurrentSolution;
 
-        var token = _store.Store("workspace-1", solution, 1, "test");
+        var token = _store.Store("workspace-1", solution, solution, 1, "test", [], PreviewKind.Unspecified);
         _store.Invalidate(token);
         var result = _store.Retrieve(token);
 
         Assert.IsNull(result);
-        workspace.Dispose();
     }
 
     [TestMethod]
     public void InvalidateAll_Clears_All_Entries()
     {
-        var workspace = new AdhocWorkspace();
+        using var workspace = new AdhocWorkspace();
         var solution = workspace.CurrentSolution;
 
-        var token1 = _store.Store("workspace-1", solution, 1, "test1");
-        var token2 = _store.Store("workspace-2", solution, 1, "test2");
+        var token1 = _store.Store("workspace-1", solution, solution, 1, "test1", [], PreviewKind.Unspecified);
+        var token2 = _store.Store("workspace-2", solution, solution, 1, "test2", [], PreviewKind.Unspecified);
 
         _store.InvalidateAll();
 
         Assert.IsNull(_store.Retrieve(token1));
         Assert.IsNull(_store.Retrieve(token2));
-        workspace.Dispose();
     }
 
     [TestMethod]
@@ -84,17 +150,16 @@ public class PreviewStoreTests
     [TestMethod]
     public void InvalidateAll_For_Workspace_Clears_Only_Matching_Entries()
     {
-        var workspace = new AdhocWorkspace();
+        using var workspace = new AdhocWorkspace();
         var solution = workspace.CurrentSolution;
 
-        var token1 = _store.Store("workspace-1", solution, 1, "test1");
-        var token2 = _store.Store("workspace-2", solution, 1, "test2");
+        var token1 = _store.Store("workspace-1", solution, solution, 1, "test1", [], PreviewKind.Unspecified);
+        var token2 = _store.Store("workspace-2", solution, solution, 1, "test2", [], PreviewKind.Unspecified);
 
         _store.InvalidateAll("workspace-1");
 
         Assert.IsNull(_store.Retrieve(token1));
         Assert.IsNotNull(_store.Retrieve(token2));
-        workspace.Dispose();
     }
 
     // ---------------------------------------------------------------
@@ -111,7 +176,7 @@ public class PreviewStoreTests
         //   still redeem the token. Default DefaultMaxVersionSpan = 1 covers this case.
         using var workspace = new AdhocWorkspace();
         var solution = workspace.CurrentSolution;
-        var token = _store.Store("workspace-1", solution, workspaceVersion: 1, "format range");
+        var token = _store.Store("workspace-1", solution, solution, workspaceVersion: 1, "format range", [], PreviewKind.Unspecified);
 
         _store.InvalidateOnVersionBump("workspace-1", newWorkspaceVersion: 2);
 
@@ -128,7 +193,7 @@ public class PreviewStoreTests
         // Guards against the range-policy regressing into "tokens never expire on reload."
         using var workspace = new AdhocWorkspace();
         var solution = workspace.CurrentSolution;
-        var token = _store.Store("workspace-1", solution, workspaceVersion: 1, "format range");
+        var token = _store.Store("workspace-1", solution, solution, workspaceVersion: 1, "format range", [], PreviewKind.Unspecified);
 
         _store.InvalidateOnVersionBump("workspace-1", newWorkspaceVersion: 3);
 
@@ -144,7 +209,7 @@ public class PreviewStoreTests
         // dropping tokens at the same version they were stored.
         using var workspace = new AdhocWorkspace();
         var solution = workspace.CurrentSolution;
-        var token = _store.Store("workspace-1", solution, workspaceVersion: 1, "format range");
+        var token = _store.Store("workspace-1", solution, solution, workspaceVersion: 1, "format range", [], PreviewKind.Unspecified);
 
         _store.InvalidateOnVersionBump("workspace-1", newWorkspaceVersion: 1);
 
@@ -159,8 +224,8 @@ public class PreviewStoreTests
         // counters are independent.
         using var workspace = new AdhocWorkspace();
         var solution = workspace.CurrentSolution;
-        var tokenA = _store.Store("workspace-A", solution, workspaceVersion: 1, "preview-A");
-        var tokenB = _store.Store("workspace-B", solution, workspaceVersion: 1, "preview-B");
+        var tokenA = _store.Store("workspace-A", solution, solution, workspaceVersion: 1, "preview-A", [], PreviewKind.Unspecified);
+        var tokenB = _store.Store("workspace-B", solution, solution, workspaceVersion: 1, "preview-B", [], PreviewKind.Unspecified);
 
         _store.InvalidateOnVersionBump("workspace-A", newWorkspaceVersion: 99);
 
@@ -177,7 +242,7 @@ public class PreviewStoreTests
         var strict = new PreviewStore(maxEntries: 20, ttl: null, maxVersionSpan: 0);
         using var workspace = new AdhocWorkspace();
         var solution = workspace.CurrentSolution;
-        var token = strict.Store("workspace-1", solution, workspaceVersion: 1, "preview");
+        var token = strict.Store("workspace-1", solution, solution, workspaceVersion: 1, "preview", [], PreviewKind.Unspecified);
 
         strict.InvalidateOnVersionBump("workspace-1", newWorkspaceVersion: 2);
 
@@ -193,7 +258,7 @@ public class PreviewStoreTests
         var lenient = new PreviewStore(maxEntries: 20, ttl: null, maxVersionSpan: 2);
         using var workspace = new AdhocWorkspace();
         var solution = workspace.CurrentSolution;
-        var token = lenient.Store("workspace-1", solution, workspaceVersion: 1, "preview");
+        var token = lenient.Store("workspace-1", solution, solution, workspaceVersion: 1, "preview", [], PreviewKind.Unspecified);
 
         lenient.InvalidateOnVersionBump("workspace-1", newWorkspaceVersion: 3);
         Assert.IsNotNull(lenient.Retrieve(token), "span=2 ceiling is V=3, must survive V=3");
@@ -209,20 +274,20 @@ public class PreviewStoreTests
         // have a non-null WorkspaceId), masking a programming error at the call site.
         using var workspace = new AdhocWorkspace();
         var solution = workspace.CurrentSolution;
-        _store.Store("workspace-1", solution, 1, "test");
+        _store.Store("workspace-1", solution, solution, 1, "test", [], PreviewKind.Unspecified);
 
         Assert.ThrowsExactly<ArgumentNullException>(() => _store.InvalidateOnVersionBump(null!, 1));
         Assert.ThrowsExactly<ArgumentException>(() => _store.InvalidateOnVersionBump(string.Empty, 1));
     }
 
     [TestMethod]
-    public void Store_Without_Kind_Defaults_To_Unspecified()
+    public void Store_With_Explicit_Unspecified_Roundtrips()
     {
         // preview-token-apply-route-provenance: untagged producers stay permissive.
         using var workspace = new AdhocWorkspace();
         var solution = workspace.CurrentSolution;
 
-        var token = _store.Store("workspace-1", solution, 1, "test");
+        var token = _store.Store("workspace-1", solution, solution, 1, "test", [], PreviewKind.Unspecified);
 
         Assert.AreEqual(PreviewKind.Unspecified, _store.PeekKind(token));
     }
@@ -233,13 +298,7 @@ public class PreviewStoreTests
         using var workspace = new AdhocWorkspace();
         var solution = workspace.CurrentSolution;
 
-        var token = _store.Store(
-            "workspace-1",
-            solution,
-            1,
-            "test",
-            Array.Empty<FileChangeDto>(),
-            PreviewKind.SymbolRename);
+        var token = _store.Store("workspace-1", solution, solution, 1, "test", Array.Empty<FileChangeDto>(), PreviewKind.SymbolRename);
 
         Assert.AreEqual(PreviewKind.SymbolRename, _store.PeekKind(token));
     }
@@ -252,13 +311,7 @@ public class PreviewStoreTests
         using var workspace = new AdhocWorkspace();
         var solution = workspace.CurrentSolution;
 
-        var token = _store.Store(
-            "workspace-1",
-            solution,
-            1,
-            "test",
-            Array.Empty<FileChangeDto>(),
-            PreviewKind.FormatDocument);
+        var token = _store.Store("workspace-1", solution, solution, 1, "test", Array.Empty<FileChangeDto>(), PreviewKind.FormatDocument);
 
         Assert.AreEqual(PreviewKind.FormatDocument, _store.PeekKind(token));
         Assert.AreEqual(PreviewKind.FormatDocument, _store.PeekKind(token));
@@ -277,13 +330,7 @@ public class PreviewStoreTests
         // (tiny) window and let it elapse.
         var expiring = new PreviewStore(maxEntries: 20, ttl: TimeSpan.FromMilliseconds(1));
         using var workspace = new AdhocWorkspace();
-        var token = expiring.Store(
-            "workspace-1",
-            workspace.CurrentSolution,
-            1,
-            "test",
-            Array.Empty<FileChangeDto>(),
-            PreviewKind.CodeFix);
+        var token = expiring.Store("workspace-1", workspace.CurrentSolution, workspace.CurrentSolution, 1, "test", Array.Empty<FileChangeDto>(), PreviewKind.CodeFix);
 
         Thread.Sleep(30);
 

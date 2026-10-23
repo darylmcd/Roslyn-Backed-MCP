@@ -68,14 +68,9 @@ public sealed class BuildService : IBuildService
     public async Task<BuildCommandRun> RunBuildCommandAsync(BuildCommandPlan plan, CancellationToken ct)
     {
         var stopwatch = Stopwatch.StartNew();
-        var execution = await _executor.ExecuteAsync(
-            plan.WorkspaceId,
-            plan.TargetPath,
-            plan.Arguments,
-            _options.BuildTimeout,
-            ct).ConfigureAwait(false);
+        var run = await _executor.ExecuteBuildAsync(plan, _options.BuildTimeout, ct).ConfigureAwait(false);
         stopwatch.Stop();
-        return new BuildCommandRun(plan, execution, stopwatch.ElapsedMilliseconds);
+        return run with { CommandDurationMs = stopwatch.ElapsedMilliseconds };
     }
 
     public async Task<BuildResultDto> CompleteBuildAsync(BuildCommandRun run, CancellationToken ct)
@@ -88,13 +83,14 @@ public sealed class BuildService : IBuildService
 
         var diagnostics = await EnrichDiagnosticSpansAsync(
             workspaceId,
-            ParseDiagnostics(run.Execution),
+            ReviewedDiagnostics(run),
+            new MsBuildCommandProperties.Redactor(run.ParsingState is { } state ? state.Arguments : run.Plan.Arguments),
             ct).ConfigureAwait(false);
         return CreateResult(run, diagnostics, warnings: null);
     }
 
     public BuildResultDto CompleteBuildWithoutWorkspace(BuildCommandRun run) =>
-        CreateResult(run, ParseDiagnostics(run.Execution), [WorkspaceChangedDuringRunWarning]);
+        CreateResult(run, ReviewedDiagnostics(run), [WorkspaceChangedDuringRunWarning]);
 
     private async Task<BuildResultDto> RunAndCompleteAsync(BuildCommandPlan plan, CancellationToken ct)
     {
@@ -105,23 +101,27 @@ public sealed class BuildService : IBuildService
     private static IReadOnlyList<DiagnosticDto> ParseDiagnostics(CommandExecutionDto execution) =>
         DotnetOutputParser.ParseBuildDiagnostics($"{execution.StdOut}{Environment.NewLine}{execution.StdErr}");
 
+    private static IReadOnlyList<DiagnosticDto> ReviewedDiagnostics(BuildCommandRun run) =>
+        run.ParsingState is { } state ? state.Diagnostics : ParseDiagnostics(run.Execution);
+
     private static BuildResultDto CreateResult(
-        BuildCommandRun run,
-        IReadOnlyList<DiagnosticDto> diagnostics,
-        IReadOnlyList<string>? warnings) =>
-        new(
-            run.Execution,
-            diagnostics,
-            diagnostics.Count(d => d.Severity == "Error"),
-            diagnostics.Count(d => d.Severity == "Warning"))
+        BuildCommandRun run, IReadOnlyList<DiagnosticDto> diagnostics, IReadOnlyList<string>? warnings)
+    {
+        var arguments = run.ParsingState is { } state ? (IReadOnlyList<string>)state.Arguments : run.Plan.Arguments;
+        var redactor = new MsBuildCommandProperties.Redactor(arguments);
+        return new BuildResultDto(run.Execution, diagnostics.Select(redactor.Diagnostic).ToArray(),
+            diagnostics.Count(diagnostic => diagnostic.Severity == "Error"),
+            diagnostics.Count(diagnostic => diagnostic.Severity == "Warning"))
         {
             Warnings = warnings,
             CommandDurationMs = run.CommandDurationMs,
         };
+    }
 
     private async Task<IReadOnlyList<DiagnosticDto>> EnrichDiagnosticSpansAsync(
         string workspaceId,
         IReadOnlyList<DiagnosticDto> diagnostics,
+        MsBuildCommandProperties.Redactor redactor,
         CancellationToken ct)
     {
         var candidates = diagnostics
@@ -153,7 +153,7 @@ public sealed class BuildService : IBuildService
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _logger.LogDebug(ex, "Failed to enrich build diagnostic spans for workspace {WorkspaceId}", workspaceId);
+            _logger.LogDebug(redactor.Failure(ex), "Failed to enrich build diagnostic spans for workspace {WorkspaceId}", workspaceId);
             return diagnostics;
         }
 
@@ -184,12 +184,12 @@ public sealed class BuildService : IBuildService
         IReadOnlyList<DiagnosticDto> candidates,
         CancellationToken ct)
     {
-        var spans = new Dictionary<string, (int EndLine, int EndColumn)>(StringComparer.OrdinalIgnoreCase);
+        var spans = new Dictionary<string, (int EndLine, int EndColumn)>(FileSystemPath.Comparer);
         foreach (var filePath in candidates
             .Select(candidate => candidate.FilePath)
             .Where(static filePath => !string.IsNullOrWhiteSpace(filePath))
             .Cast<string>()
-            .Distinct(StringComparer.OrdinalIgnoreCase))
+            .Distinct(FileSystemPath.Comparer))
         {
             foreach (var document in FindDocuments(solution, filePath))
             {
@@ -243,7 +243,7 @@ public sealed class BuildService : IBuildService
 
     private static IEnumerable<Document> FindDocuments(Microsoft.CodeAnalysis.Solution solution, string filePath)
     {
-        var documentIds = solution.GetDocumentIdsWithFilePath(filePath);
+        var documentIds = DocumentPathLookup.GetDocumentIds(solution, filePath);
         if (!documentIds.IsDefaultOrEmpty)
         {
             foreach (var documentId in documentIds)
@@ -266,7 +266,7 @@ public sealed class BuildService : IBuildService
         foreach (var document in solution.Projects.SelectMany(project => project.Documents))
         {
             if (document.FilePath is not null &&
-                string.Equals(NormalizePath(document.FilePath), normalized, StringComparison.OrdinalIgnoreCase))
+                FileSystemPath.Comparer.Equals(NormalizePath(document.FilePath), normalized))
             {
                 yield return document;
             }
@@ -278,7 +278,7 @@ public sealed class BuildService : IBuildService
         var normalizedPath = NormalizePath(filePath);
         return normalizedPath is null || line is null || column is null
             ? null
-            : $"{id}\0{normalizedPath}\0{line.Value}\0{column.Value}";
+            : $"{id.ToUpperInvariant()}\0{normalizedPath}\0{line.Value}\0{column.Value}";
     }
 
     private static string? NormalizePath(string? filePath)

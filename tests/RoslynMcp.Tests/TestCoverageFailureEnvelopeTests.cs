@@ -5,6 +5,7 @@ using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 using RoslynMcp.Tests.TestInfrastructure;
 
 namespace RoslynMcp.Tests;
@@ -273,7 +274,7 @@ public sealed class TestCoverageFailureEnvelopeTests
     /// Runner that creates the <c>--results-directory</c> on disk (mirroring <c>dotnet test</c>)
     /// and then throws, exercising the finally-block cleanup on the exception path.
     /// </summary>
-    private sealed class DirCreatingThrowingDotnetCommandRunner : IDotnetCommandRunner
+    private sealed class DirCreatingThrowingDotnetCommandRunner : RoslynMcp.Tests.Helpers.CannedCommandRunner
     {
         private readonly Exception _toThrow;
 
@@ -281,7 +282,7 @@ public sealed class TestCoverageFailureEnvelopeTests
 
         public string? CreatedResultsDirectory { get; private set; }
 
-        public Task<CommandExecutionDto> RunAsync(
+        public override Task<CommandExecutionDto> RunAsync(
             string workingDirectory,
             string targetPath,
             IReadOnlyList<string> arguments,
@@ -353,8 +354,12 @@ public sealed class TestCoverageFailureEnvelopeTests
             throw new NotSupportedException();
         public int GetCurrentVersion(string workspaceId) => 1;
         public void RestoreVersion(string workspaceId, int version) => throw new NotSupportedException();
+        public Task<System.Collections.Immutable.ImmutableArray<RoslynMcp.Roslyn.Contracts.AdmittedModuleImage>> ReadAdmittedImagesAsync(
+            string workspaceId, Microsoft.CodeAnalysis.ProjectId projectId, Microsoft.CodeAnalysis.PortableExecutableReference reference, CancellationToken ct) =>
+            throw new NotSupportedException();
+
         public Solution GetCurrentSolution(string workspaceId) => throw new NotSupportedException();
-        public bool TryApplyChanges(string workspaceId, Solution newSolution) => throw new NotSupportedException();
+
         public Project? GetProject(string workspaceId, string projectNameOrPath) => null;
 
         private static WorkspaceStatusDto BuildStatus(string workspaceId) =>
@@ -402,8 +407,12 @@ public sealed class TestCoverageFailureEnvelopeTests
             throw new NotSupportedException();
         public int GetCurrentVersion(string workspaceId) => 1;
         public void RestoreVersion(string workspaceId, int version) => throw new NotSupportedException();
+        public Task<System.Collections.Immutable.ImmutableArray<RoslynMcp.Roslyn.Contracts.AdmittedModuleImage>> ReadAdmittedImagesAsync(
+            string workspaceId, Microsoft.CodeAnalysis.ProjectId projectId, Microsoft.CodeAnalysis.PortableExecutableReference reference, CancellationToken ct) =>
+            throw new NotSupportedException();
+
         public Solution GetCurrentSolution(string workspaceId) => throw new NotSupportedException();
-        public bool TryApplyChanges(string workspaceId, Solution newSolution) => throw new NotSupportedException();
+
         public Project? GetProject(string workspaceId, string projectNameOrPath) => null;
     }
 
@@ -412,7 +421,7 @@ public sealed class TestCoverageFailureEnvelopeTests
     /// invoked. Mirrors the <c>HangingDotnetCommandRunner</c> hand-rolled-stub style from
     /// <c>HardeningBehaviorTests</c> rather than reaching for NSubstitute.
     /// </summary>
-    private sealed class ThrowingDotnetCommandRunner : IDotnetCommandRunner
+    private sealed class ThrowingDotnetCommandRunner : RoslynMcp.Tests.Helpers.CannedCommandRunner
     {
         private readonly Exception _toThrow;
 
@@ -421,7 +430,7 @@ public sealed class TestCoverageFailureEnvelopeTests
             _toThrow = toThrow;
         }
 
-        public Task<CommandExecutionDto> RunAsync(
+        public override Task<CommandExecutionDto> RunAsync(
             string workingDirectory,
             string targetPath,
             IReadOnlyList<string> arguments,
@@ -434,7 +443,7 @@ public sealed class TestCoverageFailureEnvelopeTests
     /// the regression-guard test to exercise the existing exit-code-1 no-coverage-file
     /// fallback without triggering the new exception-path catches.
     /// </summary>
-    private sealed class StaticDotnetCommandRunner : IDotnetCommandRunner
+    private sealed class StaticDotnetCommandRunner : RoslynMcp.Tests.Helpers.CannedCommandRunner
     {
         private readonly CommandExecutionDto _result;
 
@@ -443,7 +452,7 @@ public sealed class TestCoverageFailureEnvelopeTests
             _result = result;
         }
 
-        public Task<CommandExecutionDto> RunAsync(
+        public override Task<CommandExecutionDto> RunAsync(
             string workingDirectory,
             string targetPath,
             IReadOnlyList<string> arguments,

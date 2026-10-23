@@ -15,6 +15,7 @@ using RoslynMcp.Host.Stdio.Catalog;
 using RoslynMcp.Host.Stdio.Runtime;
 using RoslynMcp.Host.Stdio.Security;
 using RoslynMcp.Roslyn.Contracts;
+using RoslynMcp.Roslyn.Helpers;
 using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Host.Stdio.Tools;
@@ -78,7 +79,7 @@ public static class WorkspaceTools
             ProgressHelper.ReportStage(progress, 1, totalStages, "opening-workspace");
             var status = await workspace.LoadAsync(path, evictPolicy, c).ConfigureAwait(false);
             ProgressHelper.ReportStage(progress, 2, totalStages, "checking-restore");
-            var restoreOutcome = await RestoreAndReloadIfRequiredAsync(commandExecutor, validationOptions, workspace, status, autoRestore, logger, c).ConfigureAwait(false);
+            var restoreOutcome = await RestoreAndReloadIfRequiredAsync(commandExecutor, validationOptions, workspace, status, autoRestore, logger, c, System.TimeProvider.System).ConfigureAwait(false);
             status = restoreOutcome.Status;
             if (expandSanctionedRoots)
             {
@@ -131,7 +132,7 @@ public static class WorkspaceTools
             gate.RunWriteAsync(workspaceId, async innerCt =>
             {
                 var status = await workspace.ReloadAsync(workspaceId, innerCt).ConfigureAwait(false);
-                var restoreOutcome = await RestoreAndReloadIfRequiredAsync(commandExecutor, validationOptions, workspace, status, autoRestore, logger, innerCt).ConfigureAwait(false);
+                var restoreOutcome = await RestoreAndReloadIfRequiredAsync(commandExecutor, validationOptions, workspace, status, autoRestore, logger, innerCt, System.TimeProvider.System).ConfigureAwait(false);
                 return SerializeWorkspaceLoadResult(restoreOutcome.Status, verbose, prewarmResult: null, restoreOutcome.FailureReason);
             }, outerCt), ct);
     }
@@ -209,85 +210,111 @@ public static class WorkspaceTools
         return gate.RunLoadGateAsync(async outerCt =>
         {
             string? loadedPath = null;
-            var closed = await gate.RunWriteAsync(
-                workspaceId,
-                innerCt =>
-                {
-                    // Capture the loaded path before close removes the session from the registry.
-                    if (drainProcesses)
-                    {
-                        try { loadedPath = workspace.GetStatus(workspaceId).LoadedPath; }
-                        catch (Exception ex) when (ex is not OperationCanceledException)
-                        {
-                            // An unknown/already-closed workspace is reflected by success=false below.
-                            // Do not emit raw exception detail for this expected lookup miss.
-                        }
-                    }
-
-                    return Task.FromResult(workspace.Close(workspaceId));
-                },
-                outerCt,
-                applyStalenessPolicy: false).ConfigureAwait(false);
-            gate.RemoveGate(workspaceId);
-
-            IReadOnlyList<UndrainedProcess>? undrainedProcesses = null;
-            if (drainProcesses && !string.IsNullOrWhiteSpace(loadedPath))
+            bool closed;
+            Exception? closeFailure = null;
+            try
             {
-                var workingDirectory = Path.GetDirectoryName(loadedPath);
-                if (!string.IsNullOrWhiteSpace(workingDirectory))
-                {
-                    using var cleanupCts = CancellationTokenSource.CreateLinkedTokenSource(outerCt);
-                    cleanupCts.CancelAfter(processDrainTimeout);
-                    Exception? cleanupFailure = null;
-                    try
+                closed = await gate.RunWriteAsync(
+                    workspaceId,
+                    innerCt =>
                     {
-                        var drain = await commandRunner.RunAsync(
-                            workingDirectory,
-                            string.Empty,
-                            ["build-server", "shutdown"],
-                            cleanupCts.Token).ConfigureAwait(false);
-                        if (!drain.Succeeded)
+                        // Capture the loaded path before close removes the session from the registry.
+                        if (drainProcesses)
                         {
-                            cleanupFailure = new InvalidOperationException(
-                                $"Process drain exited with code {drain.ExitCode}.");
+                            try { loadedPath = workspace.GetStatus(workspaceId).LoadedPath; }
+                            catch (Exception ex) when (ex is not OperationCanceledException)
+                            {
+                                // An unknown/already-closed workspace is reflected by success=false below.
+                                // Do not emit raw exception detail for this expected lookup miss.
+                            }
                         }
-                    }
-                    catch (Exception ex)
-                    {
-                        // Workspace removal is the commit point. Cleanup observes caller cancellation
-                        // and its own timeout, but neither can roll the committed close result back.
-                        cleanupFailure = ex;
-                    }
 
-                    // Second drain sub-step: `dotnet test` spawns detached testhost.exe /
-                    // vstest.console.exe child processes that survive build-server shutdown and
-                    // keep tests/.../bin file handles open, blocking `git worktree remove` on
-                    // Windows. Terminate any whose executable lives under this working directory.
-                    // This step runs even after cancellation: it then terminates nothing, but it
-                    // still reports each in-workspace candidate it left running.
-                    var testHostDrain = DetachedTestHostDrain.Run(
-                        workingDirectory,
-                        getProcessesByName,
-                        resolveExecutablePath,
-                        logger,
-                        workspaceId,
-                        cleanupCts.Token);
-                    cleanupFailure ??= testHostDrain.FirstFailure;
-                    if (testHostDrain.Undrained.Count > 0)
-                    {
-                        undrainedProcesses = testHostDrain.Undrained;
-                    }
-
-                    if (cleanupFailure is not null)
-                    {
-                        ReportProcessDrainFailure(exceptionReporter, cleanupFailure);
-                    }
-                }
+                        return Task.FromResult(workspace.Close(workspaceId));
+                    },
+                    outerCt,
+                    applyStalenessPolicy: false).ConfigureAwait(false);
+            }
+            catch (WorkspaceCloseCleanupException failure) when (failure.IsFor(workspace, workspaceId))
+            {
+                closed = true;
+                closeFailure = failure.RemoveGatePreservingFailure(gate);
+            }
+            if (closeFailure is null)
+            {
+                try { gate.RemoveGate(workspaceId); }
+                catch (Exception failure) { closeFailure = failure; }
             }
 
-            return JsonSerializer.Serialize(
-                new WorkspaceCloseResult(closed, workspaceId, undrainedProcesses),
-                JsonDefaults.Indented);
+            try
+            {
+                IReadOnlyList<UndrainedProcess>? undrainedProcesses = null;
+                if (drainProcesses && !string.IsNullOrWhiteSpace(loadedPath))
+                {
+                    var workingDirectory = Path.GetDirectoryName(loadedPath);
+                    if (!string.IsNullOrWhiteSpace(workingDirectory))
+                    {
+                        using var cleanupCts = CancellationTokenSource.CreateLinkedTokenSource(outerCt);
+                        cleanupCts.CancelAfter(processDrainTimeout);
+                        Exception? cleanupFailure = null;
+                        try
+                        {
+                            var drain = await commandRunner.RunAsync(
+                                workingDirectory,
+                                string.Empty,
+                                ["build-server", "shutdown"],
+                                cleanupCts.Token).ConfigureAwait(false);
+                            if (!drain.Succeeded)
+                            {
+                                cleanupFailure = new InvalidOperationException(
+                                    $"Process drain exited with code {drain.ExitCode}.");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            // Workspace removal is the commit point. Cleanup observes caller cancellation
+                            // and its own timeout, but neither can roll the committed close result back.
+                            cleanupFailure = ex;
+                        }
+
+                        // Second drain sub-step: `dotnet test` spawns detached testhost.exe /
+                        // vstest.console.exe child processes that survive build-server shutdown and
+                        // keep tests/.../bin file handles open, blocking `git worktree remove` on
+                        // Windows. Terminate any whose executable lives under this working directory.
+                        // This step runs even after cancellation: it then terminates nothing, but it
+                        // still reports each in-workspace candidate it left running.
+                        var testHostDrain = DetachedTestHostDrain.Run(
+                            workingDirectory,
+                            getProcessesByName,
+                            resolveExecutablePath,
+                            logger,
+                            workspaceId,
+                            cleanupCts.Token);
+                        cleanupFailure ??= testHostDrain.FirstFailure;
+                        if (testHostDrain.Undrained.Count > 0)
+                        {
+                            undrainedProcesses = testHostDrain.Undrained;
+                        }
+
+                        if (cleanupFailure is not null)
+                        {
+                            if (closeFailure is not null)
+                                OwnedResourceCleanup.AttachOutcomes(closeFailure,
+                                    ["Process drain failed (" + cleanupFailure.GetType().Name + ")."]);
+                            ReportProcessDrainFailure(exceptionReporter, cleanupFailure);
+                        }
+                    }
+                }
+
+                if (closeFailure is not null)
+                    System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(closeFailure).Throw();
+                return JsonSerializer.Serialize(
+                    new WorkspaceCloseResult(closed, workspaceId, undrainedProcesses),
+                    JsonDefaults.Indented);
+            }
+            catch (Exception failure) when (closeFailure is not null && !ReferenceEquals(failure, closeFailure))
+            {
+                throw new AggregateException("Workspace resource and process cleanup failed.", closeFailure, failure);
+            }
         }, ct);
     }
 
@@ -592,46 +619,77 @@ public static class WorkspaceTools
         WorkspaceStatusDto status,
         bool? autoRestore,
         ILogger logger,
-        CancellationToken ct)
+        CancellationToken ct,
+        TimeProvider timeProvider)
     {
         if (autoRestore == false || !status.RestoreRequired || string.IsNullOrWhiteSpace(status.LoadedPath))
         {
             return new RestoreReloadOutcome(status);
         }
 
-        if (autoRestore is null)
+        var phaseStarted = timeProvider.GetTimestamp();
+        try
         {
-            if (!EnumerateProjectPaths(status).Any(projectPath => RestoreStalenessDetector.HasMissingAssets(projectPath, logger)))
-            {
-                return new RestoreReloadOutcome(status);
-            }
-
+            ct.ThrowIfCancellationRequested();
+            var budget = RemainingRestoreBudget(validationOptions, TimeSpan.Zero);
+            using var deadline = new CancellationTokenSource(budget, timeProvider);
+            using var phase = CancellationTokenSource.CreateLinkedTokenSource(ct, deadline.Token);
             try
             {
-                await RunRestoreAsync(commandExecutor, validationOptions, status, ct).ConfigureAwait(false);
+                var restoreGraph = EvaluatedBuildGraph.Source(workspace.GetCurrentSolution(status.WorkspaceId),
+                    System.Collections.Immutable.ImmutableDictionary<string, byte[]>.Empty, phase.Token);
+                if (autoRestore is null)
+                {
+                    if (workspace is not IWorkspacePathAuthority authority)
+                        throw new PublicInvalidOperationException("Workspace restore requires current physical input authorization.");
+                    if (!await RestoreStalenessDetector.HasMissingAssetsAsync(restoreGraph,
+                        (paths, token) => authority.AuthorizePathsAsync(status.WorkspaceId, paths, token), phase.Token).ConfigureAwait(false))
+                    {
+                        phase.Token.ThrowIfCancellationRequested();
+                        return new RestoreReloadOutcome(status);
+                    }
+                }
+                await RunRestoreAsync(workspace, commandExecutor, validationOptions, status, restoreGraph,
+                    timeProvider, phaseStarted, phase.Token).ConfigureAwait(false);
+                phase.Token.ThrowIfCancellationRequested();
             }
-            catch (Exception ex) when (ex is TimeoutException or PublicInvalidOperationException && !ct.IsCancellationRequested)
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
-                // Default restore is best-effort: the workspace is already loaded, so report the
-                // reason and leave restoreRequired=true. TimeoutException text embeds the dotnet
-                // command line (absolute paths), so it is replaced by a fixed path-free reason.
-                var reason = ex is PublicInvalidOperationException publicFailure
-                    ? publicFailure.PublicMessage
-                    : "workspace auto-restore timed out before completing; raise ROSLYNMCP_RESTORE_TIMEOUT_SECONDS or run dotnet restore for the loaded project and retry workspace_reload with autoRestore=true.";
-                return new RestoreReloadOutcome(status, reason);
+                ct.ThrowIfCancellationRequested();
+                throw;
             }
-
-            return new RestoreReloadOutcome(await workspace.ReloadAsync(status.WorkspaceId, ct).ConfigureAwait(false));
+            catch (OperationCanceledException) when (deadline.IsCancellationRequested)
+            {
+                throw new TimeoutException("workspace auto-restore exceeded its total restore time budget; raise ROSLYNMCP_RESTORE_TIMEOUT_SECONDS "
+                    + "or run dotnet restore for the loaded project and retry workspace_reload.");
+            }
         }
-
-        await RunRestoreAsync(commandExecutor, validationOptions, status, ct).ConfigureAwait(false);
+        catch (TimeoutException) when (ct.IsCancellationRequested)
+        {
+            ct.ThrowIfCancellationRequested();
+            throw;
+        }
+        catch (Exception ex) when (autoRestore is null && (ex is TimeoutException or PublicInvalidOperationException) && !ct.IsCancellationRequested)
+        {
+            // Indeterminate evaluation, missing-assets discovery, or restore leaves the loaded
+            // session intact. Public authored reasons are safe; timeout text can contain argv.
+            var reason = ex is PublicInvalidOperationException publicFailure
+                ? publicFailure.PublicMessage
+                : "workspace auto-restore timed out before completing; raise ROSLYNMCP_RESTORE_TIMEOUT_SECONDS or run dotnet restore for the loaded project and retry workspace_reload with autoRestore=true.";
+            return new RestoreReloadOutcome(status, reason);
+        }
+        ct.ThrowIfCancellationRequested();
         return new RestoreReloadOutcome(await workspace.ReloadAsync(status.WorkspaceId, ct).ConfigureAwait(false));
     }
 
     private static async Task RunRestoreAsync(
+        IWorkspaceManager workspace,
         IGatedCommandExecutor commandExecutor,
         ValidationServiceOptions validationOptions,
         WorkspaceStatusDto status,
+        EvaluatedBuildGraph.Graph restoreGraph,
+        TimeProvider timeProvider,
+        long phaseStarted,
         CancellationToken ct)
     {
         // Route through the shared per-workspace command gate so the restore cannot write obj/
@@ -640,14 +698,32 @@ public static class WorkspaceTools
         // TimeoutException. The restore phase has its own RestoreTimeout, clamped to what is left of
         // the enclosing request deadline minus a reserve for the reload below, so a slow restore
         // cannot consume the whole gate deadline and starve that reload.
-        var phaseClock = Stopwatch.StartNew();
-        foreach (var (targetPath, packagesPath) in PlanRestoreInvocations(status))
+        await AuthorizeRestoreInputsAsync(workspace, status.WorkspaceId, restoreGraph.Nodes, ct).ConfigureAwait(false);
+        if (workspace is not IWorkspacePathAuthority authority)
+            throw new PublicInvalidOperationException("Workspace restore requires current physical input authorization.");
+        Task AuthorizeAsync(IReadOnlyList<string> paths, CancellationToken token) => authority.AuthorizePathsAsync(status.WorkspaceId, paths, token);
+        var inputs = await RestoreInputAuthority.CaptureAsync(restoreGraph.Nodes, restoreGraph.Nodes,
+            workspace.GetCurrentSolution(status.WorkspaceId), AuthorizeAsync, ct).ConfigureAwait(false);
+        var projects = RestoreInvocationPlanner.CaptureNodes(restoreGraph.Nodes, ct);
+        var destinations = await RestoreDestinationAuthority.CaptureAsync(restoreGraph.Nodes, projects, AuthorizeAsync, ct).ConfigureAwait(false);
+        foreach (var invocation in RestoreInvocationPlanner.Plan(status.LoadedPath!, projects))
         {
-            var execution = await commandExecutor.ExecuteAsync(
+            async Task AuthorizeStartAsync(CancellationToken token)
+            {
+                await inputs.AuthorizeInvocationAsync(invocation, token).ConfigureAwait(false);
+                await destinations.AssertCurrentAsync(token).ConfigureAwait(false);
+                await inputs.AuthorizeFinalAsync(destinations.CurrentGrantPaths, token).ConfigureAwait(false);
+                await destinations.AssertNativeSettingsCurrentAsync(token).ConfigureAwait(false);
+                inputs.AssertNativeMembershipCurrent(token);
+                await inputs.AssertPhysicalCurrentAsync(destinations.ConfigInputs, token).ConfigureAwait(false);
+                destinations.AssertPhysicalDestinations(token);
+            }
+            var execution = await commandExecutor.ExecuteAuthorizedAsync(
                 status.WorkspaceId,
-                targetPath,
-                BuildRestoreArguments(targetPath, packagesPath),
-                RemainingRestoreBudget(validationOptions, phaseClock.Elapsed),
+                invocation.TargetPath,
+                invocation.Arguments,
+                RemainingRestoreBudget(validationOptions, timeProvider.GetElapsedTime(phaseStarted)),
+                AuthorizeStartAsync,
                 ct).ConfigureAwait(false);
 
             if (!execution.Succeeded)
@@ -656,9 +732,20 @@ public static class WorkspaceTools
                 // the public message is path-free so ToolErrorHandler can return it verbatim.
                 throw new PublicInvalidOperationException(
                     $"workspace auto-restore failed (exit code {execution.ExitCode}); run dotnet restore for the loaded project and retry workspace_reload.",
-                    new InvalidOperationException(BuildRestoreFailureMessage(targetPath, execution)));
+                    new InvalidOperationException(BuildRestoreFailureMessage(invocation.TargetPath, execution)));
             }
+            await inputs.AcceptSuccessfulAsync(invocation, ct).ConfigureAwait(false);
         }
+    }
+
+    private static Task AuthorizeRestoreInputsAsync(IWorkspaceManager workspace, string workspaceId,
+        IEnumerable<EvaluatedBuildGraph.Node> nodes, CancellationToken ct)
+    {
+        var paths = nodes.Select(node => node.Inputs.AssetsPath).OfType<string>().Distinct(FileSystemPath.Comparer).ToArray();
+        if (paths.Length == 0) return Task.CompletedTask;
+        if (workspace is not IWorkspacePathAuthority authority)
+            throw new PublicInvalidOperationException("Workspace restore requires current physical input authorization.");
+        return authority.AuthorizePathsAsync(workspaceId, paths, ct);
     }
 
     /// <summary>
@@ -688,47 +775,6 @@ public static class WorkspaceTools
 
         return budget;
     }
-
-    /// <summary>
-    /// workspace-restore-packages-path: decides which restore commands to run. Restore must write to
-    /// the package folder the projects' existing <c>project.assets.json</c> recorded (e.g. a worktree
-    /// scratch folder), not the host's default. One distinct recorded path (or none) → one restore of
-    /// the loaded path; several distinct paths → one restore per project with its own path.
-    /// </summary>
-    private static IReadOnlyList<(string TargetPath, string? PackagesPath)> PlanRestoreInvocations(WorkspaceStatusDto status)
-    {
-        var loadedPath = status.LoadedPath!;
-        var recorded = EnumerateProjectPaths(status)
-            .Select(path => (Path: path, PackagesPath: RestoreStalenessDetector.TryReadRestorePackagesPath(path)))
-            .ToList();
-        var distinctPackagesPaths = recorded
-            .Select(r => r.PackagesPath)
-            .OfType<string>()
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        return distinctPackagesPaths.Count > 1
-            ? recorded.Select(r => (r.Path, r.PackagesPath)).ToList()
-            : [(loadedPath, distinctPackagesPaths.SingleOrDefault())];
-    }
-
-    /// <summary>Project files of the loaded workspace; a single-<c>.csproj</c> load with no reported
-    /// projects falls back to the loaded path itself.</summary>
-    private static List<string> EnumerateProjectPaths(WorkspaceStatusDto status)
-    {
-        var projectPaths = status.Projects.Select(p => p.FilePath).ToList();
-        if (projectPaths.Count == 0 && status.LoadedPath!.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
-        {
-            projectPaths.Add(status.LoadedPath);
-        }
-
-        return projectPaths;
-    }
-
-    private static IReadOnlyList<string> BuildRestoreArguments(string targetPath, string? packagesPath) =>
-        packagesPath is null
-            ? ["restore", targetPath, "--nologo"]
-            : ["restore", targetPath, "--nologo", "--packages", packagesPath];
 
     /// <summary>
     /// Serializes a <c>workspace_load</c>/<c>workspace_reload</c> result. Adds an additive

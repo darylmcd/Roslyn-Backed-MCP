@@ -98,9 +98,6 @@ public sealed class WorkspaceResourceTests : SharedWorkspaceTestBase
         WorkspaceId = await GetOrLoadWorkspaceIdAsync(SampleSolutionPath, CancellationToken.None);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     public async Task GetWorkspaceStatus_Resource_Returns_Json()
     {

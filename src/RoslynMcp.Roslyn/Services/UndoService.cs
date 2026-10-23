@@ -1,39 +1,20 @@
 using System.Collections.Concurrent;
-using System.Text;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Contracts;
 using RoslynMcp.Roslyn.Helpers;
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging;
 
 namespace RoslynMcp.Roslyn.Services;
 
-/// <summary>
-/// Retains the last pre-apply snapshot per workspace so that it can be restored via
-/// <see cref="RevertAsync"/>.
-///
-/// FLAG-9A: <see cref="Microsoft.CodeAnalysis.MSBuild.MSBuildWorkspace"/>'s
-/// <c>TryApplyChanges</c> does not reliably flush document text to disk. Earlier
-/// versions of this service relied solely on <c>Solution.GetChanges()</c> to decide
-/// which documents to restore and wrote disk only for those — but when the post-apply
-/// workspace solution had reverted silently (or matched the pre-apply snapshot for
-/// unrelated reasons), <c>GetChanges</c> returned empty even though disk still held
-/// the post-apply text, and <c>revert_last_apply</c> reported success without
-/// touching disk. See backlog row <c>revert-last-apply-disk-consistency</c>.
-///
-/// The current implementation adds an authoritative fast path: callers that know
-/// which files they are about to modify (<c>EditService</c>, <c>EditorConfigService</c>)
-/// pass an explicit <see cref="FileSnapshotDto"/> list to
-/// <see cref="CaptureBeforeApply"/>, and <see cref="RevertAsync"/> restores those files
-/// directly from disk — no <c>GetChanges</c> dependency. Solution-based callers
-/// (<c>RefactoringService</c>) keep the legacy path, which has been hardened with a
-/// snapshot-wide document walk so empty-<c>GetChanges</c> no longer silently wins.
+/// <summary>Retains explicit byte snapshots and operation-owned compensation authority.
+/// Workspace writers serialize preparation, publication and restoration through their write gate.
 /// </summary>
 public sealed class UndoService : IUndoService, IDisposable
 {
     private readonly ConcurrentDictionary<string, UndoSnapshot> _snapshots = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, List<UndoSnapshot>> _history = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<Guid, byte> _restoring = new();
     private readonly ILogger<UndoService> _logger;
     private readonly IWorkspaceManager _workspaceManager;
     private readonly IChangeTracker? _changeTracker;
@@ -62,34 +43,126 @@ public sealed class UndoService : IUndoService, IDisposable
         }
     }
 
-    public void CaptureBeforeApply(
-        string workspaceId,
-        string description,
-        object? preApplySolution,
-        IReadOnlyList<FileSnapshotDto>? fileSnapshots = null)
+    public async Task<IPreparedUndoOperation> PrepareBeforeApplyAsync(IWorkspaceMutationOperation physicalOperation, CancellationToken ct)
     {
-        Solution? solution = null;
-        if (preApplySolution is not null)
+        ArgumentNullException.ThrowIfNull(physicalOperation);
+        if (physicalOperation is not PhysicalMutationRecovery recovery)
+            throw InvalidOperationErrors.Internal("Undo preparation requires an issued physical operation.");
+        var recoveryAuthority = RequireRecoveryAuthority();
+        await recoveryAuthority.EnsurePreparedOperationCurrentAsync(recovery, ct).ConfigureAwait(false);
+        var workspaceId = recovery.WorkspaceId;
+        _snapshots.TryGetValue(workspaceId, out var predecessor);
+        var snapshot = new UndoSnapshot(workspaceId, recovery.Description, recovery.Files, DateTime.UtcNow,
+            0, Array.Empty<string>(), recovery.OperationId, recovery.CapturedLayout);
+        return new PreparedOperation(this, snapshot, predecessor, recoveryAuthority, recovery);
+    }
+
+    private sealed class PreparedOperation(UndoService owner, UndoSnapshot snapshot, UndoSnapshot? predecessor,
+        IWorkspaceRecoveryAuthority recoveryAuthority, PhysicalMutationRecovery recovery) : IPreparedUndoOperation
+    {
+        private int _state;
+        private Solution? _publishedSolution;
+        private int _publishedVersion;
+
+        public async Task PublishAsync(CancellationToken cancellationToken)
         {
-            if (preApplySolution is not Solution typed)
-                throw new InvalidOperationException("preApplySolution must be a Roslyn Solution or null.");
-            solution = typed;
+            if (_state != 0) throw InvalidOperationErrors.Internal("Undo operation has already been published or restored.");
+            try
+            {
+                await recoveryAuthority.EnsureOperationCurrentAsync(recovery, cancellationToken).ConfigureAwait(false);
+                _publishedVersion = owner._workspaceManager.GetCurrentVersion(snapshot.WorkspaceId);
+                _publishedSolution = owner._workspaceManager.GetCurrentSolution(snapshot.WorkspaceId);
+                var bytes = new Dictionary<string, byte[]?>(FileSystemPath.Comparer);
+                foreach (var file in snapshot.FileSnapshots)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    await recoveryAuthority.AuthorizePathsAsync(snapshot.WorkspaceId, [file.FilePath], cancellationToken).ConfigureAwait(false);
+                    bytes[file.FilePath] = await FileSnapshotCapture.ReadIfPresentAsync(file.FilePath, PhysicalInputReader.ReadAllBytesAsync, cancellationToken).ConfigureAwait(false);
+                }
+                await recoveryAuthority.EnsureOperationCurrentAsync(recovery, cancellationToken).ConfigureAwait(false);
+                var changed = snapshot.FileSnapshots.Where(file => !MatchesPreState(file, bytes[file.FilePath])).ToArray();
+                if (changed.Length == 0) { _state = 2; return; }
+                owner._snapshots[snapshot.WorkspaceId] = snapshot with
+                {
+                    FileSnapshots = changed
+                };
+                _state = 1;
+            }
+            catch (WorkspaceMutationOwnershipException) { throw; }
+            catch (Exception publicationFailure)
+            {
+                var failures = new List<Exception> { publicationFailure };
+                var restored = false;
+                try { restored = await RestoreAsync(CancellationToken.None).ConfigureAwait(false); }
+                catch (Exception compensationFailure)
+                {
+                    failures.Add(compensationFailure);
+                    if (_state == 2) throw new AggregateException("Undo publication failed; compensation committed but resource cleanup also failed.", failures);
+                }
+                if (restored) throw;
+                if (failures.Count == 1)
+                    failures.Add(InvalidOperationErrors.Internal("Compensation failed after undo publication could not capture post-state."));
+                // Recovery belongs to this failed operation, never the unrelated previous
+                // operation. No inferred forward graph is trustworthy after partial failure.
+                try { RetainRecovery(); }
+                catch (Exception retentionFailure) { failures.Add(retentionFailure); }
+                throw new AggregateException("Undo publication and compensation failed; operation recovery remains available through user undo.", failures);
+            }
         }
 
-        var preApplyVersion = _workspaceManager.GetCurrentVersion(workspaceId);
-        _snapshots[workspaceId] = new UndoSnapshot(
-            workspaceId,
-            description,
-            solution,
-            fileSnapshots,
-            preApplyVersion,
-            DateTime.UtcNow,
-            SequenceNumber: 0,
-            AffectedFiles: Array.Empty<string>());
+        public void RetainRecovery()
+        {
+            recoveryAuthority.RetainRecovery(recovery);
+            if (_state == 1) RestorePredecessor();
+            _state = 3;
+        }
+
+        private void RestorePredecessor()
+        {
+            if (owner._snapshots.TryGetValue(snapshot.WorkspaceId, out var current) && current.OperationId == snapshot.OperationId)
+            {
+                if (predecessor is null) owner._snapshots.TryRemove(new KeyValuePair<string, UndoSnapshot>(snapshot.WorkspaceId, current));
+                else owner._snapshots.TryUpdate(snapshot.WorkspaceId, predecessor, current);
+            }
+            if (owner._history.TryGetValue(snapshot.WorkspaceId, out var history))
+                lock (history) history.RemoveAll(item => item.OperationId == snapshot.OperationId);
+        }
+
+        private static bool MatchesPreState(FileSnapshotDto before, byte[]? after) =>
+            before.OriginalText is null ? after is null
+                : after is not null && (!before.OriginalBytes.IsDefault
+                    ? before.OriginalBytes.AsSpan().SequenceEqual(after)
+                    : before.OriginalText == CsprojSemanticEquality.CreateSnapshot(after).Content);
+
+        public async Task<bool> RestoreAsync(CancellationToken cancellationToken)
+        {
+            using var claim = owner.ClaimRestoration(snapshot.OperationId);
+            if (claim is null) return false;
+            if (_state == 2) throw InvalidOperationErrors.Internal("Undo operation was already restored.");
+            if (_state == 3) throw new PublicInvalidOperationException("Post-state capture failed; recover this operation through user undo before further mutations.");
+            if (_state == 1)
+            {
+                if (!owner._snapshots.TryGetValue(snapshot.WorkspaceId, out var current)
+                    || current.OperationId != snapshot.OperationId
+                    || owner._workspaceManager.GetCurrentVersion(snapshot.WorkspaceId) != _publishedVersion
+                    || !ReferenceEquals(owner._workspaceManager.GetCurrentSolution(snapshot.WorkspaceId), _publishedSolution))
+                    throw new PublicInvalidOperationException("The operation was superseded; compensation cannot overwrite later workspace changes.");
+                await recoveryAuthority.EnsureOperationCurrentAsync(recovery, cancellationToken).ConfigureAwait(false);
+            }
+            if (!await owner.RevertFromFileSnapshotsAsync(snapshot.WorkspaceId,
+                snapshot with { FileSnapshots = recovery.RecoveryFiles }, cancellationToken, compensate: true, recovery: null, ownedOperation: recovery,
+                onRestored: () => { if (_state == 1) RestorePredecessor(); _state = 2; }).ConfigureAwait(false)) return false;
+            return true;
+        }
     }
+
+    private IWorkspaceRecoveryAuthority RequireRecoveryAuthority() => _workspaceManager as IWorkspaceRecoveryAuthority
+        ?? throw InvalidOperationErrors.Internal("Undo requires workspace-owned physical recovery authority.");
 
     public UndoEntry? GetLastOperation(string workspaceId)
     {
+        if (RequireRecoveryAuthority().GetPendingRecovery(workspaceId) is { } recovery)
+            return new UndoEntry(workspaceId, recovery.Description, recovery.CapturedAtUtc);
         if (!_snapshots.TryGetValue(workspaceId, out var snapshot))
             return null;
 
@@ -98,6 +171,16 @@ public sealed class UndoService : IUndoService, IDisposable
 
     public async Task<bool> RevertAsync(string workspaceId, CancellationToken cancellationToken = default)
     {
+        var recoveryAuthority = RequireRecoveryAuthority();
+        if (recoveryAuthority.GetPendingRecovery(workspaceId) is { } recovery)
+        {
+            using var claim = ClaimRestoration(recovery.OperationId);
+            if (claim is null) return false;
+            var recoverySnapshot = new UndoSnapshot(workspaceId, recovery.Description,
+                recovery.RecoveryFiles, recovery.CapturedAtUtc, 0, [], recovery.OperationId, recovery.CapturedLayout);
+            return await RevertFromFileSnapshotsAsync(workspaceId, recoverySnapshot,
+                cancellationToken, compensate: false, recovery, ownedOperation: null, onRestored: () => ConsumeOperation(workspaceId, recovery.OperationId)).ConfigureAwait(false);
+        }
         // Peek — do NOT consume the snapshot until the restore confirms success. A failed
         // (disk I/O) or cancelled restore must leave the snapshot and its history entry in
         // place so the SAME call is retryable once the obstruction clears; consuming up front
@@ -106,23 +189,26 @@ public sealed class UndoService : IUndoService, IDisposable
         if (!_snapshots.TryGetValue(workspaceId, out var snapshot))
             return false;
 
-        var workspace = _workspaceManager;
+        using var snapshotClaim = ClaimRestoration(snapshot.OperationId);
+        if (snapshotClaim is null) return false;
+        if (!_snapshots.TryGetValue(workspaceId, out var selected) || selected.OperationId != snapshot.OperationId) return false;
+        return await RevertFromFileSnapshotsAsync(workspaceId,
+            snapshot, cancellationToken, compensate: false, recovery: null, ownedOperation: null,
+            onRestored: () => ConsumeSnapshot(workspaceId, snapshot)).ConfigureAwait(false);
+    }
 
-        // Fast path: the caller provided an explicit file-snapshot list. Restore those
-        // files directly — authoritative, independent of the workspace solution state.
-        // Legacy (else) path: solution-based restore with a snapshot-wide walk so
-        // empty-GetChanges no longer silently wins. A thrown OperationCanceledException
-        // propagates out of here without reaching the consume block below, so cancellation
-        // also leaves _snapshots/_history untouched (retryable) by construction.
-        bool reverted = snapshot.FileSnapshots is { Count: > 0 }
-            ? await RevertFromFileSnapshotsAsync(workspaceId, workspace, snapshot, cancellationToken).ConfigureAwait(false)
-            : await RevertFromSolutionSnapshotAsync(workspaceId, workspace, snapshot, cancellationToken).ConfigureAwait(false);
+    private void ConsumeOperation(string workspaceId, Guid operationId)
+    {
+        if (_snapshots.TryGetValue(workspaceId, out var current) && current.OperationId == operationId)
+            ConsumeSnapshot(workspaceId, current);
+        if (_history.TryGetValue(workspaceId, out var history))
+            lock (history) history.RemoveAll(snapshot => snapshot.OperationId == operationId);
+    }
 
-        if (!reverted)
-            return false;
-
+    private void ConsumeSnapshot(string workspaceId, UndoSnapshot snapshot)
+    {
         // Restore succeeded — consume the snapshot exactly once. Use the atomic
-        // compare-and-remove overload so a newer CaptureBeforeApply that landed while the
+        // compare-and-remove overload so a newer PrepareBeforeApplyAsync that landed while the
         // restore was in flight is not clobbered (only the exact snapshot we restored is removed).
         _snapshots.TryRemove(new KeyValuePair<string, UndoSnapshot>(workspaceId, snapshot));
 
@@ -147,7 +233,6 @@ public sealed class UndoService : IUndoService, IDisposable
             }
         }
 
-        return true;
     }
 
     public async Task<RevertBySequenceResult> RevertBySequenceAsync(
@@ -215,6 +300,12 @@ public sealed class UndoService : IUndoService, IDisposable
                 BlockingSequences: blocking);
         }
 
+        using var operationClaim = ClaimRestoration(target.OperationId);
+        if (operationClaim is null)
+            return new RevertBySequenceResult(false, target.Description, target.AffectedFiles, "revert-in-progress", null);
+
+        RequireRecoveryAuthority().EnsureMutationAllowed(workspaceId, target.FileSnapshots.Select(file => file.FilePath).ToArray());
+
         // Claim the revert BEFORE running it so concurrent callers can't double-revert: remove
         // the target history entry (recording its ordinal position so a failed/cancelled restore
         // can reinsert it at the same spot) and, if it is also the pending LIFO snapshot, remove
@@ -224,10 +315,9 @@ public sealed class UndoService : IUndoService, IDisposable
         lock (historyList)
         {
             claimedIndex = historyList.FindIndex(s => s.SequenceNumber == sequenceNumber);
-            if (claimedIndex >= 0)
-            {
-                historyList.RemoveAt(claimedIndex);
-            }
+            if (claimedIndex < 0)
+                return new RevertBySequenceResult(false, target.Description, target.AffectedFiles, "unknown-sequence", null);
+            historyList.RemoveAt(claimedIndex);
         }
 
         // If this is also the pending LIFO snapshot, drop it from _snapshots too — keeps
@@ -239,23 +329,18 @@ public sealed class UndoService : IUndoService, IDisposable
         }
 
         bool reverted;
+        var restorationCommitted = false;
         try
         {
-            if (target.FileSnapshots is { Count: > 0 })
-            {
-                reverted = await RevertFromFileSnapshotsAsync(workspaceId, _workspaceManager, target, cancellationToken).ConfigureAwait(false);
-            }
-            else
-            {
-                reverted = await RevertFromSolutionSnapshotAsync(workspaceId, _workspaceManager, target, cancellationToken).ConfigureAwait(false);
-            }
+            reverted = await RevertFromFileSnapshotsAsync(workspaceId,
+                target, cancellationToken, compensate: false, recovery: null, ownedOperation: null,
+                onRestored: () => restorationCommitted = true).ConfigureAwait(false);
         }
-        catch (OperationCanceledException)
+        catch (Exception)
         {
-            // A cancelled restore must not destroy the retry target: undo the claim so the same
-            // sequence stays retryable with its ordering preserved, then rethrow so cancellation
-            // still surfaces to the caller.
-            RestoreSequenceClaim(workspaceId, historyList, claimedIndex, target);
+            // Every exceptional restore failure retains the same retry target and ordering,
+            // including aggregate failures reported by transactional file rollback.
+            if (!restorationCommitted) RestoreSequenceClaim(workspaceId, historyList, claimedIndex, target);
             throw;
         }
 
@@ -311,14 +396,16 @@ public sealed class UndoService : IUndoService, IDisposable
 
     public void CommitPendingCapture(string workspaceId, int sequenceNumber, IReadOnlyList<string> affectedFiles)
     {
+        if (RequireRecoveryAuthority().GetPendingRecovery(workspaceId) is not null) return;
         if (!_snapshots.TryGetValue(workspaceId, out var pending))
         {
-            // No pending snapshot — apply path skipped CaptureBeforeApply (e.g., a no-op tool
+            // No pending snapshot — apply path skipped PrepareBeforeApplyAsync (e.g., a no-op tool
             // that records a change without producing a revertable diff). Nothing to commit.
             return;
         }
 
-        var promoted = pending with { SequenceNumber = sequenceNumber, AffectedFiles = affectedFiles };
+        if (pending.SequenceNumber > 0) return;
+        var promoted = pending with { SequenceNumber = sequenceNumber, AffectedFiles = affectedFiles.ToArray() };
         _snapshots[workspaceId] = promoted;
 
         var historyList = _history.GetOrAdd(workspaceId, _ => new List<UndoSnapshot>());
@@ -333,304 +420,133 @@ public sealed class UndoService : IUndoService, IDisposable
         CommitPendingCapture(e.WorkspaceId, e.SequenceNumber, e.AffectedFiles);
     }
 
+    private IDisposable? ClaimRestoration(Guid operationIdentity) => _restoring.TryAdd(operationIdentity, 0)
+        ? new RestorationClaim(_restoring, operationIdentity) : null;
+
+    private sealed class RestorationClaim(ConcurrentDictionary<Guid, byte> claims, Guid identity) : IDisposable
+    {
+        public void Dispose() => claims.TryRemove(identity, out _);
+    }
+
     private async Task<bool> RevertFromFileSnapshotsAsync(
         string workspaceId,
-        IWorkspaceManager workspace,
         UndoSnapshot snapshot,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool compensate,
+        PhysicalMutationRecovery? recovery,
+        PhysicalMutationRecovery? ownedOperation,
+        Action onRestored)
     {
-        var diskOk = true;
-        var restoredAny = false;
-
+        var files = snapshot.FileSnapshots;
+        var recoveryAuthority = RequireRecoveryAuthority();
+        var before = new Dictionary<string, byte[]?>(FileSystemPath.Comparer);
+        var touched = new HashSet<string>(FileSystemPath.Comparer);
+        var intendedWrites = new Dictionary<string, byte[]?>(FileSystemPath.Comparer);
+        PhysicalMutationRecovery? mutation = ownedOperation;
+        IWorkspaceMutationLease? lease = null;
+        IPhysicalRestorationAuthority? physical = null;
+        Exception? primaryFailure = null;
+        var restorationCommitted = false;
+        async Task<byte[]?> ReadAuthorizedAsync(string path, CancellationToken token)
+        {
+            await recoveryAuthority.AuthorizePathsAsync(workspaceId, [path], token).ConfigureAwait(false);
+            var bytes = await FileSnapshotCapture.ReadIfPresentAsync(path, PhysicalInputReader.ReadAllBytesAsync, token).ConfigureAwait(false);
+            if ((recovery ?? mutation) is { } issued)
+                recoveryAuthority.AssertKnownFileRead(issued, bytes is null ? new FileSnapshotDto(path, null) : FileSnapshotDto.FromExistingBytes(path, bytes));
+            return bytes;
+        }
+        Task WriteAuthorizedAsync(string path, byte[]? expected, byte[]? bytes, CancellationToken token)
+            => (recovery ?? mutation ?? throw InvalidOperationErrors.Internal("An inverse transition requires issued recovery ownership."))
+                .TransitionSourceAsync(path, expected, bytes,
+                    PhysicalSourceTransitionMode.FreshReplacement, recoveryAuthority, null, token);
         try
         {
-            foreach (var file in snapshot.FileSnapshots!)
+            if (recovery is null) recoveryAuthority.EnsureMutationAllowed(workspaceId, files.Select(file => file.FilePath).ToArray());
+            else await recoveryAuthority.EnsureRecoveryCurrentAsync(recovery, cancellationToken).ConfigureAwait(false);
+            await recoveryAuthority.AuthorizePathsAsync(workspaceId, files.Select(file => file.FilePath).ToArray(), cancellationToken).ConfigureAwait(false);
+            foreach (var file in files)
             {
-                WorkspaceManager.EnsurePhysicalPath(file.FilePath);
+                before[file.FilePath] = await ReadAuthorizedAsync(file.FilePath, cancellationToken).ConfigureAwait(false);
             }
-        }
-        catch (InvalidOperationException)
-        {
-            _logger.LogWarning("UndoService.RevertAsync (file-snapshot): rejected a filesystem-link target.");
-            return false;
-        }
-
-        foreach (var file in snapshot.FileSnapshots!)
-        {
-            try
+            if (recovery is null)
             {
-                if (file.OriginalText is null)
-                {
-                    // The file did not exist before the apply — delete it on revert.
-                    if (File.Exists(file.FilePath))
-                    {
-                        File.Delete(file.FilePath);
-                        restoredAny = true;
-                    }
-                }
-                else
-                {
-                    var directory = Path.GetDirectoryName(file.FilePath);
-                    if (!string.IsNullOrEmpty(directory))
-                    {
-                        Directory.CreateDirectory(directory);
-                    }
-                    if (!file.OriginalBytes.IsDefault)
-                    {
-                        await AtomicFileWriter.WriteAllBytesAsync(
-                            file.FilePath,
-                            file.OriginalBytes.ToArray(),
-                            cancellationToken,
-                            logger: _logger).ConfigureAwait(false);
-                    }
-                    else
-                    {
-                        await AtomicFileWriter.WriteAllTextAsync(
-                            file.FilePath,
-                            file.OriginalText,
-                            cancellationToken,
-                            logger: _logger).ConfigureAwait(false);
-                    }
-                    restoredAny = true;
-                }
+                mutation ??= await recoveryAuthority.CaptureRecoveryAsync(workspaceId, "Recover failed undo", before.Select(pair => pair.Value is null
+                    ? new FileSnapshotDto(pair.Key, null) : FileSnapshotDto.FromExistingBytes(pair.Key, pair.Value)).ToArray(), cancellationToken).ConfigureAwait(false);
+                lease = await recoveryAuthority.BeginMutationAsync(mutation, cancellationToken).ConfigureAwait(false);
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            physical = await recoveryAuthority.StageRestorationAsync(recovery ?? mutation!, files, snapshot.CapturedLayout, cancellationToken).ConfigureAwait(false);
+            foreach (var file in files)
             {
-                _logger.LogWarning(
-                    ex,
-                    "UndoService.RevertAsync (file-snapshot): failed to restore {FilePath}",
-                    file.FilePath);
-                diskOk = false;
+                cancellationToken.ThrowIfCancellationRequested();
+                await PhysicalMutationFileGuard.AssertMatchesAsync(file.FilePath, before[file.FilePath], ReadAuthorizedAsync, cancellationToken).ConfigureAwait(false);
+                var bytes = file.OriginalText is null ? null : !file.OriginalBytes.IsDefault ? file.OriginalBytes.ToArray()
+                    : SolutionFileMutationPlanner.Encode(file.OriginalText, SourceFileEncoding.FromBytes(before[file.FilePath]));
+                intendedWrites[file.FilePath] = bytes;
+                lease?.BeforeWrite(bytes is null ? new FileSnapshotDto(file.FilePath, null) : FileSnapshotDto.FromExistingBytes(file.FilePath, bytes));
+                touched.Add(file.FilePath);
+                await WriteAuthorizedAsync(file.FilePath, before[file.FilePath], bytes, cancellationToken).ConfigureAwait(false);
             }
-        }
-
-        if (restoredAny)
-        {
-            try
+            if (recovery is null)
             {
-                await workspace.ReloadAsync(workspaceId, cancellationToken).ConfigureAwait(false);
-                // Restore the workspace version to the pre-apply value so that preview tokens
-                // created before the reverted operation remain valid. The workspace state has
-                // been restored to its pre-apply form, so the pre-apply version is correct.
-                workspace.RestoreVersion(workspaceId, snapshot.PreApplyWorkspaceVersion);
+                await recoveryAuthority.CommitRestorationAsync(mutation!, physical.Expected, retainedRecovery: false, cancellationToken).ConfigureAwait(false);
+                foreach (var (path, bytes) in intendedWrites)
+                    await PhysicalMutationFileGuard.AssertMatchesAsync(path, bytes, ReadAuthorizedAsync, cancellationToken).ConfigureAwait(false);
+                if (compensate && physical.PreservesOriginalIdentity) recoveryAuthority.RestoreCapturedVersion(mutation!);
+                var restored = files.ToDictionary(file => file.FilePath, FileSystemPath.Comparer);
+                lease!.Complete(mutation!.Files.Select(file => restored.GetValueOrDefault(file.FilePath) ?? file).ToArray());
             }
-            catch (Exception ex) when (ex is IOException or InvalidOperationException or KeyNotFoundException)
+            else
             {
-                _logger.LogWarning(
-                    ex,
-                    "UndoService.RevertAsync (file-snapshot): workspace reload after disk restore failed for {WorkspaceId}",
-                    workspaceId);
+                foreach (var (path, bytes) in intendedWrites)
+                    await PhysicalMutationFileGuard.AssertMatchesAsync(path, bytes, ReadAuthorizedAsync, cancellationToken).ConfigureAwait(false);
+                await recoveryAuthority.CommitRestorationAsync(recovery, physical.Expected, retainedRecovery: true, cancellationToken).ConfigureAwait(false);
             }
-        }
-
-        return diskOk;
-    }
-
-    private async Task<bool> RevertFromSolutionSnapshotAsync(
-        string workspaceId,
-        IWorkspaceManager workspace,
-        UndoSnapshot snapshot,
-        CancellationToken cancellationToken)
-    {
-        if (snapshot.PreApplySolution is null)
-        {
-            _logger.LogWarning(
-                "UndoService.RevertAsync: snapshot for '{WorkspaceId}' has neither a pre-apply Solution nor file snapshots. " +
-                "Nothing to revert.",
-                workspaceId);
-            return false;
-        }
-
-        var currentSolution = workspace.GetCurrentSolution(workspaceId);
-        // composite-apply-undo-encoding-still-lossy: the queued restores carry the pre-apply
-        // `SourceText.Encoding` alongside the text so `PersistRevertChangesAsync` can rewrite each
-        // file with its original BOM/encoding instead of collapsing everything to UTF-8-no-BOM.
-        // `Encoding` is null for in-memory-synthesized text; `SourceFileEncoding.FromSourceText`
-        // handles that.
-        var diskRestores = new List<(string FilePath, string Text, Encoding? Encoding)>();
-
-        // Phase 1 (primary): trust the Solution diff to tell us what changed.
-        var (targetSolution, changedDocumentCount) = await CollectChangesFromSolutionDiffAsync(
-            snapshot.PreApplySolution, currentSolution, diskRestores, cancellationToken).ConfigureAwait(false);
-
-        // Phase 2 (safety net, revert-last-apply-disk-consistency): if the Solution diff
-        // came up empty we cannot conclude "nothing changed" — MSBuildWorkspace may have
-        // quietly dropped the apply while leaving disk out of sync. Walk every document
-        // in the pre-apply snapshot, read the on-disk text, and restore any that drifted.
-        if (changedDocumentCount == 0)
-        {
-            changedDocumentCount = await CollectChangesFromDiskWalkAsync(
-                snapshot.PreApplySolution, diskRestores, cancellationToken).ConfigureAwait(false);
-        }
-
-        if (changedDocumentCount == 0)
-        {
-            _logger.LogInformation(
-                "UndoService.RevertAsync: snapshot for '{WorkspaceId}' contained no document differences against the current solution or disk. " +
-                "Treating revert as a no-op success.",
-                workspaceId);
+            restorationCommitted = true;
             return true;
         }
-
-        // Phase 3: persist the revert to workspace state + disk, reload, and restore version.
-        return await PersistRevertChangesAsync(
-            workspaceId, workspace, snapshot, targetSolution, diskRestores, cancellationToken).ConfigureAwait(false);
-    }
-
-    /// <summary>
-    /// Phase-1 helper for <see cref="RevertFromSolutionSnapshotAsync"/>. Walks
-    /// <c>preApplySolution.GetChanges(currentSolution)</c> and, for every document the
-    /// diff flags as changed, schedules a workspace text revert and queues a disk
-    /// restore. Returns the updated target solution plus a count of documents touched.
-    /// </summary>
-    private static async Task<(Solution TargetSolution, int ChangedDocumentCount)> CollectChangesFromSolutionDiffAsync(
-        Solution preApplySolution,
-        Solution currentSolution,
-        List<(string FilePath, string Text, Encoding? Encoding)> diskRestores,
-        CancellationToken cancellationToken)
-    {
-        var targetSolution = currentSolution;
-        var changedDocumentCount = 0;
-
-        foreach (var projectChange in preApplySolution.GetChanges(currentSolution).GetProjectChanges())
+        catch (Exception failure)
         {
-            foreach (var docId in projectChange.GetChangedDocuments())
+            primaryFailure = failure;
+            var failures = new List<Exception> { failure };
+            foreach (var (path, bytes) in before.Where(pair => touched.Contains(pair.Key)))
             {
-                var oldDoc = preApplySolution.GetDocument(docId);
-                if (oldDoc is null) continue;
-
-                var oldText = await oldDoc.GetTextAsync(cancellationToken).ConfigureAwait(false);
-                targetSolution = targetSolution.WithDocumentText(docId, oldText);
-                changedDocumentCount++;
-
-                var currentDoc = currentSolution.GetDocument(docId);
-                var path = currentDoc?.FilePath ?? oldDoc.FilePath;
-                if (!string.IsNullOrWhiteSpace(path))
-                {
-                    diskRestores.Add((path!, oldText.ToString(), oldText.Encoding));
-                }
-            }
-        }
-
-        return (targetSolution, changedDocumentCount);
-    }
-
-    /// <summary>
-    /// Phase-2 helper (safety net) for <see cref="RevertFromSolutionSnapshotAsync"/>.
-    /// Invoked only when the Solution diff returned no changes. Walks every document in
-    /// the pre-apply snapshot, reads the on-disk text, and queues a disk restore for any
-    /// file whose content drifted. Read failures are debug-logged and skipped.
-    /// </summary>
-    private async Task<int> CollectChangesFromDiskWalkAsync(
-        Solution preApplySolution,
-        List<(string FilePath, string Text, Encoding? Encoding)> diskRestores,
-        CancellationToken cancellationToken)
-    {
-        var changedDocumentCount = 0;
-
-        foreach (var project in preApplySolution.Projects)
-        {
-            foreach (var oldDoc in project.Documents)
-            {
-                if (oldDoc.FilePath is null) continue;
-                if (!File.Exists(oldDoc.FilePath)) continue;
-
-                string currentDiskText;
                 try
                 {
-                    currentDiskText = await File.ReadAllTextAsync(oldDoc.FilePath, cancellationToken).ConfigureAwait(false);
+                    await PhysicalMutationFileGuard.RestoreEntryIfOwnedAsync(path, bytes, intendedWrites[path],
+                        ReadAuthorizedAsync, WriteAuthorizedAsync, CancellationToken.None).ConfigureAwait(false);
                 }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                catch (Exception rollbackFailure) { failures.Add(rollbackFailure); }
+            }
+            if (lease is not null)
+            {
+                try
                 {
-                    _logger.LogDebug(ex, "UndoService.RevertAsync: disk-walk read failed for {FilePath}", oldDoc.FilePath);
-                    continue;
+                    if (failures.Count == 1) await lease.AbortAsync(CancellationToken.None).ConfigureAwait(false);
+                    else recoveryAuthority.RetainRecovery(mutation!);
                 }
-
-                var oldSourceText = await oldDoc.GetTextAsync(cancellationToken).ConfigureAwait(false);
-                var oldText = oldSourceText.ToString();
-                if (!string.Equals(currentDiskText, oldText, StringComparison.Ordinal))
+                catch (Exception retentionFailure) { failures.Add(retentionFailure); }
+            }
+            if (failures.Count > 1) throw new AggregateException("Undo failed and restoring its entry state also failed.", failures);
+            if (failure is OperationCanceledException or IPublicMessageException) throw;
+            if (failure is not IOException and not UnauthorizedAccessException and not InvalidOperationException) throw;
+            _logger.LogWarning(failure, "Undo failed before publishing a loaded workspace; undo authority was retained for {WorkspaceId}", workspaceId);
+            return false;
+        }
+        finally
+        {
+            // Consume the exact undo authority before releasing resources. A disposal
+            // failure remains observable without making a committed inverse retryable.
+            if (restorationCommitted)
+            {
+                try { onRestored(); }
+                catch (Exception completionFailure)
                 {
-                    diskRestores.Add((oldDoc.FilePath, oldText, oldSourceText.Encoding));
-                    changedDocumentCount++;
+                    OwnedResourceCleanup.Dispose("Undo completion and resource cleanup failed.", completionFailure, physical, lease);
+                    throw;
                 }
             }
+            OwnedResourceCleanup.Dispose("Undo resource cleanup failed.", primaryFailure, physical, lease);
         }
-
-        return changedDocumentCount;
-    }
-
-    /// <summary>
-    /// Phase-3 helper for <see cref="RevertFromSolutionSnapshotAsync"/>. Applies the
-    /// reverted solution to the workspace, writes every queued disk restore, reloads
-    /// the workspace if any disk write succeeded, and restores the pre-apply workspace
-    /// version. Returns <c>diskOk &amp;&amp; (workspaceApplied || anyDiskWrite)</c> — i.e.
-    /// success requires every queued disk write to succeed AND at least one of the two
-    /// state pathways (workspace apply / disk write) to land.
-    /// </summary>
-    private async Task<bool> PersistRevertChangesAsync(
-        string workspaceId,
-        IWorkspaceManager workspace,
-        UndoSnapshot snapshot,
-        Solution targetSolution,
-        IReadOnlyList<(string FilePath, string Text, Encoding? Encoding)> diskRestores,
-        CancellationToken cancellationToken)
-    {
-        foreach (var (filePath, _, _) in diskRestores)
-        {
-            WorkspaceManager.EnsurePhysicalPath(filePath);
-        }
-
-        var workspaceApplied = workspace.TryApplyChanges(workspaceId, targetSolution);
-        if (!workspaceApplied)
-        {
-            _logger.LogWarning(
-                "UndoService.RevertAsync: workspace.TryApplyChanges returned false for '{WorkspaceId}' (description: '{Description}'). " +
-                "Disk restore will still proceed because EditService.ApplyTextEdits has the same MSBuildWorkspace bug pattern.",
-                workspaceId,
-                snapshot.Description);
-        }
-
-        var diskOk = true;
-        var anyDiskWrite = false;
-        foreach (var (filePath, text, encoding) in diskRestores)
-        {
-            try
-            {
-                // composite-apply-undo-encoding-still-lossy: restore with the pre-apply
-                // `SourceText.Encoding` so a reverted file keeps its original BOM/encoding.
-                await AtomicFileWriter.WriteAllTextAsync(
-                    filePath,
-                    text,
-                    cancellationToken,
-                    logger: _logger,
-                    encoding: SourceFileEncoding.FromSourceText(encoding)).ConfigureAwait(false);
-                anyDiskWrite = true;
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                _logger.LogWarning(ex, "UndoService.RevertAsync: failed to persist {FilePath} to disk", filePath);
-                diskOk = false;
-            }
-        }
-
-        if (anyDiskWrite)
-        {
-            try
-            {
-                await workspace.ReloadAsync(workspaceId, cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception ex) when (ex is IOException or InvalidOperationException)
-            {
-                _logger.LogWarning(ex, "UndoService.RevertAsync: workspace reload after disk restore failed for {WorkspaceId}", workspaceId);
-            }
-        }
-
-        // Restore the workspace version to the pre-apply value so that preview tokens
-        // created before the reverted operation remain valid. The workspace state has
-        // been restored to its pre-apply form, so the pre-apply version is correct.
-        workspace.RestoreVersion(workspaceId, snapshot.PreApplyWorkspaceVersion);
-
-        return diskOk && (workspaceApplied || anyDiskWrite);
     }
 
     public void Clear(string workspaceId)
@@ -642,10 +558,10 @@ public sealed class UndoService : IUndoService, IDisposable
     private sealed record UndoSnapshot(
         string WorkspaceId,
         string Description,
-        Solution? PreApplySolution,
-        IReadOnlyList<FileSnapshotDto>? FileSnapshots,
-        int PreApplyWorkspaceVersion,
+        IReadOnlyList<FileSnapshotDto> FileSnapshots,
         DateTime AppliedAtUtc,
         int SequenceNumber,
-        IReadOnlyList<string> AffectedFiles);
+        IReadOnlyList<string> AffectedFiles,
+        Guid OperationId,
+        PhysicalGraphLayout? CapturedLayout);
 }

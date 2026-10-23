@@ -31,11 +31,8 @@ namespace RoslynMcp.Roslyn.Services;
 /// </para>
 ///
 /// <para>
-/// This service does not enforce a global size cap on the cache directory. Cleanup is the
-/// responsibility of consumer-side housekeeping (a future row); each individual entry is
-/// small (a few KB per project) so the unbounded-growth risk is bounded by
-/// solution-count × sdk-version-count × graph-mutation-count, all of which are small in
-/// practice.
+/// This service does not enforce a global size or age retention policy. Measured growth
+/// and owned-entry housekeeping are tracked by workspace-cache-retention-policy.
 /// </para>
 /// </remarks>
 public sealed class WorkspaceCacheStore : IWorkspaceCacheStore
@@ -121,6 +118,7 @@ public sealed class WorkspaceCacheStore : IWorkspaceCacheStore
                 return Task.FromResult<WorkspaceCacheEntry?>(null);
             }
 
+            RequireReadShape(dto);
             var entry = new WorkspaceCacheEntry(
                 dto.ProjectGraph
                     .Select(p => new CachedProjectGraphNode(p.ProjectPath, p.ProjectReferences))
@@ -286,6 +284,19 @@ public sealed class WorkspaceCacheStore : IWorkspaceCacheStore
             // Best-effort cleanup — a stale file will simply fail to deserialize on the
             // next read and be cleaned up there.
         }
+    }
+
+    private static void RequireReadShape(PersistedEntryV1 entry)
+    {
+        // Validate serialized structure only. Cached coordinates are untrusted text;
+        // this boundary never probes them or derives physical read authority.
+        if (entry.ProjectGraph is null || entry.MetadataReferences is null
+            || entry.ProjectGraph.Any(project => project is null || string.IsNullOrWhiteSpace(project.ProjectPath)
+                || project.ProjectReferences is null || project.ProjectReferences.Any(string.IsNullOrWhiteSpace))
+            || entry.MetadataReferences.Any(project => project is null || string.IsNullOrWhiteSpace(project.ProjectPath)
+                || project.References is null || project.References.Any(reference => reference is null
+                    || string.IsNullOrWhiteSpace(reference.AssemblyPath))))
+            throw new JsonException("The workspace cache entry has an invalid serialized shape.");
     }
 
     private static bool IsExpectedReadFailure(Exception ex) =>

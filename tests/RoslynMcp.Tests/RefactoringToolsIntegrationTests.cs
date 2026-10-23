@@ -24,9 +24,6 @@ public sealed class RefactoringToolsIntegrationTests : SharedWorkspaceTestBase
         WorkspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     public async Task OrganizeUsings_Preview_Returns_Json()
     {
@@ -177,7 +174,7 @@ public sealed class RefactoringToolsIntegrationTests : SharedWorkspaceTestBase
                 "");
             await File.WriteAllTextAsync(probeFilePath, seeded, CancellationToken.None);
 
-            var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+            var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
             var wsId = status.WorkspaceId;
 
             var preview = await RefactoringService.PreviewOrganizeUsingsAsync(
@@ -241,7 +238,7 @@ public sealed class RefactoringToolsIntegrationTests : SharedWorkspaceTestBase
                 "");
             await File.WriteAllTextAsync(probeFilePath, seeded, CancellationToken.None);
 
-            var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+            var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
             var wsId = status.WorkspaceId;
 
             // First preview: format_document_preview succeeds, populating any snapshot caches.

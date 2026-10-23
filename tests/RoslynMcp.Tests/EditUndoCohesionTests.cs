@@ -24,9 +24,6 @@ public sealed class EditUndoCohesionTests : IsolatedWorkspaceTestBase
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     // ------------------------------------------------------------------
     // apply-text-edit-invalid-edit-corrupt-diff
     // ------------------------------------------------------------------

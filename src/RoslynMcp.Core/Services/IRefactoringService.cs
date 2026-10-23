@@ -52,6 +52,9 @@ public interface IRefactoringService
     /// </summary>
     Task<ApplyResultDto> ApplyRefactoringAsync(string previewToken, string toolName, bool force, CancellationToken ct);
 
+    /// <summary>Applies a preview and returns the exact owned undo operation for bounded verification compensation.</summary>
+    Task<RefactoringApplyOperationResult> ApplyRefactoringWithUndoAsync(string previewToken, string toolName, bool force, CancellationToken ct);
+
     /// <summary>
     /// Previews removing unused <c>using</c> directives and sorting the remaining ones for the given file.
     /// </summary>
@@ -100,3 +103,6 @@ public interface IRefactoringService
         string? fixId,
         CancellationToken ct);
 }
+
+/// <summary>An apply result and its operation-bound compensation authority; failed or no-op applies have no undo operation.</summary>
+public sealed record RefactoringApplyOperationResult(ApplyResultDto Result, IPreparedUndoOperation? UndoOperation);

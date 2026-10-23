@@ -59,11 +59,7 @@ public sealed class RefactoringService : IRefactoringService
         if (symbol is null)
             throw new PublicInvalidOperationException(BuildRenameTargetNotFoundMessage(locator));
 
-        if (!symbol.Locations.Any(static l => l.IsInSource))
-        {
-            throw new InvalidOperationException(
-                $"Cannot rename metadata or built-in symbol '{symbol.ToDisplayString()}' — renames require a source declaration.");
-        }
+        RequireSourceRenameTarget(symbol);
 
         // Reject illegal identifiers BEFORE invoking Renamer so we never produce a preview
         // whose application would break compilation across the solution.
@@ -85,11 +81,11 @@ public sealed class RefactoringService : IRefactoringService
         }
         else
         {
-            changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
+            changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, SolutionDiffReadContext.ForWorkspace(_workspace, workspaceId), ct).ConfigureAwait(false);
         }
 
         var description = $"Rename '{symbol.Name}' to '{newName}'";
-        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes, PreviewKind.SymbolRename);
+        var token = _previewStore.Store(workspaceId, solution, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes, PreviewKind.SymbolRename);
 
         // Register a post-apply rename hint so ApplyRefactoringAsync can rotate the handle
         // and return ApplyResult.MutatedSymbol with the new name. Declaration position is
@@ -125,13 +121,14 @@ public sealed class RefactoringService : IRefactoringService
     /// symbol-refactor-preview-auto-applies-without-explicit-apply-call: pure-functional
     /// rename simulation that operates on an explicit input <paramref name="inputSolution"/>
     /// and returns the post-rename <see cref="Solution"/> snapshot without touching the
-    /// workspace, the disk, the preview store, the change tracker, or any post-apply
+    /// workspace, physical files, the preview store, the change tracker, or any post-apply
     /// resolver. Used by <see cref="SymbolRefactorService.PreviewAsync"/> to chain ops
     /// in-memory so each op sees its predecessor's rewrites without the previous
     /// auto-apply-each-step disk write that fired before the agent ever called
     /// <c>apply_composite_preview</c>.
     /// </summary>
     /// <remarks>
+    /// Physical diff reads use the explicit owning workspace authorization; this method publishes no writes.
     /// Returned tuple carries the modified solution plus a per-file <see cref="FileChangeDto"/>
     /// list (full-diff form — summary mode is not relevant here because the composite caller
     /// aggregates diffs across ops before applying its own truncation) and a human-readable
@@ -139,24 +136,20 @@ public sealed class RefactoringService : IRefactoringService
     /// </remarks>
     internal async Task<(Solution NewSolution, IReadOnlyList<FileChangeDto> Changes, string Description)>
         PreviewRenameOnSolutionAsync(
-            Solution inputSolution, SymbolLocator locator, string newName, CancellationToken ct)
+            string workspaceId, Solution inputSolution, SymbolLocator locator, string newName, CancellationToken ct)
     {
         var symbol = await SymbolResolver.ResolveAsync(inputSolution, locator, ct).ConfigureAwait(false);
         if (symbol is null)
             throw new PublicInvalidOperationException(BuildRenameTargetNotFoundMessage(locator));
 
-        if (!symbol.Locations.Any(static l => l.IsInSource))
-        {
-            throw new InvalidOperationException(
-                $"Cannot rename metadata or built-in symbol '{symbol.ToDisplayString()}' — renames require a source declaration.");
-        }
+        RequireSourceRenameTarget(symbol);
 
         IdentifierValidation.ThrowIfInvalidIdentifier(newName);
 
         var newSolution = await Renamer.RenameSymbolAsync(
             inputSolution, symbol, new SymbolRenameOptions(), newName, ct).ConfigureAwait(false);
 
-        var changes = await SolutionDiffHelper.ComputeChangesAsync(inputSolution, newSolution, ct).ConfigureAwait(false);
+        var changes = await SolutionDiffHelper.ComputeChangesAsync(inputSolution, newSolution, SolutionDiffReadContext.ForWorkspace(_workspace, workspaceId), ct).ConfigureAwait(false);
         var description = $"Rename '{symbol.Name}' to '{newName}'";
 
         return (newSolution, changes, description);
@@ -312,11 +305,19 @@ public sealed class RefactoringService : IRefactoringService
         => ApplyRefactoringAsync(previewToken, toolName, force: false, ct);
 
     public async Task<ApplyResultDto> ApplyRefactoringAsync(string previewToken, string toolName, bool force, CancellationToken ct)
+        => (await ApplyRefactoringCoreAsync(previewToken, toolName, force, requireUndo: false, ct).ConfigureAwait(false)).Result;
+
+    public Task<RefactoringApplyOperationResult> ApplyRefactoringWithUndoAsync(string previewToken, string toolName, bool force, CancellationToken ct)
+        => ApplyRefactoringCoreAsync(previewToken, toolName, force, requireUndo: true, ct);
+
+    private async Task<RefactoringApplyOperationResult> ApplyRefactoringCoreAsync(string previewToken, string toolName, bool force, bool requireUndo, CancellationToken ct)
     {
+        if (requireUndo && _undoService is null)
+            throw InvalidOperationErrors.Internal("Operation-owned undo is required for verified apply.");
         var entry = _previewStore.Retrieve(previewToken);
         if (entry is null)
         {
-            return InvalidPreviewResult();
+            return new(InvalidPreviewResult(), null);
         }
 
         var (workspaceId, originalSolution, modifiedSolution, _, description, diffTruncated) = entry.Value;
@@ -338,44 +339,46 @@ public sealed class RefactoringService : IRefactoringService
         // want to apply without full visibility pass `force: true` in the apply tool schema.
         if (diffTruncated && !force)
         {
-            return TruncatedPreviewResult();
+            return new(TruncatedPreviewResult(), null);
         }
 
+        var recoveryAuthority = _workspace as IWorkspaceRecoveryAuthority
+            ?? throw InvalidOperationErrors.Internal("Refactoring requires workspace-owned mutation authority.");
+        await recoveryAuthority.AuthorizePathsAsync(workspaceId,
+            SolutionFileMutationPlanner.ChangedPaths(originalSolution, modifiedSolution), ct).ConfigureAwait(false);
         var currentSolution = _workspace.GetCurrentSolution(workspaceId);
         var preparation = await PrepareApplyAsync(
+            workspaceId,
             originalSolution,
             modifiedSolution,
             currentSolution,
             ct).ConfigureAwait(false);
-        _undoService?.CaptureBeforeApply(
-            workspaceId,
-            description,
-            currentSolution,
-            preparation.FileSnapshots);
+        var physicalOperation = await recoveryAuthority.CaptureRecoveryAsync(workspaceId, description, preparation.FileSnapshots, ct).ConfigureAwait(false);
+        var undoOperation = _undoService is null ? null : await _undoService.PrepareBeforeApplyAsync(physicalOperation, ct).ConfigureAwait(false);
 
         var (success, appliedFiles) = await _documentSetPersistence.PersistAsync(
             workspaceId,
             currentSolution,
             preparation.ModifiedSolution,
             preparation.SolutionChanges,
+            preparation.FileSnapshots,
+            physicalOperation,
             ct).ConfigureAwait(false);
 
-        _previewStore.Invalidate(previewToken);
-
         if (!success)
-        {
-            _postApplyResolver?.Invalidate(previewToken);
-            return new ApplyResultDto(false, [], "Failed to apply changes to the workspace.");
-        }
+            return new(new ApplyResultDto(false, [], "Failed to apply changes to the workspace."), null);
 
-        _changeTracker?.RecordChange(workspaceId, description, appliedFiles, toolName);
+        if (appliedFiles.Count > 0 && undoOperation is not null)
+            await undoOperation.PublishAsync(ct).ConfigureAwait(false);
+        _previewStore.Invalidate(previewToken);
+        if (appliedFiles.Count > 0) _changeTracker?.RecordChange(workspaceId, description, appliedFiles, toolName);
         _logger.LogInformation("Applied refactoring '{Description}' to {Count} file(s)", description, appliedFiles.Count);
 
         var mutatedSymbol = await ResolvePostApplySymbolAsync(
             workspaceId,
             previewToken,
             ct).ConfigureAwait(false);
-        return new ApplyResultDto(true, appliedFiles, null, mutatedSymbol);
+        return new(new ApplyResultDto(true, appliedFiles, null, mutatedSymbol), appliedFiles.Count > 0 ? undoOperation : null);
     }
 
     private static ApplyResultDto InvalidPreviewResult() =>
@@ -393,11 +396,13 @@ public sealed class RefactoringService : IRefactoringService
             "(2) if you understand the tradeoff and want to proceed without full visibility, call the apply tool again with `force: true`.");
 
     private async Task<RefactoringApplyPreparation> PrepareApplyAsync(
+        string workspaceId,
         Solution originalSolution,
         Solution modifiedSolution,
         Solution currentSolution,
         CancellationToken ct)
     {
+        SolutionFileMutationPlanner.ValidateDelta(originalSolution, modifiedSolution);
         // Rebase onto the current solution so an unrelated sibling apply is preserved.
         var rebasedSolution = await RebaseModifiedSolutionOntoCurrentAsync(
             originalSolution,
@@ -405,18 +410,11 @@ public sealed class RefactoringService : IRefactoringService
             currentSolution,
             ct).ConfigureAwait(false);
         var solutionChanges = rebasedSolution.GetChanges(currentSolution);
-        var hasFileSetChanges = solutionChanges.GetProjectChanges().Any(projectChange =>
-            projectChange.GetAddedDocuments().Any()
-            || projectChange.GetRemovedDocuments().Any()
-            || projectChange.GetAddedProjectReferences().Any()
-            || projectChange.GetRemovedProjectReferences().Any());
-        var fileSnapshots = hasFileSetChanges
-            ? await BuildFileSnapshotsForSolutionChangesAsync(
-                currentSolution,
-                rebasedSolution,
-                solutionChanges,
-                ct).ConfigureAwait(false)
-            : null;
+        var authority = _workspace as IWorkspaceRecoveryAuthority
+            ?? throw InvalidOperationErrors.Internal("Refactoring snapshots require workspace-owned authority.");
+        await authority.AuthorizePathsAsync(workspaceId, SolutionFileMutationPlanner.ChangedPaths(currentSolution, rebasedSolution), ct).ConfigureAwait(false);
+        var fileSnapshots = await BuildFileSnapshotsForSolutionChangesAsync(
+            currentSolution, rebasedSolution, ct).ConfigureAwait(false);
 
         return new RefactoringApplyPreparation(rebasedSolution, solutionChanges, fileSnapshots);
     }
@@ -442,7 +440,7 @@ public sealed class RefactoringService : IRefactoringService
     private sealed record RefactoringApplyPreparation(
         Solution ModifiedSolution,
         SolutionChanges SolutionChanges,
-        IReadOnlyList<FileSnapshotDto>? FileSnapshots);
+        IReadOnlyList<FileSnapshotDto> FileSnapshots);
 
     /// <summary>
     /// Previews removing unnecessary usings and organizing import directives.
@@ -486,9 +484,9 @@ public sealed class RefactoringService : IRefactoringService
         var organizedDoc = await Formatter.OrganizeImportsAsync(document, ct).ConfigureAwait(false);
         var newSolution = organizedDoc.Project.Solution;
 
-        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
+        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, SolutionDiffReadContext.ForWorkspace(_workspace, workspaceId), ct).ConfigureAwait(false);
         var description = $"Organize usings in '{Path.GetFileName(filePath)}'";
-        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes, PreviewKind.OrganizeUsings);
+        var token = _previewStore.Store(workspaceId, solution, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes, PreviewKind.OrganizeUsings);
 
         return new RefactoringPreviewDto(token, description, changes, null);
     }
@@ -506,9 +504,9 @@ public sealed class RefactoringService : IRefactoringService
         var formattedDoc = await Formatter.FormatAsync(document, cancellationToken: ct).ConfigureAwait(false);
         var newSolution = formattedDoc.Project.Solution;
 
-        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
+        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, SolutionDiffReadContext.ForWorkspace(_workspace, workspaceId), ct).ConfigureAwait(false);
         var description = $"Format document '{Path.GetFileName(filePath)}'";
-        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes, PreviewKind.FormatDocument);
+        var token = _previewStore.Store(workspaceId, solution, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes, PreviewKind.FormatDocument);
 
         return new RefactoringPreviewDto(token, description, changes, null);
     }
@@ -540,10 +538,11 @@ public sealed class RefactoringService : IRefactoringService
         Solution newSolution,
         CancellationToken ct)
     {
-        var changes = await SolutionDiffHelper.ComputeChangesAsync(originalSolution, newSolution, ct).ConfigureAwait(false);
+        var changes = await SolutionDiffHelper.ComputeChangesAsync(originalSolution, newSolution, SolutionDiffReadContext.ForWorkspace(_workspace, workspaceId), ct).ConfigureAwait(false);
         var description = $"Format range in '{Path.GetFileName(filePath)}' (lines {startLine}-{endLine})";
         var token = _previewStore.Store(
             workspaceId,
+            originalSolution,
             newSolution,
             _workspace.GetCurrentVersion(workspaceId),
             description,
@@ -686,10 +685,10 @@ public sealed class RefactoringService : IRefactoringService
                 if (applyOp is not null)
                 {
                     var newSol = applyOp.ChangedSolution;
-                    var diff = await SolutionDiffHelper.ComputeChangesAsync(solution, newSol, ct).ConfigureAwait(false);
+                    var diff = await SolutionDiffHelper.ComputeChangesAsync(solution, newSol, SolutionDiffReadContext.ForWorkspace(_workspace, workspaceId), ct).ConfigureAwait(false);
                     var actionId = registeredAction.EquivalenceKey ?? registeredAction.Title ?? provider.GetType().Name;
                     var desc = $"Apply code fix '{actionId}' for {diagnosticId} in '{Path.GetFileName(filePath)}'";
-                    var tk = _previewStore.Store(workspaceId, newSol, _workspace.GetCurrentVersion(workspaceId), desc, diff, PreviewKind.CodeFix);
+                    var tk = _previewStore.Store(workspaceId, solution, newSol, _workspace.GetCurrentVersion(workspaceId), desc, diff, PreviewKind.CodeFix);
                     return new RefactoringPreviewDto(tk, desc, diff, null);
                 }
             }
@@ -740,9 +739,9 @@ public sealed class RefactoringService : IRefactoringService
         var newRoot = root.RemoveNode(usingDirective, SyntaxRemoveOptions.KeepExteriorTrivia)
             ?? throw new InvalidOperationException("Failed to remove the unused using directive.");
         var newSolution = document.WithSyntaxRoot(newRoot).Project.Solution;
-        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
+        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, SolutionDiffReadContext.ForWorkspace(_workspace, workspaceId), ct).ConfigureAwait(false);
         var description = $"Apply code fix '{normalizedFixId}' for CS8019 in '{Path.GetFileName(document.FilePath)}'";
-        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes, PreviewKind.CodeFix);
+        var token = _previewStore.Store(workspaceId, solution, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes, PreviewKind.CodeFix);
 
         return new RefactoringPreviewDto(token, description, changes, null);
     }
@@ -825,9 +824,9 @@ public sealed class RefactoringService : IRefactoringService
     /// calls that mutated unrelated files since the preview was stored are preserved.
     /// Collisions on the same document fall to last-apply-wins text semantics. Added
     /// and removed documents are mirrored into the rebased solution; the caller's existing
-    /// document-set-change code path (PersistDocumentSetChangesAsync) then handles I/O.
+    /// physical mutation planner then renders the rebased snapshot for transactional I/O.
     /// </summary>
-    private static async Task<Solution> RebaseModifiedSolutionOntoCurrentAsync(
+    internal static async Task<Solution> RebaseModifiedSolutionOntoCurrentAsync(
         Solution originalSolution,
         Solution modifiedSolution,
         Solution currentSolution,
@@ -840,113 +839,108 @@ public sealed class RefactoringService : IRefactoringService
             return modifiedSolution;
         }
 
+        SolutionFileMutationPlanner.ValidateDelta(originalSolution, modifiedSolution);
         var previewChanges = modifiedSolution.GetChanges(originalSolution);
         var rebased = currentSolution;
-        var currentDocumentsByPath = BuildCurrentDocumentPathIndex(currentSolution);
-
-        foreach (var projectChange in previewChanges.GetProjectChanges())
+        foreach (var project in previewChanges.GetAddedProjects())
         {
-            rebased = await RebaseChangedDocumentsAsync(
-                rebased,
-                modifiedSolution,
-                projectChange,
-                currentDocumentsByPath,
-                ct).ConfigureAwait(false);
-            rebased = await RebaseAddedDocumentsAsync(
-                rebased,
-                modifiedSolution,
-                projectChange,
-                ct).ConfigureAwait(false);
-            rebased = RebaseRemovedDocuments(rebased, originalSolution, projectChange);
-            rebased = RebaseProjectReferences(
-                rebased,
-                originalSolution,
-                modifiedSolution,
-                projectChange);
+            if (project.FilePath is null || !File.Exists(project.FilePath))
+                throw new PublicInvalidOperationException("An added preview project requires an authored project file.");
+            if (rebased.Projects.Any(candidate => FileSystemPath.Comparer.Equals(candidate.FilePath, project.FilePath)))
+                throw new PublicInvalidOperationException("The added preview project conflicts with a current project path.");
+            rebased = rebased.AddProject(ProjectInfo.Create(project.Id, VersionStamp.Create(), project.Name,
+                project.AssemblyName, project.Language, filePath: project.FilePath,
+                outputFilePath: project.OutputFilePath, compilationOptions: project.CompilationOptions,
+                parseOptions: project.ParseOptions, metadataReferences: project.MetadataReferences,
+                analyzerReferences: project.AnalyzerReferences));
         }
-
+        foreach (var (oldDocument, newDocument) in SolutionFileMutationPlanner.DocumentChanges(originalSolution, modifiedSolution))
+        {
+            ct.ThrowIfCancellationRequested();
+            var originalDocument = newDocument ?? oldDocument!;
+            var project = ResolveRebaseTargetProject(rebased, originalDocument.Project.Id, originalSolution.GetProject(originalDocument.Project.Id) ?? originalDocument.Project)
+                ?? throw new PublicInvalidOperationException("The preview's target project no longer exists.");
+            var kind = SolutionFileMutationPlanner.DocumentKind(originalDocument);
+            var candidates = SolutionFileMutationPlanner.AllDocuments(project)
+                .Where(candidate => SolutionFileMutationPlanner.DocumentKind(candidate) == kind
+                    && (candidate.Id == originalDocument.Id
+                        || FileSystemPath.Comparer.Equals(candidate.FilePath, oldDocument?.FilePath ?? newDocument?.FilePath)))
+                .ToArray();
+            if (candidates.Length > 1)
+                throw new PublicInvalidOperationException("The preview document identity is ambiguous after rebase.");
+            var existing = candidates.SingleOrDefault();
+            if (newDocument is null)
+            {
+                if (existing is not null) rebased = RemoveTextDocument(rebased, existing);
+                continue;
+            }
+            var text = await newDocument.GetTextAsync(ct).ConfigureAwait(false);
+            var id = existing?.Id ?? DocumentId.CreateNewId(project.Id, newDocument.Name);
+            if (existing is not null && existing.FilePath == newDocument.FilePath
+                && existing.Name == newDocument.Name && existing.Folders.SequenceEqual(newDocument.Folders))
+            {
+                rebased = kind switch
+                {
+                    "Compile" => rebased.WithDocumentText(existing.Id, text),
+                    "AdditionalFiles" => rebased.WithAdditionalDocumentText(existing.Id, text),
+                    _ => rebased.WithAnalyzerConfigDocumentText(existing.Id, text),
+                };
+            }
+            else
+            {
+                if (existing is not null) rebased = RemoveTextDocument(rebased, existing);
+                rebased = kind switch
+                {
+                    "Compile" => rebased.AddDocument(id, newDocument.Name, text, newDocument.Folders, newDocument.FilePath),
+                    "AdditionalFiles" => rebased.AddAdditionalDocument(id, newDocument.Name, text, newDocument.Folders, newDocument.FilePath),
+                    _ => rebased.AddAnalyzerConfigDocument(id, newDocument.Name, text, newDocument.Folders, newDocument.FilePath),
+                };
+            }
+            if (newDocument is Document sourceDocument)
+                rebased = rebased.WithDocumentSourceCodeKind(id, sourceDocument.SourceCodeKind);
+        }
+        foreach (var change in previewChanges.GetProjectChanges())
+            rebased = RebaseProjectReferences(rebased, originalSolution, modifiedSolution, change);
+        foreach (var project in previewChanges.GetAddedProjects())
+        {
+            var references = project.ProjectReferences.Select(reference =>
+            {
+                var sourceTarget = modifiedSolution.GetProject(reference.ProjectId)
+                    ?? throw new PublicInvalidOperationException("An added project reference target is missing.");
+                var target = ResolveRebaseTargetProject(rebased, reference.ProjectId, originalSolution.GetProject(reference.ProjectId) ?? sourceTarget)
+                    ?? throw new PublicInvalidOperationException("An added project reference cannot be rebased.");
+                return new ProjectReference(target.Id, reference.Aliases, reference.EmbedInteropTypes);
+            });
+            rebased = rebased.WithProjectReferences(project.Id, references);
+        }
+        foreach (var removedProject in previewChanges.GetRemovedProjects())
+        {
+            var target = ResolveRebaseTargetProject(rebased, removedProject.Id, removedProject);
+            if (target is not null) rebased = rebased.RemoveProject(target.Id);
+        }
+        foreach (var change in previewChanges.GetProjectChanges())
+        {
+            if (FileSystemPath.Comparer.Equals(change.OldProject.OutputFilePath, change.NewProject.OutputFilePath)) continue;
+            var target = ResolveRebaseTargetProject(rebased, change.ProjectId, change.OldProject)
+                ?? throw new PublicInvalidOperationException("The reviewed output target context no longer exists.");
+            rebased = rebased.WithProjectOutputFilePath(target.Id, change.NewProject.OutputFilePath);
+        }
         return rebased;
     }
 
-    private static IReadOnlyDictionary<string, DocumentId> BuildCurrentDocumentPathIndex(
-        Solution solution)
-    {
-        var documentsByPath = new Dictionary<string, DocumentId>(FileSystemPath.Comparer);
-        foreach (var document in solution.Projects.SelectMany(project => project.Documents))
+    private static Solution RemoveTextDocument(Solution solution, TextDocument document) =>
+        SolutionFileMutationPlanner.DocumentKind(document) switch
         {
-            if (!string.IsNullOrWhiteSpace(document.FilePath))
-            {
-                documentsByPath.TryAdd(document.FilePath, document.Id);
-            }
-        }
+            "Compile" => solution.RemoveDocument(document.Id),
+            "AdditionalFiles" => solution.RemoveAdditionalDocument(document.Id),
+            _ => solution.RemoveAnalyzerConfigDocument(document.Id),
+        };
 
-        return documentsByPath;
-    }
-
-    private static async Task<Solution> RebaseChangedDocumentsAsync(
-        Solution rebased,
-        Solution modifiedSolution,
-        ProjectChanges projectChange,
-        IReadOnlyDictionary<string, DocumentId> currentDocumentsByPath,
-        CancellationToken ct)
+    private static void RequireSourceRenameTarget(ISymbol symbol)
     {
-        foreach (var documentId in projectChange.GetChangedDocuments())
-        {
-            var modifiedDocument = modifiedSolution.GetDocument(documentId);
-            if (modifiedDocument is null)
-            {
-                continue;
-            }
-
-            var currentDocument = rebased.GetDocument(documentId);
-            if (currentDocument is null
-                && !string.IsNullOrWhiteSpace(modifiedDocument.FilePath)
-                && currentDocumentsByPath.TryGetValue(modifiedDocument.FilePath, out var matchedDocumentId))
-            {
-                currentDocument = rebased.GetDocument(matchedDocumentId);
-            }
-
-            if (currentDocument is not null)
-            {
-                var sourceText = await modifiedDocument.GetTextAsync(ct).ConfigureAwait(false);
-                rebased = rebased.WithDocumentText(currentDocument.Id, sourceText);
-            }
-        }
-
-        return rebased;
-    }
-
-    private static async Task<Solution> RebaseAddedDocumentsAsync(
-        Solution rebased,
-        Solution modifiedSolution,
-        ProjectChanges projectChange,
-        CancellationToken ct)
-    {
-        foreach (var documentId in projectChange.GetAddedDocuments())
-        {
-            var document = modifiedSolution.GetDocument(documentId);
-            if (document?.FilePath is null)
-            {
-                continue;
-            }
-
-            var targetProject = ResolveRebaseTargetProject(rebased, projectChange.ProjectId, document.Project);
-            if (targetProject is null)
-            {
-                continue;
-            }
-
-            var sourceText = await document.GetTextAsync(ct).ConfigureAwait(false);
-            var newDocumentId = DocumentId.CreateNewId(targetProject.Id, document.Name);
-            rebased = rebased.AddDocument(
-                newDocumentId,
-                document.Name,
-                sourceText,
-                document.Folders,
-                document.FilePath);
-        }
-
-        return rebased;
+        if (!symbol.Locations.Any(static location => location.IsInSource))
+            throw new PublicInvalidOperationException(
+                $"Cannot rename metadata or built-in symbol '{symbol.ToDisplayString()}' — renames require a source declaration.");
     }
 
     private static Project? ResolveRebaseTargetProject(
@@ -955,42 +949,17 @@ public sealed class RefactoringService : IRefactoringService
         Project modifiedProject)
     {
         var directMatch = rebased.GetProject(originalProjectId);
-        if (directMatch is not null || modifiedProject.FilePath is null)
+        if (directMatch is not null)
         {
+            if (!FileSystemPath.Comparer.Equals(directMatch.FilePath, modifiedProject.FilePath)
+                || modifiedProject.OutputFilePath is { Length: > 0 } output
+                    && !FileSystemPath.Comparer.Equals(directMatch.OutputFilePath, output))
+                throw new PublicInvalidOperationException("The project identifier now belongs to a different physical or output context; recreate the preview.");
             return directMatch;
         }
+        if (modifiedProject.FilePath is null) return null;
 
-        return rebased.Projects.FirstOrDefault(project =>
-            string.Equals(
-                project.FilePath,
-                modifiedProject.FilePath,
-                FileSystemPath.Comparison));
-    }
-
-    private static Solution RebaseRemovedDocuments(
-        Solution rebased,
-        Solution originalSolution,
-        ProjectChanges projectChange)
-    {
-        foreach (var documentId in projectChange.GetRemovedDocuments())
-        {
-            var filePath = originalSolution.GetDocument(documentId)?.FilePath;
-            if (filePath is null)
-            {
-                continue;
-            }
-
-            var target = rebased.Projects
-                .SelectMany(project => project.Documents)
-                .FirstOrDefault(candidate =>
-                    string.Equals(candidate.FilePath, filePath, FileSystemPath.Comparison));
-            if (target is not null)
-            {
-                rebased = rebased.RemoveDocument(target.Id);
-            }
-        }
-
-        return rebased;
+        return PhysicalProjectIdentity.Find(rebased, modifiedProject);
     }
 
     private static Solution RebaseProjectReferences(
@@ -1002,27 +971,10 @@ public sealed class RefactoringService : IRefactoringService
         var modifiedProject = modifiedSolution.GetProject(projectChange.ProjectId);
         var targetProject = modifiedProject is null
             ? rebased.GetProject(projectChange.ProjectId)
-            : ResolveRebaseTargetProject(rebased, projectChange.ProjectId, modifiedProject);
+            : ResolveRebaseTargetProject(rebased, projectChange.ProjectId, projectChange.OldProject);
         if (targetProject is null)
         {
             return rebased;
-        }
-
-        foreach (var projectReference in projectChange.GetAddedProjectReferences())
-        {
-            var referencedProject = modifiedSolution.GetProject(projectReference.ProjectId);
-            var rebasedReference = referencedProject is null
-                ? rebased.GetProject(projectReference.ProjectId)
-                : ResolveRebaseTargetProject(rebased, projectReference.ProjectId, referencedProject);
-            if (rebasedReference is not null
-                && !targetProject.ProjectReferences.Any(reference =>
-                    reference.ProjectId == rebasedReference.Id))
-            {
-                rebased = rebased.AddProjectReference(
-                    targetProject.Id,
-                    new ProjectReference(rebasedReference.Id, projectReference.Aliases, projectReference.EmbedInteropTypes));
-                targetProject = rebased.GetProject(targetProject.Id)!;
-            }
         }
 
         foreach (var projectReference in projectChange.GetRemovedProjectReferences())
@@ -1035,7 +987,30 @@ public sealed class RefactoringService : IRefactoringService
                 reference.ProjectId == rebasedReference?.Id);
             if (existingReference is not null)
             {
+                if (existingReference.EmbedInteropTypes != projectReference.EmbedInteropTypes
+                    || !existingReference.Aliases.SequenceEqual(projectReference.Aliases))
+                    throw new PublicInvalidOperationException("A sibling apply changed the reference metadata; regenerate the preview.");
                 rebased = rebased.RemoveProjectReference(targetProject.Id, existingReference);
+                targetProject = rebased.GetProject(targetProject.Id)!;
+            }
+        }
+
+        foreach (var projectReference in projectChange.GetAddedProjectReferences())
+        {
+            var referencedProject = originalSolution.GetProject(projectReference.ProjectId) ?? modifiedSolution.GetProject(projectReference.ProjectId);
+            var rebasedReference = referencedProject is null
+                ? rebased.GetProject(projectReference.ProjectId)
+                : ResolveRebaseTargetProject(rebased, projectReference.ProjectId, referencedProject);
+            if (rebasedReference is null)
+                throw new PublicInvalidOperationException("The referenced project no longer exists; regenerate the preview.");
+            var existing = targetProject.ProjectReferences.SingleOrDefault(reference => reference.ProjectId == rebasedReference.Id);
+            if (existing is not null && (existing.EmbedInteropTypes != projectReference.EmbedInteropTypes
+                || !existing.Aliases.SequenceEqual(projectReference.Aliases)))
+                throw new PublicInvalidOperationException("A sibling apply added different reference metadata; regenerate the preview.");
+            if (existing is null)
+            {
+                rebased = rebased.AddProjectReference(targetProject.Id,
+                    new ProjectReference(rebasedReference.Id, projectReference.Aliases, projectReference.EmbedInteropTypes));
                 targetProject = rebased.GetProject(targetProject.Id)!;
             }
         }
@@ -1044,119 +1019,21 @@ public sealed class RefactoringService : IRefactoringService
     }
 
     /// <summary>
-    /// Item #2 — build the authoritative FileSnapshotDto list that <see cref="UndoService"/>'s
-    /// fast path uses to restore disk state. Added documents get <c>OriginalText: null</c>
-    /// (delete-on-revert); removed documents get the pre-apply disk text (recreate-on-revert);
-    /// changed documents get the pre-apply disk text (overwrite-on-revert).
+    /// Capture exact pre-apply bytes for the complete physical mutation inventory.
+    /// Absent paths retain deletion tombstones for operation-owned compensation and undo.
     /// </summary>
     private static async Task<IReadOnlyList<FileSnapshotDto>> BuildFileSnapshotsForSolutionChangesAsync(
         Solution currentSolution,
         Solution modifiedSolution,
-        SolutionChanges solutionChanges,
         CancellationToken ct)
     {
         var snapshots = new List<FileSnapshotDto>();
-        var seenPaths = new HashSet<string>(FileSystemPath.Comparer);
-
-        foreach (var projectChange in solutionChanges.GetProjectChanges())
+        foreach (var path in SolutionFileMutationPlanner.ChangedPaths(currentSolution, modifiedSolution))
         {
-            foreach (var documentId in projectChange.GetAddedDocuments())
-            {
-                await AddFileSnapshotAsync(
-                    snapshots,
-                    seenPaths,
-                    modifiedSolution.GetDocument(documentId),
-                    missingFileIsNew: true,
-                    ct).ConfigureAwait(false);
-            }
-
-            foreach (var documentId in projectChange.GetRemovedDocuments())
-            {
-                await AddFileSnapshotAsync(
-                    snapshots,
-                    seenPaths,
-                    currentSolution.GetDocument(documentId),
-                    missingFileIsNew: false,
-                    ct).ConfigureAwait(false);
-            }
-
-            foreach (var documentId in projectChange.GetChangedDocuments())
-            {
-                await AddFileSnapshotAsync(
-                    snapshots,
-                    seenPaths,
-                    currentSolution.GetDocument(documentId),
-                    missingFileIsNew: false,
-                    ct).ConfigureAwait(false);
-            }
-
-            if (projectChange.GetAddedProjectReferences().Any()
-                || projectChange.GetRemovedProjectReferences().Any())
-            {
-                await AddProjectFileSnapshotAsync(
-                    snapshots,
-                    seenPaths,
-                    currentSolution.GetProject(projectChange.ProjectId)
-                        ?? modifiedSolution.GetProject(projectChange.ProjectId),
-                    ct).ConfigureAwait(false);
-            }
+            var bytes = await FileSnapshotCapture.ReadIfPresentAsync(path, PhysicalInputReader.ReadAllBytesAsync, ct).ConfigureAwait(false);
+            snapshots.Add(FileSnapshotCapture.FromBytesOrFallback(path, bytes, fallbackText: null));
         }
-
         return snapshots;
-    }
-
-    private static async Task AddFileSnapshotAsync(
-        ICollection<FileSnapshotDto> snapshots,
-        ISet<string> seenPaths,
-        Document? document,
-        bool missingFileIsNew,
-        CancellationToken ct)
-    {
-        if (document is null)
-        {
-            return;
-        }
-
-        var filePath = document.FilePath;
-        if (string.IsNullOrWhiteSpace(filePath) || !seenPaths.Add(filePath))
-        {
-            return;
-        }
-
-        var existingBytes = File.Exists(filePath)
-            ? await File.ReadAllBytesAsync(filePath, ct).ConfigureAwait(false)
-            : null;
-
-        // Only the missing-file case has a fallback to compute, and only when the file is not
-        // brand new. GetTextAsync stays inside this branch deliberately: materializing the whole
-        // SourceText is wasted work on the common file-exists path.
-        string? fallbackText = null;
-        if (existingBytes is null && !missingFileIsNew)
-        {
-            fallbackText = (await document.GetTextAsync(ct).ConfigureAwait(false)).ToString();
-        }
-
-        snapshots.Add(FileSnapshotCapture.FromBytesOrFallback(filePath, existingBytes, fallbackText));
-    }
-
-    private static async Task AddProjectFileSnapshotAsync(
-        ICollection<FileSnapshotDto> snapshots,
-        ISet<string> seenPaths,
-        Project? project,
-        CancellationToken ct)
-    {
-        var projectPath = project?.FilePath;
-        if (string.IsNullOrWhiteSpace(projectPath)
-            || !seenPaths.Add(projectPath)
-            || !File.Exists(projectPath))
-        {
-            return;
-        }
-
-        snapshots.Add(FileSnapshotCapture.FromBytesOrFallback(
-            projectPath,
-            await File.ReadAllBytesAsync(projectPath, ct).ConfigureAwait(false),
-            fallbackText: null));
     }
 
     private static string GetDefaultFixId(string diagnosticId) =>

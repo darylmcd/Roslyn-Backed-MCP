@@ -230,7 +230,7 @@ public sealed class PreviewApplyBoundaryRevalidationTests
         var original = workspace.CurrentSolution;
         var modified = original.RemoveProject(first.Project.Id);
         var store = new PreviewStore();
-        var token = store.Store(WorkspaceId, original, modified, 1, "remove project", diffTruncated: false);
+        var token = store.Store(WorkspaceId, original, modified, 1, "remove project", [], PreviewKind.Unspecified);
 
         var paths = store.PeekChangedPaths(token);
 
@@ -445,7 +445,7 @@ public sealed class PreviewApplyBoundaryRevalidationTests
         var modified = original.WithDocumentText(document.Id, SourceText.From("// modified"));
 
         var store = new PreviewStore();
-        var token = store.Store(WorkspaceId, original, modified, workspaceVersion: 1, "toctou test preview", diffTruncated: false);
+        var token = store.Store(WorkspaceId, original, modified, workspaceVersion: 1, "toctou test preview", [], PreviewKind.Unspecified);
         return (store, token);
     }
 

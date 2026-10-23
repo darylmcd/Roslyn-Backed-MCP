@@ -1,5 +1,6 @@
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -25,9 +26,6 @@ public sealed class WorkspaceLoadDedupTests : SharedWorkspaceTestBase
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     public async Task LoadAsync_SamePathTwice_ReturnsSameWorkspaceId()
     {
@@ -35,8 +33,8 @@ public sealed class WorkspaceLoadDedupTests : SharedWorkspaceTestBase
         var copiedRoot = Path.GetDirectoryName(copiedSolutionPath)!;
         try
         {
-            var first = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
-            var second = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+            var first = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
+            var second = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
 
             Assert.AreEqual(first.WorkspaceId, second.WorkspaceId,
                 "workspace_load must be idempotent by path — second call should return the existing WorkspaceId.");
@@ -60,7 +58,7 @@ public sealed class WorkspaceLoadDedupTests : SharedWorkspaceTestBase
             var ids = new HashSet<string>(StringComparer.Ordinal);
             for (var i = 0; i < 10; i++)
             {
-                var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+                var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
                 ids.Add(status.WorkspaceId);
             }
 
@@ -97,9 +95,9 @@ public sealed class WorkspaceLoadDedupTests : SharedWorkspaceTestBase
         var copiedRoot = Path.GetDirectoryName(copiedSolutionPath)!;
         try
         {
-            var first = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+            var first = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
             var upperCased = copiedSolutionPath.ToUpperInvariant();
-            var second = await WorkspaceManager.LoadAsync(upperCased, CancellationToken.None);
+            var second = await WorkspaceManager.LoadAsync(upperCased, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
 
             Assert.AreEqual(first.WorkspaceId, second.WorkspaceId,
                 "Path dedup must be case-insensitive on Windows.");
@@ -136,8 +134,8 @@ public sealed class WorkspaceLoadDedupTests : SharedWorkspaceTestBase
 
         try
         {
-            var first = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
-            var second = await WorkspaceManager.LoadAsync(alternatePath, CancellationToken.None);
+            var first = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
+            var second = await WorkspaceManager.LoadAsync(alternatePath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
 
             Assert.AreNotEqual(first.WorkspaceId, second.WorkspaceId,
                 "Unix path identity must not collapse solution files that differ only by case.");
@@ -158,7 +156,7 @@ public sealed class WorkspaceLoadDedupTests : SharedWorkspaceTestBase
         var aliasRoot = Path.Combine(TestTempRoot.Current, "workspace-owner-alias-" + Guid.NewGuid().ToString("N"));
         try
         {
-            var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+            var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
             var documentPath = SelectDeterministicProjectSourceFile(copiedRoot);
 
             var owners = WorkspaceManager.FindWorkspaceIdsContainingFile(documentPath);
@@ -200,7 +198,7 @@ public sealed class WorkspaceLoadDedupTests : SharedWorkspaceTestBase
         string? workspaceId = null;
         try
         {
-            var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+            var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
             workspaceId = status.WorkspaceId;
             WindowsDirectoryJunction.Create(aliasRoot, copiedRoot);
             var aliasedFile = Path.Combine(aliasRoot, "SampleLib", "RefactoringProbe.cs");
@@ -270,7 +268,7 @@ public sealed class WorkspaceLoadDedupTests : SharedWorkspaceTestBase
         var copiedRoot = Path.GetDirectoryName(copiedSolutionPath)!;
         try
         {
-            var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+            var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
             var solution = WorkspaceManager.GetCurrentSolution(status.WorkspaceId);
             var project = solution.Projects.First();
             var documentId = Microsoft.CodeAnalysis.DocumentId.CreateNewId(project.Id);
@@ -281,7 +279,7 @@ public sealed class WorkspaceLoadDedupTests : SharedWorkspaceTestBase
                 Microsoft.CodeAnalysis.Text.SourceText.From("internal sealed class OwnershipProbe { }"),
                 filePath: addedPath);
 
-            Assert.IsTrue(WorkspaceManager.TryApplyChanges(status.WorkspaceId, withDocument));
+            await PhysicalMutationFixture.ApplyAsync(WorkspaceManager, status.WorkspaceId, withDocument, CancellationToken.None);
             CollectionAssert.AreEqual(
                 new[] { status.WorkspaceId },
                 WorkspaceManager.FindWorkspaceIdsContainingFile(addedPath).ToArray());
@@ -312,7 +310,7 @@ public sealed class WorkspaceLoadDedupTests : SharedWorkspaceTestBase
             }
 
             var linkedSolutionPath = Path.Combine(logicalRoot, Path.GetFileName(copiedSolutionPath));
-            var status = await WorkspaceManager.LoadAsync(linkedSolutionPath, CancellationToken.None);
+            var status = await WorkspaceManager.LoadAsync(linkedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
             workspaceId = status.WorkspaceId;
 
             Assert.AreEqual(
@@ -355,7 +353,7 @@ public sealed class WorkspaceLoadDedupTests : SharedWorkspaceTestBase
                 originalText.ToString() + Environment.NewLine + "// physical write target");
             var updatedSolution = solution.WithDocumentText(physicalDocument.Id, updatedText);
 
-            Assert.IsTrue(WorkspaceManager.TryApplyChanges(workspaceId, updatedSolution));
+            await PhysicalMutationFixture.ApplyAsync(WorkspaceManager, workspaceId, updatedSolution, CancellationToken.None);
             Assert.AreEqual(
                 outsideSentinel,
                 await File.ReadAllTextAsync(outsideDocumentPath),

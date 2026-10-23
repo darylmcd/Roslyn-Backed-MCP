@@ -25,9 +25,6 @@ public sealed class BacklogPublicArgumentRefusalTests : IsolatedWorkspaceTestBas
         WorkspaceId = await GetOrLoadWorkspaceIdAsync(SampleSolutionPath, CancellationToken.None);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     [DataRow("handle-empty", "symbolHandle", "empty", "ArgumentException")]
     [DataRow("handle-base64", "symbolHandle", "base64", "ArgumentException")]
@@ -206,12 +203,10 @@ public sealed class BacklogPublicArgumentRefusalTests : IsolatedWorkspaceTestBas
     [DataRow("evaluate_msbuild_property")]
     public async Task MissingTargets_KeepStableWireIdentityAndActionableAdvice(string tool)
     {
-        await using var harness = await ProductionParityMcpHarness.CreateAsync("missing-target-refusals", "2026-07-28");
-        var loaded = await harness.Client.CallToolAsync("workspace_load",
-            new Dictionary<string, object?> { ["path"] = SampleSolutionPath, ["autoRestore"] = false },
-            cancellationToken: CancellationToken.None);
-        Assert.IsFalse(loaded.IsError == true);
-        var id = JsonNode.Parse(loaded.Content.OfType<TextContentBlock>().Single().Text)!["workspaceId"]!.GetValue<string>();
+        await using var fixture = CreateIsolatedWorkspaceCopy();
+        await using var harness = await ProductionParityMcpHarness.CreateOwnedAsync("missing-target-refusals", "2026-07-28", fixture.RootPath);
+        var id = await ProductionParityMcpHarness.LoadOwnedWorkspaceAsync(
+            harness, fixture.SolutionPath, CancellationToken.None);
         var arguments = new Dictionary<string, object?> { ["workspaceId"] = id };
         if (tool == "rename_preview")
         {

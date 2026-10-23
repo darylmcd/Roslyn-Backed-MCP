@@ -6,6 +6,7 @@ using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Contracts;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -50,7 +51,7 @@ public sealed class GateOperationDeadlineTests
                 Options);
             Service = new BuildService(
                 Manager, Executor, new CompilationCache(Manager), NullLogger<BuildService>.Instance, Options);
-            TestService = new TestRunnerService(
+            TestService = new TestRunnerService(new ForkInvocationPathPolicy(new RoslynMcp.Tests.Helpers.OwnedTestWorkspacePathPolicy()),
                 Manager,
                 Executor,
                 NullLogger<TestRunnerService>.Instance,
@@ -439,7 +440,7 @@ public sealed class GateOperationDeadlineTests
             throw new NotSupportedException();
     }
 
-    private sealed class ControlledCommandRunner : IDotnetCommandRunner
+    private sealed class ControlledCommandRunner : RoslynMcp.Tests.Helpers.CannedCommandRunner
     {
         private readonly TaskCompletionSource _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -451,7 +452,7 @@ public sealed class GateOperationDeadlineTests
 
         public void Release() => _release.TrySetResult();
 
-        public async Task<CommandExecutionDto> RunAsync(
+        public override async Task<CommandExecutionDto> RunAsync(
             string workingDirectory,
             string targetPath,
             IReadOnlyList<string> arguments,
@@ -539,9 +540,12 @@ public sealed class GateOperationDeadlineTests
 
         public void RestoreVersion(string workspaceId, int version) => Version = version;
 
+        public Task<System.Collections.Immutable.ImmutableArray<RoslynMcp.Roslyn.Contracts.AdmittedModuleImage>> ReadAdmittedImagesAsync(
+            string workspaceId, Microsoft.CodeAnalysis.ProjectId projectId, Microsoft.CodeAnalysis.PortableExecutableReference reference, CancellationToken ct) =>
+            throw new NotSupportedException();
+
         public Microsoft.CodeAnalysis.Solution GetCurrentSolution(string workspaceId) => throw new NotSupportedException();
 
-        public bool TryApplyChanges(string workspaceId, Microsoft.CodeAnalysis.Solution newSolution) => throw new NotSupportedException();
 
         public Microsoft.CodeAnalysis.Project? GetProject(string workspaceId, string projectNameOrPath) => null;
     }

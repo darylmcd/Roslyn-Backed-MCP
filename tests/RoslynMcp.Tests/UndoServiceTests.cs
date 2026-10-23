@@ -1,7 +1,10 @@
+using RoslynMcp.Tests.Helpers;
+using RoslynMcp.Roslyn.Helpers;
 using System.Text;
 using Microsoft.CodeAnalysis;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
 
@@ -18,9 +21,6 @@ public sealed class UndoServiceTests : IsolatedWorkspaceTestBase
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     public async Task RevertBySequence_NonOverlappingApplies_RestoresEarlierApply()
     {
@@ -28,55 +28,52 @@ public sealed class UndoServiceTests : IsolatedWorkspaceTestBase
         // sequence number — B does not touch Dog.cs, so the dependency check must NOT
         // block the revert. Disk content for Dog.cs returns to pre-A state; Cat.cs keeps
         // its post-B content.
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
-        var workspaceId = workspace.WorkspaceId;
-
-        ChangeTracker.Clear(workspaceId);
-        UndoService.Clear(workspaceId);
-
-        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
-        var catFilePath = workspace.GetPath("SampleLib", "Cat.cs");
-        var dogOriginal = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
-        var catOriginal = await File.ReadAllTextAsync(catFilePath, CancellationToken.None);
-
-        // Apply A: insert a comment at the top of Dog.cs.
-        var dogEdit = new TextEditDto(1, 1, 1, 1, "// apply A\n");
-        var resultA = await EditService.ApplyTextEditsAsync(
-            workspaceId, dogFilePath, new[] { dogEdit }, "apply_text_edit", CancellationToken.None);
-        Assert.IsTrue(resultA.Success, "Apply A should succeed.");
-
-        // Apply B: insert a comment at the top of Cat.cs.
-        var catEdit = new TextEditDto(1, 1, 1, 1, "// apply B\n");
-        var resultB = await EditService.ApplyTextEditsAsync(
-            workspaceId, catFilePath, new[] { catEdit }, "apply_text_edit", CancellationToken.None);
-        Assert.IsTrue(resultB.Success, "Apply B should succeed.");
-
-        var changes = ChangeTracker.GetChanges(workspaceId);
-        Assert.AreEqual(2, changes.Count, "Expected 2 recorded changes.");
-        var sequenceA = changes[0].SequenceNumber;
-        var sequenceB = changes[1].SequenceNumber;
-        Assert.IsTrue(sequenceA < sequenceB, "Sequence numbers should increase per apply.");
-
-        // Revert A by sequence — B's affected files do not overlap with A's, so this must succeed.
-        var revertResult = await UndoService.RevertBySequenceAsync(
-            workspaceId, sequenceA, CancellationToken.None);
-
-        Assert.IsTrue(revertResult.Reverted,
-            $"Expected revert of non-overlapping apply A to succeed; got reason={revertResult.Reason}.");
-        Assert.IsNull(revertResult.Reason);
-        Assert.IsNotNull(revertResult.RevertedOperation);
-
-        // Dog.cs (apply A's target) is back to its original content; Cat.cs (apply B's target)
-        // keeps its post-B content because B was NOT reverted.
-        var dogAfterRevert = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
-        Assert.AreEqual(dogOriginal, dogAfterRevert,
-            "Dog.cs should be restored to its pre-apply-A content after revert-by-sequence(A).");
-
-        var catAfterRevert = await File.ReadAllTextAsync(catFilePath, CancellationToken.None);
-        StringAssert.Contains(catAfterRevert, "// apply B",
-            "Cat.cs should retain apply B's edit — only apply A was reverted.");
-        Assert.AreNotEqual(catOriginal, catAfterRevert,
-            "Cat.cs should still be at its post-apply-B state.");
+        var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        Exception? resourceFailure21 = null;
+        try
+        {
+            var workspaceId = workspace.WorkspaceId;
+            ChangeTracker.Clear(workspaceId);
+            UndoService.Clear(workspaceId);
+            var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+            var catFilePath = workspace.GetPath("SampleLib", "Cat.cs");
+            var dogOriginal = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
+            var catOriginal = await File.ReadAllTextAsync(catFilePath, CancellationToken.None);
+            // Apply A: insert a comment at the top of Dog.cs.
+            var dogEdit = new TextEditDto(1, 1, 1, 1, "// apply A\n");
+            var resultA = await EditService.ApplyTextEditsAsync(workspaceId, dogFilePath, new[] { dogEdit }, "apply_text_edit", CancellationToken.None);
+            Assert.IsTrue(resultA.Success, "Apply A should succeed.");
+            // Apply B: insert a comment at the top of Cat.cs.
+            var catEdit = new TextEditDto(1, 1, 1, 1, "// apply B\n");
+            var resultB = await EditService.ApplyTextEditsAsync(workspaceId, catFilePath, new[] { catEdit }, "apply_text_edit", CancellationToken.None);
+            Assert.IsTrue(resultB.Success, "Apply B should succeed.");
+            var changes = ChangeTracker.GetChanges(workspaceId);
+            Assert.AreEqual(2, changes.Count, "Expected 2 recorded changes.");
+            var sequenceA = changes[0].SequenceNumber;
+            var sequenceB = changes[1].SequenceNumber;
+            Assert.IsTrue(sequenceA < sequenceB, "Sequence numbers should increase per apply.");
+            // Revert A by sequence — B's affected files do not overlap with A's, so this must succeed.
+            var revertResult = await UndoService.RevertBySequenceAsync(workspaceId, sequenceA, CancellationToken.None);
+            Assert.IsTrue(revertResult.Reverted, $"Expected revert of non-overlapping apply A to succeed; got reason={revertResult.Reason}.");
+            Assert.IsNull(revertResult.Reason);
+            Assert.IsNotNull(revertResult.RevertedOperation);
+            // Dog.cs (apply A's target) is back to its original content; Cat.cs (apply B's target)
+            // keeps its post-B content because B was NOT reverted.
+            var dogAfterRevert = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
+            Assert.AreEqual(dogOriginal, dogAfterRevert, "Dog.cs should be restored to its pre-apply-A content after revert-by-sequence(A).");
+            var catAfterRevert = await File.ReadAllTextAsync(catFilePath, CancellationToken.None);
+            StringAssert.Contains(catAfterRevert, "// apply B", "Cat.cs should retain apply B's edit — only apply A was reverted.");
+            Assert.AreNotEqual(catOriginal, catAfterRevert, "Cat.cs should still be at its post-apply-B state.");
+        }
+        catch (Exception cleanupFailure)
+        {
+            resourceFailure21 = cleanupFailure;
+            throw;
+        }
+        finally
+        {
+            await CleanupFailureCollector.RunAfterFailureAsync("Native workspace resource cleanup failed.", resourceFailure21, workspace.DisposeAsync);
+        }
     }
 
     [TestMethod]
@@ -85,68 +82,74 @@ public sealed class UndoServiceTests : IsolatedWorkspaceTestBase
         // Apply A and Apply B both touch Dog.cs. Revert A by sequence — the conservative
         // dependency check must block the revert and surface B's sequence number as a
         // blocker so the caller can revert B first.
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
-        var workspaceId = workspace.WorkspaceId;
-
-        ChangeTracker.Clear(workspaceId);
-        UndoService.Clear(workspaceId);
-
-        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
-
-        // Apply A: insert a comment at the top of Dog.cs.
-        var editA = new TextEditDto(1, 1, 1, 1, "// apply A\n");
-        var resultA = await EditService.ApplyTextEditsAsync(
-            workspaceId, dogFilePath, new[] { editA }, "apply_text_edit", CancellationToken.None);
-        Assert.IsTrue(resultA.Success, "Apply A should succeed.");
-
-        // Apply B: insert another comment at the top of Dog.cs (now line 1 holds the apply-A
-        // comment; insert above that). B touches the SAME file as A, so revert A must be blocked.
-        var editB = new TextEditDto(1, 1, 1, 1, "// apply B\n");
-        var resultB = await EditService.ApplyTextEditsAsync(
-            workspaceId, dogFilePath, new[] { editB }, "apply_text_edit", CancellationToken.None);
-        Assert.IsTrue(resultB.Success, "Apply B should succeed.");
-
-        var changes = ChangeTracker.GetChanges(workspaceId);
-        Assert.AreEqual(2, changes.Count, "Expected 2 recorded changes.");
-        var sequenceA = changes[0].SequenceNumber;
-        var sequenceB = changes[1].SequenceNumber;
-
-        // Try to revert A — B touches Dog.cs which is also in A's affected set.
-        var revertResult = await UndoService.RevertBySequenceAsync(
-            workspaceId, sequenceA, CancellationToken.None);
-
-        Assert.IsFalse(revertResult.Reverted, "Revert must be blocked when a later apply overlaps.");
-        Assert.AreEqual("dependency-blocked", revertResult.Reason);
-        Assert.IsNotNull(revertResult.BlockingSequences);
-        CollectionAssert.Contains(
-            revertResult.BlockingSequences!.ToList(),
-            sequenceB,
-            "Apply B's sequence number must appear in BlockingSequences because it touches Dog.cs.");
-
-        // Disk for Dog.cs must remain at its post-apply-B state — no partial revert.
-        var dogAfterBlock = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
-        StringAssert.Contains(dogAfterBlock, "// apply B",
-            "Apply B's edit must remain on disk — dependency-blocked revert must not partially roll back.");
-        StringAssert.Contains(dogAfterBlock, "// apply A",
-            "Apply A's edit must also remain on disk — dependency-blocked revert must not roll it back partially.");
+        var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        Exception? resourceFailure22 = null;
+        try
+        {
+            var workspaceId = workspace.WorkspaceId;
+            ChangeTracker.Clear(workspaceId);
+            UndoService.Clear(workspaceId);
+            var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+            // Apply A: insert a comment at the top of Dog.cs.
+            var editA = new TextEditDto(1, 1, 1, 1, "// apply A\n");
+            var resultA = await EditService.ApplyTextEditsAsync(workspaceId, dogFilePath, new[] { editA }, "apply_text_edit", CancellationToken.None);
+            Assert.IsTrue(resultA.Success, "Apply A should succeed.");
+            // Apply B: insert another comment at the top of Dog.cs (now line 1 holds the apply-A
+            // comment; insert above that). B touches the SAME file as A, so revert A must be blocked.
+            var editB = new TextEditDto(1, 1, 1, 1, "// apply B\n");
+            var resultB = await EditService.ApplyTextEditsAsync(workspaceId, dogFilePath, new[] { editB }, "apply_text_edit", CancellationToken.None);
+            Assert.IsTrue(resultB.Success, "Apply B should succeed.");
+            var changes = ChangeTracker.GetChanges(workspaceId);
+            Assert.AreEqual(2, changes.Count, "Expected 2 recorded changes.");
+            var sequenceA = changes[0].SequenceNumber;
+            var sequenceB = changes[1].SequenceNumber;
+            // Try to revert A — B touches Dog.cs which is also in A's affected set.
+            var revertResult = await UndoService.RevertBySequenceAsync(workspaceId, sequenceA, CancellationToken.None);
+            Assert.IsFalse(revertResult.Reverted, "Revert must be blocked when a later apply overlaps.");
+            Assert.AreEqual("dependency-blocked", revertResult.Reason);
+            Assert.IsNotNull(revertResult.BlockingSequences);
+            CollectionAssert.Contains(revertResult.BlockingSequences!.ToList(), sequenceB, "Apply B's sequence number must appear in BlockingSequences because it touches Dog.cs.");
+            // Disk for Dog.cs must remain at its post-apply-B state — no partial revert.
+            var dogAfterBlock = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
+            StringAssert.Contains(dogAfterBlock, "// apply B", "Apply B's edit must remain on disk — dependency-blocked revert must not partially roll back.");
+            StringAssert.Contains(dogAfterBlock, "// apply A", "Apply A's edit must also remain on disk — dependency-blocked revert must not roll it back partially.");
+        }
+        catch (Exception cleanupFailure)
+        {
+            resourceFailure22 = cleanupFailure;
+            throw;
+        }
+        finally
+        {
+            await CleanupFailureCollector.RunAfterFailureAsync("Native workspace resource cleanup failed.", resourceFailure22, workspace.DisposeAsync);
+        }
     }
 
     [TestMethod]
     public async Task RevertBySequence_UnknownSequence_ReturnsUnknownSequenceReason()
     {
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
-        var workspaceId = workspace.WorkspaceId;
-
-        ChangeTracker.Clear(workspaceId);
-        UndoService.Clear(workspaceId);
-
-        // No applies have happened — every sequence number is unknown for this workspace.
-        var revertResult = await UndoService.RevertBySequenceAsync(
-            workspaceId, sequenceNumber: 9999, CancellationToken.None);
-
-        Assert.IsFalse(revertResult.Reverted);
-        Assert.AreEqual("unknown-sequence", revertResult.Reason);
-        Assert.IsNull(revertResult.BlockingSequences);
+        var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        Exception? resourceFailure23 = null;
+        try
+        {
+            var workspaceId = workspace.WorkspaceId;
+            ChangeTracker.Clear(workspaceId);
+            UndoService.Clear(workspaceId);
+            // No applies have happened — every sequence number is unknown for this workspace.
+            var revertResult = await UndoService.RevertBySequenceAsync(workspaceId, sequenceNumber: 9999, CancellationToken.None);
+            Assert.IsFalse(revertResult.Reverted);
+            Assert.AreEqual("unknown-sequence", revertResult.Reason);
+            Assert.IsNull(revertResult.BlockingSequences);
+        }
+        catch (Exception cleanupFailure)
+        {
+            resourceFailure23 = cleanupFailure;
+            throw;
+        }
+        finally
+        {
+            await CleanupFailureCollector.RunAfterFailureAsync("Native workspace resource cleanup failed.", resourceFailure23, workspace.DisposeAsync);
+        }
     }
 
     [TestMethod]
@@ -156,48 +159,60 @@ public sealed class UndoServiceTests : IsolatedWorkspaceTestBase
         // caller (ApplyWithVerifyTool's rollback leg) needs the same snapshot to retry.
         // Force the file-snapshot restore to fail by replacing the target file with a
         // directory. Unlike read-only attributes, this obstruction is deterministic on
-        // both Windows and Unix when the atomic writer replaces the target path.
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
-        var workspaceId = workspace.WorkspaceId;
-
-        ChangeTracker.Clear(workspaceId);
-        UndoService.Clear(workspaceId);
-
-        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
-        var dogOriginal = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
-
-        var edit = new TextEditDto(1, 1, 1, 1, "// apply\n");
-        var applyResult = await EditService.ApplyTextEditsAsync(
-            workspaceId, dogFilePath, new[] { edit }, "apply_text_edit", CancellationToken.None);
-        Assert.IsTrue(applyResult.Success, "Apply should succeed.");
-        Assert.IsNotNull(UndoService.GetLastOperation(workspaceId), "Undo entry must exist after apply.");
-
-        File.Delete(dogFilePath);
-        Directory.CreateDirectory(dogFilePath);
-
+        // both Windows and Unix when the operation-owned source transition publishes target bytes.
+        var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        Exception? resourceFailure24 = null;
         try
         {
-            var firstRevert = await UndoService.RevertAsync(workspaceId, CancellationToken.None);
-            Assert.IsFalse(firstRevert, "Revert must report failure when the disk restore cannot write.");
+            var workspaceId = workspace.WorkspaceId;
+            ChangeTracker.Clear(workspaceId);
+            UndoService.Clear(workspaceId);
+            var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+            var dogOriginal = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
+            var edit = new TextEditDto(1, 1, 1, 1, "// apply\n");
+            var applyResult = await EditService.ApplyTextEditsAsync(workspaceId, dogFilePath, new[] { edit }, "apply_text_edit", CancellationToken.None);
+            Assert.IsTrue(applyResult.Success, "Apply should succeed.");
+            Assert.IsNotNull(UndoService.GetLastOperation(workspaceId), "Undo entry must exist after apply.");
+            Exception? obstructionFailure = null;
+            try
+            {
+                File.Delete(dogFilePath);
+                Directory.CreateDirectory(dogFilePath);
+                var firstRevert = await UndoService.RevertAsync(workspaceId, CancellationToken.None);
+                Assert.IsFalse(firstRevert, "Revert must report failure when the disk restore cannot write.");
+                // The snapshot must have survived the failed restore.
+                Assert.IsNotNull(UndoService.GetLastOperation(workspaceId), "A failed revert must leave the pending snapshot in place so it can be retried.");
+            }
+            catch (Exception failure)
+            {
+                obstructionFailure = failure;
+                throw;
+            }
+            finally
+            {
+                OwnedResourceCleanup.DisposePreservingFailure("Undo obstruction cleanup failed.", obstructionFailure, OwnedResourceCleanup.FromAction(() =>
+                {
+                    if (Directory.Exists(dogFilePath))
+                        Directory.Delete(dogFilePath);
+                }));
+            }
 
-            // The snapshot must have survived the failed restore.
-            Assert.IsNotNull(UndoService.GetLastOperation(workspaceId),
-                "A failed revert must leave the pending snapshot in place so it can be retried.");
+            // Retry now that the file is writable again — the surviving snapshot must restore the original.
+            var secondRevert = await UndoService.RevertAsync(workspaceId, CancellationToken.None);
+            Assert.IsTrue(secondRevert, "Retry after clearing the obstruction must succeed.");
+            var dogAfterRetry = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
+            Assert.AreEqual(dogOriginal, dogAfterRetry, "Retried revert must restore Dog.cs to its pre-apply content — proving the snapshot survived the first failure.");
+            Assert.IsNull(UndoService.GetLastOperation(workspaceId), "The successful retry must finally consume the snapshot.");
+        }
+        catch (Exception cleanupFailure)
+        {
+            resourceFailure24 = cleanupFailure;
+            throw;
         }
         finally
         {
-            Directory.Delete(dogFilePath);
+            await CleanupFailureCollector.RunAfterFailureAsync("Native workspace resource cleanup failed.", resourceFailure24, workspace.DisposeAsync);
         }
-
-        // Retry now that the file is writable again — the surviving snapshot must restore the original.
-        var secondRevert = await UndoService.RevertAsync(workspaceId, CancellationToken.None);
-        Assert.IsTrue(secondRevert, "Retry after clearing the obstruction must succeed.");
-
-        var dogAfterRetry = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
-        Assert.AreEqual(dogOriginal, dogAfterRetry,
-            "Retried revert must restore Dog.cs to its pre-apply content — proving the snapshot survived the first failure.");
-        Assert.IsNull(UndoService.GetLastOperation(workspaceId),
-            "The successful retry must finally consume the snapshot.");
     }
 
     [TestMethod]
@@ -205,43 +220,46 @@ public sealed class UndoServiceTests : IsolatedWorkspaceTestBase
     {
         // An already-cancelled token must not consume the snapshot: cancellation surfaces
         // (OperationCanceledException), but a follow-up revert with a live token still works.
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
-        var workspaceId = workspace.WorkspaceId;
-
-        ChangeTracker.Clear(workspaceId);
-        UndoService.Clear(workspaceId);
-
-        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
-        var dogOriginal = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
-
-        var edit = new TextEditDto(1, 1, 1, 1, "// apply\n");
-        var applyResult = await EditService.ApplyTextEditsAsync(
-            workspaceId, dogFilePath, new[] { edit }, "apply_text_edit", CancellationToken.None);
-        Assert.IsTrue(applyResult.Success, "Apply should succeed.");
-
-        using var cts = new CancellationTokenSource();
-        cts.Cancel();
-
-        var threw = false;
+        var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        Exception? resourceFailure25 = null;
         try
         {
-            await UndoService.RevertAsync(workspaceId, cts.Token);
+            var workspaceId = workspace.WorkspaceId;
+            ChangeTracker.Clear(workspaceId);
+            UndoService.Clear(workspaceId);
+            var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+            var dogOriginal = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
+            var edit = new TextEditDto(1, 1, 1, 1, "// apply\n");
+            var applyResult = await EditService.ApplyTextEditsAsync(workspaceId, dogFilePath, new[] { edit }, "apply_text_edit", CancellationToken.None);
+            Assert.IsTrue(applyResult.Success, "Apply should succeed.");
+            using var cts = new CancellationTokenSource();
+            cts.Cancel();
+            var threw = false;
+            try
+            {
+                await UndoService.RevertAsync(workspaceId, cts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                threw = true;
+            }
+
+            Assert.IsTrue(threw, "A revert driven by an already-cancelled token must surface cancellation.");
+            Assert.IsNotNull(UndoService.GetLastOperation(workspaceId), "A cancelled revert must leave the pending snapshot in place so it can be retried.");
+            var retry = await UndoService.RevertAsync(workspaceId, CancellationToken.None);
+            Assert.IsTrue(retry, "Retry with a live token must succeed after the cancelled attempt.");
+            var dogAfterRetry = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
+            Assert.AreEqual(dogOriginal, dogAfterRetry, "Retried revert must restore Dog.cs — proving the cancelled attempt did not consume the snapshot.");
         }
-        catch (OperationCanceledException)
+        catch (Exception cleanupFailure)
         {
-            threw = true;
+            resourceFailure25 = cleanupFailure;
+            throw;
         }
-
-        Assert.IsTrue(threw, "A revert driven by an already-cancelled token must surface cancellation.");
-        Assert.IsNotNull(UndoService.GetLastOperation(workspaceId),
-            "A cancelled revert must leave the pending snapshot in place so it can be retried.");
-
-        var retry = await UndoService.RevertAsync(workspaceId, CancellationToken.None);
-        Assert.IsTrue(retry, "Retry with a live token must succeed after the cancelled attempt.");
-
-        var dogAfterRetry = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
-        Assert.AreEqual(dogOriginal, dogAfterRetry,
-            "Retried revert must restore Dog.cs — proving the cancelled attempt did not consume the snapshot.");
+        finally
+        {
+            await CleanupFailureCollector.RunAfterFailureAsync("Native workspace resource cleanup failed.", resourceFailure25, workspace.DisposeAsync);
+        }
     }
 
     [TestMethod]
@@ -249,30 +267,35 @@ public sealed class UndoServiceTests : IsolatedWorkspaceTestBase
     {
         // A successful revert consumes the snapshot exactly once: the second call finds
         // nothing to revert and GetLastOperation returns null.
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
-        var workspaceId = workspace.WorkspaceId;
-
-        ChangeTracker.Clear(workspaceId);
-        UndoService.Clear(workspaceId);
-
-        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
-        var dogOriginal = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
-
-        var edit = new TextEditDto(1, 1, 1, 1, "// apply\n");
-        var applyResult = await EditService.ApplyTextEditsAsync(
-            workspaceId, dogFilePath, new[] { edit }, "apply_text_edit", CancellationToken.None);
-        Assert.IsTrue(applyResult.Success, "Apply should succeed.");
-
-        var firstRevert = await UndoService.RevertAsync(workspaceId, CancellationToken.None);
-        Assert.IsTrue(firstRevert, "First revert should succeed.");
-
-        var dogAfterRevert = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
-        Assert.AreEqual(dogOriginal, dogAfterRevert, "Revert must restore the original content.");
-
-        var secondRevert = await UndoService.RevertAsync(workspaceId, CancellationToken.None);
-        Assert.IsFalse(secondRevert, "The snapshot must be consumed exactly once — a second revert finds nothing.");
-        Assert.IsNull(UndoService.GetLastOperation(workspaceId),
-            "GetLastOperation must return null after the snapshot has been consumed.");
+        var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        Exception? resourceFailure26 = null;
+        try
+        {
+            var workspaceId = workspace.WorkspaceId;
+            ChangeTracker.Clear(workspaceId);
+            UndoService.Clear(workspaceId);
+            var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+            var dogOriginal = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
+            var edit = new TextEditDto(1, 1, 1, 1, "// apply\n");
+            var applyResult = await EditService.ApplyTextEditsAsync(workspaceId, dogFilePath, new[] { edit }, "apply_text_edit", CancellationToken.None);
+            Assert.IsTrue(applyResult.Success, "Apply should succeed.");
+            var firstRevert = await UndoService.RevertAsync(workspaceId, CancellationToken.None);
+            Assert.IsTrue(firstRevert, "First revert should succeed.");
+            var dogAfterRevert = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
+            Assert.AreEqual(dogOriginal, dogAfterRevert, "Revert must restore the original content.");
+            var secondRevert = await UndoService.RevertAsync(workspaceId, CancellationToken.None);
+            Assert.IsFalse(secondRevert, "The snapshot must be consumed exactly once — a second revert finds nothing.");
+            Assert.IsNull(UndoService.GetLastOperation(workspaceId), "GetLastOperation must return null after the snapshot has been consumed.");
+        }
+        catch (Exception cleanupFailure)
+        {
+            resourceFailure26 = cleanupFailure;
+            throw;
+        }
+        finally
+        {
+            await CleanupFailureCollector.RunAfterFailureAsync("Native workspace resource cleanup failed.", resourceFailure26, workspace.DisposeAsync);
+        }
     }
 
     [TestMethod]
@@ -282,183 +305,145 @@ public sealed class UndoServiceTests : IsolatedWorkspaceTestBase
         // to fail by replacing Dog.cs with a directory. The failed revert must NOT destroy A's history
         // entry: a follow-up RevertBySequenceAsync for the SAME sequence must succeed once the
         // obstruction clears, and B's edit must be untouched throughout (ordering preserved).
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
-        var workspaceId = workspace.WorkspaceId;
-
-        ChangeTracker.Clear(workspaceId);
-        UndoService.Clear(workspaceId);
-
-        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
-        var catFilePath = workspace.GetPath("SampleLib", "Cat.cs");
-        var dogOriginal = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
-        var catOriginal = await File.ReadAllTextAsync(catFilePath, CancellationToken.None);
-
-        var dogEdit = new TextEditDto(1, 1, 1, 1, "// apply A\n");
-        var resultA = await EditService.ApplyTextEditsAsync(
-            workspaceId, dogFilePath, new[] { dogEdit }, "apply_text_edit", CancellationToken.None);
-        Assert.IsTrue(resultA.Success, "Apply A should succeed.");
-
-        var catEdit = new TextEditDto(1, 1, 1, 1, "// apply B\n");
-        var resultB = await EditService.ApplyTextEditsAsync(
-            workspaceId, catFilePath, new[] { catEdit }, "apply_text_edit", CancellationToken.None);
-        Assert.IsTrue(resultB.Success, "Apply B should succeed.");
-
-        var changes = ChangeTracker.GetChanges(workspaceId);
-        Assert.AreEqual(2, changes.Count, "Expected 2 recorded changes.");
-        var sequenceA = changes[0].SequenceNumber;
-
-        File.Delete(dogFilePath);
-        Directory.CreateDirectory(dogFilePath);
-
+        var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        Exception? resourceFailure27 = null;
         try
         {
-            var failedRevert = await UndoService.RevertBySequenceAsync(
-                workspaceId, sequenceA, CancellationToken.None);
-            Assert.IsFalse(failedRevert.Reverted, "Revert must report failure when the disk restore cannot write.");
-            Assert.AreEqual("revert-failed", failedRevert.Reason);
+            var workspaceId = workspace.WorkspaceId;
+            ChangeTracker.Clear(workspaceId);
+            UndoService.Clear(workspaceId);
+            var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+            var catFilePath = workspace.GetPath("SampleLib", "Cat.cs");
+            var dogOriginal = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
+            var catOriginal = await File.ReadAllTextAsync(catFilePath, CancellationToken.None);
+            var dogEdit = new TextEditDto(1, 1, 1, 1, "// apply A\n");
+            var resultA = await EditService.ApplyTextEditsAsync(workspaceId, dogFilePath, new[] { dogEdit }, "apply_text_edit", CancellationToken.None);
+            Assert.IsTrue(resultA.Success, "Apply A should succeed.");
+            var catEdit = new TextEditDto(1, 1, 1, 1, "// apply B\n");
+            var resultB = await EditService.ApplyTextEditsAsync(workspaceId, catFilePath, new[] { catEdit }, "apply_text_edit", CancellationToken.None);
+            Assert.IsTrue(resultB.Success, "Apply B should succeed.");
+            var changes = ChangeTracker.GetChanges(workspaceId);
+            Assert.AreEqual(2, changes.Count, "Expected 2 recorded changes.");
+            var sequenceA = changes[0].SequenceNumber;
+            Exception? obstructionFailure = null;
+            try
+            {
+                File.Delete(dogFilePath);
+                Directory.CreateDirectory(dogFilePath);
+                var failedRevert = await UndoService.RevertBySequenceAsync(workspaceId, sequenceA, CancellationToken.None);
+                Assert.IsFalse(failedRevert.Reverted, "Revert must report failure when the disk restore cannot write.");
+                Assert.AreEqual("revert-failed", failedRevert.Reason);
+                // B's edit must be untouched by the failed revert of A.
+                var catAfterFailure = await File.ReadAllTextAsync(catFilePath, CancellationToken.None);
+                StringAssert.Contains(catAfterFailure, "// apply B", "A failed revert of A must not touch B's file.");
+            }
+            catch (Exception failure)
+            {
+                obstructionFailure = failure;
+                throw;
+            }
+            finally
+            {
+                OwnedResourceCleanup.DisposePreservingFailure("Undo obstruction cleanup failed.", obstructionFailure, OwnedResourceCleanup.FromAction(() =>
+                {
+                    if (Directory.Exists(dogFilePath))
+                        Directory.Delete(dogFilePath);
+                }));
+            }
 
-            // B's edit must be untouched by the failed revert of A.
-            var catAfterFailure = await File.ReadAllTextAsync(catFilePath, CancellationToken.None);
-            StringAssert.Contains(catAfterFailure, "// apply B",
-                "A failed revert of A must not touch B's file.");
+            // The target sequence must still be retryable — its history entry survived the failure.
+            var retryRevert = await UndoService.RevertBySequenceAsync(workspaceId, sequenceA, CancellationToken.None);
+            Assert.IsTrue(retryRevert.Reverted, $"The target sequence must remain retryable after a failed restore; got reason={retryRevert.Reason}.");
+            Assert.IsNull(retryRevert.Reason);
+            var dogAfterRetry = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
+            Assert.AreEqual(dogOriginal, dogAfterRetry, "Retried revert-by-sequence must restore Dog.cs to its pre-apply-A content.");
+            // B was never reverted — Cat.cs keeps apply B's edit; ordering was preserved across the failure.
+            var catAfterRetry = await File.ReadAllTextAsync(catFilePath, CancellationToken.None);
+            StringAssert.Contains(catAfterRetry, "// apply B", "Cat.cs should retain apply B's edit — only apply A was reverted.");
+            Assert.AreNotEqual(catOriginal, catAfterRetry, "Cat.cs should still be at its post-apply-B state.");
+        }
+        catch (Exception cleanupFailure)
+        {
+            resourceFailure27 = cleanupFailure;
+            throw;
         }
         finally
         {
-            Directory.Delete(dogFilePath);
+            await CleanupFailureCollector.RunAfterFailureAsync("Native workspace resource cleanup failed.", resourceFailure27, workspace.DisposeAsync);
         }
-
-        // The target sequence must still be retryable — its history entry survived the failure.
-        var retryRevert = await UndoService.RevertBySequenceAsync(
-            workspaceId, sequenceA, CancellationToken.None);
-        Assert.IsTrue(retryRevert.Reverted,
-            $"The target sequence must remain retryable after a failed restore; got reason={retryRevert.Reason}.");
-        Assert.IsNull(retryRevert.Reason);
-
-        var dogAfterRetry = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
-        Assert.AreEqual(dogOriginal, dogAfterRetry,
-            "Retried revert-by-sequence must restore Dog.cs to its pre-apply-A content.");
-
-        // B was never reverted — Cat.cs keeps apply B's edit; ordering was preserved across the failure.
-        var catAfterRetry = await File.ReadAllTextAsync(catFilePath, CancellationToken.None);
-        StringAssert.Contains(catAfterRetry, "// apply B",
-            "Cat.cs should retain apply B's edit — only apply A was reverted.");
-        Assert.AreNotEqual(catOriginal, catAfterRetry, "Cat.cs should still be at its post-apply-B state.");
     }
 
     [TestMethod]
-    public void CaptureBeforeApply_NonSolutionObject_ThrowsInvalidOperationException()
+    public async Task PrepareBeforeApply_UnissuedOperation_ThrowsInvalidOperationException()
     {
-        // The object-typed parameter is an internal wiring contract, not a caller-supplied
-        // argument, so a violation must not surface as a caller-blaming ArgumentException.
-        Assert.ThrowsExactly<InvalidOperationException>(
-            () => UndoService.CaptureBeforeApply("any-workspace", "wrong type", new object(), fileSnapshots: null));
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => UndoService.PrepareBeforeApplyAsync(
+            new UnissuedMutationOperation("unissued-workspace"), CancellationToken.None));
     }
 
-    // ---- composite-apply-undo-encoding-still-lossy: solution-snapshot revert encoding fidelity ----
-    //
-    // `RevertFromSolutionSnapshotAsync` collapsed each restore to a bare string, discarding the
-    // pre-apply `SourceText.Encoding`, then wrote through the encoding-less `AtomicFileWriter`
-    // overload — so a UTF-8-BOM or UTF-16 file reverted through the solution-snapshot path was
-    // silently rewritten as UTF-8-no-BOM. `EditService` always supplies file snapshots, so the
-    // solution-snapshot branch is unreachable from a normal apply; both tests below force it by
-    // calling `CaptureBeforeApply` directly with `fileSnapshots: null`. They cover the two
-    // collection phases separately: the Solution-diff phase and the disk-walk safety net.
+    private sealed record UnissuedMutationOperation(string WorkspaceId) : IWorkspaceMutationOperation;
 
-    /// <summary>
-    /// Phase-1 (Solution diff) coverage. The <c>utf8-nobom</c> row is the inverse guard: Roslyn
-    /// reports a no-preamble UTF-8 <c>SourceText.Encoding</c> for a BOM-less file, which
-    /// <c>AtomicFileWriter.ResolveWriteEncoding(Encoding?)</c> must normalize so the revert does
-    /// not ADD a BOM to a file that never had one.
-    /// </summary>
     [TestMethod]
-    [DataRow("utf8-nobom")]
-    [DataRow("utf8-bom")]
-    [DataRow("utf16-bom")]
-    public async Task RevertAsync_SolutionSnapshotPath_SolutionDiff_PreservesOriginalEncoding(string encodingKind)
+    [DataRow("utf8-nobom", true)]
+    [DataRow("utf8-bom", true)]
+    [DataRow("utf16-bom", true)]
+    [DataRow("utf16-bom", false)]
+    public async Task RevertAsync_PreparedFileSnapshot_PreservesOriginalEncoding(string encodingKind, bool reloadAfterWrite)
     {
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
-        var workspaceId = workspace.WorkspaceId;
+        var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        Exception? resourceFailure28 = null;
+        try
+        {
+            var workspaceId = workspace.WorkspaceId;
+            ChangeTracker.Clear(workspaceId);
+            UndoService.Clear(workspaceId);
+            var path = workspace.GetPath("SampleLib", "Dog.cs");
+            var(encoding, preamble, originalBytes) = await SeedEncodedFileAsync(path, encodingKind);
+            await workspace.ReloadAsync(CancellationToken.None);
+            var authority = (IWorkspaceRecoveryAuthority)WorkspaceManager;
+            var files = new[]
+            {
+                FileSnapshotDto.FromExistingBytes(path, originalBytes)
+            };
+            var physical = await authority.CaptureRecoveryAsync(workspaceId, "prepared encoding round-trip", files, CancellationToken.None);
+            var operation = await UndoService.PrepareBeforeApplyAsync(physical, CancellationToken.None);
+            var originalText = encoding.GetString(originalBytes, preamble.Length, originalBytes.Length - preamble.Length);
+            var post = preamble.Concat(encoding.GetBytes("// applied\n" + originalText)).ToArray();
+            {
+                var lease = await authority.BeginMutationAsync(physical, CancellationToken.None);
+                Exception? resourceFailure29 = null;
+                try
+                {
+                    lease.BeforeWrite(FileSnapshotDto.FromExistingBytes(path, post));
+                    await File.WriteAllBytesAsync(path, post, CancellationToken.None);
+                    if (reloadAfterWrite)
+                        await authority.CommitMutationAsync(physical, null, CancellationToken.None);
+                    lease.Complete([FileSnapshotDto.FromExistingBytes(path, post)]);
+                }
+                catch (Exception cleanupFailure)
+                {
+                    resourceFailure29 = cleanupFailure;
+                    throw;
+                }
+                finally
+                {
+                    OwnedResourceCleanup.DisposePreservingFailure("Native ownership resource cleanup failed.", resourceFailure29, lease);
+                }
+            }
 
-        ChangeTracker.Clear(workspaceId);
-        UndoService.Clear(workspaceId);
-
-        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
-        var (encoding, preamble, originalBytes) = await SeedEncodedFileAsync(dogFilePath, encodingKind);
-        await workspace.ReloadAsync(CancellationToken.None);
-
-        var preApplySolution = WorkspaceManager.GetCurrentSolution(workspaceId);
-        await MaterializeDocumentTextAsync(preApplySolution, dogFilePath);
-
-        // A real apply, so the snapshot is diffed against a genuinely mutated workspace + disk.
-        var applyResult = await EditService.ApplyTextEditsAsync(
-            workspaceId,
-            dogFilePath,
-            new[] { new TextEditDto(1, 1, 1, 1, "// apply\n") },
-            "apply_text_edit",
-            CancellationToken.None);
-        Assert.IsTrue(applyResult.Success, "Precondition: the apply should succeed.");
-
-        // EditService records file snapshots, which route RevertAsync down the fast path. Overwrite
-        // the pending snapshot with a solution-only one to force the solution-snapshot branch.
-        UndoService.CaptureBeforeApply(
-            workspaceId,
-            "solution-snapshot encoding round-trip",
-            preApplySolution,
-            fileSnapshots: null);
-
-        Assert.IsTrue(
-            await UndoService.RevertAsync(workspaceId, CancellationToken.None),
-            "The solution-snapshot revert should succeed.");
-
-        CollectionAssert.AreEqual(
-            originalBytes,
-            await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None),
-            $"revert_last_apply's solution-snapshot path must restore the exact pre-apply {encodingKind} bytes, " +
-            "including the byte-order mark, instead of rewriting the file as UTF-8-no-BOM.");
-    }
-
-    /// <summary>
-    /// Phase-2 (disk-walk safety net) coverage: the drift is disk-only, so
-    /// <c>preApplySolution.GetChanges(currentSolution)</c> is empty and the restore is collected by
-    /// the disk walk instead. UTF-16 is the strongest signal — a dropped preamble there also
-    /// corrupts every character, not just the first bytes.
-    /// </summary>
-    [TestMethod]
-    public async Task RevertAsync_SolutionSnapshotPath_DiskWalk_PreservesOriginalEncoding()
-    {
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
-        var workspaceId = workspace.WorkspaceId;
-
-        ChangeTracker.Clear(workspaceId);
-        UndoService.Clear(workspaceId);
-
-        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
-        var (encoding, preamble, originalBytes) = await SeedEncodedFileAsync(dogFilePath, "utf16-bom");
-        await workspace.ReloadAsync(CancellationToken.None);
-
-        var preApplySolution = WorkspaceManager.GetCurrentSolution(workspaceId);
-        await MaterializeDocumentTextAsync(preApplySolution, dogFilePath);
-        UndoService.CaptureBeforeApply(
-            workspaceId,
-            "disk-walk encoding round-trip",
-            preApplySolution,
-            fileSnapshots: null);
-
-        // Disk-only drift: the workspace solution is untouched, so phase 1 finds nothing.
-        var originalText = encoding.GetString(originalBytes, preamble.Length, originalBytes.Length - preamble.Length);
-        await File.WriteAllBytesAsync(
-            dogFilePath,
-            preamble.Concat(encoding.GetBytes("// drifted\n" + originalText)).ToArray(),
-            CancellationToken.None);
-
-        Assert.IsTrue(
-            await UndoService.RevertAsync(workspaceId, CancellationToken.None),
-            "The disk-walk safety net should restore the drifted file and report success.");
-
-        CollectionAssert.AreEqual(
-            originalBytes,
-            await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None),
-            "The disk-walk restore must re-emit the original UTF-16 byte-order mark and encoding.");
+            await operation.PublishAsync(CancellationToken.None);
+            Assert.AreNotEqual(Convert.ToHexString(originalBytes), Convert.ToHexString(await File.ReadAllBytesAsync(path, CancellationToken.None)));
+            Assert.IsTrue(await UndoService.RevertAsync(workspaceId, CancellationToken.None));
+            CollectionAssert.AreEqual(originalBytes, await File.ReadAllBytesAsync(path, CancellationToken.None), "Prepared undo must restore exact original encoding, BOM and bytes after both reloaded and disk-only mutations.");
+        }
+        catch (Exception cleanupFailure)
+        {
+            resourceFailure28 = cleanupFailure;
+            throw;
+        }
+        finally
+        {
+            await CleanupFailureCollector.RunAfterFailureAsync("Native workspace resource cleanup failed.", resourceFailure28, workspace.DisposeAsync);
+        }
     }
 
     /// <summary>
@@ -482,26 +467,4 @@ public sealed class UndoServiceTests : IsolatedWorkspaceTestBase
         return (encoding, preamble, bytes);
     }
 
-    /// <summary>
-    /// Forces the snapshot solution to hold <paramref name="filePath"/>'s text (and therefore its
-    /// detected <c>SourceText.Encoding</c>) in memory. Roslyn loads document text lazily, so an
-    /// un-materialized snapshot would re-read whatever is on disk at revert time and conclude
-    /// nothing changed. Real solution-based callers (<c>RefactoringService</c>) always read the
-    /// document while computing their change, so this only reproduces their state.
-    /// </summary>
-    private static async Task MaterializeDocumentTextAsync(Solution solution, string filePath)
-    {
-        var fullPath = Path.GetFullPath(filePath);
-        var document = solution.Projects
-            .SelectMany(p => p.Documents)
-            .FirstOrDefault(d => d.FilePath is not null
-                && string.Equals(Path.GetFullPath(d.FilePath), fullPath, StringComparison.OrdinalIgnoreCase));
-        Assert.IsNotNull(document, $"Expected '{filePath}' to be part of the loaded solution.");
-
-        var text = await document!.GetTextAsync(CancellationToken.None);
-        Assert.IsNotNull(
-            text.Encoding,
-            "Precondition: Roslyn must have detected an encoding for the seeded file — otherwise the " +
-            "test cannot distinguish a preserved encoding from the UTF-8-no-BOM fallback.");
-    }
 }

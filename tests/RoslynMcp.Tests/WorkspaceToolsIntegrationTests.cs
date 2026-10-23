@@ -31,9 +31,6 @@ public sealed class WorkspaceToolsIntegrationTests : SharedWorkspaceTestBase
         WorkspaceId = await GetOrLoadWorkspaceIdAsync(SampleSolutionPath, CancellationToken.None);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     public async Task WorkspaceTools_ListWorkspaces_Returns_Count_And_Id()
     {

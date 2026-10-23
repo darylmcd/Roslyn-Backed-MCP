@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -45,9 +46,6 @@ public sealed class ExternalEditStalenessTests : IsolatedWorkspaceTestBase
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     public void ConfigComparisonRead_DoesNotBlockUndoDeletion()
     {
@@ -70,49 +68,32 @@ public sealed class ExternalEditStalenessTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
-    public void ConfigWriteTransaction_RejectsDriftBeforeAcquiringWriteHandle()
-    {
-        var configPath = Path.Combine(Path.GetTempPath(), $"roslyn-config-drift-{Guid.NewGuid():N}.editorconfig");
-        var original = System.Text.Encoding.UTF8.GetBytes("[*.cs]\nindent_size = 4\n");
-        File.WriteAllBytes(configPath, original);
-        try
+    public Task ConfigWriteOperation_RejectsDriftBeforeAcquiringWriteAuthority()
+        => EditorConfigWriteFixture.RunAsync("[*.cs]\nindent_size = 4\n"u8.ToArray(), async fixture =>
         {
-            // The coordinator may observe original bytes before another writer changes
-            // the file. The exclusive handle must verify that pre-image before writing.
-            File.WriteAllText(configPath, "[*.cs]\nindent_size = 8\n");
-            Assert.ThrowsExactly<EditorConfigConcurrentEditException>(() =>
-                new EditorConfigFileTransaction(configPath, original));
-            StringAssert.Contains(File.ReadAllText(configPath), "indent_size = 8");
-        }
-        finally
-        {
-            File.Delete(configPath);
-        }
-    }
+            var before = "[*.cs]\nindent_size = 4\n"u8.ToArray();
+            var external = "[*.cs]\nindent_size = 8\n"u8.ToArray();
+            var operation = fixture.CreateOperation(before, "[*.cs]\nindent_size = 2\n"u8.ToArray());
+            await File.WriteAllBytesAsync(fixture.ConfigPath, external);
+            await Assert.ThrowsExactlyAsync<EditorConfigConcurrentEditException>(() => fixture.Coordinator.RunOwnedWriteAsync(operation, CancellationToken.None));
+            CollectionAssert.AreEqual(external, await File.ReadAllBytesAsync(fixture.ConfigPath));
+            Assert.IsFalse(operation.Applied);
+        });
 
     [TestMethod]
-    public void FailedNewConfigWriteBeforeBytes_RemovesEmptyFileWithoutStaleness()
-    {
-        var root = Path.Combine(Path.GetTempPath(), $"roslyn-config-empty-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(root);
-        var configPath = Path.Combine(root, ".editorconfig");
-        using var watcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance);
-        var workspaceId = Guid.NewGuid().ToString("N");
-        try
+    public Task FailedNewConfigWriteBeforeBytes_DoesNotCreateFileOrStaleness()
+        => EditorConfigWriteFixture.RunAsync(null, async fixture =>
         {
-            watcher.Watch(workspaceId, Path.Combine(root, "Sample.slnx"));
-            var coordinator = (IEditorConfigWriteCoordinator)watcher;
-            Assert.ThrowsExactly<IOException>(() => coordinator.RunOwnedWrite<object>(
-                workspaceId, configPath, _ => throw new IOException("before write")));
-            Assert.IsFalse(File.Exists(configPath));
-            Assert.IsFalse(watcher.IsStale(workspaceId));
-        }
-        finally
-        {
-            watcher.Unwatch(workspaceId);
-            Directory.Delete(root, recursive: true);
-        }
-    }
+            var primary = new IOException("before write");
+            var attempts = 0;
+            fixture.OnAuthorize = (_, _, _) => { attempts++; throw primary; };
+            var operation = fixture.CreateOperation(null, "[*.cs]\nindent_size = 4\n"u8.ToArray());
+            var observed = await Assert.ThrowsExactlyAsync<IOException>(() => fixture.Coordinator.RunOwnedWriteAsync(operation, CancellationToken.None));
+            Assert.AreEqual(1, attempts);
+            Assert.AreSame(primary, observed);
+            Assert.IsFalse(File.Exists(fixture.ConfigPath));
+            Assert.IsFalse(fixture.Watcher.IsStale(fixture.WorkspaceId));
+        });
 
     [TestMethod]
     [DataRow(false, "create")]
@@ -162,219 +143,94 @@ public sealed class ExternalEditStalenessTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
-    public async Task FailedOwnedEditorConfigWrite_TracksOnlyActualByteChanges()
-    {
-        var root = Path.Combine(Path.GetTempPath(), $"roslyn-config-failure-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(root);
-        var solutionPath = Path.Combine(root, "Sample.slnx");
-        var configPath = Path.Combine(root, ".editorconfig");
-        await File.WriteAllTextAsync(solutionPath, "<Solution />");
-        await File.WriteAllTextAsync(configPath, "[*.cs]\nindent_size = 4\n");
-        using var watcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance);
-        var coordinator = (IEditorConfigWriteCoordinator)watcher;
-        var workspaceId = Guid.NewGuid().ToString("N");
-        try
+    public Task FailedOwnedEditorConfigWrite_TracksOnlyActualByteChanges()
+        => EditorConfigWriteFixture.RunAsync("[*.cs]\nindent_size = 4\n"u8.ToArray(), async fixture =>
         {
-            watcher.Watch(workspaceId, solutionPath);
-            Assert.ThrowsExactly<IOException>(() => coordinator.RunOwnedWrite<object>(workspaceId, configPath,
-                transaction =>
-                {
-                    transaction.WriteBytes(System.Text.Encoding.UTF8.GetBytes("[*.cs]\nindent_size = 4\n"));
-                    throw new IOException("after identical bytes");
-                }));
-            Assert.IsFalse(watcher.IsStale(workspaceId));
-            await Task.Delay(300);
-            Assert.IsFalse(watcher.IsStale(workspaceId), "A delayed event for unchanged bytes must also be ignored.");
-
-            Assert.ThrowsExactly<IOException>(() => coordinator.RunOwnedWrite<object>(workspaceId, configPath,
-                transaction =>
-                {
-                    transaction.WriteBytes(System.Text.Encoding.UTF8.GetBytes("[*.cs]\nindent_size = 8\n"));
-                    throw new IOException("after write");
-                }));
-            Assert.AreEqual("[*.cs]\nindent_size = 4\n", await File.ReadAllTextAsync(configPath));
-            Assert.IsFalse(watcher.IsStale(workspaceId), "A restored failed write has no lasting mutation.");
-            await Task.Delay(300);
-            Assert.IsFalse(watcher.IsStale(workspaceId));
-
-            Assert.ThrowsExactly<EditorConfigUnrecoveredWriteException>(() =>
-                coordinator.RunOwnedWrite<object>(workspaceId, configPath, transaction =>
-                {
-                    transaction.WriteBytes(System.Text.Encoding.UTF8.GetBytes("[*.cs]\nindent_size = 8\n"));
-                    transaction.Dispose(); // Deterministically prevent compensation after a partial write.
-                    throw new IOException("after write with failed restoration");
-                }));
-            Assert.AreEqual(StaleReasons.Apply, watcher.GetStaleReason(workspaceId),
-                "An unrecovered owned write must remain attributable to Apply.");
-            Assert.AreEqual("[*.cs]\nindent_size = 8\n", await File.ReadAllTextAsync(configPath));
-        }
-        finally
-        {
-            watcher.Unwatch(workspaceId);
-            Directory.Delete(root, recursive: true);
-        }
-    }
-
-    [TestMethod]
-    public async Task OwnedEditorConfigWrite_DoesNotMaskLaterDifferentExternalBytes()
-    {
-        var root = Path.Combine(Path.GetTempPath(), $"roslyn-config-race-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(root);
-        var solutionPath = Path.Combine(root, "Sample.slnx");
-        var configPath = Path.Combine(root, ".editorconfig");
-        await File.WriteAllTextAsync(solutionPath, "<Solution />");
-        using var watcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance);
-        var coordinator = (IEditorConfigWriteCoordinator)watcher;
-        var workspaceId = Guid.NewGuid().ToString("N");
-        try
-        {
-            watcher.Watch(workspaceId, solutionPath);
-            coordinator.RunOwnedWrite(workspaceId, configPath, transaction =>
+            var before = "[*.cs]\nindent_size = 4\n"u8.ToArray();
+            var after = "[*.cs]\nindent_size = 8\n"u8.ToArray();
+            foreach (var desired in new[] { before, after })
             {
-                var bytes = System.Text.Encoding.UTF8.GetBytes("[*.cs]\nindent_size = 4\n");
-                transaction.WriteBytes(bytes);
-                return true;
-            });
-            Assert.AreEqual(StaleReasons.Apply, watcher.GetStaleReason(workspaceId));
-
-            // A later write with different bytes is genuine drift even though this path was
-            // previously owned and its first watcher event may still be queued.
-            await File.WriteAllTextAsync(configPath, "[*.cs]\nindent_size = 8\n");
-            Assert.IsTrue(SpinWait.SpinUntil(
-                () => watcher.GetStaleReason(workspaceId) == StaleReasons.ExternalEdit,
-                TimeSpan.FromSeconds(5)));
-
-            coordinator.RunOwnedWrite(workspaceId, configPath, transaction =>
-            {
-                var bytes = System.Text.Encoding.UTF8.GetBytes("[*.cs]\nindent_size = 2\n");
-                transaction.WriteBytes(bytes);
-                return true;
-            });
-            Assert.AreEqual(StaleReasons.ExternalEdit, watcher.GetStaleReason(workspaceId),
-                "An owned write must not erase a prior external-edit finding.");
-        }
-        finally
-        {
-            watcher.Unwatch(workspaceId);
-            Directory.Delete(root, recursive: true);
-        }
-    }
-
-    [TestMethod]
-    public async Task OwnedEditorConfigWrite_WindowsConcurrentReplacementCannotOverwriteLockedFile()
-    {
-        // POSIX permits another writer to open the held inode. The Linux pathname
-        // replacement invariant is covered by OwnedEditorConfigWrite_PosixRenameReplacementRefusesSuccess.
-        if (!OperatingSystem.IsWindows()) Assert.Inconclusive("Requires Windows.");
-
-        var root = Path.Combine(Path.GetTempPath(), $"roslyn-config-replace-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(root);
-        var solutionPath = Path.Combine(root, "Sample.slnx");
-        var configPath = Path.Combine(root, ".editorconfig");
-        await File.WriteAllTextAsync(solutionPath, "<Solution />");
-        using var watcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance);
-        var coordinator = (IEditorConfigWriteCoordinator)watcher;
-        var workspaceId = Guid.NewGuid().ToString("N");
-        try
-        {
-            watcher.Watch(workspaceId, solutionPath);
-            coordinator.RunOwnedWrite(workspaceId, configPath, transaction =>
-            {
-                var intended = System.Text.Encoding.UTF8.GetBytes("[*.cs]\nindent_size = 4\n");
-                Assert.ThrowsExactly<IOException>(() =>
+                var primary = new IOException("after actual native transition");
+                var faults = 0;
+                fixture.OnAuthorize = (native, _, _) =>
                 {
-                    using var competing = new FileStream(configPath, FileMode.Open, FileAccess.Write,
-                        FileShare.ReadWrite | FileShare.Delete);
-                    competing.Write(System.Text.Encoding.UTF8.GetBytes("[*.cs]\nindent_size = 8\n"));
-                });
-                transaction.WriteBytes(intended);
-                return true;
-            });
-            Assert.AreEqual(StaleReasons.Apply, watcher.GetStaleReason(workspaceId));
-            await File.WriteAllTextAsync(configPath, "[*.cs]\nindent_size = 8\n");
-            Assert.IsTrue(SpinWait.SpinUntil(
-                () => watcher.GetStaleReason(workspaceId) == StaleReasons.ExternalEdit,
-                TimeSpan.FromSeconds(5)));
-        }
-        finally
-        {
-            watcher.Unwatch(workspaceId);
-            Directory.Delete(root, recursive: true);
-        }
-    }
-
-    [TestMethod]
-    public void OwnedEditorConfigWrite_PosixSameInodeEditBeforeWriteIsExternalEdit()
-    {
-        if (!OperatingSystem.IsLinux()) Assert.Inconclusive("Requires Linux.");
-
-        var root = Path.Combine(Path.GetTempPath(), $"roslyn-config-inode-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(root);
-        var configPath = Path.Combine(root, ".editorconfig");
-        File.WriteAllText(configPath, "[*.cs]\nindent_size = 4\n");
-        using var watcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance);
-        var workspaceId = Guid.NewGuid().ToString("N");
-        try
-        {
-            watcher.Watch(workspaceId, Path.Combine(root, "Sample.slnx"));
-            var coordinator = (IEditorConfigWriteCoordinator)watcher;
-            Assert.ThrowsExactly<EditorConfigConcurrentEditException>(() =>
-                coordinator.RunOwnedWrite(workspaceId, configPath, transaction =>
-                {
-                    // Linux permits a noncooperating writer on the held inode.
-                    using (var competing = new FileStream(configPath, FileMode.Open, FileAccess.Write,
-                        FileShare.ReadWrite | FileShare.Delete))
+                    if (faults == 0 && HasCompletedConfigTransition(native, fixture.ConfigPath, desired))
                     {
-                        competing.SetLength(0);
-                        competing.Write(System.Text.Encoding.UTF8.GetBytes("[*.cs]\nindent_size = 8\n"));
+                        CollectionAssert.AreEqual(desired, File.ReadAllBytes(fixture.ConfigPath));
+                        faults++;
+                        throw primary;
                     }
-                    transaction.WriteBytes(System.Text.Encoding.UTF8.GetBytes("[*.cs]\nindent_size = 2\n"));
-                    return true;
-                }));
-            Assert.AreEqual(StaleReasons.ExternalEdit, watcher.GetStaleReason(workspaceId));
-            StringAssert.Contains(File.ReadAllText(configPath), "indent_size = 8");
-        }
-        finally
+                    return Task.CompletedTask;
+                };
+                var operation = fixture.CreateOperation(before, desired);
+                var observed = await Assert.ThrowsExactlyAsync<IOException>(() => fixture.Coordinator.RunOwnedWriteAsync(operation, CancellationToken.None));
+                Assert.AreEqual(1, faults, "The fault must follow the actual completed native transition.");
+                Assert.AreSame(primary, observed);
+                CollectionAssert.AreEqual(before, await File.ReadAllBytesAsync(fixture.ConfigPath));
+                Assert.IsFalse(fixture.Watcher.IsStale(fixture.WorkspaceId));
+                await Task.Delay(300);
+                Assert.IsFalse(fixture.Watcher.IsStale(fixture.WorkspaceId), "Delayed events for restored or unchanged bytes must remain clean.");
+            }
+            var forwardFaults = 0;
+            var inverseDenials = 0;
+            fixture.OnAuthorize = (native, paths, _) =>
+            {
+                if (!HasCompletedConfigTransition(native, fixture.ConfigPath, after)) return Task.CompletedTask;
+                if (forwardFaults == 0)
+                {
+                    CollectionAssert.AreEqual(after, File.ReadAllBytes(fixture.ConfigPath));
+                    forwardFaults++;
+                    throw new IOException("after forward transition");
+                }
+                if (paths.Count > 1)
+                {
+                    inverseDenials++;
+                    throw new UnauthorizedAccessException("The actual inverse source admission is denied.");
+                }
+                return Task.CompletedTask;
+            };
+            var failedInverse = fixture.CreateOperation(before, after);
+            await Assert.ThrowsExactlyAsync<EditorConfigUnrecoveredWriteException>(() => fixture.Coordinator.RunOwnedWriteAsync(failedInverse, CancellationToken.None));
+            Assert.AreEqual(1, forwardFaults);
+            Assert.AreEqual(1, inverseDenials);
+            Assert.IsTrue(failedInverse.Applied);
+            Assert.AreEqual(StaleReasons.Apply, fixture.Watcher.GetStaleReason(fixture.WorkspaceId));
+            CollectionAssert.AreEqual(after, await File.ReadAllBytesAsync(fixture.ConfigPath));
+        });
+
+    [TestMethod]
+    public Task OwnedEditorConfigWrite_DoesNotMaskLaterDifferentExternalBytes()
+        => EditorConfigWriteFixture.RunAsync(null, async fixture =>
         {
-            watcher.Unwatch(workspaceId);
-            Directory.Delete(root, recursive: true);
-        }
+            var first = "[*.cs]\nindent_size = 4\n"u8.ToArray();
+            var external = "[*.cs]\nindent_size = 8\n"u8.ToArray();
+            await fixture.Coordinator.RunOwnedWriteAsync(fixture.CreateOperation(null, first), CancellationToken.None);
+            Assert.AreEqual(StaleReasons.Apply, fixture.Watcher.GetStaleReason(fixture.WorkspaceId));
+            await File.WriteAllBytesAsync(fixture.ConfigPath, external);
+            Assert.IsTrue(SpinWait.SpinUntil(() => fixture.Watcher.GetStaleReason(fixture.WorkspaceId) == StaleReasons.ExternalEdit, TimeSpan.FromSeconds(5)));
+            await fixture.Coordinator.RunOwnedWriteAsync(fixture.CreateOperation(external, "[*.cs]\nindent_size = 2\n"u8.ToArray()), CancellationToken.None);
+            Assert.AreEqual(StaleReasons.ExternalEdit, fixture.Watcher.GetStaleReason(fixture.WorkspaceId), "An owned write must preserve the actual prior external attribution.");
+        });
+
+    [TestMethod]
+    public Task OwnedEditorConfigWrite_WindowsConcurrentPlanningEditIsPreserved()
+    {
+        if (!OperatingSystem.IsWindows()) Assert.Inconclusive("Requires Windows.");
+        return AssertConcurrentPlanningEditAsync(replace: false);
     }
 
     [TestMethod]
-    public void OwnedEditorConfigWrite_PosixRenameReplacementRefusesSuccess()
+    public Task OwnedEditorConfigWrite_PosixSameInodeEditBeforeWriteIsExternalEdit()
     {
         if (!OperatingSystem.IsLinux()) Assert.Inconclusive("Requires Linux.");
+        return AssertConcurrentPlanningEditAsync(replace: false);
+    }
 
-        var root = Path.Combine(Path.GetTempPath(), $"roslyn-config-rename-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(root);
-        var configPath = Path.Combine(root, ".editorconfig");
-        var replacementPath = Path.Combine(root, "replacement.editorconfig");
-        File.WriteAllText(configPath, "[*.cs]\nindent_size = 4\n");
-        File.WriteAllText(replacementPath, "[*.cs]\nindent_size = 8\n");
-        using var watcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance);
-        var workspaceId = Guid.NewGuid().ToString("N");
-        try
-        {
-            watcher.Watch(workspaceId, Path.Combine(root, "Sample.slnx"));
-            var coordinator = (IEditorConfigWriteCoordinator)watcher;
-            Assert.ThrowsExactly<EditorConfigConcurrentEditException>(() =>
-                coordinator.RunOwnedWrite(workspaceId, configPath, transaction =>
-                {
-                    // POSIX rename can replace the pathname while the transaction still
-                    // owns its old inode. A subsequent write updates only that unlinked inode.
-                    File.Move(replacementPath, configPath, overwrite: true);
-                    transaction.WriteBytes(System.Text.Encoding.UTF8.GetBytes("[*.cs]\nindent_size = 2\n"));
-                    return true;
-                }));
-            Assert.AreEqual(StaleReasons.ExternalEdit, watcher.GetStaleReason(workspaceId));
-            StringAssert.Contains(File.ReadAllText(configPath), "indent_size = 8");
-        }
-        finally
-        {
-            watcher.Unwatch(workspaceId);
-            Directory.Delete(root, recursive: true);
-        }
+    [TestMethod]
+    public Task OwnedEditorConfigWrite_PosixRenameReplacementRefusesSuccess()
+    {
+        if (!OperatingSystem.IsLinux()) Assert.Inconclusive("Requires Linux.");
+        return AssertConcurrentPlanningEditAsync(replace: true);
     }
 
     /// <summary>
@@ -383,6 +239,106 @@ public sealed class ExternalEditStalenessTests : IsolatedWorkspaceTestBase
     /// writing outside the server apply channel) → <c>workspace_status</c> must report
     /// <c>isStale=true, staleReason="external-edit"</c>.
     /// </summary>
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public Task AwaitedOwnedWrite_ReconcilesExactPathEventsAndPreservesUnrelatedExternalEdit(bool replaceConfig)
+        => EditorConfigWriteFixture.RunAsync("[*.cs]\nindent_size = 4\n"u8.ToArray(), async fixture =>
+        {
+            var before = "[*.cs]\nindent_size = 4\n"u8.ToArray();
+            var desired = "[*.cs]\nindent_size = 8\n"u8.ToArray();
+            var foreign = "[*.cs]\nindent_size = 2\n"u8.ToArray();
+            var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var observedEvent = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var paused = false;
+            fixture.OnAuthorize = async (native, _, ct) =>
+            {
+                if (paused || !HasCompletedConfigTransition(native, fixture.ConfigPath, desired)) return;
+                paused = true;
+                CollectionAssert.AreEqual(desired, File.ReadAllBytes(fixture.ConfigPath));
+                entered.TrySetResult();
+                await release.Task.WaitAsync(ct);
+            };
+            FileSystemWatcher? observer = null;
+            Task? running = null;
+            Exception? primary = null;
+            try
+            {
+                running = fixture.Coordinator.RunOwnedWriteAsync(fixture.CreateOperation(before, desired), CancellationToken.None);
+                await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+                observer = new FileSystemWatcher(fixture.Root, ".editorconfig") { NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.Size };
+                observer.Changed += (_, _) => observedEvent.TrySetResult();
+                observer.EnableRaisingEvents = true;
+                await File.WriteAllBytesAsync(fixture.ConfigPath, replaceConfig ? foreign : desired);
+                await observedEvent.Task.WaitAsync(TimeSpan.FromSeconds(10));
+                if (!replaceConfig)
+                {
+                    await File.WriteAllTextAsync(Path.Combine(fixture.Root, "External.cs"), "public class External { }");
+                    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                    await fixture.Watcher.WaitForStaleAsync(fixture.WorkspaceId, timeout.Token);
+                    Assert.AreEqual(StaleReasons.ExternalEdit, fixture.Watcher.GetStaleReason(fixture.WorkspaceId));
+                }
+                release.TrySetResult();
+                Exception? failure = null;
+                try { await running; }
+                catch (Exception caught) { failure = caught; }
+                finally { running = null; }
+                Assert.IsTrue(paused, "The real completed native transition must reach its awaited current grant.");
+                if (replaceConfig) Assert.IsInstanceOfType<EditorConfigConcurrentEditException>(failure);
+                else Assert.IsNull(failure);
+                CollectionAssert.AreEqual(replaceConfig ? foreign : desired, await File.ReadAllBytesAsync(fixture.ConfigPath));
+                Assert.AreEqual(StaleReasons.ExternalEdit, fixture.Watcher.GetStaleReason(fixture.WorkspaceId));
+            }
+            catch (Exception failure) { primary = failure; throw; }
+            finally
+            {
+                release.TrySetResult();
+                await CleanupFailureCollector.RunAfterFailureAsync("Awaited config event fixture cleanup failed.", primary,
+                    async () => { if (running is not null) await running; },
+                    CleanupFailureCollector.FromAction(() => observer?.Dispose()));
+            }
+        });
+
+    private static bool HasCompletedConfigTransition(PhysicalMutationRecovery operation, string path, byte[] bytes)
+        => operation.CompletedSourceTransition(path) is { OriginalText: not null } completed
+            && completed.OriginalBytes.AsSpan().SequenceEqual(bytes);
+
+    private static Task AssertConcurrentPlanningEditAsync(bool replace)
+        => EditorConfigWriteFixture.RunAsync("[*.cs]\nindent_size = 4\n"u8.ToArray(), async fixture =>
+        {
+            var before = "[*.cs]\nindent_size = 4\n"u8.ToArray();
+            var external = "[*.cs]\nindent_size = 8\n"u8.ToArray();
+            var replacement = Path.Combine(fixture.Root, "replacement.editorconfig");
+            await File.WriteAllBytesAsync(replacement, external);
+            var mutations = 0;
+            fixture.OnAuthorize = (_, paths, _) =>
+            {
+                if (mutations == 0 && paths.Count > 1 && paths.Contains(fixture.ConfigPath))
+                {
+                    if (replace) File.Move(replacement, fixture.ConfigPath, overwrite: true);
+                    else
+                    {
+                        using var competing = new FileStream(fixture.ConfigPath, FileMode.Open, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete);
+                        competing.SetLength(0);
+                        competing.Write(external);
+                    }
+                    CollectionAssert.AreEqual(external, File.ReadAllBytes(fixture.ConfigPath));
+                    mutations++;
+                }
+                return Task.CompletedTask;
+            };
+            var operation = fixture.CreateOperation(before, "[*.cs]\nindent_size = 2\n"u8.ToArray());
+            Exception? failure = null;
+            try { await fixture.Coordinator.RunOwnedWriteAsync(operation, CancellationToken.None); }
+            catch (Exception caught) { failure = caught; }
+            Assert.AreEqual(1, mutations, "The actual source-transition admission callback must change the physical input before the verdict.");
+            Assert.IsInstanceOfType<PublicInvalidOperationException>(failure);
+            Assert.IsFalse(operation.Applied);
+            Assert.AreEqual(StaleReasons.ExternalEdit, fixture.Watcher.GetStaleReason(fixture.WorkspaceId));
+            CollectionAssert.AreEqual(external, await File.ReadAllBytesAsync(fixture.ConfigPath));
+        });
+
     [TestMethod]
     public async Task ExternalCsFileWrite_FlipsIsStale_AndSetsReasonToExternalEdit()
     {

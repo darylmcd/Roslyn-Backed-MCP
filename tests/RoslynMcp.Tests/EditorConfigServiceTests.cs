@@ -23,9 +23,6 @@ public sealed class EditorConfigServiceTests : IsolatedWorkspaceTestBase
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
 
     [TestMethod]
     public async Task SetOptionAsync_BlankKey_PublishesSafeRefusalWithoutMutatingState()
@@ -257,7 +254,7 @@ public sealed class EditorConfigServiceTests : IsolatedWorkspaceTestBase
         string? workspaceId = null;
         try
         {
-            workspaceId = (await WorkspaceManager.LoadAsync(projectPath, CancellationToken.None)).WorkspaceId;
+            workspaceId = (await WorkspaceManager.LoadAsync(projectPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(projectPath, new Dictionary<string, string>()), CancellationToken.None)).WorkspaceId;
             await Assert.ThrowsExactlyAsync<UnauthorizedAccessException>(() =>
                 EditorConfigService.SetOptionAsync(workspaceId, source, "indent_size", "8",
                     "set_editorconfig_option", CancellationToken.None));
@@ -350,6 +347,28 @@ public sealed class EditorConfigServiceTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task SetOptionAsync_UnchangedBytes_PreservesUndoLedgerVersionAndFreshness()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var source = workspace.GetPath("SampleLib", "Dog.cs");
+        var first = await EditorConfigService.SetOptionAsync(workspace.WorkspaceId, source,
+            "indent_size", "8", "set_editorconfig_option", CancellationToken.None);
+        await WorkspaceManager.ReloadAsync(workspace.WorkspaceId, CancellationToken.None);
+        var bytes = await File.ReadAllBytesAsync(first.EditorConfigPath);
+        var prior = UndoService.GetLastOperation(workspace.WorkspaceId);
+        var count = ChangeTracker.GetChanges(workspace.WorkspaceId).Count;
+        var version = WorkspaceManager.GetCurrentVersion(workspace.WorkspaceId);
+        await EditorConfigService.SetOptionAsync(workspace.WorkspaceId, source,
+            "indent_size", "8", "set_editorconfig_option", CancellationToken.None);
+        await Task.Delay(300);
+        CollectionAssert.AreEqual(bytes, await File.ReadAllBytesAsync(first.EditorConfigPath));
+        Assert.AreEqual(prior, UndoService.GetLastOperation(workspace.WorkspaceId));
+        Assert.AreEqual(count, ChangeTracker.GetChanges(workspace.WorkspaceId).Count);
+        Assert.AreEqual(version, WorkspaceManager.GetCurrentVersion(workspace.WorkspaceId));
+        Assert.IsFalse(WorkspaceManager.GetStatus(workspace.WorkspaceId).IsStale);
+    }
+
+    [TestMethod]
     public async Task SetOptionAsync_FailedPostWriteCheck_PreservesPriorUndoAndChangeHistory()
     {
         await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
@@ -380,14 +399,10 @@ public sealed class EditorConfigServiceTests : IsolatedWorkspaceTestBase
 
     private sealed class RejectAfterWriteCoordinator : IEditorConfigWriteCoordinator
     {
-        public T RunOwnedWrite<T>(string workspaceId, string path, Func<EditorConfigFileTransaction, T> write)
+        public async Task RunOwnedWriteAsync(EditorConfigWriteOperation operation, CancellationToken ct)
         {
-            var originalBytes = File.ReadAllBytes(path);
-            using (var transaction = new EditorConfigFileTransaction(path, originalBytes))
-            {
-                _ = write(transaction);
-            }
-            File.WriteAllBytes(path, originalBytes);
+            await operation.ApplyAsync(ct);
+            await operation.CompensateAsync(ct);
             throw new EditorConfigConcurrentEditException();
         }
     }
@@ -418,11 +433,9 @@ public sealed class EditorConfigServiceTests : IsolatedWorkspaceTestBase
 
     private sealed class UnrecoveredAfterWriteCoordinator : IEditorConfigWriteCoordinator
     {
-        public T RunOwnedWrite<T>(string workspaceId, string path, Func<EditorConfigFileTransaction, T> write)
+        public async Task RunOwnedWriteAsync(EditorConfigWriteOperation operation, CancellationToken ct)
         {
-            var originalBytes = File.ReadAllBytes(path);
-            using var transaction = new EditorConfigFileTransaction(path, originalBytes);
-            _ = write(transaction);
+            await operation.ApplyAsync(ct);
             throw new EditorConfigUnrecoveredWriteException(new IOException("simulated failed restoration"));
         }
     }
@@ -431,20 +444,28 @@ public sealed class EditorConfigServiceTests : IsolatedWorkspaceTestBase
     public async Task ParseEditorconfigCsKeys_ClosesReadHandleBeforeYielding()
     {
         if (!OperatingSystem.IsWindows()) Assert.Inconclusive("Requires Windows.");
-
-        var configPath = Path.Combine(Path.GetTempPath(), $"roslyn-config-read-{Guid.NewGuid():N}.editorconfig");
-        await File.WriteAllTextAsync(configPath, "[*.cs]\nindent_size = 4\n");
+        var configPath = Path.Combine(TestTempRoot.Current, $"roslyn-config-read-{Guid.NewGuid():N}.editorconfig");
+        var prepared = configPath + ".prepared";
+        Exception? primary = null;
         try
         {
+            await File.WriteAllTextAsync(configPath, "[*.cs]\nindent_size = 4\n");
             using var entries = EditorConfigService.ParseEditorconfigCsKeys(configPath).GetEnumerator();
             Assert.IsTrue(entries.MoveNext());
             Assert.AreEqual("4", entries.Current.Value);
-            await AtomicFileWriter.WriteAllTextAsync(configPath, "[*.cs]\nindent_size = 8\n", CancellationToken.None);
+            await File.WriteAllTextAsync(prepared, "[*.cs]\nindent_size = 8\n");
+            // An active File.ReadLines handle shares reads only and blocks this actual
+            // native replacement. Parsing must close it before yielding the first key.
+            File.Move(prepared, configPath, overwrite: true);
+            Assert.IsFalse(File.Exists(prepared));
             Assert.AreEqual("[*.cs]\nindent_size = 8\n", await File.ReadAllTextAsync(configPath));
         }
+        catch (Exception failure) { primary = failure; throw; }
         finally
         {
-            File.Delete(configPath);
+            await CleanupFailureCollector.RunAfterFailureAsync("Config parser handle closure and fixture cleanup failed.", primary,
+                CleanupFailureCollector.FromAction(() => File.Delete(prepared)),
+                CleanupFailureCollector.FromAction(() => File.Delete(configPath)));
         }
     }
 

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using RoslynMcp.Core.Models;
@@ -111,9 +112,9 @@ internal static partial class DotnetOutputParser
     /// </summary>
     public static TestRunResultDto ParseTestRun(
         CommandExecutionDto execution,
-        IReadOnlyList<string> trxPaths)
+        IReadOnlyList<XDocument> reports)
     {
-        if (trxPaths.Count == 0)
+        if (reports.Count == 0)
         {
             var envelope = execution.Succeeded
                 ? null
@@ -133,20 +134,30 @@ internal static partial class DotnetOutputParser
         var passed = 0;
         var failed = 0;
         var skipped = 0;
+        var unsuccessfulReport = false;
         var failures = new List<TestFailureDto>();
 
-        foreach (var trxPath in trxPaths.OrderBy(p => p, StringComparer.OrdinalIgnoreCase))
+        foreach (var document in reports)
         {
-            var one = ParseSingleTrxFile(trxPath);
-            total += one.Total;
-            passed += one.Passed;
-            failed += one.Failed;
-            skipped += one.Skipped;
+            var one = ParseSingleTrx(document);
+            try
+            {
+                checked
+                {
+                    total += one.Total;
+                    passed += one.Passed;
+                    failed += one.Failed;
+                    skipped += one.Skipped;
+                }
+            }
+            catch (OverflowException) { throw InvalidReport(); }
+            unsuccessfulReport |= one.Unsuccessful;
             failures.AddRange(one.Failures);
         }
 
         var failureEnvelope = execution.Succeeded
-            ? null
+            ? unsuccessfulReport ? new TestRunFailureEnvelopeDto("Unknown", false,
+                "The test report contains an unsuccessful or incomplete outcome.", null, null) : null
             : ClassifyExecutionFailure(execution, producedTrx: true);
         return new TestRunResultDto(execution, total, passed, failed, skipped, failures, failureEnvelope);
     }
@@ -267,26 +278,54 @@ internal static partial class DotnetOutputParser
     /// </summary>
     internal const string TruncationMarker = "... [truncated]";
 
-    private static (int Total, int Passed, int Failed, int Skipped, List<TestFailureDto> Failures) ParseSingleTrxFile(string trxPath)
+    private static (int Total, int Passed, int Failed, int Skipped, List<TestFailureDto> Failures, bool Unsuccessful) ParseSingleTrx(XDocument document)
     {
-        if (!File.Exists(trxPath))
-            return (0, 0, 0, 0, []);
-
-        var document = XmlFileLoader.Load(trxPath);
 
         // TeamTest TRX uses the 2010 namespace, but some hosts emit the same local names under
         // a different default namespace. Match by local element name so failed tests are not
         // dropped while <Counters> still reports failed > 0 (integration: ValidationIntegrationTests).
-        var counters = document.Descendants()
-            .FirstOrDefault(e => string.Equals(e.Name.LocalName, "Counters", StringComparison.Ordinal));
+        var root = document.Root;
+        if (root?.Name.LocalName != "TestRun") throw InvalidReport();
+        var summaries = root.Elements().Where(element => element.Name.LocalName == "ResultSummary").ToArray();
+        if (summaries.Length != 1 || root.Descendants().Count(element => element.Name.LocalName == "ResultSummary") != 1)
+            throw InvalidReport();
+        var candidates = summaries[0].Elements().Where(element => element.Name.LocalName == "Counters").ToArray();
+        if (candidates.Length != 1 || root.Descendants().Count(element => element.Name.LocalName == "Counters") != 1)
+            throw InvalidReport();
+        var counters = candidates[0];
         var total = ParseCounter(counters, "total");
+        foreach (var attribute in counters.Attributes().Where(attribute => !attribute.IsNamespaceDeclaration))
+        {
+            if (attribute.Name.Namespace != XNamespace.None || ParseCounterValue(attribute.Value) > total)
+                throw InvalidReport();
+        }
         var passed = ParseCounter(counters, "passed");
         var failed = ParseCounter(counters, "failed");
         var skipped = ParseCounter(counters, "notExecuted");
+        if (counters.Attribute("executed") is not null)
+        {
+            var executed = ParseCounter(counters, "executed");
+            if (passed > executed || failed > executed) throw InvalidReport();
+        }
+        var summaryOutcome = (string?)summaries[0].Attribute("outcome");
+        if (summaryOutcome is not null && !IsKnownOutcome(summaryOutcome)) throw InvalidReport();
 
         var unitResults = document.Descendants()
             .Where(e => string.Equals(e.Name.LocalName, "UnitTestResult", StringComparison.Ordinal))
             .ToList();
+        foreach (var result in unitResults)
+        {
+            var outcome = (string?)result.Attribute("outcome");
+            if (outcome is null || !IsKnownOutcome(outcome)) throw InvalidReport();
+        }
+        var unsuccessful = IsUnsuccessfulOutcome(summaryOutcome)
+            || new[] { "error", "timeout", "aborted", "notRunnable", "passedButRunAborted", "disconnected", "inProgress", "pending" }
+                .Any(name => ParseCounter(counters, name) > 0);
+        var adverseDetails = unitResults.Any(result => IsUnsuccessfulOutcome((string?)result.Attribute("outcome")));
+        if (unitResults.Any(result => string.Equals((string?)result.Attribute("outcome"), "Failed", StringComparison.OrdinalIgnoreCase)) && failed == 0
+            || adverseDetails && string.Equals((string?)summaries[0].Attribute("outcome"), "Passed", StringComparison.OrdinalIgnoreCase))
+            throw InvalidReport();
+        unsuccessful |= adverseDetails;
 
         if (skipped == 0)
         {
@@ -297,12 +336,39 @@ internal static partial class DotnetOutputParser
                        string.Equals(outcome, "Inconclusive", StringComparison.OrdinalIgnoreCase);
             });
         }
+        // Passing and skipped executions are disjoint lower bounds, even when other
+        // native outcome categories account for the remaining total.
+        if (skipped > total || passed > total - skipped) throw InvalidReport();
+        // Each nonempty fragment must establish its own result proof before aggregation.
+        // A legitimate zero-test project contributes neither positive nor adverse evidence.
+        if (total > 0 && passed == 0 && failed == 0 && skipped == 0) unsuccessful = true;
 
+        // Result testName is a display label (including data-row arguments), not a
+        // method identity. Resolve only unique definitions within this TRX document.
+        var definitions = document.Descendants().Where(element => element.Name.LocalName == "TestDefinitions")
+            .SelectMany(element => element.Elements().Where(child => child.Name.LocalName == "UnitTest"))
+            .Where(element => !string.IsNullOrWhiteSpace((string?)element.Attribute("id")))
+            .ToLookup(element => (string)element.Attribute("id")!, StringComparer.Ordinal);
+        string? ResolveMethodName(XElement result)
+        {
+            var id = (string?)result.Attribute("testId");
+            if (id is null) return null;
+            var matches = definitions[id].ToArray();
+            if (matches.Length != 1) return null;
+            var methods = matches[0].Elements().Where(element => element.Name.LocalName == "TestMethod").ToArray();
+            if (methods.Length != 1) return null;
+            var className = (string?)methods[0].Attribute("className");
+            var methodName = (string?)methods[0].Attribute("name");
+            return string.IsNullOrWhiteSpace(className) || string.IsNullOrWhiteSpace(methodName)
+                ? null : className + "." + methodName;
+        }
         var failures = unitResults
             .Where(result => string.Equals((string?)result.Attribute("outcome"), "Failed", StringComparison.OrdinalIgnoreCase))
             .Select(result =>
             {
-                var fullyQualifiedName = (string?)result.Attribute("testName");
+                var testName = (string?)result.Attribute("testName");
+                var methodName = ResolveMethodName(result);
+                var fullyQualifiedName = methodName ?? testName;
                 var output = result.Elements().FirstOrDefault(e => string.Equals(e.Name.LocalName, "Output", StringComparison.Ordinal));
                 var errorInfo = output?.Elements()
                     .FirstOrDefault(e => string.Equals(e.Name.LocalName, "ErrorInfo", StringComparison.Ordinal));
@@ -311,14 +377,14 @@ internal static partial class DotnetOutputParser
                 var stackEl = errorInfo?.Elements()
                     .FirstOrDefault(e => string.Equals(e.Name.LocalName, "StackTrace", StringComparison.Ordinal));
                 return new TestFailureDto(
-                    DisplayName: GetDisplayName(fullyQualifiedName),
+                    DisplayName: methodName is null ? GetDisplayName(testName) : testName ?? GetDisplayName(methodName),
                     FullyQualifiedName: fullyQualifiedName,
                     Message: TruncateHead(messageEl?.Value, TestFailureMessageMaxChars) ?? "Test failed",
                     StackTrace: TruncateHead(stackEl?.Value, TestFailureStackTraceMaxChars));
             })
             .ToList();
 
-        return (total, passed, failed, skipped, failures);
+        return (total, passed, failed, skipped, failures, unsuccessful);
     }
 
     private static string Capitalize(string value) =>
@@ -329,8 +395,21 @@ internal static partial class DotnetOutputParser
     private static int ParseCounter(XElement? counters, string attributeName)
     {
         var value = counters?.Attribute(attributeName)?.Value;
-        return int.TryParse(value, out var parsed) ? parsed : 0;
+        return value is null ? 0 : ParseCounterValue(value);
     }
+
+    private static int ParseCounterValue(string value) =>
+        int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) && parsed >= 0
+            ? parsed : throw InvalidReport();
+
+    private static bool IsUnsuccessfulOutcome(string? outcome) => outcome is not null
+        && new[] { "Error", "Failed", "Timeout", "Aborted", "NotRunnable", "PassedButRunAborted", "Disconnected", "InProgress", "Pending" }
+            .Contains(outcome, StringComparer.OrdinalIgnoreCase);
+
+    private static bool IsKnownOutcome(string outcome) => IsUnsuccessfulOutcome(outcome)
+        || new[] { "Inconclusive", "NotExecuted", "Warning", "Passed", "Completed" }.Contains(outcome, StringComparer.OrdinalIgnoreCase);
+
+    private static InvalidDataException InvalidReport() => new("The test report does not establish consistent test-result authority.");
 
     private static string GetDisplayName(string? fullyQualifiedName)
     {

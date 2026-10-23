@@ -127,11 +127,12 @@ public sealed class TypeMoveService : ITypeMoveService
         newSolution = await RemoveUnusedUsingsAsync(newSolution, newDocument.Id, ct).ConfigureAwait(false);
 
         // Compute diff
-        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
+        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, SolutionDiffReadContext.ForWorkspace(_workspace, workspaceId), ct).ConfigureAwait(false);
         ct.ThrowIfCancellationRequested();
         var description = $"Move type '{typeName}' to {targetFileName}";
         var token = _previewStore.Store(
             workspaceId,
+            solution,
             newSolution,
             _workspace.GetCurrentVersion(workspaceId),
             description,

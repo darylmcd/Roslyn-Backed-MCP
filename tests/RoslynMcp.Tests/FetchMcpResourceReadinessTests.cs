@@ -51,9 +51,6 @@ public sealed class FetchMcpResourceReadinessTests : SharedWorkspaceTestBase
         _workspaceId = await GetOrLoadWorkspaceIdAsync(SampleSolutionPath, CancellationToken.None);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     /// <summary>
     /// Three back-to-back status fetches on a freshly-loaded workspace must all succeed
     /// with a valid payload and no error envelope. Mirrors the Cursor repro described in

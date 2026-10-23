@@ -20,9 +20,6 @@ public sealed class WorkspaceReadinessReportIntegrationTests : IsolatedWorkspace
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     [TestCategory("Process")]
     public async Task SampleSolution_ReadinessReport_ReturnsReadyVerdict()
@@ -76,7 +73,7 @@ public sealed class WorkspaceReadinessReportIntegrationTests : IsolatedWorkspace
     public async Task RepoSolution_ReadinessReport_ReturnsOnboardingPayload()
     {
         var repositorySolutionPath = Path.Combine(RepositoryRootPath, "RoslynMcp.slnx");
-        var loaded = await WorkspaceManager.LoadAsync(repositorySolutionPath, CancellationToken.None);
+        var loaded = await WorkspaceManager.LoadAsync(repositorySolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(repositorySolutionPath, new Dictionary<string, string>()), CancellationToken.None);
 
         try
         {

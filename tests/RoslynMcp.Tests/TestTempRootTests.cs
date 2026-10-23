@@ -18,6 +18,23 @@ public sealed class TestTempRootTests
 {
     private readonly List<string> _created = [];
 
+    [TestMethod]
+    public void ReapAbandonedRuns_PreservesAnOldLiveOwner()
+    {
+        var parent = Path.Combine(TestTempRoot.Current, "reaper-proof-" + Guid.NewGuid().ToString("N"));
+        _created.Add(parent);
+        var sibling = Path.Combine(parent, $"run-{Environment.ProcessId}-live");
+        Directory.CreateDirectory(sibling);
+        var marker = Path.Combine(sibling, "fixture.txt");
+        File.WriteAllText(marker, "live work");
+
+        TestTempRoot.ReapAbandonedRuns(parent, Path.Combine(parent, "current"),
+            DateTime.UtcNow + TestTempRoot.StaleRunAge + TimeSpan.FromDays(1));
+
+        Assert.IsTrue(Directory.Exists(sibling), "Age must never authorize deletion of a live owner's fixture.");
+        Assert.AreEqual("live work", File.ReadAllText(marker));
+    }
+
     [TestCleanup]
     public void Cleanup()
     {
@@ -99,7 +116,8 @@ public sealed class TestTempRootTests
     [TestMethod]
     public void ReapAbandonedRuns_RemovesASiblingRunOlderThanTheStaleThreshold()
     {
-        var sibling = CreateSiblingRun("sibling-abandoned");
+        Assert.ThrowsExactly<ArgumentException>(() => System.Diagnostics.Process.GetProcessById(int.MaxValue));
+        var sibling = CreateSiblingRun(int.MaxValue.ToString(System.Globalization.CultureInfo.InvariantCulture));
         Backdate(sibling, TestTempRoot.StaleRunAge + TimeSpan.FromHours(1));
 
         TestTempRoot.ReapAbandonedRuns(DateTime.UtcNow);
@@ -107,6 +125,16 @@ public sealed class TestTempRootTests
         Assert.IsFalse(
             Directory.Exists(sibling),
             "An abandoned run directory was not reaped — isolating the root would leak %TEMP% forever.");
+    }
+
+    [TestMethod]
+    public void ReapAbandonedRuns_RetainsOldUnknownOwnership()
+    {
+        var sibling = CreateSiblingRun("unknown-owner");
+        Backdate(sibling, TestTempRoot.StaleRunAge + TimeSpan.FromDays(1));
+        TestTempRoot.ReapAbandonedRuns(DateTime.UtcNow);
+        Assert.IsTrue(Directory.Exists(sibling));
+        Assert.AreEqual("in-flight work", File.ReadAllText(Path.Combine(sibling, "fixture.txt")));
     }
 
     [TestMethod]

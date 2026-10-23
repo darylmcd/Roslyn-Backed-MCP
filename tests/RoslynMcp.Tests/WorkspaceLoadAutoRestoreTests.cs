@@ -20,9 +20,6 @@ public sealed class WorkspaceLoadAutoRestoreTests : SharedWorkspaceTestBase
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     public async Task Omitted_MissingAssets_RestoresAndReloads()
     {
@@ -31,9 +28,9 @@ public sealed class WorkspaceLoadAutoRestoreTests : SharedWorkspaceTestBase
             var executor = new ScriptedExecutor(ExecutionResult.Success);
 
             var outcome = await WorkspaceTools.RestoreAndReloadIfRequiredAsync(
-                executor, ValidationOptions, manager, status, autoRestore: null, NullLogger.Instance, CancellationToken.None);
+                executor, ValidationOptions, manager, status, autoRestore: null, NullLogger.Instance, CancellationToken.None, timeProvider:System.TimeProvider.System);
 
-            Assert.HasCount(1, executor.Invocations, "A never-restored project must trigger exactly one restore.");
+            Assert.HasCount(status.ProjectCount, executor.Invocations, "The never-restored graph must restore each evaluated project context.");
             Assert.IsNull(outcome.FailureReason);
         });
     }
@@ -46,7 +43,7 @@ public sealed class WorkspaceLoadAutoRestoreTests : SharedWorkspaceTestBase
             var executor = new ScriptedExecutor(ExecutionResult.Success);
 
             var outcome = await WorkspaceTools.RestoreAndReloadIfRequiredAsync(
-                executor, ValidationOptions, manager, status, autoRestore: null, NullLogger.Instance, CancellationToken.None);
+                executor, ValidationOptions, manager, status, autoRestore: null, NullLogger.Instance, CancellationToken.None, timeProvider:System.TimeProvider.System);
 
             Assert.IsEmpty(executor.Invocations, "Package drift alone must not spawn a restore on the default path.");
             Assert.IsTrue(outcome.Status.RestoreRequired);
@@ -62,9 +59,9 @@ public sealed class WorkspaceLoadAutoRestoreTests : SharedWorkspaceTestBase
             var executor = new ScriptedExecutor(ExecutionResult.Success);
 
             await WorkspaceTools.RestoreAndReloadIfRequiredAsync(
-                executor, ValidationOptions, manager, status, autoRestore: true, NullLogger.Instance, CancellationToken.None);
+                executor, ValidationOptions, manager, status, autoRestore: true, NullLogger.Instance, CancellationToken.None, timeProvider:System.TimeProvider.System);
 
-            Assert.HasCount(1, executor.Invocations, "Explicit autoRestore=true keeps restoring for drift.");
+            Assert.HasCount(status.ProjectCount, executor.Invocations, "Explicit autoRestore=true restores each evaluated project context for drift.");
         });
     }
 
@@ -76,7 +73,7 @@ public sealed class WorkspaceLoadAutoRestoreTests : SharedWorkspaceTestBase
             var executor = new ScriptedExecutor(ExecutionResult.Success);
 
             var outcome = await WorkspaceTools.RestoreAndReloadIfRequiredAsync(
-                executor, ValidationOptions, manager, status, autoRestore: false, NullLogger.Instance, CancellationToken.None);
+                executor, ValidationOptions, manager, status, autoRestore: false, NullLogger.Instance, CancellationToken.None, timeProvider:System.TimeProvider.System);
 
             Assert.IsEmpty(executor.Invocations);
             Assert.IsTrue(outcome.Status.RestoreRequired);
@@ -92,7 +89,7 @@ public sealed class WorkspaceLoadAutoRestoreTests : SharedWorkspaceTestBase
             var executor = new ScriptedExecutor(ExecutionResult.ExitCodeOne);
 
             var outcome = await WorkspaceTools.RestoreAndReloadIfRequiredAsync(
-                executor, ValidationOptions, manager, status, autoRestore: null, NullLogger.Instance, CancellationToken.None);
+                executor, ValidationOptions, manager, status, autoRestore: null, NullLogger.Instance, CancellationToken.None, timeProvider:System.TimeProvider.System);
 
             Assert.IsTrue(outcome.Status.RestoreRequired, "A failed restore must leave restoreRequired=true.");
             Assert.IsNotNull(outcome.FailureReason);
@@ -108,19 +105,26 @@ public sealed class WorkspaceLoadAutoRestoreTests : SharedWorkspaceTestBase
     }
 
     [TestMethod]
-    public async Task Omitted_UnreadableProjectFile_DoesNotFailTheLoadOrRestore()
+    public async Task Omitted_UnreadableProjectFile_ReportsIndeterminateRestoreAndPreservesLoadedSession()
     {
         await WithWorkspace(assets: AssetsState.Missing, async (manager, status, root) =>
         {
             var executor = new ScriptedExecutor(ExecutionResult.Success);
+            var beforeSolution = manager.GetCurrentSolution(status.WorkspaceId);
+            var beforeVersion = manager.GetCurrentVersion(status.WorkspaceId);
             using var locks = new DisposableList(
                 status.Projects.Select(p => new FileStream(p.FilePath, FileMode.Open, FileAccess.Read, FileShare.None)));
 
             var outcome = await WorkspaceTools.RestoreAndReloadIfRequiredAsync(
-                executor, ValidationOptions, manager, status, autoRestore: null, NullLogger.Instance, CancellationToken.None);
+                executor, ValidationOptions, manager, status, autoRestore: null, NullLogger.Instance, CancellationToken.None, timeProvider:System.TimeProvider.System);
 
-            Assert.IsEmpty(executor.Invocations, "An unreadable project is not-missing, never a load failure or a restore trigger.");
-            Assert.IsNull(outcome.FailureReason);
+            Assert.IsEmpty(executor.Invocations, "Indeterminate graph evaluation must not issue a restore command.");
+            Assert.IsNotNull(outcome.FailureReason);
+            AssertPathFree(outcome.FailureReason, root);
+            Assert.IsTrue(outcome.Status.RestoreRequired);
+            Assert.AreSame(status, outcome.Status);
+            Assert.AreSame(beforeSolution, manager.GetCurrentSolution(status.WorkspaceId));
+            Assert.AreEqual(beforeVersion, manager.GetCurrentVersion(status.WorkspaceId));
         });
     }
 
@@ -145,7 +149,7 @@ public sealed class WorkspaceLoadAutoRestoreTests : SharedWorkspaceTestBase
             var executor = new ScriptedExecutor(ExecutionResult.TimesOut);
 
             var outcome = await WorkspaceTools.RestoreAndReloadIfRequiredAsync(
-                executor, ValidationOptions, manager, status, autoRestore: null, NullLogger.Instance, CancellationToken.None);
+                executor, ValidationOptions, manager, status, autoRestore: null, NullLogger.Instance, CancellationToken.None, timeProvider:System.TimeProvider.System);
 
             Assert.IsTrue(outcome.Status.RestoreRequired);
             Assert.IsNotNull(outcome.FailureReason);
@@ -163,7 +167,7 @@ public sealed class WorkspaceLoadAutoRestoreTests : SharedWorkspaceTestBase
 
             await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
                 WorkspaceTools.RestoreAndReloadIfRequiredAsync(
-                    executor, ValidationOptions, manager, status, autoRestore: true, NullLogger.Instance, CancellationToken.None));
+                    executor, ValidationOptions, manager, status, autoRestore: true, NullLogger.Instance, CancellationToken.None, timeProvider:System.TimeProvider.System));
         });
     }
 
@@ -178,7 +182,7 @@ public sealed class WorkspaceLoadAutoRestoreTests : SharedWorkspaceTestBase
 
             await Assert.ThrowsAsync<OperationCanceledException>(() =>
                 WorkspaceTools.RestoreAndReloadIfRequiredAsync(
-                    executor, ValidationOptions, manager, status, autoRestore: null, NullLogger.Instance, cts.Token));
+                    executor, ValidationOptions, manager, status, autoRestore: null, NullLogger.Instance, cts.Token, timeProvider:System.TimeProvider.System));
         });
     }
 
@@ -190,7 +194,7 @@ public sealed class WorkspaceLoadAutoRestoreTests : SharedWorkspaceTestBase
             var executor = new ScriptedExecutor(ExecutionResult.Success);
 
             await WorkspaceTools.RestoreAndReloadIfRequiredAsync(
-                executor, ValidationOptions, manager, status with { RestoreRequired = false }, autoRestore: null, NullLogger.Instance, CancellationToken.None);
+                executor, ValidationOptions, manager, status with { RestoreRequired = false }, autoRestore: null, NullLogger.Instance, CancellationToken.None, timeProvider:System.TimeProvider.System);
 
             Assert.IsEmpty(executor.Invocations);
         });
@@ -217,12 +221,12 @@ public sealed class WorkspaceLoadAutoRestoreTests : SharedWorkspaceTestBase
         var copiedRoot = Path.GetDirectoryName(copiedSolutionPath)!;
         try
         {
-            using var manager = new WorkspaceManager(
+            using var manager = new WorkspaceManager(new RoslynMcp.Roslyn.Services.ForkInvocationPathPolicy(new RoslynMcp.Tests.Helpers.OwnedTestWorkspacePathPolicy()),
                 NullLogger<WorkspaceManager>.Instance,
                 new PreviewStore(),
                 new FileWatcherService(NullLogger<FileWatcherService>.Instance),
                 new WorkspaceManagerOptions { MaxConcurrentWorkspaces = 4, RestoreRaceWaitMs = 0 });
-            var status = await manager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+            var status = await manager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
 
             foreach (var objDir in Directory.EnumerateDirectories(copiedRoot, "obj", SearchOption.AllDirectories).ToArray())
             {
@@ -257,6 +261,31 @@ public sealed class WorkspaceLoadAutoRestoreTests : SharedWorkspaceTestBase
     /// <summary>Scripted stand-in for the gated <c>dotnet restore</c> executor; records each invocation.</summary>
     private sealed class ScriptedExecutor(ExecutionResult result) : IGatedCommandExecutor
     {
+        public Task<BuildCommandRun> ExecuteBuildAsync(BuildCommandPlan plan, TimeSpan timeout, CancellationToken ct) =>
+            throw new NotSupportedException("This fixture does not execute builds.");
+
+        public async Task<CommandExecutionDto> ExecuteAuthorizedAsync(
+            string workspaceId, string targetPath, IReadOnlyList<string> arguments, TimeSpan timeout,
+            Func<CancellationToken, Task> authorizeStart, CancellationToken ct)
+        {
+            await authorizeStart(ct).ConfigureAwait(false);
+            return await ExecuteAsync(workspaceId, targetPath, arguments, timeout, ct).ConfigureAwait(false);
+        }
+        public Task<TestRunResultDto> ExecuteTestAsync(
+            string workspaceId, string targetPath, IReadOnlyList<string> arguments,
+            Func<CommandExecutionDto, CancellationToken, Task<TestRunResultDto>> collectResults,
+            TimeSpan timeout, IReadOnlyList<EarlyKillPattern>? earlyKillPatterns, Func<CancellationToken, Task> authorizeStart, CancellationToken ct) =>
+            throw new NotSupportedException("This fixture does not execute tests.");
+
+        public Task<CommandExecutionDto> ExecuteAsync(
+            string workspaceId, string targetPath, IReadOnlyList<string> arguments, TimeSpan timeout,
+            IReadOnlyList<EarlyKillPattern>? earlyKillPatterns, CancellationToken ct)
+        {
+            if (earlyKillPatterns is { Count: > 0 })
+                throw new NotSupportedException("This fixture does not simulate streaming early-kill patterns.");
+            return ExecuteAsync(workspaceId, targetPath, arguments, timeout, ct);
+        }
+
         private readonly List<IReadOnlyList<string>> _invocations = [];
 
         public IReadOnlyList<IReadOnlyList<string>> Invocations => _invocations;

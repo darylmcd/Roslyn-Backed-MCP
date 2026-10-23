@@ -20,12 +20,6 @@ public sealed class MsBuildEvaluationCacheTests : TestBase
         InitializeServices();
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup()
-    {
-        DisposeServices();
-    }
-
     private const string ProbePropertyName = "CacheProbeProperty";
 
     private static string ProjectXml(string probeValue) =>
@@ -43,7 +37,7 @@ public sealed class MsBuildEvaluationCacheTests : TestBase
     {
         using var fixture = CreateProjectFixture("CacheProbe.csproj", ProjectXml("before"));
 
-        var loadStatus = await WorkspaceManager.LoadAsync(fixture.ProjectPath, CancellationToken.None);
+        var loadStatus = await WorkspaceManager.LoadAsync(fixture.ProjectPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(fixture.ProjectPath, new Dictionary<string, string>()), CancellationToken.None);
         try
         {
             var projectName = (await WorkspaceManager.GetStatusAsync(loadStatus.WorkspaceId, CancellationToken.None))
@@ -75,7 +69,7 @@ public sealed class MsBuildEvaluationCacheTests : TestBase
     {
         using var fixture = CreateProjectFixture("CacheProbeReload.csproj", ProjectXml("before"));
 
-        var loadStatus = await WorkspaceManager.LoadAsync(fixture.ProjectPath, CancellationToken.None);
+        var loadStatus = await WorkspaceManager.LoadAsync(fixture.ProjectPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(fixture.ProjectPath, new Dictionary<string, string>()), CancellationToken.None);
         try
         {
             var projectName = (await WorkspaceManager.GetStatusAsync(loadStatus.WorkspaceId, CancellationToken.None))
@@ -117,7 +111,7 @@ public sealed class MsBuildEvaluationCacheTests : TestBase
             </Project>
             """);
 
-        var loadStatus = await WorkspaceManager.LoadAsync(fixture.ProjectPath, CancellationToken.None);
+        var loadStatus = await WorkspaceManager.LoadAsync(fixture.ProjectPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(fixture.ProjectPath, new Dictionary<string, string>()), CancellationToken.None);
         try
         {
             var projectName = (await WorkspaceManager.GetStatusAsync(loadStatus.WorkspaceId, CancellationToken.None))

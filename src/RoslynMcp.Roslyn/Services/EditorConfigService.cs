@@ -342,7 +342,7 @@ public sealed class EditorConfigService : IEditorConfigService
         ];
     }
 
-    public Task<EditorConfigWriteResultDto> SetOptionAsync(
+    public async Task<EditorConfigWriteResultDto> SetOptionAsync(
         string workspaceId, string sourceFilePath, string key, string value, string toolName, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
@@ -377,18 +377,27 @@ public sealed class EditorConfigService : IEditorConfigService
             throw new UnauthorizedAccessException("The applicable .editorconfig is outside the loaded workspace.");
         }
 
-        FileSnapshotDto? preApplySnapshot = null;
-        (EditorConfigWriteResultDto Result, FileSnapshotDto Snapshot) Write(EditorConfigFileTransaction transaction)
+        IPreparedUndoOperation? successUndo = null;
+        PhysicalMutationRecovery? recovery = null;
+        IWorkspaceMutationLease? lease = null;
+        EditorConfigWriteOperation? operation = null;
+        IPhysicalRestorationAuthority? restoration = null;
+        Exception? primaryFailure = null;
+        byte[]? intendedPostBytes = null;
+        var phaseCompleted = false;
+        var recoveryOwner = _workspace as IWorkspaceRecoveryAuthority
+            ?? throw InvalidOperationErrors.Internal("The workspace does not support physical recovery authority.");
+        recoveryOwner.EnsureMutationAllowed(workspaceId, [editorconfigPath]);
+        await recoveryOwner.AuthorizePathsAsync(workspaceId, [editorconfigPath], ct).ConfigureAwait(false);
+        var capturedConfig = await FileSnapshotCapture.CaptureAsync(editorconfigPath, fallbackTextFactory: null, ct).ConfigureAwait(false);
+        recovery = await recoveryOwner.CaptureRecoveryAsync(workspaceId,
+            $"Set .editorconfig option '{key.Trim()}' in {Path.GetFileName(editorconfigPath)}", [capturedConfig], ct).ConfigureAwait(false);
+        byte[] Render()
         {
-            var created = transaction.CreatedNewFile;
-            var existingBytes = transaction.OriginalBytes;
+            var existingBytes = capturedConfig.OriginalText is null ? null : capturedConfig.OriginalBytes.ToArray();
             // Parse the same byte snapshot captured for undo. A second disk read could see
             // an external edit between reads, then attribute a mixed operation to Apply.
             var lines = existingBytes is null ? new List<string>() : ReadConfigLines(existingBytes);
-
-            var snapshot = FileSnapshotCapture.FromBytesOrFallback(
-                editorconfigPath, existingBytes, fallbackText: null);
-            preApplySnapshot = snapshot;
 
             const string csharpSection = "[*.{cs,csx,cake}]";
             UpsertKeyAcrossCSharpSections(lines, csharpSection, key.Trim(), value.Trim());
@@ -405,41 +414,92 @@ public sealed class EditorConfigService : IEditorConfigService
                     writer.WriteLine(line);
                 }
             }
-            var writtenBytes = buffer.ToArray();
-            transaction.WriteBytes(writtenBytes);
-            return (new EditorConfigWriteResultDto(editorconfigPath, key, value, created), snapshot);
+            return buffer.ToArray();
         }
 
-        (EditorConfigWriteResultDto Result, FileSnapshotDto Snapshot) applied;
         try
         {
-            applied = coordinator.RunOwnedWrite(workspaceId, editorconfigPath, Write);
+            successUndo = _undoService is null ? null : await _undoService.PrepareBeforeApplyAsync(recovery, ct).ConfigureAwait(false);
+            lease = await recoveryOwner.BeginMutationAsync(recovery, ct).ConfigureAwait(false);
+            intendedPostBytes = Render();
+            if (!EditorConfigBytes.AreEqual(capturedConfig.OriginalText is null ? null : capturedConfig.OriginalBytes.ToArray(), intendedPostBytes))
+            {
+                var desired = FileSnapshotDto.FromExistingBytes(editorconfigPath, intendedPostBytes);
+                lease.BeforeWrite(desired);
+                restoration = await recoveryOwner.StageMutationAsync(recovery, [desired], ct).ConfigureAwait(false);
+                await recoveryOwner.VerifyMutationNamespacesAsync(recovery, restoration, MutationNamespaceTarget.CapturedSource, ct).ConfigureAwait(false);
+            }
+            operation = new EditorConfigWriteOperation(recovery, recoveryOwner, lease, capturedConfig, intendedPostBytes, restoration);
+            await coordinator.RunOwnedWriteAsync(operation, ct).ConfigureAwait(false);
+            var result = new EditorConfigWriteResultDto(editorconfigPath, key, value, capturedConfig.OriginalText is null);
+            if (EditorConfigBytes.AreEqual(operation.OriginalBytes, intendedPostBytes))
+            {
+                await lease.AbortAsync(CancellationToken.None).ConfigureAwait(false);
+                return result;
+            }
+            if (lease is null || intendedPostBytes is null)
+                throw InvalidOperationErrors.Internal("A coordinated config mutation did not retain its physical operation.");
+            await recoveryOwner.VerifyMutationNamespacesAsync(recovery,
+                restoration ?? throw InvalidOperationErrors.Internal("A config mutation has no issued native verification."),
+                MutationNamespaceTarget.Desired, ct).ConfigureAwait(false);
+            lease.Complete([FileSnapshotDto.FromExistingBytes(editorconfigPath, intendedPostBytes)]);
+            phaseCompleted = true;
+            var completedLease = lease;
+            lease = null;
+            completedLease.Dispose();
+            if (successUndo is not null) await successUndo.PublishAsync(ct).ConfigureAwait(false);
+            _changeTracker?.RecordChange(workspaceId,
+                recovery.Description, [editorconfigPath], toolName);
+            return result;
         }
-        catch (EditorConfigUnrecoveredWriteException)
+        catch (Exception failure)
         {
-            // The write failed, but its bytes remain at the path. Retain an undo target
-            // for that mutation instead of leaving the previous success as the target.
-            var failedSnapshot = preApplySnapshot
-                ?? throw new InvalidOperationException("An unrecovered .editorconfig write has no prewrite snapshot.");
-            var description = $"Failed .editorconfig write of '{key.Trim()}' in {Path.GetFileName(editorconfigPath)}";
-            _undoService?.CaptureBeforeApply(workspaceId, description, preApplySolution: null,
-                fileSnapshots: [failedSnapshot]);
-            _changeTracker?.RecordChange(workspaceId, description, [editorconfigPath], toolName);
+            primaryFailure = failure;
+            var failures = new List<Exception> { failure };
+            if (recovery is not null && (lease is not null || phaseCompleted))
+            {
+                bool? changed = null;
+                try
+                {
+                    await recoveryOwner.AuthorizePathsAsync(workspaceId, [editorconfigPath], CancellationToken.None).ConfigureAwait(false);
+                    var actual = await FileSnapshotCapture.ReadIfPresentAsync(editorconfigPath, PhysicalInputReader.ReadAllBytesAsync, CancellationToken.None).ConfigureAwait(false);
+                    var before = recovery.Files.Single();
+                    changed = before.OriginalText is null ? actual is not null
+                        : actual is null || !before.OriginalBytes.AsSpan().SequenceEqual(actual);
+                }
+                catch (Exception inspectionFailure) { failures.Add(inspectionFailure); }
+                try
+                {
+                    var ownedEffect = operation?.Applied == true || recovery.HasRetainedSourceTransitions;
+                    if (ownedEffect && (changed != false || recovery.HasRetainedSourceTransitions))
+                    {
+                        if (successUndo is not null) successUndo.RetainRecovery();
+                        else recoveryOwner.RetainRecovery(recovery);
+                        _changeTracker?.RecordChange(workspaceId, recovery.Description, [editorconfigPath], toolName);
+                    }
+                    else if (!phaseCompleted && lease is not null)
+                    {
+                        if (!recovery.HasAttemptedSourceTransition && restoration is not null)
+                            lease.CancelBeforeSourceTransition(restoration);
+                        else
+                        {
+                            if (changed == false && restoration is not null)
+                                await recoveryOwner.VerifyMutationNamespacesAsync(recovery, restoration,
+                                    MutationNamespaceTarget.CapturedSource, CancellationToken.None).ConfigureAwait(false);
+                            await lease.AbortAsync(CancellationToken.None).ConfigureAwait(false);
+                        }
+                    }
+                }
+                catch (Exception retentionFailure) { failures.Add(retentionFailure); }
+            }
+            if (failures.Count > 1)
+            {
+                primaryFailure = new AggregateException("Config mutation failed with additional recovery failures.", failures);
+                throw primaryFailure;
+            }
             throw;
         }
-        // Keep the previous undo target until the coordinator has verified that the
-        // bytes it wrote are still at the path. A failed write must not replace it.
-        _undoService?.CaptureBeforeApply(
-            workspaceId,
-            $"Set .editorconfig option '{key.Trim()}' in {Path.GetFileName(editorconfigPath)}",
-            preApplySolution: null,
-            fileSnapshots: [applied.Snapshot]);
-        _changeTracker?.RecordChange(
-            workspaceId,
-            $"Set .editorconfig option '{key.Trim()}' in {Path.GetFileName(editorconfigPath)}",
-            [editorconfigPath],
-            toolName);
-        return Task.FromResult(applied.Result);
+        finally { OwnedResourceCleanup.DisposePreservingFailure("Config mutation ownership cleanup failed.", primaryFailure, restoration, lease); }
     }
 
     private static bool IsWithinWorkspace(string root, string path)

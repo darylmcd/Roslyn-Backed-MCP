@@ -27,9 +27,6 @@ public sealed class HighValueCoverageIntegrationTests : SharedWorkspaceTestBase
         SampleWorkspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     private static string FindDocumentPath(string name)
     {
         var solution = WorkspaceManager.GetCurrentSolution(SampleWorkspaceId);
@@ -41,7 +38,7 @@ public sealed class HighValueCoverageIntegrationTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task CompileCheck_BuildFailureSolution_Reports_Errors()
     {
-        var status = await WorkspaceManager.LoadAsync(BuildFailureSolutionPath, CancellationToken.None);
+        var status = await WorkspaceManager.LoadAsync(BuildFailureSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(BuildFailureSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
         var workspaceId = status.WorkspaceId;
 
         try

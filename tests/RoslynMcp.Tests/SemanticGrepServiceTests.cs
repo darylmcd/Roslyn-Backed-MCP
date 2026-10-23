@@ -22,9 +22,6 @@ public sealed class SemanticGrepServiceTests : SharedWorkspaceTestBase
         WorkspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
 
     [TestMethod]
     [DataRow("blank", "pattern")]

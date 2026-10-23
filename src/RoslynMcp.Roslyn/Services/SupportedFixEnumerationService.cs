@@ -4,6 +4,7 @@ using Microsoft.CodeAnalysis.CodeFixes;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -124,7 +125,7 @@ internal sealed class SupportedFixEnumerationService
             }
         }
 
-        var documentIds = solution.GetDocumentIdsWithFilePath(filePath);
+        var documentIds = DocumentPathLookup.GetDocumentIds(solution, filePath);
         return documentIds.IsDefaultOrEmpty ? null : solution.GetDocument(documentIds[0]);
     }
 

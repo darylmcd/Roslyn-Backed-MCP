@@ -1,6 +1,8 @@
+using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Globalization;
 using System.Text.RegularExpressions;
+using Microsoft.CodeAnalysis;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
@@ -26,39 +28,46 @@ public sealed partial class TestRunnerService : ITestRunnerService
         ? [new EarlyKillPattern(FileLockFastFailRegex(), "MSBuild file lock (MSB3027/MSB3021)")]
         : null;
 
+    private readonly ForkInvocationPathPolicy _pathPolicy;
     private readonly IWorkspaceManager _workspaceManager;
     private readonly IGatedCommandExecutor _executor;
     private readonly ILogger<TestRunnerService> _logger;
     private readonly ValidationServiceOptions _options;
+    private readonly TimeProvider _timeProvider;
     private readonly IUnexpectedExceptionReporter? _exceptionReporter;
     private readonly ITestDiscoveryService _testDiscoveryService;
-    private readonly Action<string> _deleteResultsDirectory;
+    private readonly Action<PhysicalDirectoryScope.OwnedRoot> _deleteResultsDirectory;
 
     public TestRunnerService(
+        ForkInvocationPathPolicy pathPolicy,
         IWorkspaceManager workspaceManager,
         IGatedCommandExecutor executor,
         ILogger<TestRunnerService> logger,
         ITestDiscoveryService testDiscoveryService,
         ValidationServiceOptions? options = null,
         IUnexpectedExceptionReporter? exceptionReporter = null)
-        : this(workspaceManager, executor, logger, testDiscoveryService, options, exceptionReporter,
-            static path => Directory.Delete(path, recursive: true))
+        : this(pathPolicy, workspaceManager, executor, logger, testDiscoveryService, options, exceptionReporter,
+            static owner => owner.Delete(CancellationToken.None), TimeProvider.System)
     {
     }
 
     internal TestRunnerService(
+        ForkInvocationPathPolicy pathPolicy,
         IWorkspaceManager workspaceManager,
         IGatedCommandExecutor executor,
         ILogger<TestRunnerService> logger,
         ITestDiscoveryService testDiscoveryService,
         ValidationServiceOptions? options,
         IUnexpectedExceptionReporter? exceptionReporter,
-        Action<string> deleteResultsDirectory)
+        Action<PhysicalDirectoryScope.OwnedRoot> deleteResultsDirectory,
+        TimeProvider timeProvider)
     {
+        _pathPolicy = pathPolicy ?? throw new ArgumentNullException(nameof(pathPolicy));
         _workspaceManager = workspaceManager;
         _executor = executor;
         _logger = logger;
         _options = options ?? new ValidationServiceOptions();
+        _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
         _exceptionReporter = exceptionReporter;
         _testDiscoveryService = testDiscoveryService ?? throw new ArgumentNullException(nameof(testDiscoveryService));
         _deleteResultsDirectory = deleteResultsDirectory ?? throw new ArgumentNullException(nameof(deleteResultsDirectory));
@@ -88,6 +97,8 @@ public sealed partial class TestRunnerService : ITestRunnerService
     public async Task<TestRunPlan> PrepareTestRunAsync(string workspaceId, string? projectName, string? filter, CancellationToken ct)
     {
         var status = await _workspaceManager.GetStatusAsync(workspaceId, ct).ConfigureAwait(false);
+        var solution = _workspaceManager.GetCurrentSolution(workspaceId);
+        var properties = EvaluatedProjectGraph.Properties(solution).ToImmutableDictionary(StringComparer.OrdinalIgnoreCase);
         var testProjects = status.Projects.Where(p => p.IsTestProject).ToList();
 
         ProjectStatusDto? resolvedProject = null;
@@ -116,24 +127,9 @@ public sealed partial class TestRunnerService : ITestRunnerService
             // project through the same per-project MTP plan as an explicitly named target.
             resolvedProject = testProjects[0];
         }
-        else if (testProjects.Any(ProjectRequiresMtpNativeExecution))
-        {
-            // tunit-solution-level-mixed-mtp-refusal: Microsoft documents mixing VSTest and MTP
-            // projects in one dotnet test invocation as unsupported, so a genuinely multi-project
-            // run can't safely take the MTP branch for everything. But silently staying on the
-            // classic VSTest path here would silently skip this MTP-only project's tests (the
-            // exact failure tunit-mtp-native-test-run exists to fix) rather than telling the
-            // caller. Refuse instead of guessing: the caller can pass projectName to target the
-            // MTP-only project individually, or run each project's tests separately.
-            throw new PublicInvalidOperationException(
-                $"The workspace contains {testProjects.Count} test projects, and at least " +
-                "one only supports Microsoft.Testing.Platform (MTP) — TUnit never registers with the " +
-                "classic VSTest adapter, and Microsoft does not support mixing VSTest and MTP projects " +
-                "in one 'dotnet test' invocation. Running the whole workspace would silently skip that " +
-                "project's tests. Pass projectName to target the MTP-only project individually, or run " +
-                "each project's tests separately.");
-        }
 
+        if (resolvedProject is not null)
+            properties = EvaluatedBuildGraph.Resolve(ResolveLoadedProject(solution, resolvedProject), ct).Globals;
         var targetPath = resolvedProject?.FilePath ?? status.LoadedPath;
 
         if (string.IsNullOrWhiteSpace(targetPath))
@@ -144,19 +140,81 @@ public sealed partial class TestRunnerService : ITestRunnerService
         // tunit-mtp-native-test-run: TUnit is MTP-only and never registers with the classic
         // VSTest adapter, so dotnet test's default VSTest mode silently ignores --logger/
         // --filter for it — it needs a different, MTP-native argument shape.
-        var mtpPlan = resolvedProject is not null
-            ? await ResolveMtpNativeExecutionPlanAsync(resolvedProject, filter, workspaceId, ct).ConfigureAwait(false)
-            : MtpNativeExecutionPlan.NotRequired;
-
-        return new TestRunPlan(
+        var context = await DotnetTestModeResolver.ResolveAsync(workspaceId, GatedCommandExecutor.GetWorkingDirectory(targetPath), _pathPolicy, ct).ConfigureAwait(false);
+        var executionPlan = await ResolveTestExecutionPlanAsync(resolvedProject is null ? testProjects : [resolvedProject],
+            filter, workspaceId, solution, context, ct).ConfigureAwait(false);
+        context = context with { ExecutionInputs = executionPlan.ExecutionInputs };
+        await executionPlan.Packages.AssertCurrentAsync((paths, token) => _pathPolicy.ValidateAsync(workspaceId, paths, token), ct).ConfigureAwait(false);
+        await DotnetTestModeResolver.ValidateAsync(workspaceId, GatedCommandExecutor.GetWorkingDirectory(targetPath),
+            context, _pathPolicy, ct).ConfigureAwait(false);
+        var plan = new TestRunPlan(
             workspaceId,
             projectName,
             filter,
+            properties,
+            context,
+            executionPlan.NativeArguments,
             targetPath,
-            mtpPlan.RequiresMtpNative,
-            mtpPlan.TreeNodeFilter,
-            mtpPlan.NoRestore,
+            executionPlan.RequiresMtpNative,
+            executionPlan.NoRestore,
             _workspaceManager.GetCurrentVersion(workspaceId));
+        if (executionPlan.RestoreInputs is { } restoredInputs)
+            await restoredInputs.AssertCurrentAsync(ct).ConfigureAwait(false);
+        executionPlan.Membership.AssertCurrent(ct);
+        if (executionPlan.Certificate is { } certificate)
+            await certificate.AssertCurrentAsync(solution, workspaceId, _pathPolicy, ct).ConfigureAwait(false);
+        var receipt = new TestDependencyReceipt(executionPlan.Packages, executionPlan.Certificate, solution,
+            executionPlan.SourceAuthority, executionPlan.Membership, executionPlan.RestoreInputs);
+        await AssertFinalTestAuthorityAsync(workspaceId, receipt, context, ct).ConfigureAwait(false);
+        DependencyReceipts.Add(plan, receipt);
+        return plan;
+    }
+
+    private async Task AssertFinalTestAuthorityAsync(string workspaceId, TestDependencyReceipt receipt,
+        PreparedDotnetTestContext context, CancellationToken ct)
+    {
+        var modeInputs = context.Candidates.Concat(context.ExecutionInputs)
+            .Select(input => new PhysicalInputIdentity(input.FilePath, input.Exists, input.ContentHash)).ToArray();
+        var paths = modeInputs.Select(input => input.FilePath).Concat(receipt.Packages.RequiresCurrentGrant)
+            .Concat(receipt.SourceAuthority is { } source ? source.Certificate.FinalRestoreGrantPaths(source.Solution) : [])
+            .Distinct(FileSystemPath.Comparer).ToArray();
+        if (receipt.RestoreInputs is { } restoredInputs)
+            await restoredInputs.AuthorizeFinalAsync(paths, ct).ConfigureAwait(false);
+        else
+            await _pathPolicy.ValidateAsync(workspaceId, paths, ct).ConfigureAwait(false);
+        // Every policy callback precedes native membership reconstruction and the
+        // complete physical proof. No callback may reopen this admission window.
+        receipt.Membership.AssertCurrent(ct);
+        receipt.RestoreInputs?.AssertNativeMembershipCurrent(ct);
+        if (receipt.SourceAuthority is { } sourceAuthority)
+            await sourceAuthority.Certificate.AssertRestorePhysicalCurrentAsync(sourceAuthority.Solution,
+                receipt.RestoreInputs?.TransitionedOutputPaths ?? ImmutableHashSet<string>.Empty, ct).ConfigureAwait(false);
+        if (receipt.RestoreInputs is { } restored)
+            await restored.AssertPhysicalCurrentAsync(modeInputs.Concat(receipt.Packages.Inputs), ct).ConfigureAwait(false);
+        await PhysicalInputCaptureBatch.AssertCurrentAsync(
+            PhysicalInputIdentity.MergeConsistent(modeInputs.Concat(receipt.Packages.Inputs)), ct).ConfigureAwait(false);
+        ct.ThrowIfCancellationRequested();
+    }
+
+    internal async Task AssertPreparedTestInputsAsync(TestRunPlan plan, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        var targetPath = plan.TargetPath
+            ?? throw new ArgumentException("The test run plan has no target path; create it with PrepareTestRunAsync.", nameof(plan));
+        var workspaceId = plan.WorkspaceId;
+        if (!DependencyReceipts.TryGetValue(plan, out var receipt))
+            throw new PublicInvalidOperationException("The test dependency receipt is unavailable. Prepare the invocation again.");
+        if (receipt.RestoreInputs is { } restoredInputs)
+            await restoredInputs.AssertCurrentAsync(ct).ConfigureAwait(false);
+        if (receipt.Certificate is not null)
+            await receipt.Certificate.AssertCurrentAsync(receipt.Solution, workspaceId, _pathPolicy, ct).ConfigureAwait(false);
+        await receipt.Packages.AssertCurrentAsync((paths, grantToken) => _pathPolicy.ValidateAsync(workspaceId, paths, grantToken), ct).ConfigureAwait(false);
+        await DotnetTestModeResolver.ValidateAsync(workspaceId, GatedCommandExecutor.GetWorkingDirectory(targetPath),
+            plan.Context, _pathPolicy, ct).ConfigureAwait(false);
+        receipt.Membership.AssertCurrent(ct);
+        await DotnetTestModeResolver.ValidateAsync(workspaceId, GatedCommandExecutor.GetWorkingDirectory(targetPath),
+            plan.Context, _pathPolicy, ct).ConfigureAwait(false);
+        await AssertFinalTestAuthorityAsync(workspaceId, receipt, plan.Context, ct).ConfigureAwait(false);
     }
 
     public async Task<TestRunResultDto> RunTestCommandAsync(TestRunPlan plan, CancellationToken ct)
@@ -166,29 +224,53 @@ public sealed partial class TestRunnerService : ITestRunnerService
             ?? throw new ArgumentException(
                 "The test run plan has no target path; create it with PrepareTestRunAsync.", nameof(plan));
         var workspaceId = plan.WorkspaceId;
+        if (plan.NativeTestArguments.IsDefault || plan.RequiresMtpNative != plan.Context.UsesNativeMtp
+            || !plan.NoRestore || plan.Context.ExecutionInputs.IsDefaultOrEmpty
+            || plan.RequiresMtpNative && plan.NativeTestArguments.IsEmpty
+            || !plan.RequiresMtpNative && !plan.NativeTestArguments.IsEmpty)
+            throw new PublicInvalidOperationException("The prepared test protocol does not match its authorized dotnet configuration. Prepare the invocation again.");
+        if (!DependencyReceipts.TryGetValue(plan, out var receipt))
+            throw new PublicInvalidOperationException("The test dependency receipt is unavailable. Prepare the invocation again.");
+        Task AuthorizeStartAsync(CancellationToken token) => AssertPreparedTestInputsAsync(plan, token);
+        await AuthorizeStartAsync(ct).ConfigureAwait(false);
 
-        var resultsDirectory = Path.Combine(Path.GetTempPath(), "RoslynMcpTestResults", Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(resultsDirectory);
+        var resultsDirectory = Path.Combine(Path.GetTempPath(), "roslynmcp-test-results-" + Guid.NewGuid().ToString("N"));
+        if (receipt.SourceAuthority is { } compiler)
+            await compiler.Certificate.AssertTemporaryPathDisjointAsync(compiler.Solution, workspaceId, _pathPolicy,
+                resultsDirectory, receipt.Membership.RecordedTraversalRoots, ct).ConfigureAwait(false);
+        else
+            await receipt.Membership.AssertTemporaryPathDisjointAsync(resultsDirectory, [],
+                (paths, token) => _pathPolicy.ValidateAsync(workspaceId, paths, token), ct).ConfigureAwait(false);
+        var resultsOwner = PhysicalDirectoryScope.CreateOwnedRoot(resultsDirectory);
+        async Task AuthorizeTestStartAsync(CancellationToken token)
+        {
+            await AuthorizeStartAsync(token).ConfigureAwait(false);
+            resultsOwner.AssertCurrentPath(token);
+        }
 
+        Exception? primary = null;
         try
         {
             // Do not set a fixed TRX/results file name: solution-level runs emit one TRX per
             // test project; a fixed name would overwrite.
-            var arguments = plan.RequiresMtpNative
-                ? BuildMtpNativeArguments(targetPath, resultsDirectory, plan.TreeNodeFilter, plan.NoRestore)
+            var commandArguments = plan.RequiresMtpNative
+                ? BuildMtpNativeArguments(targetPath, resultsDirectory, plan.NativeTestArguments, plan.NoRestore)
                 : BuildVsTestArguments(targetPath, resultsDirectory, plan.Filter);
+            var arguments = MsBuildCommandProperties.Append(commandArguments, plan.EvaluationProperties);
 
             var stopwatch = Stopwatch.StartNew();
 
-            CommandExecutionDto execution;
+            TestRunResultDto result;
             try
             {
-                execution = await _executor.ExecuteAsync(
+                result = await _executor.ExecuteTestAsync(
                     workspaceId,
                     targetPath,
                     arguments,
+                    (execution, token) => TestRunOutputReader.ParseAsync(resultsOwner, execution, token),
                     _options.TestTimeout,
                     FastFailPatterns,
+                    AuthorizeTestStartAsync,
                     ct).ConfigureAwait(false);
             }
             catch (TimeoutException ex)
@@ -207,7 +289,7 @@ public sealed partial class TestRunnerService : ITestRunnerService
                 // never enters this path — GatedCommandExecutor only reclassifies to
                 // TimeoutException when the caller token is NOT cancelled.
                 var details = UnexpectedExceptionReporting.Report(
-                    _exceptionReporter, ex, UnexpectedExceptionCategory.TestRun);
+                    _exceptionReporter, new MsBuildCommandProperties.Redactor(arguments).Failure(ex), UnexpectedExceptionCategory.TestRun);
                 var budget = _options.TestTimeout.TotalMinutes.ToString(
                     "0.##", CultureInfo.InvariantCulture);
                 var timeoutSummary =
@@ -225,21 +307,13 @@ public sealed partial class TestRunnerService : ITestRunnerService
                     DurationMs: (long)_options.TestTimeout.TotalMilliseconds,
                     StdOut: string.Empty,
                     StdErr: string.Empty);
-                return DotnetOutputParser.BuildTimeoutResult(shell, timeoutSummary) with
+                return MsBuildCommandProperties.Redact(DotnetOutputParser.BuildTimeoutResult(shell, timeoutSummary), arguments) with
                 {
                     CommandDurationMs = stopwatch.ElapsedMilliseconds,
                 };
             }
 
-            var trxFiles = CollectTrxFiles(resultsDirectory, execution);
-            // FLAG-N1: always pass through to the parser — it handles the no-TRX failure case
-            // by emitting a structured TestRunFailureEnvelopeDto instead of throwing. See
-            // test-run-failure-envelope backlog row (2026-04-08 MSB3027 Windows file-lock audits).
-            var result = DotnetOutputParser.ParseTestRun(execution, trxFiles) with
-            {
-                CommandDurationMs = stopwatch.ElapsedMilliseconds,
-            };
-            if (result.Total == 0 && execution.Succeeded && !string.IsNullOrWhiteSpace(plan.Filter))
+            if (result.Total == 0 && result.Execution.Succeeded && !string.IsNullOrWhiteSpace(plan.Filter))
             {
                 result = result with
                 {
@@ -247,13 +321,14 @@ public sealed partial class TestRunnerService : ITestRunnerService
                         "The supplied filter reported zero tests. Check the filter using test_discover before treating this run as verification."],
                 };
             }
-            return result;
+            return result with { CommandDurationMs = stopwatch.ElapsedMilliseconds };
         }
+        catch (Exception failure) { primary = failure; throw; }
         finally
         {
             try
             {
-                _deleteResultsDirectory(resultsDirectory);
+                _deleteResultsDirectory(resultsOwner);
             }
             catch (DirectoryNotFoundException)
             {
@@ -263,7 +338,11 @@ public sealed partial class TestRunnerService : ITestRunnerService
             {
                 // Cleanup is secondary to the parsed result or the exception already in flight.
                 UnexpectedExceptionReporting.Report(
-                    _exceptionReporter, exception, UnexpectedExceptionCategory.TestRun);
+                    _exceptionReporter, new MsBuildCommandProperties.Redactor(MsBuildCommandProperties.Append([], plan.EvaluationProperties)).Failure(exception), UnexpectedExceptionCategory.TestRun);
+            }
+            finally
+            {
+                OwnedResourceCleanup.DisposePreservingFailure("Test result namespace release failed.", primary, resultsOwner);
             }
         }
     }
@@ -281,116 +360,62 @@ public sealed partial class TestRunnerService : ITestRunnerService
     public TestRunResultDto CompleteTestRunWithoutWorkspace(TestRunResultDto result) =>
         TestRunWarnings.WithWorkspaceChanged(result);
 
-    /// <summary>
-    /// Whether <paramref name="resolvedProject"/> needs the MTP-native <c>dotnet test</c>
-    /// argument shape rather than today's classic VSTest-style invocation, and — when a filter
-    /// was supplied — its translated <c>--treenode-filter</c> equivalent. <see cref="NoRestore"/>
-    /// is set when <see cref="ResolveMtpNativeExecutionPlanAsync"/> already ran an explicit
-    /// restore to check the resolved <c>TUnit.Engine</c> version — see its
-    /// <c>tunit-treenode-filter-version-check-restore-snapshot</c> remarks.
-    /// </summary>
-    private sealed record MtpNativeExecutionPlan(bool RequiresMtpNative, string? TreeNodeFilter, bool NoRestore = false)
-    {
-        public static readonly MtpNativeExecutionPlan NotRequired = new(false, null);
-    }
-
-    private bool ProjectRequiresMtpNativeExecution(ProjectStatusDto project) =>
-        ProjectMetadataParser.RequiresMtpNativeExecution(
-            ProjectMetadataParser.LoadProjectDocument(project.FilePath, _logger));
-
-    /// <exception cref="InvalidOperationException">
-    /// The project is MTP-only (TUnit) but the run can't currently produce a structured result:
-    /// the target repo's <c>global.json</c> doesn't opt into the .NET 10 SDK's native MTP
-    /// <c>dotnet test</c> mode, or a supplied <paramref name="filter"/> doesn't translate to
-    /// MTP's <c>--treenode-filter</c> syntax — including a multi-test filter when the project's
-    /// resolved <c>TUnit.Engine</c> version isn't known to include the OR pre-filter fix, or an
-    /// atom that doesn't name a test <see cref="ITestDiscoveryService"/> actually found in this
-    /// project (see <see cref="TreeNodeFilterTranslator"/>). Verified against a real TUnit
-    /// project: on the .NET 10 SDK, the legacy VSTest-mode MTP bridge
-    /// (<c>-p:TestingPlatformDotnetTestSupport=true --</c>) is hard-removed —
-    /// <c>"Testing with VSTest target is no longer supported by Microsoft.Testing.Platform on
-    /// .NET 10 SDK and later"</c> — so there is no fallback to attempt without the opt-in.
-    /// </exception>
-    private async Task<MtpNativeExecutionPlan> ResolveMtpNativeExecutionPlanAsync(
-        ProjectStatusDto resolvedProject, string? filter, string workspaceId, CancellationToken ct)
-    {
-        if (!ProjectRequiresMtpNativeExecution(resolvedProject))
-        {
-            return MtpNativeExecutionPlan.NotRequired;
-        }
-
-        var projectDirectory = GatedCommandExecutor.GetWorkingDirectory(resolvedProject.FilePath);
-        if (!DotnetTestModeResolver.UsesNativeMtpDotnetTest(projectDirectory, _logger))
-        {
-            throw new PublicInvalidOperationException(
-                $"Project '{resolvedProject.Name}' only supports Microsoft.Testing.Platform (MTP) — TUnit never " +
-                "registers with the classic VSTest adapter, and the legacy VSTest-mode MTP bridge is removed on " +
-                "the .NET 10 SDK. Add a global.json at or above the project with " +
-                "{\"test\": {\"runner\": \"Microsoft.Testing.Platform\"}} to opt into the native dotnet test " +
-                "experience, then retry.");
-        }
-
-        string? treeNodeFilter = null;
-        var noRestore = false;
-        if (!string.IsNullOrWhiteSpace(filter))
-        {
-            // tunit-treenode-filter-version-check-restore-snapshot: TryGetResolvedPackageVersion
-            // reads obj/project.assets.json as it stands right now, but plain `dotnet test`
-            // performs its own implicit restore before running — a floating/ranged TUnit.Engine
-            // version could resolve differently between this check and that implicit restore,
-            // authorizing the OR shape against a stale >=1.46.0 snapshot that the real restore
-            // then downgrades (or the reverse: rejecting a run a fresh restore would have made
-            // safe). Only the OR shape's safety depends on the resolved version, so only an OR
-            // filter is worth paying for an explicit restore up front: restore now, read the
-            // assets file THAT restore just wrote, then skip dotnet test's own implicit restore
-            // (--no-restore) so nothing can change between the check and the execution.
-            if (filter.Contains('|'))
-            {
-                await RestoreProjectAsync(workspaceId, resolvedProject, ct).ConfigureAwait(false);
-                noRestore = true;
-            }
-
-            var resolvedTUnitEngineVersion = ProjectMetadataParser.TryGetResolvedPackageVersion(
-                resolvedProject.FilePath, "TUnit.Engine", _logger);
-
-            // tunit-treenode-filter-requires-known-test: a caller-supplied FullyQualifiedName~
-            // filter's operator is "contains", not "equals" — the value might name a whole class
-            // (all methods) rather than one test, and that's indistinguishable from a complete
-            // test identifier by string shape alone (both are dot-separated). Rather than guess,
-            // check the parsed namespace/class/method against what this project's tests actually
-            // are: our own internally-synthesized filters (TestDiscoveryService.
-            // SynthesizeDotnetTestFilter) always name a real, complete test and pass by
-            // construction; an ambiguous or mistyped caller-supplied filter is safely declined
-            // instead of silently matching zero (or the wrong) tests.
-            var discovery = await _testDiscoveryService.DiscoverTestsAsync(workspaceId, ct).ConfigureAwait(false);
-            IReadOnlyCollection<string> knownFullyQualifiedTestNames = discovery.TestProjects
-                .Where(p => string.Equals(p.ProjectName, resolvedProject.Name, StringComparison.Ordinal))
-                .SelectMany(p => p.Tests.Select(t => t.FullyQualifiedName))
-                .ToList();
-
-            treeNodeFilter = TreeNodeFilterTranslator.Translate(filter, resolvedTUnitEngineVersion, knownFullyQualifiedTestNames);
-        }
-
-        return new MtpNativeExecutionPlan(true, treeNodeFilter, noRestore);
-    }
-
     /// <exception cref="InvalidOperationException">'dotnet restore' failed.</exception>
-    private async Task RestoreProjectAsync(string workspaceId, ProjectStatusDto resolvedProject, CancellationToken ct)
+    private async Task RestoreProjectsAsync(string workspaceId, string targetPath,
+        IReadOnlyList<EvaluatedBuildGraph.Node> nodes, RestoreInputAuthority inputs,
+        Func<CancellationToken, Task> assertInputsCurrent,
+        IReadOnlyList<string> finalCertificateGrantPaths, Func<IReadOnlySet<string>, CancellationToken, Task> assertFinalCertificateCurrent, long started, CancellationToken ct)
     {
-        var execution = await _executor.ExecuteAsync(
-            workspaceId,
-            resolvedProject.FilePath,
-            ["restore", resolvedProject.FilePath],
-            _options.BuildTimeout,
-            ct).ConfigureAwait(false);
-
-        if (!execution.Succeeded)
+        await _pathPolicy.ValidateAsync(workspaceId, nodes.Select(node => node.Inputs.AssetsPath).OfType<string>()
+            .Distinct(FileSystemPath.Comparer).ToArray(), ct).ConfigureAwait(false);
+        var projects = RestoreInvocationPlanner.CaptureNodes(nodes, ct);
+        var plan = RestoreInvocationPlanner.Plan(targetPath, projects);
+        var destinations = await RestoreDestinationAuthority.CaptureAsync(nodes, projects,
+            (paths, token) => _pathPolicy.ValidateAsync(workspaceId, paths, token), ct).ConfigureAwait(false);
+        foreach (var invocation in plan)
         {
-            throw new PublicInvalidOperationException(
-                $"Project '{resolvedProject.Name}' needs a fresh restore to safely check its resolved " +
-                "TUnit.Engine version before translating an OR filter (see " +
-                "tunit-treenode-filter-or-requires-tunit-fix), but 'dotnet restore' failed with exit code " +
-                $"{execution.ExitCode}. Restore the project directly to see the full error, then retry.");
+            await destinations.AssertCurrentAsync(ct).ConfigureAwait(false);
+            var context = await DotnetTestModeResolver.ResolveAsync(workspaceId, GatedCommandExecutor.GetWorkingDirectory(invocation.TargetPath),
+                _pathPolicy, ct).ConfigureAwait(false);
+            var assets = nodes.Select(node => node.Inputs.AssetsPath).OfType<string>().Distinct(FileSystemPath.Comparer).ToArray();
+            var selectingInputs = new List<PhysicalInputIdentity>();
+            foreach (var path in assets)
+            {
+                await _pathPolicy.ValidateAsync(workspaceId, [path], ct).ConfigureAwait(false);
+                selectingInputs.Add(await PhysicalInputIdentity.CaptureAsync(path, ct).ConfigureAwait(false));
+            }
+            async Task AuthorizeRestoreStartAsync(CancellationToken token)
+            {
+                await assertInputsCurrent(token).ConfigureAwait(false);
+                await _pathPolicy.ValidateAsync(workspaceId, assets, token).ConfigureAwait(false);
+                await PhysicalInputIdentity.AssertCurrentAsync(selectingInputs, token).ConfigureAwait(false);
+                await inputs.AuthorizeInvocationAsync(invocation, token).ConfigureAwait(false);
+                await destinations.AssertCurrentAsync(token).ConfigureAwait(false);
+                await DotnetTestModeResolver.ValidateAsync(workspaceId, GatedCommandExecutor.GetWorkingDirectory(invocation.TargetPath),
+                    context, _pathPolicy, token).ConfigureAwait(false);
+                var modeInputs = context.Candidates.Concat(context.ExecutionInputs)
+                    .Select(input => new PhysicalInputIdentity(input.FilePath, input.Exists, input.ContentHash)).ToArray();
+                await inputs.AuthorizeFinalAsync(destinations.CurrentGrantPaths.Concat(assets)
+                    .Concat(modeInputs.Select(input => input.FilePath)).Concat(finalCertificateGrantPaths), token).ConfigureAwait(false);
+                await destinations.AssertNativeSettingsCurrentAsync(token).ConfigureAwait(false);
+                inputs.AssertNativeMembershipCurrent(token);
+                await assertFinalCertificateCurrent(inputs.TransitionedOutputPaths, token).ConfigureAwait(false);
+                await inputs.AssertPhysicalCurrentAsync(destinations.ConfigInputs.Concat(selectingInputs).Concat(modeInputs), token).ConfigureAwait(false);
+                destinations.AssertPhysicalDestinations(token);
+            }
+            var remaining = _options.BuildTimeout - _timeProvider.GetElapsedTime(started);
+            if (remaining <= TimeSpan.Zero)
+                throw new TimeoutException("The test project's restore exceeded its total time budget.");
+            var execution = await _executor.ExecuteAuthorizedAsync(
+                workspaceId, invocation.TargetPath, invocation.Arguments, remaining, AuthorizeRestoreStartAsync, ct).ConfigureAwait(false);
+            if (!execution.Succeeded)
+            {
+                throw new PublicInvalidOperationException(
+                    "A selected test project needs a fresh restore to establish its test execution inputs, " +
+                    "but 'dotnet restore' failed with exit code " +
+                    $"{execution.ExitCode}. Restore the project directly to see the full error, then retry.");
+            }
+            await inputs.AcceptSuccessfulAsync(invocation, ct).ConfigureAwait(false);
         }
     }
 
@@ -400,6 +425,7 @@ public sealed partial class TestRunnerService : ITestRunnerService
         {
             "test",
             targetPath,
+            "--no-restore",
             "--nologo",
             "--logger",
             "trx",
@@ -422,9 +448,7 @@ public sealed partial class TestRunnerService : ITestRunnerService
     /// unlike VSTest mode's build-target dispatch, native MTP mode forwards any argument it
     /// doesn't recognize straight to the test host, and the host rejects <c>--nologo</c>
     /// outright ("Unknown option '--nologo'"), producing a false "zero tests ran" — confirmed
-    /// by direct repro, not by reading the docs. <paramref name="treeNodeFilter"/> is the
-    /// already-translated MTP filter expression (see <see cref="TreeNodeFilterTranslator"/>),
-    /// passed through to <c>--treenode-filter</c> as-is when present.
+    /// by direct repro, not by reading the docs. <paramref name="nativeArguments"/> contains the frozen framework-specific reporter and filter protocol.
     /// <para>
     /// tunit-native-argv-requires-explicit-project-flag: <c>targetPath</c> must be passed via
     /// <c>--project</c>, not positionally. Confirmed by direct repro on both installed SDKs: on
@@ -433,67 +457,26 @@ public sealed partial class TestRunnerService : ITestRunnerService
     /// succeeds identically on both, so there's no reason to keep the version-fragile shape.
     /// </para>
     /// <para>
-    /// <paramref name="noRestore"/> is set when <see cref="ResolveMtpNativeExecutionPlanAsync"/>
-    /// already ran an explicit restore to check the resolved <c>TUnit.Engine</c> version for an
-    /// OR filter — <c>--no-restore</c> here guarantees that this run uses that exact same
-    /// snapshot rather than letting <c>dotnet test</c>'s own implicit restore potentially resolve
-    /// a different version in between. Verified directly: <c>--no-restore</c> is honored the
-    /// same way under native MTP mode as under classic VSTest mode.
+    /// <paramref name="noRestore"/> is set when <see cref="ResolveTestExecutionPlanAsync"/>
+    /// bound the authorized restored dependencies and froze the framework, reporter,
+    /// filter capability, and execution-input evidence. <c>--no-restore</c> prevents implicit
+    /// restore from replacing that reviewed dependency snapshot. Earlier direct TUnit repros
+    /// established native CLI handling of this switch; MSTest and xUnit protocol fixtures
+    /// provide separate framework-specific argument controls, whose runtime results must be checked.
     /// </para>
     /// </summary>
-    private static List<string> BuildMtpNativeArguments(string targetPath, string resultsDirectory, string? treeNodeFilter, bool noRestore)
+    private static List<string> BuildMtpNativeArguments(string targetPath, string resultsDirectory, ImmutableArray<string> nativeArguments, bool noRestore)
     {
-        var arguments = new List<string> { "test", "--project", targetPath, "--report-trx", "--results-directory", resultsDirectory };
+        var selector = targetPath.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase) ? "--project" : "--solution";
+        var arguments = new List<string> { "test", selector, targetPath, "--results-directory", resultsDirectory };
+        arguments.AddRange(nativeArguments);
 
         if (noRestore)
         {
             arguments.Add("--no-restore");
         }
 
-        if (!string.IsNullOrWhiteSpace(treeNodeFilter))
-        {
-            arguments.Add("--treenode-filter");
-            arguments.Add(treeNodeFilter);
-        }
-
         return arguments;
     }
 
-    /// <summary>
-    /// Collect TRX from this invocation's unique explicit directory first. Some vstest versions
-    /// ignore <c>--results-directory</c>; for those hosts, accept only the concrete
-    /// <c>Results File: &lt;path&gt;</c> reported by this process. Never scan the target working tree,
-    /// because it can contain historical TRX files from unrelated invocations.
-    /// </summary>
-    private static string[] CollectTrxFiles(string resultsDirectory, CommandExecutionDto execution)
-    {
-        var fromExplicit = Directory.Exists(resultsDirectory)
-            ? Directory.GetFiles(resultsDirectory, "*.trx", SearchOption.AllDirectories)
-            : [];
-
-        if (fromExplicit.Length > 0)
-            return fromExplicit;
-
-        return TryTrxFromStdOut(execution.StdOut);
-    }
-
-    /// <summary>
-    /// When TRX lands outside our results directory (host-specific vstest layout), dotnet still prints
-    /// <c>Results File: &lt;path&gt;</c> to stdout — use it as a last-resort discovery path.
-    /// </summary>
-    private static string[] TryTrxFromStdOut(string? stdOut)
-    {
-        if (string.IsNullOrEmpty(stdOut))
-            return [];
-
-        var match = ResultsFileRegex().Match(stdOut);
-        if (!match.Success)
-            return [];
-
-        var path = match.Groups[1].Value.Trim();
-        return File.Exists(path) ? [path] : [];
-    }
-
-    [GeneratedRegex(@"Results\s+File:\s*(.+?)\s*(?:\r|\n|$)", RegexOptions.IgnoreCase | RegexOptions.Multiline)]
-    private static partial Regex ResultsFileRegex();
 }

@@ -64,12 +64,6 @@ public sealed class SymbolDisambiguationElicitationTests : IsolatedWorkspaceTest
         _workspaceId = await GetOrLoadWorkspaceIdAsync(SampleSolutionPath);
     }
 
-    [ClassCleanup]
-    public static void Cleanup()
-    {
-        DisposeServices();
-    }
-
     // ── (a) elicit-supported preconditions ───────────────────────────────────
 
     [TestMethod]

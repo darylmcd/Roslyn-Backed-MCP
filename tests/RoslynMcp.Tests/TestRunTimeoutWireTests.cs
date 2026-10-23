@@ -28,9 +28,6 @@ public sealed class TestRunTimeoutWireTests : SharedWorkspaceTestBase
         _workspaceId = await LoadSharedSampleWorkspaceAsync();
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     [DataRow("2025-11-25")]
     [DataRow(null)]
@@ -118,12 +115,12 @@ public sealed class TestRunTimeoutWireTests : SharedWorkspaceTestBase
             captureServerMessages: true);
     }
 
-    private sealed class ControlledRunner(Action cancelUnfiltered) : ITestRunnerService
+    private sealed class ControlledRunner(Action cancelUnfiltered) : RoslynMcp.Tests.Helpers.CannedTestRunner
     {
         public int Calls { get; private set; }
 
         // The gated phase: the gate's request timeout (or the caller token) can still cancel here.
-        public Task<TestRunPlan> PrepareTestRunAsync(string workspaceId, string? projectName, string? filter, CancellationToken ct)
+        public override Task<TestRunPlan> PrepareTestRunAsync(string workspaceId, string? projectName, string? filter, CancellationToken ct)
         {
             Calls++;
             if (filter is null)
@@ -133,10 +130,10 @@ public sealed class TestRunTimeoutWireTests : SharedWorkspaceTestBase
                 Assert.Fail("The controlled cancellation must fire before the runner completes.");
             }
 
-            return Task.FromResult(new TestRunPlan(workspaceId, projectName, filter));
+            return Task.FromResult(new TestRunPlan(workspaceId, projectName, filter, System.Collections.Immutable.ImmutableDictionary<string, string>.Empty, RoslynMcp.Tests.Helpers.SyntheticTestRunPlans.OwnedDefaultContext, []));
         }
 
-        public Task<TestRunResultDto> RunTestsAsync(string workspaceId, string? projectName, string? filter, CancellationToken ct)
+        public override Task<TestRunResultDto> RunTestsAsync(string workspaceId, string? projectName, string? filter, CancellationToken ct)
         {
             return Task.FromResult(new TestRunResultDto(
                 new CommandExecutionDto("dotnet", [], string.Empty, string.Empty, 0, true, 1, string.Empty, string.Empty),

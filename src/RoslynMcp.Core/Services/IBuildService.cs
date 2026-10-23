@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using RoslynMcp.Core.Models;
 
 namespace RoslynMcp.Core.Services;
@@ -57,4 +58,13 @@ public sealed record BuildCommandPlan(
 public sealed record BuildCommandRun(
     BuildCommandPlan Plan,
     CommandExecutionDto Execution,
-    long CommandDurationMs);
+    long CommandDurationMs)
+{
+    // Structured identities only; raw stdout/stderr never leave the executor.
+    internal BuildCommandParsingState? ParsingState { get; init; }
+    public override string ToString() => $"BuildCommandRun {{ WorkspaceId = {Plan.WorkspaceId}, CommandDurationMs = {CommandDurationMs} }}";
+}
+
+internal sealed record BuildCommandParsingState(
+    ImmutableArray<DiagnosticDto> Diagnostics,
+    ImmutableArray<string> Arguments);

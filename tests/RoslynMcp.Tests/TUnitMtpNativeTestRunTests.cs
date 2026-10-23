@@ -2,40 +2,26 @@ using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
+using RoslynMcp.Roslyn.Helpers;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
-/// <summary>
-/// tunit-mtp-native-test-run: TUnit is entirely built on Microsoft.Testing.Platform (MTP) and
-/// never registers with the classic VSTest adapter, so test_run needs a different, MTP-native
-/// dotnet test invocation for it. These fixtures deliberately never restore the TUnit package,
-/// so most preconditions covered here (an untranslatable filter, no global.json opt-in, an
-/// ambiguous multi-project target) are checked and thrown before TestRunnerService ever shells
-/// out to dotnet test — an unrestorable/network-independent fixture is enough to exercise them.
-/// The happy-path tests reach further: a <see cref="RecordingGatedCommandExecutor"/> fake stands
-/// in for the real process launch, so the final argv itself is under test (this is what would
-/// have caught the SDK 10.0.204 positional-path regression — every earlier test here stopped
-/// before the executor and couldn't have). TreeNodeFilterTranslatorTests covers the
-/// filter-translation grammar itself in isolation; the end-to-end behavior of a translated filter
-/// against a real, restored TUnit project was verified manually (see TreeNodeFilterTranslator's
-/// doc comment) rather than via a network-dependent committed test.
-/// </summary>
+/// <summary>Offline, genuinely restored protocol-plan fixtures with a recording executor.
+/// NativeMtpExecutionTests separately qualifies real framework CLI/TRX behavior.</summary>
 [TestClass]
 public sealed class TUnitMtpNativeTestRunTests : TestBase
 {
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     public async Task RunTestsAsync_TUnitProjectWithUntranslatableFilter_ThrowsBeforeExecutingDotnetTest()
     {
-        // "Foo" has no '.'-separated class/method for TreeNodeFilterTranslator to recover —
+        // "Foo" has no '.'-separated class/method for TreeNodeFilterTranslator to recover ;
         // one of several untranslatable shapes; TreeNodeFilterTranslatorTests covers the rest.
-        var (workspaceId, projectName) = await LoadTUnitFixtureAsync(withGlobalJsonOptIn: true);
+        var (workspaceId, projectName) = await LoadTUnitFixtureAsync(withGlobalJsonOptIn: true, engine: true);
         try
         {
             var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
@@ -54,19 +40,19 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
     public async Task RunTestsAsync_TUnitProjectDirectlyLoaded_ProjectNameOmitted_StillRoutesThroughMtpPlan()
     {
         // tunit-projectname-null-single-project-routing: a workspace loaded directly from one
-        // .csproj (no solution) has exactly one candidate project, so an omitted projectName —
-        // the normal single-project call shape — must route through the same MTP plan an
+        // .csproj (no solution) has exactly one candidate project, so an omitted projectName ;
+        // the normal single-project call shape ; must route through the same MTP plan an
         // explicitly named project gets. Before this fix, this path silently built VSTest args
         // instead and never reached TreeNodeFilterTranslator at all.
-        var (workspaceId, _) = await LoadTUnitFixtureAsync(withGlobalJsonOptIn: true);
+        var (workspaceId, _) = await LoadTUnitFixtureAsync(withGlobalJsonOptIn: true, engine: true);
         try
         {
             var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
                 TestRunnerService.RunTestsAsync(workspaceId, projectName: null, filter: "FullyQualifiedName~Foo", CancellationToken.None));
 
             StringAssert.Contains(ex.Message, "class/method",
-                "Reaching TreeNodeFilterTranslator's parse error — rather than silently shelling out with " +
-                "VSTest args — proves the null-projectName path routed through the MTP plan.");
+                "Reaching TreeNodeFilterTranslator's parse error ; rather than silently shelling out with " +
+                "VSTest args ; proves the null-projectName path routed through the MTP plan.");
         }
         finally
         {
@@ -77,17 +63,13 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
     [TestMethod]
     public async Task RunTestsAsync_HappyPath_ProducesExpectedNativeMtpArgv()
     {
-        // Item 7 / tunit-native-argv-requires-explicit-project-flag: the SDK 10.0.204 positional-
-        // path repro slipped through review because every other test in this file stops before
-        // the executor (an untranslatable filter, a missing global.json opt-in, or — for the
-        // restore tests — Translate failing on an unrestored fixture). A fake executor lets this
-        // one actually reach BuildMtpNativeArguments and assert on the exact final argv, without
-        // touching the network or spawning a real dotnet process.
-        var (workspaceId, _) = await LoadTUnitFixtureAsync(withGlobalJsonOptIn: true);
+        // A real offline restore supplies package evidence; this executor records the final protocol argv.
+        // NativeMtpExecutionTests separately exercises actual framework execution and TRX output.
+        var (workspaceId, _) = await LoadTUnitFixtureAsync(withGlobalJsonOptIn: true, engine: true);
         try
         {
-            var recordingExecutor = new RecordingGatedCommandExecutor(restoreSucceeds: true);
-            var service = new TestRunnerService(
+            var recordingExecutor = new RecordingGatedCommandExecutor();
+            var service = new TestRunnerService(PathPolicy,
                 WorkspaceManager,
                 recordingExecutor,
                 NullLogger<TestRunnerService>.Instance,
@@ -95,17 +77,18 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
 
             await service.RunTestsAsync(workspaceId, projectName: null, filter: null, CancellationToken.None);
 
-            Assert.AreEqual(1, recordingExecutor.ExecutedArguments.Count);
+            Assert.HasCount(1, recordingExecutor.ExecutedArguments);
             var argv = recordingExecutor.ExecutedArguments[0];
-            Assert.AreEqual(6, argv.Count, $"Unexpected argv shape: [{string.Join(", ", argv)}]");
+            Assert.AreEqual(8, argv.Count, $"Unexpected argv shape: [{string.Join(", ", argv)}]");
             Assert.AreEqual("test", argv[0]);
             Assert.AreEqual("--project", argv[1]);
             StringAssert.EndsWith(argv[2], "TUnitFixture.csproj");
-            Assert.AreEqual("--report-trx", argv[3]);
-            Assert.AreEqual("--results-directory", argv[4]);
-            Assert.IsFalse(string.IsNullOrWhiteSpace(argv[5]));
-            Assert.IsFalse(argv.Contains("--no-restore"),
-                "No filter was supplied, so the version-check restore path must not run.");
+            Assert.AreEqual("--results-directory", argv[3]);
+            Assert.IsFalse(string.IsNullOrWhiteSpace(argv[4]));
+            Assert.AreEqual("--report-trx", argv[5]);
+            Assert.AreEqual("--no-restore", argv[6], "The test must consume the exact restored reporter evidence.");
+            var projectPath = WorkspaceManager.GetStatus(workspaceId).Projects.Single().FilePath;
+            Assert.AreEqual("-p:MSBuildUserExtensionsPath=" + Path.Combine(Path.GetDirectoryName(projectPath)!, ".roslynmcp", "fixture-user-extensions"), argv[7]);
             Assert.IsFalse(argv.Contains("--treenode-filter"));
         }
         finally
@@ -117,15 +100,13 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
     [TestMethod]
     public async Task RunTestsAsync_HappyPath_SingleAtomFilter_ProducesTranslatedTreeNodeFilterArgv()
     {
-        // Item 7: a happy-path executor regression for the translated-filter shape, not just the
-        // unfiltered argv above. A single atom (no '|') needs neither a resolved TUnit.Engine
-        // version. Discovery still validates the atom against the loaded project so direct
-        // service construction cannot bypass the fail-closed filter contract.
-        var (workspaceId, _) = await LoadTUnitFixtureAsync(withGlobalJsonOptIn: true);
+        // A single atom does not need the OR engine-version capability.
+        // Discovery still validates it against the genuinely restored loaded project.
+        var (workspaceId, _) = await LoadTUnitFixtureAsync(withGlobalJsonOptIn: true, engine: true);
         try
         {
-            var recordingExecutor = new RecordingGatedCommandExecutor(restoreSucceeds: true);
-            var service = new TestRunnerService(
+            var recordingExecutor = new RecordingGatedCommandExecutor();
+            var service = new TestRunnerService(PathPolicy,
                 WorkspaceManager,
                 recordingExecutor,
                 NullLogger<TestRunnerService>.Instance,
@@ -135,12 +116,12 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
                 workspaceId, projectName: null,
                 filter: "FullyQualifiedName=MyNamespace.MyClass.MyMethod", CancellationToken.None);
 
-            Assert.AreEqual(1, recordingExecutor.ExecutedArguments.Count);
+            Assert.HasCount(1, recordingExecutor.ExecutedArguments);
             var argv = recordingExecutor.ExecutedArguments[0];
             var filterIndex = argv.ToList().IndexOf("--treenode-filter");
             Assert.AreNotEqual(-1, filterIndex, "--treenode-filter must be present in the final argv.");
             Assert.AreEqual("/*/MyNamespace/MyClass/MyMethod", argv[filterIndex + 1]);
-            Assert.IsFalse(argv.Contains("--no-restore"), "A single atom's OR-version gate never applies.");
+            Assert.IsTrue(argv.Contains("--no-restore"), "Even a single atom uses the frozen reporter dependency graph.");
         }
         finally
         {
@@ -151,11 +132,11 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
     [TestMethod]
     public async Task RunTestsAsync_DirectConstruction_AmbiguousContainsFilterFailsClosed()
     {
-        var (workspaceId, _) = await LoadTUnitFixtureAsync(withGlobalJsonOptIn: true);
+        var (workspaceId, _) = await LoadTUnitFixtureAsync(withGlobalJsonOptIn: true, engine: true);
         try
         {
-            var recordingExecutor = new RecordingGatedCommandExecutor(restoreSucceeds: true);
-            var service = new TestRunnerService(
+            var recordingExecutor = new RecordingGatedCommandExecutor();
+            var service = new TestRunnerService(PathPolicy,
                 WorkspaceManager,
                 recordingExecutor,
                 NullLogger<TestRunnerService>.Instance,
@@ -216,38 +197,28 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
     }
 
     [TestMethod]
-    public async Task RunTestsAsync_OrFilter_RestoresBeforeCheckingResolvedVersion()
+    public async Task RunTestsAsync_OrFilter_RequiresActuallyRestoredEngineVersion()
     {
-        // tunit-treenode-filter-version-check-restore-snapshot: an OR filter's safety depends
-        // on the resolved TUnit.Engine version, so an explicit restore must run BEFORE that
-        // version is read -- otherwise a stale obj/project.assets.json could authorize (or wrongly
-        // reject) the OR shape against a version that a subsequent implicit restore replaces.
-        // A fake executor proves the ordering (and records the restore call) without touching the
-        // network -- the real end-to-end restore+translate+execute path was verified manually
-        // (see TestRunnerService's tunit-treenode-filter-version-check-restore-snapshot remarks).
-        var (workspaceId, _) = await LoadTUnitFixtureAsync(withGlobalJsonOptIn: true);
+        // The native local-feed restore deliberately omits Engine. The OR guard must refuse
+        // its actual restored graph before a recording executor receives any command.
+        var (workspaceId, _) = await LoadTUnitFixtureAsync(withGlobalJsonOptIn: true, engine: false);
         try
         {
-            var recordingExecutor = new RecordingGatedCommandExecutor(restoreSucceeds: true);
-            var service = new TestRunnerService(
+            var recordingExecutor = new RecordingGatedCommandExecutor();
+            var service = new TestRunnerService(PathPolicy,
                 WorkspaceManager,
                 recordingExecutor,
                 NullLogger<TestRunnerService>.Instance,
                 TestDiscoveryService);
 
-            // projectName: null relies on the directly-loaded-single-.csproj routing fix, which
-            // avoids the fake executor needing to implement ResolveProject. The fixture is never
-            // actually restored, so no real project.assets.json exists -- Translate still throws
-            // past the restore step (unresolved TUnit.Engine version). That's fine: this test only
-            // needs to prove restore ran first.
+            // The real local-feed restore resolves the reporter without an Engine dependency.
             await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
                 service.RunTestsAsync(
                     workspaceId, projectName: null,
                     filter: "FullyQualifiedName~MyNamespace.MyClass.Method1|FullyQualifiedName~MyNamespace.MyClass.Method2",
                     CancellationToken.None));
 
-            Assert.AreEqual(1, recordingExecutor.ExecutedArguments.Count);
-            Assert.AreEqual("restore", recordingExecutor.ExecutedArguments[0][0]);
+            Assert.IsEmpty(recordingExecutor.ExecutedArguments, "A missing resolved engine version must refuse before any producer.");
         }
         finally
         {
@@ -255,37 +226,29 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
         }
     }
 
-    [TestMethod]
-    public async Task RunTestsAsync_OrFilter_RestoreFails_ThrowsActionableErrorWithoutAttemptingDotnetTest()
+    // Restore failure, package roots and budget: CertifiedMissingAssets_PreserveRestorePrerequisiteContracts.
+    private sealed class RecordingGatedCommandExecutor : IGatedCommandExecutor
     {
-        var (workspaceId, _) = await LoadTUnitFixtureAsync(withGlobalJsonOptIn: true);
-        try
+        public Task<BuildCommandRun> ExecuteBuildAsync(BuildCommandPlan plan, TimeSpan timeout, CancellationToken ct) =>
+            throw new NotSupportedException("This fixture does not execute builds.");
+
+        public async Task<CommandExecutionDto> ExecuteAuthorizedAsync(
+            string workspaceId, string targetPath, IReadOnlyList<string> arguments, TimeSpan timeout,
+            Func<CancellationToken, Task> authorizeStart, CancellationToken ct)
         {
-            var recordingExecutor = new RecordingGatedCommandExecutor(restoreSucceeds: false);
-            var service = new TestRunnerService(
-                WorkspaceManager,
-                recordingExecutor,
-                NullLogger<TestRunnerService>.Instance,
-                TestDiscoveryService);
-
-            var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
-                service.RunTestsAsync(
-                    workspaceId, projectName: null,
-                    filter: "FullyQualifiedName~MyNamespace.MyClass.Method1|FullyQualifiedName~MyNamespace.MyClass.Method2",
-                    CancellationToken.None));
-
-            StringAssert.Contains(ex.Message, "restore");
-            Assert.AreEqual(1, recordingExecutor.ExecutedArguments.Count,
-                "A failed restore must not be followed by an attempt to run 'dotnet test'.");
+            await authorizeStart(ct).ConfigureAwait(false);
+            return await ExecuteAsync(workspaceId, targetPath, arguments, timeout, ct).ConfigureAwait(false);
         }
-        finally
+        public async Task<TestRunResultDto> ExecuteTestAsync(
+            string workspaceId, string targetPath, IReadOnlyList<string> arguments,
+            Func<CommandExecutionDto, CancellationToken, Task<TestRunResultDto>> collectResults,
+            TimeSpan timeout, IReadOnlyList<EarlyKillPattern>? earlyKillPatterns, Func<CancellationToken, Task> authorizeStart, CancellationToken ct)
         {
-            WorkspaceManager.Close(workspaceId);
+            await authorizeStart(ct).ConfigureAwait(false);
+            var execution = await ExecuteAsync(workspaceId, targetPath, arguments, timeout, earlyKillPatterns, ct);
+            return MsBuildCommandProperties.Redact(await collectResults(execution, ct).ConfigureAwait(false), arguments);
         }
-    }
 
-    private sealed class RecordingGatedCommandExecutor(bool restoreSucceeds) : IGatedCommandExecutor
-    {
         public List<IReadOnlyList<string>> ExecutedArguments { get; } = [];
 
         public Task<CommandExecutionDto> ExecuteAsync(
@@ -301,14 +264,14 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
             CancellationToken ct)
         {
             ExecutedArguments.Add(arguments);
-            var succeeded = !string.Equals(arguments[0], "restore", StringComparison.Ordinal) || restoreSucceeds;
+            Assert.AreEqual("test", arguments[0], "These genuinely restored protocol-plan fixtures must never synthesize a restore.");
             return Task.FromResult(new CommandExecutionDto(
                 Command: "dotnet",
                 Arguments: arguments,
                 WorkingDirectory: Path.GetDirectoryName(targetPath) ?? ".",
                 TargetPath: targetPath,
-                ExitCode: succeeded ? 0 : 1,
-                Succeeded: succeeded,
+                ExitCode: 0,
+                Succeeded: true,
                 DurationMs: 1,
                 StdOut: string.Empty,
                 StdErr: string.Empty));
@@ -326,11 +289,11 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
     public async Task RunTestsAsync_TUnitProjectWithoutGlobalJsonOptIn_ThrowsActionableError()
     {
         // tunit-legacy-vstest-bridge-removed-net10: verified by direct repro against a real
-        // TUnit project — on the .NET 10 SDK, "dotnet test -p:TestingPlatformDotnetTestSupport=true
+        // TUnit project ; on the .NET 10 SDK, "dotnet test -p:TestingPlatformDotnetTestSupport=true
         // -- --report-trx" (the legacy VSTest-mode MTP bridge) fails hard with "Testing with
         // VSTest target is no longer supported by Microsoft.Testing.Platform on .NET 10 SDK and
         // later." There is no fallback argument shape to attempt without the global.json opt-in.
-        var (workspaceId, projectName) = await LoadTUnitFixtureAsync(withGlobalJsonOptIn: false);
+        var (workspaceId, projectName) = await LoadTUnitFixtureAsync(withGlobalJsonOptIn: false, engine: true);
         try
         {
             var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
@@ -345,7 +308,35 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
         }
     }
 
-    private static async Task<(string WorkspaceId, string ProjectName)> LoadTUnitFixtureAsync(bool withGlobalJsonOptIn)
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task CapturedGlobals_ReachNativeMtpWithRestoredDependencies(bool orFilter)
+    {
+        var (originalId, _) = await LoadTUnitFixtureAsync(withGlobalJsonOptIn: true, engine: true);
+        var path = WorkspaceManager.GetStatus(originalId).LoadedPath!;
+        WorkspaceManager.Close(originalId);
+        var status = await ((IWorkspaceEvaluationLoader)WorkspaceManager).LoadWithPropertiesAsync(path,
+            OwnedNativeLoadContext.Properties(path, new Dictionary<string, string> { ["UnknownSetting"] = "synthetic%value;mtp", ["Configuration"] = "Release" }), SupplementalPackageReadAuthority.None, null, CancellationToken.None);
+        try
+        {
+            using var executor = new RecordingGatedCommandExecutor();
+            var service = new TestRunnerService(PathPolicy, WorkspaceManager, executor, NullLogger<TestRunnerService>.Instance, TestDiscoveryService);
+            await service.RunTestsAsync(status.WorkspaceId, null, orFilter
+                ? "FullyQualifiedName~MyNamespace.MyClass.Method1|FullyQualifiedName~MyNamespace.MyClass.Method2" : null, CancellationToken.None);
+            Assert.HasCount(1, executor.ExecutedArguments);
+            Assert.AreEqual("test", executor.ExecutedArguments[0][0]);
+            foreach (var arguments in executor.ExecutedArguments)
+            {
+                CollectionAssert.Contains(arguments.ToArray(), "-p:UnknownSetting=synthetic%25value%3Bmtp");
+                CollectionAssert.Contains(arguments.ToArray(), "-p:Configuration=Release");
+            }
+
+        }
+        finally { WorkspaceManager.Close(status.WorkspaceId); }
+    }
+
+    private static async Task<(string WorkspaceId, string ProjectName)> LoadTUnitFixtureAsync(bool withGlobalJsonOptIn, bool engine)
     {
         const string projectName = "TUnitFixture";
         var root = Path.Combine(TestTempRoot.Current, nameof(TUnitMtpNativeTestRunTests), Guid.NewGuid().ToString("N"));
@@ -377,6 +368,10 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
             {
                 [Test]
                 public void MyMethod() { }
+                [Test]
+                public void Method1() { }
+                [Test]
+                public void Method2() { }
             }
             """);
 
@@ -387,7 +382,8 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
                 """{ "test": { "runner": "Microsoft.Testing.Platform" } }""");
         }
 
-        var loaded = await WorkspaceManager.LoadAsync(projectPath, CancellationToken.None);
+        await TUnitPlanPackageFeed.RestoreAsync(root, projectPath, engine, DotnetCommandRunner);
+        var loaded = await WorkspaceManager.LoadAsync(projectPath, OwnedNativeLoadContext.Properties(projectPath, new Dictionary<string, string>()), CancellationToken.None);
         return (loaded.WorkspaceId, projectName);
     }
 
@@ -429,7 +425,7 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
               </ItemGroup>
             </Project>
             """);
-        File.WriteAllText(Path.Combine(tunitDir, "Program.cs"), "// MTP generates its own entry point.\n");
+        File.WriteAllText(Path.Combine(tunitDir, "Program.cs"), "// The offline plan fixture supplies its semantic entry point in PlanAttribute.cs.\n");
 
         File.WriteAllText(
             Path.Combine(root, "Mixed.slnx"),
@@ -440,7 +436,8 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
             </Solution>
             """);
 
-        var loaded = await WorkspaceManager.LoadAsync(Path.Combine(root, "Mixed.slnx"), CancellationToken.None);
+        await TUnitPlanPackageFeed.RestoreAsync(root, Path.Combine(root, "Mixed.slnx"), true, DotnetCommandRunner);
+        var loaded = await WorkspaceManager.LoadAsync(Path.Combine(root, "Mixed.slnx"), RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(Path.Combine(root, "Mixed.slnx"), new Dictionary<string, string>()), CancellationToken.None);
         return loaded.WorkspaceId;
     }
 
@@ -449,8 +446,8 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
         var workspaceId = await LoadSoleTUnitProjectSolutionFixtureAsync(includeApplicationProject);
         try
         {
-            var recordingExecutor = new RecordingGatedCommandExecutor(restoreSucceeds: true);
-            var service = new TestRunnerService(
+            var recordingExecutor = new RecordingGatedCommandExecutor();
+            var service = new TestRunnerService(PathPolicy,
                 WorkspaceManager,
                 recordingExecutor,
                 NullLogger<TestRunnerService>.Instance,
@@ -458,7 +455,7 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
 
             await service.RunTestsAsync(workspaceId, projectName: null, filter: null, CancellationToken.None);
 
-            Assert.AreEqual(1, recordingExecutor.ExecutedArguments.Count);
+            Assert.HasCount(1, recordingExecutor.ExecutedArguments);
             var argv = recordingExecutor.ExecutedArguments[0];
             var projectArgumentIndex = argv.ToList().IndexOf("--project");
             Assert.AreNotEqual(-1, projectArgumentIndex, "The sole TUnit project must use MTP's --project argument.");
@@ -496,7 +493,7 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
               </ItemGroup>
             </Project>
             """);
-        File.WriteAllText(Path.Combine(tunitDir, "Program.cs"), "// MTP generates its own entry point.\n");
+        File.WriteAllText(Path.Combine(tunitDir, "Program.cs"), "// The offline plan fixture supplies its semantic entry point in PlanAttribute.cs.\n");
 
         var applicationEntry = string.Empty;
         if (includeApplicationProject)
@@ -520,7 +517,8 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
             Path.Combine(root, "SoleTUnit.slnx"),
             $"<Solution>\n{applicationEntry}  <Project Path=\"TUnitProject/TUnitProject.csproj\" />\n</Solution>\n");
 
-        var loaded = await WorkspaceManager.LoadAsync(Path.Combine(root, "SoleTUnit.slnx"), CancellationToken.None);
+        await TUnitPlanPackageFeed.RestoreAsync(root, Path.Combine(root, "SoleTUnit.slnx"), true, DotnetCommandRunner);
+        var loaded = await WorkspaceManager.LoadAsync(Path.Combine(root, "SoleTUnit.slnx"), RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(Path.Combine(root, "SoleTUnit.slnx"), new Dictionary<string, string>()), CancellationToken.None);
         return loaded.WorkspaceId;
     }
 }

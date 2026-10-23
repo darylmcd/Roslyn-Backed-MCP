@@ -1,7 +1,9 @@
 using System.Collections.Concurrent;
+using System.Collections.Immutable;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -62,7 +64,7 @@ public sealed class GatedCommandExecutor : IGatedCommandExecutor
         CancellationToken ct)
         => ExecuteAsync(workspaceId, targetPath, arguments, timeout, earlyKillPatterns: null, ct);
 
-    public async Task<CommandExecutionDto> ExecuteAsync(
+    public Task<CommandExecutionDto> ExecuteAsync(
         string workspaceId,
         string targetPath,
         IReadOnlyList<string> arguments,
@@ -70,11 +72,58 @@ public sealed class GatedCommandExecutor : IGatedCommandExecutor
         IReadOnlyList<EarlyKillPattern>? earlyKillPatterns,
         CancellationToken ct)
     {
+        return ExecuteCoreAsync(workspaceId, targetPath, arguments, timeout, earlyKillPatterns,
+            (execution, _) => Task.FromResult(MsBuildCommandProperties.Redact(execution, arguments)), null, ct);
+    }
+
+    public Task<CommandExecutionDto> ExecuteAuthorizedAsync(
+        string workspaceId, string targetPath, IReadOnlyList<string> arguments, TimeSpan timeout,
+        Func<CancellationToken, Task> authorizeStart, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(authorizeStart);
+        return ExecuteCoreAsync(workspaceId, targetPath, arguments, timeout, null,
+            (execution, _) => Task.FromResult(MsBuildCommandProperties.Redact(execution, arguments)), authorizeStart, ct);
+    }
+
+    public Task<TestRunResultDto> ExecuteTestAsync(
+        string workspaceId, string targetPath, IReadOnlyList<string> arguments,
+        Func<CommandExecutionDto, CancellationToken, Task<TestRunResultDto>> collectResults,
+        TimeSpan timeout, IReadOnlyList<EarlyKillPattern>? earlyKillPatterns,
+        Func<CancellationToken, Task> authorizeStart, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(authorizeStart);
+        ArgumentNullException.ThrowIfNull(collectResults);
+        return ExecuteCoreAsync(workspaceId, targetPath, arguments, timeout, earlyKillPatterns,
+            async (execution, token) => MsBuildCommandProperties.Redact(await collectResults(execution, token).ConfigureAwait(false), arguments), authorizeStart, ct);
+    }
+
+    public Task<BuildCommandRun> ExecuteBuildAsync(BuildCommandPlan plan, TimeSpan timeout, CancellationToken ct) =>
+        ExecuteCoreAsync(plan.WorkspaceId, plan.TargetPath, plan.Arguments, timeout, null, (execution, _) =>
+        {
+            var redactor = new MsBuildCommandProperties.Redactor(plan.Arguments);
+            var diagnostics = DotnetOutputParser.ParseBuildDiagnostics(execution.StdOut + Environment.NewLine + execution.StdErr);
+            return Task.FromResult(new BuildCommandRun(plan with
+            {
+                TargetPath = redactor.Text(plan.TargetPath),
+                Arguments = plan.Arguments.Select(redactor.Text).ToArray()
+            }, redactor.Execution(execution), execution.DurationMs)
+            {
+                ParsingState = new BuildCommandParsingState(diagnostics.ToImmutableArray(), plan.Arguments.ToImmutableArray())
+            });
+        }, null, ct);
+
+    private async Task<TResult> ExecuteCoreAsync<TResult>(
+        string workspaceId, string targetPath, IReadOnlyList<string> arguments, TimeSpan timeout,
+        IReadOnlyList<EarlyKillPattern>? earlyKillPatterns, Func<CommandExecutionDto, CancellationToken, Task<TResult>> project,
+        Func<CancellationToken, Task>? authorizeStart, CancellationToken ct)
+    {
+        var redactor = new MsBuildCommandProperties.Redactor(arguments);
         var workspaceGate = _workspaceCommandGates.GetOrAdd(workspaceId, static _ => new SemaphoreSlim(1, 1));
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeoutCts.CancelAfter(timeout);
         var globalGateAcquired = false;
         var workspaceGateAcquired = false;
+        var authorizing = false;
 
         try
         {
@@ -83,22 +132,44 @@ public sealed class GatedCommandExecutor : IGatedCommandExecutor
             await workspaceGate.WaitAsync(timeoutCts.Token).ConfigureAwait(false);
             workspaceGateAcquired = true;
 
+            if (authorizeStart is not null)
+            {
+                authorizing = true;
+                await authorizeStart(timeoutCts.Token).ConfigureAwait(false);
+                timeoutCts.Token.ThrowIfCancellationRequested();
+                authorizing = false;
+            }
+
             var workingDirectory = GetWorkingDirectory(targetPath);
             var execution = await _commandRunner
                 .RunAsync(workingDirectory, targetPath, arguments, earlyKillPatterns, timeoutCts.Token)
                 .ConfigureAwait(false);
 
-            LogCommandExecuted(_logger, targetPath, string.Join(" ", arguments), execution.ExitCode, null);
+            LogCommandExecuted(_logger, redactor.Text(targetPath), redactor.Text(string.Join(" ", arguments)), execution.ExitCode, null);
 
-            return execution;
+            return await project(execution, timeoutCts.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException oce) when (!ct.IsCancellationRequested && timeoutCts.IsCancellationRequested)
         {
             // The caught OCE is carried as InnerException so cancellation provenance (which token
             // fired, original stack trace) survives the reclassification for logs/diagnostics.
             throw new TimeoutException(
-                $"The command 'dotnet {string.Join(" ", arguments)}' did not complete within the total timeout budget of {timeout.TotalMinutes:F1} minute(s), including queue wait.",
-                oce);
+                $"The command 'dotnet {redactor.Text(string.Join(" ", arguments))}' did not complete within the total timeout budget of {timeout.TotalMinutes:F1} minute(s), including queue wait.",
+                redactor.HasValues ? new OperationCanceledException("The command timeout elapsed.", oce.CancellationToken) : oce);
+        }
+        catch (OperationCanceledException exception) when (redactor.HasValues)
+        {
+            throw new OperationCanceledException(redactor.Text(exception.Message), exception.CancellationToken);
+        }
+        catch (Exception exception) when (authorizing)
+        {
+            throw redactor.Failure(exception);
+        }
+        catch (Exception exception) when (redactor.HasValues)
+        {
+            // Exception messages, Data, and nested chains can echo argv or raw process output.
+            // Preserve the failure category without exporting untrusted diagnostic payloads.
+            throw new InvalidOperationException("Command execution or result processing failed (" + exception.GetType().Name + ").");
         }
         finally
         {

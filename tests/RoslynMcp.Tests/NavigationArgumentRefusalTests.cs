@@ -15,9 +15,6 @@ public sealed class NavigationArgumentRefusalTests : IsolatedWorkspaceTestBase
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     [DataRow("")]
     [DataRow("class A {}")]
@@ -100,12 +97,9 @@ public sealed class NavigationArgumentRefusalTests : IsolatedWorkspaceTestBase
     [DataRow("2026-07-28")]
     public async Task NavigationRefusals_PreserveSafeDualEraWireContract(string version)
     {
-        await using var harness = await ProductionParityMcpHarness.CreateAsync("navigation-refusals", version);
-        var loaded = await harness.Client.CallToolAsync("workspace_load",
-            new Dictionary<string, object?> { ["path"] = SampleSolutionPath, ["autoRestore"] = false },
-            cancellationToken: CancellationToken.None);
-        Assert.IsFalse(loaded.IsError == true);
-        var id = JsonNode.Parse(loaded.Content.OfType<TextContentBlock>().Single().Text)!["workspaceId"]!.GetValue<string>();
+        await using var harness = await ProductionParityMcpHarness.CreateOwnedAsync("navigation-refusals", version, TestFixtureFileSystem.FindRepositoryRoot());
+        var id = await ProductionParityMcpHarness.LoadOwnedWorkspaceAsync(
+            harness, SampleSolutionPath, CancellationToken.None);
         var root = Path.GetDirectoryName(SampleSolutionPath)!;
         var path = Path.Combine(root, "SampleLib", "RefactoringProbe.cs");
         var cases = new List<(string Tool, string Parameter, string Correction, Dictionary<string, object?> Args)>();

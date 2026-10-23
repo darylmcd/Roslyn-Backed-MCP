@@ -4,7 +4,7 @@
 
 ## Anchors
 
-- `src/RoslynMcp.Roslyn/Services/ConsumerAnalysisService.cs:149-210`
+- `src/RoslynMcp.Roslyn/Services/ConsumerAnalysisService.cs:156`
 - `src/RoslynMcp.Roslyn/Services/TypeConsumersService.cs:171-219`
 - `src/RoslynMcp.Roslyn/Services/MutationAnalysisService.cs:585-665`
 

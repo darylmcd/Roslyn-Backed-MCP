@@ -161,7 +161,7 @@ public class CompoundMutationSample
 }
 """, CancellationToken.None);
 
-        var status = await WorkspaceManager.LoadAsync(CopiedSolutionPath, CancellationToken.None);
+        var status = await WorkspaceManager.LoadAsync(CopiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(CopiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
         WorkspaceId = status.WorkspaceId;
     }
 
@@ -178,7 +178,6 @@ public class CompoundMutationSample
         finally
         {
             DeleteDirectoryIfExists(CopiedRoot);
-            DisposeServices();
         }
     }
 

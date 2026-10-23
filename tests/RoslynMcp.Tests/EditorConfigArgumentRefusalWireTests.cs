@@ -1,10 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
-using RoslynMcp.Core.Services;
-using RoslynMcp.Roslyn.Services;
 using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
@@ -17,9 +14,6 @@ public sealed class EditorConfigArgumentRefusalWireTests : IsolatedWorkspaceTest
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     [DataRow("2025-11-25", "key")]
     [DataRow("2026-07-28", "key")]
@@ -30,14 +24,10 @@ public sealed class EditorConfigArgumentRefusalWireTests : IsolatedWorkspaceTest
         await using var workspace = await CreateIsolatedWorkspaceAsync();
         var root = Path.GetDirectoryName(workspace.SolutionPath)!;
         await File.WriteAllTextAsync(Path.Combine(root, ".editorconfig"), "[*.cs]\nindent_size = 4\n");
-        await using var harness = await ProductionParityMcpHarness.CreateAsync(
-            "editorconfig-refusals", version,
-            services => services.AddSingleton(new SecurityOptions { SanctionedRoots = [root] }));
-        var loaded = await harness.Client.CallToolAsync("workspace_load",
-            new Dictionary<string, object?> { ["path"] = workspace.SolutionPath, ["autoRestore"] = false },
-            cancellationToken: CancellationToken.None);
-        Assert.IsFalse(loaded.IsError == true);
-        var id = JsonNode.Parse(loaded.Content.OfType<TextContentBlock>().Single().Text)!["workspaceId"]!.GetValue<string>();
+        await using var harness = await ProductionParityMcpHarness.CreateOwnedAsync(
+            "editorconfig-refusals", version, root);
+        var id = await ProductionParityMcpHarness.LoadOwnedWorkspaceAsync(
+            harness, workspace.SolutionPath, CancellationToken.None);
         var before = Snapshot(root);
 
         var arguments = new Dictionary<string, object?>

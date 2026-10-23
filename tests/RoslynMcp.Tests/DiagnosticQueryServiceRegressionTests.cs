@@ -951,6 +951,10 @@ public sealed class DiagnosticQueryServiceRegressionTests
 
         public int GetCurrentVersion(string workspaceId) => Version;
 
+        public Task<System.Collections.Immutable.ImmutableArray<RoslynMcp.Roslyn.Contracts.AdmittedModuleImage>> ReadAdmittedImagesAsync(
+            string workspaceId, Microsoft.CodeAnalysis.ProjectId projectId, Microsoft.CodeAnalysis.PortableExecutableReference reference, CancellationToken ct) =>
+            throw new NotSupportedException();
+
         public Solution GetCurrentSolution(string workspaceId) => Solution;
 
         public WorkspaceStatusDto GetStatus(string workspaceId) => CreateStatus();
@@ -982,12 +986,6 @@ public sealed class DiagnosticQueryServiceRegressionTests
 
         public bool IsStale(string workspaceId) => false;
 
-        public bool TryApplyChanges(string workspaceId, Solution newSolution)
-        {
-            Solution = newSolution;
-            Version++;
-            return true;
-        }
 
         public void RestoreVersion(string workspaceId, int version) => Version = version;
 

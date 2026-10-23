@@ -4,6 +4,7 @@ using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Contracts;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -51,7 +52,12 @@ public sealed class ApplyUndoWorkflowServiceTests
         FakeCompileCheck compile,
         FakeUndo undo,
         FakeRefactoring? refactoring = null)
-        => new(refactoring ?? new FakeRefactoring(), compile, undo, new FakePreviewStore("ws"));
+    {
+        var apply = refactoring ?? new FakeRefactoring();
+        apply.UndoOperation = new CallbackPreparedUndoOperation(
+            _ => throw new NotSupportedException("The apply returned an already-published operation."), undo.RestoreOwnedAsync);
+        return new(apply, compile, undo, new FakePreviewStore("ws"));
+    }
 
     [TestMethod]
     public async Task ApplyFailed_ShortCircuits_BeforeVerifyOrRevert()
@@ -67,7 +73,7 @@ public sealed class ApplyUndoWorkflowServiceTests
         var failed = (ApplyVerifyOutcome.ApplyFailed)outcome;
         Assert.AreEqual("apply blew up", failed.Error);
         Assert.AreEqual(1, compile.Calls, "Only the pre-apply baseline check runs; there is no post-apply verify after an apply failure.");
-        Assert.AreEqual(0, undo.RevertCalls, "A failed apply mutated nothing, so no revert is attempted.");
+        Assert.AreEqual(0, undo.CompensationCalls, "A failed apply mutated nothing, so no revert is attempted.");
     }
 
     [TestMethod]
@@ -85,7 +91,7 @@ public sealed class ApplyUndoWorkflowServiceTests
         CollectionAssert.AreEqual(new[] { "A.cs", "B.cs" }, applied.AppliedFiles.ToList());
         Assert.AreEqual(0, applied.PreErrorCount);
         Assert.AreEqual(0, applied.PostErrorCount);
-        Assert.AreEqual(0, undo.RevertCalls, "A clean apply is not reverted.");
+        Assert.AreEqual(0, undo.CompensationCalls, "A clean apply is not reverted.");
     }
 
     [TestMethod]
@@ -105,7 +111,7 @@ public sealed class ApplyUndoWorkflowServiceTests
         Assert.AreEqual("CS0103", withErrors.IntroducedErrors[0].Id);
         Assert.AreEqual(0, withErrors.PreErrorCount);
         Assert.AreEqual(1, withErrors.PostErrorCount);
-        Assert.AreEqual(0, undo.RevertCalls, "rollbackOnError=false must preserve the broken state, not revert it.");
+        Assert.AreEqual(0, undo.CompensationCalls, "rollbackOnError=false must preserve the broken state, not revert it.");
     }
 
     [TestMethod]
@@ -113,7 +119,7 @@ public sealed class ApplyUndoWorkflowServiceTests
     {
         var error = NewError();
         var compile = new FakeCompileCheck(CleanCheck(), CheckWithError(error));
-        var undo = new FakeUndo { RevertReturns = true };
+        var undo = new FakeUndo { CompensationReturns = true };
         var refactoring = new FakeRefactoring { Result = new ApplyResultDto(true, new[] { "A.cs" }, null) };
         var service = Create(compile, undo, refactoring);
 
@@ -123,7 +129,7 @@ public sealed class ApplyUndoWorkflowServiceTests
         var rolledBack = (ApplyVerifyOutcome.RolledBack)outcome;
         Assert.IsTrue(rolledBack.Reverted, "A successful revert maps to Reverted=true (status=\"rolled_back\").");
         Assert.AreEqual(1, rolledBack.IntroducedErrors.Count);
-        Assert.AreEqual(1, undo.RevertCalls, "Exactly one revert must be issued when new errors appear.");
+        Assert.AreEqual(1, undo.CompensationCalls, "Exactly one revert must be issued when new errors appear.");
     }
 
     [TestMethod]
@@ -131,7 +137,7 @@ public sealed class ApplyUndoWorkflowServiceTests
     {
         var error = NewError();
         var compile = new FakeCompileCheck(CleanCheck(), CheckWithError(error));
-        var undo = new FakeUndo { RevertReturns = false };
+        var undo = new FakeUndo { CompensationReturns = false };
         var refactoring = new FakeRefactoring { Result = new ApplyResultDto(true, new[] { "A.cs" }, null) };
         var service = Create(compile, undo, refactoring);
 
@@ -140,7 +146,7 @@ public sealed class ApplyUndoWorkflowServiceTests
         Assert.IsInstanceOfType<ApplyVerifyOutcome.RolledBack>(outcome);
         var rolledBack = (ApplyVerifyOutcome.RolledBack)outcome;
         Assert.IsFalse(rolledBack.Reverted, "A failed revert maps to Reverted=false (status=\"rollback_failed\").");
-        Assert.AreEqual(1, undo.RevertCalls);
+        Assert.AreEqual(1, undo.CompensationCalls);
     }
 
     // ── RevertBySequenceAsync 1:1 mapping ──
@@ -289,6 +295,15 @@ public sealed class ApplyUndoWorkflowServiceTests
 
     private sealed class FakeRefactoring : IRefactoringService
     {
+        public IPreparedUndoOperation? UndoOperation { get; set; }
+
+        public async Task<RefactoringApplyOperationResult> ApplyRefactoringWithUndoAsync(string previewToken, string toolName, bool force, CancellationToken ct)
+        {
+            var result = await ApplyRefactoringAsync(previewToken, toolName, force, ct);
+            return new RefactoringApplyOperationResult(result, result.Success
+                ? UndoOperation ?? throw new InvalidOperationException("The fake must bind an owned compensation operation.") : null);
+        }
+
         public ApplyResultDto Result = new(true, new[] { "A.cs" }, null);
 
         public Task<ApplyResultDto> ApplyRefactoringAsync(string previewToken, string toolName, CancellationToken ct)
@@ -318,18 +333,22 @@ public sealed class ApplyUndoWorkflowServiceTests
 
     private sealed class FakeUndo : IUndoService
     {
-        public int RevertCalls;
-        public bool RevertReturns = true;
+        public int CompensationCalls;
+        public bool CompensationReturns = true;
         public RevertBySequenceResult SequenceResult =
             new(false, null, Array.Empty<string>(), "unknown-sequence", null);
 
-        public Task<bool> RevertAsync(string workspaceId, CancellationToken cancellationToken = default)
+        public Task<bool> RestoreOwnedAsync(CancellationToken cancellationToken)
         {
-            RevertCalls++;
-            return Task.FromResult(RevertReturns);
+            CompensationCalls++;
+            return Task.FromResult(CompensationReturns);
         }
 
-        public void CaptureBeforeApply(string workspaceId, string description, object? preApplySolution, IReadOnlyList<FileSnapshotDto>? fileSnapshots = null) { }
+        public Task<bool> RevertAsync(string workspaceId, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException("Verification must compensate its exact operation, never the global last undo.");
+
+        public Task<IPreparedUndoOperation> PrepareBeforeApplyAsync(IWorkspaceMutationOperation physicalOperation, CancellationToken ct) =>
+            throw new NotSupportedException("This workflow fake does not prepare apply transactions.");
 
         public UndoEntry? GetLastOperation(string workspaceId) => null;
 
@@ -361,14 +380,11 @@ public sealed class ApplyUndoWorkflowServiceTests
         public (string WorkspaceId, Solution OriginalSolution, Solution ModifiedSolution, int WorkspaceVersion, string Description, bool DiffTruncated)? Retrieve(string token)
             => null;
 
-        public string Store(string workspaceId, Solution modifiedSolution, int workspaceVersion, string description)
-            => throw new NotImplementedException();
+        public IReadOnlyList<string>? PeekChangedPaths(string token) => null;
 
-        public string Store(string workspaceId, Solution modifiedSolution, int workspaceVersion, string description, bool diffTruncated)
-            => throw new NotImplementedException();
-
-        public string Store(string workspaceId, Solution modifiedSolution, int workspaceVersion, string description, IReadOnlyList<FileChangeDto> changes)
-            => throw new NotImplementedException();
+        public string Store(string workspaceId, Solution originalSolution, Solution modifiedSolution, int workspaceVersion,
+            string description, IReadOnlyList<FileChangeDto> changes, PreviewKind kind)
+            => throw new NotSupportedException();
 
         public void Invalidate(string token) { }
 

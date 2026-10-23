@@ -1,7 +1,8 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Services;
-using Microsoft.Extensions.Logging.Abstractions;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -9,8 +10,9 @@ namespace RoslynMcp.Tests;
 // edits, reloads and closes its own temp copy of SampleSolution (CreateSampleSolutionCopy) under its own
 // workspace id, the same private-copy WorkspaceManager.LoadAsync pattern the parallel classes
 // MoveTypeDiskStateTests and CouplingAnalysisTests use; the other two methods run against local
-// FakeWorkspaceManager / BlockingDotnetCommandRunner instances. No method touches the
-// WorkspaceIdCache-shared workspace, a static, the environment, or a child process.
+// configured workspace stub / BlockingDotnetCommandRunner instances. No method touches the
+// WorkspaceIdCache-shared workspace, a static, or the environment. Native child processes
+// belong to the private workspace fixture; the other two methods use local runners.
 [TestClass]
 public class PerformanceBehaviorTests : SharedWorkspaceTestBase
 {
@@ -20,12 +22,6 @@ public class PerformanceBehaviorTests : SharedWorkspaceTestBase
         InitializeServices();
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup()
-    {
-        DisposeServices();
-    }
-
     [TestMethod]
     public async Task Workspace_Status_Uses_Loaded_Metadata_Until_Reload()
     {
@@ -33,10 +29,11 @@ public class PerformanceBehaviorTests : SharedWorkspaceTestBase
         var copiedRoot = Path.GetDirectoryName(copiedSolutionPath)!;
         var appProjectPath = Path.Combine(copiedRoot, "SampleApp", "SampleApp.csproj");
         string? workspaceId = null;
+        Exception? primary = null;
 
         try
         {
-            var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+            var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
             workspaceId = status.WorkspaceId;
 
             var initialStatus = WorkspaceManager.GetStatus(workspaceId);
@@ -62,14 +59,12 @@ public class PerformanceBehaviorTests : SharedWorkspaceTestBase
                 "SampleApp.Reloaded",
                 reloadedStatus.Projects.First(project => project.Name == "SampleApp").AssemblyName);
         }
+        catch (Exception failure) { primary = failure; throw; }
         finally
         {
-            if (workspaceId is not null)
-            {
-                WorkspaceManager.Close(workspaceId);
-            }
-
-            DeleteDirectoryIfExists(copiedRoot);
+            await CleanupFailureCollector.RunAfterFailureAsync("Workspace status fixture cleanup failed.", primary,
+                CleanupFailureCollector.FromAction(() => { if (workspaceId is not null) WorkspaceManager.Close(workspaceId); }),
+                CleanupFailureCollector.FromAction(() => DeleteDirectoryIfExists(copiedRoot)));
         }
     }
 
@@ -78,92 +73,100 @@ public class PerformanceBehaviorTests : SharedWorkspaceTestBase
     {
         // Two parallel RunReadAsync calls against the same workspace should overlap on the
         // per-workspace AsyncReaderWriterLock.
-        var manager = new FakeWorkspaceManager();
-        var gate = new WorkspaceExecutionGate(
-            new ExecutionGateOptions(),
-            manager);
-
-        var maxConcurrent = 0;
-        var current = 0;
+        var manager = CreateWorkspaceManager();
+        WorkspaceExecutionGate? gate = null;
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var tracker = new ConcurrencyTracker();
         var firstStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var releaseFirst = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var secondStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        var first = gate.RunReadAsync("workspace-a", async ct =>
+        Task<int>? first = null;
+        Task<int>? second = null;
+        Exception? primary = null;
+        try
         {
-            var n = Interlocked.Increment(ref current);
-            if (n > maxConcurrent) maxConcurrent = n;
-            firstStarted.SetResult();
-            await releaseFirst.Task.WaitAsync(ct);
-            Interlocked.Decrement(ref current);
-            return 1;
-        }, CancellationToken.None);
-
-        await firstStarted.Task;
-
-        var second = gate.RunReadAsync("workspace-a", _ =>
+            gate = new WorkspaceExecutionGate(new ExecutionGateOptions(), manager);
+            first = gate.RunReadAsync("workspace-a", async ct =>
+            {
+                tracker.Enter();
+                try
+                {
+                    firstStarted.SetResult();
+                    await releaseFirst.Task.WaitAsync(ct);
+                    return 1;
+                }
+                finally { tracker.Leave(); }
+            }, cts.Token);
+            await firstStarted.Task.WaitAsync(cts.Token);
+            second = gate.RunReadAsync("workspace-a", _ =>
+            {
+                tracker.Enter();
+                try
+                {
+                    secondStarted.SetResult();
+                    return Task.FromResult(2);
+                }
+                finally { tracker.Leave(); }
+            }, cts.Token);
+            await secondStarted.Task.WaitAsync(TimeSpan.FromSeconds(5), cts.Token);
+            Assert.AreEqual(2, tracker.MaxConcurrent,
+                "Two reads on the same workspace must overlap on the per-workspace RW lock.");
+            releaseFirst.TrySetResult();
+            await Task.WhenAll(first, second);
+        }
+        catch (Exception failure) { primary = failure; throw; }
+        finally
         {
-            var n = Interlocked.Increment(ref current);
-            if (n > maxConcurrent) maxConcurrent = n;
-            secondStarted.SetResult();
-            Interlocked.Decrement(ref current);
-            return Task.FromResult(2);
-        }, CancellationToken.None);
-
-        await secondStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.AreEqual(2, maxConcurrent,
-            "Two reads on the same workspace must overlap on the per-workspace RW lock.");
-
-        releaseFirst.SetResult();
-        await Task.WhenAll(first, second);
+            releaseFirst.TrySetResult();
+            await CleanupFailureCollector.RunAfterFailureAsync("Parallel reader fixture cleanup failed.", primary,
+                CleanupFailureCollector.FromAction(() => { if (first is { IsCompleted: false } || second is { IsCompleted: false }) cts.Cancel(); }),
+                async () => { if (first is not null) await first; },
+                async () => { if (second is not null) await second; },
+                CleanupFailureCollector.FromAction(() => gate?.Dispose()));
+        }
     }
 
     [TestMethod]
     public async Task Validation_Service_Serializes_Commands_For_The_Same_Workspace()
     {
-        var workspaceManager = new FakeWorkspaceManager();
+        var workspaceManager = CreateWorkspaceManager();
         var commandRunner = new BlockingDotnetCommandRunner();
-        var executor = new GatedCommandExecutor(
-            workspaceManager,
-            commandRunner,
-            NullLogger<GatedCommandExecutor>.Instance);
-        var buildService = new BuildService(
-            workspaceManager,
-            executor,
-            new CompilationCache(workspaceManager),
-            NullLogger<BuildService>.Instance);
-
+        GatedCommandExecutor? executor = null;
+        CompilationCache? cache = null;
+        Task? firstTask = null;
+        Task? secondTask = null;
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-
-        var firstTask = buildService.BuildWorkspaceAsync("workspace-a", cts.Token);
-        await commandRunner.FirstInvocationStarted.Task;
-
-        var secondTask = buildService.BuildWorkspaceAsync("workspace-a", cts.Token);
-
-        Assert.IsFalse(
-            secondTask.IsCompleted,
-            "Second build should be waiting on the workspace command gate while the first build is blocked.");
-
-        Assert.AreEqual(1, commandRunner.MaxConcurrentCalls);
-
-        commandRunner.Release();
-        await Task.WhenAll(firstTask, secondTask);
+        Exception? primary = null;
+        try
+        {
+            executor = new GatedCommandExecutor(workspaceManager, commandRunner, NullLogger<GatedCommandExecutor>.Instance);
+            cache = new CompilationCache(workspaceManager);
+            var buildService = new BuildService(workspaceManager, executor, cache, NullLogger<BuildService>.Instance);
+            firstTask = buildService.BuildWorkspaceAsync("workspace-a", cts.Token);
+            await commandRunner.FirstInvocationStarted.Task.WaitAsync(cts.Token);
+            secondTask = buildService.BuildWorkspaceAsync("workspace-a", cts.Token);
+            Assert.IsFalse(secondTask.IsCompleted,
+                "Second build should be waiting on the workspace command gate while the first build is blocked.");
+            Assert.AreEqual(1, commandRunner.MaxConcurrentCalls);
+            commandRunner.Release();
+            await Task.WhenAll(firstTask, secondTask);
+        }
+        catch (Exception failure) { primary = failure; throw; }
+        finally
+        {
+            commandRunner.Release();
+            await CleanupFailureCollector.RunAfterFailureAsync("Serialized command fixture cleanup failed.", primary,
+                CleanupFailureCollector.FromAction(() => { if (firstTask is { IsCompleted: false } || secondTask is { IsCompleted: false }) cts.Cancel(); }),
+                async () => { if (firstTask is not null) await firstTask; },
+                async () => { if (secondTask is not null) await secondTask; },
+                CleanupFailureCollector.FromAction(() => cache?.Dispose()),
+                CleanupFailureCollector.FromAction(() => executor?.Dispose()));
+        }
     }
 
-    private sealed class FakeWorkspaceManager : IWorkspaceManager
+    private static FailClosedWorkspaceManagerStub CreateWorkspaceManager()
     {
-        public event Action<string>? WorkspaceClosed { add { } remove { } }
-        public event Action<string>? WorkspaceReloaded { add { } remove { } }
-
-        public Task<WorkspaceStatusDto> LoadAsync(string path, EvictPolicy evictPolicy, CancellationToken ct) => throw new NotSupportedException();
-
-        public Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct) => throw new NotSupportedException();
-
-        public bool ContainsWorkspace(string workspaceId) => !string.IsNullOrWhiteSpace(workspaceId);
-
-        public bool IsStale(string workspaceId) => false;
-
-        public WorkspaceStatusDto GetStatus(string workspaceId) =>
+        static WorkspaceStatusDto Status(string workspaceId) =>
             new(
                 WorkspaceId: workspaceId,
                 LoadedPath: @"C:\repo\Sample.slnx",
@@ -187,54 +190,42 @@ public class PerformanceBehaviorTests : SharedWorkspaceTestBase
                 IsLoaded: true,
                 IsStale: false,
                 WorkspaceDiagnostics: []);
-
-        public Task<WorkspaceStatusDto> GetStatusAsync(string workspaceId, CancellationToken cancellationToken = default) =>
-            Task.FromResult(GetStatus(workspaceId));
-
-        public ProjectGraphDto GetProjectGraph(string workspaceId) => throw new NotSupportedException();
-
-        public Task<IReadOnlyList<GeneratedDocumentDto>> GetSourceGeneratedDocumentsAsync(string workspaceId, string? projectName, CancellationToken ct) =>
-            throw new NotSupportedException();
-
-        public bool Close(string workspaceId) => true;
-
-        public IReadOnlyList<WorkspaceStatusDto> ListWorkspaces() => [];
-
-        public Task<string?> GetSourceTextAsync(string workspaceId, string filePath, CancellationToken ct) =>
-            Task.FromResult<string?>(null);
-
-        public int GetCurrentVersion(string workspaceId) => 1;
-        public void RestoreVersion(string workspaceId, int version) { }
-
-        public Microsoft.CodeAnalysis.Solution GetCurrentSolution(string workspaceId) => throw new NotSupportedException();
-
-        public bool TryApplyChanges(string workspaceId, Microsoft.CodeAnalysis.Solution newSolution) => throw new NotSupportedException();
-
-        public Microsoft.CodeAnalysis.Project? GetProject(string workspaceId, string projectNameOrPath) => null;
+        return new FailClosedWorkspaceManagerStub
+        {
+            ContainsWorkspaceHandler = workspaceId => !string.IsNullOrWhiteSpace(workspaceId),
+            IsStaleHandler = _ => false,
+            GetStatusHandler = Status,
+            GetStatusAsyncHandler = Status,
+            GetCurrentVersionHandler = _ => 1,
+        };
     }
 
-    private sealed class BlockingDotnetCommandRunner : IDotnetCommandRunner
+    private sealed class BlockingDotnetCommandRunner : RoslynMcp.Tests.Helpers.CannedCommandRunner
     {
         private readonly TaskCompletionSource<bool> _releaseTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        private int _currentCalls;
+        private readonly ConcurrencyTracker _concurrency = new();
 
         public TaskCompletionSource<bool> FirstInvocationStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public int MaxConcurrentCalls { get; private set; }
+        public int MaxConcurrentCalls => _concurrency.MaxConcurrent;
 
-        public async Task<CommandExecutionDto> RunAsync(
+        public override async Task<CommandExecutionDto> RunAsync(
             string workingDirectory,
             string targetPath,
             IReadOnlyList<string> arguments,
             CancellationToken ct)
         {
-            var concurrentCalls = Interlocked.Increment(ref _currentCalls);
-            MaxConcurrentCalls = Math.Max(MaxConcurrentCalls, concurrentCalls);
+            _concurrency.Enter();
             FirstInvocationStarted.TrySetResult(true);
 
-            await _releaseTcs.Task.WaitAsync(ct);
-
-            Interlocked.Decrement(ref _currentCalls);
+            try
+            {
+                await _releaseTcs.Task.WaitAsync(ct);
+            }
+            finally
+            {
+                _concurrency.Leave();
+            }
             return new CommandExecutionDto(
                 Command: "dotnet",
                 Arguments: arguments,

@@ -76,7 +76,7 @@ public sealed class RestructureService : IRestructureService
         }
 
         var description = $"Restructure {totalMatches} match(es) across {changes.Count} file(s)";
-        var token = _previewStore.Store(workspaceId, accumulator, _workspace.GetCurrentVersion(workspaceId), description);
+        var token = _previewStore.Store(workspaceId, solution, accumulator, _workspace.GetCurrentVersion(workspaceId), description, changes, PreviewKind.Restructure);
         return new RefactoringPreviewDto(token, description, changes, null);
     }
 

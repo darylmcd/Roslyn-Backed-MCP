@@ -552,42 +552,30 @@ public sealed class ProjectMutationService : IProjectMutationService
 
         try
         {
-            // apply-project-mutation-not-registered-revert: capture the on-disk pre-apply
-            // bytes BEFORE the write so revert_last_apply can restore byte-exact .csproj
-            // content. The race window must be small — read snapshot, then write — and we
-            // must not use the preview-store's `originalContent` because the file on disk
-            // may have changed since the preview was generated (last-apply-wins semantics).
-            // `null` OriginalText is impossible here because Retrieve above succeeded and
-            // the preview-store entry was created from File.ReadAllTextAsync.
-            var normalizedProjectFilePath = Path.GetFullPath(projectFilePath);
-            // mutation-write-paths-drop-original-encoding: the pre-apply bytes are read here for
-            // the undo snapshot anyway, so reuse them to detect the file's original BOM/encoding
-            // and write it back with the same one instead of defaulting to UTF-8-no-BOM.
-            var preApplyBytes = File.Exists(projectFilePath)
-                ? await File.ReadAllBytesAsync(projectFilePath, ct).ConfigureAwait(false)
-                : null;
-            var preApplySnapshot = FileSnapshotCapture.FromBytesOrFallback(
-                normalizedProjectFilePath,
-                preApplyBytes,
-                fallbackText: null);
-            _undoService?.CaptureBeforeApply(
-                workspaceId,
-                $"Project mutation: {Path.GetFileName(projectFilePath)}",
-                preApplySolution: null,
-                fileSnapshots: new[] { preApplySnapshot });
-
-            await AtomicFileWriter.WriteAllTextAsync(
-                projectFilePath,
-                updatedContent,
-                ct,
-                logger: _logger,
-                encoding: SourceFileEncoding.FromBytes(preApplyBytes)).ConfigureAwait(false);
-            await _workspace.ReloadAsync(workspaceId, ct).ConfigureAwait(false);
+            var recoveryAuthority = _workspace as IWorkspaceRecoveryAuthority
+                ?? throw InvalidOperationErrors.Internal("Project mutation requires workspace-owned authority.");
+            var path = Path.GetFullPath(projectFilePath);
+            await recoveryAuthority.AuthorizePathsAsync(workspaceId, [path], ct).ConfigureAwait(false);
+            var before = await FileSnapshotCapture.ReadIfPresentAsync(path, PhysicalInputReader.ReadAllBytesAsync, ct).ConfigureAwait(false);
+            var snapshot = FileSnapshotCapture.FromBytesOrFallback(path, before, fallbackText: null);
+            var after = SolutionFileMutationPlanner.Encode(updatedContent, SourceFileEncoding.FromBytes(before));
+            var physicalOperation = await recoveryAuthority.CaptureRecoveryAsync(workspaceId, $"Project mutation: {Path.GetFileName(path)}", [snapshot], ct).ConfigureAwait(false);
+            var operation = _undoService is null ? null : await _undoService.PrepareBeforeApplyAsync(physicalOperation, ct).ConfigureAwait(false);
+            var mutation = new SolutionFileMutationPlanner.Mutation(path, before, after,
+                snapshot.OriginalText ?? string.Empty, updatedContent);
+            var persisted = await new DocumentSetPersistenceService(_workspace, _logger)
+                .PersistMutationsAsync(workspaceId, expected: null, [mutation], physicalOperation, ct).ConfigureAwait(false);
+            if (!persisted.Success) return new ApplyResultDto(false, [], "Failed to apply project mutation.");
+            if (persisted.AppliedFiles.Count > 0)
+            {
+                if (operation is not null) await operation.PublishAsync(ct).ConfigureAwait(false);
+                _changeTracker?.RecordChange(workspaceId, physicalOperation.Description,
+                    persisted.AppliedFiles, "apply_project_mutation");
+            }
             _previewStore.Invalidate(previewToken);
-            _changeTracker?.RecordChange(workspaceId, $"Project mutation: {Path.GetFileName(projectFilePath)}", [projectFilePath], "apply_project_mutation");
-            return new ApplyResultDto(true, [projectFilePath], null);
+            return new ApplyResultDto(true, persisted.AppliedFiles, null);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+        catch (Exception ex) when (ex is not IPublicMessageException && ex is (IOException or UnauthorizedAccessException or InvalidOperationException))
         {
             _logger.LogWarning(ex, "Failed to apply project mutation for {ProjectFilePath}", projectFilePath);
             return new ApplyResultDto(false, [], "Failed to apply project mutation.");

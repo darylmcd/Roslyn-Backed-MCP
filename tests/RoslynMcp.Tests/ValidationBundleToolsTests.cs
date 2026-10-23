@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
@@ -17,6 +18,8 @@ namespace RoslynMcp.Tests;
 /// second in-body classifier.
 /// </summary>
 [TestClass]
+// Fork option controls mutate process-wide environment inherited by native workspace evaluations.
+[DoNotParallelize]
 public sealed class ValidationBundleToolsTests
 {
     [TestMethod]
@@ -176,7 +179,7 @@ public sealed class ValidationBundleToolsTests
     }
 
     [TestMethod]
-    public void CopyDirectory_ExcludesSecretFiles_KeepsSafeFiles()
+    public async Task CopyDirectory_ExcludesSecretFiles_KeepsSafeFiles()
     {
         var root = Path.Combine(Path.GetTempPath(), "roslyn-mcp-fork-copy-tests", Guid.NewGuid().ToString("N"));
         var source = Path.Combine(root, "src");
@@ -193,7 +196,7 @@ public sealed class ValidationBundleToolsTests
             File.WriteAllText(Path.Combine(source, "appsettings.Development.json"), "{}");
             File.WriteAllText(Path.Combine(source, "Program.cs"), "class C {}");
 
-            WorkspaceForkApplyService.CopyDirectory(source, dest, CancellationToken.None);
+            await RoslynMcp.Tests.Helpers.BoundedForkCopyFixture.CopyAsync(source, dest, CancellationToken.None);
 
             Assert.IsFalse(File.Exists(Path.Combine(dest, ".env")), ".env must be excluded.");
             Assert.IsFalse(File.Exists(Path.Combine(dest, "appsettings.Production.json")),
@@ -222,16 +225,30 @@ public sealed class ValidationBundleToolsTests
 
             // Expired: stamped 48h ago (TTL below is 24h).
             var expired = MakeForkDir(forkRoot, now.AddHours(-48), "old");
+            Directory.CreateDirectory(Path.Combine(expired, "deep", "leaf"));
+            File.WriteAllText(Path.Combine(expired, "deep", "leaf", "nested.txt"), "owned expired bytes");
             // Fresh: stamped 1h ago.
             var fresh = MakeForkDir(forkRoot, now.AddHours(-1), "new");
             // Unparseable prefix — must be kept (fail-safe).
             var unparseable = Path.Combine(forkRoot, "not-a-timestamp-abc");
             Directory.CreateDirectory(unparseable);
 
-            WorkspaceForkApplyService.SweepExpiredForks(forkRoot, ttlHours: 24, now: now);
+            var logger = new SweepOutcomeLogger();
+            WorkspaceForkApplyService.SweepExpiredForks(forkRoot, ttlHours: 24, now: now, logger);
 
-            Assert.IsFalse(Directory.Exists(expired), "Fork older than the TTL must be swept.");
+            if (OperatingSystem.IsWindows()) Assert.IsFalse(Directory.Exists(expired), "Windows must remove the expired owned directory namespace.");
+            else
+            {
+                Assert.IsTrue(Directory.Exists(Path.Combine(expired, "deep", "leaf")), "POSIX keeps the terminal directory skeleton.");
+                Assert.IsFalse(Directory.EnumerateFiles(expired, "*", SearchOption.AllDirectories).Any());
+                Assert.AreEqual(1, logger.Messages.Count);
+                StringAssert.Contains(logger.Messages.Single(), "directory names were retained");
+            }
+            var messagesAfterCleanup = logger.Messages.Count;
+            WorkspaceForkApplyService.SweepExpiredForks(forkRoot, ttlHours: 24, now: now, logger);
+            Assert.AreEqual(messagesAfterCleanup, logger.Messages.Count, "A later sweep must not repeat content-reclamation claims for an already content-free skeleton.");
             Assert.IsTrue(Directory.Exists(fresh), "Fork newer than the TTL must be kept.");
+            Assert.AreEqual("x", File.ReadAllText(Path.Combine(fresh, "marker.txt")));
             Assert.IsTrue(Directory.Exists(unparseable),
                 "Fork with an unparseable timestamp prefix must be kept (fail-safe).");
         }
@@ -378,6 +395,15 @@ public sealed class ValidationBundleToolsTests
         // Drop a file so we prove recursive deletion, not just empty-dir removal.
         File.WriteAllText(Path.Combine(path, "marker.txt"), "x");
         return path;
+    }
+
+    private sealed class SweepOutcomeLogger : ILogger
+    {
+        internal List<string> Messages { get; } = [];
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+            Func<TState, Exception?, string> formatter) => Messages.Add(formatter(state, exception));
     }
 
     private static void TryDeleteTree(string path)

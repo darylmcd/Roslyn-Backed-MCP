@@ -15,9 +15,6 @@ public sealed class ConsumerAnalysisTests : SharedWorkspaceTestBase
         WorkspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     public async Task FindConsumers_IAnimal_ReturnsConsumingTypes()
     {

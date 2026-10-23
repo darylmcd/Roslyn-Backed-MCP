@@ -13,80 +13,12 @@ namespace RoslynMcp.Roslyn.Contracts;
 public interface IPreviewStore
 {
     /// <summary>
-    /// Stores a modified solution snapshot and returns an opaque preview token.
+    /// Stores the exact original and modified snapshots used to compute <paramref name="changes"/>,
+    /// the actual displayed bounded diff, and the intended producer family. Implementations must
+    /// retain both snapshot identities, truncation safety, and provenance through interface dispatch.
     /// </summary>
-    /// <param name="workspaceId">The workspace session identifier the solution belongs to.</param>
-    /// <param name="modifiedSolution">The modified Roslyn solution to store.</param>
-    /// <param name="workspaceVersion">The workspace version at the time preview was computed.</param>
-    /// <param name="description">A human-readable description of the pending operation.</param>
-    /// <returns>An opaque token that can be passed to <see cref="Retrieve"/> or <see cref="Invalidate"/>.</returns>
-    string Store(string workspaceId, Solution modifiedSolution, int workspaceVersion, string description);
-
-    /// <summary>
-    /// Item #4 — stores a preview along with a flag indicating whether the preview's diff
-    /// was truncated by the per-solution / per-file caps in <see cref="Helpers.SolutionDiffHelper"/>.
-    /// The apply path refuses to redeem a truncated preview unless the caller opts into a
-    /// blind apply via <c>force: true</c>.
-    /// </summary>
-    string Store(string workspaceId, Solution modifiedSolution, int workspaceVersion, string description, bool diffTruncated);
-
-    /// <summary>
-    /// <b>preview-token-apply-route-provenance:</b> same as the <paramref name="diffTruncated"/>-shaped
-    /// overload, but additionally records a machine-checkable <paramref name="kind"/> discriminator
-    /// identifying which producer family created the token, so an apply route can verify provenance
-    /// before mutating the workspace.
-    /// </summary>
-    /// <remarks>
-    /// The <paramref name="changes"/>-shaped sibling below already covers producers that hand the
-    /// store a computed diff; this declaration covers the three producers that pass the truncation
-    /// flag directly (<c>EditService</c> and <c>FixAllService</c>), which
-    /// could not be tagged at all while the concrete <c>PreviewStore</c> implemented this shape
-    /// without the interface declaring it. Default implementation drops <paramref name="kind"/> and
-    /// delegates to the untagged overload, so existing test fakes (and any out-of-tree
-    /// implementations) keep compiling; only stores that actually persist provenance override it.
-    /// </remarks>
-    /// <param name="kind">The producer family that created this preview.</param>
-    string Store(
-        string workspaceId,
-        Solution modifiedSolution,
-        int workspaceVersion,
-        string description,
-        bool diffTruncated,
-        PreviewKind kind)
-        => Store(workspaceId, modifiedSolution, workspaceVersion, description, diffTruncated);
-
-    /// <summary>
-    /// Item #4 — convenience overload: derives the truncated flag from the presence of
-    /// <see cref="Helpers.SolutionDiffHelper.TruncatedSentinelFilePath"/> in <paramref name="changes"/>.
-    /// </summary>
-    string Store(
-        string workspaceId,
-        Solution modifiedSolution,
-        int workspaceVersion,
-        string description,
-        IReadOnlyList<FileChangeDto> changes);
-
-    /// <summary>
-    /// <b>preview-token-apply-route-provenance:</b> same as the <paramref name="changes"/>-shaped
-    /// overload, but additionally records a machine-checkable <paramref name="kind"/> discriminator
-    /// identifying which producer family created the token, so an apply route can verify provenance
-    /// before mutating the workspace.
-    /// </summary>
-    /// <remarks>
-    /// Default implementation drops <paramref name="kind"/> and delegates to the untagged overload,
-    /// so existing test fakes (and any out-of-tree implementations) keep compiling; only stores that
-    /// actually persist provenance override it. Producers that do not pass a kind are recorded as
-    /// <see cref="PreviewKind.Unspecified"/>, which every apply route must accept.
-    /// </remarks>
-    /// <param name="kind">The producer family that created this preview.</param>
-    string Store(
-        string workspaceId,
-        Solution modifiedSolution,
-        int workspaceVersion,
-        string description,
-        IReadOnlyList<FileChangeDto> changes,
-        PreviewKind kind)
-        => Store(workspaceId, modifiedSolution, workspaceVersion, description, changes);
+    string Store(string workspaceId, Solution originalSolution, Solution modifiedSolution, int workspaceVersion,
+        string description, IReadOnlyList<FileChangeDto> changes, PreviewKind kind);
 
     /// <summary>
     /// Retrieves the stored solution pair for the given token, or <see langword="null"/>
@@ -158,12 +90,7 @@ public interface IPreviewStore
     /// enumerate the write set ("unknown"); callers performing redemption-time boundary
     /// revalidation treat <see langword="null"/> as "skip", never as "empty write set verified".
     /// </summary>
-    /// <remarks>
-    /// Default implementation returns <see langword="null"/> so existing test fakes (and any
-    /// out-of-tree implementations) keep compiling; only stores that actually hold a solution
-    /// snapshot pair override it.
-    /// </remarks>
-    IReadOnlyList<string>? PeekChangedPaths(string token) => null;
+    IReadOnlyList<string>? PeekChangedPaths(string token);
 
     /// <summary>
     /// <b>preview-token-apply-route-provenance:</b> returns the producer family that created the
@@ -173,11 +100,5 @@ public interface IPreviewStore
     /// <see cref="PreviewKind.Unspecified"/> as "permissive, no provenance claim", never as proof of
     /// a mismatch.
     /// </summary>
-    /// <remarks>
-    /// Default implementation returns <see cref="PreviewKind.Unspecified"/> so existing test fakes
-    /// (and any out-of-tree implementations) keep compiling; only stores that actually persist
-    /// provenance override it. Mirrors the non-consuming contract of
-    /// <see cref="PeekChangedPaths(string)"/>.
-    /// </remarks>
-    PreviewKind PeekKind(string token) => PreviewKind.Unspecified;
+    PreviewKind PeekKind(string token);
 }

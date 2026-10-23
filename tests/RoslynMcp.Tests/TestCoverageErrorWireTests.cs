@@ -121,9 +121,9 @@ public sealed class TestCoverageErrorWireTests
     /// <summary>Not an InvalidOperation/Argument/IO type, so the filter's terminal InternalError branch handles it.</summary>
     private sealed class UnclassifiedRunnerException(string message, Exception inner) : Exception(message, inner);
 
-    private sealed class ThrowingCommandRunner : IDotnetCommandRunner
+    private sealed class ThrowingCommandRunner : RoslynMcp.Tests.Helpers.CannedCommandRunner
     {
-        public Task<CommandExecutionDto> RunAsync(
+        public override Task<CommandExecutionDto> RunAsync(
             string workingDirectory,
             string targetPath,
             IReadOnlyList<string> arguments,

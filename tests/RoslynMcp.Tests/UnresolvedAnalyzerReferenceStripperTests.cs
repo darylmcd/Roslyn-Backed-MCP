@@ -5,26 +5,11 @@ using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Roslyn;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
-/// <summary>
-/// Unit coverage for <see cref="UnresolvedAnalyzerReferenceStripper"/> — extracted from
-/// <see cref="WorkspaceManager"/> by workspace-manager-decompose-restore-and-analyzer-
-/// subsystems as a zero-external-caller, purely code-moved collaborator. Opens a raw
-/// <see cref="Microsoft.CodeAnalysis.MSBuild.MSBuildWorkspace"/> directly via
-/// <see cref="WorkspaceSessionLoader"/> (bypassing <c>WorkspaceManager.LoadIntoSessionAsync</c>,
-/// which would strip the reference automatically) so the stripper's own strip-count and
-/// diagnostic-emission behavior can be exercised in isolation.
-/// </summary>
-// donotparallelize-audit-wave-32: [DoNotParallelize] removed. Each test opens its own
-// GUID-unique SampleSolution copy under TestTempRoot.Current through a private MSBuildWorkspace
-// (WorkspaceSessionLoader), never through WorkspaceManager, so no shared session, slot or cache
-// is touched. The csproj injection and StripAsync's TryApplyChanges write only that copy, the
-// analyzer shadow lease is rooted at a per-lease GUID directory, the diagnostics queue is
-// test-local, and MsBuildInitializer is a lock-guarded one-time registration. Validated by a
-// bounded repeated (3x) concurrent run alongside its wave-32 siblings and parallel-enabled
-// workspace-loading classes, green every time.
+/// <summary>Exercises native analyzer projection, warnings, and source byte preservation.</summary>
 [TestClass]
 public sealed class UnresolvedAnalyzerReferenceStripperTests : IsolatedWorkspaceTestBase
 {
@@ -35,7 +20,7 @@ public sealed class UnresolvedAnalyzerReferenceStripperTests : IsolatedWorkspace
     }
 
     [TestMethod]
-    public async Task StripAsync_RemovesUnresolvedReferences_AndEmitsDiagnostic()
+    public async Task Projection_RemovesUnresolvedReferences_AndEmitsDiagnostic()
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
         var csprojPath = workspace.GetPath("SampleLib", "SampleLib.csproj");
@@ -44,12 +29,13 @@ public sealed class UnresolvedAnalyzerReferenceStripperTests : IsolatedWorkspace
         MsBuildInitializer.EnsureInitialized();
         var loader = new WorkspaceSessionLoader();
         var diagnosticsSink = new WorkspaceDiagnosticsSink(200);
-        var (msbuildWorkspace, analyzerLease) = await loader.CreateAndOpenAsync(
+        var (msbuildWorkspace, analyzerLease, _, _) = await loader.CreateAndOpenAsync(
             "test-workspace-unresolved",
             workspace.SolutionPath,
-            globalProperties: null,
+            globalProperties: OwnedNativeLoadContext.Properties(workspace.SolutionPath, new Dictionary<string, string>()),
+            new OwnedTestWorkspacePathPolicy(),
             diagnosticsSink,
-            NullLogger.Instance,
+            NullLogger.Instance, SupplementalPackageReadAuthority.None, null,
             CancellationToken.None);
         using var _ = msbuildWorkspace;
         using var __ = analyzerLease;
@@ -59,21 +45,14 @@ public sealed class UnresolvedAnalyzerReferenceStripperTests : IsolatedWorkspace
             sampleLibBefore.AnalyzerReferences.OfType<UnresolvedAnalyzerReference>().Any(),
             "Fixture setup must produce an UnresolvedAnalyzerReference before stripping.");
 
-        var diagnosticsQueue = new ConcurrentQueue<DiagnosticDto>();
-        var stripper = new UnresolvedAnalyzerReferenceStripper();
-
-        await stripper.StripAsync(
-            "test-workspace-unresolved",
-            msbuildWorkspace,
-            diagnosticsQueue,
-            maxDiagnosticsPerWorkspace: 200,
-            NullLogger.Instance,
-            CancellationToken.None);
-
-        var sampleLibAfter = msbuildWorkspace.CurrentSolution.Projects.First(p => p.Name == "SampleLib");
-        Assert.IsFalse(
-            sampleLibAfter.AnalyzerReferences.OfType<UnresolvedAnalyzerReference>().Any(),
-            "UnresolvedAnalyzerReference must be stripped from project state after StripAsync.");
+        var before = await File.ReadAllBytesAsync(csprojPath);
+        var projection = UnresolvedAnalyzerReferenceStripper.Project(msbuildWorkspace.CurrentSolution, CancellationToken.None);
+        var diagnosticsQueue = new ConcurrentQueue<DiagnosticDto>(projection.Diagnostics);
+        var sampleLibAfter = projection.Solution.Projects.First(p => p.Name == "SampleLib");
+        Assert.IsFalse(sampleLibAfter.AnalyzerReferences.OfType<UnresolvedAnalyzerReference>().Any());
+        Assert.IsTrue(msbuildWorkspace.CurrentSolution.Projects.First(p => p.Name == "SampleLib")
+            .AnalyzerReferences.OfType<UnresolvedAnalyzerReference>().Any(), "The native workspace remains an untouched input.");
+        CollectionAssert.AreEqual(before, await File.ReadAllBytesAsync(csprojPath));
 
         Assert.AreEqual(1, diagnosticsQueue.Count);
         Assert.IsTrue(diagnosticsQueue.TryPeek(out var dto));
@@ -87,35 +66,60 @@ public sealed class UnresolvedAnalyzerReferenceStripperTests : IsolatedWorkspace
     }
 
     [TestMethod]
-    public async Task StripAsync_NoUnresolvedReferences_IsNoOp()
+    public async Task Projection_NoUnresolvedReferences_IsNoOp()
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
 
         MsBuildInitializer.EnsureInitialized();
         var loader = new WorkspaceSessionLoader();
         var diagnosticsSink = new WorkspaceDiagnosticsSink(200);
-        var (msbuildWorkspace, analyzerLease) = await loader.CreateAndOpenAsync(
+        var (msbuildWorkspace, analyzerLease, _, _) = await loader.CreateAndOpenAsync(
             "test-workspace-clean",
             workspace.SolutionPath,
-            globalProperties: null,
+            globalProperties: OwnedNativeLoadContext.Properties(workspace.SolutionPath, new Dictionary<string, string>()),
+            new OwnedTestWorkspacePathPolicy(),
             diagnosticsSink,
-            NullLogger.Instance,
+            NullLogger.Instance, SupplementalPackageReadAuthority.None, null,
             CancellationToken.None);
         using var _ = msbuildWorkspace;
         using var __ = analyzerLease;
 
-        var diagnosticsQueue = new ConcurrentQueue<DiagnosticDto>();
-        var stripper = new UnresolvedAnalyzerReferenceStripper();
+        var projection = UnresolvedAnalyzerReferenceStripper.Project(msbuildWorkspace.CurrentSolution, CancellationToken.None);
+        Assert.AreSame(msbuildWorkspace.CurrentSolution, projection.Solution);
+        Assert.AreEqual(0, projection.Diagnostics.Count);
+    }
 
-        await stripper.StripAsync(
-            "test-workspace-clean",
-            msbuildWorkspace,
-            diagnosticsQueue,
-            maxDiagnosticsPerWorkspace: 200,
-            NullLogger.Instance,
-            CancellationToken.None);
+    [TestMethod]
+    public async Task WorkspaceLoad_ProjectsAnalyzerPolicyWithoutRewritingAuthoredInput()
+    {
+        await using var source = CreateIsolatedWorkspaceCopy();
+        var path = source.GetPath("SampleLib", "SampleLib.csproj");
+        InjectUnresolvedAnalyzerReference(path);
+        var before = await File.ReadAllBytesAsync(path);
+        await source.LoadAsync();
+        var loaded = WorkspaceManager.GetCurrentSolution(source.WorkspaceId).Projects.Single(project => project.Name == "SampleLib");
+        Assert.IsFalse(loaded.AnalyzerReferences.OfType<UnresolvedAnalyzerReference>().Any());
+        CollectionAssert.AreEqual(before, await File.ReadAllBytesAsync(path),
+            "Read-side analyzer policy must preserve the authored analyzer declaration exactly.");
+        Assert.IsTrue(WorkspaceManager.GetStatus(source.WorkspaceId).WorkspaceDiagnostics
+            .Any(diagnostic => diagnostic.Id == "WORKSPACE_UNRESOLVED_ANALYZER"));
+    }
 
-        Assert.AreEqual(0, diagnosticsQueue.Count);
+    [TestMethod]
+    public async Task WorkspaceLoad_FilteredGraphDoesNotRequireSourceWriteAccess()
+    {
+        if (!OperatingSystem.IsWindows()) Assert.Inconclusive("Native Windows share-denial contract.");
+        await using var source = CreateIsolatedWorkspaceCopy();
+        var path = source.GetPath("SampleLib", "SampleLib.csproj");
+        InjectUnresolvedAnalyzerReference(path);
+        var before = await File.ReadAllBytesAsync(path);
+        await using var readOnly = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        await source.LoadAsync();
+        var loaded = WorkspaceManager.GetCurrentSolution(source.WorkspaceId).Projects.Single(project => project.Name == "SampleLib");
+        Assert.IsFalse(loaded.AnalyzerReferences.OfType<UnresolvedAnalyzerReference>().Any());
+        CollectionAssert.AreEqual(before, await File.ReadAllBytesAsync(path));
+        Assert.IsTrue(WorkspaceManager.GetStatus(source.WorkspaceId).WorkspaceDiagnostics
+            .Any(diagnostic => diagnostic.Id == "WORKSPACE_UNRESOLVED_ANALYZER"));
     }
 
     private static void InjectUnresolvedAnalyzerReference(string csprojPath)

@@ -1,72 +1,81 @@
-using Microsoft.Build.Evaluation;
-using Microsoft.Extensions.Logging;
 using System.Text.Json;
 using System.Xml.Linq;
+using Microsoft.Build.Evaluation;
+using Microsoft.Extensions.Logging;
+using RoslynMcp.Roslyn.Services;
 using RoslynProject = Microsoft.CodeAnalysis.Project;
 
 namespace RoslynMcp.Roslyn.Helpers;
 
 internal static class ProjectMetadataParser
 {
-    /// <summary>
-    /// Reads the NuGet-resolved version of <paramref name="packageId"/> from the project's
-    /// restored <c>obj/project.assets.json</c> — the authoritative record of what actually got
-    /// restored, cheaper and simpler than an MSBuild evaluation for this one fact. Returns
-    /// <see langword="null"/> when the project hasn't been restored, the assets file can't be
-    /// read, the package isn't referenced (directly or transitively), or its version string
-    /// doesn't parse as a <see cref="Version"/>.
-    /// </summary>
-    public static Version? TryGetResolvedPackageVersion(string? projectFilePath, string packageId, ILogger? logger = null)
+    /// <summary>Reads the resolved package version for every active evaluated target. Missing or ambiguous targets remain unknown.</summary>
+    public static IReadOnlyList<NuGet.Versioning.NuGetVersion>? TryGetResolvedPackageVersions(string? projectFilePath, string packageId,
+        IReadOnlyDictionary<string, string> globals, ILogger? logger = null)
     {
-        var projectDirectory = string.IsNullOrWhiteSpace(projectFilePath) ? null : Path.GetDirectoryName(projectFilePath);
-        if (string.IsNullOrWhiteSpace(projectDirectory))
-        {
-            return null;
-        }
-
-        var assetsPath = Path.Combine(projectDirectory, "obj", "project.assets.json");
-        if (!File.Exists(assetsPath))
-        {
-            return null;
-        }
-
+        if (string.IsNullOrWhiteSpace(projectFilePath) || !File.Exists(projectFilePath)) return null;
         try
         {
-            using var stream = File.OpenRead(assetsPath);
-            using var document = JsonDocument.Parse(stream);
-            if (!document.RootElement.TryGetProperty("libraries", out var libraries))
+            var versions = new List<NuGet.Versioning.NuGetVersion>();
+            foreach (var context in MsBuildMetadataHelper.EvaluateProjectContexts(projectFilePath, globals))
             {
-                return null;
+                if (context.AssetsPath is null || !File.Exists(context.AssetsPath)) return null;
+                using var document = JsonDocument.Parse(File.ReadAllText(context.AssetsPath));
+                var version = ReadResolvedPackageVersion(context, document.RootElement, packageId);
+                if (version is null) return null;
+                versions.Add(version);
             }
-
-            var prefix = packageId + "/";
-            foreach (var library in libraries.EnumerateObject())
-            {
-                if (!library.Name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                var versionText = library.Name[prefix.Length..];
-                if (Version.TryParse(versionText, out var version))
-                {
-                    return version;
-                }
-            }
-
-            return null;
+            return versions.Count == 0 ? null : versions;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException)
         {
-            logger?.LogDebug(ex, "Failed to read resolved version of {PackageId} from {Path}", packageId, assetsPath);
+            logger?.LogDebug("Failed to read evaluated resolved package versions ({FailureType})", exception.GetType().Name);
             return null;
         }
     }
 
-    public static IReadOnlyList<string> GetTargetFrameworks(RoslynProject project, XDocument? document, ILogger? logger = null)
+    internal static NuGet.Versioning.NuGetVersion? ReadResolvedPackageVersion(MsBuildMetadataHelper.RestoreInputs context,
+        JsonElement root, string packageId)
     {
-        var evaluatedFrameworks = GetEvaluatedTargetFrameworks(project.FilePath, logger);
-        return evaluatedFrameworks.Count > 0 ? evaluatedFrameworks : GetTargetFrameworks(document);
+        if (!TryGetAssetsTarget(root, context, includeRuntimeIdentifier: true, out var target)) return null;
+        var matches = target.EnumerateObject().Where(item => item.Name.StartsWith(packageId + "/", StringComparison.OrdinalIgnoreCase)).ToArray();
+        if (matches.Length != 1 || matches[0].Value.ValueKind != JsonValueKind.Object
+            || !matches[0].Value.TryGetProperty("type", out var type) || type.ValueKind != JsonValueKind.String
+            || !string.Equals(type.GetString(), "package", StringComparison.OrdinalIgnoreCase)
+            || !NuGet.Versioning.NuGetVersion.TryParse(matches[0].Name[(packageId.Length + 1)..], out var version)) return null;
+        return version;
+    }
+
+    internal static bool TryGetAssetsTarget(JsonElement root, MsBuildMetadataHelper.RestoreInputs context,
+        bool includeRuntimeIdentifier, out JsonElement target)
+    {
+        target = default;
+        var selected = string.IsNullOrWhiteSpace(context.TargetFramework) ? context.TargetFrameworkMoniker : context.TargetFramework;
+        if (string.IsNullOrWhiteSpace(selected) || root.ValueKind != JsonValueKind.Object
+            || !TryGetAssetsFramework(root, selected, out var frameworkName, out _)
+            || !root.TryGetProperty("targets", out var targets) || targets.ValueKind != JsonValueKind.Object) return false;
+        var suffix = includeRuntimeIdentifier && !string.IsNullOrWhiteSpace(context.RuntimeIdentifier) ? "/" + context.RuntimeIdentifier : "";
+        var names = new[] { frameworkName, context.TargetFramework, context.TargetFrameworkMoniker }
+            .Where(name => !string.IsNullOrWhiteSpace(name)).Select(name => name + suffix).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var matches = targets.EnumerateObject().Where(item => names.Contains(item.Name)).ToArray();
+        if (matches.Length != 1 || matches[0].Value.ValueKind != JsonValueKind.Object) return false;
+        target = matches[0].Value;
+        return true;
+    }
+
+    internal static bool TryGetAssetsFramework(JsonElement root, string selected, out string targetName, out JsonElement framework)
+    {
+        targetName = selected;
+        framework = default;
+        if (!root.TryGetProperty("project", out var project) || project.ValueKind != JsonValueKind.Object ||
+            !project.TryGetProperty("frameworks", out var frameworks) || frameworks.ValueKind != JsonValueKind.Object) return false;
+        var matches = frameworks.EnumerateObject().Where(item => item.Name.Equals(selected, StringComparison.OrdinalIgnoreCase) ||
+            item.Value.ValueKind == JsonValueKind.Object && item.Value.TryGetProperty("targetAlias", out var alias) &&
+            alias.ValueKind == JsonValueKind.String && string.Equals(alias.GetString(), selected, StringComparison.OrdinalIgnoreCase)).ToArray();
+        if (matches.Length != 1 || matches[0].Value.ValueKind != JsonValueKind.Object) return false;
+        targetName = matches[0].Name;
+        framework = matches[0].Value;
+        return true;
     }
 
     public static IReadOnlyList<string> GetTargetFrameworks(XDocument? document)
@@ -84,23 +93,11 @@ internal static class ProjectMetadataParser
         return allFrameworks.Count > 0 ? allFrameworks : ["unknown"];
     }
 
-    private static IReadOnlyList<string> GetEvaluatedTargetFrameworks(string? projectFilePath, ILogger? logger)
+    internal static IReadOnlyList<string> GetTargetFrameworks(MsBuildMetadataHelper.RestoreInputs context, XDocument? document)
     {
-        if (string.IsNullOrWhiteSpace(projectFilePath) || !File.Exists(projectFilePath))
-        {
-            return [];
-        }
-
-        try
-        {
-            var values = MsBuildMetadataHelper.EvaluateProperties(projectFilePath, "TargetFramework", "TargetFrameworks");
-            return ParseTargetFrameworkValues(values[0], values[1]);
-        }
-        catch (Exception ex)
-        {
-            logger?.LogDebug(ex, "Failed to evaluate target frameworks for project {Path}", projectFilePath);
-            return [];
-        }
+        var frameworks = ParseTargetFrameworkValues(context.TargetFramework, context.TargetFrameworks);
+        if (frameworks.Count > 0) return frameworks;
+        return !string.IsNullOrWhiteSpace(context.TargetFrameworkMoniker) ? [context.TargetFrameworkMoniker] : GetTargetFrameworks(document);
     }
 
     private static IReadOnlyList<string> ParseTargetFrameworkValues(string? targetFramework, string? targetFrameworks)
@@ -113,12 +110,17 @@ internal static class ProjectMetadataParser
             : targetFrameworks
                 .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-        return singleFrameworks
-            .Concat(multiFrameworks)
+        return (singleFrameworks.Length > 0 ? singleFrameworks : multiFrameworks)
             .Where(value => !string.IsNullOrWhiteSpace(value))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
+
+    private static readonly HashSet<string> XunitV3Packages = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "xunit.v3", "xunit.v3.mtp-v1", "xunit.v3.mtp-v2", "xunit.v3.core", "xunit.v3.core.mtp-v1", "xunit.v3.core.mtp-v2"
+    };
+    internal static bool IsXunitV3Package(string name) => XunitV3Packages.Contains(name);
 
     private static readonly HashSet<string> TestPackageNames = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -151,7 +153,7 @@ internal static class ProjectMetadataParser
         foreach (var pkgRef in packageReferences)
         {
             var include = pkgRef.Attribute("Include")?.Value;
-            if (include is not null && TestPackageNames.Contains(include))
+            if (include is not null && (TestPackageNames.Contains(include) || IsXunitV3Package(include)))
             {
                 return true;
             }
@@ -163,10 +165,35 @@ internal static class ProjectMetadataParser
     /// <summary>
     /// Whether the Roslyn project is a test project (<c>IsTestProject</c> or test framework packages).
     /// </summary>
-    public static bool IsTestProject(RoslynProject project)
+    public static bool IsTestProject(RoslynProject project, CancellationToken ct)
     {
-        var doc = LoadProjectDocument(project.FilePath, null);
-        return IsTestProject(doc);
+        if (project.FilePath is null) return false;
+        var contexts = EvaluatedBuildGraph.MatchingContexts(project, EvaluatedBuildGraph.Source(project.Solution, ct));
+        if (contexts.Length == 0) throw new RoslynMcp.Core.Services.PublicInvalidOperationException("The loaded semantic project has no matching evaluated context.");
+        return IsTestProject(contexts.Select(node => node.Inputs));
+    }
+
+    internal static bool IsTestProject(IEnumerable<MsBuildMetadataHelper.RestoreInputs> contexts) => contexts.Any(IsTestProject);
+
+    internal static bool IsTestProject(MsBuildMetadataHelper.RestoreInputs context) =>
+        context.IsTestProject || context.IsTestingPlatformApplication || context.Packages.Any(package => TestPackageNames.Contains(package.Id) || IsXunitV3Package(package.Id));
+
+    public static bool RequiresMtpNativeExecution(RoslynProject project, CancellationToken ct) =>
+        EvaluatedBuildGraph.Resolve(project, ct).Inputs.Packages.Any(package => MtpOnlyTestFrameworkPackageNames.Contains(package.Id));
+
+    public static bool IsTestProject(string? path, IReadOnlyDictionary<string, string> globals) =>
+        !string.IsNullOrWhiteSpace(path) && File.Exists(path) && MsBuildMetadataHelper.EvaluateProjectContexts(path, globals)
+            .Any(context => context.IsTestProject || context.IsTestingPlatformApplication || context.Packages.Any(package => TestPackageNames.Contains(package.Id) || IsXunitV3Package(package.Id)));
+
+    public static bool RequiresMtpNativeExecution(string? path, IReadOnlyDictionary<string, string> globals)
+    {
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return false;
+        var modes = MsBuildMetadataHelper.EvaluateProjectContexts(path, globals)
+            .Where(context => context.IsTestProject || context.IsTestingPlatformApplication || context.Packages.Any(package => TestPackageNames.Contains(package.Id) || IsXunitV3Package(package.Id)))
+            .Select(context => context.Packages.Any(package => MtpOnlyTestFrameworkPackageNames.Contains(package.Id))).Distinct().ToArray();
+        if (modes.Length > 1) throw new RoslynMcp.Core.Services.PublicInvalidOperationException(
+            "The active target frameworks require different test execution modes. Configure an explicit TargetFramework in the project or the application loading the workspace, reload, and run each framework separately.");
+        return modes.Length == 1 && modes[0];
     }
 
     /// <summary>
@@ -207,27 +234,15 @@ internal static class ProjectMetadataParser
         return false;
     }
 
-    /// <summary>
-    /// project-graph-output-type-misreports-sdk-defaulted-exe: SDK-defaulted OutputType
-    /// resolution. The raw-XML overload below sees no <c>&lt;OutputType&gt;</c> element for
-    /// <c>Microsoft.NET.Sdk.Web</c> and <c>Microsoft.NET.Sdk.Worker</c> projects that omit
-    /// the property explicitly, and incorrectly returns <c>"Library"</c>. The SDK targets
-    /// inject <c>OutputType=Exe</c> at evaluation time; this overload runs the same
-    /// <see cref="ProjectCollection"/> evaluation as <see cref="GetEvaluatedTargetFrameworks"/>
-    /// and falls back to the XML-only path when MSBuild evaluation is unavailable.
-    /// </summary>
-    public static string GetOutputType(RoslynProject project, XDocument? document, ILogger? logger = null)
-    {
-        var evaluated = GetEvaluatedOutputType(project.FilePath, logger);
-        return !string.IsNullOrWhiteSpace(evaluated) ? evaluated : GetOutputType(document);
-    }
-
     public static string GetOutputType(XDocument? document)
     {
         return document?.Descendants("OutputType").FirstOrDefault()?.Value.Trim() ?? "Library";
     }
 
-    internal static string? GetEvaluatedOutputType(string? projectFilePath, ILogger? logger)
+    internal static string GetOutputType(MsBuildMetadataHelper.RestoreInputs context, XDocument? document) =>
+        !string.IsNullOrWhiteSpace(context.OutputType) ? context.OutputType.Trim() : GetOutputType(document);
+
+    internal static string? GetEvaluatedOutputType(string? projectFilePath, IReadOnlyDictionary<string, string> globals, ILogger? logger)
     {
         if (string.IsNullOrWhiteSpace(projectFilePath) || !File.Exists(projectFilePath))
         {
@@ -236,12 +251,13 @@ internal static class ProjectMetadataParser
 
         try
         {
-            var outputType = MsBuildMetadataHelper.EvaluateProperties(projectFilePath, "OutputType")[0];
+            var outputType = MsBuildMetadataHelper.EvaluateProperties(projectFilePath, globals, "OutputType")[0];
             return string.IsNullOrWhiteSpace(outputType) ? null : outputType.Trim();
         }
         catch (Exception ex)
         {
-            logger?.LogDebug(ex, "Failed to evaluate output type for project {Path}", projectFilePath);
+            var redactor = new MsBuildCommandProperties.Redactor(MsBuildCommandProperties.Append([], globals));
+            logger?.LogDebug(redactor.Failure(ex), "Failed to evaluate output type for project {Path}", redactor.Text(projectFilePath));
             return null;
         }
     }

@@ -20,9 +20,6 @@ public sealed class FixAllServiceIntegrationTests : SharedWorkspaceTestBase
         WorkspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     public async Task PreviewFixAll_UnknownDiagnostic_Returns_NoProvider_Guidance()
     {

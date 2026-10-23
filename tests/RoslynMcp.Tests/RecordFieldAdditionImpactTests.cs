@@ -16,9 +16,6 @@ public sealed class RecordFieldAdditionImpactTests : SharedWorkspaceTestBase
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     public async Task PreviewAddition_ClassifiesAllCategoriesOfImpact_ForPositionalRecord()
     {
@@ -82,7 +79,7 @@ public static class TestRecordConsumerTests
 }
 """, CancellationToken.None);
 
-            var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+            var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
             workspaceId = status.WorkspaceId;
 
             var result = await RecordFieldAdditionService.PreviewAdditionAsync(
@@ -188,7 +185,7 @@ public static class NonPositionalRecordConsumer
 }
 """, CancellationToken.None);
 
-            var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+            var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
             workspaceId = status.WorkspaceId;
 
             var result = await RecordFieldAdditionService.PreviewAdditionAsync(

@@ -27,9 +27,8 @@ internal static class TestTempRoot
     internal const string RunDirectoryPrefix = "run-";
 
     /// <summary>
-    /// A run directory older than this is assumed abandoned (a crashed or killed test host) and is
-    /// eligible for reaping. Deliberately far longer than any real test run: a LIVE sibling run is
-    /// never this old, which is what keeps the reaper from re-introducing the cross-run delete.
+    /// Minimum age for reclamation. The owning process must also be confirmed absent;
+    /// elapsed time alone never proves that a run has ended.
     /// </summary>
     internal static readonly TimeSpan StaleRunAge = TimeSpan.FromDays(1);
 
@@ -41,10 +40,22 @@ internal static class TestTempRoot
     /// This process's temp root. Stable for the lifetime of the process and unique across
     /// concurrent runs (process id + a random suffix, so a recycled pid cannot collide).
     /// </summary>
-    internal static string Current { get; } = System.IO.Path.Combine(
-        SharedParent,
-        RunDirectoryPrefix + Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture)
-            + "-" + Guid.NewGuid().ToString("N")[..8]);
+    internal static string Current { get; } = CreateCurrent();
+
+    // Every ordinary fixture explicitly owns its default SDK/test context. Tests of missing
+    // configuration authority use a separate boundary and do not depend on this default.
+    internal const string DefaultGlobalJson = "{}\n";
+
+    private static string CreateCurrent()
+    {
+        var root = System.IO.Path.Combine(SharedParent,
+            RunDirectoryPrefix + Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + "-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(root);
+        File.WriteAllText(System.IO.Path.Combine(root, "global.json"), DefaultGlobalJson,
+            new System.Text.UTF8Encoding(false));
+        return root;
+    }
 
     /// <summary>
     /// Deletes THIS run's root only. Safe to call concurrently with other test-assembly processes.
@@ -60,8 +71,11 @@ internal static class TestTempRoot
 
     /// <summary>Test seam for <see cref="ReapAbandonedRuns()"/>; <paramref name="utcNow"/> anchors the age check.</summary>
     internal static void ReapAbandonedRuns(DateTime utcNow)
+        => ReapAbandonedRuns(SharedParent, Current, utcNow);
+
+    internal static void ReapAbandonedRuns(string parent, string current, DateTime utcNow)
     {
-        if (!Directory.Exists(SharedParent))
+        if (!Directory.Exists(parent))
         {
             return;
         }
@@ -69,7 +83,7 @@ internal static class TestTempRoot
         IEnumerable<string> candidates;
         try
         {
-            candidates = Directory.EnumerateDirectories(SharedParent, RunDirectoryPrefix + "*");
+            candidates = Directory.GetDirectories(parent, RunDirectoryPrefix + "*");
         }
         catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
         {
@@ -78,12 +92,12 @@ internal static class TestTempRoot
 
         foreach (var candidate in candidates.ToList())
         {
-            if (string.Equals(candidate, Current, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(candidate, current, StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
 
-            if (!IsStale(candidate, utcNow))
+            if (!IsStale(candidate, utcNow) || !OwnerHasExited(candidate))
             {
                 continue;
             }
@@ -97,6 +111,31 @@ internal static class TestTempRoot
             catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
             {
             }
+        }
+    }
+
+    private static bool OwnerHasExited(string runDirectory)
+    {
+        var leaf = Path.GetFileName(runDirectory);
+        var suffix = leaf.AsSpan(RunDirectoryPrefix.Length);
+        var separator = suffix.IndexOf('-');
+        if (separator <= 0 || !int.TryParse(suffix[..separator],
+                System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var pid)
+            || pid <= 0)
+            return false;
+
+        try
+        {
+            using var owner = System.Diagnostics.Process.GetProcessById(pid);
+            return owner.HasExited;
+        }
+        catch (ArgumentException)
+        {
+            return true; // GetProcessById confirms there is no process with this id.
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or NotSupportedException)
+        {
+            return false; // Unknown ownership is retained, including inaccessible processes.
         }
     }
 

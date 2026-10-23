@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Text;
 using System.Text.Json;
 using Microsoft.CodeAnalysis;
@@ -5,20 +6,14 @@ using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Diagnostics;
+using RoslynMcp.Roslyn.Helpers;
 using RoslynMcp.Roslyn.Services;
 using RoslynMcp.Tests.Helpers;
 using RoslynMcp.Tests.TestInfrastructure;
 
 namespace RoslynMcp.Tests;
 
-/// <summary>
-/// Unit coverage for <see cref="CompositeApplyOrchestrator"/> and the shared
-/// <c>AtomicFileWriter</c> primitive it (and the other source-mutation services) now route
-/// disk writes through. Focused on the atomic-write round-trip and the mid-loop partial-apply
-/// failure contract — see plan initiative refactor-services-non-atomic-write-rollback.
-/// These tests operate purely on a temp directory + hand-rolled fakes, so they need no loaded
-/// MSBuild workspace and are safe to run in parallel with the workspace-bound suites.
-/// </summary>
+/// <summary>Exercises composite orchestration, physical transitions, encoding and operation-owned undo.</summary>
 [TestClass]
 public sealed class CompositeApplyOrchestratorTests
 {
@@ -27,7 +22,7 @@ public sealed class CompositeApplyOrchestratorTests
     [TestInitialize]
     public void Init()
     {
-        _tempDir = Path.Combine(Path.GetTempPath(), "roslynmcp-atomicwrite-" + Guid.NewGuid().ToString("N"));
+        _tempDir = Path.Combine(TestTempRoot.Current, "roslynmcp-atomicwrite-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_tempDir);
     }
 
@@ -35,413 +30,6 @@ public sealed class CompositeApplyOrchestratorTests
     public void Cleanup()
     {
         TestFixtureFileSystem.DeleteDirectoryIfExists(_tempDir);
-    }
-
-    private void AssertNoTempArtifacts(string path) =>
-        Assert.IsEmpty(Directory.EnumerateFiles(_tempDir, "*.tmp"));
-
-    [TestMethod]
-    public async Task AtomicFileWriter_RoundTrips_Content_And_Leaves_No_Temp_Artifact()
-    {
-        var path = Path.Combine(_tempDir, "target.cs");
-        const string content = "// hello atomic world\nclass C {}\n";
-
-        await AtomicFileWriter.WriteAllTextAsync(path, content, CancellationToken.None);
-
-        Assert.AreEqual(content, await File.ReadAllTextAsync(path));
-        AssertNoTempArtifacts(path);
-    }
-
-    [TestMethod]
-    public async Task AtomicFileWriter_Overwrites_Existing_File_Atomically()
-    {
-        var path = Path.Combine(_tempDir, "target.cs");
-        await File.WriteAllTextAsync(path, "original");
-
-        await AtomicFileWriter.WriteAllTextAsync(path, "replacement", CancellationToken.None);
-
-        Assert.AreEqual("replacement", await File.ReadAllTextAsync(path));
-        AssertNoTempArtifacts(path);
-    }
-
-    [TestMethod]
-    public async Task AtomicFileWriter_OverlappingWritesKeepSeparateTempFiles()
-    {
-        var path = Path.Combine(_tempDir, "target.cs");
-        var firstPrepared = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var releaseFirst = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var first = AtomicFileWriter.WriteAtomicAsync(path, async (_, stream) =>
-        {
-            await stream.WriteAsync("first"u8.ToArray());
-            firstPrepared.SetResult();
-            await releaseFirst.Task;
-        }, CancellationToken.None, logger: null, exceptionReporter: null);
-
-        await firstPrepared.Task;
-        try
-        {
-            await AtomicFileWriter.WriteAtomicAsync(path,
-                (_, stream) => stream.WriteAsync("second"u8.ToArray()).AsTask(),
-                CancellationToken.None, logger: null, exceptionReporter: null);
-        }
-        finally
-        {
-            releaseFirst.SetResult();
-        }
-
-        await first;
-        Assert.AreEqual("first", await File.ReadAllTextAsync(path));
-        AssertNoTempArtifacts(path);
-    }
-
-    [TestMethod]
-    public async Task AtomicFileWriter_UsesShortSameDirectoryTempForLongTargetName()
-    {
-        var path = Path.Combine(_tempDir, new string('x', 120) + ".cs");
-        string? tempPath = null;
-        await AtomicFileWriter.WriteAtomicAsync(path, async (tmp, stream) =>
-        {
-            tempPath = tmp;
-            await stream.WriteAsync("content"u8.ToArray());
-        }, CancellationToken.None, logger: null, exceptionReporter: null);
-
-        Assert.IsNotNull(tempPath);
-        Assert.AreEqual(Path.GetDirectoryName(path), Path.GetDirectoryName(tempPath));
-        Assert.IsTrue(Path.GetFileName(tempPath).Length < 30);
-        Assert.AreEqual("content", await File.ReadAllTextAsync(path));
-        AssertNoTempArtifacts(path);
-    }
-
-    [TestMethod]
-    public async Task AtomicFileWriter_CancelAfterTempWrite_DoesNotReplaceTarget()
-    {
-        var path = Path.Combine(_tempDir, "target.cs");
-        await File.WriteAllTextAsync(path, "original");
-        using var cancellation = new CancellationTokenSource();
-
-        await Assert.ThrowsAsync<OperationCanceledException>(() =>
-            AtomicFileWriter.WriteAtomicAsync(path, async (_, stream) =>
-            {
-                await stream.WriteAsync("replacement"u8.ToArray());
-                cancellation.Cancel();
-            }, cancellation.Token, logger: null, exceptionReporter: null));
-
-        Assert.AreEqual("original", await File.ReadAllTextAsync(path));
-        AssertNoTempArtifacts(path);
-    }
-
-    [TestMethod]
-    public async Task AtomicFileWriter_ReplacedTempNameNeverCommitsForeignBytes()
-    {
-        var path = Path.Combine(_tempDir, "target.cs");
-        await File.WriteAllTextAsync(path, "original");
-        string? tempPath = null;
-
-        await Assert.ThrowsExactlyAsync<IOException>(() =>
-            AtomicFileWriter.WriteAtomicAsync(path, async (tmp, stream) =>
-            {
-                tempPath = tmp;
-                await stream.WriteAsync("intended"u8.ToArray());
-                File.Move(tmp, tmp + ".held");
-                await File.WriteAllTextAsync(tmp, "foreign");
-            }, CancellationToken.None, logger: null, exceptionReporter: null));
-
-        Assert.AreEqual("original", await File.ReadAllTextAsync(path));
-        Assert.IsNotNull(tempPath);
-        Assert.AreEqual("foreign", await File.ReadAllTextAsync(tempPath));
-    }
-
-    [TestMethod]
-    public async Task AtomicFileWriter_SymlinkSwapCannotRedirectWriteOrCommit()
-    {
-        if (!OperatingSystem.IsLinux()) Assert.Inconclusive("Requires Linux.");
-        var path = Path.Combine(_tempDir, "target.cs");
-        var foreignPath = Path.Combine(_tempDir, "foreign.cs");
-        await File.WriteAllTextAsync(path, "original");
-        await File.WriteAllTextAsync(foreignPath, "foreign");
-        string? tempPath = null;
-
-        await Assert.ThrowsExactlyAsync<IOException>(() =>
-            AtomicFileWriter.WriteAtomicAsync(path, async (tmp, stream) =>
-            {
-                tempPath = tmp;
-                File.Move(tmp, tmp + ".held");
-                File.CreateSymbolicLink(tmp, foreignPath);
-                await stream.WriteAsync("intended"u8.ToArray());
-            }, CancellationToken.None, logger: null, exceptionReporter: null));
-
-        Assert.AreEqual("original", await File.ReadAllTextAsync(path));
-        Assert.AreEqual("foreign", await File.ReadAllTextAsync(foreignPath));
-        Assert.IsNotNull(tempPath);
-        Assert.IsTrue(new FileInfo(tempPath).LinkTarget is not null,
-            "Foreign symlink must remain untouched by ownership-aware cleanup.");
-    }
-
-    [TestMethod]
-    public async Task AtomicFileWriter_DanglingSymlinkSwapIsReportedAndPreserved()
-    {
-        if (!OperatingSystem.IsLinux()) Assert.Inconclusive("Requires Linux.");
-        var path = Path.Combine(_tempDir, "target.cs");
-        var logger = new RecordingLogger<CompositeApplyOrchestrator>();
-        string? tempPath = null;
-
-        await Assert.ThrowsExactlyAsync<IOException>(() =>
-            AtomicFileWriter.WriteAtomicAsync(path, (tmp, _) =>
-            {
-                tempPath = tmp;
-                File.Move(tmp, tmp + ".held");
-                File.CreateSymbolicLink(tmp, Path.Combine(_tempDir, "missing"));
-                throw new IOException("Injected failure.");
-            }, CancellationToken.None, logger, exceptionReporter: null));
-
-        Assert.IsNotNull(tempPath);
-        Assert.IsFalse(File.Exists(Path.Combine(_tempDir, "missing")));
-        Assert.IsNotNull(new FileInfo(tempPath).LinkTarget);
-        Assert.HasCount(1, logger.Entries.Where(e => e.Level == LogLevel.Warning));
-    }
-
-    [TestMethod]
-    public async Task AtomicFileWriter_SymlinkedParentCanBeWritten()
-    {
-        if (!OperatingSystem.IsLinux()) Assert.Inconclusive("Requires Linux.");
-        var physical = Path.Combine(_tempDir, "physical");
-        Directory.CreateDirectory(physical);
-        var alias = Path.Combine(_tempDir, "alias");
-        Directory.CreateSymbolicLink(alias, physical);
-        var path = Path.Combine(alias, "target.cs");
-
-        await AtomicFileWriter.WriteAllTextAsync(path, "content", CancellationToken.None);
-
-        Assert.AreEqual("content", await File.ReadAllTextAsync(Path.Combine(physical, "target.cs")));
-    }
-
-    [TestMethod]
-    public void AtomicFileWriter_NormalizesWindowsUncHandlePath()
-    {
-        Assert.AreEqual(@"\\server\share\file.tmp",
-            AtomicFileWriter.NormalizeWindowsHandlePath(@"\\?\UNC\server\share\file.tmp"));
-        Assert.AreEqual(@"C:\folder\file.tmp",
-            AtomicFileWriter.NormalizeWindowsHandlePath(@"\\?\C:\folder\file.tmp"));
-    }
-
-    [TestMethod]
-    [DataRow(false)]
-    [DataRow(true)]
-    public async Task AtomicFileWriter_ReplaceWaitsForWindowsReader(bool shareDelete)
-    {
-        if (!OperatingSystem.IsWindows()) Assert.Inconclusive("Requires Windows.");
-
-        var path = Path.Combine(_tempDir, "target.editorconfig");
-        var tmp = Path.Combine(_tempDir, "reserved.tmp");
-        await File.WriteAllTextAsync(path, "original");
-        using var stream = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write,
-            FileShare.Read | FileShare.Delete);
-        using var reader = new FileStream(path, FileMode.Open, FileAccess.Read,
-            shareDelete ? FileShare.ReadWrite | FileShare.Delete : FileShare.ReadWrite);
-        var delays = new List<int>();
-
-        await AtomicFileWriter.WriteAtomicAtTempPathAsync(path, tmp, stream,
-            (_, reserved) => reserved.WriteAsync("replacement"u8.ToArray()).AsTask(), (delay, ct) =>
-        {
-            delays.Add(delay);
-            Assert.HasCount(1, delays, "Releasing the reader must allow the next real replacement attempt.");
-            Assert.AreEqual("original", File.ReadAllText(path), "The held reader must prevent replacement.");
-            Assert.IsTrue(File.Exists(tmp), "The retry must retain the reserved replacement file.");
-            Assert.AreEqual(CancellationToken.None, ct);
-            reader.Dispose();
-            return Task.CompletedTask;
-        }, CancellationToken.None, logger: null, exceptionReporter: null);
-
-        CollectionAssert.AreEqual(new[] { 25 }, delays);
-        Assert.AreEqual("replacement", await File.ReadAllTextAsync(path));
-        AssertNoTempArtifacts(path);
-    }
-
-    [TestMethod]
-    public async Task AtomicFileWriter_PersistentReader_UsesExactBoundedRetrySchedule()
-    {
-        if (!OperatingSystem.IsWindows()) Assert.Inconclusive("Requires Windows.");
-
-        var path = Path.Combine(_tempDir, "target.editorconfig");
-        var tmp = Path.Combine(_tempDir, "reserved.tmp");
-        await File.WriteAllTextAsync(path, "original");
-        using var stream = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write,
-            FileShare.Read | FileShare.Delete);
-        using var reader = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-        using var cancellation = new CancellationTokenSource();
-        var delays = new List<int>();
-
-        await Assert.ThrowsExactlyAsync<UnauthorizedAccessException>(() =>
-            AtomicFileWriter.WriteAtomicAtTempPathAsync(path, tmp, stream,
-            (_, reserved) => reserved.WriteAsync("replacement"u8.ToArray()).AsTask(), (delay, ct) =>
-            {
-                delays.Add(delay);
-                Assert.IsTrue(delays.Count <= 9, "A persistent reader must not schedule a tenth delay.");
-                Assert.AreEqual(cancellation.Token, ct, "Every delay must receive the caller's cancellation token.");
-                return Task.CompletedTask;
-            }, cancellation.Token, logger: null, exceptionReporter: null));
-
-        CollectionAssert.AreEqual(new[] { 25, 50, 100, 200, 400, 400, 400, 400, 400 }, delays);
-        Assert.AreEqual("original", await File.ReadAllTextAsync(path));
-        AssertNoTempArtifacts(path);
-    }
-
-    [TestMethod]
-    public async Task AtomicFileWriter_PersistentReaderFails_AndCleansTemp()
-    {
-        if (!OperatingSystem.IsWindows()) Assert.Inconclusive("Requires Windows.");
-
-        var path = Path.Combine(_tempDir, "target.editorconfig");
-        await File.WriteAllTextAsync(path, "original");
-        using var reader = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-        await Assert.ThrowsExactlyAsync<UnauthorizedAccessException>(() =>
-            AtomicFileWriter.WriteAllTextAsync(path, "replacement", CancellationToken.None));
-        // The exact bounded schedule is pinned by PersistentReader_UsesExactBoundedRetrySchedule;
-        // this full writer call proves the native failure preserves content and cleans its temp.
-        Assert.AreEqual("original", await File.ReadAllTextAsync(path));
-        AssertNoTempArtifacts(path);
-    }
-
-    [TestMethod]
-    public async Task AtomicFileWriter_CancellationDuringSharingRetry_StopsBeforeAnotherDelay_AndCleansTemp()
-    {
-        if (!OperatingSystem.IsWindows()) Assert.Inconclusive("Requires Windows.");
-
-        var path = Path.Combine(_tempDir, "target.editorconfig");
-        var tmp = Path.Combine(_tempDir, "reserved.tmp");
-        await File.WriteAllTextAsync(path, "original");
-        using var stream = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write,
-            FileShare.Read | FileShare.Delete);
-        using var reader = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-        using var cancellation = new CancellationTokenSource();
-        var delays = new List<int>();
-        var delayEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var writeTask = AtomicFileWriter.WriteAtomicAtTempPathAsync(path, tmp, stream,
-            (_, reserved) => reserved.WriteAsync("replacement"u8.ToArray()).AsTask(), (delay, ct) =>
-            {
-                delays.Add(delay);
-                Assert.HasCount(1, delays, "Cancellation during a retry must prevent another delay.");
-                Assert.AreEqual(cancellation.Token, ct);
-                delayEntered.SetResult();
-                return Task.Delay(Timeout.Infinite, ct);
-            }, cancellation.Token, logger: null, exceptionReporter: null);
-        Exception? primaryFailure = null;
-        try
-        {
-            var first = await Task.WhenAny(delayEntered.Task, writeTask);
-            if (first == writeTask)
-            {
-                await writeTask; // Surface a native failure instead of waiting for a callback that cannot run.
-                Assert.Fail("A held reader must reach the sharing-retry delay before completing.");
-            }
-
-            await delayEntered.Task;
-            Assert.IsFalse(writeTask.IsCompleted, "The retry delay must remain pending until cancellation.");
-            cancellation.Cancel();
-            var failure = await Assert.ThrowsAsync<OperationCanceledException>(() => writeTask);
-            Assert.AreEqual(cancellation.Token, failure.CancellationToken);
-            CollectionAssert.AreEqual(new[] { 25 }, delays);
-            Assert.AreEqual("original", await File.ReadAllTextAsync(path));
-            AssertNoTempArtifacts(path);
-        }
-        catch (Exception failure)
-        {
-            primaryFailure = failure;
-            throw;
-        }
-        finally
-        {
-            await CleanupFailureCollector.RunAfterFailureAsync(
-                "Atomic-write retry cancellation or cleanup failed.", primaryFailure,
-                CleanupFailureCollector.FromAction(cancellation.Cancel),
-                async () =>
-                {
-                    try
-                    {
-                        await writeTask;
-                    }
-                    catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
-                    {
-                        // Owner-requested cancellation is the expected terminal state; the writer is drained.
-                    }
-                });
-        }
-    }
-
-    [TestMethod]
-    public async Task AtomicFileWriter_LogsWarningAndPreservesForeignTempAfterWriteFailure()
-    {
-        var path = Path.Combine(_tempDir, "target.cs");
-        string? tmp = null;
-
-        var logger = new RecordingLogger<CompositeApplyOrchestrator>();
-        var sink = new CapturingServerObservabilitySink();
-        var reporter = new ServerObservabilityReporter(sink);
-        using var correlationScope = RequestCorrelationContext.Begin();
-        var correlationId = RequestCorrelationContext.Current
-            ?? throw new AssertFailedException("The request correlation scope must publish an id.");
-
-        // (a) The original write failure must still propagate — primary failure is not masked.
-        await Assert.ThrowsExactlyAsync<IOException>(
-            () => AtomicFileWriter.WriteAtomicAsync(path, async (candidate, stream) =>
-            {
-                tmp = candidate;
-                await stream.WriteAsync("// content"u8.ToArray());
-                File.Move(candidate, candidate + ".held");
-                await File.WriteAllTextAsync(candidate, "foreign");
-                throw new IOException("Injected write failure after temp replacement.");
-            }, CancellationToken.None, logger, reporter));
-
-        // (b) Exactly one Warning is recorded, and it is redacted: no raw exception attached, no
-        // absolute temp/target paths, no caught-exception message text — only the stable cleanup
-        // category, the target file name, and the shared secret-safe projection
-        // (atomic-file-cleanup-error-detail-redaction).
-        var warnings = logger.Entries.Where(e => e.Level == LogLevel.Warning).ToList();
-        Assert.AreEqual(1, warnings.Count, "Exactly one Warning should be logged for the failed temp cleanup.");
-        Assert.IsNull(warnings[0].Exception, "The caught cleanup exception must not be attached to the log record.");
-        Assert.IsFalse(warnings[0].Message.Contains(_tempDir, StringComparison.OrdinalIgnoreCase), "The warning must not contain the absolute directory path.");
-        Assert.IsNotNull(tmp);
-        Assert.IsFalse(warnings[0].Message.Contains(tmp, StringComparison.OrdinalIgnoreCase), "The warning must not contain the absolute .tmp path.");
-        StringAssert.Contains(warnings[0].Message, "CompositeApplyTempCleanup", "The warning must carry the stable cleanup category token.");
-        StringAssert.Contains(warnings[0].Message, Path.GetFileName(path), "The warning must name the target file (file name only).");
-        StringAssert.Contains(warnings[0].Message, $"correlationId={correlationId}", "The warning must carry the active request correlation id.");
-        StringAssert.Contains(warnings[0].Message, nameof(IOException), "The warning must carry the exception-type topology from the shared projection.");
-        Assert.HasCount(1, sink.Events);
-        Assert.AreEqual(correlationId, sink.Events.Single().Exception.CorrelationId);
-
-        // The name now belongs to another writer; cleanup must not delete it.
-        Assert.AreEqual("foreign", await File.ReadAllTextAsync(tmp));
-    }
-
-    [TestMethod]
-    public async Task AtomicFileWriter_LogsWarningWhenOwnedTempDeletionFails()
-    {
-        if (!OperatingSystem.IsWindows()) Assert.Inconclusive("Requires Windows.");
-        var path = Path.Combine(_tempDir, "target.cs");
-        string? tmp = null;
-        var logger = new RecordingLogger<CompositeApplyOrchestrator>();
-        try
-        {
-            await Assert.ThrowsExactlyAsync<IOException>(() =>
-                AtomicFileWriter.WriteAtomicAsync(path, (candidate, _) =>
-                {
-                    tmp = candidate;
-                    File.SetAttributes(candidate, FileAttributes.ReadOnly);
-                    throw new IOException("Injected write failure.");
-                }, CancellationToken.None, logger, exceptionReporter: null));
-
-            Assert.IsNotNull(tmp);
-            Assert.IsTrue(File.Exists(tmp), "Read-only owned temp must survive failed cleanup.");
-            Assert.HasCount(1, logger.Entries.Where(e => e.Level == LogLevel.Warning));
-        }
-        finally
-        {
-            if (tmp is not null && File.Exists(tmp))
-            {
-                File.SetAttributes(tmp, FileAttributes.Normal);
-                File.Delete(tmp);
-            }
-        }
     }
 
     [TestMethod]
@@ -490,7 +78,7 @@ public sealed class CompositeApplyOrchestratorTests
 
         var store = new CompositePreviewStore();
         var token = store.Store("ws-1", 1, scenario, mutations);
-        var workspace = new RecordingWorkspaceManager(reloadFailure);
+        using var workspace = new RecordingWorkspaceManager(reloadFailure);
         var orchestrator = new CompositeApplyOrchestrator(workspace, store);
 
         var result = await orchestrator.ApplyCompositeAsync(token, CancellationToken.None);
@@ -557,7 +145,7 @@ public sealed class CompositeApplyOrchestratorTests
         var store = new CompositePreviewStore();
         var token = store.Store("ws-1", 1, "test composite", mutations);
 
-        var workspace = new RecordingWorkspaceManager();
+        using var workspace = new RecordingWorkspaceManager();
         var logger = new RecordingLogger<CompositeApplyOrchestrator>();
         var sink = new CapturingServerObservabilitySink();
         var reporter = new ServerObservabilityReporter(sink);
@@ -581,7 +169,8 @@ public sealed class CompositeApplyOrchestratorTests
         Assert.IsFalse(result.Error.Contains(sentinel, StringComparison.Ordinal));
         Assert.IsFalse(result.Error.Contains(_tempDir, StringComparison.OrdinalIgnoreCase));
         Assert.AreEqual("// good content", await File.ReadAllTextAsync(goodPath), "The successful write must remain on disk.");
-        AssertNoTempArtifacts(goodPath);
+        Assert.IsEmpty(Directory.EnumerateFiles(_tempDir, "*.tmp"));
+        Assert.IsEmpty(Directory.EnumerateFiles(_tempDir, ".rmcp-prepared-*"));
         Assert.IsFalse(File.Exists(doomedPath), "The failing mutation must not have produced a file.");
 
         // A warning was logged for the partial failure.
@@ -614,8 +203,9 @@ public sealed class CompositeApplyOrchestratorTests
         var store = new CompositePreviewStore();
         var token = store.Store("ws-1", 1, "test composite", mutations);
         var sink = new CapturingServerObservabilitySink();
+        using var workspace = new RecordingWorkspaceManager();
         var orchestrator = new CompositeApplyOrchestrator(
-            new RecordingWorkspaceManager(),
+            workspace,
             store,
             exceptionReporter: new ServerObservabilityReporter(sink));
 
@@ -634,7 +224,7 @@ public sealed class CompositeApplyOrchestratorTests
     /// <summary>
     /// Regression guard for <c>composite-apply-undo-encoding-still-lossy</c>:
     /// <c>apply_composite_preview</c> wrote every mutation through
-    /// <c>AtomicFileWriter.WriteAllTextAsync</c> with no <see cref="Encoding"/>, so a UTF-8-BOM or
+    /// a writer without the original <see cref="Encoding"/>, so a UTF-8-BOM or
     /// UTF-16 source file was silently re-encoded as UTF-8-no-BOM on every composite apply. This is
     /// the third write path PR #1157 (<c>mutation-write-paths-drop-original-encoding</c>) deferred.
     /// The <c>utf8-nobom</c> row is the inverse guard: a file that had no BOM must not gain one.
@@ -667,7 +257,8 @@ public sealed class CompositeApplyOrchestratorTests
             1,
             "encoding round-trip",
             [new CompositeFileMutation(path, updatedContent, DeleteFile: false)]);
-        var orchestrator = new CompositeApplyOrchestrator(new RecordingWorkspaceManager(), store);
+        using var workspace = new RecordingWorkspaceManager();
+        var orchestrator = new CompositeApplyOrchestrator(workspace, store);
 
         var result = await orchestrator.ApplyCompositeAsync(token, CancellationToken.None);
         Assert.IsTrue(result.Success, result.Error);
@@ -706,7 +297,8 @@ public sealed class CompositeApplyOrchestratorTests
             1,
             "new file",
             [new CompositeFileMutation(path, "class New { }\n", DeleteFile: false)]);
-        var orchestrator = new CompositeApplyOrchestrator(new RecordingWorkspaceManager(), store);
+        using var workspace = new RecordingWorkspaceManager();
+        var orchestrator = new CompositeApplyOrchestrator(workspace, store);
 
         var result = await orchestrator.ApplyCompositeAsync(token, CancellationToken.None);
         Assert.IsTrue(result.Success, result.Error);
@@ -729,7 +321,7 @@ public sealed class CompositeApplyOrchestratorTests
     public async Task ApplyComposite_RevertLastApply_Restores_Composite_Files_Not_Previous_Apply()
     {
         const string workspaceId = "ws-1";
-        var workspace = new RecordingWorkspaceManager();
+        using var workspace = new RecordingWorkspaceManager();
         using var changeTracker = new ChangeTracker(workspace);
         using var undoService = new UndoService(
             Microsoft.Extensions.Logging.Abstractions.NullLogger<UndoService>.Instance,
@@ -739,13 +331,8 @@ public sealed class CompositeApplyOrchestratorTests
         // A previous, independently revertable apply on an unrelated file.
         var priorPath = Path.Combine(_tempDir, "prior.cs");
         await File.WriteAllTextAsync(priorPath, "prior-original");
-        undoService.CaptureBeforeApply(
-            workspaceId,
-            "prior apply",
-            preApplySolution: null,
-            [FileSnapshotDto.FromExistingBytes(priorPath, await File.ReadAllBytesAsync(priorPath))]);
-        await File.WriteAllTextAsync(priorPath, "prior-applied");
-        changeTracker.RecordChange(workspaceId, "prior apply", [priorPath], "apply_text_edit");
+        await PublishTrackedFileMutationAsync(workspace, undoService, changeTracker,
+            workspaceId, "prior apply", priorPath, "prior-applied");
 
         // Composite: modify an existing file, create a new one, delete an existing one.
         var modifiedPath = Path.Combine(_tempDir, "modified.cs");
@@ -879,21 +466,15 @@ public sealed class CompositeApplyOrchestratorTests
         var upperPath = Path.Combine(_tempDir, "Feature.cs");
         var lowerPath = Path.Combine(_tempDir, "feature.cs");
         await File.WriteAllTextAsync(upperPath, "original");
-        undoService.CaptureBeforeApply(
-            workspaceId, "apply A", preApplySolution: null,
-            [FileSnapshotDto.FromExistingBytes(upperPath, await File.ReadAllBytesAsync(upperPath))]);
-        await File.WriteAllTextAsync(upperPath, "applied-a");
-        changeTracker.RecordChange(workspaceId, "apply A", [upperPath], "apply_text_edit");
+        await PublishTrackedFileMutationAsync(workspace, undoService, changeTracker,
+            workspaceId, "apply A", upperPath, "applied-a");
         if (!OperatingSystem.IsWindows())
         {
             await File.WriteAllTextAsync(lowerPath, "lower-original");
         }
 
-        undoService.CaptureBeforeApply(
-            workspaceId, "apply B", preApplySolution: null,
-            [FileSnapshotDto.FromExistingBytes(lowerPath, await File.ReadAllBytesAsync(lowerPath))]);
-        await File.WriteAllTextAsync(lowerPath, "applied-b");
-        changeTracker.RecordChange(workspaceId, "apply B", [lowerPath], "apply_text_edit");
+        await PublishTrackedFileMutationAsync(workspace, undoService, changeTracker,
+            workspaceId, "apply B", lowerPath, "applied-b");
         var changes = changeTracker.GetChanges(workspaceId);
 
         var revert = await undoService.RevertBySequenceAsync(
@@ -914,6 +495,114 @@ public sealed class CompositeApplyOrchestratorTests
         }
     }
 
+    [TestMethod]
+    public async Task NativeCaseDistinctCompositePaths_KeepBothWritesAndUndoSnapshots()
+    {
+        if (!OperatingSystem.IsLinux()) Assert.Inconclusive("Requires a native case-sensitive filesystem.");
+        var upper = Path.Combine(_tempDir, "Case.cs");
+        var lower = Path.Combine(_tempDir, "case.cs");
+        await File.WriteAllTextAsync(upper, "upper before");
+        await File.WriteAllTextAsync(lower, "lower before");
+        using var manager = new RecordingWorkspaceManager();
+        using var undo = new UndoService(Microsoft.Extensions.Logging.Abstractions.NullLogger<UndoService>.Instance, manager);
+        var store = new CompositePreviewStore();
+        var token = store.Store("ws-1", manager.GetCurrentVersion("ws-1"), "case-distinct",
+            [new CompositeFileMutation(upper, "upper after"), new CompositeFileMutation(lower, "lower after")]);
+        var service = new CompositeApplyOrchestrator(manager, store, undoService: undo);
+        var result = await service.ApplyCompositeAsync(token, CancellationToken.None);
+        Assert.IsTrue(result.Success, result.Error);
+        CollectionAssert.AreEquivalent(new[] { upper, lower }, result.AppliedFiles.ToArray());
+        Assert.AreEqual("upper after", await File.ReadAllTextAsync(upper));
+        Assert.AreEqual("lower after", await File.ReadAllTextAsync(lower));
+        Assert.IsTrue(await undo.RevertAsync("ws-1", CancellationToken.None));
+        Assert.AreEqual("upper before", await File.ReadAllTextAsync(upper));
+        Assert.AreEqual("lower before", await File.ReadAllTextAsync(lower));
+    }
+
+    [TestMethod]
+    public async Task CompositeCommit_ExternalBytesCannotBecomeCertifiedPostState()
+    {
+        var path = Path.Combine(_tempDir, "late-external.cs");
+        await File.WriteAllTextAsync(path, "original");
+        using var manager = new RecordingWorkspaceManager
+        {
+            AfterMutationCommit = ct => File.WriteAllTextAsync(path, "external", ct)
+        };
+        using var undo = new UndoService(Microsoft.Extensions.Logging.Abstractions.NullLogger<UndoService>.Instance, manager);
+        var store = new CompositePreviewStore();
+        var token = store.Store("ws-1", manager.GetCurrentVersion("ws-1"), "late external replacement",
+            [new CompositeFileMutation(path, "intended")]);
+        var service = new CompositeApplyOrchestrator(manager, store, undoService: undo);
+        await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() => service.ApplyCompositeAsync(token, CancellationToken.None));
+        Assert.AreEqual("external", await File.ReadAllTextAsync(path));
+        Assert.IsNotNull(manager.GetPendingRecovery("ws-1"));
+        Assert.IsNotNull(store.Retrieve(token));
+    }
+
+    [TestMethod]
+    public async Task CompositeWrite_ChangedLaterEntryCannotBeOverwritten()
+    {
+        var first = Path.Combine(_tempDir, "first.cs");
+        var second = Path.Combine(_tempDir, "second.cs");
+        await File.WriteAllTextAsync(first, "first original");
+        await File.WriteAllTextAsync(second, "second original");
+        using var manager = new RecordingWorkspaceManager();
+        var store = new CompositePreviewStore();
+        var token = store.Store("ws-1", manager.GetCurrentVersion("ws-1"), "changed later entry",
+            [new CompositeFileMutation(first, "first intended"), new CompositeFileMutation(second, "second intended")]);
+        var service = new CompositeApplyOrchestrator(manager, store, null, null, null, null,
+            async (path, expected, bytes, operation, authority, ct) =>
+            {
+                await operation.TransitionSourceAsync(path, expected, bytes, PhysicalSourceTransitionMode.FreshReplacement, authority, null, ct);
+                if (path == first) await File.WriteAllTextAsync(second, "external", ct);
+            });
+        await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() => service.ApplyCompositeAsync(token, CancellationToken.None));
+        Assert.AreEqual("first intended", await File.ReadAllTextAsync(first));
+        Assert.AreEqual("external", await File.ReadAllTextAsync(second));
+        Assert.IsNotNull(manager.GetPendingRecovery("ws-1"));
+        Assert.IsNotNull(store.Retrieve(token));
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task CompositeSequentialSamePath_PublishesFinalIntentAndRestoresExactEntry(bool recreate)
+    {
+        var path = Path.Combine(_tempDir, "sequence.cs");
+        var original = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes("original")).ToArray();
+        await File.WriteAllBytesAsync(path, original);
+        using var manager = new RecordingWorkspaceManager();
+        using var undo = new UndoService(Microsoft.Extensions.Logging.Abstractions.NullLogger<UndoService>.Instance, manager);
+        var store = new CompositePreviewStore();
+        var alternate = OperatingSystem.IsWindows() ? path.Replace(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) : path;
+        var token = store.Store("ws-1", manager.GetCurrentVersion("ws-1"), "same physical file sequence",
+            [new CompositeFileMutation(path, recreate ? null : "middle", DeleteFile: recreate), new CompositeFileMutation(alternate, "final")]);
+        var result = await new CompositeApplyOrchestrator(manager, store, undoService: undo).ApplyCompositeAsync(token, CancellationToken.None);
+        Assert.IsTrue(result.Success, result.Error);
+        CollectionAssert.AreEqual(new[] { path }, result.AppliedFiles.ToArray());
+        Assert.AreEqual("final", await File.ReadAllTextAsync(path));
+        Assert.AreEqual(!recreate, (await File.ReadAllBytesAsync(path)).AsSpan().StartsWith(Encoding.UTF8.GetPreamble()));
+        Assert.IsTrue(await undo.RevertAsync("ws-1", CancellationToken.None));
+        CollectionAssert.AreEqual(original, await File.ReadAllBytesAsync(path));
+    }
+
+    private static async Task PublishTrackedFileMutationAsync(
+        RecordingWorkspaceManager workspace, UndoService undoService, ChangeTracker changeTracker,
+        string workspaceId, string description, string path, string content)
+    {
+        var before = FileSnapshotDto.FromExistingBytes(path, await File.ReadAllBytesAsync(path));
+        var physical = await workspace.CaptureRecoveryAsync(workspaceId, description, [before], CancellationToken.None);
+        var operation = await undoService.PrepareBeforeApplyAsync(physical, CancellationToken.None);
+        using (var lease = await workspace.BeginMutationAsync(physical, CancellationToken.None))
+        {
+            lease.BeforeWrite(FileSnapshotDto.FromExistingBytes(path, Encoding.UTF8.GetBytes(content)));
+            await File.WriteAllTextAsync(path, content);
+            lease.Complete([FileSnapshotDto.FromExistingBytes(path, await File.ReadAllBytesAsync(path))]);
+        }
+        await operation.PublishAsync(CancellationToken.None);
+        changeTracker.RecordChange(workspaceId, description, [path], "apply_text_edit");
+    }
+
     private sealed class RecordingLogger<T> : ILogger<T>
     {
         public List<(LogLevel Level, string Message, Exception? Exception)> Entries { get; } = [];
@@ -931,21 +620,345 @@ public sealed class CompositeApplyOrchestratorTests
             => Entries.Add((logLevel, formatter(state, exception), exception));
     }
 
-    private sealed class RecordingWorkspaceManager(Exception? reloadFailure = null) : IWorkspaceManager
+    private sealed class RecordingWorkspaceManager(Exception? reloadFailure = null) : IWorkspaceManager, IPhysicalSolutionCommitter, IWorkspaceRecoveryAuthority, IDisposable
     {
+        private readonly AdhocWorkspace _workspace = new();
+        internal Func<CancellationToken, Task>? AfterMutationCommit { get; init; }
+        public void Dispose() => _workspace.Dispose();
+        private int _version = 1;
         public bool ReloadCalled { get; private set; }
+        private readonly Dictionary<string, object> _sessions = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, PhysicalMutationRecovery> _pending = new(StringComparer.Ordinal);
+        private readonly Dictionary<PhysicalMutationRecovery, FixtureOperation> _operations = new(ReferenceEqualityComparer.Instance);
+        private readonly Dictionary<string, PhysicalMutationRecovery> _active = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, long> _epochs = new(StringComparer.Ordinal);
+
+        private sealed class FixtureOperation(long epoch)
+        {
+            public long CapturedEpoch { get; } = epoch;
+            public Dictionary<string, FileSnapshotDto> WrittenPaths { get; } = new(FileSystemPath.Comparer);
+            public long? CompletedEpoch { get; set; }
+            public Solution? PostSolution { get; set; }
+            public IReadOnlyList<FileSnapshotDto> PostFiles { get; set; } = [];
+        }
+
+        private object Session(string workspaceId)
+        {
+            if (!_sessions.TryGetValue(workspaceId, out var identity))
+                _sessions.Add(workspaceId, identity = new object());
+            return identity;
+        }
+
+        public Task AuthorizePathsAsync(string workspaceId, IReadOnlyList<string> paths, CancellationToken ct) =>
+            new OwnedTestWorkspacePathPolicy().ValidateAsync(workspaceId, paths, ct);
+
+        public async Task<PhysicalSourceCustody> AcquireSourceCustodyAsync(PhysicalMutationRecovery operation,
+            string sourcePath, PhysicalDirectoryScope sourceParent, string leafName, string temporaryName, CancellationToken ct)
+        {
+            AssertOwner();
+            await AuthorizePathsAsync(operation.WorkspaceId, [sourcePath, sourceParent.Path,
+                Path.Combine(sourceParent.Path, temporaryName)], ct);
+            AssertOwner();
+            var parent = PhysicalDirectoryScope.OpenRoute(sourceParent.Path);
+            return new PhysicalSourceCustody(sourceParent, parent, leafName, AssertOwner, AssertOwner,
+                (paths, token) => AuthorizePathsAsync(operation.WorkspaceId, paths, token));
+
+            void AssertOwner()
+            {
+                Require(operation);
+                if (!ReferenceEquals(_active.GetValueOrDefault(operation.WorkspaceId), operation)
+                    && !ReferenceEquals(_pending.GetValueOrDefault(operation.WorkspaceId), operation))
+                    throw new WorkspaceMutationOwnershipException("The fixture custody is outside its registered recovery owner.");
+            }
+        }
+
+        public void EnsureMutationAllowed(string workspaceId, IReadOnlyList<string> paths)
+        {
+            foreach (var path in paths) WorkspaceManager.EnsurePhysicalPath(path);
+            var requested = paths.ToHashSet(FileSystemPath.Comparer);
+            if (_pending.Concat(_active).Any(pair => pair.Key == workspaceId
+                || pair.Value.Files.Any(file => requested.Contains(file.FilePath))))
+                throw new PublicInvalidOperationException("Recover or complete the current operation before mutating its workspace or files.");
+        }
+
+        private static async Task<bool> MatchesAsync(IReadOnlyList<FileSnapshotDto> files, CancellationToken ct)
+        {
+            foreach (var file in files)
+            {
+                var current = await FileSnapshotCapture.CaptureAsync(file.FilePath, null, ct);
+                if (!file.OriginalBytes.IsDefault)
+                {
+                    if (current.OriginalBytes.IsDefault || !current.OriginalBytes.AsSpan().SequenceEqual(file.OriginalBytes.AsSpan())) return false;
+                }
+                else if (current.OriginalText != file.OriginalText) return false;
+            }
+            return true;
+        }
+
+        private FixtureOperation Require(PhysicalMutationRecovery operation)
+        {
+            if (!ReferenceEquals(Session(operation.WorkspaceId), operation.SessionIdentity)
+                || !_operations.TryGetValue(operation, out var state))
+                throw new WorkspaceMutationOwnershipException("Unknown fixture operation.");
+            return state;
+        }
+
+        public async Task<PhysicalMutationRecovery> CaptureRecoveryAsync(string workspaceId, string description,
+            IReadOnlyList<FileSnapshotDto> beforeFiles, CancellationToken ct)
+        {
+            await AuthorizePathsAsync(workspaceId, beforeFiles.Select(file => file.FilePath).ToArray(), ct);
+            EnsureMutationAllowed(workspaceId, beforeFiles.Select(file => file.FilePath).ToArray());
+            if (!await MatchesAsync(beforeFiles, ct)) throw new PublicInvalidOperationException("Fixture capture bytes changed.");
+            var recovery = new PhysicalMutationRecovery(workspaceId, description, GetCurrentSolution(workspaceId),
+                GetCurrentVersion(workspaceId), beforeFiles.ToImmutableArray(), Session(workspaceId))
+            {
+                CapturedGraphFiles = [], // The fixture owns an empty Adhoc graph; physical mutation files are captured separately.
+                CapturedLayout = null
+            };
+            _operations.Add(recovery, new FixtureOperation(_epochs.GetValueOrDefault(workspaceId)));
+            return recovery;
+        }
+
+        public async Task<IWorkspaceMutationLease> BeginMutationAsync(PhysicalMutationRecovery operation, CancellationToken ct)
+        {
+            await AuthorizePathsAsync(operation.WorkspaceId, operation.Files.Select(file => file.FilePath).ToArray(), ct);
+            var state = Require(operation);
+            EnsureMutationAllowed(operation.WorkspaceId, operation.Files.Select(file => file.FilePath).ToArray());
+            if (_epochs.GetValueOrDefault(operation.WorkspaceId) != (state.CompletedEpoch ?? state.CapturedEpoch)
+                || !ReferenceEquals(GetCurrentSolution(operation.WorkspaceId), state.CompletedEpoch is null ? operation.PreApplySolution : state.PostSolution)
+                || !await MatchesAsync(state.CompletedEpoch is null ? operation.Files : state.PostFiles, ct))
+                throw new WorkspaceMutationOwnershipException("Fixture operation was superseded.");
+            _active.Add(operation.WorkspaceId, operation);
+            if (state.CompletedEpoch is null) operation.RecoveryFiles = [];
+            return new FixtureLease(this, operation, _version,
+                state.CompletedEpoch is null ? operation.Files : state.PostFiles);
+        }
+
+        private void RequireOwner(PhysicalMutationRecovery operation)
+        {
+            Require(operation);
+            if (!ReferenceEquals(_active.GetValueOrDefault(operation.WorkspaceId), operation))
+                throw new WorkspaceMutationOwnershipException("Fixture operation does not own the mutation.");
+        }
+
+        public async Task EnsurePreparedOperationCurrentAsync(PhysicalMutationRecovery operation, CancellationToken ct)
+        {
+            await AuthorizePathsAsync(operation.WorkspaceId, operation.Files.Select(file => file.FilePath).ToArray(), ct);
+            var state = Require(operation);
+            EnsureMutationAllowed(operation.WorkspaceId, operation.Files.Select(file => file.FilePath).ToArray());
+            if (state.CompletedEpoch is not null
+                || state.CapturedEpoch != _epochs.GetValueOrDefault(operation.WorkspaceId)
+                || operation.PreApplyVersion != GetCurrentVersion(operation.WorkspaceId)
+                || !ReferenceEquals(operation.PreApplySolution, GetCurrentSolution(operation.WorkspaceId))
+                || !await MatchesAsync(operation.Files, ct))
+                throw new WorkspaceMutationOwnershipException("Fixture preparation authority expired.");
+        }
+
+        public async Task EnsureOperationCurrentAsync(PhysicalMutationRecovery operation, CancellationToken ct)
+        {
+            await AuthorizePathsAsync(operation.WorkspaceId, operation.Files.Select(file => file.FilePath).ToArray(), ct);
+            var state = Require(operation);
+            if (_pending.ContainsKey(operation.WorkspaceId)) throw new PublicInvalidOperationException("Recover the pending fixture operation first.");
+            if (_active.TryGetValue(operation.WorkspaceId, out var active))
+            {
+                if (!ReferenceEquals(active, operation)) throw new WorkspaceMutationOwnershipException("Another fixture operation owns the mutation.");
+                return;
+            }
+            if (state.CompletedEpoch != _epochs.GetValueOrDefault(operation.WorkspaceId)
+                || !ReferenceEquals(state.PostSolution, GetCurrentSolution(operation.WorkspaceId)))
+                throw new WorkspaceMutationOwnershipException("Fixture operation was superseded.");
+            if (!await MatchesAsync(state.PostFiles, ct)) throw new PublicInvalidOperationException("Fixture operation post bytes changed.");
+        }
+
+        public void RestoreCapturedVersion(PhysicalMutationRecovery operation)
+        {
+            RequireOwner(operation);
+            _version = operation.PreApplyVersion;
+        }
+
+        public async Task CommitMutationAsync(PhysicalMutationRecovery operation, Solution? expected, CancellationToken ct)
+        {
+            RequireOwner(operation);
+            await CommitCoreAsync(operation.WorkspaceId, expected, ct);
+            if (AfterMutationCommit is { } callback) await callback(ct);
+        }
+
+        public Task<IPhysicalRestorationAuthority> StageMutationAsync(PhysicalMutationRecovery operation,
+            IReadOnlyList<FileSnapshotDto> desiredFiles, CancellationToken ct) => throw new NotSupportedException("This orchestration fixture cannot issue native mutation verification.");
+        public Task VerifyMutationNamespacesAsync(PhysicalMutationRecovery operation, IPhysicalRestorationAuthority restoration,
+            MutationNamespaceTarget target, CancellationToken ct) => throw new NotSupportedException("This orchestration fixture cannot verify native namespaces.");
+
+        public async Task<IPhysicalRestorationAuthority> StageRestorationAsync(PhysicalMutationRecovery operation,
+            IReadOnlyList<FileSnapshotDto> desiredFiles, PhysicalGraphLayout? priorLayout, CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested();
+            Require(operation);
+            if (!ReferenceEquals(_pending.GetValueOrDefault(operation.WorkspaceId), operation))
+                await EnsureOperationCurrentAsync(operation, ct);
+            Assert.IsTrue(desiredFiles.All(file => operation.Files.Any(original =>
+                FileSystemPath.Comparer.Equals(original.FilePath, file.FilePath))), "Restoration must remain within captured ownership.");
+            // This orchestration fixture has an empty Adhoc graph. Real staged MSBuild graph
+            // preservation is exercised by the workspace integration fixtures.
+            return new BorrowedAuthority(GetCurrentSolution(operation.WorkspaceId));
+        }
+
+        public async Task CommitRestorationAsync(PhysicalMutationRecovery operation, PhysicalGraphExpectation expected,
+            bool retainedRecovery, CancellationToken ct)
+        {
+            if (retainedRecovery) await EnsureRecoveryCurrentAsync(operation, ct);
+            else RequireOwner(operation);
+            await CommitCoreAsync(operation.WorkspaceId, expected.Solution, ct);
+            if (retainedRecovery)
+            {
+                _epochs[operation.WorkspaceId] = _epochs.GetValueOrDefault(operation.WorkspaceId) + 1;
+                _pending.Remove(operation.WorkspaceId);
+            }
+        }
+
+        private sealed class BorrowedAuthority(Solution solution) : IPhysicalRestorationAuthority
+        {
+            private bool _disposed;
+            public PhysicalGraphExpectation Expected => !_disposed
+                ? new(solution, static path => path, new HashSet<string>(StringComparer.Ordinal),
+                    EvaluatedExecutionIdentity.Capture(solution, static path => path, new HashSet<string>(StringComparer.Ordinal), CancellationToken.None), [], InstalledPackageAuthority.Merge([]), [])
+                : throw new ObjectDisposedException(nameof(BorrowedAuthority));
+            public bool PreservesOriginalIdentity => !_disposed
+                ? true : throw new ObjectDisposedException(nameof(BorrowedAuthority));
+            public Task AssertSourceBeforeEffectAsync(PhysicalMutationRecovery operation, IReadOnlyList<string> sourceCoordinates, CancellationToken ct)
+                => throw new NotSupportedException("This borrowed semantic fixture cannot issue a native source proof.");
+            public void Dispose() => _disposed = true;
+        }
+
+        public PhysicalMutationRecovery? GetPendingRecovery(string workspaceId) => _pending.GetValueOrDefault(workspaceId);
+
+        public void RetainRecovery(PhysicalMutationRecovery recovery)
+        {
+            var state = Require(recovery);
+            if (ReferenceEquals(_pending.GetValueOrDefault(recovery.WorkspaceId), recovery)) return;
+            if (!ReferenceEquals(_active.GetValueOrDefault(recovery.WorkspaceId), recovery)
+                && (state.CompletedEpoch != _epochs.GetValueOrDefault(recovery.WorkspaceId)
+                    || !ReferenceEquals(state.PostSolution, GetCurrentSolution(recovery.WorkspaceId))))
+                throw new WorkspaceMutationOwnershipException("A superseded fixture operation cannot retain recovery.");
+            if (_pending.TryGetValue(recovery.WorkspaceId, out var pending) && !ReferenceEquals(pending, recovery))
+                throw new WorkspaceMutationOwnershipException("A different fixture recovery already owns the workspace.");
+            _pending[recovery.WorkspaceId] = recovery;
+        }
+
+        public void AssertKnownFileRead(PhysicalMutationRecovery operation, FileSnapshotDto observed)
+        {
+            var state = Require(operation);
+            if (!ReferenceEquals(_pending.GetValueOrDefault(operation.WorkspaceId), operation))
+            {
+                if (!ReferenceEquals(_active.GetValueOrDefault(operation.WorkspaceId), operation)
+                    && (state.CompletedEpoch != _epochs.GetValueOrDefault(operation.WorkspaceId)
+                        || !ReferenceEquals(state.PostSolution, GetCurrentSolution(operation.WorkspaceId))))
+                    throw new WorkspaceMutationOwnershipException("The fixture read operation was superseded.");
+            }
+            var entry = operation.Files.Single(file => FileSystemPath.Comparer.Equals(file.FilePath, observed.FilePath));
+            static bool Same(FileSnapshotDto known, FileSnapshotDto actual) => known.OriginalText is null ? actual.OriginalText is null
+                : actual.OriginalText is not null && !known.OriginalBytes.IsDefault && !actual.OriginalBytes.IsDefault
+                    && known.OriginalBytes.AsSpan().SequenceEqual(actual.OriginalBytes.AsSpan());
+            if (Same(entry, observed)
+                || state.WrittenPaths.TryGetValue(observed.FilePath, out var intended) && Same(intended, observed)
+                || operation.CompletedSourceTransition(observed.FilePath) is { } transitioned && Same(transitioned, observed)
+                || state.PostFiles.Any(file => FileSystemPath.Comparer.Equals(file.FilePath, observed.FilePath) && Same(file, observed))) return;
+            _pending[operation.WorkspaceId] = operation;
+            throw new WorkspaceMutationOwnershipException("The fixture physical read has conflicting bytes.");
+        }
+
+        public async Task EnsureRecoveryCurrentAsync(PhysicalMutationRecovery recovery, CancellationToken ct)
+        {
+            await AuthorizePathsAsync(recovery.WorkspaceId, recovery.Files.Select(file => file.FilePath).ToArray(), ct);
+            Require(recovery);
+            if (!ReferenceEquals(_pending.GetValueOrDefault(recovery.WorkspaceId), recovery))
+                throw new WorkspaceMutationOwnershipException("Fixture recovery is no longer current.");
+        }
+
+        private sealed class FixtureLease(RecordingWorkspaceManager manager, PhysicalMutationRecovery operation,
+            int entryVersion, IReadOnlyList<FileSnapshotDto> entryFiles) : IWorkspaceMutationLease
+        {
+            private bool _finished;
+            public void BeforeWrite(FileSnapshotDto intendedPost)
+            {
+                var path = intendedPost.FilePath;
+                manager.RequireOwner(operation);
+                if (!operation.Files.Any(file => FileSystemPath.Comparer.Equals(file.FilePath, path)))
+                    throw new WorkspaceMutationOwnershipException("Fixture write is outside the captured operation.");
+                manager.Require(operation).WrittenPaths[path] = intendedPost;
+                if (!operation.RecoveryFiles.Any(file => FileSystemPath.Comparer.Equals(file.FilePath, path)))
+                    operation.RecoveryFiles = operation.RecoveryFiles.Add(operation.Files.Single(file =>
+                        FileSystemPath.Comparer.Equals(file.FilePath, path)));
+            }
+            public void Complete(IReadOnlyList<FileSnapshotDto> files)
+            {
+                manager.RequireOwner(operation);
+                Assert.IsTrue(files.Select(file => file.FilePath).ToHashSet(FileSystemPath.Comparer)
+                    .SetEquals(operation.Files.Select(file => file.FilePath)), "Fixture completion must cover exact ownership.");
+                var state = manager.Require(operation);
+                var epoch = manager._epochs.GetValueOrDefault(operation.WorkspaceId) + 1;
+                manager._epochs[operation.WorkspaceId] = epoch;
+                state.CompletedEpoch = epoch;
+                state.PostSolution = manager.GetCurrentSolution(operation.WorkspaceId);
+                var before = operation.Files.ToDictionary(file => file.FilePath, FileSystemPath.Comparer);
+                state.PostFiles = files.Where(file =>
+                {
+                    var original = before[file.FilePath];
+                    return original.OriginalText is null ? file.OriginalText is not null
+                        : file.OriginalText is null || original.OriginalBytes.IsDefault || file.OriginalBytes.IsDefault
+                            || !original.OriginalBytes.AsSpan().SequenceEqual(file.OriginalBytes.AsSpan());
+                }).ToArray();
+                operation.RecoveryFiles = state.PostFiles.Select(file => before[file.FilePath]).ToImmutableArray();
+                manager._active.Remove(operation.WorkspaceId);
+                _finished = true;
+            }
+            public void CancelBeforeSourceTransition(IPhysicalRestorationAuthority verification) => throw new NotSupportedException("The orchestration fixture has no verified native unused authority.");
+            public async Task AbortAsync(CancellationToken ct)
+            {
+                await manager.AuthorizePathsAsync(operation.WorkspaceId, entryFiles.Select(file => file.FilePath).ToArray(), ct);
+                manager.RequireOwner(operation);
+                Assert.AreEqual(entryVersion, manager._version, "Fixture abort must restore the entry version.");
+                Assert.IsTrue(await MatchesAsync(entryFiles, ct), "Fixture abort must restore the entry bytes.");
+                manager._active.Remove(operation.WorkspaceId);
+                _finished = true;
+            }
+            public void Dispose()
+            {
+                if (_finished) return;
+                manager.RetainRecovery(operation);
+                manager._active.Remove(operation.WorkspaceId);
+                _finished = true;
+            }
+        }
+
+        public async Task CommitPhysicalSolutionAsync(string workspaceId, Solution? expected, CancellationToken ct)
+        {
+            EnsureMutationAllowed(workspaceId, []);
+            await CommitCoreAsync(workspaceId, expected, ct);
+            _epochs[workspaceId] = _epochs.GetValueOrDefault(workspaceId) + 1;
+        }
+
+        private Task CommitCoreAsync(string workspaceId, Solution? expected, CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested();
+            ReloadCalled = true;
+            if (reloadFailure is not null) return Task.FromException(reloadFailure);
+            if (expected is not null && !_workspace.TryApplyChanges(expected))
+                throw new InvalidOperationException("Controlled workspace rejected expected solution.");
+            _version++;
+            return Task.CompletedTask;
+        }
 
         public event Action<string>? WorkspaceClosed { add { } remove { } }
         public event Action<string>? WorkspaceReloaded { add { } remove { } }
 
         public Task<WorkspaceStatusDto> LoadAsync(string path, EvictPolicy evictPolicy, CancellationToken ct) => throw new NotSupportedException();
 
-        public Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct)
+        public async Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct)
         {
-            ReloadCalled = true;
-            return reloadFailure is null
-                ? Task.FromResult(GetStatus(workspaceId))
-                : Task.FromException<WorkspaceStatusDto>(reloadFailure);
+            EnsureMutationAllowed(workspaceId, []);
+            await CommitCoreAsync(workspaceId, expected: null, ct);
+            _epochs[workspaceId] = _epochs.GetValueOrDefault(workspaceId) + 1;
+            return GetStatus(workspaceId);
         }
 
         public bool ContainsWorkspace(string workspaceId) => !string.IsNullOrWhiteSpace(workspaceId);
@@ -956,7 +969,7 @@ public sealed class CompositeApplyOrchestratorTests
             new(
                 WorkspaceId: workspaceId,
                 LoadedPath: "C:\\repo\\Sample.slnx",
-                WorkspaceVersion: 1,
+                WorkspaceVersion: _version,
                 SnapshotToken: "snapshot",
                 LoadedAtUtc: DateTimeOffset.UtcNow,
                 ProjectCount: 0,
@@ -970,10 +983,19 @@ public sealed class CompositeApplyOrchestratorTests
         public ProjectGraphDto GetProjectGraph(string workspaceId) => throw new NotSupportedException();
         public Task<IReadOnlyList<GeneratedDocumentDto>> GetSourceGeneratedDocumentsAsync(string workspaceId, string? projectName, CancellationToken ct) => throw new NotSupportedException();
         public Task<string?> GetSourceTextAsync(string workspaceId, string filePath, CancellationToken ct) => throw new NotSupportedException();
-        public int GetCurrentVersion(string workspaceId) => 1;
-        public void RestoreVersion(string workspaceId, int version) { }
-        public Solution GetCurrentSolution(string workspaceId) => throw new NotSupportedException();
-        public bool TryApplyChanges(string workspaceId, Solution newSolution) => throw new NotSupportedException();
+        public int GetCurrentVersion(string workspaceId) => _version;
+        public void RestoreVersion(string workspaceId, int version)
+        {
+            EnsureMutationAllowed(workspaceId, []);
+            _version = version;
+            _epochs[workspaceId] = _epochs.GetValueOrDefault(workspaceId) + 1;
+        }
+        public Task<System.Collections.Immutable.ImmutableArray<RoslynMcp.Roslyn.Contracts.AdmittedModuleImage>> ReadAdmittedImagesAsync(
+            string workspaceId, Microsoft.CodeAnalysis.ProjectId projectId, Microsoft.CodeAnalysis.PortableExecutableReference reference, CancellationToken ct) =>
+            throw new NotSupportedException();
+
+        public Solution GetCurrentSolution(string workspaceId) => _workspace.CurrentSolution;
+
         public Project? GetProject(string workspaceId, string projectNameOrPath) => null;
     }
 }

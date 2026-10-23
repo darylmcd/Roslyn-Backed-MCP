@@ -2,19 +2,55 @@ using System.Runtime.ExceptionServices;
 using System.Xml.Linq;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
 public abstract class IsolatedWorkspaceTestBase : TestBase
 {
+    /// <summary>Creates and restores a fresh single-project graph; callers write source before loading it.</summary>
+    protected static Task<IsolatedWorkspaceScope> CreateNativeProjectFixtureAsync(string projectName, CancellationToken ct)
+    {
+        var root = Path.Combine(TestTempRoot.Current, "NativeProject", Guid.NewGuid().ToString("N"));
+        var scope = CreateWorkspaceScope(root, Path.Combine(root, "Fixture.slnx"), WorkspaceManager);
+        return InitializeWithCleanupAsync(scope, async (workspace, token) =>
+        {
+            Directory.CreateDirectory(workspace.GetPath(projectName));
+            await File.WriteAllTextAsync(workspace.GetPath("global.json"), "{}", token);
+            await File.WriteAllTextAsync(workspace.GetPath("Directory.Build.props"), "<Project />", token);
+            var solution = new XDocument(new XElement("Solution",
+                new XElement("Project", new XAttribute("Path", $"{projectName}/{projectName}.csproj"))));
+            await File.WriteAllTextAsync(workspace.SolutionPath, solution.ToString(), token);
+            await File.WriteAllTextAsync(workspace.GetPath(projectName, projectName + ".csproj"), """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <Nullable>enable</Nullable>
+                    <ImplicitUsings>enable</ImplicitUsings>
+                    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+                    <NuGetAudit>false</NuGetAudit>
+                  </PropertyGroup>
+                </Project>
+                """, token);
+            await RestoreWorkspaceAsync(workspace, token).ConfigureAwait(false);
+        }, ct);
+    }
+
     protected static IsolatedWorkspaceScope CreateIsolatedWorkspaceCopy()
     {
         var solutionPath = CreateSampleSolutionCopy();
         var rootPath = Path.GetDirectoryName(solutionPath)
             ?? throw new InvalidOperationException("Isolated workspace root could not be resolved.");
 
-        return new IsolatedWorkspaceScope(rootPath, solutionPath, WorkspaceManager);
+        return CreateWorkspaceScope(rootPath, solutionPath, WorkspaceManager);
     }
+
+    protected internal static IsolatedWorkspaceScope CreateWorkspaceScope(
+        string rootPath, string solutionPath, WorkspaceManager workspaceManager) =>
+        new(rootPath, solutionPath, workspaceManager,
+            (path, ct) => workspaceManager.LoadAsync(path,
+                OwnedNativeLoadContext.Properties(path, new Dictionary<string, string>()), ct));
 
     protected static async Task<IsolatedWorkspaceScope> CreateIsolatedWorkspaceAsync(CancellationToken ct = default)
     {
@@ -38,11 +74,48 @@ public abstract class IsolatedWorkspaceTestBase : TestBase
         IDotnetCommandRunner commandRunner,
         CancellationToken ct = default)
     {
+        await RunFixtureRestoreAsync(workspace.RootPath, workspace.SolutionPath,
+            ["restore", workspace.SolutionPath, "--nologo"], commandRunner, ct).ConfigureAwait(false);
+    }
+
+    protected static Task RestoreCopiedSolutionAsync(
+        string solutionPath,
+        IReadOnlyDictionary<string, string> properties,
+        CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        var root = Path.GetDirectoryName(solutionPath)
+            ?? throw new InvalidOperationException("Copied fixture root is missing.");
+        // The pre-restored sample records the package installation used by the copied graph.
+        // Do not infer a cache from the newly added project, which has never been restored.
+        var packages = RoslynMcp.Roslyn.Services.RestoreStalenessDetector.ReadRequiredRestorePackagesPathFromAssets(
+            Path.Combine(root, "SampleLib", "obj", "project.assets.json"), ct)
+            ?? throw new AssertFailedException("The copied sample must establish its restore package root.");
+        if (!Path.IsPathFullyQualified(packages))
+        {
+            throw new AssertFailedException("The copied sample package root must be absolute.");
+        }
+
+        var loadProperties = RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(solutionPath, properties);
+        var arguments = RoslynMcp.Roslyn.Services.MsBuildCommandProperties.Append(
+            ["restore", solutionPath, "--nologo", "--packages", packages], loadProperties);
+        return RunFixtureRestoreAsync(root, solutionPath, arguments, DotnetCommandRunner, ct);
+    }
+
+    private static async Task RunFixtureRestoreAsync(
+        string rootPath,
+        string solutionPath,
+        IReadOnlyList<string> arguments,
+        IDotnetCommandRunner commandRunner,
+        CancellationToken ct)
+    {
+        using var restoreDeadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        restoreDeadline.CancelAfter(TimeSpan.FromMinutes(2));
         var execution = await commandRunner.RunAsync(
-            workingDirectory: workspace.RootPath,
-            targetPath: workspace.SolutionPath,
-            arguments: ["restore", workspace.SolutionPath, "--nologo"],
-            ct).ConfigureAwait(false);
+            workingDirectory: rootPath,
+            targetPath: solutionPath,
+            arguments: arguments,
+            restoreDeadline.Token).ConfigureAwait(false);
 
         Assert.IsTrue(
             execution.Succeeded,
@@ -102,17 +175,20 @@ public abstract class IsolatedWorkspaceTestBase : TestBase
     protected internal sealed class IsolatedWorkspaceScope : IAsyncDisposable, IDisposable
     {
         private readonly IWorkspaceManager _workspaceManager;
+        private readonly Func<string, CancellationToken, Task<WorkspaceStatusDto>> _loadWorkspace;
         private readonly Func<string, bool> _closeWorkspace;
         private readonly Action<string> _deleteRoot;
         private int _disposeState;
         private string? _workspaceId;
 
-        internal IsolatedWorkspaceScope(string rootPath, string solutionPath, IWorkspaceManager workspaceManager)
+        internal IsolatedWorkspaceScope(string rootPath, string solutionPath, IWorkspaceManager workspaceManager,
+            Func<string, CancellationToken, Task<WorkspaceStatusDto>> loadWorkspace)
             : this(
                 rootPath,
                 solutionPath,
                 workspaceId: null,
                 workspaceManager,
+                loadWorkspace,
                 workspaceManager.Close,
                 DeleteDirectoryIfExists)
         {
@@ -123,10 +199,12 @@ public abstract class IsolatedWorkspaceTestBase : TestBase
             string solutionPath,
             string? workspaceId,
             IWorkspaceManager workspaceManager,
+            Func<string, CancellationToken, Task<WorkspaceStatusDto>> loadWorkspace,
             Func<string, bool> closeWorkspace,
             Action<string> deleteRoot)
         {
             _workspaceManager = workspaceManager;
+            _loadWorkspace = loadWorkspace;
             RootPath = rootPath;
             SolutionPath = solutionPath;
             _workspaceId = workspaceId;
@@ -144,7 +222,7 @@ public abstract class IsolatedWorkspaceTestBase : TestBase
         {
             if (_workspaceId is null)
             {
-                var status = await _workspaceManager.LoadAsync(SolutionPath, EvictPolicy.Strict, ct).ConfigureAwait(false);
+                var status = await _loadWorkspace(SolutionPath, ct).ConfigureAwait(false);
                 _workspaceId = status.WorkspaceId;
             }
 

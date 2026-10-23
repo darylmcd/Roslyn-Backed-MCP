@@ -49,9 +49,6 @@ public sealed class ProgressEmissionTests : SharedWorkspaceTestBase
         WorkspaceId = await GetOrLoadWorkspaceIdAsync(SampleSolutionPath, CancellationToken.None);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     public async Task WorkspaceLoad_EmitsStageSequence_ValidatingPath_To_Done()
     {

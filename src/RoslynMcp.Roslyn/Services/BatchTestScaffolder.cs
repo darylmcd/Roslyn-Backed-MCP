@@ -230,10 +230,10 @@ internal sealed class BatchTestScaffolder
         }
 
         var changes = await Helpers.SolutionDiffHelper
-            .ComputeChangesAsync(state.OriginalSolution, state.Accumulator, ct)
+            .ComputeChangesAsync(state.OriginalSolution, state.Accumulator, Helpers.SolutionDiffReadContext.ForWorkspace(_workspace, workspaceId), ct)
             .ConfigureAwait(false);
         var description = $"Scaffold {state.CreatedFiles.Count} test file(s) in project '{project.Name}'";
-        var token = _previewStore.Store(workspaceId, state.Accumulator, _workspace.GetCurrentVersion(workspaceId), description);
+        var token = _previewStore.Store(workspaceId, state.OriginalSolution, state.Accumulator, _workspace.GetCurrentVersion(workspaceId), description, changes, PreviewKind.FileCreate);
 
         return new RefactoringPreviewDto(
             token,

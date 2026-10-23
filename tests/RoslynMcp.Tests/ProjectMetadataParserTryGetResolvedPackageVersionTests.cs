@@ -36,7 +36,7 @@ public sealed class ProjectMetadataParserTryGetResolvedPackageVersionTests
         Directory.CreateDirectory(objDir);
         File.WriteAllText(
             Path.Combine(objDir, "project.assets.json"),
-            $$"""{ "libraries": { {{librariesJson}} } }""");
+            $$"""{ "targets": { "net10.0": { {{librariesJson}} } }, "libraries": { {{librariesJson}} }, "project": { "frameworks": { "net10.0": {} } } }""");
     }
 
     [TestMethod]
@@ -45,11 +45,11 @@ public sealed class ProjectMetadataParserTryGetResolvedPackageVersionTests
         var projectDirectory = CreateProjectDirectory();
         WriteAssetsFile(projectDirectory, "\"TUnit.Engine/1.46.0\": { \"type\": \"package\" }");
         var projectPath = Path.Combine(projectDirectory, "Fixture.csproj");
-        File.WriteAllText(projectPath, "<Project />");
+        File.WriteAllText(projectPath, "<Project><PropertyGroup><TargetFramework>net10.0</TargetFramework><ProjectAssetsFile>obj/project.assets.json</ProjectAssetsFile></PropertyGroup></Project>");
 
-        var version = ProjectMetadataParser.TryGetResolvedPackageVersion(projectPath, "TUnit.Engine");
+        var version = ProjectMetadataParser.TryGetResolvedPackageVersions(projectPath, "TUnit.Engine", System.Collections.Immutable.ImmutableDictionary<string, string>.Empty);
 
-        Assert.AreEqual(new Version(1, 46, 0), version);
+        Assert.AreEqual(new NuGet.Versioning.NuGetVersion(1, 46, 0), version?.Single());
     }
 
     [TestMethod]
@@ -58,11 +58,11 @@ public sealed class ProjectMetadataParserTryGetResolvedPackageVersionTests
         var projectDirectory = CreateProjectDirectory();
         WriteAssetsFile(projectDirectory, "\"tunit.engine/1.46.0\": { \"type\": \"package\" }");
         var projectPath = Path.Combine(projectDirectory, "Fixture.csproj");
-        File.WriteAllText(projectPath, "<Project />");
+        File.WriteAllText(projectPath, "<Project><PropertyGroup><TargetFramework>net10.0</TargetFramework><ProjectAssetsFile>obj/project.assets.json</ProjectAssetsFile></PropertyGroup></Project>");
 
-        var version = ProjectMetadataParser.TryGetResolvedPackageVersion(projectPath, "TUnit.Engine");
+        var version = ProjectMetadataParser.TryGetResolvedPackageVersions(projectPath, "TUnit.Engine", System.Collections.Immutable.ImmutableDictionary<string, string>.Empty);
 
-        Assert.AreEqual(new Version(1, 46, 0), version);
+        Assert.AreEqual(new NuGet.Versioning.NuGetVersion(1, 46, 0), version?.Single());
     }
 
     [TestMethod]
@@ -71,9 +71,9 @@ public sealed class ProjectMetadataParserTryGetResolvedPackageVersionTests
         var projectDirectory = CreateProjectDirectory();
         WriteAssetsFile(projectDirectory, "\"MSTest.TestFramework/3.6.0\": { \"type\": \"package\" }");
         var projectPath = Path.Combine(projectDirectory, "Fixture.csproj");
-        File.WriteAllText(projectPath, "<Project />");
+        File.WriteAllText(projectPath, "<Project><PropertyGroup><TargetFramework>net10.0</TargetFramework><ProjectAssetsFile>obj/project.assets.json</ProjectAssetsFile></PropertyGroup></Project>");
 
-        var version = ProjectMetadataParser.TryGetResolvedPackageVersion(projectPath, "TUnit.Engine");
+        var version = ProjectMetadataParser.TryGetResolvedPackageVersions(projectPath, "TUnit.Engine", System.Collections.Immutable.ImmutableDictionary<string, string>.Empty);
 
         Assert.IsNull(version);
     }
@@ -84,9 +84,9 @@ public sealed class ProjectMetadataParserTryGetResolvedPackageVersionTests
         // Project never restored — obj/project.assets.json doesn't exist yet.
         var projectDirectory = CreateProjectDirectory();
         var projectPath = Path.Combine(projectDirectory, "Fixture.csproj");
-        File.WriteAllText(projectPath, "<Project />");
+        File.WriteAllText(projectPath, "<Project><PropertyGroup><TargetFramework>net10.0</TargetFramework><ProjectAssetsFile>obj/project.assets.json</ProjectAssetsFile></PropertyGroup></Project>");
 
-        var version = ProjectMetadataParser.TryGetResolvedPackageVersion(projectPath, "TUnit.Engine");
+        var version = ProjectMetadataParser.TryGetResolvedPackageVersions(projectPath, "TUnit.Engine", System.Collections.Immutable.ImmutableDictionary<string, string>.Empty);
 
         Assert.IsNull(version);
     }
@@ -99,9 +99,9 @@ public sealed class ProjectMetadataParserTryGetResolvedPackageVersionTests
         Directory.CreateDirectory(objDir);
         File.WriteAllText(Path.Combine(objDir, "project.assets.json"), "{ not valid json");
         var projectPath = Path.Combine(projectDirectory, "Fixture.csproj");
-        File.WriteAllText(projectPath, "<Project />");
+        File.WriteAllText(projectPath, "<Project><PropertyGroup><TargetFramework>net10.0</TargetFramework><ProjectAssetsFile>obj/project.assets.json</ProjectAssetsFile></PropertyGroup></Project>");
 
-        var version = ProjectMetadataParser.TryGetResolvedPackageVersion(projectPath, "TUnit.Engine");
+        var version = ProjectMetadataParser.TryGetResolvedPackageVersions(projectPath, "TUnit.Engine", System.Collections.Immutable.ImmutableDictionary<string, string>.Empty);
 
         Assert.IsNull(version);
     }
@@ -109,7 +109,7 @@ public sealed class ProjectMetadataParserTryGetResolvedPackageVersionTests
     [TestMethod]
     public void TryGetResolvedPackageVersion_NullProjectPath_ReturnsNull()
     {
-        Assert.IsNull(ProjectMetadataParser.TryGetResolvedPackageVersion(null, "TUnit.Engine"));
+        Assert.IsNull(ProjectMetadataParser.TryGetResolvedPackageVersions(null, "TUnit.Engine", System.Collections.Immutable.ImmutableDictionary<string, string>.Empty));
     }
 
     [TestMethod]

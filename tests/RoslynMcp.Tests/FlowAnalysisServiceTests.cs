@@ -48,7 +48,7 @@ public class ExpressionBodiedSamples
 }
 """, CancellationToken.None);
 
-        var status = await WorkspaceManager.LoadAsync(CopiedSolutionPath, CancellationToken.None);
+        var status = await WorkspaceManager.LoadAsync(CopiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(CopiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None);
         WorkspaceId = status.WorkspaceId;
     }
 
@@ -63,8 +63,7 @@ public class ExpressionBodiedSamples
                     WorkspaceManager.Close(WorkspaceId);
                 }
             }),
-            CleanupFailureCollector.FromAction(() => DeleteDirectoryIfExists(CopiedRoot)),
-            CleanupFailureCollector.FromAction(DisposeServices));
+            CleanupFailureCollector.FromAction(() => DeleteDirectoryIfExists(CopiedRoot)));
 
     [TestMethod]
     public async Task AnalyzeDataFlow_ExpressionBodiedMethod_LiftsAndReturnsParameters()

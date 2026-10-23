@@ -1,13 +1,13 @@
 using System.Collections.Immutable;
-using RoslynMcp.Core.Models;
-using RoslynMcp.Core.Services;
-using RoslynMcp.Roslyn.Contracts;
-using RoslynMcp.Roslyn.Helpers;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.CodeAnalysis.Text;
+using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Contracts;
+using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -91,7 +91,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             folders: movedDocFolders,
             filePath: targetFilePath);
 
-        updatedSolution = EnsureProjectReference(updatedSolution, sourceDocument.Project.Id, targetProject.Id);
+        updatedSolution = ProjectGraphHelpers.EnsureProjectReference(updatedSolution, sourceDocument.Project.Id, targetProject.Id);
 
         var sourceNamespace = typeDeclaration.FirstAncestorOrSelf<BaseNamespaceDeclarationSyntax>();
         SyntaxNode updatedSourceRoot;
@@ -106,9 +106,9 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             updatedSolution = updatedSolution.WithDocumentSyntaxRoot(sourceDocument.Id, updatedSourceRoot);
         }
 
-        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, updatedSolution, ct).ConfigureAwait(false);
+        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, updatedSolution, SolutionDiffReadContext.ForWorkspace(_workspace, workspaceId), ct).ConfigureAwait(false);
         var description = $"Move type '{typeName}' to project '{targetProject.Name}'";
-        var token = _previewStore.Store(workspaceId, updatedSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
+        var token = _previewStore.Store(workspaceId, solution, updatedSolution, _workspace.GetCurrentVersion(workspaceId), description, changes, PreviewKind.MoveTypeToProject);
         return new RefactoringPreviewDto(token, description, changes, null);
     }
 
@@ -174,30 +174,13 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             throw new PublicInvalidOperationException($"Target interface file already exists: {DescribeProjectRelativePath(targetProjectDirectory, interfaceFilePath)}");
         }
 
-        var updatedTypeDeclaration = AddBaseType(typeDeclaration, resolvedInterfaceName);
-        var updatedSourceRoot = sourceRoot.ReplaceNode(typeDeclaration, updatedTypeDeclaration);
-        // BUG-004: Do not normalize whitespace on the entire compilation unit — that re-flows
-        // unrelated code (collapses multi-line bodies, reshuffles format specifiers). ReplaceNode
-        // preserves the surrounding source layout while still applying our targeted edit.
+        var extraction = await AddExtractedInterfaceAsync(solution, sourceDocument, sourceRoot, typeDeclaration,
+            targetProject, interfaceRoot, interfaceFilePath, ct).ConfigureAwait(false);
+        var updatedSolution = extraction.Solution;
 
-        // Item #1 — pass folders so MSBuildWorkspace resolves the disk path consistently.
-        var interfaceFolders = ProjectMetadataParser.ComputeDocumentFolders(targetProject.FilePath, interfaceFilePath);
-        var updatedSolution = solution.WithDocumentSyntaxRoot(sourceDocument.Id, updatedSourceRoot)
-            .AddDocument(
-                DocumentId.CreateNewId(targetProject.Id),
-                resolvedInterfaceName + ".cs",
-                SourceText.From(interfaceRoot.ToFullString()),
-                folders: interfaceFolders,
-                filePath: interfaceFilePath);
-
-        if (isCrossProject)
-        {
-            updatedSolution = EnsureProjectReference(updatedSolution, sourceDocument.Project.Id, targetProject.Id);
-        }
-
-        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, updatedSolution, ct).ConfigureAwait(false);
+        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, updatedSolution, SolutionDiffReadContext.ForWorkspace(_workspace, workspaceId), ct).ConfigureAwait(false);
         var description = $"Extract interface '{resolvedInterfaceName}' from '{typeName}'";
-        var token = _previewStore.Store(workspaceId, updatedSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
+        var token = _previewStore.Store(workspaceId, solution, updatedSolution, _workspace.GetCurrentVersion(workspaceId), description, changes, PreviewKind.CrossProjectExtractInterface);
         return new RefactoringPreviewDto(token, description, changes, null);
     }
 
@@ -221,7 +204,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             ?? throw new PublicInvalidOperationException($"Type '{typeName}' could not be resolved.");
 
         var resolvedInterfaceName = string.IsNullOrWhiteSpace(interfaceName) ? $"I{typeName}" : interfaceName;
-        var updatedSolution = await CreateInterfaceExtractionSolutionAsync(
+        var extraction = await CreateInterfaceExtractionSolutionAsync(
             workspaceId,
             _compilationCache,
             solution,
@@ -232,23 +215,26 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             resolvedInterfaceName,
             interfaceProjectName,
             ct).ConfigureAwait(false);
+        var updatedSolution = extraction.Solution;
 
-        var updatedConcreteType = await SymbolResolver.ResolveByMetadataNameAsync(updatedSolution, GetMetadataName(typeSymbol), ct).ConfigureAwait(false) as INamedTypeSymbol
-            ?? throw new PublicInvalidOperationException($"Type '{typeName}' could not be resolved after interface extraction.");
+        var dependencyIdentity = await ConstructorDependencyIdentity.CreateAsync(
+            updatedSolution.GetDocument(sourceDocument.Id)!, extraction.ConcreteDeclaration, ct).ConfigureAwait(false);
 
         // Only documents that actually reference the extracted concrete type can hold a
         // constructor parameter typed at it. Use Roslyn's reference index (which honours the
         // project dependency graph, including transitive project references) to visit just those
         // documents instead of building a semantic model for every document in the solution.
-        var references = await SymbolFinder.FindReferencesAsync(updatedConcreteType, updatedSolution, ct).ConfigureAwait(false);
+        var references = await SymbolFinder.FindReferencesAsync(dependencyIdentity.Type, updatedSolution, ct).ConfigureAwait(false);
         var referencingDocumentIds = references
             .SelectMany(reference => reference.Locations)
             .Select(location => location.Document.Id)
             .Distinct();
 
+        var constructorSnapshot = updatedSolution;
+        var rewrites = new List<(DocumentId DocumentId, ProjectId ProjectId, SyntaxNode Root)>();
         foreach (var documentId in referencingDocumentIds)
         {
-            var document = updatedSolution.GetDocument(documentId);
+            var document = constructorSnapshot.GetDocument(documentId);
             if (document is null)
             {
                 continue;
@@ -261,40 +247,49 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
                 continue;
             }
 
-            var parameterReplacements = root.DescendantNodes()
-                .OfType<ParameterSyntax>()
-                .Where(parameter => parameter.FirstAncestorOrSelf<ConstructorDeclarationSyntax>() is not null && parameter.Type is not null)
-                .Select(parameter => new
-                {
-                    Parameter = parameter,
-                    Type = model.GetTypeInfo(parameter.Type!, ct).Type
-                })
-                .Where(entry => SymbolEqualityComparer.Default.Equals(entry.Type, updatedConcreteType))
-                .ToArray();
-
-            if (parameterReplacements.Length == 0)
+            var parameterReplacements = new List<ParameterSyntax>();
+            foreach (var parameter in root.DescendantNodes().OfType<ParameterSyntax>()
+                .Where(parameter => ConstructorDependencyIdentity.IsConstructorParameter(parameter) && parameter.Type is not null))
+            {
+                if (await dependencyIdentity.MatchesAsync(model.GetTypeInfo(parameter.Type!, ct).Type, ct).ConfigureAwait(false))
+                    parameterReplacements.Add(parameter);
+            }
+            if (parameterReplacements.Count == 0)
             {
                 continue;
             }
 
             var updatedRoot = root.ReplaceNodes(
-                parameterReplacements.Select(entry => entry.Parameter),
+                parameterReplacements,
                 (original, _) =>
                 {
                     // FORMAT-BUG-002: Preserve the original type node's surrounding trivia.
                     // `ParseTypeName` produces a bare identifier with no trivia; without
                     // `WithTriviaFrom` the trailing space between type and parameter name is
                     // lost, producing `IAnimalServiceservice` instead of `IAnimalService service`.
-                    var replacementType = SyntaxFactory.ParseTypeName(resolvedInterfaceName)
-                        .WithTriviaFrom(original.Type!);
+                    var replacementType = original.Type is NullableTypeSyntax nullable
+                        ? SyntaxFactory.NullableType(extraction.Reference.WithTriviaFrom(nullable.ElementType))
+                            .WithQuestionToken(nullable.QuestionToken).WithTriviaFrom(nullable)
+                        : extraction.Reference.WithTriviaFrom(original.Type!);
                     return original.WithType(replacementType);
                 });
-            updatedSolution = updatedSolution.WithDocumentSyntaxRoot(document.Id, updatedRoot);
+            rewrites.Add((document.Id, document.Project.Id, updatedRoot));
         }
 
-        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, updatedSolution, ct).ConfigureAwait(false);
+        // Bind every intentional edit against one immutable compiler snapshot. Applying a root or
+        // edge can regenerate symbols and change lookup in the remaining constructor documents.
+        foreach (var rewrite in rewrites)
+        {
+            updatedSolution = updatedSolution.WithDocumentSyntaxRoot(rewrite.DocumentId, rewrite.Root);
+            updatedSolution = ProjectGraphHelpers.EnsureProjectReference(updatedSolution,
+                rewrite.ProjectId, extraction.InterfaceProjectId);
+        }
+
+        updatedSolution = await extraction.Bindings.RestoreAsync(updatedSolution, ct).ConfigureAwait(false);
+
+        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, updatedSolution, SolutionDiffReadContext.ForWorkspace(_workspace, workspaceId), ct).ConfigureAwait(false);
         var description = $"Extract interface '{resolvedInterfaceName}' from '{typeName}' and update constructor dependencies";
-        var token = _previewStore.Store(workspaceId, updatedSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
+        var token = _previewStore.Store(workspaceId, solution, updatedSolution, _workspace.GetCurrentVersion(workspaceId), description, changes, PreviewKind.DependencyInversion);
         return new RefactoringPreviewDto(token, description, changes, null);
     }
 
@@ -399,13 +394,15 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         Solution solution, string namespaceName, string typeName, CancellationToken ct)
     {
         var fullyQualifiedName = string.IsNullOrWhiteSpace(namespaceName)
-            ? typeName
-            : $"{namespaceName}.{typeName}";
+            ? SyntaxFactory.ParseToken(typeName).ValueText
+            : string.Join(".", SyntaxFactory.ParseName(namespaceName).DescendantTokens()
+                .Where(token => token.IsKind(SyntaxKind.IdentifierToken)).Select(token => token.ValueText))
+                + "." + SyntaxFactory.ParseToken(typeName).ValueText;
 
         foreach (var project in solution.Projects)
         {
             var compilation = await compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
-            if (compilation?.GetTypeByMetadataName(fullyQualifiedName) is not null)
+            if (compilation is not null && !compilation.GetTypesByMetadataName(fullyQualifiedName).IsEmpty)
             {
                 throw new PublicInvalidOperationException(
                     $"Type '{typeName}' already exists in project '{project.Name}' " +
@@ -641,55 +638,42 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         return SyntaxFactory.AccessorList(SyntaxFactory.List(accessors));
     }
 
-    private static TypeDeclarationSyntax AddBaseType(TypeDeclarationSyntax declaration, string interfaceName)
+    private static TypeDeclarationSyntax AddBaseType(TypeDeclarationSyntax declaration, TypeSyntax reference)
     {
         if (declaration.BaseList?.Types.Any(baseType =>
-                string.Equals(baseType.Type.ToString(), interfaceName, StringComparison.Ordinal)) == true)
+                baseType.Type.IsEquivalentTo(reference)) == true)
         {
             return declaration;
         }
 
         // FORMAT-BUG-001: the interface base-type token must carry a leading space or it glues
         // onto the preceding token (`:IFoo` or `,IFoo`). Mirrors InterfaceExtractionService.
-        var interfaceType = SyntaxFactory.SimpleBaseType(SyntaxFactory.ParseTypeName(interfaceName))
+        var interfaceType = SyntaxFactory.SimpleBaseType(reference)
             .WithLeadingTrivia(SyntaxFactory.Space);
 
         TypeDeclarationSyntax updated;
         if (declaration.BaseList is null)
         {
-            // FORMAT-BUG-002 (dr-9-3-format-bug-002-destroys-source-formatting): when the class had
-            // `class Foo\n{` (brace on its own line), the identifier's trailing trivia carries the
-            // `\n`. Inserting a BaseList after the identifier would emit `class Foo\n : IName {`
-            // with the base list orphaned on a new line. Relocate the identifier's trailing EOL
-            // trivia to the brace's leading trivia so the output reads `class Foo : IName\n{`.
-            var identifier = declaration.Identifier;
-            var identifierTrailing = identifier.TrailingTrivia;
-            var hasEolTrailing = identifierTrailing.Any(t => t.IsKind(SyntaxKind.EndOfLineTrivia));
-
-            if (hasEolTrailing)
+            // The token immediately before a new base list can end an identifier,
+            // type-parameter list, or primary-constructor parameter list.
+            var preceding = declaration.ChildNodes().OfType<ParameterListSyntax>().SingleOrDefault()?.GetLastToken()
+                ?? declaration.TypeParameterList?.GetLastToken() ?? declaration.Identifier;
+            var trailing = preceding.TrailingTrivia;
+            if (trailing.Any(trivia => trivia.IsKind(SyntaxKind.EndOfLineTrivia)))
             {
-                // Drop the trailing EOL-family trivia from the identifier and relocate it to the
-                // brace's leading trivia. Keep any leading whitespace trivia that was before the
-                // EOL (rare, e.g. trailing space before newline).
-                var newIdentifierTrailing = SyntaxFactory.TriviaList(
-                    identifierTrailing.TakeWhile(t => !t.IsKind(SyntaxKind.EndOfLineTrivia)));
-                var relocatedTrivia = identifierTrailing.SkipWhile(t => !t.IsKind(SyntaxKind.EndOfLineTrivia));
-
-                var newIdentifier = identifier.WithTrailingTrivia(newIdentifierTrailing);
-                var existingBrace = declaration.OpenBraceToken;
-                var newBrace = existingBrace.WithLeadingTrivia(
-                    SyntaxFactory.TriviaList(relocatedTrivia.Concat(existingBrace.LeadingTrivia)));
-
-                declaration = declaration
-                    .WithIdentifier(newIdentifier)
-                    .WithOpenBraceToken(newBrace);
+                var retained = SyntaxFactory.TriviaList(trailing.TakeWhile(trivia => !trivia.IsKind(SyntaxKind.EndOfLineTrivia)));
+                var relocated = trailing.SkipWhile(trivia => !trivia.IsKind(SyntaxKind.EndOfLineTrivia));
+                var brace = declaration.OpenBraceToken.WithLeadingTrivia(
+                    SyntaxFactory.TriviaList(relocated.Concat(declaration.OpenBraceToken.LeadingTrivia)));
+                declaration = declaration.ReplaceToken(preceding, preceding.WithTrailingTrivia(retained)).WithOpenBraceToken(brace);
+                trailing = retained;
             }
 
-            // Attach ` : IName` — AddTypes/Roslyn emits the colon token automatically. Leading
-            // space on the BaseList keeps it separated from the class identifier's trailing token.
+            // Keep an existing separator; adding another space changes authored formatting.
+            var separator = trailing.LastOrDefault().IsKind(SyntaxKind.WhitespaceTrivia)
+                ? default(SyntaxTriviaList) : SyntaxFactory.TriviaList(SyntaxFactory.Space);
             var baseList = SyntaxFactory.BaseList(
-                SyntaxFactory.SingletonSeparatedList<BaseTypeSyntax>(interfaceType))
-                .WithLeadingTrivia(SyntaxFactory.Space);
+                SyntaxFactory.SingletonSeparatedList<BaseTypeSyntax>(interfaceType)).WithLeadingTrivia(separator);
             updated = declaration.WithBaseList(baseList);
         }
         else
@@ -753,29 +737,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             brace.WithLeadingTrivia(SyntaxFactory.TriviaList(SyntaxFactory.EndOfLine(Environment.NewLine))));
     }
 
-    private static Solution EnsureProjectReference(Solution solution, ProjectId sourceProjectId, ProjectId targetProjectId)
-    {
-        var sourceProject = solution.GetProject(sourceProjectId)
-            ?? throw new InvalidOperationException("Source project was not found in the updated solution.");
-
-        if (sourceProject.ProjectReferences.Any(reference => reference.ProjectId == targetProjectId))
-        {
-            return solution;
-        }
-
-        var targetProject = solution.GetProject(targetProjectId)
-            ?? throw new InvalidOperationException("Target project was not found in the updated solution.");
-
-        if (ProjectGraphHelpers.WouldCreateProjectReferenceCycle(sourceProject, targetProject))
-        {
-            throw new PublicInvalidOperationException(
-                $"Adding project reference from '{sourceProject.Name}' to '{targetProject.Name}' would create a circular dependency.");
-        }
-
-        return solution.AddProjectReference(sourceProjectId, new ProjectReference(targetProjectId));
-    }
-
-    private static async Task<Solution> CreateInterfaceExtractionSolutionAsync(
+    private static async Task<(Solution Solution, TypeSyntax Reference, ProjectId InterfaceProjectId, OriginalNameBindings Bindings, SyntaxAnnotation ConcreteDeclaration)> CreateInterfaceExtractionSolutionAsync(
         string workspaceId,
         ICompilationCache compilationCache,
         Solution solution,
@@ -812,39 +774,33 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             throw new PublicInvalidOperationException($"Target interface file already exists: {DescribeProjectRelativePath(targetProjectDirectory, interfaceFilePath)}");
         }
 
-        var updatedTypeDeclaration = AddBaseType(typeDeclaration, interfaceName);
-        var updatedSourceRoot = sourceRoot.ReplaceNode(typeDeclaration, updatedTypeDeclaration);
-        // FORMAT-BUG-002 (dr-9-3-format-bug-002-destroys-source-formatting): do NOT
-        // NormalizeWhitespace() the entire source compilation unit — that re-flows every node
-        // in the file (collapses multi-line bodies, strips intentional spacing, reshuffles
-        // indentation). `AddBaseType` + `EnsureOpeningBraceOnOwnLine` already emit the targeted
-        // `: IName\n{` edit with correct trivia; ReplaceNode preserves surrounding source layout.
-        // Mirrors the same decision made in PreviewExtractInterfaceAsync.
-
-        // Item #1 — pass folders so MSBuildWorkspace resolves the disk path consistently.
-        var diInterfaceFolders = ProjectMetadataParser.ComputeDocumentFolders(targetProject.FilePath, interfaceFilePath);
-        var updatedSolution = solution.WithDocumentSyntaxRoot(sourceDocument.Id, updatedSourceRoot)
-            .AddDocument(
-                DocumentId.CreateNewId(targetProject.Id),
-                interfaceName + ".cs",
-                SourceText.From(interfaceRoot.ToFullString()),
-                folders: diInterfaceFolders,
-                filePath: interfaceFilePath);
-
-        if (isCrossProject)
-        {
-            updatedSolution = EnsureProjectReference(updatedSolution, sourceDocument.Project.Id, targetProject.Id);
-        }
-
-        await Task.CompletedTask.ConfigureAwait(false);
-        return updatedSolution;
+        return await AddExtractedInterfaceAsync(solution, sourceDocument, sourceRoot, typeDeclaration,
+            targetProject, interfaceRoot, interfaceFilePath, ct).ConfigureAwait(false);
     }
 
-    private static string GetMetadataName(INamedTypeSymbol typeSymbol)
+    private static async Task<(Solution Solution, TypeSyntax Reference, ProjectId InterfaceProjectId, OriginalNameBindings Bindings, SyntaxAnnotation ConcreteDeclaration)> AddExtractedInterfaceAsync(
+        Solution solution, Document sourceDocument, CompilationUnitSyntax sourceRoot,
+        TypeDeclarationSyntax declaration, Project targetProject, CompilationUnitSyntax interfaceRoot,
+        string interfacePath, CancellationToken ct)
     {
-        return typeSymbol.ContainingNamespace.IsGlobalNamespace
-            ? typeSymbol.MetadataName
-            : typeSymbol.ContainingNamespace.ToDisplayString() + "." + typeSymbol.MetadataName;
+        var bindings = await OriginalNameBindings.CaptureAsync(solution, ct).ConfigureAwait(false);
+        solution = bindings.Solution;
+        var declarationSpan = declaration.Span;
+        sourceRoot = (CompilationUnitSyntax)(await solution.GetDocument(sourceDocument.Id)!.GetSyntaxRootAsync(ct).ConfigureAwait(false))!;
+        declaration = sourceRoot.DescendantNodes().OfType<TypeDeclarationSyntax>().Single(item => item.Span == declarationSpan);
+        var documentId = DocumentId.CreateNewId(targetProject.Id);
+        var folders = ProjectMetadataParser.ComputeDocumentFolders(targetProject.FilePath, interfacePath);
+        var updated = solution.AddDocument(documentId, Path.GetFileName(interfacePath),
+            SourceText.From(interfaceRoot.ToFullString()), folders: folders, filePath: interfacePath);
+        if (targetProject.Id != sourceDocument.Project.Id)
+            updated = ProjectGraphHelpers.EnsureProjectReference(updated, sourceDocument.Project.Id, targetProject.Id);
+        var reference = await ExtractedInterfaceReference.ReadAsync(updated.GetDocument(documentId)!, ct).ConfigureAwait(false);
+        // Change only the selected type; preserve every unrelated token and its trivia.
+        var concreteDeclaration = new SyntaxAnnotation();
+        var updatedRoot = sourceRoot.ReplaceNode(declaration, AddBaseType(declaration, reference).WithAdditionalAnnotations(concreteDeclaration));
+        updated = updated.WithDocumentSyntaxRoot(sourceDocument.Id, updatedRoot);
+        updated = await bindings.RestoreAsync(updated, ct).ConfigureAwait(false);
+        return (updated, reference, targetProject.Id, bindings, concreteDeclaration);
     }
 
     /// <summary>

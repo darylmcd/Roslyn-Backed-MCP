@@ -24,12 +24,6 @@ public sealed class ExpandedSurfaceIntegrationTests_ToolContract : SharedWorkspa
         WorkspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup()
-    {
-        DisposeServices();
-    }
-
     [TestMethod]
     public void Resources_Return_Machine_Readable_Contracts()
     {

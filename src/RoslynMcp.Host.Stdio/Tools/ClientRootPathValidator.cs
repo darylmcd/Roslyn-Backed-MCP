@@ -17,9 +17,6 @@ namespace RoslynMcp.Host.Stdio.Tools;
 /// </remarks>
 internal static class ClientRootPathValidator
 {
-    private static readonly object _sanctionedRootBoundaryRefusalMarkerKey = new();
-    private static readonly object _sanctionedRootBoundaryRefusalMarkerValue = new();
-
     /// <summary>
     /// Verifies that <paramref name="path"/> is located under a configured sanctioned root.
     /// </summary>
@@ -38,12 +35,10 @@ internal static class ClientRootPathValidator
     /// be inside both the configured boundary and this list. The narrowing list is never widened.
     /// </param>
     /// <returns>
-    /// The boundary-canonicalized (fully link-resolved) form of <paramref name="path"/>. Callers that
-    /// go on to write to the validated location MUST persist to this returned value rather than to the
-    /// client-supplied string: re-walking the original path at write time re-resolves every symlink and
-    /// junction component, so an attacker who swaps a link between validation and write can redirect
-    /// the bytes outside the boundary (<c>path-boundary-link-swap-toctou</c>). Pinning the canonical
-    /// target closes that validation-to-use window.
+    /// The boundary-canonicalized (fully link-resolved) coordinate of <paramref name="path"/>.
+    /// Use this coordinate instead of re-resolving the original client alias. The returned string
+    /// does not pin physical ancestors or the selected object: a mutation must retain and revalidate
+    /// its native physical route and object through the operation owner before changing bytes.
     /// </returns>
     /// <exception cref="ArgumentException">
     /// Thrown when no configured boundary exists in fail-closed mode, configuration is invalid, or
@@ -154,7 +149,8 @@ internal static class ClientRootPathValidator
             path);
         // Server-authored and path-free, so ToolErrorHandler returns it verbatim instead of the
         // generic "Parameter 'path' is invalid" template; the path stays in the server-side log only.
-        throw new PublicArgumentException(MissingConfigurationRefusalMessage, nameof(path));
+        throw WorkspacePathPolicyRefusal.Mark(new PublicArgumentException(MissingConfigurationRefusalMessage, nameof(path)),
+            WorkspacePathPolicyRefusalKind.MissingConfiguration);
     }
 
     private const string MissingConfigurationRefusalMessage =
@@ -179,14 +175,11 @@ internal static class ClientRootPathValidator
 
     internal static bool IsSanctionedRootBoundaryRefusal(ArgumentException exception) =>
         exception.GetType() == typeof(ArgumentException) &&
-        ReferenceEquals(
-            exception.Data[_sanctionedRootBoundaryRefusalMarkerKey],
-            _sanctionedRootBoundaryRefusalMarkerValue);
+        WorkspacePathPolicyRefusal.Is(exception, WorkspacePathPolicyRefusalKind.SanctionedRootBoundary);
 
     private static ArgumentException CreateSanctionedRootBoundaryRefusal()
     {
-        var exception = new ArgumentException(SanctionedRootBoundaryRefusalMessage, "path");
-        exception.Data[_sanctionedRootBoundaryRefusalMarkerKey] = _sanctionedRootBoundaryRefusalMarkerValue;
-        return exception;
+        return WorkspacePathPolicyRefusal.Mark(new ArgumentException(SanctionedRootBoundaryRefusalMessage, "path"),
+            WorkspacePathPolicyRefusalKind.SanctionedRootBoundary);
     }
 }

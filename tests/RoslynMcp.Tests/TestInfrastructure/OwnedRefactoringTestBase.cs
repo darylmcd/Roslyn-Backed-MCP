@@ -1,4 +1,5 @@
 using RoslynMcp.Roslyn;
+using RoslynMcp.Roslyn.Services;
 using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
@@ -19,7 +20,7 @@ public abstract class OwnedRefactoringTestBase
     public void InitializeOwnedServices()
     {
         MsBuildInitializer.EnsureInitialized();
-        _services = TestServiceContainer.Create(TestBase.BindValidationOptionsFromEnvironment());
+        _services = TestServiceContainer.Create(TestBase.BindValidationOptionsFromEnvironment(), new ForkInvocationPathPolicy(new OwnedTestWorkspacePathPolicy()));
     }
 
     [TestCleanup]
@@ -51,7 +52,7 @@ public abstract class OwnedRefactoringTestBase
     private protected IsolatedWorkspaceTestBase.IsolatedWorkspaceScope CreateSolutionWorkspace()
     {
         var path = CreateSampleSolutionCopy();
-        return new IsolatedWorkspaceTestBase.IsolatedWorkspaceScope(
+        return IsolatedWorkspaceTestBase.CreateWorkspaceScope(
             Path.GetDirectoryName(path)!, path, Services.WorkspaceManager);
     }
 
@@ -67,6 +68,6 @@ public abstract class OwnedRefactoringTestBase
         var fixtures = TestRepositoryFixtures.Discover();
         var (root, entryPath) = copy(fixtures.RepositoryRootPath, fixtures.SampleSolutionPath);
         _roots.Add(root);
-        return new IsolatedWorkspaceTestBase.IsolatedWorkspaceScope(root, entryPath, Services.WorkspaceManager);
+        return IsolatedWorkspaceTestBase.CreateWorkspaceScope(root, entryPath, Services.WorkspaceManager);
     }
 }

@@ -27,29 +27,11 @@ namespace RoslynMcp.Core.Services;
 /// </remarks>
 public interface IUndoService
 {
-    /// <summary>
-    /// Captures the current solution state before an apply operation.
-    /// Call this immediately before mutating the workspace.
+    /// <summary>Prepares immutable undo authority without replacing the previous operation.
+    /// Call under the workspace write gate before effects; publish after actual writes.
+    /// The workspace-issued operation owns the immutable pre-state, files and description.
     /// </summary>
-    /// <param name="workspaceId">The workspace being mutated.</param>
-    /// <param name="description">Human-readable description of the operation being applied.</param>
-    /// <param name="preApplySolution">
-    /// The solution snapshot before mutation. May be <see langword="null"/> for direct-apply
-    /// paths that mutate files outside the Roslyn workspace model (e.g., .editorconfig writes).
-    /// </param>
-    /// <param name="fileSnapshots">
-    /// Optional explicit list of <c>(filePath, originalText)</c> pairs captured before the
-    /// mutation. When populated, <see cref="RevertAsync"/> uses this authoritative list to
-    /// restore disk content directly — bypassing the fragile "did the Roslyn <c>Solution</c>
-    /// diff detect a change?" path that fails when <c>MSBuildWorkspace.TryApplyChanges</c>
-    /// silently no-ops (FLAG-9A). Direct-file callers such as <c>EditService</c> and
-    /// <c>EditorConfigService</c> should always populate this.
-    /// </param>
-    void CaptureBeforeApply(
-        string workspaceId,
-        string description,
-        object? preApplySolution,
-        IReadOnlyList<FileSnapshotDto>? fileSnapshots = null);
+    Task<IPreparedUndoOperation> PrepareBeforeApplyAsync(IWorkspaceMutationOperation physicalOperation, CancellationToken ct);
 
     /// <summary>
     /// Returns metadata about the last undoable operation for the given workspace,
@@ -87,7 +69,7 @@ public interface IUndoService
     /// associating it with the sequence number assigned by <see cref="IChangeTracker"/>. The
     /// caller is <see cref="IChangeTracker"/> itself via the <see cref="IChangeTracker.ChangeRecorded"/>
     /// event — services that apply edits do not call this directly. Idempotent when called with
-    /// no pending snapshot (e.g., when the apply path skipped <see cref="CaptureBeforeApply"/>).
+    /// no pending snapshot (e.g., when the apply path skipped <see cref="PrepareBeforeApplyAsync"/>).
     /// </summary>
     /// <param name="workspaceId">The workspace identifier.</param>
     /// <param name="sequenceNumber">The sequence number assigned by <see cref="IChangeTracker"/>.</param>
@@ -98,6 +80,23 @@ public interface IUndoService
     /// Clears undo history for a workspace (e.g., on workspace close).
     /// </summary>
     void Clear(string workspaceId);
+}
+
+/// <summary>Opaque operation authority issued by the workspace that owns its physical files.</summary>
+public interface IWorkspaceMutationOperation
+{
+    string WorkspaceId { get; }
+}
+
+/// <summary>An operation-owned compensation handle. Every method requires the workspace write gate.
+/// PublishAsync exposes actual effects to user undo. RestoreAsync compensates this exact operation;
+/// a published handle refuses superseded authority before modifying files.
+/// </summary>
+public interface IPreparedUndoOperation
+{
+    Task PublishAsync(CancellationToken cancellationToken);
+    void RetainRecovery();
+    Task<bool> RestoreAsync(CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -112,7 +111,7 @@ public sealed record UndoEntry(
     DateTime AppliedAtUtc);
 
 /// <summary>
-/// An explicit pre-apply file snapshot passed to <see cref="IUndoService.CaptureBeforeApply"/>
+/// An explicit pre-apply file snapshot captured by a workspace-issued <see cref="IWorkspaceMutationOperation"/>
 /// by direct-file callers. Used by <see cref="IUndoService.RevertAsync"/> to restore disk
 /// content even when the workspace <c>Solution</c> diff is empty (FLAG-9A).
 /// </summary>
@@ -164,6 +163,7 @@ public sealed record FileSnapshotDto(string FilePath, string? OriginalText)
 /// <list type="bullet">
 /// <item><description><c>"unknown-sequence"</c> — no snapshot exists for that sequence number.</description></item>
 /// <item><description><c>"dependency-blocked"</c> — at least one later apply touches an overlapping file.</description></item>
+/// <item><description><c>"revert-in-progress"</c> — another caller owns this exact inverse.</description></item>
 /// <item><description><c>"revert-failed"</c> — the snapshot existed but the revert mechanics failed (e.g., disk write rejected).</description></item>
 /// </list>
 /// <see langword="null"/> when <see cref="Reverted"/> is <see langword="true"/>.

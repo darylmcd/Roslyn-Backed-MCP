@@ -27,9 +27,6 @@ public sealed class FindOverloadsTests : SharedWorkspaceTestBase
         WorkspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     public async Task FindOverloads_Resolves_BclMethod_Never_Called_In_Fixture_Source()
     {

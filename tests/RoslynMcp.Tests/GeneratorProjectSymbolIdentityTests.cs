@@ -22,9 +22,6 @@ public sealed class GeneratorProjectSymbolIdentityTests : IsolatedWorkspaceTestB
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     public async Task SymbolAnalyses_InGeneratorProject_SeeReferencesToLiveCode()
     {

@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Diagnostics;
 using RoslynMcp.Host.Stdio.Runtime;
+using RoslynMcp.Host.Stdio.Security;
 using RoslynMcp.Host.Stdio.Services;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn;
@@ -71,6 +72,9 @@ public static class ServiceCollectionExtensions
         services.AddSingleton(previewStoreOptions);
         services.AddSingleton(executionGateOptions);
         services.AddSingleton(securityOptions);
+        services.AddSingleton<WorkspacePathPolicy>();
+        services.AddSingleton<ForkInvocationPathPolicy>(sp => new(sp.GetRequiredService<WorkspacePathPolicy>()));
+        services.AddSingleton<IWorkspacePathPolicy>(sp => sp.GetRequiredService<ForkInvocationPathPolicy>());
         services.AddSingleton(scriptingServiceOptions);
         services.AddSingleton(referenceResponsePager ?? ReferenceResponsePager.Default);
 

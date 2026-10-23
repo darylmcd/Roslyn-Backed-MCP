@@ -28,12 +28,6 @@ public sealed class CsprojReserializationTests : TestBase
         InitializeServices();
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup()
-    {
-        DisposeServices();
-    }
-
     // === CsprojSemanticEquality unit tests ===
 
     [TestMethod]
@@ -243,7 +237,7 @@ public sealed class CsprojReserializationTests : TestBase
         // every csproj is byte-identical to its pre-apply state.
         var copiedSolutionPath = CreateSampleSolutionCopy();
         var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
-        var workspaceId = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None)
+        var workspaceId = await WorkspaceManager.LoadAsync(copiedSolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(copiedSolutionPath, new Dictionary<string, string>()), CancellationToken.None)
             .ContinueWith(t => t.Result.WorkspaceId);
 
         try

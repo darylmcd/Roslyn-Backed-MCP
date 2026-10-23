@@ -2,6 +2,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests.Services;
 
@@ -21,20 +22,10 @@ public sealed class WorkspaceCacheCoordinatorTests
     }
 
     [TestCleanup]
-    public void Cleanup()
-    {
-        try
-        {
-            if (Directory.Exists(_root))
-            {
-                Directory.Delete(_root, recursive: true);
-            }
-        }
-        catch
-        {
-            // Best-effort cleanup; temp files are safe to leak until OS cleanup.
-        }
-    }
+    public void Cleanup() => TestFixtureFileSystem.DeleteDirectoryIfExists(_root);
+
+    private Task AuthorizeAsync(IReadOnlyList<string> paths, CancellationToken ct) =>
+        new OwnedTestWorkspacePathPolicy([_root]).ValidateAsync("cache-coordinator", paths, ct);
 
     [TestMethod]
     public async Task TryProbeAsync_EmptyStore_ReturnsMissProbe()
@@ -42,27 +33,27 @@ public sealed class WorkspaceCacheCoordinatorTests
         var solutionPath = WriteSolutionFile("empty.slnx", "<Solution></Solution>");
         var coordinator = CreateCoordinator(new WorkspaceCacheStore(_root));
 
-        var probe = await coordinator.TryProbeAsync(solutionPath, CancellationToken.None);
+        var probe = await coordinator.TryProbeAsync(solutionPath, AuthorizeAsync, CancellationToken.None);
 
         Assert.IsNotNull(probe);
         Assert.IsNull(probe.CachedEntry);
-        Assert.IsFalse(probe.MetadataReferencesStillStable);
+        Assert.IsNotNull(probe.SolutionHash);
         Assert.AreEqual(
-            await WorkspaceCacheCoordinator.ComputeSolutionContentHashAsync(solutionPath, CancellationToken.None),
+            await WorkspaceCacheCoordinator.ComputeSolutionContentHashAsync(solutionPath, AuthorizeAsync, CancellationToken.None),
             probe.SolutionHash);
         Assert.AreEqual(WorkspaceCacheCoordinator.ResolveSdkVersionForCacheKey(), probe.SdkVersion);
     }
 
     [TestMethod]
-    public async Task TryProbeAsync_StaleMetadataReference_ReturnsProbeWithStableFalse()
+    public async Task ResolveAndWriteAsync_StaleCurrentMetadata_ReturnsCacheMiss()
     {
         var solutionPath = WriteSolutionFile("stale.slnx", "<Solution><Project Path=\"A.csproj\" /></Solution>");
         var referencePath = Path.Combine(_root, "ref.dll");
-        File.WriteAllText(referencePath, "v1");
+        File.Copy(typeof(object).Assembly.Location, referencePath);
         var capturedMtime = File.GetLastWriteTimeUtc(referencePath);
 
         var store = new WorkspaceCacheStore(_root);
-        var solutionHash = await WorkspaceCacheCoordinator.ComputeSolutionContentHashAsync(solutionPath, CancellationToken.None);
+        var solutionHash = await WorkspaceCacheCoordinator.ComputeSolutionContentHashAsync(solutionPath, AuthorizeAsync, CancellationToken.None);
         Assert.IsNotNull(solutionHash);
         var sdkVersion = WorkspaceCacheCoordinator.ResolveSdkVersionForCacheKey();
         var graph = new[]
@@ -85,11 +76,14 @@ public sealed class WorkspaceCacheCoordinatorTests
         Assert.IsTrue(await store.PutAsync(new WorkspaceCacheKey(solutionHash, sdkVersion, graphHash), entry, CancellationToken.None));
         File.SetLastWriteTimeUtc(referencePath, capturedMtime.AddMinutes(1));
 
-        var probe = await CreateCoordinator(store).TryProbeAsync(solutionPath, CancellationToken.None);
-
+        var coordinator = CreateCoordinator(store);
+        var probe = await coordinator.TryProbeAsync(solutionPath, AuthorizeAsync, CancellationToken.None);
         Assert.IsNotNull(probe);
         Assert.IsNotNull(probe.CachedEntry);
-        Assert.IsFalse(probe.MetadataReferencesStillStable);
+        var actual = CreateSolution(Path.Combine(_root, "A.csproj"), [MetadataReference.CreateFromFile(referencePath)]);
+        var result = await coordinator.ResolveAndWriteAsync(actual, probe, AuthorizeAsync, CancellationToken.None);
+        Assert.IsNotNull(result);
+        Assert.IsFalse(result.CacheHit, "Current selected metadata timestamps must invalidate the stale candidate after native coordinate agreement.");
     }
 
     [TestMethod]
@@ -97,18 +91,18 @@ public sealed class WorkspaceCacheCoordinatorTests
     {
         var solutionPath = WriteSolutionFile("matching.slnx", "<Solution><Project Path=\"App.csproj\" /></Solution>");
         var projectPath = Path.Combine(_root, "App.csproj");
-        var solution = CreateSolution(projectPath);
+        var solution = CreateSolution(projectPath, []);
         var graph = WorkspaceCacheCoordinator.BuildCachedGraphFromSolution(solution);
         var graphHash = WorkspaceCacheCoordinator.ComputeMsbuildGraphHash(graph);
-        var solutionHash = await WorkspaceCacheCoordinator.ComputeSolutionContentHashAsync(solutionPath, CancellationToken.None);
+        var solutionHash = await WorkspaceCacheCoordinator.ComputeSolutionContentHashAsync(solutionPath, AuthorizeAsync, CancellationToken.None);
         Assert.IsNotNull(solutionHash);
         var sdkVersion = WorkspaceCacheCoordinator.ResolveSdkVersionForCacheKey();
         var cachedEntry = new WorkspaceCacheEntry(graph, Array.Empty<CachedProjectMetadataReferences>(), DateTime.UtcNow.AddMinutes(-5));
         var store = new WorkspaceCacheStore(_root);
         var coordinator = CreateCoordinator(store);
-        var probe = new WorkspaceCacheProbe(solutionHash, sdkVersion, cachedEntry, MetadataReferencesStillStable: true);
+        var probe = new WorkspaceCacheProbe(solutionHash, sdkVersion, cachedEntry);
 
-        var result = await coordinator.ResolveAndWriteAsync(solution, probe, CancellationToken.None);
+        var result = await coordinator.ResolveAndWriteAsync(solution, probe, AuthorizeAsync, CancellationToken.None);
 
         Assert.IsNotNull(result);
         Assert.IsTrue(result.CacheHit);
@@ -121,10 +115,10 @@ public sealed class WorkspaceCacheCoordinatorTests
     {
         var solutionPath = WriteSolutionFile("mismatch.slnx", "<Solution><Project Path=\"App.csproj\" /></Solution>");
         var projectPath = Path.Combine(_root, "App.csproj");
-        var solution = CreateSolution(projectPath);
+        var solution = CreateSolution(projectPath, []);
         var actualGraph = WorkspaceCacheCoordinator.BuildCachedGraphFromSolution(solution);
         var actualGraphHash = WorkspaceCacheCoordinator.ComputeMsbuildGraphHash(actualGraph);
-        var solutionHash = await WorkspaceCacheCoordinator.ComputeSolutionContentHashAsync(solutionPath, CancellationToken.None);
+        var solutionHash = await WorkspaceCacheCoordinator.ComputeSolutionContentHashAsync(solutionPath, AuthorizeAsync, CancellationToken.None);
         Assert.IsNotNull(solutionHash);
         var sdkVersion = WorkspaceCacheCoordinator.ResolveSdkVersionForCacheKey();
         var staleEntry = new WorkspaceCacheEntry(
@@ -133,9 +127,9 @@ public sealed class WorkspaceCacheCoordinatorTests
             DateTime.UtcNow.AddMinutes(-5));
         var store = new WorkspaceCacheStore(_root);
         var coordinator = CreateCoordinator(store);
-        var probe = new WorkspaceCacheProbe(solutionHash, sdkVersion, staleEntry, MetadataReferencesStillStable: true);
+        var probe = new WorkspaceCacheProbe(solutionHash, sdkVersion, staleEntry);
 
-        var result = await coordinator.ResolveAndWriteAsync(solution, probe, CancellationToken.None);
+        var result = await coordinator.ResolveAndWriteAsync(solution, probe, AuthorizeAsync, CancellationToken.None);
 
         Assert.IsNotNull(result);
         Assert.IsFalse(result.CacheHit);
@@ -148,10 +142,10 @@ public sealed class WorkspaceCacheCoordinatorTests
     public async Task WriteFreshEntryAsync_WhenStoreThrows_ReturnsNullInsteadOfThrowing()
     {
         var solutionPath = WriteSolutionFile("throwing.slnx", "<Solution><Project Path=\"App.csproj\" /></Solution>");
-        var solution = CreateSolution(Path.Combine(_root, "App.csproj"));
+        var solution = CreateSolution(Path.Combine(_root, "App.csproj"), []);
         var coordinator = CreateCoordinator(new ThrowingCacheStore());
 
-        var result = await coordinator.WriteFreshEntryAsync(solution, solutionPath, CancellationToken.None);
+        var result = await coordinator.WriteFreshEntryAsync(solution, solutionPath, AuthorizeAsync, CancellationToken.None);
 
         Assert.IsNull(result);
     }
@@ -163,7 +157,7 @@ public sealed class WorkspaceCacheCoordinatorTests
         return path;
     }
 
-    private static Solution CreateSolution(string projectPath)
+    private static Solution CreateSolution(string projectPath, IReadOnlyList<MetadataReference> references)
     {
         using var workspace = new AdhocWorkspace();
         var projectId = ProjectId.CreateNewId();
@@ -173,7 +167,7 @@ public sealed class WorkspaceCacheCoordinatorTests
             name: "App",
             assemblyName: "App",
             language: LanguageNames.CSharp,
-            filePath: projectPath);
+            filePath: projectPath, metadataReferences: references);
         workspace.AddProject(projectInfo);
         return workspace.CurrentSolution;
     }

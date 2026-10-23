@@ -25,9 +25,6 @@ public sealed class GetSyntaxTreeBudgetTests : SharedWorkspaceTestBase
         WorkspaceId = await GetOrLoadWorkspaceIdAsync(SampleSolutionPath, CancellationToken.None);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     public async Task GetSyntaxTree_MaxNodesCap_StopsAtLimit_AndEmitsTruncationNotice()
     {

@@ -19,17 +19,11 @@ public sealed class ExpandedSurfaceIntegrationTests_RepoSolutionAnalysis : Share
         WorkspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup()
-    {
-        DisposeServices();
-    }
-
     [TestMethod]
     public async Task Reflection_And_Di_Analysis_Run_On_Repo_Solution()
     {
         var repositorySolutionPath = Path.Combine(RepositoryRootPath, "RoslynMcp.slnx");
-        var status = await WorkspaceManager.LoadAsync(repositorySolutionPath, CancellationToken.None);
+        var status = await WorkspaceManager.LoadAsync(repositorySolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(repositorySolutionPath, new Dictionary<string, string>()), CancellationToken.None);
 
         try
         {
@@ -72,7 +66,7 @@ public sealed class ExpandedSurfaceIntegrationTests_RepoSolutionAnalysis : Share
         const string ToolsNamespace = "RoslynMcp.Host.Stdio.Tools";
 
         var repositorySolutionPath = Path.Combine(RepositoryRootPath, "RoslynMcp.slnx");
-        var status = await WorkspaceManager.LoadAsync(repositorySolutionPath, CancellationToken.None);
+        var status = await WorkspaceManager.LoadAsync(repositorySolutionPath, RoslynMcp.Tests.Helpers.OwnedNativeLoadContext.Properties(repositorySolutionPath, new Dictionary<string, string>()), CancellationToken.None);
 
         try
         {

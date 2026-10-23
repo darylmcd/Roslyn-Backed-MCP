@@ -28,9 +28,6 @@ public sealed class ValidationToolsIntegrationTests : SharedWorkspaceTestBase
         WorkspaceId = await GetOrLoadWorkspaceIdAsync(SampleSolutionPath, CancellationToken.None);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     [TestMethod]
     public async Task TestDiscover_Returns_Projects()
     {

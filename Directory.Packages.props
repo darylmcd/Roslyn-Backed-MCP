@@ -25,6 +25,7 @@
     <PackageVersion Include="Microsoft.Build" Version="17.14.28" />
     <PackageVersion Include="Microsoft.Build.Tasks.Core" Version="17.14.28" />
     <PackageVersion Include="Microsoft.Build.Utilities.Core" Version="17.14.28" />
+    <PackageVersion Include="Microsoft.VisualStudio.SolutionPersistence" Version="1.0.52" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
     <PackageVersion Include="MSTest.TestAdapter" Version="4.5.1" />
     <PackageVersion Include="MSTest.TestFramework" Version="4.5.1" />
@@ -37,6 +38,8 @@
          explicit version so Microsoft.Build.Locator's MSBL001 check stays satisfied
          (see the PackageReference in RoslynMcp.Tests.csproj for ExcludeAssets details). -->
     <PackageVersion Include="NuGet.Frameworks" Version="6.3.4" />
+    <PackageVersion Include="NuGet.Versioning" Version="6.3.4" />
+    <PackageVersion Include="NuGet.Packaging" Version="6.3.4" />
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="5.9.0" />
     <!-- Independently versioned package; do not align mechanically with the compiler family. -->
     <PackageVersion Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="5.6.0" />

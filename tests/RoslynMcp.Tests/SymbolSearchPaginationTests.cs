@@ -32,9 +32,6 @@ public sealed class SymbolSearchPaginationTests : SharedWorkspaceTestBase
         WorkspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
     }
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
     // ── pagination envelope fields ──────────────────────────────────────────
 
     [TestMethod]
