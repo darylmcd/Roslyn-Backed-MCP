@@ -1,4 +1,6 @@
-# `backlog.d/` fragment schema
+# backlog-d-fragment-schema — Fragment schema for external audit findings
+
+**row:** `backlog-d-fragment-schema` · **pri:** `Low` · **size:** `S`
 
 <!-- purpose: Define the on-disk shape of `backlog.d/<finding-id>.md` fragments produced by /mcp-server-stress and consumed by /backlog-intake. -->
 <!-- scope: in-repo, cross-repo (siblings) -->

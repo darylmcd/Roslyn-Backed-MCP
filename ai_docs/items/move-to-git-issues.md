@@ -1,4 +1,7 @@
-# move-to-git-issues - current design for external audit findings
+# move-to-git-issues — Current design for external audit findings
+
+**row:** `move-to-git-issues` · **pri:** `Low` · **size:** `S`
+
 
 <!-- purpose: Current design note for moving the audit-finding sharing path toward GitHub Issues while keeping the maintainer-local fragment workflow. -->
 <!-- scope: in-repo -->

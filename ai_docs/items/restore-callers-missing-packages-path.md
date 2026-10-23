@@ -1,6 +1,6 @@
 # restore-callers-missing-packages-path — Preserve recorded roots and the reviewed fork graph
 
-**row:** `restore-callers-missing-packages-path` · **pri:** `Medium` · **size:** `L` · **deps:** `workspace-restore-packages-path,project-reference-utf16-undo-qualification`
+**row:** `restore-callers-missing-packages-path` · **pri:** `Medium` · **size:** `L` · **deps:** `workspace-restore-packages-path,project-reference-utf16-undo-qualification,restore-fork-reviewed-project-graph`
 
 ## Anchors
 
@@ -64,3 +64,19 @@
 
 - Draft links: https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1809 and https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1808.
 - Re-derive each split against current main; land only an independently correct and fully reviewed slice. No native-authority machinery is justified by the current restore acceptance.
+
+## Remaining decomposition after the updated remediation prompt
+
+| Field | Current state |
+|---|---|
+| Routing rule | The 2026-10-23 prompt requires size-L or multi-regression rows to be decomposed in a docs-only PR before further implementation. |
+| Aggregate | This parent stays L/open; retain every original acceptance bullet and all historical evidence. |
+| Landed dependencies | Renderer PR1808, explicit empty undo PR1812, metadata rebase PR1811 and UTF-16 qualification PR1814 are verified squash merges with hosted Windows/Linux/SDK-floor checks green. |
+| Remaining chain | restore-assets-json-kind-guards → restore-active-assets-layout-authority → fork-document-text-encoding → restore-required-project-inventory → fork-evaluated-source-isolation → restore-fork-reviewed-project-graph → aggregate closure. |
+| Ordered delivery | Active assets → document encoding → source restore planning records delivery order; those links are not claims of technical coupling. |
+| Correctness boundary | Required dependency inventory and mixed --no-dependencies ship together. Fork replay and graph fidelity ship together. Evaluated source isolation ships actual protection before the fidelity slice. |
+| Fresh diagnosis | Caller/JSON old-code run:14 failed/61 passed. Active-layout old-code run:5 failed/1 passed. Public fork graph/encoding:2 genuine failures. Corrected real mixed-root/noncompile/isolation run:3 genuine failures. These are RED receipts, not completion evidence. |
+| Scope review | Independent cold review approved six bounded shovel-ready slices, each at most four production files and one regression mechanism. A demonstrated producer namespace failure gets its own S row before graph fidelity. |
+| WIP | Small ea969292 checkpoint rebased onto b1d2bdcb as450c75dd in codex/restore-callers-complete; partial edits and receipts preserved. No more bundle implementation before the docs-only filing. |
+| Closure gate | Fresh per-piece review, scoped and hosted checks, full serialized producer and final delivery validation, verified merges, then canonical writer closure. |
+| Protected state | PR1806, PR1809, extraction and stash codex-remediate-20261022-preserve-restore remain untouched. No native-authority machinery is imported. |
