@@ -354,6 +354,232 @@ public sealed class UndoServiceTests : IsolatedWorkspaceTestBase
             () => UndoService.CaptureBeforeApply("any-workspace", "wrong type", new object(), fileSnapshots: null));
     }
 
+    [TestMethod]
+    public async Task RevertAsync_ExplicitEmptyCapture_ConsumesOnlyEmptyOperation()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+        var original = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
+        var applyA = await EditService.ApplyTextEditsAsync(
+            workspaceId, dogFilePath, new[] { new TextEditDto(1, 1, 1, 1, "// apply A\n") },
+            "apply_text_edit", CancellationToken.None);
+        Assert.IsTrue(applyA.Success);
+        var sequenceA = ChangeTracker.GetChanges(workspaceId).Single().SequenceNumber;
+        var postApplyBytes = await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None);
+        var postApplySolution = WorkspaceManager.GetCurrentSolution(workspaceId);
+        var postApplyVersion = WorkspaceManager.GetCurrentVersion(workspaceId);
+        await AssertDocumentTextAsync(postApplySolution, dogFilePath, "// apply A\n" + original);
+
+        UndoService.CaptureBeforeApply(workspaceId, "empty B", preApplySolution: null, fileSnapshots: []);
+        ChangeTracker.RecordChange(workspaceId, "empty B", [], "empty_capture_test");
+        var sequenceB = ChangeTracker.GetChanges(workspaceId).Last().SequenceNumber;
+
+        Assert.IsTrue(await UndoService.RevertAsync(workspaceId, CancellationToken.None),
+            "An explicit empty capture is a successful no-op undo.");
+        CollectionAssert.AreEqual(postApplyBytes, await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None));
+        Assert.AreSame(postApplySolution, WorkspaceManager.GetCurrentSolution(workspaceId),
+            "An empty undo must not reload or replace the current solution.");
+        Assert.AreEqual(postApplyVersion, WorkspaceManager.GetCurrentVersion(workspaceId));
+        Assert.IsNull(UndoService.GetLastOperation(workspaceId));
+        Assert.IsFalse(await UndoService.RevertAsync(workspaceId, CancellationToken.None),
+            "The empty operation must be consumed exactly once.");
+        var repeatB = await UndoService.RevertBySequenceAsync(workspaceId, sequenceB, CancellationToken.None);
+        Assert.IsFalse(repeatB.Reverted);
+        Assert.AreEqual("unknown-sequence", repeatB.Reason);
+
+        var revertA = await UndoService.RevertBySequenceAsync(workspaceId, sequenceA, CancellationToken.None);
+        Assert.IsTrue(revertA.Reverted, "Undoing B must preserve A's sequence history.");
+        Assert.AreEqual(original, await File.ReadAllTextAsync(dogFilePath, CancellationToken.None));
+        await AssertDocumentTextAsync(WorkspaceManager.GetCurrentSolution(workspaceId), dogFilePath, original);
+    }
+
+    [TestMethod]
+    public async Task RevertBySequence_ExplicitEmptyCapture_PreservesLaterPendingApplyAndEarlierHistory()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+        var catFilePath = workspace.GetPath("SampleLib", "Cat.cs");
+        var dogOriginal = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
+        var catOriginal = await File.ReadAllTextAsync(catFilePath, CancellationToken.None);
+        var applyA = await EditService.ApplyTextEditsAsync(
+            workspaceId, dogFilePath, new[] { new TextEditDto(1, 1, 1, 1, "// apply A\n") },
+            "apply_text_edit", CancellationToken.None);
+        Assert.IsTrue(applyA.Success);
+        var sequenceA = ChangeTracker.GetChanges(workspaceId).Single().SequenceNumber;
+
+        UndoService.CaptureBeforeApply(workspaceId, "empty B", preApplySolution: null, fileSnapshots: []);
+        ChangeTracker.RecordChange(workspaceId, "empty B", [], "empty_capture_test");
+        var sequenceB = ChangeTracker.GetChanges(workspaceId).Last().SequenceNumber;
+        var applyC = await EditService.ApplyTextEditsAsync(
+            workspaceId, catFilePath, new[] { new TextEditDto(1, 1, 1, 1, "// apply C\n") },
+            "apply_text_edit", CancellationToken.None);
+        Assert.IsTrue(applyC.Success);
+        var sequenceC = ChangeTracker.GetChanges(workspaceId).Last().SequenceNumber;
+        var pendingC = UndoService.GetLastOperation(workspaceId);
+        Assert.IsNotNull(pendingC);
+        var dogBytes = await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None);
+        var catBytes = await File.ReadAllBytesAsync(catFilePath, CancellationToken.None);
+        var currentSolution = WorkspaceManager.GetCurrentSolution(workspaceId);
+        var currentVersion = WorkspaceManager.GetCurrentVersion(workspaceId);
+        await AssertDocumentTextAsync(currentSolution, dogFilePath, "// apply A\n" + dogOriginal);
+        await AssertDocumentTextAsync(currentSolution, catFilePath, "// apply C\n" + catOriginal);
+
+        var revertB = await UndoService.RevertBySequenceAsync(workspaceId, sequenceB, CancellationToken.None);
+        Assert.IsTrue(revertB.Reverted);
+        Assert.AreEqual("empty B", revertB.RevertedOperation);
+        Assert.IsNull(revertB.Reason);
+        Assert.AreEqual(0, revertB.AffectedFiles.Count);
+        Assert.IsNull(revertB.BlockingSequences);
+        CollectionAssert.AreEqual(dogBytes, await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None));
+        CollectionAssert.AreEqual(catBytes, await File.ReadAllBytesAsync(catFilePath, CancellationToken.None));
+        Assert.AreSame(currentSolution, WorkspaceManager.GetCurrentSolution(workspaceId));
+        Assert.AreEqual(currentVersion, WorkspaceManager.GetCurrentVersion(workspaceId));
+        Assert.AreEqual(pendingC, UndoService.GetLastOperation(workspaceId),
+            "Undoing earlier empty B must retain C as the pending LIFO operation.");
+        var repeatB = await UndoService.RevertBySequenceAsync(workspaceId, sequenceB, CancellationToken.None);
+        Assert.IsFalse(repeatB.Reverted);
+        Assert.AreEqual("unknown-sequence", repeatB.Reason);
+
+        Assert.IsTrue(await UndoService.RevertAsync(workspaceId, CancellationToken.None),
+            "C must remain undoable through the LIFO route.");
+        Assert.AreEqual(catOriginal, await File.ReadAllTextAsync(catFilePath, CancellationToken.None));
+        CollectionAssert.AreEqual(dogBytes, await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None));
+        await AssertDocumentTextAsync(WorkspaceManager.GetCurrentSolution(workspaceId), catFilePath, catOriginal);
+        await AssertDocumentTextAsync(WorkspaceManager.GetCurrentSolution(workspaceId), dogFilePath, "// apply A\n" + dogOriginal);
+        var repeatC = await UndoService.RevertBySequenceAsync(workspaceId, sequenceC, CancellationToken.None);
+        Assert.IsFalse(repeatC.Reverted);
+        Assert.AreEqual("unknown-sequence", repeatC.Reason);
+        var revertA = await UndoService.RevertBySequenceAsync(workspaceId, sequenceA, CancellationToken.None);
+        Assert.IsTrue(revertA.Reverted, "A's earlier history must survive both B and C being undone.");
+        Assert.AreEqual(dogOriginal, await File.ReadAllTextAsync(dogFilePath, CancellationToken.None));
+        await AssertDocumentTextAsync(WorkspaceManager.GetCurrentSolution(workspaceId), dogFilePath, dogOriginal);
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task Revert_ExplicitEmptyCapture_CancellationRetainsCaptureAndHistory(bool bySequence)
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var originalSolution = WorkspaceManager.GetCurrentSolution(workspaceId);
+        var originalVersion = WorkspaceManager.GetCurrentVersion(workspaceId);
+        UndoService.CaptureBeforeApply(workspaceId, "empty B", preApplySolution: null, fileSnapshots: []);
+        ChangeTracker.RecordChange(workspaceId, "empty B", [], "empty_capture_test");
+        var sequenceB = ChangeTracker.GetChanges(workspaceId).Single().SequenceNumber;
+        var pendingB = UndoService.GetLastOperation(workspaceId);
+        Assert.IsNotNull(pendingB);
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(async () =>
+        {
+            if (bySequence)
+                await UndoService.RevertBySequenceAsync(workspaceId, sequenceB, cts.Token);
+            else
+                await UndoService.RevertAsync(workspaceId, cts.Token);
+        });
+        Assert.AreEqual(pendingB, UndoService.GetLastOperation(workspaceId));
+        Assert.AreSame(originalSolution, WorkspaceManager.GetCurrentSolution(workspaceId));
+        Assert.AreEqual(originalVersion, WorkspaceManager.GetCurrentVersion(workspaceId));
+
+        // Retry through the opposite route to prove both capture stores survived cancellation.
+        if (bySequence)
+            Assert.IsTrue(await UndoService.RevertAsync(workspaceId, CancellationToken.None));
+        else
+            Assert.IsTrue((await UndoService.RevertBySequenceAsync(workspaceId, sequenceB, CancellationToken.None)).Reverted);
+        Assert.IsNull(UndoService.GetLastOperation(workspaceId));
+        Assert.IsFalse(await UndoService.RevertAsync(workspaceId, CancellationToken.None));
+        var repeat = await UndoService.RevertBySequenceAsync(workspaceId, sequenceB, CancellationToken.None);
+        Assert.IsFalse(repeat.Reverted);
+        Assert.AreEqual("unknown-sequence", repeat.Reason);
+        Assert.AreSame(originalSolution, WorkspaceManager.GetCurrentSolution(workspaceId));
+        Assert.AreEqual(originalVersion, WorkspaceManager.GetCurrentVersion(workspaceId));
+    }
+
+    [TestMethod]
+    [DataRow(false, false)]
+    [DataRow(true, false)]
+    [DataRow(false, true)]
+    [DataRow(true, true)]
+    public async Task Revert_NullSolutionAndMissingOrContradictoryFileSnapshots_RemainsInvalid(bool bySequence, bool contradictoryEmptyCapture)
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var originalSolution = WorkspaceManager.GetCurrentSolution(workspaceId);
+        var originalVersion = WorkspaceManager.GetCurrentVersion(workspaceId);
+        UndoService.CaptureBeforeApply(workspaceId, "invalid capture", preApplySolution: null,
+            fileSnapshots: contradictoryEmptyCapture ? [] : null);
+        ChangeTracker.RecordChange(workspaceId, "invalid capture",
+            contradictoryEmptyCapture ? [workspace.GetPath("SampleLib", "Dog.cs")] : [], "invalid_capture_test");
+        var sequence = ChangeTracker.GetChanges(workspaceId).Single().SequenceNumber;
+
+        if (bySequence)
+        {
+            var result = await UndoService.RevertBySequenceAsync(workspaceId, sequence, CancellationToken.None);
+            Assert.IsFalse(result.Reverted);
+            Assert.AreEqual("revert-failed", result.Reason);
+        }
+        else
+        {
+            Assert.IsFalse(await UndoService.RevertAsync(workspaceId, CancellationToken.None));
+        }
+
+        Assert.IsNotNull(UndoService.GetLastOperation(workspaceId), "An invalid capture must not be consumed as a success.");
+        var retry = await UndoService.RevertBySequenceAsync(workspaceId, sequence, CancellationToken.None);
+        Assert.IsFalse(retry.Reverted);
+        Assert.AreEqual("revert-failed", retry.Reason, "Invalid capture history must remain retryable.");
+        Assert.AreSame(originalSolution, WorkspaceManager.GetCurrentSolution(workspaceId));
+        Assert.AreEqual(originalVersion, WorkspaceManager.GetCurrentVersion(workspaceId));
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task Revert_SolutionAndEmptyFileSnapshots_UsesSolutionFallback(bool bySequence)
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+        var originalBytes = await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None);
+        var originalText = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
+        var originalSolution = WorkspaceManager.GetCurrentSolution(workspaceId);
+        await MaterializeDocumentTextAsync(originalSolution, dogFilePath);
+        var apply = await EditService.ApplyTextEditsAsync(
+            workspaceId, dogFilePath, new[] { new TextEditDto(1, 1, 1, 1, "// apply\n") },
+            "apply_text_edit", CancellationToken.None);
+        Assert.IsTrue(apply.Success);
+        Assert.AreNotEqual(originalText, await File.ReadAllTextAsync(dogFilePath, CancellationToken.None));
+        var captureVersion = WorkspaceManager.GetCurrentVersion(workspaceId);
+        UndoService.Clear(workspaceId);
+        UndoService.CaptureBeforeApply(workspaceId, "solution fallback", originalSolution, fileSnapshots: []);
+        ChangeTracker.RecordChange(workspaceId, "solution fallback", new[] { dogFilePath }, "solution_capture_test");
+        var sequence = ChangeTracker.GetChanges(workspaceId).Last().SequenceNumber;
+
+        if (bySequence)
+            Assert.IsTrue((await UndoService.RevertBySequenceAsync(workspaceId, sequence, CancellationToken.None)).Reverted);
+        else
+            Assert.IsTrue(await UndoService.RevertAsync(workspaceId, CancellationToken.None));
+
+        CollectionAssert.AreEqual(originalBytes, await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None));
+        await AssertDocumentTextAsync(WorkspaceManager.GetCurrentSolution(workspaceId), dogFilePath, originalText);
+        Assert.IsNull(UndoService.GetLastOperation(workspaceId));
+        var repeat = await UndoService.RevertBySequenceAsync(workspaceId, sequence, CancellationToken.None);
+        Assert.IsFalse(repeat.Reverted);
+        Assert.AreEqual("unknown-sequence", repeat.Reason);
+        Assert.AreEqual(captureVersion, WorkspaceManager.GetCurrentVersion(workspaceId));
+    }
+
+    private static async Task AssertDocumentTextAsync(Solution solution, string filePath, string expected)
+    {
+        var documentId = solution.GetDocumentIdsWithFilePath(filePath).Single();
+        var document = solution.GetDocument(documentId);
+        Assert.IsNotNull(document);
+        Assert.AreEqual(expected, (await document.GetTextAsync(CancellationToken.None)).ToString());
+    }
+
     // ---- composite-apply-undo-encoding-still-lossy: solution-snapshot revert encoding fidelity ----
     //
     // `RevertFromSolutionSnapshotAsync` collapsed each restore to a bare string, discarding the
