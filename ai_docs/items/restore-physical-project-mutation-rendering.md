@@ -1,28 +1,36 @@
-# restore-physical-project-mutation-rendering - Render physical project edits consistently
+# restore-physical-project-mutation-rendering — Render project mutations from original physical XML
 
-**row:** `restore-physical-project-mutation-rendering` · **pri:** `Medium` · **size:** `L` · **deps:** `workspace-restore-packages-path`
+**row:** `restore-physical-project-mutation-rendering` · **pri:** `Medium` · **size:** `M` · **deps:** `workspace-restore-packages-path`
 
 ## Anchors
 
-- `src/RoslynMcp.Roslyn/Services/ProjectReferenceMutationRenderer.cs`
+- (new) `src/RoslynMcp.Roslyn/Services/ProjectReferenceMutationRenderer.cs`
 - `src/RoslynMcp.Roslyn/Services/DocumentSetPersistenceService.cs`
 - `src/RoslynMcp.Roslyn/Helpers/SolutionDiffHelper.cs`
 - `src/RoslynMcp.Roslyn/Services/PreviewStore.cs`
-- `src/RoslynMcp.Roslyn/Services/RefactoringService.cs`
 - `tests/RoslynMcp.Tests/SolutionDiffHelperTests.cs`
 - `tests/RoslynMcp.Tests/UndoFileOperationsTests.cs`
 
 ## Acceptance
 
-- [ ] Bind all reference and explicit Compile operations to original physical XML nodes before edits; aggregate compatible framework contexts into one mutation per physical project file. Reject contradictory physical intents before effects.
-- [ ] Preserve conditions, unrelated metadata, comments, encoding and unrelated XML; update intended aliases/embed metadata only. Preserve build-only references while adding real compilation edges.
-- [ ] Use the same rendering for visible project-file diffs, token write paths and source persistence. Preserve rollback and undo and default-Compile SDK behavior.
-- [ ] Observe alias swaps, overlapping context edits and build-only-to-compilation additions fail before repair; keep disjoint conditional edits, duplicate equivalent contexts, explicit Compile changes and apply/undo green.
-- [ ] Fresh independent review has no blocking findings; scoped source/preview/undo checks and hosted checks pass. Close only after verified merge and the delivery batch full serialized gate.
+- [ ] Bind reference and explicit Compile operations to original XML nodes before effects; aggregate compatible physical contexts once and reject contradictory retained or absent sibling requirements.
+- [ ] Preserve encoding, conditions, unknown metadata, comments and build-only references. Refuse concrete ambiguous conditional metadata/item bindings before effects; preserve unrelated representable edits.
+- [ ] Use the same prepared rendering for preview project diffs, distinct token write paths and source persistence; retain rollback and existing undo behavior.
+- [ ] Observe alias-swap, overlapping-context, conditional-item/metadata and source pre-effect regressions fail before repair; preserve ordinary single-context additions and explicit Compile changes.
+- [ ] Land this four-production-file slice independently. Exclude apply-path reference rebasing and the new UTF-16 sibling-rebase undo regression; those have separate dependent rows.
+- [ ] Obtain fresh independent review without blocking findings, scoped consumer checks and required hosted checks; close only after verified merge and the full serialized delivery gate.
 
 ## Evidence
 
-- Prerequisite split from restore-callers-missing-packages-path after the third targeted review retained a multi-context alias-swap defect; source-only renderer must be correct independently before fork replay consumes it.
-- Current-session immutable-node-red.log: six failures, 37 passes; physical-context-red.log: two failures, seven passes; conditional-metadata-red.log: one failure, six passes. Logs: ~/.codex/scratch/roslyn-remediate-20261023-split/.
-- Own scoped checkpoint b88d8c18 preserves dependent restore/fork work. PR 1806 and stash codex-remediate-20261022-preserve-restore remain untouched reference material; no native-authority machinery belongs here.
-- Scope is five production files; the public apply regression forces the bounded metadata-replacement rebase correction. The dependent restore row retains restore planning, authorization ordering, fork preparation/replay and assets readers; this row does not close that parent.
+| Reference | Use | Limit |
+|---|---|---|
+| Draft PR1808, commit eea2f083148251f2c66dd09c2693575043388f1b | Renderer/source/preview implementation and regressions | Five production files plus UTF-16 test are bundled; do not merge the draft whole. |
+| Draft PR1809, commit b88d8c180dd057224da32aa24fe44b91dafb5420 | Earlier scoped checkpoint | 23 files versus 10-file plan triggered the scope stop. |
+| PR1806 branch origin/codex/restore-reviewed-graph; stash codex-remediate-20261022-preserve-restore | Read-only historical reference | Never pop/drop the stash or import the large tree. |
+| ~/.codex/scratch/roslyn-remediate-20261023-split/ | Current-session RED logs and 84-pass combined scoped cohort | Combined cohort is not independent-slice or full-producer proof. |
+
+## Context
+
+- Reference drafts: https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1808 and https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1809.
+- Scope stop: 23 changed files, +1991/-247, approximately 2.3 times the planned ten files. No further fixes belong on either held draft.
+- Dependency chain: renderer → apply-path rebase → UTF-16 undo → restore row. Re-derive each independently shippable boundary before implementation.

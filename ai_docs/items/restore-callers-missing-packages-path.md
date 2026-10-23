@@ -1,6 +1,6 @@
 # restore-callers-missing-packages-path — Preserve recorded roots and the reviewed fork graph
 
-**row:** `restore-callers-missing-packages-path` · **pri:** `Medium` · **size:** `L` · **deps:** `workspace-restore-packages-path,restore-physical-project-mutation-rendering`
+**row:** `restore-callers-missing-packages-path` · **pri:** `Medium` · **size:** `L` · **deps:** `workspace-restore-packages-path,project-reference-utf16-undo-qualification`
 
 ## Anchors
 
@@ -10,7 +10,7 @@
 - (new) `src/RoslynMcp.Roslyn/Services/RestoreInvocationPlanner.cs`
 - `src/RoslynMcp.Host.Stdio/Tools/WorkspaceTools.cs:644-731`
 - `src/RoslynMcp.Roslyn/Services/DocumentSetPersistenceService.cs:375-485`
-- (new) `src/RoslynMcp.Roslyn/Services/SolutionFileMutationPlanner.cs`
+- (new) `src/RoslynMcp.Roslyn/Services/ProjectReferenceMutationRenderer.cs`
 - (new) `src/RoslynMcp.Roslyn/Services/ForkGraphPreparation.cs`
 - `src/RoslynMcp.Roslyn/Services/RefactoringService.cs:830-868`
 - `src/RoslynMcp.Roslyn/Helpers/SolutionDiffHelper.cs:67-115`
@@ -49,3 +49,18 @@
 - Preserve existing ordinary preview support; broader three-family snapshots remain owned by workspace-fork-project-mutation-preview and its safety prerequisites, not closed here.
 - Potential correct prerequisite split: shared renderer/reference preview visibility/write-path completeness, followed by dependent physical fork graph/root planning. Fresh scope, honest estimates and cold review required; never ship the incomplete restore-only fork intermediate.
 - Separate assets exception-to-fresh decision is tracked by restore-assets-read-failure-false-fresh; code-fix provider silent fallback remains code-fix-provider-failure-silent-fallback.
+
+## Operator scope hold (2026-10-23)
+
+| Field | Verified state |
+|---|---|
+| Stop trigger | 23 changed files versus a ten-file plan, approximately 2.3x; +1991/-247. |
+| Scoped checkpoint | Draft PR1809; head b88d8c180dd057224da32aa24fe44b91dafb5420; no further fixes authorized on this bundle. |
+| Renderer/apply checkpoint | PR1808 restored to draft; head eea2f083148251f2c66dd09c2693575043388f1b; do not merge the bundle. |
+| Decomposition | restore-physical-project-mutation-rendering → preview-project-reference-metadata-rebase → project-reference-utf16-undo-qualification → this row. |
+| Validation limit | 185-pass scoped restore checkpoint and 84-pass combined renderer cohort do not prove the full serialized producer or hosted acceptance for independently split work. |
+| Closure | Unmet; no restore-row closure or implementation-merge claim. Preserve every original acceptance bullet. |
+| Protected work | PR1806, stash codex-remediate-20261022-preserve-restore and extraction branch remain untouched. |
+
+- Draft links: https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1809 and https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1808.
+- Re-derive each split against current main; land only an independently correct and fully reviewed slice. No native-authority machinery is justified by the current restore acceptance.
