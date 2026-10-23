@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-23T19:42:38Z
+**updated_at:** 2026-10-23T20:23:56Z
 
 ## Agent contract
 
@@ -158,12 +158,14 @@
 | `undo-sequence-claim-exclusivity` | Medium | undo-explicit-empty-capture | Refuse restoration after losing the by-sequence undo claim; prove one winning restore with deterministic concurrent-claim coverage. | S | items/undo-sequence-claim-exclusivity.md |
 | `undo-reload-failure-reports-success` | Medium | undo-sequence-claim-exclusivity | Make failed undo workspace reload/version restoration report failure and retain retryable capture/history across both restore paths. | S | items/undo-reload-failure-reports-success.md |
 | `restore-assets-json-kind-guards` | Medium | — | Guard incompatible JSON kinds across assets readers while preserving unknown-version, restore-required and sanitized diagnostic contracts. | M | items/restore-assets-json-kind-guards.md |
-| `restore-active-assets-layout-authority` | Medium | restore-assets-json-kind-guards | Share evaluated active assets-file authority across restore readers; stale default files must not mask alternate or missing active assets. | M | items/restore-active-assets-layout-authority.md |
+| `restore-active-assets-layout-authority` | Medium | restore-metadata-evaluation-global-context | Share evaluated active assets-file authority across restore readers; stale default files must not mask alternate or missing active assets. | M | items/restore-active-assets-layout-authority.md |
 | `fork-document-text-encoding` | Medium | restore-active-assets-layout-authority | Preserve SourceText encoding and BOM through the shared changed/added document fork replay writer. | S | items/fork-document-text-encoding.md |
 | `restore-required-project-inventory` | Medium | fork-document-text-encoding | Restore source callers through one complete evaluated dependency inventory, preserving nullable roots and mixed-root isolation under one budget. | M | items/restore-required-project-inventory.md |
 | `fork-evaluated-source-isolation` | Medium | restore-required-project-inventory | Reject evaluated copied transitive imports, file inputs and output paths into the source before any fork restore or runner effect. | M | items/fork-evaluated-source-isolation.md |
 | `restore-fork-reviewed-project-graph` | Medium | fork-evaluated-source-isolation | Rebase and replay reviewed physical project effects, then verify evaluated fork graph fidelity before restore while preserving source authority. | M | items/restore-fork-reviewed-project-graph.md |
 | `project-metadata-parser-broad-exception-fallbacks` | Medium | — | Narrow three metadata-parser catch-all fallbacks to expected evaluation/read/parse failures and propagate unexpected exceptions. | S | items/project-metadata-parser-broad-exception-fallbacks.md |
+| `workspace-reload-preserve-global-properties` | Medium | restore-assets-json-kind-guards | Preserve the loaded MSBuild global properties and actual configured compiler state through the shared public reload path. | S | items/workspace-reload-preserve-global-properties.md |
+| `restore-metadata-evaluation-global-context` | Medium | workspace-reload-preserve-global-properties | Pass explicit operation MSBuild settings through restore and project metadata evaluation; qualify configured layouts and reporting. | M | items/restore-metadata-evaluation-global-context.md |
 
 ## Low
 
