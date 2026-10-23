@@ -1,6 +1,6 @@
 # preview-project-reference-metadata-rebase — Preserve metadata replacement across sibling applies
 
-**row:** `preview-project-reference-metadata-rebase` · **pri:** `Medium` · **size:** `S` · **deps:** `restore-physical-project-mutation-rendering`
+**row:** `preview-project-reference-metadata-rebase` · **pri:** `Medium` · **size:** `S` · **deps:** `undo-explicit-empty-capture`
 
 ## Anchors
 
@@ -27,3 +27,5 @@
 
 - Drafts: https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1808 and https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1809.
 - Operator scope hold followed 23 files versus a ten-file plan. Start a separately reviewable slice; do not resume adding fixes to the drafts.
+
+PR1811 head c43baad2a64f338f8d7d9286ad2a79eb1ddda38d held draft at third implementation-review-round stop trigger: no-op whole-solution undo can erase later real edits. Decision: split owner semantics into undo-explicit-empty-capture, land that independently, then resume this one-production-file rebase correction. Current scoped164/0/0 is insufficient for later-edit undo; no closure or merge-ready claim.

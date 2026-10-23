@@ -4,7 +4,7 @@
 
 ## Anchors
 
-- `tests/RoslynMcp.Tests/Support/GitFixtureRunner.cs:103-138`
+- `tests/RoslynMcp.Tests/Support/GitFixtureRunner.cs:103-123`
 - `tests/RoslynMcp.Tests/Helpers/PwshScriptRunner.cs:102-170`
 - `tests/RoslynMcp.Tests/WorkspaceValidationVerdictTests.cs:25-35`
 - `tests/RoslynMcp.Tests/WorkspaceValidationVerdictTests.cs:85-95`
@@ -28,7 +28,7 @@
 ## Context
 
 - One regression shape: fixture staging exceeds its process deadline without enough evidence to distinguish native-process delay from completion/drain delay.
-- `GitFixtureRunner.RunGitCapture` synchronously blocks on the shared asynchronous runner. Investigate that scheduling risk; do not claim it caused this hosted failure without reproduction.
+- At the original filing base, `GitFixtureRunner.RunGitCapture` synchronously blocked on the shared asynchronous runner. The 2026-10-15 evidence below records its async migration; the natural hosted timeout remains unattributed.
 
 Related umbrella gate-timing-tests-fail-under-machine-load includes earlier validation scope/count and pwsh resolver/cancellation timing observations. This focused row tracks the distinct native-Git staging deadline witness and needs its own process-versus-drain reproduction; consolidate only if evidence establishes the same root cause.
 

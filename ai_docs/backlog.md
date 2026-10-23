@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-23T16:07:22Z
+**updated_at:** 2026-10-23T18:05:32Z
 
 ## Agent contract
 
@@ -148,16 +148,20 @@
 | `editorconfig-reader-fidelity` | Medium | — | **Make the editorconfig reader agree with the Roslyn parser** — empty values are dropped, line splitting ignores NEL/LS/PS, a nonexistent dotnet_diagnostic.severity key is used, and the file is parsed twice per read. [type: bug] [source: editorconfig grammar PR review 20261020] | M | items/editorconfig-reader-fidelity.md |
 | `external-overload-candidate-handle-roundtrip` | Medium | — | Make external overload candidate handles immediately roundtrip through reference and definition lookup in the same workspace. [type: bug] [source: devbuild-remediation-semantic-sweep-20261021] | M | items/external-overload-candidate-handle-roundtrip.md |
 | `restore-physical-project-mutation-rendering` | Medium | workspace-restore-packages-path | Render original physical project mutations; independently ship preview, token-path and persistence parity. | M | items/restore-physical-project-mutation-rendering.md |
-| `preview-project-reference-metadata-rebase` | Medium | restore-physical-project-mutation-rendering | Preserve reference metadata replacements after sibling applies; independently repair the rebase ordering. | S | items/preview-project-reference-metadata-rebase.md |
+| `preview-project-reference-metadata-rebase` | Medium | undo-explicit-empty-capture | Preserve reference metadata replacements after sibling applies; independently repair the rebase ordering. | S | items/preview-project-reference-metadata-rebase.md |
 | `project-reference-utf16-undo-qualification` | Medium | preview-project-reference-metadata-rebase | Qualify UTF-16 metadata apply and undo after sibling rebase; ship the real-workspace regression separately. | S | items/project-reference-utf16-undo-qualification.md |
 | `preview-rebase-linked-document-project-identity` | Medium | — | Preserve project ownership when rebasing linked-document removals; add a wrong-context regression. | S | items/preview-rebase-linked-document-project-identity.md |
+| `project-reference-reload-embed-metadata` | Medium | preview-project-reference-metadata-rebase | Preserve evaluated project-reference embed metadata during load/reload; reproduce upstream omission and qualify the supported metadata seam. | M | items/project-reference-reload-embed-metadata.md |
+| `preview-token-sibling-text-real-change-coverage` | Medium | preview-project-reference-metadata-rebase | Qualify sibling token text preservation using real different mutations and exact disk/workspace contents. | S | items/preview-token-sibling-text-real-change-coverage.md |
+| `undo-audit-commit-reuses-completed-capture` | Medium | undo-explicit-empty-capture | Bind audit promotion to its owned pending undo capture; prevent capture-free records from reusing completed or failed operations. | S | items/undo-audit-commit-reuses-completed-capture.md |
+| `undo-explicit-empty-capture` | Medium | restore-physical-project-mutation-rendering | Represent explicit empty undo captures as operations with no effects; qualify latest/by-sequence replay without erasing earlier or later edits. | S | items/undo-explicit-empty-capture.md |
+| `undo-sequence-claim-exclusivity` | Medium | undo-explicit-empty-capture | Refuse restoration after losing the by-sequence undo claim; prove one winning restore with deterministic concurrent-claim coverage. | S | items/undo-sequence-claim-exclusivity.md |
 
 ## Low
 
 | id | pri | deps | do | size | detail |
 |----|-----|------|----|------|--------|
 | `tool-surface-pagination-or-tool-sets` | Low | resource-read-protocol-error-semantics | **Tool-set catalog resources** — wait for post-`recommend_workflow` evidence, then add bounded tool-set catalog resources without hiding tools. Weaker evidence — N until small-model discovery friction is reported after the router lands externally. | M | items/tool-surface-pagination-or-tool-sets.md |
-| `initiative-executor-roslyn-tool-discovery-experiment` | Low | — | **Inherited executor Roslyn first-hop experiment** — measure semantic-first-hop versus generic calls under the global executor; require a demonstrated repo-specific need before proposing a local override. [type: chore] [source: PR #1556 cold review] | S | items/initiative-executor-roslyn-tool-discovery-experiment.md |
 | `backlog-d-fragment-schema` | Low | — | **Relocate the backlog.d fragment-schema doc out of items/** — it is a canonical cross-repo schema (cited by shipped `skills/mcp-server-surface-test` prompt + `.claude/skills/backlog-intake`), not row detail; move it and update referrers in one PR. [type: docs] [source: v15-migration-20260611] | S | items/backlog-d-fragment-schema.md |
 | `move-to-git-issues` | Low | — | **Disposition the parked move-to-git-issues design** — rows 1-3 shipped v1.35.1; decide row 4 + the doc's 4 open questions (file rows or record won't-do), then retire the doc. [type: docs] [source: v15-migration-20260611] | S | items/move-to-git-issues.md |
 | `analysis-services-dedup-reference-classifiers` | Low | — | **Unify the three independent reference-site classifiers in Roslyn analysis services** — merge ConsumerAnalysisService.ClassifyDependencyKind, TypeConsumersService.ClassifyKind. [type: refactor] [source: refactor-matrix-pass1] | M | items/analysis-services-dedup-reference-classifiers.md |

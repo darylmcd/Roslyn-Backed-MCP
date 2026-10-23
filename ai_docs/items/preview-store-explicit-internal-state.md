@@ -6,7 +6,7 @@
 
 - `src/RoslynMcp.Roslyn/Services/PreviewStore.cs:68` default-false Store; line 88 assigns Unspecified provenance.
 - `src/RoslynMcp.Roslyn/Contracts/IPreviewStore.cs:23` legacy contract; lines 56/89 drop explicit kind through interface fallback.
-- `src/RoslynMcp.Roslyn/Services/ChangeSignatureService.cs:524` signature preview producer discards computed diff safety state.
+- `src/RoslynMcp.Roslyn/Services/ChangeSignatureService.cs:418` signature preview producer discards computed diff safety state.
 - `src/RoslynMcp.Roslyn/Services/BatchTestScaffolder.cs:232` batch preview computes bounded changes, then line 236 stores without them.
 - `tests/RoslynMcp.Tests/PreviewStoreTests.cs` state preservation and contract tests.
 - `tests/RoslynMcp.Tests/ChangeSignaturePreviewTests.cs` signature preview/apply safety tests.

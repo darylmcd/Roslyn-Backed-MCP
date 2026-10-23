@@ -5,7 +5,7 @@
 ## Anchors
 
 - `src/RoslynMcp.Roslyn/Services/WorkspaceSessionLoader.cs:56-62` — Information logging renders every caller-supplied MSBuild global-property value.
-- `tests/RoslynMcp.Tests/TestInfrastructure/ListLogger.cs:7-23` — existing rendered-message collector; extend or use a focused collector to inspect structured state too.
+- `tests/RoslynMcp.Tests/TestInfrastructure/ListLogger.cs:5-20` — existing rendered-message collector; extend or use a focused collector to inspect structured state too.
 - `tests/RoslynMcp.Tests/WorkspaceSessionLoaderFailureTests.cs` — existing loader test infrastructure.
 
 ## Acceptance
