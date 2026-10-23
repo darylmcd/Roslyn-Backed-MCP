@@ -113,6 +113,56 @@ public sealed class ProjectMetadataParserTryGetResolvedPackageVersionTests
     }
 
     [TestMethod]
+    [DataRow("[]")]
+    [DataRow("null")]
+    [DataRow("42")]
+    [DataRow("{\"libraries\":[]}")]
+    [DataRow("{\"libraries\":null}")]
+    [DataRow("{\"libraries\":true}")]
+    public void TryGetResolvedPackageVersion_UnexpectedJsonKind_ReturnsUnknown(string json)
+    {
+        var directory = CreateProjectDirectory();
+        Directory.CreateDirectory(Path.Combine(directory, "obj"));
+        File.WriteAllText(Path.Combine(directory, "Fixture.csproj"), "<Project />");
+        File.WriteAllText(Path.Combine(directory, "obj", "project.assets.json"), json);
+        Assert.IsNull(ProjectMetadataParser.TryGetResolvedPackageVersion(
+            Path.Combine(directory, "Fixture.csproj"), "TUnit.Engine"));
+    }
+
+    [TestMethod]
+    [DataRow("BaseIntermediateOutputPath")]
+    [DataRow("MSBuildProjectExtensionsPath")]
+    public void TryGetResolvedPackageVersion_AlternateAssetsLayout_ReadsRestoredVersion(string property)
+    {
+        var directory = CreateProjectDirectory();
+        var projectPath = Path.Combine(directory, "Fixture.csproj");
+        File.WriteAllText(projectPath, "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup></Project>");
+        File.WriteAllText(Path.Combine(directory, "Directory.Build.props"),
+            $"<Project><PropertyGroup><{property}>customobj/</{property}></PropertyGroup></Project>");
+        Directory.CreateDirectory(Path.Combine(directory, "customobj"));
+        File.WriteAllText(Path.Combine(directory, "customobj", "project.assets.json"),
+            "{\"libraries\":{\"TUnit.Engine/1.46.0\":{\"type\":\"package\"}}}");
+        Assert.AreEqual(new Version(1, 46, 0),
+            ProjectMetadataParser.TryGetResolvedPackageVersion(projectPath, "TUnit.Engine"));
+    }
+
+    [TestMethod]
+    public void TryGetResolvedPackageVersion_StaleDefaultAssets_DoNotOverrideActiveLayout()
+    {
+        var directory = CreateProjectDirectory();
+        var projectPath = Path.Combine(directory, "Fixture.csproj");
+        File.WriteAllText(projectPath, "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup></Project>");
+        File.WriteAllText(Path.Combine(directory, "Directory.Build.props"),
+            "<Project><PropertyGroup><MSBuildProjectExtensionsPath>customobj/</MSBuildProjectExtensionsPath></PropertyGroup></Project>");
+        WriteAssetsFile(directory, "\"TUnit.Engine/1.46.0\":{}");
+        Directory.CreateDirectory(Path.Combine(directory, "customobj"));
+        File.WriteAllText(Path.Combine(directory, "customobj", "project.assets.json"),
+            "{\"libraries\":{\"TUnit.Engine/1.45.0\":{\"type\":\"package\"}}}");
+        Assert.AreEqual(new Version(1, 45, 0),
+            ProjectMetadataParser.TryGetResolvedPackageVersion(projectPath, "TUnit.Engine"));
+    }
+
+    [TestMethod]
     public async Task Cleanup_DeleteFailureForOneRoot_SurfacesAggregateExceptionAfterAttemptingAllRoots()
     {
         var root1 = CreateProjectDirectory();

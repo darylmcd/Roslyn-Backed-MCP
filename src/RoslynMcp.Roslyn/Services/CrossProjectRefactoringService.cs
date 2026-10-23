@@ -174,7 +174,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             throw new PublicInvalidOperationException($"Target interface file already exists: {DescribeProjectRelativePath(targetProjectDirectory, interfaceFilePath)}");
         }
 
-        var updatedTypeDeclaration = AddBaseType(typeDeclaration, resolvedInterfaceName);
+        var updatedTypeDeclaration = AddBaseType(typeDeclaration, resolvedInterfaceName, isCrossProject ? namespaceName : null);
         var updatedSourceRoot = sourceRoot.ReplaceNode(typeDeclaration, updatedTypeDeclaration);
         // BUG-004: Do not normalize whitespace on the entire compilation unit — that re-flows
         // unrelated code (collapses multi-line bodies, reshuffles format specifiers). ReplaceNode
@@ -641,17 +641,20 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         return SyntaxFactory.AccessorList(SyntaxFactory.List(accessors));
     }
 
-    private static TypeDeclarationSyntax AddBaseType(TypeDeclarationSyntax declaration, string interfaceName)
+    private static TypeDeclarationSyntax AddBaseType(TypeDeclarationSyntax declaration, string interfaceName, string? targetNamespace)
     {
+        var interfaceTypeName = targetNamespace is null
+            ? interfaceName
+            : string.IsNullOrEmpty(targetNamespace) ? $"global::{interfaceName}" : $"global::{targetNamespace}.{interfaceName}";
         if (declaration.BaseList?.Types.Any(baseType =>
-                string.Equals(baseType.Type.ToString(), interfaceName, StringComparison.Ordinal)) == true)
+                string.Equals(baseType.Type.ToString(), interfaceTypeName, StringComparison.Ordinal)) == true)
         {
             return declaration;
         }
 
         // FORMAT-BUG-001: the interface base-type token must carry a leading space or it glues
         // onto the preceding token (`:IFoo` or `,IFoo`). Mirrors InterfaceExtractionService.
-        var interfaceType = SyntaxFactory.SimpleBaseType(SyntaxFactory.ParseTypeName(interfaceName))
+        var interfaceType = SyntaxFactory.SimpleBaseType(SyntaxFactory.ParseTypeName(interfaceTypeName))
             .WithLeadingTrivia(SyntaxFactory.Space);
 
         TypeDeclarationSyntax updated;
@@ -812,7 +815,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             throw new PublicInvalidOperationException($"Target interface file already exists: {DescribeProjectRelativePath(targetProjectDirectory, interfaceFilePath)}");
         }
 
-        var updatedTypeDeclaration = AddBaseType(typeDeclaration, interfaceName);
+        var updatedTypeDeclaration = AddBaseType(typeDeclaration, interfaceName, isCrossProject ? namespaceName : null);
         var updatedSourceRoot = sourceRoot.ReplaceNode(typeDeclaration, updatedTypeDeclaration);
         // FORMAT-BUG-002 (dr-9-3-format-bug-002-destroys-source-formatting): do NOT
         // NormalizeWhitespace() the entire source compilation unit — that re-flows every node

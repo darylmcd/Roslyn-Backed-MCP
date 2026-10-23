@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using System.Text.Json;
 using System.Xml.Linq;
 using RoslynProject = Microsoft.CodeAnalysis.Project;
+using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Roslyn.Helpers;
 
@@ -24,17 +25,16 @@ internal static class ProjectMetadataParser
             return null;
         }
 
-        var assetsPath = Path.Combine(projectDirectory, "obj", "project.assets.json");
-        if (!File.Exists(assetsPath))
-        {
-            return null;
-        }
-
         try
         {
+            var assetsPath = RestoreStalenessDetector.GetExistingAssetsPath(projectFilePath!);
+            if (assetsPath is null)
+                return null;
             using var stream = File.OpenRead(assetsPath);
             using var document = JsonDocument.Parse(stream);
-            if (!document.RootElement.TryGetProperty("libraries", out var libraries))
+            if (document.RootElement.ValueKind != JsonValueKind.Object ||
+                !document.RootElement.TryGetProperty("libraries", out var libraries) ||
+                libraries.ValueKind != JsonValueKind.Object)
             {
                 return null;
             }
@@ -58,7 +58,7 @@ internal static class ProjectMetadataParser
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         {
-            logger?.LogDebug(ex, "Failed to read resolved version of {PackageId} from {Path}", packageId, assetsPath);
+            logger?.LogDebug("Resolved package metadata could not be read ({FailureType}).", ex.GetType().Name);
             return null;
         }
     }

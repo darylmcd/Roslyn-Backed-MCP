@@ -148,7 +148,7 @@ internal sealed class DocumentSetPersistenceService
         DocumentSetPersistenceState persistenceState,
         CancellationToken ct)
     {
-        await PersistProjectReferenceChangesAsync(
+        await PrepareProjectReferenceChangesAsync(
             currentSolution,
             modifiedSolution,
             projectChange,
@@ -316,15 +316,10 @@ internal sealed class DocumentSetPersistenceService
         IReadOnlyDictionary<string, CsprojSemanticEquality.ProjectFileSnapshot> originalSnapshots,
         CancellationToken ct)
     {
-        foreach (var projectChange in solutionChanges.GetProjectChanges())
+        foreach (var group in solutionChanges.GetProjectChanges().Where(ProjectReferenceMutationRenderer.HasChanges)
+            .GroupBy(change => change.NewProject.FilePath, FileSystemPath.Comparer))
         {
-            if (!projectChange.GetAddedProjectReferences().Any()
-                && !projectChange.GetRemovedProjectReferences().Any())
-            {
-                continue;
-            }
-
-            var projectPath = modifiedSolution.GetProject(projectChange.ProjectId)?.FilePath;
+            var projectPath = group.Key;
             if (projectPath is null || !originalSnapshots.TryGetValue(projectPath, out var original))
             {
                 throw new IOException(
@@ -332,22 +327,7 @@ internal sealed class DocumentSetPersistenceService
             }
 
             var currentBytes = await _fileSystem.ReadAllBytesAsync(projectPath, ct).ConfigureAwait(false);
-            var current = CsprojSemanticEquality.CreateSnapshot(currentBytes);
-            var document = XDocument.Parse(current.Content, LoadOptions.PreserveWhitespace);
-            var projectDirectory = Path.GetDirectoryName(projectPath)
-                ?? throw new InvalidOperationException("Project file path must have a parent directory.");
-            AddProjectReferences(
-                document,
-                projectDirectory,
-                modifiedSolution,
-                projectChange.GetAddedProjectReferences());
-            RemoveProjectReferences(
-                document,
-                projectDirectory,
-                currentSolution,
-                modifiedSolution,
-                projectChange.GetRemovedProjectReferences());
-            var encodedBytes = original.Encode(document);
+            var encodedBytes = ProjectReferenceMutationRenderer.Render(original.Bytes, currentSolution, modifiedSolution, group);
             if (!currentBytes.AsSpan().SequenceEqual(encodedBytes))
             {
                 await _fileSystem.WriteAllBytesAsync(projectPath, encodedBytes, ct).ConfigureAwait(false);
@@ -372,7 +352,7 @@ internal sealed class DocumentSetPersistenceService
         }
     }
 
-    private async Task PersistProjectReferenceChangesAsync(
+    private async Task PrepareProjectReferenceChangesAsync(
         Solution currentSolution,
         Solution modifiedSolution,
         ProjectChanges projectChange,
@@ -385,9 +365,7 @@ internal sealed class DocumentSetPersistenceService
             return;
         }
 
-        var addedProjectReferences = projectChange.GetAddedProjectReferences().ToArray();
-        var removedProjectReferences = projectChange.GetRemovedProjectReferences().ToArray();
-        if (addedProjectReferences.Length == 0 && removedProjectReferences.Length == 0)
+        if (!ProjectReferenceMutationRenderer.HasChanges(projectChange))
         {
             return;
         }
@@ -395,95 +373,11 @@ internal sealed class DocumentSetPersistenceService
         var originalBytes = await _fileSystem
             .ReadAllBytesAsync(modifiedProject.FilePath, ct)
             .ConfigureAwait(false);
-        var originalSnapshot = CsprojSemanticEquality.CreateSnapshot(originalBytes);
-        var document = XDocument.Parse(originalSnapshot.Content, LoadOptions.PreserveWhitespace);
-        var projectDirectory = Path.GetDirectoryName(modifiedProject.FilePath)
-            ?? throw new InvalidOperationException("Project file path must have a parent directory.");
-        var changed = AddProjectReferences(
-            document,
-            projectDirectory,
-            modifiedSolution,
-            addedProjectReferences);
-        changed |= RemoveProjectReferences(
-            document,
-            projectDirectory,
-            currentSolution,
-            modifiedSolution,
-            removedProjectReferences);
-
-        if (!changed)
-        {
-            return;
-        }
-
-        await _fileSystem.WriteAllBytesAsync(
-            modifiedProject.FilePath,
-            originalSnapshot.Encode(document),
-            ct).ConfigureAwait(false);
-        appliedFiles.Add(modifiedProject.FilePath);
-    }
-
-    private static bool AddProjectReferences(
-        XDocument document,
-        string projectDirectory,
-        Solution modifiedSolution,
-        IEnumerable<ProjectReference> addedProjectReferences)
-    {
-        var changed = false;
-        foreach (var projectReference in addedProjectReferences)
-        {
-            var referencedProject = modifiedSolution.GetProject(projectReference.ProjectId);
-            if (referencedProject?.FilePath is null
-                || document.Descendants("ProjectReference").Any(element =>
-                    ProjectReferenceTargetsPath(
-                        (string?)element.Attribute("Include"),
-                        projectDirectory,
-                        referencedProject.FilePath)))
-            {
-                continue;
-            }
-
-            var relativePath = Path.GetRelativePath(projectDirectory, referencedProject.FilePath);
-            OrchestrationMsBuildXml.GetOrCreateItemGroup(document, "ProjectReference")
-                .Add(new XElement("ProjectReference", new XAttribute("Include", relativePath)));
-            changed = true;
-        }
-
-        return changed;
-    }
-
-    private static bool RemoveProjectReferences(
-        XDocument document,
-        string projectDirectory,
-        Solution currentSolution,
-        Solution modifiedSolution,
-        IEnumerable<ProjectReference> removedProjectReferences)
-    {
-        var changed = false;
-        foreach (var projectReference in removedProjectReferences)
-        {
-            var referencedProject = currentSolution.GetProject(projectReference.ProjectId)
-                ?? modifiedSolution.GetProject(projectReference.ProjectId);
-            if (referencedProject?.FilePath is null)
-            {
-                continue;
-            }
-
-            var element = document.Descendants("ProjectReference").FirstOrDefault(candidate =>
-                ProjectReferenceTargetsPath(
-                    (string?)candidate.Attribute("Include"),
-                    projectDirectory,
-                    referencedProject.FilePath));
-            if (element is null)
-            {
-                continue;
-            }
-
-            element.Remove();
-            changed = true;
-        }
-
-        return changed;
+        var rendered = ProjectReferenceMutationRenderer.Render(originalBytes, currentSolution, modifiedSolution, [projectChange]);
+        // MSBuildWorkspace must see the original references while it applies its change set.
+        // Install the reviewed rendering afterward, using the pre-apply snapshot for encoding.
+        if (!originalBytes.AsSpan().SequenceEqual(rendered))
+            appliedFiles.Add(modifiedProject.FilePath);
     }
 
     private async Task<IReadOnlyDictionary<string, FileMutationSnapshot>> SnapshotPotentiallyMutatedFilesAsync(

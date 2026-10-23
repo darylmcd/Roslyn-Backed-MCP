@@ -827,7 +827,7 @@ public sealed class RefactoringService : IRefactoringService
     /// and removed documents are mirrored into the rebased solution; the caller's existing
     /// document-set-change code path (PersistDocumentSetChangesAsync) then handles I/O.
     /// </summary>
-    private static async Task<Solution> RebaseModifiedSolutionOntoCurrentAsync(
+    internal static async Task<Solution> RebaseModifiedSolutionOntoCurrentAsync(
         Solution originalSolution,
         Solution modifiedSolution,
         Solution currentSolution,
@@ -1008,6 +1008,21 @@ public sealed class RefactoringService : IRefactoringService
             return rebased;
         }
 
+        foreach (var projectReference in projectChange.GetRemovedProjectReferences())
+        {
+            var referencedProject = originalSolution.GetProject(projectReference.ProjectId);
+            var rebasedReference = referencedProject is null
+                ? rebased.GetProject(projectReference.ProjectId)
+                : ResolveRebaseTargetProject(rebased, projectReference.ProjectId, referencedProject);
+            var existingReference = targetProject.ProjectReferences.FirstOrDefault(reference =>
+                reference.ProjectId == rebasedReference?.Id);
+            if (existingReference is not null)
+            {
+                rebased = rebased.RemoveProjectReference(targetProject.Id, existingReference);
+                targetProject = rebased.GetProject(targetProject.Id)!;
+            }
+        }
+
         foreach (var projectReference in projectChange.GetAddedProjectReferences())
         {
             var referencedProject = modifiedSolution.GetProject(projectReference.ProjectId);
@@ -1021,21 +1036,6 @@ public sealed class RefactoringService : IRefactoringService
                 rebased = rebased.AddProjectReference(
                     targetProject.Id,
                     new ProjectReference(rebasedReference.Id, projectReference.Aliases, projectReference.EmbedInteropTypes));
-                targetProject = rebased.GetProject(targetProject.Id)!;
-            }
-        }
-
-        foreach (var projectReference in projectChange.GetRemovedProjectReferences())
-        {
-            var referencedProject = originalSolution.GetProject(projectReference.ProjectId);
-            var rebasedReference = referencedProject is null
-                ? rebased.GetProject(projectReference.ProjectId)
-                : ResolveRebaseTargetProject(rebased, projectReference.ProjectId, referencedProject);
-            var existingReference = targetProject.ProjectReferences.FirstOrDefault(reference =>
-                reference.ProjectId == rebasedReference?.Id);
-            if (existingReference is not null)
-            {
-                rebased = rebased.RemoveProjectReference(targetProject.Id, existingReference);
                 targetProject = rebased.GetProject(targetProject.Id)!;
             }
         }

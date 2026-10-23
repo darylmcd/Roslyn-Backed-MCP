@@ -35,7 +35,7 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
     {
         // "Foo" has no '.'-separated class/method for TreeNodeFilterTranslator to recover —
         // one of several untranslatable shapes; TreeNodeFilterTranslatorTests covers the rest.
-        var (workspaceId, projectName) = await LoadTUnitFixtureAsync(withGlobalJsonOptIn: true);
+        var (workspaceId, projectName) = await LoadTUnitFixtureAsync(withGlobalJsonOptIn: true, includeDependency: false);
         try
         {
             var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
@@ -58,7 +58,7 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
         // the normal single-project call shape — must route through the same MTP plan an
         // explicitly named project gets. Before this fix, this path silently built VSTest args
         // instead and never reached TreeNodeFilterTranslator at all.
-        var (workspaceId, _) = await LoadTUnitFixtureAsync(withGlobalJsonOptIn: true);
+        var (workspaceId, _) = await LoadTUnitFixtureAsync(withGlobalJsonOptIn: true, includeDependency: false);
         try
         {
             var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
@@ -83,7 +83,7 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
         // restore tests — Translate failing on an unrestored fixture). A fake executor lets this
         // one actually reach BuildMtpNativeArguments and assert on the exact final argv, without
         // touching the network or spawning a real dotnet process.
-        var (workspaceId, _) = await LoadTUnitFixtureAsync(withGlobalJsonOptIn: true);
+        var (workspaceId, _) = await LoadTUnitFixtureAsync(withGlobalJsonOptIn: true, includeDependency: false);
         try
         {
             var recordingExecutor = new RecordingGatedCommandExecutor(restoreSucceeds: true);
@@ -121,7 +121,7 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
         // unfiltered argv above. A single atom (no '|') needs neither a resolved TUnit.Engine
         // version. Discovery still validates the atom against the loaded project so direct
         // service construction cannot bypass the fail-closed filter contract.
-        var (workspaceId, _) = await LoadTUnitFixtureAsync(withGlobalJsonOptIn: true);
+        var (workspaceId, _) = await LoadTUnitFixtureAsync(withGlobalJsonOptIn: true, includeDependency: false);
         try
         {
             var recordingExecutor = new RecordingGatedCommandExecutor(restoreSucceeds: true);
@@ -151,7 +151,7 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
     [TestMethod]
     public async Task RunTestsAsync_DirectConstruction_AmbiguousContainsFilterFailsClosed()
     {
-        var (workspaceId, _) = await LoadTUnitFixtureAsync(withGlobalJsonOptIn: true);
+        var (workspaceId, _) = await LoadTUnitFixtureAsync(withGlobalJsonOptIn: true, includeDependency: false);
         try
         {
             var recordingExecutor = new RecordingGatedCommandExecutor(restoreSucceeds: true);
@@ -225,7 +225,7 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
         // A fake executor proves the ordering (and records the restore call) without touching the
         // network -- the real end-to-end restore+translate+execute path was verified manually
         // (see TestRunnerService's tunit-treenode-filter-version-check-restore-snapshot remarks).
-        var (workspaceId, _) = await LoadTUnitFixtureAsync(withGlobalJsonOptIn: true);
+        var (workspaceId, _) = await LoadTUnitFixtureAsync(withGlobalJsonOptIn: true, includeDependency: false);
         try
         {
             var recordingExecutor = new RecordingGatedCommandExecutor(restoreSucceeds: true);
@@ -258,7 +258,7 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
     [TestMethod]
     public async Task RunTestsAsync_OrFilter_RestoreFails_ThrowsActionableErrorWithoutAttemptingDotnetTest()
     {
-        var (workspaceId, _) = await LoadTUnitFixtureAsync(withGlobalJsonOptIn: true);
+        var (workspaceId, _) = await LoadTUnitFixtureAsync(withGlobalJsonOptIn: true, includeDependency: false);
         try
         {
             var recordingExecutor = new RecordingGatedCommandExecutor(restoreSucceeds: false);
@@ -284,9 +284,88 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
         }
     }
 
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task RunTestsAsync_OrFilter_PreservesRecordedPackagesPath(bool recorded)
+    {
+        var (workspaceId, _) = await LoadTUnitFixtureAsync(withGlobalJsonOptIn: true, includeDependency: false);
+        try
+        {
+            var projectPath = WorkspaceManager.GetStatus(workspaceId).Projects[0].FilePath;
+            var packages = Path.Combine(Path.GetDirectoryName(projectPath)!, "scratch-packages");
+            var assetsDirectory = Path.Combine(Path.GetDirectoryName(projectPath)!, "obj");
+            Directory.CreateDirectory(assetsDirectory);
+            if (recorded)
+                File.WriteAllText(Path.Combine(assetsDirectory, "project.assets.json"),
+                    System.Text.Json.JsonSerializer.Serialize(new { project = new { restore = new { packagesPath = packages } } }));
+            var executor = new RecordingGatedCommandExecutor(restoreSucceeds: false);
+            var service = new TestRunnerService(WorkspaceManager, executor, NullLogger<TestRunnerService>.Instance, TestDiscoveryService);
+            await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() => service.RunTestsAsync(
+                workspaceId, projectName: null, filter: "FullyQualifiedName~MyNamespace.MyClass.Method1|FullyQualifiedName~MyNamespace.MyClass.Method2",
+                CancellationToken.None));
+            CollectionAssert.AreEqual(recorded
+                ? new[] { "restore", projectPath, "--nologo", "--packages", packages }
+                : new[] { "restore", projectPath, "--nologo" }, executor.ExecutedArguments.Single().ToArray());
+        }
+        finally { WorkspaceManager.Close(workspaceId); }
+    }
+
+
+    [TestMethod]
+    public async Task RunTestsAsync_OrFilter_RestoresSelectedDependencyClosureWithDistinctRoots()
+    {
+        var (workspaceId, _) = await LoadTUnitFixtureAsync(withGlobalJsonOptIn: true, includeDependency: true);
+        try
+        {
+            var projects = WorkspaceManager.GetStatus(workspaceId).Projects;
+            Assert.HasCount(2, projects);
+            foreach (var project in projects)
+            {
+                var obj = Path.Combine(Path.GetDirectoryName(project.FilePath)!, "obj");
+                Directory.CreateDirectory(obj);
+                File.WriteAllText(Path.Combine(obj, "project.assets.json"), System.Text.Json.JsonSerializer.Serialize(
+                    new { project = new { restore = new { packagesPath = Path.Combine(Path.GetDirectoryName(project.FilePath)!, "packages") } } }));
+            }
+            var executor = new RecordingGatedCommandExecutor(restoreSucceeds: true);
+            var service = new TestRunnerService(WorkspaceManager, executor, NullLogger<TestRunnerService>.Instance, TestDiscoveryService);
+            await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() => service.RunTestsAsync(
+                workspaceId, projectName: null, filter: "FullyQualifiedName~MyNamespace.MyClass.Method1|FullyQualifiedName~MyNamespace.MyClass.Method2",
+                CancellationToken.None));
+            Assert.HasCount(2, executor.ExecutedArguments);
+            foreach (var argv in executor.ExecutedArguments)
+            {
+                CollectionAssert.Contains(argv.ToArray(), "--no-dependencies");
+                Assert.AreEqual(Path.Combine(Path.GetDirectoryName(argv[1])!, "packages"), argv[argv.ToList().IndexOf("--packages") + 1]);
+            }
+            Assert.IsTrue(executor.Timeouts[1] <= executor.Timeouts[0], "The second restore shares the original total budget.");
+        }
+        finally { WorkspaceManager.Close(workspaceId); }
+    }
+
+
+    [TestMethod]
+    public async Task RunTestsAsync_OrFilter_ExhaustedRestoreBudget_DoesNotLaunch()
+    {
+        var (workspaceId, _) = await LoadTUnitFixtureAsync(withGlobalJsonOptIn: true, includeDependency: false);
+        try
+        {
+            var executor = new RecordingGatedCommandExecutor(restoreSucceeds: true);
+            var service = new TestRunnerService(WorkspaceManager, executor, NullLogger<TestRunnerService>.Instance,
+                TestDiscoveryService, new ValidationServiceOptions { BuildTimeout = TimeSpan.Zero });
+            await Assert.ThrowsAsync<TimeoutException>(() => service.RunTestsAsync(
+                workspaceId, projectName: null, filter: "FullyQualifiedName~MyNamespace.MyClass.Method1|FullyQualifiedName~MyNamespace.MyClass.Method2",
+                CancellationToken.None));
+            Assert.IsEmpty(executor.ExecutedArguments);
+        }
+        finally { WorkspaceManager.Close(workspaceId); }
+    }
+
     private sealed class RecordingGatedCommandExecutor(bool restoreSucceeds) : IGatedCommandExecutor
     {
         public List<IReadOnlyList<string>> ExecutedArguments { get; } = [];
+        public List<TimeSpan> Timeouts { get; } = [];
 
         public Task<CommandExecutionDto> ExecuteAsync(
             string workspaceId, string targetPath, IReadOnlyList<string> arguments, TimeSpan timeout, CancellationToken ct)
@@ -301,6 +380,7 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
             CancellationToken ct)
         {
             ExecutedArguments.Add(arguments);
+            Timeouts.Add(timeout);
             var succeeded = !string.Equals(arguments[0], "restore", StringComparison.Ordinal) || restoreSucceeds;
             return Task.FromResult(new CommandExecutionDto(
                 Command: "dotnet",
@@ -330,7 +410,7 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
         // -- --report-trx" (the legacy VSTest-mode MTP bridge) fails hard with "Testing with
         // VSTest target is no longer supported by Microsoft.Testing.Platform on .NET 10 SDK and
         // later." There is no fallback argument shape to attempt without the global.json opt-in.
-        var (workspaceId, projectName) = await LoadTUnitFixtureAsync(withGlobalJsonOptIn: false);
+        var (workspaceId, projectName) = await LoadTUnitFixtureAsync(withGlobalJsonOptIn: false, includeDependency: false);
         try
         {
             var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
@@ -345,7 +425,7 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
         }
     }
 
-    private static async Task<(string WorkspaceId, string ProjectName)> LoadTUnitFixtureAsync(bool withGlobalJsonOptIn)
+    private static async Task<(string WorkspaceId, string ProjectName)> LoadTUnitFixtureAsync(bool withGlobalJsonOptIn, bool includeDependency)
     {
         const string projectName = "TUnitFixture";
         var root = Path.Combine(TestTempRoot.Current, nameof(TUnitMtpNativeTestRunTests), Guid.NewGuid().ToString("N"));
@@ -387,6 +467,16 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
                 """{ "test": { "runner": "Microsoft.Testing.Platform" } }""");
         }
 
+        if (includeDependency)
+        {
+            var dependencyDirectory = Path.Combine(root, "Dependency");
+            Directory.CreateDirectory(dependencyDirectory);
+            File.WriteAllText(Path.Combine(dependencyDirectory, "Dependency.csproj"),
+                """<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup></Project>""");
+            var projectText = File.ReadAllText(projectPath).Replace("</Project>",
+                """<ItemGroup><ProjectReference Include="Dependency/Dependency.csproj"/></ItemGroup></Project>""", StringComparison.Ordinal);
+            File.WriteAllText(projectPath, projectText);
+        }
         var loaded = await WorkspaceManager.LoadAsync(projectPath, CancellationToken.None);
         return (loaded.WorkspaceId, projectName);
     }
