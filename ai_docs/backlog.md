@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-23T14:27:41Z
+**updated_at:** 2026-10-23T16:07:22Z
 
 ## Agent contract
 
@@ -109,7 +109,7 @@
 | `logging-dependency-boundary-duration-missing` | Medium | logging-jsonl-drops-structured-state | **Emit duration and outcome for subprocess and workspace-load boundaries** — the dotnet-command event has target+exit code but no duration; MSBuild workspace load has no boundary event. [type: quality] [source: logging-audit 20260930-1340] | M | items/logging-dependency-boundary-duration-missing.md |
 | `logging-process-vitals-absent` | Medium | — | **Expose process vitals in server_heartbeat and the JSON-lines stream** — memory, GC, thread-pool and execution-gate depth are visible nowhere an agent can read headlessly. [type: quality] [source: logging-audit 20260930-1340] | M | items/logging-process-vitals-absent.md |
 | `logging-observability-contract-doc-incomplete` | Medium | logging-jsonl-drops-structured-state,logging-event-id-collisions-no-catalog | **Complete the observability contract docs with agent recipes** — add file-name pattern, correlate/timing/health recipes and event table to consumer docs, and the A10 section to AGENTS.md. [type: docs] [source: logging-audit 20260930-1340] | S | items/logging-observability-contract-doc-incomplete.md |
-| `restore-callers-missing-packages-path` | Medium | workspace-restore-packages-path | Preserve assets-recorded package roots and the reviewed fork graph through one shared restore plan; retain nullable roots, source isolation and mixed-root dependency restores. [type: bug] [source: preserved re-plan] | L | items/restore-callers-missing-packages-path.md |
+| `restore-callers-missing-packages-path` | Medium | workspace-restore-packages-path,project-reference-utf16-undo-qualification | Preserve assets-recorded package roots and the reviewed fork graph through one shared restore plan; retain nullable roots, source isolation and mixed-root dependency restores. [type: bug] [source: preserved re-plan] | L | items/restore-callers-missing-packages-path.md |
 | `split-service-refuse-cross-partition-references` | Medium | — | **Preserve semantic references across service partitions** — replace name-only discovery with source-owned composition for dependent moved members; refuse only proven unrepresentable external shapes. [type: bug] [source: split-service-with-di-refuse-unsupported-method-shapes] | M | items/split-service-refuse-cross-partition-references.md |
 | `split-service-refuse-unsupported-method-signatures` | Medium | split-service-refuse-cross-partition-references | **Refuse split_service_with_di_preview for method shapes the stub cannot forward** — static, override/abstract, explicit-interface, ref-returning and generic-with-constraints methods, and generic source types. [type: bug] [source: split-service-with-di-refuse-unsupported-method-shapes] | M | items/split-service-refuse-unsupported-method-signatures.md |
 | `split-service-forward-ref-out-in-arguments` | Medium | split-service-refuse-unsupported-method-signatures | **Forward ref/out/in arguments with their modifiers in split_service_with_di forwarding stubs** — stubs emit bare identifiers, so ref/out/in parameters fail to compile. [type: bug] [source: split-service-with-di-refuse-unsupported-method-shapes] | S | items/split-service-forward-ref-out-in-arguments.md |
@@ -147,6 +147,10 @@
 | `refactoring-service-plain-caller-refusals` | Medium | — | **Classify RefactoringService plain InvalidOperationException refusals as public caller corrections or Internal** — rename-of-metadata-symbol is duplicated, and :671 embeds an absolute path. [type: bug] [source: refusal publication review 20261020] | M | items/refactoring-service-plain-caller-refusals.md |
 | `editorconfig-reader-fidelity` | Medium | — | **Make the editorconfig reader agree with the Roslyn parser** — empty values are dropped, line splitting ignores NEL/LS/PS, a nonexistent dotnet_diagnostic.severity key is used, and the file is parsed twice per read. [type: bug] [source: editorconfig grammar PR review 20261020] | M | items/editorconfig-reader-fidelity.md |
 | `external-overload-candidate-handle-roundtrip` | Medium | — | Make external overload candidate handles immediately roundtrip through reference and definition lookup in the same workspace. [type: bug] [source: devbuild-remediation-semantic-sweep-20261021] | M | items/external-overload-candidate-handle-roundtrip.md |
+| `restore-physical-project-mutation-rendering` | Medium | workspace-restore-packages-path | Render original physical project mutations; independently ship preview, token-path and persistence parity. | M | items/restore-physical-project-mutation-rendering.md |
+| `preview-project-reference-metadata-rebase` | Medium | restore-physical-project-mutation-rendering | Preserve reference metadata replacements after sibling applies; independently repair the rebase ordering. | S | items/preview-project-reference-metadata-rebase.md |
+| `project-reference-utf16-undo-qualification` | Medium | preview-project-reference-metadata-rebase | Qualify UTF-16 metadata apply and undo after sibling rebase; ship the real-workspace regression separately. | S | items/project-reference-utf16-undo-qualification.md |
+| `preview-rebase-linked-document-project-identity` | Medium | — | Preserve project ownership when rebasing linked-document removals; add a wrong-context regression. | S | items/preview-rebase-linked-document-project-identity.md |
 
 ## Low
 
