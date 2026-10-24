@@ -9,7 +9,7 @@ namespace RoslynMcp.Roslyn.Services;
 /// <summary>Rejects evaluated file paths that would cross from the copied graph back into source.</summary>
 internal static class ForkGraphPreparation
 {
-    // These are physical destinations consumed by restore, the SDK and compiler targets.
+    // These are physical destinations and explicit inputs consumed by restore, the SDK and compiler targets.
     // Evaluation identities such as MSBuildProjectDirectory are deliberately not destinations.
     private static readonly string[] OutputProperties =
     [
@@ -21,7 +21,7 @@ internal static class ForkGraphPreparation
         "PublishDir", "PublishUrl", "ArtifactsPath", "AssemblyOriginatorKeyFile", "ApplicationIcon",
         "ApplicationManifest", "Win32Resource", "CodeAnalysisRuleSet", "SourceLink",
         "WinMDOutputDocumentationFile", "WinMDExpOutputPdb", "_IntermediateWindowsMetadataPath",
-        "GeneratedMSBuildEditorConfigFile",
+        "GeneratedMSBuildEditorConfigFile", "AppConfig",
     ];
 
     private static readonly HashSet<string> FileItems = new(StringComparer.OrdinalIgnoreCase)
@@ -30,6 +30,16 @@ internal static class ForkGraphPreparation
         "EmbeddedResource", "Content", "None", "ReferencePath", "ReferenceCopyLocalPaths",
         "IntermediateAssembly", "IntermediateRefAssembly", "DocFileItem", "FileWrites",
         "EditorConfigFiles", "AnalyzerConfigFiles",
+    };
+
+    private static readonly HashSet<string> CopyItems = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Content", "None", "Compile", "EmbeddedResource",
+    };
+
+    private static readonly HashSet<string> CopyModes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Always", "PreserveNewest", "IfDifferent",
     };
 
     private static readonly HashSet<string> LogicalItems = new(StringComparer.OrdinalIgnoreCase)
@@ -106,7 +116,8 @@ internal static class ForkGraphPreparation
             var include = ProjectInstance.GetEvaluatedItemIncludeEscaped(item);
             // The SDK enumerates candidate ancestor configs at evaluation, then feeds only
             // existing files to the compiler through EditorConfigFiles (Managed.Core.targets).
-            if (item.ItemType is "PotentialEditorConfigFiles" or "GlobalAnalyzerConfigFiles")
+            if (item.ItemType.Equals("PotentialEditorConfigFiles", StringComparison.OrdinalIgnoreCase) ||
+                item.ItemType.Equals("GlobalAnalyzerConfigFiles", StringComparison.OrdinalIgnoreCase))
             {
                 var candidate = PhysicalPathResolver.Resolve(Path.IsPathRooted(item.EvaluatedInclude)
                     ? item.EvaluatedInclude : Path.Join(projectDirectory, item.EvaluatedInclude));
@@ -114,6 +125,20 @@ internal static class ForkGraphPreparation
             }
             else if (FileItems.Contains(item.ItemType)) CheckList(include, item.ItemType);
             else if (!LogicalItems.Contains(item.ItemType) && IsPhysical(item.EvaluatedInclude)) CheckList(include, item.ItemType);
+
+            // AssignTargetPath preserves explicit TargetPath, then Link. These values become
+            // physical destinations only for items the common targets copy into OutDir.
+            if (CopyItems.Contains(item.ItemType) && CopyModes.Contains(item.GetMetadataValue("CopyToOutputDirectory")))
+            {
+                var target = item.GetMetadataValue("TargetPath");
+                if (string.IsNullOrEmpty(target)) target = item.GetMetadataValue("Link");
+                if (!string.IsNullOrEmpty(target)) Check(project.GetPropertyValue("OutDir") + target, item.ItemType + ".TargetPath");
+            }
+            if (item.ItemType.Equals("ReferenceCopyLocalPaths", StringComparison.OrdinalIgnoreCase))
+            {
+                Check(project.GetPropertyValue("OutDir") + item.GetMetadataValue("DestinationSubDirectory") +
+                    item.GetMetadataValue("Filename") + item.GetMetadataValue("Extension"), "ReferenceCopyLocalPaths.DestinationSubDirectory");
+            }
 
             // Reference Include can be an assembly identity. HintPath is always a file;
             // a path-valued Include is also physical, unlike a simple assembly name.

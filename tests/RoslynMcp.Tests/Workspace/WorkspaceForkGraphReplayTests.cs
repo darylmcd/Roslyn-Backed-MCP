@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Xml.Linq;
 using Microsoft.Build.Evaluation;
 using Microsoft.Build.Execution;
@@ -56,7 +57,7 @@ public sealed class WorkspaceForkGraphReplayTests : IsolatedWorkspaceTestBase
             var store = new PreviewStore();
             var token = store.Store(source.WorkspaceId, original, original, version,
                 "unchanged graph", false, PreviewKind.Unspecified);
-            var entry = store.Retrieve(token);
+            var entry = CapturePreviewEntry(store, token);
             var runner = new BoundaryRunner(source.RootPath);
             var service = new WorkspaceForkApplyService(WorkspaceManager, WorkspaceExecutionGate, store,
                 null!, null!, runner, NullLogger<WorkspaceForkApplyService>.Instance);
@@ -76,7 +77,7 @@ public sealed class WorkspaceForkGraphReplayTests : IsolatedWorkspaceTestBase
             Assert.AreSame(original, WorkspaceManager.GetCurrentSolution(source.WorkspaceId));
             Assert.AreEqual(version, WorkspaceManager.GetCurrentVersion(source.WorkspaceId));
             Assert.AreEqual(status.SnapshotToken, (await WorkspaceManager.GetStatusAsync(source.WorkspaceId)).SnapshotToken);
-            Assert.AreEqual(entry, store.Retrieve(token));
+            Assert.AreEqual(entry, CapturePreviewEntry(store, token));
             foreach (var (path, expected) in bytes)
                 CollectionAssert.AreEqual(expected, File.ReadAllBytes(path), path);
             Assert.IsFalse(Directory.Exists(Path.Combine(source.RootPath, "escaped")));
@@ -85,6 +86,61 @@ public sealed class WorkspaceForkGraphReplayTests : IsolatedWorkspaceTestBase
         {
             TestFixtureFileSystem.DeleteDirectoryIfExists(external);
         }
+    }
+
+    [TestMethod]
+    [DataRow("AppConfig")]
+    [DataRow("Content")]
+    [DataRow("None")]
+    [DataRow("Compile")]
+    [DataRow("EmbeddedResource")]
+    [DataRow("ReferenceCopyLocalPaths")]
+    [DataRow("ContentLink")]
+    public async Task UnchangedPreview_CompilerAndCopyPaths_RefusesBeforeRunner(string role)
+    {
+        await using var source = CreateIsolatedWorkspaceCopy();
+        var sourceConfig = source.GetPath("source.config");
+        File.WriteAllText(sourceConfig, "<configuration />");
+        var projectPath = source.GetPath("SampleLib", "SampleLib.csproj");
+        var project = XDocument.Load(projectPath);
+        if (role == "AppConfig")
+            project.Root!.Add(new XElement("PropertyGroup", new XElement("AppConfig", sourceConfig)));
+        else
+        {
+            File.WriteAllText(source.GetPath("SampleLib", "copy.txt"), "copy input");
+            project.Root!.Add(new XElement("PropertyGroup", new XElement("OutDir", "bin/")));
+            project.Root!.Add(new XElement("ItemGroup", new XElement(role == "ContentLink" ? "Content" : role, new XAttribute("Include", "copy.txt"),
+                new XElement("CopyToOutputDirectory", "Always"),
+                new XElement(role == "ContentLink" ? "Link" : role == "ReferenceCopyLocalPaths" ? "DestinationSubDirectory" : "TargetPath",
+                    role == "ReferenceCopyLocalPaths" ? "../../../../../" : "../../../../../copy-output.txt"))));
+        }
+        project.Save(projectPath);
+        await source.LoadAsync();
+        var original = WorkspaceManager.GetCurrentSolution(source.WorkspaceId);
+        var version = WorkspaceManager.GetCurrentVersion(source.WorkspaceId);
+        var status = await WorkspaceManager.GetStatusAsync(source.WorkspaceId);
+        var bytes = Directory.GetFiles(source.RootPath, "*", SearchOption.AllDirectories)
+            .ToDictionary(path => path, File.ReadAllBytes);
+        var store = new PreviewStore();
+        var token = store.Store(source.WorkspaceId, original, original, version, "unchanged", false, PreviewKind.Unspecified);
+        var entry = CapturePreviewEntry(store, token);
+        var runner = new CopyBoundaryRunner(source.RootPath, role);
+        var service = new WorkspaceForkApplyService(WorkspaceManager, WorkspaceExecutionGate, store,
+            null!, null!, runner, NullLogger<WorkspaceForkApplyService>.Instance);
+        Exception? refusal = null;
+        try
+        {
+            await service.ApplyAsync(source.WorkspaceId, token, "drop-always", true, null, null, CancellationToken.None);
+        }
+        catch (InvalidOperationException ex) { refusal = ex; }
+        Assert.AreEqual(0, runner.Calls, "An evaluated compiler input or copy destination in source reached the runner.");
+        Assert.IsInstanceOfType<IPublicMessageException>(refusal);
+        StringAssert.Contains(refusal!.Message, "source workspace");
+        Assert.AreSame(original, WorkspaceManager.GetCurrentSolution(source.WorkspaceId));
+        Assert.AreEqual(version, WorkspaceManager.GetCurrentVersion(source.WorkspaceId));
+        Assert.AreEqual(status.SnapshotToken, (await WorkspaceManager.GetStatusAsync(source.WorkspaceId)).SnapshotToken);
+        Assert.AreEqual(entry, CapturePreviewEntry(store, token));
+        foreach (var (path, expected) in bytes) CollectionAssert.AreEqual(expected, File.ReadAllBytes(path), path);
     }
 
     [TestMethod]
@@ -176,6 +232,40 @@ public sealed class WorkspaceForkGraphReplayTests : IsolatedWorkspaceTestBase
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or PlatformNotSupportedException)
         {
             Assert.Inconclusive("Directory link creation failed: " + ex.Message);
+        }
+    }
+
+    internal static RoslynMcp.Roslyn.Services.PreviewStore.PreviewEntry CapturePreviewEntry(IPreviewStore store, string token)
+    {
+        // The public tuple omits creation time, provenance and redemption ceiling.
+        // Invoke the store's protected lookup to compare the complete authority without changing it.
+        var lookup = typeof(BoundedStore<RoslynMcp.Roslyn.Services.PreviewStore.PreviewEntry>)
+            .GetMethod("RetrieveEntry", BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new AssertFailedException("Preview entry lookup is missing.");
+        return (RoslynMcp.Roslyn.Services.PreviewStore.PreviewEntry)(lookup.Invoke(store, [token])
+            ?? throw new AssertFailedException("Preview authority was consumed."));
+    }
+
+    private sealed class CopyBoundaryRunner(string sourceRoot, string role) : IDotnetCommandRunner
+    {
+        internal int Calls { get; private set; }
+
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        public Task<CommandExecutionDto> RunAsync(string workingDirectory, string targetPath,
+            IReadOnlyList<string> arguments, CancellationToken ct)
+        {
+            Calls++;
+            using var collection = new ProjectCollection();
+            var project = new ProjectInstance(Path.Combine(workingDirectory, "SampleLib", "SampleLib.csproj"), null, null, collection);
+            var item = role == "AppConfig" ? null : project.GetItems(role == "ContentLink" ? "Content" : role)
+                .Single(i => i.EvaluatedInclude == "copy.txt");
+            var destination = item?.GetMetadataValue(role == "ContentLink" ? "Link"
+                : role == "ReferenceCopyLocalPaths" ? "DestinationSubDirectory" : "TargetPath");
+            if (role == "ReferenceCopyLocalPaths") destination += "copy.txt";
+            var value = role == "AppConfig" ? project.GetPropertyValue("AppConfig")
+                : Path.Join(Path.GetDirectoryName(project.FullPath), project.GetPropertyValue("OutDir"), destination);
+            Assert.IsTrue(FileSystemPath.IsStrictDescendant(sourceRoot, PhysicalPathResolver.Resolve(value)));
+            throw new InvalidOperationException("Recording boundary stopped native execution.");
         }
     }
 

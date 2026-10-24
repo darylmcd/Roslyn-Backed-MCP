@@ -1,5 +1,6 @@
 using System.Xml.Linq;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Helpers;
 using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
@@ -156,6 +157,111 @@ public sealed class ForkGraphPreparationTests : IsolatedWorkspaceTestBase
         calls = 0;
         Assert.Throws<OperationCanceledException>(() => ForkGraphPreparation.Validate(fixture.Entry,
             fixture.Source, fixture.Fork, () => { if (++calls == 3) during.Cancel(); return TimeSpan.FromMinutes(1); }, during.Token));
+    }
+
+    [TestMethod]
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    public void RealSdkImportsAndFrameworkBookkeeping_AreIndependentExternalInputs()
+    {
+        using var fixture = new GraphFixture();
+        new XDocument(new XElement("Project", new XAttribute("Sdk", "Microsoft.NET.Sdk"),
+            new XElement("PropertyGroup", new XElement("TargetFramework", "net10.0")))).Save(fixture.Entry);
+        RestoreInvocationPlanner.EvaluateGraph(fixture.Entry, () => TimeSpan.FromMinutes(1), CancellationToken.None,
+            (graph, _) =>
+            {
+                var project = graph.ProjectNodes.Single().ProjectInstance;
+                Assert.IsTrue(project.ImportPaths.Count > 0, "A real SDK must supply contributing imports.");
+                foreach (var import in project.ImportPaths)
+                    Assert.IsFalse(FileSystemPath.IsStrictDescendant(fixture.Source, PhysicalPathResolver.Resolve(import)));
+                Assert.IsTrue(project.GetItems("FrameworkReference").Any(), "SDK framework identities must remain logical.");
+                return true;
+            });
+        fixture.Validate();
+    }
+
+    [TestMethod]
+    public void CopyMetadata_IsPhysicalOnlyWhenCopied_AndUsesItsOutputBase()
+    {
+        using var fixture = new GraphFixture();
+        foreach (var mode in new[] { "Always", "PreserveNewest", "IfDifferent", "always", "preservenewest", "ifdifferent" })
+        {
+            fixture.Write(new XElement("PropertyGroup", new XElement("OutDir", fixture.Fork + "/bin/")),
+                new XElement("ItemGroup", new XElement("Content", new XAttribute("Include", "input.txt"),
+                    new XElement("CopyToOutputDirectory", mode), new XElement("TargetPath", "../../../../escape.txt"))));
+            AssertIsolationRefusal(fixture);
+        }
+        fixture.Write(new XElement("PropertyGroup", new XElement("OutDir", fixture.Fork + "/bin/")),
+            new XElement("ItemGroup", new XElement("Content", new XAttribute("Include", "input.txt"),
+                new XElement("CopyToOutputDirectory", "Never"), new XElement("Link", fixture.SourcePath("logical.txt")))));
+        fixture.Validate();
+        fixture.Write(new XElement("PropertyGroup", new XElement("OutDir", fixture.Fork + "/bin/")),
+            new XElement("ItemGroup", new XElement("Content", new XAttribute("Include", "input.txt"),
+                new XElement("CopyToOutputDirectory", "Always"), new XElement("TargetPath", "safe/input.txt"),
+                new XElement("Link", fixture.SourcePath("ignored-logical.txt")))));
+        fixture.Validate();
+    }
+
+    [TestMethod]
+    public void ItemRoleNames_UseMsBuildCaseInsensitiveIdentity()
+    {
+        using var fixture = new GraphFixture();
+        fixture.Write(new XElement("ItemGroup",
+            new XElement("potentialeditorconfigfiles", new XAttribute("Include", fixture.SourcePath("missing.editorconfig"))),
+            new XElement("globalanalyzerconfigfiles", new XAttribute("Include", fixture.SourcePath("missing.globalconfig")))));
+        fixture.Validate();
+        fixture.Write(new XElement("PropertyGroup", new XElement("OutDir", fixture.Fork + "/bin/")),
+            new XElement("ItemGroup", new XElement("content", new XAttribute("Include", "input.txt"),
+                new XElement("CopyToOutputDirectory", "Always"), new XElement("TargetPath", "../../../../escape.txt"))));
+        AssertIsolationRefusal(fixture);
+    }
+
+    [TestMethod]
+    public void PhysicalLinkCycle_IsAnActionableSanitizedRefusal()
+    {
+        using var fixture = new GraphFixture();
+        var first = Path.Combine(fixture.Root, "PRIVATE-cycle-first");
+        var second = Path.Combine(fixture.Root, "PRIVATE-cycle-second");
+        WorkspaceForkGraphReplayTests.CreateLink(first, second);
+        try
+        {
+            WorkspaceForkGraphReplayTests.CreateLink(second, first);
+            try
+            {
+                fixture.Write(new XElement("PropertyGroup", new XElement("OutputPath", Path.Join(first, "missing"))));
+                var physicalFailure = Assert.ThrowsExactly<IOException>(() => PhysicalPathResolver.Resolve(Path.Join(first, "missing")));
+                StringAssert.Contains(physicalFailure.Message, "cycle detected");
+                var exception = Assert.Throws<InvalidOperationException>(fixture.Validate);
+                Assert.IsInstanceOfType<IPublicMessageException>(exception);
+                StringAssert.Contains(exception.Message, "Correct the project evaluation errors and retry");
+                Assert.IsFalse(exception.Message.Contains("PRIVATE", StringComparison.Ordinal));
+                StringAssert.Contains(exception.ToString(), "cycle detected");
+            }
+            finally { Directory.Delete(second); }
+        }
+        finally { Directory.Delete(first); }
+    }
+
+    [TestMethod]
+    public void ProjectionCancellationAndBudget_AreObservedAfterGraphCapture()
+    {
+        using var fixture = new GraphFixture();
+        fixture.Write(new XElement("ItemGroup", new XElement("Compile", new XAttribute("Include", "safe.cs"))));
+        using var cancellation = new CancellationTokenSource();
+        // For this single .proj: phase admission, graph loop, instance factory and
+        // graph completion consume four budget probes. Probe six is the project-path projection.
+        var calls = 0;
+        Assert.Throws<OperationCanceledException>(() => ForkGraphPreparation.Validate(fixture.Entry,
+            fixture.Source, fixture.Fork, () =>
+            {
+                if (++calls == 6) cancellation.Cancel();
+                return TimeSpan.FromMinutes(1);
+            }, cancellation.Token));
+        Assert.AreEqual(6, calls);
+        calls = 0;
+        Assert.ThrowsExactly<TimeoutException>(() => ForkGraphPreparation.Validate(fixture.Entry,
+            fixture.Source, fixture.Fork, () => ++calls == 6 ? throw new TimeoutException("projection budget")
+                : TimeSpan.FromMinutes(1), CancellationToken.None));
+        Assert.AreEqual(6, calls);
     }
 
     [TestMethod]

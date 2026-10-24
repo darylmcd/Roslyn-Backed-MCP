@@ -517,7 +517,7 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService
     internal async Task RestoreForkAsync(string forkLoadedPath, string sourceRoot, string forkRoot, CancellationToken ct)
     {
         var workingDirectory = Path.GetDirectoryName(forkLoadedPath)
-            ?? throw new InvalidOperationException(
+            ?? throw InvalidOperationErrors.Internal(
                 $"Could not resolve working directory for fork '{forkLoadedPath}'.");
         var timeoutMinutes = ResolveForkRestoreTimeoutMinutes();
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -552,7 +552,7 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService
                 "dotnet restore for workspace fork failed with exit code {ExitCode}. Diagnostic: {Diagnostic}",
                 execution.ExitCode,
                 detail);
-            throw new InvalidOperationException(
+            throw InvalidOperationErrors.Internal(
                 $"dotnet restore for workspace fork failed with exit code {execution.ExitCode}. {detail}");
         }
     }
