@@ -1276,7 +1276,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             // the result to a cache miss and writes a fresh entry.
             var projectStatuses = BuildProjectStatuses(newWorkspace.CurrentSolution);
             var documentPaths = BuildDocumentPathIndex(newWorkspace.CurrentSolution);
-            var restoreRequired = _restoreStalenessDetector.DetectRestoreRequired(projectStatuses, _logger) ||
+            var restoreRequired = _restoreStalenessDetector.DetectRestoreRequired(projectStatuses, newWorkspace.Properties, _logger) ||
                                   RestoreStalenessDetector.HasRestoreRequiredWorkspaceDiagnostics(diagnosticsSink.Queue);
             // restore-required-vs-build-conflation: an unresolved-analyzer warning is a missing
             // BUILD output, distinct from a missing NuGet package. Track it separately so the
