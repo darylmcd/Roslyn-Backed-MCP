@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
+using System.Runtime.ExceptionServices;
 using System.Text.Json;
 using System.Threading;
 using System.Xml.Linq;
@@ -19,7 +20,7 @@ namespace RoslynMcp.Roslyn.Services;
 /// solution-mutation operations. Each session is independently versioned and monitored
 /// for file-system staleness via <see cref="RoslynMcp.Core.Services.IFileWatcherService"/>.
 /// </summary>
-public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
+public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDisposable
 {
     private const int MaxDiagnosticsPerWorkspace = 200;
 
@@ -110,9 +111,54 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
     /// <summary>Limits concurrent workspace sessions; paired with <see cref="Close"/> and <see cref="Dispose"/>.</summary>
     private readonly SemaphoreSlim _workspaceSlots;
     private readonly CancellationTokenSource _lifetimeCancellation = new();
-    private readonly object _rootRetirementSync = new();
+    private readonly object _lifecycleSync = new();
     private readonly Dictionary<string, Task> _rootRetirementTasks = new(StringComparer.Ordinal);
     private bool _disposing;
+    private bool _removalAdmissionClosed;
+    private readonly Dictionary<WorkspaceSession, int> _sourceOperations = new();
+    private int _sourceOperationCount;
+    private TaskCompletionSource? _sourceOperationsDrained;
+    private int _slowRemovalCount;
+    private TaskCompletionSource? _slowRemovalsDrained;
+    private Task? _shutdownTask;
+    private ExceptionDispatchInfo? _shutdownFailure;
+
+    /// <summary>
+    /// Retains the exact registered source session until the callback and its cleanup finish.
+    /// This is logical lifecycle ownership; it does not lock the source against edits/reload.
+    /// </summary>
+    internal async Task<WorkspaceForkApplyResultDto> RunWithRetainedForkSourceAsync(
+        string workspaceId, Func<CancellationToken, Task<WorkspaceForkApplyResultDto>> operation, CancellationToken ct)
+    {
+        WorkspaceSession session;
+        lock (_lifecycleSync)
+        {
+            ObjectDisposedException.ThrowIf(_disposing, this);
+            if (!_sessions.TryGetValue(workspaceId, out session!))
+                throw CreateWorkspaceNotFoundException(workspaceId);
+            if (_sourceOperationCount++ == 0)
+                _sourceOperationsDrained = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            _sourceOperations.TryGetValue(session, out var count);
+            _sourceOperations[session] = count + 1;
+        }
+
+        try
+        {
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, _lifetimeCancellation.Token);
+            return await operation(linked.Token).ConfigureAwait(false);
+        }
+        finally
+        {
+            lock (_lifecycleSync)
+            {
+                var remaining = _sourceOperations[session] - 1;
+                if (remaining == 0) _sourceOperations.Remove(session);
+                else _sourceOperations[session] = remaining;
+                if (--_sourceOperationCount == 0) _sourceOperationsDrained!.TrySetResult();
+            }
+        }
+    }
+
 
     /// <inheritdoc />
     public event Action<string>? WorkspaceClosed;
@@ -303,49 +349,30 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         {
             if (evictPolicy == EvictPolicy.Lru)
             {
-                // parallel-mode-workspace-cap-lru-or-raise: LRU eviction path.
-                // Pick the session with the smallest LastAccessedUtc, skipping any that
-                // currently hold their LoadLock. LoadLock is acquired ONLY by
-                // LoadIntoSessionAsync, so this filter excludes exactly the sessions that are
-                // mid-workspace_load / mid-reload — and nothing else.
-                //
-                // lru-eviction-gate-layer-execution: the LoadLock filter alone does NOT exclude a
-                // session with in-flight gated reads or writes, so candidate SELECTION is not a
-                // safety boundary. Eviction EXECUTION supplies it: EvictForCapAsync runs Close()
-                // under WorkspaceExecutionGate's per-workspace WRITER lock (see that method), the
-                // same nesting workspace_close / workspace_reload use (WorkspaceTools.cs), so
-                // in-flight readers/writers drain before the session is removed and disposed.
-                // Pinned by
-                // WorkspaceCapLruEvictionTests.LruEviction_WhileGatedReadInFlight_BlocksUntilReaderDrains.
-                //
-                // If all sessions are mid-load, fall through to the Strict error path.
-                var lruCandidate = _sessions.Values
-                    .Where(s => s.LoadLock.CurrentCount > 0)
-                    .OrderBy(s => s.LastAccessedUtc)
-                    .FirstOrDefault();
-
-                if (lruCandidate is not null)
+                // A finite snapshot permits reconsidering later victims when retention wins
+                // after selection. Removal rechecks the exact session under lifecycle sync.
+                WorkspaceSession[] candidates;
+                lock (_lifecycleSync)
                 {
-                    _logger.LogInformation(
-                        "workspace_load: LRU eviction of workspace '{WorkspaceId}' (lastAccessed={LastAccessedUtc:O}) to make room for '{Path}'",
-                        lruCandidate.WorkspaceId,
-                        lruCandidate.LastAccessedUtc,
-                        fullPath);
-                    await EvictForCapAsync(lruCandidate.WorkspaceId, ct).ConfigureAwait(false);
-
-                    // The eviction released a semaphore slot (or a concurrent caller already
-                    // evicted this candidate and released it) — retry immediately.
-                    if (!await _workspaceSlots.WaitAsync(0, ct).ConfigureAwait(false))
-                    {
-                        // The slot was consumed by a concurrent caller between the Close() and
-                        // our retry. Fall through to the Strict error path.
-                        goto strictError;
-                    }
-                    goto slotAcquired;
+                    candidates = _sessions.Values
+                        .Where(session => session.LoadLock.CurrentCount > 0 && !_sourceOperations.ContainsKey(session))
+                        .OrderBy(session => session.LastAccessedUtc).ToArray();
+                }
+                foreach (var candidate in candidates)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    await EvictForCapAsync(candidate, ct).ConfigureAwait(false);
+                    if (await _workspaceSlots.WaitAsync(0, ct).ConfigureAwait(false)) goto slotAcquired;
                 }
             }
 
-        strictError:
+            bool retainedSource;
+            lock (_lifecycleSync) retainedSource = _sourceOperationCount > 0;
+            if (retainedSource)
+                throw new PublicInvalidOperationException(
+                    "Workspace capacity is full and an active fork retains its source workspace. " +
+                    "Close another idle workspace, increase workspace capacity, or wait for or cancel the fork before closing its source.");
+
             var activeWorkspaces = _sessions.Values
                 .Select(s => new
                 {
@@ -466,23 +493,25 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
     /// purely additive.
     /// </para>
     /// </remarks>
-    private async Task EvictForCapAsync(string workspaceId, CancellationToken ct)
+    private async Task EvictForCapAsync(WorkspaceSession candidate, CancellationToken ct)
     {
+        var workspaceId = candidate.WorkspaceId;
         if (_evictionGate is null)
         {
-            Close(workspaceId);
+            CloseCore(workspaceId, recordEviction: true, refuseRetained: false, expected: candidate);
             return;
         }
 
         var gate = _evictionGate.Value;
+        var removed = false;
         try
         {
             await gate.RunWriteAsync(
                 workspaceId,
                 _ =>
                 {
-                    Close(workspaceId);
-                    return Task.FromResult(true);
+                    removed = CloseCore(workspaceId, recordEviction: true, refuseRetained: false, expected: candidate);
+                    return Task.FromResult(removed);
                 },
                 ct,
                 applyStalenessPolicy: false).ConfigureAwait(false);
@@ -499,7 +528,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             return;
         }
 
-        gate.RemoveGate(workspaceId);
+        if (removed) gate.RemoveGate(workspaceId);
     }
 
     public async Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct)
@@ -519,55 +548,76 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         return BuildStatus(session);
     }
 
-    public bool Close(string workspaceId) => CloseCore(workspaceId, recordEviction: true);
+    public bool Close(string workspaceId) => CloseCore(workspaceId, recordEviction: true, refuseRetained: true, expected: null);
 
-    private bool CloseCore(string workspaceId, bool recordEviction)
+    private bool CloseCore(string workspaceId, bool recordEviction, bool refuseRetained, WorkspaceSession? expected)
     {
-        if (!_sessions.TryRemove(workspaceId, out var session))
+        WorkspaceSession session;
+        lock (_lifecycleSync)
         {
-            return false;
+            ObjectDisposedException.ThrowIf(_removalAdmissionClosed, this);
+            if (!_sessions.TryGetValue(workspaceId, out session!) || (expected is not null && !ReferenceEquals(session, expected)))
+                return false;
+            if (_sourceOperations.ContainsKey(session))
+            {
+                if (refuseRetained)
+                    throw new PublicInvalidOperationException("Workspace is busy as a fork source. Wait for the fork to finish or cancel it before closing the workspace.");
+                return false;
+            }
+            if (!_sessions.TryRemove(new KeyValuePair<string, WorkspaceSession>(workspaceId, session))) return false;
+            if (_slowRemovalCount++ == 0)
+                _slowRemovalsDrained = new(TaskCreationOptions.RunContinuationsAsynchronously);
         }
 
-        // mcp-error-category-workspace-evicted-on-host-recycle + workspace-id-recovery-hints:
-        // record the original loadedAt and loadedPath before the session is disposed so a
-        // subsequent lookup against this id can surface the structured
-        // WorkspaceEvictedException with the timestamp AND the rehydration path populated.
-        if (recordEviction)
+        try { RemoveSessionEffects(session, recordEviction); }
+        finally
         {
-            RecordEviction(workspaceId, session.LoadedAtUtc, session.LoadedPath);
+            lock (_lifecycleSync)
+            {
+                if (--_slowRemovalCount == 0) _slowRemovalsDrained!.TrySetResult();
+            }
         }
-
-        _fileWatcher.Unwatch(workspaceId);
-        _previewStore.InvalidateAll(workspaceId);
-        session.Dispose();
-        _workspaceSlots.Release();
-        RaiseWorkspaceClosed(workspaceId);
-        LogWorkspaceClosed(_logger, workspaceId, null);
         return true;
+    }
+
+    private void RemoveSessionEffects(WorkspaceSession session, bool recordEviction)
+    {
+        var failures = new List<Exception>();
+        var workspaceId = session.WorkspaceId;
+        if (recordEviction) AttemptCleanup(() => RecordEviction(workspaceId, session.LoadedAtUtc, session.LoadedPath), failures);
+        AttemptCleanup(() => _fileWatcher.Unwatch(workspaceId), failures);
+        AttemptCleanup(() => _previewStore.InvalidateAll(workspaceId), failures);
+        AttemptCleanup(session.Dispose, failures);
+        AttemptCleanup(() => _workspaceSlots.Release(), failures);
+        AttemptCleanup(() => RaiseWorkspaceClosed(workspaceId), failures);
+        AttemptCleanup(() => LogWorkspaceClosed(_logger, workspaceId, null), failures);
+        if (failures.Count > 0) throw new AggregateException("Workspace removal failed.", failures);
+    }
+
+    private static void AttemptCleanup(Action cleanup, List<Exception> failures)
+    {
+        try { cleanup(); }
+        catch (Exception exception) { failures.Add(exception); }
     }
 
     private void OnWorkspaceRootMissing(string workspaceId)
     {
-        lock (_rootRetirementSync)
+        TaskCompletionSource start;
+        lock (_lifecycleSync)
         {
-            if (_disposing || _rootRetirementTasks.ContainsKey(workspaceId))
-            {
-                return;
-            }
-
-            var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            var task = Task.Run(async () =>
-            {
-                await start.Task.ConfigureAwait(false);
-                await RetireMissingWorkspaceAsync(workspaceId).ConfigureAwait(false);
-            });
+            if (_disposing || _rootRetirementTasks.ContainsKey(workspaceId)) return;
+            start = new TaskCompletionSource();
+            // The first await is a publication barrier, not cleanup. It cannot resume
+            // until after the lifecycle lock is released.
+            var task = RetireMissingWorkspaceAsync(workspaceId, start.Task);
             _rootRetirementTasks.Add(workspaceId, task);
-            start.SetResult();
         }
+        start.SetResult();
     }
 
-    private async Task RetireMissingWorkspaceAsync(string workspaceId)
+    private async Task RetireMissingWorkspaceAsync(string workspaceId, Task start)
     {
+        await start.ConfigureAwait(false);
         try
         {
             var retryDelay = TimeSpan.FromMilliseconds(300);
@@ -581,8 +631,8 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
 
                 if (_evictionGate is null)
                 {
-                    CloseCore(workspaceId, recordEviction: false);
-                    return;
+                    if (CloseCore(workspaceId, recordEviction: false, refuseRetained: false, expected: null)) return;
+                    continue;
                 }
 
                 var gate = _evictionGate.Value;
@@ -594,7 +644,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
                         _ =>
                         {
                             retired = IsWorkspaceBackingPathConfirmedMissing(workspaceId) &&
-                                      CloseCore(workspaceId, recordEviction: false);
+                                      CloseCore(workspaceId, recordEviction: false, refuseRetained: false, expected: null);
                             return Task.FromResult(retired);
                         },
                         _lifetimeCancellation.Token,
@@ -623,8 +673,8 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
                     catch (Exception exception)
                     {
                         // The session is already retired. A gate-registry cleanup failure must
-                        // not fault this manager-owned task (or make Dispose throw while joining
-                        // it), but it remains operationally visible for diagnosis.
+                        // not prevent manager-owned retirement completion, but remains
+                        // operationally visible for diagnosis.
                         _logger.LogWarning(
                             exception,
                             "Retired workspace {WorkspaceId}, but failed to remove its execution gate",
@@ -632,7 +682,8 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
                     }
                 }
 
-                return;
+                if (retired) return;
+                // A still-retained source remains eligible for a later retirement pass.
             }
         }
         catch (OperationCanceledException) when (_lifetimeCancellation.IsCancellationRequested)
@@ -640,7 +691,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         }
         finally
         {
-            lock (_rootRetirementSync)
+            lock (_lifecycleSync)
             {
                 _rootRetirementTasks.Remove(workspaceId);
             }
@@ -1107,58 +1158,80 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
 
     public void Dispose()
     {
-        Task[] retirementTasks;
-        lock (_rootRetirementSync)
-        {
-            if (_disposing)
-            {
-                return;
-            }
+        var shutdown = RequestStop();
+        // Pending cleanup is owned by the same observed completion as DisposeAsync.
+        // Completed cleanup can report its captured outcome without synchronously joining.
+        if (shutdown.IsCompleted) _shutdownFailure?.Throw();
+    }
 
+    public ValueTask DisposeAsync() => new(RequestStop());
+
+    private Task RequestStop()
+    {
+        TaskCompletionSource<Exception?> cancellationIssued;
+        Task shutdown;
+        lock (_lifecycleSync)
+        {
+            if (_shutdownTask is not null) return _shutdownTask;
             _disposing = true;
-            _fileWatcher.WorkspaceRootMissing -= OnWorkspaceRootMissing;
-            _lifetimeCancellation.Cancel();
-            retirementTasks = _rootRetirementTasks.Values.ToArray();
+            cancellationIssued = new TaskCompletionSource<Exception?>();
+            shutdown = ShutdownAsync(cancellationIssued.Task,
+                _sourceOperationsDrained?.Task ?? Task.CompletedTask, _rootRetirementTasks.Values.ToArray());
+            _shutdownTask = shutdown;
+            // Observe failures even when the only caller uses deferred synchronous Dispose.
+            // DisposeAsync still awaits and reports the original shared failure.
+            _ = shutdown.ContinueWith(static completed => { _ = completed.Exception; },
+                CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
         }
 
-        // IDisposable is synchronous, so join lifecycle-owned background work before touching
-        // sessions or the slot semaphore. Retirement tasks never capture a synchronization
-        // context and observe the lifetime token, making this join bounded and deadlock-free.
-        Task.WhenAll(retirementTasks).GetAwaiter().GetResult();
-        if (_ownsFileWatcher)
-        {
-            _fileWatcher.Dispose();
-        }
+        Exception? cancellationFailure = null;
+        try { _lifetimeCancellation.Cancel(); }
+        catch (Exception exception) { cancellationFailure = exception; }
+        // Cancellation callbacks can reenter Dispose. Shared ownership is already published;
+        // teardown cannot dispose the CTS until the initiating Cancel call has returned.
+        cancellationIssued.SetResult(cancellationFailure);
+        return shutdown;
+    }
 
-        // Capture session ids before dispose so we can raise WorkspaceClosed for each one.
-        // This lets singletons like ICompilationCache free per-workspace state on host shutdown
-        // (or test-assembly teardown) instead of leaking until process exit.
-        var ids = _sessions.Keys.ToArray();
-        foreach (var session in _sessions.Values)
-        {
-            // mcp-error-category-workspace-evicted-on-host-recycle + workspace-id-recovery-hints:
-            // record each session's loadedAt and loadedPath before dispose. Disposal during
-            // Dispose is the in-process equivalent of a graceful host recycle for callers in
-            // the SAME process — they should see WorkspaceEvicted, not NotFound, on subsequent
-            // lookups (e.g. test-fixture cleanup and re-init scenarios), with the rehydration
-            // path embedded for one-shot recovery.
-            RecordEviction(session.WorkspaceId, session.LoadedAtUtc, session.LoadedPath);
-            session.Dispose();
-        }
-        var n = _sessions.Count;
-        _sessions.Clear();
-        for (var i = 0; i < n; i++)
-        {
-            _workspaceSlots.Release();
-        }
+    private async Task ShutdownAsync(Task<Exception?> cancellationIssued, Task sourceDrained, Task[] retirementTasks)
+    {
+        var cancellationFailure = await cancellationIssued.ConfigureAwait(false);
+        var failures = new List<Exception>();
+        if (cancellationFailure is not null) failures.Add(cancellationFailure);
+        try { await sourceDrained.ConfigureAwait(false); }
+        catch (Exception exception) { failures.Add(exception); }
+        try { await Task.WhenAll(retirementTasks).ConfigureAwait(false); }
+        catch (Exception exception) { failures.Add(exception); }
 
-        foreach (var id in ids)
+        Task removalsDrained;
+        lock (_lifecycleSync)
         {
-            RaiseWorkspaceClosed(id);
+            _removalAdmissionClosed = true;
+            removalsDrained = _slowRemovalsDrained?.Task ?? Task.CompletedTask;
         }
+        await removalsDrained.ConfigureAwait(false);
 
-        _workspaceSlots.Dispose();
-        _lifetimeCancellation.Dispose();
+        WorkspaceSession[] sessions;
+        lock (_lifecycleSync)
+        {
+            sessions = _sessions.Values.ToArray();
+            _sessions.Clear();
+        }
+        AttemptCleanup(() => _fileWatcher.WorkspaceRootMissing -= OnWorkspaceRootMissing, failures);
+        foreach (var session in sessions)
+            AttemptCleanup(() => RemoveSessionEffects(session, recordEviction: true), failures);
+        if (_ownsFileWatcher) AttemptCleanup(_fileWatcher.Dispose, failures);
+        AttemptCleanup(_workspaceSlots.Dispose, failures);
+        AttemptCleanup(_lifetimeCancellation.Dispose, failures);
+        if (failures.Count > 0)
+        {
+            AttemptCleanup(() => _logger.LogError(new AggregateException(failures.ToArray()),
+                "Workspace manager shutdown cleanup failed"), failures);
+            var failure = new AggregateException("Workspace manager shutdown failed.", failures);
+            _shutdownFailure = ExceptionDispatchInfo.Capture(failure);
+            throw failure;
+        }
     }
 
     private static void StampCacheHitMetric(WorkspaceCacheWriteResult? result)

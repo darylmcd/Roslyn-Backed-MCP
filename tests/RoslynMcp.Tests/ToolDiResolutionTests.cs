@@ -43,9 +43,9 @@ public sealed class ToolDiResolutionTests
     }
 
     [TestMethod]
-    public void EveryToolMethod_InterfaceParameter_ResolvesFromHostServiceProvider()
+    public async Task EveryToolMethod_InterfaceParameter_ResolvesFromHostServiceProvider()
     {
-        using var provider = BuildHostServiceProvider();
+        await using var provider = BuildHostServiceProvider();
 
         var toolAssembly = typeof(HostAssemblyMarker).Assembly;
         var toolMethods = toolAssembly.GetTypes()
