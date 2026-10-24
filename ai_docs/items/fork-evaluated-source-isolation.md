@@ -45,6 +45,7 @@
 - `tests/RoslynMcp.Tests/WorkspaceForkGitIsolationTests.cs`
 
 - `tests/RoslynMcp.Tests/WorkspaceForkApplyCancellationTests.cs`
+- `tests/RoslynMcp.Tests/HostShutdownLifecycleTests.cs`
 
 ## Acceptance
 
@@ -82,9 +83,15 @@
 | Expanded qualification | Root clean d860bdce forty-class run779PASS2FAIL3existingLinux-onlySKIP784total17m07s; all40classes and zero overlap. Full CrossProject19 and ratchet88 passed. Two stale reflection-argument failures were retained as RED evidence, not retried unchanged. |
 | Indirect helper caller correction | Sole reflective cancellation caller now supplies the required explicit destination exclusion, preserving every assertion. Independent review0BLOCKING; four-class66PASS0FAIL0SKIP includes both original failures and native source-inside/equal controls. |
 | Hosted retirement ordering | Hosted Windows3 also exposed the new deletion test assuming the session survives actual watcher retirement. Hold the real writer to qualify exact missing-file and missing-root refusal, then release it and await actual WorkspaceClosed before exact missing-workspace/preview-invalidation assertions. No product changes, exception union or watcher suppression. Focused23PASS0FAIL0SKIP and independent review0BLOCKING. |
-| Delivery state | Operator-requested exact21-path WIP26157fc5 and reviewed production d860bdce are published in draft PR1823. Two reviewed test-only corrections are locally frozen for the next exact committed-head forty-class run and complete new hosted Windows/Linux/SDK-floor checks. No row closure or full serialized delivery-gate claim. |
+| Delivery state | Exact21-path WIP26157fc5 and reviewed production d860bdce are published in PR1823. Clean45ff3331 serialized forty-class suite:781PASS0FAIL3existingLinux-onlySKIP784total17m18s, all40classes and zero overlap; full CrossProject19 and ratchet88 passed. Both Linux legs, Windows2/3, SDK-floor400 and CodeQL passed; Windows1/4 fixture failures below are corrected for a new exact head. No row closure or full serialized delivery-gate claim. |
 
 - Real native load/build effects force task/import integration; no replacement BuildHost, native compiler certificate, physical-directory lease or second restore evaluator.
 - Graph fidelity remains the dependent restore-fork-reviewed-project-graph slice. Independent cross-process expiry coordination and provider/root-retirement concerns are follow-up rows without restore dependencies.
 - The root session owns the full serialized producer and just ci before closure, plus the final clean merged-main gate after trailing documentation.
+
+| New correction evidence | Result / limit |
+|---|---|
+| Hosted legacy fixture correction | Windows1 positive two-level legacy roots exceeded native launchable cwd before public Apply. Same hosted-length90 TEMP reproduced2FAIL on unchanged45ff; remove only the diagnostic prefix for those two full-GUID positive roots, preserving topology and all default/long-negative controls. Two-case2PASS then full173PASS0FAIL0SKIP8m30s under the same long TEMP; valid-long-root, invalid generated cwd and258/259 controls passed. |
+| Hosted startup fixture correction | Actual hosting10.0.13 can signal ApplicationStarted before BackgroundService worker admission. Controlled exact-base source probe showed Started false, cooperative IHostedService fixture true with the sole worker held; this does not establish historical hosted pool starvation. Actual both shutdown paths2PASS0FAIL0SKIP1s. StopEntered and pending-run assertions strengthen drain ordering, all five-second bounds remain, finally drains/disposes after assertion failures. |
+| Bounded correction review | Independent reader:0BLOCKING for both test-only corrections, raw OLD/GREEN evidence and post-gate frozen hashes matched. Roslyn compile zero errors; changed formatter38C# files zero new or baseline findings. Production unchanged since d860bdce. New committed-head affected and hosted checks remain required before merge. |
 

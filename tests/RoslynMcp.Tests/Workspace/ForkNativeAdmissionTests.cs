@@ -1397,12 +1397,13 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
     public async Task LegacyNestedFork_ActualPausedCommand_ProtectsOuterOwnerFromExpiry()
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(1));
-        using var fixture = new NativeFixture(false);
+        using var fixture = NativeFixture.CreateNestedLegacy();
         var pool = Path.Combine(fixture.Source, ".roslynmcp", "forks");
         var outer = Path.Combine(pool, "20000101T000000000Z-outer");
         var inner = Path.Combine(outer, ".roslynmcp", "forks", "20000101T000000000Z-inner");
         var outerProject = Path.Combine(outer, "Entry.csproj");
         var project = Path.Combine(inner, "Entry.csproj");
+        Assert.IsTrue(!OperatingSystem.IsWindows() || inner.Length <= 258, "The positive legacy fixture must support an actual native working directory.");
         fixture.WriteProject(outerProject, string.Empty);
         ForkAdmissionMaterial.Install(fixture.Source, outer, [outerProject], timeout.Token);
         fixture.WriteProject(project, string.Empty);
@@ -1631,12 +1632,13 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
     public async Task LegacyNestedFork_ReopenAndFork_UsesOutermostPoolAndImmediateSource()
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(2));
-        using var fixture = new NativeFixture(false);
+        using var fixture = NativeFixture.CreateNestedLegacy();
         var pool = Path.Combine(fixture.Source, ".roslynmcp", "forks");
         var outer = Path.Combine(pool, "20000101T000000000Z-outer");
         var inner = Path.Combine(outer, ".roslynmcp", "forks", "20000101T000000000Z-inner");
         var outerProject = Path.Combine(outer, "Entry.csproj");
         var project = Path.Combine(inner, "Entry.csproj");
+        Assert.IsTrue(!OperatingSystem.IsWindows() || inner.Length <= 258, "The positive legacy fixture must support an actual native working directory.");
         fixture.WriteProject(outerProject, string.Empty);
         ForkAdmissionMaterial.Install(fixture.Source, outer, [outerProject], timeout.Token);
         fixture.WriteProject(project, string.Empty);
@@ -1689,8 +1691,16 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
         internal string ProtectedOutput => Path.Combine(Source, "protected.txt");
 
         internal NativeFixture(bool quoted)
+            : this(Path.Combine(TestTempRoot.Current, "fork-native-" + (quoted ? "quoted'-" : "") + Guid.NewGuid().ToString("N")))
         {
-            Root = Path.Combine(TestTempRoot.Current, "fork-native-" + (quoted ? "quoted'-" : "") + Guid.NewGuid().ToString("N"));
+        }
+
+        // Keep both legacy nesting levels native-launchable beneath the hosted test root.
+        internal static NativeFixture CreateNestedLegacy() => new(Path.Combine(TestTempRoot.Current, Guid.NewGuid().ToString("N")));
+
+        private NativeFixture(string root)
+        {
+            Root = root;
             Directory.CreateDirectory(Fork);
             Directory.CreateDirectory(Evidence);
         }
