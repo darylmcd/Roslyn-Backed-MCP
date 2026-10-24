@@ -66,7 +66,8 @@ internal class WorkspaceSessionLoader
             if (admissionExecution is not null)
                 workspace.RegisterWorkspaceFailedHandler(args =>
                 {
-                    if (args.Diagnostic.Kind == Microsoft.CodeAnalysis.WorkspaceDiagnosticKind.Failure)
+                    if (args.Diagnostic.Kind == Microsoft.CodeAnalysis.WorkspaceDiagnosticKind.Failure
+                        && !WorkspaceDiagnosticSeverityClassifier.IsKnownSdkWarning(args.Diagnostic.Message))
                         Interlocked.Increment(ref nativeFailureCount);
                 });
             if (globalProperties is { Count: > 0 })

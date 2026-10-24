@@ -921,7 +921,7 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
             StringAssert.Contains(warnings.Single(), "completion could not be verified");
             Assert.IsNotNull(new DirectoryInfo(cycle).LinkTarget, "Cleanup must retain unverifiable material.");
         }
-        finally { Directory.Delete(cycle); }
+        finally { TestFixtureFileSystem.DeleteDirectoryIfExists(cycle); }
     }
 
     [TestMethod]
@@ -958,11 +958,14 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
     [TestMethod]
     [DataRow("activation")]
     [DataRow("native-error")]
+    [DataRow("native-error-pruned")]
+    [DataRow("native-error-sourcelink")]
+    [DataRow("native-error-vs")]
     public async Task NativeBuildHost_TaskFailureRefusesEvenWhenDiagnosticQueueEvictsEverything(string failure)
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(1));
         using var fixture = new NativeFixture(false);
-        var project = fixture.PathInFork("Entry.csproj");
+        var project = fixture.PathInFork("pruned/Entry.csproj");
         fixture.WriteProject(project, string.Empty);
         await fixture.RestoreAsync(project, DotnetCommandRunner, timeout.Token);
         var config = ForkAdmissionMaterial.Install(fixture.Source, fixture.Fork, [project], timeout.Token);
@@ -970,8 +973,17 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
         if (failure == "activation")
             guard.Descendants("RoslynMcpForkTaskAssembly").Single().Value = Path.Combine(fixture.Fork, ForkAdmissionMaterial.DirectoryName, "tasks", "RoslynMcp.Core.dll");
         else
+        {
+            var message = failure switch
+            {
+                "native-error-pruned" => "Native build failed loading a pruned task assembly.",
+                "native-error-sourcelink" => "Task failed: Unable to locate repository with working directory that contains directory 'ordinary'.",
+                "native-error-vs" => "ResolveComReference: Cannot register type library 'TLB1234' for COM interop.",
+                _ => "Intentional native failure before BuildHost can return a partial clean solution."
+            };
             guard.Root!.Add(new XElement("Target", new XAttribute("Name", "NativeFailureBeforeCleanPartialLoad"), new XAttribute("BeforeTargets", "PrepareForBuild"),
-                new XElement("Error", new XAttribute("Text", "Intentional native failure before BuildHost can return a partial clean solution."))));
+                new XElement("Error", new XAttribute("Text", message))));
+        }
         guard.Save(config.GuardTargetsPath);
         var diagnostics = new WorkspaceDiagnosticsSink(0);
         var loader = new WorkspaceSessionLoader();
