@@ -11,8 +11,8 @@ namespace RoslynMcp.Tests;
 /// <see cref="WorkspaceManager"/> by workspace-manager-decompose-restore-and-analyzer-
 /// subsystems as a zero-external-caller, purely code-moved collaborator. Uses a small
 /// hand-built temp-dir fixture (a single .csproj + obj/project.assets.json) rather than the
-/// full SampleSolution — <see cref="RestoreStalenessDetector.IsRestoreRequired"/> only ever
-/// reads a project file and its sibling assets file from disk.
+/// full SampleSolution. The detector evaluates SDK/props metadata to locate the active assets
+/// file, then compares its package observations with the declared expectations.
 /// </summary>
 [TestClass]
 public sealed class RestoreStalenessDetectorTests

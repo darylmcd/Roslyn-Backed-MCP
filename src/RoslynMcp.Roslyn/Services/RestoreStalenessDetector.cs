@@ -444,9 +444,9 @@ internal class RestoreStalenessDetector
     /// state, distinct from version drift (which <see cref="IsRestoreRequired"/> also reports). The
     /// assets file is located where MSBuild would write it, so <c>UseArtifactsOutput</c> and a
     /// custom <c>BaseIntermediateOutputPath</c>/<c>MSBuildProjectExtensionsPath</c> are not
-    /// misread as missing. Like <see cref="IsRestoreRequired"/>, detection is best-effort: an
-    /// unreadable or unevaluable project is reported as not-missing (logged at debug) so the
-    /// default restore probe can never fail a load that would otherwise succeed.
+    /// misread as missing. Known package expectations without a locatable active assets file
+    /// are reported as missing, including unevaluable layouts. Unreadable package expectations
+    /// are reported as not-missing and logged at debug.
     /// </summary>
     public static bool HasMissingAssets(string projectFilePath, ILogger logger)
     {
