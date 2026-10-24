@@ -138,11 +138,14 @@ public sealed class WorkspaceLoadRestorePackagesPathTests : SharedWorkspaceTestB
         {
             var projectPath = Path.Combine(root, "App.csproj");
             Directory.CreateDirectory(Path.Combine(root, "obj"));
+            File.WriteAllText(projectPath, "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup></Project>");
 
             Assert.IsNull(RestoreStalenessDetector.TryReadRestorePackagesPath(projectPath), "No assets file.");
 
             var assetsPath = Path.Combine(root, "obj", "project.assets.json");
             File.WriteAllText(assetsPath, "{ not json");
+            Assert.AreEqual(assetsPath, RoslynMcp.Roslyn.Helpers.ProjectMetadataParser.GetExistingAssetsPath(
+                projectPath, RoslynMcp.Roslyn.Helpers.MsBuildMetadataHelper.DefaultGlobalProperties));
             Assert.IsNull(RestoreStalenessDetector.TryReadRestorePackagesPath(projectPath), "Malformed assets file.");
 
             File.WriteAllText(assetsPath, "{\"project\":{\"restore\":{}}}");

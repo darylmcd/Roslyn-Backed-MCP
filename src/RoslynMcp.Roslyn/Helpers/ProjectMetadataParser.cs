@@ -10,28 +10,28 @@ internal static class ProjectMetadataParser
 {
     /// <summary>
     /// Reads the NuGet-resolved version of <paramref name="packageId"/> from the project's
-    /// restored <c>obj/project.assets.json</c> — the authoritative record of what actually got
-    /// restored, cheaper and simpler than an MSBuild evaluation for this one fact. Returns
+    /// evaluated active assets file — the authoritative record of what actually got
+    /// restored. Returns
     /// <see langword="null"/> when the project hasn't been restored, the assets file can't be
     /// read, the package isn't referenced (directly or transitively), or its version string
     /// doesn't parse as a <see cref="Version"/>.
     /// </summary>
     public static Version? TryGetResolvedPackageVersion(string? projectFilePath, string packageId, ILogger? logger = null)
     {
-        var projectDirectory = string.IsNullOrWhiteSpace(projectFilePath) ? null : Path.GetDirectoryName(projectFilePath);
-        if (string.IsNullOrWhiteSpace(projectDirectory))
+        if (string.IsNullOrWhiteSpace(projectFilePath))
         {
             return null;
         }
 
-        var assetsPath = Path.Combine(projectDirectory, "obj", "project.assets.json");
-        if (!File.Exists(assetsPath))
-        {
-            return null;
-        }
-
+        string? assetsPath = null;
         try
         {
+            assetsPath = GetExistingAssetsPath(projectFilePath, MsBuildMetadataHelper.DefaultGlobalProperties);
+            if (assetsPath is null)
+            {
+                return null;
+            }
+
             using var stream = File.OpenRead(assetsPath);
             using var document = JsonDocument.Parse(stream);
             if (document.RootElement.ValueKind != JsonValueKind.Object ||
@@ -61,6 +61,40 @@ internal static class ProjectMetadataParser
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         {
             logger?.LogDebug(ex, "Failed to read resolved version of {PackageId} from {Path}", packageId, assetsPath);
+            return null;
+        }
+    }
+
+    /// <summary>Returns only an existing evaluated active assets file; stale default files are never fallback authority.</summary>
+    internal static string? GetExistingAssetsPath(string projectFilePath, IReadOnlyDictionary<string, string> globalProperties)
+    {
+        try
+        {
+            var projectDirectory = Path.GetDirectoryName(projectFilePath);
+            if (string.IsNullOrWhiteSpace(projectDirectory))
+            {
+                return null;
+            }
+
+            var values = MsBuildMetadataHelper.EvaluateProperties(projectFilePath, globalProperties,
+                "ProjectAssetsFile", "MSBuildProjectExtensionsPath");
+            var assetsFile = values[0];
+            if (string.IsNullOrWhiteSpace(assetsFile))
+            {
+                if (string.IsNullOrWhiteSpace(values[1]))
+                {
+                    return null;
+                }
+
+                assetsFile = Path.Combine(values[1], "project.assets.json");
+            }
+
+            var activePath = Path.GetFullPath(assetsFile.Trim(), projectDirectory);
+            return File.Exists(activePath) ? activePath : null;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            // Unreadable/unevaluable projects and invalid paths provide no assets authority.
             return null;
         }
     }

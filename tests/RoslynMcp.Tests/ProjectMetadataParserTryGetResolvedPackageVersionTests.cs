@@ -14,6 +14,7 @@ namespace RoslynMcp.Tests;
 public sealed class ProjectMetadataParserTryGetResolvedPackageVersionTests
 {
     private readonly List<string> _createdRoots = [];
+    private const string SdkProject = "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup></Project>";
 
     [TestCleanup]
     public async Task Cleanup() =>
@@ -45,7 +46,7 @@ public sealed class ProjectMetadataParserTryGetResolvedPackageVersionTests
         var projectDirectory = CreateProjectDirectory();
         WriteAssetsFile(projectDirectory, "\"TUnit.Engine/1.46.0\": { \"type\": \"package\" }");
         var projectPath = Path.Combine(projectDirectory, "Fixture.csproj");
-        File.WriteAllText(projectPath, "<Project />");
+        File.WriteAllText(projectPath, SdkProject);
 
         var version = ProjectMetadataParser.TryGetResolvedPackageVersion(projectPath, "TUnit.Engine");
 
@@ -58,7 +59,7 @@ public sealed class ProjectMetadataParserTryGetResolvedPackageVersionTests
         var projectDirectory = CreateProjectDirectory();
         WriteAssetsFile(projectDirectory, "\"tunit.engine/1.46.0\": { \"type\": \"package\" }");
         var projectPath = Path.Combine(projectDirectory, "Fixture.csproj");
-        File.WriteAllText(projectPath, "<Project />");
+        File.WriteAllText(projectPath, SdkProject);
 
         var version = ProjectMetadataParser.TryGetResolvedPackageVersion(projectPath, "TUnit.Engine");
 
@@ -71,7 +72,7 @@ public sealed class ProjectMetadataParserTryGetResolvedPackageVersionTests
         var projectDirectory = CreateProjectDirectory();
         WriteAssetsFile(projectDirectory, "\"MSTest.TestFramework/3.6.0\": { \"type\": \"package\" }");
         var projectPath = Path.Combine(projectDirectory, "Fixture.csproj");
-        File.WriteAllText(projectPath, "<Project />");
+        File.WriteAllText(projectPath, SdkProject);
 
         var version = ProjectMetadataParser.TryGetResolvedPackageVersion(projectPath, "TUnit.Engine");
 
@@ -84,7 +85,7 @@ public sealed class ProjectMetadataParserTryGetResolvedPackageVersionTests
         // Project never restored — obj/project.assets.json doesn't exist yet.
         var projectDirectory = CreateProjectDirectory();
         var projectPath = Path.Combine(projectDirectory, "Fixture.csproj");
-        File.WriteAllText(projectPath, "<Project />");
+        File.WriteAllText(projectPath, SdkProject);
 
         var version = ProjectMetadataParser.TryGetResolvedPackageVersion(projectPath, "TUnit.Engine");
 
@@ -99,7 +100,7 @@ public sealed class ProjectMetadataParserTryGetResolvedPackageVersionTests
         Directory.CreateDirectory(objDir);
         File.WriteAllText(Path.Combine(objDir, "project.assets.json"), "{ not valid json");
         var projectPath = Path.Combine(projectDirectory, "Fixture.csproj");
-        File.WriteAllText(projectPath, "<Project />");
+        File.WriteAllText(projectPath, SdkProject);
 
         var version = ProjectMetadataParser.TryGetResolvedPackageVersion(projectPath, "TUnit.Engine");
 
@@ -123,8 +124,11 @@ public sealed class ProjectMetadataParserTryGetResolvedPackageVersionTests
     {
         var directory = CreateProjectDirectory();
         Directory.CreateDirectory(Path.Combine(directory, "obj"));
-        File.WriteAllText(Path.Combine(directory, "Fixture.csproj"), "<Project />");
+        File.WriteAllText(Path.Combine(directory, "Fixture.csproj"), SdkProject);
         File.WriteAllText(Path.Combine(directory, "obj", "project.assets.json"), json);
+        Assert.AreEqual(Path.Combine(directory, "obj", "project.assets.json"),
+            ProjectMetadataParser.GetExistingAssetsPath(Path.Combine(directory, "Fixture.csproj"), MsBuildMetadataHelper.DefaultGlobalProperties),
+            "Qualify active assets authority before exercising the JSON-kind guards.");
         Assert.IsNull(ProjectMetadataParser.TryGetResolvedPackageVersion(
             Path.Combine(directory, "Fixture.csproj"), "TUnit.Engine"));
     }
