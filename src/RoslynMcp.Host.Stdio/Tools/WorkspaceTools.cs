@@ -641,12 +641,12 @@ public static class WorkspaceTools
         // the enclosing request deadline minus a reserve for the reload below, so a slow restore
         // cannot consume the whole gate deadline and starve that reload.
         var phaseClock = Stopwatch.StartNew();
-        foreach (var (targetPath, packagesPath) in PlanRestoreInvocations(status))
+        foreach (var invocation in RestoreInvocationPlanner.Capture(status.LoadedPath!, () => RemainingRestoreBudget(validationOptions, phaseClock.Elapsed), ct))
         {
             var execution = await commandExecutor.ExecuteAsync(
                 status.WorkspaceId,
-                targetPath,
-                BuildRestoreArguments(targetPath, packagesPath),
+                invocation.TargetPath,
+                invocation.Arguments,
                 RemainingRestoreBudget(validationOptions, phaseClock.Elapsed),
                 ct).ConfigureAwait(false);
 
@@ -656,7 +656,7 @@ public static class WorkspaceTools
                 // the public message is path-free so ToolErrorHandler can return it verbatim.
                 throw new PublicInvalidOperationException(
                     $"workspace auto-restore failed (exit code {execution.ExitCode}); run dotnet restore for the loaded project and retry workspace_reload.",
-                    new InvalidOperationException(BuildRestoreFailureMessage(targetPath, execution)));
+                    InvalidOperationErrors.Internal(BuildRestoreFailureMessage(invocation.TargetPath, execution)));
             }
         }
     }
@@ -669,66 +669,20 @@ public static class WorkspaceTools
     /// </summary>
     private static TimeSpan RemainingRestoreBudget(ValidationServiceOptions options, TimeSpan phaseElapsed)
     {
-        var budget = options.RestoreTimeout - phaseElapsed;
-        if (RequestDeadline.Remaining is { } requestRemaining)
-        {
-            var beforeReserve = requestRemaining - options.RestoreReloadReserve;
-            if (beforeReserve < budget)
-            {
-                budget = beforeReserve;
-            }
-        }
-
-        if (budget <= TimeSpan.Zero)
-        {
-            throw new TimeoutException(
-                "workspace auto-restore has no time budget left; raise ROSLYNMCP_RESTORE_TIMEOUT_SECONDS or ROSLYNMCP_REQUEST_TIMEOUT_SECONDS, " +
-                "or run dotnet restore for the loaded project and retry workspace_reload.");
-        }
-
-        return budget;
+        return RestoreInvocationPlanner.RemainingBudget(options.RestoreTimeout, phaseElapsed, options.RestoreReloadReserve,
+            "workspace auto-restore has no time budget left; raise ROSLYNMCP_RESTORE_TIMEOUT_SECONDS or ROSLYNMCP_REQUEST_TIMEOUT_SECONDS, " +
+            "or run dotnet restore for the loaded project and retry workspace_reload.");
     }
 
-    /// <summary>
-    /// workspace-restore-packages-path: decides which restore commands to run. Restore must write to
-    /// the package folder the projects' existing <c>project.assets.json</c> recorded (e.g. a worktree
-    /// scratch folder), not the host's default. One distinct recorded path (or none) → one restore of
-    /// the loaded path; several distinct paths → one restore per project with its own path.
-    /// </summary>
-    private static IReadOnlyList<(string TargetPath, string? PackagesPath)> PlanRestoreInvocations(WorkspaceStatusDto status)
-    {
-        var loadedPath = status.LoadedPath!;
-        var recorded = EnumerateProjectPaths(status)
-            .Select(path => (Path: path, PackagesPath: RestoreStalenessDetector.TryReadRestorePackagesPath(path)))
-            .ToList();
-        var distinctPackagesPaths = recorded
-            .Select(r => r.PackagesPath)
-            .OfType<string>()
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        return distinctPackagesPaths.Count > 1
-            ? recorded.Select(r => (r.Path, r.PackagesPath)).ToList()
-            : [(loadedPath, distinctPackagesPaths.SingleOrDefault())];
-    }
-
-    /// <summary>Project files of the loaded workspace; a single-<c>.csproj</c> load with no reported
-    /// projects falls back to the loaded path itself.</summary>
     private static List<string> EnumerateProjectPaths(WorkspaceStatusDto status)
     {
-        var projectPaths = status.Projects.Select(p => p.FilePath).ToList();
-        if (projectPaths.Count == 0 && status.LoadedPath!.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
+        var paths = status.Projects.Select(p => p.FilePath).ToList();
+        if (paths.Count == 0 && status.LoadedPath!.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
         {
-            projectPaths.Add(status.LoadedPath);
+            paths.Add(status.LoadedPath);
         }
-
-        return projectPaths;
+        return paths;
     }
-
-    private static IReadOnlyList<string> BuildRestoreArguments(string targetPath, string? packagesPath) =>
-        packagesPath is null
-            ? ["restore", targetPath, "--nologo"]
-            : ["restore", targetPath, "--nologo", "--packages", packagesPath];
 
     /// <summary>
     /// Serializes a <c>workspace_load</c>/<c>workspace_reload</c> result. Adds an additive

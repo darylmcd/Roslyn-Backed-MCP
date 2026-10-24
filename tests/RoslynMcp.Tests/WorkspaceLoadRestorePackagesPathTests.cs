@@ -1,3 +1,5 @@
+using System.IO.Compression;
+using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
@@ -21,6 +23,216 @@ public sealed class WorkspaceLoadRestorePackagesPathTests : SharedWorkspaceTestB
 
     [ClassCleanup]
     public static void ClassCleanup() => DisposeServices();
+
+    [TestMethod]
+    public async Task AutoRestore_ReferencePropertyContext_UsesContextualActiveAssets()
+    {
+        using var fixture = new RestoreFixture(nonCompilationChain: true);
+        var dependencyDirectory = Path.GetDirectoryName(fixture.Projects[1])!;
+        File.WriteAllText(Path.Combine(dependencyDirectory, "Directory.Build.props"),
+            "<Project><PropertyGroup Condition=\"'$(Configuration)' == 'Release' And '$(Flavor)' == 'Blue'\"><MSBuildProjectExtensionsPath>obj-blue/</MSBuildProjectExtensionsPath></PropertyGroup></Project>");
+        File.WriteAllText(Path.Combine(Path.GetDirectoryName(fixture.TargetPath)!, "references.targets"),
+            "<Project><ItemGroup><ProjectReference Include=\"../B/B.proj\" ReferenceOutputAssembly=\"false\" AdditionalProperties=\"Configuration=Release;Platform=x64;Flavor=Blue\"/></ItemGroup></Project>");
+        await fixture.RestoreInitialAsync();
+        var contextual = await fixture.Runner.RunAsync(dependencyDirectory, fixture.Projects[1],
+            ["restore", fixture.Projects[1], "--nologo", "--no-dependencies", "--packages", fixture.CacheFor(fixture.Projects[1]),
+                "-p:Configuration=Release", "-p:Platform=x64", "-p:Flavor=Blue"], CancellationToken.None);
+        Assert.IsTrue(contextual.Succeeded, contextual.StdOut + contextual.StdErr);
+        WriteAssetsWithPackagesPath(fixture.Projects[1], Path.Combine(fixture.Root, "stale-default-cache"));
+        fixture.Runner.Invocations.Clear();
+        using var manager = fixture.CreateManager();
+        var status = await manager.LoadAsync(fixture.TargetPath, CancellationToken.None);
+        using var executor = new GatedCommandExecutor(manager, fixture.Runner, NullLogger<GatedCommandExecutor>.Instance);
+        await WorkspaceTools.RestoreAndReloadIfRequiredAsync(executor, ValidationOptions, manager,
+            status with { RestoreRequired = true }, true, NullLogger.Instance, CancellationToken.None);
+
+        Assert.HasCount(3, fixture.Runner.Invocations);
+        var argv = fixture.Runner.Invocations.Single(a => a[1] == fixture.Projects[1]);
+        CollectionAssert.Contains(argv.ToList(), "-p:Configuration=Release");
+        CollectionAssert.Contains(argv.ToList(), "-p:Platform=x64");
+        CollectionAssert.Contains(argv.ToList(), "-p:Flavor=Blue");
+        Assert.AreEqual(fixture.CacheFor(fixture.Projects[1]), argv[argv.ToList().IndexOf("--packages") + 1]);
+        using var assets = JsonDocument.Parse(File.ReadAllText(Path.Combine(dependencyDirectory, "obj-blue", "project.assets.json")));
+        Assert.AreEqual(fixture.CacheFor(fixture.Projects[1]), assets.RootElement.GetProperty("project").GetProperty("restore").GetProperty("packagesPath").GetString());
+    }
+
+    [TestMethod]
+    public async Task AutoRestore_CaseVariantCaches_UsesPlatformPathIdentity()
+    {
+        using var fixture = new RestoreFixture(nonCompilationChain: false);
+        fixture.CacheOverrides[fixture.Projects[0]] = Path.Combine(fixture.Root, "Cache");
+        fixture.CacheOverrides[fixture.Projects[1]] = Path.Combine(fixture.Root, "cache");
+        await fixture.RestoreInitialAsync();
+        using var manager = fixture.CreateManager();
+        var status = await manager.LoadAsync(fixture.TargetPath, CancellationToken.None);
+        using var executor = new GatedCommandExecutor(manager, fixture.Runner, NullLogger<GatedCommandExecutor>.Instance);
+        await WorkspaceTools.RestoreAndReloadIfRequiredAsync(executor, ValidationOptions, manager,
+            status with { RestoreRequired = true }, true, NullLogger.Instance, CancellationToken.None);
+        Assert.HasCount(OperatingSystem.IsWindows() ? 1 : 2, fixture.Runner.Invocations);
+        foreach (var project in fixture.Projects)
+        {
+            Assert.IsTrue(RoslynMcp.Roslyn.Helpers.FileSystemPath.Comparer.Equals(fixture.CacheFor(project), fixture.ReadPackageRoot(project)));
+        }
+    }
+
+    [TestMethod]
+    public async Task AutoRestore_FrameworkConditionedClosure_RetainsFullOuterAssets()
+    {
+        using var fixture = new RestoreFixture(nonCompilationChain: true);
+        File.WriteAllText(fixture.TargetPath,
+            "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFrameworks>net10.0;net10.0-windows</TargetFrameworks><NuGetAudit>false</NuGetAudit></PropertyGroup><ItemGroup><PackageReference Include=\"Inventory.Probe\" Version=\"1.0.0\"/></ItemGroup><ItemGroup Condition=\"'$(TargetFramework)' == 'net10.0'\"><ProjectReference Include=\"../B/B.proj\" ReferenceOutputAssembly=\"false\"/></ItemGroup><ItemGroup Condition=\"'$(TargetFramework)' == 'net10.0-windows'\"><ProjectReference Include=\"../C/C.proj\" ReferenceOutputAssembly=\"false\"/></ItemGroup></Project>");
+        File.WriteAllText(Path.Combine(Path.GetDirectoryName(fixture.Projects[1])!, "references.targets"), "<Project/>");
+        await fixture.RestoreInitialAsync();
+        using var manager = fixture.CreateManager();
+        var status = await manager.LoadAsync(fixture.TargetPath, CancellationToken.None);
+        using var executor = new GatedCommandExecutor(manager, fixture.Runner, NullLogger<GatedCommandExecutor>.Instance);
+        await WorkspaceTools.RestoreAndReloadIfRequiredAsync(executor, ValidationOptions, manager,
+            status with { RestoreRequired = true }, true, NullLogger.Instance, CancellationToken.None);
+
+        Assert.HasCount(3, fixture.Runner.Invocations, "Inner nodes discover dependencies; the outer project restores once.");
+        using var assets = JsonDocument.Parse(File.ReadAllText(Path.Combine(Path.GetDirectoryName(fixture.TargetPath)!, "obj", "project.assets.json")));
+        Assert.AreEqual(2, assets.RootElement.GetProperty("project").GetProperty("frameworks").EnumerateObject().Count());
+        foreach (var project in fixture.Projects)
+        {
+            Assert.AreEqual(fixture.CacheFor(project), fixture.ReadPackageRoot(project));
+        }
+    }
+
+    [TestMethod]
+    public async Task AutoRestore_FrameworkSpecificAssets_RetainsEachRestoreContext()
+    {
+        using var fixture = new RestoreFixture(nonCompilationChain: false);
+        File.WriteAllText(Path.Combine(Path.GetDirectoryName(fixture.TargetPath)!, "Directory.Build.props"),
+            "<Project><PropertyGroup><MSBuildProjectExtensionsPath>$(MSBuildProjectDirectory)/obj/$(TargetFramework)/</MSBuildProjectExtensionsPath></PropertyGroup></Project>");
+        File.WriteAllText(fixture.TargetPath,
+            "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFrameworks>net10.0;net10.0-windows</TargetFrameworks><NuGetAudit>false</NuGetAudit></PropertyGroup><ItemGroup><PackageReference Include=\"Inventory.Probe\" Version=\"1.0.0\"/></ItemGroup><Import Project=\"references.targets\"/></Project>");
+        await fixture.RestoreInitialAsync();
+        var roots = new Dictionary<string, string>();
+        foreach (var framework in new[] { "net10.0", "net10.0-windows" })
+        {
+            var cache = Path.Combine(fixture.Root, "cache-" + framework);
+            roots.Add(framework, cache);
+            var restored = await fixture.Runner.RunAsync(Path.GetDirectoryName(fixture.TargetPath)!, fixture.TargetPath,
+                ["restore", fixture.TargetPath, "--nologo", "--no-dependencies", "--packages", cache, "-p:TargetFramework=" + framework], CancellationToken.None);
+            Assert.IsTrue(restored.Succeeded, restored.StdOut + restored.StdErr);
+            Assert.AreEqual(cache, RestoreStalenessDetector.TryReadRestorePackagesPath(fixture.TargetPath,
+                new Dictionary<string, string> { ["TargetFramework"] = framework }));
+        }
+        fixture.Runner.Invocations.Clear();
+        using var manager = fixture.CreateManager();
+        var status = await manager.LoadAsync(fixture.TargetPath, CancellationToken.None);
+        using var executor = new GatedCommandExecutor(manager, fixture.Runner, NullLogger<GatedCommandExecutor>.Instance);
+        await WorkspaceTools.RestoreAndReloadIfRequiredAsync(executor, ValidationOptions, manager,
+            status with { RestoreRequired = true }, true, NullLogger.Instance, CancellationToken.None);
+
+        foreach (var (framework, cache) in roots)
+        {
+            var invocation = fixture.Runner.Invocations.Single(a => a.Contains("-p:TargetFramework=" + framework));
+            Assert.AreEqual(cache, invocation[invocation.ToList().IndexOf("--packages") + 1]);
+            using var assets = JsonDocument.Parse(File.ReadAllText(Path.Combine(Path.GetDirectoryName(fixture.TargetPath)!, "obj", framework, "project.assets.json")));
+            Assert.AreEqual(cache, assets.RootElement.GetProperty("project").GetProperty("restore").GetProperty("packagesPath").GetString());
+        }
+    }
+
+    [TestMethod]
+    public async Task AutoRestore_GraphOnlyCondition_DoesNotChangeCommandContext()
+    {
+        using var fixture = new RestoreFixture(nonCompilationChain: false);
+        var references = Path.Combine(Path.GetDirectoryName(fixture.TargetPath)!, "references.targets");
+        File.WriteAllText(references, File.ReadAllText(references).Replace("<ItemGroup>", "<ItemGroup Condition=\"'$(IsGraphBuild)' == ''\">", StringComparison.Ordinal));
+        await fixture.RestoreInitialAsync();
+        using var manager = fixture.CreateManager();
+        var status = await manager.LoadAsync(fixture.TargetPath, CancellationToken.None);
+        using var executor = new GatedCommandExecutor(manager, fixture.Runner, NullLogger<GatedCommandExecutor>.Instance);
+        await WorkspaceTools.RestoreAndReloadIfRequiredAsync(executor, ValidationOptions, manager,
+            status with { RestoreRequired = true }, true, NullLogger.Instance, CancellationToken.None);
+        Assert.HasCount(2, fixture.Runner.Invocations);
+        Assert.AreEqual(fixture.CacheFor(fixture.Projects[1]), fixture.ReadPackageRoot(fixture.Projects[1]));
+    }
+
+    [TestMethod]
+    public async Task AutoRestore_NullAndRecordedRoot_KeepsBothIdentities()
+    {
+        using var fixture = new RestoreFixture(nonCompilationChain: false);
+        await fixture.RestoreInitialAsync();
+        File.Delete(Path.Combine(Path.GetDirectoryName(fixture.TargetPath)!, "obj", "project.assets.json"));
+        using var manager = fixture.CreateManager();
+        var status = await manager.LoadAsync(fixture.TargetPath, CancellationToken.None);
+        var runner = new RecordingRestoreRunner();
+        using var executor = new GatedCommandExecutor(manager, runner, NullLogger<GatedCommandExecutor>.Instance);
+        await WorkspaceTools.RestoreAndReloadIfRequiredAsync(executor, ValidationOptions, manager,
+            status with { RestoreRequired = true }, true, NullLogger.Instance, CancellationToken.None);
+        Assert.HasCount(2, runner.Invocations);
+        var rootInvocation = runner.Invocations.Single(a => a[1] == fixture.TargetPath);
+        CollectionAssert.DoesNotContain(rootInvocation.ToList(), "--packages");
+        foreach (var argv in runner.Invocations)
+        {
+            CollectionAssert.Contains(argv.ToList(), "--no-dependencies");
+        }
+    }
+
+    [TestMethod]
+    public async Task AutoRestore_RealReferencedAssets_PreservesEachPackageCache()
+    {
+        using var fixture = new RestoreFixture(nonCompilationChain: false);
+        var parentDirectory = Path.Combine(fixture.Root, "Z.Consumer");
+        var dependencyDirectory = Path.Combine(fixture.Root, "A.Dependency");
+        Directory.Move(Path.GetDirectoryName(fixture.Projects[0])!, parentDirectory);
+        Directory.Move(Path.GetDirectoryName(fixture.Projects[1])!, dependencyDirectory);
+        var parent = Path.Combine(parentDirectory, "Z.Consumer.csproj");
+        var dependency = Path.Combine(dependencyDirectory, "A.Dependency.csproj");
+        File.Move(Path.Combine(parentDirectory, "A.csproj"), parent);
+        File.Move(Path.Combine(dependencyDirectory, "B.csproj"), dependency);
+        fixture.Projects[0] = parent;
+        fixture.Projects[1] = dependency;
+        File.WriteAllText(Path.Combine(Path.GetDirectoryName(parent)!, "references.targets"),
+            "<Project><ItemGroup><ProjectReference Include=\"../A.Dependency/A.Dependency.csproj\"/></ItemGroup></Project>");
+        await fixture.RestoreInitialAsync();
+        using var manager = fixture.CreateManager();
+        var solution = Path.Combine(fixture.Root, "References.slnx");
+        File.WriteAllText(solution, "<Solution><Project Path=\"A.Dependency/A.Dependency.csproj\"/><Project Path=\"Z.Consumer/Z.Consumer.csproj\"/></Solution>");
+        var status = await manager.LoadAsync(solution, CancellationToken.None);
+        Assert.HasCount(2, status.Projects);
+        Assert.AreEqual(dependency, status.Projects[0].FilePath, "Exercise the untouched real dependency-first solution inventory.");
+        foreach (var cacheFile in Directory.EnumerateFiles(fixture.Root, "*.nuget.cache", SearchOption.AllDirectories))
+        {
+            File.Delete(cacheFile);
+        }
+        using var executor = new GatedCommandExecutor(manager, fixture.Runner, NullLogger<GatedCommandExecutor>.Instance);
+
+        await WorkspaceTools.RestoreAndReloadIfRequiredAsync(executor, ValidationOptions, manager,
+            status with { RestoreRequired = true }, true, NullLogger.Instance, CancellationToken.None);
+
+        foreach (var project in fixture.Projects)
+        {
+            Assert.AreEqual(fixture.CacheFor(project), fixture.ReadPackageRoot(project),
+                $"Restore rewrote the real assets cache for {Path.GetFileName(project)}.");
+            Assert.IsTrue(File.Exists(Path.Combine(fixture.ReadPackageRoot(project), "inventory.probe", "1.0.0", "content", "probe.txt")));
+        }
+    }
+
+    [TestMethod]
+    public async Task AutoRestore_RealNonCompilationTransitiveReferences_RestoresCompleteInventory()
+    {
+        using var fixture = new RestoreFixture(nonCompilationChain: true);
+        await fixture.RestoreInitialAsync();
+        using var manager = fixture.CreateManager();
+        var status = await manager.LoadAsync(fixture.TargetPath, CancellationToken.None);
+        Assert.HasCount(1, status.Projects, "The .proj dependencies must really be absent from Roslyn's inventory.");
+        fixture.Runner.Invocations.Clear();
+        using var executor = new GatedCommandExecutor(manager, fixture.Runner, NullLogger<GatedCommandExecutor>.Instance);
+
+        await WorkspaceTools.RestoreAndReloadIfRequiredAsync(executor, ValidationOptions, manager,
+            status with { RestoreRequired = true }, true, NullLogger.Instance, CancellationToken.None);
+
+        Assert.HasCount(3, fixture.Runner.Invocations, "Every evaluated non-compilation dependency requires its own isolated restore.");
+        CollectionAssert.AreEquivalent(fixture.Projects, fixture.Runner.Invocations.Select(a => a[1]).ToArray());
+        foreach (var argv in fixture.Runner.Invocations)
+        {
+            CollectionAssert.Contains(argv.ToList(), "--no-dependencies");
+            Assert.AreEqual(fixture.CacheFor(argv[1]), fixture.ReadPackageRoot(argv[1]));
+        }
+    }
 
     [TestMethod]
     public async Task AutoRestore_AssetsRecordScratchPackagesPath_PassesPackagesFlag()
@@ -113,12 +325,12 @@ public sealed class WorkspaceLoadRestorePackagesPathTests : SharedWorkspaceTestB
 
                 Assert.HasCount(status.Projects.Count, runner.Invocations, "Mixed package folders must restore each project separately.");
                 CollectionAssert.AreEqual(
-                    new[] { "restore", status.Projects[0].FilePath, "--nologo", "--packages", pathA },
-                    runner.Invocations[0].ToArray());
+                    new[] { "restore", status.Projects[0].FilePath, "--nologo", "--packages", pathA, "--no-dependencies" },
+                    runner.Invocations.Single(a => a[1] == status.Projects[0].FilePath).Take(6).ToArray());
                 CollectionAssert.AreEqual(
-                    new[] { "restore", status.Projects[1].FilePath, "--nologo", "--packages", pathB },
-                    runner.Invocations[1].ToArray());
-                foreach (var tail in runner.Invocations.Skip(2))
+                    new[] { "restore", status.Projects[1].FilePath, "--nologo", "--packages", pathB, "--no-dependencies" },
+                    runner.Invocations.Single(a => a[1] == status.Projects[1].FilePath).Take(6).ToArray());
+                foreach (var tail in runner.Invocations.Where(a => !status.Projects.Take(2).Any(p => p.FilePath == a[1])))
                 {
                     CollectionAssert.DoesNotContain(tail.ToList(), "--packages", "A project with no recorded path keeps the default folder.");
                 }
@@ -140,22 +352,22 @@ public sealed class WorkspaceLoadRestorePackagesPathTests : SharedWorkspaceTestB
             Directory.CreateDirectory(Path.Combine(root, "obj"));
             File.WriteAllText(projectPath, "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup></Project>");
 
-            Assert.IsNull(RestoreStalenessDetector.TryReadRestorePackagesPath(projectPath), "No assets file.");
+            Assert.IsNull(RestoreStalenessDetector.TryReadRestorePackagesPath(projectPath, RoslynMcp.Roslyn.Helpers.MsBuildMetadataHelper.DefaultGlobalProperties), "No assets file.");
 
             var assetsPath = Path.Combine(root, "obj", "project.assets.json");
             File.WriteAllText(assetsPath, "{ not json");
             Assert.AreEqual(assetsPath, RoslynMcp.Roslyn.Helpers.ProjectMetadataParser.GetExistingAssetsPath(
                 projectPath, RoslynMcp.Roslyn.Helpers.MsBuildMetadataHelper.DefaultGlobalProperties));
-            Assert.IsNull(RestoreStalenessDetector.TryReadRestorePackagesPath(projectPath), "Malformed assets file.");
+            Assert.IsNull(RestoreStalenessDetector.TryReadRestorePackagesPath(projectPath, RoslynMcp.Roslyn.Helpers.MsBuildMetadataHelper.DefaultGlobalProperties), "Malformed assets file.");
 
             File.WriteAllText(assetsPath, "{\"project\":{\"restore\":{}}}");
-            Assert.IsNull(RestoreStalenessDetector.TryReadRestorePackagesPath(projectPath), "Property absent.");
+            Assert.IsNull(RestoreStalenessDetector.TryReadRestorePackagesPath(projectPath, RoslynMcp.Roslyn.Helpers.MsBuildMetadataHelper.DefaultGlobalProperties), "Property absent.");
 
             File.WriteAllText(assetsPath, "{\"project\":{\"restore\":{\"packagesPath\":\"  \"}}}");
-            Assert.IsNull(RestoreStalenessDetector.TryReadRestorePackagesPath(projectPath), "Blank value.");
+            Assert.IsNull(RestoreStalenessDetector.TryReadRestorePackagesPath(projectPath, RoslynMcp.Roslyn.Helpers.MsBuildMetadataHelper.DefaultGlobalProperties), "Blank value.");
 
             File.WriteAllText(assetsPath, "{\"project\":{\"restore\":{\"packagesPath\":\"D:/scratch\"}}}");
-            Assert.AreEqual("D:/scratch", RestoreStalenessDetector.TryReadRestorePackagesPath(projectPath));
+            Assert.AreEqual("D:/scratch", RestoreStalenessDetector.TryReadRestorePackagesPath(projectPath, RoslynMcp.Roslyn.Helpers.MsBuildMetadataHelper.DefaultGlobalProperties));
         }
         finally
         {
@@ -222,6 +434,86 @@ public sealed class WorkspaceLoadRestorePackagesPathTests : SharedWorkspaceTestB
 
             return Task.FromResult(new CommandExecutionDto(
                 "dotnet", arguments, workingDirectory, targetPath, 0, true, 0, string.Empty, string.Empty));
+        }
+    }
+
+    internal sealed class RestoreFixture : IDisposable
+    {
+        public string Root { get; } = Path.Combine(TestTempRoot.Current, "restore-inventory-" + Guid.NewGuid().ToString("N"));
+        public string[] Projects { get; }
+        public string TargetPath => Projects[0];
+        public RealRestoreRunner Runner { get; } = new();
+        public Dictionary<string, string> CacheOverrides { get; } = [];
+
+        public RestoreFixture(bool nonCompilationChain)
+        {
+            Directory.CreateDirectory(Root);
+            var feed = Path.Combine(Root, "feed");
+            Directory.CreateDirectory(feed);
+            using (var archive = ZipFile.Open(Path.Combine(feed, "Inventory.Probe.1.0.0.nupkg"), ZipArchiveMode.Create))
+            {
+                using (var writer = new StreamWriter(archive.CreateEntry("Inventory.Probe.nuspec").Open()))
+                {
+                    writer.Write("<package><metadata><id>Inventory.Probe</id><version>1.0.0</version><authors>Tests</authors><description>Local restore fixture</description></metadata></package>");
+                }
+                using var payload = new StreamWriter(archive.CreateEntry("content/probe.txt").Open());
+                payload.Write("local package payload");
+            }
+            File.WriteAllText(Path.Combine(Root, "NuGet.Config"),
+                "<configuration><packageSources><clear/><add key=\"local\" value=\"feed\"/></packageSources></configuration>");
+            Projects = nonCompilationChain
+                ? [Path.Combine(Root, "A", "A.csproj"), Path.Combine(Root, "B", "B.proj"), Path.Combine(Root, "C", "C.proj")]
+                : [Path.Combine(Root, "A", "A.csproj"), Path.Combine(Root, "B", "B.csproj")];
+            for (var i = 0; i < Projects.Length; i++)
+            {
+                var directory = Path.GetDirectoryName(Projects[i])!;
+                Directory.CreateDirectory(directory);
+                var reference = i + 1 < Projects.Length
+                    ? $"<ItemGroup><ProjectReference Include=\"{Path.GetRelativePath(directory, Projects[i + 1])}\" ReferenceOutputAssembly=\"false\" /></ItemGroup>"
+                    : string.Empty;
+                File.WriteAllText(Path.Combine(directory, "references.targets"),
+                    $"<Project><PropertyGroup><InventoryReferences>true</InventoryReferences></PropertyGroup><Choose><When Condition=\"'$(InventoryReferences)' == 'true'\">{reference}</When></Choose></Project>");
+                File.WriteAllText(Projects[i],
+                    "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net10.0</TargetFramework><NuGetAudit>false</NuGetAudit><RestoreProjectStyle>PackageReference</RestoreProjectStyle></PropertyGroup><ItemGroup><PackageReference Include=\"Inventory.Probe\" Version=\"1.0.0\"/></ItemGroup><Import Project=\"references.targets\"/></Project>");
+            }
+        }
+
+        public WorkspaceManager CreateManager() => new(NullLogger<WorkspaceManager>.Instance, new PreviewStore(),
+            new FileWatcherService(NullLogger<FileWatcherService>.Instance),
+            new WorkspaceManagerOptions { MaxConcurrentWorkspaces = 4, RestoreRaceWaitMs = 0 });
+
+        public string CacheFor(string project) => CacheOverrides.TryGetValue(project, out var cache)
+            ? cache : Path.Combine(Root, "packages-" + Path.GetFileNameWithoutExtension(project));
+
+        public string ReadPackageRoot(string project)
+        {
+            using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(Path.GetDirectoryName(project)!, "obj", "project.assets.json")));
+            return document.RootElement.GetProperty("project").GetProperty("restore").GetProperty("packagesPath").GetString()!;
+        }
+
+        public async Task RestoreInitialAsync()
+        {
+            foreach (var project in Projects)
+            {
+                var result = await Runner.RunAsync(Path.GetDirectoryName(project)!, project,
+                    ["restore", project, "--nologo", "--packages", CacheFor(project), "--no-dependencies"], CancellationToken.None);
+                Assert.IsTrue(result.Succeeded, result.StdOut + result.StdErr);
+                Assert.AreEqual(CacheFor(project), ReadPackageRoot(project));
+            }
+            Runner.Invocations.Clear();
+        }
+
+        public void Dispose() => TestFixtureFileSystem.DeleteDirectoryIfExists(Root);
+    }
+
+    internal sealed class RealRestoreRunner : IDotnetCommandRunner
+    {
+        public List<IReadOnlyList<string>> Invocations { get; } = [];
+        private readonly DotnetCommandRunner _inner = new();
+        public Task<CommandExecutionDto> RunAsync(string workingDirectory, string targetPath, IReadOnlyList<string> arguments, CancellationToken ct)
+        {
+            Invocations.Add(arguments.ToArray());
+            return _inner.RunAsync(workingDirectory, targetPath, arguments, ct);
         }
     }
 }
