@@ -207,9 +207,87 @@ public sealed class ForkRetainedSourceDeletionTests
         }
     }
 
+    [TestMethod]
+    public async Task ActiveSourceAliasRetarget_RefusesSecondRegistrationAndFirstCopy()
+    {
+        await using var fixture = new Fixture(false);
+        var first = await fixture.CreateExpiredAsync("original", true);
+        var replacement = await fixture.CreateExpiredAsync("replacement", false);
+        var alias = Path.GetDirectoryName(first.Project)!;
+        var heldSource = alias + "-held";
+        var loaded = await fixture.Manager.LoadAsync(first.Project, fixture.Token);
+        Assert.AreEqual(first.Project, loaded.LoadedPath);
+        var authority = fixture.Capture(loaded.WorkspaceId);
+        fixture.ObserveId = loaded.WorkspaceId;
+        fixture.Gate.PauseId = loaded.WorkspaceId;
+        Task<WorkspaceForkApplyResultDto>? firstApply = null;
+        Task<WorkspaceForkApplyResultDto>? secondApply = null;
+        Exception? primaryFailure = null;
+        try
+        {
+            firstApply = fixture.Service.ApplyAsync(loaded.WorkspaceId, authority.PreviewToken, "keep", false, null, "first", fixture.Token);
+            await fixture.Gate.Entered.Task.WaitAsync(fixture.Token);
+            Assert.IsFalse(firstApply.IsCompleted);
+            Assert.IsTrue(WorkspaceForkApplyService.HasForkApplyLock(fixture.Pool),
+                "The actual writer checkpoint follows original source-identity capture and pool acquisition.");
+            Directory.Move(alias, heldSource);
+            WorkspaceForkGraphReplayTests.CreateLink(alias, replacement.Root);
+            secondApply = fixture.Service.ApplyAsync(loaded.WorkspaceId, authority.PreviewToken, "keep", false, null, "second", fixture.Token);
+            Assert.IsTrue(secondApply.IsCompleted, "A second registration must immediately refuse a different physical source, without replacing the original retention.");
+            await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() => secondApply);
+            secondApply = null; // Its expected refusal is observed above.
+            Assert.IsNull(fixture.Manager.TryReserveForkStorageDeletion(first.Root), "The first operation still retains its original physical source.");
+            using (var replacementAdmission = fixture.Manager.TryReserveForkStorageDeletion(replacement.Root))
+                Assert.IsNotNull(replacementAdmission, "A refused registration must not claim the replacement physical source.");
+            fixture.Gate.Release.TrySetResult();
+            var refusal = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() => firstApply);
+            firstApply = null; // Existing in-writer physical revalidation refused before copy.
+            StringAssert.Contains(refusal.Message, "source changed");
+            using (var admission = fixture.Manager.TryReserveForkStorageDeletion(first.Root)) Assert.IsNotNull(admission);
+            Directory.Delete(alias);
+            Directory.Move(heldSource, alias);
+            authority.AssertPreserved(fixture);
+            Assert.AreEqual(2, Directory.GetDirectories(fixture.Pool).Length, "Neither retargeted operation may create a destination.");
+        }
+        catch (Exception exception)
+        {
+            primaryFailure = exception;
+            throw;
+        }
+        finally
+        {
+            fixture.Cancel();
+            fixture.Gate.Release.TrySetResult();
+            await DrainAsync(primaryFailure, firstApply, secondApply);
+        }
+    }
+
+    [TestMethod]
+    public async Task Cleanup_FailedClose_RetainsMaterialAndReportsWarning()
+    {
+        await using var fixture = new Fixture(false);
+        var victim = await fixture.CreateExpiredAsync("close-refused", false);
+        var source = await fixture.Manager.LoadAsync(victim.Project, fixture.Token);
+        var authority = fixture.Capture(source.WorkspaceId);
+        await using var service = new WorkspaceForkApplyService(new FailClosedWorkspaceManagerStub(), fixture.Gate,
+            fixture.Store, fixture.Provider.GetRequiredService<IWorkspaceValidationService>(),
+            fixture.Provider.GetRequiredService<ITestRunnerService>(), fixture.Provider.GetRequiredService<IDotnetCommandRunner>(),
+            fixture.Provider.GetRequiredService<ForkStoragePathValidator>(), NullLogger<WorkspaceForkApplyService>.Instance,
+            fixture.Manager.RunWithRetainedForkSourceAsync, fixture.Manager.TryReserveForkStorageDeletion);
+        var warnings = new List<string>();
+        typeof(WorkspaceForkApplyService).GetMethod("CleanupFork", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(service, [source.WorkspaceId, victim.Root, warnings, fixture.Token]);
+        Assert.HasCount(1, warnings);
+        StringAssert.Contains(warnings[0], "Failed to close");
+        authority.AssertPreserved(fixture);
+        using var admission = fixture.Manager.TryReserveForkStorageDeletion(victim.Root);
+        Assert.IsNotNull(admission, "Failed-close cleanup must release its deletion reservation.");
+    }
+
     private sealed class Fixture : IAsyncDisposable
     {
         private readonly CancellationTokenSource _timeout = new(TimeSpan.FromMinutes(3));
+        private int _previewSequence = 1;
         internal string Root { get; } = Path.Combine(TestTempRoot.Current, "fork-del-" + Guid.NewGuid().ToString("N"));
         internal string Pool => Path.Combine(Root, "pool");
         internal string Project => Path.Combine(Root, "source", "Entry.csproj");
@@ -293,7 +371,10 @@ public sealed class ForkRetainedSourceDeletionTests
         {
             var original = Manager.GetCurrentSolution(id);
             var document = original.Projects.SelectMany(project => project.Documents).First(document => document.Name == "Entry.cs");
-            var modified = original.WithDocumentText(document.Id, SourceText.From("public class Entry { public int Value => 2; }"));
+            var value = Interlocked.Increment(ref _previewSequence).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            var modified = original.WithDocumentText(document.Id, SourceText.From($"public class Entry {{ public int Value => {value}; }}"));
+            Assert.IsTrue(modified.GetChanges(original).GetProjectChanges().Any(change => change.GetChangedDocuments().Any()),
+                "Every source preview must contain a genuine document edit, including a fork used as a new source.");
             return Store.Store(id, original, modified, Manager.GetCurrentVersion(id), "source authority", false, PreviewKind.Unspecified);
         }
 
@@ -301,6 +382,7 @@ public sealed class ForkRetainedSourceDeletionTests
         {
             var token = Preview(id);
             var entry = FullEntry(Store, token);
+            Assert.IsNotNull(entry);
             var status = Manager.GetStatus(id);
             var bytes = Directory.GetFiles(Path.GetDirectoryName(status.LoadedPath!)!, "*", SearchOption.AllDirectories)
                 .ToDictionary(path => path, File.ReadAllBytes);

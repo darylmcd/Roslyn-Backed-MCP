@@ -22,6 +22,7 @@
 - `src/RoslynMcp.Roslyn/Services/InstallForkProjectImports.cs`
 - `src/RoslynMcp.Roslyn/Services/RestoreInvocationPlanner.cs`
 - `src/RoslynMcp.Roslyn/Services/WorkspaceForkApplyService.cs`
+- `src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs`
 - `src/RoslynMcp.Roslyn/Services/WorkspaceSessionLoader.cs`
 - `tests/RoslynMcp.Tests/CiRunnerParityContractTests.cs`
 - `tests/RoslynMcp.Tests/DiagnosticServiceFilterTotalsTests.cs`
@@ -33,6 +34,7 @@
 - `tests/RoslynMcp.Tests/ValidationBundleToolsTests.cs`
 - `tests/RoslynMcp.Tests/Workspace/ForkGraphPreparationTests.cs`
 - `tests/RoslynMcp.Tests/Workspace/ForkNativeAdmissionTests.cs`
+- `tests/RoslynMcp.Tests/Workspace/ForkRetainedSourceDeletionTests.cs`
 - `tests/RoslynMcp.Tests/Workspace/ForkStorageBoundaryTests.cs`
 - `tests/RoslynMcp.Tests/Workspace/ForkStorageLockOrderTests.cs`
 - `tests/RoslynMcp.Tests/Workspace/WorkspaceForkApplyTests.cs`
@@ -71,7 +73,11 @@
 | Original preview watcher | Real Host graph, real rename and three native fork generations:2FAIL with bare-dot names because original source became stale. Shared narrow generated-name parser now excludes only reserved generated directories; authored hidden/lookalike events remain watched. |
 | Linked cleanup | Logger-qualified old code:1FAIL5PASS. Recursive deletion threw UnauthorizedAccessException and changed external ReadOnly attributes. Shared iterative no-follow deletion now preserves external bytes/attributes and collects the owned directory. |
 | Final implementer qualification | final-owned.log/TRX:129PASS0FAIL2existingLinux-onlySKIP131total5m04s. Includes actual canonical source/descendant pools, original native build before/after every generation, unchanged full source preview/Solution/version/snapshot/bytes and genuine same-token original apply/undo. Compile8/8zero. One subsequent XML-summary placement edit only. |
-| Delivery state | Product frozen for a fresh full independent implementation review, root exact-head expanded affected gate, formatting/policies and new hosted Windows/Linux/SDK-floor checks. Current local fixes are not yet published; no row closure or full serialized delivery-gate claim. |
+| Retained-source deletion | Fresh full review found cleanup deleting after failed Close and expiry deleting a retained source queued on pool. Actual unchanged-product races4FAIL0PASS27s; corrected principal4PASS40s, broader seven-class261PASS0FAIL0SKIP9m11s. Same-manager atomic deletion/source admission preserves nested owners and actual final-manager overrides without additional physical ownership machinery. |
+| Repeated canonical source identity | Actual directory retarget old-guard regression failed at second registration. Preserve the original physical path before count mutation; real writer rendezvous proves first Apply refuses before copy, with no destinations and preserved authority. Setup-only alias and incorrect-rendezvous receipts are not causal product failures. |
+| Final correction qualification | Writer-qualified final focused gate121PASS0FAIL0SKIP2m22s; compile8/8zero; authoritative fragment check120current1changed passed. Earlier120PASS1FAIL receipts retain the synchronous-DI fixture and alias checkpoint failures; both were corrected without product shims or weakened assertions. |
+| Independent implementation review | Full cumulative review plus fresh correction review:0remainingBLOCKING. Final46authorfile hashes independently matched. These reviews and bounded passes do not replace exact-head affected or hosted gates. |
+| Delivery state | Operator-requested exact21-path WIP26157fc5 is published as draft PR1823. Final guard/test/async-DI/fragment corrections are locally frozen for clean committed-head40-class affected validation, formatter/policies and complete new Windows/Linux/SDK-floor checks. No row closure or full serialized delivery-gate claim. |
 
 - Real native load/build effects force task/import integration; no replacement BuildHost, native compiler certificate, physical-directory lease or second restore evaluator.
 - Graph fidelity remains the dependent restore-fork-reviewed-project-graph slice. Independent cross-process expiry coordination and provider/root-retirement concerns are follow-up rows without restore dependencies.

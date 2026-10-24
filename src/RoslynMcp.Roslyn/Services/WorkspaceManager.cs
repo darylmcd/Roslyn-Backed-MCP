@@ -132,22 +132,29 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
     internal async Task<WorkspaceForkApplyResultDto> RunWithRetainedForkSourceAsync(
         string workspaceId, Func<CancellationToken, Task<WorkspaceForkApplyResultDto>> operation, CancellationToken ct)
     {
-        if (!_sessions.TryGetValue(workspaceId, out var session))
-            throw CreateWorkspaceNotFoundException(workspaceId);
-        var loadedPath = session.LoadedPath;
+        WorkspaceSession session;
+        string? loadedPath;
+        lock (_lifecycleSync)
+        {
+            ObjectDisposedException.ThrowIf(_disposing, this);
+            if (!_sessions.TryGetValue(workspaceId, out session!))
+                throw CreateWorkspaceNotFoundException(workspaceId);
+            loadedPath = session.LoadedPath;
+        }
         var physicalPath = PhysicalPathResolver.Resolve(loadedPath!);
         lock (_lifecycleSync)
         {
             ObjectDisposedException.ThrowIf(_disposing, this);
             if (!_sessions.TryGetValue(workspaceId, out var current) || !ReferenceEquals(session, current))
                 throw CreateWorkspaceNotFoundException(workspaceId);
+            _sourceOperations.TryGetValue(session, out var retained);
             if (!FileSystemPath.Comparer.Equals(loadedPath, session.LoadedPath) ||
+                (retained.Count > 0 && !FileSystemPath.Comparer.Equals(retained.PhysicalLoadedPath, physicalPath)) ||
                 _forkStorageDeletions.Any(root => ForkPathAdmission.Contains(root, physicalPath)) ||
                 !File.Exists(physicalPath))
                 throw new PublicInvalidOperationException("The fork source backing file changed or is being deleted. Reopen the source and recreate the preview before retrying.");
             if (_sourceOperationCount++ == 0)
                 _sourceOperationsDrained = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            _sourceOperations.TryGetValue(session, out var retained);
             _sourceOperations[session] = new(retained.Count + 1, physicalPath);
         }
 
