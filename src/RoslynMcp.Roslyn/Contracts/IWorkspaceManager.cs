@@ -1,6 +1,6 @@
+using Microsoft.CodeAnalysis;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
-using Microsoft.CodeAnalysis;
 
 namespace RoslynMcp.Roslyn.Contracts;
 
@@ -81,9 +81,12 @@ public interface IWorkspaceManager
 
     /// <summary>
     /// Closes the specified workspace session and releases its resources.
+    /// An active fork source is retained until fork completion and cleanup; wait for or
+    /// cancel that fork before closing its source workspace.
     /// </summary>
     /// <param name="workspaceId">The workspace session identifier to close.</param>
     /// <returns><see langword="true"/> if the session was found and closed; <see langword="false"/> if no session with the given identifier exists.</returns>
+    /// <exception cref="PublicInvalidOperationException">The session is retained by an active fork.</exception>
     bool Close(string workspaceId);
 
     /// <summary>

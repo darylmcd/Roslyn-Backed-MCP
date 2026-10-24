@@ -1,6 +1,6 @@
 # fork-evaluated-source-isolation — Reject copied graph paths into the source workspace
 
-**row:** `fork-evaluated-source-isolation` · **pri:** `Medium` · **size:** `M` · **deps:** `restore-required-project-inventory`
+**row:** `fork-evaluated-source-isolation` · **pri:** `Medium` · **size:** `M` · **deps:** `restore-required-project-inventory,fork-source-session-retention`
 
 ## Anchors
 

@@ -65,8 +65,8 @@ public sealed class WorkspaceForkDocumentEncodingTests : IsolatedWorkspaceTestBa
         Assert.IsNotNull(entry);
         var validation = new WorkspaceValidationService(CompileCheckService, DiagnosticService,
             TestDiscoveryService, TestRunnerService, WorkspaceManager, ChangeTracker);
-        var service = new WorkspaceForkApplyService(WorkspaceManager, WorkspaceExecutionGate, store,
-            validation, TestRunnerService, new DotnetCommandRunner(), NullLogger<WorkspaceForkApplyService>.Instance);
+        await using var service = new WorkspaceForkApplyService(WorkspaceManager, WorkspaceExecutionGate, store,
+            validation, TestRunnerService, new DotnetCommandRunner(), NullLogger<WorkspaceForkApplyService>.Instance, WorkspaceManager.RunWithRetainedForkSourceAsync);
 
         var result = await service.ApplyAsync(source.WorkspaceId, token, "keep", false, null, null, CancellationToken.None);
         try

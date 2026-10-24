@@ -14,7 +14,7 @@ namespace RoslynMcp.Roslyn.Services;
 /// <summary>
 /// Owns workspace-fork creation, preview replay, restore, validation, retention, and cleanup.
 /// </summary>
-internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService
+internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService, IAsyncDisposable
 {
     private static readonly HashSet<string> DirectoryCopyExclusions = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -78,6 +78,12 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService
     private static readonly ConcurrentDictionary<string, ForkApplyLock> ForkApplyLocks =
         new(FileSystemPath.Comparer);
 
+    private readonly Func<string, Func<CancellationToken, Task<WorkspaceForkApplyResultDto>>, CancellationToken, Task<WorkspaceForkApplyResultDto>> _retainSource;
+    private readonly object _lifecycleSync = new();
+    private readonly CancellationTokenSource _lifetimeCancellation = new();
+    private int _operationCount;
+    private TaskCompletionSource? _operationsDrained;
+    private Task? _shutdownTask;
     private readonly IWorkspaceManager _workspaceManager;
     private readonly IWorkspaceExecutionGate _workspaceExecutionGate;
     private readonly IPreviewStore _previewStore;
@@ -93,8 +99,10 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService
         IWorkspaceValidationService validationService,
         ITestRunnerService testRunnerService,
         IDotnetCommandRunner commandRunner,
-        ILogger<WorkspaceForkApplyService> logger)
+        ILogger<WorkspaceForkApplyService> logger,
+        Func<string, Func<CancellationToken, Task<WorkspaceForkApplyResultDto>>, CancellationToken, Task<WorkspaceForkApplyResultDto>> retainSource)
     {
+        _retainSource = retainSource;
         _workspaceManager = workspaceManager;
         _workspaceExecutionGate = workspaceExecutionGate;
         _previewStore = previewStore;
@@ -104,7 +112,7 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService
         _logger = logger;
     }
 
-    public async Task<WorkspaceForkApplyResultDto> ApplyAsync(
+    public Task<WorkspaceForkApplyResultDto> ApplyAsync(
         string workspaceId,
         string previewToken,
         string retention,
@@ -114,6 +122,67 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService
         CancellationToken ct)
     {
         var normalizedRetention = NormalizeRetention(retention);
+        return RunOwnedOperationAsync(token => _retainSource(workspaceId,
+            sourceToken => ApplyCoreAsync(workspaceId, previewToken, normalizedRetention, runTests, testFilter, forkName, sourceToken), token), ct);
+    }
+
+    private async Task<WorkspaceForkApplyResultDto> RunOwnedOperationAsync(
+        Func<CancellationToken, Task<WorkspaceForkApplyResultDto>> operation, CancellationToken ct)
+    {
+        lock (_lifecycleSync)
+        {
+            ObjectDisposedException.ThrowIf(_shutdownTask is not null, this);
+            if (_operationCount++ == 0)
+                _operationsDrained = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+        try
+        {
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, _lifetimeCancellation.Token);
+            return await operation(linked.Token).ConfigureAwait(false);
+        }
+        finally
+        {
+            // The manager callback has returned, including its source-retention finally.
+            lock (_lifecycleSync)
+                if (--_operationCount == 0) _operationsDrained!.TrySetResult();
+        }
+    }
+
+    /// <summary>
+    /// Provider teardown drains this service before disposing its gate/runner/watcher graph.
+    /// It owns only its operations and cancellation source, never an externally supplied manager.
+    /// Providers resolving this service must use asynchronous disposal.
+    /// </summary>
+    public ValueTask DisposeAsync()
+    {
+        TaskCompletionSource<Exception?> cancellationIssued;
+        Task shutdown;
+        lock (_lifecycleSync)
+        {
+            if (_shutdownTask is not null) return new ValueTask(_shutdownTask);
+            cancellationIssued = new TaskCompletionSource<Exception?>();
+            shutdown = FinishStopAsync(cancellationIssued.Task, _operationsDrained?.Task ?? Task.CompletedTask);
+            _shutdownTask = shutdown;
+        }
+        Exception? failure = null;
+        try { _lifetimeCancellation.Cancel(); }
+        catch (Exception exception) { failure = exception; }
+        cancellationIssued.SetResult(failure);
+        return new ValueTask(shutdown);
+    }
+
+    private async Task FinishStopAsync(Task<Exception?> cancellationIssued, Task operationsDrained)
+    {
+        var failure = await cancellationIssued.ConfigureAwait(false);
+        await operationsDrained.ConfigureAwait(false);
+        _lifetimeCancellation.Dispose();
+        if (failure is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
+    }
+
+    private async Task<WorkspaceForkApplyResultDto> ApplyCoreAsync(
+        string workspaceId, string previewToken, string normalizedRetention, bool runTests,
+        string? testFilter, string? forkName, CancellationToken ct)
+    {
         var source = GetRequiredSourceContext(workspaceId);
         string? forkWorkspaceId = null;
         var cleanupWarnings = new List<string>();
