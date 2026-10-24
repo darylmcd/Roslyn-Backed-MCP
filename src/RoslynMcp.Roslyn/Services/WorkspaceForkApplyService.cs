@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Globalization;
+using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.CodeAnalysis;
 using Microsoft.Extensions.Logging;
@@ -640,14 +641,14 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService
         }
 
         var forkFilePath = MapSourcePathToFork(document.FilePath, sourceRoot, forkRoot);
-        var text = (await document.GetTextAsync(ct).ConfigureAwait(false)).ToString();
+        var text = await document.GetTextAsync(ct).ConfigureAwait(false);
         var directory = Path.GetDirectoryName(forkFilePath);
         if (!string.IsNullOrWhiteSpace(directory))
         {
             Directory.CreateDirectory(directory);
         }
 
-        await File.WriteAllTextAsync(forkFilePath, text, ct).ConfigureAwait(false);
+        await File.WriteAllTextAsync(forkFilePath, text.ToString(), text.Encoding ?? new UTF8Encoding(false), ct).ConfigureAwait(false);
         appliedFiles.Add(forkFilePath);
     }
 
