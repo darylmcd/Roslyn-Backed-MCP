@@ -25,7 +25,7 @@
 | Refusal | isError=true; category InvalidOperation; exceptionType InvalidOperationException; message: The operation is not valid in the current state. Check the tool contract and retry. |
 | Independent reproduction | Fresh second workspace loaded the same on-disk source ready with zero diagnostics; exact reduced request independently failed in41ms, no stale reload. No preview applied. |
 | Counterexample | Insertion-only additional test preview and production-file preview/apply succeed through the same installed tool. Existing source compiles. |
-| Local raw evidence | C:/Users/daryl/.codex/scratch/pathscope-remediate-20261023-2031/roslyn-native-test-preview-error.md; consumer source remains local. |
+| Local raw evidence | <user-profile>/.codex/scratch/pathscope-remediate-20261023-2031/roslyn-native-test-preview-error.md; consumer source remains local. |
 
 ## Context
 
