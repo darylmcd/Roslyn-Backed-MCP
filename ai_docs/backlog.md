@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-23T20:23:56Z
+**updated_at:** 2026-10-24T04:23:59Z
 
 ## Agent contract
 
@@ -166,6 +166,7 @@
 | `project-metadata-parser-broad-exception-fallbacks` | Medium | — | Narrow three metadata-parser catch-all fallbacks to expected evaluation/read/parse failures and propagate unexpected exceptions. | S | items/project-metadata-parser-broad-exception-fallbacks.md |
 | `workspace-reload-preserve-global-properties` | Medium | restore-assets-json-kind-guards | Preserve the loaded MSBuild global properties and actual configured compiler state through the shared public reload path. | S | items/workspace-reload-preserve-global-properties.md |
 | `restore-metadata-evaluation-global-context` | Medium | workspace-reload-preserve-global-properties | Pass explicit operation MSBuild settings through restore and project metadata evaluation; qualify configured layouts and reporting. | M | items/restore-metadata-evaluation-global-context.md |
+| `preview-valid-member-replacement-invalidoperation` | Medium | — | **Restore valid member replacement previews** — reproduce ready-workspace InvalidOperation for a valid existing-field/body edit batch and preserve preview/apply safety. [type: bug] [source: consumer-20261024] | M | items/preview-valid-member-replacement-invalidoperation.md |
 
 ## Low
 
