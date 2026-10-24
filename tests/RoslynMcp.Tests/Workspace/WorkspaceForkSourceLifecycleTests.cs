@@ -432,6 +432,8 @@ public sealed class WorkspaceForkSourceLifecycleTests
                         evictionGate: sp.GetRequiredService<Lazy<IWorkspaceExecutionGate>>(), ownsFileWatcher: false, timeProvider: clock));
             }
             services.AddSingleton<IDotnetCommandRunner>(_ => runner);
+            // These direct service fixtures have no MCP request; use the real canonical configured-root validator.
+            services.AddSingleton<ForkStoragePathValidator>(ForkStorageFixtureBoundary.ValidateAsync);
             var host = builder?.Build();
             provider = host is null ? services.BuildServiceProvider() : (ServiceProvider)host.Services;
             try

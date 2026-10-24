@@ -370,7 +370,9 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
                ContainsPathSegment(relativePath, "bin") ||
                ContainsPathSegment(relativePath, ".git") ||
                ContainsPathSegment(relativePath, ".roslynmcp") ||
-               ContainsPathSegment(relativePath, ".worktrees");
+               ContainsPathSegment(relativePath, ".worktrees") ||
+               relativePath.Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar], StringSplitOptions.RemoveEmptyEntries)
+                   .Any(ForkStorageDirectoryName.IsGenerated);
     }
 
     private static bool ContainsPathSegment(string path, string segment)

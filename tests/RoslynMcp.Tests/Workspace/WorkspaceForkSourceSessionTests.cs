@@ -36,6 +36,8 @@ public sealed class WorkspaceForkSourceSessionTests
         services.AddLogging();
         services.AddSingleton(new WorkspaceManagerOptions { MaxConcurrentWorkspaces = capacity });
         services.AddRoslynServices();
+        // These direct service fixtures have no MCP request; use the real canonical configured-root validator.
+        services.AddSingleton<ForkStoragePathValidator>(ForkStorageFixtureBoundary.ValidateAsync);
         services.AddSingleton<ILogger<WorkspaceManager>>(managerLog);
         services.AddSingleton<IDotnetCommandRunner>(runner);
         if (overrideManager)

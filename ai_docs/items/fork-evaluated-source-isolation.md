@@ -4,13 +4,43 @@
 
 ## Anchors
 
-- `src/RoslynMcp.Roslyn/Services/WorkspaceForkApplyService.cs:128`
-- `src/RoslynMcp.Roslyn/Services/ForkGraphPreparation.cs:14`
-- `src/RoslynMcp.Roslyn/Services/RestoreInvocationPlanner.cs:73`
-- `src/RoslynMcp.Roslyn/Services/WorkspaceSessionLoader.cs:51`
-- `src/RoslynMcp.Roslyn/Services/GatedCommandExecutor.cs:63`
+- `src/RoslynMcp.Host.Stdio/ServiceCollectionExtensions.cs`
+- `src/RoslynMcp.Host.Stdio/Tools/ValidationBundleTools.cs`
+- `src/RoslynMcp.Roslyn/Helpers/WorkspaceDiagnosticSeverityClassifier.cs`
+- `src/RoslynMcp.Roslyn/RoslynMcp.Roslyn.csproj`
+- `src/RoslynMcp.Roslyn/ServiceCollectionExtensions.cs`
+- `src/RoslynMcp.Roslyn/Services/AdmitForkBuildPaths.cs`
+- `src/RoslynMcp.Roslyn/Services/DiscoverForkTargetDependencies.cs`
+- `src/RoslynMcp.Roslyn/Services/FileWatcherService.cs`
+- `src/RoslynMcp.Roslyn/Services/ForkAdmission.targets`
+- `src/RoslynMcp.Roslyn/Services/ForkAdmissionMaterial.cs`
+- `src/RoslynMcp.Roslyn/Services/ForkAdmissionTask.cs`
+- `src/RoslynMcp.Roslyn/Services/ForkGraphPreparation.cs`
+- `src/RoslynMcp.Roslyn/Services/ForkPathAdmission.cs`
+- `src/RoslynMcp.Roslyn/Services/ForkStorageDirectoryName.cs`
+- `src/RoslynMcp.Roslyn/Services/GatedCommandExecutor.cs`
+- `src/RoslynMcp.Roslyn/Services/InstallForkProjectImports.cs`
+- `src/RoslynMcp.Roslyn/Services/RestoreInvocationPlanner.cs`
+- `src/RoslynMcp.Roslyn/Services/WorkspaceForkApplyService.cs`
+- `src/RoslynMcp.Roslyn/Services/WorkspaceSessionLoader.cs`
+- `tests/RoslynMcp.Tests/CiRunnerParityContractTests.cs`
+- `tests/RoslynMcp.Tests/DiagnosticServiceFilterTotalsTests.cs`
+- `tests/RoslynMcp.Tests/ExternalEditStalenessTests.cs`
+- `tests/RoslynMcp.Tests/Helpers/ForkStorageFixtureBoundary.cs`
+- `tests/RoslynMcp.Tests/RoslynMcp.Tests.csproj`
+- `tests/RoslynMcp.Tests/ServiceCollectionExtensionsTests.cs`
+- `tests/RoslynMcp.Tests/TestInfrastructure/TestServiceContainer.cs`
+- `tests/RoslynMcp.Tests/ValidationBundleToolsTests.cs`
 - `tests/RoslynMcp.Tests/Workspace/ForkGraphPreparationTests.cs`
+- `tests/RoslynMcp.Tests/Workspace/ForkNativeAdmissionTests.cs`
+- `tests/RoslynMcp.Tests/Workspace/ForkStorageBoundaryTests.cs`
+- `tests/RoslynMcp.Tests/Workspace/ForkStorageLockOrderTests.cs`
+- `tests/RoslynMcp.Tests/Workspace/WorkspaceForkApplyTests.cs`
+- `tests/RoslynMcp.Tests/Workspace/WorkspaceForkDocumentEncodingTests.cs`
 - `tests/RoslynMcp.Tests/Workspace/WorkspaceForkGraphReplayTests.cs`
+- `tests/RoslynMcp.Tests/Workspace/WorkspaceForkSourceLifecycleTests.cs`
+- `tests/RoslynMcp.Tests/Workspace/WorkspaceForkSourceSessionTests.cs`
+- `tests/RoslynMcp.Tests/WorkspaceForkGitIsolationTests.cs`
 
 ## Acceptance
 
@@ -31,21 +61,19 @@
 
 | Evidence | Result / limit |
 |---|---|
-| Original hidden-project regression | restore-fork-closure-corrected-red.log reached the old runner with a source output from a non-compilation .proj; absence from Roslyn was asserted. |
-| Public preprocessing defect | preprocess-public-2.trx and the stronger design-time context matrix demonstrated real unchanged-preview keep/runTests=false source writes. preprocess-integration-1.log and preprocess-retained-1.log each passed4, including actual refusal, valid native outputs, reopen and later CLI protection with full source/preview authority checks. |
-| Native consumer effects | native-build-product-real-red.log demonstrated a source DLL write despite successful native Build. Native output, RID/framework/local-copy, preprocessing membership and retained invocation matrices then passed; native-completion-cohort-2.log passed150 before subsequent corrections. |
-| Final consumer corrections | native-final-consumer-red.log:15PASS6FAIL; native-final-consumer-green.log:21PASS0FAIL. Covers safe late mutation, marker current/prior flags, both manifest branches and missing-config public reopen. |
-| Final bounded controls | native-finite-coverage.log:34PASS0FAIL, including28 actual native metadata/mode/casing/TargetPath/Link controls,3 import-install cancellation boundaries, actual native-command cancellation and owned-versus-inert retained-material discovery. |
-| Lifetime and refusal | native-retained-malformed-cleanup-red.log:2PASS2FAIL; native-retained-cleanup-green.log:6PASS. native-loader-setup-red.log proved unstarted ownership leakage before correction. native-supported-stage-cancellation-1.log passed actual stage cancellation with exact owned BuildHost exit. Physical alias and cleanup faults are covered without cross-process ownership claims. |
-| Independent implementation review | Fresh full cumulative review returned0BLOCKING after the bounded corrections; final formatting delta, exact committed-head scoped/hosted checks and full serialized delivery validation remain required. |
-| Packaging | Final portable Windows/Linux10.0.402 and exact Linux10.0.400 CLI and actual BuildHost matrices passed6 each; current-native-final-windows.log, current-native-final-linux402-lf.log and current-native-final-linux400.log. Bounded activation/path checks do not replace the full gate. |
-| Exact-head correction after3bbb890a | Initial22-class gate:541PASS13FAIL0SKIP. Native SourceLink warnings were miscounted as fatal; the factual warning predicate preserves true errors independently of presentation. severity-red.log:5FAIL5PASS; load-severity-green.log:198PASS. Final de61d096 corrected25-class gate:598PASS0FAIL0SKIP, zero cross-class overlap, including full CrossProject19 and ratchet88. |
-| Hosted Windows correction pending | PR1823 is open/ready at de61d096. Three Windows shards, both Linux shards, SDK-floor400 and CodeQL passed; Windows1 failed one real retained-fork replay with native CWD error267. Local padded public regression:windows-cwd-public-red-qualified.log1FAIL3PASS0SKIP; first fork succeeds, recursively nested second fails. No unchanged CI retry. |
-| Storage correction evidence | windows-storage-oldred.log:2FAIL; windows-uncertain-oldred.log:1FAIL; windows-canonical-expiry-oldred.log:1FAIL3PASS. Corrective storage12 and authority/control16 cohorts passed. Final affected seven-class run:263PASS1FAIL0SKIP; linked-descendant expiry control remains red. New canonical second/third generation and authored sibling preservation passed. Compile8/8zero and formatter27files0; these do not replace final validation. |
-| Delivery state | No row closed. Fresh plan required for confirmed reload/ownership ordering, source session preservation during LRU/close and canonical pool copy topology; linked expiry failure needs diagnosis. All prior source/write/token controls remain required. No unchanged red retry or new prerequisite. Corrected-head scoped/hosted and serialized just ci delivery gates remain required. |
+| Native effects | Public preprocessing and actual Build old-code regressions demonstrated source writes with unchanged real previews. Native RID/framework/reference-copy, FileWrites, conditional imports, retained invocation and valid external-path controls then passed. Raw receipts are retained in the PR handoff. |
+| Prior exact published head | de61d096: 598PASS0FAIL0SKIP across25 classes, including full CrossProject19 and construction ratchet88, no cross-class overlap. Hosted Windows1 subsequently failed actual nested retained-fork CWD error267; three Windows, both Linux and SDK-floor400 passed. No unchanged retry. |
+| Source lifetime dependency | PR1824 squash14fbdc025d5b767e568b9598936b6bb783add555 merged with independent review and all hosted Windows/Linux/SDK-floor checks green. Integrated locally by merge2faa75fb. Source retention and async disposal are inherited from main. |
+| Actual reload lock order | Separate actual Host Reload old-code run:2FAIL. Physical source ownership before source writer and across fork load caused both rendezvous failures. New pool-only outer ownership and short physical source ownership inside writer allow reload to complete. |
+| Stale source preview | First corrected cohort9PASS1FAIL: pre-copy reload completed but old-version preview was accepted. Compare actual manager version inside the source writer through existing PreviewTokenStaleException; final both reload phases pass. |
+| Canonical pool copy | Pool equal to source old code failed PathTooLongException; descendant case aborted testhost in recursive copy. Dynamic physical exclusions prevent destination recursion while preserving authored imports/content and verified prior fork material. Aborted run is not passing evidence. |
+| Default SDK source graph | Stronger ordinary default Compile fixture:2FAIL on old generated names. Original build passed before fork, then failed CS0101/CS0579 after generated children entered original SDK globs. Hidden reserved generated names preserve default SDK inputs. |
+| Original preview watcher | Real Host graph, real rename and three native fork generations:2FAIL with bare-dot names because original source became stale. Shared narrow generated-name parser now excludes only reserved generated directories; authored hidden/lookalike events remain watched. |
+| Linked cleanup | Logger-qualified old code:1FAIL5PASS. Recursive deletion threw UnauthorizedAccessException and changed external ReadOnly attributes. Shared iterative no-follow deletion now preserves external bytes/attributes and collects the owned directory. |
+| Final implementer qualification | final-owned.log/TRX:129PASS0FAIL2existingLinux-onlySKIP131total5m04s. Includes actual canonical source/descendant pools, original native build before/after every generation, unchanged full source preview/Solution/version/snapshot/bytes and genuine same-token original apply/undo. Compile8/8zero. One subsequent XML-summary placement edit only. |
+| Delivery state | Product frozen for a fresh full independent implementation review, root exact-head expanded affected gate, formatting/policies and new hosted Windows/Linux/SDK-floor checks. Current local fixes are not yet published; no row closure or full serialized delivery-gate claim. |
 
-- Corrected old copy assertions distinguish restore inventory from actual build consumers; stronger native-effect controls preserve the original parent-destination and source/preview authority oracles.
-- Native task/import wiring is forced by demonstrated actual load/build effects. No replacement BuildHost, compiler certificate, physical-directory lease or second restore evaluator is introduced.
-- Graph fidelity remains owned by dependent restore-fork-reviewed-project-graph. Independent cross-process expiry coordination is a separate follow-up, not a restore prerequisite.
+- Real native load/build effects force task/import integration; no replacement BuildHost, native compiler certificate, physical-directory lease or second restore evaluator.
+- Graph fidelity remains the dependent restore-fork-reviewed-project-graph slice. Independent cross-process expiry coordination and provider/root-retirement concerns are follow-up rows without restore dependencies.
+- The root session owns the full serialized producer and just ci before closure, plus the final clean merged-main gate after trailing documentation.
 
-- Source lifecycle dependency PR1824 merged as 14fbdc025d5b767e568b9598936b6bb783add555 with independent review and all hosted Windows/Linux/SDK-floor checks green; integrate its exact retention callback before remaining storage lock/copy/linked-expiry corrections. No row closure or full delivery qualification yet.

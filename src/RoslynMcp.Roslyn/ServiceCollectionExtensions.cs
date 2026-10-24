@@ -174,7 +174,7 @@ public static class ServiceCollectionExtensions
             var sourceOwner = manager as WorkspaceManager
                 ?? throw new PublicInvalidOperationException("Fork apply requires a WorkspaceManager that owns source-session retention.");
             return new WorkspaceForkApplyService(manager, gate, previews, validation, tests, commands, sp.GetRequiredService<ForkStoragePathValidator>(), logger,
-                sourceOwner.RunWithRetainedForkSourceAsync);
+                sourceOwner.RunWithRetainedForkSourceAsync, sourceOwner.TryReserveForkStorageDeletion);
         });
         services.AddSingleton<IWorkspaceWarmService, WorkspaceWarmService>();
         services.AddSingleton<IWorkspaceDriftService, WorkspaceDriftService>();

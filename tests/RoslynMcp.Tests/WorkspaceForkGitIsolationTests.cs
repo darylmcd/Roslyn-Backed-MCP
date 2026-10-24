@@ -36,7 +36,7 @@ public class WorkspaceForkGitIsolationTests
                 File.WriteAllText(Path.Combine(folder, "Program.cs"), "class C {}");
             }
 
-            WorkspaceForkApplyService.CopyDirectory(source, destination, CancellationToken.None);
+            WorkspaceForkApplyService.CopyDirectory(source, destination, [Path.GetFullPath(destination)], CancellationToken.None);
             foreach (var relative in new[] { "", "nested" })
             {
                 Assert.IsFalse(Path.Exists(Path.Combine(destination, relative, name)));
@@ -78,7 +78,7 @@ public class WorkspaceForkGitIsolationTests
             await Task.WhenAll(agents.Select((agent, i) => Task.Run(async () =>
             {
                 var fork = Path.Combine(root, $"fork-{i}");
-                WorkspaceForkApplyService.CopyDirectory(agent, fork, CancellationToken.None);
+                WorkspaceForkApplyService.CopyDirectory(agent, fork, [Path.GetFullPath(fork)], CancellationToken.None);
                 Assert.IsFalse(File.Exists(Path.Combine(fork, ".git")), "A fork must not inherit an agent's gitdir pointer.");
                 File.WriteAllText(Path.Combine(fork, "Program.cs"), "class Fork {}");
                 // A fork may create its own repository, but must never share an agent's index.

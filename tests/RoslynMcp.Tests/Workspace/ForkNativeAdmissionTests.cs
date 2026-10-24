@@ -689,18 +689,18 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
         fixture.WriteProject(project, string.Empty);
         var config = ForkAdmissionMaterial.Install(fixture.Source, fork, [project], CancellationToken.None);
         using var execution = await ForkAdmissionExecution.CreateAsync(config, null, CancellationToken.None);
-        WorkspaceForkApplyService.SweepExpiredForks(forks, 1, DateTimeOffset.UtcNow);
+        WorkspaceForkApplyService.SweepExpiredForks(forks, 1, DateTimeOffset.UtcNow, WorkspaceManager.TryReserveForkStorageDeletion);
         Assert.IsTrue(Directory.Exists(execution.Root), "TTL cleanup must preserve admission material during an active invocation.");
         execution.Dispose();
         Assert.IsNotNull(execution.CleanupWarning);
-        WorkspaceForkApplyService.SweepExpiredForks(forks, 1, DateTimeOffset.UtcNow);
+        WorkspaceForkApplyService.SweepExpiredForks(forks, 1, DateTimeOffset.UtcNow, WorkspaceManager.TryReserveForkStorageDeletion);
         Assert.IsTrue(Directory.Exists(execution.Root), "Uncertain native completion retains its execution and blocks expiry.");
         // This test never starts native work, so it can remove the uncertain residue.
         Directory.Delete(execution.Root, recursive: true);
         using var completed = await ForkAdmissionExecution.CreateAsync(config, null, CancellationToken.None);
         completed.Complete();
         completed.Dispose();
-        WorkspaceForkApplyService.SweepExpiredForks(forks, 1, DateTimeOffset.UtcNow);
+        WorkspaceForkApplyService.SweepExpiredForks(forks, 1, DateTimeOffset.UtcNow, WorkspaceManager.TryReserveForkStorageDeletion);
         Assert.IsFalse(Directory.Exists(fork), "Completed expired forks must still be collected.");
     }
 
@@ -730,8 +730,8 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
         var store = new PreviewStore();
         var validation = new WorkspaceValidationService(CompileCheckService, DiagnosticService, TestDiscoveryService,
             TestRunnerService, WorkspaceManager, ChangeTracker);
-        var service = new WorkspaceForkApplyService(WorkspaceManager, WorkspaceExecutionGate, store, validation,
-            TestRunnerService, DotnetCommandRunner, Helpers.ForkStorageFixtureBoundary.ValidateAsync, Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceForkApplyService>.Instance, WorkspaceManager.RunWithRetainedForkSourceAsync);
+        await using var service = new WorkspaceForkApplyService(WorkspaceManager, WorkspaceExecutionGate, store, validation,
+            TestRunnerService, DotnetCommandRunner, Helpers.ForkStorageFixtureBoundary.ValidateAsync, Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceForkApplyService>.Instance, WorkspaceManager.RunWithRetainedForkSourceAsync, WorkspaceManager.TryReserveForkStorageDeletion);
         RoslynMcp.Core.Models.WorkspaceForkApplyResultDto? first = null;
         RoslynMcp.Core.Models.WorkspaceForkApplyResultDto? second = null;
         RoslynMcp.Core.Models.WorkspaceForkApplyResultDto? third = null;
@@ -917,7 +917,7 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
-    public void ForkCleanup_OwnershipResolutionFailure_RetainsMaterialAndPreservesPrimaryCancellation()
+    public async Task ForkCleanup_OwnershipResolutionFailure_RetainsMaterialAndPreservesPrimaryCancellation()
     {
         using var fixture = new NativeFixture(false);
         var cycle = Path.Combine(fixture.Root, "cycle");
@@ -925,8 +925,8 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
         try
         {
             Assert.ThrowsExactly<IOException>(() => PhysicalPathResolver.Resolve(cycle));
-            var service = new WorkspaceForkApplyService(WorkspaceManager, WorkspaceExecutionGate, new PreviewStore(),
-                null!, null!, DotnetCommandRunner, Helpers.ForkStorageFixtureBoundary.ValidateAsync, Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceForkApplyService>.Instance, WorkspaceManager.RunWithRetainedForkSourceAsync);
+            await using var service = new WorkspaceForkApplyService(WorkspaceManager, WorkspaceExecutionGate, new PreviewStore(),
+                null!, null!, DotnetCommandRunner, Helpers.ForkStorageFixtureBoundary.ValidateAsync, Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceForkApplyService>.Instance, WorkspaceManager.RunWithRetainedForkSourceAsync, WorkspaceManager.TryReserveForkStorageDeletion);
             var cleanup = typeof(WorkspaceForkApplyService).GetMethod("CleanupFork", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
             var warnings = new List<string>();
             var original = new OperationCanceledException("Primary cancellation must survive cleanup identity failure.");
@@ -960,8 +960,8 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
         {
             var original = WorkspaceManager.GetCurrentSolution(loaded.WorkspaceId);
             using var execution = await ForkAdmissionExecution.CreateAsync(config, null, CancellationToken.None);
-            var service = new WorkspaceForkApplyService(WorkspaceManager, WorkspaceExecutionGate, new PreviewStore(),
-                null!, null!, DotnetCommandRunner, Helpers.ForkStorageFixtureBoundary.ValidateAsync, Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceForkApplyService>.Instance, WorkspaceManager.RunWithRetainedForkSourceAsync);
+            await using var service = new WorkspaceForkApplyService(WorkspaceManager, WorkspaceExecutionGate, new PreviewStore(),
+                null!, null!, DotnetCommandRunner, Helpers.ForkStorageFixtureBoundary.ValidateAsync, Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceForkApplyService>.Instance, WorkspaceManager.RunWithRetainedForkSourceAsync, WorkspaceManager.TryReserveForkStorageDeletion);
             var cleanup = typeof(WorkspaceForkApplyService).GetMethod("CleanupFork", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
             var warnings = new List<string>();
             cleanup.Invoke(service, [loaded.WorkspaceId, fixture.Fork, warnings, CancellationToken.None]);
@@ -1187,17 +1187,17 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
         using var held = await WorkspaceForkApplyService.AcquireForkApplyLockAsync(fixture.Fork, CancellationToken.None);
         using var aliasOwnership = WorkspaceForkApplyService.TryAcquireForkApplyLock(alias);
         Assert.IsNull(aliasOwnership, "Physical aliases must use the same existing fork ownership key.");
-        WorkspaceForkApplyService.SweepExpiredForks(aliases, 1, DateTimeOffset.UtcNow);
+        WorkspaceForkApplyService.SweepExpiredForks(aliases, 1, DateTimeOffset.UtcNow, WorkspaceManager.TryReserveForkStorageDeletion);
         Assert.IsTrue(Directory.Exists(alias), "Expiry must not delete an alias while its physical fork is owned.");
-        var service = new WorkspaceForkApplyService(WorkspaceManager, WorkspaceExecutionGate, new PreviewStore(), null!, null!, DotnetCommandRunner,
-            Helpers.ForkStorageFixtureBoundary.ValidateAsync, Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceForkApplyService>.Instance, WorkspaceManager.RunWithRetainedForkSourceAsync);
+        await using var service = new WorkspaceForkApplyService(WorkspaceManager, WorkspaceExecutionGate, new PreviewStore(), null!, null!, DotnetCommandRunner,
+            Helpers.ForkStorageFixtureBoundary.ValidateAsync, Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceForkApplyService>.Instance, WorkspaceManager.RunWithRetainedForkSourceAsync, WorkspaceManager.TryReserveForkStorageDeletion);
         var cleanup = typeof(WorkspaceForkApplyService).GetMethod("CleanupFork", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
         var warnings = new List<string>();
         cleanup.Invoke(service, [null, alias, warnings, CancellationToken.None]);
         Assert.AreEqual(1, warnings.Count);
         Assert.IsTrue(Directory.Exists(alias));
         held.Dispose();
-        WorkspaceForkApplyService.SweepExpiredForks(aliases, 1, DateTimeOffset.UtcNow);
+        WorkspaceForkApplyService.SweepExpiredForks(aliases, 1, DateTimeOffset.UtcNow, WorkspaceManager.TryReserveForkStorageDeletion);
         Assert.IsTrue(Directory.Exists(alias), "Expiry must not follow a reparse-point victim, even after native ownership is released.");
         Assert.IsTrue(Directory.Exists(fixture.Fork));
     }
@@ -1424,7 +1424,7 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
         {
             while (!File.Exists(entered) && !running.IsCompleted) await Task.Delay(10, timeout.Token);
             Assert.IsTrue(File.Exists(entered), "The actual owned CLI must enter the paused target.");
-            WorkspaceForkApplyService.SweepExpiredForks(pool, 1, DateTimeOffset.UtcNow);
+            WorkspaceForkApplyService.SweepExpiredForks(pool, 1, DateTimeOffset.UtcNow, WorkspaceManager.TryReserveForkStorageDeletion);
             Assert.IsTrue(Directory.Exists(outer), "The physical enclosing owner must remain during the actual native invocation.");
             Assert.IsTrue(File.Exists(project), "A paused legacy nested invocation must protect its physical enclosing owner from outer-pool TTL deletion.");
         }
@@ -1441,7 +1441,7 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
             { throw new AggregateException("The active-owner assertion and native completion both failed.", primaryFailure, completion); }
             finally { WorkspaceManager.Close(loaded.WorkspaceId); }
         }
-        WorkspaceForkApplyService.SweepExpiredForks(pool, 1, DateTimeOffset.UtcNow);
+        WorkspaceForkApplyService.SweepExpiredForks(pool, 1, DateTimeOffset.UtcNow, WorkspaceManager.TryReserveForkStorageDeletion);
         Assert.IsFalse(Directory.Exists(outer), "An inactive completed legacy owner remains eligible for expiry.");
     }
 
@@ -1464,8 +1464,8 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
         var entry = WorkspaceForkGraphReplayTests.CapturePreviewEntry(store, token);
         var bytes = Directory.GetFiles(sourceRoot, "*", SearchOption.AllDirectories).ToDictionary(path => path, File.ReadAllBytes);
         var validation = new WorkspaceValidationService(CompileCheckService, DiagnosticService, TestDiscoveryService, TestRunnerService, WorkspaceManager, ChangeTracker);
-        var service = new WorkspaceForkApplyService(WorkspaceManager, WorkspaceExecutionGate, store, validation, TestRunnerService, DotnetCommandRunner,
-            Helpers.ForkStorageFixtureBoundary.ValidateAsync, Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceForkApplyService>.Instance, WorkspaceManager.RunWithRetainedForkSourceAsync);
+        await using var service = new WorkspaceForkApplyService(WorkspaceManager, WorkspaceExecutionGate, store, validation, TestRunnerService, DotnetCommandRunner,
+            Helpers.ForkStorageFixtureBoundary.ValidateAsync, Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceForkApplyService>.Instance, WorkspaceManager.RunWithRetainedForkSourceAsync, WorkspaceManager.TryReserveForkStorageDeletion);
         RoslynMcp.Core.Models.WorkspaceForkApplyResultDto? result = null;
         try
         {
@@ -1542,11 +1542,11 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
         Assert.IsNotNull(uncertain.CleanupWarning);
         Assert.IsFalse(WorkspaceForkApplyService.HasForkApplyLock(outer));
         Assert.IsFalse(WorkspaceForkApplyService.HasForkApplyLock(inner));
-        WorkspaceForkApplyService.SweepExpiredForks(pool, 1, DateTimeOffset.UtcNow);
+        WorkspaceForkApplyService.SweepExpiredForks(pool, 1, DateTimeOffset.UtcNow, WorkspaceManager.TryReserveForkStorageDeletion);
         Assert.IsTrue(Directory.Exists(uncertain.Root), "Enclosing expiry must preserve uncertain nested admission material after ancestor locks are released.");
         // No native process starts in this control; the fixture owns the residue.
         Directory.Delete(uncertain.Root, recursive: true);
-        WorkspaceForkApplyService.SweepExpiredForks(pool, 1, DateTimeOffset.UtcNow);
+        WorkspaceForkApplyService.SweepExpiredForks(pool, 1, DateTimeOffset.UtcNow, WorkspaceManager.TryReserveForkStorageDeletion);
         Assert.IsFalse(Directory.Exists(outer));
     }
 
@@ -1583,9 +1583,48 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
         if (shape == "inert") File.WriteAllText(Path.Combine(material, "guard.targets"), "<Project><!-- authored fixture --></Project>");
         if (shape == "malformed") File.WriteAllText(Path.Combine(material, "config.json"), "malformed claimed ownership");
         if (shape == "missing-config") File.Delete(Path.Combine(material, "config.json"));
-        WorkspaceForkApplyService.SweepExpiredForks(pool, 1, DateTimeOffset.UtcNow);
+        var logger = new ListLogger<WorkspaceForkApplyService>();
+        var targetBytes = File.ReadAllBytes(ownedProject);
+        if (shape == "linked") File.SetAttributes(ownedProject, File.GetAttributes(ownedProject) | FileAttributes.ReadOnly);
+        var targetAttributes = File.GetAttributes(ownedProject);
+        WorkspaceForkApplyService.SweepExpiredForks(pool, 1, DateTimeOffset.UtcNow, WorkspaceManager.TryReserveForkStorageDeletion, logger);
+        foreach (var entry in logger.Entries)
+            TestContext.WriteLine($"{entry.Message}: {entry.Exception?.GetType().FullName} HResult={entry.Exception?.HResult} {entry.Exception}");
+        if (shape == "linked")
+        {
+            Assert.IsTrue(File.Exists(ownedProject), "Expiry must not follow a link to independent owned material.");
+            CollectionAssert.AreEqual(targetBytes, File.ReadAllBytes(ownedProject));
+            Assert.AreEqual(targetAttributes, File.GetAttributes(ownedProject), "Expiry must preserve independent link-target attributes.");
+        }
         Assert.AreEqual(shape is not ("inert" or "linked"), Directory.Exists(outer), "Only physically contained verified or unverifiable claimed owned material can retain an enclosing fork.");
-        if (shape == "linked") Assert.IsTrue(File.Exists(ownedProject), "Expiry must not follow a link to independent owned material.");
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public void SharedCleanup_DeletesOnlyLinkedEntryAndOwnedReadonlyTree(bool linkedRoot)
+    {
+        using var fixture = new NativeFixture(false);
+        var target = fixture.PathInFork("target.txt");
+        File.WriteAllText(target, "Independent target bytes");
+        File.SetAttributes(target, File.GetAttributes(target) | FileAttributes.ReadOnly);
+        var attributes = File.GetAttributes(target);
+        var owned = Path.Combine(fixture.Source, "cleanup");
+        if (linkedRoot) WorkspaceForkGraphReplayTests.CreateLink(owned, fixture.Fork);
+        else
+        {
+            var deep = owned;
+            for (var index = 0; index < 128; index++) deep = Path.Combine(deep, "d");
+            Directory.CreateDirectory(deep);
+            var file = Path.Combine(deep, "owned.txt");
+            File.WriteAllText(file, "Owned bytes");
+            File.SetAttributes(file, File.GetAttributes(file) | FileAttributes.ReadOnly);
+            WorkspaceForkGraphReplayTests.CreateLink(Path.Combine(deep, "linked"), fixture.Fork);
+        }
+        WorkspaceForkApplyService.DeleteDirectoryIfExists(owned, CancellationToken.None);
+        Assert.IsFalse(Directory.Exists(owned));
+        Assert.AreEqual("Independent target bytes", File.ReadAllText(target));
+        Assert.AreEqual(attributes, File.GetAttributes(target));
     }
 
     [TestMethod]
@@ -1609,8 +1648,8 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
         var solution = WorkspaceManager.GetCurrentSolution(loaded.WorkspaceId);
         var token = store.Store(loaded.WorkspaceId, solution, solution, WorkspaceManager.GetCurrentVersion(loaded.WorkspaceId), "legacy nested", false, RoslynMcp.Core.Models.PreviewKind.Unspecified);
         var validation = new WorkspaceValidationService(CompileCheckService, DiagnosticService, TestDiscoveryService, TestRunnerService, WorkspaceManager, ChangeTracker);
-        var service = new WorkspaceForkApplyService(WorkspaceManager, WorkspaceExecutionGate, store, validation, TestRunnerService, DotnetCommandRunner,
-            Helpers.ForkStorageFixtureBoundary.ValidateAsync, Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceForkApplyService>.Instance, WorkspaceManager.RunWithRetainedForkSourceAsync);
+        await using var service = new WorkspaceForkApplyService(WorkspaceManager, WorkspaceExecutionGate, store, validation, TestRunnerService, DotnetCommandRunner,
+            Helpers.ForkStorageFixtureBoundary.ValidateAsync, Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceForkApplyService>.Instance, WorkspaceManager.RunWithRetainedForkSourceAsync, WorkspaceManager.TryReserveForkStorageDeletion);
         RoslynMcp.Core.Models.WorkspaceForkApplyResultDto? result = null;
         try
         {

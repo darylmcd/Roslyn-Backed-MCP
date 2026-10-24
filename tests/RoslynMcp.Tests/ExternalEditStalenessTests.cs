@@ -565,6 +565,21 @@ public sealed class ExternalEditStalenessTests : IsolatedWorkspaceTestBase
             "staleReason must be omitted from the wire shape when null — keep the field backwards compatible.");
     }
 
+    [TestMethod]
+    [DataRow(".roslynmcp-fork-authored")]
+    [DataRow(".roslynmcp-fork-20000101T000000000Z")]
+    [DataRow(".roslynmcp-fork-20000101T000000000X-authored")]
+    [DataRow(".ordinary-hidden")]
+    public async Task AuthoredHiddenStorageLookalike_RemainsAnExternalEdit(string directory)
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var path = workspace.GetPath(directory, "Authored.cs");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        await File.WriteAllTextAsync(path, "// authored external source", CancellationToken.None);
+        await WaitForStaleAsync(workspace.WorkspaceId, path, CancellationToken.None);
+        Assert.AreEqual(StaleReasons.ExternalEdit, WorkspaceManager.GetStaleReason(workspace.WorkspaceId));
+    }
+
     /// <summary>
     /// Writes to a <c>.cs</c> file inside a simulated worktree subdirectory
     /// (<c>.worktrees/agent-xxx/</c>) must NOT flip the primary workspace's

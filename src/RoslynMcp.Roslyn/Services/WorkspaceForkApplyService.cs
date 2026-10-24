@@ -58,7 +58,6 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService, IA
 
     private const double DefaultForkTtlHours = 24;
     private const double DefaultForkRestoreTimeoutMinutes = 2;
-    private const string ForkTimestampFormat = "yyyyMMdd'T'HHmmssfff'Z'";
     private const int MaxRestoreDiagnosticLength = 512;
     private static readonly TimeSpan RedactionRegexTimeout = TimeSpan.FromMilliseconds(100);
     private static readonly Regex UriUserInfoRegex = new(
@@ -82,6 +81,7 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService, IA
         new(FileSystemPath.Comparer);
 
     private readonly Func<string, Func<CancellationToken, Task<WorkspaceForkApplyResultDto>>, CancellationToken, Task<WorkspaceForkApplyResultDto>> _retainSource;
+    private readonly Func<string, IDisposable?> _reserveStorageDeletion;
     private readonly object _lifecycleSync = new();
     private readonly CancellationTokenSource _lifetimeCancellation = new();
     private int _operationCount;
@@ -105,9 +105,11 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService, IA
         IDotnetCommandRunner commandRunner,
         ForkStoragePathValidator validateStoragePath,
         ILogger<WorkspaceForkApplyService> logger,
-        Func<string, Func<CancellationToken, Task<WorkspaceForkApplyResultDto>>, CancellationToken, Task<WorkspaceForkApplyResultDto>> retainSource)
+        Func<string, Func<CancellationToken, Task<WorkspaceForkApplyResultDto>>, CancellationToken, Task<WorkspaceForkApplyResultDto>> retainSource,
+        Func<string, IDisposable?> reserveStorageDeletion)
     {
         _retainSource = retainSource;
+        _reserveStorageDeletion = reserveStorageDeletion;
         _workspaceManager = workspaceManager;
         _workspaceExecutionGate = workspaceExecutionGate;
         _previewStore = previewStore;
@@ -198,43 +200,62 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService, IA
         var selectedPool = SelectForkPool(source.Root, ancestry);
         var pool = await _validateStoragePath(workspaceId, selectedPool, ct).ConfigureAwait(false);
         var poolIdentity = PhysicalPathResolver.Resolve(pool);
+        var sourceIdentity = PhysicalPathResolver.Resolve(source.LoadedPath);
+        if (ForkAdmissionMaterial.FindContainingOwned(pool).Count != 0)
+            throw new PublicInvalidOperationException("The authorized fork storage pool must be outside retained fork ownership. Choose an independent authorized pool before retrying.");
         var candidate = await AuthorizeForkDestinationAsync(workspaceId, pool, source, forkName, ct).ConfigureAwait(false);
-        var ownership = await AcquireForkApplyLocksAsync(
-            ancestry.Select(owner => owner.ForkRoot).Append(source.Root).Append(pool), ct).ConfigureAwait(false);
+        // Reload enters the source writer before taking admission ownership. Only
+        // the independent pool may be held before that writer, or the two paths cycle.
+        using var poolOwnership = await AcquireForkApplyLockAsync(pool, ct).ConfigureAwait(false);
         string? forkPath = null;
         try
         {
-            ForkAdmissionMaterial.RevalidateContainingOwned(source.LoadedPath, ancestry);
             if (!FileSystemPath.Comparer.Equals(poolIdentity, PhysicalPathResolver.Resolve(pool)) ||
-                !FileSystemPath.Comparer.Equals(selectedPool, SelectForkPool(source.Root, ancestry)))
+                ForkAdmissionMaterial.FindContainingOwned(pool).Count != 0)
                 throw new PublicInvalidOperationException("The fork storage pool changed. Recreate the fork before retrying.");
-            foreach (var owner in ancestry)
-                if (ForkPathAdmission.Contains(owner.ForkRoot, candidate))
-                    throw new PublicInvalidOperationException("The retained fork storage must be outside its source-owned ancestry. Recreate the fork before retrying.");
-            // Pool ownership serializes candidate reservation across retained siblings.
-            // Reauthorize every collision candidate; never validate one path and use another.
-            var ordinal = 0;
-            var initialCandidate = candidate;
-            while (Directory.Exists(candidate) || File.Exists(candidate))
-                candidate = await AuthorizeExactDestinationAsync(workspaceId, pool,
-                    initialCandidate + "-" + (++ordinal).ToString(CultureInfo.InvariantCulture), source, ct).ConfigureAwait(false);
-            // Capture the source and replay its preview atomically. Once this finishes,
-            // Then verify its evaluated paths before restore, loading, or tests can run.
+            // Capture and replay atomically; release physical source ownership before
+            // releasing its writer, and before restore/load/LRU/validation can run.
             var preparedFork = await _workspaceExecutionGate.RunWriteAsync(workspaceId, async c =>
             {
-                var preview = RetrieveValidatedPreview(previewToken, workspaceId);
-                Directory.CreateDirectory(pool);
-                SweepExpiredForks(pool, ResolveForkTtlHours(), DateTimeOffset.UtcNow, _logger);
-                var path = candidate;
-                Directory.CreateDirectory(path);
-                forkPath = path;
-                CopyDirectory(source.Root, path, c);
-                var appliedFiles = await ReplayPreviewIntoForkAsync(
-                    preview.OriginalSolution, preview.ModifiedSolution, source.Root, path, c)
-                    .ConfigureAwait(false);
-                if (ancestry.LastOrDefault() is { } previousAdmission)
-                    ForkAdmissionMaterial.StripPreviousImports(path, previousAdmission, c);
-                return (Path: path, AppliedFiles: appliedFiles);
+                var current = GetRequiredSourceContext(workspaceId);
+                if (!FileSystemPath.Comparer.Equals(sourceIdentity, PhysicalPathResolver.Resolve(current.LoadedPath)) ||
+                    !FileSystemPath.Comparer.Equals(PhysicalPathResolver.Resolve(source.Root), PhysicalPathResolver.Resolve(current.Root)))
+                    throw new PublicInvalidOperationException("The fork source changed. Recreate the preview before retrying.");
+                var ownership = await AcquireForkApplyLocksAsync(
+                    ancestry.Select(owner => owner.ForkRoot).Append(source.Root)
+                        .Where(root => !FileSystemPath.Comparer.Equals(PhysicalPathResolver.Resolve(root), poolIdentity)), c).ConfigureAwait(false);
+                try
+                {
+                    ForkAdmissionMaterial.RevalidateContainingOwned(source.LoadedPath, ancestry);
+                    if (!FileSystemPath.Comparer.Equals(poolIdentity, PhysicalPathResolver.Resolve(pool)) ||
+                        !FileSystemPath.Comparer.Equals(selectedPool, SelectForkPool(current.Root, ancestry)) ||
+                        ForkAdmissionMaterial.FindContainingOwned(pool).Count != 0)
+                        throw new PublicInvalidOperationException("The fork storage pool changed. Recreate the fork before retrying.");
+                    foreach (var owner in ancestry)
+                        if (ForkPathAdmission.Contains(owner.ForkRoot, candidate))
+                            throw new PublicInvalidOperationException("The retained fork storage must be outside its source-owned ancestry. Recreate the fork before retrying.");
+                    // Reauthorize every collision candidate under pool ownership.
+                    var ordinal = 0;
+                    var initialCandidate = candidate;
+                    while (Directory.Exists(candidate) || File.Exists(candidate))
+                        candidate = await AuthorizeExactDestinationAsync(workspaceId, pool,
+                            initialCandidate + "-" + (++ordinal).ToString(CultureInfo.InvariantCulture), source, c).ConfigureAwait(false);
+                    var preview = RetrieveValidatedPreview(previewToken, workspaceId);
+                    Directory.CreateDirectory(pool);
+                    SweepExpiredForks(pool, ResolveForkTtlHours(), DateTimeOffset.UtcNow, _reserveStorageDeletion, _logger);
+                    var path = candidate;
+                    var exclusions = GetCopyExclusions(source.Root, pool, path);
+                    Directory.CreateDirectory(path);
+                    forkPath = path;
+                    CopyDirectory(source.Root, path, exclusions, c);
+                    var appliedFiles = await ReplayPreviewIntoForkAsync(
+                        preview.OriginalSolution, preview.ModifiedSolution, source.Root, path, c)
+                        .ConfigureAwait(false);
+                    if (ancestry.LastOrDefault() is { } previousAdmission)
+                        ForkAdmissionMaterial.StripPreviousImports(path, previousAdmission, c);
+                    return (Path: path, AppliedFiles: appliedFiles);
+                }
+                finally { ReleaseForkApplyLocks(ownership); }
             }, ct, applyStalenessPolicy: false).ConfigureAwait(false);
             var forkLoadedPath = MapSourcePathToFork(source.LoadedPath, source.Root, preparedFork.Path);
             await RestoreForkAsync(forkLoadedPath, source.Root, preparedFork.Path, ct).ConfigureAwait(false);
@@ -281,7 +302,6 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService, IA
 
             throw;
         }
-        finally { ReleaseForkApplyLocks(ownership); }
     }
 
     private ValidatedPreview RetrieveValidatedPreview(string previewToken, string workspaceId)
@@ -300,6 +320,10 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService, IA
                 "previewToken belongs to a different workspace. Use its original workspaceId or create a new preview in the requested workspace.",
                 nameof(previewToken));
         }
+
+        if (entry.Value.WorkspaceVersion != _workspaceManager.GetCurrentVersion(workspaceId))
+            throw new PreviewTokenStaleException(previewToken,
+                "The fork preview was created for an earlier source workspace version. Recreate the preview before retrying.");
 
         if (entry.Value.DiffTruncated)
         {
@@ -412,8 +436,8 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService, IA
     private Task<string> AuthorizeForkDestinationAsync(string workspaceId, string pool, SourceContext source, string? forkName, CancellationToken ct)
     {
         var slug = SanitizeForkName(forkName);
-        var timestamp = DateTimeOffset.UtcNow.ToString(ForkTimestampFormat, CultureInfo.InvariantCulture);
-        return AuthorizeExactDestinationAsync(workspaceId, pool, Path.Combine(pool, $"{timestamp}-{slug}"), source, ct);
+        var name = ForkStorageDirectoryName.Create(DateTimeOffset.UtcNow, slug);
+        return AuthorizeExactDestinationAsync(workspaceId, pool, Path.Combine(pool, name), source, ct);
     }
 
     private async Task<string> AuthorizeExactDestinationAsync(string workspaceId, string pool, string candidate, SourceContext source, CancellationToken ct)
@@ -437,6 +461,7 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService, IA
         string forkRoot,
         double ttlHours,
         DateTimeOffset now,
+        Func<string, IDisposable?> reserveStorageDeletion,
         ILogger? logger = null)
     {
         if (!double.IsFinite(ttlHours) || ttlHours <= 0 || !Directory.Exists(forkRoot))
@@ -449,15 +474,7 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService, IA
         foreach (var directory in Directory.EnumerateDirectories(physicalPool))
         {
             var name = Path.GetFileName(directory);
-            var dashIndex = name.IndexOf('-');
-            var timestampPart = dashIndex > 0 ? name[..dashIndex] : name;
-
-            if (!DateTimeOffset.TryParseExact(
-                    timestampPart,
-                    ForkTimestampFormat,
-                    CultureInfo.InvariantCulture,
-                    DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
-                    out var created)
+            if (!ForkStorageDirectoryName.TryGetCreated(name, out var created)
                 || created >= cutoff)
             {
                 continue;
@@ -482,6 +499,12 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService, IA
                 if (HasPendingAdmissionExecutions(physicalDirectory, logger))
                 {
                     logger?.LogWarning("Retained expired fork admission material while native execution or cleanup is active or uncertain.");
+                    continue;
+                }
+                using var deletion = reserveStorageDeletion(physicalDirectory);
+                if (deletion is null)
+                {
+                    logger?.LogWarning("Retained expired fork because an active fork operation retains a source inside it.");
                     continue;
                 }
                 DeleteDirectoryIfExists(physicalDirectory, CancellationToken.None);
@@ -659,7 +682,21 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService, IA
         return slug.Length <= 40 ? slug : slug[..40];
     }
 
-    internal static void CopyDirectory(string sourceDirectory, string destinationDirectory, CancellationToken ct)
+    private static IReadOnlyCollection<string> GetCopyExclusions(string source, string pool, string destination)
+    {
+        var physicalSource = PhysicalPathResolver.Resolve(source);
+        var exclusions = new HashSet<string>(FileSystemPath.Comparer) { PhysicalPathResolver.Resolve(destination) };
+        foreach (var directory in Directory.EnumerateDirectories(pool))
+        {
+            if (IsReparsePoint(directory)) continue;
+            var physical = PhysicalPathResolver.Resolve(directory);
+            if (FileSystemPath.Comparer.Equals(physical, physicalSource) || !ForkPathAdmission.Contains(physicalSource, physical)) continue;
+            if (ForkAdmissionMaterial.ReadOwnedAtDirectory(physical) is not null) exclusions.Add(physical);
+        }
+        return exclusions;
+    }
+
+    internal static void CopyDirectory(string sourceDirectory, string destinationDirectory, IReadOnlyCollection<string> excludedPhysicalRoots, CancellationToken ct)
     {
         Directory.CreateDirectory(destinationDirectory);
 
@@ -683,7 +720,8 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService, IA
         {
             ct.ThrowIfCancellationRequested();
             if (IsReparsePoint(directory)
-                || DirectoryCopyExclusions.Contains(Path.GetFileName(directory)))
+                || DirectoryCopyExclusions.Contains(Path.GetFileName(directory))
+                || excludedPhysicalRoots.Any(root => ForkPathAdmission.Contains(root, PhysicalPathResolver.Resolve(directory))))
             {
                 continue;
             }
@@ -691,6 +729,7 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService, IA
             CopyDirectory(
                 directory,
                 Path.Combine(destinationDirectory, Path.GetFileName(directory)),
+                excludedPhysicalRoots,
                 ct);
         }
     }
@@ -915,6 +954,7 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService, IA
         CancellationToken ct)
     {
         IDisposable? ownership = null;
+        IDisposable? deletion = null;
         try
         {
             try
@@ -924,6 +964,13 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService, IA
                 {
                     cleanupWarnings.Add("Fork admission material was retained because native execution or cleanup is active or uncertain.");
                     _logger.LogWarning("Retained fork admission material while native execution or cleanup is active or uncertain.");
+                    return;
+                }
+                deletion = _reserveStorageDeletion(forkPath);
+                if (deletion is null)
+                {
+                    cleanupWarnings.Add("Fork material was retained because an active fork operation retains a source inside it.");
+                    _logger.LogWarning("Retained fork material because an active fork operation retains a source inside it.");
                     return;
                 }
             }
@@ -945,6 +992,7 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService, IA
                 _logger.LogWarning(ex, "Failed to close fork workspace {WorkspaceId}", forkWorkspaceId);
                 cleanupWarnings.Add(
                     $"Failed to close fork workspace '{forkWorkspaceId}': {ex.GetType().Name}");
+                return;
             }
 
             try
@@ -957,7 +1005,11 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService, IA
                 cleanupWarnings.Add($"Failed to delete fork directory: {ex.GetType().Name}");
             }
         }
-        finally { ownership?.Dispose(); }
+        finally
+        {
+            deletion?.Dispose();
+            ownership?.Dispose();
+        }
     }
 
     internal static void DeleteDirectoryIfExists(string path, CancellationToken ct)
@@ -967,17 +1019,34 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService, IA
             return;
         }
 
-        foreach (var file in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
+        // Walk one physical level at a time and delete in postorder. Recursive file
+        // enumeration follows junction targets, mutating independent readonly files;
+        // recursive managed descent can also exhaust the stack on deep owned trees.
+        var pending = new Stack<(string Path, bool Enumerated)>();
+        pending.Push((path, false));
+        while (pending.TryPop(out var current))
         {
             ct.ThrowIfCancellationRequested();
-            var attributes = File.GetAttributes(file);
-            if ((attributes & FileAttributes.ReadOnly) != 0)
+            var attributes = File.GetAttributes(current.Path);
+            if ((attributes & FileAttributes.ReparsePoint) != 0)
             {
-                File.SetAttributes(file, attributes & ~FileAttributes.ReadOnly);
+                if ((attributes & FileAttributes.Directory) != 0) Directory.Delete(current.Path);
+                else File.Delete(current.Path);
+            }
+            else if ((attributes & FileAttributes.Directory) == 0)
+            {
+                if ((attributes & FileAttributes.ReadOnly) != 0)
+                    File.SetAttributes(current.Path, attributes & ~FileAttributes.ReadOnly);
+                File.Delete(current.Path);
+            }
+            else if (current.Enumerated) Directory.Delete(current.Path);
+            else
+            {
+                pending.Push((current.Path, true));
+                foreach (var entry in Directory.EnumerateFileSystemEntries(current.Path))
+                    pending.Push((entry, false));
             }
         }
-
-        Directory.Delete(path, recursive: true);
     }
 
     private sealed record ForkValidationState(

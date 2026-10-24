@@ -115,7 +115,9 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
     private readonly Dictionary<string, Task> _rootRetirementTasks = new(StringComparer.Ordinal);
     private bool _disposing;
     private bool _removalAdmissionClosed;
-    private readonly Dictionary<WorkspaceSession, int> _sourceOperations = new();
+    private readonly record struct RetainedForkSource(int Count, string PhysicalLoadedPath);
+    private readonly Dictionary<WorkspaceSession, RetainedForkSource> _sourceOperations = new();
+    private readonly HashSet<string> _forkStorageDeletions = new(FileSystemPath.Comparer);
     private int _sourceOperationCount;
     private TaskCompletionSource? _sourceOperationsDrained;
     private int _slowRemovalCount;
@@ -130,16 +132,23 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
     internal async Task<WorkspaceForkApplyResultDto> RunWithRetainedForkSourceAsync(
         string workspaceId, Func<CancellationToken, Task<WorkspaceForkApplyResultDto>> operation, CancellationToken ct)
     {
-        WorkspaceSession session;
+        if (!_sessions.TryGetValue(workspaceId, out var session))
+            throw CreateWorkspaceNotFoundException(workspaceId);
+        var loadedPath = session.LoadedPath;
+        var physicalPath = PhysicalPathResolver.Resolve(loadedPath!);
         lock (_lifecycleSync)
         {
             ObjectDisposedException.ThrowIf(_disposing, this);
-            if (!_sessions.TryGetValue(workspaceId, out session!))
+            if (!_sessions.TryGetValue(workspaceId, out var current) || !ReferenceEquals(session, current))
                 throw CreateWorkspaceNotFoundException(workspaceId);
+            if (!FileSystemPath.Comparer.Equals(loadedPath, session.LoadedPath) ||
+                _forkStorageDeletions.Any(root => ForkPathAdmission.Contains(root, physicalPath)) ||
+                !File.Exists(physicalPath))
+                throw new PublicInvalidOperationException("The fork source backing file changed or is being deleted. Reopen the source and recreate the preview before retrying.");
             if (_sourceOperationCount++ == 0)
                 _sourceOperationsDrained = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            _sourceOperations.TryGetValue(session, out var count);
-            _sourceOperations[session] = count + 1;
+            _sourceOperations.TryGetValue(session, out var retained);
+            _sourceOperations[session] = new(retained.Count + 1, physicalPath);
         }
 
         try
@@ -151,11 +160,41 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
         {
             lock (_lifecycleSync)
             {
-                var remaining = _sourceOperations[session] - 1;
+                var retained = _sourceOperations[session];
+                var remaining = retained.Count - 1;
                 if (remaining == 0) _sourceOperations.Remove(session);
-                else _sourceOperations[session] = remaining;
+                else _sourceOperations[session] = retained with { Count = remaining };
                 if (--_sourceOperationCount == 0) _sourceOperationsDrained!.TrySetResult();
             }
+        }
+    }
+
+    /// <summary>
+    /// Atomically admits deletion against logical source registration, including sources
+    /// inside an enclosing victim. Physical ownership and slow deletion stay with the caller.
+    /// </summary>
+    internal IDisposable? TryReserveForkStorageDeletion(string path)
+    {
+        var physicalRoot = PhysicalPathResolver.Resolve(path);
+        lock (_lifecycleSync)
+        {
+            ObjectDisposedException.ThrowIf(_removalAdmissionClosed, this);
+            if (_sourceOperations.Values.Any(source => ForkPathAdmission.Contains(physicalRoot, source.PhysicalLoadedPath)) ||
+                _forkStorageDeletions.Any(root => ForkPathAdmission.Contains(root, physicalRoot) || ForkPathAdmission.Contains(physicalRoot, root)))
+                return null;
+            _forkStorageDeletions.Add(physicalRoot);
+            return new ForkStorageDeletionReservation(this, physicalRoot);
+        }
+    }
+
+    private sealed class ForkStorageDeletionReservation(WorkspaceManager owner, string root) : IDisposable
+    {
+        private WorkspaceManager? _owner = owner;
+        public void Dispose()
+        {
+            var current = Interlocked.Exchange(ref _owner, null);
+            if (current is null) return;
+            lock (current._lifecycleSync) current._forkStorageDeletions.Remove(root);
         }
     }
 
