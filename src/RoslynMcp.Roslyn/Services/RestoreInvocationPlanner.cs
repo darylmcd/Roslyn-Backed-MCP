@@ -82,9 +82,16 @@ internal static class RestoreInvocationPlanner
         }
 
         var units = new Dictionary<Context, RestoreUnit>(ContextComparer.Instance);
-        var nodesByContext = graph.ProjectNodes.ToDictionary(n => ContextOf(n.ProjectInstance), ContextComparer.Instance);
+        // Graph entry keys include our engine-only marker; project-reference keys need not.
+        // Coalesce only identical ordinary command contexts, retaining every node's edges below.
+        var nodesByContext = graph.ProjectNodes.GroupBy(n => ContextOf(n.ProjectInstance), ContextComparer.Instance)
+            .ToDictionary(g => g.Key, g => g.First(), ContextComparer.Instance);
         var assetsByContext = nodesByContext.Keys.ToDictionary(c => c,
-            c => ProjectMetadataParser.GetExistingAssetsPath(c.Path, c.Properties), ContextComparer.Instance);
+            c =>
+            {
+                CheckBudget();
+                return ProjectMetadataParser.GetExistingAssetsPath(c.Path, c.Properties);
+            }, ContextComparer.Instance);
         var unitContexts = new Dictionary<Context, Context>(ContextComparer.Instance);
         var rootsByAssets = new Dictionary<string, string?>(FileSystemPath.Comparer);
         foreach (var node in graph.ProjectNodes)
@@ -113,10 +120,12 @@ internal static class RestoreInvocationPlanner
             {
                 restoreContext = context;
             }
-            unitContexts.Add(context, restoreContext);
+            unitContexts.TryAdd(context, restoreContext);
             if (ContextComparer.Instance.Equals(context, restoreContext)) units.TryAdd(context, new RestoreUnit(context, root));
         }
 
+        var unitsByOuter = units.Values.GroupBy(u => RestoreContextOf(nodesByContext[u.Context].ProjectInstance), ContextComparer.Instance)
+            .ToDictionary(g => g.Key, g => g.ToArray(), ContextComparer.Instance);
         foreach (var node in graph.ProjectNodes)
         {
             CheckBudget();
@@ -130,11 +139,10 @@ internal static class RestoreInvocationPlanner
                 // Outer-to-inner graph edges describe one project's frameworks, not a
                 // project dependency. Independent inner assets are restored after the outer.
                 if (ContextComparer.Instance.Equals(outer, referenceOuter)) continue;
-                foreach (var dependency in units.Keys.Where(c =>
-                    ContextComparer.Instance.Equals(RestoreContextOf(nodesByContext[c].ProjectInstance), referenceOuter)))
+                foreach (var dependency in unitsByOuter[referenceOuter])
                 {
-                    unit.Dependencies.Add(dependency);
-                    units[outer].Dependencies.Add(dependency);
+                    unit.Dependencies.Add(dependency.Context);
+                    units[outer].Dependencies.Add(dependency.Context);
                 }
             }
         }

@@ -12,8 +12,8 @@ namespace RoslynMcp.Tests;
 /// Regression for <c>workspace-restore-packages-path</c>: auto-restore must pass the
 /// <c>project.restore.packagesPath</c> recorded in each project's existing
 /// <c>obj/project.assets.json</c> to <c>dotnet restore --packages</c>, so a worktree scratch package
-/// folder is preserved instead of silently switching to the host's default folder. Fake runner behind
-/// the real <see cref="GatedCommandExecutor"/>; no child <c>dotnet</c> process is spawned.
+/// folder is preserved instead of silently switching to the host's default folder. Includes real
+/// local-feed restore fixtures and recording runners behind <see cref="GatedCommandExecutor"/>.
 /// </summary>
 [TestClass]
 public sealed class WorkspaceLoadRestorePackagesPathTests : SharedWorkspaceTestBase

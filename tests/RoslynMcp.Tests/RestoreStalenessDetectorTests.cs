@@ -499,6 +499,23 @@ public sealed class RestoreStalenessDetectorTests
     }
 
     [TestMethod]
+    public void RestorePackagesPath_ExplicitContextSelectsActiveAssetsWithoutFallback()
+    {
+        var project = WriteProject("ContextualRoot.csproj", PackageReferenceProject);
+        var directory = Path.GetDirectoryName(project)!;
+        var defaultCache = Path.Combine(directory, "default-cache");
+        var contextCache = Path.Combine(directory, "context-cache");
+        WriteAssetsFile(Path.Combine(directory, "obj", "project.assets.json"), "Newtonsoft.Json", "13.0.3", defaultCache);
+        var active = Path.Combine(directory, "context", "project.assets.json");
+        WriteAssetsFile(active, "Newtonsoft.Json", "13.0.3", contextCache);
+        var properties = new Dictionary<string, string> { ["ProjectAssetsFile"] = active };
+        Assert.AreEqual(contextCache, RestoreStalenessDetector.TryReadRestorePackagesPath(project, properties));
+        File.Delete(active);
+        Assert.IsNull(RestoreStalenessDetector.TryReadRestorePackagesPath(project, properties));
+        Assert.AreEqual(defaultCache, RestoreStalenessDetector.TryReadRestorePackagesPath(project, MsBuildMetadataHelper.DefaultGlobalProperties));
+    }
+
+    [TestMethod]
     public void ActiveAssets_ConfiguredDefaultAndAlternateBothPresentUseSelectedContext()
     {
         var project = WriteProject("ConfiguredAuthority.csproj", PackageReferenceProject.Replace(

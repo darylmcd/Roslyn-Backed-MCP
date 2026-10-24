@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Time.Testing;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
@@ -31,7 +32,12 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
     public static void ClassCleanup() => DisposeServices();
 
     [TestMethod]
-    public async Task RunTestsAsync_OrFilter_MixedNullableRoots_RestoresClosureBeforeAuthorization()
+    [DataRow("success")]
+    [DataRow("cancel")]
+    [DataRow("expired")]
+    [DataRow("failure")]
+    [DataRow("pre-cancel")]
+    public async Task RunTestsAsync_OrFilter_MixedNullableRoots_RestoresClosureBeforeAuthorization(string mode)
     {
         var (workspaceId, _) = await LoadTUnitFixtureAsync(withGlobalJsonOptIn: true);
         try
@@ -51,9 +57,18 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
             Directory.CreateDirectory(Path.Combine(directory, "dependency-obj"));
             File.WriteAllText(Path.Combine(directory, "dependency-obj", "project.assets.json"),
                 System.Text.Json.JsonSerializer.Serialize(new { project = new { restore = new { packagesPath = cache } } }));
-            var executor = new RecordingGatedCommandExecutor(restoreSucceeds: true);
+            using var executor = new RecordingGatedCommandExecutor(restoreSucceeds: mode != "failure");
+            using var cancellation = new CancellationTokenSource();
+            var clock = new FakeTimeProvider();
+            using var deadline = RequestDeadline.Begin(clock, TimeSpan.FromMinutes(1));
+            if (mode == "pre-cancel") cancellation.Cancel();
             executor.OnExecute = argv =>
             {
+                if (argv[0] == "restore" && argv[1] == dependency)
+                {
+                    clock.Advance(TimeSpan.FromSeconds(mode == "expired" ? 60 : 30));
+                    if (mode == "cancel") cancellation.Cancel();
+                }
                 if (argv[0] == "restore" && argv[1] == project)
                 {
                     Directory.CreateDirectory(Path.Combine(directory, "obj"));
@@ -62,14 +77,25 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
                 }
             };
             var service = new TestRunnerService(WorkspaceManager, executor, NullLogger<TestRunnerService>.Instance, TestDiscoveryService);
-            await service.RunTestsAsync(workspaceId, null,
-                "FullyQualifiedName=MyNamespace.MyClass.Method1|FullyQualifiedName=MyNamespace.MyClass.Method2", CancellationToken.None);
+            var run = () => service.RunTestsAsync(workspaceId, null,
+                "FullyQualifiedName=MyNamespace.MyClass.Method1|FullyQualifiedName=MyNamespace.MyClass.Method2", cancellation.Token);
+            if (mode != "success")
+            {
+                if (mode is "cancel" or "pre-cancel") await Assert.ThrowsAsync<OperationCanceledException>(run);
+                else if (mode == "expired") await Assert.ThrowsExactlyAsync<TimeoutException>(run);
+                else await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(run);
+                Assert.HasCount(mode == "pre-cancel" ? 0 : 1, executor.ExecutedArguments);
+                return;
+            }
+            await run();
 
             var restores = executor.ExecutedArguments.Where(a => a[0] == "restore").ToArray();
             Assert.HasCount(2, restores, "Selected test restores must include non-compilation dependencies.");
             CollectionAssert.AreEqual(new[] { "restore", dependency, "--nologo", "--packages", cache, "--no-dependencies" }, restores[0].ToArray());
             CollectionAssert.AreEqual(new[] { "restore", project, "--nologo", "--no-dependencies" }, restores[1].ToArray());
             CollectionAssert.Contains(executor.ExecutedArguments.Last().ToList(), "--no-restore");
+            Assert.IsTrue(executor.Timeouts[1] < executor.Timeouts[0], "A dependency must consume the shared request budget.");
+            Assert.IsTrue(executor.Timeouts[1] <= TimeSpan.FromSeconds(30));
         }
         finally
         {
@@ -353,6 +379,7 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
     private sealed class RecordingGatedCommandExecutor(bool restoreSucceeds) : IGatedCommandExecutor
     {
         public List<IReadOnlyList<string>> ExecutedArguments { get; } = [];
+        public List<TimeSpan> Timeouts { get; } = [];
         public Action<IReadOnlyList<string>>? OnExecute { get; set; }
 
         public Task<CommandExecutionDto> ExecuteAsync(
@@ -368,6 +395,7 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
             CancellationToken ct)
         {
             ExecutedArguments.Add(arguments);
+            Timeouts.Add(timeout);
             OnExecute?.Invoke(arguments);
             var succeeded = !string.Equals(arguments[0], "restore", StringComparison.Ordinal) || restoreSucceeds;
             return Task.FromResult(new CommandExecutionDto(
@@ -389,6 +417,7 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
         {
         }
     }
+
 
     [TestMethod]
     public async Task RunTestsAsync_TUnitProjectWithoutGlobalJsonOptIn_ThrowsActionableError()
