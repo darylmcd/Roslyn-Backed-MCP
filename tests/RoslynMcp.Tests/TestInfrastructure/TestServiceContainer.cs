@@ -104,6 +104,7 @@ internal sealed class TestServiceContainer : IDisposable
         services.AddSingleton(new PreviewStoreOptions());
         services.AddSingleton(new ExecutionGateOptions { RateLimitMaxRequests = int.MaxValue });
         services.AddSingleton(new ScriptingServiceOptions());
+        services.AddSingleton<ForkStoragePathValidator>(Helpers.ForkStorageFixtureBoundary.ValidateAsync);
         services.AddRoslynServices();
 
         // Wrap the production factory so every producer and consumer shares the observed
@@ -252,6 +253,7 @@ public sealed class TestServiceContainerTests
         services.AddLogging(static logging => logging.ClearProviders());
         services.AddSingleton(new WorkspaceManagerOptions { MaxConcurrentWorkspaces = 4 });
         services.AddSingleton(new ExecutionGateOptions { RateLimitMaxRequests = int.MaxValue });
+        services.AddSingleton<ForkStoragePathValidator>(Helpers.ForkStorageFixtureBoundary.ValidateAsync);
         services.AddRoslynServices();
         services.RemoveAll<IFileWatcherService>();
         services.AddSingleton<IFileWatcherService>(_ => watcher);

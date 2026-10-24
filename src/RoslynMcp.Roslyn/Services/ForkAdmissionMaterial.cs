@@ -52,23 +52,45 @@ internal static class ForkAdmissionMaterial
     }
 
     internal static Configuration? Find(string targetPath)
+        => FindContainingOwned(targetPath).LastOrDefault();
+
+    // Physical containment is authority for retention ownership. SourceRoot is an
+    // admission boundary, never a pointer granting storage or lifetime authority.
+    internal static IReadOnlyList<Configuration> FindContainingOwned(string targetPath)
     {
+        var owners = new List<Configuration>();
         var physical = PhysicalPathResolver.Resolve(targetPath);
         for (var directory = Directory.Exists(physical) ? physical : Path.GetDirectoryName(physical);
             directory is not null; directory = Path.GetDirectoryName(directory))
         {
-            var configPath = Path.Combine(directory, DirectoryName, "config.json");
-            if (File.Exists(configPath)) return Read(configPath);
-            var guard = Path.Combine(directory, DirectoryName, "guard.targets");
-            if (File.Exists(guard))
-            {
-                var text = File.ReadAllText(guard);
-                if (text.Contains("<RoslynMcpForkConfig>", StringComparison.Ordinal) &&
-                    text.Contains("RoslynMcp.Roslyn.Services.DiscoverForkTargetDependencies", StringComparison.Ordinal))
-                    return Read(configPath);
-            }
+            if (ReadOwnedAtDirectory(directory) is { } configuration) owners.Add(configuration);
         }
-        return null;
+        owners.Reverse();
+        return owners;
+    }
+
+    internal static Configuration? ReadOwnedAtDirectory(string directory)
+    {
+        var physical = PhysicalPathResolver.Resolve(directory);
+        var configPath = Path.Combine(physical, DirectoryName, "config.json");
+        if (!File.Exists(configPath))
+        {
+            var guard = Path.Combine(physical, DirectoryName, "guard.targets");
+            if (!File.Exists(guard)) return null;
+            var text = File.ReadAllText(guard);
+            if (!text.Contains("<RoslynMcpForkConfig>", StringComparison.Ordinal) ||
+                !text.Contains("RoslynMcp.Roslyn.Services.DiscoverForkTargetDependencies", StringComparison.Ordinal)) return null;
+        }
+        var configuration = Read(configPath);
+        if (!FileSystemPath.Comparer.Equals(configuration.ForkRoot, physical))
+            throw new PublicInvalidOperationException("The retained fork material does not match its physical owner. Recreate the fork before retrying.");
+        return configuration;
+    }
+
+    internal static void RevalidateContainingOwned(string targetPath, IReadOnlyList<Configuration> expected)
+    {
+        if (!expected.SequenceEqual(FindContainingOwned(targetPath)))
+            throw new PublicInvalidOperationException("The retained fork admission ancestry changed. Recreate the fork before retrying.");
     }
 
     internal static Configuration Read(string configPath)
@@ -142,7 +164,7 @@ internal static class ForkAdmissionMaterial
 internal sealed class ForkAdmissionExecution : IDisposable
 {
     private readonly CancellationTokenRegistration _registration;
-    private readonly IDisposable _forkOwnership;
+    private readonly IReadOnlyList<IDisposable> _forkOwnership;
     private Exception? _cancellationWriteFailure;
     private bool _completed;
     internal string Root { get; }
@@ -160,10 +182,13 @@ internal sealed class ForkAdmissionExecution : IDisposable
             if (remaining <= TimeSpan.Zero) throw new TimeoutException("Native fork admission exceeded its owning invocation deadline.");
             waiting!.CancelAfter(remaining);
         }
-        IDisposable ownership;
+        var ancestry = ForkAdmissionMaterial.FindContainingOwned(configuration.ForkRoot);
+        if (ancestry.LastOrDefault() != configuration)
+            throw new PublicInvalidOperationException("The retained fork admission material changed. Recreate the fork before retrying.");
+        IReadOnlyList<IDisposable> ownership;
         try
         {
-            ownership = await WorkspaceForkApplyService.AcquireForkApplyLockAsync(configuration.ForkRoot, waiting?.Token ?? ct).ConfigureAwait(false);
+            ownership = await WorkspaceForkApplyService.AcquireForkApplyLocksAsync(ancestry.Select(owner => owner.ForkRoot), waiting?.Token ?? ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException ex) when (!ct.IsCancellationRequested && waiting?.IsCancellationRequested == true)
         {
@@ -178,6 +203,7 @@ internal sealed class ForkAdmissionExecution : IDisposable
                 throw new TimeoutException("Native fork admission exceeded its owning invocation deadline.");
             // Expiry may have won after Find. Validate again while deletion is excluded;
             // never recreate directories from a stale configuration snapshot.
+            ForkAdmissionMaterial.RevalidateContainingOwned(configuration.ForkRoot, ancestry);
             var current = ForkAdmissionMaterial.Read(Path.Combine(configuration.ForkRoot, ForkAdmissionMaterial.DirectoryName, "config.json"));
             if (current != configuration)
                 throw InvalidOperationErrors.Internal("The retained fork admission configuration changed before invocation.");
@@ -193,12 +219,12 @@ internal sealed class ForkAdmissionExecution : IDisposable
             try { if (root is not null && Directory.Exists(root)) Directory.Delete(root, recursive: true); }
             catch (Exception cleanup) when (cleanup is IOException or UnauthorizedAccessException)
             { primary.Data["ForkAdmissionCleanupWarning"] = "Unstarted native admission material could not be removed: " + cleanup.GetType().Name; }
-            ownership.Dispose();
+            WorkspaceForkApplyService.ReleaseForkApplyLocks(ownership);
             throw;
         }
     }
 
-    private ForkAdmissionExecution(ForkAdmissionMaterial.Configuration configuration, DateTimeOffset? deadline, CancellationToken ct, string root, IDisposable forkOwnership)
+    private ForkAdmissionExecution(ForkAdmissionMaterial.Configuration configuration, DateTimeOffset? deadline, CancellationToken ct, string root, IReadOnlyList<IDisposable> forkOwnership)
     {
         Configuration = configuration;
         Deadline = deadline;
@@ -251,6 +277,6 @@ internal sealed class ForkAdmissionExecution : IDisposable
             if (_cancellationWriteFailure is not null)
                 CleanupWarning = "Fork admission cancellation marker could not be written: " + _cancellationWriteFailure.GetType().Name;
         }
-        finally { _forkOwnership.Dispose(); }
+        finally { WorkspaceForkApplyService.ReleaseForkApplyLocks(_forkOwnership); }
     }
 }

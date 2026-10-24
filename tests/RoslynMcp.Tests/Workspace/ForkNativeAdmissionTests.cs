@@ -706,27 +706,35 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
 
     [TestMethod]
     [DataRow("valid")]
+    [DataRow("valid-long-root")]
     [DataRow("missing-guard")]
     [DataRow("malformed-owned")]
     public async Task RetainedFork_ProjectFilePreviewReplay_StripsOnlyPreviousOwnedImport(string material)
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(2));
         using var fixture = new NativeFixture(false);
-        var project = Path.Combine(fixture.Source, "Entry.csproj");
+        var sourceRoot = fixture.Source;
+        if (material == "valid-long-root")
+        {
+            sourceRoot = Path.Combine(sourceRoot, new string('p', Math.Max(1, 190 - sourceRoot.Length - 1)));
+            Directory.CreateDirectory(sourceRoot);
+        }
+        var project = Path.Combine(sourceRoot, "Entry.csproj");
         fixture.WriteProject(project, "<Import Project=\"Authored.targets\" Label=\"RoslynMcpForkAdmission\" />");
-        File.WriteAllText(Path.Combine(fixture.Source, "Authored.targets"), "<Project><!-- Café Ω authored import --></Project>");
-        var solutionPath = Path.Combine(fixture.Source, "Entry.slnx");
+        File.WriteAllText(Path.Combine(sourceRoot, "Authored.targets"), "<Project><!-- Café Ω authored import --></Project>");
+        var solutionPath = Path.Combine(sourceRoot, "Entry.slnx");
         File.WriteAllText(solutionPath, "<Solution><Project Path=\"Entry.csproj\" /></Solution>");
-        var restored = await DotnetCommandRunner.RunAsync(fixture.Source, project, ["restore", project, "--nologo", "-nr:false"], timeout.Token);
+        var restored = await DotnetCommandRunner.RunAsync(sourceRoot, project, ["restore", project, "--nologo", "-nr:false"], timeout.Token);
         Assert.IsTrue(restored.Succeeded, restored.StdOut + restored.StdErr);
         var source = await WorkspaceManager.LoadAsync(solutionPath, timeout.Token);
         var store = new PreviewStore();
         var validation = new WorkspaceValidationService(CompileCheckService, DiagnosticService, TestDiscoveryService,
             TestRunnerService, WorkspaceManager, ChangeTracker);
         var service = new WorkspaceForkApplyService(WorkspaceManager, WorkspaceExecutionGate, store, validation,
-            TestRunnerService, DotnetCommandRunner, Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceForkApplyService>.Instance);
+            TestRunnerService, DotnetCommandRunner, Helpers.ForkStorageFixtureBoundary.ValidateAsync, Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceForkApplyService>.Instance);
         RoslynMcp.Core.Models.WorkspaceForkApplyResultDto? first = null;
         RoslynMcp.Core.Models.WorkspaceForkApplyResultDto? second = null;
+        RoslynMcp.Core.Models.WorkspaceForkApplyResultDto? third = null;
         try
         {
             var original = WorkspaceManager.GetCurrentSolution(source.WorkspaceId);
@@ -735,6 +743,7 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
             first = await service.ApplyAsync(source.WorkspaceId, token, "keep", false, null, "first", timeout.Token);
             Assert.IsTrue(first.Success);
             Assert.IsNotNull(first.ForkWorkspaceId);
+            Assert.AreEqual(Path.Combine(sourceRoot, ".roslynmcp", "forks"), Path.GetDirectoryName(first.ForkPath));
             var firstProject = Path.Combine(first.ForkPath, "Entry.csproj");
             var oldConfig = ForkAdmissionMaterial.Find(firstProject)!;
             var guard = XDocument.Load(oldConfig.GuardTargetsPath);
@@ -760,7 +769,7 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
                 "project XML preview reintroduces previous owned absolute import", false, RoslynMcp.Core.Models.PreviewKind.Unspecified);
             var entry = WorkspaceForkGraphReplayTests.CapturePreviewEntry(store, secondToken);
             var bytes = Directory.GetFiles(first.ForkPath, "*", SearchOption.AllDirectories).ToDictionary(path => path, File.ReadAllBytes);
-            if (material != "valid")
+            if (material is not ("valid" or "valid-long-root"))
             {
                 var refusal = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
                     service.ApplyAsync(first.ForkWorkspaceId, secondToken, "keep", false, null, "second", timeout.Token));
@@ -771,6 +780,7 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
                 second = await service.ApplyAsync(first.ForkWorkspaceId, secondToken, "keep", false, null, "second", timeout.Token);
                 Assert.IsTrue(second.Success);
                 Assert.IsNotNull(second.ForkWorkspaceId);
+                Assert.AreEqual(Path.GetDirectoryName(first.ForkPath), Path.GetDirectoryName(second.ForkPath));
                 var secondProject = Path.Combine(second.ForkPath, "Entry.csproj");
                 var nextConfig = ForkAdmissionMaterial.Find(secondProject)!;
                 Assert.AreEqual(first.ForkPath, nextConfig.SourceRoot, "Admission must use the actual retained source/current fork pair.");
@@ -782,6 +792,18 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
                 using var reader = new StreamReader(secondProject, detectEncodingFromByteOrderMarks: true);
                 reader.Peek();
                 Assert.AreEqual(1200, reader.CurrentEncoding.CodePage);
+                var native = await GatedCommandExecutor.ExecuteAsync(second.ForkWorkspaceId, secondProject,
+                    ["msbuild", "Entry.csproj", "-getProperty:MSBuildStartupDirectory", "-nr:false", "-nologo"], TimeSpan.FromSeconds(30), timeout.Token);
+                Assert.IsTrue(native.Succeeded, native.StdOut + native.StdErr);
+                Assert.AreEqual(Path.TrimEndingDirectorySeparator(second.ForkPath), Path.TrimEndingDirectorySeparator(native.StdOut.Trim()),
+                    "Relative SDK invocation must start in the actual returned fork.");
+                var secondSolution = WorkspaceManager.GetCurrentSolution(second.ForkWorkspaceId);
+                var thirdToken = store.Store(second.ForkWorkspaceId, secondSolution, secondSolution, WorkspaceManager.GetCurrentVersion(second.ForkWorkspaceId),
+                    "third generation", false, RoslynMcp.Core.Models.PreviewKind.Unspecified);
+                third = await service.ApplyAsync(second.ForkWorkspaceId, thirdToken, "keep", false, null, "third", timeout.Token);
+                Assert.IsTrue(third.Success);
+                Assert.AreEqual(Path.GetDirectoryName(first.ForkPath), Path.GetDirectoryName(third.ForkPath));
+                Assert.AreEqual(second.ForkPath, ForkAdmissionMaterial.Find(Path.Combine(third.ForkPath, "Entry.csproj"))!.SourceRoot);
             }
             Assert.AreSame(firstSolution, WorkspaceManager.GetCurrentSolution(first.ForkWorkspaceId));
             Assert.AreEqual(firstVersion, WorkspaceManager.GetCurrentVersion(first.ForkWorkspaceId));
@@ -791,6 +813,7 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
         }
         finally
         {
+            if (third?.ForkWorkspaceId is { } thirdId) WorkspaceManager.Close(thirdId);
             if (second?.ForkWorkspaceId is { } secondId) WorkspaceManager.Close(secondId);
             if (first?.ForkWorkspaceId is { } firstId) WorkspaceManager.Close(firstId);
             WorkspaceManager.Close(source.WorkspaceId);
@@ -903,7 +926,7 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
         {
             Assert.ThrowsExactly<IOException>(() => PhysicalPathResolver.Resolve(cycle));
             var service = new WorkspaceForkApplyService(WorkspaceManager, WorkspaceExecutionGate, new PreviewStore(),
-                null!, null!, DotnetCommandRunner, Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceForkApplyService>.Instance);
+                null!, null!, DotnetCommandRunner, Helpers.ForkStorageFixtureBoundary.ValidateAsync, Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceForkApplyService>.Instance);
             var cleanup = typeof(WorkspaceForkApplyService).GetMethod("CleanupFork", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
             var warnings = new List<string>();
             var original = new OperationCanceledException("Primary cancellation must survive cleanup identity failure.");
@@ -938,7 +961,7 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
             var original = WorkspaceManager.GetCurrentSolution(loaded.WorkspaceId);
             using var execution = await ForkAdmissionExecution.CreateAsync(config, null, CancellationToken.None);
             var service = new WorkspaceForkApplyService(WorkspaceManager, WorkspaceExecutionGate, new PreviewStore(),
-                null!, null!, DotnetCommandRunner, Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceForkApplyService>.Instance);
+                null!, null!, DotnetCommandRunner, Helpers.ForkStorageFixtureBoundary.ValidateAsync, Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceForkApplyService>.Instance);
             var cleanup = typeof(WorkspaceForkApplyService).GetMethod("CleanupFork", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
             var warnings = new List<string>();
             cleanup.Invoke(service, [loaded.WorkspaceId, fixture.Fork, warnings, CancellationToken.None]);
@@ -1167,7 +1190,7 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
         WorkspaceForkApplyService.SweepExpiredForks(aliases, 1, DateTimeOffset.UtcNow);
         Assert.IsTrue(Directory.Exists(alias), "Expiry must not delete an alias while its physical fork is owned.");
         var service = new WorkspaceForkApplyService(WorkspaceManager, WorkspaceExecutionGate, new PreviewStore(), null!, null!, DotnetCommandRunner,
-            Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceForkApplyService>.Instance);
+            Helpers.ForkStorageFixtureBoundary.ValidateAsync, Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceForkApplyService>.Instance);
         var cleanup = typeof(WorkspaceForkApplyService).GetMethod("CleanupFork", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
         var warnings = new List<string>();
         cleanup.Invoke(service, [null, alias, warnings, CancellationToken.None]);
@@ -1175,7 +1198,8 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
         Assert.IsTrue(Directory.Exists(alias));
         held.Dispose();
         WorkspaceForkApplyService.SweepExpiredForks(aliases, 1, DateTimeOffset.UtcNow);
-        Assert.IsFalse(Directory.Exists(alias), "An unowned expired alias must remain eligible for ordinary cleanup.");
+        Assert.IsTrue(Directory.Exists(alias), "Expiry must not follow a reparse-point victim, even after native ownership is released.");
+        Assert.IsTrue(Directory.Exists(fixture.Fork));
     }
 
     [TestMethod]
@@ -1367,6 +1391,254 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
             child?.Dispose();
             WorkspaceManager.Close(loaded.WorkspaceId);
         }
+    }
+
+    [TestMethod]
+    public async Task LegacyNestedFork_ActualPausedCommand_ProtectsOuterOwnerFromExpiry()
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(1));
+        using var fixture = new NativeFixture(false);
+        var pool = Path.Combine(fixture.Source, ".roslynmcp", "forks");
+        var outer = Path.Combine(pool, "20000101T000000000Z-outer");
+        var inner = Path.Combine(outer, ".roslynmcp", "forks", "20000101T000000000Z-inner");
+        var outerProject = Path.Combine(outer, "Entry.csproj");
+        var project = Path.Combine(inner, "Entry.csproj");
+        fixture.WriteProject(outerProject, string.Empty);
+        ForkAdmissionMaterial.Install(fixture.Source, outer, [outerProject], timeout.Token);
+        fixture.WriteProject(project, string.Empty);
+        var restored = await DotnetCommandRunner.RunAsync(inner, project, ["restore", project, "-nr:false", "--nologo"], timeout.Token);
+        Assert.IsTrue(restored.Succeeded, restored.StdOut + restored.StdErr);
+        ForkAdmissionMaterial.Install(outer, inner, [project], timeout.Token);
+        var loaded = await WorkspaceManager.LoadAsync(project, timeout.Token);
+        var entered = Path.Combine(fixture.Evidence, "entered");
+        var release = Path.Combine(fixture.Evidence, "release");
+        var script = Path.Combine(fixture.Evidence, "pause.ps1");
+        File.WriteAllText(script, "param([string]$Entered,[string]$Release)\n[IO.File]::WriteAllText($Entered,'entered')\nwhile (!(Test-Path -LiteralPath $Release)) { Start-Sleep -Milliseconds 20 }\n");
+        File.WriteAllText(Path.Combine(inner, "Directory.Build.targets"), new XElement("Project",
+            new XElement("Target", new XAttribute("Name", "Pause"), new XElement("Exec", new XAttribute("Command",
+                "pwsh -NoProfile -File \"" + script + "\" -Entered \"" + entered + "\" -Release \"" + release + "\"")))).ToString());
+        var running = GatedCommandExecutor.ExecuteAsync(loaded.WorkspaceId, project,
+            ["msbuild", "Entry.csproj", "-t:Pause", "-nr:false", "-nologo"], TimeSpan.FromSeconds(45), timeout.Token);
+        Exception? primaryFailure = null;
+        try
+        {
+            while (!File.Exists(entered) && !running.IsCompleted) await Task.Delay(10, timeout.Token);
+            Assert.IsTrue(File.Exists(entered), "The actual owned CLI must enter the paused target.");
+            WorkspaceForkApplyService.SweepExpiredForks(pool, 1, DateTimeOffset.UtcNow);
+            Assert.IsTrue(Directory.Exists(outer), "The physical enclosing owner must remain during the actual native invocation.");
+            Assert.IsTrue(File.Exists(project), "A paused legacy nested invocation must protect its physical enclosing owner from outer-pool TTL deletion.");
+        }
+        catch (Exception ex) { primaryFailure = ex; throw; }
+        finally
+        {
+            File.WriteAllText(release, "release");
+            try
+            {
+                var result = await running;
+                Assert.IsTrue(result.Succeeded, result.StdOut + result.StdErr);
+            }
+            catch (Exception completion) when (primaryFailure is not null)
+            { throw new AggregateException("The active-owner assertion and native completion both failed.", primaryFailure, completion); }
+            finally { WorkspaceManager.Close(loaded.WorkspaceId); }
+        }
+        WorkspaceForkApplyService.SweepExpiredForks(pool, 1, DateTimeOffset.UtcNow);
+        Assert.IsFalse(Directory.Exists(outer), "An inactive completed legacy owner remains eligible for expiry.");
+    }
+
+    [TestMethod]
+    public async Task FirstFork_UnrepresentableNativeCwd_RefusesBeforeAnyEffects()
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(1));
+        using var fixture = new NativeFixture(false);
+        var sourceRoot = Path.Combine(fixture.Source, new string('p', 225 - fixture.Source.Length - 1));
+        var project = Path.Combine(sourceRoot, "Entry.csproj");
+        fixture.WriteProject(project, string.Empty);
+        var restored = await DotnetCommandRunner.RunAsync(sourceRoot, project, ["restore", "Entry.csproj", "--nologo", "-nr:false"], timeout.Token);
+        Assert.IsTrue(restored.Succeeded, restored.StdOut + restored.StdErr);
+        var loaded = await WorkspaceManager.LoadAsync(project, timeout.Token);
+        var store = new PreviewStore();
+        var solution = WorkspaceManager.GetCurrentSolution(loaded.WorkspaceId);
+        var version = WorkspaceManager.GetCurrentVersion(loaded.WorkspaceId);
+        var status = await WorkspaceManager.GetStatusAsync(loaded.WorkspaceId);
+        var token = store.Store(loaded.WorkspaceId, solution, solution, version, "native cwd refusal", false, RoslynMcp.Core.Models.PreviewKind.Unspecified);
+        var entry = WorkspaceForkGraphReplayTests.CapturePreviewEntry(store, token);
+        var bytes = Directory.GetFiles(sourceRoot, "*", SearchOption.AllDirectories).ToDictionary(path => path, File.ReadAllBytes);
+        var validation = new WorkspaceValidationService(CompileCheckService, DiagnosticService, TestDiscoveryService, TestRunnerService, WorkspaceManager, ChangeTracker);
+        var service = new WorkspaceForkApplyService(WorkspaceManager, WorkspaceExecutionGate, store, validation, TestRunnerService, DotnetCommandRunner,
+            Helpers.ForkStorageFixtureBoundary.ValidateAsync, Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceForkApplyService>.Instance);
+        RoslynMcp.Core.Models.WorkspaceForkApplyResultDto? result = null;
+        try
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                var refusal = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() => service.ApplyAsync(loaded.WorkspaceId, token, "keep", false, null, "first", timeout.Token));
+                StringAssert.Contains(refusal.Message, "shorter authorized root");
+                Assert.IsFalse(Directory.Exists(Path.Combine(sourceRoot, ".roslynmcp")), "Refusal must precede even pool creation or expiry.");
+            }
+            else
+            {
+                result = await service.ApplyAsync(loaded.WorkspaceId, token, "keep", false, null, "first", timeout.Token);
+                Assert.IsTrue(result.Success, "The Windows native cwd preflight must not restrict Unix forks.");
+                Assert.AreEqual(Path.Combine(sourceRoot, ".roslynmcp", "forks"), Path.GetDirectoryName(result.ForkPath));
+            }
+            Assert.AreSame(solution, WorkspaceManager.GetCurrentSolution(loaded.WorkspaceId));
+            Assert.AreEqual(version, WorkspaceManager.GetCurrentVersion(loaded.WorkspaceId));
+            Assert.AreEqual(status.SnapshotToken, (await WorkspaceManager.GetStatusAsync(loaded.WorkspaceId)).SnapshotToken);
+            Assert.AreEqual(entry, WorkspaceForkGraphReplayTests.CapturePreviewEntry(store, token));
+            foreach (var (path, expected) in bytes) CollectionAssert.AreEqual(expected, File.ReadAllBytes(path), path);
+        }
+        finally
+        {
+            if (result?.ForkWorkspaceId is { } id) WorkspaceManager.Close(id);
+            WorkspaceManager.Close(loaded.WorkspaceId);
+        }
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task LegacyNestedAdmission_PartialOwnershipWait_ReleasesEveryAcquiredAncestor(bool deadline)
+    {
+        using var fixture = new NativeFixture(false);
+        var outer = Path.Combine(fixture.Source, ".roslynmcp", "forks", "20000101T000000000Z-outer");
+        var inner = Path.Combine(outer, ".roslynmcp", "forks", "20000101T000000000Z-inner");
+        var outerProject = Path.Combine(outer, "Entry.csproj");
+        var project = Path.Combine(inner, "Entry.csproj");
+        fixture.WriteProject(outerProject, string.Empty);
+        ForkAdmissionMaterial.Install(fixture.Source, outer, [outerProject], CancellationToken.None);
+        fixture.WriteProject(project, string.Empty);
+        var config = ForkAdmissionMaterial.Install(outer, inner, [project], CancellationToken.None);
+        using var blocked = await WorkspaceForkApplyService.AcquireForkApplyLockAsync(inner, CancellationToken.None);
+        using var cancellation = new CancellationTokenSource();
+        var pending = ForkAdmissionExecution.CreateAsync(config, deadline ? DateTimeOffset.UtcNow.AddSeconds(1) : null, cancellation.Token).AsTask();
+        Assert.IsFalse(pending.IsCompleted);
+        Assert.IsTrue(WorkspaceForkApplyService.HasForkApplyLock(outer), "The outer owner must be acquired before waiting for the inner owner.");
+        Assert.IsNull(WorkspaceForkApplyService.TryAcquireForkApplyLock(outer));
+        if (deadline) await Assert.ThrowsExactlyAsync<TimeoutException>(() => pending);
+        else
+        {
+            cancellation.Cancel();
+            await Assert.ThrowsAsync<OperationCanceledException>(() => pending);
+        }
+        Assert.IsFalse(WorkspaceForkApplyService.HasForkApplyLock(outer));
+        Assert.IsFalse(Directory.Exists(Path.Combine(inner, ForkAdmissionMaterial.DirectoryName, "executions")));
+    }
+
+    [TestMethod]
+    public async Task LegacyNestedAdmission_UncertainDescendant_PreventsEnclosingExpiry()
+    {
+        using var fixture = new NativeFixture(false);
+        var pool = Path.Combine(fixture.Source, ".roslynmcp", "forks");
+        var outer = Path.Combine(pool, "20000101T000000000Z-outer");
+        var inner = Path.Combine(outer, ".roslynmcp", "forks", "20000101T000000000Z-inner");
+        var outerProject = Path.Combine(outer, "Entry.csproj");
+        var project = Path.Combine(inner, "Entry.csproj");
+        fixture.WriteProject(outerProject, string.Empty);
+        ForkAdmissionMaterial.Install(fixture.Source, outer, [outerProject], CancellationToken.None);
+        fixture.WriteProject(project, string.Empty);
+        var config = ForkAdmissionMaterial.Install(outer, inner, [project], CancellationToken.None);
+        using var uncertain = await ForkAdmissionExecution.CreateAsync(config, null, CancellationToken.None);
+        uncertain.Dispose();
+        Assert.IsNotNull(uncertain.CleanupWarning);
+        Assert.IsFalse(WorkspaceForkApplyService.HasForkApplyLock(outer));
+        Assert.IsFalse(WorkspaceForkApplyService.HasForkApplyLock(inner));
+        WorkspaceForkApplyService.SweepExpiredForks(pool, 1, DateTimeOffset.UtcNow);
+        Assert.IsTrue(Directory.Exists(uncertain.Root), "Enclosing expiry must preserve uncertain nested admission material after ancestor locks are released.");
+        // No native process starts in this control; the fixture owns the residue.
+        Directory.Delete(uncertain.Root, recursive: true);
+        WorkspaceForkApplyService.SweepExpiredForks(pool, 1, DateTimeOffset.UtcNow);
+        Assert.IsFalse(Directory.Exists(outer));
+    }
+
+    [TestMethod]
+    [DataRow("inert")]
+    [DataRow("malformed")]
+    [DataRow("missing-config")]
+    [DataRow("subworkspace")]
+    [DataRow("nonstandard")]
+    [DataRow("linked")]
+    public void EnclosingExpiry_DistinguishesVerifiedOrClaimedOwnedDescendantsFromInertNames(string shape)
+    {
+        using var fixture = new NativeFixture(false);
+        var pool = Path.Combine(fixture.Source, ".roslynmcp", "forks");
+        var outer = Path.Combine(pool, "20000101T000000000Z-outer");
+        var outerProject = Path.Combine(outer, "Entry.csproj");
+        fixture.WriteProject(outerProject, string.Empty);
+        ForkAdmissionMaterial.Install(fixture.Source, outer, [outerProject], CancellationToken.None);
+        var nested = shape == "nonstandard" ? Path.Combine(outer, "retained-data")
+            : Path.Combine(outer, "loaded-subworkspace", ".roslynmcp", "forks", "20000101T000000000Z-inner");
+        var project = Path.Combine(nested, "Entry.csproj");
+        var ownedProject = shape == "linked" ? fixture.PathInFork("Entry.csproj") : project;
+        fixture.WriteProject(ownedProject, string.Empty);
+        var material = Path.Combine(nested, ForkAdmissionMaterial.DirectoryName);
+        if (shape == "linked")
+        {
+            ForkAdmissionMaterial.Install(fixture.Source, fixture.Fork, [ownedProject], CancellationToken.None);
+            Directory.CreateDirectory(Path.GetDirectoryName(nested)!);
+            WorkspaceForkGraphReplayTests.CreateLink(nested, fixture.Fork);
+        }
+        else if (shape != "inert") ForkAdmissionMaterial.Install(outer, nested, [project], CancellationToken.None);
+        var residue = Path.Combine(material, "executions", "uncertain");
+        Directory.CreateDirectory(residue);
+        if (shape == "inert") File.WriteAllText(Path.Combine(material, "guard.targets"), "<Project><!-- authored fixture --></Project>");
+        if (shape == "malformed") File.WriteAllText(Path.Combine(material, "config.json"), "malformed claimed ownership");
+        if (shape == "missing-config") File.Delete(Path.Combine(material, "config.json"));
+        WorkspaceForkApplyService.SweepExpiredForks(pool, 1, DateTimeOffset.UtcNow);
+        Assert.AreEqual(shape is not ("inert" or "linked"), Directory.Exists(outer), "Only physically contained verified or unverifiable claimed owned material can retain an enclosing fork.");
+        if (shape == "linked") Assert.IsTrue(File.Exists(ownedProject), "Expiry must not follow a link to independent owned material.");
+    }
+
+    [TestMethod]
+    public async Task LegacyNestedFork_ReopenAndFork_UsesOutermostPoolAndImmediateSource()
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+        using var fixture = new NativeFixture(false);
+        var pool = Path.Combine(fixture.Source, ".roslynmcp", "forks");
+        var outer = Path.Combine(pool, "20000101T000000000Z-outer");
+        var inner = Path.Combine(outer, ".roslynmcp", "forks", "20000101T000000000Z-inner");
+        var outerProject = Path.Combine(outer, "Entry.csproj");
+        var project = Path.Combine(inner, "Entry.csproj");
+        fixture.WriteProject(outerProject, string.Empty);
+        ForkAdmissionMaterial.Install(fixture.Source, outer, [outerProject], timeout.Token);
+        fixture.WriteProject(project, string.Empty);
+        var restored = await DotnetCommandRunner.RunAsync(inner, project, ["restore", "Entry.csproj", "-nr:false", "--nologo"], timeout.Token);
+        Assert.IsTrue(restored.Succeeded, restored.StdOut + restored.StdErr);
+        ForkAdmissionMaterial.Install(outer, inner, [project], timeout.Token);
+        var loaded = await WorkspaceManager.LoadAsync(project, timeout.Token);
+        var store = new PreviewStore();
+        var solution = WorkspaceManager.GetCurrentSolution(loaded.WorkspaceId);
+        var token = store.Store(loaded.WorkspaceId, solution, solution, WorkspaceManager.GetCurrentVersion(loaded.WorkspaceId), "legacy nested", false, RoslynMcp.Core.Models.PreviewKind.Unspecified);
+        var validation = new WorkspaceValidationService(CompileCheckService, DiagnosticService, TestDiscoveryService, TestRunnerService, WorkspaceManager, ChangeTracker);
+        var service = new WorkspaceForkApplyService(WorkspaceManager, WorkspaceExecutionGate, store, validation, TestRunnerService, DotnetCommandRunner,
+            Helpers.ForkStorageFixtureBoundary.ValidateAsync, Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceForkApplyService>.Instance);
+        RoslynMcp.Core.Models.WorkspaceForkApplyResultDto? result = null;
+        try
+        {
+            result = await service.ApplyAsync(loaded.WorkspaceId, token, "keep", false, null, "next", timeout.Token);
+            Assert.IsTrue(result.Success);
+            Assert.AreEqual(pool, Path.GetDirectoryName(result.ForkPath));
+            Assert.AreEqual(inner, ForkAdmissionMaterial.Find(Path.Combine(result.ForkPath, "Entry.csproj"))!.SourceRoot);
+            Assert.IsTrue(File.Exists(project), "The source-owned ancestor must survive its own pool sweep.");
+            Assert.AreSame(solution, WorkspaceManager.GetCurrentSolution(loaded.WorkspaceId));
+        }
+        finally
+        {
+            if (result?.ForkWorkspaceId is { } id) WorkspaceManager.Close(id);
+            WorkspaceManager.Close(loaded.WorkspaceId);
+        }
+    }
+
+    [TestMethod]
+    [DataRow(258)]
+    [DataRow(259)]
+    public void NativeRestoreDirectory_ExactWindowsBoundary(int length)
+    {
+        var root = Path.GetPathRoot(TestTempRoot.Current)!;
+        var path = Path.Combine(root, new string('p', length - root.Length));
+        Assert.AreEqual(length, path.Length);
+        if (OperatingSystem.IsWindows() && length == 259)
+            Assert.ThrowsExactly<PublicInvalidOperationException>(() => WorkspaceForkApplyService.ValidateNativeRestoreDirectory(path));
+        else WorkspaceForkApplyService.ValidateNativeRestoreDirectory(path);
     }
 
     private sealed class NativeFixture : IDisposable

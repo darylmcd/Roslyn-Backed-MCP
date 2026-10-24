@@ -17,6 +17,12 @@ public static class ServiceCollectionExtensions
     /// </summary>
     /// <param name="services">The service collection to add registrations to.</param>
     /// <returns>The same <paramref name="services"/> for chaining.</returns>
+    /// <remarks>
+    /// The workspace-fork service requires the request-bound storage authorization
+    /// registered by the supported stdio host's AddRoslynMcpHostServices composition.
+    /// This Roslyn-only registration does not supply that boundary. Standalone fork
+    /// hosting is not an advertised public integration contract.
+    /// </remarks>
     public static IServiceCollection AddRoslynServices(this IServiceCollection services)
     {
         // The service provider owns IFileWatcherService. WorkspaceManager instances created by

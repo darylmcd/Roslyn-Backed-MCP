@@ -222,8 +222,15 @@ public sealed class ValidationBundleToolsTests
 
             // Expired: stamped 48h ago (TTL below is 24h).
             var expired = MakeForkDir(forkRoot, now.AddHours(-48), "old");
+            ForkAdmissionMaterial.Install(forkRoot, expired, [], CancellationToken.None);
             // Fresh: stamped 1h ago.
             var fresh = MakeForkDir(forkRoot, now.AddHours(-1), "new");
+            ForkAdmissionMaterial.Install(forkRoot, fresh, [], CancellationToken.None);
+            var unowned = MakeForkDir(forkRoot, now.AddHours(-48), "authored");
+            File.WriteAllText(Path.Combine(unowned, "authored.txt"), "Unrelated authored bytes");
+            var malformed = MakeForkDir(forkRoot, now.AddHours(-48), "malformed");
+            ForkAdmissionMaterial.Install(forkRoot, malformed, [], CancellationToken.None);
+            File.WriteAllText(Path.Combine(malformed, ForkAdmissionMaterial.DirectoryName, "config.json"), "Malformed claimed ownership");
             // Unparseable prefix — must be kept (fail-safe).
             var unparseable = Path.Combine(forkRoot, "not-a-timestamp-abc");
             Directory.CreateDirectory(unparseable);
@@ -232,6 +239,8 @@ public sealed class ValidationBundleToolsTests
 
             Assert.IsFalse(Directory.Exists(expired), "Fork older than the TTL must be swept.");
             Assert.IsTrue(Directory.Exists(fresh), "Fork newer than the TTL must be kept.");
+            Assert.AreEqual("Unrelated authored bytes", File.ReadAllText(Path.Combine(unowned, "authored.txt")), "Timestamp spelling alone does not prove ownership.");
+            Assert.IsTrue(Directory.Exists(malformed), "Unverifiable claimed ownership must be retained.");
             Assert.IsTrue(Directory.Exists(unparseable),
                 "Fork with an unparseable timestamp prefix must be kept (fail-safe).");
         }

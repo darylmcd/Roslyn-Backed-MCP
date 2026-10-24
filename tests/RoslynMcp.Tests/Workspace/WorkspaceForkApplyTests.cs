@@ -179,7 +179,7 @@ public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
             CompileCheckService, DiagnosticService, new FixedDiscovery(), runner, WorkspaceManager);
         var service = new WorkspaceForkApplyService(
             WorkspaceManager, WorkspaceExecutionGate, PreviewStore, validation, runner, new DotnetCommandRunner(),
-            NullLogger<WorkspaceForkApplyService>.Instance);
+            Helpers.ForkStorageFixtureBoundary.ValidateAsync, NullLogger<WorkspaceForkApplyService>.Instance);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(60));
         var forkTask = ValidationBundleTools.WorkspaceForkApply(
             service, workspace.WorkspaceId, token,
@@ -219,7 +219,7 @@ public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
         var runner = new CancellingTestRunner(cancellation);
         var service = new WorkspaceForkApplyService(
             WorkspaceManager, WorkspaceExecutionGate, PreviewStore, CreateValidationService(), runner,
-            new DotnetCommandRunner(), NullLogger<WorkspaceForkApplyService>.Instance);
+            new DotnetCommandRunner(), Helpers.ForkStorageFixtureBoundary.ValidateAsync, NullLogger<WorkspaceForkApplyService>.Instance);
         var sourceSolution = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
         var sourceVersion = WorkspaceManager.GetCurrentVersion(workspace.WorkspaceId);
         var sourceStatus = await WorkspaceManager.GetStatusAsync(workspace.WorkspaceId);
@@ -276,7 +276,7 @@ public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
             validationService: null!,
             testRunnerService: null!,
             commandRunner: runner,
-            logger: NullLogger<WorkspaceForkApplyService>.Instance);
+            validateStoragePath: Helpers.ForkStorageFixtureBoundary.ValidateAsync, logger: NullLogger<WorkspaceForkApplyService>.Instance);
 
         var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
             () => service.RestoreForkAsync(
@@ -309,7 +309,7 @@ public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
             validationService: null!,
             testRunnerService: null!,
             commandRunner: new CancelingRestoreRunner(expected),
-            logger: NullLogger<WorkspaceForkApplyService>.Instance);
+            validateStoragePath: Helpers.ForkStorageFixtureBoundary.ValidateAsync, logger: NullLogger<WorkspaceForkApplyService>.Instance);
 
         var actual = await Assert.ThrowsExactlyAsync<OperationCanceledException>(() =>
             service.RestoreForkAsync(
@@ -338,7 +338,7 @@ public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
             validationService,
             TestRunnerService,
             new DotnetCommandRunner(),
-            NullLogger<WorkspaceForkApplyService>.Instance);
+            Helpers.ForkStorageFixtureBoundary.ValidateAsync, NullLogger<WorkspaceForkApplyService>.Instance);
 
     private static async Task<string> StoreDogPreviewAsync(string workspaceId, Func<string, string> mutate)
     {
