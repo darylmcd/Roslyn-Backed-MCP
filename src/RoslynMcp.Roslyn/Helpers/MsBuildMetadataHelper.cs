@@ -4,6 +4,7 @@ using System.Xml.Linq;
 using Microsoft.Build.Evaluation;
 using Microsoft.Build.Exceptions;
 using Microsoft.CodeAnalysis.MSBuild;
+using RoslynMcp.Core.Services;
 
 namespace RoslynMcp.Roslyn.Helpers;
 
@@ -49,7 +50,7 @@ internal static class MsBuildMetadataHelper
         {
             // Surfaced as InvalidOperationException so callers never name a Microsoft.Build type
             // in a catch clause: the JIT would resolve it before the MSBuild resolver is registered.
-            throw new InvalidOperationException($"MSBuild could not evaluate '{projectFilePath}': {ex.Message}", ex);
+            throw InvalidOperationErrors.Internal($"MSBuild could not evaluate '{projectFilePath}': {ex.Message}", ex);
         }
         finally
         {
