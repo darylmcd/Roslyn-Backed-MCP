@@ -46,6 +46,8 @@
 
 - `tests/RoslynMcp.Tests/WorkspaceForkApplyCancellationTests.cs`
 - `tests/RoslynMcp.Tests/HostShutdownLifecycleTests.cs`
+- `eng/resolve-ci-topology.ps1`
+- `tests/RoslynMcp.Tests/CiTopologyDecisionContractTests.cs`
 
 ## Acceptance
 
@@ -83,7 +85,7 @@
 | Expanded qualification | Root clean d860bdce forty-class run779PASS2FAIL3existingLinux-onlySKIP784total17m07s; all40classes and zero overlap. Full CrossProject19 and ratchet88 passed. Two stale reflection-argument failures were retained as RED evidence, not retried unchanged. |
 | Indirect helper caller correction | Sole reflective cancellation caller now supplies the required explicit destination exclusion, preserving every assertion. Independent review0BLOCKING; four-class66PASS0FAIL0SKIP includes both original failures and native source-inside/equal controls. |
 | Hosted retirement ordering | Hosted Windows3 also exposed the new deletion test assuming the session survives actual watcher retirement. Hold the real writer to qualify exact missing-file and missing-root refusal, then release it and await actual WorkspaceClosed before exact missing-workspace/preview-invalidation assertions. No product changes, exception union or watcher suppression. Focused23PASS0FAIL0SKIP and independent review0BLOCKING. |
-| Delivery state | Exact21-path WIP26157fc5 and reviewed production d860bdce remain published in PR1823. Clean32de7e8a serialized forty-class suite:781PASS0FAIL3existingLinux-onlySKIP784total18m09s, all40classes and zero overlap. All four Windows shards, Linux2, SDK-floor400 and CodeQL passed. Linux1 exposed the independent cancellation-fixture rendezvous below; its minimal correction is reviewed for the next exact head. No row closure or full serialized delivery-gate claim. |
+| Delivery state | Exact21-path WIP26157fc5 remains published in PR1823. Clean32de forty-class suite:781PASS0FAIL3existingLinux-onlySKIP784total18m09s, all40classes and zero overlap. Minimal cancellation correction460794de passed exact108 affected tests; all four hosted Windows shards, Linux2, SDK-floor400 and CodeQL passed. Linux1 completed2526PASS0FAIL33SKIP, publish and formatting, then exhausted its job deadline during audit. Artifact-owner placement is corrected below for a new exact head; no row closure or full serialized delivery-gate claim. |
 
 - Real native load/build effects force task/import integration; no replacement BuildHost, native compiler certificate, physical-directory lease or second restore evaluator.
 - Graph fidelity remains the dependent restore-fork-reviewed-project-graph slice. Independent cross-process expiry coordination and provider/root-retirement concerns are follow-up rows without restore dependencies.
@@ -101,4 +103,11 @@
 | Minimal correction | Register a locally owned hold on the actual initiating lifetime CTS before linked registrations; retain asynchronous runner release, every original assertion/deadline and release-before-await cleanup. Actual operation.IsCanceled prevents confusing an expired test wait with operation completion. Remove the obsolete unregister switch. |
 | Independent qualification | Exact14insert11delete test-only delta; fullLifecycle14PASS0FAIL0SKIP, semantic compilation zero errors/warnings, formatter38C#zero new/baseline findings. Fresh actual-diff review0BLOCKING; fixture/watcher/gate cleanup blocks match32de exactly. New committed-head affected and hosted gates remain mandatory. |
 | Independent cleanup split | Preserve the experimental cleanup draft and receipts; none of that rewrite or its three added tests remains in this PR. Pre-existing cleanup mechanisms are filed as fork-source-fixture-cleanup-failure-propagation, then fork-source-fixture-initialization-cleanup-ownership; test-workspace-unwatch-barrier-timeout-assertion also depends on the first row. These rows are in a separate docs-only branch and are not restore prerequisites. |
+
+| Artifact-owner placement | Result / limit |
+|---|---|
+| Exact hosted forcing evidence | Run40139414039 Linux1 tests passed27m05s, publish/hash completed23:07:25Z and formatter38 passed23:08:32Z; audit began then the30-minute job deadline cancelled it23:08:35Z. Same-run Linux2 succeeded18m22s. This was incomplete audit qualification, not a failed or skipped test. |
+| Smallest correction | Move sole artifact_owner from Linux1 to Linux2 in both two-leg Linux matrices; shared merge-group and fail-closed routes inherit the correction. Single-linux dispatch/schedule ownership remains unchanged. No workflow, stage, deadline, test partition, sample threshold or coverage change. |
+| Causal and independent checks | Two exact owner assertions failed against the unchanged router after successful setup. Corrected topology27, runner-parity14 and changelog-contract3:44PASS0FAIL0SKIP24s. Compiler zero diagnostics, docs/fragments passed, fresh actual-diff review0BLOCKING; exact two-file9insert8delete delta. New-head scoped and all hosted owner-stage completion remain required. |
+| Timing recheck | Default MinimumSamples5 collector passed on five fresh complete green historical code runs30leg observations; no material timing skew on either image, so retain discovered-case weights. Separate three-current-E1 dataset failed the unchanged default5 threshold with3sampled runs; preserve this diagnostic and claim no current/new-placement timing profile. Root owns separate post-placement collection. |
 
