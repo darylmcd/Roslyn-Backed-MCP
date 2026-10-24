@@ -125,7 +125,7 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService
         try
         {
             // Capture the source and replay its preview atomically. Once this finishes,
-            // restore, loading, and tests operate only on the isolated fork.
+            // Then verify its evaluated paths before restore, loading, or tests can run.
             var preparedFork = await _workspaceExecutionGate.RunWriteAsync(workspaceId, async c =>
             {
                 var preview = RetrieveValidatedPreview(previewToken, workspaceId);
@@ -138,7 +138,7 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService
                 return (Path: path, AppliedFiles: appliedFiles);
             }, ct, applyStalenessPolicy: false).ConfigureAwait(false);
             var forkLoadedPath = MapSourcePathToFork(source.LoadedPath, source.Root, preparedFork.Path);
-            await RestoreForkAsync(forkLoadedPath, ct).ConfigureAwait(false);
+            await RestoreForkAsync(forkLoadedPath, source.Root, preparedFork.Path, ct).ConfigureAwait(false);
             var forkStatus = await _workspaceManager
                 .LoadAsync(forkLoadedPath, EvictPolicy.Lru, ct)
                 .ConfigureAwait(false);
@@ -514,7 +514,7 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService
         return false;
     }
 
-    internal async Task RestoreForkAsync(string forkLoadedPath, CancellationToken ct)
+    internal async Task RestoreForkAsync(string forkLoadedPath, string sourceRoot, string forkRoot, CancellationToken ct)
     {
         var workingDirectory = Path.GetDirectoryName(forkLoadedPath)
             ?? throw new InvalidOperationException(
@@ -522,10 +522,15 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService
         var timeoutMinutes = ResolveForkRestoreTimeoutMinutes();
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(TimeSpan.FromMinutes(timeoutMinutes));
+        var elapsed = System.Diagnostics.Stopwatch.StartNew();
 
         CommandExecutionDto execution;
         try
         {
+            ForkGraphPreparation.Validate(forkLoadedPath, sourceRoot, forkRoot,
+                () => RestoreInvocationPlanner.RemainingBudget(TimeSpan.FromMinutes(timeoutMinutes), elapsed.Elapsed,
+                    TimeSpan.Zero, "The workspace fork restore phase exceeded its time budget."), timeout.Token);
+            timeout.Token.ThrowIfCancellationRequested();
             execution = await _commandRunner.RunAsync(
                 workingDirectory,
                 forkLoadedPath,

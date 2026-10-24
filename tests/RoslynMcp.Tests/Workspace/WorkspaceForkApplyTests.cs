@@ -14,7 +14,7 @@ namespace RoslynMcp.Tests;
 // and copies/replays workspace_fork_apply under the per-workspace write gate. The fork is created under the
 // copy's own .roslynmcp/forks directory, the static ForkApplyLocks entry is keyed by that unique
 // source root, and the retained fork workspace is closed and deleted in finally. The fork's real
-// `dotnet restore` targets only the fork directory — the same shape parallel-enabled
+// evaluated paths are verified before `dotnet restore` — the same shape parallel-enabled
 // CrossProjectRefactoringIntegrationTests and ScaffoldingFirstTestFileTests already run
 // concurrently. Validation receives explicit appliedFiles, so the shared ChangeTracker is not read.
 // The remaining tests are pure (ShouldRetainFork) or run on per-test fake command runners. No
@@ -238,6 +238,7 @@ public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public async Task RestoreForkAsync_Failure_RedactsCredentialBearingOutput()
     {
+        await using var fork = CreateIsolatedWorkspaceCopy();
         const string secret = "super-secret-feed-password";
         var runner = new FailingRestoreRunner(
             $"NU1301: Unable to load https://build:{secret}@feed.example/v3/index.json" +
@@ -253,7 +254,7 @@ public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
 
         var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
             () => service.RestoreForkAsync(
-                Path.Combine(Path.GetTempPath(), "fork", "SampleSolution.slnx"),
+                fork.GetPath("SampleLib", "SampleLib.csproj"), Path.Combine(fork.RootPath, "source"), fork.RootPath,
                 CancellationToken.None));
 
         StringAssert.Contains(exception.Message, "exit code 1");
@@ -269,6 +270,7 @@ public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public async Task RestoreForkAsync_NonTimeoutCancellation_PropagatesWithoutTimeoutReclassification()
     {
+        await using var fork = CreateIsolatedWorkspaceCopy();
         var expected = new OperationCanceledException("runner-owned cancellation");
         var service = new WorkspaceForkApplyService(
             workspaceManager: null!,
@@ -281,7 +283,7 @@ public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
 
         var actual = await Assert.ThrowsExactlyAsync<OperationCanceledException>(() =>
             service.RestoreForkAsync(
-                Path.Combine(Path.GetTempPath(), "fork", "SampleSolution.slnx"),
+                fork.GetPath("SampleLib", "SampleLib.csproj"), Path.Combine(fork.RootPath, "source"), fork.RootPath,
                 CancellationToken.None));
 
         Assert.AreSame(expected, actual,
