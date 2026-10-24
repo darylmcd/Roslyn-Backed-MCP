@@ -141,20 +141,93 @@ public sealed class ForkRetainedSourceDeletionTests
             deletionPath = Path.Combine(fixture.Root, "alias");
             WorkspaceForkGraphReplayTests.CreateLink(deletionPath, victim.Root);
         }
-        using (var reservation = fixture.Manager.TryReserveForkStorageDeletion(deletionPath))
+        var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void OnClosed(string id) { if (id == loaded.WorkspaceId) closed.TrySetResult(); }
+        fixture.Manager.WorkspaceClosed += OnClosed;
+        fixture.Gate.PauseId = loaded.WorkspaceId;
+        Task<bool>? writer = null;
+        Exception? primaryFailure = null;
+        try
         {
-            Assert.IsNotNull(reservation);
-            var refusal = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() => fixture.Service.ApplyAsync(
-                loaded.WorkspaceId, authority.PreviewToken, "keep", false, null, "loser", fixture.Token));
-            StringAssert.Contains(refusal.Message, "source");
-            Assert.IsFalse(fixture.Authorized.Task.IsCompleted, "Deletion admission must refuse before source callback/authorization/copy.");
-            authority.AssertPreserved(fixture);
+            writer = fixture.Gate.RunWriteAsync(loaded.WorkspaceId, _ => Task.FromResult(true),
+                fixture.Token, applyStalenessPolicy: false);
+            await fixture.Gate.Entered.Task.WaitAsync(fixture.Token);
+            using (var reservation = fixture.Manager.TryReserveForkStorageDeletion(deletionPath))
+            {
+                Assert.IsNotNull(reservation);
+                var refusal = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() => fixture.Service.ApplyAsync(
+                    loaded.WorkspaceId, authority.PreviewToken, "keep", false, null, "loser", fixture.Token));
+                StringAssert.Contains(refusal.Message, "source");
+                Assert.IsFalse(fixture.Authorized.Task.IsCompleted, "Deletion admission must refuse before source callback/authorization/copy.");
+                authority.AssertPreserved(fixture);
+            }
+
+            // The real writer delays watcher retirement without registering a retained source.
+            File.Delete(victim.Project);
+            Assert.IsTrue(Directory.Exists(Path.GetDirectoryName(victim.Project)));
+            var missingFile = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() => fixture.Service.ApplyAsync(
+                loaded.WorkspaceId, authority.PreviewToken, "keep", false, null, "missing-file", fixture.Token));
+            StringAssert.Contains(missingFile.Message, "source backing file");
+            StringAssert.Contains(missingFile.Message, "Reopen the source");
+            AssertLogicalAuthority();
+            foreach (var pair in authority.Bytes.Where(pair => pair.Key != victim.Project))
+                CollectionAssert.AreEqual(pair.Value, File.ReadAllBytes(pair.Key), pair.Key);
+
             WorkspaceForkApplyService.DeleteDirectoryIfExists(victim.Root, fixture.Token);
+            Assert.IsFalse(Directory.Exists(victim.Root));
+            var missingRoot = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() => fixture.Service.ApplyAsync(
+                loaded.WorkspaceId, authority.PreviewToken, "keep", false, null, "missing-root", fixture.Token));
+            StringAssert.Contains(missingRoot.Message, "source backing file");
+            StringAssert.Contains(missingRoot.Message, "Reopen the source");
+            AssertLogicalAuthority();
+
+            fixture.Gate.Release.TrySetResult();
+            await writer.WaitAsync(fixture.Token);
+            await closed.Task.WaitAsync(fixture.Token);
+            Assert.IsFalse(fixture.Manager.ContainsWorkspace(loaded.WorkspaceId));
+            Assert.IsNull(FullEntry(fixture.Store, authority.PreviewToken), "Actual watcher retirement invalidates the source preview.");
+            var retired = await Assert.ThrowsExactlyAsync<WorkspaceNotFoundException>(() => fixture.Service.ApplyAsync(
+                loaded.WorkspaceId, authority.PreviewToken, "keep", false, null, "retired", fixture.Token));
+            Assert.AreEqual(loaded.WorkspaceId, retired.WorkspaceId);
+            StringAssert.Contains(retired.Message, "workspace_load");
+            AssertNoEffects();
         }
-        await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() => fixture.Service.ApplyAsync(
-            loaded.WorkspaceId, authority.PreviewToken, "keep", false, null, "missing", fixture.Token));
-        Assert.IsFalse(fixture.Authorized.Task.IsCompleted, "A loaded session cannot claim missing backing material after deletion completes.");
-        Assert.AreSame(authority.Entry, FullEntry(fixture.Store, authority.PreviewToken));
+        catch (Exception exception)
+        {
+            primaryFailure = exception;
+            throw;
+        }
+        finally
+        {
+            fixture.Gate.Release.TrySetResult();
+            fixture.Cancel();
+            fixture.Manager.WorkspaceClosed -= OnClosed;
+            await CleanupFailureCollector.RunAfterFailureAsync("Deletion-winner writer cleanup failed.", primaryFailure,
+                async () =>
+                {
+                    if (writer is null) return;
+                    try { await writer; }
+                    catch (OperationCanceledException) when (writer.IsCanceled) { }
+                });
+        }
+
+        void AssertLogicalAuthority()
+        {
+            Assert.IsTrue(fixture.Manager.ContainsWorkspace(loaded.WorkspaceId));
+            Assert.AreSame(authority.Solution, fixture.Manager.GetCurrentSolution(loaded.WorkspaceId));
+            Assert.AreEqual(authority.Status.WorkspaceVersion, fixture.Manager.GetCurrentVersion(loaded.WorkspaceId));
+            Assert.AreEqual(authority.Status.SnapshotToken, fixture.Manager.GetStatus(loaded.WorkspaceId).SnapshotToken);
+            Assert.AreSame(authority.Entry, FullEntry(fixture.Store, authority.PreviewToken));
+            Assert.IsFalse(closed.Task.IsCompleted, "Watcher retirement must wait for the actual source writer.");
+            AssertNoEffects();
+        }
+
+        void AssertNoEffects()
+        {
+            Assert.IsFalse(fixture.Authorized.Task.IsCompleted, "Refused source admission cannot authorize or copy.");
+            Assert.IsEmpty(Directory.GetDirectories(fixture.Pool).Where(path => path != victim.Root).ToArray(),
+                "Refused operations cannot create a fork destination.");
+        }
     }
 
     [TestMethod]

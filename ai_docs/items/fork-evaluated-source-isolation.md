@@ -44,6 +44,8 @@
 - `tests/RoslynMcp.Tests/Workspace/WorkspaceForkSourceSessionTests.cs`
 - `tests/RoslynMcp.Tests/WorkspaceForkGitIsolationTests.cs`
 
+- `tests/RoslynMcp.Tests/WorkspaceForkApplyCancellationTests.cs`
+
 ## Acceptance
 
 - [ ] Before restore/runner effects, evaluate the copied transitive restore inventory and reject source-resolving imports, file inputs and restore outputs, including non-compilation dependencies and required framework/global contexts.
@@ -77,7 +79,10 @@
 | Repeated canonical source identity | Actual directory retarget old-guard regression failed at second registration. Preserve the original physical path before count mutation; real writer rendezvous proves first Apply refuses before copy, with no destinations and preserved authority. Setup-only alias and incorrect-rendezvous receipts are not causal product failures. |
 | Final correction qualification | Writer-qualified final focused gate121PASS0FAIL0SKIP2m22s; compile8/8zero; authoritative fragment check120current1changed passed. Earlier120PASS1FAIL receipts retain the synchronous-DI fixture and alias checkpoint failures; both were corrected without product shims or weakened assertions. |
 | Independent implementation review | Full cumulative review plus fresh correction review:0remainingBLOCKING. Final46authorfile hashes independently matched. These reviews and bounded passes do not replace exact-head affected or hosted gates. |
-| Delivery state | Operator-requested exact21-path WIP26157fc5 is published as draft PR1823. Final guard/test/async-DI/fragment corrections are locally frozen for clean committed-head40-class affected validation, formatter/policies and complete new Windows/Linux/SDK-floor checks. No row closure or full serialized delivery-gate claim. |
+| Expanded qualification | Root clean d860bdce forty-class run779PASS2FAIL3existingLinux-onlySKIP784total17m07s; all40classes and zero overlap. Full CrossProject19 and ratchet88 passed. Two stale reflection-argument failures were retained as RED evidence, not retried unchanged. |
+| Indirect helper caller correction | Sole reflective cancellation caller now supplies the required explicit destination exclusion, preserving every assertion. Independent review0BLOCKING; four-class66PASS0FAIL0SKIP includes both original failures and native source-inside/equal controls. |
+| Hosted retirement ordering | Hosted Windows3 also exposed the new deletion test assuming the session survives actual watcher retirement. Hold the real writer to qualify exact missing-file and missing-root refusal, then release it and await actual WorkspaceClosed before exact missing-workspace/preview-invalidation assertions. No product changes, exception union or watcher suppression. Focused23PASS0FAIL0SKIP and independent review0BLOCKING. |
+| Delivery state | Operator-requested exact21-path WIP26157fc5 and reviewed production d860bdce are published in draft PR1823. Two reviewed test-only corrections are locally frozen for the next exact committed-head forty-class run and complete new hosted Windows/Linux/SDK-floor checks. No row closure or full serialized delivery-gate claim. |
 
 - Real native load/build effects force task/import integration; no replacement BuildHost, native compiler certificate, physical-directory lease or second restore evaluator.
 - Graph fidelity remains the dependent restore-fork-reviewed-project-graph slice. Independent cross-process expiry coordination and provider/root-retirement concerns are follow-up rows without restore dependencies.

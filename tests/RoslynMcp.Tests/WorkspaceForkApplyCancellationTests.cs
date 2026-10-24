@@ -152,7 +152,7 @@ public sealed class WorkspaceForkApplyCancellationTests
     }
 
     private static void InvokeCopyDirectory(string sourceDir, string destinationDir, CancellationToken ct) =>
-        CopyDirectoryMethod.Invoke(null, [sourceDir, destinationDir, ct]);
+        CopyDirectoryMethod.Invoke(null, [sourceDir, destinationDir, new[] { Path.GetFullPath(destinationDir) }, ct]);
 
     private static void InvokeDeleteDirectoryIfExists(string path, CancellationToken ct) =>
         DeleteDirectoryIfExistsMethod.Invoke(null, [path, ct]);
