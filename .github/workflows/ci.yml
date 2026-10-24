@@ -239,7 +239,8 @@ jobs:
           retention-days: 30
 
   # Bound the declared SDK floor independently of the latest-10.0 full matrix.
-  # This lane restores/builds the product and loads one real MSBuildWorkspace;
+  # This lane restores/builds the product, loads a representative workspace and
+  # exercises native fork admission in the actual BuildHost;
   # repeating the complete suite here would add cost without another test shape.
   sdk_floor:
     name: sdk-floor (10.0.400)
@@ -286,17 +287,17 @@ jobs:
           dotnet build RoslynMcp.slnx -c Release --no-restore --nologo
           if ($LASTEXITCODE -ne 0) { throw "Floor-SDK build failed with exit code $LASTEXITCODE." }
 
-      - name: Load a representative MSBuild workspace at the SDK floor
+      - name: Load representative workspaces and exercise native fork admission at the SDK floor
         shell: pwsh
         run: |
           dotnet test tests/RoslynMcp.Tests/RoslynMcp.Tests.csproj `
             -c Release `
             --no-build `
             --nologo `
-            --filter "FullyQualifiedName=RoslynMcp.Tests.IntegrationTests_WorkspaceCore.Workspace_Load_Returns_WorkspaceId_And_Metadata" `
+            --filter "FullyQualifiedName=RoslynMcp.Tests.IntegrationTests_WorkspaceCore.Workspace_Load_Returns_WorkspaceId_And_Metadata|FullyQualifiedName=RoslynMcp.Tests.ForkNativeAdmissionTests.NativeBuildHost_LateChild_FirstMetadataAndCachedCopy_AreGuarded" `
             --settings eng/ci.runsettings `
             --logger "console;verbosity=minimal"
-          if ($LASTEXITCODE -ne 0) { throw "Floor-SDK workspace-load probe failed with exit code $LASTEXITCODE." }
+          if ($LASTEXITCODE -ne 0) { throw "Floor-SDK workspace-load/native-admission probe failed with exit code $LASTEXITCODE." }
 
   # Stable branch-protection context. Dynamic leg names are intentionally not
   # required individually; this aggregator fails unless the complete matrix did.

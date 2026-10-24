@@ -312,30 +312,35 @@ public sealed class WorkspaceForkSourceLifecycleTests
     public async Task LastOperationRelease_DuringInitialCancel_DoesNotCompleteShutdownEarly(bool providerStop)
     {
         await using var fixture = await ForkFixture.CreateAsync();
-        fixture.Runner.UnregisterCancellation = true;
-        // Inline the runner completion on the initiating cancellation callback thread.
-        // This deterministically releases both operation counts before Cancel can return.
-        fixture.Runner.Release = new TaskCompletionSource();
+        var service = fixture.Provider.GetRequiredService<IWorkspaceForkApplyService>();
+        object cancellationOwner = providerStop ? service : fixture.Manager;
+        var lifetimeField = cancellationOwner.GetType().GetField("_lifetimeCancellation",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        Assert.IsNotNull(lifetimeField);
+        var lifetimeCancellation = lifetimeField.GetValue(cancellationOwner) as CancellationTokenSource;
+        Assert.IsNotNull(lifetimeCancellation);
         using var callbackMayReturn = new ManualResetEventSlim(false);
         var callbackEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        fixture.Runner.OnCancellation = () =>
+        // Register before Start creates linked registrations. Cancellation invokes those
+        // later registrations first, so linked-token disposal can finish before this hold.
+        using var registration = lifetimeCancellation.Token.Register(() =>
         {
             callbackEntered.TrySetResult();
-            fixture.Runner.Release.TrySetResult();
             Assert.IsTrue(callbackMayReturn.Wait(TimeSpan.FromMinutes(2)), "The test must release its owned cancellation callback.");
-        };
+        });
+        fixture.Runner.OnCancellation = () => fixture.Runner.Release.TrySetResult();
         var operation = fixture.Start();
         Task? stop = null;
         try
         {
             await fixture.Runner.Entered.Task.WaitAsync(fixture.Timeout.Token);
-            var service = fixture.Provider.GetRequiredService<IWorkspaceForkApplyService>();
             stop = providerStop
                 ? Task.Run(async () => await fixture.Provider.DisposeAsync())
                 : Task.Run(() => ((IDisposable)fixture.Manager).Dispose());
             var winner = await Task.WhenAny(callbackEntered.Task, stop).WaitAsync(fixture.Timeout.Token);
             Assert.AreSame(callbackEntered.Task, winner, "Shutdown must issue cancellation before it can complete.");
             await Assert.ThrowsAsync<OperationCanceledException>(() => operation.WaitAsync(fixture.Timeout.Token));
+            Assert.IsTrue(operation.IsCanceled, "The real fork must finish cancellation before the initiating Cancel returns.");
             // Source retention and the service's operation count have both drained while
             // the initiating Cancel is still executing the deliberately held callback.
             var shared = providerStop ? ((IAsyncDisposable)service).DisposeAsync().AsTask()
@@ -432,6 +437,8 @@ public sealed class WorkspaceForkSourceLifecycleTests
                         evictionGate: sp.GetRequiredService<Lazy<IWorkspaceExecutionGate>>(), ownsFileWatcher: false, timeProvider: clock));
             }
             services.AddSingleton<IDotnetCommandRunner>(_ => runner);
+            // These direct service fixtures have no MCP request; use the real canonical configured-root validator.
+            services.AddSingleton<ForkStoragePathValidator>(ForkStorageFixtureBoundary.ValidateAsync);
             var host = builder?.Build();
             provider = host is null ? services.BuildServiceProvider() : (ServiceProvider)host.Services;
             try
@@ -562,7 +569,6 @@ public sealed class WorkspaceForkSourceLifecycleTests
         internal TaskCompletionSource Release { get; set; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         internal Action? OnCancellation { get; set; }
-        internal bool UnregisterCancellation { get; set; }
         internal int DisposeCount;
         public void Dispose() => Interlocked.Increment(ref DisposeCount);
 
@@ -580,8 +586,7 @@ public sealed class WorkspaceForkSourceLifecycleTests
             }
             finally
             {
-                if (UnregisterCancellation) registration.Unregister();
-                else registration.Dispose();
+                registration.Dispose();
             }
         }
     }

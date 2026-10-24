@@ -193,7 +193,7 @@ public sealed class ValidationBundleToolsTests
             File.WriteAllText(Path.Combine(source, "appsettings.Development.json"), "{}");
             File.WriteAllText(Path.Combine(source, "Program.cs"), "class C {}");
 
-            WorkspaceForkApplyService.CopyDirectory(source, dest, CancellationToken.None);
+            WorkspaceForkApplyService.CopyDirectory(source, dest, [Path.GetFullPath(dest)], CancellationToken.None);
 
             Assert.IsFalse(File.Exists(Path.Combine(dest, ".env")), ".env must be excluded.");
             Assert.IsFalse(File.Exists(Path.Combine(dest, "appsettings.Production.json")),
@@ -212,26 +212,47 @@ public sealed class ValidationBundleToolsTests
     }
 
     [TestMethod]
-    public void SweepExpiredForks_DeletesExpired_KeepsFreshAndUnparseable()
+    [DataRow(false)]
+    [DataRow(true)]
+    public void SweepExpiredForks_DeletesExpired_KeepsFreshAndUnparseable(bool generated)
     {
+        using var manager = new WorkspaceManager(
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceManager>.Instance, new PreviewStore(),
+            new FileWatcherService(Microsoft.Extensions.Logging.Abstractions.NullLogger<FileWatcherService>.Instance));
         var forkRoot = Path.Combine(Path.GetTempPath(), "roslyn-mcp-fork-ttl-tests", Guid.NewGuid().ToString("N"));
         try
         {
             Directory.CreateDirectory(forkRoot);
             var now = DateTimeOffset.UtcNow;
 
+            string Create(DateTimeOffset stamp, string suffix)
+            {
+                if (!generated) return MakeForkDir(forkRoot, stamp, suffix);
+                var path = Path.Combine(forkRoot, ForkStorageDirectoryName.Create(stamp, suffix));
+                Directory.CreateDirectory(path);
+                return path;
+            }
             // Expired: stamped 48h ago (TTL below is 24h).
-            var expired = MakeForkDir(forkRoot, now.AddHours(-48), "old");
+            var expired = Create(now.AddHours(-48), "old");
+            ForkAdmissionMaterial.Install(forkRoot, expired, [], CancellationToken.None);
             // Fresh: stamped 1h ago.
-            var fresh = MakeForkDir(forkRoot, now.AddHours(-1), "new");
+            var fresh = Create(now.AddHours(-1), "new");
+            ForkAdmissionMaterial.Install(forkRoot, fresh, [], CancellationToken.None);
+            var unowned = Create(now.AddHours(-48), "authored");
+            File.WriteAllText(Path.Combine(unowned, "authored.txt"), "Unrelated authored bytes");
+            var malformed = Create(now.AddHours(-48), "malformed");
+            ForkAdmissionMaterial.Install(forkRoot, malformed, [], CancellationToken.None);
+            File.WriteAllText(Path.Combine(malformed, ForkAdmissionMaterial.DirectoryName, "config.json"), "Malformed claimed ownership");
             // Unparseable prefix — must be kept (fail-safe).
             var unparseable = Path.Combine(forkRoot, "not-a-timestamp-abc");
             Directory.CreateDirectory(unparseable);
 
-            WorkspaceForkApplyService.SweepExpiredForks(forkRoot, ttlHours: 24, now: now);
+            WorkspaceForkApplyService.SweepExpiredForks(forkRoot, ttlHours: 24, now: now, reserveStorageDeletion: manager.TryReserveForkStorageDeletion);
 
             Assert.IsFalse(Directory.Exists(expired), "Fork older than the TTL must be swept.");
             Assert.IsTrue(Directory.Exists(fresh), "Fork newer than the TTL must be kept.");
+            Assert.AreEqual("Unrelated authored bytes", File.ReadAllText(Path.Combine(unowned, "authored.txt")), "Timestamp spelling alone does not prove ownership.");
+            Assert.IsTrue(Directory.Exists(malformed), "Unverifiable claimed ownership must be retained.");
             Assert.IsTrue(Directory.Exists(unparseable),
                 "Fork with an unparseable timestamp prefix must be kept (fail-safe).");
         }
@@ -244,6 +265,9 @@ public sealed class ValidationBundleToolsTests
     [TestMethod]
     public void SweepExpiredForks_NonPositiveTtl_DisablesSweep()
     {
+        using var manager = new WorkspaceManager(
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceManager>.Instance, new PreviewStore(),
+            new FileWatcherService(Microsoft.Extensions.Logging.Abstractions.NullLogger<FileWatcherService>.Instance));
         var forkRoot = Path.Combine(Path.GetTempPath(), "roslyn-mcp-fork-ttl-tests", Guid.NewGuid().ToString("N"));
         try
         {
@@ -251,7 +275,7 @@ public sealed class ValidationBundleToolsTests
             var now = DateTimeOffset.UtcNow;
             var ancient = MakeForkDir(forkRoot, now.AddHours(-1000), "ancient");
 
-            WorkspaceForkApplyService.SweepExpiredForks(forkRoot, ttlHours: 0, now: now);
+            WorkspaceForkApplyService.SweepExpiredForks(forkRoot, ttlHours: 0, now: now, reserveStorageDeletion: manager.TryReserveForkStorageDeletion);
 
             Assert.IsTrue(Directory.Exists(ancient), "A non-positive TTL must disable the sweep entirely.");
         }
@@ -266,6 +290,9 @@ public sealed class ValidationBundleToolsTests
     [DataRow(double.NaN)]
     public void SweepExpiredForks_NonFiniteTtl_DisablesSweepWithoutOverflow(double ttlHours)
     {
+        using var manager = new WorkspaceManager(
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceManager>.Instance, new PreviewStore(),
+            new FileWatcherService(Microsoft.Extensions.Logging.Abstractions.NullLogger<FileWatcherService>.Instance));
         var forkRoot = Path.Combine(Path.GetTempPath(), "roslyn-mcp-fork-ttl-tests", Guid.NewGuid().ToString("N"));
         try
         {
@@ -273,7 +300,7 @@ public sealed class ValidationBundleToolsTests
             var now = DateTimeOffset.UtcNow;
             var ancient = MakeForkDir(forkRoot, now.AddHours(-1000), "ancient");
 
-            WorkspaceForkApplyService.SweepExpiredForks(forkRoot, ttlHours, now);
+            WorkspaceForkApplyService.SweepExpiredForks(forkRoot, ttlHours, now, reserveStorageDeletion: manager.TryReserveForkStorageDeletion);
 
             Assert.IsTrue(Directory.Exists(ancient));
         }

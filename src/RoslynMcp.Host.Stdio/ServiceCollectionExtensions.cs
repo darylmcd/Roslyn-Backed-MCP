@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Diagnostics;
 using RoslynMcp.Host.Stdio.Runtime;
+using RoslynMcp.Host.Stdio.Security;
 using RoslynMcp.Host.Stdio.Services;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn;
@@ -71,6 +72,14 @@ public static class ServiceCollectionExtensions
         services.AddSingleton(previewStoreOptions);
         services.AddSingleton(executionGateOptions);
         services.AddSingleton(securityOptions);
+        services.AddSingleton<ForkStoragePathValidator>(provider => async (workspaceId, path, ct) =>
+        {
+            var server = RequestMcpServerContext.Current
+                ?? throw new PublicInvalidOperationException("Fork storage authorization requires an active MCP request. Retry workspace_fork_apply through the connected client.");
+            return await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, path, ct,
+                securityOptions: provider.GetRequiredService<SecurityOptions>(),
+                expandSanctionedRoots: RootExpansionGrantRegistry.IsGranted(workspaceId)).ConfigureAwait(false);
+        });
         services.AddSingleton(scriptingServiceOptions);
         services.AddSingleton(referenceResponsePager ?? ReferenceResponsePager.Default);
 

@@ -14,7 +14,7 @@ namespace RoslynMcp.Tests;
 // and copies/replays workspace_fork_apply under the per-workspace write gate. The fork is created under the
 // copy's own .roslynmcp/forks directory, the static ForkApplyLocks entry is keyed by that unique
 // source root, and the retained fork workspace is closed and deleted in finally. The fork's real
-// `dotnet restore` targets only the fork directory — the same shape parallel-enabled
+// evaluated paths are verified before `dotnet restore` — the same shape parallel-enabled
 // CrossProjectRefactoringIntegrationTests and ScaffoldingFirstTestFileTests already run
 // concurrently. Validation receives explicit appliedFiles, so the shared ChangeTracker is not read.
 // The remaining tests are pure (ShouldRetainFork) or run on per-test fake command runners. No
@@ -75,6 +75,13 @@ public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
         var token = await StoreDogPreviewAsync(workspace.WorkspaceId, source =>
             source.Replace("Woof", "ForkWoof", StringComparison.Ordinal));
         var validationService = CreateValidationService();
+        var sourceSolution = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        var sourceVersion = WorkspaceManager.GetCurrentVersion(workspace.WorkspaceId);
+        var sourceStatus = await WorkspaceManager.GetStatusAsync(workspace.WorkspaceId);
+        var sourceEntry = PreviewStore.Retrieve(token);
+        var sourceKind = PreviewStore.PeekKind(token);
+        var sourceBytes = Directory.GetFiles(workspace.RootPath, "*", SearchOption.AllDirectories)
+            .ToDictionary(path => path, File.ReadAllBytes);
 
         await using var service = CreateForkApplyService(validationService);
         var json = await ValidationBundleTools.WorkspaceForkApply(
@@ -103,6 +110,12 @@ public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
             StringAssert.Contains(await File.ReadAllTextAsync(forkDogPath, CancellationToken.None), "ForkWoof");
             Assert.AreEqual(originalSource, await File.ReadAllTextAsync(dogPath, CancellationToken.None),
                 "workspace_fork_apply must not mutate the source workspace file.");
+            Assert.AreSame(sourceSolution, WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
+            Assert.AreEqual(sourceVersion, WorkspaceManager.GetCurrentVersion(workspace.WorkspaceId));
+            Assert.AreEqual(sourceStatus.SnapshotToken, (await WorkspaceManager.GetStatusAsync(workspace.WorkspaceId)).SnapshotToken);
+            Assert.AreEqual(sourceEntry, PreviewStore.Retrieve(token));
+            Assert.AreEqual(sourceKind, PreviewStore.PeekKind(token));
+            foreach (var (path, bytes) in sourceBytes) CollectionAssert.AreEqual(bytes, File.ReadAllBytes(path), path);
         }
         finally
         {
@@ -168,7 +181,7 @@ public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
             CompileCheckService, DiagnosticService, new FixedDiscovery(), runner, WorkspaceManager);
         await using var service = new WorkspaceForkApplyService(
             WorkspaceManager, WorkspaceExecutionGate, PreviewStore, validation, runner, new DotnetCommandRunner(),
-            NullLogger<WorkspaceForkApplyService>.Instance, WorkspaceManager.RunWithRetainedForkSourceAsync);
+            Helpers.ForkStorageFixtureBoundary.ValidateAsync, NullLogger<WorkspaceForkApplyService>.Instance, WorkspaceManager.RunWithRetainedForkSourceAsync, WorkspaceManager.TryReserveForkStorageDeletion);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(60));
         var forkTask = ValidationBundleTools.WorkspaceForkApply(
             service, workspace.WorkspaceId, token,
@@ -208,7 +221,14 @@ public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
         var runner = new CancellingTestRunner(cancellation);
         await using var service = new WorkspaceForkApplyService(
             WorkspaceManager, WorkspaceExecutionGate, PreviewStore, CreateValidationService(), runner,
-            new DotnetCommandRunner(), NullLogger<WorkspaceForkApplyService>.Instance, WorkspaceManager.RunWithRetainedForkSourceAsync);
+            new DotnetCommandRunner(), Helpers.ForkStorageFixtureBoundary.ValidateAsync, NullLogger<WorkspaceForkApplyService>.Instance, WorkspaceManager.RunWithRetainedForkSourceAsync, WorkspaceManager.TryReserveForkStorageDeletion);
+        var sourceSolution = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        var sourceVersion = WorkspaceManager.GetCurrentVersion(workspace.WorkspaceId);
+        var sourceStatus = await WorkspaceManager.GetStatusAsync(workspace.WorkspaceId);
+        var sourceEntry = PreviewStore.Retrieve(token);
+        var sourceKind = PreviewStore.PeekKind(token);
+        var sourceBytes = Directory.GetFiles(workspace.RootPath, "*", SearchOption.AllDirectories)
+            .ToDictionary(path => path, File.ReadAllBytes);
 
         await Assert.ThrowsAsync<OperationCanceledException>(() => ValidationBundleTools.WorkspaceForkApply(
             service, workspace.WorkspaceId, token, runTests: true,
@@ -218,6 +238,12 @@ public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
             "Cancellation after fork loading must close the fork workspace before deleting its files.");
         Assert.IsNotNull(runner.ForkPath);
         Assert.IsFalse(Directory.Exists(runner.ForkPath), "Cancelled fork files must also be removed.");
+        Assert.AreSame(sourceSolution, WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
+        Assert.AreEqual(sourceVersion, WorkspaceManager.GetCurrentVersion(workspace.WorkspaceId));
+        Assert.AreEqual(sourceStatus.SnapshotToken, (await WorkspaceManager.GetStatusAsync(workspace.WorkspaceId)).SnapshotToken);
+        Assert.AreEqual(sourceEntry, PreviewStore.Retrieve(token));
+        Assert.AreEqual(sourceKind, PreviewStore.PeekKind(token));
+        foreach (var (path, bytes) in sourceBytes) CollectionAssert.AreEqual(bytes, File.ReadAllBytes(path), path);
     }
 
     [TestMethod]
@@ -240,10 +266,11 @@ public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public async Task RestoreForkAsync_Failure_RedactsCredentialBearingOutput()
     {
+        await using var fork = CreateIsolatedWorkspaceCopy();
         const string secret = "super-secret-feed-password";
         var runner = new FailingRestoreRunner(
             $"NU1301: Unable to load https://build:{secret}@feed.example/v3/index.json" +
-            $"?api_key={secret} Authorization: Bearer {secret}");
+            $"?api_key={secret} Authorization: Bearer {secret} PRIVATE-RESTORE-DETAIL");
         await using var service = new WorkspaceForkApplyService(
             workspaceManager: null!,
             workspaceExecutionGate: null!,
@@ -251,14 +278,18 @@ public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
             validationService: null!,
             testRunnerService: null!,
             commandRunner: runner,
-            logger: NullLogger<WorkspaceForkApplyService>.Instance, retainSource: null!);
+            validateStoragePath: Helpers.ForkStorageFixtureBoundary.ValidateAsync, logger: NullLogger<WorkspaceForkApplyService>.Instance, retainSource: null!, reserveStorageDeletion: WorkspaceManager.TryReserveForkStorageDeletion);
 
         var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
             () => service.RestoreForkAsync(
-                Path.Combine(Path.GetTempPath(), "fork", "SampleSolution.slnx"),
+                fork.GetPath("SampleLib", "SampleLib.csproj"), Path.Combine(fork.RootPath, "source"), fork.RootPath,
                 CancellationToken.None));
 
         StringAssert.Contains(exception.Message, "exit code 1");
+        using var envelope = JsonDocument.Parse(ToolErrorHandler.ClassifyAndFormat(exception, "workspace_fork_apply"));
+        Assert.AreEqual("InvalidOperation", envelope.RootElement.GetProperty("category").GetString());
+        Assert.IsFalse(envelope.RootElement.GetRawText().Contains("PRIVATE-RESTORE-DETAIL", StringComparison.Ordinal));
+        Assert.IsFalse(envelope.RootElement.GetRawText().Contains(secret, StringComparison.Ordinal));
         StringAssert.Contains(exception.Message, "[redacted]");
         Assert.IsFalse(
             exception.Message.Contains(secret, StringComparison.Ordinal),
@@ -271,6 +302,7 @@ public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public async Task RestoreForkAsync_NonTimeoutCancellation_PropagatesWithoutTimeoutReclassification()
     {
+        await using var fork = CreateIsolatedWorkspaceCopy();
         var expected = new OperationCanceledException("runner-owned cancellation");
         await using var service = new WorkspaceForkApplyService(
             workspaceManager: null!,
@@ -279,11 +311,11 @@ public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
             validationService: null!,
             testRunnerService: null!,
             commandRunner: new CancelingRestoreRunner(expected),
-            logger: NullLogger<WorkspaceForkApplyService>.Instance, retainSource: null!);
+            validateStoragePath: Helpers.ForkStorageFixtureBoundary.ValidateAsync, logger: NullLogger<WorkspaceForkApplyService>.Instance, retainSource: null!, reserveStorageDeletion: WorkspaceManager.TryReserveForkStorageDeletion);
 
         var actual = await Assert.ThrowsExactlyAsync<OperationCanceledException>(() =>
             service.RestoreForkAsync(
-                Path.Combine(Path.GetTempPath(), "fork", "SampleSolution.slnx"),
+                fork.GetPath("SampleLib", "SampleLib.csproj"), Path.Combine(fork.RootPath, "source"), fork.RootPath,
                 CancellationToken.None));
 
         Assert.AreSame(expected, actual,
@@ -308,7 +340,7 @@ public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
             validationService,
             TestRunnerService,
             new DotnetCommandRunner(),
-            NullLogger<WorkspaceForkApplyService>.Instance, WorkspaceManager.RunWithRetainedForkSourceAsync);
+            Helpers.ForkStorageFixtureBoundary.ValidateAsync, NullLogger<WorkspaceForkApplyService>.Instance, WorkspaceManager.RunWithRetainedForkSourceAsync, WorkspaceManager.TryReserveForkStorageDeletion);
 
     private static async Task<string> StoreDogPreviewAsync(string workspaceId, Func<string, string> mutate)
     {

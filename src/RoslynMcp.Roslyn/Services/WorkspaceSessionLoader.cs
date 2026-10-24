@@ -44,18 +44,32 @@ internal class WorkspaceSessionLoader
         CancellationToken ct)
     {
         MsBuildInitializer.EnsureInitialized();
-        // selfhosted-shadow-copy-analyzer-reference-test-fails: when caller passes MSBuild
-        // global properties (e.g. Configuration=Release), thread them into MSBuildWorkspace
-        // so ProjectReference OutputItemType="Analyzer" entries resolve against the right
-        // bin/<config>/ tree. Without this, the default Configuration=Debug evaluation drops
-        // analyzer references on Release-only checkouts (CI runners) because the Debug
-        // TargetPath does not exist on disk.
-        var workspace = (globalProperties is { Count: > 0 })
-            ? MSBuildWorkspace.Create(globalProperties)
-            : MSBuildWorkspace.Create();
+        var forkConfig = ForkAdmissionMaterial.Find(path);
+        var admissionExecution = forkConfig is null ? null : await ForkAdmissionExecution.CreateAsync(forkConfig, null, ct).ConfigureAwait(false);
+        MSBuildWorkspace? workspace = null;
         AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease? analyzerLease = null;
+        var returningWorkspace = false;
+        var nativeStarted = false;
         try
         {
+            var effectiveProperties = admissionExecution?.Properties(globalProperties) ?? globalProperties;
+            // selfhosted-shadow-copy-analyzer-reference-test-fails: when caller passes MSBuild
+            // global properties (e.g. Configuration=Release), thread them into MSBuildWorkspace
+            // so ProjectReference OutputItemType="Analyzer" entries resolve against the right
+            // bin/<config>/ tree. Without this, the default Configuration=Debug evaluation drops
+            // analyzer references on Release-only checkouts (CI runners) because the Debug
+            // TargetPath does not exist on disk.
+            workspace = (effectiveProperties is { Count: > 0 })
+                ? MSBuildWorkspace.Create(effectiveProperties)
+                : MSBuildWorkspace.Create();
+            var nativeFailureCount = 0;
+            if (admissionExecution is not null)
+                workspace.RegisterWorkspaceFailedHandler(args =>
+                {
+                    if (args.Diagnostic.Kind == Microsoft.CodeAnalysis.WorkspaceDiagnosticKind.Failure
+                        && !WorkspaceDiagnosticSeverityClassifier.IsKnownSdkWarning(args.Diagnostic.Message))
+                        Interlocked.Increment(ref nativeFailureCount);
+                });
             if (globalProperties is { Count: > 0 })
             {
                 logger.LogInformation(
@@ -70,16 +84,25 @@ internal class WorkspaceSessionLoader
             if (path.EndsWith(".sln", StringComparison.OrdinalIgnoreCase) ||
                 path.EndsWith(".slnx", StringComparison.OrdinalIgnoreCase))
             {
+                nativeStarted = true;
                 await workspace.OpenSolutionAsync(path, cancellationToken: ct).ConfigureAwait(false);
             }
             else if (path.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
             {
+                nativeStarted = true;
                 await workspace.OpenProjectAsync(path, cancellationToken: ct).ConfigureAwait(false);
             }
             else
             {
                 throw new PublicArgumentException(SupportedPathCorrection, nameof(path));
             }
+
+            admissionExecution?.Complete();
+            admissionExecution?.ThrowIfRefused();
+            if (admissionExecution is not null && Volatile.Read(ref nativeFailureCount) != 0)
+                throw new PublicInvalidOperationException(
+                    "The retained fork could not be loaded without native build errors. Correct the project build errors and retry.",
+                    InvalidOperationErrors.Internal("The native fork load reported an invocation-local failure."));
 
             analyzerLease = AnalyzerReferenceIsolation.RetargetFileReferencesToShadowLoader(
                 workspace.CurrentSolution,
@@ -93,6 +116,7 @@ internal class WorkspaceSessionLoader
                     analyzerLease.RetargetedReferenceCount);
             }
 
+            returningWorkspace = true;
             return (workspace, analyzerLease);
         }
         catch
@@ -101,9 +125,24 @@ internal class WorkspaceSessionLoader
             // shadow lease created before the throw — lease after workspace, so Roslyn has
             // released the analyzer references first) before propagating, so the caller does
             // not have to track ownership of a return-value-not-yet-handed-out.
-            workspace.Dispose();
+            if (!nativeStarted) admissionExecution?.Complete();
+            workspace?.Dispose();
             analyzerLease?.Dispose();
             throw;
+        }
+        finally
+        {
+            admissionExecution?.Dispose();
+            if (admissionExecution?.CleanupWarning is { } warning)
+            {
+                logger.LogWarning("{Warning}", warning);
+                if (returningWorkspace)
+                {
+                    workspace?.Dispose();
+                    analyzerLease?.Dispose();
+                    throw InvalidOperationErrors.Internal(warning);
+                }
+            }
         }
     }
 }

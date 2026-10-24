@@ -14,16 +14,18 @@ namespace RoslynMcp.Tests;
 public sealed class ServiceCollectionExtensionsTests
 {
     [TestMethod]
-    public void AddRoslynServices_Resolves_Core_Singletons()
+    public async Task AddRoslynServices_Resolves_Core_Singletons()
     {
         var services = new ServiceCollection();
         services.AddLogging(b => b.ClearProviders());
+        services.AddSingleton<ForkStoragePathValidator>(Helpers.ForkStorageFixtureBoundary.ValidateAsync);
         services.AddRoslynServices();
 
-        using var sp = services.BuildServiceProvider();
+        await using var sp = services.BuildServiceProvider();
 
         Assert.IsNotNull(sp.GetRequiredService<IWorkspaceManager>());
         Assert.IsNotNull(sp.GetRequiredService<IWorkspaceExecutionGate>());
+        Assert.IsNotNull(sp.GetRequiredService<IWorkspaceForkApplyService>());
         Assert.IsNotNull(sp.GetRequiredService<ICompileCheckService>());
         Assert.IsNotNull(sp.GetRequiredService<ICodeActionService>());
         Assert.IsNotNull(sp.GetRequiredService<INamespaceDependencyService>());
@@ -45,6 +47,7 @@ public sealed class ServiceCollectionExtensionsTests
     {
         var services = new ServiceCollection();
         services.AddLogging(b => b.ClearProviders());
+        services.AddSingleton<ForkStoragePathValidator>(Helpers.ForkStorageFixtureBoundary.ValidateAsync);
         services.AddRoslynServices();
 
         using var sp = services.BuildServiceProvider();
@@ -160,6 +163,7 @@ public sealed class ServiceCollectionExtensionsTests
             var services = new ServiceCollection();
             services.AddLogging(b => b.ClearProviders());
             services.AddSingleton(new PreviewStoreOptions { PersistDirectory = tempDir });
+            services.AddSingleton<ForkStoragePathValidator>(Helpers.ForkStorageFixtureBoundary.ValidateAsync);
             services.AddRoslynServices();
 
             using var sp = services.BuildServiceProvider();

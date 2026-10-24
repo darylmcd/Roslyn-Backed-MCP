@@ -39,6 +39,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="RoslynMcp.Tests" />
     <InternalsVisibleTo Include="RoslynMcp.Host.Stdio" />
+    <EmbeddedResource Include="Services/ForkAdmission.targets" />
   </ItemGroup>
 
 </Project>

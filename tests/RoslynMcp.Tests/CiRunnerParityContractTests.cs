@@ -203,6 +203,8 @@ public sealed class CiRunnerParityContractTests
         StringAssert.Contains(
             floorJob,
             "FullyQualifiedName=RoslynMcp.Tests.IntegrationTests_WorkspaceCore.Workspace_Load_Returns_WorkspaceId_And_Metadata");
+        StringAssert.Contains(floorJob,
+            "FullyQualifiedName=RoslynMcp.Tests.ForkNativeAdmissionTests.NativeBuildHost_LateChild_FirstMetadataAndCachedCopy_AreGuarded");
         StringAssert.Contains(floorJob, "--settings eng/ci.runsettings");
         Assert.AreEqual(1, CountOccurrences(floorJob, "dotnet test "));
         StringAssert.Contains(gate, "- sdk_floor\n");

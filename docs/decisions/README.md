@@ -4,6 +4,7 @@ Architecture decision records (ADRs) for breaking, compatibility, and security d
 
 | File | Purpose | Status |
 |------|---------|--------|
+| [0030-retained-fork-storage-and-lifetime.md](0030-retained-fork-storage-and-lifetime.md) | Authorized sibling storage, Windows native working-directory preflight and physical ancestor lifetime ownership for retained experimental forks | Accepted 2026-10-24 |
 | [0029-fork-source-session-lifecycle.md](0029-fork-source-session-lifecycle.md) | Retain fork source sessions, refuse busy close and drain owned fork operations before asynchronous provider teardown | Accepted for next major release 2026-10-24 |
 | [0028-editorconfig-assignment-grammar-refusals.md](0028-editorconfig-assignment-grammar-refusals.md) | Refuse editorconfig keys, values and diagnostic ids that are not one provider-valid single-line assignment; `add_pragma_suppression` no longer accepts a comma-separated id list | Accepted for next major release 2026-10-20 |
 | [0027-validation-scope-and-test-run-diagnostics.md](0027-validation-scope-and-test-run-diagnostics.md) | Explicit empty validation scope, safe pagination endpoints and actionable test-run diagnostics | Accepted for next major release 2026-10-15 |

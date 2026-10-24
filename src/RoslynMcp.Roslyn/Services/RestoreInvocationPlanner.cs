@@ -26,12 +26,24 @@ internal static class RestoreInvocationPlanner
     internal static ImmutableArray<Invocation> Capture(string targetPath, Func<TimeSpan> remainingBudget, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
+        MsBuildInitializer.EnsureInitialized();
+        return CaptureInitialized(targetPath, remainingBudget, ct);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static ImmutableArray<Invocation> CaptureInitialized(string targetPath, Func<TimeSpan> remainingBudget, CancellationToken ct)
+        => EvaluateGraph(targetPath, remainingBudget, ct, (graph, phaseToken) => PlanInvocations(targetPath, graph, remainingBudget, phaseToken));
+
+    internal static T EvaluateGraph<T>(string targetPath, Func<TimeSpan> remainingBudget, CancellationToken ct,
+        Func<ProjectGraph, CancellationToken, T> inspect)
+    {
+        ct.ThrowIfCancellationRequested();
         using var phase = CancellationTokenSource.CreateLinkedTokenSource(ct);
         phase.CancelAfter(remainingBudget());
         MsBuildInitializer.EnsureInitialized();
         try
         {
-            return CaptureCore(targetPath, remainingBudget, phase.Token);
+            return CaptureCore(targetPath, remainingBudget, phase.Token, inspect);
         }
         catch (Exception) when (ct.IsCancellationRequested)
         {
@@ -58,7 +70,8 @@ internal static class RestoreInvocationPlanner
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static ImmutableArray<Invocation> CaptureCore(string targetPath, Func<TimeSpan> remainingBudget, CancellationToken ct)
+    private static T CaptureCore<T>(string targetPath, Func<TimeSpan> remainingBudget, CancellationToken ct,
+        Func<ProjectGraph, CancellationToken, T> inspect)
     {
         using var collection = new ProjectCollection();
         // GraphBuilder injects IsGraphBuild=true when it is absent. These source commands are
@@ -93,6 +106,34 @@ internal static class RestoreInvocationPlanner
                 .Select(c => CreateEntryPoint(c.Path, c.Properties)).ToList();
         }
 
+        CheckBudget();
+        return inspect(graph, ct);
+
+        void CheckBudget()
+        {
+            ct.ThrowIfCancellationRequested();
+            remainingBudget();
+        }
+
+        ProjectGraphEntryPoint CreateEntryPoint(string path, IReadOnlyDictionary<string, string> properties)
+        {
+            var graphProperties = new Dictionary<string, string>(properties, StringComparer.OrdinalIgnoreCase);
+            if (!graphProperties.ContainsKey("IsGraphBuild")) graphProperties.Add("IsGraphBuild", graphMarker);
+            return new ProjectGraphEntryPoint(path, graphProperties);
+        }
+
+        ProjectInstance CreateInstance(string path, Dictionary<string, string> properties, ProjectCollection projectCollection)
+        {
+            CheckBudget();
+            var commandProperties = new Dictionary<string, string>(properties, StringComparer.OrdinalIgnoreCase);
+            if (commandProperties.TryGetValue("IsGraphBuild", out var value) && value == graphMarker) commandProperties.Remove("IsGraphBuild");
+            return new ProjectInstance(path, commandProperties, toolsVersion: null, projectCollection);
+        }
+    }
+
+    private static ImmutableArray<Invocation> PlanInvocations(string targetPath, ProjectGraph graph,
+        Func<TimeSpan> remainingBudget, CancellationToken ct)
+    {
         var units = new Dictionary<Context, RestoreUnit>(ContextComparer.Instance);
         // Graph entry keys include our engine-only marker; project-reference keys need not.
         // Coalesce only identical ordinary command contexts, retaining every node's edges below.
@@ -198,20 +239,6 @@ internal static class RestoreInvocationPlanner
             remainingBudget();
         }
 
-        ProjectGraphEntryPoint CreateEntryPoint(string path, IReadOnlyDictionary<string, string> properties)
-        {
-            var graphProperties = new Dictionary<string, string>(properties, StringComparer.OrdinalIgnoreCase);
-            if (!graphProperties.ContainsKey("IsGraphBuild")) graphProperties.Add("IsGraphBuild", graphMarker);
-            return new ProjectGraphEntryPoint(path, graphProperties);
-        }
-
-        ProjectInstance CreateInstance(string path, Dictionary<string, string> properties, ProjectCollection projectCollection)
-        {
-            CheckBudget();
-            var commandProperties = new Dictionary<string, string>(properties, StringComparer.OrdinalIgnoreCase);
-            if (commandProperties.TryGetValue("IsGraphBuild", out var value) && value == graphMarker) commandProperties.Remove("IsGraphBuild");
-            return new ProjectInstance(path, commandProperties, toolsVersion: null, projectCollection);
-        }
     }
 
     private static bool IsFrameworkInner(ProjectInstance project) =>
