@@ -33,9 +33,21 @@ internal static class RestoreInvocationPlanner
         {
             return CaptureCore(targetPath, remainingBudget, phase.Token);
         }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        catch (Exception) when (ct.IsCancellationRequested)
+        {
+            ct.ThrowIfCancellationRequested();
+            throw;
+        }
+        catch (OperationCanceledException)
         {
             throw new TimeoutException("The restore inventory exceeded the remaining restore time budget.");
+        }
+        catch (AggregateException ex) when (phase.IsCancellationRequested ||
+            ex.Flatten().InnerExceptions.Any(inner => inner is OperationCanceledException or TimeoutException))
+        {
+            // ProjectGraph aggregates project-instance factory failures. Preserve the phase
+            // outcome before classifying genuine MSBuild evaluation errors below.
+            throw new TimeoutException("The restore inventory exceeded the remaining restore time budget.", ex);
         }
         catch (Exception ex) when (ex is not OperationCanceledException and not TimeoutException and not PublicInvalidOperationException)
         {

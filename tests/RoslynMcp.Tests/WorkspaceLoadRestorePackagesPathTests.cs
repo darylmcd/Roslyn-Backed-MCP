@@ -25,6 +25,50 @@ public sealed class WorkspaceLoadRestorePackagesPathTests : SharedWorkspaceTestB
     public static void ClassCleanup() => DisposeServices();
 
     [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task AutoRestore_GraphFactoryBudgetFailure_PreservesTimeoutOrCallerCancellation(bool cancelCaller)
+    {
+        using var fixture = new RestoreFixture(nonCompilationChain: false);
+        using var manager = fixture.CreateManager();
+        var status = await manager.LoadAsync(fixture.TargetPath, CancellationToken.None);
+        var runner = new RecordingRestoreRunner();
+        using var executor = new GatedCommandExecutor(manager, runner, NullLogger<GatedCommandExecutor>.Instance);
+        using var cancellation = new CancellationTokenSource();
+        var budgetReads = 0;
+        // Begin reads the clock once. The next two reads admit phase capture and graph
+        // construction; the fourth read occurs in the graph's project-instance factory.
+        var clock = new CaptureBudgetTimeProvider(() =>
+        {
+            if (++budgetReads != 4) return;
+            if (cancelCaller)
+            {
+                cancellation.Cancel();
+                cancellation.Token.ThrowIfCancellationRequested();
+            }
+            throw new TimeoutException("Restore inventory phase exhausted.");
+        });
+        using var deadline = RequestDeadline.Begin(clock, TimeSpan.FromMinutes(1));
+        var restore = () => WorkspaceTools.RestoreAndReloadIfRequiredAsync(executor, ValidationOptions, manager,
+            status with { RestoreRequired = true }, true, NullLogger.Instance, cancellation.Token);
+
+        if (cancelCaller) await Assert.ThrowsAsync<OperationCanceledException>(restore);
+        else await Assert.ThrowsExactlyAsync<TimeoutException>(restore);
+        Assert.IsTrue(budgetReads >= 4);
+        Assert.IsEmpty(runner.Invocations, "Capture must fail before any restore command can run.");
+    }
+
+    private sealed class CaptureBudgetTimeProvider(Action onRead) : TimeProvider
+    {
+        private readonly DateTimeOffset _now = DateTimeOffset.UtcNow;
+        public override DateTimeOffset GetUtcNow()
+        {
+            onRead();
+            return _now;
+        }
+    }
+
+    [TestMethod]
     public async Task AutoRestore_ReferencePropertyContext_UsesContextualActiveAssets()
     {
         using var fixture = new RestoreFixture(nonCompilationChain: true);
