@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
+using RoslynMcp.Roslyn.Helpers;
 using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
@@ -10,8 +11,8 @@ namespace RoslynMcp.Tests;
 /// <see cref="WorkspaceManager"/> by workspace-manager-decompose-restore-and-analyzer-
 /// subsystems as a zero-external-caller, purely code-moved collaborator. Uses a small
 /// hand-built temp-dir fixture (a single .csproj + obj/project.assets.json) rather than the
-/// full SampleSolution — <see cref="RestoreStalenessDetector.IsRestoreRequired"/> only ever
-/// reads a project file and its sibling assets file from disk.
+/// full SampleSolution. The detector evaluates SDK/props metadata to locate the active assets
+/// file, then compares its package observations with the declared expectations.
 /// </summary>
 [TestClass]
 public sealed class RestoreStalenessDetectorTests
@@ -417,6 +418,124 @@ public sealed class RestoreStalenessDetectorTests
         Assert.IsFalse(WorkspaceDiagnosticClassifier.HasBuildRequired(diagnostics));
     }
 
+    [TestMethod]
+    [DataRow("default", false)]
+    [DataRow("default", true)]
+    [DataRow("base", false)]
+    [DataRow("base", true)]
+    [DataRow("extensions", false)]
+    [DataRow("extensions", true)]
+    [DataRow("explicit", false)]
+    [DataRow("explicit", true)]
+    public void ActiveAssets_ReadersUseEvaluatedLayout(string layout, bool readVersion)
+    {
+        var (project, active, stale, packages) = CreateAssetsLayout(layout);
+        WriteAssetsFile(stale, "Newtonsoft.Json", "12.0.1", Path.Combine(_tempRoot, "stale-packages"));
+        WriteAssetsFile(active, "Newtonsoft.Json", "13.0.3", packages);
+
+        if (readVersion)
+            Assert.AreEqual(new Version(13, 0, 3), ProjectMetadataParser.TryGetResolvedPackageVersion(project, "Newtonsoft.Json"));
+        else
+            Assert.AreEqual(packages, RestoreStalenessDetector.TryReadRestorePackagesPath(project));
+
+        Assert.IsFalse(RestoreStalenessDetector.HasMissingAssets(project, NullLogger.Instance));
+        Assert.IsFalse(new RestoreStalenessDetector().IsRestoreRequired(project, MsBuildMetadataHelper.DefaultGlobalProperties, NullLogger.Instance));
+    }
+
+    [TestMethod]
+    [DataRow("base", false)]
+    [DataRow("base", true)]
+    [DataRow("extensions", false)]
+    [DataRow("extensions", true)]
+    [DataRow("explicit", false)]
+    [DataRow("explicit", true)]
+    public void ActiveAssets_MissingActiveFileNeverAuthorizesStaleDefault(string layout, bool readVersion)
+    {
+        var (project, active, stale, _) = CreateAssetsLayout(layout);
+        WriteAssetsFile(stale, "Newtonsoft.Json", "13.0.3", Path.Combine(_tempRoot, "stale-packages"));
+        Assert.IsFalse(File.Exists(active));
+
+        if (readVersion)
+            Assert.IsNull(ProjectMetadataParser.TryGetResolvedPackageVersion(project, "Newtonsoft.Json"));
+        else
+            Assert.IsNull(RestoreStalenessDetector.TryReadRestorePackagesPath(project));
+
+        Assert.IsTrue(RestoreStalenessDetector.HasMissingAssets(project, NullLogger.Instance));
+        Assert.IsTrue(new RestoreStalenessDetector().IsRestoreRequired(project, MsBuildMetadataHelper.DefaultGlobalProperties, NullLogger.Instance));
+    }
+
+    [TestMethod]
+    [DataRow("<Project />", false)]
+    [DataRow("<Project />", true)]
+    [DataRow("<Project>", false)]
+    [DataRow("<Project>", true)]
+    [DataRow("<Project><PropertyGroup><ProjectAssetsFile>%00</ProjectAssetsFile></PropertyGroup></Project>", false)]
+    [DataRow("<Project><PropertyGroup><ProjectAssetsFile>%00</ProjectAssetsFile></PropertyGroup></Project>", true)]
+    public void ActiveAssets_UnknownLayoutDoesNotAuthorizeDefault(string contents, bool readVersion)
+    {
+        var project = WriteProject("Unknown.csproj", contents);
+        WriteAssetsFile(Path.Combine(Path.GetDirectoryName(project)!, "obj", "project.assets.json"),
+            "Newtonsoft.Json", "13.0.3", Path.Combine(_tempRoot, "stale-packages"));
+
+        if (readVersion)
+            Assert.IsNull(ProjectMetadataParser.TryGetResolvedPackageVersion(project, "Newtonsoft.Json"));
+        else
+            Assert.IsNull(RestoreStalenessDetector.TryReadRestorePackagesPath(project));
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public void ActiveAssets_UnreadableProjectDoesNotAuthorizeDefault(bool readVersion)
+    {
+        var (project, active, _, packages) = CreateAssetsLayout("default");
+        WriteAssetsFile(active, "Newtonsoft.Json", "13.0.3", packages);
+        using var exclusive = new FileStream(project, FileMode.Open, FileAccess.Read, FileShare.None);
+
+        if (readVersion)
+            Assert.IsNull(ProjectMetadataParser.TryGetResolvedPackageVersion(project, "Newtonsoft.Json"));
+        else
+            Assert.IsNull(RestoreStalenessDetector.TryReadRestorePackagesPath(project));
+    }
+
+    [TestMethod]
+    public void ActiveAssets_ConfiguredDefaultAndAlternateBothPresentUseSelectedContext()
+    {
+        var project = WriteProject("ConfiguredAuthority.csproj", PackageReferenceProject.Replace(
+            "<TargetFramework>net10.0</TargetFramework>", """
+            <TargetFramework>net10.0</TargetFramework>
+            <ProjectAssetsFile Condition="'$(Configuration)' == 'Debug'">$(MSBuildProjectDirectory)/active/project.assets.json</ProjectAssetsFile>
+            """, StringComparison.Ordinal));
+        var directory = Path.GetDirectoryName(project)!;
+        WriteAssetsFile(Path.Combine(directory, "obj", "project.assets.json"), "Newtonsoft.Json", "13.0.3", null);
+        WriteAssetsFile(Path.Combine(directory, "active", "project.assets.json"), "Newtonsoft.Json", "12.0.1", null);
+        var detector = new RestoreStalenessDetector();
+
+        Assert.IsTrue(detector.IsRestoreRequired(project,
+            ImmutableDictionary<string, string>.Empty.Add("Configuration", "Debug"), NullLogger.Instance));
+        Assert.IsFalse(detector.IsRestoreRequired(project,
+            ImmutableDictionary<string, string>.Empty.Add("Configuration", "Release"), NullLogger.Instance));
+    }
+
+    private (string Project, string Active, string Default, string Packages) CreateAssetsLayout(string layout)
+    {
+        var project = WriteProject("Authority.csproj", PackageReferenceProject);
+        var directory = Path.GetDirectoryName(project)!;
+        var property = layout switch
+        {
+            "base" => "<BaseIntermediateOutputPath>active/</BaseIntermediateOutputPath>",
+            "extensions" => "<MSBuildProjectExtensionsPath>active/</MSBuildProjectExtensionsPath>",
+            "explicit" => "<ProjectAssetsFile>active/reviewed.assets.json</ProjectAssetsFile>",
+            "default" => string.Empty,
+            _ => throw new AssertFailedException("Unknown fixture layout."),
+        };
+        File.WriteAllText(Path.Combine(directory, "Directory.Build.props"), $"<Project><PropertyGroup>{property}</PropertyGroup></Project>");
+        var defaultPath = Path.Combine(directory, "obj", "project.assets.json");
+        var active = layout == "default" ? defaultPath
+            : Path.Combine(directory, "active", layout == "explicit" ? "reviewed.assets.json" : "project.assets.json");
+        return (project, active, defaultPath, Path.Combine(directory, "active-packages"));
+    }
+
     private static DiagnosticDto MakeDiagnostic(string id, string message) =>
         new(Id: id, Message: message, Severity: "Warning", Category: "Compiler",
             FilePath: null, StartLine: null, StartColumn: null, EndLine: null, EndColumn: null);
@@ -446,21 +565,24 @@ public sealed class RestoreStalenessDetectorTests
     private static void WriteAssets(string projectFilePath, string packageId, string version)
     {
         var projectDirectory = Path.GetDirectoryName(projectFilePath)!;
-        var objDirectory = Path.Combine(projectDirectory, "obj");
-        Directory.CreateDirectory(objDirectory);
-        var assetsJson = $$"""
+        WriteAssetsFile(Path.Combine(projectDirectory, "obj", "project.assets.json"), packageId, version, null);
+    }
+
+    private static void WriteAssetsFile(string assetsPath, string packageId, string version, string? packagesPath)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(assetsPath)!);
+        var assets = new
+        {
+            project = new
             {
-              "project": {
-                "frameworks": {
-                  "net10.0": {
-                    "dependencies": {
-                      "{{packageId}}": { "version": "{{version}}" }
-                    }
-                  }
-                }
-              }
-            }
-            """;
-        File.WriteAllText(Path.Combine(objDirectory, "project.assets.json"), assetsJson);
+                restore = new { packagesPath },
+                frameworks = new Dictionary<string, object>
+                {
+                    ["net10.0"] = new { dependencies = new Dictionary<string, object> { [packageId] = new { version } } },
+                },
+            },
+            libraries = new Dictionary<string, object> { [$"{packageId}/{version}"] = new { type = "package" } },
+        };
+        File.WriteAllText(assetsPath, System.Text.Json.JsonSerializer.Serialize(assets));
     }
 }

@@ -402,7 +402,7 @@ internal class RestoreStalenessDetector
 
     /// <summary>
     /// workspace-restore-packages-path: reads <c>project.restore.packagesPath</c> from the project's
-    /// existing <c>obj/project.assets.json</c> — the package folder the last restore wrote to (for
+    /// evaluated active assets file — the package folder the last restore wrote to (for
     /// example a worktree scratch folder). Returns <see langword="null"/> when the assets file, the
     /// property, or a non-empty string value is absent (first restore) or the file cannot be read.
     /// </summary>
@@ -410,7 +410,7 @@ internal class RestoreStalenessDetector
     {
         try
         {
-            var assetsPath = GetExistingAssetsPath(projectFilePath, MsBuildMetadataHelper.DefaultGlobalProperties);
+            var assetsPath = ProjectMetadataParser.GetExistingAssetsPath(projectFilePath, MsBuildMetadataHelper.DefaultGlobalProperties);
             if (assetsPath is null)
             {
                 return null;
@@ -444,9 +444,9 @@ internal class RestoreStalenessDetector
     /// state, distinct from version drift (which <see cref="IsRestoreRequired"/> also reports). The
     /// assets file is located where MSBuild would write it, so <c>UseArtifactsOutput</c> and a
     /// custom <c>BaseIntermediateOutputPath</c>/<c>MSBuildProjectExtensionsPath</c> are not
-    /// misread as missing. Like <see cref="IsRestoreRequired"/>, detection is best-effort: an
-    /// unreadable or unevaluable project is reported as not-missing (logged at debug) so the
-    /// default restore probe can never fail a load that would otherwise succeed.
+    /// misread as missing. Known package expectations without a locatable active assets file
+    /// are reported as missing, including unevaluable layouts. Unreadable package expectations
+    /// are reported as not-missing and logged at debug.
     /// </summary>
     public static bool HasMissingAssets(string projectFilePath, ILogger logger)
     {
@@ -458,7 +458,7 @@ internal class RestoreStalenessDetector
         try
         {
             return CollectExpectedPackages(projectFilePath).Count > 0 &&
-                   GetExistingAssetsPath(projectFilePath, MsBuildMetadataHelper.DefaultGlobalProperties) is null;
+                   ProjectMetadataParser.GetExistingAssetsPath(projectFilePath, MsBuildMetadataHelper.DefaultGlobalProperties) is null;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException)
         {
@@ -467,60 +467,9 @@ internal class RestoreStalenessDetector
         }
     }
 
-    private static string? GetExistingAssetsPath(string projectFilePath, IReadOnlyDictionary<string, string> globalProperties)
-    {
-        var projectDirectory = Path.GetDirectoryName(projectFilePath);
-        if (string.IsNullOrWhiteSpace(projectDirectory))
-        {
-            return null;
-        }
-
-        // Fast path: the default layout needs no MSBuild evaluation.
-        var defaultPath = Path.Combine(projectDirectory, "obj", "project.assets.json");
-        if (File.Exists(defaultPath))
-        {
-            return defaultPath;
-        }
-
-        var relocatedPath = TryEvaluateAssetsPath(projectFilePath, projectDirectory, globalProperties);
-        return relocatedPath is not null && File.Exists(relocatedPath) ? relocatedPath : null;
-    }
-
-    /// <summary>
-    /// Evaluates the project to find where restore writes <c>project.assets.json</c>
-    /// (<c>ProjectAssetsFile</c>, else <c>MSBuildProjectExtensionsPath</c>), which differs from
-    /// <c>obj/</c> under <c>UseArtifactsOutput</c> or a custom <c>BaseIntermediateOutputPath</c>.
-    /// Returns <see langword="null"/> when the project cannot be evaluated; the caller then treats
-    /// the assets file as absent, which was the behaviour for every unlocatable file before this probe.
-    /// </summary>
-    private static string? TryEvaluateAssetsPath(string projectFilePath, string projectDirectory, IReadOnlyDictionary<string, string> globalProperties)
-    {
-        try
-        {
-            var values = MsBuildMetadataHelper.EvaluateProperties(projectFilePath, globalProperties, "ProjectAssetsFile", "MSBuildProjectExtensionsPath");
-            var assetsFile = values[0];
-            if (string.IsNullOrWhiteSpace(assetsFile))
-            {
-                var extensionsPath = values[1];
-                if (string.IsNullOrWhiteSpace(extensionsPath))
-                {
-                    return null;
-                }
-
-                assetsFile = Path.Combine(extensionsPath, "project.assets.json");
-            }
-
-            return Path.GetFullPath(assetsFile.Trim(), projectDirectory);
-        }
-        catch (InvalidOperationException)
-        {
-            return null;
-        }
-    }
-
     private static (Dictionary<string, HashSet<string>> PackageVersions, Dictionary<string, HashSet<string>> CentralPackageVersions)? LoadAssetsPackageVersions(string projectFilePath, IReadOnlyDictionary<string, string> globalProperties)
     {
-        var assetsPath = GetExistingAssetsPath(projectFilePath, globalProperties);
+        var assetsPath = ProjectMetadataParser.GetExistingAssetsPath(projectFilePath, globalProperties);
         if (assetsPath is null)
         {
             return null;
