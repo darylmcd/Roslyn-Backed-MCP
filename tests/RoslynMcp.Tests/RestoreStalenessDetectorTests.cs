@@ -123,7 +123,7 @@ public sealed class RestoreStalenessDetectorTests
         Assert.IsNull(logger.Entries[0].Exception, "Assets diagnostics must not retain raw parse or I/O exceptions.");
         Assert.IsFalse(logger.Entries[0].Message.Contains(project, StringComparison.Ordinal));
         Assert.IsFalse(logger.Entries[0].Message.Contains("broken-private-assets-content", StringComparison.Ordinal));
-        Assert.IsNull(RestoreStalenessDetector.TryReadRestorePackagesPath(project),
+        Assert.IsNull(RestoreStalenessDetector.TryReadRestorePackagesPath(project, RoslynMcp.Roslyn.Helpers.MsBuildMetadataHelper.DefaultGlobalProperties),
             "Restore planning must tolerate the same unusable assets.");
     }
 
@@ -230,7 +230,7 @@ public sealed class RestoreStalenessDetectorTests
 
         Assert.IsFalse(RestoreStalenessDetector.HasMissingAssets(projectFilePath, NullLogger.Instance));
         Assert.IsFalse(new RestoreStalenessDetector().IsRestoreRequired(projectFilePath, ImmutableDictionary<string, string>.Empty, NullLogger.Instance));
-        Assert.AreEqual("D:/scratch", RestoreStalenessDetector.TryReadRestorePackagesPath(projectFilePath));
+        Assert.AreEqual("D:/scratch", RestoreStalenessDetector.TryReadRestorePackagesPath(projectFilePath, RoslynMcp.Roslyn.Helpers.MsBuildMetadataHelper.DefaultGlobalProperties));
     }
 
     [TestMethod]
@@ -436,7 +436,7 @@ public sealed class RestoreStalenessDetectorTests
         if (readVersion)
             Assert.AreEqual(new Version(13, 0, 3), ProjectMetadataParser.TryGetResolvedPackageVersion(project, "Newtonsoft.Json"));
         else
-            Assert.AreEqual(packages, RestoreStalenessDetector.TryReadRestorePackagesPath(project));
+            Assert.AreEqual(packages, RestoreStalenessDetector.TryReadRestorePackagesPath(project, RoslynMcp.Roslyn.Helpers.MsBuildMetadataHelper.DefaultGlobalProperties));
 
         Assert.IsFalse(RestoreStalenessDetector.HasMissingAssets(project, NullLogger.Instance));
         Assert.IsFalse(new RestoreStalenessDetector().IsRestoreRequired(project, MsBuildMetadataHelper.DefaultGlobalProperties, NullLogger.Instance));
@@ -458,7 +458,7 @@ public sealed class RestoreStalenessDetectorTests
         if (readVersion)
             Assert.IsNull(ProjectMetadataParser.TryGetResolvedPackageVersion(project, "Newtonsoft.Json"));
         else
-            Assert.IsNull(RestoreStalenessDetector.TryReadRestorePackagesPath(project));
+            Assert.IsNull(RestoreStalenessDetector.TryReadRestorePackagesPath(project, RoslynMcp.Roslyn.Helpers.MsBuildMetadataHelper.DefaultGlobalProperties));
 
         Assert.IsTrue(RestoreStalenessDetector.HasMissingAssets(project, NullLogger.Instance));
         Assert.IsTrue(new RestoreStalenessDetector().IsRestoreRequired(project, MsBuildMetadataHelper.DefaultGlobalProperties, NullLogger.Instance));
@@ -480,7 +480,7 @@ public sealed class RestoreStalenessDetectorTests
         if (readVersion)
             Assert.IsNull(ProjectMetadataParser.TryGetResolvedPackageVersion(project, "Newtonsoft.Json"));
         else
-            Assert.IsNull(RestoreStalenessDetector.TryReadRestorePackagesPath(project));
+            Assert.IsNull(RestoreStalenessDetector.TryReadRestorePackagesPath(project, RoslynMcp.Roslyn.Helpers.MsBuildMetadataHelper.DefaultGlobalProperties));
     }
 
     [TestMethod]
@@ -495,7 +495,24 @@ public sealed class RestoreStalenessDetectorTests
         if (readVersion)
             Assert.IsNull(ProjectMetadataParser.TryGetResolvedPackageVersion(project, "Newtonsoft.Json"));
         else
-            Assert.IsNull(RestoreStalenessDetector.TryReadRestorePackagesPath(project));
+            Assert.IsNull(RestoreStalenessDetector.TryReadRestorePackagesPath(project, RoslynMcp.Roslyn.Helpers.MsBuildMetadataHelper.DefaultGlobalProperties));
+    }
+
+    [TestMethod]
+    public void RestorePackagesPath_ExplicitContextSelectsActiveAssetsWithoutFallback()
+    {
+        var project = WriteProject("ContextualRoot.csproj", PackageReferenceProject);
+        var directory = Path.GetDirectoryName(project)!;
+        var defaultCache = Path.Combine(directory, "default-cache");
+        var contextCache = Path.Combine(directory, "context-cache");
+        WriteAssetsFile(Path.Combine(directory, "obj", "project.assets.json"), "Newtonsoft.Json", "13.0.3", defaultCache);
+        var active = Path.Combine(directory, "context", "project.assets.json");
+        WriteAssetsFile(active, "Newtonsoft.Json", "13.0.3", contextCache);
+        var properties = new Dictionary<string, string> { ["ProjectAssetsFile"] = active };
+        Assert.AreEqual(contextCache, RestoreStalenessDetector.TryReadRestorePackagesPath(project, properties));
+        File.Delete(active);
+        Assert.IsNull(RestoreStalenessDetector.TryReadRestorePackagesPath(project, properties));
+        Assert.AreEqual(defaultCache, RestoreStalenessDetector.TryReadRestorePackagesPath(project, MsBuildMetadataHelper.DefaultGlobalProperties));
     }
 
     [TestMethod]

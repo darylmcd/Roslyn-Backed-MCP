@@ -406,11 +406,11 @@ internal class RestoreStalenessDetector
     /// example a worktree scratch folder). Returns <see langword="null"/> when the assets file, the
     /// property, or a non-empty string value is absent (first restore) or the file cannot be read.
     /// </summary>
-    public static string? TryReadRestorePackagesPath(string projectFilePath)
+    public static string? TryReadRestorePackagesPath(string projectFilePath, IReadOnlyDictionary<string, string> globalProperties)
     {
         try
         {
-            var assetsPath = ProjectMetadataParser.GetExistingAssetsPath(projectFilePath, MsBuildMetadataHelper.DefaultGlobalProperties);
+            var assetsPath = ProjectMetadataParser.GetExistingAssetsPath(projectFilePath, globalProperties);
             if (assetsPath is null)
             {
                 return null;
