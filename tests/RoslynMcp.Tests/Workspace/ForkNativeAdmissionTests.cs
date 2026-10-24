@@ -731,7 +731,7 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
         var validation = new WorkspaceValidationService(CompileCheckService, DiagnosticService, TestDiscoveryService,
             TestRunnerService, WorkspaceManager, ChangeTracker);
         var service = new WorkspaceForkApplyService(WorkspaceManager, WorkspaceExecutionGate, store, validation,
-            TestRunnerService, DotnetCommandRunner, Helpers.ForkStorageFixtureBoundary.ValidateAsync, Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceForkApplyService>.Instance);
+            TestRunnerService, DotnetCommandRunner, Helpers.ForkStorageFixtureBoundary.ValidateAsync, Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceForkApplyService>.Instance, WorkspaceManager.RunWithRetainedForkSourceAsync);
         RoslynMcp.Core.Models.WorkspaceForkApplyResultDto? first = null;
         RoslynMcp.Core.Models.WorkspaceForkApplyResultDto? second = null;
         RoslynMcp.Core.Models.WorkspaceForkApplyResultDto? third = null;
@@ -926,7 +926,7 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
         {
             Assert.ThrowsExactly<IOException>(() => PhysicalPathResolver.Resolve(cycle));
             var service = new WorkspaceForkApplyService(WorkspaceManager, WorkspaceExecutionGate, new PreviewStore(),
-                null!, null!, DotnetCommandRunner, Helpers.ForkStorageFixtureBoundary.ValidateAsync, Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceForkApplyService>.Instance);
+                null!, null!, DotnetCommandRunner, Helpers.ForkStorageFixtureBoundary.ValidateAsync, Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceForkApplyService>.Instance, WorkspaceManager.RunWithRetainedForkSourceAsync);
             var cleanup = typeof(WorkspaceForkApplyService).GetMethod("CleanupFork", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
             var warnings = new List<string>();
             var original = new OperationCanceledException("Primary cancellation must survive cleanup identity failure.");
@@ -961,7 +961,7 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
             var original = WorkspaceManager.GetCurrentSolution(loaded.WorkspaceId);
             using var execution = await ForkAdmissionExecution.CreateAsync(config, null, CancellationToken.None);
             var service = new WorkspaceForkApplyService(WorkspaceManager, WorkspaceExecutionGate, new PreviewStore(),
-                null!, null!, DotnetCommandRunner, Helpers.ForkStorageFixtureBoundary.ValidateAsync, Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceForkApplyService>.Instance);
+                null!, null!, DotnetCommandRunner, Helpers.ForkStorageFixtureBoundary.ValidateAsync, Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceForkApplyService>.Instance, WorkspaceManager.RunWithRetainedForkSourceAsync);
             var cleanup = typeof(WorkspaceForkApplyService).GetMethod("CleanupFork", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
             var warnings = new List<string>();
             cleanup.Invoke(service, [loaded.WorkspaceId, fixture.Fork, warnings, CancellationToken.None]);
@@ -1190,7 +1190,7 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
         WorkspaceForkApplyService.SweepExpiredForks(aliases, 1, DateTimeOffset.UtcNow);
         Assert.IsTrue(Directory.Exists(alias), "Expiry must not delete an alias while its physical fork is owned.");
         var service = new WorkspaceForkApplyService(WorkspaceManager, WorkspaceExecutionGate, new PreviewStore(), null!, null!, DotnetCommandRunner,
-            Helpers.ForkStorageFixtureBoundary.ValidateAsync, Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceForkApplyService>.Instance);
+            Helpers.ForkStorageFixtureBoundary.ValidateAsync, Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceForkApplyService>.Instance, WorkspaceManager.RunWithRetainedForkSourceAsync);
         var cleanup = typeof(WorkspaceForkApplyService).GetMethod("CleanupFork", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
         var warnings = new List<string>();
         cleanup.Invoke(service, [null, alias, warnings, CancellationToken.None]);
@@ -1465,7 +1465,7 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
         var bytes = Directory.GetFiles(sourceRoot, "*", SearchOption.AllDirectories).ToDictionary(path => path, File.ReadAllBytes);
         var validation = new WorkspaceValidationService(CompileCheckService, DiagnosticService, TestDiscoveryService, TestRunnerService, WorkspaceManager, ChangeTracker);
         var service = new WorkspaceForkApplyService(WorkspaceManager, WorkspaceExecutionGate, store, validation, TestRunnerService, DotnetCommandRunner,
-            Helpers.ForkStorageFixtureBoundary.ValidateAsync, Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceForkApplyService>.Instance);
+            Helpers.ForkStorageFixtureBoundary.ValidateAsync, Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceForkApplyService>.Instance, WorkspaceManager.RunWithRetainedForkSourceAsync);
         RoslynMcp.Core.Models.WorkspaceForkApplyResultDto? result = null;
         try
         {
@@ -1610,7 +1610,7 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
         var token = store.Store(loaded.WorkspaceId, solution, solution, WorkspaceManager.GetCurrentVersion(loaded.WorkspaceId), "legacy nested", false, RoslynMcp.Core.Models.PreviewKind.Unspecified);
         var validation = new WorkspaceValidationService(CompileCheckService, DiagnosticService, TestDiscoveryService, TestRunnerService, WorkspaceManager, ChangeTracker);
         var service = new WorkspaceForkApplyService(WorkspaceManager, WorkspaceExecutionGate, store, validation, TestRunnerService, DotnetCommandRunner,
-            Helpers.ForkStorageFixtureBoundary.ValidateAsync, Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceForkApplyService>.Instance);
+            Helpers.ForkStorageFixtureBoundary.ValidateAsync, Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceForkApplyService>.Instance, WorkspaceManager.RunWithRetainedForkSourceAsync);
         RoslynMcp.Core.Models.WorkspaceForkApplyResultDto? result = null;
         try
         {

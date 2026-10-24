@@ -77,7 +77,7 @@ public sealed class WorkspaceForkGraphReplayTests : IsolatedWorkspaceTestBase
             var validation = new WorkspaceValidationService(CompileCheckService, DiagnosticService, TestDiscoveryService,
                 TestRunnerService, WorkspaceManager, ChangeTracker);
             var service = new WorkspaceForkApplyService(WorkspaceManager, WorkspaceExecutionGate, store, validation,
-                TestRunnerService, DotnetCommandRunner, Helpers.ForkStorageFixtureBoundary.ValidateAsync, NullLogger<WorkspaceForkApplyService>.Instance);
+                TestRunnerService, DotnetCommandRunner, Helpers.ForkStorageFixtureBoundary.ValidateAsync, NullLogger<WorkspaceForkApplyService>.Instance, WorkspaceManager.RunWithRetainedForkSourceAsync);
             Exception? refusal = null;
             try
             {
@@ -204,7 +204,7 @@ public sealed class WorkspaceForkGraphReplayTests : IsolatedWorkspaceTestBase
             var entry = CapturePreviewEntry(store, token);
             var runner = new BoundaryRunner(source.RootPath);
             var service = new WorkspaceForkApplyService(WorkspaceManager, WorkspaceExecutionGate, store,
-                null!, null!, runner, Helpers.ForkStorageFixtureBoundary.ValidateAsync, NullLogger<WorkspaceForkApplyService>.Instance);
+                null!, null!, runner, Helpers.ForkStorageFixtureBoundary.ValidateAsync, NullLogger<WorkspaceForkApplyService>.Instance, WorkspaceManager.RunWithRetainedForkSourceAsync);
             Exception? refusal = null;
             try
             {
@@ -253,7 +253,7 @@ public sealed class WorkspaceForkGraphReplayTests : IsolatedWorkspaceTestBase
         var entry = CapturePreviewEntry(store, token);
         var runner = new CompilerInputBoundaryRunner(source.RootPath);
         var service = new WorkspaceForkApplyService(WorkspaceManager, WorkspaceExecutionGate, store,
-            null!, null!, runner, Helpers.ForkStorageFixtureBoundary.ValidateAsync, NullLogger<WorkspaceForkApplyService>.Instance);
+            null!, null!, runner, Helpers.ForkStorageFixtureBoundary.ValidateAsync, NullLogger<WorkspaceForkApplyService>.Instance, WorkspaceManager.RunWithRetainedForkSourceAsync);
         Exception? refusal = null;
         try
         {
@@ -306,7 +306,7 @@ public sealed class WorkspaceForkGraphReplayTests : IsolatedWorkspaceTestBase
         var validation = new WorkspaceValidationService(CompileCheckService, DiagnosticService, TestDiscoveryService,
             TestRunnerService, WorkspaceManager, ChangeTracker);
         var service = new WorkspaceForkApplyService(WorkspaceManager, WorkspaceExecutionGate, store,
-            validation, TestRunnerService, runner, Helpers.ForkStorageFixtureBoundary.ValidateAsync, NullLogger<WorkspaceForkApplyService>.Instance);
+            validation, TestRunnerService, runner, Helpers.ForkStorageFixtureBoundary.ValidateAsync, NullLogger<WorkspaceForkApplyService>.Instance, WorkspaceManager.RunWithRetainedForkSourceAsync);
         Exception? refusal = null;
         WorkspaceForkApplyResultDto? fork = null;
         try
@@ -357,7 +357,7 @@ public sealed class WorkspaceForkGraphReplayTests : IsolatedWorkspaceTestBase
         var token = store.Store(source.WorkspaceId, original, original, version, "unchanged", false, PreviewKind.Unspecified);
         var runner = new ExternalProjectBoundaryRunner(externalProject);
         var service = new WorkspaceForkApplyService(WorkspaceManager, WorkspaceExecutionGate, store,
-            null!, null!, runner, Helpers.ForkStorageFixtureBoundary.ValidateAsync, NullLogger<WorkspaceForkApplyService>.Instance);
+            null!, null!, runner, Helpers.ForkStorageFixtureBoundary.ValidateAsync, NullLogger<WorkspaceForkApplyService>.Instance, WorkspaceManager.RunWithRetainedForkSourceAsync);
         Exception? refusal = null;
         try
         {
@@ -396,7 +396,7 @@ public sealed class WorkspaceForkGraphReplayTests : IsolatedWorkspaceTestBase
             var token = store.Store(source.WorkspaceId, original, original, version, "unchanged", false, PreviewKind.Unspecified);
             var runner = new ParentBoundaryRunner(source.RootPath);
             var service = new WorkspaceForkApplyService(WorkspaceManager, WorkspaceExecutionGate, store,
-                null!, null!, runner, Helpers.ForkStorageFixtureBoundary.ValidateAsync, NullLogger<WorkspaceForkApplyService>.Instance);
+                null!, null!, runner, Helpers.ForkStorageFixtureBoundary.ValidateAsync, NullLogger<WorkspaceForkApplyService>.Instance, WorkspaceManager.RunWithRetainedForkSourceAsync);
             try
             {
                 await service.ApplyAsync(source.WorkspaceId, token, "drop-always", true, null, null, CancellationToken.None);

@@ -100,7 +100,7 @@ public sealed class ForkStorageBoundaryTests : IsolatedWorkspaceTestBase
                     File.WriteAllText(Path.Combine(physical, "occupied.txt"), "Existing candidate bytes");
                 }
                 return physical;
-            }, Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceForkApplyService>.Instance);
+            }, Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceForkApplyService>.Instance, WorkspaceManager.RunWithRetainedForkSourceAsync);
         RoslynMcp.Core.Models.WorkspaceForkApplyResultDto? result = null;
         var subsequentIds = new List<string>();
         try

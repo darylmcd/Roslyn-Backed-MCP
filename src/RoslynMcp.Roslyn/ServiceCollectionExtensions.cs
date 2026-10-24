@@ -160,7 +160,22 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IImpactSweepService, ImpactSweepService>();
         services.AddSingleton<ITestReferenceMapService, TestReferenceMapService>();
         services.AddSingleton<IWorkspaceValidationService, WorkspaceValidationService>();
-        services.AddSingleton<IWorkspaceForkApplyService, WorkspaceForkApplyService>();
+        services.AddSingleton<IWorkspaceForkApplyService>(sp =>
+        {
+            var manager = sp.GetRequiredService<IWorkspaceManager>();
+            // Resolve the entire graph before publishing the async-owned fork singleton.
+            // Reverse provider disposal then drains forks before their dependencies.
+            var gate = sp.GetRequiredService<IWorkspaceExecutionGate>();
+            var previews = sp.GetRequiredService<IPreviewStore>();
+            var validation = sp.GetRequiredService<IWorkspaceValidationService>();
+            var tests = sp.GetRequiredService<ITestRunnerService>();
+            var commands = sp.GetRequiredService<IDotnetCommandRunner>();
+            var logger = sp.GetRequiredService<ILogger<WorkspaceForkApplyService>>();
+            var sourceOwner = manager as WorkspaceManager
+                ?? throw new PublicInvalidOperationException("Fork apply requires a WorkspaceManager that owns source-session retention.");
+            return new WorkspaceForkApplyService(manager, gate, previews, validation, tests, commands, sp.GetRequiredService<ForkStoragePathValidator>(), logger,
+                sourceOwner.RunWithRetainedForkSourceAsync);
+        });
         services.AddSingleton<IWorkspaceWarmService, WorkspaceWarmService>();
         services.AddSingleton<IWorkspaceDriftService, WorkspaceDriftService>();
         services.AddSingleton<IChangeSignatureService, ChangeSignatureService>();

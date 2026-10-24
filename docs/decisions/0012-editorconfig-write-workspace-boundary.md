@@ -48,7 +48,7 @@ workspace implementation. Custom workspace managers have no public write
 coordination contract in this release.
 
 For the supported stdio tool integration, use `AddRoslynMcpHostServices` for that
-registered composition. As recorded in [ADR 0029](0029-retained-fork-storage-and-lifetime.md),
+registered composition. As recorded in [ADR 0030](0030-retained-fork-storage-and-lifetime.md),
 `AddRoslynServices` alone does not provide the request-bound fork-storage dependency
 needed to validate the entire service graph. That composition requirement does not
 change `EditorConfigService` constructors or its coordinated editorconfig write contract.

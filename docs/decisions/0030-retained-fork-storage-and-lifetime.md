@@ -1,4 +1,4 @@
-# ADR 0029: Retained fork storage and physical lifetime ownership
+# ADR 0030: Retained fork storage and physical lifetime ownership
 
 Status: Accepted, 2026-10-24. Experimental placement correction; wire and public service signatures are unchanged.
 

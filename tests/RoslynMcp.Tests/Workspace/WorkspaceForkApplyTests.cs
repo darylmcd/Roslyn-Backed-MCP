@@ -34,7 +34,7 @@ public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
     public async Task WorkspaceForkApply_InvalidRetentionPublishesChoicesWithoutCallerText()
     {
         const string sentinel = "PRIVATE-FORK-RETENTION";
-        var service = CreateForkApplyService(CreateValidationService());
+        await using var service = CreateForkApplyService(CreateValidationService());
         var exception = await Assert.ThrowsAsync<ArgumentException>(() => service.ApplyAsync(
             sentinel, sentinel, sentinel, false, null, null, CancellationToken.None));
         Assert.IsInstanceOfType<IPublicMessageException>(exception);
@@ -52,7 +52,7 @@ public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
         await using var owner = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
         await using var other = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
         var token = await StoreDogPreviewAsync(owner.WorkspaceId, source => source.Replace("Woof", "ForkWoof", StringComparison.Ordinal));
-        var service = CreateForkApplyService(CreateValidationService());
+        await using var service = CreateForkApplyService(CreateValidationService());
         var exception = await Assert.ThrowsAsync<ArgumentException>(() => service.ApplyAsync(
             other.WorkspaceId, token, "keep", false, null, null, CancellationToken.None));
         Assert.IsInstanceOfType<IPublicMessageException>(exception);
@@ -83,8 +83,9 @@ public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
         var sourceBytes = Directory.GetFiles(workspace.RootPath, "*", SearchOption.AllDirectories)
             .ToDictionary(path => path, File.ReadAllBytes);
 
+        await using var service = CreateForkApplyService(validationService);
         var json = await ValidationBundleTools.WorkspaceForkApply(
-            CreateForkApplyService(validationService),
+            service,
             workspace.WorkspaceId,
             token,
             retention: "keep",
@@ -130,8 +131,9 @@ public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
         var token = await StoreDogPreviewAsync(workspace.WorkspaceId, _ => "namespace SampleLib; public class Dog {");
         var validationService = CreateValidationService();
 
+        await using var service = CreateForkApplyService(validationService);
         var json = await ValidationBundleTools.WorkspaceForkApply(
-            CreateForkApplyService(validationService),
+            service,
             workspace.WorkspaceId,
             token,
             retention: "drop-on-success",
@@ -177,9 +179,9 @@ public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
         var runner = new BlockingTestRunner(entered, release);
         var validation = new WorkspaceValidationService(
             CompileCheckService, DiagnosticService, new FixedDiscovery(), runner, WorkspaceManager);
-        var service = new WorkspaceForkApplyService(
+        await using var service = new WorkspaceForkApplyService(
             WorkspaceManager, WorkspaceExecutionGate, PreviewStore, validation, runner, new DotnetCommandRunner(),
-            Helpers.ForkStorageFixtureBoundary.ValidateAsync, NullLogger<WorkspaceForkApplyService>.Instance);
+            Helpers.ForkStorageFixtureBoundary.ValidateAsync, NullLogger<WorkspaceForkApplyService>.Instance, WorkspaceManager.RunWithRetainedForkSourceAsync);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(60));
         var forkTask = ValidationBundleTools.WorkspaceForkApply(
             service, workspace.WorkspaceId, token,
@@ -217,9 +219,9 @@ public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
             source.Replace("Woof", "ForkWoof", StringComparison.Ordinal));
         using var cancellation = new CancellationTokenSource();
         var runner = new CancellingTestRunner(cancellation);
-        var service = new WorkspaceForkApplyService(
+        await using var service = new WorkspaceForkApplyService(
             WorkspaceManager, WorkspaceExecutionGate, PreviewStore, CreateValidationService(), runner,
-            new DotnetCommandRunner(), Helpers.ForkStorageFixtureBoundary.ValidateAsync, NullLogger<WorkspaceForkApplyService>.Instance);
+            new DotnetCommandRunner(), Helpers.ForkStorageFixtureBoundary.ValidateAsync, NullLogger<WorkspaceForkApplyService>.Instance, WorkspaceManager.RunWithRetainedForkSourceAsync);
         var sourceSolution = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
         var sourceVersion = WorkspaceManager.GetCurrentVersion(workspace.WorkspaceId);
         var sourceStatus = await WorkspaceManager.GetStatusAsync(workspace.WorkspaceId);
@@ -269,14 +271,14 @@ public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
         var runner = new FailingRestoreRunner(
             $"NU1301: Unable to load https://build:{secret}@feed.example/v3/index.json" +
             $"?api_key={secret} Authorization: Bearer {secret} PRIVATE-RESTORE-DETAIL");
-        var service = new WorkspaceForkApplyService(
+        await using var service = new WorkspaceForkApplyService(
             workspaceManager: null!,
             workspaceExecutionGate: null!,
             previewStore: null!,
             validationService: null!,
             testRunnerService: null!,
             commandRunner: runner,
-            validateStoragePath: Helpers.ForkStorageFixtureBoundary.ValidateAsync, logger: NullLogger<WorkspaceForkApplyService>.Instance);
+            validateStoragePath: Helpers.ForkStorageFixtureBoundary.ValidateAsync, logger: NullLogger<WorkspaceForkApplyService>.Instance, retainSource: null!);
 
         var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
             () => service.RestoreForkAsync(
@@ -302,14 +304,14 @@ public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
     {
         await using var fork = CreateIsolatedWorkspaceCopy();
         var expected = new OperationCanceledException("runner-owned cancellation");
-        var service = new WorkspaceForkApplyService(
+        await using var service = new WorkspaceForkApplyService(
             workspaceManager: null!,
             workspaceExecutionGate: null!,
             previewStore: null!,
             validationService: null!,
             testRunnerService: null!,
             commandRunner: new CancelingRestoreRunner(expected),
-            validateStoragePath: Helpers.ForkStorageFixtureBoundary.ValidateAsync, logger: NullLogger<WorkspaceForkApplyService>.Instance);
+            validateStoragePath: Helpers.ForkStorageFixtureBoundary.ValidateAsync, logger: NullLogger<WorkspaceForkApplyService>.Instance, retainSource: null!);
 
         var actual = await Assert.ThrowsExactlyAsync<OperationCanceledException>(() =>
             service.RestoreForkAsync(
@@ -338,7 +340,7 @@ public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
             validationService,
             TestRunnerService,
             new DotnetCommandRunner(),
-            Helpers.ForkStorageFixtureBoundary.ValidateAsync, NullLogger<WorkspaceForkApplyService>.Instance);
+            Helpers.ForkStorageFixtureBoundary.ValidateAsync, NullLogger<WorkspaceForkApplyService>.Instance, WorkspaceManager.RunWithRetainedForkSourceAsync);
 
     private static async Task<string> StoreDogPreviewAsync(string workspaceId, Func<string, string> mutate)
     {

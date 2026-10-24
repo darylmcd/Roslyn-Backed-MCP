@@ -1,6 +1,6 @@
 # fork-evaluated-source-isolation — Keep evaluated fork paths out of source
 
-**row:** `fork-evaluated-source-isolation` · **pri:** `Medium` · **size:** `L` · **deps:** `restore-required-project-inventory`
+**row:** `fork-evaluated-source-isolation` · **pri:** `Medium` · **size:** `L` · **deps:** `restore-required-project-inventory,fork-source-session-retention`
 
 ## Anchors
 
@@ -47,3 +47,5 @@
 - Corrected old copy assertions distinguish restore inventory from actual build consumers; stronger native-effect controls preserve the original parent-destination and source/preview authority oracles.
 - Native task/import wiring is forced by demonstrated actual load/build effects. No replacement BuildHost, compiler certificate, physical-directory lease or second restore evaluator is introduced.
 - Graph fidelity remains owned by dependent restore-fork-reviewed-project-graph. Independent cross-process expiry coordination is a separate follow-up, not a restore prerequisite.
+
+- Source lifecycle dependency PR1824 merged as 14fbdc025d5b767e568b9598936b6bb783add555 with independent review and all hosted Windows/Linux/SDK-floor checks green; integrate its exact retention callback before remaining storage lock/copy/linked-expiry corrections. No row closure or full delivery qualification yet.
