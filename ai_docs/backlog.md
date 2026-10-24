@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-24T18:20:37Z
+**updated_at:** 2026-10-24T22:35:17Z
 
 ## Agent contract
 
@@ -167,6 +167,8 @@
 | `workspace-reload-preserve-global-properties` | Medium | restore-assets-json-kind-guards | Preserve the loaded MSBuild global properties and actual configured compiler state through the shared public reload path. | S | items/workspace-reload-preserve-global-properties.md |
 | `restore-metadata-evaluation-global-context` | Medium | workspace-reload-preserve-global-properties | Pass explicit operation MSBuild settings through restore and project metadata evaluation; qualify configured layouts and reporting. | M | items/restore-metadata-evaluation-global-context.md |
 | `fork-source-session-retention` | Medium | — | Preserve fork source-session authority through capacity pressure, close and shutdown; add manager-owned operation retention and regression coverage. | M | items/fork-source-session-retention.md |
+| `fork-source-fixture-cleanup-failure-propagation` | Medium | — | Preserve lifecycle fixture primary and cleanup failures while independently observing every owned task and disposal owner. | S | items/fork-source-fixture-cleanup-failure-propagation.md |
+| `fork-source-fixture-initialization-cleanup-ownership` | Medium | fork-source-fixture-cleanup-failure-propagation | Close externally owned lifecycle fixture resources after actual initialization failure while preserving primary and cleanup failures. | S | items/fork-source-fixture-initialization-cleanup-ownership.md |
 
 ## Low
 
@@ -385,6 +387,7 @@
 | `test-fake-undo-duplicate-doubles` | Low | — | **Promote the duplicate private FakeUndo IUndoService test double to a shared helper** — two copies exist. [type: test-refactor] [source: path-identity sweep 20261020] | S | items/test-fake-undo-duplicate-doubles.md |
 | `change-signature-linked-document-callsite-entries` | Low | — | **Aggregate change-signature callsite entries by physical file** — linked documents yield duplicate-FilePath CallsiteUpdateDto entries; reuse CallsiteUpdateProjection and decide the totalCallsites rule. [type: bug] [source: path-identity review 20261020] | M | items/change-signature-linked-document-callsite-entries.md |
 | `rebase-persistence-routing-comment` | Low | — | Correct stale rebase/apply persistence routing comments against current symbols, including the nonexistent PersistDocumentSetChangesAsync pointer. | S | items/rebase-persistence-routing-comment.md |
+| `test-workspace-unwatch-barrier-timeout-assertion` | Low | fork-source-fixture-cleanup-failure-propagation | Report lifecycle watcher fixture barrier expiry explicitly and preserve owned cleanup after the timeout. | S | items/test-workspace-unwatch-barrier-timeout-assertion.md |
 
 ## Defer
 
