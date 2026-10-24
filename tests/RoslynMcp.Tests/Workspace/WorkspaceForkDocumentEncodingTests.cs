@@ -66,7 +66,7 @@ public sealed class WorkspaceForkDocumentEncodingTests : IsolatedWorkspaceTestBa
         var validation = new WorkspaceValidationService(CompileCheckService, DiagnosticService,
             TestDiscoveryService, TestRunnerService, WorkspaceManager, ChangeTracker);
         await using var service = new WorkspaceForkApplyService(WorkspaceManager, WorkspaceExecutionGate, store,
-            validation, TestRunnerService, new DotnetCommandRunner(), NullLogger<WorkspaceForkApplyService>.Instance, WorkspaceManager.RunWithRetainedForkSourceAsync);
+            validation, TestRunnerService, new DotnetCommandRunner(), Helpers.ForkStorageFixtureBoundary.ValidateAsync, NullLogger<WorkspaceForkApplyService>.Instance, WorkspaceManager.RunWithRetainedForkSourceAsync, WorkspaceManager.TryReserveForkStorageDeletion);
 
         var result = await service.ApplyAsync(source.WorkspaceId, token, "keep", false, null, null, CancellationToken.None);
         try

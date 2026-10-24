@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -70,6 +71,7 @@ public sealed class GatedCommandExecutor : IGatedCommandExecutor
         IReadOnlyList<EarlyKillPattern>? earlyKillPatterns,
         CancellationToken ct)
     {
+        var deadline = DateTimeOffset.UtcNow + timeout;
         var workspaceGate = _workspaceCommandGates.GetOrAdd(workspaceId, static _ => new SemaphoreSlim(1, 1));
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeoutCts.CancelAfter(timeout);
@@ -84,9 +86,30 @@ public sealed class GatedCommandExecutor : IGatedCommandExecutor
             workspaceGateAcquired = true;
 
             var workingDirectory = GetWorkingDirectory(targetPath);
-            var execution = await _commandRunner
-                .RunAsync(workingDirectory, targetPath, arguments, earlyKillPatterns, timeoutCts.Token)
-                .ConfigureAwait(false);
+            var config = ForkAdmissionMaterial.Find(targetPath);
+            var admissionExecution = config is null ? null : await ForkAdmissionExecution.CreateAsync(config, deadline, timeoutCts.Token).ConfigureAwait(false);
+            CommandExecutionDto execution;
+            var completedCommand = false;
+            try
+            {
+                execution = await _commandRunner
+                    .RunAsync(workingDirectory, targetPath, admissionExecution?.Arguments(arguments) ?? arguments, earlyKillPatterns, timeoutCts.Token)
+                    .ConfigureAwait(false);
+                admissionExecution?.Complete();
+                admissionExecution?.ThrowIfRefused();
+                completedCommand = true;
+            }
+            finally
+            {
+                admissionExecution?.Dispose();
+                if (admissionExecution?.CleanupWarning is { } warning)
+                {
+                    _logger.LogWarning("{Warning}", warning);
+                    if (completedCommand) throw new PublicInvalidOperationException(
+                        "The native fork invocation could not clean up its admission material. Recreate the fork before retrying.",
+                        InvalidOperationErrors.Internal(warning));
+                }
+            }
 
             LogCommandExecuted(_logger, targetPath, string.Join(" ", arguments), execution.ExitCode, null);
 

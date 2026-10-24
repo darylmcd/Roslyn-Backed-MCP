@@ -1,0 +1,156 @@
+<Project>
+  <UsingTask TaskName="RoslynMcp.Roslyn.Services.DiscoverForkTargetDependencies" AssemblyFile="$(RoslynMcpForkTaskAssembly)" />
+  <UsingTask TaskName="RoslynMcp.Roslyn.Services.InstallForkProjectImports" AssemblyFile="$(RoslynMcpForkTaskAssembly)" />
+  <UsingTask TaskName="RoslynMcp.Roslyn.Services.AdmitForkBuildPaths" AssemblyFile="$(RoslynMcpForkTaskAssembly)" />
+  <Target Name="_RoslynMcpForkInspectContext" BeforeTargets="PrepareForBuild;ResolvePackageAssets;RunProduceContentAssets">
+    <AdmitForkBuildPaths ConfigPath="$(RoslynMcpForkConfig)" ExecutionRoot="$(RoslynMcpForkExecutionRoot)" ProjectPath="$(MSBuildProjectFullPath)" DeadlineUtc="$(RoslynMcpForkDeadlineUtc)" Operation="Context" />
+  </Target>
+  <Target Name="_RoslynMcpForkDiscoverReferences0" BeforeTargets="_GetProjectReferenceTargetFrameworkProperties">
+    <DiscoverForkTargetDependencies ConfigPath="$(RoslynMcpForkConfig)" ExecutionRoot="$(RoslynMcpForkExecutionRoot)" DeadlineUtc="$(RoslynMcpForkDeadlineUtc)" ProjectPath="$(MSBuildProjectFullPath)" ConsumerTarget="_GetProjectReferenceTargetFrameworkProperties">
+      <Output TaskParameter="DependencyTargets" ItemName="_RoslynMcpForkDependenciesReferences0" />
+    </DiscoverForkTargetDependencies>
+  </Target>
+  <Target Name="_RoslynMcpForkAdmitReferences0" BeforeTargets="_GetProjectReferenceTargetFrameworkProperties" DependsOnTargets="@(_RoslynMcpForkDependenciesReferences0)">
+    <InstallForkProjectImports ConfigPath="$(RoslynMcpForkConfig)" ExecutionRoot="$(RoslynMcpForkExecutionRoot)" DeadlineUtc="$(RoslynMcpForkDeadlineUtc)" Projects="@(_MSBuildProjectReferenceExistent);@(_ProjectReferencePlatformPossibilities)" BaseDirectory="$(MSBuildProjectDirectory)" ForkRoot="$([System.IO.Path]::GetDirectoryName($([System.IO.Path]::GetDirectoryName('$(RoslynMcpForkConfig)'))))" GuardTargetsPath="$(MSBuildThisFileFullPath)" />
+  </Target>
+  <Target Name="_RoslynMcpForkDiscoverReferences1" BeforeTargets="_GetProjectReferencePlatformProperties">
+    <DiscoverForkTargetDependencies ConfigPath="$(RoslynMcpForkConfig)" ExecutionRoot="$(RoslynMcpForkExecutionRoot)" DeadlineUtc="$(RoslynMcpForkDeadlineUtc)" ProjectPath="$(MSBuildProjectFullPath)" ConsumerTarget="_GetProjectReferencePlatformProperties">
+      <Output TaskParameter="DependencyTargets" ItemName="_RoslynMcpForkDependenciesReferences1" />
+    </DiscoverForkTargetDependencies>
+  </Target>
+  <Target Name="_RoslynMcpForkAdmitReferences1" BeforeTargets="_GetProjectReferencePlatformProperties" DependsOnTargets="@(_RoslynMcpForkDependenciesReferences1)">
+    <InstallForkProjectImports ConfigPath="$(RoslynMcpForkConfig)" ExecutionRoot="$(RoslynMcpForkExecutionRoot)" DeadlineUtc="$(RoslynMcpForkDeadlineUtc)" Projects="@(_MSBuildProjectReferenceExistent);@(_ProjectReferencePlatformPossibilities)" BaseDirectory="$(MSBuildProjectDirectory)" ForkRoot="$([System.IO.Path]::GetDirectoryName($([System.IO.Path]::GetDirectoryName('$(RoslynMcpForkConfig)'))))" GuardTargetsPath="$(MSBuildThisFileFullPath)" />
+  </Target>
+  <Target Name="_RoslynMcpForkDiscoverReferences2" BeforeTargets="ResolveProjectReferences">
+    <DiscoverForkTargetDependencies ConfigPath="$(RoslynMcpForkConfig)" ExecutionRoot="$(RoslynMcpForkExecutionRoot)" DeadlineUtc="$(RoslynMcpForkDeadlineUtc)" ProjectPath="$(MSBuildProjectFullPath)" ConsumerTarget="ResolveProjectReferences">
+      <Output TaskParameter="DependencyTargets" ItemName="_RoslynMcpForkDependenciesReferences2" />
+    </DiscoverForkTargetDependencies>
+  </Target>
+  <Target Name="_RoslynMcpForkAdmitReferences2" BeforeTargets="ResolveProjectReferences" DependsOnTargets="@(_RoslynMcpForkDependenciesReferences2)">
+    <InstallForkProjectImports ConfigPath="$(RoslynMcpForkConfig)" ExecutionRoot="$(RoslynMcpForkExecutionRoot)" DeadlineUtc="$(RoslynMcpForkDeadlineUtc)" Projects="@(_MSBuildProjectReferenceExistent);@(_ProjectReferencePlatformPossibilities)" BaseDirectory="$(MSBuildProjectDirectory)" ForkRoot="$([System.IO.Path]::GetDirectoryName($([System.IO.Path]::GetDirectoryName('$(RoslynMcpForkConfig)'))))" GuardTargetsPath="$(MSBuildThisFileFullPath)" />
+  </Target>
+  <Target Name="_RoslynMcpForkDiscoverReferences3" BeforeTargets="GetReferenceTargetPlatformMonikers">
+    <DiscoverForkTargetDependencies ConfigPath="$(RoslynMcpForkConfig)" ExecutionRoot="$(RoslynMcpForkExecutionRoot)" DeadlineUtc="$(RoslynMcpForkDeadlineUtc)" ProjectPath="$(MSBuildProjectFullPath)" ConsumerTarget="GetReferenceTargetPlatformMonikers">
+      <Output TaskParameter="DependencyTargets" ItemName="_RoslynMcpForkDependenciesReferences3" />
+    </DiscoverForkTargetDependencies>
+  </Target>
+  <Target Name="_RoslynMcpForkAdmitReferences3" BeforeTargets="GetReferenceTargetPlatformMonikers" DependsOnTargets="@(_RoslynMcpForkDependenciesReferences3)">
+    <InstallForkProjectImports ConfigPath="$(RoslynMcpForkConfig)" ExecutionRoot="$(RoslynMcpForkExecutionRoot)" DeadlineUtc="$(RoslynMcpForkDeadlineUtc)" Projects="@(_MSBuildProjectReferenceExistent);@(_ProjectReferencePlatformPossibilities)" BaseDirectory="$(MSBuildProjectDirectory)" ForkRoot="$([System.IO.Path]::GetDirectoryName($([System.IO.Path]::GetDirectoryName('$(RoslynMcpForkConfig)'))))" GuardTargetsPath="$(MSBuildThisFileFullPath)" />
+  </Target>
+  <Target Name="_RoslynMcpForkDiscoverReferences4" BeforeTargets="_GetCopyToOutputDirectoryItemsFromTransitiveProjectReferences">
+    <DiscoverForkTargetDependencies ConfigPath="$(RoslynMcpForkConfig)" ExecutionRoot="$(RoslynMcpForkExecutionRoot)" DeadlineUtc="$(RoslynMcpForkDeadlineUtc)" ProjectPath="$(MSBuildProjectFullPath)" ConsumerTarget="_GetCopyToOutputDirectoryItemsFromTransitiveProjectReferences">
+      <Output TaskParameter="DependencyTargets" ItemName="_RoslynMcpForkDependenciesReferences4" />
+    </DiscoverForkTargetDependencies>
+  </Target>
+  <Target Name="_RoslynMcpForkAdmitReferences4" BeforeTargets="_GetCopyToOutputDirectoryItemsFromTransitiveProjectReferences" DependsOnTargets="@(_RoslynMcpForkDependenciesReferences4)">
+    <InstallForkProjectImports ConfigPath="$(RoslynMcpForkConfig)" ExecutionRoot="$(RoslynMcpForkExecutionRoot)" DeadlineUtc="$(RoslynMcpForkDeadlineUtc)" Projects="@(_MSBuildProjectReferenceExistent);@(_ProjectReferencePlatformPossibilities)" BaseDirectory="$(MSBuildProjectDirectory)" ForkRoot="$([System.IO.Path]::GetDirectoryName($([System.IO.Path]::GetDirectoryName('$(RoslynMcpForkConfig)'))))" GuardTargetsPath="$(MSBuildThisFileFullPath)" />
+  </Target>
+  <Target Name="_RoslynMcpForkDiscoverCopyNewest" BeforeTargets="_CopyOutOfDateSourceItemsToOutputDirectory">
+    <DiscoverForkTargetDependencies ConfigPath="$(RoslynMcpForkConfig)" ExecutionRoot="$(RoslynMcpForkExecutionRoot)" DeadlineUtc="$(RoslynMcpForkDeadlineUtc)" ProjectPath="$(MSBuildProjectFullPath)" ConsumerTarget="_CopyOutOfDateSourceItemsToOutputDirectory">
+      <Output TaskParameter="DependencyTargets" ItemName="_RoslynMcpForkDependenciesCopyNewest" />
+    </DiscoverForkTargetDependencies>
+  </Target>
+  <Target Name="_RoslynMcpForkAdmitCopyNewest" BeforeTargets="_CopyOutOfDateSourceItemsToOutputDirectory" DependsOnTargets="@(_RoslynMcpForkDependenciesCopyNewest)">
+    <AdmitForkBuildPaths ConfigPath="$(RoslynMcpForkConfig)" ExecutionRoot="$(RoslynMcpForkExecutionRoot)" ProjectPath="$(MSBuildProjectFullPath)" DeadlineUtc="$(RoslynMcpForkDeadlineUtc)" Operation="Paths" Inputs="@(_SourceItemsToCopyToOutputDirectory)" Outputs="@(_SourceItemsToCopyToOutputDirectory->'$(OutDir)%(TargetPath)')" />
+  </Target>
+  <Target Name="_RoslynMcpForkDiscoverCopyAlways" BeforeTargets="_CopyOutOfDateSourceItemsToOutputDirectoryAlways">
+    <DiscoverForkTargetDependencies ConfigPath="$(RoslynMcpForkConfig)" ExecutionRoot="$(RoslynMcpForkExecutionRoot)" DeadlineUtc="$(RoslynMcpForkDeadlineUtc)" ProjectPath="$(MSBuildProjectFullPath)" ConsumerTarget="_CopyOutOfDateSourceItemsToOutputDirectoryAlways">
+      <Output TaskParameter="DependencyTargets" ItemName="_RoslynMcpForkDependenciesCopyAlways" />
+    </DiscoverForkTargetDependencies>
+  </Target>
+  <Target Name="_RoslynMcpForkAdmitCopyAlways" BeforeTargets="_CopyOutOfDateSourceItemsToOutputDirectoryAlways" DependsOnTargets="@(_RoslynMcpForkDependenciesCopyAlways)">
+    <AdmitForkBuildPaths ConfigPath="$(RoslynMcpForkConfig)" ExecutionRoot="$(RoslynMcpForkExecutionRoot)" ProjectPath="$(MSBuildProjectFullPath)" DeadlineUtc="$(RoslynMcpForkDeadlineUtc)" Operation="Paths" Inputs="@(_SourceItemsToCopyToOutputDirectoryAlways)" Outputs="@(_SourceItemsToCopyToOutputDirectoryAlways->'$(OutDir)%(TargetPath)')" />
+  </Target>
+  <Target Name="_RoslynMcpForkDiscoverCopyDifferent" BeforeTargets="_CopyDifferingSourceItemsToOutputDirectory">
+    <DiscoverForkTargetDependencies ConfigPath="$(RoslynMcpForkConfig)" ExecutionRoot="$(RoslynMcpForkExecutionRoot)" DeadlineUtc="$(RoslynMcpForkDeadlineUtc)" ProjectPath="$(MSBuildProjectFullPath)" ConsumerTarget="_CopyDifferingSourceItemsToOutputDirectory">
+      <Output TaskParameter="DependencyTargets" ItemName="_RoslynMcpForkDependenciesCopyDifferent" />
+    </DiscoverForkTargetDependencies>
+  </Target>
+  <Target Name="_RoslynMcpForkAdmitCopyDifferent" BeforeTargets="_CopyDifferingSourceItemsToOutputDirectory" DependsOnTargets="@(_RoslynMcpForkDependenciesCopyDifferent)">
+    <AdmitForkBuildPaths ConfigPath="$(RoslynMcpForkConfig)" ExecutionRoot="$(RoslynMcpForkExecutionRoot)" ProjectPath="$(MSBuildProjectFullPath)" DeadlineUtc="$(RoslynMcpForkDeadlineUtc)" Operation="Paths" Inputs="@(_SourceItemsToCopyToOutputDirectoryIfDifferent)" Outputs="@(_SourceItemsToCopyToOutputDirectoryIfDifferent->'$(OutDir)%(TargetPath)')" />
+  </Target>
+  <Target Name="_RoslynMcpForkDiscoverCopyLocal" BeforeTargets="_CopyFilesMarkedCopyLocal">
+    <DiscoverForkTargetDependencies ConfigPath="$(RoslynMcpForkConfig)" ExecutionRoot="$(RoslynMcpForkExecutionRoot)" DeadlineUtc="$(RoslynMcpForkDeadlineUtc)" ProjectPath="$(MSBuildProjectFullPath)" ConsumerTarget="_CopyFilesMarkedCopyLocal">
+      <Output TaskParameter="DependencyTargets" ItemName="_RoslynMcpForkDependenciesCopyLocal" />
+    </DiscoverForkTargetDependencies>
+  </Target>
+  <Target Name="_RoslynMcpForkAdmitCopyLocal" BeforeTargets="_CopyFilesMarkedCopyLocal" DependsOnTargets="@(_RoslynMcpForkDependenciesCopyLocal)">
+    <AdmitForkBuildPaths ConfigPath="$(RoslynMcpForkConfig)" ExecutionRoot="$(RoslynMcpForkExecutionRoot)" ProjectPath="$(MSBuildProjectFullPath)" DeadlineUtc="$(RoslynMcpForkDeadlineUtc)" Operation="Paths" Inputs="@(ReferenceCopyLocalPaths)" Outputs="@(ReferenceCopyLocalPaths->'$(OutDir)%(DestinationSubDirectory)%(Filename)%(Extension)')" Condition="'$(UseCommonOutputDirectory)' != 'true'" />
+    <!-- Copy may set these flags; prior true flags also permit Touch when Copy is disabled. -->
+    <AdmitForkBuildPaths ConfigPath="$(RoslynMcpForkConfig)" ExecutionRoot="$(RoslynMcpForkExecutionRoot)" ProjectPath="$(MSBuildProjectFullPath)" DeadlineUtc="$(RoslynMcpForkDeadlineUtc)" Operation="Paths" Outputs="@(CopyUpToDateMarker)" Condition="('$(UseCommonOutputDirectory)' != 'true' and '@(ReferenceCopyLocalPaths)' != '') or ('@(ReferencesCopiedInThisBuild)' != '' and '$(WroteAtLeastOneFile)' == 'true')" />
+  </Target>
+  <Target Name="_RoslynMcpForkDiscoverAppConfig" BeforeTargets="_CopyAppConfigFile">
+    <DiscoverForkTargetDependencies ConfigPath="$(RoslynMcpForkConfig)" ExecutionRoot="$(RoslynMcpForkExecutionRoot)" DeadlineUtc="$(RoslynMcpForkDeadlineUtc)" ProjectPath="$(MSBuildProjectFullPath)" ConsumerTarget="_CopyAppConfigFile">
+      <Output TaskParameter="DependencyTargets" ItemName="_RoslynMcpForkDependenciesAppConfig" />
+    </DiscoverForkTargetDependencies>
+  </Target>
+  <Target Name="_RoslynMcpForkAdmitAppConfig" BeforeTargets="_CopyAppConfigFile" DependsOnTargets="@(_RoslynMcpForkDependenciesAppConfig)">
+    <AdmitForkBuildPaths ConfigPath="$(RoslynMcpForkConfig)" ExecutionRoot="$(RoslynMcpForkExecutionRoot)" ProjectPath="$(MSBuildProjectFullPath)" DeadlineUtc="$(RoslynMcpForkDeadlineUtc)" Operation="Paths" Inputs="@(AppConfigWithTargetPath)" Outputs="@(AppConfigWithTargetPath->'$(OutDir)%(TargetPath)')" />
+  </Target>
+  <Target Name="_RoslynMcpForkDiscoverCache" BeforeTargets="ResolvePackageAssets">
+    <DiscoverForkTargetDependencies ConfigPath="$(RoslynMcpForkConfig)" ExecutionRoot="$(RoslynMcpForkExecutionRoot)" DeadlineUtc="$(RoslynMcpForkDeadlineUtc)" ProjectPath="$(MSBuildProjectFullPath)" ConsumerTarget="ResolvePackageAssets">
+      <Output TaskParameter="DependencyTargets" ItemName="_RoslynMcpForkDependenciesCache" />
+    </DiscoverForkTargetDependencies>
+  </Target>
+  <Target Name="_RoslynMcpForkAdmitCache" BeforeTargets="ResolvePackageAssets" DependsOnTargets="@(_RoslynMcpForkDependenciesCache)">
+    <AdmitForkBuildPaths ConfigPath="$(RoslynMcpForkConfig)" ExecutionRoot="$(RoslynMcpForkExecutionRoot)" ProjectPath="$(MSBuildProjectFullPath)" DeadlineUtc="$(RoslynMcpForkDeadlineUtc)" Operation="Paths" Inputs="$(ProjectAssetsFile)" Outputs="$(ProjectAssetsCacheFile)" />
+  </Target>
+  <Target Name="_RoslynMcpForkDiscoverPreprocess" BeforeTargets="RunProduceContentAssets">
+    <DiscoverForkTargetDependencies ConfigPath="$(RoslynMcpForkConfig)" ExecutionRoot="$(RoslynMcpForkExecutionRoot)" DeadlineUtc="$(RoslynMcpForkDeadlineUtc)" ProjectPath="$(MSBuildProjectFullPath)" ConsumerTarget="RunProduceContentAssets">
+      <Output TaskParameter="DependencyTargets" ItemName="_RoslynMcpForkDependenciesPreprocess" />
+    </DiscoverForkTargetDependencies>
+  </Target>
+  <Target Name="_RoslynMcpForkAdmitPreprocess" BeforeTargets="RunProduceContentAssets" DependsOnTargets="@(_RoslynMcpForkDependenciesPreprocess)">
+    <AdmitForkBuildPaths ConfigPath="$(RoslynMcpForkConfig)" ExecutionRoot="$(RoslynMcpForkExecutionRoot)" ProjectPath="$(MSBuildProjectFullPath)" DeadlineUtc="$(RoslynMcpForkDeadlineUtc)" Operation="PreprocessStage" Content="@(_ContentFilesToPreprocess)">
+      <Output TaskParameter="NewStageRoot" PropertyName="RoslynMcpForkStageRoot" />
+    </AdmitForkBuildPaths>
+    <ProduceContentAssets ContentFileDependencies="@(_ContentFilesToPreprocess)" ContentPreprocessorValues="@(PreprocessorValue)" ContentPreprocessorOutputDirectory="$(RoslynMcpForkStageRoot)" ProduceOnlyPreprocessorFiles="true" ProjectLanguage="$(Language)">
+      <Output TaskParameter="CopyLocalItems" ItemName="_RoslynMcpForkStageCopies" />
+      <Output TaskParameter="ProcessedContentItems" ItemName="_RoslynMcpForkStageProcessed" />
+      <Output TaskParameter="FileWrites" ItemName="_RoslynMcpForkStageWrites" />
+    </ProduceContentAssets>
+    <AdmitForkBuildPaths ConfigPath="$(RoslynMcpForkConfig)" ExecutionRoot="$(RoslynMcpForkExecutionRoot)" ProjectPath="$(MSBuildProjectFullPath)" DeadlineUtc="$(RoslynMcpForkDeadlineUtc)" Operation="PreprocessOutputs" Content="@(_ContentFilesToPreprocess)" Outputs="@(_RoslynMcpForkStageCopies);@(_RoslynMcpForkStageProcessed);@(_RoslynMcpForkStageWrites)" StageRoot="$(RoslynMcpForkStageRoot)" OriginalRoot="$(ContentPreprocessorOutputDirectory)" />
+  </Target>
+  <Target Name="_RoslynMcpForkDiscoverInner0" BeforeTargets="GetTargetFrameworksWithPlatformFromInnerBuilds">
+    <DiscoverForkTargetDependencies ConfigPath="$(RoslynMcpForkConfig)" ExecutionRoot="$(RoslynMcpForkExecutionRoot)" DeadlineUtc="$(RoslynMcpForkDeadlineUtc)" ProjectPath="$(MSBuildProjectFullPath)" ConsumerTarget="GetTargetFrameworksWithPlatformFromInnerBuilds">
+      <Output TaskParameter="DependencyTargets" ItemName="_RoslynMcpForkDependenciesInner0" />
+    </DiscoverForkTargetDependencies>
+  </Target>
+  <Target Name="_RoslynMcpForkAdmitInner0" BeforeTargets="GetTargetFrameworksWithPlatformFromInnerBuilds" DependsOnTargets="@(_RoslynMcpForkDependenciesInner0)">
+    <InstallForkProjectImports ConfigPath="$(RoslynMcpForkConfig)" ExecutionRoot="$(RoslynMcpForkExecutionRoot)" DeadlineUtc="$(RoslynMcpForkDeadlineUtc)" Projects="@(_InnerBuildProjects)" BaseDirectory="$(MSBuildProjectDirectory)" ForkRoot="$([System.IO.Path]::GetDirectoryName($([System.IO.Path]::GetDirectoryName('$(RoslynMcpForkConfig)'))))" GuardTargetsPath="$(MSBuildThisFileFullPath)" />
+  </Target>
+  <Target Name="_RoslynMcpForkDiscoverInner1" BeforeTargets="DispatchToInnerBuilds">
+    <DiscoverForkTargetDependencies ConfigPath="$(RoslynMcpForkConfig)" ExecutionRoot="$(RoslynMcpForkExecutionRoot)" DeadlineUtc="$(RoslynMcpForkDeadlineUtc)" ProjectPath="$(MSBuildProjectFullPath)" ConsumerTarget="DispatchToInnerBuilds">
+      <Output TaskParameter="DependencyTargets" ItemName="_RoslynMcpForkDependenciesInner1" />
+    </DiscoverForkTargetDependencies>
+  </Target>
+  <Target Name="_RoslynMcpForkAdmitInner1" BeforeTargets="DispatchToInnerBuilds" DependsOnTargets="@(_RoslynMcpForkDependenciesInner1)">
+    <InstallForkProjectImports ConfigPath="$(RoslynMcpForkConfig)" ExecutionRoot="$(RoslynMcpForkExecutionRoot)" DeadlineUtc="$(RoslynMcpForkDeadlineUtc)" Projects="@(_InnerBuildProjects)" BaseDirectory="$(MSBuildProjectDirectory)" ForkRoot="$([System.IO.Path]::GetDirectoryName($([System.IO.Path]::GetDirectoryName('$(RoslynMcpForkConfig)'))))" GuardTargetsPath="$(MSBuildThisFileFullPath)" />
+  </Target>
+  <Target Name="_RoslynMcpForkDiscoverManifests" BeforeTargets="_CopyManifestFiles">
+    <DiscoverForkTargetDependencies ConfigPath="$(RoslynMcpForkConfig)" ExecutionRoot="$(RoslynMcpForkExecutionRoot)" DeadlineUtc="$(RoslynMcpForkDeadlineUtc)" ProjectPath="$(MSBuildProjectFullPath)" ConsumerTarget="_CopyManifestFiles">
+      <Output TaskParameter="DependencyTargets" ItemName="_RoslynMcpForkDependenciesManifests" />
+    </DiscoverForkTargetDependencies>
+  </Target>
+  <Target Name="_RoslynMcpForkAdmitManifests" BeforeTargets="_CopyManifestFiles" DependsOnTargets="@(_RoslynMcpForkDependenciesManifests)">
+    <AdmitForkBuildPaths ConfigPath="$(RoslynMcpForkConfig)" ExecutionRoot="$(RoslynMcpForkExecutionRoot)" ProjectPath="$(MSBuildProjectFullPath)" DeadlineUtc="$(RoslynMcpForkDeadlineUtc)" Operation="CopyToFolder" Inputs="@(ApplicationManifest)" DestinationFolder="$(OutDir)" Condition="'$(GenerateClickOnceManifests)' == 'true' or '$(_DeploymentCopyApplicationManifest)' == 'true'" />
+    <AdmitForkBuildPaths ConfigPath="$(RoslynMcpForkConfig)" ExecutionRoot="$(RoslynMcpForkExecutionRoot)" ProjectPath="$(MSBuildProjectFullPath)" DeadlineUtc="$(RoslynMcpForkDeadlineUtc)" Operation="CopyToFolder" Inputs="@(DeployManifest)" DestinationFolder="$(OutDir)" Condition="'$(GenerateClickOnceManifests)' == 'true'" />
+  </Target>
+  <Target Name="_RoslynMcpForkDiscoverBuildOutputs" BeforeTargets="CopyFilesToOutputDirectory">
+    <DiscoverForkTargetDependencies ConfigPath="$(RoslynMcpForkConfig)" ExecutionRoot="$(RoslynMcpForkExecutionRoot)" DeadlineUtc="$(RoslynMcpForkDeadlineUtc)" ProjectPath="$(MSBuildProjectFullPath)" ConsumerTarget="CopyFilesToOutputDirectory">
+      <Output TaskParameter="DependencyTargets" ItemName="_RoslynMcpForkDependenciesBuildOutputs" />
+    </DiscoverForkTargetDependencies>
+  </Target>
+  <Target Name="_RoslynMcpForkAdmitBuildOutputs" BeforeTargets="CopyFilesToOutputDirectory" DependsOnTargets="@(_RoslynMcpForkDependenciesBuildOutputs)">
+    <!-- The native target defaults these three switches inside its body, after BeforeTargets. -->
+    <AdmitForkBuildPaths ConfigPath="$(RoslynMcpForkConfig)" ExecutionRoot="$(RoslynMcpForkExecutionRoot)" ProjectPath="$(MSBuildProjectFullPath)" DeadlineUtc="$(RoslynMcpForkDeadlineUtc)" Operation="CopyToFolder" Inputs="@(IntermediateAssembly)" DestinationFolder="$(OutDir)" Condition="('$(CopyBuildOutputToOutputDirectory)' == '' or '$(CopyBuildOutputToOutputDirectory)' == 'true') and '$(SkipCopyBuildProduct)' != 'true'" />
+    <AdmitForkBuildPaths ConfigPath="$(RoslynMcpForkConfig)" ExecutionRoot="$(RoslynMcpForkExecutionRoot)" ProjectPath="$(MSBuildProjectFullPath)" DeadlineUtc="$(RoslynMcpForkDeadlineUtc)" Operation="Paths" Inputs="@(IntermediateRefAssembly)" Outputs="$(TargetRefPath)" Condition="'$(ProduceReferenceAssembly)' == 'true' and ('$(CopyBuildOutputToOutputDirectory)' == '' or '$(CopyBuildOutputToOutputDirectory)' == 'true') and '$(SkipCopyBuildProduct)' != 'true'" />
+    <AdmitForkBuildPaths ConfigPath="$(RoslynMcpForkConfig)" ExecutionRoot="$(RoslynMcpForkExecutionRoot)" ProjectPath="$(MSBuildProjectFullPath)" DeadlineUtc="$(RoslynMcpForkDeadlineUtc)" Operation="CopyToFolder" Inputs="@(AddModules)" DestinationFolder="$(OutDir)" Condition="'@(AddModules)' != ''" />
+    <AdmitForkBuildPaths ConfigPath="$(RoslynMcpForkConfig)" ExecutionRoot="$(RoslynMcpForkExecutionRoot)" ProjectPath="$(MSBuildProjectFullPath)" DeadlineUtc="$(RoslynMcpForkDeadlineUtc)" Operation="Paths" Inputs="$(IntermediateOutputPath)$(_SGenDllName)" Outputs="$(OutDir)$(_SGenDllName)" Condition="'$(_SGenDllCreated)' == 'true'" />
+    <AdmitForkBuildPaths ConfigPath="$(RoslynMcpForkConfig)" ExecutionRoot="$(RoslynMcpForkExecutionRoot)" ProjectPath="$(MSBuildProjectFullPath)" DeadlineUtc="$(RoslynMcpForkDeadlineUtc)" Operation="Paths" Inputs="@(_DebugSymbolsIntermediatePath)" Outputs="@(_DebugSymbolsOutputPath)" Condition="'$(_DebugSymbolsProduced)' == 'true' and '$(SkipCopyingSymbolsToOutputDirectory)' != 'true' and ('$(CopyOutputSymbolsToOutputDirectory)' == '' or '$(CopyOutputSymbolsToOutputDirectory)' == 'true')" />
+    <AdmitForkBuildPaths ConfigPath="$(RoslynMcpForkConfig)" ExecutionRoot="$(RoslynMcpForkExecutionRoot)" ProjectPath="$(MSBuildProjectFullPath)" DeadlineUtc="$(RoslynMcpForkDeadlineUtc)" Operation="Paths" Inputs="@(DocFileItem)" Outputs="@(FinalDocFile)" Condition="'$(_DocumentationFileProduced)' == 'true' and ('$(CopyDocumentationFileToOutputDirectory)' == '' or '$(CopyDocumentationFileToOutputDirectory)' == 'true')" />
+    <AdmitForkBuildPaths ConfigPath="$(RoslynMcpForkConfig)" ExecutionRoot="$(RoslynMcpForkExecutionRoot)" ProjectPath="$(MSBuildProjectFullPath)" DeadlineUtc="$(RoslynMcpForkDeadlineUtc)" Operation="Paths" Inputs="@(IntermediateSatelliteAssembliesWithTargetPath)" Outputs="@(IntermediateSatelliteAssembliesWithTargetPath->'$(OutDir)%(Culture)\$(TargetName).resources.dll')" Condition="'@(IntermediateSatelliteAssembliesWithTargetPath)' != ''" />
+    <AdmitForkBuildPaths ConfigPath="$(RoslynMcpForkConfig)" ExecutionRoot="$(RoslynMcpForkExecutionRoot)" ProjectPath="$(MSBuildProjectFullPath)" DeadlineUtc="$(RoslynMcpForkDeadlineUtc)" Operation="CopyToFolder" Inputs="@(ReferenceComWrappersToCopyLocal);@(ResolvedIsolatedComModules);@(_DeploymentLooseManifestFile);@(NativeReferenceFile)" DestinationFolder="$(OutDir)" />
+    <AdmitForkBuildPaths ConfigPath="$(RoslynMcpForkConfig)" ExecutionRoot="$(RoslynMcpForkExecutionRoot)" ProjectPath="$(MSBuildProjectFullPath)" DeadlineUtc="$(RoslynMcpForkDeadlineUtc)" Operation="CopyToFolder" Inputs="@(WinMDExpArtifacts)" DestinationFolder="$(OutDir)" Condition="'$(SkipCopyWinMDArtifact)' != 'true'" />
+  </Target>
+</Project>

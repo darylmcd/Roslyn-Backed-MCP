@@ -21,32 +21,46 @@ public sealed class HostShutdownLifecycleTests
         var sentinel = host.Services.GetRequiredService<DisposalSentinel>();
         var lifetime = host.Services.GetRequiredService<IHostApplicationLifetime>();
         var stopping = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        lifetime.ApplicationStopping.Register(stopping.SetResult);
+        using var stoppingRegistration = lifetime.ApplicationStopping.Register(stopping.SetResult);
         using var cancellation = new CancellationTokenSource();
 
         var run = host.RunAsync(cancellation.Token);
-        await request.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
-
-        if (cancelRun)
+        try
         {
-            cancellation.Cancel();
+            Assert.IsTrue(request.Started.Task.IsCompletedSuccessfully,
+                "The cooperative fixture must establish in-flight work during host startup.");
+
+            if (cancelRun)
+            {
+                cancellation.Cancel();
+            }
+            else
+            {
+                lifetime.StopApplication();
+            }
+
+            await stopping.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await request.StopEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.AreEqual(0, sentinel.DisposeCount,
+                "ApplicationStopping must not dispose DI-owned singletons while work is in flight.");
+            Assert.IsFalse(run.IsCompleted,
+                "RunAsync must await the hosted service's in-flight work before disposing the container.");
+
+            request.Complete.SetResult();
+            await run.WaitAsync(TimeSpan.FromSeconds(5));
+
+            Assert.AreEqual(1, sentinel.DisposeCount,
+                "The host container must own exactly one singleton teardown.");
+            Assert.IsTrue(request.Completed,
+                "The in-flight operation must finish before container-owned teardown.");
         }
-        else
+        finally
         {
-            lifetime.StopApplication();
+            request.Complete.TrySetResult();
+            if (!run.IsCompleted)
+                lifetime.StopApplication();
+            await run.WaitAsync(TimeSpan.FromSeconds(5));
         }
-
-        await stopping.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.AreEqual(0, sentinel.DisposeCount,
-            "ApplicationStopping must not dispose DI-owned singletons while work is in flight.");
-
-        request.Complete.SetResult();
-        await run.WaitAsync(TimeSpan.FromSeconds(5));
-
-        Assert.AreEqual(1, sentinel.DisposeCount,
-            "The host container must own exactly one singleton teardown.");
-        Assert.IsTrue(request.Completed,
-            "The in-flight operation must finish before container-owned teardown.");
     }
 
     private sealed class InFlightRequest
@@ -57,15 +71,24 @@ public sealed class HostShutdownLifecycleTests
         public TaskCompletionSource Complete { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
+        public TaskCompletionSource StopEntered { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
         public bool Completed { get; set; }
     }
 
-    private sealed class InFlightRequestService(InFlightRequest request) : BackgroundService
+    private sealed class InFlightRequestService(InFlightRequest request) : IHostedService
     {
-        protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+        public Task StartAsync(CancellationToken cancellationToken)
         {
             request.Started.SetResult();
-            await request.Complete.Task.ConfigureAwait(false);
+            return Task.CompletedTask;
+        }
+
+        public async Task StopAsync(CancellationToken cancellationToken)
+        {
+            request.StopEntered.SetResult();
+            await request.Complete.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
             request.Completed = true;
         }
     }
