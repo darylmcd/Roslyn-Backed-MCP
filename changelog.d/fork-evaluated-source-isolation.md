@@ -2,4 +2,4 @@
 category: Fixed
 ---
 
-- **Fixed:** Experimental workspace forks verify the complete evaluated project graph before restore, refusing imports, file inputs and outputs that reach the source workspace, including physical aliases and original external project references.
+- **Fixed:** Experimental workspace forks reject evaluated imports, inputs and restore outputs that reach the source workspace. Native load and build checks also guard package preprocessing, assets-cache writes and copied outputs, including late project references and physical aliases. Retained forks preserve these checks when reopened or tested.

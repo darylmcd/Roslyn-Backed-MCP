@@ -180,7 +180,7 @@ public sealed class ForkGraphPreparationTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
-    public void CopyMetadata_IsPhysicalOnlyWhenCopied_AndUsesItsOutputBase()
+    public void CopyMetadata_RemainsProvisionalUntilActualNativeConsumer()
     {
         using var fixture = new GraphFixture();
         foreach (var mode in new[] { "Always", "PreserveNewest", "IfDifferent", "always", "preservenewest", "ifdifferent" })
@@ -188,7 +188,7 @@ public sealed class ForkGraphPreparationTests : IsolatedWorkspaceTestBase
             fixture.Write(new XElement("PropertyGroup", new XElement("OutDir", fixture.Fork + "/bin/")),
                 new XElement("ItemGroup", new XElement("Content", new XAttribute("Include", "input.txt"),
                     new XElement("CopyToOutputDirectory", mode), new XElement("TargetPath", "../../../../escape.txt"))));
-            AssertIsolationRefusal(fixture);
+            fixture.Validate();
         }
         fixture.Write(new XElement("PropertyGroup", new XElement("OutDir", fixture.Fork + "/bin/")),
             new XElement("ItemGroup", new XElement("Content", new XAttribute("Include", "input.txt"),
@@ -202,6 +202,49 @@ public sealed class ForkGraphPreparationTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
+    public void RestoreInventory_ReferenceDerivedGlobals_RemainRestoreContexts()
+    {
+        using var fixture = new GraphFixture();
+        var parent = Path.Combine(fixture.Fork, "Parent.csproj");
+        File.WriteAllText(parent, """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup><TargetFramework>net10.0</TargetFramework><EnableDefaultItems>false</EnableDefaultItems></PropertyGroup>
+              <ItemGroup><ProjectReference Include="Bridge.csproj" AdditionalProperties="RuntimeIdentifier=win-x64;SelfContained=true;Flavor=inherited" /></ItemGroup>
+            </Project>
+            """);
+        File.WriteAllText(Path.Combine(fixture.Fork, "Bridge.csproj"), """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup><TargetFramework>net10.0</TargetFramework><EnableDefaultItems>false</EnableDefaultItems></PropertyGroup>
+              <ItemGroup><ProjectReference Include="Child.csproj" /></ItemGroup>
+            </Project>
+            """);
+        File.WriteAllText(Path.Combine(fixture.Fork, "Child.csproj"), """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+                <TargetFrameworks Condition="'$(RuntimeIdentifier)' != ''">net8.0</TargetFrameworks>
+                <EnableDefaultItems>false</EnableDefaultItems><IsRidAgnostic>true</IsRidAgnostic>
+              </PropertyGroup>
+            </Project>
+            """);
+        RestoreInvocationPlanner.EvaluateGraph(parent, () => TimeSpan.FromMinutes(1), CancellationToken.None,
+            (graph, _) =>
+            {
+                var children = graph.ProjectNodes.Select(node => node.ProjectInstance)
+                    .Where(project => Path.GetFileName(project.FullPath) == "Child.csproj").ToArray();
+                Assert.IsTrue(children.Any(project => project.GlobalProperties.TryGetValue("RuntimeIdentifier", out var rid) && rid == "win-x64"),
+                    "The reference-derived global context must participate in the actual production evaluator.");
+                Assert.IsFalse(children.Any(project => project.GetPropertyValue("TargetFramework") == "net10.0"
+                    && !project.GlobalProperties.ContainsKey("RuntimeIdentifier")
+                    && !project.GlobalProperties.ContainsKey("SelfContained")),
+                    "Restore inventory must not claim the native build-selected context. NativeReferenceGraph_SelectedFrameworkAndLocalCopies_AreAdmitted verifies actual selection and copy admission. Captured restore children: "
+                    + string.Join(" | ", children.Select(project => project.GetPropertyValue("TargetFramework") + ":"
+                        + string.Join(";", project.GlobalProperties.Select(pair => pair.Key + "=" + pair.Value)))));
+                return true;
+            });
+    }
+
+    [TestMethod]
     public void ItemRoleNames_UseMsBuildCaseInsensitiveIdentity()
     {
         using var fixture = new GraphFixture();
@@ -210,7 +253,7 @@ public sealed class ForkGraphPreparationTests : IsolatedWorkspaceTestBase
             new XElement("globalanalyzerconfigfiles", new XAttribute("Include", fixture.SourcePath("missing.globalconfig")))));
         fixture.Validate();
         fixture.Write(new XElement("PropertyGroup", new XElement("OutDir", fixture.Fork + "/bin/")),
-            new XElement("ItemGroup", new XElement("content", new XAttribute("Include", "input.txt"),
+            new XElement("ItemGroup", new XElement("content", new XAttribute("Include", fixture.SourcePath("input.txt")),
                 new XElement("CopyToOutputDirectory", "Always"), new XElement("TargetPath", "../../../../escape.txt"))));
         AssertIsolationRefusal(fixture);
     }
@@ -236,9 +279,9 @@ public sealed class ForkGraphPreparationTests : IsolatedWorkspaceTestBase
                 Assert.IsFalse(exception.Message.Contains("PRIVATE", StringComparison.Ordinal));
                 StringAssert.Contains(exception.ToString(), "cycle detected");
             }
-            finally { Directory.Delete(second); }
+            finally { TestFixtureFileSystem.DeleteDirectoryIfExists(second); }
         }
-        finally { Directory.Delete(first); }
+        finally { TestFixtureFileSystem.DeleteDirectoryIfExists(first); }
     }
 
     [TestMethod]

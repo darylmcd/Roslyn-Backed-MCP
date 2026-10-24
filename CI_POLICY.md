@@ -54,7 +54,7 @@ The router emits typed leg fields. Keep their concerns separate:
 - `eng/ci.runsettings` enables `TreatNoTestsAsError`; an accidentally empty filter is a failure.
 - Keep pull-request coverage disabled. Keep dispatch/schedule coverage unsharded until coverage merge semantics are explicitly implemented.
 - Keep matrix `fail-fast: false` so independent OS/shard failures remain visible in one run.
-- Keep the exact SDK-floor lane isolated from hosted-image SDKs and bounded to restore, Release build, and one real MSBuildWorkspace load. The latest-`10.0.x` matrix owns the complete suite.
+- Keep the exact SDK-floor lane isolated from hosted-image SDKs and bounded to restore, Release build, a representative MSBuildWorkspace load, and the native fork admission late-child metadata/copy cases. The latest-`10.0.x` matrix owns the complete suite.
 
 ## Required Checks And Artifacts
 
@@ -64,7 +64,7 @@ The router emits typed leg fields. Keep their concerns separate:
 | Changelog-fragment validation | Explicit artifact-owning policy-doc leg; otherwise included in the full release verifier |
 | AI-doc and shipped-skill validation | Artifact-owning leg; includes policy-doc PRs |
 | Restore, Release build, test | Every pull-request/test leg |
-| Exact declared SDK floor | Concurrent `sdk-floor` job on code PRs, dispatch, and schedule; exact version assertion + restore/build + representative MSBuildWorkspace load |
+| Exact declared SDK floor | Concurrent `sdk-floor` job on code PRs, dispatch, and schedule; exact version assertion + restore/build + representative MSBuildWorkspace load + native fork admission late-child metadata/copy cases |
 | Publish/hash | Artifact-owning non-doc leg |
 | Fail-closed NuGet vulnerability audit | Artifact-owning non-doc leg |
 | Changed-file formatter gate | Artifact-owning non-doc pull-request leg; new FINALNEWLINE, IDE1006, IMPORTS, and WHITESPACE findings on touched files fail, tracked baseline debt is reported not suppressed |

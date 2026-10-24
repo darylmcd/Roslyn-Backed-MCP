@@ -20,6 +20,7 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService
     {
         ".git",
         ".roslynmcp",
+        ForkAdmissionMaterial.DirectoryName,
         ".vs",
         ".worktrees",
         "artifacts",
@@ -135,6 +136,8 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService
                 var appliedFiles = await ReplayPreviewIntoForkAsync(
                     preview.OriginalSolution, preview.ModifiedSolution, source.Root, path, c)
                     .ConfigureAwait(false);
+                if (ForkAdmissionMaterial.Find(source.LoadedPath) is { } previousAdmission)
+                    ForkAdmissionMaterial.StripPreviousImports(path, previousAdmission, c);
                 return (Path: path, AppliedFiles: appliedFiles);
             }, ct, applyStalenessPolicy: false).ConfigureAwait(false);
             var forkLoadedPath = MapSourcePathToFork(source.LoadedPath, source.Root, preparedFork.Path);
@@ -342,6 +345,12 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService
 
             try
             {
+                using var ownership = TryAcquireForkApplyLock(directory);
+                if (ownership is null || HasPendingAdmissionExecutions(directory))
+                {
+                    logger?.LogWarning("Retained expired fork admission material while native execution or cleanup is active or uncertain.");
+                    continue;
+                }
                 DeleteDirectoryIfExists(directory, CancellationToken.None);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -388,7 +397,7 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService
         string sourceRoot,
         CancellationToken ct)
     {
-        var key = Path.GetFullPath(sourceRoot);
+        var key = NormalizeForkOwnershipKey(sourceRoot);
         while (true)
         {
             var entry = ForkApplyLocks.GetOrAdd(key, static _ => new ForkApplyLock());
@@ -412,7 +421,33 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService
     }
 
     internal static bool HasForkApplyLock(string sourceRoot) =>
-        ForkApplyLocks.ContainsKey(Path.GetFullPath(sourceRoot));
+        ForkApplyLocks.ContainsKey(NormalizeForkOwnershipKey(sourceRoot));
+
+    private static string NormalizeForkOwnershipKey(string path) =>
+        PhysicalPathResolver.Resolve(Path.GetFullPath(path));
+
+    internal static IDisposable? TryAcquireForkApplyLock(string sourceRoot)
+    {
+        var key = NormalizeForkOwnershipKey(sourceRoot);
+        while (true)
+        {
+            var entry = ForkApplyLocks.GetOrAdd(key, static _ => new ForkApplyLock());
+            if (!entry.TryAddReference())
+            {
+                ForkApplyLocks.TryRemove(new KeyValuePair<string, ForkApplyLock>(key, entry));
+                continue;
+            }
+            if (entry.Semaphore.Wait(0)) return new ForkApplyLockLease(key, entry);
+            ReleaseForkApplyLockReference(key, entry);
+            return null;
+        }
+    }
+
+    private static bool HasPendingAdmissionExecutions(string forkPath)
+    {
+        var executions = Path.Combine(forkPath, ForkAdmissionMaterial.DirectoryName, "executions");
+        return Directory.Exists(executions) && Directory.EnumerateDirectories(executions).Any();
+    }
 
     private static void ReleaseForkApplyLockReference(string key, ForkApplyLock entry)
     {
@@ -527,17 +562,33 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService
         CommandExecutionDto execution;
         try
         {
-            ForkGraphPreparation.Validate(forkLoadedPath, sourceRoot, forkRoot,
+            var inventory = ForkGraphPreparation.Validate(forkLoadedPath, sourceRoot, forkRoot,
                 () => RestoreInvocationPlanner.RemainingBudget(TimeSpan.FromMinutes(timeoutMinutes), elapsed.Elapsed,
                     TimeSpan.Zero, "The workspace fork restore phase exceeded its time budget."), timeout.Token);
+            var config = ForkAdmissionMaterial.Install(sourceRoot, forkRoot, inventory, timeout.Token);
             timeout.Token.ThrowIfCancellationRequested();
-            execution = await _commandRunner.RunAsync(
-                workingDirectory,
-                forkLoadedPath,
-                ["restore", forkLoadedPath, "--nologo"],
-                earlyKillPatterns: null,
-                executablePath: ResolveForkDotnetPath(),
-                ct: timeout.Token).ConfigureAwait(false);
+            var remaining = RestoreInvocationPlanner.RemainingBudget(TimeSpan.FromMinutes(timeoutMinutes), elapsed.Elapsed,
+                TimeSpan.Zero, "The workspace fork restore phase exceeded its time budget.");
+            var admissionExecution = await ForkAdmissionExecution.CreateAsync(config, DateTimeOffset.UtcNow + remaining, timeout.Token).ConfigureAwait(false);
+            try
+            {
+                execution = await _commandRunner.RunAsync(
+                    workingDirectory,
+                    forkLoadedPath,
+                    admissionExecution.Arguments(["restore", forkLoadedPath, "--nologo"]),
+                    earlyKillPatterns: null,
+                    executablePath: ResolveForkDotnetPath(),
+                    ct: timeout.Token).ConfigureAwait(false);
+                admissionExecution.Complete();
+                admissionExecution.ThrowIfRefused();
+            }
+            finally
+            {
+                admissionExecution.Dispose();
+                if (admissionExecution.CleanupWarning is { } warning) _logger.LogWarning("{Warning}", warning);
+            }
+            if (admissionExecution.CleanupWarning is not null)
+                throw InvalidOperationErrors.Internal(admissionExecution.CleanupWarning);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested && timeout.IsCancellationRequested)
         {
@@ -684,29 +735,50 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService
         ICollection<string> cleanupWarnings,
         CancellationToken ct)
     {
+        IDisposable? ownership = null;
         try
         {
-            if (!string.IsNullOrWhiteSpace(forkWorkspaceId))
+            try
             {
-                _workspaceManager.Close(forkWorkspaceId);
+                ownership = TryAcquireForkApplyLock(forkPath);
+                if (ownership is null || HasPendingAdmissionExecutions(forkPath))
+                {
+                    cleanupWarnings.Add("Fork admission material was retained because native execution or cleanup is active or uncertain.");
+                    _logger.LogWarning("Retained fork admission material while native execution or cleanup is active or uncertain.");
+                    return;
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                cleanupWarnings.Add("Fork admission completion could not be verified: " + ex.GetType().Name);
+                _logger.LogWarning(ex, "Retained fork admission material because completion could not be verified.");
+                return;
+            }
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(forkWorkspaceId))
+                {
+                    _workspaceManager.Close(forkWorkspaceId);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to close fork workspace {WorkspaceId}", forkWorkspaceId);
+                cleanupWarnings.Add(
+                    $"Failed to close fork workspace '{forkWorkspaceId}': {ex.GetType().Name}");
+            }
+
+            try
+            {
+                DeleteDirectoryIfExists(forkPath, ct);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _logger.LogWarning(ex, "Failed to delete fork directory {ForkPath}", forkPath);
+                cleanupWarnings.Add($"Failed to delete fork directory: {ex.GetType().Name}");
             }
         }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to close fork workspace {WorkspaceId}", forkWorkspaceId);
-            cleanupWarnings.Add(
-                $"Failed to close fork workspace '{forkWorkspaceId}': {ex.GetType().Name}");
-        }
-
-        try
-        {
-            DeleteDirectoryIfExists(forkPath, ct);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            _logger.LogWarning(ex, "Failed to delete fork directory {ForkPath}", forkPath);
-            cleanupWarnings.Add($"Failed to delete fork directory: {ex.GetType().Name}");
-        }
+        finally { ownership?.Dispose(); }
     }
 
     internal static void DeleteDirectoryIfExists(string path, CancellationToken ct)

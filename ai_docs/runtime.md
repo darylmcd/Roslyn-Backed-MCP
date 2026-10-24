@@ -31,7 +31,7 @@ See `justfile` for the full recipe list, including packaging, Docker, and securi
 
 ## Platform And Tooling
 
-- .NET SDK: `10.0.400` (`rollForward: latestFeature`) — see `global.json`; CI also runs an exact-floor build/workspace probe
+- .NET SDK: `10.0.400` (`rollForward: latestFeature`) — see `global.json`; CI also runs an exact-floor build/workspace probe with bounded native fork admission late-child metadata/copy cases.
 - Primary v1 OS target: Windows. macOS and Linux are supported wherever the .NET 10 SDK is available.
 - Main local validation entry point: `just ci`; use the canonical runtime row in [AGENTS.md § Validation runtime](../AGENTS.md#validation-runtime) before invoking it. Use `just full` only when the informational coverage/live-network lane is required.
 - Test framework: MSTest (`[TestClass]`, `[TestMethod]`)

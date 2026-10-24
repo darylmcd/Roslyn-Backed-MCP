@@ -32,16 +32,6 @@ internal static class ForkGraphPreparation
         "EditorConfigFiles", "AnalyzerConfigFiles",
     };
 
-    private static readonly HashSet<string> CopyItems = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "Content", "None", "Compile", "EmbeddedResource",
-    };
-
-    private static readonly HashSet<string> CopyModes = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "Always", "PreserveNewest", "IfDifferent",
-    };
-
     private static readonly HashSet<string> LogicalItems = new(StringComparer.OrdinalIgnoreCase)
     {
         "PackageReference", "PackageVersion", "FrameworkReference", "KnownFrameworkReference",
@@ -53,23 +43,23 @@ internal static class ForkGraphPreparation
         "_AllDirectoriesAbove",
     };
 
-    internal static void Validate(string entryPath, string sourceRoot, string forkRoot,
+    internal static string[] Validate(string entryPath, string sourceRoot, string forkRoot,
         Func<TimeSpan> remainingBudget, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
         MsBuildInitializer.EnsureInitialized();
-        ValidateInitialized(entryPath, sourceRoot, forkRoot, remainingBudget, ct);
+        return ValidateInitialized(entryPath, sourceRoot, forkRoot, remainingBudget, ct);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void ValidateInitialized(string entryPath, string sourceRoot, string forkRoot,
+    private static string[] ValidateInitialized(string entryPath, string sourceRoot, string forkRoot,
         Func<TimeSpan> remainingBudget, CancellationToken ct)
     {
         try
         {
             var source = PhysicalPathResolver.Resolve(sourceRoot);
             var fork = PhysicalPathResolver.Resolve(forkRoot);
-            RestoreInvocationPlanner.EvaluateGraph(entryPath, remainingBudget, ct, (graph, phaseToken) =>
+            return RestoreInvocationPlanner.EvaluateGraph(entryPath, remainingBudget, ct, (graph, phaseToken) =>
             {
                 foreach (var node in graph.ProjectNodes)
                 {
@@ -77,7 +67,7 @@ internal static class ForkGraphPreparation
                     remainingBudget();
                     Inspect(node.ProjectInstance, source, fork, remainingBudget, phaseToken);
                 }
-                return true;
+                return graph.ProjectNodes.Select(node => node.ProjectInstance.FullPath).Distinct(FileSystemPath.Comparer).ToArray();
             });
         }
         catch (Exception ex) when (ex is not OperationCanceledException and not TimeoutException and not PublicInvalidOperationException)
@@ -89,19 +79,16 @@ internal static class ForkGraphPreparation
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void Inspect(ProjectInstance project, string source, string fork,
+    internal static void Inspect(ProjectInstance project, string source, string fork,
         Func<TimeSpan> remainingBudget, CancellationToken ct)
     {
         var projectDirectory = Path.GetDirectoryName(project.FullPath)
             ?? throw InvalidOperationErrors.Internal("An evaluated fork project has no directory.");
-        // A project outside the copy is still the original graph project, even when it
-        // lived outside the loaded solution directory. Restore must never run against it.
-        if (!Contains(fork, PhysicalPathResolver.Resolve(project.FullPath)))
+        var admission = new ForkPathAdmission(source, fork, project.FullPath, () =>
         {
-            throw new PublicInvalidOperationException(
-                "The copied project graph still references an original source workspace project outside the fork. Include that project in the copied workspace before retrying.",
-                InvalidOperationErrors.Internal($"Evaluated project '{project.FullPath}' is outside the current fork."));
-        }
+            ct.ThrowIfCancellationRequested();
+            remainingBudget();
+        });
         Check(project.FullPath, "project");
         foreach (var import in project.ImportPaths) Check(import, "import");
         foreach (var name in OutputProperties)
@@ -126,20 +113,6 @@ internal static class ForkGraphPreparation
             else if (FileItems.Contains(item.ItemType)) CheckList(include, item.ItemType);
             else if (!LogicalItems.Contains(item.ItemType) && IsPhysical(item.EvaluatedInclude)) CheckList(include, item.ItemType);
 
-            // AssignTargetPath preserves explicit TargetPath, then Link. These values become
-            // physical destinations only for items the common targets copy into OutDir.
-            if (CopyItems.Contains(item.ItemType) && CopyModes.Contains(item.GetMetadataValue("CopyToOutputDirectory")))
-            {
-                var target = item.GetMetadataValue("TargetPath");
-                if (string.IsNullOrEmpty(target)) target = item.GetMetadataValue("Link");
-                if (!string.IsNullOrEmpty(target)) Check(project.GetPropertyValue("OutDir") + target, item.ItemType + ".TargetPath");
-            }
-            if (item.ItemType.Equals("ReferenceCopyLocalPaths", StringComparison.OrdinalIgnoreCase))
-            {
-                Check(project.GetPropertyValue("OutDir") + item.GetMetadataValue("DestinationSubDirectory") +
-                    item.GetMetadataValue("Filename") + item.GetMetadataValue("Extension"), "ReferenceCopyLocalPaths.DestinationSubDirectory");
-            }
-
             // Reference Include can be an assembly identity. HintPath is always a file;
             // a path-valued Include is also physical, unlike a simple assembly name.
             if (item.ItemType.Equals("Reference", StringComparison.OrdinalIgnoreCase))
@@ -162,21 +135,8 @@ internal static class ForkGraphPreparation
 
         void Check(string value, string role)
         {
-            ct.ThrowIfCancellationRequested();
-            remainingBudget();
-            if (string.IsNullOrWhiteSpace(value)) return;
-            // Do not use GetFullPath here: a link before '..' must resolve first.
-            var candidate = PhysicalPathResolver.Resolve(Path.IsPathRooted(value) ? value : Path.Join(projectDirectory, value));
-            if (Contains(fork, candidate)) return;
-            if (Contains(source, candidate))
-            {
-                throw new PublicInvalidOperationException(
-                    "The copied project graph refers to files or outputs in the source workspace. Make those paths fork-relative or use an independent external location before retrying.",
-                    InvalidOperationErrors.Internal($"Evaluated fork project '{project.FullPath}' role '{role}' reaches source path '{candidate}'."));
-            }
+            // Restore's existing path contract resolves a link before a following parent.
+            admission.Check(value, role, normalizeNativeOperation: false);
         }
     }
-
-    private static bool Contains(string root, string path) =>
-        FileSystemPath.Comparer.Equals(root, path) || FileSystemPath.IsStrictDescendant(root, path);
 }
