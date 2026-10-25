@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-24T22:35:17Z
+**updated_at:** 2026-10-25T03:20:40Z
 
 ## Agent contract
 
@@ -169,6 +169,7 @@
 | `fork-source-session-retention` | Medium | — | Preserve fork source-session authority through capacity pressure, close and shutdown; add manager-owned operation retention and regression coverage. | M | items/fork-source-session-retention.md |
 | `fork-source-fixture-cleanup-failure-propagation` | Medium | — | Preserve lifecycle fixture primary and cleanup failures while independently observing every owned task and disposal owner. | S | items/fork-source-fixture-cleanup-failure-propagation.md |
 | `fork-source-fixture-initialization-cleanup-ownership` | Medium | fork-source-fixture-cleanup-failure-propagation | Close externally owned lifecycle fixture resources after actual initialization failure while preserving primary and cleanup failures. | S | items/fork-source-fixture-initialization-cleanup-ownership.md |
+| `workspace-native-reference-global-context-mismatch` | Medium | — | **Preserve reference evaluation context** — Reconcile public workspace load with native reference globals and solution mappings. [type: bug] [source: restore-closeout] | M | items/workspace-native-reference-global-context-mismatch.md |
 
 ## Low
 
