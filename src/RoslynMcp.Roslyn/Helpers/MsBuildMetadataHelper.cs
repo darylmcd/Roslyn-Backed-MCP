@@ -40,7 +40,7 @@ internal static class MsBuildMetadataHelper
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static string[] EvaluatePropertiesCore(string projectFilePath, IReadOnlyDictionary<string, string> globalProperties, string[] propertyNames)
     {
-        var projectCollection = new ProjectCollection(new Dictionary<string, string>(globalProperties));
+        using var projectCollection = new ProjectCollection(new Dictionary<string, string>(globalProperties));
         try
         {
             var evaluated = projectCollection.LoadProject(projectFilePath);
