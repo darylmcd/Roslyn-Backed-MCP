@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-25T03:32:21Z
+**updated_at:** 2026-10-25T03:58:30Z
 
 ## Agent contract
 
@@ -173,6 +173,7 @@
 | `msbuild-evaluation-project-context-cache` | Medium | — | **Bind MSBuild query context** — Evaluate and cache queries using actual loaded project globals and target-framework identity. [type: bug] [source: restore-closeout] | S | items/msbuild-evaluation-project-context-cache.md |
 | `document-set-native-default-compile-policy` | Medium | — | **Preserve native Compile membership** — Re-derive and split source document-set policy using actual evaluated contexts and intended snapshot bytes. [type: bug] [source: restore-closeout] | L | items/document-set-native-default-compile-policy.md |
 | `workspace-explicit-reload-double-transition` | Medium | — | **Reload once per explicit request** — Preserve one native refresh and version transition when source is stale. [type: bug] [source: restore-closeout] | S | items/workspace-explicit-reload-double-transition.md |
+| `process-pipe-worker-probe-cleanup-ownership` | Medium | — | **Preserve isolated probe cleanup** — Retain primary failures and independently reap every old-scenario process and reader. [type: test-infrastructure] [source: restore-closeout] | S | items/process-pipe-worker-probe-cleanup-ownership.md |
 
 ## Low
 
