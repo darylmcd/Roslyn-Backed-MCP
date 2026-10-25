@@ -1,4 +1,6 @@
+using System.ComponentModel;
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 using RoslynMcp.Tests.Support;
 
 namespace RoslynMcp.Tests.Helpers;
@@ -6,6 +8,16 @@ namespace RoslynMcp.Tests.Helpers;
 [TestClass]
 public sealed class PwshScriptRunnerTests
 {
+    [TestMethod]
+    public void CaptureDiagnostic_ReportsFailureTypeAndNativeCodeWithoutExceptionMessage()
+    {
+        Assert.AreEqual("captured", PwshScriptRunner.CaptureDiagnostic(() => "captured"));
+        Assert.AreEqual("error:Win32Exception:6", PwshScriptRunner.CaptureDiagnostic(
+            () => throw new Win32Exception(6, "private-message-sentinel")));
+        Assert.AreEqual("error:InvalidOperationException", PwshScriptRunner.CaptureDiagnostic(
+            () => throw new InvalidOperationException("private-message-sentinel")));
+    }
+
     [TestMethod]
     [TestCategory("Process")]
     public async Task RunAsync_PreservesUtf32BomAndShortOutputAtEof()
@@ -190,6 +202,7 @@ public sealed class PwshScriptRunnerTests
                         timeout: TimeSpan.FromSeconds(10),
                         description: "timed-out process-tree fixture"));
                 StringAssert.Contains(exception.Message, "timed out");
+                AssertTimeoutDiagnostics(exception, inheritedPipes: false);
             }
 
             Assert.IsTrue(File.Exists(childPidPath), "The fixture did not start its child process.");
@@ -279,6 +292,7 @@ public sealed class PwshScriptRunnerTests
                 var exception = await Assert.ThrowsExactlyAsync<TimeoutException>(() => runTask.WaitAsync(TimeSpan.FromSeconds(45)));
                 Assert.IsTrue(runTask.IsCompleted, "The runner itself must finish before the test's safety timeout.");
                 StringAssert.Contains(exception.Message, useGitFixture ? "timed out after 30 seconds" : "inherited-pipe fixture timed out");
+                AssertTimeoutDiagnostics(exception, inheritedPipes: true);
             }
         }
         finally
@@ -315,6 +329,37 @@ public sealed class PwshScriptRunnerTests
         finally
         {
             TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
+    private static void AssertTimeoutDiagnostics(TimeoutException exception, bool inheritedPipes)
+    {
+        var message = exception.Message;
+        StringAssert.Matches(message, new Regex(@"elapsedMs=\d+; phaseElapsedMs=\d+"));
+        StringAssert.Contains(message, "timeoutRequested=True; callerCancellationRequested=False");
+        StringAssert.Matches(message, new Regex(@"sampleUtc=\d{4}-\d{2}-\d{2}T[^;]*Z"));
+        StringAssert.Matches(message, new Regex(@"processStartUtc=\d{4}-\d{2}-\d{2}T[^;]*Z"));
+        StringAssert.Contains(message, OperatingSystem.IsWindows()
+            ? "exitTimeSource=windows-kernel"
+            : "exitTimeSource=runtime-wait-observation");
+        if (message.Contains("processExited=True", StringComparison.Ordinal))
+            StringAssert.Matches(message, new Regex(@"processExitUtc=\d{4}-\d{2}-\d{2}T[^;]*Z"));
+        else
+            StringAssert.Contains(message, "processExitUtc=running");
+
+        if (inheritedPipes)
+        {
+            StringAssert.Contains(message, "phase=output drain");
+            StringAssert.Contains(message, "processExited=True");
+        }
+
+        foreach (var stream in new[] { "stdout", "stderr" })
+        {
+            var state = OperatingSystem.IsWindows()
+                ? inheritedPipes ? @"available; bytes=\d+" : @"(?:available; bytes=\d+|eof; error=109)"
+                : "unsupported";
+            StringAssert.Matches(message, new Regex(
+                stream + @"Pipe=\{sampleElapsedMs=\d+; state=" + state + @"\}"));
         }
     }
 
