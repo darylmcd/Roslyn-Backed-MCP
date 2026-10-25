@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-25T03:58:30Z
+**updated_at:** 2026-10-25T04:18:27Z
 
 ## Agent contract
 
@@ -174,6 +174,10 @@
 | `document-set-native-default-compile-policy` | Medium | — | **Preserve native Compile membership** — Re-derive and split source document-set policy using actual evaluated contexts and intended snapshot bytes. [type: bug] [source: restore-closeout] | L | items/document-set-native-default-compile-policy.md |
 | `workspace-explicit-reload-double-transition` | Medium | — | **Reload once per explicit request** — Preserve one native refresh and version transition when source is stale. [type: bug] [source: restore-closeout] | S | items/workspace-explicit-reload-double-transition.md |
 | `process-pipe-worker-probe-cleanup-ownership` | Medium | — | **Preserve isolated probe cleanup** — Retain primary failures and independently reap every old-scenario process and reader. [type: test-infrastructure] [source: restore-closeout] | S | items/process-pipe-worker-probe-cleanup-ownership.md |
+| `restore-drift-inactive-package-reference-conditions` | Medium | — | **Use active package expectations** — Compare restore drift against evaluated references and central versions under operation globals. [type: bug] [source: restore-closeout] | M | items/restore-drift-inactive-package-reference-conditions.md |
+| `fork-expiry-cross-process-active-work` | Medium | — | **Verify peer admission versus expiry** — Reproduce or disprove the cross-process check/admission race before choosing coordination. [type: bug] [source: restore-closeout] | M | items/fork-expiry-cross-process-active-work.md |
+| `workspace-provider-retirement-shutdown-order` | Medium | — | **Verify provider retirement ordering** — Prove or disprove gate teardown racing manager-owned retirement during actual provider disposal. [type: bug] [source: restore-closeout] | M | items/workspace-provider-retirement-shutdown-order.md |
+| `workspace-load-shutdown-publication-race` | Medium | — | **Fence load publication at shutdown** — Prevent a late load from publishing a session or watch after terminal shutdown. [type: bug] [source: restore-closeout] | S | items/workspace-load-shutdown-publication-race.md |
 
 ## Low
 
@@ -278,7 +282,7 @@
 | `unused-code-analyzer-dead-local-complexity` | Low | — | Separate dead-local discovery, owner resolution, and exclusion policy; reduce the three hotspots below CC10. [type: quality] [source: 2026-09-04 touched-code review] | S | items/unused-code-analyzer-dead-local-complexity.md |
 | `unused-code-analyzer-duplicate-helper-complexity` | Low | — | Separate duplicate-helper enumeration, semantic classification, and projection; reduce both hotspots below CC10. [type: quality] [source: 2026-09-04 touched-code review] | S | items/unused-code-analyzer-duplicate-helper-complexity.md |
 | `mcp002-synthetic-test-tool-noise` | Low | — | **Remove MCP002 noise from the synthetic error-wire tool fixture** — decide whether the analyzer should exclude nested test tools or the fixture should use the supported description shape without altering its wire contract. [type: diagnostics] [source: 2026-09-04 compile_check] | S | items/mcp002-synthetic-test-tool-noise.md |
-| `reserved-row-remediation-route-guidance` | Low | — | **Correct active Reserved-row and remediation-route guidance** — replace retired command and subagent wording with canonical backlog-remediate routing and scoped validation. [type: chore] [source: adjacent-cold-review] | S | items/reserved-row-remediation-route-guidance.md |
+| `reserved-row-remediation-route-guidance` | Low | — | **Correct active remediation routing** — Point current repo guidance at the installed thin prompt and adapter while preserving contributor reservations and history. [type: chore] [source: restore-closeout] | S | items/reserved-row-remediation-route-guidance.md |
 | `reconcile-backlog-vs-issues-canonical-update-guidance` | Low | — | **Use canonical backlog updates during issue reconciliation** — route row repairs through the v15 writer without weakening operator-controlled close behavior. [type: chore] [source: adjacent-cold-review] | S | items/reconcile-backlog-vs-issues-canonical-update-guidance.md |
 | `workspace-warm-repeat-cache-causal-regression` | Low | — | **Make repeat-warm coverage causal** — replace the brittle wall-clock speed ratio with the cold-to-cached state transition. [type: test] [source: adjacent-cold-review] | S | items/workspace-warm-repeat-cache-causal-regression.md |
 | `copilot-self-edit-mutation-policy-consistency` | Low | — | **Make self-edit mutation policy session-aware** — reconcile the blanket apply rule with the documented checkout-under-build boundary. [type: chore] [source: adjacent-cold-review] | S | items/copilot-self-edit-mutation-policy-consistency.md |
@@ -393,6 +397,9 @@
 | `change-signature-linked-document-callsite-entries` | Low | — | **Aggregate change-signature callsite entries by physical file** — linked documents yield duplicate-FilePath CallsiteUpdateDto entries; reuse CallsiteUpdateProjection and decide the totalCallsites rule. [type: bug] [source: path-identity review 20261020] | M | items/change-signature-linked-document-callsite-entries.md |
 | `rebase-persistence-routing-comment` | Low | — | Correct stale rebase/apply persistence routing comments against current symbols, including the nonexistent PersistDocumentSetChangesAsync pointer. | S | items/rebase-persistence-routing-comment.md |
 | `test-workspace-unwatch-barrier-timeout-assertion` | Low | fork-source-fixture-cleanup-failure-propagation | Report lifecycle watcher fixture barrier expiry explicitly and preserve owned cleanup after the timeout. | S | items/test-workspace-unwatch-barrier-timeout-assertion.md |
+| `workspace-cache-fixture-cleanup-failure-silent` | Low | — | **Surface cache fixture cleanup faults** — Reuse owned cleanup and preserve terminal failures instead of swallowing them. [type: test-infrastructure] [source: restore-closeout] | S | items/workspace-cache-fixture-cleanup-failure-silent.md |
+| `testbase-workspace-cap-comment-drift` | Low | — | **Correct fixture capacity commentary** — Align production-default and fixture lifetime statements with current owners. [type: chore] [source: restore-closeout] | S | items/testbase-workspace-cap-comment-drift.md |
+| `msbuild-metadata-evaluation-collection-disposal` | Low | — | **Dispose metadata evaluation collections** — Preserve native evaluation behavior while disposing each owned collection on every exit. [type: bug] [source: restore-closeout] | S | items/msbuild-metadata-evaluation-collection-disposal.md |
 
 ## Defer
 
