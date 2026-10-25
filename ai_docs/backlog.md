@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-25T14:08:56Z
+**updated_at:** 2026-10-25T14:58:13Z
 
 ## Agent contract
 
@@ -161,7 +161,6 @@
 | `msbuild-evaluation-project-context-cache` | Medium | — | **Bind MSBuild query context** — Evaluate and cache queries using actual loaded project globals and target-framework identity. [type: bug] [source: restore-closeout] | S | items/msbuild-evaluation-project-context-cache.md |
 | `process-pipe-worker-probe-cleanup-ownership` | Medium | — | **Preserve isolated probe cleanup** — Retain primary failures and independently reap every old-scenario process and reader. [type: test-infrastructure] [source: restore-closeout] | S | items/process-pipe-worker-probe-cleanup-ownership.md |
 | `restore-drift-inactive-package-reference-conditions` | Medium | — | **Use active package expectations** — Compare restore drift against evaluated references and central versions under operation globals. [type: bug] [source: restore-closeout] | M | items/restore-drift-inactive-package-reference-conditions.md |
-| `workspace-explicit-reload-double-transition` | Medium | — | **Reload once per explicit request** — Preserve one native refresh and version transition when source is stale. [type: bug] [source: restore-closeout] | S | items/workspace-explicit-reload-double-transition.md |
 | `workspace-load-shutdown-publication-race` | Medium | — | **Fence load publication at shutdown** — Prevent a late load from publishing a session or watch after terminal shutdown. [type: bug] [source: restore-closeout] | S | items/workspace-load-shutdown-publication-race.md |
 | `workspace-native-reference-global-context-mismatch` | Medium | — | **Preserve reference evaluation context** — Reconcile public workspace load with native reference globals and solution mappings. [type: bug] [source: restore-closeout] | M | items/workspace-native-reference-global-context-mismatch.md |
 | `workspace-provider-retirement-shutdown-order` | Medium | — | **Verify provider retirement ordering** — Prove or disprove gate teardown racing manager-owned retirement during actual provider disposal. [type: bug] [source: restore-closeout] | M | items/workspace-provider-retirement-shutdown-order.md |
@@ -383,11 +382,9 @@
 | `composite-apply-orchestrator-extract-atomic-file-writer` | Low | — | **Move AtomicFileWriter out of CompositeApplyOrchestrator.cs into its own file** — a 250-line P/Invoke type shares the orchestrator file. [type: refactor] [source: path-identity sweep 20261020] | S | items/composite-apply-orchestrator-extract-atomic-file-writer.md |
 | `test-fake-undo-duplicate-doubles` | Low | — | **Promote the duplicate private FakeUndo IUndoService test double to a shared helper** — two copies exist. [type: test-refactor] [source: path-identity sweep 20261020] | S | items/test-fake-undo-duplicate-doubles.md |
 | `change-signature-linked-document-callsite-entries` | Low | — | **Aggregate change-signature callsite entries by physical file** — linked documents yield duplicate-FilePath CallsiteUpdateDto entries; reuse CallsiteUpdateProjection and decide the totalCallsites rule. [type: bug] [source: path-identity review 20261020] | M | items/change-signature-linked-document-callsite-entries.md |
-| `rebase-persistence-routing-comment` | Low | — | Correct stale rebase/apply persistence routing comments against current symbols, including the nonexistent PersistDocumentSetChangesAsync pointer. | S | items/rebase-persistence-routing-comment.md |
-| `msbuild-metadata-evaluation-collection-disposal` | Low | — | **Dispose metadata evaluation collections** — Preserve native evaluation behavior while disposing each owned collection on every exit. [type: bug] [source: restore-closeout] | S | items/msbuild-metadata-evaluation-collection-disposal.md |
 | `test-workspace-unwatch-barrier-timeout-assertion` | Low | fork-source-fixture-cleanup-failure-propagation | Report lifecycle watcher fixture barrier expiry explicitly and preserve owned cleanup after the timeout. | S | items/test-workspace-unwatch-barrier-timeout-assertion.md |
-| `testbase-workspace-cap-comment-drift` | Low | — | **Correct fixture capacity commentary** — Align production-default and fixture lifetime statements with current owners. [type: chore] [source: restore-closeout] | S | items/testbase-workspace-cap-comment-drift.md |
 | `workspace-cache-fixture-cleanup-failure-silent` | Low | — | **Surface cache fixture cleanup faults** — Reuse owned cleanup and preserve terminal failures instead of swallowing them. [type: test-infrastructure] [source: restore-closeout] | S | items/workspace-cache-fixture-cleanup-failure-silent.md |
+| `msbuild-evaluation-service-import-order` | Low | — | **Normalize MSBuild evaluation service imports** — remove its single tracked IMPORTS allowance without changing bindings or unrelated baseline entries. [type: quality] [source: metadata-ownership-review-20261025] | M | items/msbuild-evaluation-service-import-order.md |
 
 ## Defer
 
