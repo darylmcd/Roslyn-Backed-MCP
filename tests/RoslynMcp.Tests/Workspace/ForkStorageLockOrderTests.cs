@@ -19,9 +19,11 @@ public sealed class ForkStorageLockOrderTests
     public TestContext TestContext { get; set; } = null!;
 
     [TestMethod]
-    [DataRow(false)]
-    [DataRow(true)]
-    public async Task ActualReload_CanFinishBeforeCopyOrDuringForkLoad(bool afterCopy)
+    [DataRow(false, true)]
+    [DataRow(true, true)]
+    [DataRow(false, false)]
+    [DataRow(true, false)]
+    public async Task ActualReload_CanFinishBeforeCopyOrDuringForkLoad(bool afterCopy, bool changeSource)
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(2));
         using var forkCancellation = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token);
@@ -29,16 +31,21 @@ public sealed class ForkStorageLockOrderTests
         var source = Path.Combine(root, "pool", "20000101T000000000Z-source");
         var project = Path.Combine(source, "Entry.csproj");
         Directory.CreateDirectory(source);
-        File.WriteAllText(project, "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net10.0</TargetFramework><EnableDefaultItems>false</EnableDefaultItems><NuGetAudit>false</NuGetAudit></PropertyGroup></Project>");
-        var commands = new DotnetCommandRunner();
+        File.WriteAllText(project, "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net10.0</TargetFramework><EnableDefaultItems>false</EnableDefaultItems><NuGetAudit>false</NuGetAudit></PropertyGroup><ItemGroup><Compile Include=\"Current.cs\" /></ItemGroup></Project>");
+        var currentPath = Path.Combine(source, "Current.cs");
+        const string initialText = "public class Current { public int Value => 1; }";
+        const string reloadedText = "public class Current { public int Value => 2; }";
+        File.WriteAllText(currentPath, initialText);
+        var commands = new CountingRunner(new DotnetCommandRunner());
         var restore = await commands.RunAsync(source, project, ["restore", project, "--nologo", "-nr:false"], timeout.Token);
         Assert.IsTrue(restore.Succeeded, restore.StdOut + restore.StdErr);
         ForkAdmissionMaterial.Install(root, source, [project], timeout.Token);
         var loader = new PausedLoader();
+        var fileWatcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance);
         ObservedGate? gate = null;
         var store = new PreviewStore();
         await using var manager = new WorkspaceManager(NullLogger<WorkspaceManager>.Instance, store,
-            new FileWatcherService(NullLogger<FileWatcherService>.Instance),
+            fileWatcher,
             new WorkspaceManagerOptions { MaxConcurrentWorkspaces = 4 }, cacheStore: null, sessionLoader: loader,
             evictionGate: new Lazy<IWorkspaceExecutionGate>(() => gate!));
         using var actualGate = new WorkspaceExecutionGate(new ExecutionGateOptions(), manager);
@@ -50,6 +57,7 @@ public sealed class ForkStorageLockOrderTests
         services.AddSingleton<IWorkspaceManager>(manager);
         services.AddSingleton<IWorkspaceExecutionGate>(gate);
         services.AddSingleton<IPreviewStore>(store);
+        services.AddSingleton<IDotnetCommandRunner>(commands);
         services.AddSingleton<ForkStoragePathValidator>(async (id, path, ct) =>
         {
             var canonical = await ForkStorageFixtureBoundary.ValidateAsync(id, path, ct);
@@ -68,7 +76,11 @@ public sealed class ForkStorageLockOrderTests
         {
             var loaded = await manager.LoadAsync(project, timeout.Token);
             var solution = manager.GetCurrentSolution(loaded.WorkspaceId);
+            Assert.AreEqual(initialText, (await solution.Projects.Single().Documents.Single(document => document.Name == "Current.cs").GetTextAsync(timeout.Token)).ToString());
             var token = store.Store(loaded.WorkspaceId, solution, solution, loaded.WorkspaceVersion, "ordering", false, PreviewKind.Unspecified);
+            var expectedPreview = WorkspaceForkGraphReplayTests.CapturePreviewEntry(store, token);
+            var undoService = provider.GetRequiredService<IUndoService>();
+            var expectedUndo = undoService.GetLastOperation(loaded.WorkspaceId);
             loader.PausePath = afterCopy ? null : project;
             loader.PauseNewPath = afterCopy;
             gate.SourceId = loaded.WorkspaceId;
@@ -78,6 +90,13 @@ public sealed class ForkStorageLockOrderTests
                 await loader.Entered.Task.WaitAsync(timeout.Token);
             else
                 await loader.Authorized.Task.WaitAsync(timeout.Token);
+            if (changeSource)
+            {
+                File.WriteAllText(currentPath, reloadedText);
+                fileWatcher.MarkStale(loaded.WorkspaceId, StaleReasons.ExternalEdit);
+            }
+            Assert.AreEqual(changeSource, manager.IsStale(loaded.WorkspaceId));
+            var expectedBytes = Directory.GetFiles(source, "*", SearchOption.AllDirectories).ToDictionary(path => path, File.ReadAllBytes);
             reload = WorkspaceTools.ReloadWorkspace(gate, manager, provider.GetRequiredService<IGatedCommandExecutor>(),
                 new ValidationServiceOptions(), loaded.WorkspaceId, autoRestore: false, ct: timeout.Token);
             if (!afterCopy)
@@ -90,7 +109,14 @@ public sealed class ForkStorageLockOrderTests
             }
             // The post-copy loader remains paused here: no source/ancestor physical
             // lock may extend across fork loading or its later LRU/validation work.
-            await reload.WaitAsync(TimeSpan.FromSeconds(15), timeout.Token);
+            var reloadJson = await reload.WaitAsync(TimeSpan.FromSeconds(15), timeout.Token);
+            using var reloadResponse = System.Text.Json.JsonDocument.Parse(reloadJson);
+            Assert.AreEqual(loaded.WorkspaceVersion + 1, reloadResponse.RootElement.GetProperty("workspaceVersion").GetInt32());
+            var currentSolution = manager.GetCurrentSolution(loaded.WorkspaceId);
+            var currentVersion = manager.GetCurrentVersion(loaded.WorkspaceId);
+            var currentSnapshot = manager.GetStatus(loaded.WorkspaceId).SnapshotToken;
+            Assert.AreEqual(loaded.WorkspaceVersion + 1, currentVersion);
+            Assert.AreEqual(changeSource ? reloadedText : initialText, (await currentSolution.Projects.Single().Documents.Single(document => document.Name == "Current.cs").GetTextAsync(timeout.Token)).ToString());
             if (afterCopy)
             {
                 Assert.IsFalse(apply.IsCompleted);
@@ -101,10 +127,43 @@ public sealed class ForkStorageLockOrderTests
             else
             {
                 Assert.IsTrue(manager.GetCurrentVersion(loaded.WorkspaceId) > loaded.WorkspaceVersion);
-                await Assert.ThrowsAsync<PreviewTokenStaleException>(() => apply);
-                Assert.AreEqual(1, Directory.GetDirectories(Path.GetDirectoryName(source)!).Length,
-                    "A stale preview must be refused before creating any fork destination.");
+                result = await apply.WaitAsync(timeout.Token);
+                Assert.IsTrue(result.Success);
             }
+            var expectedForkText = !afterCopy && changeSource ? reloadedText : initialText;
+            Assert.AreEqual(expectedForkText, File.ReadAllText(Path.Combine(result!.ForkPath, "Current.cs")));
+            var forkSolution = manager.GetCurrentSolution(result.ForkWorkspaceId!);
+            Assert.AreEqual(expectedForkText, (await forkSolution.Projects.Single().Documents.Single(document => document.Name == "Current.cs").GetTextAsync(timeout.Token)).ToString());
+            Assert.AreSame(currentSolution, manager.GetCurrentSolution(loaded.WorkspaceId));
+            Assert.AreEqual(currentVersion, manager.GetCurrentVersion(loaded.WorkspaceId));
+            Assert.AreEqual(currentSnapshot, manager.GetStatus(loaded.WorkspaceId).SnapshotToken);
+            Assert.AreEqual(expectedPreview, WorkspaceForkGraphReplayTests.CapturePreviewEntry(store, token));
+            Assert.AreEqual(expectedUndo, undoService.GetLastOperation(loaded.WorkspaceId));
+            foreach (var (path, bytes) in expectedBytes) CollectionAssert.AreEqual(bytes, File.ReadAllBytes(path), path);
+            var secondReloadJson = await WorkspaceTools.ReloadWorkspace(gate, manager, provider.GetRequiredService<IGatedCommandExecutor>(),
+                new ValidationServiceOptions(), loaded.WorkspaceId, autoRestore: false, ct: timeout.Token);
+            using var secondReloadResponse = System.Text.Json.JsonDocument.Parse(secondReloadJson);
+            Assert.AreEqual(currentVersion + 1, secondReloadResponse.RootElement.GetProperty("workspaceVersion").GetInt32());
+            Assert.AreEqual(currentVersion + 1, manager.GetCurrentVersion(loaded.WorkspaceId));
+            Assert.IsNull(store.Retrieve(token));
+            var pool = Path.GetDirectoryName(source)!;
+            var destinations = Directory.GetDirectories(pool, "*", SearchOption.AllDirectories).Order(StringComparer.Ordinal).ToArray();
+            var poolBytes = Directory.GetFiles(pool, "*", SearchOption.AllDirectories).ToDictionary(path => path, File.ReadAllBytes);
+            var expiredSourceSolution = manager.GetCurrentSolution(loaded.WorkspaceId);
+            var expiredSourceSnapshot = manager.GetStatus(loaded.WorkspaceId).SnapshotToken;
+            var runnerCalls = commands.Calls;
+            var expired = await Assert.ThrowsAsync<PreviewTokenStaleException>(() => provider.GetRequiredService<IWorkspaceForkApplyService>().ApplyAsync(
+                loaded.WorkspaceId, token, "keep", false, null, "expired", timeout.Token));
+            Assert.AreEqual(token, expired.PreviewToken);
+            StringAssert.Contains(expired.Message, "invalid, expired, or stale");
+            CollectionAssert.AreEqual(destinations, Directory.GetDirectories(pool, "*", SearchOption.AllDirectories).Order(StringComparer.Ordinal).ToArray());
+            CollectionAssert.AreEquivalent(poolBytes.Keys.ToArray(), Directory.GetFiles(pool, "*", SearchOption.AllDirectories));
+            foreach (var (path, bytes) in poolBytes) CollectionAssert.AreEqual(bytes, File.ReadAllBytes(path), path);
+            Assert.AreEqual(runnerCalls, commands.Calls);
+            Assert.AreSame(expiredSourceSolution, manager.GetCurrentSolution(loaded.WorkspaceId));
+            Assert.AreEqual(expiredSourceSnapshot, manager.GetStatus(loaded.WorkspaceId).SnapshotToken);
+            Assert.AreEqual(currentVersion + 1, manager.GetCurrentVersion(loaded.WorkspaceId));
+            Assert.AreEqual(expectedUndo, undoService.GetLastOperation(loaded.WorkspaceId));
         }
         finally
         {
@@ -122,6 +181,16 @@ public sealed class ForkStorageLockOrderTests
             await provider.DisposeAsync();
             await manager.DisposeAsync();
             TestFixtureFileSystem.DeleteDirectoryIfExists(root);
+        }
+    }
+
+    private sealed class CountingRunner(IDotnetCommandRunner inner) : IDotnetCommandRunner
+    {
+        internal int Calls { get; private set; }
+        public Task<CommandExecutionDto> RunAsync(string workingDirectory, string targetPath, IReadOnlyList<string> arguments, CancellationToken ct)
+        {
+            Calls++;
+            return inner.RunAsync(workingDirectory, targetPath, arguments, ct);
         }
     }
 

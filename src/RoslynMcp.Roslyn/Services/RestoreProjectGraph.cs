@@ -357,13 +357,13 @@ internal sealed class RestoreProjectGraph
                     ? MapSolutionConfiguration(property.Value, projectPath) : Value(property.Value), StringComparer.OrdinalIgnoreCase);
 
             string Value(string value) => Path.IsPathRooted(value) ? projectPath(value) : value;
-         }).GroupBy(node => ContextKey(node.Path, node.Properties), StringComparer.Ordinal).Select(group =>
-        {
-            var first = group.First();
-            if (group.Any(node => !node.ReferenceItems.SequenceEqual(first.ReferenceItems) || !node.CompileItems.SequenceEqual(first.CompileItems)))
-                throw new PublicInvalidOperationException("Duplicate evaluated contexts have contradictory physical inventories.");
-            return first with { References = group.SelectMany(node => node.References).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray() };
-        }).ToArray();
+        }).GroupBy(node => ContextKey(node.Path, node.Properties), StringComparer.Ordinal).Select(group =>
+       {
+           var first = group.First();
+           if (group.Any(node => !node.ReferenceItems.SequenceEqual(first.ReferenceItems) || !node.CompileItems.SequenceEqual(first.CompileItems)))
+               throw new PublicInvalidOperationException("Duplicate evaluated contexts have contradictory physical inventories.");
+           return first with { References = group.SelectMany(node => node.References).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray() };
+       }).ToArray();
     }
 
     private static string ItemPath(ProjectItemInstance item, string directory) => Path.GetFullPath(item.EvaluatedInclude, directory);

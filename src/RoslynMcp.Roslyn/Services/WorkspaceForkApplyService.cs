@@ -205,121 +205,121 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService, IA
 
         try
         {
-        var ancestry = ForkAdmissionMaterial.FindContainingOwned(source.LoadedPath);
-        var selectedPool = SelectForkPool(source.Root, ancestry);
-        var pool = await _validateStoragePath(workspaceId, selectedPool, phaseToken).ConfigureAwait(false);
-        var poolIdentity = PhysicalPathResolver.Resolve(pool);
-        var sourceIdentity = PhysicalPathResolver.Resolve(source.LoadedPath);
-        if (ForkAdmissionMaterial.FindContainingOwned(pool).Count != 0)
-            throw new PublicInvalidOperationException("The authorized fork storage pool must be outside retained fork ownership. Choose an independent authorized pool before retrying.");
-        var candidate = await AuthorizeForkDestinationAsync(workspaceId, pool, source, forkName, phaseToken).ConfigureAwait(false);
-        // Reload enters the source writer before taking admission ownership. Only
-        // the independent pool may be held before that writer, or the two paths cycle.
-        using var poolOwnership = await AcquireForkApplyLockAsync(pool, phaseToken).ConfigureAwait(false);
-        string? forkPath = null;
-        try
-        {
-            if (!FileSystemPath.Comparer.Equals(poolIdentity, PhysicalPathResolver.Resolve(pool)) ||
-                ForkAdmissionMaterial.FindContainingOwned(pool).Count != 0)
-                throw new PublicInvalidOperationException("The fork storage pool changed. Recreate the fork before retrying.");
-            // Capture and replay atomically; release physical source ownership before
-            // releasing its writer, and before restore/load/LRU/validation can run.
-            var preparedFork = await _workspaceExecutionGate.RunWriteAsync(workspaceId, async c =>
+            var ancestry = ForkAdmissionMaterial.FindContainingOwned(source.LoadedPath);
+            var selectedPool = SelectForkPool(source.Root, ancestry);
+            var pool = await _validateStoragePath(workspaceId, selectedPool, phaseToken).ConfigureAwait(false);
+            var poolIdentity = PhysicalPathResolver.Resolve(pool);
+            var sourceIdentity = PhysicalPathResolver.Resolve(source.LoadedPath);
+            if (ForkAdmissionMaterial.FindContainingOwned(pool).Count != 0)
+                throw new PublicInvalidOperationException("The authorized fork storage pool must be outside retained fork ownership. Choose an independent authorized pool before retrying.");
+            var candidate = await AuthorizeForkDestinationAsync(workspaceId, pool, source, forkName, phaseToken).ConfigureAwait(false);
+            // Reload enters the source writer before taking admission ownership. Only
+            // the independent pool may be held before that writer, or the two paths cycle.
+            using var poolOwnership = await AcquireForkApplyLockAsync(pool, phaseToken).ConfigureAwait(false);
+            string? forkPath = null;
+            try
             {
-                var current = GetRequiredSourceContext(workspaceId);
-                if (!FileSystemPath.Comparer.Equals(sourceIdentity, PhysicalPathResolver.Resolve(current.LoadedPath)) ||
-                    !FileSystemPath.Comparer.Equals(PhysicalPathResolver.Resolve(source.Root), PhysicalPathResolver.Resolve(current.Root)))
-                    throw new PublicInvalidOperationException("The fork source changed. Recreate the preview before retrying.");
-                var ownership = await AcquireForkApplyLocksAsync(
-                    ancestry.Select(owner => owner.ForkRoot).Append(source.Root)
-                        .Where(root => !FileSystemPath.Comparer.Equals(PhysicalPathResolver.Resolve(root), poolIdentity)), c).ConfigureAwait(false);
-                try
+                if (!FileSystemPath.Comparer.Equals(poolIdentity, PhysicalPathResolver.Resolve(pool)) ||
+                    ForkAdmissionMaterial.FindContainingOwned(pool).Count != 0)
+                    throw new PublicInvalidOperationException("The fork storage pool changed. Recreate the fork before retrying.");
+                // Capture and replay atomically; release physical source ownership before
+                // releasing its writer, and before restore/load/LRU/validation can run.
+                var preparedFork = await _workspaceExecutionGate.RunWriteAsync(workspaceId, async c =>
                 {
-                    ForkAdmissionMaterial.RevalidateContainingOwned(source.LoadedPath, ancestry);
-                    if (!FileSystemPath.Comparer.Equals(poolIdentity, PhysicalPathResolver.Resolve(pool)) ||
-                        !FileSystemPath.Comparer.Equals(selectedPool, SelectForkPool(current.Root, ancestry)) ||
-                        ForkAdmissionMaterial.FindContainingOwned(pool).Count != 0)
-                        throw new PublicInvalidOperationException("The fork storage pool changed. Recreate the fork before retrying.");
-                    foreach (var owner in ancestry)
-                        if (ForkPathAdmission.Contains(owner.ForkRoot, candidate))
-                            throw new PublicInvalidOperationException("The retained fork storage must be outside its source-owned ancestry. Recreate the fork before retrying.");
-                    // Reauthorize every collision candidate under pool ownership.
-                    var ordinal = 0;
-                    var initialCandidate = candidate;
-                    while (Directory.Exists(candidate) || File.Exists(candidate))
-                        candidate = await AuthorizeExactDestinationAsync(workspaceId, pool,
-                            initialCandidate + "-" + (++ordinal).ToString(CultureInfo.InvariantCulture), source, c).ConfigureAwait(false);
-                    var preview = RetrieveValidatedPreview(previewToken, workspaceId);
-                    RestoreProjectGraph.ValidateSnapshot(preview.OriginalSolution, preview.ModifiedSolution, current.Root);
-                    var currentSolution = _workspaceManager.GetCurrentSolution(workspaceId);
-                    RestoreProjectGraph.ValidateCurrentBindings(preview.OriginalSolution, preview.ModifiedSolution, currentSolution, current.Root);
-                    var intended = await RefactoringService.RebaseModifiedSolutionOntoCurrentAsync(
-                        preview.OriginalSolution, preview.ModifiedSolution, currentSolution, c).ConfigureAwait(false);
-                    var graph = await RestoreProjectGraph.PrepareAsync(current.LoadedPath, current.Root,
-                        currentSolution, intended, RemainingRestoreBudget, c).ConfigureAwait(false);
-                    Directory.CreateDirectory(pool);
-                    SweepExpiredForks(pool, ResolveForkTtlHours(), DateTimeOffset.UtcNow, _reserveStorageDeletion, _logger);
-                    var path = candidate;
-                    var exclusions = GetCopyExclusions(source.Root, pool, path);
-                    Directory.CreateDirectory(path);
-                    forkPath = path;
-                    CopyDirectory(source.Root, path, exclusions, c);
-                    var appliedFiles = await graph.ReplayAsync(current.Root, path, c).ConfigureAwait(false);
-                    if (ancestry.LastOrDefault() is { } previousAdmission)
-                        ForkAdmissionMaterial.StripPreviousImports(path, previousAdmission, c);
-                    return (Path: path, AppliedFiles: appliedFiles, Graph: graph);
-                }
-                finally { ReleaseForkApplyLocks(ownership); }
-            }, phaseToken, applyStalenessPolicy: false).ConfigureAwait(false);
-            var forkLoadedPath = MapSourcePathToFork(source.LoadedPath, source.Root, preparedFork.Path);
-            var inventory = preparedFork.Graph.Verify(forkLoadedPath, source.Root, preparedFork.Path, RemainingRestoreBudget, phaseToken);
-            var invocations = preparedFork.Graph.MapInvocations(source.Root, preparedFork.Path);
-            await RestoreForkAsync(forkLoadedPath, source.Root, preparedFork.Path, inventory, invocations,
-                RemainingRestoreBudget, phaseToken).ConfigureAwait(false);
-            phase.CancelAfter(Timeout.InfiniteTimeSpan);
-            var forkStatus = await _workspaceManager
-                .LoadAsync(forkLoadedPath, EvictPolicy.Lru, ct)
-                .ConfigureAwait(false);
-            // Own the loaded session before validation/tests can throw or be cancelled.
-            forkWorkspaceId = forkStatus.WorkspaceId;
-            var validationState = await ValidateForkAsync(
-                forkWorkspaceId,
-                preparedFork.AppliedFiles,
-                runTests,
-                testFilter,
-                ct).ConfigureAwait(false);
-            var success = validationState.Success;
-            retained = ShouldRetainFork(normalizedRetention, success);
+                    var current = GetRequiredSourceContext(workspaceId);
+                    if (!FileSystemPath.Comparer.Equals(sourceIdentity, PhysicalPathResolver.Resolve(current.LoadedPath)) ||
+                        !FileSystemPath.Comparer.Equals(PhysicalPathResolver.Resolve(source.Root), PhysicalPathResolver.Resolve(current.Root)))
+                        throw new PublicInvalidOperationException("The fork source changed. Recreate the preview before retrying.");
+                    var ownership = await AcquireForkApplyLocksAsync(
+                        ancestry.Select(owner => owner.ForkRoot).Append(source.Root)
+                            .Where(root => !FileSystemPath.Comparer.Equals(PhysicalPathResolver.Resolve(root), poolIdentity)), c).ConfigureAwait(false);
+                    try
+                    {
+                        ForkAdmissionMaterial.RevalidateContainingOwned(source.LoadedPath, ancestry);
+                        if (!FileSystemPath.Comparer.Equals(poolIdentity, PhysicalPathResolver.Resolve(pool)) ||
+                            !FileSystemPath.Comparer.Equals(selectedPool, SelectForkPool(current.Root, ancestry)) ||
+                            ForkAdmissionMaterial.FindContainingOwned(pool).Count != 0)
+                            throw new PublicInvalidOperationException("The fork storage pool changed. Recreate the fork before retrying.");
+                        foreach (var owner in ancestry)
+                            if (ForkPathAdmission.Contains(owner.ForkRoot, candidate))
+                                throw new PublicInvalidOperationException("The retained fork storage must be outside its source-owned ancestry. Recreate the fork before retrying.");
+                        // Reauthorize every collision candidate under pool ownership.
+                        var ordinal = 0;
+                        var initialCandidate = candidate;
+                        while (Directory.Exists(candidate) || File.Exists(candidate))
+                            candidate = await AuthorizeExactDestinationAsync(workspaceId, pool,
+                                initialCandidate + "-" + (++ordinal).ToString(CultureInfo.InvariantCulture), source, c).ConfigureAwait(false);
+                        var preview = RetrieveValidatedPreview(previewToken, workspaceId);
+                        RestoreProjectGraph.ValidateSnapshot(preview.OriginalSolution, preview.ModifiedSolution, current.Root);
+                        var currentSolution = _workspaceManager.GetCurrentSolution(workspaceId);
+                        RestoreProjectGraph.ValidateCurrentBindings(preview.OriginalSolution, preview.ModifiedSolution, currentSolution, current.Root);
+                        var intended = await RefactoringService.RebaseModifiedSolutionOntoCurrentAsync(
+                            preview.OriginalSolution, preview.ModifiedSolution, currentSolution, c).ConfigureAwait(false);
+                        var graph = await RestoreProjectGraph.PrepareAsync(current.LoadedPath, current.Root,
+                            currentSolution, intended, RemainingRestoreBudget, c).ConfigureAwait(false);
+                        Directory.CreateDirectory(pool);
+                        SweepExpiredForks(pool, ResolveForkTtlHours(), DateTimeOffset.UtcNow, _reserveStorageDeletion, _logger);
+                        var path = candidate;
+                        var exclusions = GetCopyExclusions(source.Root, pool, path);
+                        Directory.CreateDirectory(path);
+                        forkPath = path;
+                        CopyDirectory(source.Root, path, exclusions, c);
+                        var appliedFiles = await graph.ReplayAsync(current.Root, path, c).ConfigureAwait(false);
+                        if (ancestry.LastOrDefault() is { } previousAdmission)
+                            ForkAdmissionMaterial.StripPreviousImports(path, previousAdmission, c);
+                        return (Path: path, AppliedFiles: appliedFiles, Graph: graph);
+                    }
+                    finally { ReleaseForkApplyLocks(ownership); }
+                }, phaseToken, applyStalenessPolicy: false).ConfigureAwait(false);
+                var forkLoadedPath = MapSourcePathToFork(source.LoadedPath, source.Root, preparedFork.Path);
+                var inventory = preparedFork.Graph.Verify(forkLoadedPath, source.Root, preparedFork.Path, RemainingRestoreBudget, phaseToken);
+                var invocations = preparedFork.Graph.MapInvocations(source.Root, preparedFork.Path);
+                await RestoreForkAsync(forkLoadedPath, source.Root, preparedFork.Path, inventory, invocations,
+                    RemainingRestoreBudget, phaseToken).ConfigureAwait(false);
+                phase.CancelAfter(Timeout.InfiniteTimeSpan);
+                var forkStatus = await _workspaceManager
+                    .LoadAsync(forkLoadedPath, EvictPolicy.Lru, ct)
+                    .ConfigureAwait(false);
+                // Own the loaded session before validation/tests can throw or be cancelled.
+                forkWorkspaceId = forkStatus.WorkspaceId;
+                var validationState = await ValidateForkAsync(
+                    forkWorkspaceId,
+                    preparedFork.AppliedFiles,
+                    runTests,
+                    testFilter,
+                    ct).ConfigureAwait(false);
+                var success = validationState.Success;
+                retained = ShouldRetainFork(normalizedRetention, success);
 
-            if (!retained)
-            {
-                CleanupFork(forkWorkspaceId, preparedFork.Path, cleanupWarnings, ct);
-                forkWorkspaceId = null;
-                if (cleanupWarnings.Count > 0)
+                if (!retained)
                 {
-                    success = false;
+                    CleanupFork(forkWorkspaceId, preparedFork.Path, cleanupWarnings, ct);
+                    forkWorkspaceId = null;
+                    if (cleanupWarnings.Count > 0)
+                    {
+                        success = false;
+                    }
                 }
-            }
 
-            return new WorkspaceForkApplyResultDto(
-                success,
-                forkWorkspaceId,
-                preparedFork.Path,
-                retained,
-                validationState.AppliedFiles,
-                validationState.Validation,
-                validationState.ExplicitTestRun,
-                cleanupWarnings);
-        }
-        catch
-        {
-            if (!retained && forkPath is not null)
+                return new WorkspaceForkApplyResultDto(
+                    success,
+                    forkWorkspaceId,
+                    preparedFork.Path,
+                    retained,
+                    validationState.AppliedFiles,
+                    validationState.Validation,
+                    validationState.ExplicitTestRun,
+                    cleanupWarnings);
+            }
+            catch
             {
-                CleanupFork(forkWorkspaceId, forkPath, cleanupWarnings, CancellationToken.None);
-            }
+                if (!retained && forkPath is not null)
+                {
+                    CleanupFork(forkWorkspaceId, forkPath, cleanupWarnings, CancellationToken.None);
+                }
 
-            throw;
-        }
+                throw;
+            }
         }
         catch (OperationCanceledException exception) when (!ct.IsCancellationRequested && phase.IsCancellationRequested)
         {

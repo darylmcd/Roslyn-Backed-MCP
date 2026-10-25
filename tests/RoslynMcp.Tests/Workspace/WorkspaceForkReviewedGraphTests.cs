@@ -382,8 +382,11 @@ public sealed class WorkspaceForkReviewedGraphTests : OwnedRefactoringTestBase
         var runner = new UnexpectedEffectRunner(Services.DotnetCommandRunner, TestContext);
         await using var service = CreateForkService(runner);
         Exception? refusal = null;
-        try { await ValidationBundleTools.WorkspaceForkApply(service, workspace.WorkspaceId, token,
-            "drop-always", false, null, "binding-owner-refusal", ct); }
+        try
+        {
+            await ValidationBundleTools.WorkspaceForkApply(service, workspace.WorkspaceId, token,
+            "drop-always", false, null, "binding-owner-refusal", ct);
+        }
         catch (Exception ex) when (ex is IPublicMessageException) { refusal = ex; }
         Assert.IsFalse(Directory.Exists(Path.Combine(workspace.RootPath, ".roslynmcp", "forks")),
             "Contradictory or missing reviewed intent must refuse before pool creation/copy.");
@@ -619,6 +622,169 @@ public sealed class WorkspaceForkReviewedGraphTests : OwnedRefactoringTestBase
             CollectionAssert.AreEqual(sourceBytes, File.ReadAllBytes(before.FilePath!));
         }
         finally { if (result.ForkWorkspaceId is { } id) Services.WorkspaceManager.Close(id); }
+    }
+
+    [TestMethod]
+    [DataRow(false, false)]
+    [DataRow(true, false)]
+    [DataRow(false, true)]
+    public async Task PublicCreate_NewNativeHiddenClosure_PreservesContextualRecordedRoots(bool missingHiddenAssets, bool multipleFrameworks)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+        await using var workspace = await CreateFixtureAsync(timeout.Token);
+        File.WriteAllText(workspace.SolutionPath, "<Solution><Project Path=\"Source/Source.csproj\" /></Solution>");
+        var sourceProject = Path.Combine(workspace.RootPath, "Source", "Source.csproj");
+        var hiddenDirectory = Path.Combine(workspace.RootPath, "Hidden");
+        Directory.CreateDirectory(hiddenDirectory);
+        var hiddenProject = Path.Combine(hiddenDirectory, "Hidden.csproj");
+        var external = workspace.RootPath + "-external-context";
+        var hiddenRoot = workspace.RootPath + "-hidden-blue-cache";
+        var staleRoot = workspace.RootPath + "-hidden-default-cache";
+        _packageRoots.AddRange([external, hiddenRoot, staleRoot]);
+        Directory.CreateDirectory(external);
+        File.WriteAllText(Path.Combine(hiddenDirectory, "Directory.Build.props"),
+            "<Project><PropertyGroup Condition=\"'$(Flavor)' == 'Blue'\"><MSBuildProjectExtensionsPath>obj/blue/</MSBuildProjectExtensionsPath></PropertyGroup></Project>");
+        File.WriteAllText(hiddenProject, "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><" + (multipleFrameworks ? "TargetFrameworks" : "TargetFramework")
+            + ">" + (multipleFrameworks ? "net10.0;net8.0" : "net10.0") + "</" + (multipleFrameworks ? "TargetFrameworks" : "TargetFramework")
+            + "><EnableDefaultItems>false</EnableDefaultItems><NuGetAudit>false</NuGetAudit></PropertyGroup></Project>");
+        foreach (var blue in new[] { false, true })
+        {
+            var arguments = new List<string> { "restore", hiddenProject, "--nologo", "--packages", blue ? hiddenRoot : staleRoot, "--no-dependencies" };
+            if (blue) { arguments.Add("-p:Flavor=Blue"); arguments.Add("-p:ExternalInput=" + external); }
+            var restored = await Services.DotnetCommandRunner.RunAsync(workspace.RootPath, hiddenProject, arguments, timeout.Token);
+            Assert.IsTrue(restored.Succeeded, restored.StdOut + restored.StdErr);
+        }
+        var blueProperties = new Dictionary<string, string>(MsBuildMetadataHelper.DefaultGlobalProperties, StringComparer.OrdinalIgnoreCase)
+        {
+            ["Flavor"] = "Blue",
+            ["ExternalInput"] = external,
+        };
+        Assert.IsTrue(FileSystemPath.Comparer.Equals(hiddenRoot, RestoreStalenessDetector.TryReadRestorePackagesPath(hiddenProject, blueProperties)));
+        var activeAssets = Path.Combine(hiddenDirectory, "obj", "blue", "project.assets.json");
+        Assert.IsTrue(File.Exists(activeAssets));
+        Assert.IsTrue(FileSystemPath.Comparer.Equals(staleRoot, RestoreStalenessDetector.TryReadRestorePackagesPath(hiddenProject, MsBuildMetadataHelper.DefaultGlobalProperties)));
+        if (missingHiddenAssets)
+        {
+            File.Delete(activeAssets);
+            Assert.IsNull(RestoreStalenessDetector.TryReadRestorePackagesPath(hiddenProject, blueProperties), "Missing ACTIVE assets cannot inherit the stale default root.");
+        }
+        var xml = XDocument.Load(sourceProject);
+        xml.Root!.Add(new XElement("ItemGroup",
+            new XElement("ProjectReference", new XAttribute("Include", "../Hidden/Hidden.csproj"),
+                new XAttribute("ReferenceOutputAssembly", "false"), new XAttribute("Condition", "Exists('Nested/Marker.cs')"),
+                new XElement("AdditionalProperties", "Flavor=Blue;ExternalInput=" + external)),
+            new XElement("Compile", new XAttribute("Update", "@(Compile)"),
+                new XElement("Probe", new XAttribute("Condition", "'%(Filename)' == 'Marker'"), "native-marker"))));
+        xml.Save(sourceProject);
+        await Services.WorkspaceManager.ReloadAsync(workspace.WorkspaceId, timeout.Token);
+        var original = Services.WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        Assert.AreEqual(1, original.ProjectIds.Count, "Hidden.csproj must be absent from the original Roslyn inventory.");
+        var originalClosure = ReadNativeClosure(workspace.SolutionPath, timeout.Token);
+        Assert.AreEqual(1, originalClosure.Length, "Hidden must be absent from the original native closure too.");
+        var marker = Path.Combine(workspace.RootPath, "Source", "Nested", "Marker.cs");
+        var preview = await Services.FileOperationService.PreviewCreateFileAsync(workspace.WorkspaceId,
+            new CreateFileDto("Source", marker, "namespace Domain; public class Marker { public string Text => \"caf\u00e9\"; }\n"), timeout.Token);
+        Assert.IsTrue(preview.Changes.Count > 0);
+        Assert.IsFalse(Directory.Exists(Path.GetDirectoryName(marker)));
+        var version = Services.WorkspaceManager.GetCurrentVersion(workspace.WorkspaceId);
+        var snapshot = Services.WorkspaceManager.GetStatus(workspace.WorkspaceId).SnapshotToken;
+        var entry = WorkspaceForkGraphReplayTests.CapturePreviewEntry(Services.PreviewStore, preview.PreviewToken);
+        var undo = Services.UndoService.GetLastOperation(workspace.WorkspaceId);
+        var beforeBytes = Directory.GetFiles(workspace.RootPath, "*", SearchOption.AllDirectories).ToDictionary(path => path, File.ReadAllBytes);
+        var sourceRoot = RestoreStalenessDetector.TryReadRestorePackagesPath(sourceProject, MsBuildMetadataHelper.DefaultGlobalProperties);
+        Assert.IsNotNull(sourceRoot);
+        var runner = new HiddenClosureRunner(Services.DotnetCommandRunner, sourceRoot, missingHiddenAssets ? null : hiddenRoot,
+            external, multipleFrameworks, TestContext);
+        await using var service = CreateForkService(runner);
+        var json = await ValidationBundleTools.WorkspaceForkApply(service, workspace.WorkspaceId, preview.PreviewToken,
+            "keep", false, null, "new-hidden-closure", timeout.Token);
+        var result = JsonSerializer.Deserialize<WorkspaceForkApplyResultDto>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
+        try
+        {
+            Assert.IsTrue(result.Success, json);
+            CollectionAssert.AreEqual(new[] { "Hidden", "Source" }, runner.Targets.ToArray());
+            Assert.AreSame(original, Services.WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
+            Assert.AreEqual(version, Services.WorkspaceManager.GetCurrentVersion(workspace.WorkspaceId));
+            Assert.AreEqual(snapshot, Services.WorkspaceManager.GetStatus(workspace.WorkspaceId).SnapshotToken);
+            Assert.AreEqual(entry, WorkspaceForkGraphReplayTests.CapturePreviewEntry(Services.PreviewStore, preview.PreviewToken));
+            Assert.AreEqual(undo, Services.UndoService.GetLastOperation(workspace.WorkspaceId));
+            foreach (var (path, bytes) in beforeBytes) CollectionAssert.AreEqual(bytes, File.ReadAllBytes(path), path);
+            Assert.IsFalse(File.Exists(marker));
+            var forkMarker = Path.Combine(result.ForkPath, "Source", "Nested", "Marker.cs");
+            var intendedText = await Services.PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution.Projects
+                .SelectMany(project => project.Documents).Single(document => FileSystemPath.Comparer.Equals(document.FilePath, marker)).GetTextAsync(timeout.Token);
+            var encoding = SourceFileEncoding.FromSourceText(intendedText.Encoding);
+            var intendedBytes = encoding.GetPreamble().Concat(encoding.GetBytes(intendedText.ToString())).ToArray();
+            CollectionAssert.AreEqual(intendedBytes, File.ReadAllBytes(forkMarker));
+            var appliedJson = await FileOperationTools.ApplyCreateFile(Services.WorkspaceExecutionGate,
+                Services.RefactoringService, Services.PreviewStore, preview.PreviewToken, timeout.Token);
+            using var applied = JsonDocument.Parse(appliedJson);
+            Assert.IsTrue(applied.RootElement.GetProperty("success").GetBoolean(), appliedJson);
+            CollectionAssert.AreEqual(intendedBytes, File.ReadAllBytes(marker));
+            var sourceClosure = ReadNativeClosure(workspace.SolutionPath, timeout.Token);
+            Assert.IsTrue(sourceClosure.Any(node => FileSystemPath.Comparer.Equals(node.Path, hiddenProject)));
+            Assert.IsTrue(await Services.UndoService.RevertAsync(workspace.WorkspaceId, timeout.Token));
+            Assert.IsFalse(File.Exists(marker));
+            Assert.AreEqual(1, ReadNativeClosure(workspace.SolutionPath, timeout.Token).Length);
+            foreach (var (path, bytes) in beforeBytes) CollectionAssert.AreEqual(bytes, File.ReadAllBytes(path), "Source and recorded assets after undo: " + path);
+        }
+        finally { if (result.ForkWorkspaceId is { } id) Services.WorkspaceManager.Close(id); }
+    }
+
+    private sealed record NativeNode(string Path, string Framework, string Flavor, string ExternalInput, string[] References, string MarkerProbe);
+
+    private static NativeNode[] ReadNativeClosure(string entry, CancellationToken ct) => RestoreInvocationPlanner.EvaluateGraph(
+        entry, () => TimeSpan.FromMinutes(1), ct, RestoreInvocationPlanner.CreateOrdinaryInstance, (graph, _) => graph.ProjectNodes.Select(node =>
+            new NativeNode(node.ProjectInstance.FullPath, node.ProjectInstance.GetPropertyValue("TargetFramework"),
+                node.ProjectInstance.GetPropertyValue("Flavor"), node.ProjectInstance.GetPropertyValue("ExternalInput"),
+                node.ProjectReferences.Select(reference => reference.ProjectInstance.FullPath).ToArray(),
+                node.ProjectInstance.GetItems("Compile").SingleOrDefault(item => Path.GetFileName(item.EvaluatedInclude) == "Marker.cs")?.GetMetadataValue("Probe") ?? "")).ToArray());
+
+    private sealed class HiddenClosureRunner(IDotnetCommandRunner inner, string sourceRoot, string? hiddenRoot,
+        string external, bool multipleFrameworks, TestContext context) : IDotnetCommandRunner
+    {
+        internal List<string> Targets { get; } = [];
+
+        public async Task<CommandExecutionDto> RunAsync(string workingDirectory, string targetPath, IReadOnlyList<string> arguments, CancellationToken ct)
+        {
+            var target = Path.GetFileNameWithoutExtension(targetPath);
+            context.WriteLine("HIDDEN_CLOSURE_ARGV=" + JsonSerializer.Serialize(arguments));
+            if (Targets.Count == 0) Assert.AreEqual(0, Directory.GetFiles(workingDirectory, "project.assets.json", SearchOption.AllDirectories).Length);
+            var graph = ReadNativeClosure(Path.Combine(workingDirectory, "Reviewed.slnx"), ct);
+            var hidden = graph.Where(node => Path.GetFileName(node.Path) == "Hidden.csproj").ToArray();
+            CollectionAssert.AreEquivalent(multipleFrameworks ? new[] { "", "net10.0", "net8.0" } : new[] { "net10.0" },
+                hidden.Select(node => node.Framework).Distinct(StringComparer.Ordinal).ToArray(), "Full native hidden context inventory must survive fork replay.");
+            Assert.IsTrue(hidden.All(node => node.Flavor == "Blue" && node.ExternalInput == external));
+            var source = graph.Single(node => Path.GetFileName(node.Path) == "Source.csproj");
+            Assert.IsTrue(source.References.Any(path => Path.GetFileName(path) == "Hidden.csproj"));
+            Assert.AreEqual("native-marker", source.MarkerProbe);
+            CollectionAssert.Contains(arguments.ToList(), "--no-dependencies");
+            var expectedRoot = target == "Hidden" ? hiddenRoot : sourceRoot;
+            var index = arguments.ToList().IndexOf("--packages");
+            if (expectedRoot is null) Assert.AreEqual(-1, index);
+            else { Assert.IsTrue(index >= 0); Assert.IsTrue(FileSystemPath.Comparer.Equals(expectedRoot, arguments[index + 1])); }
+            if (target == "Source") CollectionAssert.AreEqual(new[] { "Hidden" }, Targets.ToArray(), "Dependency restore must precede Source.");
+            else
+            {
+                Assert.AreEqual("Hidden", target);
+                Assert.AreEqual(0, Targets.Count);
+                CollectionAssert.Contains(arguments.ToList(), "-p:Flavor=Blue");
+                Assert.IsTrue(arguments.Any(argument => argument.StartsWith("-p:ExternalInput=", StringComparison.Ordinal)
+                    && ProjectCollection.Unescape(argument[17..]) == external));
+                Assert.IsFalse(arguments.Any(argument => argument.StartsWith("-p:TargetFramework=", StringComparison.Ordinal)), "Restore the complete hidden outer assets once.");
+            }
+            Targets.Add(target);
+            var result = await inner.RunAsync(workingDirectory, targetPath, arguments, ct);
+            Assert.IsTrue(result.Succeeded, result.StdOut + result.StdErr);
+            if (target == "Hidden")
+            {
+                using var assets = JsonDocument.Parse(File.ReadAllText(Path.Combine(workingDirectory, "Hidden", "obj", "blue", "project.assets.json")));
+                Assert.AreEqual(multipleFrameworks ? 2 : 1, assets.RootElement.GetProperty("project").GetProperty("frameworks").EnumerateObject().Count());
+                if (hiddenRoot is not null) Assert.IsTrue(FileSystemPath.Comparer.Equals(hiddenRoot,
+                    assets.RootElement.GetProperty("project").GetProperty("restore").GetProperty("packagesPath").GetString()));
+            }
+            return result;
+        }
     }
 
     private async Task<IsolatedWorkspaceTestBase.IsolatedWorkspaceScope> CreateFixtureAsync(CancellationToken ct, bool mixedRoots = false)
