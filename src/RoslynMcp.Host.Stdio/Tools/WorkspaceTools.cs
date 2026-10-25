@@ -133,7 +133,7 @@ public static class WorkspaceTools
                 var status = await workspace.ReloadAsync(workspaceId, innerCt).ConfigureAwait(false);
                 var restoreOutcome = await RestoreAndReloadIfRequiredAsync(commandExecutor, validationOptions, workspace, status, autoRestore, logger, innerCt).ConfigureAwait(false);
                 return SerializeWorkspaceLoadResult(restoreOutcome.Status, verbose, prewarmResult: null, restoreOutcome.FailureReason);
-            }, outerCt), ct);
+            }, outerCt, applyStalenessPolicy: false), ct);
     }
 
     /// <remarks>
