@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-25T20:01:50Z
+**updated_at:** 2026-10-25T21:03:52Z
 
 ## Agent contract
 
@@ -50,7 +50,6 @@
 |----|-----|------|----|------|--------|
 | `logging-default-sink-disabled-stderr-swallowed` | High | logging-retention-destroys-repro-evidence | **Enable the bounded file sink by default for installed users** — ROSLYNMCP_OBSERVABILITY_SINK defaults to `disabled` and the plugin mcp.json never sets it, so an MCP host that swallows stderr leaves no evidence of a first failure. [type: quality] [source: logging-audit 20260930-1340] | M | items/logging-default-sink-disabled-stderr-swallowed.md |
 | `persistent-composite-workspace-identity-not-portable` | High | — | Resolve persisted composite tokens to the correct receiving workspace and source snapshot before claim or mutation. [type: bug] [source: token-lifecycle-independence-revet] | L | items/persistent-composite-workspace-identity-not-portable.md |
-| `hosted-dotnet-acquisition-origin-access-denied` | High | — | BLOCKED: Upstream SDK acquisition returns HTTP409; prove acquisition recovery and restore required hosted checks on the reviewed metadata head. | S | items/hosted-dotnet-acquisition-origin-access-denied.md |
 | `cross-project-interface-reference-binding` | High | — | Bind generated interface uses to the generated symbol | M | items/cross-project-interface-reference-binding.md |
 | `cross-project-interface-signature-dependencies` | High | — | Validate emitted interface signature dependencies | M | items/cross-project-interface-signature-dependencies.md |
 | `file-move-namespace-text-encoding` | High | — | Preserve encoding during moved namespace rewrites | S | items/file-move-namespace-text-encoding.md |
@@ -164,7 +163,6 @@
 | `undo-sequence-claim-exclusivity` | Medium | undo-explicit-empty-capture | Refuse restoration after losing the by-sequence undo claim; prove one winning restore with deterministic concurrent-claim coverage. | S | items/undo-sequence-claim-exclusivity.md |
 | `undo-reload-failure-reports-success` | Medium | undo-sequence-claim-exclusivity | Make failed undo workspace reload/version restoration report failure and retain retryable capture/history across both restore paths. | S | items/undo-reload-failure-reports-success.md |
 | `restore-fork-reviewed-project-graph` | Medium | fork-evaluated-source-isolation | Capture source roots, rebase and replay reviewed physical effects, then verify native fork graph before restore; independent open remainder of the delivered source restore fix. | L | items/restore-fork-reviewed-project-graph.md |
-| `project-metadata-parser-broad-exception-fallbacks` | Medium | hosted-dotnet-acquisition-origin-access-denied | Narrow three metadata-parser catch-all fallbacks to expected evaluation/read/parse failures and propagate unexpected exceptions. | S | items/project-metadata-parser-broad-exception-fallbacks.md |
 | `document-set-native-default-compile-policy` | Medium | — | **Preserve native Compile membership** — Re-derive and split source document-set policy using actual evaluated contexts and intended snapshot bytes. [type: bug] [source: restore-closeout] | L | items/document-set-native-default-compile-policy.md |
 | `fork-expiry-cross-process-active-work` | Medium | — | **Verify peer admission versus expiry** — Reproduce or disprove the cross-process check/admission race before choosing coordination. [type: bug] [source: restore-closeout] | M | items/fork-expiry-cross-process-active-work.md |
 | `fork-source-fixture-cleanup-failure-propagation` | Medium | — | Preserve lifecycle fixture primary and cleanup failures while independently observing every owned task and disposal owner. | S | items/fork-source-fixture-cleanup-failure-propagation.md |
