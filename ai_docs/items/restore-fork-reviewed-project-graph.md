@@ -1,6 +1,6 @@
 # restore-fork-reviewed-project-graph — Replay and restore the reviewed fork graph
 
-**row:** `restore-fork-reviewed-project-graph` · **pri:** `Medium` · **size:** `L` · **deps:** `fork-evaluated-source-isolation,document-set-project-file-undo-capture`
+**row:** `restore-fork-reviewed-project-graph` · **pri:** `Medium` · **size:** `L` · **deps:** `fork-evaluated-source-isolation`
 
 ## Anchors
 
@@ -26,7 +26,7 @@
 - File counts guide reviewability; the obsolete four-file cap does not justify a partial repair.
 - Reuse existing rebase, renderer and native evaluator seams. No copied service implementation, new graph walker, owned BuildHost, compiler certificate or directory lease machinery is authorized.
 - Landed source-isolation and document-encoding protection remains authoritative. Recheck all future dependencies against tests; parent closure is not evidence this row or its future prerequisites are satisfied.
-- Retain the existing source-isolation and physical-undo dependency IDs as delivered history; both implementations are merged. No dependency on the parent restore row is added.
+- Delivered prerequisites: `fork-evaluated-source-isolation` and `document-set-project-file-undo-capture`; both implementations are merged. No dependency on the parent restore row is added.
 
 ## Evidence
 

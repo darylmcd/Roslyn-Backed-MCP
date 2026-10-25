@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-25T05:32:46Z
+**updated_at:** 2026-10-25T14:08:56Z
 
 ## Agent contract
 
@@ -152,7 +152,7 @@
 | `undo-audit-commit-reuses-completed-capture` | Medium | undo-explicit-empty-capture | Bind audit promotion to its owned pending undo capture; prevent capture-free records from reusing completed or failed operations. | S | items/undo-audit-commit-reuses-completed-capture.md |
 | `undo-sequence-claim-exclusivity` | Medium | undo-explicit-empty-capture | Refuse restoration after losing the by-sequence undo claim; prove one winning restore with deterministic concurrent-claim coverage. | S | items/undo-sequence-claim-exclusivity.md |
 | `undo-reload-failure-reports-success` | Medium | undo-sequence-claim-exclusivity | Make failed undo workspace reload/version restoration report failure and retain retryable capture/history across both restore paths. | S | items/undo-reload-failure-reports-success.md |
-| `restore-fork-reviewed-project-graph` | Medium | fork-evaluated-source-isolation,document-set-project-file-undo-capture | Capture source roots, rebase and replay reviewed physical effects, then verify native fork graph before restore; independent open remainder of the delivered source restore fix. | L | items/restore-fork-reviewed-project-graph.md |
+| `restore-fork-reviewed-project-graph` | Medium | fork-evaluated-source-isolation | Capture source roots, rebase and replay reviewed physical effects, then verify native fork graph before restore; independent open remainder of the delivered source restore fix. | L | items/restore-fork-reviewed-project-graph.md |
 | `project-metadata-parser-broad-exception-fallbacks` | Medium | — | Narrow three metadata-parser catch-all fallbacks to expected evaluation/read/parse failures and propagate unexpected exceptions. | S | items/project-metadata-parser-broad-exception-fallbacks.md |
 | `document-set-native-default-compile-policy` | Medium | — | **Preserve native Compile membership** — Re-derive and split source document-set policy using actual evaluated contexts and intended snapshot bytes. [type: bug] [source: restore-closeout] | L | items/document-set-native-default-compile-policy.md |
 | `fork-expiry-cross-process-active-work` | Medium | — | **Verify peer admission versus expiry** — Reproduce or disprove the cross-process check/admission race before choosing coordination. [type: bug] [source: restore-closeout] | M | items/fork-expiry-cross-process-active-work.md |
@@ -165,6 +165,7 @@
 | `workspace-load-shutdown-publication-race` | Medium | — | **Fence load publication at shutdown** — Prevent a late load from publishing a session or watch after terminal shutdown. [type: bug] [source: restore-closeout] | S | items/workspace-load-shutdown-publication-race.md |
 | `workspace-native-reference-global-context-mismatch` | Medium | — | **Preserve reference evaluation context** — Reconcile public workspace load with native reference globals and solution mappings. [type: bug] [source: restore-closeout] | M | items/workspace-native-reference-global-context-mismatch.md |
 | `workspace-provider-retirement-shutdown-order` | Medium | — | **Verify provider retirement ordering** — Prove or disprove gate teardown racing manager-owned retirement during actual provider disposal. [type: bug] [source: restore-closeout] | M | items/workspace-provider-retirement-shutdown-order.md |
+| `preview-valid-member-replacement-invalidoperation` | Medium | — | **Restore valid member replacement previews** — reproduce ready-workspace InvalidOperation for a valid existing-field/body edit batch and preserve preview/apply safety. [type: bug] [source: consumer-20261024] | M | items/preview-valid-member-replacement-invalidoperation.md |
 
 ## Low
 
