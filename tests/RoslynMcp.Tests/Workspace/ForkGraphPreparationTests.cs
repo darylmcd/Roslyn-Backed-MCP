@@ -167,6 +167,7 @@ public sealed class ForkGraphPreparationTests : IsolatedWorkspaceTestBase
         new XDocument(new XElement("Project", new XAttribute("Sdk", "Microsoft.NET.Sdk"),
             new XElement("PropertyGroup", new XElement("TargetFramework", "net10.0")))).Save(fixture.Entry);
         RestoreInvocationPlanner.EvaluateGraph(fixture.Entry, () => TimeSpan.FromMinutes(1), CancellationToken.None,
+            RestoreInvocationPlanner.CreateOrdinaryInstance,
             (graph, _) =>
             {
                 var project = graph.ProjectNodes.Single().ProjectInstance;
@@ -228,6 +229,7 @@ public sealed class ForkGraphPreparationTests : IsolatedWorkspaceTestBase
             </Project>
             """);
         RestoreInvocationPlanner.EvaluateGraph(parent, () => TimeSpan.FromMinutes(1), CancellationToken.None,
+            RestoreInvocationPlanner.CreateOrdinaryInstance,
             (graph, _) =>
             {
                 var children = graph.ProjectNodes.Select(node => node.ProjectInstance)

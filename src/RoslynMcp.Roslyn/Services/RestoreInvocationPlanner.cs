@@ -32,9 +32,14 @@ internal static class RestoreInvocationPlanner
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static ImmutableArray<Invocation> CaptureInitialized(string targetPath, Func<TimeSpan> remainingBudget, CancellationToken ct)
-        => EvaluateGraph(targetPath, remainingBudget, ct, (graph, phaseToken) => PlanInvocations(targetPath, graph, remainingBudget, phaseToken));
+        => EvaluateGraph(targetPath, remainingBudget, ct, CreateOrdinaryInstance,
+            (graph, phaseToken) => PlanInvocations(targetPath, graph, remainingBudget, phaseToken));
+
+    internal static ProjectInstance CreateOrdinaryInstance(string path, Dictionary<string, string> properties, ProjectCollection collection)
+        => new(path, properties, toolsVersion: null, collection);
 
     internal static T EvaluateGraph<T>(string targetPath, Func<TimeSpan> remainingBudget, CancellationToken ct,
+        Func<string, Dictionary<string, string>, ProjectCollection, ProjectInstance> createInstance,
         Func<ProjectGraph, CancellationToken, T> inspect)
     {
         ct.ThrowIfCancellationRequested();
@@ -43,7 +48,7 @@ internal static class RestoreInvocationPlanner
         MsBuildInitializer.EnsureInitialized();
         try
         {
-            return CaptureCore(targetPath, remainingBudget, phase.Token, inspect);
+            return CaptureCore(targetPath, remainingBudget, phase.Token, createInstance, inspect);
         }
         catch (Exception) when (ct.IsCancellationRequested)
         {
@@ -71,6 +76,7 @@ internal static class RestoreInvocationPlanner
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static T CaptureCore<T>(string targetPath, Func<TimeSpan> remainingBudget, CancellationToken ct,
+        Func<string, Dictionary<string, string>, ProjectCollection, ProjectInstance> createInstance,
         Func<ProjectGraph, CancellationToken, T> inspect)
     {
         using var collection = new ProjectCollection();
@@ -127,11 +133,11 @@ internal static class RestoreInvocationPlanner
             CheckBudget();
             var commandProperties = new Dictionary<string, string>(properties, StringComparer.OrdinalIgnoreCase);
             if (commandProperties.TryGetValue("IsGraphBuild", out var value) && value == graphMarker) commandProperties.Remove("IsGraphBuild");
-            return new ProjectInstance(path, commandProperties, toolsVersion: null, projectCollection);
+            return createInstance(path, commandProperties, projectCollection);
         }
     }
 
-    private static ImmutableArray<Invocation> PlanInvocations(string targetPath, ProjectGraph graph,
+    internal static ImmutableArray<Invocation> PlanInvocations(string targetPath, ProjectGraph graph,
         Func<TimeSpan> remainingBudget, CancellationToken ct)
     {
         var units = new Dictionary<Context, RestoreUnit>(ContextComparer.Instance);

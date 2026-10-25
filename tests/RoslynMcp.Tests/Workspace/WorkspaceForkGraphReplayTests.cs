@@ -427,6 +427,7 @@ public sealed class WorkspaceForkGraphReplayTests : IsolatedWorkspaceTestBase
 
     internal static RoslynMcp.Roslyn.Services.PreviewStore.PreviewEntry CapturePreviewEntry(IPreviewStore store, string token)
     {
+        while (store is Helpers.TrackingPreviewStore tracking) store = tracking.Inner;
         // The public tuple omits creation time, provenance and redemption ceiling.
         // Invoke the store's protected lookup to compare the complete authority without changing it.
         var lookup = typeof(BoundedStore<RoslynMcp.Roslyn.Services.PreviewStore.PreviewEntry>)

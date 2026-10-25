@@ -834,7 +834,7 @@ public sealed class RefactoringService : IRefactoringService
     /// and removed documents are mirrored into the rebased solution; the caller's existing
     /// document-set-change code path (PersistDocumentSetChangesAsync) then handles I/O.
     /// </summary>
-    private static async Task<Solution> RebaseModifiedSolutionOntoCurrentAsync(
+    internal static async Task<Solution> RebaseModifiedSolutionOntoCurrentAsync(
         Solution originalSolution,
         Solution modifiedSolution,
         Solution currentSolution,
@@ -844,7 +844,7 @@ public sealed class RefactoringService : IRefactoringService
         // legacy in-lineage path is still optimal.
         if (ReferenceEquals(originalSolution, currentSolution))
         {
-            return modifiedSolution;
+            return await ResolveIntendedDocumentEncodingsAsync(currentSolution, modifiedSolution, ct).ConfigureAwait(false);
         }
 
         var previewChanges = modifiedSolution.GetChanges(originalSolution);
@@ -872,7 +872,24 @@ public sealed class RefactoringService : IRefactoringService
                 projectChange);
         }
 
-        return rebased;
+        return await ResolveIntendedDocumentEncodingsAsync(currentSolution, rebased, ct).ConfigureAwait(false);
+    }
+
+    private static async Task<Solution> ResolveIntendedDocumentEncodingsAsync(Solution current, Solution intended, CancellationToken ct)
+    {
+        foreach (var change in intended.GetChanges(current).GetProjectChanges())
+        {
+            foreach (var id in change.GetAddedDocuments().Concat(change.GetChangedDocuments()))
+            {
+                ct.ThrowIfCancellationRequested();
+                var document = intended.GetDocument(id) ?? throw InvalidOperationErrors.Internal("An intended document disappeared during encoding preparation.");
+                var text = await document.GetTextAsync(ct).ConfigureAwait(false);
+                var encoding = SourceFileEncoding.FromSourceText(text.Encoding);
+                if (!ReferenceEquals(text.Encoding, encoding))
+                    intended = intended.WithDocumentText(id, SourceText.From(text.ToString(), encoding, text.ChecksumAlgorithm), PreservationMode.PreserveIdentity);
+            }
+        }
+        return intended;
     }
 
     private static IReadOnlyDictionary<string, DocumentId> BuildCurrentDocumentPathIndex(

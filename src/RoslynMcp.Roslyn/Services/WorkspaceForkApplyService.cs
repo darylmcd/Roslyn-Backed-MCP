@@ -192,21 +192,30 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService, IA
         string? testFilter, string? forkName, CancellationToken ct)
     {
         var source = GetRequiredSourceContext(workspaceId);
+        var restoreElapsed = System.Diagnostics.Stopwatch.StartNew();
+        var restoreBudget = TimeSpan.FromMinutes(ResolveForkRestoreTimeoutMinutes());
+        TimeSpan RemainingRestoreBudget() => RestoreInvocationPlanner.RemainingBudget(restoreBudget,
+            restoreElapsed.Elapsed, TimeSpan.Zero, "The workspace fork preparation and restore phase exceeded its time budget.");
+        using var phase = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        phase.CancelAfter(RemainingRestoreBudget());
+        var phaseToken = phase.Token;
         string? forkWorkspaceId = null;
         var cleanupWarnings = new List<string>();
         var retained = false;
 
+        try
+        {
         var ancestry = ForkAdmissionMaterial.FindContainingOwned(source.LoadedPath);
         var selectedPool = SelectForkPool(source.Root, ancestry);
-        var pool = await _validateStoragePath(workspaceId, selectedPool, ct).ConfigureAwait(false);
+        var pool = await _validateStoragePath(workspaceId, selectedPool, phaseToken).ConfigureAwait(false);
         var poolIdentity = PhysicalPathResolver.Resolve(pool);
         var sourceIdentity = PhysicalPathResolver.Resolve(source.LoadedPath);
         if (ForkAdmissionMaterial.FindContainingOwned(pool).Count != 0)
             throw new PublicInvalidOperationException("The authorized fork storage pool must be outside retained fork ownership. Choose an independent authorized pool before retrying.");
-        var candidate = await AuthorizeForkDestinationAsync(workspaceId, pool, source, forkName, ct).ConfigureAwait(false);
+        var candidate = await AuthorizeForkDestinationAsync(workspaceId, pool, source, forkName, phaseToken).ConfigureAwait(false);
         // Reload enters the source writer before taking admission ownership. Only
         // the independent pool may be held before that writer, or the two paths cycle.
-        using var poolOwnership = await AcquireForkApplyLockAsync(pool, ct).ConfigureAwait(false);
+        using var poolOwnership = await AcquireForkApplyLockAsync(pool, phaseToken).ConfigureAwait(false);
         string? forkPath = null;
         try
         {
@@ -241,6 +250,13 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService, IA
                         candidate = await AuthorizeExactDestinationAsync(workspaceId, pool,
                             initialCandidate + "-" + (++ordinal).ToString(CultureInfo.InvariantCulture), source, c).ConfigureAwait(false);
                     var preview = RetrieveValidatedPreview(previewToken, workspaceId);
+                    RestoreProjectGraph.ValidateSnapshot(preview.OriginalSolution, preview.ModifiedSolution, current.Root);
+                    var currentSolution = _workspaceManager.GetCurrentSolution(workspaceId);
+                    RestoreProjectGraph.ValidateCurrentBindings(preview.OriginalSolution, preview.ModifiedSolution, currentSolution, current.Root);
+                    var intended = await RefactoringService.RebaseModifiedSolutionOntoCurrentAsync(
+                        preview.OriginalSolution, preview.ModifiedSolution, currentSolution, c).ConfigureAwait(false);
+                    var graph = await RestoreProjectGraph.PrepareAsync(current.LoadedPath, current.Root,
+                        currentSolution, intended, RemainingRestoreBudget, c).ConfigureAwait(false);
                     Directory.CreateDirectory(pool);
                     SweepExpiredForks(pool, ResolveForkTtlHours(), DateTimeOffset.UtcNow, _reserveStorageDeletion, _logger);
                     var path = candidate;
@@ -248,17 +264,19 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService, IA
                     Directory.CreateDirectory(path);
                     forkPath = path;
                     CopyDirectory(source.Root, path, exclusions, c);
-                    var appliedFiles = await ReplayPreviewIntoForkAsync(
-                        preview.OriginalSolution, preview.ModifiedSolution, source.Root, path, c)
-                        .ConfigureAwait(false);
+                    var appliedFiles = await graph.ReplayAsync(current.Root, path, c).ConfigureAwait(false);
                     if (ancestry.LastOrDefault() is { } previousAdmission)
                         ForkAdmissionMaterial.StripPreviousImports(path, previousAdmission, c);
-                    return (Path: path, AppliedFiles: appliedFiles);
+                    return (Path: path, AppliedFiles: appliedFiles, Graph: graph);
                 }
                 finally { ReleaseForkApplyLocks(ownership); }
-            }, ct, applyStalenessPolicy: false).ConfigureAwait(false);
+            }, phaseToken, applyStalenessPolicy: false).ConfigureAwait(false);
             var forkLoadedPath = MapSourcePathToFork(source.LoadedPath, source.Root, preparedFork.Path);
-            await RestoreForkAsync(forkLoadedPath, source.Root, preparedFork.Path, ct).ConfigureAwait(false);
+            var inventory = preparedFork.Graph.Verify(forkLoadedPath, source.Root, preparedFork.Path, RemainingRestoreBudget, phaseToken);
+            var invocations = preparedFork.Graph.MapInvocations(source.Root, preparedFork.Path);
+            await RestoreForkAsync(forkLoadedPath, source.Root, preparedFork.Path, inventory, invocations,
+                RemainingRestoreBudget, phaseToken).ConfigureAwait(false);
+            phase.CancelAfter(Timeout.InfiniteTimeSpan);
             var forkStatus = await _workspaceManager
                 .LoadAsync(forkLoadedPath, EvictPolicy.Lru, ct)
                 .ConfigureAwait(false);
@@ -302,6 +320,11 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService, IA
 
             throw;
         }
+        }
+        catch (OperationCanceledException exception) when (!ct.IsCancellationRequested && phase.IsCancellationRequested)
+        {
+            throw new TimeoutException("The workspace fork preparation and restore phase exceeded its time budget.", exception);
+        }
     }
 
     private ValidatedPreview RetrieveValidatedPreview(string previewToken, string workspaceId)
@@ -320,10 +343,6 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService, IA
                 "previewToken belongs to a different workspace. Use its original workspaceId or create a new preview in the requested workspace.",
                 nameof(previewToken));
         }
-
-        if (entry.Value.WorkspaceVersion != _workspaceManager.GetCurrentVersion(workspaceId))
-            throw new PreviewTokenStaleException(previewToken,
-                "The fork preview was created for an earlier source workspace version. Recreate the preview before retrying.");
 
         if (entry.Value.DiffTruncated)
         {
@@ -767,36 +786,36 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService, IA
         return false;
     }
 
-    internal async Task RestoreForkAsync(string forkLoadedPath, string sourceRoot, string forkRoot, CancellationToken ct)
+    internal async Task RestoreForkAsync(string forkLoadedPath, string sourceRoot, string forkRoot,
+        IReadOnlyList<string> inventory, IReadOnlyList<RestoreInvocationPlanner.Invocation> invocations,
+        Func<TimeSpan> remainingBudget, CancellationToken ct)
     {
         var workingDirectory = Path.GetDirectoryName(forkLoadedPath)
             ?? throw InvalidOperationErrors.Internal(
                 $"Could not resolve working directory for fork '{forkLoadedPath}'.");
-        var timeoutMinutes = ResolveForkRestoreTimeoutMinutes();
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeout.CancelAfter(TimeSpan.FromMinutes(timeoutMinutes));
-        var elapsed = System.Diagnostics.Stopwatch.StartNew();
-
-        CommandExecutionDto execution;
-        try
+        CommandExecutionDto? execution = null;
         {
-            var inventory = ForkGraphPreparation.Validate(forkLoadedPath, sourceRoot, forkRoot,
-                () => RestoreInvocationPlanner.RemainingBudget(TimeSpan.FromMinutes(timeoutMinutes), elapsed.Elapsed,
-                    TimeSpan.Zero, "The workspace fork restore phase exceeded its time budget."), timeout.Token);
-            var config = ForkAdmissionMaterial.Install(sourceRoot, forkRoot, inventory, timeout.Token);
-            timeout.Token.ThrowIfCancellationRequested();
-            var remaining = RestoreInvocationPlanner.RemainingBudget(TimeSpan.FromMinutes(timeoutMinutes), elapsed.Elapsed,
-                TimeSpan.Zero, "The workspace fork restore phase exceeded its time budget.");
-            var admissionExecution = await ForkAdmissionExecution.CreateAsync(config, DateTimeOffset.UtcNow + remaining, timeout.Token).ConfigureAwait(false);
+            var config = ForkAdmissionMaterial.Install(sourceRoot, forkRoot, inventory, ct);
+            ct.ThrowIfCancellationRequested();
+            var remaining = remainingBudget();
+            var admissionExecution = await ForkAdmissionExecution.CreateAsync(config, DateTimeOffset.UtcNow + remaining, ct).ConfigureAwait(false);
             try
             {
-                execution = await _commandRunner.RunAsync(
-                    workingDirectory,
-                    forkLoadedPath,
-                    admissionExecution.Arguments(["restore", forkLoadedPath, "--nologo"]),
-                    earlyKillPatterns: null,
-                    executablePath: ResolveForkDotnetPath(),
-                    ct: timeout.Token).ConfigureAwait(false);
+                foreach (var invocation in invocations)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    remainingBudget();
+                    execution = await _commandRunner.RunAsync(
+                        workingDirectory,
+                        invocation.TargetPath,
+                        admissionExecution.Arguments(invocation.Arguments),
+                        earlyKillPatterns: null,
+                        executablePath: ResolveForkDotnetPath(),
+                        ct: ct).ConfigureAwait(false);
+                    admissionExecution.ThrowIfRefused();
+                    if (!execution.Succeeded) break;
+                }
+                if (execution is null) throw InvalidOperationErrors.Internal("The verified fork restore plan is empty.");
                 admissionExecution.Complete();
                 admissionExecution.ThrowIfRefused();
             }
@@ -808,12 +827,6 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService, IA
             if (admissionExecution.CleanupWarning is not null)
                 throw InvalidOperationErrors.Internal(admissionExecution.CleanupWarning);
         }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested && timeout.IsCancellationRequested)
-        {
-            throw new TimeoutException(
-                $"dotnet restore for workspace fork exceeded the {timeoutMinutes.ToString(CultureInfo.InvariantCulture)} minute timeout.");
-        }
-
         if (!execution.Succeeded)
         {
             var detail = BuildRestoreFailureSummary(execution);
@@ -843,87 +856,6 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService, IA
         return redacted.Length <= MaxRestoreDiagnosticLength
             ? redacted
             : $"{redacted[..(MaxRestoreDiagnosticLength - 1)]}…";
-    }
-
-    private static async Task<IReadOnlyList<string>> ReplayPreviewIntoForkAsync(
-        Solution originalSolution,
-        Solution modifiedSolution,
-        string sourceRoot,
-        string forkRoot,
-        CancellationToken ct)
-    {
-        var changes = modifiedSolution.GetChanges(originalSolution);
-        var appliedFiles = new List<string>();
-
-        foreach (var projectChange in changes.GetProjectChanges())
-        {
-            foreach (var documentId in projectChange.GetChangedDocuments())
-            {
-                await WriteModifiedDocumentAsync(
-                    modifiedSolution,
-                    documentId,
-                    sourceRoot,
-                    forkRoot,
-                    appliedFiles,
-                    ct).ConfigureAwait(false);
-            }
-
-            foreach (var documentId in projectChange.GetAddedDocuments())
-            {
-                await WriteModifiedDocumentAsync(
-                    modifiedSolution,
-                    documentId,
-                    sourceRoot,
-                    forkRoot,
-                    appliedFiles,
-                    ct).ConfigureAwait(false);
-            }
-
-            foreach (var documentId in projectChange.GetRemovedDocuments())
-            {
-                var document = originalSolution.GetDocument(documentId);
-                if (document?.FilePath is null)
-                {
-                    continue;
-                }
-
-                var forkFilePath = MapSourcePathToFork(document.FilePath, sourceRoot, forkRoot);
-                if (File.Exists(forkFilePath))
-                {
-                    File.Delete(forkFilePath);
-                }
-
-                appliedFiles.Add(forkFilePath);
-            }
-        }
-
-        return appliedFiles.Distinct(FileSystemPath.Comparer).ToArray();
-    }
-
-    private static async Task WriteModifiedDocumentAsync(
-        Solution modifiedSolution,
-        DocumentId documentId,
-        string sourceRoot,
-        string forkRoot,
-        ICollection<string> appliedFiles,
-        CancellationToken ct)
-    {
-        var document = modifiedSolution.GetDocument(documentId);
-        if (document?.FilePath is null)
-        {
-            return;
-        }
-
-        var forkFilePath = MapSourcePathToFork(document.FilePath, sourceRoot, forkRoot);
-        var text = await document.GetTextAsync(ct).ConfigureAwait(false);
-        var directory = Path.GetDirectoryName(forkFilePath);
-        if (!string.IsNullOrWhiteSpace(directory))
-        {
-            Directory.CreateDirectory(directory);
-        }
-
-        await File.WriteAllTextAsync(forkFilePath, text.ToString(), text.Encoding ?? new UTF8Encoding(false), ct).ConfigureAwait(false);
-        appliedFiles.Add(forkFilePath);
     }
 
     private static string MapSourcePathToFork(

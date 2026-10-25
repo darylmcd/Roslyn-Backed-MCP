@@ -59,7 +59,8 @@ internal static class ForkGraphPreparation
         {
             var source = PhysicalPathResolver.Resolve(sourceRoot);
             var fork = PhysicalPathResolver.Resolve(forkRoot);
-            return RestoreInvocationPlanner.EvaluateGraph(entryPath, remainingBudget, ct, (graph, phaseToken) =>
+            return RestoreInvocationPlanner.EvaluateGraph(entryPath, remainingBudget, ct,
+                RestoreInvocationPlanner.CreateOrdinaryInstance, (graph, phaseToken) =>
             {
                 foreach (var node in graph.ProjectNodes)
                 {

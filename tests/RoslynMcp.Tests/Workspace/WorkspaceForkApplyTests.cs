@@ -280,9 +280,14 @@ public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
             commandRunner: runner,
             validateStoragePath: Helpers.ForkStorageFixtureBoundary.ValidateAsync, logger: NullLogger<WorkspaceForkApplyService>.Instance, retainSource: null!, reserveStorageDeletion: WorkspaceManager.TryReserveForkStorageDeletion);
 
+        var entry = fork.GetPath("SampleLib", "SampleLib.csproj");
+        var sourceRoot = Path.Combine(fork.RootPath, "source");
+        var inventory = ForkGraphPreparation.Validate(entry, sourceRoot, fork.RootPath, () => TimeSpan.FromMinutes(2), CancellationToken.None);
+        RestoreInvocationPlanner.Invocation[] invocations = [new(entry, ["restore", entry, "--nologo"])];
+
         var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
             () => service.RestoreForkAsync(
-                fork.GetPath("SampleLib", "SampleLib.csproj"), Path.Combine(fork.RootPath, "source"), fork.RootPath,
+                entry, sourceRoot, fork.RootPath, inventory, invocations, () => TimeSpan.FromMinutes(2),
                 CancellationToken.None));
 
         StringAssert.Contains(exception.Message, "exit code 1");
@@ -313,9 +318,14 @@ public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
             commandRunner: new CancelingRestoreRunner(expected),
             validateStoragePath: Helpers.ForkStorageFixtureBoundary.ValidateAsync, logger: NullLogger<WorkspaceForkApplyService>.Instance, retainSource: null!, reserveStorageDeletion: WorkspaceManager.TryReserveForkStorageDeletion);
 
+        var entry = fork.GetPath("SampleLib", "SampleLib.csproj");
+        var sourceRoot = Path.Combine(fork.RootPath, "source");
+        var inventory = ForkGraphPreparation.Validate(entry, sourceRoot, fork.RootPath, () => TimeSpan.FromMinutes(2), CancellationToken.None);
+        RestoreInvocationPlanner.Invocation[] invocations = [new(entry, ["restore", entry, "--nologo"])];
+
         var actual = await Assert.ThrowsExactlyAsync<OperationCanceledException>(() =>
             service.RestoreForkAsync(
-                fork.GetPath("SampleLib", "SampleLib.csproj"), Path.Combine(fork.RootPath, "source"), fork.RootPath,
+                entry, sourceRoot, fork.RootPath, inventory, invocations, () => TimeSpan.FromMinutes(2),
                 CancellationToken.None));
 
         Assert.AreSame(expected, actual,

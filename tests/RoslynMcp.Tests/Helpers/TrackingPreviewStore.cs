@@ -7,6 +7,8 @@ namespace RoslynMcp.Tests.Helpers;
 /// <summary>Observes tokens through the store contract without depending on its storage representation.</summary>
 internal sealed class TrackingPreviewStore(IPreviewStore inner) : IPreviewStore
 {
+    internal IPreviewStore Inner => inner;
+
     private readonly ConcurrentDictionary<string, string> _tokens = new(StringComparer.Ordinal);
 
     internal IReadOnlyList<string> GetRedeemableTokens(string workspaceId) => _tokens
