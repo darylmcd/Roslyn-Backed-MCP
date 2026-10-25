@@ -1,6 +1,6 @@
 # project-metadata-parser-broad-exception-fallbacks — Classify expected metadata failures explicitly
 
-**row:** `project-metadata-parser-broad-exception-fallbacks` · **pri:** `Medium` · **size:** `S` · **deps:** `—`
+**row:** `project-metadata-parser-broad-exception-fallbacks` · **pri:** `Medium` · **size:** `S` · **deps:** `hosted-dotnet-acquisition-origin-access-denied`
 
 ## Anchors
 
@@ -24,3 +24,6 @@
 
 - Fresh independent implementation review of PR1815 head b0db3c6d3c464ea08ce8943bafe0acd1131621b3 identified all three pre-existing boundaries while verifying the separate JSON-kind fix.
 - Do not expand the JSON-kind PR with this evaluation-failure mechanism.
+- Current implementation expands the same mechanism to the fourth assets-evaluation boundary and shared helper. Independent plan and implementation reviews PASS on head0525616808eb33fccd7dd539dc24b78cdf46833d.
+- Draft [PR1835](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1835): baseline11failures/5controls; final integrated166/166passed across10classes, no skips; cold bootstrap2/2passed; compile8/8zeroerrors/warnings.
+- Held before merge: all six hosted matrix legs fail during external SDK installation HTTP409; current-main run40224224815 reproduces setup failure. Tracking row hosted-dotnet-acquisition-origin-access-denied owns acquisition resolution and final qualification. No retry or gate bypass.
