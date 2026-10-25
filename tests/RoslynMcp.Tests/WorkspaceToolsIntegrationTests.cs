@@ -89,6 +89,22 @@ public sealed class WorkspaceToolsIntegrationTests : SharedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task WorkspaceTools_ReloadWorkspace_Cancelled_PreservesSolutionAndVersion()
+    {
+        var solution = WorkspaceManager.GetCurrentSolution(WorkspaceId);
+        var version = WorkspaceManager.GetCurrentVersion(WorkspaceId);
+        using var cancellation = new CancellationTokenSource();
+        await cancellation.CancelAsync();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() => WorkspaceTools.ReloadWorkspace(
+            WorkspaceExecutionGate, WorkspaceManager, GatedCommandExecutor, ValidationOptions,
+            WorkspaceId, autoRestore: false, ct: cancellation.Token));
+
+        Assert.AreSame(solution, WorkspaceManager.GetCurrentSolution(WorkspaceId));
+        Assert.AreEqual(version, WorkspaceManager.GetCurrentVersion(WorkspaceId));
+    }
+
+    [TestMethod]
     public async Task WorkspaceTools_ReloadWorkspace_DefaultPreservesFullProjectResponse()
     {
         var json = await WorkspaceTools.ReloadWorkspace(

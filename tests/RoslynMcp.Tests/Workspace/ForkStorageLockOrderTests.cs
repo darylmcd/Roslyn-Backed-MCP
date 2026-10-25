@@ -78,11 +78,15 @@ public sealed class ForkStorageLockOrderTests
                 await loader.Entered.Task.WaitAsync(timeout.Token);
             else
                 await loader.Authorized.Task.WaitAsync(timeout.Token);
-            reload = WorkspaceTools.ReloadWorkspace(gate, manager, provider.GetRequiredService<IGatedCommandExecutor>(),
+            // Observe only fork-service admission. Reload uses the same real gate directly;
+            // its lifecycle write also bypasses automatic staleness handling.
+            reload = WorkspaceTools.ReloadWorkspace(actualGate, manager, provider.GetRequiredService<IGatedCommandExecutor>(),
                 new ValidationServiceOptions(), loaded.WorkspaceId, autoRestore: false, ct: timeout.Token);
             if (!afterCopy)
             {
                 await loader.Entered.Task.WaitAsync(timeout.Token);
+                Assert.IsFalse(gate.CopyRequested.Task.IsCompleted,
+                    "An explicit reload must not satisfy the fork copy-request barrier.");
                 loader.ContinueAuthorization.TrySetResult();
                 await gate.CopyRequested.Task.WaitAsync(timeout.Token);
                 TestContext.WriteLine($"At copy request sourceOwnership={WorkspaceForkApplyService.HasForkApplyLock(source)} reloadCompleted={reload.IsCompleted}");
@@ -100,7 +104,9 @@ public sealed class ForkStorageLockOrderTests
             }
             else
             {
-                Assert.IsTrue(manager.GetCurrentVersion(loaded.WorkspaceId) > loaded.WorkspaceVersion);
+                Assert.AreEqual(loaded.WorkspaceVersion + 1, manager.GetCurrentVersion(loaded.WorkspaceId));
+                Assert.AreEqual(loaded.WorkspaceId, store.PeekWorkspaceId(token),
+                    "Retention within the preview range does not waive fork's exact source-version guard.");
                 await Assert.ThrowsAsync<PreviewTokenStaleException>(() => apply);
                 Assert.AreEqual(1, Directory.GetDirectories(Path.GetDirectoryName(source)!).Length,
                     "A stale preview must be refused before creating any fork destination.");

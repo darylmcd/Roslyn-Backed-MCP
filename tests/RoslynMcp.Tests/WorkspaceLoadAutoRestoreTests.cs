@@ -24,6 +24,26 @@ public sealed class WorkspaceLoadAutoRestoreTests : SharedWorkspaceTestBase
     public static void ClassCleanup() => DisposeServices();
 
     [TestMethod]
+    public async Task PublicReload_MissingAssets_SuccessfulRestoreAddsItsOwnTransition()
+    {
+        await WithWorkspace(assets: AssetsState.Missing, async (manager, status, root) =>
+        {
+            var executor = new ScriptedExecutor(ExecutionResult.Success);
+            using var gate = new WorkspaceExecutionGate(new ExecutionGateOptions(), manager);
+            var version = manager.GetCurrentVersion(status.WorkspaceId);
+
+            var json = await WorkspaceTools.ReloadWorkspace(gate, manager, executor, ValidationOptions,
+                status.WorkspaceId, autoRestore: true, ct: CancellationToken.None);
+
+            Assert.HasCount(1, executor.Invocations);
+            Assert.AreEqual(version + 2, manager.GetCurrentVersion(status.WorkspaceId),
+                "The explicit refresh and the intentional post-restore refresh each advance once.");
+            using var response = JsonDocument.Parse(json);
+            Assert.AreEqual(version + 2, response.RootElement.GetProperty("workspaceVersion").GetInt32());
+        });
+    }
+
+    [TestMethod]
     public async Task Omitted_MissingAssets_RestoresAndReloads()
     {
         await WithWorkspace(assets: AssetsState.Missing, async (manager, status, root) =>
