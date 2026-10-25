@@ -18,6 +18,9 @@ public sealed class ToolErrorHandlerParameterValidationTests
 
     [TestMethod]
     [DataRow("workspaceId", "PRIVATE candidate solution /tenant/private.slnx")]
+    [DataRow("lineRange", "PRIVATE malformed range")]
+    [DataRow("lineRange", "PRIVATE range past the end")]
+    [DataRow("startLine", "PRIVATE startLine must be <= endLine")]
     public void PlainArgumentExceptions_DoNotGainProducerGuidance(string parameter, string privateDetail)
     {
         var payload = ToolErrorHandler.ClassifyAndFormat(new ArgumentException(privateDetail, parameter), "compile_check");

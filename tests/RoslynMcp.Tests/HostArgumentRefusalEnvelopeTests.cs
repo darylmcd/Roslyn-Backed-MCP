@@ -87,9 +87,12 @@ public sealed class HostArgumentRefusalEnvelopeTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
-    public async Task RealTools_EmitPublicCorrectionsWithoutCallerData()
+    [DataRow("2025-11-25")]
+    [DataRow("2026-07-28")]
+    public async Task RealTools_EmitPublicCorrectionsWithoutCallerData(string protocolVersion)
     {
-        await using var harness = await ProductionParityMcpHarness.CreateAsync("host-argument-refusals", "2025-11-25");
+        await using var harness = await ProductionParityMcpHarness.CreateAsync("host-argument-refusals", protocolVersion);
+        Assert.AreEqual(protocolVersion, harness.Client.NegotiatedProtocolVersion);
         var (workspaceId, filePath, lineCount) = await LoadWireWorkspaceAsync(harness);
 
         for (var mask = 0; mask < 7; mask++)
@@ -149,9 +152,12 @@ public sealed class HostArgumentRefusalEnvelopeTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
-    public async Task SourceTextPastEof_EmitsActualLineCountWithoutPath()
+    [DataRow("2025-11-25")]
+    [DataRow("2026-07-28")]
+    public async Task SourceTextPastEof_EmitsActualLineCountWithoutPath(string protocolVersion)
     {
-        await using var harness = await ProductionParityMcpHarness.CreateAsync("host-source-eof-refusal", "2025-11-25");
+        await using var harness = await ProductionParityMcpHarness.CreateAsync("host-source-eof-refusal", protocolVersion);
+        Assert.AreEqual(protocolVersion, harness.Client.NegotiatedProtocolVersion);
         var (workspaceId, filePath, lineCount) = await LoadWireWorkspaceAsync(harness);
         await AssertWireRefusalAsync(harness, "get_source_text",
             new Dictionary<string, object?> { ["workspaceId"] = workspaceId, ["filePath"] = filePath, ["startLine"] = lineCount + 1 },
@@ -238,6 +244,10 @@ public sealed class HostArgumentRefusalEnvelopeTests : IsolatedWorkspaceTestBase
             .Single(node => node.ContainsKey("id") && (node.ContainsKey("result") || node.ContainsKey("error")));
         Assert.IsNull(frame["error"], frame.ToJsonString());
         var result = frame["result"]!.AsObject();
+        if (harness.Client.NegotiatedProtocolVersion == "2026-07-28")
+            Assert.AreEqual("complete", result["resultType"]!.GetValue<string>());
+        else
+            Assert.IsFalse(result.ContainsKey("resultType"));
         Assert.AreEqual(true, result["isError"]!.GetValue<bool>());
         var content = result["content"]!.AsArray();
         Assert.HasCount(1, content);
