@@ -1,6 +1,6 @@
 # restore-fork-reviewed-project-graph — Replay the reviewed project graph before fork restore
 
-**row:** `restore-fork-reviewed-project-graph` · **pri:** `Medium` · **size:** `M` · **deps:** `fork-evaluated-source-isolation`
+**row:** `restore-fork-reviewed-project-graph` · **pri:** `Medium` · **size:** `M` · **deps:** `fork-evaluated-source-isolation,document-set-project-file-undo-capture`
 
 ## Anchors
 
