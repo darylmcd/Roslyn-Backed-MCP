@@ -605,19 +605,6 @@ internal static class ToolErrorHandler
             return "No loaded project matches parameter 'projectName'. Use workspace_status with verbose=true to list project names, then retry.";
         }
 
-        if (string.Equals(exception.ParamName, "lineRange", StringComparison.Ordinal))
-        {
-            return rawMessage.Contains("past the end", StringComparison.OrdinalIgnoreCase)
-                ? "Parameter 'lineRange' starts past the end of the source file. Request a range within the reported line count."
-                : "Parameter 'lineRange' must use the 1-based 'startLine-endLine' format with startLine less than or equal to endLine.";
-        }
-
-        if (string.Equals(exception.ParamName, "startLine", StringComparison.Ordinal) &&
-            rawMessage.Contains("must be <=", StringComparison.Ordinal))
-        {
-            return "Parameter 'startLine' must be less than or equal to endLine.";
-        }
-
         // semantic-grep-pattern-error-detail-redaction: retain legacy input-free sentinel
         // recognition for ordinary argument exceptions. SemanticGrepService now publishes
         // typed public regex guidance directly, keeping parser details private. Guard on BOTH
