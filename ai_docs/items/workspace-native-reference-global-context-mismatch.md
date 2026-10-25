@@ -22,7 +22,7 @@
 - `native-default-policy-disconnected-probe-isolated.log`: native child ProbeMode=reference-context disables default items; workspace child still contains default-glob OnlyDefault.cs.
 - `native-default-policy-disconnected-probe-config.log`: native child Configuration=RefContext and ProbeMode=reference-context disables defaults; workspace child includes OnlyDefault.cs.
 - `native-default-policy-solution-config-probe.log`: solution Debug maps Child to Release; native child disables defaults while workspace child includes OnlyDefault.cs and Debug output.
-- Receipts and exact fixtures are preserved under `C:/Users/daryl/.codex/scratch/roslyn-remediate-20261023-split/`; handoff `native-default-policy-load-mismatch-row-handoff.md` records controls and limits.
+- Receipts and exact fixtures are preserved under `<user>/.codex/scratch/roslyn-remediate-20261023-split/`; handoff `native-default-policy-load-mismatch-row-handoff.md` records controls and limits.
 
 ## Context
 
