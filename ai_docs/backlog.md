@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-25T19:08:44Z
+**updated_at:** 2026-10-25T20:01:50Z
 
 ## Agent contract
 
@@ -51,6 +51,17 @@
 | `logging-default-sink-disabled-stderr-swallowed` | High | logging-retention-destroys-repro-evidence | **Enable the bounded file sink by default for installed users** — ROSLYNMCP_OBSERVABILITY_SINK defaults to `disabled` and the plugin mcp.json never sets it, so an MCP host that swallows stderr leaves no evidence of a first failure. [type: quality] [source: logging-audit 20260930-1340] | M | items/logging-default-sink-disabled-stderr-swallowed.md |
 | `persistent-composite-workspace-identity-not-portable` | High | — | Resolve persisted composite tokens to the correct receiving workspace and source snapshot before claim or mutation. [type: bug] [source: token-lifecycle-independence-revet] | L | items/persistent-composite-workspace-identity-not-portable.md |
 | `hosted-dotnet-acquisition-origin-access-denied` | High | — | BLOCKED: Upstream SDK acquisition returns HTTP409; prove acquisition recovery and restore required hosted checks on the reviewed metadata head. | S | items/hosted-dotnet-acquisition-origin-access-denied.md |
+| `cross-project-interface-reference-binding` | High | — | Bind generated interface uses to the generated symbol | M | items/cross-project-interface-reference-binding.md |
+| `cross-project-interface-signature-dependencies` | High | — | Validate emitted interface signature dependencies | M | items/cross-project-interface-signature-dependencies.md |
+| `file-move-namespace-text-encoding` | High | — | Preserve encoding during moved namespace rewrites | S | items/file-move-namespace-text-encoding.md |
+| `refactoring-rebase-source-kind-preservation` | High | — | Preserve reviewed document source kind during replay | M | items/refactoring-rebase-source-kind-preservation.md |
+| `automatic-reload-analyzer-reader-lifetime` | High | — | Exclude readers before automatic reload retires providers | M | items/automatic-reload-analyzer-reader-lifetime.md |
+| `workspace-load-registration-compensation` | High | — | Compensate failed watcher registration | M | items/workspace-load-registration-compensation.md |
+| `workspace-native-load-cleanup-gate-release` | High | — | Release the load gate after resource cleanup failure | M | items/workspace-native-load-cleanup-gate-release.md |
+| `analyzer-shadow-sweep-path-authority` | High | — | Keep analyzer sweeping inside owned no-follow paths | M | items/analyzer-shadow-sweep-path-authority.md |
+| `restore-package-root-authoritative-read-fail-closed` | High | — | Keep unreadable assets distinct from an absent recorded root | M | items/restore-package-root-authoritative-read-fail-closed.md |
+| `cross-project-interface-parameter-semantics` | High | — | Preserve emitted interface parameter semantics | M | items/cross-project-interface-parameter-semantics.md |
+| `physical-compensation-external-edit-ownership` | High | — | Preserve external edits during failed persistence compensation | M | items/physical-compensation-external-edit-ownership.md |
 
 ## Medium
 
@@ -166,6 +177,30 @@
 | `workspace-provider-retirement-shutdown-order` | Medium | — | **Verify provider retirement ordering** — Prove or disprove gate teardown racing manager-owned retirement during actual provider disposal. [type: bug] [source: restore-closeout] | M | items/workspace-provider-retirement-shutdown-order.md |
 | `preview-valid-member-replacement-invalidoperation` | Medium | — | **Restore valid member replacement previews** — reproduce ready-workspace InvalidOperation for a valid existing-field/body edit batch and preserve preview/apply safety. [type: bug] [source: consumer-20261024] | M | items/preview-valid-member-replacement-invalidoperation.md |
 | `code-action-preview-invalid-operation-classification` | Medium | code-action-index-public-refusal | Classify missing-document caller corrections and provider operation invariants in code-action previews without exposing caller or provider detail. [type: bug] [source: code-action-index cold review] | S | items/code-action-preview-invalid-operation-classification.md |
+| `docs-ci-sdk-download-dependency` | Medium | — | Remove SDK-download dependency from docs-linux CI while preserving complete documentation contract tests, release checks and public-fork trust. | M | items/docs-ci-sdk-download-dependency.md |
+| `build-command-captured-evaluation-context` | Medium | — | Build with the loaded evaluation context | M | items/build-command-captured-evaluation-context.md |
+| `test-trx-definition-qualified-identity` | Medium | — | Resolve failed TRX methods through test definitions | S | items/test-trx-definition-qualified-identity.md |
+| `test-trx-verdict-consistency` | Medium | — | Reject inconsistent and unsuccessful test-report proof | M | items/test-trx-verdict-consistency.md |
+| `mtp-resolved-engine-version-selection` | Medium | — | Gate MTP filters on every applicable resolved engine | M | items/mtp-resolved-engine-version-selection.md |
+| `test-run-global-json-fail-closed-authority` | Medium | — | Distinguish invalid runner configuration from no configuration | M | items/test-run-global-json-fail-closed-authority.md |
+| `composite-batch-final-diff-composition` | Medium | — | Review the complete initial-to-final composite delta | M | items/composite-batch-final-diff-composition.md |
+| `extract-and-wire-same-file-composition` | Medium | — | Compose DI edits on the extracted snapshot | M | items/extract-and-wire-same-file-composition.md |
+| `cross-project-interface-generic-type-parameters` | Medium | — | Preserve generic parameters in extracted interfaces | M | items/cross-project-interface-generic-type-parameters.md |
+| `extract-and-wire-semantic-registration-rewrite` | Medium | — | Rewrite bound DI registrations semantically | M | items/extract-and-wire-semantic-registration-rewrite.md |
+| `gated-command-executor-disposal-drains-active-runs` | Medium | — | Drain owned command runs before disposing gates | M | items/gated-command-executor-disposal-drains-active-runs.md |
+| `watcher-delivery-loss-observation` | Medium | — | Treat lost watcher delivery as unknown freshness | M | items/watcher-delivery-loss-observation.md |
+| `cache-graph-identity-framing` | Medium | — | Frame graph cache identity unambiguously | S | items/cache-graph-identity-framing.md |
+| `test-concurrency-observation-atomicity` | Medium | — | Make maximum concurrency observation atomic | S | items/test-concurrency-observation-atomicity.md |
+| `test-probe-custom-output-paths` | Medium | — | Copy the current referenced process-probe outputs | S | items/test-probe-custom-output-paths.md |
+| `fixture-restore-process-lifetime` | Medium | — | Bound fixture-owned restore processes | M | items/fixture-restore-process-lifetime.md |
+| `test-fixture-primary-cleanup-preservation` | Medium | — | Preserve primary failures while attempting all owned cleanup | L | items/test-fixture-primary-cleanup-preservation.md |
+| `compile-check-diagnostic-suppressor-parity` | Medium | — | Investigate suppressor parity with native compiler results | S | items/compile-check-diagnostic-suppressor-parity.md |
+| `central-package-query-evaluated-policy` | Medium | — | Read central package versions from the active evaluated context | M | items/central-package-query-evaluated-policy.md |
+| `central-package-mutation-evaluated-owner` | Medium | central-package-query-evaluated-policy | Bind central-package edits to their effective authored owner | M | items/central-package-mutation-evaluated-owner.md |
+| `workspace-cache-coordinator-unexpected-failure-propagation` | Medium | — | Do not hide cache-coordinator programming failures | S | items/workspace-cache-coordinator-unexpected-failure-propagation.md |
+| `mstest-formatter-enum-zero-comparison` | Medium | — | Investigate enum-zero assertion formatter dependency behavior | M | items/mstest-formatter-enum-zero-comparison.md |
+| `process-environment-fixture-isolation` | Medium | — | Isolate shared process environment fixture actors | M | items/process-environment-fixture-isolation.md |
+| `evaluated-test-project-classification` | Medium | msbuild-evaluation-project-context-cache | Classify test projects from actual evaluated context | M | items/evaluated-test-project-classification.md |
 
 ## Low
 
@@ -387,6 +422,9 @@
 | `msbuild-evaluation-service-import-order` | Low | — | **Normalize MSBuild evaluation service imports** — remove its single tracked IMPORTS allowance without changing bindings or unrelated baseline entries. [type: quality] [source: metadata-ownership-review-20261025] | M | items/msbuild-evaluation-service-import-order.md |
 | `invalid-operation-ratchet-retired-msbuild-allowance` | Low | project-metadata-parser-broad-exception-fallbacks | Remove the retired MSBuild helper constructor allowance after proving it is absent from the current ratchet inventory; add no replacement allowance. [type: test-refactor] [source: metadata-classification inspection] | S | items/invalid-operation-ratchet-retired-msbuild-allowance.md |
 | `project-test-package-name-redundant-case-entry` | Low | project-metadata-parser-broad-exception-fallbacks | Remove the redundant NUnit case-only initializer from the case-insensitive package set; preserve mixed-case package recognition. [type: quality] [source: metadata-classification inspection] | S | items/project-test-package-name-redundant-case-entry.md |
+| `workspace-idle-diagnostic-touch-order` | Low | — | Measure idle time before access updates | S | items/workspace-idle-diagnostic-touch-order.md |
+| `solution-diff-truncation-source-substring-test` | Low | — | Assert real omitted-file preview behavior | S | items/solution-diff-truncation-source-substring-test.md |
+| `workspace-cache-retention-policy` | Low | — | Decide bounded persisted cache retention | M | items/workspace-cache-retention-policy.md |
 
 ## Defer
 
@@ -405,6 +443,7 @@
 | `v5-major-release-contract-prereqs` | Defer | — | **At the 5.0.0 cut, write ADR 0011 for the breaking set** — cover updateAvailable nullability, WorkspaceNotFound category promotion, and locationdto flat-field removal; 4.x ships these additively, so nothing blocks 4.3.0. [type: docs] [source: operator decision 2026-09-28] | S | items/v5-major-release-contract-prereqs.md |
 | `editorconfig-posix-uncooperative-write-race` | Defer | editorconfig-owned-write-external-race | Define an enforceable POSIX conflict protocol for external .editorconfig writers that ignore advisory locks. [type: bug] [source: backlog-remediate Linux regression 20260929] | M | items/editorconfig-posix-uncooperative-write-race.md |
 | `atomic-file-writer-external-temp-path-swap` | Defer | editorconfig-write-no-workspace-invalidation | Prevent an external process from swapping a temp pathname between atomic-writer identity validation and File.Move commit. [type: bug] [source: PR #1678 cold review 2026-09-30] | M | items/atomic-file-writer-external-temp-path-swap.md |
+| `pr1806-unshipped-authority-proposal` | Defer | — | Decide the retained preview/native/physical authority proposal | — | items/pr1806-unshipped-authority-proposal.md |
 
 ## Refs
 
