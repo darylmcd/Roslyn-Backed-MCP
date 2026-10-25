@@ -9,7 +9,6 @@
 - `src/RoslynMcp.Roslyn/Services/SymbolRefactorService.cs:80,442,598,1091,1101,1460`
 - `src/RoslynMcp.Roslyn/Services/BuildService.cs:187,192,269` (CompileCheckService is tracked by compile-check-file-scope-path-identity)
 - `src/RoslynMcp.Roslyn/Helpers/AnalyzerReferenceIsolation.cs:50,86,343,413,447`
-- `src/RoslynMcp.Roslyn/Services/UnresolvedAnalyzerReferenceStripper.cs:112` (passes an IgnoreCase set into CsprojSemanticEquality, which uses FileSystemPath.Comparer at :239)
 
 ## Acceptance
 
@@ -20,3 +19,5 @@
 ## Evidence
 
 - Cluster-C sweep (PR for composite-apply-platform-path-identity) found 47 further physical-path OrdinalIgnoreCase sites of the same mechanism outside the fixed functions. Static finding; no runtime reproduction.
+
+- Rechecked e17fae0d on 2026-10-25: UnresolvedAnalyzerReferenceStripper.cs:112 passes a fresh empty skipPaths set and never inserts entries. Its comparer currently changes no behavior; removed that site from the behavioral defect anchors. Do not claim a Linux regression there.

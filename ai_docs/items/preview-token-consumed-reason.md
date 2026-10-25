@@ -7,6 +7,7 @@
 - `src/RoslynMcp.Core/Services/BoundedStore.cs:49-52`
 - `src/RoslynMcp.Core/Services/PreviewTokenStaleException.cs`
 - `src/RoslynMcp.Host.Stdio/Tools/ToolErrorHandler.cs:159-166`
+- `src/RoslynMcp.Roslyn/Services/RefactoringService.cs:388` — InvalidPreviewResult combines invalid, expired and workspace-change possibilities rather than publishing an evidence-backed cause.
 - `tests/RoslynMcp.Tests/PreviewTokenStaleAcrossAutoReloadTests.cs`
 
 ## Acceptance
@@ -17,6 +18,7 @@
 
 ## Evidence
 
+- Rechecked e17fae0d on 2026-10-25: RefactoringService.InvalidPreviewResult returns a combined invalid/expired/stale explanation while ordinary retained-preview apply rebases. Include this projection in the shared producer census and classification tests; this is static evidence, not a new runtime reproduction.
 - Parent `preview-token-store-mismatch-false-stale`: `BoundedStore.Invalidate` discards consumed state and `ToolErrorHandler` labels all missing tokens as a workspace reload.
 
 ## Context
