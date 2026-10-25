@@ -34,3 +34,12 @@
 - Actual formatter-capture isolated OLD probe:1FAIL/0PASS, live child and two pending captures, sentinel blocked and zero available workers in327/327samples over5006ms; exact output/snapshots drained after release. This proves the raw synchronous-pipe reader resource hazard; PR1828 repair/qualification is pending.
 - Verified deadline diagnostics are in1aa53356; no unchanged CI retry, deadline increase, worker cap or ratchet baseline change. Preserve the original incident attribution limit after any resource-hazard repair.
 - Evidence: <user>/.codex/scratch/roslyn-remediate-20261023-split/release-lag-ci-independent-cause-review.md and formatter-capture-red-session.log.
+
+### Formatter pipe retention repair (2026-10-25)
+
+| Evidence | Verified result / limit |
+|---|---|
+| Actual old formatter capture | Two silent redirected-pipe captures retained both isolated workers; sentinel blocked and zero workers were available in 327 of 327 samples. Exact output drained after release. |
+| Corrected preservation | 31 cases across formatter/helper/release-lag classes passed with zero failures, skips or individual overlaps; two final launcher ownership controls passed. Deadlines, fairness, CI workers and baselines were unchanged. |
+| Hosted and merge | Candidate0707b3e6 passed all four Windows legs, both Linux legs, SDK-floor, CodeQL and aggregate validation. PR1828 squash merged2026-10-25T04:39:54Z as7f877e84d76eaead701a5e1bd33d297f21ac1497; entire merged tree equals the reviewed candidate. This supersedes the earlier repair-qualification-pending checkpoint. |
+| Attribution limit | The controlled worker-retention mechanism is proven and repaired. The exact cause of the original natural hosted verifier timeout remains unproven; no unchanged red CI run was retried. Old probe cleanup remains an independent row. |
