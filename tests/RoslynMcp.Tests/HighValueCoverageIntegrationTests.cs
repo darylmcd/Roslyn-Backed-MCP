@@ -102,7 +102,7 @@ public sealed class HighValueCoverageIntegrationTests : SharedWorkspaceTestBase
     {
         var filePath = FindDocumentPath("AnimalService.cs");
 
-        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
             CodeActionService.PreviewCodeActionAsync(
                 SampleWorkspaceId,
                 filePath,
@@ -113,7 +113,9 @@ public sealed class HighValueCoverageIntegrationTests : SharedWorkspaceTestBase
                 actionIndex: 9_999,
                 CancellationToken.None));
 
-        StringAssert.Contains(ex.Message, "index");
+        Assert.AreEqual("actionIndex", ex.ParamName);
+        StringAssert.StartsWith(ex.PublicMessage, "actionIndex 9999 is out of range. Available actions: ");
+        Assert.AreEqual(nameof(ArgumentException), ex.WireExceptionType);
     }
 
     [TestMethod]
