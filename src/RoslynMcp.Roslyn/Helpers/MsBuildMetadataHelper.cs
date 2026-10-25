@@ -37,6 +37,16 @@ internal static class MsBuildMetadataHelper
         return EvaluatePropertiesCore(projectFilePath, globalProperties, propertyNames);
     }
 
+    internal static bool IsExpectedEvaluationFailure(Exception exception) =>
+        exception is IOException or UnauthorizedAccessException ||
+        exception.GetType() == typeof(InvalidOperationException) &&
+        exception.InnerException is not null && IsInvalidProjectFailure(exception.InnerException);
+
+    // EvaluateProperties registers the resolver before evaluation can produce this wrapper.
+    // Keep the Microsoft.Build type out of callers' JIT compilation, just like the evaluator.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static bool IsInvalidProjectFailure(Exception exception) => exception is InvalidProjectFileException;
+
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static string[] EvaluatePropertiesCore(string projectFilePath, IReadOnlyDictionary<string, string> globalProperties, string[] propertyNames)
     {

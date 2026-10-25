@@ -1,7 +1,8 @@
+using System.Text.Json;
+using System.Xml;
+using System.Xml.Linq;
 using Microsoft.Build.Evaluation;
 using Microsoft.Extensions.Logging;
-using System.Text.Json;
-using System.Xml.Linq;
 using RoslynProject = Microsoft.CodeAnalysis.Project;
 
 namespace RoslynMcp.Roslyn.Helpers;
@@ -68,16 +69,34 @@ internal static class ProjectMetadataParser
     /// <summary>Returns only an existing evaluated active assets file; stale default files are never fallback authority.</summary>
     internal static string? GetExistingAssetsPath(string projectFilePath, IReadOnlyDictionary<string, string> globalProperties)
     {
+        string? projectDirectory;
         try
         {
-            var projectDirectory = Path.GetDirectoryName(projectFilePath);
-            if (string.IsNullOrWhiteSpace(projectDirectory))
-            {
-                return null;
-            }
+            projectDirectory = Path.GetDirectoryName(projectFilePath);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException)
+        {
+            return null;
+        }
 
-            var values = MsBuildMetadataHelper.EvaluateProperties(projectFilePath, globalProperties,
+        if (string.IsNullOrWhiteSpace(projectDirectory))
+        {
+            return null;
+        }
+
+        string[] values;
+        try
+        {
+            values = MsBuildMetadataHelper.EvaluateProperties(projectFilePath, globalProperties,
                 "ProjectAssetsFile", "MSBuildProjectExtensionsPath");
+        }
+        catch (Exception ex) when (MsBuildMetadataHelper.IsExpectedEvaluationFailure(ex))
+        {
+            return null;
+        }
+
+        try
+        {
             var assetsFile = values[0];
             if (string.IsNullOrWhiteSpace(assetsFile))
             {
@@ -92,9 +111,9 @@ internal static class ProjectMetadataParser
             var activePath = Path.GetFullPath(assetsFile.Trim(), projectDirectory);
             return File.Exists(activePath) ? activePath : null;
         }
-        catch (Exception ex) when (ex is InvalidOperationException or IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         {
-            // Unreadable/unevaluable projects and invalid paths provide no assets authority.
+            // An invalid or unreadable active assets path provides no assets authority.
             return null;
         }
     }
@@ -133,7 +152,7 @@ internal static class ProjectMetadataParser
             var values = MsBuildMetadataHelper.EvaluateProperties(projectFilePath, globalProperties, "TargetFramework", "TargetFrameworks");
             return ParseTargetFrameworkValues(values[0], values[1]);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (MsBuildMetadataHelper.IsExpectedEvaluationFailure(ex))
         {
             logger?.LogDebug(ex, "Failed to evaluate target frameworks for project {Path}", projectFilePath);
             return [];
@@ -277,7 +296,7 @@ internal static class ProjectMetadataParser
             var outputType = MsBuildMetadataHelper.EvaluateProperties(projectFilePath, globalProperties, "OutputType")[0];
             return string.IsNullOrWhiteSpace(outputType) ? null : outputType.Trim();
         }
-        catch (Exception ex)
+        catch (Exception ex) when (MsBuildMetadataHelper.IsExpectedEvaluationFailure(ex))
         {
             logger?.LogDebug(ex, "Failed to evaluate output type for project {Path}", projectFilePath);
             return null;
@@ -337,12 +356,15 @@ internal static class ProjectMetadataParser
         {
             return XmlFileLoader.Load(projectFilePath);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (IsExpectedProjectReadFailure(ex))
         {
             logger?.LogWarning(ex, "Failed to parse project file {Path}", projectFilePath);
             return null;
         }
     }
+
+    internal static bool IsExpectedProjectReadFailure(Exception exception) =>
+        exception is IOException or UnauthorizedAccessException or XmlException;
 
     /// <summary>
     /// Item #1 / severity-critical-fail-preview-diff-does-not-match-t. Computes the relative
