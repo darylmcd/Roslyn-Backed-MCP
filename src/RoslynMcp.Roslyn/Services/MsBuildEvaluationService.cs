@@ -157,7 +157,16 @@ public sealed class MsBuildEvaluationService : IMsBuildEvaluationService
                 () =>
                 {
                     var collection = new ProjectCollection();
-                    return new CachedMsBuildProject(collection, collection.LoadProject(key.FilePath));
+                    try
+                    {
+                        return new CachedMsBuildProject(collection, collection.LoadProject(key.FilePath));
+                    }
+                    catch
+                    {
+                        // A failed Lazy has no value to dispose during cache invalidation.
+                        collection.Dispose();
+                        throw;
+                    }
                 },
                 LazyThreadSafetyMode.ExecutionAndPublication));
 
@@ -193,8 +202,14 @@ public sealed class MsBuildEvaluationService : IMsBuildEvaluationService
 
         public void Dispose()
         {
-            collection.UnloadAllProjects();
-            collection.Dispose();
+            try
+            {
+                collection.UnloadAllProjects();
+            }
+            finally
+            {
+                collection.Dispose();
+            }
         }
     }
 
