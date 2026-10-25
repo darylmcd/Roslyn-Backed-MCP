@@ -88,3 +88,9 @@ Read this row before running the authoritative local gate. Re-measure it when th
 - For a raw validation command, call `node <absolute-user-profile>/.claude/scripts/validation-gate.mjs -- <executable> [arguments...]`. Pass an interpreter explicitly for shell scripts.
 - Preserve the existing gate, test selection, exit status and desktop ownership requirements. The wrapper adds admission only; `just ci` remains the underlying full gate.
 - Full contract: `~/.claude/ai_docs/validation-gate.md`. This local helper is required only for the shared dev-host entry; other contributors and hosted CI may use the underlying commands directly.
+- DevBuild-Runner pilot (operator-approved 2026-10-25; allowed option, not a mandate): the final full gate on clean merged `main` MAY run as runner job `roslyn-backed-mcp` / `ci` at the full pushed 40-character SHA.
+  - Probe `server_info` once at run start and record the registered commands in the plan.
+  - Submit with a fresh GUID `requestId`; poll `job_get` and read every `job_logs` page outside any held validation slot. The worker takes its own slot: never hold admission while waiting on a runner job.
+  - Evidence = state `Succeeded`, exit 0, job worktree at that SHA. A submission alone is not evidence.
+  - Until one batch records parity (runner pass/fail totals equal to local `just machine-validate ci` totals), run both and report both result lines. A mismatch is a runner defect row, never a pass.
+  - Runner down or queue full: run the local gate and say so in the report. The runner does not replace hosted required checks and is never used to validate DevBuild-Runner itself.
