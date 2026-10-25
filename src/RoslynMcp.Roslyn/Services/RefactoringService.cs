@@ -305,8 +305,8 @@ public sealed class RefactoringService : IRefactoringService
     }
 
     /// <summary>
-    /// Applies a previously previewed refactoring. Validates the preview token against the current
-    /// workspace version to reject stale changes.
+    /// Applies a retained preview by rebasing its original/modified solution snapshots onto
+    /// the current workspace solution before persisting the resulting changes.
     /// </summary>
     public Task<ApplyResultDto> ApplyRefactoringAsync(string previewToken, string toolName, CancellationToken ct)
         => ApplyRefactoringAsync(previewToken, toolName, force: false, ct);
@@ -325,7 +325,7 @@ public sealed class RefactoringService : IRefactoringService
         // + ModifiedSolution), so a sibling `*_apply` that bumped the workspace version does
         // NOT invalidate this token. Below we rebase the preview's INTENDED diff
         // (`ModifiedSolution.GetChanges(OriginalSolution)`) onto the CURRENT workspace
-        // solution via `RebaseModifiedSolutionOntoCurrent` — edits to files the sibling
+        // solution via `RebaseModifiedSolutionOntoCurrentAsync` — edits to files the sibling
         // didn't touch replay cleanly. Conflicting project-reference metadata is refused.
         // Closing the workspace drops its tokens; reload retains tokens within their
         // pinned version range, so their snapshots also require rebasing.
@@ -832,8 +832,9 @@ public sealed class RefactoringService : IRefactoringService
     /// those changes on top of <paramref name="currentSolution"/> so sibling <c>*_apply</c>
     /// calls that mutated unrelated files since the preview was stored are preserved.
     /// Collisions on the same document fall to last-apply-wins text semantics. Added
-    /// and removed documents are mirrored into the rebased solution; the caller's existing
-    /// document-set-change code path (PersistDocumentSetChangesAsync) then handles I/O.
+    /// and removed documents are mirrored into the rebased solution. <c>PrepareApplyAsync</c>
+    /// prepares that result; <c>ApplyRefactoringAsync</c> delegates its persistence to
+    /// <c>DocumentSetPersistenceService.PersistAsync</c>.
     /// </summary>
     private static async Task<Solution> RebaseModifiedSolutionOntoCurrentAsync(
         Solution originalSolution,

@@ -19,8 +19,8 @@ namespace RoslynMcp.Roslyn.Helpers;
 /// source-control tooling.
 /// </para>
 /// <para>
-/// The fix (in <c>RefactoringService.PersistDocumentSetChangesAsync</c>) is to snapshot every
-/// csproj before <c>TryApplyChanges</c>, then — after the call — compare on-disk bytes against
+/// <c>DocumentSetPersistenceService</c> snapshots every
+/// csproj before <c>TryApplyChanges</c>, then — after the call — compares on-disk bytes against
 /// the snapshot via this helper. If the diff is semantic (new <c>PackageReference</c>, new
 /// <c>Compile Include</c>, property change), the new bytes are kept. If the diff is trivia-only
 /// (whitespace, BOM, line endings), the snapshot is restored.
@@ -43,8 +43,8 @@ namespace RoslynMcp.Roslyn.Helpers;
 /// string, which is stricter than needed but never produces a false positive.
 /// </para>
 /// <para>
-/// This helper is pure (no I/O) and never throws for malformed XML — it returns <see langword="false"/>
-/// instead, which signals the caller to keep the new bytes (the safe default: preserve whatever
+/// <see cref="AreXmlEquivalent"/> is pure (no I/O) and returns <see langword="false"/> if XML parsing fails,
+/// which signals the caller to keep the new bytes (the safe default: preserve whatever
 /// MSBuild wrote rather than restore a snapshot that might have been intentionally changed).
 /// </para>
 /// </remarks>
@@ -251,8 +251,8 @@ internal static class CsprojSemanticEquality
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                // A read failure here only forfeits the trivia-restore guarantee for this one
-                // csproj; the caller's apply proceeds normally.
+                // Omit unreadable projects from this helper's result. Callers that require a
+                // snapshot for a planned mutation may reject the missing entry before applying.
                 logger.LogWarning(ex,
                     "CsprojSemanticEquality.SnapshotProjectsAsync: failed to read {Path}; this csproj may show trivia drift after TryApplyChanges.",
                     path);
@@ -297,6 +297,8 @@ internal static class CsprojSemanticEquality
     /// <param name="operationTag">Short tag prefixed to log messages to identify the caller
     /// (e.g. <c>"csproj-reserialization-msbuildworkspace"</c>).</param>
     /// <param name="ct">Cancellation token.</param>
+    /// <param name="throwOnFailure">Rethrow logged I/O/access failures when true; otherwise
+    /// continue without the trivia-preservation guarantee for the affected file.</param>
     public static async Task RestoreTriviaOnlyDriftAsync(
         IReadOnlyDictionary<string, ProjectFileSnapshot> snapshots,
         IReadOnlySet<string> skipPaths,
@@ -341,8 +343,8 @@ internal static class CsprojSemanticEquality
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                // Restore failure here only forfeits the trivia-preservation guarantee; the
-                // apply itself is not invalidated. Log and continue.
+                // Log every restore failure. With throwOnFailure, propagate to the caller's
+                // failure handling; otherwise continue with possible trivia drift.
                 logger.LogWarning(ex,
                     "{OperationTag}: failed to restore trivia-only csproj snapshot for {Path}; the file may show whitespace / BOM drift in source control.",
                     operationTag, csprojPath);

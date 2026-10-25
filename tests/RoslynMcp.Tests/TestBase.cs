@@ -167,12 +167,10 @@ public abstract class TestBase
 
     private static void InitializeServicesCore()
     {
-        // Tests retain workspaces across the full assembly run instead of disposing them
-        // per-class. We need a higher limit than the production default (8) because
-        // ~22 test classes load fixture solutions (some loading multiple) without ever
-        // closing them. The cap is still bounded so a runaway test that loads in a loop
-        // will fail loudly rather than exhaust memory. TestServiceContainer.Create owns that
-        // option; this method only publishes the assembly-owned fixture.
+        // TestServiceContainer.Create owns the bounded fixture workspace capacity;
+        // WorkspaceManagerOptions owns the production default. TestAssemblyFixture owns
+        // the shared services and workspace-id cache until DisposeAssemblyResourcesAsync
+        // releases them at assembly cleanup. This method only publishes that fixture.
         Volatile.Write(ref _fixture, TestAssemblyFixture.Create(TestValidationOptions));
     }
 
