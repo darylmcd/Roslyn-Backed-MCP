@@ -1,12 +1,14 @@
 # document-set-project-file-undo-capture — Capture every physical before-image for document mutations
 
-**row:** `document-set-project-file-undo-capture` · **pri:** `Medium` · **size:** `S`
+**row:** `document-set-project-file-undo-capture` · **pri:** `Medium` · **size:** `M`
 
 ## Anchors
 
 - `src/RoslynMcp.Roslyn/Services/RefactoringService.cs:415`
 - `src/RoslynMcp.Roslyn/Services/RefactoringService.cs:1093`
 - (new) `tests/RoslynMcp.Tests/RefactoringPhysicalUndoCaptureTests.cs`
+
+- `src/RoslynMcp.Roslyn/Services/UndoService.cs:27`
 
 ## Acceptance
 
@@ -25,11 +27,13 @@
 | Root cause | PrepareApply omits changed-document-only capture admission; BuildFileSnapshots captures project XML only for reference changes although document add/remove rendering also mutates it. |
 | Dependency | PR1826 cannot satisfy required source apply/undo preservation without this independently correct fix. Extract its existing changed-only admission fix here before rebasing the graph work. |
 
+- Scoped qualification: unchanged c327 focused tests 10 FAIL / 1 PASS; corrected identical tests 11 PASS; final exact 18-class serialized cohort 328 PASS / 0 FAIL / 0 SKIP in 7m58s with zero overlapping individual intervals. Independent actual review 0 BLOCKING; hosted qualification remains pending.
+
 ## Context
 
 - Read-only dependency: existing ProjectReferenceMutationRenderer.HasChanges; no renderer source edit or visibility change is required.
 
 - Reference branch: codex/restore-fork-reviewed-project-graph, published checkpoint 0062d60c; raw evidence is linked from PR1826.
 - Preserve original stash codex-remediate-20261022-preserve-restore and PR1806/PR1809; they are references only.
-- Effective native default-item policy is a separate renderer decision. Do not change it or normalize null encodings in this slice.
+- The additional production owner is only the exposed stale UndoService capture-contract comment; no Undo API or behavior changes. Effective native default-item policy is a separate renderer decision. Do not change it or normalize null encodings in this slice.
 - The remediation root owns literal just ci before aggregate closure and final merged-main just ci after trailing docs.

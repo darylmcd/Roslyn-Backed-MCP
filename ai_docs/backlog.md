@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-25T02:09:03Z
+**updated_at:** 2026-10-25T02:46:16Z
 
 ## Agent contract
 
@@ -167,7 +167,7 @@
 | `workspace-reload-preserve-global-properties` | Medium | restore-assets-json-kind-guards | Preserve the loaded MSBuild global properties and actual configured compiler state through the shared public reload path. | S | items/workspace-reload-preserve-global-properties.md |
 | `restore-metadata-evaluation-global-context` | Medium | workspace-reload-preserve-global-properties | Pass explicit operation MSBuild settings through restore and project metadata evaluation; qualify configured layouts and reporting. | M | items/restore-metadata-evaluation-global-context.md |
 | `fork-source-session-retention` | Medium | — | Preserve fork source-session authority through capacity pressure, close and shutdown; add manager-owned operation retention and regression coverage. | M | items/fork-source-session-retention.md |
-| `document-set-project-file-undo-capture` | Medium | — | Capture original document and rendered project bytes before source apply so explicit Compile mutations and encoding changes undo exactly. [type: bug] [source: PR1826 causal controls] | S | items/document-set-project-file-undo-capture.md |
+| `document-set-project-file-undo-capture` | Medium | — | Capture original document and rendered project bytes before source apply so explicit Compile mutations and encoding changes undo exactly. [type: bug] [source: PR1826 causal controls] | M | items/document-set-project-file-undo-capture.md |
 
 ## Low
 
