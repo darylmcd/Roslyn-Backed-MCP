@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-25T14:58:13Z
+**updated_at:** 2026-10-25T19:08:44Z
 
 ## Agent contract
 
@@ -50,6 +50,7 @@
 |----|-----|------|----|------|--------|
 | `logging-default-sink-disabled-stderr-swallowed` | High | logging-retention-destroys-repro-evidence | **Enable the bounded file sink by default for installed users** — ROSLYNMCP_OBSERVABILITY_SINK defaults to `disabled` and the plugin mcp.json never sets it, so an MCP host that swallows stderr leaves no evidence of a first failure. [type: quality] [source: logging-audit 20260930-1340] | M | items/logging-default-sink-disabled-stderr-swallowed.md |
 | `persistent-composite-workspace-identity-not-portable` | High | — | Resolve persisted composite tokens to the correct receiving workspace and source snapshot before claim or mutation. [type: bug] [source: token-lifecycle-independence-revet] | L | items/persistent-composite-workspace-identity-not-portable.md |
+| `hosted-dotnet-acquisition-origin-access-denied` | High | — | BLOCKED: Upstream SDK acquisition returns HTTP409; prove acquisition recovery and restore required hosted checks on the reviewed metadata head. | S | items/hosted-dotnet-acquisition-origin-access-denied.md |
 
 ## Medium
 
@@ -125,7 +126,6 @@
 | `preview-store-explicit-internal-state` | Medium | — | BLOCKED: audited global indivisible admission. Preserve truncation, producer provenance and generation safety across every internal store and apply path. [type: bug] [source: PR #1745 current source re-vet] | M | items/preview-store-explicit-internal-state.md |
 | `preview-diff-whitespace-omission` | Medium | — | **Preserve whitespace mutations in shared preview diffs** — prove formatting and explicit edit preview/apply text fidelity. [type: bug] [source: PR #1747 current source re-vet] | M | items/preview-diff-whitespace-omission.md |
 | `editorconfig-option-null-value-prewrite-validation` | Medium | — | **Investigate null editorconfig option values before writes** — reproduce service and raw-wire outcomes, then repair confirmed validation ownership while preserving arbitrary option/reset semantics. [type: chore] [source: refusal-contract-revet] | M | items/editorconfig-option-null-value-prewrite-validation.md |
-| `code-action-index-public-refusal` | Medium | — | **Publish code-action index corrections** — preserve safe actionIndex and available-count guidance through the tool envelope. [type: bug] [source: code-action-and-flow-argument-refusals-public-message] | S | items/code-action-index-public-refusal.md |
 | `code-fix-provider-failure-silent-fallback` | Medium | — | **Surface code-fix provider registration failures** — distinguish failures from no registered action before legacy fallback. [type: bug] [source: fix-all-equivalence-key cold diagnosis 2026-10-07] | S | items/code-fix-provider-failure-silent-fallback.md |
 | `editorconfig-writer-effective-section-precedence` | Medium | — | Preserve effective option values when later matching editorconfig sections override the first updated assignment. [type: bug] [source: backlog-remediate planning 20261007] | S | items/editorconfig-writer-effective-section-precedence.md |
 | `test-inconclusive-count-unbudgeted` | Medium | — | **Nothing bounds the inconclusive test count** — ~95 Assert.Inconclusive sites and no CI or verify-release check on tests that end not-run: a runner without git silently drops 23 tests. [type: ops] [source: test-rot-probe-20261009] | M | items/test-inconclusive-count-unbudgeted.md |
@@ -153,7 +153,7 @@
 | `undo-sequence-claim-exclusivity` | Medium | undo-explicit-empty-capture | Refuse restoration after losing the by-sequence undo claim; prove one winning restore with deterministic concurrent-claim coverage. | S | items/undo-sequence-claim-exclusivity.md |
 | `undo-reload-failure-reports-success` | Medium | undo-sequence-claim-exclusivity | Make failed undo workspace reload/version restoration report failure and retain retryable capture/history across both restore paths. | S | items/undo-reload-failure-reports-success.md |
 | `restore-fork-reviewed-project-graph` | Medium | fork-evaluated-source-isolation | Capture source roots, rebase and replay reviewed physical effects, then verify native fork graph before restore; independent open remainder of the delivered source restore fix. | L | items/restore-fork-reviewed-project-graph.md |
-| `project-metadata-parser-broad-exception-fallbacks` | Medium | — | Narrow three metadata-parser catch-all fallbacks to expected evaluation/read/parse failures and propagate unexpected exceptions. | S | items/project-metadata-parser-broad-exception-fallbacks.md |
+| `project-metadata-parser-broad-exception-fallbacks` | Medium | hosted-dotnet-acquisition-origin-access-denied | Narrow three metadata-parser catch-all fallbacks to expected evaluation/read/parse failures and propagate unexpected exceptions. | S | items/project-metadata-parser-broad-exception-fallbacks.md |
 | `document-set-native-default-compile-policy` | Medium | — | **Preserve native Compile membership** — Re-derive and split source document-set policy using actual evaluated contexts and intended snapshot bytes. [type: bug] [source: restore-closeout] | L | items/document-set-native-default-compile-policy.md |
 | `fork-expiry-cross-process-active-work` | Medium | — | **Verify peer admission versus expiry** — Reproduce or disprove the cross-process check/admission race before choosing coordination. [type: bug] [source: restore-closeout] | M | items/fork-expiry-cross-process-active-work.md |
 | `fork-source-fixture-cleanup-failure-propagation` | Medium | — | Preserve lifecycle fixture primary and cleanup failures while independently observing every owned task and disposal owner. | S | items/fork-source-fixture-cleanup-failure-propagation.md |
@@ -165,6 +165,7 @@
 | `workspace-native-reference-global-context-mismatch` | Medium | — | **Preserve reference evaluation context** — Reconcile public workspace load with native reference globals and solution mappings. [type: bug] [source: restore-closeout] | M | items/workspace-native-reference-global-context-mismatch.md |
 | `workspace-provider-retirement-shutdown-order` | Medium | — | **Verify provider retirement ordering** — Prove or disprove gate teardown racing manager-owned retirement during actual provider disposal. [type: bug] [source: restore-closeout] | M | items/workspace-provider-retirement-shutdown-order.md |
 | `preview-valid-member-replacement-invalidoperation` | Medium | — | **Restore valid member replacement previews** — reproduce ready-workspace InvalidOperation for a valid existing-field/body edit batch and preserve preview/apply safety. [type: bug] [source: consumer-20261024] | M | items/preview-valid-member-replacement-invalidoperation.md |
+| `code-action-preview-invalid-operation-classification` | Medium | code-action-index-public-refusal | Classify missing-document caller corrections and provider operation invariants in code-action previews without exposing caller or provider detail. [type: bug] [source: code-action-index cold review] | S | items/code-action-preview-invalid-operation-classification.md |
 
 ## Low
 
@@ -378,13 +379,14 @@
 | `claude-initiative-executor-override-dead` | Low | — | **`.claude/agents/initiative-executor.md` overrides an agent deleted from ~/.claude on 2026-10-19** — delete it or rename its still-needed Roslyn guidance so nothing poses as an engine agent override. [type: chore] [source: remediation-simplification-20261020] | S | items/claude-initiative-executor-override-dead.md |
 | `path-identity-host-stdio-comparer-duplication` | Low | — | **Use FileSystemPath in Host.Stdio path helpers instead of hand-rolled OS ternaries** — SolutionDiscoveryHelper, ConfiguredRootBoundary, TestRunPublicProjection duplicate its decision or compare unconditionally. [type: refactor] [source: path-identity sweep 20261020] | M | items/path-identity-host-stdio-comparer-duplication.md |
 | `linux-msbuild-load-drops-case-distinct-documents` | Low | — | **Investigate Linux MSBuild workspace load surfacing only one of two case-distinct Compile documents** — decide loader defect vs fixture limitation and cover it. [type: chore] [source: path-identity PR fixture finding 20261020] | S | items/linux-msbuild-load-drops-case-distinct-documents.md |
-| `tool-error-handler-lineRange-sentinels-retired` | Low | — | **Retire ToolErrorHandler message-sniffing sentinels for lineRange and startLine must be <=** — convert SourceTextRequestProjection and the other throwers to public types, then delete the sniffing. [type: refactor] [source: refusal publication review 20261020] | M | items/tool-error-handler-lineRange-sentinels-retired.md |
 | `composite-apply-orchestrator-extract-atomic-file-writer` | Low | — | **Move AtomicFileWriter out of CompositeApplyOrchestrator.cs into its own file** — a 250-line P/Invoke type shares the orchestrator file. [type: refactor] [source: path-identity sweep 20261020] | S | items/composite-apply-orchestrator-extract-atomic-file-writer.md |
 | `test-fake-undo-duplicate-doubles` | Low | — | **Promote the duplicate private FakeUndo IUndoService test double to a shared helper** — two copies exist. [type: test-refactor] [source: path-identity sweep 20261020] | S | items/test-fake-undo-duplicate-doubles.md |
 | `change-signature-linked-document-callsite-entries` | Low | — | **Aggregate change-signature callsite entries by physical file** — linked documents yield duplicate-FilePath CallsiteUpdateDto entries; reuse CallsiteUpdateProjection and decide the totalCallsites rule. [type: bug] [source: path-identity review 20261020] | M | items/change-signature-linked-document-callsite-entries.md |
 | `test-workspace-unwatch-barrier-timeout-assertion` | Low | fork-source-fixture-cleanup-failure-propagation | Report lifecycle watcher fixture barrier expiry explicitly and preserve owned cleanup after the timeout. | S | items/test-workspace-unwatch-barrier-timeout-assertion.md |
 | `workspace-cache-fixture-cleanup-failure-silent` | Low | — | **Surface cache fixture cleanup faults** — Reuse owned cleanup and preserve terminal failures instead of swallowing them. [type: test-infrastructure] [source: restore-closeout] | S | items/workspace-cache-fixture-cleanup-failure-silent.md |
 | `msbuild-evaluation-service-import-order` | Low | — | **Normalize MSBuild evaluation service imports** — remove its single tracked IMPORTS allowance without changing bindings or unrelated baseline entries. [type: quality] [source: metadata-ownership-review-20261025] | M | items/msbuild-evaluation-service-import-order.md |
+| `invalid-operation-ratchet-retired-msbuild-allowance` | Low | project-metadata-parser-broad-exception-fallbacks | Remove the retired MSBuild helper constructor allowance after proving it is absent from the current ratchet inventory; add no replacement allowance. [type: test-refactor] [source: metadata-classification inspection] | S | items/invalid-operation-ratchet-retired-msbuild-allowance.md |
+| `project-test-package-name-redundant-case-entry` | Low | project-metadata-parser-broad-exception-fallbacks | Remove the redundant NUnit case-only initializer from the case-insensitive package set; preserve mixed-case package recognition. [type: quality] [source: metadata-classification inspection] | S | items/project-test-package-name-redundant-case-entry.md |
 
 ## Defer
 
