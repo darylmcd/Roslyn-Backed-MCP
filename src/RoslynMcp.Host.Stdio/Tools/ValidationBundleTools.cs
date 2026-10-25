@@ -70,7 +70,8 @@ public static class ValidationBundleTools
     }
 
     /// <remarks>
-    /// <para>The fork is created under .roslynmcp/forks beneath the workspace root and loaded as its own workspace.</para>
+    /// <para>First-generation forks use .roslynmcp/forks beneath the workspace root. Forks of retained forks use the outermost verified containing fork's physical parent pool, as siblings, and load as separate workspaces. Canonical link resolution may change the pool's directory spelling.</para>
+    /// <para>The current configured and client-narrowed boundary must authorize the pool and destination. Windows native working-directory limits are checked before filesystem effects; move or reopen the source under a shorter authorized root when refused.</para>
     /// <para>retention values: drop-on-success (default), drop-on-failure, drop-always, keep.</para>
     /// </remarks>
     [McpServerTool(Name = "workspace_fork_apply", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false),

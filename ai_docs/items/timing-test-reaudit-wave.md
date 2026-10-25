@@ -27,3 +27,19 @@
 2026-10-17 full-corpus syntax scan: include EditorConfigServiceTests.cs:225 watcher-delivery sleep, Services/WorkspaceDriftServiceTests.cs:103,174 timestamp sleeps, PreviewStoreTests.cs:288 TTL sleep. Use observable event delivery or explicit mtime/clock control, not shorter waits. PwshScriptRunnerTests inherited-pipe cases measured about 25s/40s; retain actual native-pipe/teardown proof. See ai_docs/reports/20261017-test-efficiency/report.md.
 
 2026-10-17 mutation gate follow-up: one verifier output-drain timeout was not reproduced on clean base or in the instrumented suite. Controlled isolated probes established Windows synchronous-pipe worker starvation before and after native exit; both regressions failed on the old runner and passed with nonblocking available-byte reads. The same validation exposed and repaired fragmented BOM decoding. Preserve the original attribution limit, unchanged deadlines and inherited-pipe tests; evidence: ai_docs/reports/20261017-test-efficiency/output-drain.md.
+
+2026-10-25 PR1828 attribution follow-up:
+- fb3b2601 Windows2 ReleaseLagGuard total30s deadline expired after managed parent exit with stdout pending; cleanup collected verifier PASS. Native exit/pipe timing was absent, so the natural cause remains unproven.
+- Exact run40155771898 plan reconstruction shows the new class moved ReleaseLagGuard and FormatterBaselineContractTests onto the same shard; formatter overlapped the entire failure. The undo class itself ran on Windows4. This is coupling evidence, not causal attribution.
+- Actual formatter-capture isolated OLD probe:1FAIL/0PASS, live child and two pending captures, sentinel blocked and zero available workers in327/327samples over5006ms; exact output/snapshots drained after release. This proves the raw synchronous-pipe reader resource hazard; PR1828 repair/qualification is pending.
+- Verified deadline diagnostics are in1aa53356; no unchanged CI retry, deadline increase, worker cap or ratchet baseline change. Preserve the original incident attribution limit after any resource-hazard repair.
+- Evidence: <user>/.codex/scratch/roslyn-remediate-20261023-split/release-lag-ci-independent-cause-review.md and formatter-capture-red-session.log.
+
+### Formatter pipe retention repair (2026-10-25)
+
+| Evidence | Verified result / limit |
+|---|---|
+| Actual old formatter capture | Two silent redirected-pipe captures retained both isolated workers; sentinel blocked and zero workers were available in 327 of 327 samples. Exact output drained after release. |
+| Corrected preservation | 31 cases across formatter/helper/release-lag classes passed with zero failures, skips or individual overlaps; two final launcher ownership controls passed. Deadlines, fairness, CI workers and baselines were unchanged. |
+| Hosted and merge | Candidate0707b3e6 passed all four Windows legs, both Linux legs, SDK-floor, CodeQL and aggregate validation. PR1828 squash merged2026-10-25T04:39:54Z as7f877e84d76eaead701a5e1bd33d297f21ac1497; entire merged tree equals the reviewed candidate. This supersedes the earlier repair-qualification-pending checkpoint. |
+| Attribution limit | The controlled worker-retention mechanism is proven and repaired. The exact cause of the original natural hosted verifier timeout remains unproven; no unchanged red CI run was retried. Old probe cleanup remains an independent row. |

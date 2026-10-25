@@ -429,12 +429,29 @@ public sealed class DiagnosticServiceFilterTotalsTests : SharedWorkspaceTestBase
 public sealed class WorkspaceDiagnosticSeverityClassifierTests
 {
     [TestMethod]
-    public void Classify_FailureWithPrunedMessage_ReturnsWarning()
+    [DataRow("PackageReference Foo will not be pruned. This package is automatically available and does not need to be referenced explicitly. Remove the PackageReference item.")]
+    [DataRow("NU1510: PackageReference Foo will not be pruned. This package is automatically available and does not need to be referenced explicitly. Remove the PackageReference item.")]
+    [DataRow("Unable to locate repository with working directory that contains directory 'C:/work/quoted'project'.")]
+    public void Classify_FailureWithSdkWarning_ReturnsWarning(string message)
     {
-        var severity = WorkspaceDiagnosticSeverityClassifier.Classify(
-            WorkspaceDiagnosticKind.Failure,
-            "PackageReference 'Foo' will not be pruned because the project depends on it.");
-        Assert.AreEqual("Warning", severity);
+        foreach (var diagnostic in new[] { message, "Msbuild failed when processing the file 'C:/work/quoted'project/Test.csproj' with message: " + message })
+            Assert.AreEqual("Warning", WorkspaceDiagnosticSeverityClassifier.Classify(WorkspaceDiagnosticKind.Failure, diagnostic));
+    }
+
+    [TestMethod]
+    [DataRow("Could not load assembly 'C:/work/pruned/task.dll'.")]
+    [DataRow("Msbuild failed when processing the file 'C:/work/pruned/Test.csproj' with message: Task activation failed.")]
+    [DataRow("Task failed: Unable to locate repository with working directory that contains directory 'C:/work'.")]
+    [DataRow("Unable to locate repository with working directory that contains directory 'C:/work'.\nA native error followed.")]
+    [DataRow("PackageReference Foo will not be pruned because the project depends on it.")]
+    [DataRow("PackageReference Foo Bar will not be pruned. This package is automatically available and does not need to be referenced explicitly. Remove the PackageReference item.")]
+    [DataRow("PackageReference  will not be pruned. This package is automatically available and does not need to be referenced explicitly. Remove the PackageReference item.")]
+    [DataRow("PackageReference will not be pruned. This package is automatically available and does not need to be referenced explicitly. Remove the PackageReference item.")]
+    [DataRow("Msbuild failed when processing the file 'missing diagnostic delimiter")]
+    [DataRow("PackageReference Foo will not be pruned. This package is automatically available and does not need to be referenced explicitly. Remove the PackageReference item.\nA native error followed.")]
+    public void Classify_FailureWithWarningFragments_ReturnsError(string message)
+    {
+        Assert.AreEqual("Error", WorkspaceDiagnosticSeverityClassifier.Classify(WorkspaceDiagnosticKind.Failure, message));
     }
 
     [TestMethod]

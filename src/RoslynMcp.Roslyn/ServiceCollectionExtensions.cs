@@ -17,6 +17,12 @@ public static class ServiceCollectionExtensions
     /// </summary>
     /// <param name="services">The service collection to add registrations to.</param>
     /// <returns>The same <paramref name="services"/> for chaining.</returns>
+    /// <remarks>
+    /// The workspace-fork service requires the request-bound storage authorization
+    /// registered by the supported stdio host's AddRoslynMcpHostServices composition.
+    /// This Roslyn-only registration does not supply that boundary. Standalone fork
+    /// hosting is not an advertised public integration contract.
+    /// </remarks>
     public static IServiceCollection AddRoslynServices(this IServiceCollection services)
     {
         // The service provider owns IFileWatcherService. WorkspaceManager instances created by
@@ -154,7 +160,22 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IImpactSweepService, ImpactSweepService>();
         services.AddSingleton<ITestReferenceMapService, TestReferenceMapService>();
         services.AddSingleton<IWorkspaceValidationService, WorkspaceValidationService>();
-        services.AddSingleton<IWorkspaceForkApplyService, WorkspaceForkApplyService>();
+        services.AddSingleton<IWorkspaceForkApplyService>(sp =>
+        {
+            var manager = sp.GetRequiredService<IWorkspaceManager>();
+            // Resolve the entire graph before publishing the async-owned fork singleton.
+            // Reverse provider disposal then drains forks before their dependencies.
+            var gate = sp.GetRequiredService<IWorkspaceExecutionGate>();
+            var previews = sp.GetRequiredService<IPreviewStore>();
+            var validation = sp.GetRequiredService<IWorkspaceValidationService>();
+            var tests = sp.GetRequiredService<ITestRunnerService>();
+            var commands = sp.GetRequiredService<IDotnetCommandRunner>();
+            var logger = sp.GetRequiredService<ILogger<WorkspaceForkApplyService>>();
+            var sourceOwner = manager as WorkspaceManager
+                ?? throw new PublicInvalidOperationException("Fork apply requires a WorkspaceManager that owns source-session retention.");
+            return new WorkspaceForkApplyService(manager, gate, previews, validation, tests, commands, sp.GetRequiredService<ForkStoragePathValidator>(), logger,
+                sourceOwner.RunWithRetainedForkSourceAsync, sourceOwner.TryReserveForkStorageDeletion);
+        });
         services.AddSingleton<IWorkspaceWarmService, WorkspaceWarmService>();
         services.AddSingleton<IWorkspaceDriftService, WorkspaceDriftService>();
         services.AddSingleton<IChangeSignatureService, ChangeSignatureService>();

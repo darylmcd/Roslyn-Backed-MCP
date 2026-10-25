@@ -111,6 +111,7 @@ public sealed class CiTopologyDecisionContractTests
         Assert.IsTrue(decision.DocsOnly, "Evidence-only implies docs_only so docs-conditioned steps keep their semantics.");
         Assert.IsTrue(decision.EvidenceOnly);
         Assert.AreEqual("Evidence-only PR: pwsh lint only; build and test legs skipped.", decision.Reason);
+        AssertExactDocsOnlyPullRequestMatrix(decision.RunnerMatrix);
     }
 
     [TestMethod]
@@ -381,8 +382,8 @@ public sealed class CiTopologyDecisionContractTests
             ("windows-hosted-2-of-4", "windows-latest", false, 45, 1, 4),
             ("windows-hosted-3-of-4", "windows-latest", false, 45, 2, 4),
             ("windows-hosted-4-of-4", "windows-latest", false, 45, 3, 4),
-            ("linux-1-of-2", "ubuntu-latest", true, 30, 0, 2),
-            ("linux-2-of-2", "ubuntu-latest", false, 30, 1, 2),
+            ("linux-1-of-2", "ubuntu-latest", false, 30, 0, 2),
+            ("linux-2-of-2", "ubuntu-latest", true, 30, 1, 2),
         };
 
         AssertExactMatrix(matrix, expected);
@@ -395,8 +396,8 @@ public sealed class CiTopologyDecisionContractTests
     {
         var expected = new (string Name, string RunsOn, bool ArtifactOwner, int TimeoutMinutes, int ShardIndex, int ShardCount)[]
         {
-            ("docs-linux-1-of-2", "ubuntu-latest", true, 30, 0, 2),
-            ("docs-linux-2-of-2", "ubuntu-latest", false, 30, 1, 2),
+            ("docs-linux-1-of-2", "ubuntu-latest", false, 30, 0, 2),
+            ("docs-linux-2-of-2", "ubuntu-latest", true, 30, 1, 2),
         };
 
         AssertExactMatrix(matrix, expected);

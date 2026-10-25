@@ -159,7 +159,7 @@ public sealed class MissingWorkspaceRootRetirementTests : SharedWorkspaceTestBas
     }
 
     [TestMethod]
-    public async Task Dispose_JoinsInFlightRetirementBeforeDisposingDependencies()
+    public async Task Dispose_DefersInFlightRetirement_AsyncDisposalDrainsBeforeDependencies()
     {
         var solutionPath = CreateSampleSolutionCopy();
         var root = Path.GetDirectoryName(solutionPath)!;
@@ -175,15 +175,15 @@ public sealed class MissingWorkspaceRootRetirementTests : SharedWorkspaceTestBas
             await gate.Entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
 
             var dispose = Task.Run(manager.Dispose);
-            await Task.Delay(TimeSpan.FromMilliseconds(200));
-
-            Assert.IsFalse(dispose.IsCompleted,
-                "Dispose must join manager-owned retirement work before tearing down dependencies.");
+            await dispose.WaitAsync(TimeSpan.FromSeconds(10));
+            var shutdown = ((IAsyncDisposable)(object)manager).DisposeAsync().AsTask();
+            Assert.IsFalse(shutdown.IsCompleted,
+                "Synchronous Dispose must return promptly while async disposal drains the same retirement.");
             Assert.IsFalse(watcher.Disposed,
                 "The watcher must remain alive until the retirement task has drained.");
 
             gate.Release.TrySetResult();
-            await dispose.WaitAsync(TimeSpan.FromSeconds(10));
+            await shutdown.WaitAsync(TimeSpan.FromSeconds(10));
 
             Assert.IsTrue(watcher.Disposed);
             Assert.AreEqual(1, gate.RemoveGateCalls);
@@ -192,6 +192,7 @@ public sealed class MissingWorkspaceRootRetirementTests : SharedWorkspaceTestBas
         {
             gate.Release.TrySetResult();
             manager.Dispose();
+            if ((object)manager is IAsyncDisposable asynchronous) await asynchronous.DisposeAsync();
             DeleteDirectoryIfExists(root);
         }
     }

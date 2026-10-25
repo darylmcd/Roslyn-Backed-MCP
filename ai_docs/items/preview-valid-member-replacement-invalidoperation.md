@@ -23,7 +23,7 @@
 | Valid replacement | Existing nested fake's `public string? ChangedField;` becomes `public string? ChangedField, StopChangedField;` plus a nullable statistics field; its valid body chooses the changed field by operation, constructs the same statistics record and retains it. |
 | Reduced request | One file, two nonoverlapping line ranges20:1..21:1 and33:1..36:1; normal syntax checking enabled. Whole-document equivalent also refused. |
 | Refusal | isError=true; category InvalidOperation; exceptionType InvalidOperationException; message: The operation is not valid in the current state. Check the tool contract and retry. |
-| Independent reproduction | Fresh second workspace loaded the same on-disk source ready with zero diagnostics; exact reduced request independently failed in41ms, no stale reload. No preview applied. |
+| Reproduction limit | Cited raw envelope records an automatic stale reload. Reduced and whole-document refusals are recorded in the same note; independent no-reload reproduction remains unverified. |
 | Counterexample | Insertion-only additional test preview and production-file preview/apply succeed through the same installed tool. Existing source compiles. |
 | Local raw evidence | <user-profile>/.codex/scratch/pathscope-remediate-20261023-2031/roslyn-native-test-preview-error.md; consumer source remains local. |
 

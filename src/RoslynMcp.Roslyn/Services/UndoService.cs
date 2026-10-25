@@ -26,9 +26,10 @@ namespace RoslynMcp.Roslyn.Services;
 /// which files they are about to modify (<c>EditService</c>, <c>EditorConfigService</c>)
 /// pass an explicit <see cref="FileSnapshotDto"/> list to
 /// <see cref="CaptureBeforeApply"/>, and <see cref="RevertAsync"/> restores those files
-/// directly from disk — no <c>GetChanges</c> dependency. Solution-based callers
-/// (<c>RefactoringService</c>) keep the legacy path, which has been hardened with a
-/// snapshot-wide document walk so empty-<c>GetChanges</c> no longer silently wins.
+/// directly from disk — no <c>GetChanges</c> dependency. <c>RefactoringService</c>
+/// captures physical source and project before-images for document or reference changes.
+/// Callers without file snapshots use a snapshot-wide document walk so
+/// empty-<c>GetChanges</c> no longer silently wins.
 /// </summary>
 public sealed class UndoService : IUndoService, IDisposable
 {

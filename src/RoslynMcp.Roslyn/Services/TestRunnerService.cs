@@ -377,20 +377,22 @@ public sealed partial class TestRunnerService : ITestRunnerService
     /// <exception cref="InvalidOperationException">'dotnet restore' failed.</exception>
     private async Task RestoreProjectAsync(string workspaceId, ProjectStatusDto resolvedProject, CancellationToken ct)
     {
-        var execution = await _executor.ExecuteAsync(
-            workspaceId,
-            resolvedProject.FilePath,
-            ["restore", resolvedProject.FilePath],
-            _options.BuildTimeout,
-            ct).ConfigureAwait(false);
-
-        if (!execution.Succeeded)
+        var phaseClock = Stopwatch.StartNew();
+        TimeSpan Remaining() => RestoreInvocationPlanner.RemainingBudget(_options.BuildTimeout, phaseClock.Elapsed,
+            TimeSpan.Zero, "The restore phase has no time budget left. Raise the build or request timeout and retry.");
+        foreach (var invocation in RestoreInvocationPlanner.Capture(resolvedProject.FilePath, Remaining, ct))
         {
-            throw new PublicInvalidOperationException(
-                $"Project '{resolvedProject.Name}' needs a fresh restore to safely check its resolved " +
-                "TUnit.Engine version before translating an OR filter (see " +
-                "tunit-treenode-filter-or-requires-tunit-fix), but 'dotnet restore' failed with exit code " +
-                $"{execution.ExitCode}. Restore the project directly to see the full error, then retry.");
+            ct.ThrowIfCancellationRequested();
+            var execution = await _executor.ExecuteAsync(workspaceId, invocation.TargetPath, invocation.Arguments,
+                Remaining(), ct).ConfigureAwait(false);
+            if (!execution.Succeeded)
+            {
+                throw new PublicInvalidOperationException(
+                    $"Project '{resolvedProject.Name}' needs a fresh restore to safely check its resolved " +
+                    "TUnit.Engine version before translating an OR filter (see " +
+                    "tunit-treenode-filter-or-requires-tunit-fix), but 'dotnet restore' failed with exit code " +
+                    $"{execution.ExitCode}. Restore the project directly to see the full error, then retry.");
+            }
         }
     }
 

@@ -7,17 +7,20 @@ namespace RoslynMcp.Tests.Helpers;
 
 internal static class ProcessPipeReader
 {
+    internal static Stream Open(Stream source, bool bufferEncodingPrefix)
+        => new ProcessPipeStream(source, bufferEncodingPrefix);
+
     internal static async Task<string> ReadToEndAsync(StreamReader reader, CancellationToken cancellationToken)
     {
-        using var pipe = new ProcessPipeStream(reader.BaseStream);
+        using var pipe = Open(reader.BaseStream, bufferEncodingPrefix: true);
         using var decoder = new StreamReader(pipe, reader.CurrentEncoding, detectEncodingFromByteOrderMarks: true);
         return await decoder.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    private sealed class ProcessPipeStream(Stream source) : Stream
+    private sealed class ProcessPipeStream(Stream source, bool bufferEncodingPrefix) : Stream
     {
         private readonly byte[] _buffer = new byte[4096];
-        private bool _readPrefix;
+        private bool _readPrefix = !bufferEncodingPrefix;
 
         public override bool CanRead => true;
         public override bool CanSeek => false;
@@ -42,6 +45,7 @@ internal static class ProcessPipeReader
 
             // StreamReader must see the complete BOM before choosing an encoding. A pipe
             // can deliver its first bytes separately; UTF-32 has the longest BOM (four bytes).
+            // Incremental captures already own their decoder and must expose even one byte.
             var minimum = _readPrefix ? 1 : Math.Min(4, destination.Length);
             var written = 0;
             while (written < minimum)
