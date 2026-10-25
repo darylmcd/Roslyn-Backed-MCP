@@ -8,7 +8,7 @@
 | Request | `/remediate count=10`; ceiling of ten, three failure-classification items selected; two merged, one held on verified external SDK acquisition failure. |
 | Starting main | `7688a4e51ed678117cc3d0c4ee01cf2668125df9`; fetched, clean and synchronized. |
 | Final qualification | Root owns `just machine-validate ci` on exact clean final merged main after this documentation change. The closeout PR description records that immutable head, original exit status and totals; scoped receipts below do not substitute for it. |
-| Backlog authority | All additions, evidence corrections and closures use `C:/Users/daryl/.claude/scripts/backlog.mjs`; no hand-edited index or item files. Close selected rows only after their code PR merges. |
+| Backlog authority | All additions, evidence corrections and closures use `~/.claude/scripts/backlog.mjs`; no hand-edited index or item files. Close selected rows only after their code PR merges. |
 | Roslyn | Deferred `mcp__roslyn__` discovery and live probes succeeded. Load each worktree's absolute `RoslynMcp.slnx`; restore/build analyzer outputs before claiming readiness. |
 
 ## Selected delivery
