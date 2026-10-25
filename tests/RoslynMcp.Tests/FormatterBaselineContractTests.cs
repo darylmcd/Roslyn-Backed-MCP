@@ -18,6 +18,70 @@ public sealed class FormatterBaselineContractTests
 {
     private const int _expectedSchemaVersion = 1;
 
+    [TestMethod]
+    [TestCategory("Process")]
+    public async Task IncrementalCapture_SilentPipesAllowWorkerProgressAndPreserveOutputAsync()
+    {
+        var result = await RunIncrementalCaptureProbeAsync("formatter-capture");
+        Assert.AreEqual(0, result.ExitCode, result.AllOutput);
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
+    public async Task IncrementalCapture_CleanupFailureRetainsPrimaryAndReapsOwnedWriterAsync()
+    {
+        var result = await RunIncrementalCaptureProbeAsync("formatter-capture-cleanup");
+        Assert.AreNotEqual(0, result.ExitCode, result.AllOutput);
+        StringAssert.Contains(result.AllOutput, "formatter-primary-sentinel");
+        StringAssert.Contains(result.AllOutput, nameof(UnauthorizedAccessException));
+        Assert.IsTrue(result.AllOutput.IndexOf("formatter-primary-sentinel", StringComparison.Ordinal) <
+            result.AllOutput.IndexOf(nameof(UnauthorizedAccessException), StringComparison.Ordinal), result.AllOutput);
+        StringAssert.Contains(result.AllOutput,
+            "formatter-cleanup: childExited=True, stdoutCompleted=True, stderrCompleted=True");
+    }
+
+    private static async Task<Helpers.PwshScriptResult> RunIncrementalCaptureProbeAsync(string scenario)
+    {
+        if (!OperatingSystem.IsWindows())
+            Assert.Inconclusive("Windows synchronous process pipes require this worker-retention regression.");
+        // Keep uncertain ownership outside the assembly's unconditional temp-root cleanup.
+        var root = Path.Combine(Path.GetTempPath(), "formatter-capture-" + Guid.NewGuid().ToString("N"));
+        var cleanupConfirmed = false;
+        Directory.CreateDirectory(root);
+        try
+        {
+            var result = await Helpers.PwshScriptRunner.RunExecutableAsync(
+                "dotnet",
+                [Path.Combine(AppContext.BaseDirectory, "ProcessProbes", "ProcessPipeWorkerProbe", "ProcessPipeWorkerProbe.dll"),
+                 typeof(FormatterBaselineContractTests).Assembly.Location, root, scenario],
+                environment: null,
+                timeout: TimeSpan.FromSeconds(45),
+                description: "actual formatter incremental-capture worker probe");
+            Console.WriteLine(result.AllOutput);
+            var pidPath = Path.Combine(root, "formatter.pid");
+            Assert.IsTrue(File.Exists(pidPath), result.AllOutput);
+            var ownedPid = int.Parse(File.ReadAllText(pidPath), System.Globalization.CultureInfo.InvariantCulture);
+            try
+            {
+                using var child = Process.GetProcessById(ownedPid);
+                Assert.IsTrue(child.HasExited, "The probe left its recorded writer alive.");
+            }
+            catch (ArgumentException)
+            {
+                // The recorded owned writer has already been reaped.
+            }
+            cleanupConfirmed = true;
+            return result;
+        }
+        finally
+        {
+            if (cleanupConfirmed)
+                TestFixtureFileSystem.DeleteDirectoryIfExists(root);
+            else
+                Console.WriteLine($"Formatter capture fixture retained after uncertain writer cleanup: {root}");
+        }
+    }
+
     /// <summary>
     /// Mirrors <c>$formatPhaseMarkerPrefix</c> in <c>eng/format-diagnostic-contract.ps1</c>.
     /// <see cref="GeneratorAndGate_ImportOneSharedDiagnosticGrammar"/> asserts the two stay identical.
@@ -1303,11 +1367,12 @@ public sealed class FormatterBaselineContractTests
 
         private async Task<string> CaptureAsync(StreamReader reader)
         {
+            using var pipe = Helpers.ProcessPipeReader.Open(reader.BaseStream, bufferEncodingPrefix: false);
             var byteBuffer = new byte[4096];
             var decoder = reader.CurrentEncoding.GetDecoder();
             var charBuffer = new char[reader.CurrentEncoding.GetMaxCharCount(byteBuffer.Length)];
             int read;
-            while ((read = await reader.BaseStream.ReadAsync(byteBuffer.AsMemory())) > 0)
+            while ((read = await pipe.ReadAsync(byteBuffer.AsMemory())) > 0)
             {
                 var charCount = decoder.GetChars(
                     byteBuffer,
