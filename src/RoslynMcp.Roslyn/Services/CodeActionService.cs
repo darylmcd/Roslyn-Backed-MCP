@@ -163,7 +163,8 @@ public sealed class CodeActionService : ICodeActionService
             .ToList();
 
         if (actionIndex < 0 || actionIndex >= actions.Count)
-            throw new ArgumentException($"Action index {actionIndex} is out of range. Available actions: {actions.Count}");
+            throw new PublicArgumentException(
+                $"actionIndex {actionIndex} is out of range. Available actions: {actions.Count}.", nameof(actionIndex));
 
         var selectedAction = actions[actionIndex];
         var operations = await selectedAction.Action.GetOperationsAsync(ct).ConfigureAwait(false);
