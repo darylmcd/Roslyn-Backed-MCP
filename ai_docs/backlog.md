@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-25T03:25:03Z
+**updated_at:** 2026-10-25T03:32:21Z
 
 ## Agent contract
 
@@ -170,6 +170,9 @@
 | `fork-source-fixture-cleanup-failure-propagation` | Medium | — | Preserve lifecycle fixture primary and cleanup failures while independently observing every owned task and disposal owner. | S | items/fork-source-fixture-cleanup-failure-propagation.md |
 | `fork-source-fixture-initialization-cleanup-ownership` | Medium | fork-source-fixture-cleanup-failure-propagation | Close externally owned lifecycle fixture resources after actual initialization failure while preserving primary and cleanup failures. | S | items/fork-source-fixture-initialization-cleanup-ownership.md |
 | `workspace-native-reference-global-context-mismatch` | Medium | — | **Preserve reference evaluation context** — Reconcile public workspace load with native reference globals and solution mappings. [type: bug] [source: restore-closeout] | M | items/workspace-native-reference-global-context-mismatch.md |
+| `msbuild-evaluation-project-context-cache` | Medium | — | **Bind MSBuild query context** — Evaluate and cache queries using actual loaded project globals and target-framework identity. [type: bug] [source: restore-closeout] | S | items/msbuild-evaluation-project-context-cache.md |
+| `document-set-native-default-compile-policy` | Medium | — | **Preserve native Compile membership** — Re-derive and split source document-set policy using actual evaluated contexts and intended snapshot bytes. [type: bug] [source: restore-closeout] | L | items/document-set-native-default-compile-policy.md |
+| `workspace-explicit-reload-double-transition` | Medium | — | **Reload once per explicit request** — Preserve one native refresh and version transition when source is stale. [type: bug] [source: restore-closeout] | S | items/workspace-explicit-reload-double-transition.md |
 
 ## Low
 
@@ -332,7 +335,7 @@
 | `refactor-preview-trivia-nits` | Low | — | **Fix trivia nits in extract_interface and remove_dead_code previews** — no newline before ' : IFoo', no whitespace-only residue line after removal. [type: bug] [source: mcp-surface-audit 20260924-1305] | M | items/refactor-preview-trivia-nits.md |
 | `set-editorconfig-option-creates-parallel-section` | Low | — | **Reuse an existing matching section in set_editorconfig_option** — write into [*.cs] when it exists instead of appending a parallel glob section. [type: bug] [source: mcp-surface-audit 20260924-1305] | S | items/set-editorconfig-option-creates-parallel-section.md |
 | `scaffold-type-mixed-line-endings` | Low | — | **Use one newline convention in TypeScaffolder stub assembly** — AppendLine after stubs that already end in \n mixes CRLF into LF files. [type: bug] [source: mcp-surface-audit 20260924-1305] | S | items/scaffold-type-mixed-line-endings.md |
-| `new-file-apply-writes-bom-ignoring-editorconfig` | Low | — | **Route new-file writes through SourceFileEncoding's no-BOM default** — create_file/move_type_to_file/scaffold applies add a BOM despite charset=utf-8. [type: bug] [source: mcp-surface-audit 20260924-1305] | S | items/new-file-apply-writes-bom-ignoring-editorconfig.md |
+| `new-file-apply-writes-bom-ignoring-editorconfig` | Low | — | **Route new-file writes through SourceFileEncoding's no-BOM default** — create_file/move_type_to_file/scaffold applies add a BOM despite charset=utf-8. [type: bug] [source: mcp-surface-audit 20260924-1305] | L | items/new-file-apply-writes-bom-ignoring-editorconfig.md |
 | `move-type-to-project-unconditional-reference` | Low | — | **Add the source→target ProjectReference only when the source still uses the moved type** — the unconditional reference makes moves to dependent projects always fail as cycles. [type: bug] [source: mcp-surface-audit 20260924-1305] | S | items/move-type-to-project-unconditional-reference.md |
 | `workspace-reload-restore-failure-not-flagged` | Low | — | **Set restoreRequired when project.assets.json carries restore errors** — so autoRestore/restoreHint trigger after e.g. NU1201. [type: bug] [source: mcp-surface-audit 20260924-1305] | S | items/workspace-reload-restore-failure-not-flagged.md |
 | `mcpb-manifest-stale-or-retire` | Low | — | **Retire or regenerate manifest.json** — it lists 8 of 174 tools without tools_generated, declares no prompts, and its binary entry_point/command would not run as a bundle. [type: chore] [source: mcp-surface-audit 20260924-1305] | S | items/mcpb-manifest-stale-or-retire.md |
