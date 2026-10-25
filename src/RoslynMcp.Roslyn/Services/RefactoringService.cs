@@ -412,12 +412,13 @@ public sealed class RefactoringService : IRefactoringService
             currentSolution,
             ct).ConfigureAwait(false);
         var solutionChanges = rebasedSolution.GetChanges(currentSolution);
-        var hasFileSetChanges = solutionChanges.GetProjectChanges().Any(projectChange =>
+        var hasPhysicalChanges = solutionChanges.GetProjectChanges().Any(projectChange =>
             projectChange.GetAddedDocuments().Any()
             || projectChange.GetRemovedDocuments().Any()
+            || projectChange.GetChangedDocuments().Any()
             || projectChange.GetAddedProjectReferences().Any()
             || projectChange.GetRemovedProjectReferences().Any());
-        var fileSnapshots = hasFileSetChanges
+        var fileSnapshots = hasPhysicalChanges
             ? await BuildFileSnapshotsForSolutionChangesAsync(
                 currentSolution,
                 rebasedSolution,

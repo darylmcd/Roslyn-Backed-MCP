@@ -491,6 +491,8 @@ public sealed class WorkspaceForkReviewedGraphTests : OwnedRefactoringTestBase
     [DataRow("default-change", true)]
     [DataRow("samepath", false)]
     [DataRow("samepath", true)]
+    [DataRow("encoding-only", false)]
+    [DataRow("encoding-only", true)]
     public async Task SourceApply_PreservesIntendedDocumentEncoding(string operation, bool siblingApply)
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(2));
@@ -513,8 +515,9 @@ public sealed class WorkspaceForkReviewedGraphTests : OwnedRefactoringTestBase
         {
             var source = original.Projects.Single(project => project.Name == "Source");
             var document = source.Documents.Single(document => document.Name == "Scalar.cs");
-            var selectedEncoding = operation.StartsWith("utf16", StringComparison.Ordinal) || operation == "samepath" ? System.Text.Encoding.Unicode : null;
-            var text = SourceText.From("namespace Domain; public class Scalar { public int Value => 43; public string Text => \"caf\u00e9\"; }\n", selectedEncoding, SourceHashAlgorithm.Sha256);
+            var selectedEncoding = operation.StartsWith("utf16", StringComparison.Ordinal) || operation is "samepath" or "encoding-only" ? System.Text.Encoding.Unicode : null;
+            var body = operation == "encoding-only" ? File.ReadAllText(sourcePath) : "namespace Domain; public class Scalar { public int Value => 43; public string Text => \"caf\u00e9\"; }\n";
+            var text = SourceText.From(body, selectedEncoding, SourceHashAlgorithm.Sha256);
             var added = operation.EndsWith("add", StringComparison.Ordinal);
             targetPath = added ? Path.Combine(workspace.RootPath, "Shared", "Encoded.cs") : sourcePath;
             var modified = added
@@ -522,7 +525,7 @@ public sealed class WorkspaceForkReviewedGraphTests : OwnedRefactoringTestBase
                     "Encoded.cs", SourceText.From("namespace Domain; public class Encoded { public string Value => \"caf\u00e9\"; }\n", selectedEncoding, SourceHashAlgorithm.Sha256), filePath: targetPath)
                 : operation == "samepath"
                     ? original.RemoveDocument(document.Id).AddDocument(DocumentId.CreateNewId(source.Id), document.Name, text, filePath: sourcePath)
-                    : original.WithDocumentText(document.Id, text);
+                    : original.WithDocumentText(document.Id, text, PreservationMode.PreserveIdentity);
             token = Services.PreviewStore.Store(workspace.WorkspaceId, modified,
                 Services.WorkspaceManager.GetCurrentVersion(workspace.WorkspaceId), "source encoding proof", false);
             applyTool = "test_apply";
@@ -572,7 +575,7 @@ public sealed class WorkspaceForkReviewedGraphTests : OwnedRefactoringTestBase
         Assert.IsNotNull(appliedText.Encoding, "Native workspace must retain the resolved physical encoding.");
         Assert.AreEqual(encoding.CodePage, appliedText.Encoding.CodePage);
         CollectionAssert.AreEqual(encoding.GetPreamble(), appliedText.Encoding.GetPreamble());
-        Assert.AreEqual(intendedText.ChecksumAlgorithm, appliedText.ChecksumAlgorithm);
+        Assert.AreEqual(intendedText.ToString(), appliedText.ToString());
         var storedText = await intended.GetTextAsync(timeout.Token);
         Assert.AreSame(intendedText.Encoding, storedText.Encoding, "Stored preview snapshots stay immutable.");
         Assert.AreEqual(intendedText.ChecksumAlgorithm, storedText.ChecksumAlgorithm);
