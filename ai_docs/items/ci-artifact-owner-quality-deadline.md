@@ -1,6 +1,6 @@
 # ci-artifact-owner-quality-deadline — Keep quality and cache work outside test tails
 
-**row:** `ci-artifact-owner-quality-deadline` · **pri:** `High` · **size:** `L`
+**row:** `ci-artifact-owner-quality-deadline` · **pri:** `High` · **size:** `L` · **deps:** `linux-pwsh-startup-profile-write-ownership`
 
 ## Anchors
 
@@ -24,6 +24,9 @@
 - [ ] Share checked ordinary main-plus-sample preparation between cache writers and release verification; retain strict audited main restore in quality and canonical sample discovery. Preserve restored-license input authority and its placement before build/tests/publication. Prove real preparation failures stop subsequent samples/save/build, and successful miss persistence precedes tests in hosted logs.
 
 ## Evidence
+
+- Resumed at operator request: narrower independent job-owned profile write correction cold-approved under linux-pwsh-startup-profile-write-ownership; original native134 attribution row stays open. Required native RED/GREEN, actual module-analysis persistence and all hosted checks remain gates. No existing Acceptance removed.
+
 
 - PARKED PR1849 draft at2374a09b4cc997720c6917ffc6f6d4ccda7fd1ca: run40373606428 quality/all4Windows/Linux2/SDKfloor/CodeQL succeeded, but Linux1 job121750682497 first failed native pwsh134 with System.IO.FileLoadException and truncated System.Collections.Specialized public-key token, then repeated failures and30m cancellation. Root exact eight-class93/0/0 and cold implementation PASS do not qualify a failed hosted gate. Real Linux and Windows explicit cache-save-before-test ordering is observed. No unchanged rerun or speculative native repair. Bounded private immutable-cache cohort passed8plus1descendant; synthetic malformed-profile control also passed. Fresh cold plan BLOCKED a complete cure because causal playback red/green is absent and whole-directory freezing affects other writes. Native failure diagnosis is separate; source remains frozen until a proven repair can qualify all required checks.
 
