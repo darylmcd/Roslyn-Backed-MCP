@@ -332,7 +332,7 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
 
         // Relocating: write a new file for the relocated type and either remove the type from the
         // old file (if siblings remain) or remove the old file entirely (if no siblings).
-        var removedTypeRoot = sourceRoot.RemoveNode(typeDecl, SyntaxRemoveOptions.KeepLeadingTrivia);
+        var removedTypeRoot = MovedDeclarationFileWriter.RemoveDeclaration(sourceRoot, typeDecl);
         Solution newSolution;
         if (siblingTypesInSameNs.Count == 0 && sourceRoot.DescendantNodes().OfType<TypeDeclarationSyntax>()
             .Count(t => t.Parent is CompilationUnitSyntax or BaseNamespaceDeclarationSyntax) == 1)
@@ -346,7 +346,9 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
         }
 
         // Build the new compilation unit for the moved type, wrapped in the destination namespace.
-        var newFileRoot = BuildMovedTypeCompilationUnit(sourceRoot, containingNs, typeDecl, toNamespace);
+        var semanticModel = await sourceDocument.GetSemanticModelAsync(ct).ConfigureAwait(false)
+            ?? throw InvalidOperationErrors.Internal("Semantic model could not be created for the source document.");
+        var newFileRoot = BuildMovedTypeCompilationUnit(sourceRoot, typeDecl, toNamespace, semanticModel, ct);
         var targetProject = newSolution.GetProject(sourceDocument.Project.Id)!;
         var targetFileName = Path.GetFileName(destinationFilePath);
         var folders = ProjectMetadataParser.ComputeDocumentFolders(targetProject.FilePath, destinationFilePath);
@@ -436,29 +438,18 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
     private static bool IsWhitespaceOrEndOfLine(SyntaxTrivia trivia) =>
         trivia.IsKind(SyntaxKind.WhitespaceTrivia) || trivia.IsKind(SyntaxKind.EndOfLineTrivia);
 
-    /// <summary>
-    /// Build a fresh compilation unit for the relocated type with a file-scoped destination
-    /// namespace declaration. Preserves the source file's usings.
-    /// </summary>
     private static CompilationUnitSyntax BuildMovedTypeCompilationUnit(
         CompilationUnitSyntax sourceRoot,
-        BaseNamespaceDeclarationSyntax containingNs,
         TypeDeclarationSyntax typeDecl,
-        string toNamespace)
+        string toNamespace,
+        SemanticModel semanticModel,
+        CancellationToken ct)
     {
-        _ = containingNs; // shape retained for future namespace-using filtering
         var destinationNs = SyntaxFactory.FileScopedNamespaceDeclaration(SyntaxFactory.ParseName(toNamespace))
             .WithNamespaceKeyword(SyntaxFactory.Token(SyntaxKind.NamespaceKeyword).WithTrailingTrivia(SyntaxFactory.Whitespace(" ")))
-            .WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken).WithTrailingTrivia(SyntaxFactory.CarriageReturnLineFeed, SyntaxFactory.CarriageReturnLineFeed))
-            .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(typeDecl));
-
-        var compilationUnit = SyntaxFactory.CompilationUnit()
-            .WithUsings(sourceRoot.Usings)
-            .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(destinationNs));
-
-        compilationUnit = TriviaNormalizationHelper.NormalizeLeadingTrivia(compilationUnit);
-        compilationUnit = TriviaNormalizationHelper.NormalizeUsingToMemberSeparator(compilationUnit);
-        return compilationUnit;
+            .WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken).WithTrailingTrivia(SyntaxFactory.CarriageReturnLineFeed, SyntaxFactory.CarriageReturnLineFeed));
+        return MovedDeclarationFileWriter.CreateCompilationUnit(
+            sourceRoot, typeDecl, sourceRoot.Usings, destinationNs, semanticModel, ct);
     }
 
     /// <summary>

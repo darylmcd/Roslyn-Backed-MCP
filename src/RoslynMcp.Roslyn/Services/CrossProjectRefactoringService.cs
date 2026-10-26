@@ -79,7 +79,13 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             throw new PublicInvalidOperationException($"Target file already exists: {DescribeProjectRelativePath(targetProjectDirectory, targetFilePath)}");
         }
 
-        var movedRoot = CreateCompilationUnitForMember(sourceRoot, typeDeclaration, resolvedTargetNamespace);
+        BaseNamespaceDeclarationSyntax? destinationNamespace = string.IsNullOrWhiteSpace(resolvedTargetNamespace)
+            ? null
+            : SyntaxFactory.FileScopedNamespaceDeclaration(SyntaxFactory.ParseName(resolvedTargetNamespace))
+                .WithNamespaceKeyword(SyntaxFactory.Token(SyntaxKind.NamespaceKeyword).WithTrailingTrivia(SyntaxFactory.Whitespace(" ")))
+                .WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken).WithTrailingTrivia(SyntaxFactory.CarriageReturnLineFeed));
+        var movedRoot = MovedDeclarationFileWriter.CreateCompilationUnit(
+            sourceRoot, typeDeclaration, sourceRoot.Usings, destinationNamespace, semanticModel, ct);
         // Item #1 — pass folders so MSBuildWorkspace.TryApplyChanges resolves the disk path
         // consistently with our explicit write. Without folders, Roslyn resolves cross-project
         // adds to {targetProjectDir}/{fileName} and produces a rogue project-root copy.
@@ -101,8 +107,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         }
         else
         {
-            updatedSourceRoot = sourceRoot.RemoveNode(typeDeclaration, SyntaxRemoveOptions.KeepExteriorTrivia)
-                ?? throw new InvalidOperationException("Failed to remove the type declaration from the source document.");
+            updatedSourceRoot = MovedDeclarationFileWriter.RemoveDeclaration(sourceRoot, typeDeclaration);
             updatedSolution = updatedSolution.WithDocumentSyntaxRoot(sourceDocument.Id, updatedSourceRoot);
         }
 
@@ -414,127 +419,6 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         }
     }
 
-    /// <summary>
-    /// Build a fresh compilation unit that contains <paramref name="member"/> wrapped in a
-    /// file-scoped namespace. Two shapes:
-    /// <list type="bullet">
-    ///   <item><description>
-    ///     <paramref name="normalizeWhitespace"/> = <c>true</c> — used by the synthesized-interface
-    ///     path (<see cref="CreateInterfaceCompilationUnit"/>). The member is built from raw
-    ///     <c>SyntaxFactory</c> nodes with no trivia, so the entire new compilation unit is put
-    ///     through <see cref="SyntaxNodeExtensions.NormalizeWhitespace{T}(T, string, bool)"/> to
-    ///     produce readable C# (the interface file is brand-new — there is no original formatting
-    ///     to preserve). This closes FORMAT-BUG-001 (dr-9-2-format-bug-001-cross-project-interface-extractio):
-    ///     without it, the emitted file reads <c>publicinterfaceIName{TaskRunAsync(…);}</c>.
-    ///   </description></item>
-    ///   <item><description>
-    ///     <paramref name="normalizeWhitespace"/> = <c>false</c> — used by
-    ///     <see cref="PreviewMoveTypeToProjectAsync"/>. The member is the real source syntax node
-    ///     (trivia intact), so calling <c>NormalizeWhitespace</c> would re-flow the body and lose
-    ///     blank lines / indentation. Instead the usings are kept verbatim and the member is
-    ///     wrapped in a hand-built file-scoped namespace with explicit line endings.
-    ///   </description></item>
-    /// </list>
-    /// </summary>
-    private static CompilationUnitSyntax CreateCompilationUnitForMember(
-        CompilationUnitSyntax sourceRoot,
-        MemberDeclarationSyntax member,
-        string namespaceName,
-        bool filterUsings = false,
-        bool normalizeWhitespace = false,
-        SyntaxList<UsingDirectiveSyntax>? overrideUsings = null)
-    {
-        // `overrideUsings` (gh #765) lets the interface-extraction path supply a semantically-
-        // derived using list and bypass both the text-grep FilterUsingsForMember and the
-        // raw-copy fallback. The move-type path leaves it null and continues to use either
-        // FilterUsingsForMember (filterUsings: true) or the raw source usings.
-        var usings = overrideUsings
-            ?? (filterUsings
-                ? FilterUsingsForMember(sourceRoot.Usings, member, crossProjectExtraction: filterUsings)
-                : sourceRoot.Usings);
-
-        if (normalizeWhitespace)
-        {
-            // Synthesized-interface path: drop all inherited trivia (the raw factory usings carry
-            // none anyway, and propagating the source file's leading trivia to a brand-new file is
-            // wrong). Rebuild usings without trivia so NormalizeWhitespace can lay out the file.
-            var cleanUsings = SyntaxFactory.List(
-                usings.Select(u => u.WithoutTrivia()));
-
-            MemberDeclarationSyntax wrappedMember = string.IsNullOrWhiteSpace(namespaceName)
-                ? member
-                : SyntaxFactory.FileScopedNamespaceDeclaration(SyntaxFactory.ParseName(namespaceName))
-                    .WithMembers(SyntaxFactory.SingletonList(member));
-
-            return SyntaxFactory.CompilationUnit()
-                .WithUsings(cleanUsings)
-                .WithMembers(SyntaxFactory.SingletonList(wrappedMember))
-                .NormalizeWhitespace();
-        }
-
-        // Move-type path: preserve the member's original trivia. Build a file-scoped namespace
-        // with explicit line endings so the declaration-to-member boundary has a blank line.
-        var compilationUnit = SyntaxFactory.CompilationUnit()
-            .WithUsings(usings)
-            .WithLeadingTrivia(sourceRoot.GetLeadingTrivia())
-            .WithTrailingTrivia(sourceRoot.GetTrailingTrivia());
-
-        MemberDeclarationSyntax namespacedMember = string.IsNullOrWhiteSpace(namespaceName)
-            ? member
-            : SyntaxFactory.FileScopedNamespaceDeclaration(SyntaxFactory.ParseName(namespaceName))
-                .WithNamespaceKeyword(SyntaxFactory.Token(SyntaxKind.NamespaceKeyword).WithTrailingTrivia(SyntaxFactory.Whitespace(" ")))
-                .WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken).WithTrailingTrivia(SyntaxFactory.CarriageReturnLineFeed))
-                .WithMembers(SyntaxFactory.SingletonList(member));
-
-        return compilationUnit.WithMembers(SyntaxFactory.SingletonList(namespacedMember));
-    }
-
-    private static SyntaxList<UsingDirectiveSyntax> FilterUsingsForMember(
-        SyntaxList<UsingDirectiveSyntax> sourceUsings,
-        MemberDeclarationSyntax member,
-        bool crossProjectExtraction = false)
-    {
-        var memberText = member.ToFullString();
-
-        // Collect all type names referenced in the interface member signatures
-        var referencedNames = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var node in member.DescendantNodes())
-        {
-            if (node is IdentifierNameSyntax id)
-                referencedNames.Add(id.Identifier.Text);
-            else if (node is GenericNameSyntax generic)
-                referencedNames.Add(generic.Identifier.Text);
-            else if (node is QualifiedNameSyntax qualified)
-                referencedNames.Add(qualified.Right.Identifier.Text);
-        }
-
-        // Always include System if any types are referenced
-        var filtered = sourceUsings.Where(u =>
-        {
-            var name = u.Name?.ToString();
-            if (name is null) return false;
-            if (string.Equals(name, "System.Collections.Concurrent", StringComparison.Ordinal) &&
-                !memberText.Contains("Concurrent", StringComparison.Ordinal))
-            {
-                return false;
-            }
-
-            if (name is "System") return true;
-            // Keep the using if its last segment matches any referenced name
-            var lastSegment = name.Contains('.') ? name[(name.LastIndexOf('.') + 1)..] : name;
-            return referencedNames.Contains(lastSegment) ||
-                   referencedNames.Any(r => name.EndsWith($".{r}", StringComparison.Ordinal));
-        }).ToArray();
-
-        // BUG-N3: In cross-project extraction, falling back to all source usings pulls package
-        // namespaces (e.g. Microsoft.Data.Sqlite) that the target project does not reference.
-        // Only use the full-source fallback for same-project generation.
-        if (filtered.Length == 0 && referencedNames.Count > 0 && !crossProjectExtraction)
-            return sourceUsings;
-
-        return new SyntaxList<UsingDirectiveSyntax>(filtered);
-    }
-
     private static CompilationUnitSyntax CreateInterfaceCompilationUnit(
         CompilationUnitSyntax sourceRoot,
         INamedTypeSymbol typeSymbol,
@@ -568,23 +452,15 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             .AddModifiers(accessibilityToken)
             .WithMembers(SyntaxFactory.List(interfaceMembers));
 
-        // gh #765 — build the using list semantically. Drop the legacy text-grep filter
-        // (`FilterUsingsForMember`) which silently dropped source-project usings whose last
-        // segment didn't match a `MinimallyQualifiedFormat` short name.
-        var overrideUsings = UsingDirectiveSynthesizer.BuildUsingDirectives(sourceRoot.Usings, requiredNamespaces);
-
-        // FORMAT-BUG-001 (dr-9-2-format-bug-001-cross-project-interface-extractio): the
-        // interface declaration and its members are built from raw SyntaxFactory nodes that
-        // carry no trivia. Without whole-document normalization the emitted file reads
-        // `publicinterfaceIName{TaskRunAsync(…);}`. Pass normalizeWhitespace: true so the
-        // generated-only file is formatted before we call ToFullString().
-        return CreateCompilationUnitForMember(
-            sourceRoot,
-            interfaceDeclaration,
-            namespaceName,
-            filterUsings: false,
-            normalizeWhitespace: true,
-            overrideUsings: overrideUsings);
+        var usings = UsingDirectiveSynthesizer.BuildUsingDirectives(sourceRoot.Usings, requiredNamespaces);
+        var cleanUsings = SyntaxFactory.List(usings.Select(u => u.WithoutTrivia()));
+        MemberDeclarationSyntax wrappedMember = string.IsNullOrWhiteSpace(namespaceName)
+            ? interfaceDeclaration
+            : SyntaxFactory.FileScopedNamespaceDeclaration(SyntaxFactory.ParseName(namespaceName))
+                .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(interfaceDeclaration));
+        // Synthesized declarations have no original body layout to preserve.
+        return SyntaxFactory.CompilationUnit().WithUsings(cleanUsings)
+            .WithMembers(SyntaxFactory.SingletonList(wrappedMember)).NormalizeWhitespace();
     }
 
     /// <summary>
