@@ -347,7 +347,7 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
 
         // Build the new compilation unit for the moved type, wrapped in the destination namespace.
         var semanticModel = await sourceDocument.GetSemanticModelAsync(ct).ConfigureAwait(false)
-            ?? throw new InvalidOperationException("Semantic model could not be created for the source document.");
+            ?? throw InvalidOperationErrors.Internal("Semantic model could not be created for the source document.");
         var newFileRoot = BuildMovedTypeCompilationUnit(sourceRoot, typeDecl, toNamespace, semanticModel, ct);
         var targetProject = newSolution.GetProject(sourceDocument.Project.Id)!;
         var targetFileName = Path.GetFileName(destinationFilePath);

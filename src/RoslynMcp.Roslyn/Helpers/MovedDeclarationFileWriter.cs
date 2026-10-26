@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using RoslynMcp.Core.Services;
 
 namespace RoslynMcp.Roslyn.Helpers;
 
@@ -69,7 +70,7 @@ internal static class MovedDeclarationFileWriter
         }
         // Policy directives inside a removed declaration still govern following declarations.
         var remaining = removalRoot.RemoveNode(removalMember, SyntaxRemoveOptions.KeepDirectives)
-            ?? throw new InvalidOperationException("Failed to remove the moved declaration from its source document.");
+            ?? throw InvalidOperationErrors.Internal("Failed to remove the moved declaration from its source document.");
         return ownsPrelude ? remaining.WithLeadingTrivia(prelude.AddRange(remaining.GetLeadingTrivia())) : remaining;
     }
 
