@@ -4,10 +4,7 @@
 
 ## Anchors
 
-- `src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs:55-79`
-- `src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs:132-174`
-- `src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs:221-348`
-- `src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs:812`
+- `src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs` (`PreviewMoveTypeToProjectAsync`, `PreviewExtractInterfaceAsync`, `PreviewDependencyInversionAsync`, `CreateInterfaceExtractionSolutionAsync`, `DescribeProjectRelativePath`)
 - `tests/RoslynMcp.Tests/CrossProjectRefactoringIntegrationTests.cs`
 
 ## Acceptance

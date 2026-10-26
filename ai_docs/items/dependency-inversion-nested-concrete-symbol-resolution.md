@@ -4,7 +4,7 @@
 
 ## Anchors
 
-- `src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs:843-848`
+- `src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs` (`GetMetadataName`)
 - `tests/RoslynMcp.Tests/CrossProjectRefactoringIntegrationTests.cs`
 
 ## Acceptance

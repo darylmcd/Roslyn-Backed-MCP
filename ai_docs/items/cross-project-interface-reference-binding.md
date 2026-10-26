@@ -4,9 +4,8 @@
 
 ## Anchors
 
-- `src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs:177`
-- `src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs:287`
-- `src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs:815`
+- `src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs` (`PreviewExtractInterfaceAsync`, `PreviewDependencyInversionAsync`, `CreateInterfaceExtractionSolutionAsync`)
+- `src/RoslynMcp.Roslyn/Helpers/InterfaceMemberProjection.cs` (`AddBaseType`)
 - `src/RoslynMcp.Roslyn/Services/ExtractAndWireOrchestrator.cs:94`
 
 ## Acceptance
