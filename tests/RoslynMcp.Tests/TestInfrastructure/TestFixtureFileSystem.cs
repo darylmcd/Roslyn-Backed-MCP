@@ -298,7 +298,7 @@ internal static class TestFixtureFileSystem
         }
     }
 
-    private static void CopyRepositorySupportFiles(string repositoryRootPath, string destinationRoot)
+    internal static void CopyRepositorySupportFiles(string repositoryRootPath, string destinationRoot)
     {
         foreach (var fileName in new[] { "Directory.Build.props", "Directory.Packages.props", "global.json", "BannedSymbols.txt" })
         {
@@ -308,7 +308,34 @@ internal static class TestFixtureFileSystem
                 File.Copy(sourcePath, Path.Combine(destinationRoot, fileName), overwrite: true);
             }
         }
+
+        // Detached fixtures have no Git provider to contribute a top-level source root.
+        // Keep CI's deterministic compiler policy and describe the actual copied tree.
+        var propsPath = Path.Combine(destinationRoot, "Directory.Build.props");
+        var props = File.Exists(propsPath)
+            ? XDocument.Load(propsPath, LoadOptions.PreserveWhitespace)
+            : new XDocument(new XElement("Project"));
+        var project = props.Root!;
+        var ns = project.Name.Namespace;
+        var sourceRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(destinationRoot)) + Path.DirectorySeparatorChar;
+        project.Add(new XElement(ns + "ItemGroup",
+            new XElement(ns + "SourceRoot", new XAttribute("Include", EscapeMsBuildItemInclude(sourceRoot)))));
+        props.Save(propsPath, SaveOptions.DisableFormatting);
     }
+
+    internal static string EscapeMsBuildItemInclude(string value) => string.Concat(value.Select(character => character switch
+    {
+        '%' => "%25",
+        '*' => "%2A",
+        '?' => "%3F",
+        '@' => "%40",
+        '$' => "%24",
+        '(' => "%28",
+        ')' => "%29",
+        ';' => "%3B",
+        '\'' => "%27",
+        _ => character.ToString(),
+    }));
 
     private static bool ShouldSkipDirectory(string path)
     {
