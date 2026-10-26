@@ -5,8 +5,6 @@
 ## Anchors
 
 - `src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs`
-- `src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs`
-- `src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs`
 - `src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs` (shared extraction destination refusal)
 - `tests/RoslynMcp.Tests/CrossProjectRefactoringIntegrationTests.cs`
 

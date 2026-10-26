@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-26T19:39:58Z
+**updated_at:** 2026-10-26T22:02:47Z
 
 ## Agent contract
 
@@ -69,9 +69,6 @@
 | `interface-extraction-nullability-context-fidelity` | High | cross-project-interface-parameter-semantics,interface-extraction-ref-return-contracts,interface-extraction-unsafe-signature-context,interface-extraction-escaped-member-identifiers,interface-extraction-nullable-context-projection | Preserve semantic nullable annotation states in generated interfaces across source-local and receiving contexts without changing project policy. | M | items/interface-extraction-nullability-context-fidelity.md |
 | `interface-extraction-receiving-language-compatibility` | High | cross-project-interface-parameter-semantics,interface-extraction-ref-return-contracts,interface-extraction-unsafe-signature-context,cross-project-receiving-namespace-compatibility,interface-extraction-nullable-context-projection | Validate generated interface language requirements with the receiving compiler context before publishing tokens; retain compatible controls and project policy. | M | items/interface-extraction-receiving-language-compatibility.md |
 | `metadata-member-symbol-handle-roundtrip` | High | — | Resolve metadata member handles returned by semantic tools through the same symbolHandle entry points. | M | items/metadata-member-symbol-handle-roundtrip.md |
-| `generated-interface-global-using-order` | High | — | Preserve legal global-before-ordinary using order in shared generated-interface imports and correct stale ownership comments. | M | items/generated-interface-global-using-order.md |
-| `render-finding-linux-pwsh-exit-139` | High | — | Identify and repair the PowerShell child exit139 that blocks hosted renderer determinism validation. [type: bug] [source: hosted-ci] | S | items/render-finding-linux-pwsh-exit-139.md |
-| `linux-pwsh-startup-profile-invalid-assembly-identity` | High | — | Diagnose native PowerShell startup assembly-identity corruption and qualify the proven repair without changing test coverage or deadlines. | S | items/linux-pwsh-startup-profile-invalid-assembly-identity.md |
 
 ## Medium
 
@@ -215,8 +212,6 @@
 | `dependency-inversion-nested-concrete-symbol-resolution` | Medium | — | Resolve nested concrete types by complete metadata identity during dependency inversion. [type: bug] [source: interface-parameter-remediation-review] | S | items/dependency-inversion-nested-concrete-symbol-resolution.md |
 | `cross-project-interface-event-member-preservation` | Medium | — | Preserve public instance events in extracted interface contracts through real producer compilation. [type: bug] [source: interface-parameter-remediation-review] | S | items/cross-project-interface-event-member-preservation.md |
 | `first-using-trivia-helper-duplication` | Medium | — | Share the exact first-using trivia transformation between split and partition consumers without changing header policy. | M | items/first-using-trivia-helper-duplication.md |
-| `changed-format-linux-path-identity` | Medium | — | Preserve filesystem path identity across changed-file deduplication and formatter findings. [type: bug] [source: ci-prerequisite-review] | S | items/changed-format-linux-path-identity.md |
-| `render-finding-tests-process-ownership` | Medium | — | Replace private sequential pipe reads and unobserved process waits with the existing owned runner. [type: test-refactor] [source: renderer-ci-diagnosis] | S | items/render-finding-tests-process-ownership.md |
 
 ## Low
 
