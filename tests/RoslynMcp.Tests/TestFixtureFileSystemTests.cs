@@ -1,8 +1,70 @@
+using System.Xml.Linq;
+
 namespace RoslynMcp.Tests;
 
 [TestClass]
 public sealed class TestFixtureFileSystemTests
 {
+    [TestMethod]
+    public void EscapeMsBuildItemInclude_EncodesOriginalCharactersExactlyOnce()
+    {
+        Assert.AreEqual("%25%2A%3F%40%24%28%29%3B%27", TestFixtureFileSystem.EscapeMsBuildItemInclude("%*?@$();'"));
+        Assert.AreEqual("literal%253B", TestFixtureFileSystem.EscapeMsBuildItemInclude("literal%3B"));
+    }
+
+    [TestMethod]
+    [DataRow("solution", true)]
+    [DataRow("library", true)]
+    [DataRow("library-tests", true)]
+    [DataRow("solution", false)]
+    [DataRow("library", false)]
+    [DataRow("library-tests", false)]
+    public void CopyFixture_ProvidesActualDetachedSourceRoot_WithoutChangingCompilerPolicy(string kind, bool existingProps)
+    {
+        var root = Path.Combine(TestTempRoot.Current, nameof(TestFixtureFileSystemTests), "root %;()$' " + Guid.NewGuid().ToString("N"));
+        var sample = Path.Combine(root, "sample");
+        Directory.CreateDirectory(Path.Combine(sample, "SampleLib"));
+        Directory.CreateDirectory(Path.Combine(sample, "SampleLib.Tests"));
+        var solution = Path.Combine(sample, "SampleSolution.slnx");
+        File.WriteAllText(solution, "<Solution />");
+        foreach (var project in new[] { "SampleLib", "SampleLib.Tests" })
+            File.WriteAllText(Path.Combine(sample, project, project + ".csproj"), "<Project />");
+        const string original = "<Project><!--preserve--><PropertyGroup><Nullable>enable</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors><ContinuousIntegrationBuild Condition=\"'$(CI)' == 'true'\">true</ContinuousIntegrationBuild><DeterministicSourcePaths>true</DeterministicSourcePaths></PropertyGroup></Project>";
+        var sourceProps = Path.Combine(root, "Directory.Build.props");
+        if (existingProps) File.WriteAllText(sourceProps, original);
+        string? copiedRoot = null;
+        try
+        {
+            copiedRoot = kind switch
+            {
+                "library" => TestFixtureFileSystem.CreateSampleLibraryCopy(root, solution).RootPath,
+                "library-tests" => TestFixtureFileSystem.CreateSampleLibraryTestsCopy(root, solution).RootPath,
+                _ => Path.GetDirectoryName(TestFixtureFileSystem.CreateSampleSolutionCopy(root, solution))!,
+            };
+            var props = XDocument.Load(Path.Combine(copiedRoot, "Directory.Build.props"));
+            var sourceRoot = props.Descendants("SourceRoot").Single();
+            Assert.AreEqual(TestFixtureFileSystem.EscapeMsBuildItemInclude(
+                Path.TrimEndingDirectorySeparator(Path.GetFullPath(copiedRoot)) + Path.DirectorySeparatorChar),
+                sourceRoot.Attribute("Include")?.Value);
+            Assert.AreEqual("", sourceRoot.Element("NestedRoot")?.Value ?? "");
+            if (existingProps)
+            {
+                var expected = XDocument.Parse(original);
+                CollectionAssert.AreEqual(expected.Descendants("PropertyGroup").Select(e => e.ToString()).ToArray(),
+                    props.Descendants("PropertyGroup").Select(e => e.ToString()).ToArray());
+                Assert.AreEqual(original, File.ReadAllText(sourceProps), "Repository props must remain byte-identical.");
+                Assert.IsTrue(props.DescendantNodes().OfType<XComment>().Any(c => c.Value == "preserve"));
+            }
+            else Assert.IsFalse(File.Exists(sourceProps));
+            Assert.IsFalse(Directory.Exists(Path.Combine(copiedRoot, ".git")));
+        }
+        finally
+        {
+            if (copiedRoot is not null) TestFixtureFileSystem.DeleteDirectoryIfExists(copiedRoot);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(root);
+        }
+    }
+
     [TestMethod]
     [DataRow(false)]
     [DataRow(true)]

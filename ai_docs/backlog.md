@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-25T21:03:52Z
+**updated_at:** 2026-10-26T09:09:09Z
 
 ## Agent contract
 
@@ -61,6 +61,7 @@
 | `restore-package-root-authoritative-read-fail-closed` | High | — | Keep unreadable assets distinct from an absent recorded root | M | items/restore-package-root-authoritative-read-fail-closed.md |
 | `cross-project-interface-parameter-semantics` | High | — | Preserve emitted interface parameter semantics | M | items/cross-project-interface-parameter-semantics.md |
 | `physical-compensation-external-edit-ownership` | High | — | Preserve external edits during failed persistence compensation | M | items/physical-compensation-external-edit-ownership.md |
+| `detached-test-fixture-source-root-metadata` | High | — | Preserve deterministic detached fixture compilation with real source-root metadata and a child-CI regression. | S | items/detached-test-fixture-source-root-metadata.md |
 
 ## Medium
 
