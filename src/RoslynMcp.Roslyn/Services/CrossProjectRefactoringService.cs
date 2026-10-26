@@ -174,7 +174,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             throw new PublicInvalidOperationException($"Target interface file already exists: {DescribeProjectRelativePath(targetProjectDirectory, interfaceFilePath)}");
         }
 
-        var updatedTypeDeclaration = AddBaseType(typeDeclaration, resolvedInterfaceName);
+        var updatedTypeDeclaration = InterfaceBaseTypeWriter.AddBaseType(typeDeclaration, resolvedInterfaceName, multilineContinuation: true);
         var updatedSourceRoot = sourceRoot.ReplaceNode(typeDeclaration, updatedTypeDeclaration);
         // BUG-004: Do not normalize whitespace on the entire compilation unit — that re-flows
         // unrelated code (collapses multi-line bodies, reshuffles format specifiers). ReplaceNode
@@ -641,118 +641,6 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         return SyntaxFactory.AccessorList(SyntaxFactory.List(accessors));
     }
 
-    private static TypeDeclarationSyntax AddBaseType(TypeDeclarationSyntax declaration, string interfaceName)
-    {
-        if (declaration.BaseList?.Types.Any(baseType =>
-                string.Equals(baseType.Type.ToString(), interfaceName, StringComparison.Ordinal)) == true)
-        {
-            return declaration;
-        }
-
-        // FORMAT-BUG-001: the interface base-type token must carry a leading space or it glues
-        // onto the preceding token (`:IFoo` or `,IFoo`). Mirrors InterfaceExtractionService.
-        var interfaceType = SyntaxFactory.SimpleBaseType(SyntaxFactory.ParseTypeName(interfaceName))
-            .WithLeadingTrivia(SyntaxFactory.Space);
-
-        TypeDeclarationSyntax updated;
-        if (declaration.BaseList is null)
-        {
-            // FORMAT-BUG-002 (dr-9-3-format-bug-002-destroys-source-formatting): when the class had
-            // `class Foo\n{` (brace on its own line), the identifier's trailing trivia carries the
-            // `\n`. Inserting a BaseList after the identifier would emit `class Foo\n : IName {`
-            // with the base list orphaned on a new line. Relocate the identifier's trailing EOL
-            // trivia to the brace's leading trivia so the output reads `class Foo : IName\n{`.
-            var identifier = declaration.Identifier;
-            var identifierTrailing = identifier.TrailingTrivia;
-            var hasEolTrailing = identifierTrailing.Any(t => t.IsKind(SyntaxKind.EndOfLineTrivia));
-
-            if (hasEolTrailing)
-            {
-                // Drop the trailing EOL-family trivia from the identifier and relocate it to the
-                // brace's leading trivia. Keep any leading whitespace trivia that was before the
-                // EOL (rare, e.g. trailing space before newline).
-                var newIdentifierTrailing = SyntaxFactory.TriviaList(
-                    identifierTrailing.TakeWhile(t => !t.IsKind(SyntaxKind.EndOfLineTrivia)));
-                var relocatedTrivia = identifierTrailing.SkipWhile(t => !t.IsKind(SyntaxKind.EndOfLineTrivia));
-
-                var newIdentifier = identifier.WithTrailingTrivia(newIdentifierTrailing);
-                var existingBrace = declaration.OpenBraceToken;
-                var newBrace = existingBrace.WithLeadingTrivia(
-                    SyntaxFactory.TriviaList(relocatedTrivia.Concat(existingBrace.LeadingTrivia)));
-
-                declaration = declaration
-                    .WithIdentifier(newIdentifier)
-                    .WithOpenBraceToken(newBrace);
-            }
-
-            // Attach ` : IName` — AddTypes/Roslyn emits the colon token automatically. Leading
-            // space on the BaseList keeps it separated from the class identifier's trailing token.
-            var baseList = SyntaxFactory.BaseList(
-                SyntaxFactory.SingletonSeparatedList<BaseTypeSyntax>(interfaceType))
-                .WithLeadingTrivia(SyntaxFactory.Space);
-            updated = declaration.WithBaseList(baseList);
-        }
-        else
-        {
-            // Append to an existing base list with comma-trailing formatting. AddTypes preserves
-            // the old last type's newline trivia before it creates the comma, which renders
-            // `BaseType\n, INew`. Rebuild only the separator around the appended type.
-            updated = declaration.WithBaseList(AppendBaseTypeWithTrailingComma(declaration.BaseList, interfaceType));
-        }
-
-        // FORMAT-BUG-001: ensure `{` is on its own line if it isn't already (e.g., same-line brace
-        // `class Foo{` becomes `class Foo : IName\n{`). In the no-base-list path above we already
-        // relocated the identifier's trailing EOL to the brace, so this is a no-op in that case.
-        updated = EnsureOpeningBraceOnOwnLine(updated);
-        return updated;
-    }
-
-    private static BaseListSyntax AppendBaseTypeWithTrailingComma(BaseListSyntax baseList, BaseTypeSyntax interfaceType)
-    {
-        var items = new List<SyntaxNodeOrToken>();
-        for (var i = 0; i < baseList.Types.Count; i++)
-        {
-            var type = baseList.Types[i];
-            if (i == baseList.Types.Count - 1)
-            {
-                type = type.WithTrailingTrivia();
-            }
-
-            items.Add(type);
-            if (i < baseList.Types.SeparatorCount)
-            {
-                items.Add(baseList.Types.GetSeparator(i));
-            }
-        }
-
-        items.Add(SyntaxFactory.Token(SyntaxKind.CommaToken)
-            .WithTrailingTrivia(SyntaxFactory.EndOfLine(Environment.NewLine), SyntaxFactory.Whitespace("    ")));
-        items.Add(interfaceType.WithLeadingTrivia());
-
-        return baseList.WithTypes(SyntaxFactory.SeparatedList<BaseTypeSyntax>(items));
-    }
-
-    /// <summary>
-    /// Force the type declaration's opening brace onto its own line. Mirrors
-    /// <c>InterfaceExtractionService.EnsureOpeningBraceOnOwnLine</c>.
-    /// </summary>
-    private static TypeDeclarationSyntax EnsureOpeningBraceOnOwnLine(TypeDeclarationSyntax typeDecl)
-    {
-        var brace = typeDecl.OpenBraceToken;
-        if (brace.IsMissing)
-        {
-            return typeDecl;
-        }
-
-        if (brace.LeadingTrivia.Any(t => t.IsKind(SyntaxKind.EndOfLineTrivia)))
-        {
-            return typeDecl;
-        }
-
-        return typeDecl.WithOpenBraceToken(
-            brace.WithLeadingTrivia(SyntaxFactory.TriviaList(SyntaxFactory.EndOfLine(Environment.NewLine))));
-    }
-
     private static Solution EnsureProjectReference(Solution solution, ProjectId sourceProjectId, ProjectId targetProjectId)
     {
         var sourceProject = solution.GetProject(sourceProjectId)
@@ -812,12 +700,12 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             throw new PublicInvalidOperationException($"Target interface file already exists: {DescribeProjectRelativePath(targetProjectDirectory, interfaceFilePath)}");
         }
 
-        var updatedTypeDeclaration = AddBaseType(typeDeclaration, interfaceName);
+        var updatedTypeDeclaration = InterfaceBaseTypeWriter.AddBaseType(typeDeclaration, interfaceName, multilineContinuation: true);
         var updatedSourceRoot = sourceRoot.ReplaceNode(typeDeclaration, updatedTypeDeclaration);
         // FORMAT-BUG-002 (dr-9-3-format-bug-002-destroys-source-formatting): do NOT
         // NormalizeWhitespace() the entire source compilation unit — that re-flows every node
         // in the file (collapses multi-line bodies, strips intentional spacing, reshuffles
-        // indentation). `AddBaseType` + `EnsureOpeningBraceOnOwnLine` already emit the targeted
+        // indentation). `InterfaceBaseTypeWriter.AddBaseType` already emits the targeted
         // `: IName\n{` edit with correct trivia; ReplaceNode preserves surrounding source layout.
         // Mirrors the same decision made in PreviewExtractInterfaceAsync.
 
