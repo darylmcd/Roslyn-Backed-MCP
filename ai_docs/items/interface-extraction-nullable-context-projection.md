@@ -21,7 +21,7 @@
 
 ## Evidence
 
-- PARKED with preserved draft PR1840; existing dependency chain is held by PR1846/1849 required hosted failures. No scope or Acceptance removed. Native PowerShell134/139 diagnosis has not established a causal repair after bounded base/cache probes; see ai_docs/reports/2026-10-26-interface-split-delivery.md for exact heads, failing jobs and resume conditions. Do not merge the combined candidate or retry unchanged CI.
+- ACTIVE dependency checkpoint: PR1849 merged27f82e45 and PR1846 merged5b1930a3 with cold PASS and all required hosted checks green. Fresh current-main plan and cold review PASS; bounded three-production-file implementation is under qualification. No merge or row closure claimed. Original Acceptance and complex candidate tests remain unchanged. Native134/139 causal findings stay OPEN; ownership prevention does not prove their cause. See ai_docs/reports/2026-10-26-interface-split-delivery.md.
 
 
 - `nullable-original-probe-final.log`: admitted scratch compiler probe links EXACT candidate helper source and reconstructs original MinQualified emitter spelling. Thirteen represented methods/properties/event members: receiver Disable has 8 graph mismatches plus CS8632 before decoration; receiver Enable has 5 graph mismatches before decoration. Both serialized decorated cohorts compile and match all represented member graphs. This is helper evidence, not native public-route qualification.

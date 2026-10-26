@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-26T22:06:48Z
+**updated_at:** 2026-10-26T22:09:54Z
 
 ## Agent contract
 
@@ -61,7 +61,6 @@
 | `restore-package-root-authoritative-read-fail-closed` | High | — | Keep unreadable assets distinct from an absent recorded root | M | items/restore-package-root-authoritative-read-fail-closed.md |
 | `cross-project-interface-parameter-semantics` | High | interface-extraction-nullable-context-projection | Preserve emitted interface parameter semantics | M | items/cross-project-interface-parameter-semantics.md |
 | `physical-compensation-external-edit-ownership` | High | — | Preserve external edits during failed persistence compensation | M | items/physical-compensation-external-edit-ownership.md |
-| `cross-project-receiving-namespace-compatibility` | High | raw-move-file-header-ownership,ci-artifact-owner-quality-deadline | Generate compatible namespaces for actual receiving language options through interface extraction and move-type. [type: bug] [source: interface-split-cold-review] | M | items/cross-project-receiving-namespace-compatibility.md |
 | `interface-extraction-nullable-context-projection` | High | cross-project-receiving-namespace-compatibility | Preserve emitted nullable contexts with explicit symbol-role mapping and compiler-proven legality before publication. [type: bug] [source: interface-split-cold-review] | M | items/interface-extraction-nullable-context-projection.md |
 | `interface-extraction-ref-return-contracts` | High | interface-extraction-nullable-context-projection | Preserve ref and ref readonly return kinds in generated interface members. [type: bug] [source: parameter-projection-cold-review] | M | items/interface-extraction-ref-return-contracts.md |
 | `interface-extraction-unsafe-signature-context` | High | interface-extraction-nullable-context-projection | Preserve unsafe signature context and refuse incompatible receiving-project policy before token publication. [type: bug] [source: parameter-projection-cold-review] | M | items/interface-extraction-unsafe-signature-context.md |
@@ -72,8 +71,6 @@
 | `class-split-receiving-namespace` | High | cross-project-receiving-namespace-compatibility | Select supported namespaces for class split output using the actual receiving compiler policy. | M | items/class-split-receiving-namespace.md |
 | `split-service-receiving-namespace` | High | cross-project-receiving-namespace-compatibility | Select supported namespaces for split service partitions using the actual receiving compiler policy. | M | items/split-service-receiving-namespace.md |
 | `relocation-receiving-namespace` | High | cross-project-receiving-namespace-compatibility | Select supported namespaces for relocating new files using the actual receiving compiler policy. | M | items/relocation-receiving-namespace.md |
-| `ci-artifact-owner-quality-deadline` | High | linux-pwsh-startup-profile-write-ownership | Move required quality work and cache persistence outside test tails with shared checked preparation. [type: bug] [source: hosted-ci] | L | items/ci-artifact-owner-quality-deadline.md |
-| `linux-pwsh-startup-profile-write-ownership` | High | — | Own Linux validation PowerShell startup-profile writes with a fresh single-writer seed and job-lifetime read-only consumption. | M | items/linux-pwsh-startup-profile-write-ownership.md |
 | `generated-interface-global-using-order` | High | — | Preserve legal global-before-ordinary using order in shared generated-interface imports and correct stale ownership comments. | M | items/generated-interface-global-using-order.md |
 | `render-finding-linux-pwsh-exit-139` | High | — | Identify and repair the PowerShell child exit139 that blocks hosted renderer determinism validation. [type: bug] [source: hosted-ci] | S | items/render-finding-linux-pwsh-exit-139.md |
 | `linux-pwsh-startup-profile-invalid-assembly-identity` | High | — | Diagnose native PowerShell startup assembly-identity corruption and qualify the proven repair without changing test coverage or deadlines. | S | items/linux-pwsh-startup-profile-invalid-assembly-identity.md |

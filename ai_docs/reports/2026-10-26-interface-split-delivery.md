@@ -11,8 +11,8 @@
 | Request | /remediate count=10; original eight objectives plus two approved children. Raw-header and hosted-CI prerequisites were forced by observed failures; original objectives retained. |
 | Shipping rule | Merge independently correct green slices; write decomposition/remainder rows before first merge; ordinary closures/findings in ONE trailing docs PR. |
 | Preserved combined candidate | PR1840 draft, remote cb90656f544a8b57822df9db8207e4d9162535d5; source f6c2e9f9f7b75bcb00c2bb5547ec5dafc818f9c9 preserved under local checkpoint64d638cd93e8576b0e494fe935adc026c9102542. Not a merge-qualified tree. |
-| Current main checkpoint | ab4d4003950986a45423fe75c87478c04d42a7e4; includes peer AGENTS PR1847. Recheck after each merge. |
-| Merged-main full gate | PASS on clean ab4d4003950986a45423fe75c87478c04d42a7e4: just machine-validate ci exit0;5319passed/0failed/31existingplatformskips,total5350,24m30testduration;publish/hash and strict vulnerability audit passed. HEAD==origin/main andclean after gate. Draft code and unmerged trailing docs are excluded; no complete-batch claim. |
+| Current main checkpoint | 5b1930a3605ebe03a3dcf37ae9626e882e07e0d0; CI1849, decomposition1848 and namespace1846 merged. Recheck after each merge. |
+| Merged-main full gate | Historical PASS on ab4d4003:5319passed/0failed/31existingplatformskips,total5350,exit0. Newer merged code and trailing docs require ONE final full LOCAL gate owned by root; batch remains active. |
 | Runner | Local authoritative gate selected; no remote parity or runner-job success claimed. |
 
 ## Merged delivery receipts
@@ -24,16 +24,19 @@
 | 1843 semantic dependency split | Merged66ad2b5afd82ae67a5fb80109bc418688fa83fd3. Original Acceptance retained;389rows/0ERROR/0WARN, coldPASS, docs/fragments and both hosted docs shards/CodeQL/validate green; cleanup0. |
 | 1844 raw-header/namespace split | Mergedee0716018513239431239717ae9436af1aebd63c.392rows/0ERROR/0WARN, coldPASS, docs/fragments and both hosted docs shards/CodeQL/validate green; cleanup0. |
 | 1845 raw moved-file ownership | Mergedca6f94dd0cc97a0735cdb5a0f73223c0f7b57308 at2026-10-26T14:43:23Z. Initial42native cases red; final8c6a24c7 exact339/0/0 across10classes. Cold full/deltaPASS; all6hosted/floor/CodeQL/validate green; cleanup0. Initial hosted unmarked invariant failure repaired with existingInternalfactory, unchanged88-case audit and baseline. |
+| 1849 CI quality/cache and native input ownership | Merged27f82e450dafeed359022da3555e4c9f2528daab at21:03:13Z; exact729eeefa,root114/0/1,actual native RED1/GREEN0,coldPASS,all hosted green,cleanup0. Original134/139 causal rows remain open. |
+| 1848 decomposition/remainders | Merged7b4e71bf7c5f3fdf32acafc5ce9613be6ea95b58 at21:06:43Z; exact1bfd73f7,398rows0ERROR0WARN,coldPASS,hosted docs green,cleanup0. |
+| 1846 receiving namespace first consumer | Merged5b1930a3605ebe03a3dcf37ae9626e882e07e0d0 at21:43:33Z; exact6084d188,root388/0/0,cold integrationPASS,all hosted green,cleanup0. |
 
 ## Open slices and dependency obligations
 
 | Owner | Current state / complete objective retained |
 |---|---|
-| cross-project-receiving-namespace-compatibility | PR1846 drafta9df5cd36fb12625333c9ab837e8ab0996eb763e. Native oldca6:30passed/15failed actualCS8370/CS8773; all original45 tests preserved plus2boundary/12factory cases. ColdPASS; rootexact388/0/0 across11classes. Held for CI prerequisite: hostedLinux2 passed2650/0/24 then30m cancellation duringformat. No unchanged rerun. |
+| cross-project-receiving-namespace-compatibility | DELIVERED1846 at5b1930a3; reviewed6084d188, root388/0/0 across11classes; all6hosted/quality/floor/CodeQL/validate green, cleanup0. Original45matrix plus2boundary/12factory retained. Ordinary closure recorded only here in trailing docs. |
 | class-split-receiving-namespace | Separate deps-chained remainder in docsPR1848; no repair claimed. |
 | split-service-receiving-namespace | Separate deps-chained remainder in docsPR1848; no repair claimed. |
 | relocation-receiving-namespace | Separate deps-chained remainder in docsPR1848; retain raw-header ownership, no repair claimed. |
-| interface-extraction-nullable-context-projection | Current-source plan and parser-recovery correction coldPASS; implementation held until actual namespace merge. Three insertion sites protect four routes; constructed slot roles then lexical mapping, actual receiving context, complete differential compiler errors, no option mutation or broad projection port. |
+| interface-extraction-nullable-context-projection | ACTIVE fresh current-main plan/coldPASS; three production files, two new test classes, three insertion sites/four routes. Explicit constructed roles, lexical mapping, actual receiving context and complete differential compiler errors. Implementation under qualification; no merge claimed. |
 | cross-project-interface-parameter-semantics | Original objective retained; full emission and handler binding validation remain atomic. Validation alone is inert when original emitters omit attributes. |
 | interface-extraction-ref-return-contracts | Retain methods/property/indexer ref/ref-readonly and escape metadata obligations. |
 | interface-extraction-unsafe-signature-context | Retain emitted unsafe signatures and atomic refusal under actual policy. |
@@ -41,7 +44,7 @@
 | interface-extraction-nullability-context-fidelity | Retain recursive annotation/value-wrapper graphs and full complex native public matrix; not closed by child planning. |
 | interface-extraction-receiving-language-compatibility | Retain full actual serialized compiler validation after semantic prerequisites; not closed by supported namespace spelling alone. |
 | raw-move-file-header-ownership | Delivered1845; ordinary closure queued only in trailing docs. |
-| ci-artifact-owner-quality-deadline | PR1849 current2374a09b4cc997720c6917ffc6f6d4ccda7fd1ca: quality separate; both cache sites restore-only/designated explicit pre-test writers; shared main/sample preparation plus unchanged strict audit and license gates.9code/test/policy files, zero backlog files. ColdPASS and rootexact93/0/0 across8classes; hosted qualification FAILED: Linux1 native134, then repeated child failures and cancellation; other5matrixjobs/quality/floor/CodeQL passed. Source frozen, draft. |
+| ci-artifact-owner-quality-deadline | DELIVERED1849 at27f82e45; reviewed729eeefa. Parallel required quality job and explicit pre-test cache writers preserve deadlines, partitions, strict audit and artifacts. Root114/0/1 plus actual native ownership RED1/GREEN0; coldPASS, all6hosted/quality/floor/CodeQL/validate green; cleanup0 with ignored-TRX checkout retained detached. Original134 attribution remains OPEN. |
 | ci-quality-move-hosted-timing-recheck | Separate dependent evidence row; require5complete fresh green six-leg runs and canonical collector. No single-run numerical improvement claim. |
 
 ## Hosted CI causal receipts
@@ -49,10 +52,10 @@
 | Failure | Observed repair / limit |
 |---|---|
 | PR1840 attributes/native Nullable mismatch | CI=true deterministic fixtures lacked actual top-level SourceRoot. Native design-time load failed and returned incomplete options.1841 fixes fixture metadata without mutating compiler/CI policy. |
-| PR1846 run40345610532 Linux2 | All2650tests passed,24platformskips; publishing succeeded;30m cap cancelledformatter. Required CI fix remains prerequisite. |
+| PR1846 run40345610532 Linux2 | Timeline correction: release28m10, tests15:06:21–15:33:07Z, formatter73s before30m cancellation. Passing1845 formatter66s; new1849 formatter54s and1846 formatter68s. No28-minute formatting hang established; parallel quality fixes the observed serial deadline collision. Independent case-path defect remains tracked. |
 | PR1849 old08f run40362766596 Linux1 | All2652tests passed,42platformskips;TRXuploaded;30m cap cancelled post-job tar/zstd cache compression. Other5jobs/quality/floor/CodeQL succeeded; overall gateFAILED, never qualification. |
 | Current2374 cache fix | Both cache sites have no automatic post hook. Observed raw proof: Linux and Windows miss/fallback -> checked population -> explicit save before tests; no post-cache hook. Windows save18:00:48 and Linux save17:59:46. Actual Linux1 native134 still fails the required aggregate. Only two current-PR exact caches cleared before first changed-head push; default-branch caches untouched. |
-| PR1848 be8 run40359428470 | Docs1 failed renderer determinism because pwsh child exited139 with empty streams;2606passed/1failed/35platformskips. Docs2/CodeQL passed. PRdraft; no unchanged retry or test weakening. |
+| PR1848 be8 run40359428470 | Historical docs1 renderer139 failure retained. Changed reviewed1bfd73f7 later passed both hosted docs shards/CodeQL/validate and merged7b4e71bf;398rows/0ERROR/0WARN,coldPASS,cleanup0. No unchanged retry or139cause claim. |
 
 ## Native exit139 diagnosis limits
 
@@ -106,7 +109,7 @@ All13excluded IDs remain open at the current canonical-reader checkpoint. Promot
 ## Preservation and finalization
 
 - Preserve eight unrelated pre-existing worktrees, archive tag/branch, protected stash ba3f29984824b9f302db1c1ff66e6a890e33762c, and both original full/namespace candidate checkouts. Historical inventory is not current qualification; final live check pending.
-- Automatic approval review rejected deleting one ignored TRX with only reason blocked by policy. Preserve file tests/RoslynMcp.Tests/TestResults/daryl_DARYLSLAPTOP_2026-10-26_12_40_00_net10.0.trx and its checkout; no alternate deletion. Detach only after reviewed-head checks if merge proceeds, then canonical helpers can remove the branch while preserving the checkout.
+- Automatic approval review rejected deleting one ignored TRX with only reason blocked by policy. Preserve file tests/RoslynMcp.Tests/TestResults/daryl_DARYLSLAPTOP_2026-10-26_12_40_00_net10.0.trx and its checkout; no alternate deletion. CI checkout is now detached at729eeefa after successful merge; cleanup removed its feature branch while preserving the checkout and file.
 - Required before batch-complete claim: exact-head hosted code success, actual merges/cleanup receipts, ONE trailing docs PR, full LOCAL final merged-main gate, clean synchronized main and final preservation check.
 
 ## Native134 parking checkpoint
@@ -115,9 +118,9 @@ All13excluded IDs remain open at the current canonical-reader checkpoint. Promot
 |---|---|
 | Required gate | Run40373606428 Linux1 first fails pwsh134 with truncated assembly identity; repeated failures precede30m cancellation. Not merely a deadline issue. |
 | Immutable cache diagnostic | Nonrootnativeext4, official portable7.6.6/.NET10.0.12,8concurrent functional launches plus descendant pass; fresh public-API seed hash stable. Single synthetic malformed identity also exits0: causal reproduction failed. |
-| Cold plan | BLOCKED as a complete cure; playback regression absent and full cache-directory freeze affects module/telemetry writes. No speculative native code authored. |
+| Cold plan | Historical complete-cure proposal BLOCKED because causal playback absent and directory freezing affects sibling writes. Later independent job-input ownership plan/implementation coldPASS and shipped1849; file-only profile protection preserves ordinary sibling/module writes. Original134 cause remains unproven. |
 | New follow-up | linux-pwsh-startup-profile-invalid-assembly-identity records the distinct134 witness. Bare139 remains separate until shared cause is demonstrated. |
-| Qualification | Local merged-main fullgate PASSED on ab4d4003:5319passed/0failed/31existingplatformskips,exit0. Does not qualify draft product/CI heads or unmerged docs; no complete-batch claim. |
+| Qualification | Historical ab4d4003 fullgate5319/0/31 is superseded for final qualification. Exact1849 and1846 hosted checks passed and merged; root owes final full LOCAL gate after remaining code and trailing docs. |
 
 ## Global filing final validation
 
