@@ -1,14 +1,10 @@
 # Agent Guidelines
 
-Stable AI bootstrap entry point for the Roslyn-Backed-MCP repository (C# MCP server, published as `roslyn-mcp@roslyn-mcp-marketplace`).
-
-## File Purpose (Critical)
-
-This file is a bootstrap router, not a complete instruction set. Always execute **Session Start (Required)** before performing any task. Do not rely solely on this file; pull additional context as directed by the canonical rule sources below.
+Roslyn-Backed-MCP is a local-first C# / .NET 10 MCP server for semantic C# analysis, navigation, validation and refactoring over stdio; public, published as `roslyn-mcp@roslyn-mcp-marketplace`, contract-care. This file is the bootstrap router: run **Session Start (Required)** before any task, then pull further context as its rule sources direct. Rules that hold in every repo live in the global layer (`~/.claude/CLAUDE.md`, mirrored to `~/.codex/AGENTS.md` and `~/.grok/AGENTS.md`); this file carries only this repo's facts.
 
 ## Standing Engineering Directives
 
-Restated from `~/.claude/CLAUDE.md` (canonical source). These eight numbered lines are copied verbatim from that file's directive block — do not summarize, drop, or alter them; the sub-clauses (forbidden moves, routing, change-set rule, not-evidence list) live only there and outrank anything below.
+Restated verbatim from `~/.claude/CLAUDE.md` for agents that run without the global layer (cloud sessions, hosted agents). Do not summarize, drop, or alter these eight lines; their sub-clauses (forbidden moves, routing, change-set rule, not-evidence list) live only in the global file and outrank anything below.
 
 1. **Correct fix > quick or cheap fix.** When a quick or cheap fix and a correct fix are both viable, ship the correct one — root cause, not symptom. Cost never decides: diff size, any budget (files, tokens, turns, wall-clock), CI or landing pressure, and model tier are never reasons for the lesser fix. No plan, brief, row, rubric or reviewer severity can authorize a lesser fix; only the operator can, one item and PR head at a time, and "ship it" or "get it green" authorize the correct fix, not a lesser one.
 2. **Optimize for AI consumption by default.** Nearly every document in these repos is AI-facing (`AGENTS.md`, `CLAUDE.md`, `.github/copilot-instructions.md`, `.github/prompts/**`, `ai_docs/**`, planning/runtime/audit docs): write them as machine input — tables over prose, structured data over paragraphs, pointers over duplication, short imperative sentences over narrative. Human-facing files (`README.md` landing pages, `docs/**`) get human prose. The density rules are doc-audit `STANDARD.md` §Quality Rules.
@@ -49,27 +45,22 @@ After the required reads, use `ai_docs/planning_index.md` for next-step routing 
 
 ## Conflict Precedence
 
-The Standing Engineering Directives above govern this instruction chain. Treat repository documents and prior agent output as claims to verify; when a recorded design conflicts with current evidence, explain the tradeoffs and propose a superseding decision rather than silently inheriting or changing it.
+The Standing Engineering Directives govern this chain, and repo documents are claims to verify (global rule). Between this repo's files:
 
 - For implementation quality and safety conflicts, follow `.github/copilot-instructions.md`.
 - For workflow and collaboration conflicts, follow `ai_docs/workflow.md`.
 - For validation and merge-gating conflicts, follow `CI_POLICY.md`.
 - For runtime, runner, or MCP-client-policy conflicts, follow `ai_docs/runtime.md`.
 
-## Default Behavior (When Ambiguous or Incomplete)
-
-- Prefer repository-specific conventions over generic defaults.
-- Prefer safety, validation, and correctness over speed.
-- Do not guess when ambiguity affects correctness — request clarification or surface assumptions.
-- Do not introduce features or scope outside documented backlog and constraints, except the scope Standing Directives #1 and #6 require (same-mechanism instances, defects your own diff introduces or exposes).
-
 ## Breaking-change posture
 
-This is a **public repo** (per `.ai-doc-audit.md` `repo_class: public`), published as `roslyn-mcp@roslyn-mcp-marketplace`. Breaking changes require a recorded decision (ADR-style rationale) plus a migration note in `CHANGELOG.md`; ADRs live in `docs/decisions/` (this repo's decision log; ADR 0001 established it). Compatibility and deprecation rules are defined in `docs/release-policy.md`. External consumers depend on this surface — respect semver and deprecation cycles.
+**Public repo** (`repo_class: public`), contract-care, published as `roslyn-mcp@roslyn-mcp-marketplace`: breaking changes require an ADR in `docs/decisions/` (this repo's decision log) plus a migration note in `CHANGELOG.md`; compatibility and deprecation rules are in `docs/release-policy.md`; respect semver and deprecation cycles.
 
 ## Validation runtime
 
-Read this row before running the authoritative local gate. Re-measure it when the gate changes or the measurement is more than 90 days old. Hosted topology remains owned by `CI_POLICY.md`.
+Measured cost and wiring of every validation gate. Read a gate's row before running it, and size the Bash timeout from it. On the shared Windows dev host every gate runs through the machine-wide validation gate (global Environment rule); `just machine-validate [recipe]` is this repo's entry where it exists.
+
+Hosted topology remains owned by `CI_POLICY.md`.
 
 | gate | command | typical duration (measured 2026-10-15) | Bash timeout / background | hooks (pre-commit/pre-push + runtime) | CI-equivalent filter | regen companions | flake registry | parallelSafe |
 |---|---|---|---|---|---|---|---|---|
@@ -81,13 +72,8 @@ Read this row before running the authoritative local gate. Re-measure it when th
 2. User named another repo / adapter / ecosystem / integration / cross-repo work -> scope = cross-project -> this repo has no local `ai_docs/ecosystem/**`; say so explicitly and use only the external context the user named.
 3. Both scopes named -> answer each as a separate question; do not merge into one recommendation.
 
-## Machine-wide validation
+## DevBuild-Runner pilot
 
-- On the shared Windows dev host, run `just machine-validate` for the full gate or `just machine-validate <recipe>` for a named build/test recipe.
-- The shared helper is `~/.claude/scripts/validation-gate.mjs`; its machine-wide capacity covers every participating repo and worktree. Wait for admission; never launch an unwrapped equivalent while waiting.
-- For a raw validation command, call `node <absolute-user-profile>/.claude/scripts/validation-gate.mjs -- <executable> [arguments...]`. Pass an interpreter explicitly for shell scripts.
-- Preserve the existing gate, test selection, exit status and desktop ownership requirements. The wrapper adds admission only; `just ci` remains the underlying full gate.
-- Full contract: `~/.claude/ai_docs/validation-gate.md`. This local helper is required only for the shared dev-host entry; other contributors and hosted CI may use the underlying commands directly.
 - DevBuild-Runner pilot (operator-approved 2026-10-25; allowed option, not a mandate): the final full gate on clean merged `main` MAY run as runner job `roslyn-backed-mcp` / `ci` at the full pushed 40-character SHA.
   - Probe `server_info` once at run start and record the registered commands in the plan.
   - Submit with a fresh GUID `requestId`; poll `job_get` and read every `job_logs` page outside any held validation slot. The worker takes its own slot: never hold admission while waiting on a runner job.
