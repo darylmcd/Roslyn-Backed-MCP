@@ -9,11 +9,11 @@
 | Field | Value |
 |---|---|
 | Operator instruction | Split independently correct repairs from draft PR1840; merge each before the next implementation |
-| Selected ceiling | Original eight objectives plus namespace and nullable-context children = ten |
+| Selected ceiling | Original eight objectives plus two children = ten; required raw-header prerequisite expands scope under Directive1(a), without dropping original objectives |
 | Preserved candidate | Source f6c2e9f9f7b75bcb00c2bb5547ec5dafc818f9c9; docs checkpoint64d638cd93e8576b0e494fe935adc026c9102542; codex/interface-parameter-semantics |
 | Candidate disposition | PR1840 remains draft; remote cb90656f is the earlier red diagnostic candidate; do not merge the combined tree |
 | Final gate owner | Root; one local just machine-validate ci on final clean merged main after all code and trailing docs |
-| Approval | Cold namespace plan PASS after including both shared-wrapper branches; nullable child PASS conditional on explicit emitted-position mapping and compiler legality |
+| Approval | Fresh cold partition PASS A -> B: both raw move owners first, then all four unconditional namespace emitters; nullable child PASS conditional on explicit emitted-position mapping and compiler legality |
 
 ## Current receipts
 
@@ -28,13 +28,16 @@
 
 | Owner | Prerequisites |
 |---|---|
-| cross-project-receiving-namespace-compatibility | Delivered base writer |
+| raw-move-file-header-ownership | Delivered base writer; both raw move builders/removal share file-role ownership |
+| cross-project-receiving-namespace-compatibility | Raw header child; all four unconditional namespace emitters use one required actual receiving-options selector |
 | interface-extraction-nullable-context-projection | Namespace child; actual emitted-position mapping plus compiler validation of new decoration ship atomically |
 | Parameter / ref / unsafe / escaped projection parents | Nullable child; retain each original Acceptance |
 | Nullable parent | All four semantic projection parents plus nullable child; full complex public matrix retained |
 | Receiving-language parent | Parameter/ref/unsafe projection plus namespace/nullable children; actual compiler-backed feature checks retained |
 
-- Namespace child covers direct extraction, dependency inversion, extract-and-wire and move-type through both wrapper branches.
+- Namespace child covers direct extraction, dependency inversion, extract-and-wire and move-type through both wrapper branches, plus split_class, split_service_with_di and relocating change_type_namespace.
+- Retain the complete 45-case namespace candidate at local checkpoint5e75baf3; its116 affected passes do not qualify either fresh slice. Header A preserves existing namespace-kind/signature policy; B retains every older-language assertion and adds the other emitters.
+- Prior one-service namespace closure was incomplete: semantic reference review found three more unconditional emitters. Prior raw helper repair exposed matching header/removal ownership in NamespaceRelocation. Fresh partition separates these independent mechanisms.
 - Full handler attribute emission and binding validation stay atomic; handler validation alone is inert on original emitters.
 - Any defect introduced or exposed by a slice ships with that slice; dependencies never authorize a broken intermediate.
 
@@ -56,6 +59,9 @@
 | Cross-project event-member preservation | Carried from preserved draft; open, not selected for repair |
 | Existing extractor import ordering | Filed in PR1842; open, not claimed repaired |
 | Nested signature type qualification | Filed in PR1842; open; future projection must earn regression proof before closure |
+| Metadata member symbol-handle roundtrip | Filed; tool returns display-only metadata overload handles that its resolver rejects; independent, not selected |
+| First-using trivia helper duplication | Filed; exact ClassSplit/SymbolRefactor copies; independent of raw header ownership |
+| Global final-section newline defect | Reproduced; existing backlog-update-final-section-eof row owns it; duplicate filing PR900 closed. Healthy whole-item update used after tracking verification |
 | Global backlog legacy no-deps header duplication | Filed via owning canonical writer in claude-config PR899; tracking only, outside product repair scope |
 
 Preserve eight unrelated retained worktrees, archive tag/branch and protected stash. Preserve the separate full candidate worktree; no historical artifact grants approval to merge its wider architecture.

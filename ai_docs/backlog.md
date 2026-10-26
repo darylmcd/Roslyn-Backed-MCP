@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-26T10:44:52Z
+**updated_at:** 2026-10-26T12:06:30Z
 
 ## Agent contract
 
@@ -61,13 +61,15 @@
 | `restore-package-root-authoritative-read-fail-closed` | High | — | Keep unreadable assets distinct from an absent recorded root | M | items/restore-package-root-authoritative-read-fail-closed.md |
 | `cross-project-interface-parameter-semantics` | High | interface-extraction-nullable-context-projection | Preserve emitted interface parameter semantics | M | items/cross-project-interface-parameter-semantics.md |
 | `physical-compensation-external-edit-ownership` | High | — | Preserve external edits during failed persistence compensation | M | items/physical-compensation-external-edit-ownership.md |
-| `cross-project-receiving-namespace-compatibility` | High | interface-extraction-base-constraint-token-boundary | Generate compatible namespaces for actual receiving language options through interface extraction and move-type. [type: bug] [source: interface-split-cold-review] | S | items/cross-project-receiving-namespace-compatibility.md |
+| `cross-project-receiving-namespace-compatibility` | High | raw-move-file-header-ownership | Generate compatible namespaces for actual receiving language options through interface extraction and move-type. [type: bug] [source: interface-split-cold-review] | L | items/cross-project-receiving-namespace-compatibility.md |
 | `interface-extraction-nullable-context-projection` | High | cross-project-receiving-namespace-compatibility | Preserve emitted nullable contexts with explicit symbol-role mapping and compiler-proven legality before publication. [type: bug] [source: interface-split-cold-review] | M | items/interface-extraction-nullable-context-projection.md |
 | `interface-extraction-ref-return-contracts` | High | interface-extraction-nullable-context-projection | Preserve ref and ref readonly return kinds in generated interface members. [type: bug] [source: parameter-projection-cold-review] | M | items/interface-extraction-ref-return-contracts.md |
 | `interface-extraction-unsafe-signature-context` | High | interface-extraction-nullable-context-projection | Preserve unsafe signature context and refuse incompatible receiving-project policy before token publication. [type: bug] [source: parameter-projection-cold-review] | M | items/interface-extraction-unsafe-signature-context.md |
 | `interface-extraction-escaped-member-identifiers` | High | interface-extraction-nullable-context-projection | Preserve escaped identifiers on every emitted interface member kind. [type: bug] [source: parameter-projection-cold-review] | M | items/interface-extraction-escaped-member-identifiers.md |
 | `interface-extraction-nullability-context-fidelity` | High | cross-project-interface-parameter-semantics,interface-extraction-ref-return-contracts,interface-extraction-unsafe-signature-context,interface-extraction-escaped-member-identifiers,interface-extraction-nullable-context-projection | Preserve semantic nullable annotation states in generated interfaces across source-local and receiving contexts without changing project policy. | M | items/interface-extraction-nullability-context-fidelity.md |
 | `interface-extraction-receiving-language-compatibility` | High | cross-project-interface-parameter-semantics,interface-extraction-ref-return-contracts,interface-extraction-unsafe-signature-context,cross-project-receiving-namespace-compatibility,interface-extraction-nullable-context-projection | Validate generated interface language requirements with the receiving compiler context before publishing tokens; retain compatible controls and project policy. | M | items/interface-extraction-receiving-language-compatibility.md |
+| `raw-move-file-header-ownership` | High | — | Preserve file headers, documentation and EOF ownership through both existing-declaration move builders and source removal. | M | items/raw-move-file-header-ownership.md |
+| `metadata-member-symbol-handle-roundtrip` | High | — | Resolve metadata member handles returned by semantic tools through the same symbolHandle entry points. | M | items/metadata-member-symbol-handle-roundtrip.md |
 
 ## Medium
 
@@ -210,6 +212,7 @@
 | `di-registration-framework-symbol-identity` | Medium | — | Bind DI discovery to framework symbols; reject unrelated same-name collections and methods. [type: bug] [source: interface-parameter-remediation-review] | S | items/di-registration-framework-symbol-identity.md |
 | `dependency-inversion-nested-concrete-symbol-resolution` | Medium | — | Resolve nested concrete types by complete metadata identity during dependency inversion. [type: bug] [source: interface-parameter-remediation-review] | S | items/dependency-inversion-nested-concrete-symbol-resolution.md |
 | `cross-project-interface-event-member-preservation` | Medium | — | Preserve public instance events in extracted interface contracts through real producer compilation. [type: bug] [source: interface-parameter-remediation-review] | S | items/cross-project-interface-event-member-preservation.md |
+| `first-using-trivia-helper-duplication` | Medium | — | Share the exact first-using trivia transformation between split and partition consumers without changing header policy. | M | items/first-using-trivia-helper-duplication.md |
 
 ## Low
 
