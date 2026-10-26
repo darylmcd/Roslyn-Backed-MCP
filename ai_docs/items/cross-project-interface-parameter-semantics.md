@@ -15,6 +15,9 @@
 
 ## Evidence
 
+- PARKED with preserved draft PR1840; existing dependency chain is held by PR1846/1849 required hosted failures. No scope or Acceptance removed. Native PowerShell134/139 diagnosis has not established a causal repair after bounded base/cache probes; see ai_docs/reports/2026-10-26-interface-split-delivery.md for exact heads, failing jobs and resume conditions. Do not merge the combined candidate or retry unchanged CI.
+
+
 - Source audit at main `fc5bb88676214a942daa727c7ca88ac8dd34b61c`. Independent cold audit found CreateParameterList618-624 emits only name/type, dropping method parameter modifiers/defaults. This is distinct from undeclared generic parameters and target-assembly dependency closure.
 - Retained immutable source: `d333c2e96a1e23a31286cda53b920dbee5d6b7be`; preserved tag: `archive/pr1806-restore-reviewed-graph-20261025`. No build/test ran in this content audit; historical receipts are not current runtime qualification.
 

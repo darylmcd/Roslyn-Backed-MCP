@@ -17,6 +17,9 @@
 
 ## Evidence
 
+- PARKED with preserved draft PR1840; existing dependency chain is held by PR1846/1849 required hosted failures. No scope or Acceptance removed. Native PowerShell134/139 diagnosis has not established a causal repair after bounded base/cache probes; see ai_docs/reports/2026-10-26-interface-split-delivery.md for exact heads, failing jobs and resume conditions. Do not merge the combined candidate or retry unchanged CI.
+
+
 - Cold source review at c5511d5c: generated compilation units omit source nullable directives while semantic projection preserves nullable syntax. receiving-probe-final.log records valid-before source-local enable under project Disable, then emitted declaration CS8632; explicit context decoration compiles. Recursive generic/array/tuple/function-pointer contexts are compiler-proven representable; generic parent context must be restored at its closing token.
 - PR1840 hosted run 40275116966 has nine CS8632 failures per Windows2/Linux2 shard despite known fixture XML Nullable=enable. Exact unchanged local private-temp 44-case replay passes; actual hosted options remain unobserved. This distinct discrepancy is under diagnostic-only investigation and is not attributed to the disabled-context defect.
 - Seven-row batch holds PR1840 draft until this exposed defect is repaired and reviewed. Revision2 plan requires recursive None/NotAnnotated/Annotated preservation plus absolute receiving-context proof; project policy stays unchanged.

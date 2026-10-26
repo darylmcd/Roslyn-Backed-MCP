@@ -18,6 +18,9 @@
 
 ## Evidence
 
+- PARKED with preserved draft PR1840; existing dependency chain is held by PR1846/1849 required hosted failures. No scope or Acceptance removed. Native PowerShell134/139 diagnosis has not established a causal repair after bounded base/cache probes; see ai_docs/reports/2026-10-26-interface-split-delivery.md for exact heads, failing jobs and resume conditions. Do not merge the combined candidate or retry unchanged CI.
+
+
 - Cold source review at c5511d5c: ordinary signatures have no receiving language check before token storage; handler-specific probes use source parse options. receiving-probe-final.log proves exact C#13 collection-params emitted declaration compiles under C#13 and fails CS9202 under C#12 with the same references/options; source-owned signature-type support control gives the same language-only delta.
 - Revision2 plan conditionally approved: compiler-check actual serialized declaration before all producer stores, preserve reference properties/aliases and same-assembly accessibility, compare complete internal diagnostic payload/multiplicity, and separately prove absolute nullable validity. Public refusals publish authored guidance plus bounded IDs only.
 - Implementation remains pending the PR1840 actual hosted CS8632 discrepancy investigation. This row does not own assembly/reference closure, generic declarations or cross-project event emission.

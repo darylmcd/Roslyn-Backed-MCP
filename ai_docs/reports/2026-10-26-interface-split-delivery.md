@@ -6,62 +6,123 @@
 
 ## Delivery contract
 
-| Field | Value |
+| Field | Current evidence |
 |---|---|
-| Operator instruction | Split independently correct repairs from draft PR1840; merge each before the next implementation |
-| Selected ceiling | Original eight objectives plus two children = ten; required raw-header prerequisite expands scope under Directive1(a), without dropping original objectives |
-| Preserved candidate | Source f6c2e9f9f7b75bcb00c2bb5547ec5dafc818f9c9; docs checkpoint64d638cd93e8576b0e494fe935adc026c9102542; codex/interface-parameter-semantics |
-| Candidate disposition | PR1840 remains draft; remote cb90656f is the earlier red diagnostic candidate; do not merge the combined tree |
-| Final gate owner | Root; one local just machine-validate ci on final clean merged main after all code and trailing docs |
-| Approval | Fresh cold partition PASS A -> B: both raw move owners first, then all four unconditional namespace emitters; nullable child PASS conditional on explicit emitted-position mapping and compiler legality |
+| Request | /remediate count=10; original eight objectives plus two approved children. Raw-header and hosted-CI prerequisites were forced by observed failures; original objectives retained. |
+| Shipping rule | Merge independently correct green slices; write decomposition/remainder rows before first merge; ordinary closures/findings in ONE trailing docs PR. |
+| Preserved combined candidate | PR1840 draft, remote cb90656f544a8b57822df9db8207e4d9162535d5; source f6c2e9f9f7b75bcb00c2bb5547ec5dafc818f9c9 preserved under local checkpoint64d638cd93e8576b0e494fe935adc026c9102542. Not a merge-qualified tree. |
+| Current main checkpoint | ab4d4003950986a45423fe75c87478c04d42a7e4; includes peer AGENTS PR1847. Recheck after each merge. |
+| Merged-main full gate | PASS on clean ab4d4003950986a45423fe75c87478c04d42a7e4: just machine-validate ci exit0;5319passed/0failed/31existingplatformskips,total5350,24m30testduration;publish/hash and strict vulnerability audit passed. HEAD==origin/main andclean after gate. Draft code and unmerged trailing docs are excluded; no complete-batch claim. |
+| Runner | Local authoritative gate selected; no remote parity or runner-job success claimed. |
 
-## Current receipts
+## Merged delivery receipts
 
-| Slice | Receipt |
+| PR / slice | Exact evidence |
 |---|---|
-| Fixture prerequisite | PR1841 merged34e749117aa5d6d6f829fc93dc17d80425325eaf; exact local22passed/0failed/6existinglink-capabilityskips; nested child4passed/0other; hosted six shards, SDK-floor, CodeQL successful; cleanup0 |
-| Base writer | PR1842 at b367dabf8e2100d328dc77d3144d8885583b7ac1; corrected original-service red80failed/18passed; exact repaired head171passed/0failed/0skipped; cold implementation PASS; all six hosted shards, SDK-floor, CodeQL and validate passed; merged e2d7218e85c045b16facf38fad8ac62fbb9c46eb at2026-10-26T10:42:54Z; cleanup0 |
-| Namespace child | Exact existing binary compiler probe: both wrapper branches fail C#7.3 CS8370 and C#9 CS8773; C#14 compatible; native public red/green remains required |
-| Nullable child | Exact candidate helper/compiler probe repairs13represented-member graphs and4proper raw shape graphs; new C#7.3 decoration can produce CS8370; native public red/green and legality implementation remain required |
+| 1841 fixture SourceRoot | Merged34e749117aa5d6d6f829fc93dc17d80425325eaf. Exacta2bffdc2:22passed/0failed/6existingOSlinkskips, including4native child-CI routes with zero other outcomes. All6hosted/floor/CodeQL green; coldPASS; cleanup0. |
+| 1842 base-type writer | Mergede2d7218e85c045b16facf38fad8ac62fbb9c46eb. Original production red80failed/18passed; exactb367dabf repaired171/0/0. All6hosted/floor/CodeQL/validate green; coldPASS; cleanup0. |
+| 1843 semantic dependency split | Merged66ad2b5afd82ae67a5fb80109bc418688fa83fd3. Original Acceptance retained;389rows/0ERROR/0WARN, coldPASS, docs/fragments and both hosted docs shards/CodeQL/validate green; cleanup0. |
+| 1844 raw-header/namespace split | Mergedee0716018513239431239717ae9436af1aebd63c.392rows/0ERROR/0WARN, coldPASS, docs/fragments and both hosted docs shards/CodeQL/validate green; cleanup0. |
+| 1845 raw moved-file ownership | Mergedca6f94dd0cc97a0735cdb5a0f73223c0f7b57308 at2026-10-26T14:43:23Z. Initial42native cases red; final8c6a24c7 exact339/0/0 across10classes. Cold full/deltaPASS; all6hosted/floor/CodeQL/validate green; cleanup0. Initial hosted unmarked invariant failure repaired with existingInternalfactory, unchanged88-case audit and baseline. |
 
-## Dependency graph
+## Open slices and dependency obligations
 
-| Owner | Prerequisites |
+| Owner | Current state / complete objective retained |
 |---|---|
-| raw-move-file-header-ownership | Delivered base writer; both raw move builders/removal share file-role ownership |
-| cross-project-receiving-namespace-compatibility | Raw header child; all four unconditional namespace emitters use one required actual receiving-options selector |
-| interface-extraction-nullable-context-projection | Namespace child; actual emitted-position mapping plus compiler validation of new decoration ship atomically |
-| Parameter / ref / unsafe / escaped projection parents | Nullable child; retain each original Acceptance |
-| Nullable parent | All four semantic projection parents plus nullable child; full complex public matrix retained |
-| Receiving-language parent | Parameter/ref/unsafe projection plus namespace/nullable children; actual compiler-backed feature checks retained |
+| cross-project-receiving-namespace-compatibility | PR1846 drafta9df5cd36fb12625333c9ab837e8ab0996eb763e. Native oldca6:30passed/15failed actualCS8370/CS8773; all original45 tests preserved plus2boundary/12factory cases. ColdPASS; rootexact388/0/0 across11classes. Held for CI prerequisite: hostedLinux2 passed2650/0/24 then30m cancellation duringformat. No unchanged rerun. |
+| class-split-receiving-namespace | Separate deps-chained remainder in docsPR1848; no repair claimed. |
+| split-service-receiving-namespace | Separate deps-chained remainder in docsPR1848; no repair claimed. |
+| relocation-receiving-namespace | Separate deps-chained remainder in docsPR1848; retain raw-header ownership, no repair claimed. |
+| interface-extraction-nullable-context-projection | Current-source plan and parser-recovery correction coldPASS; implementation held until actual namespace merge. Three insertion sites protect four routes; constructed slot roles then lexical mapping, actual receiving context, complete differential compiler errors, no option mutation or broad projection port. |
+| cross-project-interface-parameter-semantics | Original objective retained; full emission and handler binding validation remain atomic. Validation alone is inert when original emitters omit attributes. |
+| interface-extraction-ref-return-contracts | Retain methods/property/indexer ref/ref-readonly and escape metadata obligations. |
+| interface-extraction-unsafe-signature-context | Retain emitted unsafe signatures and atomic refusal under actual policy. |
+| interface-extraction-escaped-member-identifiers | Retain shared semantic identifier spelling. |
+| interface-extraction-nullability-context-fidelity | Retain recursive annotation/value-wrapper graphs and full complex native public matrix; not closed by child planning. |
+| interface-extraction-receiving-language-compatibility | Retain full actual serialized compiler validation after semantic prerequisites; not closed by supported namespace spelling alone. |
+| raw-move-file-header-ownership | Delivered1845; ordinary closure queued only in trailing docs. |
+| ci-artifact-owner-quality-deadline | PR1849 current2374a09b4cc997720c6917ffc6f6d4ccda7fd1ca: quality separate; both cache sites restore-only/designated explicit pre-test writers; shared main/sample preparation plus unchanged strict audit and license gates.9code/test/policy files, zero backlog files. ColdPASS and rootexact93/0/0 across8classes; hosted qualification FAILED: Linux1 native134, then repeated child failures and cancellation; other5matrixjobs/quality/floor/CodeQL passed. Source frozen, draft. |
+| ci-quality-move-hosted-timing-recheck | Separate dependent evidence row; require5complete fresh green six-leg runs and canonical collector. No single-run numerical improvement claim. |
 
-- Namespace child covers direct extraction, dependency inversion, extract-and-wire and move-type through both wrapper branches, plus split_class, split_service_with_di and relocating change_type_namespace.
-- Retain the complete 45-case namespace candidate at local checkpoint5e75baf3; its116 affected passes do not qualify either fresh slice. Header A preserves existing namespace-kind/signature policy; B retains every older-language assertion and adds the other emitters.
-- Prior one-service namespace closure was incomplete: semantic reference review found three more unconditional emitters. Prior raw helper repair exposed matching header/removal ownership in NamespaceRelocation. Fresh partition separates these independent mechanisms.
-- Full handler attribute emission and binding validation stay atomic; handler validation alone is inert on original emitters.
-- Any defect introduced or exposed by a slice ships with that slice; dependencies never authorize a broken intermediate.
+## Hosted CI causal receipts
 
-## Evidence scope and superseding diagnosis
-
-| Earlier statement | Current interpretation |
+| Failure | Observed repair / limit |
 |---|---|
-| Hosted Nullable=Disable despite XML Enable; cause unresolved | Diagnosed: CI=true deterministic fixtures lacked an actual top-level SourceRoot; native design-time loading failed. PR1841 fixes the shared fixture mechanism and proves native CI options without policy mutation |
-| Candidate semantic/ratchet/qualifier cohorts pass | Unmerged preserved-source evidence only; no current-main or split-PR qualification |
-| Candidate-only helpers and integration tests in historical item evidence | Resolve against preserved source f6c2e9f9 under docs checkpoint64d638cd, not current main; current item Anchors point at live emitters/tests |
-| Combined-PR hold pending all semantics | Superseded by operator-approved ordered delivery; original Acceptance and full complex tests remain obligations |
+| PR1840 attributes/native Nullable mismatch | CI=true deterministic fixtures lacked actual top-level SourceRoot. Native design-time load failed and returned incomplete options.1841 fixes fixture metadata without mutating compiler/CI policy. |
+| PR1846 run40345610532 Linux2 | All2650tests passed,24platformskips; publishing succeeded;30m cap cancelledformatter. Required CI fix remains prerequisite. |
+| PR1849 old08f run40362766596 Linux1 | All2652tests passed,42platformskips;TRXuploaded;30m cap cancelled post-job tar/zstd cache compression. Other5jobs/quality/floor/CodeQL succeeded; overall gateFAILED, never qualification. |
+| Current2374 cache fix | Both cache sites have no automatic post hook. Observed raw proof: Linux and Windows miss/fallback -> checked population -> explicit save before tests; no post-cache hook. Windows save18:00:48 and Linux save17:59:46. Actual Linux1 native134 still fails the required aggregate. Only two current-PR exact caches cleared before first changed-head push; default-branch caches untouched. |
+| PR1848 be8 run40359428470 | Docs1 failed renderer determinism because pwsh child exited139 with empty streams;2606passed/1failed/35platformskips. Docs2/CodeQL passed. PRdraft; no unchanged retry or test weakening. |
 
-## Independent findings
+## Native exit139 diagnosis limits
 
-| Finding | State |
+| Probe | Observed result / limit |
 |---|---|
-| DI framework-symbol identity | Carried from preserved draft; open, not selected for repair |
-| Nested concrete-symbol resolution | Carried from preserved draft; open, not selected for repair |
-| Cross-project event-member preservation | Carried from preserved draft; open, not selected for repair |
-| Existing extractor import ordering | Filed in PR1842; open, not claimed repaired |
-| Nested signature type qualification | Filed in PR1842; open; future projection must earn regression proof before closure |
-| Metadata member symbol-handle roundtrip | Filed; tool returns display-only metadata overload handles that its resolver rejects; independent, not selected |
-| First-using trivia helper duplication | Filed; exact ClassSplit/SymbolRefactor copies; independent of raw header ownership |
-| Global final-section newline defect | Reproduced; existing backlog-update-final-section-eof row owns it; duplicate filing PR900 closed. Healthy whole-item update used after tracking verification |
-| Global backlog legacy no-deps header duplication | Filed via owning canonical writer in claude-config PR899; tracking only, outside product repair scope |
+| Base ca6 isolated framework-dependent control | PowerShell7.6.6 with.NET10.0.14:1/0/0. Not the portable hosted runtime. |
+| Base ca6 portable full Linuxshard0 | Verified portable7.6.6/.NET10.0.12 +SDK10.0.403, Ubuntu24.04 Docker/WSL4CPU16GiB. Exact selected renderer class.2605passed/4failed/35skipped/2644total18m54. Renderer cases passed; no139/core. NOT a green Linux gate or proof of pre-existing/host environment failure. |
+| Other four probe failures | Three inherited-pipe parent-exit assertions and one Git-revert cleanliness assertion. Attribution unresolved. Docker had no init, but post-failure snapshot had no zombies; do not claim zombie cause. |
+| Upstream hypothesis | PowerShell28119 tentatively links open runtime121977 startup-profile cache race. No matching native stack or released repair established; no upgrade/cache-isolation cure claimed. |
+| Separate fixture defects | Private renderer helpers read pipes before their timeout and leave unobserved process completion; shared runner has NO startup-cache isolation. Adoption fixes ownership defects only until causal139evidence exists. |
+| Original missing evidence | Hosted native stack/cache not retained; matching-software base probe did not reproduce139. Native root cause remains open in render-finding-linux-pwsh-exit-139. |
+| Aborted setup | First portable probe selected zero-based1(human shard2), then owned container was stopped;137/noverification. Corrected0probe above is separate. Initial missing-script127 setup also retained, not counted as test evidence. |
 
-Preserve eight unrelated retained worktrees, archive tag/branch and protected stash. Preserve the separate full candidate worktree; no historical artifact grants approval to merge its wider architecture.
+## Follow-ups and tooling records
+
+| Row / record | State |
+|---|---|
+| di-registration-framework-symbol-identity; dependency-inversion-nested-concrete-symbol-resolution; cross-project-interface-event-member-preservation | Existing independent source findings; not selected/repaired. |
+| interface-extractor-import-order; interface-extraction-nested-signature-type-qualification | Existing independent rows; baseline/signature correctness obligations retained. |
+| metadata-member-symbol-handle-roundtrip; first-using-trivia-helper-duplication | Filed in merged1844; independent, not selected. |
+| generated-interface-global-using-order | Canonical trailing row; global imports emitted after ordinary imports; no repair claimed. |
+| changed-format-linux-path-identity | Canonical trailing row; case-insensitive changed-set/baseline buckets conflate Linux paths; no repair claimed. |
+| workflow-retired-remediation-prompt-links | Canonical trailing row; current workflow points at absent retired prompts; no repair claimed. |
+| render-finding-linux-pwsh-exit-139 | Canonical trailingHigh row; original native failure unresolved. |
+| render-finding-tests-process-ownership | Canonical trailingMedium row; private pipe/deadline/Git process ownership, not proved139cause. |
+| dockerfile-restore-project-graph | Canonical trailingLow row; static incomplete projectCOPY before solutionrestore; no Docker-build proof or repair claimed. |
+| backlog-legacy-no-deps-header-duplicate | Global filingPR899 merged41c65cede880c203a1a3788714251942df10d1b9; coldPASS, canonical preamble conflict repair,112rows/0ERROR/0WARN,cleanup0. Header source defect remains open; healthy whole-item product writer updates used. |
+| backlog-update-final-section-eof | Existing global row owns observed final-section newline defect; duplicate filingPR900closed, no global production fix claimed. |
+| ship-cleanup-ignored-only-policy-drift | Existing global cleanup-policy row. Blocked ignoredTRX remains preserved; planned retained detached checkout avoids any denied deletion. |
+
+## Excluded candidates
+
+| Row | Reason retained |
+|---|---|
+| logging-default-sink-disabled-stderr-swallowed | Open logging-retention dependency, verified in live reader. |
+| persistent-composite-workspace-identity-not-portable | Separate lifecycle objective requiring decomposition. |
+| cross-project-interface-reference-binding | Separate registration-rewrite and same-file composition obligations; a bare namespace patch is incomplete. |
+| cross-project-interface-signature-dependencies | Separate emitted signature/generic/event and persisted-reference closure. |
+| cross-project-interface-generic-type-parameters | Separate declaration/method identity; no blanket generic refusal introduced. |
+| file-move-namespace-text-encoding | Independent encoding contract. |
+| refactoring-rebase-source-kind-preservation | Independent replay source-kind ownership. |
+| automatic-reload-analyzer-reader-lifetime | Independent reader/provider lifetime. |
+| workspace-load-registration-compensation | Independent registration compensation. |
+| workspace-native-load-cleanup-gate-release | Independent load resource/gate cleanup. |
+| analyzer-shadow-sweep-path-authority | Independent filesystem authority. |
+| restore-package-root-authoritative-read-fail-closed | Independent restore-assets classification. |
+| physical-compensation-external-edit-ownership | Independent persistence compensation. |
+
+All13excluded IDs remain open at the current canonical-reader checkpoint. Promotion/consolidation/defer/next-major holds are not changed by this batch. Recheck before final closeout.
+
+## Preservation and finalization
+
+- Preserve eight unrelated pre-existing worktrees, archive tag/branch, protected stash ba3f29984824b9f302db1c1ff66e6a890e33762c, and both original full/namespace candidate checkouts. Historical inventory is not current qualification; final live check pending.
+- Automatic approval review rejected deleting one ignored TRX with only reason blocked by policy. Preserve file tests/RoslynMcp.Tests/TestResults/daryl_DARYLSLAPTOP_2026-10-26_12_40_00_net10.0.trx and its checkout; no alternate deletion. Detach only after reviewed-head checks if merge proceeds, then canonical helpers can remove the branch while preserving the checkout.
+- Required before batch-complete claim: exact-head hosted code success, actual merges/cleanup receipts, ONE trailing docs PR, full LOCAL final merged-main gate, clean synchronized main and final preservation check.
+
+## Native134 parking checkpoint
+
+| Fact | Evidence |
+|---|---|
+| Required gate | Run40373606428 Linux1 first fails pwsh134 with truncated assembly identity; repeated failures precede30m cancellation. Not merely a deadline issue. |
+| Immutable cache diagnostic | Nonrootnativeext4, official portable7.6.6/.NET10.0.12,8concurrent functional launches plus descendant pass; fresh public-API seed hash stable. Single synthetic malformed identity also exits0: causal reproduction failed. |
+| Cold plan | BLOCKED as a complete cure; playback regression absent and full cache-directory freeze affects module/telemetry writes. No speculative native code authored. |
+| New follow-up | linux-pwsh-startup-profile-invalid-assembly-identity records the distinct134 witness. Bare139 remains separate until shared cause is demonstrated. |
+| Qualification | Local merged-main fullgate PASSED on ab4d4003:5319passed/0failed/31existingplatformskips,exit0. Does not qualify draft product/CI heads or unmerged docs; no complete-batch claim. |
+
+## Global filing final validation
+
+| Field | Observed result |
+|---|---|
+| Filing899 | Merged41c65cede880c203a1a3788714251942df10d1b9 at2026-10-26T19:21:12Z; coldPASS,metadata112rows/0ERROR/0WARN,cleanup0. Duplicate900 remainsclosed; no source fix claimed. |
+| Full global gate | FAILED on clean41c65cede880c203a1a3788714251942df10d1b9;run-tests.sh exit1,84of85targets passed,866s wall. test_owned_interactive.sh: Publication-fault cleanup leaked exact processes. No unchanged retry or new landing. |
+| Native ownership evidence | Failure artifacts were removed by test-runner settlement; a bounded admission-wrapped exact-GUID census found no matching live command lines. No unidentified process killed; no durable orphan attribution. Dedicated owning-tooling row owned-publication-before-retain-native-cleanup filed through canonical --via-worktree in draft claude-configPR912;0ERROR/0WARN. No source repair or new landing; global production repair excluded from this remediation run. |
