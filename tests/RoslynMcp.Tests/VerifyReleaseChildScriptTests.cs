@@ -82,6 +82,13 @@ public sealed class VerifyReleaseChildScriptTests
                     "fixture terminating error",
                     ShouldReachDotnet: false),
                 new ReleaseCase(
+                    "nested fixture terminating error propagates",
+                    "prepare-test-fixtures.ps1",
+                    FailureMode.Throw,
+                    RequireConsumedFragments: false,
+                    "fixture terminating error",
+                    ShouldReachDotnet: true),
+                new ReleaseCase(
                     "all children return without explicit exit",
                     FailingScript: null,
                     FailureMode.None,
@@ -131,10 +138,8 @@ public sealed class VerifyReleaseChildScriptTests
                         File.Exists(fixture.DotnetSentinelPath),
                         $"{testCase.Name}: the post-restore verifier failed before fake dotnet ran.");
                     StringAssert.Contains(combinedOutput, testCase.ExpectedText!, diagnostic);
-                    StringAssert.Contains(
-                        combinedOutput,
-                        $"exit code {_childFailureExitCode}",
-                        diagnostic);
+                    if (testCase.FailureMode == FailureMode.Exit)
+                        StringAssert.Contains(combinedOutput, $"exit code {_childFailureExitCode}", diagnostic);
                     continue;
                 }
 
@@ -656,6 +661,48 @@ public sealed class VerifyReleaseChildScriptTests
         }
     }
 
+    [TestMethod]
+    [TestCategory("Process")]
+    [DataRow(null)]
+    [DataRow("prepare-test-fixtures.ps1")]
+    [DataRow("update-third-party-notices.ps1")]
+    public async Task VerifyRelease_PreparationAndLicenseRemainCheckedBeforeBuildAsync(string? failingScript)
+    {
+        var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
+        var fixtureRoot = Path.Combine(TestTempRoot.Current, nameof(VerifyReleaseChildScriptTests), Guid.NewGuid().ToString("N"));
+        try
+        {
+            var fixture = WriteFixture(repositoryRoot, fixtureRoot,
+                new ReleaseCase("preparation license ordering", failingScript,
+                    failingScript is null ? FailureMode.None : FailureMode.Exit, false, null, true));
+            var result = await RunVerifyReleaseAsync(fixture, false);
+            var diagnostic = result.StdOut + result.StdErr;
+            Assert.AreEqual(failingScript is null, result.ExitCode == 0, diagnostic);
+            var phases = File.ReadAllLines(Path.Combine(fixtureRoot, "phases.txt"));
+            var restore = Array.IndexOf(phases, "restore");
+            var samples = Array.IndexOf(phases, "prepare-test-fixtures.ps1");
+            var license = Array.IndexOf(phases, "update-third-party-notices.ps1");
+            var build = Array.IndexOf(phases, "build");
+            Assert.IsTrue(restore >= 0 && samples > restore, diagnostic);
+            if (failingScript == "prepare-test-fixtures.ps1")
+                Assert.AreEqual(-1, license, diagnostic);
+            else
+                Assert.IsTrue(license > samples, diagnostic);
+            if (failingScript is null)
+                Assert.IsTrue(build > license, diagnostic);
+            else
+            {
+                Assert.AreEqual(-1, build, diagnostic);
+                Assert.AreEqual(-1, Array.IndexOf(phases, "test"), diagnostic);
+                Assert.AreEqual(-1, Array.IndexOf(phases, "publish"), diagnostic);
+            }
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
     private static ReleaseFixture WriteFixture(
         string repositoryRoot,
         string fixtureRoot,
@@ -667,6 +714,10 @@ public sealed class VerifyReleaseChildScriptTests
         File.Copy(
             Path.Combine(repositoryRoot, "eng", "verify-release.ps1"),
             Path.Combine(fixtureEngDirectory, "verify-release.ps1"));
+        File.Copy(
+            Path.Combine(repositoryRoot, "eng", "prepare-validation-dependencies.ps1"),
+            Path.Combine(fixtureEngDirectory, "prepare-validation-dependencies.ps1"));
+        File.WriteAllText(Path.Combine(fixtureRoot, "RoslynMcp.slnx"), "<Solution />");
 
         foreach (var child in _childScripts)
         {
@@ -707,9 +758,12 @@ public sealed class VerifyReleaseChildScriptTests
                 [string]$RepoRoot,
                 [switch]$RequireConsumedFragments,
                 [switch]$Quiet,
+                [string]$SolutionPath,
                 [switch]$Verify,
                 [switch]$VerifyRestoredLicenses
             )
+
+            [IO.File]::AppendAllText((Join-Path $PSScriptRoot '../phases.txt'), ($MyInvocation.MyCommand.Name + [Environment]::NewLine))
 
             {{failure}}
 
@@ -717,7 +771,8 @@ public sealed class VerifyReleaseChildScriptTests
                 throw 'registry quiet switch missing'
             }
             if ($MyInvocation.MyCommand.Name -eq 'update-third-party-notices.ps1' -and
-                (-not $Verify -or -not $VerifyRestoredLicenses -or [string]::IsNullOrWhiteSpace($RepoRoot))) {
+                (-not $Verify -or -not $VerifyRestoredLicenses -or [string]::IsNullOrWhiteSpace($RepoRoot) -or
+                $SolutionPath -cne (Join-Path $RepoRoot 'RoslynMcp.slnx'))) {
                 throw 'restored license verification switches missing'
             }
             """;
@@ -735,6 +790,7 @@ public sealed class VerifyReleaseChildScriptTests
                     throw 'Verifier must disable shared build servers before every dotnet phase.'
                 }
                 $arguments = @($args)
+                [IO.File]::AppendAllText((Join-Path $PSScriptRoot 'phases.txt'), ($arguments[0] + [Environment]::NewLine))
                 [System.IO.File]::WriteAllText($env:ROSLYNMCP_DOTNET_SENTINEL, 'invoked')
                 [System.IO.File]::AppendAllText(
                     $env:ROSLYNMCP_DOTNET_ARGUMENTS,

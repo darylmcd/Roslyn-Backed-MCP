@@ -20,6 +20,9 @@ permissions:
   contents: read
   pull-requests: read
 
+env:
+  NUGET_CACHE_PATH: ~/.nuget/packages
+
 jobs:
   # Compute the complete validation topology before any platform job is queued.
   # Public pull-request code is always routed to ephemeral GitHub-hosted
@@ -143,13 +146,29 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: Cache NuGet packages
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      - name: Restore NuGet packages
+        id: nuget_cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
-          path: ~/.nuget/packages
+          path: ${{ env.NUGET_CACHE_PATH }}
           key: ${{ runner.os }}-nuget-${{ hashFiles('**/Directory.Packages.props', '**/Directory.Build.props', '**/global.json') }}
           restore-keys: |
             ${{ runner.os }}-nuget-
+
+      # Linux code/dispatch caches belong to quality. Matrix readers never
+      # register a post-save hook after their full suites.
+      - name: Prepare NuGet cache for persistence
+        id: prepare_nuget_cache
+        if: steps.nuget_cache.outputs.cache-hit != 'true' && ((runner.os == 'Windows' && matrix.leg.test_shard_index == 0) || (needs.route.outputs.docs_only == 'true' && matrix.leg.artifact_owner == true))
+        shell: pwsh
+        run: ./eng/prepare-validation-dependencies.ps1 -RepoRoot $PWD.Path
+
+      - name: Save NuGet packages before tests
+        if: steps.prepare_nuget_cache.outcome == 'success'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ env.NUGET_CACHE_PATH }}
+          key: ${{ steps.nuget_cache.outputs.cache-primary-key }}
 
       - name: Verify release build (pull request)
         if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
@@ -246,10 +265,11 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: Cache NuGet packages
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      - name: Restore NuGet packages
+        id: nuget_cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
-          path: ~/.nuget/packages
+          path: ${{ env.NUGET_CACHE_PATH }}
           key: ${{ runner.os }}-nuget-${{ hashFiles('**/Directory.Packages.props', '**/Directory.Build.props', '**/global.json') }}
           restore-keys: |
             ${{ runner.os }}-nuget-
@@ -257,6 +277,21 @@ jobs:
       - name: Audit packages for known vulnerabilities
         shell: pwsh
         run: ./eng/verify-nuget-audit.ps1 -SolutionPath RoslynMcp.slnx
+
+      # The audit supplies checked main assets. Populate the canonical samples
+      # before persisting an immutable package key, including dispatch/schedule.
+      - name: Prepare NuGet cache for persistence
+        id: prepare_nuget_cache
+        if: steps.nuget_cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: ./eng/prepare-test-fixtures.ps1
+
+      - name: Save NuGet packages before tests
+        if: steps.prepare_nuget_cache.outcome == 'success'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ env.NUGET_CACHE_PATH }}
+          key: ${{ steps.nuget_cache.outputs.cache-primary-key }}
 
       # The audit restores assets, but the formatter also needs the repository
       # analyzer's Debug output on this fresh runner; package caching cannot supply it.

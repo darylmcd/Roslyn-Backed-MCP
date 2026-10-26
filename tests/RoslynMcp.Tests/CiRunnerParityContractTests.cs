@@ -478,6 +478,114 @@ public sealed class CiRunnerParityContractTests
             $"Aggregate results: {string.Join(", ", values.Select(pair => pair.Key + "=" + pair.Value))}; stdout={result.StdOut}; stderr={result.StdErr}");
     }
 
+    [TestMethod]
+    public void NuGetCache_UsesRestoreOnlyAndExplicitPreTestWriters()
+    {
+        var workflow = LoadCiWorkflow();
+        Assert.IsFalse(workflow.Contains("actions/cache@", StringComparison.Ordinal), "Combined cache actions register late post-save compression in every reader.");
+        Assert.AreEqual(2, CountOccurrences(workflow, "actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9"));
+        Assert.AreEqual(2, CountOccurrences(workflow, "actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9"));
+        StringAssert.Contains(workflow, "NUGET_CACHE_PATH: ~/.nuget/packages");
+        Assert.IsFalse(workflow.Contains("cache: true", StringComparison.Ordinal));
+        foreach (var jobName in new[] { "validate", "quality" })
+        {
+            var job = GetJobBlock(workflow, jobName);
+            var restore = GetNamedStepBlock(job, "Restore NuGet packages");
+            var preparation = GetNamedStepBlock(job, "Prepare NuGet cache for persistence");
+            var save = GetNamedStepBlock(job, "Save NuGet packages before tests");
+            StringAssert.Contains(restore, "id: nuget_cache");
+            StringAssert.Contains(restore, "path: ${{ env.NUGET_CACHE_PATH }}");
+            StringAssert.Contains(restore, "key: ${{ runner.os }}-nuget-${{ hashFiles('**/Directory.Packages.props', '**/Directory.Build.props', '**/global.json') }}");
+            StringAssert.Contains(restore, "${{ runner.os }}-nuget-");
+            StringAssert.Contains(preparation, "id: prepare_nuget_cache");
+            StringAssert.Contains(preparation, "steps.nuget_cache.outputs.cache-hit != 'true'");
+            StringAssert.Contains(save, "if: steps.prepare_nuget_cache.outcome == 'success'");
+            StringAssert.Contains(save, "path: ${{ env.NUGET_CACHE_PATH }}");
+            StringAssert.Contains(save, "key: ${{ steps.nuget_cache.outputs.cache-primary-key }}");
+            Assert.IsFalse(save.Contains("hashFiles", StringComparison.Ordinal));
+            Assert.IsFalse(save.Contains("always()", StringComparison.Ordinal));
+            var savePosition = job.IndexOf("      - name: Save NuGet packages before tests", StringComparison.Ordinal);
+            Assert.IsTrue(job.IndexOf("      - name: Prepare NuGet cache for persistence", StringComparison.Ordinal) < savePosition);
+            if (jobName == "quality")
+                Assert.IsTrue(job.IndexOf("      - name: Audit packages for known vulnerabilities", StringComparison.Ordinal) <
+                    job.IndexOf("      - name: Prepare NuGet cache for persistence", StringComparison.Ordinal));
+            foreach (var downstream in jobName == "validate"
+                ? new[] { "Verify release build (pull request)", "Verify release build (dispatch / schedule)" }
+                : new[] { "Prepare formatter analyzer", "Verify changed-file formatting" })
+                Assert.IsTrue(savePosition < job.IndexOf("      - name: " + downstream, StringComparison.Ordinal));
+            StringAssert.Contains(preparation, jobName == "validate"
+                ? "./eng/prepare-validation-dependencies.ps1 -RepoRoot $PWD.Path"
+                : "./eng/prepare-test-fixtures.ps1");
+        }
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
+    [DataRow("pull_request", "src/Code.cs", 1, 1)]
+    [DataRow("merge_group", "", 1, 1)]
+    [DataRow("pull_request", "docs/setup.md", 0, 1)]
+    [DataRow("pull_request", "ai_docs/reports/probe.md", 0, 0)]
+    [DataRow("workflow_dispatch", "", 0, 1)]
+    [DataRow("schedule", "", 0, 1)]
+    public async Task NuGetCache_ActualPredicatesSelectOneWriterPerRoutedOsAsync(
+        string eventName, string changedPath, int windowsWriters, int linuxWriters)
+    {
+        var workflow = LoadCiWorkflow();
+        var validate = GetJobBlock(workflow, "validate");
+        var quality = GetJobBlock(workflow, "quality");
+        static string Condition(string source) => source.Split('\n').First(line => line.TrimStart().StartsWith("if: ", StringComparison.Ordinal)).Trim()[4..];
+        static string Translate(string expression) => expression
+            .Replace("steps.nuget_cache.outputs.cache-hit", "$cacheHit", StringComparison.Ordinal)
+            .Replace("steps.prepare_nuget_cache.outcome", "$preparationOutcome", StringComparison.Ordinal)
+            .Replace("runner.os", "$os", StringComparison.Ordinal)
+            .Replace("matrix.leg.test_shard_index", "$leg.test_shard_index", StringComparison.Ordinal)
+            .Replace("matrix.leg.artifact_owner", "$leg.artifact_owner", StringComparison.Ordinal)
+            .Replace("needs.route.outputs.docs_only", "$docsOnly", StringComparison.Ordinal)
+            .Replace("needs.route.outputs.evidence_only", "$evidenceOnly", StringComparison.Ordinal)
+            .Replace("== true", "-eq $true", StringComparison.Ordinal)
+            .Replace("!=", "-ne", StringComparison.Ordinal).Replace("==", "-eq", StringComparison.Ordinal)
+            .Replace("&&", "-and", StringComparison.Ordinal).Replace("||", "-or", StringComparison.Ordinal);
+        var matrixCondition = Translate(Condition(GetNamedStepBlock(validate, "Prepare NuGet cache for persistence")));
+        var qualityCondition = Translate(Condition(GetNamedStepBlock(quality, "Prepare NuGet cache for persistence")));
+        var matrixEnabled = Translate(Condition(validate));
+        var qualityEnabled = Translate(Condition(quality));
+        var matrixSave = Translate(Condition(GetNamedStepBlock(validate, "Save NuGet packages before tests")));
+        var qualitySave = Translate(Condition(GetNamedStepBlock(quality, "Save NuGet packages before tests")));
+        var script = $$"""
+            $ErrorActionPreference = 'Stop'
+            $files = if ('{{changedPath}}') { '[{"filename":"{{changedPath}}"}]' } else { '[]' }
+            $route = & ./eng/resolve-ci-topology.ps1 -EventName '{{eventName}}' -ChangedFilesJson $files -ReportedChangedFileCount $(if ('{{changedPath}}') { 1 } else { 0 }) | ConvertFrom-Json
+            $docsOnly = $route.docs_only.ToString().ToLowerInvariant()
+            $evidenceOnly = $route.evidence_only.ToString().ToLowerInvariant()
+            foreach ($cacheHit in @('true', 'false', '')) {
+                $writers = @{ Windows = 0; Linux = 0 }
+                foreach ($leg in $route.runner_matrix) {
+                    $os = if ($leg.runs_on -like 'windows-*') { 'Windows' } else { 'Linux' }
+                    $selected = ({{matrixEnabled}}) -and ({{matrixCondition}})
+                    $preparationOutcome = if ($selected) { 'success' } else { 'skipped' }
+                    if ({{matrixSave}}) { $writers[$os]++ }
+                }
+                $selected = ({{qualityEnabled}}) -and ({{qualityCondition}})
+                $preparationOutcome = if ($selected) { 'success' } else { 'skipped' }
+                if ({{qualitySave}}) { $writers.Linux++ }
+                $expectedWindows = if ($cacheHit -eq 'true') { 0 } else { {{windowsWriters}} }
+                $expectedLinux = if ($cacheHit -eq 'true') { 0 } else { {{linuxWriters}} }
+                if ($writers.Windows -ne $expectedWindows -or $writers.Linux -ne $expectedLinux) {
+                    throw "Writer ownership mismatch: hit='$cacheHit'; Windows=$($writers.Windows); Linux=$($writers.Linux)"
+                }
+            }
+            foreach ($preparationOutcome in @('failure', 'cancelled', 'skipped', '')) {
+                if (({{matrixSave}}) -or ({{qualitySave}})) { throw 'Failed or skipped preparation must never save.' }
+            }
+            """;
+        var encoded = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(script));
+        var result = await PwshScriptRunner.RunAsync(
+            ["-NoProfile", "-NonInteractive", "-EncodedCommand", encoded],
+            workingDirectory: TestFixtureFileSystem.FindRepositoryRoot(),
+            timeout: TimeSpan.FromSeconds(30), description: "actual cache ownership predicates");
+        Assert.AreEqual(0, result.ExitCode, result.StdOut + result.StdErr);
+    }
+
     private static string GetJobBlock(string workflow, string jobId)
     {
         var lines = workflow.Split('\n');
