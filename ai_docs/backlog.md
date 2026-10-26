@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-25T21:03:52Z
+**updated_at:** 2026-10-26T04:54:39Z
 
 ## Agent contract
 
@@ -61,6 +61,10 @@
 | `restore-package-root-authoritative-read-fail-closed` | High | — | Keep unreadable assets distinct from an absent recorded root | M | items/restore-package-root-authoritative-read-fail-closed.md |
 | `cross-project-interface-parameter-semantics` | High | — | Preserve emitted interface parameter semantics | M | items/cross-project-interface-parameter-semantics.md |
 | `physical-compensation-external-edit-ownership` | High | — | Preserve external edits during failed persistence compensation | M | items/physical-compensation-external-edit-ownership.md |
+| `interface-extraction-ref-return-contracts` | High | — | Preserve ref and ref readonly return kinds in generated interface members. [type: bug] [source: parameter-projection-cold-review] | M | items/interface-extraction-ref-return-contracts.md |
+| `interface-extraction-unsafe-signature-context` | High | — | Preserve unsafe signature context and refuse incompatible receiving-project policy before token publication. [type: bug] [source: parameter-projection-cold-review] | M | items/interface-extraction-unsafe-signature-context.md |
+| `interface-extraction-escaped-member-identifiers` | High | — | Preserve escaped identifiers on every emitted interface member kind. [type: bug] [source: parameter-projection-cold-review] | M | items/interface-extraction-escaped-member-identifiers.md |
+| `interface-extraction-base-constraint-token-boundary` | High | — | Preserve lexical boundaries and trivia when both interface extractors append base types before constraints; share insertion and verify persisted text. | M | items/interface-extraction-base-constraint-token-boundary.md |
 
 ## Medium
 
@@ -199,6 +203,9 @@
 | `mstest-formatter-enum-zero-comparison` | Medium | — | Investigate enum-zero assertion formatter dependency behavior | M | items/mstest-formatter-enum-zero-comparison.md |
 | `process-environment-fixture-isolation` | Medium | — | Isolate shared process environment fixture actors | M | items/process-environment-fixture-isolation.md |
 | `evaluated-test-project-classification` | Medium | msbuild-evaluation-project-context-cache | Classify test projects from actual evaluated context | M | items/evaluated-test-project-classification.md |
+| `di-registration-framework-symbol-identity` | Medium | — | Bind DI discovery to framework symbols; reject unrelated same-name collections and methods. [type: bug] [source: interface-parameter-remediation-review] | S | items/di-registration-framework-symbol-identity.md |
+| `dependency-inversion-nested-concrete-symbol-resolution` | Medium | — | Resolve nested concrete types by complete metadata identity during dependency inversion. [type: bug] [source: interface-parameter-remediation-review] | S | items/dependency-inversion-nested-concrete-symbol-resolution.md |
+| `cross-project-interface-event-member-preservation` | Medium | — | Preserve public instance events in extracted interface contracts through real producer compilation. [type: bug] [source: interface-parameter-remediation-review] | S | items/cross-project-interface-event-member-preservation.md |
 
 ## Low
 
@@ -423,6 +430,7 @@
 | `workspace-idle-diagnostic-touch-order` | Low | — | Measure idle time before access updates | S | items/workspace-idle-diagnostic-touch-order.md |
 | `solution-diff-truncation-source-substring-test` | Low | — | Assert real omitted-file preview behavior | S | items/solution-diff-truncation-source-substring-test.md |
 | `workspace-cache-retention-policy` | Low | — | Decide bounded persisted cache retention | M | items/workspace-cache-retention-policy.md |
+| `interface-extractor-import-order` | Low | — | Normalize import ordering in both interface extractors and remove only their two existing IMPORTS baseline entries. [type: quality] [source: interface-declaration-remediation-format] | M | items/interface-extractor-import-order.md |
 
 ## Defer
 

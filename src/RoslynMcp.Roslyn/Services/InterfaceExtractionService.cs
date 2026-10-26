@@ -6,6 +6,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.FindSymbols;
+using Microsoft.CodeAnalysis.Editing;
 using Microsoft.Extensions.Logging;
 
 namespace RoslynMcp.Roslyn.Services;
@@ -46,16 +47,10 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
             await ResolveTypeAsync(solution, filePath, typeName, ct).ConfigureAwait(false);
 
         var candidateMembers = SelectCandidateMembers(typeSymbol, memberNames, typeName);
-        var interfaceMembers = BuildInterfaceMembers(candidateMembers);
-        // Item #3 — severity-high-fail-produces-code-that-does-not-compi.
-        // The legacy FilterRelevantUsings text-grepped the synthesized interface
-        // for the FULL namespace name, but BuildInterfaceMembers renders types with
-        // MinimallyQualifiedFormat (short names like NetworkInventory) — so the text
-        // never contained "NetworkDocumentation.Core.Models" and the using was dropped,
-        // producing post-apply CS0246/CS0535 (NetworkDocumentation audit §9.1). Fix:
-        // walk the member symbols semantically to collect every referenced type's
-        // containing namespace, and use that set (plus aliases/static usings from the
-        // source file) as the authoritative using list.
+        var interfaceMembers = BuildInterfaceMembers(candidateMembers, SyntaxGenerator.GetGenerator(sourceDocument));
+        // Preserve the semantic import set and special source usings. Event types
+        // retain contextual spelling; parameters and return/property types use
+        // fully qualified semantic syntax independent of these imports.
         var requiredNamespaces = CollectReferencedNamespaces(candidateMembers, typeSymbol.ContainingNamespace);
 
         // Compute alreadyImplements BEFORE the conflict check so we can short-circuit
@@ -83,6 +78,7 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
         var interfaceDecl = SyntaxFactory.InterfaceDeclaration(interfaceName)
             .WithModifiers(SyntaxFactory.TokenList(interfaceAccessibilityToken))
             .WithMembers(SyntaxFactory.List(interfaceMembers));
+        interfaceDecl = InterfaceMemberProjection.WithUnsafeContext(interfaceDecl, sourceDocument.Project);
 
         var interfaceFileRoot = BuildInterfaceFile(interfaceDecl, typeDecl, sourceRoot, requiredNamespaces);
 
@@ -93,53 +89,7 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
         }
         else
         {
-            // Use formatting-preserving syntax annotations so the existing source layout
-            // (modifiers, expression bodies, format specifiers) is not disturbed
-            // by a NormalizeWhitespace() pass over the entire compilation unit (BUG-004).
-            var interfaceTypeSyntax = SyntaxFactory.SimpleBaseType(SyntaxFactory.ParseTypeName(interfaceName))
-                .WithLeadingTrivia(SyntaxFactory.Space);
-            if (typeDecl.BaseList is not null)
-            {
-                // dr-9-6-emits-continuation-on-a-new-line-instead-of-inli: when the source class is
-                // `class Foo : IBar\n{` the last existing base type (`IBar`) carries a trailing
-                // end-of-line trivia (the newline that originally preceded the `{`). Roslyn's
-                // SeparatedSyntaxList.Add inserts a zero-trivia comma token AFTER that trailing
-                // newline, producing `: IBar\n, INewInterface{`. To keep the continuation inline
-                // (`: IBar, INewInterface`), transfer the last existing base type's trailing trivia
-                // onto the new interface's trailing position and clear it from the original last
-                // base type so the comma stays glued to it.
-                var baseList = typeDecl.BaseList;
-                var lastIndex = baseList.Types.Count - 1;
-                BaseTypeSyntax newInterfaceType = interfaceTypeSyntax;
-                if (lastIndex >= 0)
-                {
-                    var lastExisting = baseList.Types[lastIndex];
-                    var trailing = lastExisting.GetTrailingTrivia();
-                    if (trailing.Count > 0)
-                    {
-                        newInterfaceType = interfaceTypeSyntax.WithTrailingTrivia(trailing);
-                        var strippedLast = lastExisting.WithTrailingTrivia(SyntaxTriviaList.Empty);
-                        baseList = baseList.WithTypes(baseList.Types.Replace(lastExisting, strippedLast));
-                    }
-                }
-
-                var newBaseList = baseList.AddTypes(newInterfaceType);
-                updatedTypeDecl = typeDecl.WithBaseList(newBaseList);
-            }
-            else
-            {
-                // No existing base list. Attach `: IName` to the type declaration directly; Roslyn
-                // emits the leading colon token automatically.
-                var newBaseList = SyntaxFactory.BaseList(SyntaxFactory.SingletonSeparatedList<BaseTypeSyntax>(interfaceTypeSyntax))
-                    .WithLeadingTrivia(SyntaxFactory.Space);
-                updatedTypeDecl = typeDecl.WithBaseList(newBaseList);
-            }
-        }
-
-        // BUG-N12: avoid `: IName{` glued to the opening brace — keep `{` on its own line for readability.
-        if (!alreadyImplements)
-        {
-            updatedTypeDecl = EnsureOpeningBraceOnOwnLine(updatedTypeDecl);
+            updatedTypeDecl = InterfaceMemberProjection.AddBaseType(typeDecl, interfaceName, multilineContinuation: false);
         }
 
         // BUG-004: Do NOT call NormalizeWhitespace() here — that re-flows the entire file and
@@ -160,6 +110,7 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
             var folders = ProjectMetadataParser.ComputeDocumentFolders(targetProject.FilePath, interfaceFilePath);
             var interfaceDoc = targetProject.AddDocument($"{interfaceName}.cs", interfaceFileRoot.ToFullString(), folders: folders, filePath: interfaceFilePath);
             newSolution = interfaceDoc.Project.Solution;
+            await InterfaceHandlerBindingValidator.ValidateAsync(newSolution, sourceDocument.Id, interfaceDoc.Id, typeSymbol, ct).ConfigureAwait(false);
 
             if (replaceUsages)
             {
@@ -237,7 +188,7 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
         return candidateMembers;
     }
 
-    private static List<MemberDeclarationSyntax> BuildInterfaceMembers(List<ISymbol> candidateMembers)
+    private static List<MemberDeclarationSyntax> BuildInterfaceMembers(List<ISymbol> candidateMembers, SyntaxGenerator generator)
     {
         var interfaceMembers = new List<MemberDeclarationSyntax>();
         foreach (var member in candidateMembers)
@@ -245,41 +196,24 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
             switch (member)
             {
                 case IMethodSymbol method:
-                    var parameters = method.Parameters.Select(p =>
-                        SyntaxFactory.Parameter(SyntaxFactory.Identifier(p.Name))
-                            .WithType(SyntaxFactory.ParseTypeName(p.Type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)))
-                            .WithDefault(p.HasExplicitDefaultValue
-                                ? SyntaxFactory.EqualsValueClause(SyntaxFactory.ParseExpression(GetDefaultValueText(p)))
-                                : null));
-
-                    var returnType = SyntaxFactory.ParseTypeName(method.ReturnType.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat));
-                    var methodDecl = SyntaxFactory.MethodDeclaration(returnType, method.Name)
-                        .WithParameterList(SyntaxFactory.ParameterList(SyntaxFactory.SeparatedList(parameters)))
+                    var returnType = InterfaceMemberProjection.ReturnType(generator, method.ReturnType, method.RefKind);
+                    var methodDecl = SyntaxFactory.MethodDeclaration(returnType, InterfaceMemberProjection.EscapeIdentifier(method.Name))
+                        .WithParameterList(InterfaceMemberProjection.MethodParameters(generator, method))
                         .WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken));
 
                     if (method.TypeParameters.Length > 0)
                     {
                         var typeParams = method.TypeParameters.Select(tp =>
-                            SyntaxFactory.TypeParameter(tp.Name));
+                            SyntaxFactory.TypeParameter(InterfaceMemberProjection.EscapeIdentifier(tp.Name)));
                         methodDecl = methodDecl.WithTypeParameterList(
                             SyntaxFactory.TypeParameterList(SyntaxFactory.SeparatedList(typeParams)));
                     }
 
-                    interfaceMembers.Add(methodDecl);
+                    interfaceMembers.Add(InterfaceMemberProjection.WithReturnContract(generator, method, methodDecl));
                     break;
 
                 case IPropertySymbol property:
-                    var propType = SyntaxFactory.ParseTypeName(property.Type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat));
-                    var accessors = new List<AccessorDeclarationSyntax>();
-                    if (property.GetMethod is not null)
-                        accessors.Add(SyntaxFactory.AccessorDeclaration(SyntaxKind.GetAccessorDeclaration)
-                            .WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken)));
-                    if (property.SetMethod is not null && !property.SetMethod.IsInitOnly)
-                        accessors.Add(SyntaxFactory.AccessorDeclaration(SyntaxKind.SetAccessorDeclaration)
-                            .WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken)));
-
-                    interfaceMembers.Add(SyntaxFactory.PropertyDeclaration(propType, property.Name)
-                        .WithAccessorList(SyntaxFactory.AccessorList(SyntaxFactory.List(accessors))));
+                    interfaceMembers.Add(InterfaceMemberProjection.Property(generator, property));
                     break;
 
                 case IEventSymbol evt:
@@ -287,7 +221,7 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
                     interfaceMembers.Add(SyntaxFactory.EventFieldDeclaration(
                         SyntaxFactory.VariableDeclaration(eventType)
                             .WithVariables(SyntaxFactory.SingletonSeparatedList(
-                                SyntaxFactory.VariableDeclarator(evt.Name))))
+                                SyntaxFactory.VariableDeclarator(InterfaceMemberProjection.EscapeIdentifier(evt.Name)))))
                         .WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken)));
                     break;
             }
@@ -375,19 +309,6 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
         }
 
         return namespaces;
-    }
-
-    private static TypeDeclarationSyntax EnsureOpeningBraceOnOwnLine(TypeDeclarationSyntax typeDecl)
-    {
-        var brace = typeDecl.OpenBraceToken;
-        if (brace.IsMissing)
-            return typeDecl;
-
-        if (brace.LeadingTrivia.Any(t => t.IsKind(SyntaxKind.EndOfLineTrivia)))
-            return typeDecl;
-
-        return typeDecl.WithOpenBraceToken(
-            brace.WithLeadingTrivia(SyntaxFactory.TriviaList(SyntaxFactory.EndOfLine(Environment.NewLine))));
     }
 
     /// <remarks>
@@ -478,17 +399,6 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
         }
 
         return solution;
-    }
-
-    private static string GetDefaultValueText(IParameterSymbol parameter)
-    {
-        if (parameter.ExplicitDefaultValue is null)
-            return "default";
-        if (parameter.ExplicitDefaultValue is string s)
-            return $"\"{s}\"";
-        if (parameter.ExplicitDefaultValue is bool b)
-            return b ? "true" : "false";
-        return parameter.ExplicitDefaultValue.ToString() ?? "default";
     }
 
     /// <summary>
