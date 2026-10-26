@@ -1,9 +1,9 @@
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.Text;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Services;
+
+using static RoslynMcp.Tests.TestInfrastructure.InterfaceExtractionTestContext;
 
 namespace RoslynMcp.Tests;
 
@@ -30,7 +30,7 @@ public sealed class DetachedFixtureNativeContextIntegrationTests : IsolatedWorks
         var sourceBytes = System.Text.Encoding.UTF8.GetBytes(source);
         await File.WriteAllBytesAsync(sourcePath, sourceBytes);
         await workspace.LoadAsync();
-        await AssertNativeContextAsync(workspace.WorkspaceId);
+        await AssertNativeContextAsync(WorkspaceManager, workspace.WorkspaceId);
         var before = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
         await AssertCompilesAsync(before);
         await AssertNullableGraphAsync(before, "EchoService");
@@ -67,7 +67,7 @@ public sealed class DetachedFixtureNativeContextIntegrationTests : IsolatedWorks
             : await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "fixture_context_test", CancellationToken.None);
         Assert.IsTrue(result.Success, result.Error);
         await workspace.ReloadAsync();
-        await AssertNativeContextAsync(workspace.WorkspaceId);
+        await AssertNativeContextAsync(WorkspaceManager, workspace.WorkspaceId);
         var applied = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
         await AssertCompilesAsync(await ReparseSerializedDocumentsAsync(applied));
         await AssertNullableGraphAsync(applied, "EchoService");
@@ -75,50 +75,6 @@ public sealed class DetachedFixtureNativeContextIntegrationTests : IsolatedWorks
         foreach (var document in applied.Projects.SelectMany(p => p.Documents).Where(d => d.Name is "EchoService.cs" or "IEchoService.cs"))
             Assert.AreEqual((await document.GetTextAsync()).ToString(), await File.ReadAllTextAsync(document.FilePath!),
                 "Reloaded compilation must describe the persisted source and interface.");
-    }
-
-    private static Solution SerializedCompositePreview(Solution solution, IReadOnlyList<CompositeFileMutation> mutations)
-    {
-        foreach (var mutation in mutations)
-        {
-            if (!mutation.FilePath.EndsWith(".cs", StringComparison.Ordinal)) continue;
-            var existing = solution.Projects.SelectMany(p => p.Documents).SingleOrDefault(d => d.FilePath == mutation.FilePath);
-            solution = existing is not null
-                ? solution.WithDocumentText(existing.Id, SourceText.From(mutation.UpdatedContent!))
-                : solution.AddDocument(DocumentId.CreateNewId(solution.Projects.Single(p => p.Name == "Contracts").Id),
-                    Path.GetFileName(mutation.FilePath), SourceText.From(mutation.UpdatedContent!), filePath: mutation.FilePath);
-        }
-        return solution.AddProjectReference(solution.Projects.Single(p => p.Name == "SampleLib").Id,
-            new ProjectReference(solution.Projects.Single(p => p.Name == "Contracts").Id));
-    }
-
-    private static async Task<Solution> ReparseSerializedDocumentsAsync(Solution solution)
-    {
-        foreach (var document in solution.Projects.SelectMany(p => p.Documents).ToArray())
-        {
-            var text = (await document.GetTextAsync()).ToString();
-            var tree = CSharpSyntaxTree.ParseText(text, (CSharpParseOptions?)document.Project.ParseOptions, document.FilePath ?? document.Name);
-            solution = solution.WithDocumentSyntaxRoot(document.Id, await tree.GetRootAsync());
-        }
-        return solution;
-    }
-
-    private static async Task AssertNativeContextAsync(string workspaceId)
-    {
-        var errors = WorkspaceManager.GetStatus(workspaceId).WorkspaceDiagnostics
-            .Where(d => string.Equals(d.Severity, "Error", StringComparison.OrdinalIgnoreCase)).ToArray();
-        var facts = new List<string> { "Native errors: " + string.Join(Environment.NewLine, errors.Take(8).Select(e => e.Message)) };
-        foreach (var project in WorkspaceManager.GetCurrentSolution(workspaceId).Projects)
-        {
-            var compilation = (await project.GetCompilationAsync())!;
-            facts.Add($"{project.Name}: Nullable={compilation.Options.NullableContextOptions}; diagnostics=" +
-                string.Join(",", compilation.GetDiagnostics().Select(d => d.Id).Distinct().Order(StringComparer.Ordinal).Take(20)));
-        }
-        var context = string.Join(Environment.NewLine, facts);
-        Console.WriteLine(context);
-        Assert.AreEqual(0, errors.Length, context);
-        foreach (var project in WorkspaceManager.GetCurrentSolution(workspaceId).Projects)
-            Assert.AreEqual(NullableContextOptions.Enable, (await project.GetCompilationAsync())!.Options.NullableContextOptions, project.Name);
     }
 
     private static async Task AssertNullableGraphAsync(Solution solution, string typeName)
@@ -138,12 +94,4 @@ public sealed class DetachedFixtureNativeContextIntegrationTests : IsolatedWorks
         Assert.AreEqual(NullableAnnotation.Annotated, method.Parameters.Single().NullableAnnotation);
     }
 
-    private static async Task AssertCompilesAsync(Solution solution)
-    {
-        foreach (var project in solution.Projects)
-        {
-            var errors = (await project.GetCompilationAsync())!.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).ToArray();
-            Assert.AreEqual(0, errors.Length, project.Name + ": " + string.Join(Environment.NewLine, errors.Select(e => e.ToString())));
-        }
-    }
 }

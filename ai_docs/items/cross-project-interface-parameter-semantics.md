@@ -1,6 +1,6 @@
 # cross-project-interface-parameter-semantics — Preserve emitted interface parameter semantics
 
-**row:** `cross-project-interface-parameter-semantics` · **pri:** `High` · **size:** `M` · **deps:** —
+**row:** `cross-project-interface-parameter-semantics` · **pri:** `High` · **size:** `M` · **deps:** `interface-extraction-base-constraint-token-boundary`
 
 ## Anchors
 

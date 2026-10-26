@@ -86,61 +86,9 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
 
         var interfaceFileRoot = BuildInterfaceFile(interfaceDecl, typeDecl, sourceRoot, requiredNamespaces);
 
-        TypeDeclarationSyntax updatedTypeDecl;
-        if (alreadyImplements)
-        {
-            updatedTypeDecl = typeDecl;
-        }
-        else
-        {
-            // Use formatting-preserving syntax annotations so the existing source layout
-            // (modifiers, expression bodies, format specifiers) is not disturbed
-            // by a NormalizeWhitespace() pass over the entire compilation unit (BUG-004).
-            var interfaceTypeSyntax = SyntaxFactory.SimpleBaseType(SyntaxFactory.ParseTypeName(interfaceName))
-                .WithLeadingTrivia(SyntaxFactory.Space);
-            if (typeDecl.BaseList is not null)
-            {
-                // dr-9-6-emits-continuation-on-a-new-line-instead-of-inli: when the source class is
-                // `class Foo : IBar\n{` the last existing base type (`IBar`) carries a trailing
-                // end-of-line trivia (the newline that originally preceded the `{`). Roslyn's
-                // SeparatedSyntaxList.Add inserts a zero-trivia comma token AFTER that trailing
-                // newline, producing `: IBar\n, INewInterface{`. To keep the continuation inline
-                // (`: IBar, INewInterface`), transfer the last existing base type's trailing trivia
-                // onto the new interface's trailing position and clear it from the original last
-                // base type so the comma stays glued to it.
-                var baseList = typeDecl.BaseList;
-                var lastIndex = baseList.Types.Count - 1;
-                BaseTypeSyntax newInterfaceType = interfaceTypeSyntax;
-                if (lastIndex >= 0)
-                {
-                    var lastExisting = baseList.Types[lastIndex];
-                    var trailing = lastExisting.GetTrailingTrivia();
-                    if (trailing.Count > 0)
-                    {
-                        newInterfaceType = interfaceTypeSyntax.WithTrailingTrivia(trailing);
-                        var strippedLast = lastExisting.WithTrailingTrivia(SyntaxTriviaList.Empty);
-                        baseList = baseList.WithTypes(baseList.Types.Replace(lastExisting, strippedLast));
-                    }
-                }
-
-                var newBaseList = baseList.AddTypes(newInterfaceType);
-                updatedTypeDecl = typeDecl.WithBaseList(newBaseList);
-            }
-            else
-            {
-                // No existing base list. Attach `: IName` to the type declaration directly; Roslyn
-                // emits the leading colon token automatically.
-                var newBaseList = SyntaxFactory.BaseList(SyntaxFactory.SingletonSeparatedList<BaseTypeSyntax>(interfaceTypeSyntax))
-                    .WithLeadingTrivia(SyntaxFactory.Space);
-                updatedTypeDecl = typeDecl.WithBaseList(newBaseList);
-            }
-        }
-
-        // BUG-N12: avoid `: IName{` glued to the opening brace — keep `{` on its own line for readability.
-        if (!alreadyImplements)
-        {
-            updatedTypeDecl = EnsureOpeningBraceOnOwnLine(updatedTypeDecl);
-        }
+        var updatedTypeDecl = alreadyImplements
+            ? typeDecl
+            : InterfaceBaseTypeWriter.AddBaseType(typeDecl, interfaceName, multilineContinuation: false);
 
         // BUG-004: Do NOT call NormalizeWhitespace() here — that re-flows the entire file and
         // produces unrelated formatting churn (collapses multi-line bodies, alters string format
@@ -375,19 +323,6 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
         }
 
         return namespaces;
-    }
-
-    private static TypeDeclarationSyntax EnsureOpeningBraceOnOwnLine(TypeDeclarationSyntax typeDecl)
-    {
-        var brace = typeDecl.OpenBraceToken;
-        if (brace.IsMissing)
-            return typeDecl;
-
-        if (brace.LeadingTrivia.Any(t => t.IsKind(SyntaxKind.EndOfLineTrivia)))
-            return typeDecl;
-
-        return typeDecl.WithOpenBraceToken(
-            brace.WithLeadingTrivia(SyntaxFactory.TriviaList(SyntaxFactory.EndOfLine(Environment.NewLine))));
     }
 
     /// <remarks>

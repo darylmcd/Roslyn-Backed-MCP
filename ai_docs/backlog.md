@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-26T09:09:09Z
+**updated_at:** 2026-10-26T10:07:49Z
 
 ## Agent contract
 
@@ -59,9 +59,9 @@
 | `workspace-native-load-cleanup-gate-release` | High | — | Release the load gate after resource cleanup failure | M | items/workspace-native-load-cleanup-gate-release.md |
 | `analyzer-shadow-sweep-path-authority` | High | — | Keep analyzer sweeping inside owned no-follow paths | M | items/analyzer-shadow-sweep-path-authority.md |
 | `restore-package-root-authoritative-read-fail-closed` | High | — | Keep unreadable assets distinct from an absent recorded root | M | items/restore-package-root-authoritative-read-fail-closed.md |
-| `cross-project-interface-parameter-semantics` | High | — | Preserve emitted interface parameter semantics | M | items/cross-project-interface-parameter-semantics.md |
+| `cross-project-interface-parameter-semantics` | High | interface-extraction-base-constraint-token-boundary | Preserve emitted interface parameter semantics | M | items/cross-project-interface-parameter-semantics.md |
 | `physical-compensation-external-edit-ownership` | High | — | Preserve external edits during failed persistence compensation | M | items/physical-compensation-external-edit-ownership.md |
-| `detached-test-fixture-source-root-metadata` | High | — | Preserve deterministic detached fixture compilation with real source-root metadata and a child-CI regression. | S | items/detached-test-fixture-source-root-metadata.md |
+| `interface-extraction-base-constraint-token-boundary` | High | detached-test-fixture-source-root-metadata | Preserve base-list token boundaries, constraints and header trivia through interface extraction preview and persistence. | M | items/interface-extraction-base-constraint-token-boundary.md |
 
 ## Medium
 
@@ -200,6 +200,7 @@
 | `mstest-formatter-enum-zero-comparison` | Medium | — | Investigate enum-zero assertion formatter dependency behavior | M | items/mstest-formatter-enum-zero-comparison.md |
 | `process-environment-fixture-isolation` | Medium | — | Isolate shared process environment fixture actors | M | items/process-environment-fixture-isolation.md |
 | `evaluated-test-project-classification` | Medium | msbuild-evaluation-project-context-cache | Classify test projects from actual evaluated context | M | items/evaluated-test-project-classification.md |
+| `interface-extraction-nested-signature-type-qualification` | Medium | — | Preserve enclosing type names and substituted generic arguments in generated interface signature types. | M | items/interface-extraction-nested-signature-type-qualification.md |
 
 ## Low
 
@@ -424,6 +425,7 @@
 | `workspace-idle-diagnostic-touch-order` | Low | — | Measure idle time before access updates | S | items/workspace-idle-diagnostic-touch-order.md |
 | `solution-diff-truncation-source-substring-test` | Low | — | Assert real omitted-file preview behavior | S | items/solution-diff-truncation-source-substring-test.md |
 | `workspace-cache-retention-policy` | Low | — | Decide bounded persisted cache retention | M | items/workspace-cache-retention-policy.md |
+| `interface-extractor-import-order` | Low | — | Normalize import ordering in both interface extractors and remove only their two existing IMPORTS baseline entries. [type: quality] [source: interface-declaration-remediation-format] | M | items/interface-extractor-import-order.md |
 
 ## Defer
 
