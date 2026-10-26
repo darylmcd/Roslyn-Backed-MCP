@@ -170,20 +170,10 @@ jobs:
           }
           ./eng/verify-release.ps1 @parameters
 
-      - name: Verify changed-file formatting
-        if: (github.event_name == 'pull_request' || github.event_name == 'merge_group') && matrix.leg.artifact_owner == true && needs.route.outputs.docs_only != 'true'
-        shell: pwsh
-        run: ./eng/verify-changed-format.ps1 -BaseRef ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || format('origin/{0}', github.base_ref) }} -NoRestore
-
       - name: Verify release build (dispatch / schedule)
         if: github.event_name != 'pull_request' && github.event_name != 'merge_group'
         shell: pwsh
         run: ./eng/verify-release.ps1 -Configuration Release
-
-      - name: Audit packages for known vulnerabilities
-        if: needs.route.outputs.docs_only != 'true' && matrix.leg.artifact_owner == true
-        shell: pwsh
-        run: ./eng/verify-nuget-audit.ps1 -SolutionPath RoslynMcp.slnx
 
       - name: Summarize test timings
         if: always()
@@ -237,6 +227,50 @@ jobs:
           name: code-coverage
           path: artifacts/coverage
           retention-days: 30
+
+  # Audit and formatting own their runner state and run alongside the test matrix.
+  quality:
+    name: quality
+    needs: route
+    if: needs.route.outputs.docs_only != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Cache NuGet packages
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/Directory.Packages.props', '**/Directory.Build.props', '**/global.json') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Audit packages for known vulnerabilities
+        shell: pwsh
+        run: ./eng/verify-nuget-audit.ps1 -SolutionPath RoslynMcp.slnx
+
+      # The audit restores assets, but the formatter also needs the repository
+      # analyzer's Debug output on this fresh runner; package caching cannot supply it.
+      - name: Prepare formatter analyzer
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+        shell: pwsh
+        run: |
+          dotnet build analyzers/ServerSurfaceCatalogAnalyzer/ServerSurfaceCatalogAnalyzer.csproj -c Debug --no-restore --nologo
+          if ($LASTEXITCODE -ne 0) { throw "Formatter analyzer preparation failed with exit code $LASTEXITCODE." }
+
+      - name: Verify changed-file formatting
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+        shell: pwsh
+        run: ./eng/verify-changed-format.ps1 -BaseRef ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || format('origin/{0}', github.base_ref) }} -NoRestore
 
   # Bound the declared SDK floor independently of the latest-10.0 full matrix.
   # This lane restores/builds the product, loads a representative workspace and
@@ -334,6 +368,7 @@ jobs:
       - route
       - validate
       - sdk_floor
+      - quality
       - evidence_lint
     if: always()
     runs-on: ubuntu-latest
@@ -345,6 +380,13 @@ jobs:
           $routeResult = '${{ needs.route.result }}'
           $validateResult = '${{ needs.validate.result }}'
           $sdkFloorResult = '${{ needs.sdk_floor.result }}'
+          $qualityResult = '${{ needs.quality.result }}'
+          $docsOnlyOutput = '${{ needs.route.outputs.docs_only }}'
+          $evidenceOnlyOutput = '${{ needs.route.outputs.evidence_only }}'
+          if ($docsOnlyOutput -cnotin @('true', 'false') -or
+              $evidenceOnlyOutput -cnotin @('true', 'false')) {
+            throw 'Routing outputs must be explicit booleans.'
+          }
           $docsOnly = '${{ needs.route.outputs.docs_only }}' -eq 'true'
           $evidenceOnly = '${{ needs.route.outputs.evidence_only }}' -eq 'true'
           $evidenceLintResult = '${{ needs.evidence_lint.result }}'
@@ -352,14 +394,17 @@ jobs:
             # Evidence route: the lint job is the whole validation; build/test and the SDK floor
             # must have been skipped, never failed or cancelled.
             if ($routeResult -ne 'success' -or $evidenceLintResult -ne 'success' -or
-                $validateResult -ne 'skipped' -or $sdkFloorResult -ne 'skipped') {
-              throw "Evidence-only validation did not succeed (route: $routeResult; evidence lint: $evidenceLintResult; matrix: $validateResult; SDK floor: $sdkFloorResult)."
+                $validateResult -ne 'skipped' -or $sdkFloorResult -ne 'skipped' -or
+                $qualityResult -ne 'skipped' -or -not $docsOnly) {
+              throw "Evidence-only validation did not succeed (route: $routeResult; evidence lint: $evidenceLintResult; matrix: $validateResult; SDK floor: $sdkFloorResult; quality: $qualityResult)."
             }
             Write-Host 'Evidence-only route: routing and evidence lint succeeded; build and test legs skipped by design.'
             exit 0
           }
-          $sdkFloorSucceeded = $sdkFloorResult -eq 'success' -or ($docsOnly -and $sdkFloorResult -eq 'skipped')
-          if ($routeResult -ne 'success' -or $validateResult -ne 'success' -or -not $sdkFloorSucceeded) {
-            throw "Validation did not fully succeed (route: $routeResult; matrix: $validateResult; SDK floor: $sdkFloorResult)."
+          $sdkFloorSucceeded = if ($docsOnly) { $sdkFloorResult -eq 'skipped' } else { $sdkFloorResult -eq 'success' }
+          $qualitySucceeded = if ($docsOnly) { $qualityResult -eq 'skipped' } else { $qualityResult -eq 'success' }
+          if ($routeResult -ne 'success' -or $validateResult -ne 'success' -or
+              -not $sdkFloorSucceeded -or -not $qualitySucceeded -or $evidenceLintResult -ne 'skipped') {
+            throw "Validation did not fully succeed (route: $routeResult; matrix: $validateResult; SDK floor: $sdkFloorResult; quality: $qualityResult; evidence lint: $evidenceLintResult)."
           }
-          Write-Host 'Routing, all validate legs, and the required SDK-floor probe succeeded.'
+          Write-Host 'Routing, all validate legs, and the required SDK-floor and quality checks succeeded.'

@@ -1,3 +1,5 @@
+using RoslynMcp.Tests.Helpers;
+
 namespace RoslynMcp.Tests;
 
 /// <summary>
@@ -164,13 +166,13 @@ public sealed class CiRunnerParityContractTests
             "    pwsh -NoProfile -File ./eng/verify-release.ps1 -NoCoverage -ExcludeNetworkTests");
         StringAssert.Contains(justfile, "full: verify-docs verify-skills verify-changed-format verify-actionlint verify-release vuln-audit");
 
-        // The changed-file formatter gate is a standalone validate-leg step, deliberately NOT a
+        // The changed-file formatter gate is a standalone quality step, deliberately NOT a
         // verify-release child (that script's child set is a separate hard-listed contract). Local
         // `just ci` therefore has to invoke it directly or it would run only in CI.
-        var formatStep = GetNamedStepBlock(validate, "Verify changed-file formatting");
+        var formatStep = GetNamedStepBlock(GetJobBlock(workflow, "quality"), "Verify changed-file formatting");
         StringAssert.Contains(
             formatStep,
-            "if: (github.event_name == 'pull_request' || github.event_name == 'merge_group') && matrix.leg.artifact_owner == true && needs.route.outputs.docs_only != 'true'");
+            "if: github.event_name == 'pull_request' || github.event_name == 'merge_group'");
         StringAssert.Contains(
             formatStep,
             "./eng/verify-changed-format.ps1 -BaseRef ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || format('origin/{0}', github.base_ref) }} -NoRestore");
@@ -212,7 +214,7 @@ public sealed class CiRunnerParityContractTests
         StringAssert.Contains(gate, "$docsOnly = '${{ needs.route.outputs.docs_only }}' -eq 'true'");
         StringAssert.Contains(
             gate,
-            "$sdkFloorSucceeded = $sdkFloorResult -eq 'success' -or ($docsOnly -and $sdkFloorResult -eq 'skipped')");
+            "$sdkFloorSucceeded = if ($docsOnly) { $sdkFloorResult -eq 'skipped' } else { $sdkFloorResult -eq 'success' }");
     }
 
     [TestMethod]
@@ -320,7 +322,7 @@ public sealed class CiRunnerParityContractTests
         StringAssert.Contains(
             GetNamedStepBlock(validate, "Verify release build (pull request)"),
             "CHANGELOG_BASE_SHA: ${{ github.event.merge_group.base_sha }}");
-        var format = GetNamedStepBlock(validate, "Verify changed-file formatting");
+        var format = GetNamedStepBlock(GetJobBlock(workflow, "quality"), "Verify changed-file formatting");
         StringAssert.Contains(format, "github.event.merge_group.base_sha");
         StringAssert.Contains(
             GetNamedStepBlock(validate, "Verify release build (dispatch / schedule)"),
@@ -352,6 +354,128 @@ public sealed class CiRunnerParityContractTests
             StringAssert.Contains(document, "eng/verify-nuget-audit.ps1");
             Assert.IsFalse(document.Contains("dotnet package list", StringComparison.OrdinalIgnoreCase));
         }
+    }
+
+    [TestMethod]
+    public void Quality_IndependentlyRestoresAndPreparesTheFormatterBeforeRunningIt()
+    {
+        var workflow = LoadCiWorkflow();
+        var quality = GetJobBlock(workflow, "quality");
+        var validate = GetJobBlock(workflow, "validate");
+        var header = quality[..quality.IndexOf("    steps:", StringComparison.Ordinal)];
+        StringAssert.Contains(header, "needs: route\n");
+        StringAssert.Contains(header, "if: needs.route.outputs.docs_only != 'true'\n");
+        StringAssert.Contains(header, "runs-on: ubuntu-latest\n");
+        StringAssert.Contains(header, "timeout-minutes: 30\n");
+        Assert.IsFalse(header.Contains("validate", StringComparison.Ordinal));
+        Assert.IsFalse(header.Contains("sdk_floor", StringComparison.Ordinal));
+        StringAssert.Contains(GetNamedStepBlock(quality, "Check out repository"), "fetch-depth: 0");
+        var setup = GetNamedStepBlock(quality, "Set up .NET");
+        StringAssert.Contains(setup, "actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68");
+        StringAssert.Contains(setup, "dotnet-version: 10.0.x");
+
+        const string auditCall = "./eng/verify-nuget-audit.ps1 -SolutionPath RoslynMcp.slnx";
+        const string formatCall = "./eng/verify-changed-format.ps1";
+        Assert.AreEqual(1, CountOccurrences(workflow, auditCall));
+        Assert.AreEqual(1, CountOccurrences(workflow, formatCall));
+        Assert.IsFalse(validate.Contains(auditCall, StringComparison.Ordinal));
+        Assert.IsFalse(validate.Contains(formatCall, StringComparison.Ordinal));
+        var audit = GetNamedStepBlock(quality, "Audit packages for known vulnerabilities");
+        StringAssert.Contains(audit, "run: " + auditCall);
+        Assert.IsFalse(audit.Contains("if:", StringComparison.Ordinal));
+        var preparation = GetNamedStepBlock(quality, "Prepare formatter analyzer");
+        var format = GetNamedStepBlock(quality, "Verify changed-file formatting");
+        const string condition = "if: github.event_name == 'pull_request' || github.event_name == 'merge_group'";
+        StringAssert.Contains(preparation, condition);
+        StringAssert.Contains(format, condition);
+        StringAssert.Contains(preparation,
+            "dotnet build analyzers/ServerSurfaceCatalogAnalyzer/ServerSurfaceCatalogAnalyzer.csproj -c Debug --no-restore --nologo\n" +
+            "          if ($LASTEXITCODE -ne 0) { throw \"Formatter analyzer preparation failed with exit code $LASTEXITCODE.\" }");
+        StringAssert.Contains(format, "-NoRestore");
+        var auditPosition = quality.IndexOf("      - name: Audit packages for known vulnerabilities\n", StringComparison.Ordinal);
+        var preparationPosition = quality.IndexOf("      - name: Prepare formatter analyzer\n", StringComparison.Ordinal);
+        var formatPosition = quality.IndexOf("      - name: Verify changed-file formatting\n", StringComparison.Ordinal);
+        Assert.IsTrue(auditPosition >= 0 && auditPosition < preparationPosition && preparationPosition < formatPosition);
+        StringAssert.Contains(GetJobBlock(workflow, "validate-gate"), "- quality\n");
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
+    [DataRow("pull_request", "false", "false", "success", "success", "skipped", "success")]
+    [DataRow("merge_group", "false", "false", "success", "success", "skipped", "success")]
+    [DataRow("workflow_dispatch", "false", "false", "success", "success", "skipped", "success")]
+    [DataRow("schedule", "false", "false", "success", "success", "skipped", "success")]
+    [DataRow("pull_request", "true", "false", "success", "skipped", "skipped", "skipped")]
+    [DataRow("pull_request", "true", "true", "skipped", "skipped", "success", "skipped")]
+    public async Task ValidateGate_ExecutesTheRealAggregateAndRejectsEveryInvalidDependencyAsync(
+        string eventName, string docsOnly, string evidenceOnly, string matrix, string floor, string lint, string quality)
+    {
+        var step = GetNamedStepBlock(GetJobBlock(LoadCiWorkflow(), "validate-gate"), "Require routing and every validate leg green");
+        var runStart = step.IndexOf("        run: |\n", StringComparison.Ordinal);
+        Assert.IsTrue(runStart >= 0);
+        var script = string.Join('\n', step[(runStart + "        run: |\n".Length)..]
+            .Split('\n').Where(line => line.StartsWith("          ", StringComparison.Ordinal)).Select(line => line[10..]));
+        var values = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["github.event_name"] = eventName,
+            ["needs.route.result"] = "success",
+            ["needs.route.outputs.docs_only"] = docsOnly,
+            ["needs.route.outputs.evidence_only"] = evidenceOnly,
+            ["needs.validate.result"] = matrix,
+            ["needs.sdk_floor.result"] = floor,
+            ["needs.evidence_lint.result"] = lint,
+            ["needs.quality.result"] = quality,
+        };
+        await AssertAggregateAsync(script, values, succeeds: true);
+        foreach (var dependency in new[] { "quality", "route", "validate", "sdk_floor", "evidence_lint" })
+        {
+            var key = $"needs.{dependency}.result";
+            foreach (var result in new[] { "success", "failure", "cancelled", "skipped", "", "unexpected" })
+            {
+                if (result == values[key])
+                {
+                    continue;
+                }
+
+                var changed = new Dictionary<string, string>(values, StringComparer.Ordinal) { [key] = result };
+                await AssertAggregateAsync(script, changed, succeeds: false);
+            }
+        }
+
+        foreach (var key in new[] { "needs.route.outputs.docs_only", "needs.route.outputs.evidence_only" })
+        {
+            foreach (var output in new[] { "", "unexpected" })
+            {
+                var changed = new Dictionary<string, string>(values, StringComparer.Ordinal) { [key] = output };
+                await AssertAggregateAsync(script, changed, succeeds: false);
+            }
+        }
+
+        if (evidenceOnly == "true")
+        {
+            var contradictoryRoute = new Dictionary<string, string>(values, StringComparer.Ordinal)
+            {
+                ["needs.route.outputs.docs_only"] = "false",
+            };
+            await AssertAggregateAsync(script, contradictoryRoute, succeeds: false);
+        }
+    }
+
+    private static async Task AssertAggregateAsync(string script, IReadOnlyDictionary<string, string> values, bool succeeds)
+    {
+        foreach (var (key, value) in values)
+        {
+            script = script.Replace("${{ " + key + " }}", value, StringComparison.Ordinal);
+        }
+
+        Assert.IsFalse(script.Contains("${{", StringComparison.Ordinal), "Every Actions expression must be substituted before execution.");
+        var encoded = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes("$ErrorActionPreference = 'Stop'\n" + script));
+        var result = await PwshScriptRunner.RunAsync(
+            ["-NoProfile", "-NonInteractive", "-EncodedCommand", encoded],
+            timeout: TimeSpan.FromSeconds(30),
+            description: "workflow aggregate contract");
+        Assert.AreEqual(succeeds, result.ExitCode == 0,
+            $"Aggregate results: {string.Join(", ", values.Select(pair => pair.Key + "=" + pair.Value))}; stdout={result.StdOut}; stderr={result.StdErr}");
     }
 
     private static string GetJobBlock(string workflow, string jobId)

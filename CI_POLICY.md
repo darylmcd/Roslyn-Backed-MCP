@@ -6,11 +6,11 @@ This document is the canonical validation and merge-gating contract.
 
 | Event / trust state | Validation topology | Coverage / network |
 |---|---|---|
-| Evidence-only pull request (`ai_docs/audits/**`, `ai_docs/reports/**`, `ai_docs/items/**`, `audit-reports/**`, minus the exclusions below) | One pwsh `evidence-lint` job (changelog contract + `verify-ai-docs.ps1`); no .NET setup, build, or test legs; exact-floor probe skipped | Not applicable |
-| Policy-only documentation pull request (Markdown / `ai_docs/**/*.json` / the tracked promotion scorecard, excluding behavior-bearing paths) | Two hosted Linux class shards plus the version-drift and breaking-version gates; exact-floor probe skipped | Coverage and `Network` tests skipped; publish/audit skipped |
-| Any code-bearing pull request | Four hosted Windows shards + two hosted Linux shards + one concurrent exact-SDK-floor build/workspace probe | Coverage and `Network` tests skipped |
+| Evidence-only pull request (`ai_docs/audits/**`, `ai_docs/reports/**`, `ai_docs/items/**`, `audit-reports/**`, minus the exclusions below) | One pwsh `evidence-lint` job (changelog contract + `verify-ai-docs.ps1`); no .NET setup, build, or test legs; exact-floor probe and quality job skipped | Not applicable |
+| Policy-only documentation pull request (Markdown / `ai_docs/**/*.json` / the tracked promotion scorecard, excluding behavior-bearing paths) | Two hosted Linux class shards plus the version-drift and breaking-version gates; exact-floor probe and quality job skipped | Coverage and `Network` tests skipped; publish/audit skipped |
+| Any code-bearing pull request | Four hosted Windows shards + two hosted Linux shards + one concurrent exact-SDK-floor build/workspace probe + one concurrent quality job | Coverage and `Network` tests skipped |
 | Merge-queue group (`merge_group`) | Always the full code-bearing topology (no trusted changed-file set, so no docs-only/evidence-only route) | Coverage and `Network` tests skipped |
-| Manual dispatch / weekly schedule (Mon 05:45 UTC) | One unsharded hosted Linux suite + one concurrent exact-SDK-floor build/workspace probe | Coverage and live `Network` tests enabled |
+| Manual dispatch / weekly schedule (Mon 05:45 UTC) | One unsharded hosted Linux suite + one concurrent exact-SDK-floor build/workspace probe + one concurrent quality job | Coverage and live `Network` tests enabled |
 
 Rules:
 
@@ -25,7 +25,7 @@ Rules:
 - A pull request takes the highest tier any of its paths (including rename origins) needs: code > docs > evidence.
 - The evidence tier is limited to paths no test or `eng/` script reads. Files inside evidence roots that CI does read stay docs tier through `$evidenceExclusions` in `eng/resolve-ci-topology.ps1` (currently `ai_docs/items/backlog-d-fragment-schema.md` and `audit-reports/_latest-promotion-scorecard.json`). `CiEvidenceTierConsumerContractTests` fails on any new reference to an evidence root until it is classified.
 - Never use workflow-level `paths`/`paths-ignore` to skip validation. The required `validate` check would never report and the pull request would stay blocked; skips must happen inside the workflow with `validate-gate` still reporting.
-- On the evidence route `validate-gate` passes only when `evidence-lint` succeeded and the build/test matrix and SDK-floor probe were skipped, never failed or cancelled.
+- On the evidence route `validate-gate` passes only when `evidence-lint` succeeded and the build/test matrix, SDK-floor probe, and quality job were skipped, never failed or cancelled.
 - Keep the pull-request `validate-gate` check named `validate`. Dispatch/schedule runs must emit `validate-informational` so an informational one-leg run cannot satisfy the pull-request ruleset context.
 - Merge-queue groups (`merge_group`) also report `validate`: the ruleset's merge queue waits on that context. The group is tested on the queued base plus every group ahead of it, which is the current-`main` integration check; do not duplicate it with a local full gate before enqueueing. The changed-file format gate diffs against `github.event.merge_group.base_sha`.
 
@@ -66,13 +66,15 @@ The router emits typed leg fields. Keep their concerns separate:
 | Restore, Release build, test | Every pull-request/test leg |
 | Exact declared SDK floor | Concurrent `sdk-floor` job on code PRs, dispatch, and schedule; exact version assertion + restore/build + representative MSBuildWorkspace load + native fork admission late-child metadata/copy cases |
 | Publish/hash | Artifact-owning non-doc leg |
-| Fail-closed NuGet vulnerability audit | Artifact-owning non-doc leg |
-| Changed-file formatter gate | Artifact-owning non-doc pull-request leg; new FINALNEWLINE, IDE1006, IMPORTS, and WHITESPACE findings on touched files fail, tracked baseline debt is reported not suppressed |
+| Fail-closed NuGet vulnerability audit | Concurrent route-dependent Linux quality job on code PRs, merge groups, dispatch, and schedule; independent of test shards and SDK floor |
+| Changed-file formatter gate | Quality job on code PRs and merge groups, after audit restore and a checked Debug build of the repository analyzer; new FINALNEWLINE, IDE1006, IMPORTS, and WHITESPACE findings on touched files fail, tracked baseline debt is reported not suppressed |
 | `host-stdio-publish`, `release-manifests` | Artifact-owning non-doc leg; 14 days |
 | Per-leg timing summary + TRX (`test-results-<leg>`) | Every pull-request/test leg, generated/uploaded with `always()`; 14 days |
 | Cobertura + HTML `code-coverage` | Dispatch/schedule artifact owner; 30 days |
 
 `eng/verify-release.ps1` remains a standalone release gate. It restores the main and sample solutions, builds Release, runs tests in a private per-invocation `TEMP`/`TMP`/`TMPDIR`, disables reusable MSBuild and compiler servers within the invocation, removes the exact temp root, publishes the stdio host, and writes the hash manifest. Test and cleanup failures are aggregated rather than hidden. CI passes `-TestShardOnly` on non-owner code legs and both policy-doc legs, so platform-neutral policy and publish/hash work execute once where required; the default remains the complete standalone gate.
+
+The quality job has a 30-minute cap, full-history checkout, and latest-`10.0.x` SDK. It runs the audit first to restore its own solution assets. Code PRs and merge groups then build `analyzers/ServerSurfaceCatalogAnalyzer/ServerSurfaceCatalogAnalyzer.csproj` in Debug with checked native exit before changed-file formatting with `-NoRestore`; restore alone does not produce the project analyzer binary. Dispatch/schedule run only the audit in this job. Policy-doc and evidence routes skip the job.
 
 CI and `just vuln-audit` invoke `eng/verify-nuget-audit.ps1`. It forces restore with `NuGetAuditMode=all` and promotes NU1900-NU1904 to errors, covering advisory-source failure plus vulnerable direct/transitive packages.
 
@@ -118,7 +120,7 @@ The four-shard calibration is closed. `eng/collect-hosted-shard-timings.ps1` mea
 | `windows-latest` | 4 | 720.4s | 647.1s | 73.4s (10.2%) | 82.9s | 1.87x | 1.50x |
 | `ubuntu-latest` | 2 | 743.2s | 662.6s | 80.6s (10.8%) | 140.3s | 2.21x | 1.18x |
 
-Decision: the deterministic discovered-case weights in `eng/get-test-shard-plan.ps1` remain the shard weighting on both hosted images. Do not add an OS-specific duration profile. A perfect duration partition recovers less than the single-leg wall-time noise band on either image, and summed TRX case duration is not a partition signal at all: its same-leg run-to-run swing exceeds the between-leg spread, so ranking legs by it reproduces runner noise rather than class cost. The residual `ubuntu-latest` gap is structural rather than class skew, because the artifact-owner leg also runs docs validation, the format gate, the NuGet audit, and the publish upload.
+Decision: the deterministic discovered-case weights in `eng/get-test-shard-plan.ps1` remain the shard weighting on both hosted images. Do not add an OS-specific duration profile. A perfect duration partition recovers less than the single-leg wall-time noise band on either image, and summed TRX case duration is not a partition signal at all: its same-leg run-to-run swing exceeds the between-leg spread, so ranking legs by it reproduces runner noise rather than class cost. At that calibration, the residual `ubuntu-latest` gap was structural rather than class skew: the artifact-owner leg also ran docs validation, formatting, the NuGet audit, and publish upload. Formatting and audit now run in the independent quality job; docs validation and publish remain with the artifact owner. This movement triggers a fresh five-complete-green-run timing recheck; the historical measurements above do not establish the new steady state or a numerical improvement.
 
 Re-check trigger: re-run `eng/collect-hosted-shard-timings.ps1` when the shard count changes, when non-test work moves between legs, or when a hosted image's achievable gain exceeds its own single-leg noise band across at least five complete green runs. Uploaded per-leg TRX expires after 14 days, so always re-derive from fresh in-window runs. Never calibrate from a single sample, and never feed a local Windows profile into the hosted `windows-latest` profile.
 
@@ -160,7 +162,7 @@ Combine filters with `&` (AND) or `|` (OR) per `dotnet test` syntax.
 ## Merge Gating Expectations
 
 - Do not declare merge-ready while any required validation leg is failing, cancelled, skipped, or pending.
-- `validate-gate` depends on `route`, the complete `validate` matrix, and `sdk-floor`; it reports `validate` only when all required jobs succeeded (the floor job is intentionally skipped for policy-only docs).
+- `validate-gate` depends on `route`, the complete `validate` matrix, `sdk_floor`, `quality`, and `evidence_lint`; it reports `validate` only when routing and every job required by that route succeeded. Code routes require matrix, SDK floor, and quality success with evidence lint skipped. Policy-doc routes require matrix success with floor, quality, and evidence lint skipped. Evidence routes require evidence lint success with matrix, floor, and quality skipped. Missing or unexpected results fail closed.
 - Dispatch/schedule runs report `validate-informational`, never the required pull-request context.
 - The standalone `# ci-backstop: validation-only` declaration in `ci.yml` authorizes the shipping helper to dispatch the existing manual validation workflow on the merged base. That run adds unsharded Linux coverage, live-network canaries, and the SDK-floor probe after the reviewed PR gate; its `validate-informational` result cannot satisfy required `validate` or authorize release/package publication, deployment, or SDK generation.
 - Do not pin dynamic per-leg names in branch protection.
