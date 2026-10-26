@@ -75,6 +75,7 @@ public sealed partial class InterfaceParameterSemanticsIntegrationTests
             SetAllowUnsafe(workspace.GetPath("Contracts", "Contracts.csproj"));
         }
         await workspace.LoadAsync();
+        await AssertLoadedNullableContextAsync(WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
         var before = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
         await AssertCompilesAsync(before);
         var original = (await before.Projects.Single(p => p.Name == "SampleLib").GetCompilationAsync())!
@@ -139,6 +140,7 @@ public sealed partial class InterfaceParameterSemanticsIntegrationTests
             await File.WriteAllTextAsync(workspace.GetPath("Contracts", "SharedHandler.cs"),
                 SharedHandlers.Replace("ProviderHandler", "SensitiveTenantHandler", StringComparison.Ordinal));
         await workspace.LoadAsync();
+        await AssertLoadedNullableContextAsync(WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
         var before = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
         await AssertCompilesAsync(before);
         if (shape != "unsafe")
@@ -188,6 +190,7 @@ public sealed partial class InterfaceParameterSemanticsIntegrationTests
         var path = workspace.GetPath("SampleLib", "EscapedService.cs");
         await File.WriteAllTextAsync(path, "namespace SampleLib; public class EscapedService { public event System.Action @event { add { } remove { } } public @class Echo<@class>(@class @value) => @value; }");
         await workspace.LoadAsync();
+        await AssertLoadedNullableContextAsync(WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
         var before = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
         await AssertCompilesAsync(before);
         var preview = await InterfaceExtractionService.PreviewExtractInterfaceAsync(workspace.WorkspaceId, path, "EscapedService", "IEscapedService", null, false, CancellationToken.None);
@@ -214,6 +217,7 @@ public sealed partial class InterfaceParameterSemanticsIntegrationTests
         var path = workspace.GetPath("SampleLib", "ParameterService.cs");
         await File.WriteAllTextAsync(path, "namespace Contracts; public class ParameterService { public void Write(int value, __arglist) { } }");
         await workspace.LoadAsync();
+        await AssertLoadedNullableContextAsync(WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
         var before = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
         await AssertCompilesAsync(before);
         var store = new CompositePreviewStore();
@@ -246,6 +250,7 @@ public sealed partial class InterfaceParameterSemanticsIntegrationTests
         var path = workspace.GetPath("SampleLib", "ParameterService.cs");
         await File.WriteAllTextAsync(path, source);
         await workspace.LoadAsync();
+        await AssertLoadedNullableContextAsync(WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
         var before = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
         await AssertCompilesAsync(before);
         var references = (await before.Projects.Single(p => p.Name == "SampleLib").GetCompilationAsync())!.References.OfType<PortableExecutableReference>().ToArray();
@@ -301,6 +306,7 @@ public sealed partial class InterfaceParameterSemanticsIntegrationTests
         var path = workspace.GetPath("SampleLib", "ParameterService.cs");
         await File.WriteAllTextAsync(path, source);
         await workspace.LoadAsync();
+        await AssertLoadedNullableContextAsync(WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
         var before = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
         await AssertCompilesAsync(before);
         var references = (await before.Projects.Single(p => p.Name == "SampleLib").GetCompilationAsync())!.References.OfType<PortableExecutableReference>().ToArray();
@@ -392,6 +398,7 @@ public sealed partial class InterfaceParameterSemanticsIntegrationTests
         var unrelated = System.Text.Encoding.UTF8.GetBytes("// unchanged bytes\r\nnamespace Contracts; public class Unchanged { }\r\n");
         await File.WriteAllBytesAsync(unrelatedPath, unrelated);
         await workspace.LoadAsync();
+        await AssertLoadedNullableContextAsync(WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
         var before = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
         await AssertCompilesAsync(before);
         var references = (await before.Projects.Single(p => p.Name == "SampleLib").GetCompilationAsync())!.References.OfType<PortableExecutableReference>().ToArray();

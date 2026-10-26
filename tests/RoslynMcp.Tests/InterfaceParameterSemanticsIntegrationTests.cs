@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Runtime.Loader;
+using System.Xml.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Text;
@@ -27,6 +28,7 @@ public sealed partial class InterfaceParameterSemanticsIntegrationTests : Isolat
         var path = workspace.GetPath("SampleLib", "UriIndexer.cs");
         await File.WriteAllTextAsync(path, "namespace Contracts; public class UriIndexer { public int this[System.Uri key] { get => 1; set { } } }");
         await workspace.LoadAsync();
+        await AssertLoadedNullableContextAsync(WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
         var before = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
         await AssertCompilesAsync(before);
         var preview = crossProject
@@ -62,6 +64,7 @@ public sealed partial class InterfaceParameterSemanticsIntegrationTests : Isolat
         var unrelatedBytes = System.Text.Encoding.UTF8.GetBytes("// byte preservation\r\nnamespace Contracts;\r\npublic class Unrelated { public int Value => 42; }\r\n");
         await File.WriteAllBytesAsync(unrelatedPath, unrelatedBytes);
         await workspace.LoadAsync();
+        await AssertLoadedNullableContextAsync(WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
         var before = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
         await AssertCompilesAsync(before);
         var sourceProject = before.Projects.Single(p => p.Name == "SampleLib");
@@ -191,8 +194,66 @@ public sealed partial class InterfaceParameterSemanticsIntegrationTests : Isolat
         {
             var compilation = (await project.GetCompilationAsync())!;
             var errors = compilation.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).ToArray();
-            Assert.AreEqual(0, errors.Length, $"{project.Name}: {string.Join(Environment.NewLine, errors.Select(e => e.ToString()))}");
+            Assert.AreEqual(0, errors.Length, $"{project.Name}: {string.Join(Environment.NewLine, errors.Select(e => e.ToString()))}" +
+                (errors.Length == 0 ? string.Empty : Environment.NewLine + CompilationContext(project, compilation, errors)));
         }
+    }
+
+    private static async Task AssertLoadedNullableContextAsync(Solution solution)
+    {
+        foreach (var project in solution.Projects.Where(p => p.Name is "SampleLib" or "Contracts"))
+        {
+            var compilation = (await project.GetCompilationAsync())!;
+            Assert.AreEqual(NullableContextOptions.Enable, compilation.Options.NullableContextOptions,
+                "The fixture configures Nullable=enable. " + CompilationContext(project, compilation, []));
+        }
+    }
+
+    private static string CompilationContext(Project project, Compilation compilation, IReadOnlyList<Diagnostic> diagnostics)
+    {
+        var options = compilation.Options;
+        var provider = options.SyntaxTreeOptionsProvider;
+        var specific = options.SpecificDiagnosticOptions.TryGetValue("CS8632", out var policy) ? policy.ToString() : "unset";
+        var global = provider?.TryGetGlobalDiagnosticValue("CS8632", CancellationToken.None, out var globalPolicy) == true
+            ? globalPolicy.ToString() : "unset";
+        var configured = "not-a-known-fixture";
+        if (project.Name is "SampleLib" or "Contracts" && project.FilePath is not null)
+        {
+            var values = XDocument.Load(project.FilePath).Descendants("Nullable").Select(e => e.Value.Trim()).ToArray();
+            configured = string.Join(",", values.Take(4).Select(v => v is "enable" or "disable" or "warnings" or "annotations" ? v : "unrecognized"));
+        }
+
+        var lines = new List<string>
+        {
+            $"CompilationContext: nullable={options.NullableContextOptions}; language={(project.ParseOptions as CSharpParseOptions)?.LanguageVersion}; " +
+                $"general={options.GeneralDiagnosticOption}; specificCS8632={specific}; globalCS8632={global}; " +
+                $"treeProvider={provider?.GetType().FullName ?? "none"}; fixtureXmlNullable={configured}",
+            AssemblyIdentity(typeof(Compilation)),
+            AssemblyIdentity(typeof(CSharpCompilation)),
+            AssemblyIdentity(typeof(Microsoft.CodeAnalysis.Workspace)),
+        };
+        var trees = diagnostics.Where(d => d.Location.SourceTree is not null).Select(d => d.Location.SourceTree!)
+            .Distinct().Take(8).ToArray();
+        if (trees.Length == 0) trees = compilation.SyntaxTrees.Take(2).ToArray();
+        foreach (var tree in trees)
+        {
+            var treePolicy = provider?.TryGetDiagnosticValue(tree, "CS8632", CancellationToken.None, out var report) == true
+                ? report.ToString() : "unset";
+            var model = compilation.GetSemanticModel(tree);
+            var positions = diagnostics.Where(d => d.Location.SourceTree == tree).Select(d => d.Location.SourceSpan.Start)
+                .Distinct().Take(8).DefaultIfEmpty(0);
+            var contexts = string.Join(",", positions.Select(p => $"{p}:{model.GetNullableContext(p)}"));
+            lines.Add($"TreeContext: file={Path.GetFileName(tree.FilePath)}; kind={tree.Options.Kind}; " +
+                $"language={(tree.Options as CSharpParseOptions)?.LanguageVersion}; generated={provider?.IsGenerated(tree, CancellationToken.None)}; " +
+                $"CS8632={treePolicy}; nullableAtDiagnostic={contexts}");
+        }
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    private static string AssemblyIdentity(Type type)
+    {
+        var assembly = type.Assembly;
+        return $"RoslynAssembly: name={assembly.GetName().Name}; version={assembly.GetName().Version}; mvid={assembly.ManifestModule.ModuleVersionId}";
     }
 
     private const string Source = """

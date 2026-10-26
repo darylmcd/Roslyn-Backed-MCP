@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-26T05:36:01Z
+**updated_at:** 2026-10-26T06:48:24Z
 
 ## Agent contract
 
@@ -65,6 +65,8 @@
 | `interface-extraction-unsafe-signature-context` | High | — | Preserve unsafe signature context and refuse incompatible receiving-project policy before token publication. [type: bug] [source: parameter-projection-cold-review] | M | items/interface-extraction-unsafe-signature-context.md |
 | `interface-extraction-escaped-member-identifiers` | High | — | Preserve escaped identifiers on every emitted interface member kind. [type: bug] [source: parameter-projection-cold-review] | M | items/interface-extraction-escaped-member-identifiers.md |
 | `interface-extraction-base-constraint-token-boundary` | High | — | Preserve lexical boundaries and trivia when both interface extractors append base types before constraints; share insertion and verify persisted text. | M | items/interface-extraction-base-constraint-token-boundary.md |
+| `interface-extraction-nullability-context-fidelity` | High | — | Preserve semantic nullable annotation states in generated interfaces across source-local and receiving contexts without changing project policy. | M | items/interface-extraction-nullability-context-fidelity.md |
+| `interface-extraction-receiving-language-compatibility` | High | — | Validate generated interface language requirements with the receiving compiler context before publishing tokens; retain compatible controls and project policy. | M | items/interface-extraction-receiving-language-compatibility.md |
 
 ## Medium
 
