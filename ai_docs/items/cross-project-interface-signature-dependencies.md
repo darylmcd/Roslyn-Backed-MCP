@@ -4,8 +4,7 @@
 
 ## Anchors
 
-- `src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs:538`
-- `src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs:778`
+- `src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs`
 - `src/RoslynMcp.Roslyn/Helpers/ProjectGraphHelpers.cs`
 
 ## Acceptance

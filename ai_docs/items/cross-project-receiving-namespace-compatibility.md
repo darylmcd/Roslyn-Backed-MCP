@@ -1,17 +1,14 @@
 # cross-project-receiving-namespace-compatibility — Preserve receiving namespace syntax compatibility
 
-**row:** `cross-project-receiving-namespace-compatibility` · **pri:** `High` · **size:** `L` · **deps:** `raw-move-file-header-ownership`
+**row:** `cross-project-receiving-namespace-compatibility` · **pri:** `High` · **size:** `M` · **deps:** `raw-move-file-header-ownership,ci-artifact-owner-quality-deadline`
 
 ## Anchors
 
-- `src/RoslynMcp.Roslyn/Services/ClassSplitOrchestrator.cs` (`CreateCompilationUnit`)
-- `src/RoslynMcp.Roslyn/Services/SymbolRefactorService.cs` (`EmitPartitionFiles`, `BuildPartitionFile`, `WrapInNamespace`)
-- `src/RoslynMcp.Roslyn/Services/NamespaceRelocationService.cs` (`BuildMovedTypeCompilationUnit`)
-- `src/RoslynMcp.Roslyn/Helpers/ReceivingNamespaceFactory.cs` (new required-options selector)
-
-- `src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs` (`CreateCompilationUnitForMember`, `CreateInterfaceCompilationUnit`, all producers and move-type)
-- `tests/RoslynMcp.Tests/CrossProjectReceivingNamespaceIntegrationTests.cs` (new native public-route matrix)
-- `tests/RoslynMcp.Tests/CrossProjectRefactoringIntegrationTests.cs` (existing move/extraction consumers)
+- `src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs` (both wrappers and all direct/inversion/composite/move producers)
+- `src/RoslynMcp.Roslyn/Helpers/ReceivingNamespaceFactory.cs` (new required actual-options selector)
+- `tests/RoslynMcp.Tests/CrossProjectReceivingNamespaceIntegrationTests.cs` (retained45 plus boundary controls)
+- `tests/RoslynMcp.Tests/ReceivingNamespaceFactoryTests.cs` (effective-language/required-options controls)
+- `tests/RoslynMcp.Tests/CrossProjectRefactoringIntegrationTests.cs` (existing consumers)
 
 ## Acceptance
 
@@ -34,6 +31,7 @@
 
 ## Scope
 
-- Four unconditional namespace emitters share one unsupported-syntax mechanism. Extend the same required actual receiving-options selector to CrossProject, ClassSplit, SymbolRefactor partitions and NamespaceRelocation; preserving-kind InterfaceExtraction and TypeExtraction are verified safe controls.
-- Depends on raw-move-file-header-ownership. Preserve all existing Acceptance, all 45 candidate cases and caller-specific normalization/trivia; add native old-language red/green and modern/global controls for the other three emitters. Five production files are the cohesive closure, not a reason to leave copies behind.
-- Raw header/removal ownership lands first; semantic parameter/ref/unsafe/escaped and nullable parents remain open. Original ten-row selection remains intact; the added header child is an explicitly forced prerequisite.
+- First independently correct consumer: one required-options factory plus CrossProject raw/generated paths and every producer. Original five Acceptance bullets remain unchanged; retain the entire original45 matrix and modern/global byte contracts.
+- Prior all-four-consumer Scope is explicitly decomposed under operator Directive6: ClassSplit -> class-split-receiving-namespace; SymbolRefactor -> split-service-receiving-namespace; NamespaceRelocation -> relocation-receiving-namespace. Each remainder depends on this first consumer; no extra owner is silently removed or claimed fixed.
+- PR1846 is the first consumer; the three independent owners follow separately. Remainder rows are written before its merge as required by the current prompt. No half-migrated caller or unused-helper-only PR.
+- Raw header prerequisite shipped PR1845 atca6f94dd; its ordinary closure stays in the one trailing docs PR. Broader nullable/member/language parents retain their original Acceptance and existing owners. Original count history is unchanged.
