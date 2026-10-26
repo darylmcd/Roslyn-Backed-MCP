@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-26T22:02:47Z
+**updated_at:** 2026-10-26T22:03:52Z
 
 ## Agent contract
 
@@ -61,7 +61,7 @@
 | `restore-package-root-authoritative-read-fail-closed` | High | — | Keep unreadable assets distinct from an absent recorded root | M | items/restore-package-root-authoritative-read-fail-closed.md |
 | `cross-project-interface-parameter-semantics` | High | interface-extraction-nullable-context-projection | Preserve emitted interface parameter semantics | M | items/cross-project-interface-parameter-semantics.md |
 | `physical-compensation-external-edit-ownership` | High | — | Preserve external edits during failed persistence compensation | M | items/physical-compensation-external-edit-ownership.md |
-| `cross-project-receiving-namespace-compatibility` | High | raw-move-file-header-ownership | Generate compatible namespaces for actual receiving language options through interface extraction and move-type. [type: bug] [source: interface-split-cold-review] | L | items/cross-project-receiving-namespace-compatibility.md |
+| `cross-project-receiving-namespace-compatibility` | High | raw-move-file-header-ownership,ci-artifact-owner-quality-deadline | Generate compatible namespaces for actual receiving language options through interface extraction and move-type. [type: bug] [source: interface-split-cold-review] | M | items/cross-project-receiving-namespace-compatibility.md |
 | `interface-extraction-nullable-context-projection` | High | cross-project-receiving-namespace-compatibility | Preserve emitted nullable contexts with explicit symbol-role mapping and compiler-proven legality before publication. [type: bug] [source: interface-split-cold-review] | M | items/interface-extraction-nullable-context-projection.md |
 | `interface-extraction-ref-return-contracts` | High | interface-extraction-nullable-context-projection | Preserve ref and ref readonly return kinds in generated interface members. [type: bug] [source: parameter-projection-cold-review] | M | items/interface-extraction-ref-return-contracts.md |
 | `interface-extraction-unsafe-signature-context` | High | interface-extraction-nullable-context-projection | Preserve unsafe signature context and refuse incompatible receiving-project policy before token publication. [type: bug] [source: parameter-projection-cold-review] | M | items/interface-extraction-unsafe-signature-context.md |
@@ -69,6 +69,11 @@
 | `interface-extraction-nullability-context-fidelity` | High | cross-project-interface-parameter-semantics,interface-extraction-ref-return-contracts,interface-extraction-unsafe-signature-context,interface-extraction-escaped-member-identifiers,interface-extraction-nullable-context-projection | Preserve semantic nullable annotation states in generated interfaces across source-local and receiving contexts without changing project policy. | M | items/interface-extraction-nullability-context-fidelity.md |
 | `interface-extraction-receiving-language-compatibility` | High | cross-project-interface-parameter-semantics,interface-extraction-ref-return-contracts,interface-extraction-unsafe-signature-context,cross-project-receiving-namespace-compatibility,interface-extraction-nullable-context-projection | Validate generated interface language requirements with the receiving compiler context before publishing tokens; retain compatible controls and project policy. | M | items/interface-extraction-receiving-language-compatibility.md |
 | `metadata-member-symbol-handle-roundtrip` | High | — | Resolve metadata member handles returned by semantic tools through the same symbolHandle entry points. | M | items/metadata-member-symbol-handle-roundtrip.md |
+| `class-split-receiving-namespace` | High | cross-project-receiving-namespace-compatibility | Select supported namespaces for class split output using the actual receiving compiler policy. | M | items/class-split-receiving-namespace.md |
+| `split-service-receiving-namespace` | High | cross-project-receiving-namespace-compatibility | Select supported namespaces for split service partitions using the actual receiving compiler policy. | M | items/split-service-receiving-namespace.md |
+| `relocation-receiving-namespace` | High | cross-project-receiving-namespace-compatibility | Select supported namespaces for relocating new files using the actual receiving compiler policy. | M | items/relocation-receiving-namespace.md |
+| `ci-artifact-owner-quality-deadline` | High | linux-pwsh-startup-profile-write-ownership | Move required quality work and cache persistence outside test tails with shared checked preparation. [type: bug] [source: hosted-ci] | L | items/ci-artifact-owner-quality-deadline.md |
+| `linux-pwsh-startup-profile-write-ownership` | High | — | Own Linux validation PowerShell startup-profile writes with a fresh single-writer seed and job-lifetime read-only consumption. | M | items/linux-pwsh-startup-profile-write-ownership.md |
 
 ## Medium
 
@@ -212,6 +217,7 @@
 | `dependency-inversion-nested-concrete-symbol-resolution` | Medium | — | Resolve nested concrete types by complete metadata identity during dependency inversion. [type: bug] [source: interface-parameter-remediation-review] | S | items/dependency-inversion-nested-concrete-symbol-resolution.md |
 | `cross-project-interface-event-member-preservation` | Medium | — | Preserve public instance events in extracted interface contracts through real producer compilation. [type: bug] [source: interface-parameter-remediation-review] | S | items/cross-project-interface-event-member-preservation.md |
 | `first-using-trivia-helper-duplication` | Medium | — | Share the exact first-using trivia transformation between split and partition consumers without changing header policy. | M | items/first-using-trivia-helper-duplication.md |
+| `ci-quality-move-hosted-timing-recheck` | Medium | ci-artifact-owner-quality-deadline | Collect five complete fresh green hosted runs and re-evaluate weighting under the existing timing policy. [type: maintenance] [source: ci-decomposition] | S | items/ci-quality-move-hosted-timing-recheck.md |
 
 ## Low
 

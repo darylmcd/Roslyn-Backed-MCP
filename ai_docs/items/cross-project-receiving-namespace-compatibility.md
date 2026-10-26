@@ -1,17 +1,14 @@
 # cross-project-receiving-namespace-compatibility — Preserve receiving namespace syntax compatibility
 
-**row:** `cross-project-receiving-namespace-compatibility` · **pri:** `High` · **size:** `L` · **deps:** `raw-move-file-header-ownership`
+**row:** `cross-project-receiving-namespace-compatibility` · **pri:** `High` · **size:** `M` · **deps:** `raw-move-file-header-ownership,ci-artifact-owner-quality-deadline`
 
 ## Anchors
 
-- `src/RoslynMcp.Roslyn/Services/ClassSplitOrchestrator.cs` (`CreateCompilationUnit`)
-- `src/RoslynMcp.Roslyn/Services/SymbolRefactorService.cs` (`EmitPartitionFiles`, `BuildPartitionFile`, `WrapInNamespace`)
-- `src/RoslynMcp.Roslyn/Services/NamespaceRelocationService.cs` (`BuildMovedTypeCompilationUnit`)
-- `src/RoslynMcp.Roslyn/Helpers/ReceivingNamespaceFactory.cs` (new required-options selector)
-
-- `src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs` (`CreateCompilationUnitForMember`, `CreateInterfaceCompilationUnit`, all producers and move-type)
-- `tests/RoslynMcp.Tests/CrossProjectReceivingNamespaceIntegrationTests.cs` (new native public-route matrix)
-- `tests/RoslynMcp.Tests/CrossProjectRefactoringIntegrationTests.cs` (existing move/extraction consumers)
+- `src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs` (both wrappers and all direct/inversion/composite/move producers)
+- `src/RoslynMcp.Roslyn/Helpers/ReceivingNamespaceFactory.cs` (new required actual-options selector)
+- `tests/RoslynMcp.Tests/CrossProjectReceivingNamespaceIntegrationTests.cs` (retained45 plus boundary controls)
+- `tests/RoslynMcp.Tests/ReceivingNamespaceFactoryTests.cs` (effective-language/required-options controls)
+- `tests/RoslynMcp.Tests/CrossProjectRefactoringIntegrationTests.cs` (existing consumers)
 
 ## Acceptance
 
@@ -22,6 +19,9 @@
 - [ ] Keep semantic parameter/ref/unsafe/escaped projection, nullable decoration and full receiving-language validation in their existing owners; preserve every existing parent Acceptance and candidate complex test.
 
 ## Evidence
+
+- PARKED PR1846 draft ata9df5cd36fb12625333c9ab837e8ab0996eb763e. Root exact388/0/0 and cold PASS retained; hosted passed2650cases then cancelled duringformat. Required CI prerequisite PR1849 remains draft/red due subsequent native PowerShell134 startup faults, not a demonstrated namespace defect. No unchanged retry, test weakening, source expansion or closure. Receiving-context and semantic parents remain dependent; do not adopt an unqualified CI prerequisite.
+
 
 - Original source `0e0f90661035a38e570627b1508dac2ea2496708`: both wrapper branches unconditionally create file-scoped namespaces. Cold reviewer `reviewer-namespace-probe-final.log` used admitted reflection/compiler probes: BOTH move/interface branches report C#7.3 CS8370 and C#9 CS8773; C#14 has no errors. These establish the defect, not child public-route qualification.
 - Revised scratch `semantic-split-plan.md` supersedes rejected normalized-only repair. Minimal complete closure: one shared receiving-options decision, both wrapper branches and all three producer callsites in the same service file; retain move trivia and C#10+ output.
@@ -34,6 +34,7 @@
 
 ## Scope
 
-- Four unconditional namespace emitters share one unsupported-syntax mechanism. Extend the same required actual receiving-options selector to CrossProject, ClassSplit, SymbolRefactor partitions and NamespaceRelocation; preserving-kind InterfaceExtraction and TypeExtraction are verified safe controls.
-- Depends on raw-move-file-header-ownership. Preserve all existing Acceptance, all 45 candidate cases and caller-specific normalization/trivia; add native old-language red/green and modern/global controls for the other three emitters. Five production files are the cohesive closure, not a reason to leave copies behind.
-- Raw header/removal ownership lands first; semantic parameter/ref/unsafe/escaped and nullable parents remain open. Original ten-row selection remains intact; the added header child is an explicitly forced prerequisite.
+- First independently correct consumer: one required-options factory plus CrossProject raw/generated paths and every producer. Original five Acceptance bullets remain unchanged; retain the entire original45 matrix and modern/global byte contracts.
+- Prior all-four-consumer Scope is explicitly decomposed under operator Directive6: ClassSplit -> class-split-receiving-namespace; SymbolRefactor -> split-service-receiving-namespace; NamespaceRelocation -> relocation-receiving-namespace. Each remainder depends on this first consumer; no extra owner is silently removed or claimed fixed.
+- PR1846 is the first consumer; the three independent owners follow separately. Remainder rows are written before its merge as required by the current prompt. No half-migrated caller or unused-helper-only PR.
+- Raw header prerequisite shipped PR1845 atca6f94dd; its ordinary closure stays in the one trailing docs PR. Broader nullable/member/language parents retain their original Acceptance and existing owners. Original count history is unchanged.
