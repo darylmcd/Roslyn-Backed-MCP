@@ -76,6 +76,12 @@ The router emits typed leg fields. Keep their concerns separate:
 
 The quality job has a 30-minute cap, full-history checkout, and latest-`10.0.x` SDK. It runs the mandatory audit first to restore its own solution assets. On an exact cache miss it also prepares all canonical samples and explicitly saves packages before remaining quality work. Code PRs and merge groups then build `analyzers/ServerSurfaceCatalogAnalyzer/ServerSurfaceCatalogAnalyzer.csproj` in Debug with checked native exit before changed-file formatting with `-NoRestore`; restore alone does not produce the project analyzer binary. Dispatch/schedule retain the mandatory audit and conditional sample preparation/cache save. Policy-doc and evidence routes skip the job.
 
+## Linux PowerShell Startup Input Ownership
+
+- Linux `validate` legs and the NuGet `publish` job run `eng/initialize-pwsh-startup-cache.sh` before their first PowerShell step. One normal seed records a fresh job-private `StartupProfileData-NonInteractive`; subsequent ordinary writes to that file are denied (mode444). Its private cache directory stays writable (mode700) for module analysis, telemetry under existing configuration and other siblings.
+- The helper persists the unique native `RUNNER_TEMP` cache root through `GITHUB_ENV`; unchanged test launchers inherit it. Normal JIT and every functional test remain enabled. Post-seed optional startup recording is intentionally denied; this ownership boundary does not establish the cause or cure of any prior native crash. Runner teardown owns cleanup after descendants finish.
+- Sequential routing, quality, evidence, aggregate and SDK-floor jobs retain their existing lifetime. Local operator runs are separate from this hosted-job boundary.
+
 ## NuGet Cache Lifecycle
 
 - Both cache sites use pinned restore-only and explicit save-only actions; no matrix reader registers post-test cache compression.

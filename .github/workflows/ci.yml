@@ -115,6 +115,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Initialize PowerShell startup cache
+        if: runner.os == 'Linux'
+        shell: bash
+        run: bash ./eng/initialize-pwsh-startup-cache.sh
+
       # Platform-neutral policy and release-artifact work executes on the sole
       # hosted Linux artifact owner. Other PR legs restore/build/test only.
       - name: Verify changelog contract
