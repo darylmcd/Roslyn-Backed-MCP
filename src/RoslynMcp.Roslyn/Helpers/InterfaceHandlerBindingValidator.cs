@@ -14,15 +14,15 @@ internal static class InterfaceHandlerBindingValidator
         INamedTypeSymbol concrete, CancellationToken ct)
     {
         var contractDocument = solution.GetDocument(interfaceId)
-            ?? throw new InvalidOperationException("The extracted interface document is missing.");
+            ?? throw InvalidOperationErrors.Internal("The extracted interface document is missing.");
         var contractRoot = await contractDocument.GetSyntaxRootAsync(ct).ConfigureAwait(false);
         var declaration = contractRoot?.DescendantNodes().OfType<InterfaceDeclarationSyntax>().Single();
         if (declaration is null) return;
         if (!declaration.DescendantNodes().OfType<ParameterSyntax>().Any(parameter => parameter.AttributeLists.Count > 0)) return;
         var contractModel = await contractDocument.GetSemanticModelAsync(ct).ConfigureAwait(false)
-            ?? throw new InvalidOperationException("The extracted interface semantic model is missing.");
+            ?? throw InvalidOperationErrors.Internal("The extracted interface semantic model is missing.");
         var contract = contractModel.GetDeclaredSymbol(declaration, ct)
-            ?? throw new InvalidOperationException("The extracted interface symbol is missing.");
+            ?? throw InvalidOperationErrors.Internal("The extracted interface symbol is missing.");
         var candidates = declaration.Members.Select(member =>
         {
             var parameters = member switch
@@ -39,9 +39,9 @@ internal static class InterfaceHandlerBindingValidator
         }).Where(candidate => candidate.Handlers.Count > 0).ToArray();
         if (candidates.Length == 0) return;
         var sourceDocument = solution.GetDocument(sourceId)
-            ?? throw new InvalidOperationException("The source document is missing.");
+            ?? throw InvalidOperationErrors.Internal("The source document is missing.");
         var compilation = await sourceDocument.Project.GetCompilationAsync(ct).ConfigureAwait(false) as CSharpCompilation
-            ?? throw new InvalidOperationException("The source C# compilation is missing.");
+            ?? throw InvalidOperationErrors.Internal("The source C# compilation is missing.");
         var generator = SyntaxGenerator.GetGenerator(sourceDocument);
 
         foreach (var (member, parameters, handlers, dynamicParameters) in candidates)

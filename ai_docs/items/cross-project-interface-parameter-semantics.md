@@ -17,3 +17,5 @@
 
 - Source audit at main `fc5bb88676214a942daa727c7ca88ac8dd34b61c`. Independent cold audit found CreateParameterList618-624 emits only name/type, dropping method parameter modifiers/defaults. This is distinct from undeclared generic parameters and target-assembly dependency closure.
 - Retained immutable source: `d333c2e96a1e23a31286cda53b920dbee5d6b7be`; preserved tag: `archive/pr1806-restore-reviewed-graph-20261025`. No build/test ran in this content audit; historical receipts are not current runtime qualification.
+
+Current-session candidate CI at 7395d431 exposed five newly introduced unmarked server-invariant exceptions in InterfaceHandlerBindingValidator. Corrected in the same PR with InvalidOperationErrors.Internal, preserving messages/category and leaving baseline/tests unchanged; causal ratchet red: 1 failed / 87 passed, green: 88 passed / 0 failed / 0 skipped; final combined affected gate includes this source-inventory class.
