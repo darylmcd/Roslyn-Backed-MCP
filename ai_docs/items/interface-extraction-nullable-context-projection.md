@@ -1,6 +1,6 @@
 # interface-extraction-nullable-context-projection — Preserve emitted nullable annotation contexts
 
-**row:** `interface-extraction-nullable-context-projection` · **pri:** `High` · **size:** `M` · **deps:** `cross-project-receiving-namespace-compatibility`
+**row:** `interface-extraction-nullable-context-projection` · **pri:** `High` · **size:** `M` · **deps:** `cross-project-receiving-namespace-compatibility,analyzer-shadow-owner-startup-sweep-race`
 
 ## Anchors
 
@@ -21,7 +21,7 @@
 
 ## Evidence
 
-- ACTIVE dependency checkpoint: PR1849 merged27f82e45 and PR1846 merged5b1930a3 with cold PASS and all required hosted checks green. Fresh current-main plan and cold review PASS; bounded three-production-file implementation is under qualification. No merge or row closure claimed. Original Acceptance and complex candidate tests remain unchanged. Native134/139 causal findings stay OPEN; ownership prevention does not prove their cause. See ai_docs/reports/2026-10-26-interface-split-delivery.md.
+- BLOCKED hosted qualification: draft PR1854 atd8a709921b5aa4a6841f6ee093fe28d777f4c1d5 has fresh implementation coldPASS, local449/0/0 plus final native28/0/0 and causal old25fail/3compatiblepass. Windows4 run40412863293 job121887797301 failed analyzer owner-file initialization; distinct Linux1 job121887797650 passed2660tests/0failed/37skipped in28m23 then hit30m cancellation before release completion; workload diagnosis is separately pending; source and base-reproduction investigation tracked by analyzer-shadow-owner-startup-sweep-race. No unchanged rerun or pre-existing/runtime attribution. Nullable six-file diff stays frozen; the independently correct prerequisite must qualify before integration. Original Acceptance and complex candidate tests remain unchanged.
 
 
 - `nullable-original-probe-final.log`: admitted scratch compiler probe links EXACT candidate helper source and reconstructs original MinQualified emitter spelling. Thirteen represented methods/properties/event members: receiver Disable has 8 graph mismatches plus CS8632 before decoration; receiver Enable has 5 graph mismatches before decoration. Both serialized decorated cohorts compile and match all represented member graphs. This is helper evidence, not native public-route qualification.

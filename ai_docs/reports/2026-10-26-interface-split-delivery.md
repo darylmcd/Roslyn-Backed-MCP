@@ -36,7 +36,7 @@
 | class-split-receiving-namespace | Separate deps-chained remainder in docsPR1848; no repair claimed. |
 | split-service-receiving-namespace | Separate deps-chained remainder in docsPR1848; no repair claimed. |
 | relocation-receiving-namespace | Separate deps-chained remainder in docsPR1848; retain raw-header ownership, no repair claimed. |
-| interface-extraction-nullable-context-projection | ACTIVE fresh current-main plan/coldPASS; three production files, two new test classes, three insertion sites/four routes. Explicit constructed roles, lexical mapping, actual receiving context and complete differential compiler errors. Implementation under qualification; no merge claimed. |
+| interface-extraction-nullable-context-projection | Draft1854d8a70992 frozen6files; coldPASS, initial14classes449/0/0 and finalConsumerdelta28/0/0; causalold25fail/3compatible. HostedWindows4 failed600/741/2 on analyzer owner initialization; the other four code legs passed; Linux1 passed2660/0/37 in28m23 but hit30m cancellation before release completion. Separate startup/sweep prerequisite tracked; no unchanged rerun or nullable-root-cause claim. |
 | cross-project-interface-parameter-semantics | Original objective retained; full emission and handler binding validation remain atomic. Validation alone is inert when original emitters omit attributes. |
 | interface-extraction-ref-return-contracts | Retain methods/property/indexer ref/ref-readonly and escape metadata obligations. |
 | interface-extraction-unsafe-signature-context | Retain emitted unsafe signatures and atomic refusal under actual policy. |
@@ -56,6 +56,8 @@
 | PR1849 old08f run40362766596 Linux1 | All2652tests passed,42platformskips;TRXuploaded;30m cap cancelled post-job tar/zstd cache compression. Other5jobs/quality/floor/CodeQL succeeded; overall gateFAILED, never qualification. |
 | Current2374 cache fix | Both cache sites have no automatic post hook. Observed raw proof: Linux and Windows miss/fallback -> checked population -> explicit save before tests; no post-cache hook. Windows save18:00:48 and Linux save17:59:46. Actual Linux1 native134 still fails the required aggregate. Only two current-PR exact caches cleared before first changed-head push; default-branch caches untouched. |
 | PR1848 be8 run40359428470 | Historical docs1 renderer139 failure retained. Changed reviewed1bfd73f7 later passed both hosted docs shards/CodeQL/validate and merged7b4e71bf;398rows/0ERROR/0WARN,coldPASS,cleanup0. No unchanged retry or139cause claim. |
+| PR1854 Windows4 run40412863293 | First failure22:33:15.903Z ChangeSignatureConstructorsTests, missing analyzer owner directory at helperline43;600failed/741passed/2skipped. Separate startup/sweep row, deterministic base proof pending. |
+| PR1854 Linux1 run40412863293 | Build0errors; tests22:31:43–23:00:09Z passed2660/0/37,28m23;30m cancellation before release completed. Separate workload-budget diagnosis; no deadline/test loosening or unchanged retry. |
 
 ## Native exit139 diagnosis limits
 
@@ -82,6 +84,9 @@
 | render-finding-linux-pwsh-exit-139 | Canonical trailingHigh row; original native failure unresolved. |
 | render-finding-tests-process-ownership | Canonical trailingMedium row; private pipe/deadline/Git process ownership, not proved139cause. |
 | dockerfile-restore-project-graph | Canonical trailingLow row; static incomplete projectCOPY before solutionrestore; no Docker-build proof or repair claimed. |
+| analyzer-shadow-owner-startup-sweep-race | NewHigh ordinary tracking row; source creation/sweep/owner-file race matches hosted exception; deterministic base proof pending. Required independent CI prerequisite, not a nullable-source expansion or reparse-authority repair. |
+| interface-extraction-conflict-check-fail-closed | New bounded follow-up from independent parameter source review; no source repair or parameter scope addition. |
+| interface-extraction-public-accessor-contracts | New ordinary-property follow-up; complete indexer work will retain explicit independent tracking. No inline property repair. |
 | backlog-legacy-no-deps-header-duplicate | Global filingPR899 merged41c65cede880c203a1a3788714251942df10d1b9; coldPASS, canonical preamble conflict repair,112rows/0ERROR/0WARN,cleanup0. Header source defect remains open; healthy whole-item product writer updates used. |
 | backlog-update-final-section-eof | Existing global row owns observed final-section newline defect; duplicate filingPR900closed, no global production fix claimed. |
 | ship-cleanup-ignored-only-policy-drift | Existing global cleanup-policy row. Blocked ignoredTRX remains preserved; planned retained detached checkout avoids any denied deletion. |
