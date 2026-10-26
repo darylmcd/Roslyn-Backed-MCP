@@ -20,6 +20,9 @@
 
 ## Evidence
 
+- PARKED PR1846 draft ata9df5cd36fb12625333c9ab837e8ab0996eb763e. Root exact388/0/0 and cold PASS retained; hosted passed2650cases then cancelled duringformat. Required CI prerequisite PR1849 remains draft/red due subsequent native PowerShell134 startup faults, not a demonstrated namespace defect. No unchanged retry, test weakening, source expansion or closure. Receiving-context and semantic parents remain dependent; do not adopt an unqualified CI prerequisite.
+
+
 - Original source `0e0f90661035a38e570627b1508dac2ea2496708`: both wrapper branches unconditionally create file-scoped namespaces. Cold reviewer `reviewer-namespace-probe-final.log` used admitted reflection/compiler probes: BOTH move/interface branches report C#7.3 CS8370 and C#9 CS8773; C#14 has no errors. These establish the defect, not child public-route qualification.
 - Revised scratch `semantic-split-plan.md` supersedes rejected normalized-only repair. Minimal complete closure: one shared receiving-options decision, both wrapper branches and all three producer callsites in the same service file; retain move trivia and C#10+ output.
 - Dependency is approved delivery order after the base writer; no semantic projection API dependency. Root owns canonical writing and closure; implement only after dependency/decomposition docs land and base PR1842 merges. Parent `interface-extraction-receiving-language-compatibility` remains open and depends on this child plus its complete semantic prerequisites.

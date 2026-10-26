@@ -25,6 +25,9 @@
 
 ## Evidence
 
+- PARKED PR1849 draft at2374a09b4cc997720c6917ffc6f6d4ccda7fd1ca: run40373606428 quality/all4Windows/Linux2/SDKfloor/CodeQL succeeded, but Linux1 job121750682497 first failed native pwsh134 with System.IO.FileLoadException and truncated System.Collections.Specialized public-key token, then repeated failures and30m cancellation. Root exact eight-class93/0/0 and cold implementation PASS do not qualify a failed hosted gate. Real Linux and Windows explicit cache-save-before-test ordering is observed. No unchanged rerun or speculative native repair. Bounded private immutable-cache cohort passed8plus1descendant; synthetic malformed-profile control also passed. Fresh cold plan BLOCKED a complete cure because causal playback red/green is absent and whole-directory freezing affects other writes. Native failure diagnosis is separate; source remains frozen until a proven repair can qualify all required checks.
+
+
 - PR1846 head a9df5cd36fb12625333c9ab837e8ab0996eb763e; run40345610532 job121651721892 annotation: The job has exceeded the maximum execution time of 30m0s. 2650 tests passed, zero failed, 24 platform skips; publish succeeded before formatter was cancelled. Independent prerequisite; product source remains fixed.
 
 - Current08f8538c run40362766596 Linux1 job121712429653 passed2652/0/42 and uploadedTRX, then exceeded30m during post-job NuGet tar/zstd compression. This same required-path non-test deadline witness forces cache-write ownership and shared preparation extraction; quality/floor/otherfivecohorts passed. No unchanged rerun, timeout increase or renderer change.
