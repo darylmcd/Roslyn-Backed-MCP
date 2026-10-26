@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-26T22:03:52Z
+**updated_at:** 2026-10-26T22:06:48Z
 
 ## Agent contract
 
@@ -74,6 +74,9 @@
 | `relocation-receiving-namespace` | High | cross-project-receiving-namespace-compatibility | Select supported namespaces for relocating new files using the actual receiving compiler policy. | M | items/relocation-receiving-namespace.md |
 | `ci-artifact-owner-quality-deadline` | High | linux-pwsh-startup-profile-write-ownership | Move required quality work and cache persistence outside test tails with shared checked preparation. [type: bug] [source: hosted-ci] | L | items/ci-artifact-owner-quality-deadline.md |
 | `linux-pwsh-startup-profile-write-ownership` | High | — | Own Linux validation PowerShell startup-profile writes with a fresh single-writer seed and job-lifetime read-only consumption. | M | items/linux-pwsh-startup-profile-write-ownership.md |
+| `generated-interface-global-using-order` | High | — | Preserve legal global-before-ordinary using order in shared generated-interface imports and correct stale ownership comments. | M | items/generated-interface-global-using-order.md |
+| `render-finding-linux-pwsh-exit-139` | High | — | Identify and repair the PowerShell child exit139 that blocks hosted renderer determinism validation. [type: bug] [source: hosted-ci] | S | items/render-finding-linux-pwsh-exit-139.md |
+| `linux-pwsh-startup-profile-invalid-assembly-identity` | High | — | Diagnose native PowerShell startup assembly-identity corruption and qualify the proven repair without changing test coverage or deadlines. | S | items/linux-pwsh-startup-profile-invalid-assembly-identity.md |
 
 ## Medium
 
@@ -218,6 +221,8 @@
 | `cross-project-interface-event-member-preservation` | Medium | — | Preserve public instance events in extracted interface contracts through real producer compilation. [type: bug] [source: interface-parameter-remediation-review] | S | items/cross-project-interface-event-member-preservation.md |
 | `first-using-trivia-helper-duplication` | Medium | — | Share the exact first-using trivia transformation between split and partition consumers without changing header policy. | M | items/first-using-trivia-helper-duplication.md |
 | `ci-quality-move-hosted-timing-recheck` | Medium | ci-artifact-owner-quality-deadline | Collect five complete fresh green hosted runs and re-evaluate weighting under the existing timing policy. [type: maintenance] [source: ci-decomposition] | S | items/ci-quality-move-hosted-timing-recheck.md |
+| `changed-format-linux-path-identity` | Medium | — | Preserve filesystem path identity across changed-file deduplication and formatter findings. [type: bug] [source: ci-prerequisite-review] | S | items/changed-format-linux-path-identity.md |
+| `render-finding-tests-process-ownership` | Medium | — | Replace private sequential pipe reads and unobserved process waits with the existing owned runner. [type: test-refactor] [source: renderer-ci-diagnosis] | S | items/render-finding-tests-process-ownership.md |
 
 ## Low
 
