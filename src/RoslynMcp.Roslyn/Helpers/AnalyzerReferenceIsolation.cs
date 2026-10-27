@@ -2,6 +2,9 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
+using System.ComponentModel;
+using System.Diagnostics;
+using System.Globalization;
 using System.Reflection;
 using System.Runtime.Loader;
 using System.Security.Cryptography;
@@ -35,9 +38,11 @@ internal static class AnalyzerReferenceIsolation
     // External analyzers may be retained by Roslyn's process-wide caches. Keep their loader
     // non-collectible, but map its assemblies from one process-owned shadow root instead of
     // locking the package directory for the lifetime of the host.
+    private static readonly string s_processIdentity =
+        Environment.ProcessId.ToString(CultureInfo.InvariantCulture) + "-" + Guid.NewGuid().ToString("N");
     private static readonly string s_processShadowRoot = Path.Combine(
         Path.GetTempPath(), ShadowRootDirectoryName,
-        "process-" + Environment.ProcessId + "-" + Guid.NewGuid().ToString("N"), "copies");
+        "process-" + s_processIdentity, "copies");
     private static readonly Lazy<FileStream> s_processOwner = new(() =>
     {
         var processDirectory = Path.GetDirectoryName(s_processShadowRoot)!;
@@ -57,7 +62,8 @@ internal static class AnalyzerReferenceIsolation
     /// shutdown reclaim the workspace-owned memory and disk space (analyzer-shadow-loader-lifecycle;
     /// previously the loaders and their non-collectible contexts were dropped on the floor and
     /// hundreds of orphaned shadow trees accumulated until process exit).
-    /// The shadow root is keyed per-LEASE (<c>%TEMP%/RoslynMcpAnalyzerShadow/&lt;workspaceId&gt;/&lt;leaseId&gt;</c>),
+    /// The shadow root is keyed per-LEASE
+    /// (<c>%TEMP%/RoslynMcpAnalyzerShadow/workspace-&lt;PID&gt;-&lt;processGUID&gt;-&lt;workspaceId&gt;/&lt;leaseId&gt;</c>),
     /// not per-workspace, so disposing an old lease after a reload can never race the new
     /// lease's files. On the non-Windows and reflection-unavailable early returns an empty
     /// no-op lease is returned so callers never need null checks.
@@ -82,7 +88,7 @@ internal static class AnalyzerReferenceIsolation
 
         var workspaceRoots = GetWorkspaceRoots(solution, workspaceId, logger);
         var leaseId = Guid.NewGuid().ToString("N");
-        var shadowRoot = Path.Combine(Path.GetTempPath(), ShadowRootDirectoryName, workspaceId, leaseId);
+        var shadowRoot = Path.Combine(GetWorkspaceShadowDirectory(workspaceId), leaseId);
         var loaders = new Dictionary<string, ShadowCopyAnalyzerAssemblyLoader>(StringComparer.OrdinalIgnoreCase);
         var retargeted = 0;
         var externalReferences = 0;
@@ -154,6 +160,61 @@ internal static class AnalyzerReferenceIsolation
         return new AnalyzerShadowLoaderLease(shadowRoot, [.. loaders.Values], retargeted, logger);
     }
 
+    internal static string GetWorkspaceShadowDirectory(string workspaceId) =>
+        Path.Combine(Path.GetTempPath(), ShadowRootDirectoryName, "workspace-" + s_processIdentity + "-" + workspaceId);
+
+    internal enum CreatorLiveness { Live, Absent, Unknown }
+
+    /// <summary>Recognize only layouts that persist a validated local creator PID.</summary>
+    internal static int? GetCreatorProcessId(string directoryName)
+    {
+        var isProcess = directoryName.StartsWith("process-", StringComparison.Ordinal);
+        var isWorkspace = directoryName.StartsWith("workspace-", StringComparison.Ordinal);
+        if (!isProcess && !isWorkspace) return null;
+
+        var parts = directoryName.Split('-', isProcess ? 3 : 4);
+        if (parts.Length != (isProcess ? 3 : 4) ||
+            !int.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out var pid) || pid <= 0 ||
+            parts[2].Length != 32 || !Guid.TryParseExact(parts[2], "N", out _) ||
+            (isWorkspace && parts[3].Length == 0))
+        {
+            return null;
+        }
+
+        return pid;
+    }
+
+    internal static CreatorLiveness ObserveCreator(string directoryName)
+    {
+        var pid = GetCreatorProcessId(directoryName);
+        if (pid is null) return CreatorLiveness.Unknown;
+        if (pid == Environment.ProcessId) return CreatorLiveness.Live;
+
+        Process creator;
+        try
+        {
+            creator = Process.GetProcessById(pid.Value);
+        }
+        catch (ArgumentException)
+        {
+            // Only a validated local lookup's no-running-process result proves absence.
+            return CreatorLiveness.Absent;
+        }
+        catch (Win32Exception)
+        {
+            return CreatorLiveness.Unknown;
+        }
+        catch (PlatformNotSupportedException)
+        {
+            return CreatorLiveness.Unknown;
+        }
+
+        using (creator) return CreatorLiveness.Live;
+    }
+
+    internal static bool CanPruneParent(string directoryName, CreatorLiveness creator) =>
+        GetCreatorProcessId(directoryName) is not null && creator == CreatorLiveness.Absent;
+
     /// <summary>
     /// Best-effort removal of shadow roots abandoned by earlier crashed or pre-fix hosts, so
     /// per-lease disposal does not leave historical leaks in place forever. Only lease
@@ -179,25 +240,37 @@ internal static class AnalyzerReferenceIsolation
         var utcNow = DateTime.UtcNow;
         foreach (var workspaceDirectory in EnumerateDirectoriesSafe(sharedParent, logger))
         {
+            var directoryName = Path.GetFileName(workspaceDirectory);
+            var canPruneParent = false;
             var ownerPath = Path.Combine(workspaceDirectory, ProcessOwnerFileName);
             FileStream? ownerProbe = null;
-            if (Path.GetFileName(workspaceDirectory).StartsWith("process-", StringComparison.OrdinalIgnoreCase))
+            if (directoryName.StartsWith("process-", StringComparison.OrdinalIgnoreCase))
             {
                 try
                 {
                     // A live host holds this file with FileShare.None. Keep our probe open
                     // throughout deletion so another sweeper cannot claim the same root.
                     ownerProbe = new FileStream(ownerPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+                    canPruneParent = true;
                 }
                 catch (FileNotFoundException)
                 {
-                    // A crash before marker creation cannot have produced a mapped copy.
+                    // Directory creation precedes marker establishment. Missing is not released:
+                    // a live or unknown creator may still be initializing this unique root.
+                    canPruneParent = CanPruneParent(directoryName, ObserveCreator(directoryName));
+                    if (!canPruneParent) continue;
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
                     logger.LogDebug("An analyzer shadow process root is owned or unavailable; failure type {FailureType}.", ex.GetType().Name);
                     continue;
                 }
+            }
+            else
+            {
+                // Creator liveness gates parent pruning only: stale workspace children still
+                // need sweeping throughout the creator's lifetime, including legacy layouts.
+                canPruneParent = CanPruneParent(directoryName, ObserveCreator(directoryName));
             }
 
             try
@@ -230,7 +303,9 @@ internal static class AnalyzerReferenceIsolation
                 ownerProbe?.Dispose();
             }
 
-            // Best-effort removal of a now-empty per-workspace parent. Never the shared parent.
+            // Best-effort pruning requires released ownership or proven creator absence.
+            // An empty snapshot or old timestamp cannot authorize deleting an initializing parent.
+            if (!canPruneParent) continue;
             try
             {
                 if (ownerProbe is not null && !Directory.EnumerateDirectories(workspaceDirectory).Any())
