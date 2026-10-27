@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-27T20:49:04Z
+**updated_at:** 2026-10-27T22:04:55Z
 
 ## Agent contract
 
@@ -78,6 +78,7 @@
 | `interface-extraction-indexer-declarations` | High | interface-extraction-ref-return-contracts | Emit extracted indexers as IndexerDeclaration with bracketed parameters and collect their parameter namespaces; both emitters emit invalid "this[]" properties today. [type: bug] [source: archive-diagnostic-2026-10-27] | M | items/interface-extraction-indexer-declarations.md |
 | `interface-extraction-parameter-contract-attributes` | High | cross-project-interface-parameter-semantics | Copy caller-info, nullable-flow and handler parameter attributes onto extracted interface members; refuse when interpolated-string handler binding would change. [type: bug] [source: archive-diagnostic-2026-10-27] | M | items/interface-extraction-parameter-contract-attributes.md |
 | `extract-type-override-modifier-stripped` | High | — | **Refuse extracting override members** — extract_type strips `override`, silently changing dispatch (ToString) or dropping abstract implementations (CS0534). [type: bug] [source: backlog-remediate 20261001T130338Z] | S | items/extract-type-override-modifier-stripped.md |
+| `extract-type-composition-base-ctor-refusal` | High | — | Refuse extract_type, typed and before token storage, when a base-type constructor can reach an override or interface implementation that references the unassigned helper. | S | items/extract-type-composition-base-ctor-refusal.md |
 
 ## Medium
 
