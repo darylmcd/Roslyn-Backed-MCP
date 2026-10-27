@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-27T17:53:57Z
+**updated_at:** 2026-10-27T18:24:07Z
 
 ## Agent contract
 
@@ -479,7 +479,6 @@
 | `v5-major-release-contract-prereqs` | Defer | — | **At the 5.0.0 cut, write ADR 0011 for the breaking set** — cover updateAvailable nullability, WorkspaceNotFound category promotion, and locationdto flat-field removal; 4.x ships these additively, so nothing blocks 4.3.0. [type: docs] [source: operator decision 2026-09-28] | S | items/v5-major-release-contract-prereqs.md |
 | `editorconfig-posix-uncooperative-write-race` | Defer | editorconfig-owned-write-external-race | Define an enforceable POSIX conflict protocol for external .editorconfig writers that ignore advisory locks. [type: bug] [source: backlog-remediate Linux regression 20260929] | M | items/editorconfig-posix-uncooperative-write-race.md |
 | `atomic-file-writer-external-temp-path-swap` | Defer | editorconfig-write-no-workspace-invalidation | Prevent an external process from swapping a temp pathname between atomic-writer identity validation and File.Move commit. [type: bug] [source: PR #1678 cold review 2026-09-30] | M | items/atomic-file-writer-external-temp-path-swap.md |
-| `pr1806-unshipped-authority-proposal` | Defer | — | Decide the retained preview/native/physical authority proposal | — | items/pr1806-unshipped-authority-proposal.md |
 | `extract-type-module-initialization-effects` | Defer | — | Decide whether moving members must preserve module-initializer ordering and source-generator reactions; implement detection/refusal only if adopted. [type: feature] [source: archive-diagnostic-2026-10-27] | — | items/extract-type-module-initialization-effects.md |
 
 ## Refs
