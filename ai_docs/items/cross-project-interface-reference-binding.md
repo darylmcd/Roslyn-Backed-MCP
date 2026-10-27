@@ -4,9 +4,9 @@
 
 ## Anchors
 
-- `src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs:177` (direct extraction base-list binding)
-- `src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs:288` (dependency-inversion replacement type)
-- `src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs:703` (shared extraction base-list binding)
+- `src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs` (direct extraction base-list binding)
+- `src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs` (dependency-inversion replacement type)
+- `src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs` (shared extraction base-list binding)
 - `src/RoslynMcp.Roslyn/Services/ExtractAndWireOrchestrator.cs:92` (registration rewrite consumer)
 
 ## Acceptance

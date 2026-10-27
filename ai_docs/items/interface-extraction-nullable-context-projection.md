@@ -1,6 +1,6 @@
 # interface-extraction-nullable-context-projection — Preserve emitted nullable annotation contexts
 
-**row:** `interface-extraction-nullable-context-projection` · **pri:** `High` · **size:** `M` · **deps:** `cross-project-receiving-namespace-compatibility`
+**row:** `interface-extraction-nullable-context-projection` · **pri:** `High` · **size:** `M` · **deps:** `cross-project-receiving-namespace-compatibility,ci-linux-test-shard-budget`
 
 ## Anchors
 
@@ -20,6 +20,9 @@
 - [ ] Preserve every existing parent Acceptance and full complex public nullable test unchanged for later correctly emitted indexer/function-pointer/ref contracts. This child closes only annotation-context projection; original emitter defects remain explicitly owned by dependent parents, without skipped/weakened tests, product input fences or falsely closing parent nullable/language rows.
 
 ## Evidence
+
+- PARKED with preserved drafts PR1840 and PR1854: dependency PR1854 atd8a70992 remains unqualified because Linux1 run40412863293 hit its30m deadline after2660passed/0failed/37skipped. The separate Windows owner-startup repair merged in PR1855 at49e0b03a1ed9d63c3f448a2bf545aeffc36c88bb; it does not establish a Linux cure. Integrate that prerequisite when this child resumes, before exact-head qualification. Live Docker/WSL provide7.75GiB; reviewed3GiB structural experiment stopped86 at memory cap before tests. No causally supported Linux correction or matching-capacity measurement is available in this session. Resume ci-linux-test-shard-budget with an adequate isolated Linux backend, corrected canonical Git remote and the reviewed fixed-source cohort; qualify the child before dependent code. Original Acceptance and full complex candidate tests stay unchanged; no weakened test or unchanged CI rerun.  See ai_docs/reports/2026-10-26-interface-split-delivery.md.
+
 
 - `nullable-original-probe-final.log`: admitted scratch compiler probe links EXACT candidate helper source and reconstructs original MinQualified emitter spelling. Thirteen represented methods/properties/event members: receiver Disable has 8 graph mismatches plus CS8632 before decoration; receiver Enable has 5 graph mismatches before decoration. Both serialized decorated cohorts compile and match all represented member graphs. This is helper evidence, not native public-route qualification.
 - Same receipt: four proper raw ref/indexer/function-pointer/nullable-wrapper members compile and match under both receiving defaults; C#7.3 oblivious plain string stays legal, while nonoblivious decoration yields CS8370. Therefore the helper is independently useful before shared member projection, but legality checks cannot be deferred.
