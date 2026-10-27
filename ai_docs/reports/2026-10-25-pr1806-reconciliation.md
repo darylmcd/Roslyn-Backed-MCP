@@ -55,7 +55,7 @@ Each current finding is source-supported or explicitly an investigation. Require
 | [cross-project-interface-generic-type-parameters](../items/cross-project-interface-generic-type-parameters.md) | Medium / M | — | Preserve generic parameters in extracted interfaces |
 | [cross-project-interface-signature-dependencies](../items/cross-project-interface-signature-dependencies.md) | High / M | — | Validate emitted interface signature dependencies |
 | [extract-and-wire-semantic-registration-rewrite](../items/extract-and-wire-semantic-registration-rewrite.md) | Medium / M | — | Rewrite bound DI registrations semantically |
-| [file-move-namespace-text-encoding](../items/file-move-namespace-text-encoding.md) | High / S | — | Preserve encoding during moved namespace rewrites |
+| `file-move-namespace-text-encoding` (shipped, PR 1862) | High / S | — | Preserve encoding during moved namespace rewrites |
 | [refactoring-rebase-source-kind-preservation](../items/refactoring-rebase-source-kind-preservation.md) | High / M | — | Preserve reviewed document source kind during replay |
 | [automatic-reload-analyzer-reader-lifetime](../items/automatic-reload-analyzer-reader-lifetime.md) | High / M | — | Exclude readers before automatic reload retires providers |
 | [gated-command-executor-disposal-drains-active-runs](../items/gated-command-executor-disposal-drains-active-runs.md) | Medium / M | — | Drain owned command runs before disposing gates |

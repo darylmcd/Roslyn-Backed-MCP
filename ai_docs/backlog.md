@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-27T18:24:07Z
+**updated_at:** 2026-10-27T20:49:04Z
 
 ## Agent contract
 
@@ -52,7 +52,6 @@
 | `persistent-composite-workspace-identity-not-portable` | High | — | Resolve persisted composite tokens to the correct receiving workspace and source snapshot before claim or mutation. [type: bug] [source: token-lifecycle-independence-revet] | L | items/persistent-composite-workspace-identity-not-portable.md |
 | `cross-project-interface-reference-binding` | High | — | Bind generated interface uses to the generated symbol | M | items/cross-project-interface-reference-binding.md |
 | `cross-project-interface-signature-dependencies` | High | — | Validate emitted interface signature dependencies | M | items/cross-project-interface-signature-dependencies.md |
-| `file-move-namespace-text-encoding` | High | — | Preserve encoding during moved namespace rewrites | S | items/file-move-namespace-text-encoding.md |
 | `refactoring-rebase-source-kind-preservation` | High | — | Preserve reviewed document source kind during replay | M | items/refactoring-rebase-source-kind-preservation.md |
 | `automatic-reload-analyzer-reader-lifetime` | High | — | Exclude readers before automatic reload retires providers | M | items/automatic-reload-analyzer-reader-lifetime.md |
 | `workspace-load-registration-compensation` | High | — | Compensate failed watcher registration | M | items/workspace-load-registration-compensation.md |
@@ -76,7 +75,6 @@
 | `analyzer-shadow-sweep-live-child-authority` | High | — | Protect active analyzer lease children from foreign sweeps during late dependency copies; prove whole-child authority instead of relying on sibling DLL locks. | S | items/analyzer-shadow-sweep-live-child-authority.md |
 | `extract-type-composition-assigned-before-use` | High | — | Assign the injected helper first in each root constructor; refuse when base or retained override code can reach the helper before assignment. [type: bug] [source: archive-diagnostic-2026-10-27] | S | items/extract-type-composition-assigned-before-use.md |
 | `extract-type-value-type-and-record-composition` | High | extract-type-static-source-composition | Refuse instance-helper extraction from records, record structs and structs (equality, with-copies and zero-init change); static-only moves stay eligible. [type: bug] [source: archive-diagnostic-2026-10-27] | S | items/extract-type-value-type-and-record-composition.md |
-| `extract-type-preview-compile-delta-gate` | High | — | Refuse the extract_type preview before token storage when changed or new documents introduce compiler errors absent from the original compilation. [type: bug] [source: archive-diagnostic-2026-10-27] | S | items/extract-type-preview-compile-delta-gate.md |
 | `interface-extraction-indexer-declarations` | High | interface-extraction-ref-return-contracts | Emit extracted indexers as IndexerDeclaration with bracketed parameters and collect their parameter namespaces; both emitters emit invalid "this[]" properties today. [type: bug] [source: archive-diagnostic-2026-10-27] | M | items/interface-extraction-indexer-declarations.md |
 | `interface-extraction-parameter-contract-attributes` | High | cross-project-interface-parameter-semantics | Copy caller-info, nullable-flow and handler parameter attributes onto extracted interface members; refuse when interpolated-string handler binding would change. [type: bug] [source: archive-diagnostic-2026-10-27] | M | items/interface-extraction-parameter-contract-attributes.md |
 | `extract-type-override-modifier-stripped` | High | — | **Refuse extracting override members** — extract_type strips `override`, silently changing dispatch (ToString) or dropping abstract implementations (CS0534). [type: bug] [source: backlog-remediate 20261001T130338Z] | S | items/extract-type-override-modifier-stripped.md |
@@ -234,6 +232,8 @@
 | `extract-type-static-initialization-order` | Medium | — | Refuse moving static fields with non-constant initializers when retained static state depends on initialization order. [type: bug] [source: archive-diagnostic-2026-10-27] | S | items/extract-type-static-initialization-order.md |
 | `extract-type-late-bound-member-identity` | Medium | — | Detect constant-name reflection, dynamic access and nameof candidate groups targeting extracted members; rewrite nameof, refuse the rest with a typed error. [type: bug] [source: archive-diagnostic-2026-10-27] | M | items/extract-type-late-bound-member-identity.md |
 | `extract-type-partial-overload-identity` | Medium | — | Group partial definition/implementation pairs by signature before the ambiguity check; move them into a partial helper or refuse. [type: bug] [source: archive-diagnostic-2026-10-27] | S | items/extract-type-partial-overload-identity.md |
+| `rewrite-paths-drop-document-encoding` | Medium | — | Preserve source encoding/BOM where ParameterObject, Restructure and StringLiteralReplace re-wrap rewritten document text with SourceText.From; audit ExtractMethod and ClassSplit. | M | items/rewrite-paths-drop-document-encoding.md |
+| `extract-type-compile-gate-dependent-projects` | Medium | — | Extend the extract_type compile-delta gate to dependent projects and settle the moved pre-existing-error key edge. | S | items/extract-type-compile-gate-dependent-projects.md |
 
 ## Low
 
@@ -461,6 +461,7 @@
 | `workflow-retired-remediation-prompt-links` | Low | — | Replace retired global remediation prompt pointers with the verified current prompt and helper contract. [type: docs] [source: ci-plan-review] | S | items/workflow-retired-remediation-prompt-links.md |
 | `dockerfile-restore-project-graph` | Low | — | Align Docker restore inputs with the full referenced solution project graph. [type: bug] [source: linux-reproduction-context] | M | items/dockerfile-restore-project-graph.md |
 | `preview-store-explicit-original-snapshot` | Low | — | Remove PreviewStore overloads that infer the original snapshot, truncation or kind; every producer passes its base snapshot explicitly. [type: bug] [source: archive-diagnostic-2026-10-27] | L | items/preview-store-explicit-original-snapshot.md |
+| `preview-stores-without-compile-delta-audit` | Low | extract-type-compile-gate-dependent-projects | Audit preview producers that store tokens without a compile-error delta check; file per-producer rows. | L | items/preview-stores-without-compile-delta-audit.md |
 
 ## Defer
 
