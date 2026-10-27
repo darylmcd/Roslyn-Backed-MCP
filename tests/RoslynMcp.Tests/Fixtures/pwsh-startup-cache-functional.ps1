@@ -17,7 +17,7 @@ foreach ($line in @('- finding: X happens', '- repro: do Y', '- proposed-fix: fi
     if (-not $body.Contains($line)) { throw "Renderer missing $line" }
 }
 $decision = (& (Join-Path $repo 'eng/resolve-ci-topology.ps1') -EventName pull_request -ChangedFilesJson '[[{"filename":"src/Foo.cs"}]]' -ReportedChangedFileCount 1) | ConvertFrom-Json
-if ($decision.docs_only -or $decision.runner_matrix.Count -ne 6 -or $decision.reason -cne 'Code PR: four hosted Windows and two hosted Linux shards.') { throw 'Topology failed.' }
+if ($decision.docs_only -or $decision.runner_matrix.Count -ne 7 -or $decision.reason -cne 'Code PR: four hosted Windows and three hosted Linux shards.') { throw 'Topology failed.' }
 $sibling = Join-Path $cache "functional-$launch.clixml"
 [pscustomobject]@{ launch = $launch; body = $body } | Export-Clixml -LiteralPath $sibling
 $loaded = Import-Clixml -LiteralPath $sibling

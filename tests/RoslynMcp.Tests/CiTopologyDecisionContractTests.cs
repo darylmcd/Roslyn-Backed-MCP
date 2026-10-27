@@ -32,7 +32,7 @@ public sealed class CiTopologyDecisionContractTests
         var decision = ParseDecision(result.StdOut);
 
         Assert.IsFalse(decision.DocsOnly);
-        Assert.AreEqual("Code PR: four hosted Windows and two hosted Linux shards.", decision.Reason);
+        Assert.AreEqual("Code PR: four hosted Windows and three hosted Linux shards.", decision.Reason);
         AssertExactCodePullRequestMatrix(decision.RunnerMatrix);
     }
 
@@ -49,7 +49,7 @@ public sealed class CiTopologyDecisionContractTests
         var decision = ParseDecision(result.StdOut);
 
         Assert.IsTrue(decision.DocsOnly);
-        Assert.AreEqual("Policy-only docs PR: two hosted Linux test shards.", decision.Reason);
+        Assert.AreEqual("Policy-only docs PR: three hosted Linux test shards.", decision.Reason);
         AssertExactDocsOnlyPullRequestMatrix(decision.RunnerMatrix);
     }
 
@@ -71,7 +71,7 @@ public sealed class CiTopologyDecisionContractTests
         var decision = ParseDecision(result.StdOut);
 
         Assert.IsFalse(decision.DocsOnly, $"'{path}' is behavior-bearing and must force full validation.");
-        Assert.AreEqual("Code PR: four hosted Windows and two hosted Linux shards.", decision.Reason);
+        Assert.AreEqual("Code PR: four hosted Windows and three hosted Linux shards.", decision.Reason);
     }
 
     [TestMethod]
@@ -382,13 +382,14 @@ public sealed class CiTopologyDecisionContractTests
             ("windows-hosted-2-of-4", "windows-latest", false, 45, 1, 4),
             ("windows-hosted-3-of-4", "windows-latest", false, 45, 2, 4),
             ("windows-hosted-4-of-4", "windows-latest", false, 45, 3, 4),
-            ("linux-1-of-2", "ubuntu-latest", false, 30, 0, 2),
-            ("linux-2-of-2", "ubuntu-latest", true, 30, 1, 2),
+            ("linux-1-of-3", "ubuntu-latest", false, 30, 0, 3),
+            ("linux-2-of-3", "ubuntu-latest", false, 30, 1, 3),
+            ("linux-3-of-3", "ubuntu-latest", true, 30, 2, 3),
         };
 
         AssertExactMatrix(matrix, expected);
         AssertCompleteShardUnion(matrix, "windows-latest", expectedShardCount: 4);
-        AssertCompleteShardUnion(matrix, "ubuntu-latest", expectedShardCount: 2);
+        AssertCompleteShardUnion(matrix, "ubuntu-latest", expectedShardCount: 3);
         AssertSoleArtifactOwner(matrix);
     }
 
@@ -396,12 +397,13 @@ public sealed class CiTopologyDecisionContractTests
     {
         var expected = new (string Name, string RunsOn, bool ArtifactOwner, int TimeoutMinutes, int ShardIndex, int ShardCount)[]
         {
-            ("docs-linux-1-of-2", "ubuntu-latest", false, 30, 0, 2),
-            ("docs-linux-2-of-2", "ubuntu-latest", true, 30, 1, 2),
+            ("docs-linux-1-of-3", "ubuntu-latest", false, 30, 0, 3),
+            ("docs-linux-2-of-3", "ubuntu-latest", false, 30, 1, 3),
+            ("docs-linux-3-of-3", "ubuntu-latest", true, 30, 2, 3),
         };
 
         AssertExactMatrix(matrix, expected);
-        AssertCompleteShardUnion(matrix, "ubuntu-latest", expectedShardCount: 2);
+        AssertCompleteShardUnion(matrix, "ubuntu-latest", expectedShardCount: 3);
         AssertSoleArtifactOwner(matrix);
     }
 
