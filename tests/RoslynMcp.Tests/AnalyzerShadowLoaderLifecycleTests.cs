@@ -20,7 +20,7 @@ namespace RoslynMcp.Tests;
 /// Regression guard for <c>analyzer-shadow-loader-lifecycle</c>: analyzer shadow-copy loaders
 /// are leased per workspace load — each load gets its own collectible
 /// <see cref="System.Runtime.Loader.AssemblyLoadContext"/> and uniquely-keyed shadow root under
-/// <c>%TEMP%/RoslynMcpAnalyzerShadow/&lt;workspaceId&gt;/&lt;leaseId&gt;</c> that workspace
+/// <c>%TEMP%/RoslynMcpAnalyzerShadow/workspace-&lt;PID&gt;-&lt;processGUID&gt;-&lt;workspaceId&gt;/&lt;leaseId&gt;</c> that workspace
 /// close and reload reclaim. Pre-fix, the loaders' non-collectible contexts were dropped on the
 /// floor and every load leaked one shadow tree until process exit (245–272 orphaned trees /
 /// ~600 MB per full Release test run).
@@ -46,9 +46,6 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
 {
     private const string _fixtureAnalyzerAssemblyName = "LifecycleFixtureAnalyzer";
     private static readonly TimeSpan _reclamationTimeout = TimeSpan.FromSeconds(30);
-
-    private static string ShadowSharedParent =>
-        Path.Combine(Path.GetTempPath(), AnalyzerReferenceIsolation.ShadowRootDirectoryName);
 
     [TestMethod]
     public void Retarget_LeasesAreUniquelyKeyedPerLoad_AndDisposeIsIdempotent()
@@ -79,9 +76,9 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
             var reference = new AnalyzerFileReference(analyzerPath, StubAnalyzerAssemblyLoader.Instance);
             var solution = project.Solution.AddAnalyzerReference(project.Id, reference);
 
-            var lease1 = AnalyzerReferenceIsolation.RetargetFileReferencesToShadowLoader(
+            using var lease1 = AnalyzerReferenceIsolation.RetargetFileReferencesToShadowLoader(
                 solution, "lease-unit-probe", NullLogger.Instance);
-            var lease2 = AnalyzerReferenceIsolation.RetargetFileReferencesToShadowLoader(
+            using var lease2 = AnalyzerReferenceIsolation.RetargetFileReferencesToShadowLoader(
                 solution, "lease-unit-probe", NullLogger.Instance);
 
             Assert.AreEqual(1, lease1.RetargetedReferenceCount);
@@ -91,8 +88,15 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
             Assert.AreNotEqual(lease1.ShadowRoot, lease2.ShadowRoot,
                 "Each lease must own a uniquely-keyed shadow root; a per-workspace key would let old-lease deletion race a reload's new files.");
 
+            // A live registered lease survives stale timestamps even before its first mapped copy.
+            Directory.CreateDirectory(lease1.ShadowRoot);
+            var staleTimestamp = DateTime.UtcNow - TimeSpan.FromDays(2);
+            Directory.SetCreationTimeUtc(lease1.ShadowRoot, staleTimestamp);
+            Directory.SetLastWriteTimeUtc(lease1.ShadowRoot, staleTimestamp);
+            Assert.IsTrue(AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease.IsLiveRoot(lease1.ShadowRoot));
+
             // Idempotent release: eviction, explicit close, and host shutdown can all reach the
-            // same session, so double-dispose must be a safe no-op (including on a lease whose
+            // same session, so double-dispose must be a safe no-op (including lease2, whose
             // root never materialized because no analyzer was actually loaded).
             lease1.Dispose();
             lease1.Dispose();
@@ -406,6 +410,8 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
         var processCopyRoot = Path.Combine(sharedParent, "process-exited", "copies");
         Directory.CreateDirectory(processCopyRoot);
         File.WriteAllText(Path.Combine(processCopyRoot, "unused.dll"), "stale copy");
+        // A released marker proves completed ownership; a missing marker does not.
+        using (File.Create(Path.Combine(Path.GetDirectoryName(processCopyRoot)!, ".owner.lock"))) { }
         try
         {
             var staleTimestamp = DateTime.UtcNow - TimeSpan.FromDays(2);
@@ -416,6 +422,7 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
 
             Assert.IsFalse(Directory.Exists(processCopyRoot),
                 "A process copy root from an exited host must be reclaimed by the two-level sweep.");
+            Assert.IsFalse(Directory.Exists(Path.GetDirectoryName(processCopyRoot)));
         }
         finally
         {
@@ -550,7 +557,7 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
 
             var status = await manager.LoadAsync(solutionPath, CancellationToken.None);
             Assert.IsTrue(status.IsLoaded, "Fixture solution must load before exercising the lease lifecycle.");
-            var workspaceDirectory = Path.Combine(ShadowSharedParent, status.WorkspaceId);
+            var workspaceDirectory = AnalyzerReferenceIsolation.GetWorkspaceShadowDirectory(status.WorkspaceId);
 
             // (b) Force the shadow assemblies to actually load: retargeting alone creates loaders
             // lazily, and the lease's on-disk root only materializes on the first shadow copy.
