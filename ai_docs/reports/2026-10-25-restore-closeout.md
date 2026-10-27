@@ -144,5 +144,5 @@ These are proposed decisions, not executed actions.
 | Preserved item | Current location |
 |---|---|
 | PR1826 dirty work and frozen handoff | Inlined into rows `restore-fork-reviewed-project-graph`, `document-set-native-default-compile-policy` and `new-file-apply-writes-bom-ignoring-editorconfig`; branch deleted. PR1826 head stays at `refs/pull/1826/head`. |
-| Stash `ba3f2998` | Deleted (an earlier PR1806 draft); summary in row `pr1806-unshipped-authority-proposal`. |
+| Stash `ba3f2998` | Deleted (an earlier PR1806 draft). The PR1806 authority proposal was rejected 2026-10-27; reasons in `2026-10-25-pr1806-reconciliation.md` (Addendum). |
 | PR1806 / PR1809 / closeout worktrees and branches | Removed; PR1806 tag and branch deleted, head stays at `refs/pull/1806/head`; superseded `codex/restore-callers-scoped` deleted. |

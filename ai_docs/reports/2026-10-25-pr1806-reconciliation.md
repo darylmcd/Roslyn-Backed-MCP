@@ -43,7 +43,7 @@ Each current finding is source-supported or explicitly an investigation. Require
 
 | Row | Priority / size | Dependency | Objective |
 |---|---|---|---|
-| [pr1806-unshipped-authority-proposal](../items/pr1806-unshipped-authority-proposal.md) | Defer / — | — | Decide the retained preview/native/physical authority proposal |
+| `pr1806-unshipped-authority-proposal` (closed 2026-10-27, rejected; see Addendum) | Defer / — | — | Decide the retained preview/native/physical authority proposal |
 | [build-command-captured-evaluation-context](../items/build-command-captured-evaluation-context.md) | Medium / M | — | Build with the loaded evaluation context |
 | [test-trx-definition-qualified-identity](../items/test-trx-definition-qualified-identity.md) | Medium / S | — | Resolve failed TRX methods through test definitions |
 | [test-trx-verdict-consistency](../items/test-trx-verdict-consistency.md) | Medium / M | — | Reject inconsistent and unsuccessful test-report proof |
@@ -116,3 +116,4 @@ The Defer decision `pr1806-unshipped-authority-proposal` preserves explicit prev
 | Item | State |
 |---|---|
 | Archive refs deleted 2026-10-27 | Every archive branch (`codex/*`, `remediation/*`), both `archive/*` tags and the stash were deleted after their design knowledge was inlined into the owning backlog rows. Closed PR heads stay reachable at GitHub `refs/pull/1806/head` (`d333c2e9`), `refs/pull/1826/head` (`0062d60c`) and `refs/pull/1840/head` (`cb90656f`). |
+| Authority proposal rejected 2026-10-27 | Operator decision: reject the PR1806 authority architecture and close `pr1806-unshipped-authority-proposal`. Reasons: (1) it reflects on private Roslyn fields (`_initialModules`, `_lazyData`) and runs an owned BuildHost/Csc to certify compiler context, which is unmaintainable for a published tool; (2) custody-based recovery requires new OS rename/delete permissions and a `.roslynmcp-custody` parent, a user-facing breaking change; (3) it is a next-major, source-breaking redesign of about 181 production paths and 74k lines, never qualified, with an ADR number that collides with `0029-fork-source-session-lifecycle`; (4) every concrete defect it found already has a bounded owning row (the rows citing PR1806, plus `preview-store-explicit-original-snapshot`, `project-reference-reload-embed-metadata`, `compile-check-diagnostic-suppressor-parity`, `analyzer-shadow-sweep-path-authority`, `analyzer-shadow-sweep-live-child-authority`, `physical-compensation-external-edit-ownership`, the `test-trx-*` rows, `test-run-global-json-fail-closed-authority` and `mtp-resolved-engine-version-selection`). Paths in `coverage.tsv` owned only by this row need no further work. PR1806 head stays at GitHub `refs/pull/1806/head`. |
