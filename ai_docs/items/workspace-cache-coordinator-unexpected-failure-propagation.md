@@ -1,6 +1,6 @@
 # workspace-cache-coordinator-unexpected-failure-propagation — Do not hide cache-coordinator programming failures
 
-**row:** `workspace-cache-coordinator-unexpected-failure-propagation` · **pri:** `Medium` · **size:** `S` · **deps:** —
+**row:** `workspace-cache-coordinator-unexpected-failure-propagation` · **pri:** `Medium` · **size:** `S`
 
 ## Anchors
 
@@ -17,4 +17,4 @@
 ## Evidence
 
 - Source audit at main `fc5bb88676214a942daa727c7ca88ac8dd34b61c`. Independent cold review identified TryProbeAsync, ResolveAndWriteAsync and WriteFreshEntryAsync catching every non-cancellation exception and returning null. Current source retains all three boundaries. This is distinct from graph framing, retention and proposal-only path authorization.
-- Retained immutable source: `d333c2e96a1e23a31286cda53b920dbee5d6b7be`; preserved tag: `archive/pr1806-restore-reviewed-graph-20261025`. No build/test ran in this content audit; historical receipts are not current runtime qualification.
+- Source: closed PR #1806 head `d333c2e9`, kept by GitHub as `refs/pull/1806/head` (archive branch and tag deleted 2026-10-27). No build/test ran in this content audit; historical receipts are not current runtime qualification.

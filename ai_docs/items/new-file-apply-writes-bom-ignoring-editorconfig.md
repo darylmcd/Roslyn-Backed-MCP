@@ -25,6 +25,7 @@
 - Immutable PR1826 head0062d60ca47a0b08d56d1c91feac333b67de876a preserves ResolveIntendedDocumentEncodingsAsync on both shared rebase returns. It is unmerged reference work, not evidence on main; PR1828 physical undo capture does not merge this normalization.
 - Changed-document OLD controls retained no-BOM physical bytes but returned workspace SourceText.Encoding=null; they prove unresolved resulting encoding metadata, not changed-file BOM loss. See e2-source-normalization-old-causal and e2-source-undo-provenance receipts.
 - Receipts and intake: `<user>/.codex/scratch/roslyn-remediate-20261023-split/restore-closeout-independent-intake.md`.
+- 2026-10-27, normalization inlined from closed PR1826: after rebase (and on the same-lineage early return), for each added or changed document compute `enc = SourceFileEncoding.FromSourceText(text.Encoding)`; if `enc` is not the same object as `text.Encoding`, replace the text with `SourceText.From(text, enc, text.ChecksumAlgorithm)` preserving identity. Test `SourceApply_PreservesIntendedDocumentEncoding`: move, UTF-16 add/change, null-encoding add/change, same-path replace, encoding-only change, each with and without a sibling apply; applied bytes = helper preamble + encoded text; projected and applied encodings non-null with equal code page and preamble; stored preview text unchanged; undo restores bytes. Main `RefactoringService.cs:839` returns unnormalized text.
 
 ## Context
 

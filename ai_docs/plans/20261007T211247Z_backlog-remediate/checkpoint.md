@@ -313,3 +313,8 @@ The sections below record the earlier unmerged checkpoint. Current status is the
 - Fragile points: atomic preview safety versus review-size policy; exact new lifecycle/snapshot contracts still need implementation regression evidence.
 - Cold review governs admission; no red/held artifact is marked executable.
 
+## Addendum 2026-10-27 (archives)
+
+| Item | State |
+|---|---|
+| Archive refs deleted 2026-10-27 | Every archive branch (`codex/*`, `remediation/*`), both `archive/*` tags and the stash were deleted after their design knowledge was inlined into the owning backlog rows. Closed PR heads stay reachable at GitHub `refs/pull/1806/head` (`d333c2e9`), `refs/pull/1826/head` (`0062d60c`) and `refs/pull/1840/head` (`cb90656f`). |
