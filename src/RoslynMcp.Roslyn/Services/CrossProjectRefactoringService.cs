@@ -186,8 +186,9 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         // instead of the legacy text-grep that dropped source-project usings whose last segment
         // didn't match the synthesized short name. Mirrors InterfaceExtractionService:301-338.
         var requiredNamespaces = CollectReferencedNamespaces(typeSymbol, namespaceName);
+        var nullableProjection = new InterfaceNullableProjection();
         var interfaceRoot = CreateInterfaceCompilationUnit(sourceRoot, typeSymbol, resolvedInterfaceName, namespaceName, isCrossProject, requiredNamespaces,
-            ReceivingNamespaceFactory.RequireCSharpOptions(targetProject.ParseOptions));
+            ReceivingNamespaceFactory.RequireCSharpOptions(targetProject.ParseOptions), nullableProjection);
         var interfaceFilePath = Path.Combine(interfaceDirectory, resolvedInterfaceName + ".cs");
         if (File.Exists(interfaceFilePath))
         {
@@ -202,9 +203,10 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
 
         // Item #1 — pass folders so MSBuildWorkspace resolves the disk path consistently.
         var interfaceFolders = ProjectMetadataParser.ComputeDocumentFolders(targetProject.FilePath, interfaceFilePath);
+        var interfaceDocumentId = DocumentId.CreateNewId(targetProject.Id);
         var updatedSolution = solution.WithDocumentSyntaxRoot(sourceDocument.Id, updatedSourceRoot)
             .AddDocument(
-                DocumentId.CreateNewId(targetProject.Id),
+                interfaceDocumentId,
                 resolvedInterfaceName + ".cs",
                 SourceText.From(interfaceRoot.ToFullString()),
                 folders: interfaceFolders,
@@ -215,6 +217,8 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             updatedSolution = EnsureProjectReference(updatedSolution, sourceDocument.Project.Id, targetProject.Id);
         }
 
+        updatedSolution = await nullableProjection.ApplyAsync(updatedSolution.GetDocument(interfaceDocumentId)
+            ?? throw InvalidOperationErrors.Internal("Generated interface document is unavailable."), interfaceRoot, ct).ConfigureAwait(false);
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, updatedSolution, ct).ConfigureAwait(false);
         var description = $"Extract interface '{resolvedInterfaceName}' from '{typeName}'";
         var token = _previewStore.Store(workspaceId, updatedSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
@@ -441,16 +445,17 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         string namespaceName,
         bool isCrossProject,
         IReadOnlyCollection<string> requiredNamespaces,
-        CSharpParseOptions receivingOptions)
+        CSharpParseOptions receivingOptions,
+        InterfaceNullableProjection nullableProjection)
     {
-        var interfaceMembers = typeSymbol.GetMembers()
-            .Where(member => member.DeclaredAccessibility == Accessibility.Public && !member.IsStatic && !member.IsImplicitlyDeclared)
-            .Select(CreateInterfaceMember)
-            .Where(member => member is not null)
-            .Cast<MemberDeclarationSyntax>()
-            .ToArray();
+        var interfaceMembers = new List<MemberDeclarationSyntax>();
+        foreach (var member in typeSymbol.GetMembers().Where(member => member.DeclaredAccessibility == Accessibility.Public && !member.IsStatic && !member.IsImplicitlyDeclared))
+        {
+            var emitted = CreateInterfaceMember(member);
+            if (emitted is not null) interfaceMembers.Add(nullableProjection.Capture(emitted, member));
+        }
 
-        if (interfaceMembers.Length == 0)
+        if (interfaceMembers.Count == 0)
         {
             throw new PublicInvalidOperationException($"Type '{typeSymbol.Name}' does not have public instance members that can be extracted.");
         }
@@ -582,8 +587,9 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         // for the same call). The DI-inversion path routes through here too, so missing this
         // produces silent regressions for cross-project extract+invert scenarios.
         var requiredNamespaces = CollectReferencedNamespaces(typeSymbol, namespaceName);
+        var nullableProjection = new InterfaceNullableProjection();
         var interfaceRoot = CreateInterfaceCompilationUnit(sourceRoot, typeSymbol, interfaceName, namespaceName, isCrossProject, requiredNamespaces,
-            ReceivingNamespaceFactory.RequireCSharpOptions(targetProject.ParseOptions));
+            ReceivingNamespaceFactory.RequireCSharpOptions(targetProject.ParseOptions), nullableProjection);
         var interfaceFileDirectory = isCrossProject
             ? ResolvePreferredInterfaceSubdirectory(solution, targetProject, targetProjectDirectory)
             : targetProjectDirectory;
@@ -604,9 +610,10 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
 
         // Item #1 — pass folders so MSBuildWorkspace resolves the disk path consistently.
         var diInterfaceFolders = ProjectMetadataParser.ComputeDocumentFolders(targetProject.FilePath, interfaceFilePath);
+        var interfaceDocumentId = DocumentId.CreateNewId(targetProject.Id);
         var updatedSolution = solution.WithDocumentSyntaxRoot(sourceDocument.Id, updatedSourceRoot)
             .AddDocument(
-                DocumentId.CreateNewId(targetProject.Id),
+                interfaceDocumentId,
                 interfaceName + ".cs",
                 SourceText.From(interfaceRoot.ToFullString()),
                 folders: diInterfaceFolders,
@@ -617,8 +624,8 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             updatedSolution = EnsureProjectReference(updatedSolution, sourceDocument.Project.Id, targetProject.Id);
         }
 
-        await Task.CompletedTask.ConfigureAwait(false);
-        return updatedSolution;
+        return await nullableProjection.ApplyAsync(updatedSolution.GetDocument(interfaceDocumentId)
+            ?? throw InvalidOperationErrors.Internal("Generated interface document is unavailable."), interfaceRoot, ct).ConfigureAwait(false);
     }
 
     private static string GetMetadataName(INamedTypeSymbol typeSymbol)

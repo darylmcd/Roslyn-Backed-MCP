@@ -46,7 +46,8 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
             await ResolveTypeAsync(solution, filePath, typeName, ct).ConfigureAwait(false);
 
         var candidateMembers = SelectCandidateMembers(typeSymbol, memberNames, typeName);
-        var interfaceMembers = BuildInterfaceMembers(candidateMembers);
+        var nullableProjection = new InterfaceNullableProjection();
+        var interfaceMembers = BuildInterfaceMembers(candidateMembers, nullableProjection);
         // Item #3 — severity-high-fail-produces-code-that-does-not-compi.
         // The legacy FilterRelevantUsings text-grepped the synthesized interface
         // for the FULL namespace name, but BuildInterfaceMembers renders types with
@@ -107,7 +108,7 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
             var targetProject = newSolution.GetProject(sourceDocument.Project.Id)!;
             var folders = ProjectMetadataParser.ComputeDocumentFolders(targetProject.FilePath, interfaceFilePath);
             var interfaceDoc = targetProject.AddDocument($"{interfaceName}.cs", interfaceFileRoot.ToFullString(), folders: folders, filePath: interfaceFilePath);
-            newSolution = interfaceDoc.Project.Solution;
+            newSolution = await nullableProjection.ApplyAsync(interfaceDoc, interfaceFileRoot, ct).ConfigureAwait(false);
 
             if (replaceUsages)
             {
@@ -185,7 +186,7 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
         return candidateMembers;
     }
 
-    private static List<MemberDeclarationSyntax> BuildInterfaceMembers(List<ISymbol> candidateMembers)
+    private static List<MemberDeclarationSyntax> BuildInterfaceMembers(List<ISymbol> candidateMembers, InterfaceNullableProjection nullableProjection)
     {
         var interfaceMembers = new List<MemberDeclarationSyntax>();
         foreach (var member in candidateMembers)
@@ -213,7 +214,7 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
                             SyntaxFactory.TypeParameterList(SyntaxFactory.SeparatedList(typeParams)));
                     }
 
-                    interfaceMembers.Add(methodDecl);
+                    interfaceMembers.Add(nullableProjection.Capture(methodDecl, method));
                     break;
 
                 case IPropertySymbol property:
@@ -226,17 +227,17 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
                         accessors.Add(SyntaxFactory.AccessorDeclaration(SyntaxKind.SetAccessorDeclaration)
                             .WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken)));
 
-                    interfaceMembers.Add(SyntaxFactory.PropertyDeclaration(propType, property.Name)
-                        .WithAccessorList(SyntaxFactory.AccessorList(SyntaxFactory.List(accessors))));
+                    interfaceMembers.Add(nullableProjection.Capture(SyntaxFactory.PropertyDeclaration(propType, property.Name)
+                        .WithAccessorList(SyntaxFactory.AccessorList(SyntaxFactory.List(accessors))), property));
                     break;
 
                 case IEventSymbol evt:
                     var eventType = SyntaxFactory.ParseTypeName(evt.Type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat));
-                    interfaceMembers.Add(SyntaxFactory.EventFieldDeclaration(
+                    interfaceMembers.Add(nullableProjection.Capture(SyntaxFactory.EventFieldDeclaration(
                         SyntaxFactory.VariableDeclaration(eventType)
                             .WithVariables(SyntaxFactory.SingletonSeparatedList(
                                 SyntaxFactory.VariableDeclarator(evt.Name))))
-                        .WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken)));
+                        .WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken)), evt));
                     break;
             }
         }

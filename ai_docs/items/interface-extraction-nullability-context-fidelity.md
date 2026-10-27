@@ -1,6 +1,6 @@
 # interface-extraction-nullability-context-fidelity — Preserve generated nullable contracts
 
-**row:** `interface-extraction-nullability-context-fidelity` · **pri:** `High` · **size:** `M` · **deps:** `cross-project-interface-parameter-semantics,interface-extraction-ref-return-contracts,interface-extraction-unsafe-signature-context,interface-extraction-escaped-member-identifiers,interface-extraction-nullable-context-projection`
+**row:** `interface-extraction-nullability-context-fidelity` · **pri:** `High` · **size:** `M` · **deps:** `cross-project-interface-parameter-semantics,interface-extraction-ref-return-contracts,interface-extraction-unsafe-signature-context,interface-extraction-escaped-member-identifiers`
 
 ## Anchors
 
@@ -25,3 +25,5 @@
 - Seven-row batch holds PR1840 draft until this exposed defect is repaired and reviewed. Revision2 plan requires recursive None/NotAnnotated/Annotated preservation plus absolute receiving-context proof; project policy stays unchanged.
 
 - Current delivery order, superseding fixture diagnosis and preserved-candidate receipt limits: `ai_docs/reports/2026-10-26-interface-split-delivery.md`. Historical pending/hold statements above describe the original combined candidate; use that report for current state.
+- 2026-10-27: dependency `interface-extraction-nullable-context-projection` closed by PR1854 (hosted Linux budget fixed by the third shard, PR1857). PR1840 closed as superseded by this decomposition; its combined candidate source and tests remain reference-only on branch `codex/interface-parameter-semantics` at `cb90656f`. Re-cut this row from current main; do not resume PR1840.
+

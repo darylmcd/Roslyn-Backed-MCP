@@ -1,6 +1,6 @@
 # cross-project-interface-parameter-semantics — Preserve emitted interface parameter semantics
 
-**row:** `cross-project-interface-parameter-semantics` · **pri:** `High` · **size:** `M` · **deps:** `interface-extraction-nullable-context-projection`
+**row:** `cross-project-interface-parameter-semantics` · **pri:** `High` · **size:** `M`
 
 ## Anchors
 
@@ -24,3 +24,5 @@
 Current-session candidate CI at 7395d431 exposed five newly introduced unmarked server-invariant exceptions in InterfaceHandlerBindingValidator. Corrected in the same PR with InvalidOperationErrors.Internal, preserving messages/category and leaving baseline/tests unchanged; causal ratchet red: 1 failed / 87 passed, green: 88 passed / 0 failed / 0 skipped; final combined affected gate includes this source-inventory class.
 
 - Current delivery order, superseding fixture diagnosis and preserved-candidate receipt limits: `ai_docs/reports/2026-10-26-interface-split-delivery.md`. Historical pending/hold statements above describe the original combined candidate; use that report for current state.
+- 2026-10-27: dependency `interface-extraction-nullable-context-projection` closed by PR1854 (hosted Linux budget fixed by the third shard, PR1857). PR1840 closed as superseded by this decomposition; its combined candidate source and tests remain reference-only on branch `codex/interface-parameter-semantics` at `cb90656f`. Re-cut this row from current main; do not resume PR1840.
+

@@ -1,6 +1,6 @@
 # interface-extraction-unsafe-signature-context — Preserve unsafe signature context
 
-**row:** `interface-extraction-unsafe-signature-context` · **pri:** `High` · **size:** `M` · **deps:** `interface-extraction-nullable-context-projection`
+**row:** `interface-extraction-unsafe-signature-context` · **pri:** `High` · **size:** `M`
 
 ## Anchors
 
@@ -22,3 +22,5 @@
 - Cold source review at main 0e0f90661035a38e570627b1508dac2ea2496708 found both generated interfaces carry only accessibility, so valid unsafe source signatures lose their compilation context. The shared parameter generator preserves the pointer syntax but does not repair the containing declaration. Runtime proof pending.
 
 - Current delivery order, superseding fixture diagnosis and preserved-candidate receipt limits: `ai_docs/reports/2026-10-26-interface-split-delivery.md`. Historical pending/hold statements above describe the original combined candidate; use that report for current state.
+- 2026-10-27: dependency `interface-extraction-nullable-context-projection` closed by PR1854 (hosted Linux budget fixed by the third shard, PR1857). PR1840 closed as superseded by this decomposition; its combined candidate source and tests remain reference-only on branch `codex/interface-parameter-semantics` at `cb90656f`. Re-cut this row from current main; do not resume PR1840.
+
