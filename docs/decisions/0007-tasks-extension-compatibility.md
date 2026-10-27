@@ -4,7 +4,7 @@
 - **Deciders:** repository maintainers
 - **Scope:** `ModelContextProtocol.Extensions.Tasks` adoption for the RoslynMcp stdio host
 - **Supersedes:** ADR 0003's deferred Tasks planning pointer
-- **Superseded by:** nothing
+- **Superseded by:** nothing; the exact-2.2.0 version clause is amended by [ADR 0031](0031-modelcontextprotocol-2-3-servicing.md) (pair now 2.3.0 / 2.3.0)
 
 ## Context
 

@@ -27,7 +27,7 @@ The previous `10.0.100` minimum was not executable: its compiler loads Roslyn 5.
 
 | Package id | Current | Where pinned | Coupling / routing |
 |------------|---------|--------------|--------------------|
-| `ModelContextProtocol` | `2.2.0` | `Directory.Packages.props` | Contract-sensitive; dedicated PR, release-note/ADR review, notices, and raw-wire matrices |
+| `ModelContextProtocol` | `2.3.0` | `Directory.Packages.props` | Contract-sensitive; dedicated PR, release-note/ADR review, notices, and raw-wire matrices |
 | `Microsoft.CodeAnalysis.CSharp` | `5.9.0` | `Directory.Packages.props` | Roslyn API family; move together |
 | `Microsoft.CodeAnalysis.Analyzers` | `5.9.0` | `Directory.Packages.props` | Roslyn API family; move together |
 | `Microsoft.CodeAnalysis.CSharp.Workspaces` | `5.9.0` | `Directory.Packages.props` | Roslyn API family; move together |
@@ -73,15 +73,16 @@ The previous `10.0.100` minimum was not executable: its compiler loads Roslyn 5.
 
 ## 4. MCP SDK wire contract
 
-The repository adopted MCP SDK 2.1 directly from 1.4.1, then advanced to 2.2.0 through a dedicated
-servicing review. The evaluated official sequence is 2.0.0-preview.1, preview.2, preview.3, rc.1,
-rc.2, 2.0.0, 2.1.0, and 2.2.0; there is no SDK 2.0.1 or 3.x in that lineage. RoslynMcp product
-2.x/3.x versions are independent. SDK 2.2 preserves both protocol eras: modern `2026-07-28`
+The repository adopted MCP SDK 2.1 directly from 1.4.1, then advanced to 2.2.0 and 2.3.0 through
+dedicated servicing reviews. The evaluated official sequence is 2.0.0-preview.1, preview.2, preview.3, rc.1,
+rc.2, 2.0.0, 2.1.0, 2.2.0, and 2.3.0; there is no SDK 2.0.1 or 3.x in that lineage. RoslynMcp product
+2.x/3.x versions are independent. SDK 2.3 preserves both protocol eras: modern `2026-07-28`
 requests use `server/discover` plus request-scoped metadata, while initialize-capable clients
 negotiate a down-level revision. The wire contract is recorded in
-[ADR 0003](decisions/0003-sdk-2x-wire-compatibility.md); the non-breaking 2.2 servicing
-disposition is recorded in
-[ADR 0006](decisions/0006-modelcontextprotocol-2-2-servicing.md).
+[ADR 0003](decisions/0003-sdk-2x-wire-compatibility.md); the non-breaking 2.2 and 2.3 servicing
+dispositions are recorded in
+[ADR 0006](decisions/0006-modelcontextprotocol-2-2-servicing.md) and
+[ADR 0031](decisions/0031-modelcontextprotocol-2-3-servicing.md).
 
 Protocol logging is retired: the server advertises `logging: false`, emits no
 `notifications/message`, and keeps operational output on stderr. Secret-safe structured unexpected-
