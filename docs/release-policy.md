@@ -54,8 +54,14 @@ A release is production-ready when all of the following are true:
   `ModelContextProtocol` 2.1.0→2.2.0 servicing review, confirms that the separate ASP.NET Core
   hybrid-session feature is outside this stdio product, and retains both supported protocol eras
   without a consumer migration.
+- [ADR 0031](decisions/0031-modelcontextprotocol-2-3-servicing.md) records the
+  `ModelContextProtocol` 2.2.0→2.3.0 servicing review: the nullable client `ServerInfo` and
+  registration-order listing corrections need no RoslynMcp change, HTTP/SSE/OAuth changes are outside
+  this stdio product, and both protocol eras are retained without a consumer migration. It moves
+  ADR 0007's later Tasks adoption to the exact 2.3.0 / 2.3.0 pair.
 - [ADR 0007](decisions/0007-tasks-extension-compatibility.md) adopts the exact
-  `ModelContextProtocol.Extensions.Tasks` 2.2.0 / core 2.2.0 pair for later opt-in runtime delivery.
+  `ModelContextProtocol.Extensions.Tasks` / core pair for later opt-in runtime delivery (2.3.0 / 2.3.0
+  since ADR 0031).
   It requires protocol 2026-07-28 plus per-request capability metadata, synchronous fallback, a
   host-owned allowlist, finite retention, process-lifetime handles, and secret-safe background
   failure handling. It does not promise that later extension and core releases remain in lockstep.

@@ -84,7 +84,7 @@ builder.Services
         };
         options.ServerInstructions = ServerInstructions.For(toolTierSelection);
     })
-    // ModelContextProtocol 2.2.0 owns a BufferedStream over standard output and flushes after
+    // ModelContextProtocol 2.3.0 owns a BufferedStream over standard output and flushes after
     // every send. Keep Console.Out out of shutdown handling: it is a different writer and cannot
     // flush the SDK-owned transport buffer.
     .WithStdioServerTransport()

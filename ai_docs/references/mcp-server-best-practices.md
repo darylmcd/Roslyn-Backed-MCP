@@ -34,7 +34,7 @@ Reference: [MCP spec — tools](https://modelcontextprotocol.io/specification/20
 
 ## 2. .NET SDK native pattern: request filters
 
-This repo pins `ModelContextProtocol` 2.2.0. The SDK exposes a first-class decorator/middleware pipeline for each MCP method:
+This repo pins `ModelContextProtocol` 2.3.0. The SDK exposes a first-class decorator/middleware pipeline for each MCP method:
 
 - Entrypoint: `IMcpServerBuilder.WithRequestFilters(Action<IMcpRequestFilterBuilder>)`
 - Tool-call slot: `IMcpRequestFilterBuilder.AddCallToolFilter(McpRequestFilter<CallToolRequestParams, CallToolResult>)`
