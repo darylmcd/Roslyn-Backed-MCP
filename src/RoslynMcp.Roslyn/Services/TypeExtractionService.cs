@@ -862,8 +862,8 @@ public sealed class TypeExtractionService : ITypeExtractionService
                 // the old `Body is not null` guard silently skipped these, leaving the field null.
                 // The dropped `;` carried the line break that ends the member; the new closing brace keeps it.
                 var convertedBody = SyntaxFactory.Block(
-                    SyntaxFactory.ExpressionStatement(expressionBody.Expression),
-                    assignment);
+                    assignment,
+                    SyntaxFactory.ExpressionStatement(expressionBody.Expression));
                 updatedCtor = updatedCtor
                     .WithExpressionBody(null)
                     .WithSemicolonToken(default)
@@ -873,7 +873,9 @@ public sealed class TypeExtractionService : ITypeExtractionService
             }
             else
             {
-                updatedCtor = updatedCtor.WithBody(ctor.Body!.AddStatements(assignment));
+                // Assigned before the first original statement: constructor code may reach the extracted
+                // members through a retained helper, and the field must be set by then.
+                updatedCtor = updatedCtor.WithBody(ctor.Body!.WithStatements(ctor.Body.Statements.Insert(0, assignment)));
             }
 
             replacements[ctor] = updatedCtor;

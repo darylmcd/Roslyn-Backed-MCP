@@ -71,14 +71,14 @@ public sealed class TypeExtractionTriviaPreservationTests : IsolatedWorkspaceTes
                 "    }",
                 "",
             ];
-        string[] assigned = ["    {", "        _seed  =  seed ;   // keep", "        _computeHelper = computeHelper;", "    }"];
+        string[] assigned = ["    {", "        _computeHelper = computeHelper;", "        _seed  =  seed ;   // keep", "    }"];
         string[] rewrittenConstructor = shape switch
         {
             "block" => ["    public TriviaFixture( int seed, ComputeHelper computeHelper )", .. assigned],
             "optional" => ["    public TriviaFixture( int seed, ComputeHelper computeHelper, string tag = \"x\" )", .. assigned],
             "chained" => ["    public TriviaFixture( int seed, ComputeHelper computeHelper )", .. assigned,
                 "    public TriviaFixture( ComputeHelper computeHelper) : this( 7, computeHelper ) { }"],
-            "expression" => ["    public TriviaFixture( int seed, ComputeHelper computeHelper )", "    {", "        _seed = seed;", "        _computeHelper = computeHelper;", "    }"],
+            "expression" => ["    public TriviaFixture( int seed, ComputeHelper computeHelper )", "    {", "        _computeHelper = computeHelper;", "        _seed = seed;", "    }"],
             _ => [],
         };
         var expected = string.Join(eol, Lines(synthesized, rewrittenConstructor, "    public int UseCompute() => _computeHelper.Compute( 5 );", withCompute: false));
