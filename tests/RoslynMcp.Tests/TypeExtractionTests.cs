@@ -1582,12 +1582,6 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
     }
 
     /// <summary>
-    /// Acceptance gate for type-extraction-composition-constructor-coverage: the previewed source
-    /// (updated source type + generated new type) must compile with zero errors — specifically none
-    /// of CS1737 (required after optional), CS1729 (no matching constructor overload for the
-    /// `this(...)` chain), or CS0191 (readonly field assigned outside a constructor).
-    /// </summary>
-    /// <summary>
     /// extract-type-composition-assigned-before-use: the composition field used to be assigned at the END of
     /// every root constructor, so constructor code that reaches an extracted member through a retained
     /// helper dereferenced a null field. The previewed solution is emitted and run: <c>V</c> must be 7.
@@ -1646,6 +1640,12 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         }
     }
 
+    /// <summary>
+    /// Acceptance gate for type-extraction-composition-constructor-coverage: the previewed source
+    /// (updated source type + generated new type) must compile with zero errors — specifically none
+    /// of CS1737 (required after optional), CS1729 (no matching constructor overload for the
+    /// `this(...)` chain), or CS0191 (readonly field assigned outside a constructor).
+    /// </summary>
     private static async Task AssertModifiedSolutionCompilesAsync(string previewToken)
     {
         var retrieved = PreviewStore.Retrieve(previewToken);
