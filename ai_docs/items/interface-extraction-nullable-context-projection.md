@@ -1,6 +1,6 @@
 # interface-extraction-nullable-context-projection — Preserve emitted nullable annotation contexts
 
-**row:** `interface-extraction-nullable-context-projection` · **pri:** `High` · **size:** `M` · **deps:** `cross-project-receiving-namespace-compatibility,ci-linux-test-shard-budget`
+**row:** `interface-extraction-nullable-context-projection` · **pri:** `High` · **size:** `M`
 
 ## Anchors
 
@@ -28,3 +28,5 @@
 - Same receipt: four proper raw ref/indexer/function-pointer/nullable-wrapper members compile and match under both receiving defaults; C#7.3 oblivious plain string stays legal, while nonoblivious decoration yields CS8370. Therefore the helper is independently useful before shared member projection, but legality checks cannot be deferred.
 - Preserve candidate `Receiving_Context_Preserves_Recursive_Nullable_States`/`RecursiveNullableSource` unchanged: original emitters lose indexer keys and unsafe context, so that full public matrix remains parent closure after corresponding emitter repair. Add a distinct native specimen for representable original-emitter positions; do not trim the existing candidate test.
 - Dependency is delivery order after namespace child. Cold nullable approval is conditional on explicit emitted-position mapping plus new-decoration compiler legality. Root alone writes canonical rows/deps; original parent `interface-extraction-nullability-context-fidelity` stays open and retains complete semantic/public-test prerequisites. Full receiving-language validation remains separate.
+
+- 2026-10-26: dependency ci-linux-test-shard-budget resolved by operator decision (third hosted Linux shard, PR claude/ci-linux-three-shards); cross-project-receiving-namespace-compatibility already closed (#1846). PR1854 merged main (incl. #1855) at da051a67; 29/29 InterfaceNullableContext/AnalyzerReferenceIsolation/InterfaceExtraction tests pass locally. Hosted exact-head qualification still required.

@@ -5,7 +5,7 @@
 ## Anchors
 
 - `.github/workflows/ci.yml:142` — All matrix legs, including docs-linux, acquire latest10.0.x through setup-dotnet before their test execution.
-- `CI_POLICY.md:10` — Policy-only docs use two hosted Linux class shards; Markdown contract consumers require complete test coverage.
+- `CI_POLICY.md:10` — Policy-only docs use three hosted Linux class shards; Markdown contract consumers require complete test coverage.
 - [PR1836 corrected-head CI](https://github.com/darylmcd/Roslyn-Backed-MCP/actions/runs/40225081974) — Both docs-linux legs fail SDK setupHTTP409 before repository tests.
 - `tests/RoslynMcp.Tests/CiTopologyDecisionContractTests.cs` — Preserve docs partition and fail-closed routing contracts.
 

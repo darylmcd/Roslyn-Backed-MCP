@@ -6,13 +6,13 @@ This repository is public. Pull-request validation therefore runs only on epheme
 
 | Situation | Windows | Linux |
 |---|---|---|
-| Code-bearing PR | Four hosted class shards | Two hosted class shards |
-| Policy-only documentation PR | No Windows leg | Two hosted class shards |
+| Code-bearing PR | Four hosted class shards | Three hosted class shards |
+| Policy-only documentation PR | No Windows leg | Three hosted class shards |
 | Dispatch / weekly schedule | None | One unsharded hosted coverage/live-network leg |
 
 Each OS partition is complete and disjoint. `eng/get-test-shard-plan.ps1` derives exact class filters from the compiled MSTest assembly; the release verifier rejects invalid, empty, overlapping, or incomplete plans.
 
-The stable pull-request check remains `validate`. Dispatch and scheduled runs report `validate-informational`; they cannot substitute their single Linux leg for the event-specific routed pull-request matrix (six legs for code, two for policy-only documentation).
+The stable pull-request check remains `validate`. Dispatch and scheduled runs report `validate-informational`; they cannot substitute their single Linux leg for the event-specific routed pull-request matrix (seven legs for code, three for policy-only documentation).
 
 ## Retired repository runner
 
