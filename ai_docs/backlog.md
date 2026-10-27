@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-27T22:04:55Z
+**updated_at:** 2026-10-27T22:45:33Z
 
 ## Agent contract
 
@@ -73,7 +73,6 @@
 | `render-finding-linux-pwsh-exit-139` | High | — | Identify and repair the PowerShell child exit139 that blocks hosted renderer determinism validation. [type: bug] [source: hosted-ci] | S | items/render-finding-linux-pwsh-exit-139.md |
 | `linux-pwsh-startup-profile-invalid-assembly-identity` | High | — | Diagnose native PowerShell startup assembly-identity corruption and qualify the proven repair without changing test coverage or deadlines. | S | items/linux-pwsh-startup-profile-invalid-assembly-identity.md |
 | `analyzer-shadow-sweep-live-child-authority` | High | — | Protect active analyzer lease children from foreign sweeps during late dependency copies; prove whole-child authority instead of relying on sibling DLL locks. | S | items/analyzer-shadow-sweep-live-child-authority.md |
-| `extract-type-composition-assigned-before-use` | High | — | Assign the injected helper first in each root constructor; refuse when base or retained override code can reach the helper before assignment. [type: bug] [source: archive-diagnostic-2026-10-27] | S | items/extract-type-composition-assigned-before-use.md |
 | `extract-type-value-type-and-record-composition` | High | extract-type-static-source-composition | Refuse instance-helper extraction from records, record structs and structs (equality, with-copies and zero-init change); static-only moves stay eligible. [type: bug] [source: archive-diagnostic-2026-10-27] | S | items/extract-type-value-type-and-record-composition.md |
 | `interface-extraction-indexer-declarations` | High | interface-extraction-ref-return-contracts | Emit extracted indexers as IndexerDeclaration with bracketed parameters and collect their parameter namespaces; both emitters emit invalid "this[]" properties today. [type: bug] [source: archive-diagnostic-2026-10-27] | M | items/interface-extraction-indexer-declarations.md |
 | `interface-extraction-parameter-contract-attributes` | High | cross-project-interface-parameter-semantics | Copy caller-info, nullable-flow and handler parameter attributes onto extracted interface members; refuse when interpolated-string handler binding would change. [type: bug] [source: archive-diagnostic-2026-10-27] | M | items/interface-extraction-parameter-contract-attributes.md |
