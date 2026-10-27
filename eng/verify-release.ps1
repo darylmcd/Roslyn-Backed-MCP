@@ -332,8 +332,10 @@ if (-not $TestShardOnly) {
         -Parameters @{ Quiet = $true }
 }
 
-dotnet restore $solutionPath --nologo
-Invoke-DotnetStep "dotnet restore (main solution)"
+Invoke-ChildScriptStep `
+    -Description 'Validation dependency preparation' `
+    -ScriptPath (Join-Path $PSScriptRoot 'prepare-validation-dependencies.ps1') `
+    -Parameters @{ RepoRoot = $repoRoot }
 
 if (-not $TestShardOnly) {
     Invoke-ChildScriptStep `
@@ -341,11 +343,6 @@ if (-not $TestShardOnly) {
         -ScriptPath (Join-Path $PSScriptRoot 'update-third-party-notices.ps1') `
         -Parameters @{ RepoRoot = $repoRoot; SolutionPath = $solutionPath; Verify = $true; VerifyRestoredLicenses = $true }
 }
-
-Invoke-ChildScriptStep `
-    -Description 'Test fixture preparation' `
-    -ScriptPath (Join-Path $PSScriptRoot 'prepare-test-fixtures.ps1') `
-    -Parameters @{ RepoRoot = $repoRoot }
 
 dotnet build $solutionPath -c $Configuration --no-restore --nologo
 Invoke-DotnetStep "dotnet build"

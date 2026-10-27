@@ -79,13 +79,27 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             throw new PublicInvalidOperationException($"Target file already exists: {DescribeProjectRelativePath(targetProjectDirectory, targetFilePath)}");
         }
 
-        BaseNamespaceDeclarationSyntax? destinationNamespace = string.IsNullOrWhiteSpace(resolvedTargetNamespace)
-            ? null
-            : SyntaxFactory.FileScopedNamespaceDeclaration(SyntaxFactory.ParseName(resolvedTargetNamespace))
+        var destinationNamespace = ReceivingNamespaceFactory.Create(resolvedTargetNamespace,
+            ReceivingNamespaceFactory.RequireCSharpOptions(targetProject.ParseOptions));
+        destinationNamespace = destinationNamespace switch
+        {
+            FileScopedNamespaceDeclarationSyntax fileScoped => fileScoped
                 .WithNamespaceKeyword(SyntaxFactory.Token(SyntaxKind.NamespaceKeyword).WithTrailingTrivia(SyntaxFactory.Whitespace(" ")))
-                .WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken).WithTrailingTrivia(SyntaxFactory.CarriageReturnLineFeed));
+                .WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken).WithTrailingTrivia(SyntaxFactory.CarriageReturnLineFeed)),
+            NamespaceDeclarationSyntax block => block
+                .WithNamespaceKeyword(SyntaxFactory.Token(SyntaxKind.NamespaceKeyword).WithTrailingTrivia(SyntaxFactory.Whitespace(" ")))
+                .WithOpenBraceToken(SyntaxFactory.Token(SyntaxKind.OpenBraceToken).WithTrailingTrivia(SyntaxFactory.CarriageReturnLineFeed)),
+            _ => destinationNamespace
+        };
         var movedRoot = MovedDeclarationFileWriter.CreateCompilationUnit(
             sourceRoot, typeDeclaration, sourceRoot.Usings, destinationNamespace, semanticModel, ct);
+        if (movedRoot.Members.Single() is NamespaceDeclarationSyntax movedNamespace &&
+            !movedNamespace.Members.Last().ToFullString().EndsWith('\n'))
+        {
+            // A final line comment must end before the new namespace's closing brace.
+            movedRoot = movedRoot.ReplaceNode(movedNamespace, movedNamespace.WithCloseBraceToken(
+                movedNamespace.CloseBraceToken.WithLeadingTrivia(SyntaxFactory.CarriageReturnLineFeed)));
+        }
         // Item #1 — pass folders so MSBuildWorkspace.TryApplyChanges resolves the disk path
         // consistently with our explicit write. Without folders, Roslyn resolves cross-project
         // adds to {targetProjectDir}/{fileName} and produces a rogue project-root copy.
@@ -172,7 +186,8 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         // instead of the legacy text-grep that dropped source-project usings whose last segment
         // didn't match the synthesized short name. Mirrors InterfaceExtractionService:301-338.
         var requiredNamespaces = CollectReferencedNamespaces(typeSymbol, namespaceName);
-        var interfaceRoot = CreateInterfaceCompilationUnit(sourceRoot, typeSymbol, resolvedInterfaceName, namespaceName, isCrossProject, requiredNamespaces);
+        var interfaceRoot = CreateInterfaceCompilationUnit(sourceRoot, typeSymbol, resolvedInterfaceName, namespaceName, isCrossProject, requiredNamespaces,
+            ReceivingNamespaceFactory.RequireCSharpOptions(targetProject.ParseOptions));
         var interfaceFilePath = Path.Combine(interfaceDirectory, resolvedInterfaceName + ".cs");
         if (File.Exists(interfaceFilePath))
         {
@@ -425,7 +440,8 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         string interfaceName,
         string namespaceName,
         bool isCrossProject,
-        IReadOnlyCollection<string> requiredNamespaces)
+        IReadOnlyCollection<string> requiredNamespaces,
+        CSharpParseOptions receivingOptions)
     {
         var interfaceMembers = typeSymbol.GetMembers()
             .Where(member => member.DeclaredAccessibility == Accessibility.Public && !member.IsStatic && !member.IsImplicitlyDeclared)
@@ -454,10 +470,10 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
 
         var usings = UsingDirectiveSynthesizer.BuildUsingDirectives(sourceRoot.Usings, requiredNamespaces);
         var cleanUsings = SyntaxFactory.List(usings.Select(u => u.WithoutTrivia()));
-        MemberDeclarationSyntax wrappedMember = string.IsNullOrWhiteSpace(namespaceName)
+        var destinationNamespace = ReceivingNamespaceFactory.Create(namespaceName, receivingOptions);
+        MemberDeclarationSyntax wrappedMember = destinationNamespace is null
             ? interfaceDeclaration
-            : SyntaxFactory.FileScopedNamespaceDeclaration(SyntaxFactory.ParseName(namespaceName))
-                .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(interfaceDeclaration));
+            : destinationNamespace.WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(interfaceDeclaration));
         // Synthesized declarations have no original body layout to preserve.
         return SyntaxFactory.CompilationUnit().WithUsings(cleanUsings)
             .WithMembers(SyntaxFactory.SingletonList(wrappedMember)).NormalizeWhitespace();
@@ -566,7 +582,8 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         // for the same call). The DI-inversion path routes through here too, so missing this
         // produces silent regressions for cross-project extract+invert scenarios.
         var requiredNamespaces = CollectReferencedNamespaces(typeSymbol, namespaceName);
-        var interfaceRoot = CreateInterfaceCompilationUnit(sourceRoot, typeSymbol, interfaceName, namespaceName, isCrossProject, requiredNamespaces);
+        var interfaceRoot = CreateInterfaceCompilationUnit(sourceRoot, typeSymbol, interfaceName, namespaceName, isCrossProject, requiredNamespaces,
+            ReceivingNamespaceFactory.RequireCSharpOptions(targetProject.ParseOptions));
         var interfaceFileDirectory = isCrossProject
             ? ResolvePreferredInterfaceSubdirectory(solution, targetProject, targetProjectDirectory)
             : targetProjectDirectory;
