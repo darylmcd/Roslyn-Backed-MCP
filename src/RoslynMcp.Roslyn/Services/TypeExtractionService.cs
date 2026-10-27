@@ -150,6 +150,8 @@ public sealed class TypeExtractionService : ITypeExtractionService
         var newDoc = targetProject.AddDocument(targetFileName, newFileRoot.ToFullString(), folders: folders, filePath: resolvedTargetPath);
         newSolution = newDoc.Project.Solution;
 
+        await RefuseAddedCompilerErrorsAsync(solution, newSolution, sourceDocument.Project.Id, ct).ConfigureAwait(false);
+
         // Compute diff
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
         var description = $"Extract {membersToExtract.Count} member(s) from '{sourceTypeName}' into new type '{newTypeName}'";
@@ -164,6 +166,39 @@ public sealed class TypeExtractionService : ITypeExtractionService
         return new RefactoringPreviewDto(
             token, description, changes,
             Warnings: null);
+    }
+
+    /// <summary>
+    /// extract-type-preview-compile-delta-gate: refuses a preview whose rewritten source project has compiler
+    /// errors the original did not. Errors are diffed per document by id and message with multiplicity
+    /// (<see cref="InterfaceNullableProjection.AddedErrors"/>); positions are excluded because extraction
+    /// shifts every span. Runs before the preview token is stored, so a refusal leaves no token, version
+    /// change or disk effect. This is a safety net, not proof of behavioural preservation.
+    /// </summary>
+    private static async Task RefuseAddedCompilerErrorsAsync(Solution before, Solution after, ProjectId projectId, CancellationToken ct)
+    {
+        var beforeCompilation = await before.GetProject(projectId)!.GetCompilationAsync(ct).ConfigureAwait(false);
+        var afterCompilation = await after.GetProject(projectId)!.GetCompilationAsync(ct).ConfigureAwait(false);
+        if (beforeCompilation is null || afterCompilation is null)
+        {
+            throw InvalidOperationErrors.Internal("The source project compilation is unavailable, so the extraction could not be verified.");
+        }
+
+        string DocumentKey(Location location, bool afterEdit) =>
+            location.SourceTree is { } tree && (afterEdit ? after : before).GetDocumentId(tree) is { } id
+                ? id.ToString()
+                : location.Kind.ToString();
+
+        var added = InterfaceNullableProjection.AddedErrors(
+            beforeCompilation.GetDiagnostics(ct), afterCompilation.GetDiagnostics(ct), DocumentKey);
+        if (added.Length == 0)
+        {
+            return;
+        }
+
+        var ids = string.Join(", ", added.Select(d => d.Id).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal));
+        throw new PublicInvalidOperationException(
+            $"Extracting these members would introduce compiler errors ({ids}). Choose members whose extraction compiles, or restructure the type first.");
     }
 
     /// <summary>

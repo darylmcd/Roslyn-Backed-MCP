@@ -506,9 +506,9 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
             {
                 "namespace SampleLib;",
                 "",
-                "public abstract class BaseMigration",
+                "public class BaseMigration",
                 "{",
-                "    public abstract void Down();",
+                "    public virtual void Down() { }",
                 "    public virtual void Up() { }",
                 "}",
                 "",
@@ -1478,6 +1478,73 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
             StringAssert.Contains(updatedSource, "_offsetHolder.Helper(2)");
             StringAssert.Contains(updatedSource, "_offsetHolder._offset");
             await AssertModifiedSolutionCompilesAsync(preview.PreviewToken);
+        }
+        finally
+        {
+            WorkspaceManager.Close(fixture.WorkspaceId);
+            QueueDirectoryForCleanup(fixture.SolutionDirectory);
+        }
+    }
+
+    /// <summary>
+    /// extract-type-preview-compile-delta-gate: a preview whose rewritten solution adds compiler errors
+    /// must be refused before a token, workspace-version change or disk effect exists.
+    /// </summary>
+    [TestMethod]
+    [DataRow("StaticHostFixture", "StaticHostFixture", "Compute", "CS0708")]
+    [DataRow("PartialHostFixture", "PartialHostFixture", "Hook", "CS0751")]
+    [DataRow("AbstractOverrideFixture", "AbstractOverrideDerived", "Down", "CS0534")]
+    public async Task ExtractType_PreviewThatAddsCompilerErrors_IsRefusedWithoutToken(
+        string fixtureName, string typeName, string member, string expectedId)
+    {
+        var source = fixtureName switch
+        {
+            "StaticHostFixture" => """
+                namespace SampleLib;
+
+                public static class StaticHostFixture
+                {
+                    public static int Keep() => 1;
+                    public static int Compute(int value) => value * 2;
+                }
+                """,
+            "PartialHostFixture" => """
+                namespace SampleLib;
+
+                public partial class PartialHostFixture
+                {
+                    partial void Hook();
+                    partial void Hook() { }
+                    public int Keep() => 1;
+                }
+                """,
+            _ => """
+                namespace SampleLib;
+
+                public abstract class AbstractOverrideBase
+                {
+                    public abstract void Down();
+                }
+
+                public class AbstractOverrideDerived : AbstractOverrideBase
+                {
+                    public override void Down() { }
+                    public int Keep() => 1;
+                }
+                """,
+        };
+        var fixture = await CreateExtractionFixtureAsync(fixtureName + ".cs", source);
+        try
+        {
+            var version = WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId);
+            var error = await Assert.ThrowsAsync<PublicInvalidOperationException>(() =>
+                TypeExtractionService.PreviewExtractTypeAsync(
+                    fixture.WorkspaceId, fixture.FilePath, typeName, [member], "ExtractedHelper", null, CancellationToken.None));
+
+            StringAssert.Contains(error.Message, expectedId);
+            FileOperationIntegrationTests.AssertNoStoredPreviews(PreviewStore, fixture.WorkspaceId);
+            Assert.AreEqual(version, WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId));
+            Assert.IsFalse(File.Exists(Path.Combine(Path.GetDirectoryName(fixture.FilePath)!, "ExtractedHelper.cs")));
         }
         finally
         {
