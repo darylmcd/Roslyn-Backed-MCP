@@ -16,3 +16,5 @@
 ## Evidence
 
 - CI_POLICY requires recheck when non-test work moves between legs. This is the tracked evidence remainder of ci-artifact-owner-quality-deadline, not a requirement to retry a failed head.
+
+- Two observed complete-green post-prerequisite code runs now exist:40401658309(namespace1846) and40419476050(startup1855). This is below five and is not a completed canonical collector/image-noise qualification. Keep every original Acceptance condition open.
