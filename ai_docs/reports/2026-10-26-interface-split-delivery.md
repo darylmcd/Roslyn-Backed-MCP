@@ -108,6 +108,7 @@
 | Required resume | Adequate isolated Linux capacity, corrected diagnostic Git remote, reviewed fixed-source measurements, causally supported correction, then exact-head full hosted qualification. No Linux cure or environment/pre-existing cause claimed. |
 | Parked objectives | Parameter, ref-return, unsafe, escaped identifiers, full nullable fidelity, receiving-language and nullable-context child stay open under preserved drafts1840/1854. Before parameter code, canonical-decompose method projection and complete indexer contracts; preserve raw legacy recovery coverage. |
 | Independent prerequisite | Windows startup1855 MERGED49e0b03a; all six hosted legs/quality/floor/CodeQL/validate succeeded at43c2d233,coldPASS,cleanup0. Nullable1854 remains frozen/unintegrated while the separate Linux budget is unqualified. |
+| Outstanding integration owner | The startup row's follow-on1854 integration requirement is explicitly retained by OPEN interface-extraction-nullable-context-projection Evidence and draft1854. Startup closure records its independently correct merged fix; dependent integration has not run and is not claimed qualified. |
 
 ## Excluded candidates
 
