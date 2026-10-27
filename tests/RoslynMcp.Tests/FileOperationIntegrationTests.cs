@@ -331,6 +331,77 @@ public sealed class FileOperationIntegrationTests : IsolatedWorkspaceTestBase
         Assert.IsFalse(File.Exists(path));
     }
 
+    /// <summary>
+    /// file-move-namespace-text-encoding: the namespace rewrite re-materialised the moved file with
+    /// <c>SyntaxNode.GetText()</c> defaults (UTF-8, no BOM), so a UTF-16 BOM source lost its encoding on move.
+    /// </summary>
+    [TestMethod]
+    [DataRow(false, true)]
+    [DataRow(true, true)]
+    [DataRow(false, false)]
+    [DataRow(true, false)]
+    public async Task Move_File_With_Utf16Bom_Preserves_Encoding_Through_Apply_And_Undo(bool blockScoped, bool updateNamespace)
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var sourcePath = workspace.GetPath("SampleLib", "Dog.cs");
+        var destinationPath = workspace.GetPath("SampleLib", "Animals", "Dog.cs");
+        var original = await File.ReadAllTextAsync(sourcePath, CancellationToken.None);
+        var content = blockScoped
+            ? original.Replace("namespace SampleLib;", "namespace SampleLib\n{", StringComparison.Ordinal).TrimEnd() + "\n}\n"
+            : original;
+        var encoding = new System.Text.UnicodeEncoding(bigEndian: false, byteOrderMark: true);
+        var preamble = encoding.GetPreamble();
+        var originalBytes = preamble.Concat(encoding.GetBytes(content)).ToArray();
+        await File.WriteAllBytesAsync(sourcePath, originalBytes, CancellationToken.None);
+        await workspace.ReloadAsync(CancellationToken.None);
+
+        var preview = await FileOperationService.PreviewMoveFileAsync(
+            workspace.WorkspaceId,
+            new MoveFileDto(sourcePath, destinationPath, null, UpdateNamespace: updateNamespace),
+            CancellationToken.None);
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
+
+        Assert.IsTrue(applyResult.Success, applyResult.Error);
+        Assert.IsFalse(File.Exists(sourcePath));
+        var movedBytes = await File.ReadAllBytesAsync(destinationPath, CancellationToken.None);
+        Assert.IsTrue(movedBytes.AsSpan().StartsWith(preamble), "The moved file must keep its UTF-16 byte-order mark.");
+        var movedText = encoding.GetString(movedBytes, preamble.Length, movedBytes.Length - preamble.Length);
+        StringAssert.Contains(movedText, updateNamespace ? "namespace SampleLib.Animals" : "namespace SampleLib");
+        if (!updateNamespace)
+        {
+            Assert.AreEqual(content, movedText, "UpdateNamespace=false must move the text unchanged.");
+        }
+
+        Assert.IsTrue(await UndoService.RevertAsync(workspace.WorkspaceId, CancellationToken.None));
+        CollectionAssert.AreEqual(originalBytes, await File.ReadAllBytesAsync(sourcePath, CancellationToken.None),
+            "Undo must restore the original bytes, including the byte-order mark.");
+        Assert.IsFalse(File.Exists(destinationPath));
+    }
+
+    [TestMethod]
+    public async Task Move_File_Without_Namespace_Keeps_Utf16Bom_And_Text()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var sourcePath = workspace.GetPath("SampleLib", "Dog.cs");
+        var destinationPath = workspace.GetPath("SampleLib", "Animals", "Dog.cs");
+        const string content = "public class NoNamespaceMoved { }\n";
+        var encoding = new System.Text.UnicodeEncoding(bigEndian: false, byteOrderMark: true);
+        var preamble = encoding.GetPreamble();
+        await File.WriteAllBytesAsync(sourcePath, preamble.Concat(encoding.GetBytes(content)).ToArray(), CancellationToken.None);
+        await workspace.ReloadAsync(CancellationToken.None);
+
+        var preview = await FileOperationService.PreviewMoveFileAsync(
+            workspace.WorkspaceId,
+            new MoveFileDto(sourcePath, destinationPath, null, UpdateNamespace: true),
+            CancellationToken.None);
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
+
+        Assert.IsTrue(applyResult.Success, applyResult.Error);
+        var movedBytes = await File.ReadAllBytesAsync(destinationPath, CancellationToken.None);
+        Assert.IsTrue(movedBytes.AsSpan().StartsWith(preamble));
+        Assert.AreEqual(content, encoding.GetString(movedBytes, preamble.Length, movedBytes.Length - preamble.Length));
+    }
+
     internal static void AssertNoStoredPreviews(RoslynMcp.Roslyn.Contracts.IPreviewStore previewStore, string workspaceId)
     {
         Assert.IsInstanceOfType<TrackingPreviewStore>(previewStore,
