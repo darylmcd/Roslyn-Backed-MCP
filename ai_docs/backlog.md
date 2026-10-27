@@ -223,6 +223,7 @@
 | `render-finding-tests-process-ownership` | Medium | — | Replace private sequential pipe reads and unobserved process waits with the existing owned runner. [type: test-refactor] [source: renderer-ci-diagnosis] | S | items/render-finding-tests-process-ownership.md |
 | `interface-extraction-conflict-check-fail-closed` | Medium | — | Refuse interface extraction when project conflict compilation fails or is unavailable; preserve conflict/no-conflict controls and prevent preview publication. | S | items/interface-extraction-conflict-check-fail-closed.md |
 | `interface-extraction-public-accessor-contracts` | Medium | — | Preserve public get/set/init contracts for ordinary extracted properties in both emitters; keep nonpublic accessors out of interface requirements. | M | items/interface-extraction-public-accessor-contracts.md |
+| `dotnet-runner-concurrent-descendant-stdout-loss` | Medium | — | **Stop losing parent stdout under concurrent held pipes** — bytes written before exit must survive the bounded post-exit drain. [type: bug] [source: PR1850 hosted windows leg] | M | items/dotnet-runner-concurrent-descendant-stdout-loss.md |
 
 ## Low
 
