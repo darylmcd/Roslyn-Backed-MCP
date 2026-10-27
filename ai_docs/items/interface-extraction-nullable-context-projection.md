@@ -1,6 +1,6 @@
 # interface-extraction-nullable-context-projection — Preserve emitted nullable annotation contexts
 
-**row:** `interface-extraction-nullable-context-projection` · **pri:** `High` · **size:** `M` · **deps:** `cross-project-receiving-namespace-compatibility,analyzer-shadow-owner-startup-sweep-race`
+**row:** `interface-extraction-nullable-context-projection` · **pri:** `High` · **size:** `M` · **deps:** `cross-project-receiving-namespace-compatibility,ci-linux-test-shard-budget`
 
 ## Anchors
 
@@ -21,7 +21,7 @@
 
 ## Evidence
 
-- BLOCKED hosted qualification: draft PR1854 atd8a709921b5aa4a6841f6ee093fe28d777f4c1d5 has fresh implementation coldPASS, local449/0/0 plus final native28/0/0 and causal old25fail/3compatiblepass. Windows4 run40412863293 job121887797301 failed analyzer owner-file initialization; distinct Linux1 job121887797650 passed2660tests/0failed/37skipped in28m23 then hit30m cancellation before release completion; workload diagnosis is separately pending; source and base-reproduction investigation tracked by analyzer-shadow-owner-startup-sweep-race. No unchanged rerun or pre-existing/runtime attribution. Nullable six-file diff stays frozen; the independently correct prerequisite must qualify before integration. Original Acceptance and complex candidate tests remain unchanged.
+- PARKED with preserved drafts PR1840 and PR1854: dependency PR1854 atd8a70992 remains unqualified because Linux1 run40412863293 hit its30m deadline after2660passed/0failed/37skipped. The separate Windows owner-startup repair merged in PR1855 at49e0b03a1ed9d63c3f448a2bf545aeffc36c88bb; it does not establish a Linux cure. Integrate that prerequisite when this child resumes, before exact-head qualification. Live Docker/WSL provide7.75GiB; reviewed3GiB structural experiment stopped86 at memory cap before tests. No causally supported Linux correction or matching-capacity measurement is available in this session. Resume ci-linux-test-shard-budget with an adequate isolated Linux backend, corrected canonical Git remote and the reviewed fixed-source cohort; qualify the child before dependent code. Original Acceptance and full complex candidate tests stay unchanged; no weakened test or unchanged CI rerun.  See ai_docs/reports/2026-10-26-interface-split-delivery.md.
 
 
 - `nullable-original-probe-final.log`: admitted scratch compiler probe links EXACT candidate helper source and reconstructs original MinQualified emitter spelling. Thirteen represented methods/properties/event members: receiver Disable has 8 graph mismatches plus CS8632 before decoration; receiver Enable has 5 graph mismatches before decoration. Both serialized decorated cohorts compile and match all represented member graphs. This is helper evidence, not native public-route qualification.

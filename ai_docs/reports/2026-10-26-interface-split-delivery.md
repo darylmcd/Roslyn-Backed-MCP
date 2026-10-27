@@ -6,14 +6,14 @@
 
 ## Delivery contract
 
-| Field | Current evidence |
+| Field | Evidence at pre-merge docs checkpoint |
 |---|---|
 | Request | /remediate count=10; original eight objectives plus two approved children. Raw-header and hosted-CI prerequisites were forced by observed failures; original objectives retained. |
 | Shipping rule | Merge independently correct green slices; write decomposition/remainder rows before first merge; ordinary closures/findings in ONE trailing docs PR. |
 | Preserved combined candidate | PR1840 draft, remote cb90656f544a8b57822df9db8207e4d9162535d5; source f6c2e9f9f7b75bcb00c2bb5547ec5dafc818f9c9 preserved under local checkpoint64d638cd93e8576b0e494fe935adc026c9102542. Not a merge-qualified tree. |
-| Current main checkpoint | 5b1930a3605ebe03a3dcf37ae9626e882e07e0d0; CI1849, decomposition1848 and namespace1846 merged. Recheck after each merge. |
-| Merged-main full gate | Historical PASS on ab4d4003:5319passed/0failed/31existingplatformskips,total5350,exit0. Newer merged code and trailing docs require ONE final full LOCAL gate owned by root; batch remains active. |
-| Runner | Local authoritative gate selected; no remote parity or runner-job success claimed. |
+| Code main checkpoint | 49e0b03a1ed9d63c3f448a2bf545aeffc36c88bb; source1855 merged and cleanup0 after all required hosted checks. Final docs1853 and its later full local gate are outside this checkpoint. |
+| Historical/full-gate boundary | Historical PASS on ab4d4003:5319passed/0failed/31existingplatformskips,total5350,exit0. Newer merged code and trailing docs require ONE final full LOCAL gate owned by root; batch remains active. |
+| Runner | Local authoritative gate selected. Read-only Windows worker probe exposes roslyn-backed-mcp build-release/ci/test-release, no Linux cohort command; no job submitted, remote parity/success not claimed. |
 
 ## Merged delivery receipts
 
@@ -27,6 +27,7 @@
 | 1849 CI quality/cache and native input ownership | Merged27f82e450dafeed359022da3555e4c9f2528daab at21:03:13Z; exact729eeefa,root114/0/1,actual native RED1/GREEN0,coldPASS,all hosted green,cleanup0. Original134/139 causal rows remain open. |
 | 1848 decomposition/remainders | Merged7b4e71bf7c5f3fdf32acafc5ce9613be6ea95b58 at21:06:43Z; exact1bfd73f7,398rows0ERROR0WARN,coldPASS,hosted docs green,cleanup0. |
 | 1846 receiving namespace first consumer | Merged5b1930a3605ebe03a3dcf37ae9626e882e07e0d0 at21:43:33Z; exact6084d188,root388/0/0,cold integrationPASS,all hosted green,cleanup0. |
+| 1855 analyzer startup ownership | Merged49e0b03a1ed9d63c3f448a2bf545aeffc36c88bb at2026-10-27T00:12:18Z; exact43c2d233,coldPASS,base5red/fixed5green,8classes137pass/final3shadow44pass,compile8projects0errors. All6hosted/quality/floor/CodeQL/validate passed;cleanup0,ownedWTremoved. No Linux-budget cure claimed. |
 
 ## Open slices and dependency obligations
 
@@ -36,13 +37,13 @@
 | class-split-receiving-namespace | Separate deps-chained remainder in docsPR1848; no repair claimed. |
 | split-service-receiving-namespace | Separate deps-chained remainder in docsPR1848; no repair claimed. |
 | relocation-receiving-namespace | Separate deps-chained remainder in docsPR1848; retain raw-header ownership, no repair claimed. |
-| interface-extraction-nullable-context-projection | Draft1854d8a70992 frozen6files; coldPASS, initial14classes449/0/0 and finalConsumerdelta28/0/0; causalold25fail/3compatible. HostedWindows4 failed600/741/2 on analyzer owner initialization; the other four code legs passed; Linux1 passed2660/0/37 in28m23 but hit30m cancellation before release completion. Separate startup/sweep prerequisite tracked; no unchanged rerun or nullable-root-cause claim. |
-| cross-project-interface-parameter-semantics | Original objective retained; full emission and handler binding validation remain atomic. Validation alone is inert when original emitters omit attributes. |
-| interface-extraction-ref-return-contracts | Retain methods/property/indexer ref/ref-readonly and escape metadata obligations. |
-| interface-extraction-unsafe-signature-context | Retain emitted unsafe signatures and atomic refusal under actual policy. |
-| interface-extraction-escaped-member-identifiers | Retain shared semantic identifier spelling. |
-| interface-extraction-nullability-context-fidelity | Retain recursive annotation/value-wrapper graphs and full complex native public matrix; not closed by child planning. |
-| interface-extraction-receiving-language-compatibility | Retain full actual serialized compiler validation after semantic prerequisites; not closed by supported namespace spelling alone. |
+| interface-extraction-nullable-context-projection | PARKED behind draft1854 and ci-linux-test-shard-budget; original Acceptance, dependency chain and complex candidate tests retained. See Linux qualification blocker below. |
+| cross-project-interface-parameter-semantics | PARKED behind draft1854 and ci-linux-test-shard-budget; original Acceptance, dependency chain and complex candidate tests retained. See Linux qualification blocker below. |
+| interface-extraction-ref-return-contracts | PARKED behind draft1854 and ci-linux-test-shard-budget; original Acceptance, dependency chain and complex candidate tests retained. See Linux qualification blocker below. |
+| interface-extraction-unsafe-signature-context | PARKED behind draft1854 and ci-linux-test-shard-budget; original Acceptance, dependency chain and complex candidate tests retained. See Linux qualification blocker below. |
+| interface-extraction-escaped-member-identifiers | PARKED behind draft1854 and ci-linux-test-shard-budget; original Acceptance, dependency chain and complex candidate tests retained. See Linux qualification blocker below. |
+| interface-extraction-nullability-context-fidelity | PARKED behind draft1854 and ci-linux-test-shard-budget; original Acceptance, dependency chain and complex candidate tests retained. See Linux qualification blocker below. |
+| interface-extraction-receiving-language-compatibility | PARKED behind draft1854 and ci-linux-test-shard-budget; original Acceptance, dependency chain and complex candidate tests retained. See Linux qualification blocker below. |
 | raw-move-file-header-ownership | Delivered1845; ordinary closure queued only in trailing docs. |
 | ci-artifact-owner-quality-deadline | DELIVERED1849 at27f82e45; reviewed729eeefa. Parallel required quality job and explicit pre-test cache writers preserve deadlines, partitions, strict audit and artifacts. Root114/0/1 plus actual native ownership RED1/GREEN0; coldPASS, all6hosted/quality/floor/CodeQL/validate green; cleanup0 with ignored-TRX checkout retained detached. Original134 attribution remains OPEN. |
 | ci-quality-move-hosted-timing-recheck | Separate dependent evidence row; require5complete fresh green six-leg runs and canonical collector. No single-run numerical improvement claim. |
@@ -56,7 +57,7 @@
 | PR1849 old08f run40362766596 Linux1 | All2652tests passed,42platformskips;TRXuploaded;30m cap cancelled post-job tar/zstd cache compression. Other5jobs/quality/floor/CodeQL succeeded; overall gateFAILED, never qualification. |
 | Current2374 cache fix | Both cache sites have no automatic post hook. Observed raw proof: Linux and Windows miss/fallback -> checked population -> explicit save before tests; no post-cache hook. Windows save18:00:48 and Linux save17:59:46. Actual Linux1 native134 still fails the required aggregate. Only two current-PR exact caches cleared before first changed-head push; default-branch caches untouched. |
 | PR1848 be8 run40359428470 | Historical docs1 renderer139 failure retained. Changed reviewed1bfd73f7 later passed both hosted docs shards/CodeQL/validate and merged7b4e71bf;398rows/0ERROR/0WARN,coldPASS,cleanup0. No unchanged retry or139cause claim. |
-| PR1854 Windows4 run40412863293 | First failure22:33:15.903Z ChangeSignatureConstructorsTests, missing analyzer owner directory at helperline43;600failed/741passed/2skipped. Separate startup/sweep row, deterministic base proof pending. |
+| PR1854 Windows4 run40412863293 | First failure22:33:15.903Z ChangeSignatureConstructorsTests, missing analyzer owner directory at helperline43;600failed/741passed/2skipped. Separate startup/sweep mechanism reproduced by base5causalRED/fixed5GREEN; prerequisite1855 subsequently merged49e0b03a after all required hosted checks passed. |
 | PR1854 Linux1 run40412863293 | Build0errors; tests22:31:43–23:00:09Z passed2660/0/37,28m23;30m cancellation before release completed. Separate workload-budget diagnosis; no deadline/test loosening or unchanged retry. |
 
 ## Native exit139 diagnosis limits
@@ -64,7 +65,7 @@
 | Probe | Observed result / limit |
 |---|---|
 | Base ca6 isolated framework-dependent control | PowerShell7.6.6 with.NET10.0.14:1/0/0. Not the portable hosted runtime. |
-| Base ca6 portable full Linuxshard0 | Verified portable7.6.6/.NET10.0.12 +SDK10.0.403, Ubuntu24.04 Docker/WSL4CPU16GiB. Exact selected renderer class.2605passed/4failed/35skipped/2644total18m54. Renderer cases passed; no139/core. NOT a green Linux gate or proof of pre-existing/host environment failure. |
+| Base ca6 portable full Linuxshard0 | Verified portable7.6.6/.NET10.0.12 +SDK10.0.403, Ubuntu24.04 Docker/WSL4CPU quota/16GiB configured limit; current physical capacity is recorded separately below. Exact selected renderer class.2605passed/4failed/35skipped/2644total18m54. Renderer cases passed; no139/core. NOT a green Linux gate or proof of pre-existing/host environment failure. |
 | Other four probe failures | Three inherited-pipe parent-exit assertions and one Git-revert cleanliness assertion. Attribution unresolved. Docker had no init, but post-failure snapshot had no zombies; do not claim zombie cause. |
 | Upstream hypothesis | PowerShell28119 tentatively links open runtime121977 startup-profile cache race. No matching native stack or released repair established; no upgrade/cache-isolation cure claimed. |
 | Separate fixture defects | Private renderer helpers read pipes before their timeout and leave unobserved process completion; shared runner has NO startup-cache isolation. Adoption fixes ownership defects only until causal139evidence exists. |
@@ -84,12 +85,29 @@
 | render-finding-linux-pwsh-exit-139 | Canonical trailingHigh row; original native failure unresolved. |
 | render-finding-tests-process-ownership | Canonical trailingMedium row; private pipe/deadline/Git process ownership, not proved139cause. |
 | dockerfile-restore-project-graph | Canonical trailingLow row; static incomplete projectCOPY before solutionrestore; no Docker-build proof or repair claimed. |
-| analyzer-shadow-owner-startup-sweep-race | NewHigh ordinary tracking row; source creation/sweep/owner-file race matches hosted exception; deterministic base proof pending. Required independent CI prerequisite, not a nullable-source expansion or reparse-authority repair. |
+| analyzer-shadow-owner-startup-sweep-race | DELIVERED1855at49e0b03a,all required hosted checks/coldPASS/cleanup0. Ordinary closure only in trailing1853; independent from reparse-authority and Linux-budget owners. |
 | interface-extraction-conflict-check-fail-closed | New bounded follow-up from independent parameter source review; no source repair or parameter scope addition. |
 | interface-extraction-public-accessor-contracts | New ordinary-property follow-up; complete indexer work will retain explicit independent tracking. No inline property repair. |
+| ci-linux-test-shard-budget | NewHigh/M distinct Linux deadline owner; measurements blocked before tests by live capacity, no root-cause fix or calibration closure claimed. |
 | backlog-legacy-no-deps-header-duplicate | Global filingPR899 merged41c65cede880c203a1a3788714251942df10d1b9; coldPASS, canonical preamble conflict repair,112rows/0ERROR/0WARN,cleanup0. Header source defect remains open; healthy whole-item product writer updates used. |
 | backlog-update-final-section-eof | Existing global row owns observed final-section newline defect; duplicate filingPR900closed, no global production fix claimed. |
 | ship-cleanup-ignored-only-policy-drift | Existing global cleanup-policy row. Blocked ignoredTRX remains preserved; planned retained detached checkout avoids any denied deletion. |
+
+## Linux qualification blocker
+
+| Field | Verified state / disposition |
+|---|---|
+| Failed head | Draft1854d8a70992; actual synthetic67185dc8 tree equals d8. Comparator synthetic0fa2668 tree equals merged5b. |
+| Failure | Linux1run40412863293 passed2660/0failed/37skip in28m23, then30m cancellation before release verification completed. Separate from Windows initialization. |
+| Routing evidence | Documented static planner weights new native28cases as8;83existing class assignments change. Observed moved-class duration rankings reverse between runs; no causal production/lifetime defect or valid duration profile proven. |
+| Calibration | Two observed post1849-merge complete-green code runs:40401658309/40419476050. Canonical five-run/image-noise qualification stays open; no weights, timeout, workers or routing names changed. |
+| Approved diagnostic | Fixed shared-class base/head/head/base cohort plus all28native tuples; exact assertions and runsettings retained. No product-source diagnostic edits. |
+| Live capacity | Docker/UbuntuWSL expose7.75GiB;12pre-existing containers left untouched. Matching16GiB cohort was not run. Windows worker supplies no registered Linux-cohort command. |
+| Smaller diagnostic | Reviewed4CPU/3GiB structural-only attempt: base preparation12.791s exit0,build18.914s exit0; memory peak3GiB/max678/oom0. Stopped86 before tests; no head comparison or nullable instrumentation. Scratch clone origin/source also caused SourceLink warnings; corrected canonical-remote bootstrap is prepared and syntax-checked, but no adequate-capacity rerun or empirical warning cure is claimed. |
+| Cleanup | Exact owned diagnostic container removed; final owned-container inventory0. No peer cleanup or global configuration changes. |
+| Required resume | Adequate isolated Linux capacity, corrected diagnostic Git remote, reviewed fixed-source measurements, causally supported correction, then exact-head full hosted qualification. No Linux cure or environment/pre-existing cause claimed. |
+| Parked objectives | Parameter, ref-return, unsafe, escaped identifiers, full nullable fidelity, receiving-language and nullable-context child stay open under preserved drafts1840/1854. Before parameter code, canonical-decompose method projection and complete indexer contracts; preserve raw legacy recovery coverage. |
+| Independent prerequisite | Windows startup1855 MERGED49e0b03a; all six hosted legs/quality/floor/CodeQL/validate succeeded at43c2d233,coldPASS,cleanup0. Nullable1854 remains frozen/unintegrated while the separate Linux budget is unqualified. |
 
 ## Excluded candidates
 
@@ -113,7 +131,9 @@ All13excluded IDs remain open at the current canonical-reader checkpoint. Promot
 
 ## Preservation and finalization
 
-- Preserve eight unrelated pre-existing worktrees, archive tag/branch, protected stash ba3f29984824b9f302db1c1ff66e6a890e33762c, and both original full/namespace candidate checkouts. Historical inventory is not current qualification; final live check pending.
+This is the pre-merge docs checkpoint. Post-merge full-main gate result belongs to the final batch response and its external receipt; no later docs mutation is required to reuse that exact-head result.
+
+- Live preservation check at code49e verified all8 unrelated worktree HEAD/status counts unchanged; original full64d638cd and namespace5e75baf3 candidates plus nullabled8a70992 clean/unchanged; archive tag/branch and protected stash ba3f29984824b9f302db1c1ff66e6a890e33762c present; blocked ignoredTRX present. Recheck after final full gate.
 - Automatic approval review rejected deleting one ignored TRX with only reason blocked by policy. Preserve file tests/RoslynMcp.Tests/TestResults/daryl_DARYLSLAPTOP_2026-10-26_12_40_00_net10.0.trx and its checkout; no alternate deletion. CI checkout is now detached at729eeefa after successful merge; cleanup removed its feature branch while preserving the checkout and file.
 - Required before batch-complete claim: exact-head hosted code success, actual merges/cleanup receipts, ONE trailing docs PR, full LOCAL final merged-main gate, clean synchronized main and final preservation check.
 
