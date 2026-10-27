@@ -138,3 +138,11 @@ These are proposed decisions, not executed actions.
 | Cold reader | Review the final report, canonical row updates/deletions and disposition wording before merge. |
 | Root | Verify PR1825 merge; execute and verify the stated PR dispositions without deleting protected work. |
 | Root | Run and record final clean merged-main `just ci` in the PR1825 description, then report the result and end the finite run. |
+
+## Addendum 2026-10-27
+
+| Preserved item | Current location |
+|---|---|
+| PR1826 dirty work and frozen handoff | Commit `c3c9e6d7` on remote `codex/restore-fork-reviewed-project-graph`; worktree removed |
+| Stash `ba3f2998` | Tag `archive/stash-codex-remediate-20261022` on origin; local stash dropped |
+| PR1806 / PR1809 / closeout worktrees and local branches | Removed; PR1806 content stays at tag `archive/pr1806-restore-reviewed-graph-20261025` and remote `codex/restore-reviewed-graph`; superseded remote `codex/restore-callers-scoped` deleted |

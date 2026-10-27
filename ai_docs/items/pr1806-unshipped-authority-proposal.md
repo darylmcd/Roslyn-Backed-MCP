@@ -1,6 +1,6 @@
 # pr1806-unshipped-authority-proposal — Decide the retained preview/native/physical authority proposal
 
-**row:** `pr1806-unshipped-authority-proposal` · **pri:** `Defer` · **size:** `—` · **deps:** —
+**row:** `pr1806-unshipped-authority-proposal` · **pri:** `Defer` · **size:** `—`
 
 ## Anchors
 
@@ -20,3 +20,5 @@
 
 - Source audit at main `fc5bb88676214a942daa727c7ca88ac8dd34b61c`. The retained 181 production paths include absent NativeCompilerContextCertificate, PhysicalDirectoryScope, PhysicalGraphStage, WorkspaceManager.Recovery and their required interface migrations. Main uses a different bounded fork admission path. Its existing graph row explicitly excludes these mechanisms. This row owns a product decision and prospective-only findings, not one enormous implementation.
 - Retained immutable source: `d333c2e96a1e23a31286cda53b920dbee5d6b7be`; preserved tag: `archive/pr1806-restore-reviewed-graph-20261025`. No build/test ran in this content audit; historical receipts are not current runtime qualification.
+- 2026-10-27 worktree cleanup: stash `codex-remediate-20261022-preserve-restore` (`ba3f2998`) is preserved as tag `archive/stash-codex-remediate-20261022` on origin and dropped locally; everything it adds is also in `archive/pr1806-restore-reviewed-graph-20261025` (`d333c2e9`) except its ADR, numbered 0028 there and 0029 in d333c2e9. The PR1806 worktree and local branch are removed; remote branch `codex/restore-reviewed-graph` and the tag remain.
+

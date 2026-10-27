@@ -39,6 +39,7 @@
 | e2-native-default-policy-old-causal.log/current-causal.log | 24 cases:18 failed/6 passed; distinguish15 policy failures from3 undo failures. No post1828 qualification claim. |
 | Native-policy/encoding/reload rows | document-set-native-default-compile-policy; new-file-apply-writes-bom-ignoring-editorconfig; workspace-explicit-reload-double-transition retain different mechanisms. They do not block the parent restore closeout. Future graph feasibility must be re-derived. |
 | Preserved WIP | Existing PR1826 branch/dirty worktree and15-file frozen manifest under `<user>/.codex/scratch/roslyn-remediate-20261023-split/`; b88d8c/PR1809, origin/codex/restore-reviewed-graph/PR1806, codex/restore-callers-complete450c75dd and stash codex-remediate-20261022-preserve-restore remain references. No code copied across. |
+- 2026-10-27 worktree cleanup: the PR1826 dirty test edits (`NativeDefaultCompilePolicyTests.cs`, active-assets presence, no-effect refusal and UTF-16 Compile replay assertions) are committed at `c3c9e6d7` on remote branch `codex/restore-fork-reviewed-project-graph` (parent `0062d60c`, unchanged); the local worktree is removed. Cite `c3c9e6d7` instead of the dirty worktree or the Codex scratch handoff folder. Reference only; do not port.
 
 ## Parent scope transfer
 
