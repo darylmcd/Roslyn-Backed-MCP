@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-27T00:25:58Z
+**updated_at:** 2026-10-27T01:00:52Z
 
 ## Agent contract
 
@@ -75,6 +75,7 @@
 | `render-finding-linux-pwsh-exit-139` | High | — | Identify and repair the PowerShell child exit139 that blocks hosted renderer determinism validation. [type: bug] [source: hosted-ci] | S | items/render-finding-linux-pwsh-exit-139.md |
 | `linux-pwsh-startup-profile-invalid-assembly-identity` | High | — | Diagnose native PowerShell startup assembly-identity corruption and qualify the proven repair without changing test coverage or deadlines. | S | items/linux-pwsh-startup-profile-invalid-assembly-identity.md |
 | `ci-linux-test-shard-budget` | High | — | Resolve Linux test-shard budget exhaustion with measured fixture, ownership or capacity evidence; preserve all checks and existing deadlines. | M | items/ci-linux-test-shard-budget.md |
+| `analyzer-shadow-sweep-live-child-authority` | High | — | Protect active analyzer lease children from foreign sweeps during late dependency copies; prove whole-child authority instead of relying on sibling DLL locks. | S | items/analyzer-shadow-sweep-live-child-authority.md |
 
 ## Medium
 

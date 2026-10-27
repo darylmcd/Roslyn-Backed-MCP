@@ -89,6 +89,7 @@
 | interface-extraction-conflict-check-fail-closed | New bounded follow-up from independent parameter source review; no source repair or parameter scope addition. |
 | interface-extraction-public-accessor-contracts | New ordinary-property follow-up; complete indexer work will retain explicit independent tracking. No inline property repair. |
 | ci-linux-test-shard-budget | NewHigh/M distinct Linux deadline owner; measurements blocked before tests by live capacity, no root-cause fix or calibration closure claimed. |
+| analyzer-shadow-sweep-live-child-authority | NewHigh/S source-grounded follow-up: long-lived foreign lease late-copy can race recursive stale-child deletion; no runtime reproduction or CI attribution. Child loop unchanged by1855, whose parent fix remains correctly scoped. |
 | backlog-legacy-no-deps-header-duplicate | Global filingPR899 merged41c65cede880c203a1a3788714251942df10d1b9; coldPASS, canonical preamble conflict repair,112rows/0ERROR/0WARN,cleanup0. Header source defect remains open; healthy whole-item product writer updates used. |
 | backlog-update-final-section-eof | Existing global row owns observed final-section newline defect; duplicate filingPR900closed, no global production fix claimed. |
 | ship-cleanup-ignored-only-policy-drift | Existing global cleanup-policy row. Blocked ignoredTRX remains preserved; planned retained detached checkout avoids any denied deletion. |
