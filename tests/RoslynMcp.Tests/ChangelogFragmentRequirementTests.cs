@@ -43,7 +43,7 @@ public sealed class ChangelogFragmentRequirementTests
         // by CiTopologyDecisionContractTests) rather than inlined in this workflow file.
         var topologyScript = File.ReadAllText(Path.Combine(repositoryRoot, "eng", "resolve-ci-topology.ps1"));
         var docsLegIndex = topologyScript.IndexOf(
-            "New-CiTopologyLeg -Name 'docs-linux-1-of-2'",
+            "New-CiTopologyLeg -Name 'docs-linux-1-of-3'",
             StringComparison.Ordinal);
 
         Assert.IsTrue(checkoutIndex >= 0, "CI must check out the repository.");
