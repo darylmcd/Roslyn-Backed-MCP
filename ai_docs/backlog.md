@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-26T20:17:03Z
+**updated_at:** 2026-10-27T01:00:52Z
 
 ## Agent contract
 
@@ -61,20 +61,21 @@
 | `restore-package-root-authoritative-read-fail-closed` | High | — | Keep unreadable assets distinct from an absent recorded root | M | items/restore-package-root-authoritative-read-fail-closed.md |
 | `cross-project-interface-parameter-semantics` | High | interface-extraction-nullable-context-projection | Preserve emitted interface parameter semantics | M | items/cross-project-interface-parameter-semantics.md |
 | `physical-compensation-external-edit-ownership` | High | — | Preserve external edits during failed persistence compensation | M | items/physical-compensation-external-edit-ownership.md |
-| `cross-project-receiving-namespace-compatibility` | High | raw-move-file-header-ownership,ci-artifact-owner-quality-deadline | Generate compatible namespaces for actual receiving language options through interface extraction and move-type. [type: bug] [source: interface-split-cold-review] | M | items/cross-project-receiving-namespace-compatibility.md |
-| `interface-extraction-nullable-context-projection` | High | cross-project-receiving-namespace-compatibility | Preserve emitted nullable contexts with explicit symbol-role mapping and compiler-proven legality before publication. [type: bug] [source: interface-split-cold-review] | M | items/interface-extraction-nullable-context-projection.md |
+| `interface-extraction-nullable-context-projection` | High | cross-project-receiving-namespace-compatibility,ci-linux-test-shard-budget | Preserve emitted nullable contexts with explicit symbol-role mapping and compiler-proven legality before publication. [type: bug] [source: interface-split-cold-review] | M | items/interface-extraction-nullable-context-projection.md |
 | `interface-extraction-ref-return-contracts` | High | interface-extraction-nullable-context-projection | Preserve ref and ref readonly return kinds in generated interface members. [type: bug] [source: parameter-projection-cold-review] | M | items/interface-extraction-ref-return-contracts.md |
 | `interface-extraction-unsafe-signature-context` | High | interface-extraction-nullable-context-projection | Preserve unsafe signature context and refuse incompatible receiving-project policy before token publication. [type: bug] [source: parameter-projection-cold-review] | M | items/interface-extraction-unsafe-signature-context.md |
 | `interface-extraction-escaped-member-identifiers` | High | interface-extraction-nullable-context-projection | Preserve escaped identifiers on every emitted interface member kind. [type: bug] [source: parameter-projection-cold-review] | M | items/interface-extraction-escaped-member-identifiers.md |
 | `interface-extraction-nullability-context-fidelity` | High | cross-project-interface-parameter-semantics,interface-extraction-ref-return-contracts,interface-extraction-unsafe-signature-context,interface-extraction-escaped-member-identifiers,interface-extraction-nullable-context-projection | Preserve semantic nullable annotation states in generated interfaces across source-local and receiving contexts without changing project policy. | M | items/interface-extraction-nullability-context-fidelity.md |
 | `interface-extraction-receiving-language-compatibility` | High | cross-project-interface-parameter-semantics,interface-extraction-ref-return-contracts,interface-extraction-unsafe-signature-context,cross-project-receiving-namespace-compatibility,interface-extraction-nullable-context-projection | Validate generated interface language requirements with the receiving compiler context before publishing tokens; retain compatible controls and project policy. | M | items/interface-extraction-receiving-language-compatibility.md |
-| `raw-move-file-header-ownership` | High | — | Preserve file headers, documentation and EOF ownership through both existing-declaration move builders and source removal. | M | items/raw-move-file-header-ownership.md |
 | `metadata-member-symbol-handle-roundtrip` | High | — | Resolve metadata member handles returned by semantic tools through the same symbolHandle entry points. | M | items/metadata-member-symbol-handle-roundtrip.md |
 | `class-split-receiving-namespace` | High | cross-project-receiving-namespace-compatibility | Select supported namespaces for class split output using the actual receiving compiler policy. | M | items/class-split-receiving-namespace.md |
 | `split-service-receiving-namespace` | High | cross-project-receiving-namespace-compatibility | Select supported namespaces for split service partitions using the actual receiving compiler policy. | M | items/split-service-receiving-namespace.md |
 | `relocation-receiving-namespace` | High | cross-project-receiving-namespace-compatibility | Select supported namespaces for relocating new files using the actual receiving compiler policy. | M | items/relocation-receiving-namespace.md |
-| `ci-artifact-owner-quality-deadline` | High | linux-pwsh-startup-profile-write-ownership | Move required quality work and cache persistence outside test tails with shared checked preparation. [type: bug] [source: hosted-ci] | L | items/ci-artifact-owner-quality-deadline.md |
-| `linux-pwsh-startup-profile-write-ownership` | High | — | Own Linux validation PowerShell startup-profile writes with a fresh single-writer seed and job-lifetime read-only consumption. | M | items/linux-pwsh-startup-profile-write-ownership.md |
+| `generated-interface-global-using-order` | High | — | Preserve legal global-before-ordinary using order in shared generated-interface imports and correct stale ownership comments. | M | items/generated-interface-global-using-order.md |
+| `render-finding-linux-pwsh-exit-139` | High | — | Identify and repair the PowerShell child exit139 that blocks hosted renderer determinism validation. [type: bug] [source: hosted-ci] | S | items/render-finding-linux-pwsh-exit-139.md |
+| `linux-pwsh-startup-profile-invalid-assembly-identity` | High | — | Diagnose native PowerShell startup assembly-identity corruption and qualify the proven repair without changing test coverage or deadlines. | S | items/linux-pwsh-startup-profile-invalid-assembly-identity.md |
+| `ci-linux-test-shard-budget` | High | — | Resolve Linux test-shard budget exhaustion with measured fixture, ownership or capacity evidence; preserve all checks and existing deadlines. | M | items/ci-linux-test-shard-budget.md |
+| `analyzer-shadow-sweep-live-child-authority` | High | — | Protect active analyzer lease children from foreign sweeps during late dependency copies; prove whole-child authority instead of relying on sibling DLL locks. | S | items/analyzer-shadow-sweep-live-child-authority.md |
 
 ## Medium
 
@@ -219,6 +220,10 @@
 | `cross-project-interface-event-member-preservation` | Medium | — | Preserve public instance events in extracted interface contracts through real producer compilation. [type: bug] [source: interface-parameter-remediation-review] | S | items/cross-project-interface-event-member-preservation.md |
 | `first-using-trivia-helper-duplication` | Medium | — | Share the exact first-using trivia transformation between split and partition consumers without changing header policy. | M | items/first-using-trivia-helper-duplication.md |
 | `ci-quality-move-hosted-timing-recheck` | Medium | ci-artifact-owner-quality-deadline | Collect five complete fresh green hosted runs and re-evaluate weighting under the existing timing policy. [type: maintenance] [source: ci-decomposition] | S | items/ci-quality-move-hosted-timing-recheck.md |
+| `changed-format-linux-path-identity` | Medium | — | Preserve filesystem path identity across changed-file deduplication and formatter findings. [type: bug] [source: ci-prerequisite-review] | S | items/changed-format-linux-path-identity.md |
+| `render-finding-tests-process-ownership` | Medium | — | Replace private sequential pipe reads and unobserved process waits with the existing owned runner. [type: test-refactor] [source: renderer-ci-diagnosis] | S | items/render-finding-tests-process-ownership.md |
+| `interface-extraction-conflict-check-fail-closed` | Medium | — | Refuse interface extraction when project conflict compilation fails or is unavailable; preserve conflict/no-conflict controls and prevent preview publication. | S | items/interface-extraction-conflict-check-fail-closed.md |
+| `interface-extraction-public-accessor-contracts` | Medium | — | Preserve public get/set/init contracts for ordinary extracted properties in both emitters; keep nonpublic accessors out of interface requirements. | M | items/interface-extraction-public-accessor-contracts.md |
 
 ## Low
 
@@ -444,6 +449,8 @@
 | `solution-diff-truncation-source-substring-test` | Low | — | Assert real omitted-file preview behavior | S | items/solution-diff-truncation-source-substring-test.md |
 | `workspace-cache-retention-policy` | Low | — | Decide bounded persisted cache retention | M | items/workspace-cache-retention-policy.md |
 | `interface-extractor-import-order` | Low | — | Normalize import ordering in both interface extractors and remove only their two existing IMPORTS baseline entries. [type: quality] [source: interface-declaration-remediation-format] | M | items/interface-extractor-import-order.md |
+| `workflow-retired-remediation-prompt-links` | Low | — | Replace retired global remediation prompt pointers with the verified current prompt and helper contract. [type: docs] [source: ci-plan-review] | S | items/workflow-retired-remediation-prompt-links.md |
+| `dockerfile-restore-project-graph` | Low | — | Align Docker restore inputs with the full referenced solution project graph. [type: bug] [source: linux-reproduction-context] | M | items/dockerfile-restore-project-graph.md |
 
 ## Defer
 
