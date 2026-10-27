@@ -1587,6 +1587,65 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
     /// of CS1737 (required after optional), CS1729 (no matching constructor overload for the
     /// `this(...)` chain), or CS0191 (readonly field assigned outside a constructor).
     /// </summary>
+    /// <summary>
+    /// extract-type-composition-assigned-before-use: the composition field used to be assigned at the END of
+    /// every root constructor, so constructor code that reaches an extracted member through a retained
+    /// helper dereferenced a null field. The previewed solution is emitted and run: <c>V</c> must be 7.
+    /// </summary>
+    [TestMethod]
+    [DataRow("AssignFirstBlockFixture", "public AssignFirstBlockFixture() { _v = Init(); }")]
+    [DataRow("AssignFirstExpressionFixture", "public AssignFirstExpressionFixture() => _v = Init();")]
+    public async Task ExtractType_CompositionFieldAssignedBeforeConstructorCodeRuns(string typeName, string constructor)
+    {
+        var fixture = await CreateExtractionFixtureAsync(
+            typeName + ".cs",
+            $$"""
+            namespace SampleLib;
+
+            public class {{typeName}}
+            {
+                private int _v;
+                public int V => _v;
+                {{constructor}}
+                private int Init() => Compute();
+                private int Compute() => 7;
+            }
+            """);
+
+        try
+        {
+            var preview = await TypeExtractionService.PreviewExtractTypeAsync(
+                fixture.WorkspaceId, fixture.FilePath, typeName, ["Compute"], "ComputeHelper", null, CancellationToken.None);
+            await AssertModifiedSolutionCompilesAsync(preview.PreviewToken);
+
+            var project = PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution.Projects.Single(p => p.Name == "SampleLib");
+            var compilation = (await project.GetCompilationAsync(CancellationToken.None))!;
+            using var image = new MemoryStream();
+            var emit = compilation.Emit(image);
+            Assert.IsTrue(emit.Success, string.Join(Environment.NewLine, emit.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)));
+
+            var context = new System.Runtime.Loader.AssemblyLoadContext(typeName, isCollectible: true);
+            try
+            {
+                image.Position = 0;
+                var assembly = context.LoadFromStream(image);
+                var helper = Activator.CreateInstance(assembly.GetType("SampleLib.ComputeHelper")!);
+                var host = Activator.CreateInstance(assembly.GetType("SampleLib." + typeName)!, helper)!;
+                Assert.AreEqual(7, (int)host.GetType().GetProperty("V")!.GetValue(host)!,
+                    "constructor code must observe an assigned composition field");
+            }
+            finally
+            {
+                context.Unload();
+            }
+        }
+        finally
+        {
+            WorkspaceManager.Close(fixture.WorkspaceId);
+            QueueDirectoryForCleanup(fixture.SolutionDirectory);
+        }
+    }
+
     private static async Task AssertModifiedSolutionCompilesAsync(string previewToken)
     {
         var retrieved = PreviewStore.Retrieve(previewToken);
