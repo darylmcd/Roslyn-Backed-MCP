@@ -26,3 +26,5 @@
 - Implementation remains pending the PR1840 actual hosted CS8632 discrepancy investigation. This row does not own assembly/reference closure, generic declarations or cross-project event emission.
 
 - Current delivery order, superseding fixture diagnosis and preserved-candidate receipt limits: `ai_docs/reports/2026-10-26-interface-split-delivery.md`. Historical pending/hold statements above describe the original combined candidate; use that report for current state.
+- 2026-10-27: dependency `interface-extraction-nullable-context-projection` closed by PR1854 (hosted Linux budget fixed by the third shard, PR1857). PR1840 closed as superseded by this decomposition; its combined candidate source and tests remain reference-only on branch `codex/interface-parameter-semantics` at `cb90656f`. Re-cut this row from current main; do not resume PR1840.
+
