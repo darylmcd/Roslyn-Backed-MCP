@@ -26,8 +26,8 @@ env:
 jobs:
   # Compute the complete validation topology before any platform job is queued.
   # Public pull-request code is always routed to ephemeral GitHub-hosted
-  # runners. Every code PR receives four concurrent Windows shards and two
-  # concurrent Linux shards; policy-only documentation PRs use two Linux
+  # runners. Every code PR receives four concurrent Windows shards and three
+  # concurrent Linux shards; policy-only documentation PRs use three Linux
   # shards so every documentation contract test still executes.
   route:
     name: Route validation

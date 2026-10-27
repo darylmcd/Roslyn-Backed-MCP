@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-27T01:00:52Z
+**updated_at:** 2026-10-27T02:50:40Z
 
 ## Agent contract
 
@@ -61,7 +61,7 @@
 | `restore-package-root-authoritative-read-fail-closed` | High | — | Keep unreadable assets distinct from an absent recorded root | M | items/restore-package-root-authoritative-read-fail-closed.md |
 | `cross-project-interface-parameter-semantics` | High | interface-extraction-nullable-context-projection | Preserve emitted interface parameter semantics | M | items/cross-project-interface-parameter-semantics.md |
 | `physical-compensation-external-edit-ownership` | High | — | Preserve external edits during failed persistence compensation | M | items/physical-compensation-external-edit-ownership.md |
-| `interface-extraction-nullable-context-projection` | High | cross-project-receiving-namespace-compatibility,ci-linux-test-shard-budget | Preserve emitted nullable contexts with explicit symbol-role mapping and compiler-proven legality before publication. [type: bug] [source: interface-split-cold-review] | M | items/interface-extraction-nullable-context-projection.md |
+| `interface-extraction-nullable-context-projection` | High | — | Preserve emitted nullable contexts with explicit symbol-role mapping and compiler-proven legality before publication. [type: bug] [source: interface-split-cold-review] | M | items/interface-extraction-nullable-context-projection.md |
 | `interface-extraction-ref-return-contracts` | High | interface-extraction-nullable-context-projection | Preserve ref and ref readonly return kinds in generated interface members. [type: bug] [source: parameter-projection-cold-review] | M | items/interface-extraction-ref-return-contracts.md |
 | `interface-extraction-unsafe-signature-context` | High | interface-extraction-nullable-context-projection | Preserve unsafe signature context and refuse incompatible receiving-project policy before token publication. [type: bug] [source: parameter-projection-cold-review] | M | items/interface-extraction-unsafe-signature-context.md |
 | `interface-extraction-escaped-member-identifiers` | High | interface-extraction-nullable-context-projection | Preserve escaped identifiers on every emitted interface member kind. [type: bug] [source: parameter-projection-cold-review] | M | items/interface-extraction-escaped-member-identifiers.md |
@@ -74,7 +74,6 @@
 | `generated-interface-global-using-order` | High | — | Preserve legal global-before-ordinary using order in shared generated-interface imports and correct stale ownership comments. | M | items/generated-interface-global-using-order.md |
 | `render-finding-linux-pwsh-exit-139` | High | — | Identify and repair the PowerShell child exit139 that blocks hosted renderer determinism validation. [type: bug] [source: hosted-ci] | S | items/render-finding-linux-pwsh-exit-139.md |
 | `linux-pwsh-startup-profile-invalid-assembly-identity` | High | — | Diagnose native PowerShell startup assembly-identity corruption and qualify the proven repair without changing test coverage or deadlines. | S | items/linux-pwsh-startup-profile-invalid-assembly-identity.md |
-| `ci-linux-test-shard-budget` | High | — | Resolve Linux test-shard budget exhaustion with measured fixture, ownership or capacity evidence; preserve all checks and existing deadlines. | M | items/ci-linux-test-shard-budget.md |
 | `analyzer-shadow-sweep-live-child-authority` | High | — | Protect active analyzer lease children from foreign sweeps during late dependency copies; prove whole-child authority instead of relying on sibling DLL locks. | S | items/analyzer-shadow-sweep-live-child-authority.md |
 
 ## Medium
@@ -224,6 +223,7 @@
 | `render-finding-tests-process-ownership` | Medium | — | Replace private sequential pipe reads and unobserved process waits with the existing owned runner. [type: test-refactor] [source: renderer-ci-diagnosis] | S | items/render-finding-tests-process-ownership.md |
 | `interface-extraction-conflict-check-fail-closed` | Medium | — | Refuse interface extraction when project conflict compilation fails or is unavailable; preserve conflict/no-conflict controls and prevent preview publication. | S | items/interface-extraction-conflict-check-fail-closed.md |
 | `interface-extraction-public-accessor-contracts` | Medium | — | Preserve public get/set/init contracts for ordinary extracted properties in both emitters; keep nonpublic accessors out of interface requirements. | M | items/interface-extraction-public-accessor-contracts.md |
+| `dotnet-runner-concurrent-descendant-stdout-loss` | Medium | — | **Stop losing parent stdout under concurrent held pipes** — bytes written before exit must survive the bounded post-exit drain. [type: bug] [source: PR1850 hosted windows leg] | M | items/dotnet-runner-concurrent-descendant-stdout-loss.md |
 
 ## Low
 

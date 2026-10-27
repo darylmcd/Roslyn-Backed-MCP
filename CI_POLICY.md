@@ -7,8 +7,8 @@ This document is the canonical validation and merge-gating contract.
 | Event / trust state | Validation topology | Coverage / network |
 |---|---|---|
 | Evidence-only pull request (`ai_docs/audits/**`, `ai_docs/reports/**`, `ai_docs/items/**`, `audit-reports/**`, minus the exclusions below) | One pwsh `evidence-lint` job (changelog contract + `verify-ai-docs.ps1`); no .NET setup, build, or test legs; exact-floor probe and quality job skipped | Not applicable |
-| Policy-only documentation pull request (Markdown / `ai_docs/**/*.json` / the tracked promotion scorecard, excluding behavior-bearing paths) | Two hosted Linux class shards plus the version-drift and breaking-version gates; exact-floor probe and quality job skipped | Coverage and `Network` tests skipped; publish/audit skipped |
-| Any code-bearing pull request | Four hosted Windows shards + two hosted Linux shards + one concurrent exact-SDK-floor build/workspace probe + one concurrent quality job | Coverage and `Network` tests skipped |
+| Policy-only documentation pull request (Markdown / `ai_docs/**/*.json` / the tracked promotion scorecard, excluding behavior-bearing paths) | Three hosted Linux class shards plus the version-drift and breaking-version gates; exact-floor probe and quality job skipped | Coverage and `Network` tests skipped; publish/audit skipped |
+| Any code-bearing pull request | Four hosted Windows shards + three hosted Linux shards + one concurrent exact-SDK-floor build/workspace probe + one concurrent quality job | Coverage and `Network` tests skipped |
 | Merge-queue group (`merge_group`) | Always the full code-bearing topology (no trusted changed-file set, so no docs-only/evidence-only route) | Coverage and `Network` tests skipped |
 | Manual dispatch / weekly schedule (Mon 05:45 UTC) | One unsharded hosted Linux suite + one concurrent exact-SDK-floor build/workspace probe + one concurrent quality job | Coverage and live `Network` tests enabled |
 
@@ -46,9 +46,9 @@ The router emits typed leg fields. Keep their concerns separate:
 
 ## Pull-Request Test Partition
 
-- Windows runs four concurrent class shards; Linux runs two.
-- All six code pull-request shards run on separate GitHub-hosted runners.
-- Policy-only documentation PRs run the same complete class partition as two Linux shards. Do not restore a zero-test docs route: repository tests consume Markdown contracts, and future consumers must be covered automatically. The evidence route is the one zero-test route; it is safe only for paths `CiEvidenceTierConsumerContractTests` proves no test reads.
+- Windows runs four concurrent class shards; Linux runs three (see § Linux Shard Count Decision).
+- All seven code pull-request shards run on separate GitHub-hosted runners.
+- Policy-only documentation PRs run the same complete class partition as three Linux shards. Do not restore a zero-test docs route: repository tests consume Markdown contracts, and future consumers must be covered automatically. The evidence route is the one zero-test route; it is safe only for paths `CiEvidenceTierConsumerContractTests` proves no test reads.
 - `eng/get-test-shard-plan.ps1` reads compiled MSTest metadata. It must fail on an invalid index/count, missing assembly, unreadable metadata, unsafe class name, zero discovered classes, empty shard, overlap, or incomplete assignment.
 - Shards use exact MSTest `ClassName` predicates. Do not use `FullyQualifiedName~` prefix matching.
 - `eng/ci.runsettings` enables `TreatNoTestsAsError`; an accidentally empty filter is a failure.
@@ -138,6 +138,19 @@ The four-shard calibration is closed. `eng/collect-hosted-shard-timings.ps1` mea
 | `ubuntu-latest` | 2 | 743.2s | 662.6s | 80.6s (10.8%) | 140.3s | 2.21x | 1.18x |
 
 Decision: the deterministic discovered-case weights in `eng/get-test-shard-plan.ps1` remain the shard weighting on both hosted images. Do not add an OS-specific duration profile. A perfect duration partition recovers less than the single-leg wall-time noise band on either image, and summed TRX case duration is not a partition signal at all: its same-leg run-to-run swing exceeds the between-leg spread, so ranking legs by it reproduces runner noise rather than class cost. At that calibration, the residual `ubuntu-latest` gap was structural rather than class skew: the artifact-owner leg also ran docs validation, formatting, the NuGet audit, and publish upload. Formatting and audit now run in the independent quality job; docs validation and publish remain with the artifact owner. This movement triggers a fresh five-complete-green-run timing recheck; the historical measurements above do not establish the new steady state or a numerical improvement.
+
+## Linux Shard Count Decision
+
+Operator decision 2026-10-26 supersedes the two-Linux-shard topology for code and policy-only documentation PRs. Both routes now run three `ubuntu-latest` class shards; the last shard stays the sole artifact owner, and the 30-minute leg limit is unchanged.
+
+| Evidence (hosted, before this change) | Linux leg wall time |
+|---|---|
+| Code run 40401658309 | linux-1 27m45 / linux-2 22m |
+| Code run 40419476050 (#1855) | linux-1 27m51 / linux-2 17m |
+| Code run 40412863293 (#1854) | linux-1 cancelled at 30m after 2,660 passed, 0 failed (28m23 of tests) |
+| Docs runs for #1853 / #1848 | 22m–27m27 per leg |
+
+The complete Linux partition no longer fits two legs with margin: ordinary test growth reaches the deadline. A third shard keeps the static case-count weighting above (no duration profile), preserves the complete disjoint partition, fail-closed planning, deadlines and single-owner artifact/cache rules, and adds one hosted runner per Linux route. The shard-count change fires the re-check trigger below; `ci-quality-move-hosted-timing-recheck` stays open until five fresh complete green runs are measured.
 
 Re-check trigger: re-run `eng/collect-hosted-shard-timings.ps1` when the shard count changes, when non-test work moves between legs, or when a hosted image's achievable gain exceeds its own single-leg noise band across at least five complete green runs. Uploaded per-leg TRX expires after 14 days, so always re-derive from fresh in-window runs. Never calibrate from a single sample, and never feed a local Windows profile into the hosted `windows-latest` profile.
 
