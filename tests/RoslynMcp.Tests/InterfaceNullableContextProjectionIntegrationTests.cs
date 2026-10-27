@@ -125,6 +125,15 @@ public sealed class InterfaceNullableContextProjectionIntegrationTests : Isolate
             : PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution;
         pending = await ReparseSerializedDocumentsAsync(pending);
         await AssertGraphsAsync(before, pending, receivingName);
+        var emitted = pending.Projects.Single(p => p.Name == receivingName).Documents.Single(d => d.Name == "INullableService.cs");
+        var emittedText = (await emitted.GetTextAsync()).ToString();
+        Assert.IsFalse(System.Text.RegularExpressions.Regex.IsMatch(emittedText, "(?<!\r)\n"), "Directives must use the document's CRLF line endings:\n" + emittedText);
+        Assert.IsTrue(emittedText.Split("\r\n").Where(l => l.Contains("#nullable", StringComparison.Ordinal)).All(l => System.Text.RegularExpressions.Regex.IsMatch(l, "^#nullable (enable|disable) annotations$")), emittedText);
+        // Negative control: the same route output without its decoration must fail the graph oracle.
+        var undecorated = pending.WithDocumentText(emitted.Id, Microsoft.CodeAnalysis.Text.SourceText.From(
+            System.Text.RegularExpressions.Regex.Replace(emittedText, "(?m)^#nullable (enable|disable) annotations\r\n", "")));
+        Assert.AreNotEqual(emittedText, (await undecorated.GetDocument(emitted.Id)!.GetTextAsync()).ToString());
+        await Assert.ThrowsExactlyAsync<AssertFailedException>(() => AssertGraphsAsync(before, undecorated, receivingName));
         await AssertCompilesAsync(pending);
         await AssertRuntimeAsync(pending, true, receivingName, route == "dependency-inversion");
         AssertSnapshot(files);

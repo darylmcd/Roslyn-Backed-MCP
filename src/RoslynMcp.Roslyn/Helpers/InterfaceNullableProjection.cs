@@ -13,36 +13,35 @@ namespace RoslynMcp.Roslyn.Helpers;
 /// <summary>Transfers annotation contexts for the type slots the producer actually emits.</summary>
 internal sealed class InterfaceNullableProjection
 {
-    internal enum TypeRole { Return, Parameter, Property, IndexerKey, Event }
-    private sealed record Slot(SyntaxAnnotation Annotation, ITypeSymbol Type, TypeRole Role);
+    private sealed record Slot(SyntaxAnnotation Annotation, ITypeSymbol Type);
     private readonly List<Slot> _slots = [];
     private readonly List<SyntaxAnnotation> _members = [];
 
     internal MemberDeclarationSyntax Capture(MemberDeclarationSyntax declaration, ISymbol symbol)
     {
-        var roles = new List<(TypeSyntax Syntax, ITypeSymbol Type, TypeRole Role)>();
-        void Parameters(SeparatedSyntaxList<ParameterSyntax> syntax, ImmutableArray<IParameterSymbol> parameters, TypeRole role)
+        var roles = new List<(TypeSyntax Syntax, ITypeSymbol Type)>();
+        void Parameters(SeparatedSyntaxList<ParameterSyntax> syntax, ImmutableArray<IParameterSymbol> parameters)
         {
             if (syntax.Count != parameters.Length) throw InvalidOperationErrors.Internal("Generated interface parameter arity does not match its source roles.");
             for (var i = 0; i < syntax.Count; i++)
-                roles.Add((syntax[i].Type ?? throw InvalidOperationErrors.Internal("Generated interface parameter type is missing."), parameters[i].Type, role));
+                roles.Add((syntax[i].Type ?? throw InvalidOperationErrors.Internal("Generated interface parameter type is missing."), parameters[i].Type));
         }
         switch (declaration, symbol)
         {
             case (MethodDeclarationSyntax method, IMethodSymbol original):
-                roles.Add((method.ReturnType, original.ReturnType, TypeRole.Return));
-                Parameters(method.ParameterList.Parameters, original.Parameters, TypeRole.Parameter);
+                roles.Add((method.ReturnType, original.ReturnType));
+                Parameters(method.ParameterList.Parameters, original.Parameters);
                 break;
             case (PropertyDeclarationSyntax property, IPropertySymbol original):
                 // Legacy producers emit indexers as properties: only the emitted type is a role.
-                roles.Add((property.Type, original.Type, TypeRole.Property));
+                roles.Add((property.Type, original.Type));
                 break;
             case (IndexerDeclarationSyntax indexer, IPropertySymbol original):
-                roles.Add((indexer.Type, original.Type, TypeRole.Property));
-                Parameters(indexer.ParameterList.Parameters, original.Parameters, TypeRole.IndexerKey);
+                roles.Add((indexer.Type, original.Type));
+                Parameters(indexer.ParameterList.Parameters, original.Parameters);
                 break;
             case (EventFieldDeclarationSyntax evt, IEventSymbol original) when evt.Declaration.Variables.Count == 1:
-                roles.Add((evt.Declaration.Type, original.Type, TypeRole.Event));
+                roles.Add((evt.Declaration.Type, original.Type));
                 break;
             default:
                 throw InvalidOperationErrors.Internal("Generated interface declaration does not match its source roles.");
@@ -53,7 +52,7 @@ internal sealed class InterfaceNullableProjection
             Walk(role.Syntax, role.Type, false, (token, type) =>
             {
                 var annotation = new SyntaxAnnotation("interface-nullable-slot", Guid.NewGuid().ToString("N"));
-                _slots.Add(new Slot(annotation, type, role.Role));
+                _slots.Add(new Slot(annotation, type));
                 if (!tokens.TryGetValue(token, out var annotations)) tokens.Add(token, annotations = []);
                 annotations.Add(annotation);
             });
@@ -146,25 +145,16 @@ internal sealed class InterfaceNullableProjection
                 throw InvalidOperationErrors.Internal("Generated interface type slot mapping is incomplete.");
             return (Token: token, Enabled: slot.Type.NullableAnnotation != NullableAnnotation.None);
         }).ToArray();
-        var solution = receivingDocument.Project.Solution.WithDocumentText(receivingDocument.Id, SourceText.From(baselineText));
-        var baseline = solution.GetDocument(receivingDocument.Id) ?? throw InvalidOperationErrors.Internal("Generated interface document is unavailable.");
+        var solution = receivingDocument.Project.Solution;
+        var baseline = receivingDocument;
         var model = await baseline.GetSemanticModelAsync(ct).ConfigureAwait(false) ?? throw InvalidOperationErrors.Internal("Generated interface semantic context is unavailable.");
-        if (slots.All(s => Enabled(model, s.Token.SpanStart) == s.Enabled)) return receivingDocument.Project.Solution;
+        if (slots.All(s => Enabled(model, s.Token.SpanStart) == s.Enabled)) return solution;
 
-        var edits = new SortedDictionary<int, StringBuilder>();
-        void Insert(int position, string text)
-        {
-            if (!edits.TryGetValue(position, out var builder)) edits.Add(position, builder = new StringBuilder());
-            builder.Append(text);
-        }
-        foreach (var group in slots.GroupBy(s => s.Token.Span).OrderBy(s => s.Key.Start))
-        {
+        foreach (var group in slots.GroupBy(s => s.Token.Span))
             if (group.Select(s => s.Enabled).Distinct().Count() != 1)
                 throw InvalidOperationErrors.Internal("Generated interface type slot has contradictory annotation roles.");
-            Insert(group.Key.Start, "\n#nullable " + (group.First().Enabled ? "enable" : "disable") + " annotations\n");
-            Insert(group.Key.End, "\n#nullable restore annotations\n");
-        }
-        var projection = new TextProjection(baselineText, edits.Select(e => (e.Key, e.Value.ToString())).ToArray(), (CSharpParseOptions?)baseline.Project.ParseOptions);
+        var edits = PlanDirectives(declaration, slots.Select(s => (s.Token, s.Enabled)).ToArray(), model, baselineText);
+        var projection = new TextProjection(baselineText, edits, (CSharpParseOptions?)baseline.Project.ParseOptions);
         var decoratedSolution = solution.WithDocumentText(baseline.Id, SourceText.From(projection.Text));
         var decorated = decoratedSolution.GetDocument(baseline.Id) ?? throw InvalidOperationErrors.Internal("Decorated interface document is unavailable.");
         var decoratedModel = await decorated.GetSemanticModelAsync(ct).ConfigureAwait(false) ?? throw InvalidOperationErrors.Internal("Decorated interface semantic context is unavailable.");
@@ -187,12 +177,62 @@ internal sealed class InterfaceNullableProjection
                 End = target ? projection.Anchor(location.SourceSpan.End, after, end: true) : location.SourceSpan.End.ToString(CultureInfo.InvariantCulture)
             });
         }
-        var added = AddedErrors(baselineCompilation.GetDiagnostics(ct), decoratedCompilation.GetDiagnostics(ct), LocationKey);
+        // Directives change only declarations: the generated interface is new to this solution, so no existing method body binds
+        // against it yet, and parse plus declaration diagnostics observe every error the decoration can add (CS8370, CS8632,
+        // implementation-nullability mismatches) without binding every method body in the receiving project.
+        var added = AddedErrors(SignatureDiagnostics(baselineCompilation, ct), SignatureDiagnostics(decoratedCompilation, ct), LocationKey);
         if (added.Length > 0)
             throw new PublicInvalidOperationException("The nullable contract cannot be preserved under the receiving compiler policy (" +
                 string.Join(", ", added.Select(d => d.Id).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).Take(5)) +
                 "). Use a compatible receiving compiler policy.");
         return decoratedSolution;
+    }
+
+    private static IEnumerable<Diagnostic> SignatureDiagnostics(Compilation compilation, CancellationToken ct) =>
+        compilation.GetParseDiagnostics(ct).Concat(compilation.GetDeclarationDiagnostics(ct));
+
+    /// <summary>
+    /// Plans whole-line directives. A member with a mismatched slot whose slots all want one state is wrapped as a unit, and adjacent
+    /// members wanting the same state share one directive; after a run the explicit baseline state is re-established.
+    /// Only a member whose own slots want different states is decorated per slot.
+    /// </summary>
+    private static (int Position, string Text)[] PlanDirectives(InterfaceDeclarationSyntax declaration, (SyntaxToken Token, bool Enabled)[] slots, SemanticModel model, string text)
+    {
+        var eol = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        var lines = SourceText.From(text).Lines;
+        var edits = new List<(int Position, string Text)>();
+        string Directive(bool enabled) => "#nullable " + (enabled ? "enable" : "disable") + " annotations" + eol;
+        // A directive owns a line: take the line start when only indentation precedes the position, else break the line.
+        void Before(int position, bool enabled)
+        {
+            var start = lines.GetLineFromPosition(position).Start;
+            if (string.IsNullOrWhiteSpace(text[start..position])) edits.Add((start, Directive(enabled)));
+            else edits.Add((position, eol + Directive(enabled)));
+        }
+        bool? forced = null;
+        foreach (var member in declaration.Members)
+        {
+            var own = slots.Where(s => member.Span.Contains(s.Token.Span)).ToArray();
+            var baseline = Enabled(model, member.SpanStart);
+            var states = own.Select(s => s.Enabled).Distinct().ToArray();
+            bool? wanted = own.Any(s => Enabled(model, s.Token.SpanStart) != s.Enabled) && states.Length == 1 ? states[0] : null;
+            if (wanted is bool state)
+            {
+                if ((forced ?? baseline) != state) Before(member.SpanStart, state);
+                forced = state;
+                continue;
+            }
+            if (forced is bool previous && previous != baseline) Before(member.SpanStart, baseline);
+            forced = null;
+            foreach (var slot in own.Where(s => Enabled(model, s.Token.SpanStart) != s.Enabled))
+            {
+                edits.Add((slot.Token.SpanStart, eol + Directive(slot.Enabled)));
+                edits.Add((slot.Token.Span.End, eol + Directive(Enabled(model, slot.Token.Span.End))));
+            }
+        }
+        if (forced is bool last && last != Enabled(model, declaration.CloseBraceToken.SpanStart))
+            Before(declaration.CloseBraceToken.SpanStart, !last);
+        return edits.ToArray();
     }
 
     private static bool Enabled(SemanticModel model, int position) => (model.GetNullableContext(position) & NullableContext.AnnotationsEnabled) != 0;
@@ -232,7 +272,7 @@ internal sealed class InterfaceNullableProjection
         internal TextProjection(string original, (int Position, string Text)[] edits, CSharpParseOptions? options)
         {
             _original = original;
-            _edits = edits.OrderBy(e => e.Position).ToArray();
+            _edits = edits.OrderBy(e => e.Position).ToArray(); // Stable: same-position edits keep plan order.
             _tokens = SyntaxFactory.ParseTokens(original, options: options).ToArray();
             var builder = new StringBuilder();
             var previous = 0;

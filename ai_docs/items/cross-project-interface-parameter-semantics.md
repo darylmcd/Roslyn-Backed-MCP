@@ -1,6 +1,6 @@
 # cross-project-interface-parameter-semantics — Preserve emitted interface parameter semantics
 
-**row:** `cross-project-interface-parameter-semantics` · **pri:** `High` · **size:** `M` · **deps:** `interface-extraction-nullable-context-projection`
+**row:** `cross-project-interface-parameter-semantics` · **pri:** `High` · **size:** `M`
 
 ## Anchors
 

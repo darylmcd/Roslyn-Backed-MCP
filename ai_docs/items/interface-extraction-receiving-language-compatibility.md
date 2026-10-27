@@ -1,6 +1,6 @@
 # interface-extraction-receiving-language-compatibility — Validate receiving language requirements
 
-**row:** `interface-extraction-receiving-language-compatibility` · **pri:** `High` · **size:** `M` · **deps:** `cross-project-interface-parameter-semantics,interface-extraction-ref-return-contracts,interface-extraction-unsafe-signature-context,cross-project-receiving-namespace-compatibility,interface-extraction-nullable-context-projection`
+**row:** `interface-extraction-receiving-language-compatibility` · **pri:** `High` · **size:** `M` · **deps:** `cross-project-interface-parameter-semantics,interface-extraction-ref-return-contracts,interface-extraction-unsafe-signature-context`
 
 ## Anchors
 

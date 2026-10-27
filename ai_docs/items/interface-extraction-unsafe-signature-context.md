@@ -1,6 +1,6 @@
 # interface-extraction-unsafe-signature-context — Preserve unsafe signature context
 
-**row:** `interface-extraction-unsafe-signature-context` · **pri:** `High` · **size:** `M` · **deps:** `interface-extraction-nullable-context-projection`
+**row:** `interface-extraction-unsafe-signature-context` · **pri:** `High` · **size:** `M`
 
 ## Anchors
 

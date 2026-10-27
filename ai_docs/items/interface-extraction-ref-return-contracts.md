@@ -1,6 +1,6 @@
 # interface-extraction-ref-return-contracts — Preserve extracted ref returns
 
-**row:** `interface-extraction-ref-return-contracts` · **pri:** `High` · **size:** `M` · **deps:** `interface-extraction-nullable-context-projection`
+**row:** `interface-extraction-ref-return-contracts` · **pri:** `High` · **size:** `M`
 
 ## Anchors
 
