@@ -14,4 +14,4 @@ Reference only: supplement to the held plan; not execution admission.
 | Remaining holds | Keep deferred and open. Preserve complete 90000 estimate, scope-admission blocker, retained WIP and failed/untested evidence. Native replan/review, semantic rescue and binding checks, original byte-preservation corpus, persisted apply proof and fresh full validation remain required. Refusal must leave tokens, workspace version and disk unchanged. |
 | Authorization boundary | Policy decision recorded only; no execution admission, release, merge or completion claim. |
 | Historical stanza | Policy-pending text is superseded only by this decision. Preserve scope, lifecycle and validation holds; require sanctioned replan and fresh review before execution. |
-| Backlog detail | ../../items/extract-type-preserve-untouched-trivia.md |
+| Backlog detail | Row `extract-type-preserve-untouched-trivia` closed by PR #1859 (scoped formatting). The semantic-preservation policy above now rides in rows `extract-type-composition-assigned-before-use` and its `extract-type-*` siblings. |

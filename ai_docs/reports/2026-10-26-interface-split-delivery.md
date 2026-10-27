@@ -156,3 +156,9 @@ This is the pre-merge docs checkpoint. Post-merge full-main gate result belongs 
 | Filing899 | Merged41c65cede880c203a1a3788714251942df10d1b9 at2026-10-26T19:21:12Z; coldPASS,metadata112rows/0ERROR/0WARN,cleanup0. Duplicate900 remainsclosed; no source fix claimed. |
 | Full global gate | FAILED on clean41c65cede880c203a1a3788714251942df10d1b9;run-tests.sh exit1,84of85targets passed,866s wall. test_owned_interactive.sh: Publication-fault cleanup leaked exact processes. No unchanged retry or new landing. |
 | Native ownership evidence | Failure artifacts were removed by test-runner settlement; a bounded admission-wrapped exact-GUID census found no matching live command lines. No unidentified process killed; no durable orphan attribution. Dedicated owning-tooling row owned-publication-before-retain-native-cleanup filed through canonical --via-worktree in draft claude-configPR912;0ERROR/0WARN. No source repair or new landing; global production repair excluded from this remediation run. |
+
+## Addendum 2026-10-27
+
+| Item | State |
+|---|---|
+| Archive refs deleted 2026-10-27 | Every archive branch (`codex/*`, `remediation/*`), both `archive/*` tags and the stash were deleted after their design knowledge was inlined into the owning backlog rows. Closed PR heads stay reachable at GitHub `refs/pull/1806/head` (`d333c2e9`), `refs/pull/1826/head` (`0062d60c`) and `refs/pull/1840/head` (`cb90656f`). |

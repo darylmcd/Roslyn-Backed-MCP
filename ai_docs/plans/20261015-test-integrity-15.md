@@ -7,7 +7,7 @@
 | Field | Record |
 |---|---|
 | Base | 96f3ea722ceb8f663ce3b2c46058309df92e2914; clean main equal to origin/main; zero open PRs. |
-| Retained work | Extraction8a40da79 and restoreea969292 are clean source checkpoints with explicit execution holds. Preserve both and their open rows; no completion claim. |
+| Retained work | Extraction8a40da79 and restoreea969292 were source checkpoints; both were deleted 2026-10-27. The extraction knowledge is inlined into the `extract-type-*` rows; the restore checkpoint content shipped (#1815/#1822) or moved to `restore-fork-reviewed-project-graph`. |
 | Workflow | Direct implementation with delegated disjoint file ownership; no backlog-remediate skill. Serialize local runtime gates. |
 | Compatibility | Preserve production retry policy and released wire contracts; a required internal per-call delay seam supports deterministic native-I/O proof. |
 

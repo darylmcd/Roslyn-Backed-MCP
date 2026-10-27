@@ -110,3 +110,9 @@ The Defer decision `pr1806-unshipped-authority-proposal` preserves explicit prev
 | SDK hold | Probe the requested runtime origin at ten-minute intervals. HTTP409 holds both unchanged PR heads; recorded HTTP200 permits one required-CI rerun per head. No SDK pin or check bypass. |
 | Operator merge order | PR1836 checkpoint, then PR1835 metadata; publish/merge this independent reconciliation, then small metadata/blocker closeout. Root owns the final full `just machine-validate ci` on clean final merged main after all trailing documentation. |
 | Final gate | Pending at this audit's source-only checkpoint. Record its exact merged head, original exit status and totals in the final closeout PR description. |
+
+## Addendum 2026-10-27
+
+| Item | State |
+|---|---|
+| Archive refs deleted 2026-10-27 | Every archive branch (`codex/*`, `remediation/*`), both `archive/*` tags and the stash were deleted after their design knowledge was inlined into the owning backlog rows. Closed PR heads stay reachable at GitHub `refs/pull/1806/head` (`d333c2e9`), `refs/pull/1826/head` (`0062d60c`) and `refs/pull/1840/head` (`cb90656f`). |

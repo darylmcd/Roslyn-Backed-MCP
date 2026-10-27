@@ -23,9 +23,9 @@
 - `native-default-policy-disconnected-probe-config.log`: native child Configuration=RefContext and ProbeMode=reference-context disables defaults; workspace child includes OnlyDefault.cs.
 - `native-default-policy-solution-config-probe.log`: solution Debug maps Child to Release; native child disables defaults while workspace child includes OnlyDefault.cs and Debug output.
 - Receipts and exact fixtures are preserved under `<user>/.codex/scratch/roslyn-remediate-20261023-split/`; handoff `native-default-policy-load-mismatch-row-handoff.md` records controls and limits.
+- 2026-10-25 hosted linux-2-of-2 (PR1826 run 40152154908): a fork whose `ProjectReference` carries `AdditionalProperties` `Flavor=Blue` (Hidden sets `MSBuildProjectExtensionsPath` to `obj/blue/`, targets net10.0;net8.0) loaded Hidden net8.0 with 16 × CS0246 in `Hidden/obj/Debug/net8.0/Hidden.AssemblyInfo.cs`, consistent with evaluating the child without reference globals. Windows passed. Not proven.
 
 ## Context
 
 - Independent, nonblocking follow-up authorized by the operator; restore-callers-missing-packages-path closure does not depend on this row.
-- Existing branch `codex/restore-fork-reviewed-project-graph` and scratch v3 plan are references, not approved implementation.
 - Do not count ignored SetTargetFramework on a single-framework project as a discrepancy; the native graph also ignores it. The multi-TFM case is a successful control.

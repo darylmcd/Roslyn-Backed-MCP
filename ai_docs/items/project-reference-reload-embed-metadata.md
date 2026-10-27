@@ -23,6 +23,7 @@
 - Local receipt: <user>/.codex/scratch/roslyn-remediate-20261023-split/reference-rebase-reload-diagnosis.log and reference-rebase-with-reload-embed-reproduction.cs.txt.
 - Installed Microsoft.CodeAnalysis.Workspaces.MSBuild5.9.0 nuspec pins upstream commit35d9211b841e7613c1d2f8f5af6d628ace696c4c; MSBuildProjectLoader.Worker_ResolveReferences.cs325–329 constructs new ProjectReference(to, aliases), omitting EmbedInteropTypes.
 - https://github.com/dotnet/roslyn/blob/35d9211b841e7613c1d2f8f5af6d628ace696c4c/src/Workspaces/MSBuild/Core/MSBuild/MSBuildProjectLoader.Worker_ResolveReferences.cs#L325
+- `PreviewStore.cs:94-95` takes the preview original from `modifiedSolution.Workspace.CurrentSolution`; a fix that keeps a manager-corrected solution would make every inferred original wrong. Land `preview-store-explicit-original-snapshot` first or together.
 
 ## Context
 

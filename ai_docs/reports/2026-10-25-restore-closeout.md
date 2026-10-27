@@ -143,6 +143,6 @@ These are proposed decisions, not executed actions.
 
 | Preserved item | Current location |
 |---|---|
-| PR1826 dirty work and frozen handoff | Commit `c3c9e6d7` on remote `codex/restore-fork-reviewed-project-graph`; worktree removed |
-| Stash `ba3f2998` | Tag `archive/stash-codex-remediate-20261022` on origin; local stash dropped |
-| PR1806 / PR1809 / closeout worktrees and local branches | Removed; PR1806 content stays at tag `archive/pr1806-restore-reviewed-graph-20261025` and remote `codex/restore-reviewed-graph`; superseded remote `codex/restore-callers-scoped` deleted |
+| PR1826 dirty work and frozen handoff | Inlined into rows `restore-fork-reviewed-project-graph`, `document-set-native-default-compile-policy` and `new-file-apply-writes-bom-ignoring-editorconfig`; branch deleted. PR1826 head stays at `refs/pull/1826/head`. |
+| Stash `ba3f2998` | Deleted (an earlier PR1806 draft); summary in row `pr1806-unshipped-authority-proposal`. |
+| PR1806 / PR1809 / closeout worktrees and branches | Removed; PR1806 tag and branch deleted, head stays at `refs/pull/1806/head`; superseded `codex/restore-callers-scoped` deleted. |

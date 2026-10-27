@@ -12,6 +12,7 @@
 - [ ] Preserve only applicable public ordinary-property accessor contracts and init semantics in both emitters and all four public routes; retain public getter-only/setter-only and private-counterpart controls. Preserve receiving policy and semantic nullable/return contracts.
 - [ ] Observe native valid-before regression on old output, then serialized preview and applied/reloaded compilation and binding after repair. Preserve unrelated bytes and refuse only actual unrepresentability before stores.
 - [ ] Coordinate complete indexer emission through its explicit dependent owner; this row owns ordinary properties and never closes the broader ref-return or unsafe owners on incidental coverage.
+- [ ] Emit an accessor only when its `DeclaredAccessibility == Public`; emit `init` when `SetMethod.IsInitOnly`. Controls: `{ get; private set; }` → `{ get; }`; `{ private get; set; }` → `{ set; }`; `{ get; init; }` → `{ get; init; }` (IES:223-228 keeps a private getter and drops init; CPRS:511 turns `private set` into `set`, CS0277).
 
 ## Evidence
 
