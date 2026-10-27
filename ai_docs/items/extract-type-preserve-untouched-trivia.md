@@ -15,6 +15,7 @@
 ## Evidence
 
 - Parent `extract-type-breaks-interfaces-and-publicizes-fields`: source-root `NormalizeWhitespace` rewrites unrelated source text.
+- 2026-10-27 worktree cleanup: the unfinished 2026-10-16 semantic-preservation program (127 paths, ~12k lines: compiled-IL execution analysis with a new `Microsoft.ILVerification` dependency, `ExtractionSemanticContext.*`, a 15-file `TypeExtractionService` split, BREAKING `ExtractionPreservationUnverifiedException`, ADR numbered 0029 colliding with main, two plans and seven proposed rows not filed on main) is archived at `a3a7dd94` on remote branch `codex/extraction-semantic-preservation-archive`; no gate, hosted CI or cold review. Main still runs whole-root `NormalizeWhitespace` at `TypeExtractionService.cs:138`. Operator choice pending: ship the narrow untouched-trivia acceptance, or port the archived program as its own ADR-backed series.
 
 ## Context
 
