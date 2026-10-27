@@ -529,16 +529,8 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
         var originalContent = (await context.Document.GetTextAsync(ct).ConfigureAwait(false)).ToString();
         var facadeRoot = BuildFacadeRoot(context, sourceType, partitions);
 
-        // Synthesized nodes must use the file's existing line ending; otherwise an LF file
-        // without an end_of_line editorconfig entry gains CRLF lines from the formatter default.
-        var lineEnding = originalContent.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
-        var formattingOptions = (await context.Document.GetOptionsAsync(ct).ConfigureAwait(false))
-            .WithChangedOption(FormattingOptions.NewLine, LanguageNames.CSharp, lineEnding);
-        var formattedDocument = await Formatter.FormatAsync(
-            context.Document.WithSyntaxRoot(facadeRoot),
-            Formatter.Annotation,
-            formattingOptions,
-            cancellationToken: ct).ConfigureAwait(false);
+        var formattedDocument = await AnnotatedFormatting.FormatAsync(
+            context.Document.WithSyntaxRoot(facadeRoot), originalContent, ct).ConfigureAwait(false);
         var facadeContent = (await formattedDocument.GetTextAsync(ct).ConfigureAwait(false)).ToString();
         mutations.Add(new CompositeFileMutation(sourceFilePath, facadeContent));
         changes.Add(new FileChangeDto(sourceFilePath, DiffGenerator.GenerateUnifiedDiff(originalContent, facadeContent, sourceFilePath)));

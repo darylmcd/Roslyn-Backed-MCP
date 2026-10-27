@@ -2,6 +2,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.FindSymbols;
+using Microsoft.CodeAnalysis.Formatting;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
@@ -132,12 +133,14 @@ public sealed class TypeExtractionService : ITypeExtractionService
             rewrittenTypeDecl.WithMembers(SyntaxFactory.List(rewrittenMembersToKeep)),
             typeDecl, semanticModel, newTypeName, fieldName, sourceTypeName, ct);
 
-        // Replace in source root (normalize so field/modifier tokens get proper spacing)
-        var updatedSourceRoot = sourceRoot.ReplaceNode(typeDecl, updatedTypeDecl);
-        if (updatedSourceRoot is CompilationUnitSyntax normalizedRoot)
-            updatedSourceRoot = normalizedRoot.NormalizeWhitespace();
-
-        var newSolution = solution.WithDocumentSyntaxRoot(sourceDocument.Id, updatedSourceRoot);
+        // extract-type-preserve-untouched-trivia: only the synthesized field, constructor, parameter,
+        // argument and assignment carry Formatter.Annotation, so every other byte of the source file,
+        // including its line endings, is left exactly as the user wrote it.
+        var formattedSource = await AnnotatedFormatting.FormatAsync(
+            sourceDocument.WithSyntaxRoot(sourceRoot.ReplaceNode(typeDecl, updatedTypeDecl)),
+            (await sourceDocument.GetTextAsync(ct).ConfigureAwait(false)).ToString(),
+            ct).ConfigureAwait(false);
+        var newSolution = formattedSource.Project.Solution;
 
         // Add new document. Item #1 — pass folders so MSBuildWorkspace's TryApplyChanges
         // resolves the disk path consistently with our explicit write.
@@ -716,18 +719,20 @@ public sealed class TypeExtractionService : ITypeExtractionService
                     SyntaxFactory.VariableDeclarator(fieldName))))
             .WithModifiers(SyntaxFactory.TokenList(
                 SyntaxFactory.Token(SyntaxKind.PrivateKeyword),
-                SyntaxFactory.Token(SyntaxKind.ReadOnlyKeyword)));
+                SyntaxFactory.Token(SyntaxKind.ReadOnlyKeyword)))
+            .WithAdditionalAnnotations(Formatter.Annotation);
 
         var identifierCore = newTypeName[0] == '@' ? newTypeName[1..] : newTypeName;
         var camelCaseCore = char.ToLowerInvariant(identifierCore[0]) + identifierCore[1..];
         var paramName = newTypeName[0] == '@' ? "@" + camelCaseCore : camelCaseCore;
         var newParam = SyntaxFactory.Parameter(SyntaxFactory.Identifier(paramName))
-            .WithType(SyntaxFactory.ParseTypeName(newTypeName));
+            .WithType(SyntaxFactory.ParseTypeName(newTypeName).WithTrailingTrivia(SyntaxFactory.Space));
         var assignment = SyntaxFactory.ExpressionStatement(
             SyntaxFactory.AssignmentExpression(
                 SyntaxKind.SimpleAssignmentExpression,
                 SyntaxFactory.IdentifierName(fieldName),
-                SyntaxFactory.IdentifierName(paramName)));
+                SyntaxFactory.IdentifierName(paramName)))
+            .WithAdditionalAnnotations(Formatter.Annotation);
 
         var ctors = typeDecl.Members.OfType<ConstructorDeclarationSyntax>().ToList();
         var originalCtors = originalTypeDecl.Members.OfType<ConstructorDeclarationSyntax>().ToList();
@@ -739,11 +744,12 @@ public sealed class TypeExtractionService : ITypeExtractionService
         {
             // Implicit constructor: the compiler-supplied parameterless constructor cannot assign the
             // new readonly field, so synthesize an explicit one that does. Inserted right after the
-            // field; NormalizeWhitespace at the call site handles formatting.
+            // field; its Formatter.Annotation lets the scoped format pass at the call site lay it out.
             var synthesizedCtor = SyntaxFactory.ConstructorDeclaration(SyntaxFactory.Identifier(typeDecl.Identifier.Text))
                 .WithModifiers(SyntaxFactory.TokenList(SyntaxFactory.Token(SyntaxKind.PublicKeyword)))
                 .WithParameterList(SyntaxFactory.ParameterList(SyntaxFactory.SingletonSeparatedList(newParam)))
-                .WithBody(SyntaxFactory.Block(assignment));
+                .WithBody(SyntaxFactory.Block(assignment))
+                .WithAdditionalAnnotations(Formatter.Annotation);
 
             return typeDecl.WithMembers(typeDecl.Members.Insert(0, fieldDecl).Insert(1, synthesizedCtor));
         }
@@ -777,7 +783,7 @@ public sealed class TypeExtractionService : ITypeExtractionService
             var insertIndex = ParameterInsertIndex(ctor);
             var updatedCtor = ctor.WithParameterList(
                 ctor.ParameterList.WithParameters(
-                    ctor.ParameterList.Parameters.Insert(insertIndex, newParam)));
+                    InsertPreservingTrivia(ctor.ParameterList.Parameters, insertIndex, newParam)));
 
             if (ctor.Initializer is { } initializer && initializer.IsKind(SyntaxKind.ThisConstructorInitializer))
             {
@@ -813,18 +819,22 @@ public sealed class TypeExtractionService : ITypeExtractionService
                 updatedCtor = updatedCtor.WithInitializer(
                     initializer.WithArgumentList(
                         initializer.ArgumentList.WithArguments(
-                            arguments.Insert(argumentIndex, SyntaxFactory.Argument(SyntaxFactory.IdentifierName(paramName))))));
+                            InsertPreservingTrivia(arguments, argumentIndex, SyntaxFactory.Argument(SyntaxFactory.IdentifierName(paramName))))));
             }
             else if (ctor.ExpressionBody is { } expressionBody)
             {
                 // Expression-bodied root: rewrite to a block body so the assignment has a home —
                 // the old `Body is not null` guard silently skipped these, leaving the field null.
+                // The dropped `;` carried the line break that ends the member; the new closing brace keeps it.
+                var convertedBody = SyntaxFactory.Block(
+                    SyntaxFactory.ExpressionStatement(expressionBody.Expression),
+                    assignment);
                 updatedCtor = updatedCtor
                     .WithExpressionBody(null)
                     .WithSemicolonToken(default)
-                    .WithBody(SyntaxFactory.Block(
-                        SyntaxFactory.ExpressionStatement(expressionBody.Expression),
-                        assignment));
+                    .WithBody(convertedBody
+                        .WithCloseBraceToken(convertedBody.CloseBraceToken.WithTrailingTrivia(ctor.SemicolonToken.TrailingTrivia))
+                        .WithAdditionalAnnotations(Formatter.Annotation));
             }
             else
             {
@@ -836,6 +846,47 @@ public sealed class TypeExtractionService : ITypeExtractionService
 
         typeDecl = typeDecl.ReplaceNodes(replacements.Keys, (original, _) => replacements[original]);
         return typeDecl.WithMembers(typeDecl.Members.Insert(0, fieldDecl));
+    }
+
+    /// <summary>
+    /// Inserts <paramref name="item"/> into a user-authored separated list without moving any existing
+    /// trivia: the neighbour keeps its own leading and trailing trivia on the outside of the insertion,
+    /// and the new separator and item copy the list's existing separator/item trivia (one space after
+    /// the comma when the list has a single element).
+    /// </summary>
+    private static SeparatedSyntaxList<T> InsertPreservingTrivia<T>(SeparatedSyntaxList<T> list, int index, T item)
+        where T : SyntaxNode
+    {
+        if (list.Count == 0)
+            return SyntaxFactory.SingletonSeparatedList(item);
+
+        var separatorTrailing = list.SeparatorCount > 0
+            ? list.GetSeparator(0).TrailingTrivia
+            : SyntaxFactory.TriviaList(SyntaxFactory.Space);
+        var itemLeading = list.Count > 1 ? list[1].GetLeadingTrivia() : SyntaxFactory.TriviaList();
+        var separator = SyntaxFactory.Token(SyntaxKind.CommaToken).WithTrailingTrivia(separatorTrailing);
+        var nodes = list.ToList();
+        var separators = list.GetSeparators().ToList();
+        if (index == nodes.Count)
+        {
+            // Appending: the previous last element's trailing trivia (for example the space in "( int seed )")
+            // stays at the end of the list, after the new element.
+            var last = nodes[^1];
+            nodes[^1] = last.WithTrailingTrivia(SyntaxFactory.TriviaList());
+            nodes.Add(item.WithLeadingTrivia(itemLeading).WithTrailingTrivia(last.GetTrailingTrivia()));
+            separators.Add(separator);
+        }
+        else
+        {
+            // Inserting before an element: the new element takes that element's leading trivia (for example
+            // the space after "("), and the displaced element takes the list's ordinary element leading trivia.
+            var next = nodes[index];
+            nodes[index] = next.WithLeadingTrivia(itemLeading);
+            nodes.Insert(index, item.WithLeadingTrivia(next.GetLeadingTrivia()));
+            separators.Insert(index, separator);
+        }
+
+        return SyntaxFactory.SeparatedList(nodes, separators);
     }
 
     /// <summary>
