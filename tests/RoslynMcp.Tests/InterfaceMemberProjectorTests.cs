@@ -31,6 +31,7 @@ public sealed class InterfaceMemberProjectorTests : IsolatedWorkspaceTestBase
         {
             public class BaseNested { }
             public const int Max = 3;
+            public virtual void Over<T>(T value) where T : class, IComparable<T> { }
         }
         """;
 
@@ -89,6 +90,11 @@ public sealed class InterfaceMemberProjectorTests : IsolatedWorkspaceTestBase
             public Dictionary<string, List<int>>.ValueCollection Values => _map.Values;
             public string? Maybe(List<string?> items, string[]? array) => null;
 
+            public override void Over<T>(T value) { }
+            private const int Hidden = 7;
+            internal const Color Tint = Color.Green;
+            public void HiddenDefault(int h = Hidden, Color tint = Tint) { }
+
             public static void StaticIsExcluded() { }
             protected void ProtectedIsExcluded() { }
         }
@@ -96,7 +102,7 @@ public sealed class InterfaceMemberProjectorTests : IsolatedWorkspaceTestBase
 
     private static readonly string[] _expectedMembers =
     [
-        "Collect", "Convert", "Defaults", "ExpressionBodied", "GetSet", "Generic", "InitOnly", "Log", "Manual", "Maybe",
+        "Collect", "Convert", "Defaults", "HiddenDefault", "Over", "ExpressionBodied", "GetSet", "Generic", "InitOnly", "Log", "Manual", "Maybe",
         "Metadata", "Modify", "Pointer", "PointerProperty", "PrivateGet", "PrivateSet", "RefProperty", "RefReadonlyReturn",
         "RefReturn", "Raised", "Scoped", "Substituted", "TryGet", "UseBase", "Values", "class", "delegate", "namespace",
         "this[]", "this[]",
@@ -149,6 +155,8 @@ public sealed class InterfaceMemberProjectorTests : IsolatedWorkspaceTestBase
         Assert.IsNull(Property("PrivateGet").GetMethod, interfaceText);
         Assert.IsTrue(Property("InitOnly").SetMethod!.IsInitOnly, interfaceText);
         Assert.AreEqual(2, contract.GetMembers().OfType<IPropertySymbol>().Count(p => p.IsIndexer), interfaceText);
+        Assert.IsTrue(Method("Over").TypeParameters[0].HasReferenceTypeConstraint, interfaceText);
+        Assert.AreEqual(7, Method("HiddenDefault").Parameters[0].ExplicitDefaultValue, interfaceText);
         Assert.AreEqual(1, Method("Generic").TypeParameters.Length, interfaceText);
         Assert.IsTrue(Method("Generic").TypeParameters[0].HasReferenceTypeConstraint, interfaceText);
         Assert.AreEqual(2, Method("Convert").TypeParameters.Count(t => t.HasReferenceTypeConstraint || t.HasValueTypeConstraint), interfaceText);

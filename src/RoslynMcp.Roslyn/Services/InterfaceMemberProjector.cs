@@ -87,7 +87,7 @@ internal sealed class InterfaceMemberProjector
         source ??= _generator.Declaration(member) as MemberDeclarationSyntax
             ?? throw InvalidOperationErrors.Internal("Interface member symbol has no projectable declaration.");
 
-        var qualifier = new ScopeQualifier(model, _referencedTypes);
+        var qualifier = new ScopeQualifier(model, _generator, _referencedTypes);
         var declaration = Strip(source, member, model, qualifier);
         if (declaration.DescendantNodes().Any(n => n is PointerTypeSyntax or FunctionPointerTypeSyntax))
         {
@@ -134,7 +134,7 @@ internal sealed class InterfaceMemberProjector
 
         switch (source, member)
         {
-            case (MethodDeclarationSyntax method, IMethodSymbol):
+            case (MethodDeclarationSyntax method, IMethodSymbol methodSymbol):
                 var parameters = Qualified(method.ParameterList);
                 return SyntaxFactory.MethodDeclaration(
                     Attributes(method.AttributeLists),
@@ -144,7 +144,9 @@ internal sealed class InterfaceMemberProjector
                     method.Identifier,
                     method.TypeParameterList,
                     parameters.WithParameters(ContractParameters(parameters.Parameters, model)),
-                    SyntaxFactory.List(method.ConstraintClauses.Select(clause => Qualified(clause))),
+                    methodSymbol.IsOverride
+                        ? InheritedConstraints(methodSymbol)
+                        : SyntaxFactory.List(method.ConstraintClauses.Select(clause => Qualified(clause))),
                     body: null,
                     expressionBody: null,
                     SyntaxFactory.Token(SyntaxKind.SemicolonToken));
@@ -179,6 +181,29 @@ internal sealed class InterfaceMemberProjector
             default:
                 throw InvalidOperationErrors.Internal("Interface member declaration does not match its symbol kind.");
         }
+    }
+
+    /// <summary>An override inherits its constraints from the base method, so its syntax has none: rebuild them from the symbol.</summary>
+    private static SyntaxList<TypeParameterConstraintClauseSyntax> InheritedConstraints(IMethodSymbol method)
+    {
+        static string Escape(string name) => SyntaxFacts.GetKeywordKind(name) == SyntaxKind.None ? name : "@" + name;
+        var clauses = new List<string>();
+        foreach (var parameter in method.TypeParameters)
+        {
+            var constraints = new List<string>();
+            if (parameter.HasReferenceTypeConstraint)
+                constraints.Add(parameter.ReferenceTypeConstraintNullableAnnotation == NullableAnnotation.Annotated ? "class?" : "class");
+            if (parameter.HasUnmanagedTypeConstraint) constraints.Add("unmanaged");
+            else if (parameter.HasValueTypeConstraint) constraints.Add("struct");
+            if (parameter.HasNotNullConstraint) constraints.Add("notnull");
+            constraints.AddRange(parameter.ConstraintTypes.Select(t => t.ToDisplayString(_containingTypeFormat)));
+            if (parameter.HasConstructorConstraint && !parameter.HasValueTypeConstraint && !parameter.HasUnmanagedTypeConstraint) constraints.Add("new()");
+            if (constraints.Count > 0) clauses.Add($"where {Escape(parameter.Name)} : {string.Join(", ", constraints)}");
+        }
+
+        var names = string.Join(", ", method.TypeParameters.Select(p => Escape(p.Name)));
+        var parsed = (MethodDeclarationSyntax)SyntaxFactory.ParseMemberDeclaration($"void M<{names}>() {string.Join(" ", clauses)};")!;
+        return parsed.ConstraintClauses;
     }
 
     private static EventFieldDeclarationSyntax EventField(SyntaxList<AttributeListSyntax> attributes, TypeSyntax type, SyntaxToken identifier) =>
@@ -277,19 +302,39 @@ internal sealed class InterfaceMemberProjector
         }
     }
 
-    /// <summary>
-    /// Rewrites names that only mean something inside the declaring type (a nested type spelled by its
-    /// simple name, a constant of the type or a base type used as a default) into names that bind from
-    /// the interface's own scope, and records the types it qualifies with.
-    /// </summary>
     // MinimallyQualifiedFormat is NameOnly: it would print a nested type as `Inner<U>` and lose its containing type.
     private static readonly SymbolDisplayFormat _containingTypeFormat = new(
         typeQualificationStyle: SymbolDisplayTypeQualificationStyle.NameAndContainingTypes,
         genericsOptions: SymbolDisplayFormat.MinimallyQualifiedFormat.GenericsOptions,
         miscellaneousOptions: SymbolDisplayFormat.MinimallyQualifiedFormat.MiscellaneousOptions);
 
-    private sealed class ScopeQualifier(SemanticModel? model, List<ITypeSymbol> referencedTypes) : CSharpSyntaxRewriter
+    /// <summary>
+    /// Rewrites names that only mean something inside the declaring type (a nested type spelled by its
+    /// simple name, a constant of the type or a base type used as a default) into names that bind from
+    /// the interface's own scope, and records the types it qualifies with.
+    /// </summary>
+    private sealed class ScopeQualifier(SemanticModel? model, SyntaxGenerator generator, List<ITypeSymbol> referencedTypes) : CSharpSyntaxRewriter
     {
+        private static bool IsVisibleFromInterface(IFieldSymbol field)
+        {
+            for (ISymbol? symbol = field; symbol is not null; symbol = symbol.ContainingType)
+            {
+                if (symbol.DeclaredAccessibility != Accessibility.Public) return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>A constant the interface cannot name (private/internal, or inside a non-public type) is inlined.</summary>
+        private ExpressionSyntax InlineConstant(IFieldSymbol constant)
+        {
+            if (constant.Type.TypeKind != TypeKind.Enum) return (ExpressionSyntax)generator.LiteralExpression(constant.ConstantValue);
+            referencedTypes.Add(constant.Type);
+            return SyntaxFactory.CastExpression(
+                SyntaxFactory.ParseTypeName(constant.Type.ToDisplayString(_containingTypeFormat)),
+                (ExpressionSyntax)generator.LiteralExpression(constant.ConstantValue));
+        }
+
         public override SyntaxNode? Visit(SyntaxNode? node) => model is null ? node : base.Visit(node);
 
         public override SyntaxNode? VisitIdentifierName(IdentifierNameSyntax node) => Qualify(node) ?? base.VisitIdentifierName(node);
@@ -307,6 +352,8 @@ internal sealed class InterfaceMemberProjector
 
             switch (model!.GetSymbolInfo(node).Symbol)
             {
+                case IFieldSymbol { IsConst: true, ConstantValue: not null } constant when !IsVisibleFromInterface(constant):
+                    return InlineConstant(constant).WithTriviaFrom(node);
                 case INamedTypeSymbol { ContainingType: not null } nested:
                     referencedTypes.Add(nested);
                     return SyntaxFactory.ParseTypeName(nested.ToDisplayString(_containingTypeFormat)).WithTriviaFrom(node);
