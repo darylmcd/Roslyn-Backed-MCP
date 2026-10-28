@@ -127,18 +127,17 @@ public sealed record ServerCapabilitiesDto(bool Tools, bool Resources, bool Prom
 /// latest-version check status even when no newer version is available. The
 /// <see cref="Latest"/> field is non-null only when the registry version is STRICTLY GREATER
 /// than the running build (server-info-update-latest-inverted contract).
-/// <see cref="UpdateAvailable"/> is true only when a known registry version is strictly newer
-/// and false otherwise — including while no check has completed — so false alone does not mean
-/// "up to date". <see cref="CheckStatus"/> is the authority for that distinction: only
-/// <c>succeeded</c> makes false mean "no newer release"; <c>neverChecked</c>, <c>pending</c>,
-/// <c>failed</c>, and <c>timedOut</c> mean availability is unknown. <see cref="LastCheckedAt"/>
-/// records when the last check ended. The boolean shape is the 4.x stable contract; making it
-/// nullable (null = unknown) is deferred to the next major release.
+/// <see cref="UpdateAvailable"/> is <c>true</c> when a known registry version is strictly newer,
+/// <c>false</c> only when a <c>succeeded</c> check found none, and <c>null</c> (unknown) while the
+/// check is <c>neverChecked</c>, <c>pending</c>, <c>failed</c>, or <c>timedOut</c> and no newer
+/// version is known. <see cref="Latest"/> and <see cref="Command"/> are populated only when it is
+/// <c>true</c>. <see cref="CheckStatus"/> reports the check outcome and <see cref="LastCheckedAt"/>
+/// records when the last check ended.
 /// </summary>
 public sealed record ServerUpdateInfoDto(
     string Current,
     string? Latest,
-    bool UpdateAvailable,
+    bool? UpdateAvailable,
     string? Command,
     string CheckStatus,
     string? LastCheckedAt);
