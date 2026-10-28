@@ -399,9 +399,9 @@ public sealed class DiagnosticServiceFilterTotalsTests : SharedWorkspaceTestBase
         {
             Assert.IsTrue(
                 returned.All(diagnostic =>
-                    diagnostic.FilePath is not null
+                    diagnostic.ResolvedFilePath() is { } diagnosticPath
                     && string.Equals(
-                        Path.GetFullPath(diagnostic.FilePath),
+                        Path.GetFullPath(diagnosticPath),
                         Path.GetFullPath(fileFilter),
                         StringComparison.OrdinalIgnoreCase)),
                 $"The {scenario} query returned a diagnostic outside its file filter.");

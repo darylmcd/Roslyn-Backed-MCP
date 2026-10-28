@@ -32,12 +32,12 @@ public enum TypeUsageClassification
 /// Represents a source usage of a type.
 /// </summary>
 public sealed record TypeUsageDto(
-    string FilePath,
-    int StartLine,
-    int StartColumn,
-    int EndLine,
-    int EndColumn,
-    string? ContainingMember,
-    string? PreviewText,
-    TypeUsageClassification Classification,
+    [property: Obsolete(LocationDtoDeprecation.FlatMemberMessage)] string FilePath,
+    [property: Obsolete(LocationDtoDeprecation.FlatMemberMessage)] int StartLine,
+    [property: Obsolete(LocationDtoDeprecation.FlatMemberMessage)] int StartColumn,
+    [property: Obsolete(LocationDtoDeprecation.FlatMemberMessage)] int EndLine,
+    [property: Obsolete(LocationDtoDeprecation.FlatMemberMessage)] int EndColumn,
+    [property: Obsolete(LocationDtoDeprecation.FlatMemberMessage)] string? ContainingMember,
+    [property: Obsolete(LocationDtoDeprecation.FlatMemberMessage)] string? PreviewText,
+    [property: Obsolete(LocationDtoDeprecation.FlatMemberMessage)] TypeUsageClassification Classification,
     LocationDto? Location = null);

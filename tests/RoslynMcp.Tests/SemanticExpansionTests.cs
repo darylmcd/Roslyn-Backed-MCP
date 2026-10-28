@@ -39,7 +39,7 @@ public class SemanticExpansionTests : SharedWorkspaceTestBase
             SymbolLocator.BySource(shapeFile.FilePath!, 7, 27),
             CancellationToken.None);
 
-        Assert.IsTrue(overrides.Any(overrideSymbol => overrideSymbol.FilePath?.EndsWith("Rectangle.cs", StringComparison.OrdinalIgnoreCase) == true));
+        Assert.IsTrue(overrides.Any(overrideSymbol => overrideSymbol.ResolvedFilePath()?.EndsWith("Rectangle.cs", StringComparison.OrdinalIgnoreCase) == true));
     }
 
     // find-base-members-vs-member-hierarchy-metadata-drift: regression — metadata-boundary
@@ -69,7 +69,7 @@ public class SemanticExpansionTests : SharedWorkspaceTestBase
             "find_base_members must match member_hierarchy.BaseMembers count — metadata-boundary alignment.");
         Assert.IsTrue(baseMembers.Any(symbol => symbol.FullyQualifiedName.Contains("IEquatable", StringComparison.Ordinal)),
             "find_base_members should surface the metadata-only IEquatable<T>.Equals symbol.");
-        Assert.IsTrue(baseMembers.Any(symbol => symbol.FilePath is null),
+        Assert.IsTrue(baseMembers.Any(symbol => symbol.ResolvedFilePath() is null),
             "At least one returned base member should carry FilePath=null (metadata-only).");
     }
 
@@ -103,7 +103,7 @@ public class SemanticExpansionTests : SharedWorkspaceTestBase
             "member_hierarchy.SiblingInterfaceImplementations should surface concrete IEquatable<T>.Equals impls now that they're separated from overrides.");
         Assert.IsTrue(
             hierarchy.SiblingInterfaceImplementations.Any(symbol =>
-                symbol.FilePath?.EndsWith("EquatablePoint.cs", StringComparison.OrdinalIgnoreCase) == true),
+                symbol.ResolvedFilePath()?.EndsWith("EquatablePoint.cs", StringComparison.OrdinalIgnoreCase) == true),
             "EquatablePoint.Equals should appear in the SiblingInterfaceImplementations bucket.");
     }
 
@@ -118,7 +118,7 @@ public class SemanticExpansionTests : SharedWorkspaceTestBase
             SymbolLocator.BySource(rectangleFile.FilePath!, 16, 28),
             CancellationToken.None);
 
-        Assert.IsTrue(baseMembers.Any(baseMember => baseMember.FilePath?.EndsWith("Shape.cs", StringComparison.OrdinalIgnoreCase) == true));
+        Assert.IsTrue(baseMembers.Any(baseMember => baseMember.ResolvedFilePath()?.EndsWith("Shape.cs", StringComparison.OrdinalIgnoreCase) == true));
     }
 
     [TestMethod]

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using RoslynMcp.Core.Models;
 
 namespace RoslynMcp.Tests;
 
@@ -132,9 +133,9 @@ public sealed class DiagnosticServicePerfTests : TestBase
         Assert.IsNotNull(cold, "Cold-path (single-document short-circuit) must find CS0414.");
         Assert.AreEqual(warm.Diagnostic.Id, cold.Diagnostic.Id);
         Assert.AreEqual(warm.Diagnostic.Severity, cold.Diagnostic.Severity);
-        Assert.AreEqual(warm.Diagnostic.FilePath, cold.Diagnostic.FilePath);
-        Assert.AreEqual(warm.Diagnostic.StartLine, cold.Diagnostic.StartLine);
-        Assert.AreEqual(warm.Diagnostic.StartColumn, cold.Diagnostic.StartColumn);
+        Assert.AreEqual(warm.Diagnostic.ResolvedFilePath(), cold.Diagnostic.ResolvedFilePath());
+        Assert.AreEqual(warm.Diagnostic.ResolvedStartLine(), cold.Diagnostic.ResolvedStartLine());
+        Assert.AreEqual(warm.Diagnostic.ResolvedStartColumn(), cold.Diagnostic.ResolvedStartColumn());
         Assert.AreEqual(warm.Description, cold.Description);
         Assert.AreEqual(warm.HelpLinkUri, cold.HelpLinkUri);
         Assert.AreEqual(warm.GuidanceMessage, cold.GuidanceMessage);

@@ -98,18 +98,10 @@ public sealed class LocationDtoMigrationTests
         var startOnly = DotnetOutputParser.ParseBuildDiagnostics(
             "sample.cs(2,3): error CS1002: ; expected [Sample.csproj]").Single();
 
-        Assert.IsNotNull(complete.Location);
-        Assert.AreEqual(complete.FilePath, complete.Location.FilePath);
-        Assert.AreEqual(complete.EndLine, complete.Location.EndLine);
-        Assert.AreEqual(complete.EndColumn, complete.Location.EndColumn);
+        FlatLocationContract.AssertAgreesWithLocation(complete);
         Assert.IsNull(startOnly.Location, "A start-only MSBuild diagnostic must not fabricate an end span.");
 
         var enriched = SymbolMapper.WithEndPosition(startOnly, endLine: 2, endColumn: 8);
-        Assert.IsNotNull(enriched.Location);
-        Assert.AreEqual(enriched.FilePath, enriched.Location.FilePath);
-        Assert.AreEqual(enriched.StartLine, enriched.Location.StartLine);
-        Assert.AreEqual(enriched.StartColumn, enriched.Location.StartColumn);
-        Assert.AreEqual(enriched.EndLine, enriched.Location.EndLine);
-        Assert.AreEqual(enriched.EndColumn, enriched.Location.EndColumn);
+        FlatLocationContract.AssertAgreesWithLocation(enriched);
     }
 }

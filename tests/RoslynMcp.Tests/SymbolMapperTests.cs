@@ -44,7 +44,7 @@ public sealed class SymbolMapperTests : SharedWorkspaceTestBase
         Assert.AreEqual("Interface", dto.Kind);
         StringAssert.Contains(dto.FullyQualifiedName ?? "", "IAnimal");
         Assert.AreEqual("SampleLib", dto.Namespace);
-        AssertLocationMatchesLegacySpan(dto.Location, dto.FilePath, dto.StartLine, dto.StartColumn, dto.EndLine, dto.EndColumn);
+        FlatLocationContract.AssertAgreesWithLocation(dto);
     }
 
     [TestMethod]
@@ -232,22 +232,6 @@ public sealed class SymbolMapperTests : SharedWorkspaceTestBase
         Assert.AreEqual("TEST999", dto.Id);
         Assert.AreEqual("message", dto.Message);
         StringAssert.Contains(dto.Severity ?? "", "Warning");
-        AssertLocationMatchesLegacySpan(dto.Location, dto.FilePath, dto.StartLine, dto.StartColumn, dto.EndLine, dto.EndColumn);
-    }
-
-    private static void AssertLocationMatchesLegacySpan(
-        LocationDto? location,
-        string? filePath,
-        int? startLine,
-        int? startColumn,
-        int? endLine,
-        int? endColumn)
-    {
-        Assert.IsNotNull(location);
-        Assert.AreEqual(filePath, location.FilePath);
-        Assert.AreEqual(startLine, location.StartLine);
-        Assert.AreEqual(startColumn, location.StartColumn);
-        Assert.AreEqual(endLine, location.EndLine);
-        Assert.AreEqual(endColumn, location.EndColumn);
+        FlatLocationContract.AssertAgreesWithLocation(dto);
     }
 }
