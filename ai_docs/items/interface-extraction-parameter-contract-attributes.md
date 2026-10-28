@@ -1,6 +1,6 @@
 # interface-extraction-parameter-contract-attributes — Copy caller-info and nullable-flow parameter attributes to extracted interfaces
 
-**row:** `interface-extraction-parameter-contract-attributes` · **pri:** `High` · **size:** `M` · **deps:** `cross-project-interface-parameter-semantics,interface-member-projection-shared-emitter`
+**row:** `interface-extraction-parameter-contract-attributes` · **pri:** `High` · **size:** `M` · **deps:** `cross-project-interface-parameter-semantics`
 
 ## Anchors
 
@@ -23,3 +23,7 @@
 ## Context
 
 - Copying `InterpolatedStringHandlerArgument("")` re-types the handler receiver, which can bind a different handler constructor or none; hence the probe.
+
+## Notes
+
+2026-10-28 PR #1875: an allowlist (Caller*, Optional, DefaultParameterValue, DateTimeConstant, DecimalConstant, nullable-flow attributes, UnscopedRef) is copied on members, accessors and parameters; TryGet [NotNullWhen] and Log [CallerMemberName] asserted. Remaining delta: InterpolatedStringHandlerArgument is deliberately NOT copied; the handler-binding probe/refusal described above is not built.

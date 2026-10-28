@@ -1,12 +1,12 @@
 # cross-project-interface-parameter-semantics — Preserve emitted interface parameter semantics
 
-**row:** `cross-project-interface-parameter-semantics` · **pri:** `High` · **size:** `M` · **deps:** `interface-member-projection-shared-emitter`
+**row:** `cross-project-interface-parameter-semantics` · **pri:** `High` · **size:** `M`
 
 ## Anchors
 
-- `src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs:619` (`CreateParameterList`)
+- `src/RoslynMcp.Roslyn/Services/InterfaceMemberProjector.cs:130` (`Strip`), `:235` (`ContractParameters`) — the shared projector (PR #1875); the per-service emitters are gone.
+- `tests/RoslynMcp.Tests/InterfaceMemberProjectorTests.cs`
 - `tests/RoslynMcp.Tests/CrossProjectRefactoringIntegrationTests.cs`
-- `src/RoslynMcp.Roslyn/Services/InterfaceExtractionService.cs:197-202`, `:419-428` — the in-project emitter drops modifiers too; `GetDefaultValueText` mis-renders defaults.
 
 ## Acceptance
 
@@ -29,3 +29,7 @@
 - Current delivery order, superseding fixture diagnosis and preserved-candidate receipt limits: `ai_docs/reports/2026-10-26-interface-split-delivery.md`. Historical pending/hold statements above describe the original combined candidate; use that report for current state.
 - 2026-10-27: dependency `interface-extraction-nullable-context-projection` closed by PR1854 (hosted Linux budget fixed by PR1857). PR1840 closed as superseded; its design for this row is inlined here and its archive branches were deleted (head still at GitHub `refs/pull/1840/head`). Re-cut from current main; do not resume PR1840.
 - 2026-10-27 diagnostic: CPRS:516-521 emits name and type only (`Modify(ref int x, out int y, in int z)` becomes `Modify(int x, int y, int z)`, CS0535); IES:197-202 drops modifiers; IES:419-428 renders char bare, enums as numbers (CS1750), float without `f` (CS0664), decimal without `m`, infinity as `∞`, culture-formatted numbers and unescaped strings; `__arglist` is dropped (CS0535).
+
+## Notes
+
+2026-10-28 PR #1875 (projector merged): ref/out/in, params, scoped, defaults written as source literals, [Optional,DateTimeConstant] and parameter attributes are covered by InterfaceMemberProjectorTests on the standalone and cross-project routes. Remaining delta: __arglist untested; float/decimal/char/escaped-string/enum defaults and 'ref readonly' parameters not in the matrix; dependency-inversion and extract-and-wire routes not matrix-tested; no refusal-before-token for unrepresentable forms.

@@ -1,6 +1,6 @@
 # interface-extraction-nullability-context-fidelity — Preserve generated nullable contracts
 
-**row:** `interface-extraction-nullability-context-fidelity` · **pri:** `High` · **size:** `M` · **deps:** `cross-project-interface-parameter-semantics,interface-extraction-ref-return-contracts,interface-extraction-unsafe-signature-context,interface-extraction-escaped-member-identifiers,interface-member-projection-shared-emitter`
+**row:** `interface-extraction-nullability-context-fidelity` · **pri:** `High` · **size:** `M` · **deps:** `cross-project-interface-parameter-semantics,interface-extraction-ref-return-contracts,interface-extraction-unsafe-signature-context`
 
 ## Anchors
 
@@ -27,3 +27,7 @@
 
 - Current delivery order, superseding fixture diagnosis and preserved-candidate receipt limits: `ai_docs/reports/2026-10-26-interface-split-delivery.md`. Historical pending/hold statements above describe the original combined candidate; use that report for current state.
 - 2026-10-27: dependency `interface-extraction-nullable-context-projection` closed by PR1854 (hosted Linux budget fixed by PR1857). PR1840 closed as superseded; its design for this row is inlined here and its archive branches were deleted (head still at GitHub `refs/pull/1840/head`). Re-cut from current main; do not resume PR1840.
+
+## Notes
+
+2026-10-28 PR #1875: projector Capture() now covers indexers and events; Receiving_Context test compares nullable graphs on all four routes including events. Remaining delta: explicit member-mapping post-condition with refusal on mismatch (acceptance bullet 5) is unbuilt; deps trimmed to still-open rows.
