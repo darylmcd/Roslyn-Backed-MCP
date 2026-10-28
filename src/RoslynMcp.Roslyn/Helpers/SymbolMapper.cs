@@ -171,6 +171,33 @@ public static class SymbolMapper
     }
 
     /// <summary>
+    /// Creates a location that is always non-null for a producer that must report one (property writes and
+    /// mutation callers). A span whose path is blank falls back to <paramref name="fallbackPath"/> (the
+    /// owning document's file path or name) so the reference is never dropped or left without a file.
+    /// </summary>
+    internal static LocationDto ToRequiredLocationDto(
+        FileLinePositionSpan lineSpan,
+        string fallbackPath,
+        string? containingMember,
+        string? previewText,
+        string? classification) =>
+        new(
+            FilePath: string.IsNullOrWhiteSpace(lineSpan.Path) ? fallbackPath : lineSpan.Path,
+            StartLine: lineSpan.StartLinePosition.Line + 1,
+            StartColumn: lineSpan.StartLinePosition.Character + 1,
+            EndLine: lineSpan.EndLinePosition.Line + 1,
+            EndColumn: lineSpan.EndLinePosition.Character + 1,
+            ContainingMember: containingMember,
+            PreviewText: previewText,
+            Classification: classification);
+
+    /// <summary>Returns <paramref name="location"/> with a blank path replaced by the document's path or name.</summary>
+    internal static LocationDto WithPathFallback(LocationDto location, Document document) =>
+        string.IsNullOrWhiteSpace(location.FilePath)
+            ? location with { FilePath = document.FilePath ?? document.Name }
+            : location;
+
+    /// <summary>
     /// Sets the end of a diagnostic's span. A diagnostic without a location has no span to complete and is
     /// returned unchanged.
     /// </summary>
