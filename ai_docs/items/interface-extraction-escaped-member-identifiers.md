@@ -1,6 +1,6 @@
 # interface-extraction-escaped-member-identifiers — Preserve escaped member identifiers
 
-**row:** `interface-extraction-escaped-member-identifiers` · **pri:** `High` · **size:** `M`
+**row:** `interface-extraction-escaped-member-identifiers` · **pri:** `High` · **size:** `M` · **deps:** `interface-member-projection-shared-emitter`
 
 ## Anchors
 

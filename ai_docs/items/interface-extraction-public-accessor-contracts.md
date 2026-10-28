@@ -1,6 +1,6 @@
 # interface-extraction-public-accessor-contracts — Preserve ordinary property accessor contracts
 
-**row:** `interface-extraction-public-accessor-contracts` · **pri:** `Medium` · **size:** `M`
+**row:** `interface-extraction-public-accessor-contracts` · **pri:** `Medium` · **size:** `M` · **deps:** `interface-member-projection-shared-emitter`
 
 ## Anchors
 

@@ -1,6 +1,6 @@
 # interface-extraction-nested-signature-type-qualification — Preserve containing type qualification in emitted signatures
 
-**row:** `interface-extraction-nested-signature-type-qualification` · **pri:** `Medium` · **size:** `M`
+**row:** `interface-extraction-nested-signature-type-qualification` · **pri:** `Medium` · **size:** `M` · **deps:** `interface-member-projection-shared-emitter`
 
 ## Anchors
 

@@ -1,6 +1,6 @@
 # cross-project-interface-event-member-preservation — Preserve extracted public events
 
-**row:** `cross-project-interface-event-member-preservation` · **pri:** `Medium` · **size:** `S`
+**row:** `cross-project-interface-event-member-preservation` · **pri:** `Medium` · **size:** `S` · **deps:** `interface-member-projection-shared-emitter`
 
 ## Anchors
 

@@ -1,6 +1,6 @@
 # workspace-manager-load-finalization-collaborator-extraction — extract post-open finalization
 
-**row:** `workspace-manager-load-finalization-collaborator-extraction` · **pri:** `Low` · **size:** `M`
+**row:** `workspace-manager-load-finalization-collaborator-extraction` · **pri:** `High` · **size:** `M`
 
 ## Anchors
 
