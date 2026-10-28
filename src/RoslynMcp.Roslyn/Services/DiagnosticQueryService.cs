@@ -170,7 +170,7 @@ internal sealed class DiagnosticQueryService
         var matchingFile = canonicalFilter is null
             ? rawWorkspace
             : rawWorkspace.Where(diagnostic =>
-                    diagnostic.ResolvedFilePath() is { } diagnosticPath
+                    diagnostic.Location?.FilePath is { } diagnosticPath
                     && string.Equals(
                         PhysicalPathResolver.Resolve(diagnosticPath),
                         canonicalFilter,

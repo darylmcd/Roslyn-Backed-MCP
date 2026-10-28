@@ -555,7 +555,7 @@ public sealed class RestoreStalenessDetectorTests
 
     private static DiagnosticDto MakeDiagnostic(string id, string message) =>
         new(Id: id, Message: message, Severity: "Warning", Category: "Compiler",
-            FilePath: null, StartLine: null, StartColumn: null, EndLine: null, EndColumn: null);
+            Location: null);
 
     private static ProjectStatusDto MakeProjectStatus(string projectFilePath) =>
         new(Name: Path.GetFileNameWithoutExtension(projectFilePath),

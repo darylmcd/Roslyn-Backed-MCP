@@ -136,7 +136,7 @@ public sealed class FindOverridesCorlibSuppressionTests : SharedWorkspaceTestBas
         Assert.IsTrue(results.Count > 0,
             "find_overrides on the non-corlib virtual Shape.Describe must surface concrete overrides — the corlib guard must NOT short-circuit user-declared virtuals.");
         Assert.IsTrue(
-            results.Any(symbol => symbol.ResolvedFilePath()?.EndsWith("Rectangle.cs", StringComparison.OrdinalIgnoreCase) == true),
+            results.Any(symbol => symbol.Location?.FilePath?.EndsWith("Rectangle.cs", StringComparison.OrdinalIgnoreCase) == true),
             "Rectangle.Describe should remain in the overrides list for Shape.Describe.");
     }
 

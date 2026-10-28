@@ -85,9 +85,9 @@ public sealed class SecurityDiagnosticService : ISecurityDiagnosticService
                 SecurityCategory: info.SecurityCategory,
                 OwaspCategory: info.OwaspCategory,
                 SecuritySeverity: info.SecuritySeverity,
-                FilePath: diag.ResolvedFilePath(),
-                StartLine: diag.ResolvedStartLine(),
-                StartColumn: diag.ResolvedStartColumn(),
+                FilePath: diag.Location?.FilePath,
+                StartLine: diag.Location?.StartLine,
+                StartColumn: diag.Location?.StartColumn,
                 FixHint: info.FixHint,
                 HelpLinkUri: BuildHelpLink(diag.Id)));
         }

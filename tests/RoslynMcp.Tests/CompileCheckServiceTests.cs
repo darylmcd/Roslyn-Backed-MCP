@@ -124,7 +124,7 @@ public sealed class CompileCheckServiceTests : IsolatedWorkspaceTestBase
         Assert.AreEqual(2, result.CompletedProjects);
         Assert.IsNull(result.RestoreHint);
         Assert.IsTrue(result.Success);
-        Assert.IsTrue(result.Diagnostics.All(d => d.ResolvedFilePath() == dogPath || d.ResolvedFilePath() == programPath));
+        Assert.IsTrue(result.Diagnostics.All(d => d.Location?.FilePath == dogPath || d.Location?.FilePath == programPath));
         Assert.AreEqual(CompileCheckDto.ScopeFiles, result.RequestedScope);
         Assert.AreEqual(CompileCheckDto.ScopeFiles, result.ActualScope);
     }

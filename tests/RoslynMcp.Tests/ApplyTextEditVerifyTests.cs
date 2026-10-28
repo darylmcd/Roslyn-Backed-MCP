@@ -307,27 +307,9 @@ public sealed class ApplyTextEditVerifyTests : IsolatedWorkspaceTestBase
 
         const int preExistingCount = 505;
         var preExisting = Enumerable.Range(0, preExistingCount)
-            .Select(index => new DiagnosticDto(
-                "CS9999",
-                $"pre-existing error {index}",
-                "Error",
-                "Compiler",
-                "Existing.cs",
-                index + 1,
-                1,
-                index + 1,
-                2))
+            .Select(index => new DiagnosticDto("CS9999", $"pre-existing error {index}", "Error", "Compiler", new LocationDto("Existing.cs", index + 1, 1, index + 1, 2, null, null)))
             .ToList();
-        var introduced = new DiagnosticDto(
-            "CS0103",
-            "The name 'BeyondLegacyPage' does not exist in the current context",
-            "Error",
-            "Compiler",
-            "New.cs",
-            999,
-            1,
-            999,
-            2);
+        var introduced = new DiagnosticDto("CS0103", "The name 'BeyondLegacyPage' does not exist in the current context", "Error", "Compiler", new LocationDto("New.cs", 999, 1, 999, 2, null, null));
 
         var compileCheck = new PaginatingCompileCheck(
             preExisting,

@@ -45,7 +45,7 @@ public sealed class ApplyUndoWorkflowServiceTests
         ElapsedMs: 0);
 
     private static DiagnosticDto NewError() =>
-        new("CS0103", "The name 'Nope' does not exist", "Error", "Compiler", "File.cs", 7, 5, 7, 9);
+        new("CS0103", "The name 'Nope' does not exist", "Error", "Compiler", new LocationDto("File.cs", 7, 5, 7, 9, null, null));
 
     private static ApplyUndoWorkflowService Create(
         FakeCompileCheck compile,

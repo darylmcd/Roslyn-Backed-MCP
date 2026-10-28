@@ -70,8 +70,8 @@ public sealed class DiagnosticServiceFilterTotalsTests : SharedWorkspaceTestBase
             List<DiagnosticDto> diagnostics = [];
             foreach (var (prefix, severity) in new[] { ("I", "Info"), ("W", "Warning"), ("E", "Error") })
             {
-                diagnostics.Add(new DiagnosticDto(sameId ? "TEST001" : prefix + "1", "Probe", severity, "Testing", null, null, null, null, null));
-                var duplicate = new DiagnosticDto(sameId ? "TEST001" : prefix + "2", "Probe", severity, "Testing", null, null, null, null, null);
+                diagnostics.Add(new DiagnosticDto(sameId ? "TEST001" : prefix + "1", "Probe", severity, "Testing", Location: null));
+                var duplicate = new DiagnosticDto(sameId ? "TEST001" : prefix + "2", "Probe", severity, "Testing", Location: null);
                 diagnostics.AddRange([duplicate, duplicate]);
             }
             if (reverse) diagnostics.Reverse();
@@ -399,7 +399,7 @@ public sealed class DiagnosticServiceFilterTotalsTests : SharedWorkspaceTestBase
         {
             Assert.IsTrue(
                 returned.All(diagnostic =>
-                    diagnostic.ResolvedFilePath() is { } diagnosticPath
+                    diagnostic.Location?.FilePath is { } diagnosticPath
                     && string.Equals(
                         Path.GetFullPath(diagnosticPath),
                         Path.GetFullPath(fileFilter),

@@ -44,7 +44,7 @@ public sealed class SymbolMapperTests : SharedWorkspaceTestBase
         Assert.AreEqual("Interface", dto.Kind);
         StringAssert.Contains(dto.FullyQualifiedName ?? "", "IAnimal");
         Assert.AreEqual("SampleLib", dto.Namespace);
-        FlatLocationContract.AssertAgreesWithLocation(dto);
+        Assert.IsNotNull(dto.Location);
     }
 
     [TestMethod]
@@ -232,6 +232,6 @@ public sealed class SymbolMapperTests : SharedWorkspaceTestBase
         Assert.AreEqual("TEST999", dto.Id);
         Assert.AreEqual("message", dto.Message);
         StringAssert.Contains(dto.Severity ?? "", "Warning");
-        FlatLocationContract.AssertAgreesWithLocation(dto);
+        Assert.IsNotNull(dto.Location);
     }
 }

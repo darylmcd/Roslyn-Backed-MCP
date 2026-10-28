@@ -294,15 +294,12 @@ public sealed class ApplyWithVerifyCancellationAndScopeTests
         // the COMPLETE error set is compared → the regression is caught and rolled back.
         const int preExistingCount = 55;
         var preExisting = Enumerable.Range(0, preExistingCount)
-            .Select(i => new DiagnosticDto(
-                "CS9999", $"pre-existing error {i}", "Error", "Compiler", "Existing.cs", i, 1, i, 10))
+            .Select(i => new DiagnosticDto("CS9999", $"pre-existing error {i}", "Error", "Compiler", new LocationDto("Existing.cs", i, 1, i, 10, null, null)))
             .ToList();
 
         // The single introduced error — distinct identity (id|file|line), appended LAST so it sits
         // at index 55, comfortably beyond the default 50-item page.
-        var introduced = new DiagnosticDto(
-            "CS0103", "The name 'X' does not exist in the current context", "Error", "Compiler",
-            "New.cs", 999, 1, 999, 5);
+        var introduced = new DiagnosticDto("CS0103", "The name 'X' does not exist in the current context", "Error", "Compiler", new LocationDto("New.cs", 999, 1, 999, 5, null, null));
 
         var preLegFull = new List<DiagnosticDto>(preExisting);                    // pre-apply: 55 errors
         var postLegFull = new List<DiagnosticDto>(preExisting) { introduced };    // post-apply: 55 + 1 new
@@ -320,7 +317,7 @@ public sealed class ApplyWithVerifyCancellationAndScopeTests
             "back. This assertion FAILS against the pre-fix Limit:50 default (the new error is truncated " +
             "out of the post-apply page, so the outcome is a false 'applied').");
         Assert.IsTrue(
-            rolledBack.IntroducedErrors.Any(d => d.Id == "CS0103" && d.ResolvedFilePath() == "New.cs"),
+            rolledBack.IntroducedErrors.Any(d => d.Id == "CS0103" && d.Location?.FilePath == "New.cs"),
             "The introduced error must surface in IntroducedErrors, not be silently dropped.");
 
         // Regression guard: both legs must request a page large enough to cover the COMPLETE

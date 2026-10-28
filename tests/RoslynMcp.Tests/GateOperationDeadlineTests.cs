@@ -24,7 +24,7 @@ public sealed class GateOperationDeadlineTests
     {
         public FakeTimeProvider Clock { get; } = new();
         public BuildWorkspaceManager Manager { get; } = new();
-        public ControlledCommandRunner Runner { get; } = new();
+        public ControlledCommandRunner Runner { get; }
         public WorkspaceExecutionGate Gate { get; }
         public BuildService Service { get; }
         public TestRunnerService TestService { get; }
@@ -32,8 +32,13 @@ public sealed class GateOperationDeadlineTests
         public ValidationServiceOptions Options { get; }
         public NuGetDependencyService ScanService { get; }
 
-        public Harness(TimeSpan? buildTimeout = null, TimeSpan? testTimeout = null, TimeSpan? scanTimeout = null)
+        public Harness(
+            TimeSpan? buildTimeout = null,
+            TimeSpan? testTimeout = null,
+            TimeSpan? scanTimeout = null,
+            string commandStdOut = "{}")
         {
+            Runner = new ControlledCommandRunner(commandStdOut);
             Gate = new WorkspaceExecutionGate(new ExecutionGateOptions(), Manager, Clock);
             Executor = new GatedCommandExecutor(Manager, Runner, NullLogger<GatedCommandExecutor>.Instance);
             Options = new ValidationServiceOptions
@@ -190,6 +195,29 @@ public sealed class GateOperationDeadlineTests
             "workspaceChangedDuringRun",
             doc.RootElement.GetProperty("warnings")[0].GetString());
         Assert.IsTrue(doc.RootElement.GetProperty("execution").GetProperty("succeeded").GetBoolean());
+    }
+
+    [TestMethod]
+    public async Task BuildWorkspace_StartOnlyDiagnostic_KeepsItsPositionOnTheWire_WhenSpanEnrichmentFails()
+    {
+        // locationdto-partial-span-representation-5-0: MSBuild gave file + start and no end, and the fake
+        // manager's GetCurrentSolution throws, so BuildService.EnrichDiagnosticSpansAsync takes its
+        // enrichment-failure fallback. The tool output must still carry the position.
+        var h = new Harness(commandStdOut: "sample.cs(2,3): error CS1002: ; expected [Sample.csproj]");
+
+        var build = h.BuildWorkspaceAsync();
+        await h.Runner.Started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        h.Runner.Release();
+
+        using var doc = JsonDocument.Parse(await build.WaitAsync(TimeSpan.FromSeconds(10)));
+        var diagnostic = doc.RootElement.GetProperty("diagnostics")[0];
+        Assert.IsTrue(diagnostic.TryGetProperty("location", out var location), "A start-only diagnostic must keep its location.");
+        Assert.AreEqual("sample.cs", location.GetProperty("filePath").GetString());
+        Assert.AreEqual(2, location.GetProperty("startLine").GetInt32());
+        Assert.AreEqual(3, location.GetProperty("startColumn").GetInt32());
+        Assert.IsFalse(location.TryGetProperty("endLine", out var endLine) && endLine.ValueKind != JsonValueKind.Null);
+        Assert.IsFalse(location.TryGetProperty("endColumn", out var endColumn) && endColumn.ValueKind != JsonValueKind.Null);
+        Assert.IsFalse(diagnostic.TryGetProperty("startLine", out _), "The flat members are removed at 5.0.");
     }
 
     [TestMethod]
@@ -439,7 +467,7 @@ public sealed class GateOperationDeadlineTests
             throw new NotSupportedException();
     }
 
-    private sealed class ControlledCommandRunner : IDotnetCommandRunner
+    private sealed class ControlledCommandRunner(string stdOut) : IDotnetCommandRunner
     {
         private readonly TaskCompletionSource _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -468,7 +496,7 @@ public sealed class GateOperationDeadlineTests
                 ExitCode: 0,
                 Succeeded: true,
                 DurationMs: 1,
-                StdOut: "{}",
+                StdOut: stdOut,
                 StdErr: "");
         }
     }

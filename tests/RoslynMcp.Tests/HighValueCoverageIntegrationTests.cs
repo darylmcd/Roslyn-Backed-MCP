@@ -56,7 +56,7 @@ public sealed class HighValueCoverageIntegrationTests : SharedWorkspaceTestBase
                 result.Diagnostics.Any(d => d.Id.Contains("CS", StringComparison.Ordinal)),
                 "Expected compiler diagnostics.");
             var locatedDiagnostic = result.Diagnostics.First(d => d.Location is not null);
-            FlatLocationContract.AssertAgreesWithLocation(locatedDiagnostic);
+            Assert.IsNotNull(locatedDiagnostic.Location);
         }
         finally
         {

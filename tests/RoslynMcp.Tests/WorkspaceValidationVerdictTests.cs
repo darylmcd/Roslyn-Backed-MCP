@@ -107,7 +107,7 @@ public sealed class WorkspaceValidationVerdictTests : IsolatedWorkspaceTestBase
         Assert.AreEqual("compile-error", (await ValidateAsync(compilerFailure, workspace.WorkspaceId, path, gitScope)).OverallStatus);
 
         var diagnosticFailure = CreateService(partial, diagnostics: new FixedDiagnostics(
-            new DiagnosticDto("CA1000", "design error", "Error", "Design", path, 1, 1, 1, 2)));
+            new DiagnosticDto("CA1000", "design error", "Error", "Design", new LocationDto(path, 1, 1, 1, 2, null, null))));
         var diagnosticResult = await ValidateAsync(diagnosticFailure, workspace.WorkspaceId, path, gitScope, summary: true);
         Assert.AreEqual("analyzer-error", diagnosticResult.OverallStatus);
         Assert.AreEqual(1, diagnosticResult.ErrorCount);
@@ -265,7 +265,7 @@ public sealed class WorkspaceValidationVerdictTests : IsolatedWorkspaceTestBase
             PassingTests().Execution with { ExitCode = -1, Succeeded = false }, "TestTimeout exhausted");
         var compile = Compile(cancelled: true) with { ErrorCount = compilerError ? 1 : 0 };
         DiagnosticDto[] errors = diagnosticError
-            ? [new DiagnosticDto("CA1000", "design error", "Error", "Design", null, 1, 1, 1, 2)]
+            ? [new DiagnosticDto("CA1000", "design error", "Error", "Design", Location: null)]
             : [];
 
         Assert.AreEqual(expected, WorkspaceValidationService.ComputeOverallStatus(compile, errors, timeout, runTests: true));

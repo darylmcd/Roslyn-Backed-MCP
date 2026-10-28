@@ -62,7 +62,7 @@ internal static class PromptMessageBuilder
         var relevantDiagnostics = diagnostics.CompilerDiagnostics
             .Concat(diagnostics.AnalyzerDiagnostics)
             .Take(10)
-            .Select(diagnostic => $"- {diagnostic.Id} {diagnostic.Severity} at {diagnostic.ResolvedFilePath()}:{diagnostic.ResolvedStartLine()}:{diagnostic.ResolvedStartColumn()} - {diagnostic.Message}")
+            .Select(diagnostic => $"- {diagnostic.Id} {diagnostic.Severity} at {diagnostic.Location?.FilePath}:{diagnostic.Location?.StartLine}:{diagnostic.Location?.StartColumn} - {diagnostic.Message}")
             .ToArray();
 
         return FormatBulletList(

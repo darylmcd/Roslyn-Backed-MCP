@@ -1,3 +1,4 @@
+using RoslynMcp.Roslyn.Helpers;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using Microsoft.CodeAnalysis;
@@ -85,12 +86,8 @@ public sealed class SnippetAnalysisService : ISnippetAnalysisService
                 Message: d.GetMessage(),
                 Severity: d.Severity.ToString(),
                 Category: d.Descriptor.Category,
-                FilePath: null,
-                StartLine: startLine,
-                StartColumn: startColumn,
-                EndLine: endLine,
-                EndColumn: endColumn,
-                Location: null);
+                Location: SymbolMapper.ToOptionalLocationDto(
+                    SymbolMapper.SnippetSourceName, startLine, startColumn, endLine, endColumn));
         }).ToList();
 
         // Extract declared symbols from the compilation

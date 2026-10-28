@@ -22,16 +22,7 @@ public sealed class DiagnosticIdentitySetTests
     [TestMethod]
     public void FormatIdentity_ProducesIdFileLineTuple()
     {
-        var diag = new DiagnosticDto(
-            Id: "CS0103",
-            Message: "The name 'Foo' does not exist in the current context",
-            Severity: "Error",
-            Category: "Compiler",
-            FilePath: "/repo/src/Foo.cs",
-            StartLine: 12,
-            StartColumn: 7,
-            EndLine: 12,
-            EndColumn: 10);
+        var diag = new DiagnosticDto("CS0103", "The name 'Foo' does not exist in the current context", "Error", "Compiler", new LocationDto("/repo/src/Foo.cs", 12, 7, 12, 10, null, null));
 
         var identity = DiagnosticIdentitySet.FormatIdentity(diag);
 
@@ -47,11 +38,8 @@ public sealed class DiagnosticIdentitySetTests
         // rollbacks). The pre-apply baseline diag and the post-apply diag at the same
         // location with a slightly different message text MUST hash to the same identity
         // so the diff filter treats them as the same diagnostic.
-        var pre = new DiagnosticDto("CS0246", "Type or namespace 'Foo' could not be found",
-            "Error", "Compiler", "/repo/A.cs", 5, 3, 5, 6);
-        var post = new DiagnosticDto("CS0246",
-            "The type or namespace name 'Foo' could not be found (are you missing a using directive or an assembly reference?)",
-            "Error", "Compiler", "/repo/A.cs", 5, 3, 5, 6);
+        var pre = new DiagnosticDto("CS0246", "Type or namespace 'Foo' could not be found", "Error", "Compiler", new LocationDto("/repo/A.cs", 5, 3, 5, 6, null, null));
+        var post = new DiagnosticDto("CS0246", "The type or namespace name 'Foo' could not be found (are you missing a using directive or an assembly reference?)", "Error", "Compiler", new LocationDto("/repo/A.cs", 5, 3, 5, 6, null, null));
 
         Assert.AreEqual(
             DiagnosticIdentitySet.FormatIdentity(pre),
@@ -64,10 +52,8 @@ public sealed class DiagnosticIdentitySetTests
     {
         // Column on a pre-existing diagnostic can shift when an unrelated edit on the
         // same line moves trailing tokens. The identity must NOT flip because of that.
-        var pre = new DiagnosticDto("CS0103", "Name does not exist", "Error", "Compiler",
-            "/repo/A.cs", 12, 7, 12, 10);
-        var post = new DiagnosticDto("CS0103", "Name does not exist", "Error", "Compiler",
-            "/repo/A.cs", 12, 11, 12, 14); // column moved 4 right
+        var pre = new DiagnosticDto("CS0103", "Name does not exist", "Error", "Compiler", new LocationDto("/repo/A.cs", 12, 7, 12, 10, null, null));
+        var post = new DiagnosticDto("CS0103", "Name does not exist", "Error", "Compiler", new LocationDto("/repo/A.cs", 12, 11, 12, 14, null, null)); // column moved 4 right
 
         Assert.AreEqual(
             DiagnosticIdentitySet.FormatIdentity(pre),
@@ -82,10 +68,8 @@ public sealed class DiagnosticIdentitySetTests
         // (e.g. CS8618 nullable warnings on every uninitialized field). Identity must
         // distinguish them so a NEW occurrence of the same id on a NEW line still
         // triggers rollback when introduced by an apply.
-        var line5 = new DiagnosticDto("CS8618", "Non-nullable field must contain a non-null value",
-            "Error", "Compiler", "/repo/A.cs", 5, 1, 5, 20);
-        var line10 = new DiagnosticDto("CS8618", "Non-nullable field must contain a non-null value",
-            "Error", "Compiler", "/repo/A.cs", 10, 1, 10, 20);
+        var line5 = new DiagnosticDto("CS8618", "Non-nullable field must contain a non-null value", "Error", "Compiler", new LocationDto("/repo/A.cs", 5, 1, 5, 20, null, null));
+        var line10 = new DiagnosticDto("CS8618", "Non-nullable field must contain a non-null value", "Error", "Compiler", new LocationDto("/repo/A.cs", 10, 1, 10, 20, null, null));
 
         Assert.AreNotEqual(
             DiagnosticIdentitySet.FormatIdentity(line5),
@@ -96,8 +80,8 @@ public sealed class DiagnosticIdentitySetTests
     [TestMethod]
     public void FormatIdentity_DiffersAcrossFiles()
     {
-        var aCs = new DiagnosticDto("CS0103", "X", "Error", "Compiler", "/repo/A.cs", 5, 1, 5, 5);
-        var bCs = new DiagnosticDto("CS0103", "X", "Error", "Compiler", "/repo/B.cs", 5, 1, 5, 5);
+        var aCs = new DiagnosticDto("CS0103", "X", "Error", "Compiler", new LocationDto("/repo/A.cs", 5, 1, 5, 5, null, null));
+        var bCs = new DiagnosticDto("CS0103", "X", "Error", "Compiler", new LocationDto("/repo/B.cs", 5, 1, 5, 5, null, null));
 
         Assert.AreNotEqual(
             DiagnosticIdentitySet.FormatIdentity(aCs),
@@ -124,12 +108,9 @@ public sealed class DiagnosticIdentitySetTests
             ReturnedDiagnostics: 3, Offset: 0, Limit: 50, HasMore: false,
             Diagnostics:
             [
-                new DiagnosticDto("CS0103", "Name does not exist", "Error", "Compiler",
-                    "/repo/A.cs", 5, 1, 5, 5),
-                new DiagnosticDto("CS0168", "Variable declared but never used", "Warning", "Compiler",
-                    "/repo/A.cs", 8, 1, 8, 5),
-                new DiagnosticDto("IDE0001", "Simplify name", "Info", "Style",
-                    "/repo/A.cs", 9, 1, 9, 5),
+                new DiagnosticDto("CS0103", "Name does not exist", "Error", "Compiler", new LocationDto("/repo/A.cs", 5, 1, 5, 5, null, null)),
+                new DiagnosticDto("CS0168", "Variable declared but never used", "Warning", "Compiler", new LocationDto("/repo/A.cs", 8, 1, 8, 5, null, null)),
+                new DiagnosticDto("IDE0001", "Simplify name", "Info", "Style", new LocationDto("/repo/A.cs", 9, 1, 9, 5, null, null)),
             ],
             ElapsedMs: 0);
 
@@ -151,10 +132,8 @@ public sealed class DiagnosticIdentitySetTests
             ReturnedDiagnostics: 2, Offset: 0, Limit: 50, HasMore: false,
             Diagnostics:
             [
-                new DiagnosticDto("CS0103", "Name does not exist", "Error", "Compiler",
-                    "/repo/A.cs", 5, 1, 5, 5),
-                new DiagnosticDto("CS0103", "The name does not exist in the current context",
-                    "Error", "Compiler", "/repo/A.cs", 5, 1, 5, 5),
+                new DiagnosticDto("CS0103", "Name does not exist", "Error", "Compiler", new LocationDto("/repo/A.cs", 5, 1, 5, 5, null, null)),
+                new DiagnosticDto("CS0103", "The name does not exist in the current context", "Error", "Compiler", new LocationDto("/repo/A.cs", 5, 1, 5, 5, null, null)),
             ],
             ElapsedMs: 0);
 
@@ -169,8 +148,8 @@ public sealed class DiagnosticIdentitySetTests
     {
         var diags = new[]
         {
-            new DiagnosticDto("CS0103", "X", "Error", "Compiler", "/repo/A.cs", 5, 1, 5, 5),
-            new DiagnosticDto("CS0246", "Y", "Error", "Compiler", "/repo/B.cs", 12, 1, 12, 5),
+            new DiagnosticDto("CS0103", "X", "Error", "Compiler", new LocationDto("/repo/A.cs", 5, 1, 5, 5, null, null)),
+            new DiagnosticDto("CS0246", "Y", "Error", "Compiler", new LocationDto("/repo/B.cs", 12, 1, 12, 5, null, null)),
         };
         var asCheck = new CompileCheckDto(false, 2, 0, 2, 2, 0, 50, false, diags, 0);
 
@@ -192,8 +171,7 @@ public sealed class DiagnosticIdentitySetTests
     {
         // Pre-apply: one error at id+file+line.
         var preCheck = new CompileCheckDto(false, 1, 0, 1, 1, 0, 50, false,
-            [new DiagnosticDto("CS0103", "Name 'X' does not exist", "Error", "Compiler",
-                "/repo/A.cs", 5, 1, 5, 5)],
+            [new DiagnosticDto("CS0103", "Name 'X' does not exist", "Error", "Compiler", new LocationDto("/repo/A.cs", 5, 1, 5, 5, null, null))],
             0);
 
         // Post-apply: same identity, message has shifted (e.g. analyzer's wording widened
@@ -202,9 +180,7 @@ public sealed class DiagnosticIdentitySetTests
         // implementation that included the message in the key WOULD have flagged it as
         // a "new" error — exactly the false-positive bug this change fixes.
         var postCheck = new CompileCheckDto(false, 1, 0, 1, 1, 0, 50, false,
-            [new DiagnosticDto("CS0103",
-                "The name 'X' does not exist in the current context",
-                "Error", "Compiler", "/repo/A.cs", 5, 1, 5, 5)],
+            [new DiagnosticDto("CS0103", "The name 'X' does not exist in the current context", "Error", "Compiler", new LocationDto("/repo/A.cs", 5, 1, 5, 5, null, null))],
             0);
 
         var preIds = DiagnosticIdentitySet.ExtractErrorIdentities(preCheck);
@@ -222,8 +198,7 @@ public sealed class DiagnosticIdentitySetTests
     {
         // Pre-apply: error at line 5.
         var preCheck = new CompileCheckDto(false, 1, 0, 1, 1, 0, 50, false,
-            [new DiagnosticDto("CS0103", "Name does not exist", "Error", "Compiler",
-                "/repo/A.cs", 5, 1, 5, 5)],
+            [new DiagnosticDto("CS0103", "Name does not exist", "Error", "Compiler", new LocationDto("/repo/A.cs", 5, 1, 5, 5, null, null))],
             0);
 
         // Post-apply: error at line 5 still there, AND a new error at line 12 — the apply
@@ -231,10 +206,8 @@ public sealed class DiagnosticIdentitySetTests
         // fires (the true-positive trigger condition).
         var postCheck = new CompileCheckDto(false, 2, 0, 2, 2, 0, 50, false,
             [
-                new DiagnosticDto("CS0103", "Name does not exist", "Error", "Compiler",
-                    "/repo/A.cs", 5, 1, 5, 5),
-                new DiagnosticDto("CS0103", "Name 'NewSymbol' does not exist", "Error", "Compiler",
-                    "/repo/A.cs", 12, 7, 12, 16),
+                new DiagnosticDto("CS0103", "Name does not exist", "Error", "Compiler", new LocationDto("/repo/A.cs", 5, 1, 5, 5, null, null)),
+                new DiagnosticDto("CS0103", "Name 'NewSymbol' does not exist", "Error", "Compiler", new LocationDto("/repo/A.cs", 12, 7, 12, 16, null, null)),
             ],
             0);
 
@@ -257,8 +230,7 @@ public sealed class DiagnosticIdentitySetTests
         // (e.g. it was Error before AND remains Error after — unchanged from the diff
         // helper's perspective), the introduced set must be empty.
         var preCheck = new CompileCheckDto(false, 1, 0, 1, 1, 0, 50, false,
-            [new DiagnosticDto("CS8602", "Dereference of a possibly null reference",
-                "Error", "Compiler", "/repo/A.cs", 22, 5, 22, 12)],
+            [new DiagnosticDto("CS8602", "Dereference of a possibly null reference", "Error", "Compiler", new LocationDto("/repo/A.cs", 22, 5, 22, 12, null, null))],
             0);
         var postCheck = preCheck; // Same diagnostic post-apply.
 
@@ -282,12 +254,10 @@ public sealed class DiagnosticIdentitySetTests
         // caller should know about it. Document this expectation explicitly so future
         // edits don't quietly change it.
         var preCheck = new CompileCheckDto(false, 0, 1, 1, 1, 0, 50, false,
-            [new DiagnosticDto("CS0168", "Variable declared but never used", "Warning",
-                "Compiler", "/repo/A.cs", 5, 1, 5, 5)],
+            [new DiagnosticDto("CS0168", "Variable declared but never used", "Warning", "Compiler", new LocationDto("/repo/A.cs", 5, 1, 5, 5, null, null))],
             0);
         var postCheck = new CompileCheckDto(false, 1, 0, 1, 1, 0, 50, false,
-            [new DiagnosticDto("CS0168", "Variable declared but never used", "Error",
-                "Compiler", "/repo/A.cs", 5, 1, 5, 5)],
+            [new DiagnosticDto("CS0168", "Variable declared but never used", "Error", "Compiler", new LocationDto("/repo/A.cs", 5, 1, 5, 5, null, null))],
             0);
 
         var preIds = DiagnosticIdentitySet.ExtractErrorIdentities(preCheck);

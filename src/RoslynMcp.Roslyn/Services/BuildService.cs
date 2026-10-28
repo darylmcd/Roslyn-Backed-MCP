@@ -126,10 +126,8 @@ public sealed class BuildService : IBuildService
     {
         var candidates = diagnostics
             .Where(diagnostic =>
-                !string.IsNullOrEmpty(diagnostic.ResolvedFilePath())
-                && diagnostic.ResolvedStartLine() is not null
-                && diagnostic.ResolvedStartColumn() is not null
-                && (diagnostic.ResolvedEndLine() is null || diagnostic.ResolvedEndColumn() is null))
+                diagnostic.Location is { } location
+                && (location.EndLine is null || location.EndColumn is null))
             .ToList();
         if (candidates.Count == 0)
         {
@@ -159,9 +157,9 @@ public sealed class BuildService : IBuildService
             {
                 var key = BuildDiagnosticSpanKey(
                     diagnostic.Id,
-                    diagnostic.ResolvedFilePath(),
-                    diagnostic.ResolvedStartLine(),
-                    diagnostic.ResolvedStartColumn());
+                    diagnostic.Location?.FilePath,
+                    diagnostic.Location?.StartLine,
+                    diagnostic.Location?.StartColumn);
                 return key is not null && spans.TryGetValue(key, out var span)
                     ? SymbolMapper.WithEndPosition(diagnostic, span.EndLine, span.EndColumn)
                     : diagnostic;
@@ -178,7 +176,7 @@ public sealed class BuildService : IBuildService
     {
         var spans = new Dictionary<string, (int EndLine, int EndColumn)>(StringComparer.OrdinalIgnoreCase);
         foreach (var filePath in candidates
-            .Select(candidate => candidate.ResolvedFilePath())
+            .Select(candidate => candidate.Location?.FilePath)
             .Where(static filePath => !string.IsNullOrWhiteSpace(filePath))
             .Cast<string>()
             .Distinct(StringComparer.OrdinalIgnoreCase))

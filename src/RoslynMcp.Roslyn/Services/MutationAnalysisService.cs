@@ -143,8 +143,8 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
                 FilePath: location.FilePath,
                 StartLine: location.StartLine,
                 StartColumn: location.StartColumn,
-                EndLine: location.EndLine,
-                EndColumn: location.EndColumn,
+                EndLine: location.EndLine ?? location.StartLine,
+                EndColumn: location.EndColumn ?? location.StartColumn,
                 ContainingMember: location.ContainingMember,
                 PreviewText: location.PreviewText,
                 WriteKind: writeKind,
@@ -323,16 +323,7 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
             // nested value remains stable and round-trippable without a second vocabulary.
             var location = item.Dto with { Classification = classification.ToString() };
 
-            results.Add(new TypeUsageDto(
-                FilePath: location.FilePath,
-                StartLine: location.StartLine,
-                StartColumn: location.StartColumn,
-                EndLine: location.EndLine,
-                EndColumn: location.EndColumn,
-                ContainingMember: location.ContainingMember,
-                PreviewText: location.PreviewText,
-                Classification: classification,
-                Location: location));
+            results.Add(new TypeUsageDto(location));
         }
 
         return results;

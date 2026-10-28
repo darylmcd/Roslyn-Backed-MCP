@@ -177,9 +177,10 @@ public sealed class DiagnosticQueryServiceRegressionTests
             diagnosticId: "MCP002", ct: CancellationToken.None);
         using var listed = JsonDocument.Parse(json);
         var diagnostic = listed.RootElement.GetProperty("compilerDiagnostics").EnumerateArray().Single();
-        var path = diagnostic.GetProperty("filePath").GetString()!;
-        var line = diagnostic.GetProperty("startLine").GetInt32();
-        var column = diagnostic.GetProperty("startColumn").GetInt32();
+        var diagnosticLocation = diagnostic.GetProperty("location");
+        var path = diagnosticLocation.GetProperty("filePath").GetString()!;
+        var line = diagnosticLocation.GetProperty("startLine").GetInt32();
+        var column = diagnosticLocation.GetProperty("startColumn").GetInt32();
         await using var session = await McpRootsTestServerFactory.CreateWithSanctionedRootAsync(
             Path.GetDirectoryName(path)!, CancellationToken.None);
         var detailJson = await AnalysisTools.GetDiagnosticDetails(session.Server, gate, service,

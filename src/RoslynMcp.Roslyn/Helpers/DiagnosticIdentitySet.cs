@@ -46,13 +46,13 @@ public static class DiagnosticIdentitySet
     /// Formats the stable identity key for a single diagnostic. Format: <c>id|file|line</c>.
     /// Case-sensitive ordinal comparison via <see cref="StringComparer.Ordinal"/> is
     /// authoritative on Windows / Linux file systems; callers that need case-insensitive
-    /// path matching should normalize <see cref="DiagnosticDto.FilePath"/> before passing
+    /// path matching should normalize <see cref="LocationDto.FilePath"/> before passing
     /// the diagnostic in.
     /// </summary>
     public static string FormatIdentity(DiagnosticDto diagnostic)
     {
         ArgumentNullException.ThrowIfNull(diagnostic);
-        return $"{diagnostic.Id}|{diagnostic.ResolvedFilePath()}|{diagnostic.ResolvedStartLine()}";
+        return $"{diagnostic.Id}|{diagnostic.Location?.FilePath}|{diagnostic.Location?.StartLine}";
     }
 
     /// <summary>
