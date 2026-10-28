@@ -1,11 +1,11 @@
 # interface-extraction-ref-return-contracts — Preserve extracted ref returns
 
-**row:** `interface-extraction-ref-return-contracts` · **pri:** `High` · **size:** `M` · **deps:** `interface-member-projection-shared-emitter`
+**row:** `interface-extraction-ref-return-contracts` · **pri:** `High` · **size:** `M`
 
 ## Anchors
 
-- `src/RoslynMcp.Roslyn/Services/InterfaceExtractionService.cs:188` (`BuildInterfaceMembers`)
-- `src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs:602` (`CreateInterfaceMember`)
+- `src/RoslynMcp.Roslyn/Services/InterfaceMemberProjector.cs:130` (`Strip`) — ref / ref readonly return types already carry over from the declaring syntax (PR #1875).
+- `tests/RoslynMcp.Tests/InterfaceMemberProjectorTests.cs`
 - `tests/RoslynMcp.Tests/CrossProjectRefactoringIntegrationTests.cs`
 
 ## Acceptance
@@ -24,3 +24,7 @@
 
 - Current delivery order, superseding fixture diagnosis and preserved-candidate receipt limits: `ai_docs/reports/2026-10-26-interface-split-delivery.md`. Historical pending/hold statements above describe the original combined candidate; use that report for current state.
 - 2026-10-27: dependency `interface-extraction-nullable-context-projection` closed by PR1854 (hosted Linux budget fixed by PR1857). PR1840 closed as superseded; its design for this row is inlined here and its archive branches were deleted (head still at GitHub `refs/pull/1840/head`). Re-cut from current main; do not resume PR1840.
+
+## Notes
+
+2026-10-28 PR #1875: ref / ref readonly returns on methods, properties and indexers carry over and are asserted on standalone and cross-project previews. Remaining delta: apply/reload and dependency-inversion/extract-and-wire routes not exercised for ref returns; [UnscopedRef] on members/accessors is in the projector allowlist but has no test (struct-field ref, ref struct, accessor-level).
