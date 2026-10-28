@@ -18,6 +18,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [4.4.0] - 2026-10-28
 
+### Fixed
+
+- **Fixed:** The changelog fragment check now judges a tag-push run against the tagged commit's first parent instead of `origin/main`, so a release cut from a maintenance branch is no longer rejected as change-bearing work that lacks a fragment. Hitchhiking source changes in the release commit are still rejected.
+
 ### Changed
 
 - **Changed:** The legacy flat location members of `SymbolDto`, `DiagnosticDto` and `TypeUsageDto` (`FilePath`, `StartLine`, `StartColumn`, `EndLine`, `EndColumn`, plus `ContainingMember`, `PreviewText` and `Classification` on `TypeUsageDto`) are now `[Obsolete]`; they stay serialized and populated and nothing is removed, and the removal is scheduled for the next major release (ADR 0001, `docs/product-contract.md` § Deprecations scheduled for 5.0). Migration: read the nested `Location` and fall back to the flat members only when it is null, which happens for partial spans such as a build diagnostic with a start but no end. Closes `locationdto-stage3-flat-field-deprecation`.
