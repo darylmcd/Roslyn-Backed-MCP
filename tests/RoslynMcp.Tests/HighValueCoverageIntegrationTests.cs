@@ -57,6 +57,7 @@ public sealed class HighValueCoverageIntegrationTests : SharedWorkspaceTestBase
                 "Expected compiler diagnostics.");
             var locatedDiagnostic = result.Diagnostics.First(d => d.Location is not null);
             Assert.IsNotNull(locatedDiagnostic.Location);
+            Assert.AreEqual(locatedDiagnostic.Location.FilePath, locatedDiagnostic.FilePath);
         }
         finally
         {

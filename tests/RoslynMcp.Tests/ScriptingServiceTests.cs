@@ -544,7 +544,7 @@ public sealed class ScriptingServiceTests
         Assert.IsFalse(result.Success);
         Assert.IsNotNull(result.CompilationErrors);
         Assert.IsTrue(result.CompilationErrors!.Count > 0);
-        Assert.IsTrue(result.CompilationErrors.All(diagnostic => diagnostic.Location is { FilePath: "<script>", StartLine: > 0 }),
+        Assert.IsTrue(result.CompilationErrors.All(diagnostic => diagnostic.FilePath == "<script>" && diagnostic.Location is { FilePath: "<script>", StartLine: > 0 }),
             "Script diagnostics have coordinates but no file, so their positions are carried under the virtual source name.");
     }
 

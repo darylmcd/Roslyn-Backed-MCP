@@ -217,7 +217,8 @@ public sealed class GateOperationDeadlineTests
         Assert.AreEqual(3, location.GetProperty("startColumn").GetInt32());
         Assert.IsFalse(location.TryGetProperty("endLine", out var endLine) && endLine.ValueKind != JsonValueKind.Null);
         Assert.IsFalse(location.TryGetProperty("endColumn", out var endColumn) && endColumn.ValueKind != JsonValueKind.Null);
-        Assert.IsFalse(diagnostic.TryGetProperty("startLine", out _), "The flat members are removed at 5.0.");
+        Assert.IsFalse(diagnostic.TryGetProperty("startLine", out _), "The flat span members are removed at 5.0.");
+        Assert.AreEqual("sample.cs", diagnostic.GetProperty("filePath").GetString(), "filePath stays on the diagnostic and agrees with location.");
     }
 
     [TestMethod]

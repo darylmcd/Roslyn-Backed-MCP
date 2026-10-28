@@ -27,10 +27,36 @@ public sealed class LocationDtoMigrationTests
         var flat = dtoType.GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Select(p => p.Name)
             .Where(name => RemovedFlatFields.Contains(JsonNamingPolicy.CamelCase.ConvertName(name)))
+            .Where(name => !(dtoType == typeof(DiagnosticDto) && name == nameof(DiagnosticDto.FilePath)))
             .ToList();
 
         Assert.AreEqual(0, flat.Count, $"{dtoType.Name} must not expose flat location members: {string.Join(", ", flat)}");
         Assert.IsNotNull(dtoType.GetProperty("Location"));
+    }
+
+    [TestMethod]
+    public void DiagnosticFilePath_IsASupportedNonObsoleteMember()
+    {
+        var property = typeof(DiagnosticDto).GetProperty(nameof(DiagnosticDto.FilePath));
+
+        Assert.IsNotNull(property);
+        Assert.IsNull(property.GetCustomAttribute<ObsoleteAttribute>(), "4.4.0 marked it obsolete; 5.0 reverses that for diagnostics.");
+    }
+
+    [TestMethod]
+    public void DiagnosticFilePath_SerializesAsFilePath_AndAgreesWithLocation()
+    {
+        var location = new LocationDto("sample.cs", 2, 3, 2, 8, null, null);
+        var positioned = new DiagnosticDto("CS1002", "; expected", "Error", "Compiler", location.FilePath, location);
+        var fileOnly = new DiagnosticDto("NU1201", "incompatible", "Error", "Build", "App.csproj");
+
+        using var a = JsonDocument.Parse(JsonSerializer.Serialize(positioned, WireOptions));
+        using var b = JsonDocument.Parse(JsonSerializer.Serialize(fileOnly, WireOptions));
+
+        Assert.AreEqual("sample.cs", a.RootElement.GetProperty("filePath").GetString());
+        Assert.AreEqual(a.RootElement.GetProperty("filePath").GetString(), a.RootElement.GetProperty("location").GetProperty("filePath").GetString());
+        Assert.AreEqual("App.csproj", b.RootElement.GetProperty("filePath").GetString());
+        Assert.AreEqual(JsonValueKind.Null, b.RootElement.GetProperty("location").ValueKind);
     }
 
     [TestMethod]
@@ -55,7 +81,7 @@ public sealed class LocationDtoMigrationTests
                 Interfaces: null,
                 Documentation: null,
                 Location: location),
-            new DiagnosticDto("CS1002", "; expected", "Error", "Compiler", Location: location),
+            new DiagnosticDto("CS1002", "; expected", "Error", "Compiler", FilePath: location.FilePath, Location: location),
             new TypeUsageDto(location),
         ];
 
@@ -69,7 +95,7 @@ public sealed class LocationDtoMigrationTests
             Assert.AreEqual(location.FilePath, nested.GetProperty("filePath").GetString(), name);
             Assert.AreEqual(location.StartLine, nested.GetProperty("startLine").GetInt32(), name);
             Assert.AreEqual(location.EndColumn, nested.GetProperty("endColumn").GetInt32(), name);
-            foreach (var removed in RemovedFlatFields)
+            foreach (var removed in RemovedFlatFields.Where(r => !(contract is DiagnosticDto && r == "filePath")))
             {
                 Assert.IsFalse(root.TryGetProperty(removed, out _), $"{name} must not serialize flat '{removed}'.");
             }
@@ -150,7 +176,7 @@ public sealed class LocationDtoMigrationTests
     [TestMethod]
     public void WithEndPosition_LeavesALocationlessDiagnosticUnchanged()
     {
-        var diagnostic = new DiagnosticDto("NU1101", "unable to find package", "Error", "Build");
+        var diagnostic = new DiagnosticDto("NU1101", "unable to find package", "Error", "Build", null);
 
         Assert.AreSame(diagnostic, SymbolMapper.WithEndPosition(diagnostic, 2, 8));
     }

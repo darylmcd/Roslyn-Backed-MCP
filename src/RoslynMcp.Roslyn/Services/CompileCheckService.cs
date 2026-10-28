@@ -249,6 +249,7 @@ public sealed class CompileCheckService : ICompileCheckService
             Message: diag.GetMessage(),
             Severity: diag.Severity.ToString(),
             Category: diag.Descriptor.Category,
+            FilePath: SymbolMapper.FileOrNull(lineSpan.Path),
             Location: SymbolMapper.ToOptionalLocationDto(
                 lineSpan.Path, startLine, startColumn, endLine, endColumn));
     }
