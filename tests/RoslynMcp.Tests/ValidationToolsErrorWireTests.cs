@@ -50,7 +50,7 @@ public sealed class ValidationToolsErrorWireTests : SharedWorkspaceTestBase
             "build_project",
             new Dictionary<string, object?> { ["workspaceId"] = _workspaceId, ["projectName"] = "Does.Not.Exist" });
 
-        Assert.AreEqual("InvalidOperation", envelope["category"]?.GetValue<string>(), envelope.ToJsonString());
+        Assert.AreEqual("NotFound", envelope["category"]?.GetValue<string>(), envelope.ToJsonString());
         Assert.AreEqual("build_project", envelope["tool"]?.GetValue<string>());
         StringAssert.Contains(envelope["schemaHint"]?.GetValue<string>(), "build_project(");
         StringAssert.Contains(envelope["schemaHint"]?.GetValue<string>(), "projectName");

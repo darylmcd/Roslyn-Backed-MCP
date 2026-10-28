@@ -102,6 +102,13 @@ the symbol. Workspace-scoped `resources/read` failures use the `WorkspaceNotFoun
 with the era-correct not-found error code, and carry `reason: WorkspaceNotFound` inside the
 sanitized error message.
 
+An unknown `projectName` (for example `build_project`, `test_run`, `fix_all_preview`,
+`evaluate_msbuild_property`) or an unresolvable `symbolHandle` / `metadataName` / source location
+(for example `rename_preview`) reports `category: "NotFound"` with `exceptionType:
+"KeyNotFoundException"` and no `reason`, never `InvalidOperation`. The message lists the loaded
+project names (or the targeting guidance for symbols), never echoes the submitted value, and does
+not suggest `workspace_reload`. A syntactically malformed `symbolHandle` stays `InvalidArgument`.
+
 ### `workspace_close` process drain
 
 With `drainProcesses: true`, the response keeps `success` and `workspaceId`. It adds an optional

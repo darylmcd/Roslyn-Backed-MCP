@@ -140,7 +140,7 @@ public sealed class RefactoringToolsIntegrationTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task RenamePreview_BareMemberMetadataName_Returns_Targeting_Guidance()
     {
-        var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<PublicNotFoundException>(() =>
             RefactoringService.PreviewRenameAsync(
                 WorkspaceId,
                 SymbolLocator.ByMetadataName("GetAllAnimals"),
