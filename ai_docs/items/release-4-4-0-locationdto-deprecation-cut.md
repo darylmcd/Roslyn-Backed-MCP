@@ -27,3 +27,7 @@
 ## Context
 
 Plan: `release-plan-4.4.0-then-5.0.0` Phase A. Gates `release-5-0-0-cut` through `locationdto-next-major-flat-field-removal`.
+
+## Notes
+
+2026-10-27 operator decision: stage 3 may use a scoped #pragma warning disable CS0618 limited to the flat-field compatibility test classes (tests that assert the legacy flat contract, e.g. LocationDtoMigrationTests), each cited to this row; no other suppression anywhere. Everything else migrates to Location. Sizing evidence: probe of [Obsolete] on the 18 flat params at v4.3.0 gave 128 unique CS0618 sites in 26 files (tests 74, RoslynMcp.Roslyn 39, Host.Stdio 15); production side is about 54 sites in 12 files.
