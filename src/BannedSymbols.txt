@@ -1,0 +1,22 @@
+# Production-code (src/**) banned APIs, in addition to the repo-wide ../BannedSymbols.txt.
+# Syntax: https://github.com/dotnet/roslyn-analyzers/blob/main/src/Microsoft.CodeAnalysis.BannedApiAnalyzers/BannedApiAnalyzers.Help.md
+
+# Caller-argument refusals must carry an explicit public contract. A bare ArgumentException message is
+# redacted to a generic "Parameter '<name>' is invalid" by the host error boundary, which hides the
+# actionable correction. Choose by intent:
+#   - caller-actionable, path-free correction  -> PublicArgumentException / PublicArgumentOutOfRangeException
+#   - detail that is a server path or caller free text -> ArgumentErrors.Redacted(parameterName, serverDetail)
+#   - internal invariant (not a caller error)  -> InvalidOperationErrors.Internal / UnreachableException,
+#     or the BCL ArgumentNullException.ThrowIfNull / ArgumentException.ThrowIf* helpers (not constructors)
+# Only Core/Services/ArgumentErrors.cs, PublicArgumentException.cs and PublicArgumentOutOfRangeException.cs
+# may construct these types, behind a scoped RS0030 pragma.
+M:System.ArgumentException.#ctor;Use PublicArgumentException, ArgumentErrors.Redacted or InvalidOperationErrors.Internal instead of constructing ArgumentException
+M:System.ArgumentException.#ctor(System.String);Use PublicArgumentException, ArgumentErrors.Redacted or InvalidOperationErrors.Internal instead of constructing ArgumentException
+M:System.ArgumentException.#ctor(System.String,System.Exception);Use PublicArgumentException, ArgumentErrors.Redacted or InvalidOperationErrors.Internal instead of constructing ArgumentException
+M:System.ArgumentException.#ctor(System.String,System.String);Use PublicArgumentException, ArgumentErrors.Redacted or InvalidOperationErrors.Internal instead of constructing ArgumentException
+M:System.ArgumentException.#ctor(System.String,System.String,System.Exception);Use PublicArgumentException, ArgumentErrors.Redacted or InvalidOperationErrors.Internal instead of constructing ArgumentException
+M:System.ArgumentOutOfRangeException.#ctor;Use PublicArgumentOutOfRangeException or ArgumentErrors.Redacted instead of constructing ArgumentOutOfRangeException
+M:System.ArgumentOutOfRangeException.#ctor(System.String);Use PublicArgumentOutOfRangeException or ArgumentErrors.Redacted instead of constructing ArgumentOutOfRangeException
+M:System.ArgumentOutOfRangeException.#ctor(System.String,System.Exception);Use PublicArgumentOutOfRangeException or ArgumentErrors.Redacted instead of constructing ArgumentOutOfRangeException
+M:System.ArgumentOutOfRangeException.#ctor(System.String,System.String);Use PublicArgumentOutOfRangeException or ArgumentErrors.Redacted instead of constructing ArgumentOutOfRangeException
+M:System.ArgumentOutOfRangeException.#ctor(System.String,System.Object,System.String);Use PublicArgumentOutOfRangeException or ArgumentErrors.Redacted instead of constructing ArgumentOutOfRangeException
