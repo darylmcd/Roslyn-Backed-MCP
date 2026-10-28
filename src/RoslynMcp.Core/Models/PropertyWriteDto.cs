@@ -1,7 +1,7 @@
 namespace RoslynMcp.Core.Models;
 
 /// <summary>
-/// Represents a source location where a property is written.
+/// Represents a source location where a property is written. The span, containing member and preview text live on <see cref="Location"/>.
 /// </summary>
 /// <param name="WriteKind">
 /// Classifies the syntactic shape of the write. One of:
@@ -18,13 +18,4 @@ namespace RoslynMcp.Core.Models;
 ///   </item>
 /// </list>
 /// </param>
-public sealed record PropertyWriteDto(
-    string FilePath,
-    int StartLine,
-    int StartColumn,
-    int EndLine,
-    int EndColumn,
-    string? ContainingMember,
-    string? PreviewText,
-    string WriteKind,
-    LocationDto? Location = null);
+public sealed record PropertyWriteDto(string WriteKind, LocationDto Location);

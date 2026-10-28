@@ -195,11 +195,8 @@ public class CompoundMutationSample
         CollectionAssert.Contains(writeManifest.MutationScopes.ToList(), SideEffectClassifier.Scopes.IO,
             "File.WriteAllText should classify as IO.");
         var externalCaller = writeManifest.ExternalCallers.Single(
-            caller => caller.ContainingMember?.Contains("FileSnapshotStoreSampleCaller.Persist", StringComparison.Ordinal) == true);
+            caller => caller.Location.ContainingMember?.Contains("FileSnapshotStoreSampleCaller.Persist", StringComparison.Ordinal) == true);
         Assert.IsNotNull(externalCaller.Location);
-        Assert.AreEqual(externalCaller.FilePath, externalCaller.Location.FilePath);
-        Assert.AreEqual(externalCaller.StartLine, externalCaller.Location.StartLine);
-        Assert.AreEqual(externalCaller.StartColumn, externalCaller.Location.StartColumn);
         Assert.AreEqual(externalCaller.CallerPhase, externalCaller.Location.Classification);
 
         var deleteManifest = result.MutatingMembers.FirstOrDefault(m => m.Name == "DeleteManifest");
