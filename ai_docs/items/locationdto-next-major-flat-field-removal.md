@@ -20,3 +20,7 @@
 ## Regression shape
 
 Wire-schema tests prove the nested location contract and the intentional absence of legacy fields.
+
+## Notes
+
+2026-10-27: cannot ship until the stage-3 deprecation is in a RELEASED minor (docs/release-policy.md:38). That minor is 4.4.0 (release-4-4-0-locationdto-deprecation-cut). Also add locationdto to the product-contract 5.0 table, which lists only updateAvailable and WorkspaceNotFound.
