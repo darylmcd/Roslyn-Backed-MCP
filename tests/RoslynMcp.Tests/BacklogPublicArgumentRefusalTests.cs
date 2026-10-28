@@ -234,8 +234,8 @@ public sealed class BacklogPublicArgumentRefusalTests : IsolatedWorkspaceTestBas
         var json = result.Content.OfType<TextContentBlock>().Single().Text;
         using var document = JsonDocument.Parse(json);
         var envelope = document.RootElement;
-        Assert.AreEqual("InvalidOperation", envelope.GetProperty("category").GetString(), json);
-        Assert.AreEqual("InvalidOperationException", envelope.GetProperty("exceptionType").GetString(), json);
+        Assert.AreEqual("NotFound", envelope.GetProperty("category").GetString(), json);
+        Assert.AreEqual("KeyNotFoundException", envelope.GetProperty("exceptionType").GetString(), json);
         var message = envelope.GetProperty("message").GetString()!;
         Assert.IsFalse(message.Contains("workspace_reload", StringComparison.Ordinal), json);
         if (tool == "rename_preview") StringAssert.Contains(message, "symbolHandle");

@@ -195,7 +195,7 @@ public sealed class P4BehavioralBundleTests : SharedWorkspaceTestBase
     public async Task EvaluateMsBuildProperty_UnknownProject_ErrorListsLoadedProjects()
     {
         // Unknown project name must surface a loaded-projects list in the error.
-        var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(async () =>
+        var ex = await Assert.ThrowsExactlyAsync<PublicNotFoundException>(async () =>
             await MsBuildEvaluationService.EvaluatePropertyAsync(
                 WorkspaceId,
                 projectName: "DoesNotExist.Xyz",

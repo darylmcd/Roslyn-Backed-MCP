@@ -156,7 +156,7 @@ public sealed class BacklogFixTests : SharedWorkspaceTestBase
     [TestMethod]
     public void GatedCommandExecutor_ResolveProject_ThrowsForUnknown()
     {
-        Assert.ThrowsExactly<PublicInvalidOperationException>(() =>
+        Assert.ThrowsExactly<PublicNotFoundException>(() =>
         {
             var workspaceId = WorkspaceManager.ListWorkspaces().First().WorkspaceId;
             GatedCommandExecutor.ResolveProject(workspaceId, "NonExistentProject");
