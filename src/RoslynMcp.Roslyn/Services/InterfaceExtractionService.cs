@@ -47,17 +47,15 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
 
         var candidateMembers = SelectCandidateMembers(typeSymbol, memberNames, typeName);
         var nullableProjection = new InterfaceNullableProjection();
-        var interfaceMembers = BuildInterfaceMembers(candidateMembers, nullableProjection);
+        var projector = await InterfaceMemberProjector.CreateAsync(sourceDocument, nullableProjection, ct).ConfigureAwait(false);
+        var interfaceMembers = candidateMembers.Select(projector.Project).ToList();
         // Item #3 — severity-high-fail-produces-code-that-does-not-compi.
-        // The legacy FilterRelevantUsings text-grepped the synthesized interface
-        // for the FULL namespace name, but BuildInterfaceMembers renders types with
-        // MinimallyQualifiedFormat (short names like NetworkInventory) — so the text
-        // never contained "NetworkDocumentation.Core.Models" and the using was dropped,
-        // producing post-apply CS0246/CS0535 (NetworkDocumentation audit §9.1). Fix:
-        // walk the member symbols semantically to collect every referenced type's
-        // containing namespace, and use that set (plus aliases/static usings from the
-        // source file) as the authoritative using list.
-        var requiredNamespaces = CollectReferencedNamespaces(candidateMembers, typeSymbol.ContainingNamespace);
+        // Text-grepping the synthesized interface for namespace names dropped usings whose last
+        // segment did not match the rendered short name (NetworkDocumentation audit §9.1). The
+        // projector records every type each projected member refers to, so the interface file's
+        // using list comes from those symbols (plus aliases/static usings from the source file).
+        var requiredNamespaces = projector.RequiredNamespaces(
+            typeSymbol.ContainingNamespace.IsGlobalNamespace ? null : typeSymbol.ContainingNamespace.ToDisplayString());
 
         // Compute alreadyImplements BEFORE the conflict check so we can short-circuit
         // when the target type already implements a covering interface of the same name.
@@ -167,9 +165,7 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
         INamedTypeSymbol typeSymbol, IReadOnlyList<string>? memberNames, string typeName)
     {
         var candidateMembers = typeSymbol.GetMembers()
-            .Where(m => !m.IsStatic && !m.IsImplicitlyDeclared &&
-                        m.DeclaredAccessibility == Accessibility.Public &&
-                        m is IMethodSymbol { MethodKind: MethodKind.Ordinary } or IPropertySymbol or IEventSymbol)
+            .Where(InterfaceMemberProjector.IsProjectable)
             .ToList();
 
         if (memberNames is not null && memberNames.Count > 0)
@@ -184,64 +180,6 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
             throw new InvalidOperationException($"Type '{typeName}' has no public instance members to extract.");
 
         return candidateMembers;
-    }
-
-    private static List<MemberDeclarationSyntax> BuildInterfaceMembers(List<ISymbol> candidateMembers, InterfaceNullableProjection nullableProjection)
-    {
-        var interfaceMembers = new List<MemberDeclarationSyntax>();
-        foreach (var member in candidateMembers)
-        {
-            switch (member)
-            {
-                case IMethodSymbol method:
-                    var parameters = method.Parameters.Select(p =>
-                        SyntaxFactory.Parameter(SyntaxFactory.Identifier(p.Name))
-                            .WithType(SyntaxFactory.ParseTypeName(p.Type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)))
-                            .WithDefault(p.HasExplicitDefaultValue
-                                ? SyntaxFactory.EqualsValueClause(SyntaxFactory.ParseExpression(GetDefaultValueText(p)))
-                                : null));
-
-                    var returnType = SyntaxFactory.ParseTypeName(method.ReturnType.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat));
-                    var methodDecl = SyntaxFactory.MethodDeclaration(returnType, method.Name)
-                        .WithParameterList(SyntaxFactory.ParameterList(SyntaxFactory.SeparatedList(parameters)))
-                        .WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken));
-
-                    if (method.TypeParameters.Length > 0)
-                    {
-                        var typeParams = method.TypeParameters.Select(tp =>
-                            SyntaxFactory.TypeParameter(tp.Name));
-                        methodDecl = methodDecl.WithTypeParameterList(
-                            SyntaxFactory.TypeParameterList(SyntaxFactory.SeparatedList(typeParams)));
-                    }
-
-                    interfaceMembers.Add(nullableProjection.Capture(methodDecl, method));
-                    break;
-
-                case IPropertySymbol property:
-                    var propType = SyntaxFactory.ParseTypeName(property.Type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat));
-                    var accessors = new List<AccessorDeclarationSyntax>();
-                    if (property.GetMethod is not null)
-                        accessors.Add(SyntaxFactory.AccessorDeclaration(SyntaxKind.GetAccessorDeclaration)
-                            .WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken)));
-                    if (property.SetMethod is not null && !property.SetMethod.IsInitOnly)
-                        accessors.Add(SyntaxFactory.AccessorDeclaration(SyntaxKind.SetAccessorDeclaration)
-                            .WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken)));
-
-                    interfaceMembers.Add(nullableProjection.Capture(SyntaxFactory.PropertyDeclaration(propType, property.Name)
-                        .WithAccessorList(SyntaxFactory.AccessorList(SyntaxFactory.List(accessors))), property));
-                    break;
-
-                case IEventSymbol evt:
-                    var eventType = SyntaxFactory.ParseTypeName(evt.Type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat));
-                    interfaceMembers.Add(nullableProjection.Capture(SyntaxFactory.EventFieldDeclaration(
-                        SyntaxFactory.VariableDeclaration(eventType)
-                            .WithVariables(SyntaxFactory.SingletonSeparatedList(
-                                SyntaxFactory.VariableDeclarator(evt.Name))))
-                        .WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken)), evt));
-                    break;
-            }
-        }
-        return interfaceMembers;
     }
 
     private static CompilationUnitSyntax BuildInterfaceFile(
@@ -277,53 +215,6 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
             .WithUsings(usings)
             .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(interfaceDecl))
             .NormalizeWhitespace();
-    }
-
-    /// <summary>
-    /// Item #3 — semantic using-collection. Walk every candidate member symbol and collect
-    /// the containing namespaces of every referenced type (parameter types, return types,
-    /// property types, event types, type-parameter constraints, recursive type arguments on
-    /// generics). The result set is the authoritative list of namespaces the generated
-    /// interface file needs, independent of what the source file happened to declare.
-    /// Excludes the interface's own containing namespace (self-reference is invalid as a using).
-    /// </summary>
-    private static IReadOnlyCollection<string> CollectReferencedNamespaces(
-        IReadOnlyList<ISymbol> members,
-        INamespaceSymbol? containingNamespace)
-    {
-        var namespaces = new HashSet<string>(StringComparer.Ordinal);
-        var ownNamespace = containingNamespace?.IsGlobalNamespace == false
-            ? containingNamespace.ToDisplayString()
-            : null;
-
-        foreach (var member in members)
-        {
-            switch (member)
-            {
-                case IMethodSymbol method:
-                    TypeNamespaceWalker.Collect(namespaces, method.ReturnType, ownNamespace);
-                    foreach (var parameter in method.Parameters)
-                    {
-                        TypeNamespaceWalker.Collect(namespaces, parameter.Type, ownNamespace);
-                    }
-                    foreach (var typeParameter in method.TypeParameters)
-                    {
-                        foreach (var constraint in typeParameter.ConstraintTypes)
-                        {
-                            TypeNamespaceWalker.Collect(namespaces, constraint, ownNamespace);
-                        }
-                    }
-                    break;
-                case IPropertySymbol property:
-                    TypeNamespaceWalker.Collect(namespaces, property.Type, ownNamespace);
-                    break;
-                case IEventSymbol evt:
-                    TypeNamespaceWalker.Collect(namespaces, evt.Type, ownNamespace);
-                    break;
-            }
-        }
-
-        return namespaces;
     }
 
     /// <remarks>
@@ -414,17 +305,6 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
         }
 
         return solution;
-    }
-
-    private static string GetDefaultValueText(IParameterSymbol parameter)
-    {
-        if (parameter.ExplicitDefaultValue is null)
-            return "default";
-        if (parameter.ExplicitDefaultValue is string s)
-            return $"\"{s}\"";
-        if (parameter.ExplicitDefaultValue is bool b)
-            return b ? "true" : "false";
-        return parameter.ExplicitDefaultValue.ToString() ?? "default";
     }
 
     /// <summary>
