@@ -233,5 +233,6 @@ public sealed class SymbolMapperTests : SharedWorkspaceTestBase
         Assert.AreEqual("message", dto.Message);
         StringAssert.Contains(dto.Severity ?? "", "Warning");
         Assert.IsNotNull(dto.Location);
+        Assert.AreEqual(dto.Location.FilePath, dto.FilePath, "filePath and location.filePath must agree.");
     }
 }

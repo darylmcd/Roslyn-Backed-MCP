@@ -34,7 +34,7 @@ public sealed class ValidateWorkspaceMarkdownFormatterTests
     [TestMethod]
     public void Format_CompileErrorResponse_EmitsDiagnosticTableAndPreservesVerdict()
     {
-        var diag = new DiagnosticDto("CS0103", "The name 'foo' does not exist in the current context", "Error", "Compiler", new LocationDto(@"C:\src\Sample\Foo.cs", 42, 5, 42, 8, null, null));
+        var diag = new DiagnosticDto("CS0103", "The name 'foo' does not exist in the current context", "Error", "Compiler", @"C:\src\Sample\Foo.cs", new LocationDto(@"C:\src\Sample\Foo.cs", 42, 5, 42, 8, null, null));
 
         var dto = MakeDto(
             overallStatus: "compile-error",
@@ -108,7 +108,7 @@ public sealed class ValidateWorkspaceMarkdownFormatterTests
     [TestMethod]
     public void Format_MixedResponse_IncludesAllSections()
     {
-        var diag = new DiagnosticDto("CA1822", "Member can be marked static", "Warning", "Performance", new LocationDto(@"C:\src\Sample\Bar.cs", 7, 1, 7, 5, null, null));
+        var diag = new DiagnosticDto("CA1822", "Member can be marked static", "Warning", "Performance", @"C:\src\Sample\Bar.cs", new LocationDto(@"C:\src\Sample\Bar.cs", 7, 1, 7, 5, null, null));
         // Even though severity here is Warning, we put it in ErrorDiagnostics to exercise
         // the formatter's error-table path.
         var test = new RelatedTestCaseDto("BarTests.Works", "Sample.Tests.BarTests.Works",
@@ -141,7 +141,7 @@ public sealed class ValidateWorkspaceMarkdownFormatterTests
     public void Format_DiagnosticMessageWithPipeAndNewline_EscapedSafely()
     {
         // Markdown table integrity: pipes split rows, newlines terminate them.
-        var diag = new DiagnosticDto("CS9999", "first line\nsecond | piped", "Error", "Compiler", new LocationDto(@"C:\x.cs", 1, 1, 1, 2, null, null));
+        var diag = new DiagnosticDto("CS9999", "first line\nsecond | piped", "Error", "Compiler", @"C:\x.cs", new LocationDto(@"C:\x.cs", 1, 1, 1, 2, null, null));
         var dto = MakeDto(overallStatus: "compile-error", errorDiagnostics: new[] { diag });
 
         var md = ValidateWorkspaceMarkdownFormatter.Format(dto);
@@ -155,7 +155,7 @@ public sealed class ValidateWorkspaceMarkdownFormatterTests
     public void Format_ManyDiagnostics_TruncatedToCap()
     {
         var diags = Enumerable.Range(0, ValidateWorkspaceMarkdownFormatter.MaxDiagnosticRows + 5)
-            .Select(i => new DiagnosticDto($"CS{i:D4}", $"msg {i}", "Error", "Compiler", new LocationDto(@"C:\f.cs", i + 1, 1, i + 1, 2, null, null)))
+            .Select(i => new DiagnosticDto($"CS{i:D4}", $"msg {i}", "Error", "Compiler", @"C:\f.cs", new LocationDto(@"C:\f.cs", i + 1, 1, i + 1, 2, null, null)))
             .ToArray();
         var dto = MakeDto(overallStatus: "compile-error", errorDiagnostics: diags);
 

@@ -116,7 +116,7 @@ public sealed class WorkspaceReadinessReportTests
         // build/restore split.
         DiagnosticDto[] diagnostics =
         [
-            new("CS0234", "The type or namespace name 'Json' does not exist in the namespace 'System.Text'", "Error", "Workspace", Location: null)
+            new("CS0234", "The type or namespace name 'Json' does not exist in the namespace 'System.Text'", "Error", "Workspace", null, Location: null)
         ];
 
         var json = await CreateReportAsync(CreateStatus(diagnostics, restoreRequired: true));

@@ -272,6 +272,7 @@ public sealed class P4BehavioralBundleTests : SharedWorkspaceTestBase
             $"StartColumn must point at the opening quote of the literal; got {error.Location?.StartColumn}.");
         Assert.IsTrue(error.Location?.EndColumn is >= 15 and <= 17,
             $"EndColumn must point past the closing quote of the literal; got {error.Location?.EndColumn}.");
+        Assert.AreEqual("<snippet>", error.FilePath);
         Assert.AreEqual("<snippet>", error.Location?.FilePath,
             "In-memory snippets have no file; their positions are carried under the virtual source name.");
     }

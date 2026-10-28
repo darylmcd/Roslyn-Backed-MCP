@@ -179,6 +179,9 @@ public static class SymbolMapper
             ? diagnostic with { Location = location with { EndLine = endLine, EndColumn = endColumn } }
             : diagnostic;
 
+    /// <summary>Returns the path, or null when it is empty or whitespace (no file is known).</summary>
+    internal static string? FileOrNull(string? path) => string.IsNullOrWhiteSpace(path) ? null : path;
+
     /// <summary>Source name carried by diagnostics of code analyzed from an inline snippet.</summary>
     internal const string SnippetSourceName = "<snippet>";
 
@@ -266,6 +269,7 @@ public static class SymbolMapper
             Message: diagnostic.GetMessage(),
             Severity: diagnostic.Severity.ToString(),
             Category: diagnostic.Descriptor.Category,
+            FilePath: FileOrNull(lineSpan.Path),
             Location: ToOptionalLocationDto(lineSpan.Path, startLine, startColumn, endLine, endColumn));
     }
 
