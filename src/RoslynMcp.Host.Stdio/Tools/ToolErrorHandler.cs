@@ -127,7 +127,14 @@ internal static class ToolErrorHandler
         [typeof(UnauthorizedAccessException)] = (_, _) => new(ErrorCategories.PermissionDenied,
             "The operation was denied by the configured access policy or operating-system permissions. " +
             "Verify the requested path is within an allowed root and that the server account has access."),
-        [typeof(KeyNotFoundException)] = (ex, _) => new(ErrorCategories.NotFound, BuildSafeNotFoundMessage(ex.Message)),
+        // A PublicNotFoundException carries an authored, safe message for an identifier that resolved
+        // to nothing (unknown project name, unresolvable symbol handle); any other lookup miss keeps
+        // the generic sanitized message.
+        [typeof(KeyNotFoundException)] = (ex, _) => new(
+            ErrorCategories.NotFound,
+            ex is IPublicMessageException publicMessageException
+                ? publicMessageException.PublicMessage
+                : BuildSafeNotFoundMessage(ex.Message)),
         [typeof(ArgumentException)] = (ex, _) =>
         {
             var argument = (ArgumentException)ex;

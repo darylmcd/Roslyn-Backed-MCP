@@ -22,11 +22,11 @@ internal static class WorkspaceProjectResolver
         return project ?? throw NotFound(projects.Select(candidate => candidate.Name));
     }
 
-    internal static PublicInvalidOperationException NotFound(IEnumerable<string> projectNames)
+    internal static PublicNotFoundException NotFound(IEnumerable<string> projectNames)
     {
         var available = string.Join(", ", projectNames.OrderBy(name => name, StringComparer.Ordinal));
         if (available.Length == 0) available = "(none)";
-        return new PublicInvalidOperationException(
+        return new PublicNotFoundException(
             $"Requested project was not found. Loaded projects: {available}. " +
             "Use workspace_status with verbose=true to inspect loaded project names, then pass a matching projectName.");
     }

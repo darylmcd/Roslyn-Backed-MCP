@@ -360,7 +360,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         return solution.Projects.FirstOrDefault(project =>
                    string.Equals(project.Name, targetProjectName, StringComparison.OrdinalIgnoreCase) ||
                    string.Equals(project.FilePath, targetProjectName, StringComparison.OrdinalIgnoreCase))
-               ?? throw new PublicInvalidOperationException($"Project not found: {targetProjectName}");
+               ?? throw WorkspaceProjectResolver.NotFound(solution.Projects.Select(project => project.Name));
     }
 
     private static TypeDeclarationSyntax FindTypeDeclaration(CompilationUnitSyntax root, string typeName)

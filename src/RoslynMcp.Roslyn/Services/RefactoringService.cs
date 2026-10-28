@@ -57,7 +57,7 @@ public sealed class RefactoringService : IRefactoringService
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
         if (symbol is null)
-            throw new PublicInvalidOperationException(BuildRenameTargetNotFoundMessage(locator));
+            throw new PublicNotFoundException(BuildRenameTargetNotFoundMessage(locator));
 
         if (!symbol.Locations.Any(static l => l.IsInSource))
         {
@@ -143,7 +143,7 @@ public sealed class RefactoringService : IRefactoringService
     {
         var symbol = await SymbolResolver.ResolveAsync(inputSolution, locator, ct).ConfigureAwait(false);
         if (symbol is null)
-            throw new PublicInvalidOperationException(BuildRenameTargetNotFoundMessage(locator));
+            throw new PublicNotFoundException(BuildRenameTargetNotFoundMessage(locator));
 
         if (!symbol.Locations.Any(static l => l.IsInSource))
         {

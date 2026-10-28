@@ -654,7 +654,8 @@ public sealed class ProjectMutationService : IProjectMutationService
     private Project ResolveRoslynProject(string workspaceId, string projectName)
     {
         return _workspace.GetProject(workspaceId, projectName)
-               ?? throw new PublicInvalidOperationException($"Project not found: {projectName}");
+               ?? throw WorkspaceProjectResolver.NotFound(
+                   _workspace.GetCurrentSolution(workspaceId).Projects.Select(project => project.Name));
     }
 
     private static void ValidateProjectReferenceCanBeAdded(Project project, Project referencedProject)

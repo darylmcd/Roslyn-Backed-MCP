@@ -33,7 +33,7 @@ public sealed class MsBuildEvaluationServiceTests : IsolatedWorkspaceTestBase
 
         const string missingProject = "ZZZ_DoesNotExistProject";
 
-        await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
+        await Assert.ThrowsExactlyAsync<PublicNotFoundException>(() =>
             service.EvaluatePropertyAsync(workspaceId, missingProject, "TargetFramework", CancellationToken.None));
 
         var warning = logger.Entries.SingleOrDefault(e => e.Level == LogLevel.Warning);

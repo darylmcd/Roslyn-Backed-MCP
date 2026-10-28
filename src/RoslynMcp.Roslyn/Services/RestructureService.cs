@@ -466,7 +466,7 @@ internal static class SolutionScopeHelper
                 (canonicalProjectPath is not null && p.FilePath is not null &&
                     FileSystemPath.Comparer.Equals(PhysicalPathResolver.Resolve(p.FilePath), canonicalProjectPath)));
             if (match is null)
-                throw new InvalidOperationException($"Project '{scope.ProjectName}' not found in workspace.");
+                throw WorkspaceProjectResolver.NotFound(solution.Projects.Select(project => project.Name));
             return [match];
         }
         return solution.Projects;
