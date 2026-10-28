@@ -61,6 +61,12 @@ function Get-ChangedPaths {
     if (-not [string]::IsNullOrWhiteSpace($env:CHANGELOG_BASE_SHA)) {
         $baseCandidates.Add($env:CHANGELOG_BASE_SHA)
     }
+    # A tag-push run has no GITHUB_BASE_REF. The tagged commit is the assembled release commit, so it is
+    # judged against its own first parent; falling through to origin/main would sweep in every commit a
+    # maintenance branch carries that main does not, and reject the release as change-bearing work.
+    if ($env:GITHUB_REF_TYPE -eq 'tag') {
+        $baseCandidates.Add('HEAD^')
+    }
     if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_BASE_REF)) {
         $baseCandidates.Add("origin/$($env:GITHUB_BASE_REF)")
         $baseCandidates.Add($env:GITHUB_BASE_REF)

@@ -102,9 +102,9 @@ internal static class ValidateWorkspaceMarkdownFormatter
             foreach (var diag in diagnostics)
             {
                 if (shown >= MaxDiagnosticRows) break;
-                var lineText = diag.StartLine?.ToString(CultureInfo.InvariantCulture) ?? "";
+                var lineText = diag.ResolvedStartLine()?.ToString(CultureInfo.InvariantCulture) ?? "";
                 sb.Append("| ").Append(EscapeCell(diag.Id))
-                  .Append(" | ").Append(EscapeCell(diag.FilePath ?? ""))
+                  .Append(" | ").Append(EscapeCell(diag.ResolvedFilePath() ?? ""))
                   .Append(" | ").Append(lineText)
                   .Append(" | ").Append(EscapeCell(diag.Message))
                   .AppendLine(" |");

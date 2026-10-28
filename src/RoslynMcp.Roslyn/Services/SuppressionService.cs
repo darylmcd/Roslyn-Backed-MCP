@@ -765,9 +765,9 @@ public sealed class SuppressionService : ISuppressionService, IPinnedSuppression
             foreach (var diag in result.Diagnostics)
             {
                 if (!string.Equals(diag.Id, diagnosticId, StringComparison.OrdinalIgnoreCase)) continue;
-                if (diag.StartLine == line) return new DiagnosticFireConfirmation(true, null);
+                if (diag.ResolvedStartLine() == line) return new DiagnosticFireConfirmation(true, null);
                 // Allow multi-line spans — treat "line in range" as a hit.
-                if (diag.StartLine is int s && diag.EndLine is int e && line >= s && line <= e)
+                if (diag.ResolvedStartLine() is int s && diag.ResolvedEndLine() is int e && line >= s && line <= e)
                 {
                     return new DiagnosticFireConfirmation(true, null);
                 }

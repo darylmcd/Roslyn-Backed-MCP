@@ -389,7 +389,7 @@ public static class AnalysisTools
             var paged = results.Skip(offset).Take(limit).ToList();
             // BUG-N11: Use PascalCase enum names for dictionary keys (Json may camelCase member names elsewhere).
             var grouped = paged
-                .GroupBy(u => u.Classification.ToString(), StringComparer.Ordinal)
+                .GroupBy(u => u.ResolvedClassification(), StringComparer.Ordinal)
                 .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.Ordinal);
             var hasMore = offset + paged.Count < results.Count;
             return JsonSerializer.Serialize(new

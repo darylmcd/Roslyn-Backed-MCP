@@ -84,7 +84,8 @@ public sealed class DiagnosticIdentitySetTests
         // triggers rollback when introduced by an apply.
         var line5 = new DiagnosticDto("CS8618", "Non-nullable field must contain a non-null value",
             "Error", "Compiler", "/repo/A.cs", 5, 1, 5, 20);
-        var line10 = line5 with { StartLine = 10, EndLine = 10 };
+        var line10 = new DiagnosticDto("CS8618", "Non-nullable field must contain a non-null value",
+            "Error", "Compiler", "/repo/A.cs", 10, 1, 10, 20);
 
         Assert.AreNotEqual(
             DiagnosticIdentitySet.FormatIdentity(line5),
@@ -96,7 +97,7 @@ public sealed class DiagnosticIdentitySetTests
     public void FormatIdentity_DiffersAcrossFiles()
     {
         var aCs = new DiagnosticDto("CS0103", "X", "Error", "Compiler", "/repo/A.cs", 5, 1, 5, 5);
-        var bCs = aCs with { FilePath = "/repo/B.cs" };
+        var bCs = new DiagnosticDto("CS0103", "X", "Error", "Compiler", "/repo/B.cs", 5, 1, 5, 5);
 
         Assert.AreNotEqual(
             DiagnosticIdentitySet.FormatIdentity(aCs),

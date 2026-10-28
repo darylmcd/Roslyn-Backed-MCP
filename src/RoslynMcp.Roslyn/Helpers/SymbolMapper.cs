@@ -178,17 +178,15 @@ public static class SymbolMapper
     /// Enriches a diagnostic's end position without allowing the legacy and nested spans to drift.
     /// </summary>
     internal static DiagnosticDto WithEndPosition(DiagnosticDto diagnostic, int endLine, int endColumn) =>
-        diagnostic with
-        {
-            EndLine = endLine,
-            EndColumn = endColumn,
-            Location = ToOptionalLocationDto(
-                diagnostic.FilePath,
-                diagnostic.StartLine,
-                diagnostic.StartColumn,
+        diagnostic.WithResolvedEnd(
+            endLine,
+            endColumn,
+            ToOptionalLocationDto(
+                diagnostic.ResolvedFilePath(),
+                diagnostic.ResolvedStartLine(),
+                diagnostic.ResolvedStartColumn(),
                 endLine,
-                endColumn)
-        };
+                endColumn));
 
     /// <summary>
     /// Classifies a reference location as <c>Read</c>, <c>Write</c>, <c>ReadWrite</c>, <c>NameOf</c>,

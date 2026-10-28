@@ -92,6 +92,11 @@ public sealed class ChangelogFragmentRequirementTests
             new RequirementCase("inherited fragment", RequirementFixtureKind.InheritedFragment, 1, "Change-bearing work requires"),
             new RequirementCase("assembled release", RequirementFixtureKind.AssembledRelease, 0, "strict assembled release"),
             new RequirementCase("release plus source", RequirementFixtureKind.ReleasePlusSource, 1, "Change-bearing work requires"),
+            // A maintenance branch carries source commits that main does not have. A tag-push run has no PR
+            // base, so the tagged release commit must be judged against its own first parent, not main.
+            new RequirementCase("tagged maintenance release", RequirementFixtureKind.TaggedMaintenanceRelease, 0, "strict assembled release", TagRun: true),
+            new RequirementCase("maintenance release judged as a branch", RequirementFixtureKind.TaggedMaintenanceRelease, 1, "Change-bearing work requires"),
+            new RequirementCase("tagged release plus source", RequirementFixtureKind.TaggedMaintenanceReleasePlusSource, 1, "Change-bearing work requires", TagRun: true),
         };
 
         foreach (var testCase in cases)
@@ -99,7 +104,7 @@ public sealed class ChangelogFragmentRequirementTests
             var fixtureRoot = await CreateFixtureAsync(testCase.Kind);
             try
             {
-                var result = await RunVerifierAsync(fixtureRoot);
+                var result = await RunVerifierAsync(fixtureRoot, testCase.TagRun);
                 var allOutput = PowerShellOutputNormalizer.Normalize(
                     result.StdOut + Environment.NewLine + result.StdErr);
                 var diagnostic = $"{testCase.Name}: output={allOutput}";
@@ -250,6 +255,12 @@ public sealed class ChangelogFragmentRequirementTests
             case RequirementFixtureKind.ReleasePlusSource:
                 PrepareRelease(root, includeSourceChange: true);
                 break;
+            case RequirementFixtureKind.TaggedMaintenanceRelease:
+                await PrepareMaintenanceReleaseAsync(root, includeSourceChange: false);
+                break;
+            case RequirementFixtureKind.TaggedMaintenanceReleasePlusSource:
+                await PrepareMaintenanceReleaseAsync(root, includeSourceChange: true);
+                break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(kind), kind, null);
         }
@@ -310,6 +321,34 @@ public sealed class ChangelogFragmentRequirementTests
         }
     }
 
+    private static async Task PrepareMaintenanceReleaseAsync(string root, bool includeSourceChange)
+    {
+        // Mirrors the real flow: a source commit with its fragment, then a release commit that consumes
+        // the fragment and bumps the version files.
+        await GitFixtureRunner.RunGitAsync(root, "checkout", "-q", "-b", "release-4.x");
+        File.AppendAllText(Path.Combine(root, "src", "fixture.txt"), "maintenance source\n");
+        File.WriteAllText(
+            Path.Combine(root, "changelog.d", "maintenance-change.md"),
+            Fragment("Changed", "- **Changed:** Maintenance fixture change."));
+        await GitFixtureRunner.RunGitAsync(root, "add", "-A");
+        await CommitAsync(root, "fixture maintenance change");
+
+        File.Delete(Path.Combine(root, "changelog.d", "maintenance-change.md"));
+        foreach (var relativePath in _releaseVersionPaths)
+        {
+            var fullPath = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
+            File.AppendAllText(fullPath, "release\n");
+        }
+
+        if (includeSourceChange)
+        {
+            File.AppendAllText(Path.Combine(root, "src", "fixture.txt"), "release source hitchhiker\n");
+        }
+
+        await GitFixtureRunner.RunGitAsync(root, "add", "-A");
+        await CommitAsync(root, "release: fixture");
+    }
+
     private static async Task CommitAsync(string root, string message)
         => await GitFixtureRunner.RunGitAsync(
             root,
@@ -325,7 +364,7 @@ public sealed class ChangelogFragmentRequirementTests
     private static string Fragment(string category, string body)
         => $"---\ncategory: {category}\n---\n\n{body}\n";
 
-    private static async Task<ProcessResult> RunVerifierAsync(string fixtureRoot)
+    private static async Task<ProcessResult> RunVerifierAsync(string fixtureRoot, bool tagRun = false)
     {
         var scriptPath = Path.Combine(fixtureRoot, "eng", "verify-changelog-fragments.ps1");
         var startInfo = new ProcessStartInfo
@@ -341,6 +380,10 @@ public sealed class ChangelogFragmentRequirementTests
         startInfo.ArgumentList.Add(scriptPath);
         startInfo.ArgumentList.Add("-RepoRoot");
         startInfo.ArgumentList.Add(fixtureRoot);
+        // Pin the CI context so the host's own GitHub Actions environment cannot leak into the fixture.
+        startInfo.Environment["GITHUB_REF_TYPE"] = tagRun ? "tag" : "branch";
+        startInfo.Environment.Remove("GITHUB_BASE_REF");
+        startInfo.Environment.Remove("CHANGELOG_BASE_SHA");
 
         using var process = Process.Start(startInfo)
             ?? throw new InvalidOperationException("Could not start the changelog verifier.");
@@ -375,13 +418,16 @@ public sealed class ChangelogFragmentRequirementTests
         InheritedFragment,
         AssembledRelease,
         ReleasePlusSource,
+        TaggedMaintenanceRelease,
+        TaggedMaintenanceReleasePlusSource,
     }
 
     private sealed record RequirementCase(
         string Name,
         RequirementFixtureKind Kind,
         int ExpectedExitCode,
-        string ExpectedText);
+        string ExpectedText,
+        bool TagRun = false);
 
     private sealed record GrammarCase(
         string Name,

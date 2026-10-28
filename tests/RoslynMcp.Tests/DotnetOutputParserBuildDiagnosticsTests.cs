@@ -1,3 +1,4 @@
+using RoslynMcp.Core.Models;
 using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Tests;
@@ -14,10 +15,10 @@ public sealed class DotnetOutputParserBuildDiagnosticsTests
         Assert.AreEqual("NU1201", diagnostic.Id);
         Assert.AreEqual("Error", diagnostic.Severity);
         Assert.AreEqual("Build", diagnostic.Category);
-        Assert.AreEqual(@"D:\repo\SampleLib.Tests.csproj", diagnostic.FilePath);
+        Assert.AreEqual(@"D:\repo\SampleLib.Tests.csproj", diagnostic.ResolvedFilePath());
         Assert.AreEqual("Project SampleLib is not compatible with net10.0.", diagnostic.Message);
-        Assert.IsNull(diagnostic.StartLine);
-        Assert.IsNull(diagnostic.StartColumn);
+        Assert.IsNull(diagnostic.ResolvedStartLine());
+        Assert.IsNull(diagnostic.ResolvedStartColumn());
         Assert.IsNull(diagnostic.Location);
     }
 
@@ -28,7 +29,7 @@ public sealed class DotnetOutputParserBuildDiagnosticsTests
             "MSBUILD : error MSB1009: Project file does not exist.").Single();
 
         Assert.AreEqual("MSB1009", diagnostic.Id);
-        Assert.AreEqual("MSBUILD", diagnostic.FilePath);
+        Assert.AreEqual("MSBUILD", diagnostic.ResolvedFilePath());
         Assert.AreEqual("Project file does not exist.", diagnostic.Message);
     }
 
@@ -49,9 +50,9 @@ public sealed class DotnetOutputParserBuildDiagnosticsTests
             "sample.cs(2,3): error CS1002: ; expected [Sample.csproj]").Single();
 
         Assert.AreEqual("CS1002", diagnostic.Id);
-        Assert.AreEqual("sample.cs", diagnostic.FilePath);
-        Assert.AreEqual(2, diagnostic.StartLine);
-        Assert.AreEqual(3, diagnostic.StartColumn);
+        Assert.AreEqual("sample.cs", diagnostic.ResolvedFilePath());
+        Assert.AreEqual(2, diagnostic.ResolvedStartLine());
+        Assert.AreEqual(3, diagnostic.ResolvedStartColumn());
     }
 
     [TestMethod]
