@@ -25,3 +25,7 @@
 ## Context
 
 Needed by `release-4-4-0-locationdto-deprecation-cut`; policy basis `docs/release-policy.md:38` (deprecate at least one released minor before removal).
+
+## Notes
+
+2026-10-28 learnings from the first maintenance cut (4.4.0): (1) the tag-time verify-changelog-fragments diffed against origin/main and rejected the release; fixed in verify-changelog-fragments.ps1 (tag runs use HEAD^) and covered by ChangelogFragmentRequirementTests. (2) A fix landing after the release commit needs its fragment, but the tag gate needs none pending, so a short re-assembly PR (CHANGELOG-only diff) must follow before tagging. (3) Rebase merges are disabled, so squash only; the forward-port cherry-picks from the original commits, not the squash. (4) The unpublished v4.4.0 tag had to be deleted and recreated after the failed first run (nothing reached NuGet). (5) Host precheck counts dotnet processes, and each Roslyn MCP server is two. The skill still needs: maintenance mode input, forward-port step, and a dry-run path that does not diff against main.
