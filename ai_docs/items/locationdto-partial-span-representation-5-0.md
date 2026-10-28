@@ -25,3 +25,7 @@
 ## Context
 
 Found while implementing `locationdto-stage3-flat-field-deprecation` (operator decision 2026-10-28: one production adapter with a scoped CS0618 pragma). Blocks `locationdto-next-major-flat-field-removal` and therefore `release-5-0-0-cut`.
+
+## Notes
+
+2026-10-28 operator decision: nullable end on LocationDto. At 5.0 LocationDto EndLine and EndColumn become nullable (FilePath and the start position stay required) and Location is populated whenever path and start exist, so no start-only build position is lost. Amend ADR 0001 section 2 ("never partially populated") through ADR 0011. This is a breaking C# API change to LocationDto and must be listed in the 5.0 migration notes. locationdto-next-major-flat-field-removal implements it together with the removal; regression test: start-only build output survives parse, enrichment failure and serialization.
