@@ -258,7 +258,7 @@ public sealed class WorkspaceSupportBundleTests
     {
         DiagnosticDto[] diagnostics = isReady
             ? []
-            : [new DiagnosticDto("WORKSPACE_STALE", "Workspace is stale", "Warning", "Workspace", Location: null)];
+            : [new DiagnosticDto("WORKSPACE_STALE", "Workspace is stale", "Warning", "Workspace", null, Location: null)];
 
         return new WorkspaceStatusDto(
             WorkspaceId: workspaceId,

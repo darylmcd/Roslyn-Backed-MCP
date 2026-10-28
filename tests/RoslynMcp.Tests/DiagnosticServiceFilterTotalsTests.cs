@@ -70,8 +70,8 @@ public sealed class DiagnosticServiceFilterTotalsTests : SharedWorkspaceTestBase
             List<DiagnosticDto> diagnostics = [];
             foreach (var (prefix, severity) in new[] { ("I", "Info"), ("W", "Warning"), ("E", "Error") })
             {
-                diagnostics.Add(new DiagnosticDto(sameId ? "TEST001" : prefix + "1", "Probe", severity, "Testing", Location: null));
-                var duplicate = new DiagnosticDto(sameId ? "TEST001" : prefix + "2", "Probe", severity, "Testing", Location: null);
+                diagnostics.Add(new DiagnosticDto(sameId ? "TEST001" : prefix + "1", "Probe", severity, "Testing", null, Location: null));
+                var duplicate = new DiagnosticDto(sameId ? "TEST001" : prefix + "2", "Probe", severity, "Testing", null, Location: null);
                 diagnostics.AddRange([duplicate, duplicate]);
             }
             if (reverse) diagnostics.Reverse();

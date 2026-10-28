@@ -86,6 +86,7 @@ public sealed class SnippetAnalysisService : ISnippetAnalysisService
                 Message: d.GetMessage(),
                 Severity: d.Severity.ToString(),
                 Category: d.Descriptor.Category,
+                FilePath: SymbolMapper.SnippetSourceName,
                 Location: SymbolMapper.ToOptionalLocationDto(
                     SymbolMapper.SnippetSourceName, startLine, startColumn, endLine, endColumn));
         }).ToList();
