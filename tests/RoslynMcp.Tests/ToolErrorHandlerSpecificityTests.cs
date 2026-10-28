@@ -67,7 +67,7 @@ public sealed class ToolErrorHandlerSpecificityTests
         var envelope = json.RootElement;
 
         Assert.AreEqual("WorkspaceNotFound", envelope.GetProperty("category").GetString());
-        Assert.AreEqual("WorkspaceNotFound", envelope.GetProperty("reason").GetString());
+        Assert.IsFalse(envelope.TryGetProperty("reason", out _), "5.0 drops the reason alias; category and exceptionType identify the miss.");
         Assert.AreEqual("WorkspaceNotFoundException", envelope.GetProperty("exceptionType").GetString(),
             "5.0 reports the exception type name for a workspace miss.");
         StringAssert.Contains(envelope.GetProperty("message").GetString(), "workspace_load");
@@ -116,8 +116,8 @@ public sealed class ToolErrorHandlerSpecificityTests
             $"A workspace miss must not be reported as a reload race. Payload: {result}");
         Assert.AreEqual("WorkspaceNotFoundException", envelope.GetProperty("exceptionType").GetString(),
             $"exceptionType names the exception on the reload-race path too. Payload: {result}");
-        Assert.AreEqual("WorkspaceNotFound", envelope.GetProperty("reason").GetString(),
-            $"The workspace reason must survive an in-call auto-reload. Payload: {result}");
+        Assert.IsFalse(envelope.TryGetProperty("reason", out _),
+            $"The reason alias is gone on the reload-race path too. Payload: {result}");
         var message = envelope.GetProperty("message").GetString();
         StringAssert.Contains(message, "workspace_load",
             $"A workspace miss must name the recovery tool, not only symbol re-resolution. Payload: {result}");

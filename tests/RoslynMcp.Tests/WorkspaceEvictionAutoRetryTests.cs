@@ -165,8 +165,8 @@ public sealed class WorkspaceEvictionAutoRetryTests
                 $"Without an IWorkspaceManager the pre-fix error envelope must survive unchanged. Actual: {json}");
             Assert.AreEqual("WorkspaceNotFound", root.GetProperty("category").GetString(),
                 $"The gate's ContainsWorkspace precheck classifies as WorkspaceNotFound; the retry wiring must not change that when unwired. Actual: {json}");
-            Assert.AreEqual("WorkspaceNotFound", root.GetProperty("reason").GetString(),
-                $"The gate's ContainsWorkspace precheck carries the workspace reason. Actual: {json}");
+            Assert.IsFalse(root.TryGetProperty("reason", out _),
+                $"The reason alias is gone. Actual: {json}");
             Assert.AreEqual("compile_check", root.GetProperty("tool").GetString());
         }
         finally
@@ -465,8 +465,8 @@ public sealed class WorkspaceEvictionAutoRetryTests
                 $"A failed reload must still surface the original WorkspaceNotFound envelope unchanged. Actual: {json}");
             Assert.AreEqual("WorkspaceNotFound", root.GetProperty("category").GetString(),
                 $"Fallback behaviour must be preserved — only a log emission is added. Actual: {json}");
-            Assert.AreEqual("WorkspaceNotFound", root.GetProperty("reason").GetString(),
-                $"The original workspace-miss reason must survive the failed rehydration. Actual: {json}");
+            Assert.IsFalse(root.TryGetProperty("reason", out _),
+                $"The reason alias is gone. Actual: {json}");
 
             Assert.AreEqual(1,
                 logger.Entries.Count(e =>

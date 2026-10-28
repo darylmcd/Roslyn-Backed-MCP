@@ -15,7 +15,7 @@ namespace RoslynMcp.Host.Stdio.Middleware;
 /// handler exception into a JSON-RPC protocol error (<see cref="McpProtocolException"/>) so a
 /// failed read answers on the error channel instead of a "successful" result whose contents
 /// body is a serialized error document. Error payloads carry only the stable category, its
-/// remediation text, the offending parameter name, the optional category-refining reason, the
+/// remediation text, the offending parameter name, the
 /// requested URI, and a correlation id —
 /// never the exception type, a stack frame, or a raw server-side path.
 /// </summary>
@@ -127,9 +127,6 @@ internal static class ResourceReadResultFilter
         // PublicExceptionDetailPolicy) — raw exception detail stays server-side.
         var correlationId = info.CorrelationId ?? RequestCorrelationContext.Current ?? "unavailable";
         var paramSuffix = string.IsNullOrEmpty(info.ParamName) ? string.Empty : $"; param: {info.ParamName}";
-        // The optional reason refines the category (the deprecated WorkspaceNotFound alias on a
-        // workspace miss) without changing the category prefix or the error code.
-        var reasonSuffix = string.IsNullOrEmpty(info.Reason) ? string.Empty : $"; reason: {info.Reason}";
-        return $"{info.Category}: {info.Message} (resource: {uri}{paramSuffix}{reasonSuffix}; correlationId: {correlationId})";
+        return $"{info.Category}: {info.Message} (resource: {uri}{paramSuffix}; correlationId: {correlationId})";
     }
 }
