@@ -180,15 +180,13 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         await DetectExistingTypeConflictAsync(
             workspaceId, _compilationCache, solution, namespaceName, resolvedInterfaceName, ct).ConfigureAwait(false);
 
-        // gh #765 — walk the source type's public-instance member symbols semantically and
-        // collect every referenced type's containing namespace. The generated interface file's
-        // using block is built from that set (plus aliases/static/global from the source file)
-        // instead of the legacy text-grep that dropped source-project usings whose last segment
-        // didn't match the synthesized short name. Mirrors InterfaceExtractionService:301-338.
-        var requiredNamespaces = CollectReferencedNamespaces(typeSymbol, namespaceName);
+        // gh #765 — the projector records every type the projected members refer to; the generated
+        // interface file's using block is built from those symbols (plus aliases/static/global from
+        // the source file) instead of a text-grep that dropped source-project usings.
         var nullableProjection = new InterfaceNullableProjection();
-        var interfaceRoot = CreateInterfaceCompilationUnit(sourceRoot, typeSymbol, resolvedInterfaceName, namespaceName, isCrossProject, requiredNamespaces,
-            ReceivingNamespaceFactory.RequireCSharpOptions(targetProject.ParseOptions), nullableProjection);
+        var projector = await InterfaceMemberProjector.CreateAsync(sourceDocument, nullableProjection, ct).ConfigureAwait(false);
+        var interfaceRoot = CreateInterfaceCompilationUnit(sourceRoot, typeSymbol, resolvedInterfaceName, namespaceName, isCrossProject,
+            ReceivingNamespaceFactory.RequireCSharpOptions(targetProject.ParseOptions), projector);
         var interfaceFilePath = Path.Combine(interfaceDirectory, resolvedInterfaceName + ".cs");
         if (File.Exists(interfaceFilePath))
         {
@@ -444,16 +442,10 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         string interfaceName,
         string namespaceName,
         bool isCrossProject,
-        IReadOnlyCollection<string> requiredNamespaces,
         CSharpParseOptions receivingOptions,
-        InterfaceNullableProjection nullableProjection)
+        InterfaceMemberProjector projector)
     {
-        var interfaceMembers = new List<MemberDeclarationSyntax>();
-        foreach (var member in typeSymbol.GetMembers().Where(member => member.DeclaredAccessibility == Accessibility.Public && !member.IsStatic && !member.IsImplicitlyDeclared))
-        {
-            var emitted = CreateInterfaceMember(member);
-            if (emitted is not null) interfaceMembers.Add(nullableProjection.Capture(emitted, member));
-        }
+        var interfaceMembers = typeSymbol.GetMembers().Where(InterfaceMemberProjector.IsProjectable).Select(projector.Project).ToList();
 
         if (interfaceMembers.Count == 0)
         {
@@ -473,7 +465,8 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             .AddModifiers(accessibilityToken)
             .WithMembers(SyntaxFactory.List(interfaceMembers));
 
-        var usings = UsingDirectiveSynthesizer.BuildUsingDirectives(sourceRoot.Usings, requiredNamespaces);
+        var usings = UsingDirectiveSynthesizer.BuildUsingDirectives(
+            sourceRoot.Usings, projector.RequiredNamespaces(string.IsNullOrWhiteSpace(namespaceName) ? null : namespaceName));
         var cleanUsings = SyntaxFactory.List(usings.Select(u => u.WithoutTrivia()));
         var destinationNamespace = ReceivingNamespaceFactory.Create(namespaceName, receivingOptions);
         MemberDeclarationSyntax wrappedMember = destinationNamespace is null
@@ -495,48 +488,6 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         Accessibility.ProtectedOrInternal => SyntaxFactory.Token(SyntaxKind.InternalKeyword),
         _ => SyntaxFactory.Token(SyntaxKind.PublicKeyword),
     };
-
-    private static MemberDeclarationSyntax? CreateInterfaceMember(ISymbol member)
-    {
-        return member switch
-        {
-            IMethodSymbol { MethodKind: MethodKind.Ordinary } method => SyntaxFactory.MethodDeclaration(
-                    SyntaxFactory.ParseTypeName(method.ReturnType.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)),
-                    method.Name)
-                .WithParameterList(CreateParameterList(method.Parameters))
-                .WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken)),
-            IPropertySymbol property => SyntaxFactory.PropertyDeclaration(
-                    SyntaxFactory.ParseTypeName(property.Type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)),
-                    property.Name)
-                .WithAccessorList(CreateAccessorList(property.GetMethod is not null, property.SetMethod is not null)),
-            _ => null
-        };
-    }
-
-    private static ParameterListSyntax CreateParameterList(ImmutableArray<IParameterSymbol> parameters)
-    {
-        return SyntaxFactory.ParameterList(SyntaxFactory.SeparatedList(parameters.Select(parameter =>
-            SyntaxFactory.Parameter(SyntaxFactory.Identifier(parameter.Name))
-                .WithType(SyntaxFactory.ParseTypeName(parameter.Type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat))))));
-    }
-
-    private static AccessorListSyntax CreateAccessorList(bool hasGetter, bool hasSetter)
-    {
-        var accessors = new List<AccessorDeclarationSyntax>();
-        if (hasGetter)
-        {
-            accessors.Add(SyntaxFactory.AccessorDeclaration(SyntaxKind.GetAccessorDeclaration)
-                .WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken)));
-        }
-
-        if (hasSetter)
-        {
-            accessors.Add(SyntaxFactory.AccessorDeclaration(SyntaxKind.SetAccessorDeclaration)
-                .WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken)));
-        }
-
-        return SyntaxFactory.AccessorList(SyntaxFactory.List(accessors));
-    }
 
     private static Solution EnsureProjectReference(Solution solution, ProjectId sourceProjectId, ProjectId targetProjectId)
     {
@@ -583,13 +534,12 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         await DetectExistingTypeConflictAsync(
             workspaceId, compilationCache, solution, namespaceName, interfaceName, ct).ConfigureAwait(false);
 
-        // gh #765 — collect required namespaces semantically (see PreviewExtractInterfaceAsync
-        // for the same call). The DI-inversion path routes through here too, so missing this
-        // produces silent regressions for cross-project extract+invert scenarios.
-        var requiredNamespaces = CollectReferencedNamespaces(typeSymbol, namespaceName);
+        // gh #765 — project members and collect required namespaces semantically (see
+        // PreviewExtractInterfaceAsync). The DI-inversion path routes through here too.
         var nullableProjection = new InterfaceNullableProjection();
-        var interfaceRoot = CreateInterfaceCompilationUnit(sourceRoot, typeSymbol, interfaceName, namespaceName, isCrossProject, requiredNamespaces,
-            ReceivingNamespaceFactory.RequireCSharpOptions(targetProject.ParseOptions), nullableProjection);
+        var projector = await InterfaceMemberProjector.CreateAsync(sourceDocument, nullableProjection, ct).ConfigureAwait(false);
+        var interfaceRoot = CreateInterfaceCompilationUnit(sourceRoot, typeSymbol, interfaceName, namespaceName, isCrossProject,
+            ReceivingNamespaceFactory.RequireCSharpOptions(targetProject.ParseOptions), projector);
         var interfaceFileDirectory = isCrossProject
             ? ResolvePreferredInterfaceSubdirectory(solution, targetProject, targetProjectDirectory)
             : targetProjectDirectory;
@@ -635,53 +585,4 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             : typeSymbol.ContainingNamespace.ToDisplayString() + "." + typeSymbol.MetadataName;
     }
 
-    /// <summary>
-    /// gh #765 — semantic using-collection. Walks the source type's public-instance method,
-    /// property, and event symbols and collects the containing namespaces of every referenced
-    /// type (return type, parameter types, property type, event type, type-parameter
-    /// constraints, recursive generic arguments, array element types). The result is the
-    /// authoritative list of namespaces the generated interface file needs, independent of
-    /// what the source file happened to declare. Excludes the target interface's own
-    /// namespace (a self-referential using would be invalid). Mirrors
-    /// <c>InterfaceExtractionService.CollectReferencedNamespaces</c>.
-    /// </summary>
-    private static IReadOnlyCollection<string> CollectReferencedNamespaces(
-        INamedTypeSymbol typeSymbol,
-        string targetNamespaceName)
-    {
-        var namespaces = new HashSet<string>(StringComparer.Ordinal);
-        var ownNamespace = string.IsNullOrWhiteSpace(targetNamespaceName) ? null : targetNamespaceName;
-
-        var members = typeSymbol.GetMembers()
-            .Where(member => member.DeclaredAccessibility == Accessibility.Public && !member.IsStatic && !member.IsImplicitlyDeclared);
-
-        foreach (var member in members)
-        {
-            switch (member)
-            {
-                case IMethodSymbol { MethodKind: MethodKind.Ordinary } method:
-                    TypeNamespaceWalker.Collect(namespaces, method.ReturnType, ownNamespace);
-                    foreach (var parameter in method.Parameters)
-                    {
-                        TypeNamespaceWalker.Collect(namespaces, parameter.Type, ownNamespace);
-                    }
-                    foreach (var typeParameter in method.TypeParameters)
-                    {
-                        foreach (var constraint in typeParameter.ConstraintTypes)
-                        {
-                            TypeNamespaceWalker.Collect(namespaces, constraint, ownNamespace);
-                        }
-                    }
-                    break;
-                case IPropertySymbol property:
-                    TypeNamespaceWalker.Collect(namespaces, property.Type, ownNamespace);
-                    break;
-                case IEventSymbol evt:
-                    TypeNamespaceWalker.Collect(namespaces, evt.Type, ownNamespace);
-                    break;
-            }
-        }
-
-        return namespaces;
-    }
 }

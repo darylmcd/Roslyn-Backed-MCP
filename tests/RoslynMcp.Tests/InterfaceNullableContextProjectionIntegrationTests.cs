@@ -25,7 +25,7 @@ public sealed class InterfaceNullableContextProjectionIntegrationTests : Isolate
                     yield return [route, enabled, sourceEnabled];
     }
 
-    public static IEnumerable<object[]> LegacyCases()
+    public static IEnumerable<object[]> IndexerCases()
     {
         foreach (var route in new[] { "standalone", "cross-project" })
             foreach (var enabled in new[] { false, true })
@@ -33,8 +33,8 @@ public sealed class InterfaceNullableContextProjectionIntegrationTests : Isolate
     }
 
     [TestMethod]
-    [DynamicData(nameof(LegacyCases))]
-    public async Task Legacy_Indexer_Recovery_Preserves_All_Actually_Emitted_Type_Slots(string route, bool enabled, bool recursive)
+    [DynamicData(nameof(IndexerCases))]
+    public async Task Indexer_Is_Projected_As_An_Indexer_Preserving_Emitted_Nullable_Slots(string route, bool enabled, bool recursive)
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
         PrepareFixture(workspace);
@@ -51,52 +51,13 @@ public sealed class InterfaceNullableContextProjectionIntegrationTests : Isolate
         await AssertCompilesAsync(before);
         var files = Snapshot(workspace.RootPath);
         var preview = await PreviewAsync(route, workspace.WorkspaceId, path, new CompositePreviewStore());
-        var pending = PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution;
+        var pending = await ReparseSerializedDocumentsAsync(PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution);
         var document = pending.Projects.Single(p => p.Name == receiver).Documents.Single(d => d.Name == "INullableService.cs");
         var text = (await document.GetTextAsync()).ToString();
-        StringAssert.Contains(text, "this[]");
-        Assert.IsFalse(text.Contains("int key", StringComparison.Ordinal), "Do not invent legacy omitted indexer keys.");
-        var tree = (await document.GetSyntaxTreeAsync())!;
-        var model = (await document.GetSemanticModelAsync())!;
-        var tokens = SyntaxFactory.ParseTokens(text, options: (CSharpParseOptions)document.Project.ParseOptions!).ToArray();
-        var contextual = tokens.Where(t => t.IsKind(SyntaxKind.StringKeyword) || t.IsKind(SyntaxKind.GreaterThanToken) ||
-            (recursive && t.IsKind(SyntaxKind.CloseBracketToken) && t.SpanStart < text.IndexOf("this[]", StringComparison.Ordinal))).ToArray();
-        Assert.AreEqual(recursive ? 5 : 1, contextual.Length, text);
-        foreach (var token in contextual)
-            Assert.AreEqual(!enabled, (model.GetNullableContext(token.SpanStart) & NullableContext.AnnotationsEnabled) != 0, text);
-        // Preserve malformed old-emitter output as a differential control, never call it compilable.
-        var baselineText = System.Text.RegularExpressions.Regex.Replace(text, @"(?m)^#nullable (enable|disable|restore) annotations\r?\n", "");
-        var baseline = pending.WithDocumentText(document.Id, Microsoft.CodeAnalysis.Text.SourceText.From(baselineText));
-        var baselineTree = await baseline.GetDocument(document.Id)!.GetSyntaxTreeAsync();
-        var oldErrors = (await baseline.GetProject(document.Project.Id)!.GetCompilationAsync())!.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).ToArray();
-        var newErrors = (await document.Project.GetCompilationAsync())!.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).ToArray();
-        Assert.IsTrue(oldErrors.Length > 0, "Control must retain the original malformed indexer.");
-        string LocationKey(Location location, bool after)
-        {
-            if (location.SourceTree != (after ? tree : baselineTree))
-                return location.SourceTree?.FilePath + ":" + location.SourceSpan;
-            var lexical = SyntaxFactory.ParseTokens(after ? text : baselineText).ToArray();
-            string Anchor(int position, bool end)
-            {
-                if (position == (after ? text : baselineText).Length) return "eof";
-                var pair = lexical.Select((t, i) => (t, i)).First(p => end ? p.t.Span.End >= position : p.t.Span.End > position);
-                return pair.i + ":" + (position - pair.t.SpanStart);
-            }
-            return "interface:" + Anchor(location.SourceSpan.Start, false) + "|" + Anchor(location.SourceSpan.End, true);
-        }
-        string Identity(Diagnostic diagnostic, bool after) => System.Text.Json.JsonSerializer.Serialize(new
-        {
-            diagnostic.Id,
-            diagnostic.Severity,
-            diagnostic.DefaultSeverity,
-            diagnostic.IsWarningAsError,
-            Message = diagnostic.GetMessage(System.Globalization.CultureInfo.InvariantCulture),
-            Properties = diagnostic.Properties.OrderBy(p => p.Key, StringComparer.Ordinal).ToArray(),
-            Location = LocationKey(diagnostic.Location, after),
-            Additional = diagnostic.AdditionalLocations.Select(l => LocationKey(l, after)).ToArray(),
-        });
-        var remaining = oldErrors.Select(d => Identity(d, false)).ToList();
-        foreach (var diagnostic in newErrors) Assert.IsTrue(remaining.Remove(Identity(diagnostic, true)), diagnostic.ToString());
+        StringAssert.Contains(text, "this[int key]");
+        Assert.IsFalse(text.Contains("this[]", StringComparison.Ordinal), text);
+        await AssertCompilesAsync(pending);
+        await AssertGraphsAsync(before, pending, receiver);
         AssertSnapshot(files);
     }
 
@@ -296,7 +257,7 @@ public sealed class InterfaceNullableContextProjectionIntegrationTests : Isolate
         var projected = (await target.Projects.Single(p => p.Name == receiver).GetCompilationAsync())!.GetTypeByMetadataName("Contracts.INullableService")!;
         var actualMembers = projected.GetMembers().Where(m => !m.IsImplicitlyDeclared && m is IMethodSymbol { MethodKind: MethodKind.Ordinary } or IPropertySymbol or IEventSymbol).ToArray();
         var expectedMembers = original.GetMembers().Where(m => !m.IsImplicitlyDeclared && m is IMethodSymbol { MethodKind: MethodKind.Ordinary } or IPropertySymbol or IEventSymbol)
-            .Where(m => receiver == "SampleLib" || m is not IEventSymbol).ToArray();
+            .ToArray();
         CollectionAssert.AreEqual(expectedMembers.Select(m => m.Kind + ":" + m.Name).Order(StringComparer.Ordinal).ToArray(),
             actualMembers.Select(m => m.Kind + ":" + m.Name).Order(StringComparer.Ordinal).ToArray());
         foreach (var member in actualMembers)

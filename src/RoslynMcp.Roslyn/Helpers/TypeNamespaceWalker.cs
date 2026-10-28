@@ -38,5 +38,25 @@ internal static class TypeNamespaceWalker
         {
             Collect(namespaces, array.ElementType, ownNamespace);
         }
+
+        if (type is IPointerTypeSymbol pointer)
+        {
+            Collect(namespaces, pointer.PointedAtType, ownNamespace);
+        }
+
+        if (type is IFunctionPointerTypeSymbol functionPointer)
+        {
+            Collect(namespaces, functionPointer.Signature.ReturnType, ownNamespace);
+            foreach (var parameter in functionPointer.Signature.Parameters)
+            {
+                Collect(namespaces, parameter.Type, ownNamespace);
+            }
+        }
+
+        // `Outer<string>.Inner<object>` refers to `Outer<string>` too: its type arguments need their imports.
+        if (type.ContainingType is { } containing)
+        {
+            Collect(namespaces, containing, ownNamespace);
+        }
     }
 }

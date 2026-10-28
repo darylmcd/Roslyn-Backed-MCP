@@ -32,8 +32,7 @@ internal sealed class InterfaceNullableProjection
                 roles.Add((method.ReturnType, original.ReturnType));
                 Parameters(method.ParameterList.Parameters, original.Parameters);
                 break;
-            case (PropertyDeclarationSyntax property, IPropertySymbol original):
-                // Legacy producers emit indexers as properties: only the emitted type is a role.
+            case (PropertyDeclarationSyntax property, IPropertySymbol { IsIndexer: false } original):
                 roles.Add((property.Type, original.Type));
                 break;
             case (IndexerDeclarationSyntax indexer, IPropertySymbol original):
