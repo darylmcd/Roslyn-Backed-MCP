@@ -51,11 +51,6 @@ public static class SymbolMapper
                 ? symbol.ContainingNamespace.ToDisplayString()
                 : null,
             Project: projectName,
-            FilePath: filePath,
-            StartLine: startLine,
-            StartColumn: startColumn,
-            EndLine: endLine,
-            EndColumn: endColumn,
             ReturnType: returnType,
             Parameters: parameters,
             Modifiers: modifiers.Count > 0 ? modifiers : null,
@@ -141,8 +136,9 @@ public static class SymbolMapper
     }
 
     /// <summary>
-    /// Creates a complete nested location when every required span component is available.
-    /// Partial legacy locations deliberately remain flat during the migration window.
+    /// Creates the nested location whenever the path and the start position exist. The end position is
+    /// kept only when both end coordinates are known; otherwise both stay null (a start-only span is a
+    /// real producer state: MSBuild output gives <c>file(line,column)</c> and no end).
     /// </summary>
     internal static LocationDto? ToOptionalLocationDto(
         string? filePath,
@@ -156,37 +152,38 @@ public static class SymbolMapper
     {
         if (string.IsNullOrWhiteSpace(filePath) ||
             startLine is null ||
-            startColumn is null ||
-            endLine is null ||
-            endColumn is null)
+            startColumn is null)
         {
             return null;
         }
+
+        var hasEnd = endLine is not null && endColumn is not null;
 
         return new LocationDto(
             FilePath: filePath,
             StartLine: startLine.Value,
             StartColumn: startColumn.Value,
-            EndLine: endLine.Value,
-            EndColumn: endColumn.Value,
+            EndLine: hasEnd ? endLine : null,
+            EndColumn: hasEnd ? endColumn : null,
             ContainingMember: containingMember,
             PreviewText: previewText,
             Classification: classification);
     }
 
     /// <summary>
-    /// Enriches a diagnostic's end position without allowing the legacy and nested spans to drift.
+    /// Sets the end of a diagnostic's span. A diagnostic without a location has no span to complete and is
+    /// returned unchanged.
     /// </summary>
     internal static DiagnosticDto WithEndPosition(DiagnosticDto diagnostic, int endLine, int endColumn) =>
-        diagnostic.WithResolvedEnd(
-            endLine,
-            endColumn,
-            ToOptionalLocationDto(
-                diagnostic.ResolvedFilePath(),
-                diagnostic.ResolvedStartLine(),
-                diagnostic.ResolvedStartColumn(),
-                endLine,
-                endColumn));
+        diagnostic.Location is { } location
+            ? diagnostic with { Location = location with { EndLine = endLine, EndColumn = endColumn } }
+            : diagnostic;
+
+    /// <summary>Source name carried by diagnostics of code analyzed from an inline snippet.</summary>
+    internal const string SnippetSourceName = "<snippet>";
+
+    /// <summary>Source name carried by diagnostics of code run through the scripting service.</summary>
+    internal const string ScriptSourceName = "<script>";
 
     /// <summary>
     /// Classifies a reference location as <c>Read</c>, <c>Write</c>, <c>ReadWrite</c>, <c>NameOf</c>,
@@ -269,11 +266,6 @@ public static class SymbolMapper
             Message: diagnostic.GetMessage(),
             Severity: diagnostic.Severity.ToString(),
             Category: diagnostic.Descriptor.Category,
-            FilePath: lineSpan.Path,
-            StartLine: startLine,
-            StartColumn: startColumn,
-            EndLine: endLine,
-            EndColumn: endColumn,
             Location: ToOptionalLocationDto(lineSpan.Path, startLine, startColumn, endLine, endColumn));
     }
 

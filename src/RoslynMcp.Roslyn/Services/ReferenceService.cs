@@ -207,9 +207,9 @@ public sealed class ReferenceService : IReferenceService, IPreResolvedReferenceS
         return overrides
             .Distinct(SymbolEqualityComparer.Default)
             .Select(overrideSymbol => SymbolMapper.ToDto(overrideSymbol, solution))
-            .OrderBy(d => d.ResolvedFilePath() ?? string.Empty, StringComparer.Ordinal)
-            .ThenBy(d => d.ResolvedStartLine() ?? int.MaxValue)
-            .ThenBy(d => d.ResolvedStartColumn() ?? int.MaxValue)
+            .OrderBy(d => d.Location?.FilePath ?? string.Empty, StringComparer.Ordinal)
+            .ThenBy(d => d.Location?.StartLine ?? int.MaxValue)
+            .ThenBy(d => d.Location?.StartColumn ?? int.MaxValue)
             .ThenBy(d => d.FullyQualifiedName, StringComparer.Ordinal)
             .ToList();
     }
@@ -230,9 +230,9 @@ public sealed class ReferenceService : IReferenceService, IPreResolvedReferenceS
         return siblings
             .Distinct(SymbolEqualityComparer.Default)
             .Select(sibling => SymbolMapper.ToDto(sibling, solution))
-            .OrderBy(d => d.ResolvedFilePath() ?? string.Empty, StringComparer.Ordinal)
-            .ThenBy(d => d.ResolvedStartLine() ?? int.MaxValue)
-            .ThenBy(d => d.ResolvedStartColumn() ?? int.MaxValue)
+            .OrderBy(d => d.Location?.FilePath ?? string.Empty, StringComparer.Ordinal)
+            .ThenBy(d => d.Location?.StartLine ?? int.MaxValue)
+            .ThenBy(d => d.Location?.StartColumn ?? int.MaxValue)
             .ThenBy(d => d.FullyQualifiedName, StringComparer.Ordinal)
             .ToList();
     }
@@ -549,9 +549,9 @@ public sealed class ReferenceService : IReferenceService, IPreResolvedReferenceS
         return SymbolServiceHelpers.GetBaseMembers(symbol)
             .Distinct(SymbolEqualityComparer.Default)
             .Select(baseMember => SymbolMapper.ToDto(baseMember, solution))
-            .OrderBy(d => d.ResolvedFilePath() ?? string.Empty, StringComparer.Ordinal)
-            .ThenBy(d => d.ResolvedStartLine() ?? int.MaxValue)
-            .ThenBy(d => d.ResolvedStartColumn() ?? int.MaxValue)
+            .OrderBy(d => d.Location?.FilePath ?? string.Empty, StringComparer.Ordinal)
+            .ThenBy(d => d.Location?.StartLine ?? int.MaxValue)
+            .ThenBy(d => d.Location?.StartColumn ?? int.MaxValue)
             .ThenBy(d => d.FullyQualifiedName, StringComparer.Ordinal)
             .ToList();
     }

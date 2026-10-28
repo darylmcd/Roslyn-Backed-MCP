@@ -29,15 +29,7 @@ public enum TypeUsageClassification
 }
 
 /// <summary>
-/// Represents a source usage of a type.
+/// Represents a source usage of a type. The span, containing member, preview text and classification
+/// (a <see cref="TypeUsageClassification"/> name) all live on <see cref="Location"/>.
 /// </summary>
-public sealed record TypeUsageDto(
-    [property: Obsolete(LocationDtoDeprecation.FlatMemberMessage)] string FilePath,
-    [property: Obsolete(LocationDtoDeprecation.FlatMemberMessage)] int StartLine,
-    [property: Obsolete(LocationDtoDeprecation.FlatMemberMessage)] int StartColumn,
-    [property: Obsolete(LocationDtoDeprecation.FlatMemberMessage)] int EndLine,
-    [property: Obsolete(LocationDtoDeprecation.FlatMemberMessage)] int EndColumn,
-    [property: Obsolete(LocationDtoDeprecation.FlatMemberMessage)] string? ContainingMember,
-    [property: Obsolete(LocationDtoDeprecation.FlatMemberMessage)] string? PreviewText,
-    [property: Obsolete(LocationDtoDeprecation.FlatMemberMessage)] TypeUsageClassification Classification,
-    LocationDto? Location = null);
+public sealed record TypeUsageDto(LocationDto Location);

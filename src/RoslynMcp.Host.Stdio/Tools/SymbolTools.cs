@@ -83,9 +83,9 @@ public static class SymbolTools
                     fullyQualifiedName = s.FullyQualifiedName,
                     symbolHandle = s.SymbolHandle,
                     kind = s.Kind,
-                    filePath = s.ResolvedFilePath(),
-                    startLine = s.ResolvedStartLine(),
-                    startColumn = s.ResolvedStartColumn(),
+                    filePath = s.Location?.FilePath,
+                    startLine = s.Location?.StartLine,
+                    startColumn = s.Location?.StartColumn,
                 }
                 : s;
 
@@ -105,9 +105,9 @@ public static class SymbolTools
                 for (var i = 0; i < paged.Count; i++)
                 {
                     var r = paged[i];
-                    var label = string.IsNullOrEmpty(r.ResolvedFilePath())
+                    var label = string.IsNullOrEmpty(r.Location?.FilePath)
                         ? $"{r.Kind} {r.FullyQualifiedName}"
-                        : $"{r.Kind} {r.FullyQualifiedName} — {Path.GetFileName(r.ResolvedFilePath())}:{r.ResolvedStartLine()}";
+                        : $"{r.Kind} {r.FullyQualifiedName} — {Path.GetFileName(r.Location?.FilePath)}:{r.Location?.StartLine}";
                     var choiceToken = CreateSymbolChoiceToken(r);
                     choiceTokens.Add(choiceToken);
                     options.Add((choiceToken, label));
@@ -946,9 +946,9 @@ public static class SymbolTools
             candidate.Kind,
             candidate.FullyQualifiedName,
             candidate.Project ?? string.Empty,
-            candidate.ResolvedFilePath() ?? string.Empty,
-            candidate.ResolvedStartLine()?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty,
-            candidate.ResolvedStartColumn()?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty);
+            candidate.Location?.FilePath ?? string.Empty,
+            candidate.Location?.StartLine.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty,
+            candidate.Location?.StartColumn.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty);
         return CreateSymbolChoiceToken(identity);
     }
 

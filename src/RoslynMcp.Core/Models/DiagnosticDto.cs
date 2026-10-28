@@ -1,16 +1,12 @@
 namespace RoslynMcp.Core.Models;
 
 /// <summary>
-/// Represents a compiler, analyzer, or workspace diagnostic.
+/// Represents a compiler, analyzer, or workspace diagnostic. <see cref="Location"/> is null only when the
+/// diagnostic has no file and start position (project- or solution-level findings).
 /// </summary>
 public sealed record DiagnosticDto(
     string Id,
     string Message,
     string Severity,
     string Category,
-    [property: Obsolete(LocationDtoDeprecation.FlatMemberMessage)] string? FilePath,
-    [property: Obsolete(LocationDtoDeprecation.FlatMemberMessage)] int? StartLine,
-    [property: Obsolete(LocationDtoDeprecation.FlatMemberMessage)] int? StartColumn,
-    [property: Obsolete(LocationDtoDeprecation.FlatMemberMessage)] int? EndLine,
-    [property: Obsolete(LocationDtoDeprecation.FlatMemberMessage)] int? EndColumn,
     LocationDto? Location = null);

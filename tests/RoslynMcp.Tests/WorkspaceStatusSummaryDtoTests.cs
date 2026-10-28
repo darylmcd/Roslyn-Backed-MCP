@@ -35,7 +35,7 @@ public sealed class WorkspaceStatusSummaryDtoTests
     {
         var severity = WorkspaceDiagnosticSeverityClassifier.Classify(WorkspaceDiagnosticKind.Failure, message);
         Assert.AreEqual(requiresVsMsbuild ? "Warning" : "Error", severity);
-        var diagnostic = new DiagnosticDto("WORKSPACE_FAILURE", message, severity, "Workspace", null, null, null, null, null);
+        var diagnostic = new DiagnosticDto("WORKSPACE_FAILURE", message, severity, "Workspace", Location: null);
         var summary = WorkspaceStatusSummaryDto.From(BaselineStatus([diagnostic]));
         Assert.AreEqual(!requiresVsMsbuild, summary.AnalyzersReady);
         Assert.AreEqual(requiresVsMsbuild, summary.RestoreHint?.Contains("Visual Studio MSBuild", StringComparison.Ordinal) == true);
@@ -82,7 +82,7 @@ public sealed class WorkspaceStatusSummaryDtoTests
     {
         var diagnostics = new[]
         {
-            new DiagnosticDto("W1", "fail", "Error", "Workspace", null, null, null, null, null),
+            new DiagnosticDto("W1", "fail", "Error", "Workspace", Location: null),
         };
         var summary = WorkspaceStatusSummaryDto.From(BaselineStatus(diagnostics));
         Assert.IsFalse(summary.IsReady);
@@ -94,9 +94,9 @@ public sealed class WorkspaceStatusSummaryDtoTests
     {
         var diagnostics = new DiagnosticDto[]
         {
-            new("X", "Type 'A' could not be found", "Error", "Workspace", null, null, null, null, null),
-            new("X", "Type 'B' could not be found", "Error", "Workspace", null, null, null, null, null),
-            new("X", "Type 'C' could not be found", "Error", "Workspace", null, null, null, null, null),
+            new("X", "Type 'A' could not be found", "Error", "Workspace", null),
+            new("X", "Type 'B' could not be found", "Error", "Workspace", null),
+            new("X", "Type 'C' could not be found", "Error", "Workspace", null),
         };
         var summary = WorkspaceStatusSummaryDto.From(BaselineStatus(diagnostics));
         Assert.IsNotNull(summary.RestoreHint);
@@ -116,7 +116,7 @@ public sealed class WorkspaceStatusSummaryDtoTests
     {
         var diagnostics = new DiagnosticDto[]
         {
-            new("WORKSPACE_UNRESOLVED_ANALYZER", "Failed to load analyzer reference 'Foo'", "Warning", "Workspace", null, null, null, null, null),
+            new("WORKSPACE_UNRESOLVED_ANALYZER", "Failed to load analyzer reference 'Foo'", "Warning", "Workspace", Location: null),
         };
         var summary = WorkspaceStatusSummaryDto.From(BaselineStatus(diagnostics));
         Assert.IsFalse(summary.AnalyzersReady, "AnalyzersReady must be false when an unresolved-analyzer warning is present");

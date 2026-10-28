@@ -70,7 +70,7 @@ public sealed class WorkspaceReadinessReportTests
                 "Unresolved analyzer reference removed from project 'SampleLib': DefinitelyMissingAnalyzer.dll. This typically indicates a missing analyzer build output. Run `dotnet build` on the analyzer project, then `workspace_reload`.",
                 "Warning",
                 "Workspace",
-                null, null, null, null, null)
+                null)
         ];
 
         // restore-required-vs-build-conflation: a missing analyzer build output sets buildRequired,
@@ -95,7 +95,7 @@ public sealed class WorkspaceReadinessReportTests
                 "Analyzer reference unavailable.",
                 "Warning",
                 "Workspace",
-                null, null, null, null, null)
+                null)
         ];
         var buildRequired = WorkspaceDiagnosticClassifier.HasBuildRequired(diagnostics);
         var json = await CreateReportAsync(CreateStatus(diagnostics, buildRequired: false));
@@ -116,7 +116,7 @@ public sealed class WorkspaceReadinessReportTests
         // build/restore split.
         DiagnosticDto[] diagnostics =
         [
-            new("CS0234", "The type or namespace name 'Json' does not exist in the namespace 'System.Text'", "Error", "Workspace", null, null, null, null, null)
+            new("CS0234", "The type or namespace name 'Json' does not exist in the namespace 'System.Text'", "Error", "Workspace", Location: null)
         ];
 
         var json = await CreateReportAsync(CreateStatus(diagnostics, restoreRequired: true));
@@ -139,7 +139,7 @@ public sealed class WorkspaceReadinessReportTests
                 "ResolveComReference: Cannot resolve COM reference 'MSXML2'.",
                 "Warning",
                 "Workspace",
-                null, null, null, null, null)
+                null)
         ];
 
         var json = await CreateReportAsync(CreateStatus(diagnostics));

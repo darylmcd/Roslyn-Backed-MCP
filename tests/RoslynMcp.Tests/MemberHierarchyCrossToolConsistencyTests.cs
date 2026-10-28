@@ -73,7 +73,7 @@ public sealed class MemberHierarchyCrossToolConsistencyTests : SharedWorkspaceTe
         Assert.IsTrue(
             hierarchyAtImpl.SiblingInterfaceImplementations.Any(symbol =>
                 symbol.Name == "Dispose" &&
-                symbol.ResolvedFilePath()?.EndsWith("BacklogSamples.cs", StringComparison.OrdinalIgnoreCase) == true),
+                symbol.Location?.FilePath?.EndsWith("BacklogSamples.cs", StringComparison.OrdinalIgnoreCase) == true),
             "BacklogDisposableSample.Dispose should appear in the SiblingInterfaceImplementations bucket.");
 
         // Cross-tool symmetry: querying by metadata name on IDisposable.Dispose must yield
@@ -116,7 +116,7 @@ public sealed class MemberHierarchyCrossToolConsistencyTests : SharedWorkspaceTe
             "find_overrides and member_hierarchy.overrides must agree on true virtual overrides.");
         Assert.IsTrue(
             hierarchy.Overrides.Any(symbol =>
-                symbol.ResolvedFilePath()?.EndsWith("Rectangle.cs", StringComparison.OrdinalIgnoreCase) == true),
+                symbol.Location?.FilePath?.EndsWith("Rectangle.cs", StringComparison.OrdinalIgnoreCase) == true),
             "Rectangle.Describe should remain in the overrides bucket (it really is an `override`).");
         Assert.AreEqual(0, hierarchy.SiblingInterfaceImplementations.Count,
             "Shape.Describe is not an interface contract member; SiblingInterfaceImplementations must be empty.");

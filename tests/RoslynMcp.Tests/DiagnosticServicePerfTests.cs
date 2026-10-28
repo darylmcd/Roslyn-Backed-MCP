@@ -133,9 +133,9 @@ public sealed class DiagnosticServicePerfTests : TestBase
         Assert.IsNotNull(cold, "Cold-path (single-document short-circuit) must find CS0414.");
         Assert.AreEqual(warm.Diagnostic.Id, cold.Diagnostic.Id);
         Assert.AreEqual(warm.Diagnostic.Severity, cold.Diagnostic.Severity);
-        Assert.AreEqual(warm.Diagnostic.ResolvedFilePath(), cold.Diagnostic.ResolvedFilePath());
-        Assert.AreEqual(warm.Diagnostic.ResolvedStartLine(), cold.Diagnostic.ResolvedStartLine());
-        Assert.AreEqual(warm.Diagnostic.ResolvedStartColumn(), cold.Diagnostic.ResolvedStartColumn());
+        Assert.AreEqual(warm.Diagnostic.Location?.FilePath, cold.Diagnostic.Location?.FilePath);
+        Assert.AreEqual(warm.Diagnostic.Location?.StartLine, cold.Diagnostic.Location?.StartLine);
+        Assert.AreEqual(warm.Diagnostic.Location?.StartColumn, cold.Diagnostic.Location?.StartColumn);
         Assert.AreEqual(warm.Description, cold.Description);
         Assert.AreEqual(warm.HelpLinkUri, cold.HelpLinkUri);
         Assert.AreEqual(warm.GuidanceMessage, cold.GuidanceMessage);

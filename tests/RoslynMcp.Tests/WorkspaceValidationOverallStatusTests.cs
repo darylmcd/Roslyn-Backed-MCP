@@ -118,11 +118,11 @@ public sealed class WorkspaceValidationOverallStatusTests
     {
         var compile = FailingCompile(
             errorCount: 1,
-            new DiagnosticDto("CS0001", "x", "Error", "Compiler", "e.cs", 1, 1, 1, 1));
+            new DiagnosticDto("CS0001", "x", "Error", "Compiler", new LocationDto("e.cs", 1, 1, 1, 1, null, null)));
 
         var status = WorkspaceValidationService.ComputeOverallStatus(
             compile,
-            [new DiagnosticDto("CS0001", "x", "Error", "Compiler", "e.cs", 1, 1, 1, 1)],
+            [new DiagnosticDto("CS0001", "x", "Error", "Compiler", new LocationDto("e.cs", 1, 1, 1, 1, null, null))],
             null,
             runTests: false);
 
@@ -163,8 +163,7 @@ public sealed class WorkspaceValidationOverallStatusTests
     {
         var compileClean = CleanCompile();
 
-        var merged = new DiagnosticDto(
-            "CS0103", "x", "Error", "Compiler", "Y.cs", 2, 1, 2, 5);
+        var merged = new DiagnosticDto("CS0103", "x", "Error", "Compiler", new LocationDto("Y.cs", 2, 1, 2, 5, null, null));
 
         var status = WorkspaceValidationService.ComputeOverallStatus(
             compileClean,
@@ -183,8 +182,7 @@ public sealed class WorkspaceValidationOverallStatusTests
     {
         var compileClean = CleanCompile();
 
-        var merged = new DiagnosticDto(
-            "CA1000", "x", "Error", "Design", "Z.cs", 1, 1, 1, 10);
+        var merged = new DiagnosticDto("CA1000", "x", "Error", "Design", new LocationDto("Z.cs", 1, 1, 1, 10, null, null));
 
         var status = WorkspaceValidationService.ComputeOverallStatus(
             compileClean,
@@ -312,7 +310,7 @@ public sealed class WorkspaceValidationOverallStatusTests
     {
         var merged = WorkspaceValidationService.MergeErrorDiagnostics(
             CleanCompile(),
-            DiagResult(compilerDiagnostics: [new DiagnosticDto("CS0103", "x", "Error", "Compiler", "Y.cs", 2, 1, 2, 5)]));
+            DiagResult(compilerDiagnostics: [new DiagnosticDto("CS0103", "x", "Error", "Compiler", new LocationDto("Y.cs", 2, 1, 2, 5, null, null))]));
 
         Assert.AreEqual(
             0,
@@ -328,8 +326,8 @@ public sealed class WorkspaceValidationOverallStatusTests
     [TestMethod]
     public void MergeErrorDiagnostics_CorroboratedCompilerRows_StillMerge_AndDedup()
     {
-        var shared = new DiagnosticDto("CS0246", "missing type", "Error", "Compiler", "A.cs", 3, 5, 3, 9);
-        var secondHarvestOnly = new DiagnosticDto("CS1002", "; expected", "Error", "Compiler", "B.cs", 7, 1, 7, 2);
+        var shared = new DiagnosticDto("CS0246", "missing type", "Error", "Compiler", new LocationDto("A.cs", 3, 5, 3, 9, null, null));
+        var secondHarvestOnly = new DiagnosticDto("CS1002", "; expected", "Error", "Compiler", new LocationDto("B.cs", 7, 1, 7, 2, null, null));
 
         var merged = WorkspaceValidationService.MergeErrorDiagnostics(
             FailingCompile(errorCount: 2, shared),
@@ -352,8 +350,8 @@ public sealed class WorkspaceValidationOverallStatusTests
         var merged = WorkspaceValidationService.MergeErrorDiagnostics(
             CleanCompile(),
             DiagResult(
-                compilerDiagnostics: [new DiagnosticDto("CS0103", "x", "Error", "Compiler", "Y.cs", 2, 1, 2, 5)],
-                analyzerDiagnostics: [new DiagnosticDto("CA1000", "design", "Error", "Design", "Z.cs", 1, 1, 1, 10)]));
+                compilerDiagnostics: [new DiagnosticDto("CS0103", "x", "Error", "Compiler", new LocationDto("Y.cs", 2, 1, 2, 5, null, null))],
+                analyzerDiagnostics: [new DiagnosticDto("CA1000", "design", "Error", "Design", new LocationDto("Z.cs", 1, 1, 1, 10, null, null))]));
 
         Assert.AreEqual(1, merged.Length, "the analyzer error survives; the uncorroborated compiler row does not.");
         Assert.AreEqual("CA1000", merged[0].Id);
@@ -368,7 +366,7 @@ public sealed class WorkspaceValidationOverallStatusTests
     {
         var merged = WorkspaceValidationService.MergeErrorDiagnostics(
             FailingCompile(errorCount: 1),
-            DiagResult(workspaceDiagnostics: [new DiagnosticDto("WS0001", "load", "Error", "Workspace", "P.csproj", 1, 1, 1, 1)]));
+            DiagResult(workspaceDiagnostics: [new DiagnosticDto("WS0001", "load", "Error", "Workspace", new LocationDto("P.csproj", 1, 1, 1, 1, null, null))]));
 
         Assert.AreEqual(0, merged.Length, "WorkspaceDiagnostics were never part of the merged error set.");
     }
@@ -385,7 +383,7 @@ public sealed class WorkspaceValidationOverallStatusTests
     {
         var compileClean = CleanCompile();
         var diagResult = DiagResult(
-            compilerDiagnostics: [new DiagnosticDto("CS0103", "x", "Error", "Compiler", "Y.cs", 2, 1, 2, 5)]);
+            compilerDiagnostics: [new DiagnosticDto("CS0103", "x", "Error", "Compiler", new LocationDto("Y.cs", 2, 1, 2, 5, null, null))]);
 
         var merged = WorkspaceValidationService.MergeErrorDiagnostics(compileClean, diagResult);
         var status = WorkspaceValidationService.ComputeOverallStatus(compileClean, merged, null, runTests: false);
@@ -410,7 +408,7 @@ public sealed class WorkspaceValidationOverallStatusTests
     {
         var merged = WorkspaceValidationService.MergeErrorDiagnostics(
             CancelledCompile(completedProjects: 1, totalProjects: 4),
-            DiagResult(compilerDiagnostics: [new DiagnosticDto("CS0103", "x", "Error", "Compiler", "Y.cs", 2, 1, 2, 5)]));
+            DiagResult(compilerDiagnostics: [new DiagnosticDto("CS0103", "x", "Error", "Compiler", new LocationDto("Y.cs", 2, 1, 2, 5, null, null))]));
 
         Assert.AreEqual(
             1,
@@ -436,7 +434,7 @@ public sealed class WorkspaceValidationOverallStatusTests
 
         var merged = WorkspaceValidationService.MergeErrorDiagnostics(
             partial,
-            DiagResult(compilerDiagnostics: [new DiagnosticDto("CS0246", "missing type", "Error", "Compiler", "A.cs", 3, 5, 3, 9)]));
+            DiagResult(compilerDiagnostics: [new DiagnosticDto("CS0246", "missing type", "Error", "Compiler", new LocationDto("A.cs", 3, 5, 3, 9, null, null))]));
 
         Assert.AreEqual(
             1,
@@ -455,7 +453,7 @@ public sealed class WorkspaceValidationOverallStatusTests
     {
         var timedOut = CancelledCompile(completedProjects: 1, totalProjects: 4);
         var diagResult = DiagResult(
-            compilerDiagnostics: [new DiagnosticDto("CS0246", "missing type", "Error", "Compiler", "A.cs", 3, 5, 3, 9)]);
+            compilerDiagnostics: [new DiagnosticDto("CS0246", "missing type", "Error", "Compiler", new LocationDto("A.cs", 3, 5, 3, 9, null, null))]);
 
         var merged = WorkspaceValidationService.MergeErrorDiagnostics(timedOut, diagResult);
         var status = WorkspaceValidationService.ComputeOverallStatus(timedOut, merged, null, runTests: false);
@@ -476,10 +474,10 @@ public sealed class WorkspaceValidationOverallStatusTests
     [TestMethod]
     public void MergeErrorDiagnostics_ThenComputeOverallStatus_CancelledCompileWithPartialErrorCount_YieldsCompileError()
     {
-        var cs0246 = new DiagnosticDto("CS0246", "missing type", "Error", "Compiler", "A.cs", 3, 5, 3, 9);
+        var cs0246 = new DiagnosticDto("CS0246", "missing type", "Error", "Compiler", new LocationDto("A.cs", 3, 5, 3, 9, null, null));
         var cancelled = CancelledCompile(completedProjects: 2, totalProjects: 4, errorCount: 1, cs0246);
         var diagResult = DiagResult(
-            compilerDiagnostics: [cs0246, new DiagnosticDto("CS1002", "; expected", "Error", "Compiler", "B.cs", 7, 1, 7, 2)]);
+            compilerDiagnostics: [cs0246, new DiagnosticDto("CS1002", "; expected", "Error", "Compiler", new LocationDto("B.cs", 7, 1, 7, 2, null, null))]);
 
         var merged = WorkspaceValidationService.MergeErrorDiagnostics(cancelled, diagResult);
         var status = WorkspaceValidationService.ComputeOverallStatus(cancelled, merged, null, runTests: false);
@@ -502,7 +500,7 @@ public sealed class WorkspaceValidationOverallStatusTests
     {
         var compileClean = CleanCompile();
         var diagResult = DiagResult(
-            compilerDiagnostics: [new DiagnosticDto("WORKSPACE001", "Could not get compilation for project 'P'", "Error", "Workspace", "P.csproj", null, null, null, null)]);
+            compilerDiagnostics: [new DiagnosticDto("WORKSPACE001", "Could not get compilation for project 'P'", "Error", "Workspace", Location: null)]);
 
         var merged = WorkspaceValidationService.MergeErrorDiagnostics(compileClean, diagResult);
         var status = WorkspaceValidationService.ComputeOverallStatus(compileClean, merged, null, runTests: false);
@@ -525,8 +523,8 @@ public sealed class WorkspaceValidationOverallStatusTests
         var compileClean = CleanCompile();
         var diagResult = DiagResult(
             compilerDiagnostics: [
-                new DiagnosticDto("WORKSPACE001", "Could not get compilation for project 'P'", "Error", "Workspace", "P.csproj", null, null, null, null),
-                new DiagnosticDto("CS0103", "x", "Error", "Compiler", "Y.cs", 2, 1, 2, 5)
+                new DiagnosticDto("WORKSPACE001", "Could not get compilation for project 'P'", "Error", "Workspace", Location: null),
+                new DiagnosticDto("CS0103", "x", "Error", "Compiler", new LocationDto("Y.cs", 2, 1, 2, 5, null, null))
             ]);
 
         var merged = WorkspaceValidationService.MergeErrorDiagnostics(compileClean, diagResult);
@@ -545,7 +543,7 @@ public sealed class WorkspaceValidationOverallStatusTests
     {
         var cancelled = CancelledCompile(completedProjects: 1, totalProjects: 4);
         var diagResult = DiagResult(
-            compilerDiagnostics: [new DiagnosticDto("WORKSPACE001", "Could not get compilation for project 'P'", "Error", "Workspace", "P.csproj", null, null, null, null)]);
+            compilerDiagnostics: [new DiagnosticDto("WORKSPACE001", "Could not get compilation for project 'P'", "Error", "Workspace", Location: null)]);
 
         var merged = WorkspaceValidationService.MergeErrorDiagnostics(cancelled, diagResult);
 

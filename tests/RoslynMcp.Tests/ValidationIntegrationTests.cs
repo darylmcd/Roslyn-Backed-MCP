@@ -174,9 +174,9 @@ public class ValidationIntegrationTests : SharedWorkspaceTestBase
         Assert.IsFalse(result.Execution.Succeeded, "Build should fail for the broken fixture.");
         Assert.IsTrue(result.Diagnostics.Any(diagnostic => diagnostic.Id == "CS0103"));
         var missingSymbol = result.Diagnostics.First(diagnostic => diagnostic.Id == "CS0103");
-        Assert.IsNotNull(missingSymbol.ResolvedEndLine(), "Build diagnostics should recover endLine from Roslyn diagnostics when CLI output omits it.");
-        Assert.IsNotNull(missingSymbol.ResolvedEndColumn(), "Build diagnostics should recover endColumn from Roslyn diagnostics when CLI output omits it.");
-        Assert.IsTrue(missingSymbol.ResolvedEndColumn() > missingSymbol.ResolvedStartColumn(),
+        Assert.IsNotNull(missingSymbol.Location?.EndLine, "Build diagnostics should recover endLine from Roslyn diagnostics when CLI output omits it.");
+        Assert.IsNotNull(missingSymbol.Location?.EndColumn, "Build diagnostics should recover endColumn from Roslyn diagnostics when CLI output omits it.");
+        Assert.IsTrue(missingSymbol.Location?.EndColumn > missingSymbol.Location?.StartColumn,
             $"Expected the recovered end column to span the missing symbol. Diagnostic: {missingSymbol}");
     }
 

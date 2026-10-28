@@ -1,3 +1,4 @@
+using RoslynMcp.Roslyn.Helpers;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using Microsoft.CodeAnalysis;
@@ -295,12 +296,12 @@ public sealed class ScriptingService : IScriptingService
                     Message: d.GetMessage(),
                     Severity: d.Severity.ToString(),
                     Category: d.Descriptor.Category,
-                    FilePath: null,
-                    StartLine: lineSpan.IsValid ? lineSpan.StartLinePosition.Line + 1 : null,
-                    StartColumn: lineSpan.IsValid ? lineSpan.StartLinePosition.Character + 1 : null,
-                    EndLine: lineSpan.IsValid ? lineSpan.EndLinePosition.Line + 1 : null,
-                    EndColumn: lineSpan.IsValid ? lineSpan.EndLinePosition.Character + 1 : null,
-                    Location: null);
+                    Location: SymbolMapper.ToOptionalLocationDto(
+                        SymbolMapper.ScriptSourceName,
+                        lineSpan.IsValid ? lineSpan.StartLinePosition.Line + 1 : null,
+                        lineSpan.IsValid ? lineSpan.StartLinePosition.Character + 1 : null,
+                        lineSpan.IsValid ? lineSpan.EndLinePosition.Line + 1 : null,
+                        lineSpan.IsValid ? lineSpan.EndLinePosition.Character + 1 : null));
             })
             .ToList();
     }
