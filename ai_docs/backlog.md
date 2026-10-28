@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-27T23:10:00Z
+**updated_at:** 2026-10-28T03:18:06Z
 
 ## Agent contract
 
@@ -234,6 +234,9 @@
 | `extract-type-partial-overload-identity` | Medium | — | Group partial definition/implementation pairs by signature before the ambiguity check; move them into a partial helper or refuse. [type: bug] [source: archive-diagnostic-2026-10-27] | S | items/extract-type-partial-overload-identity.md |
 | `rewrite-paths-drop-document-encoding` | Medium | — | Preserve source encoding/BOM where ParameterObject, Restructure and StringLiteralReplace re-wrap rewritten document text with SourceText.From; audit ExtractMethod and ClassSplit. | M | items/rewrite-paths-drop-document-encoding.md |
 | `extract-type-compile-gate-dependent-projects` | Medium | — | Extend the extract_type compile-delta gate to dependent projects and settle the moved pre-existing-error key edge. | S | items/extract-type-compile-gate-dependent-projects.md |
+| `release-cut-maintenance-branch-support` | Medium | — | **Let release-cut cut a minor/patch from a maintenance branch** — it refuses off main, so a deprecation-window minor cannot ship while BREAKING fragments sit on main; add a documented maintenance mode with forward-port. [type: tooling] [source: 5.0.0 release planning 2026-10-27] | M | items/release-cut-maintenance-branch-support.md |
+| `release-4-4-0-locationdto-deprecation-cut` | Medium | locationdto-stage3-flat-field-deprecation,release-cut-maintenance-branch-support | **Ship 4.4.0 from release/4.x carrying only the locationdto stage-3 deprecation** — the deprecation window must close in a released minor before 5.0.0 can remove the flat fields; forward-port to main and close the stage-3 row. [type: release] [source: 5.0.0 release planning 2026-10-27] | M | items/release-4-4-0-locationdto-deprecation-cut.md |
+| `release-5-0-0-cut` | Medium | release-4-4-0-locationdto-deprecation-cut,root-boundary-argument-refusals-public-message,tool-error-handler-argument-sniffing-arms-retired,argument-exception-public-message-guard,server-info-update-available-next-major-nullable,workspace-not-found-next-major-category-promotion,project-name-not-found-category-next-major,locationdto-next-major-flat-field-removal,tool-alias-deprecation-stale-removal-major,v5-major-release-contract-prereqs | **Cut 5.0.0 once every row parked on the next major has shipped** — ADR 0011, product-contract 5.0 table, /release-cut major with the full verify gate and both install layers refreshed; no open row may still wait on a major. [type: release] [source: 5.0.0 release planning 2026-10-27] | L | items/release-5-0-0-cut.md |
 
 ## Low
 
@@ -462,6 +465,7 @@
 | `dockerfile-restore-project-graph` | Low | — | Align Docker restore inputs with the full referenced solution project graph. [type: bug] [source: linux-reproduction-context] | M | items/dockerfile-restore-project-graph.md |
 | `preview-store-explicit-original-snapshot` | Low | — | Remove PreviewStore overloads that infer the original snapshot, truncation or kind; every producer passes its base snapshot explicitly. [type: bug] [source: archive-diagnostic-2026-10-27] | L | items/preview-store-explicit-original-snapshot.md |
 | `preview-stores-without-compile-delta-audit` | Low | extract-type-compile-gate-dependent-projects | Audit preview producers that store tokens without a compile-error delta check; file per-producer rows. | L | items/preview-stores-without-compile-delta-audit.md |
+| `fork-source-session-retention-fragment-migration-note` | Low | — | **Add a labeled Migration section to the fork source-session retention BREAKING fragment** — the only one of 9 BREAKING fragments without one. [type: docs] [source: 5.0.0 release planning 2026-10-27] | S | items/fork-source-session-retention-fragment-migration-note.md |
 
 ## Defer
 

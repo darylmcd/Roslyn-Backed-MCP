@@ -25,3 +25,7 @@
 One child of the argument-error contract redesign (operator decision 2026-09-26: correct fix over the narrow paramless-ctor ban). Estimated diff ~35000 tokens.
 
 Family design (invariant, P/R/I classification, ban scope, exceptionType normalization): see `items/public-argument-exception-core-move.md` § Family design.
+
+## Notes
+
+2026-10-27 re-derivation: evidence "0 construction sites at f7b33b85" is stale; rg finds 141 new ArgumentException/ArgumentOutOfRangeException sites in src. Anchors src/BannedSymbols.txt and src/Directory.Build.props do not exist (only the repo-root BannedSymbols.txt, which bans BinaryFormatter and Process.Start(string)); the ban and its per-project wiring must be authored. Open deps are only root-boundary-argument-refusals-public-message and tool-error-handler-argument-sniffing-arms-retired. Classify the sites public/redacted/internal and re-size before execution; split per project if larger than M.

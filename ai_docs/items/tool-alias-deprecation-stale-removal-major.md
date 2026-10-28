@@ -14,3 +14,7 @@
 ## Evidence
 
 - get_test_coverage_map deprecation.earliestRemovalMajor=2; server 4.2.1. — see `ai_docs/audits/20260924-1305/report.md` (check C2) and `ai_docs/audits/20260924-1305/findings.json`
+
+## Notes
+
+2026-10-27: policy (docs/release-policy.md:45-46) removes deprecated aliases in the next major, so remove the three 1.33.0 aliases at 5.0.0 rather than retargeting EarliestRemovalMajor, and decide apply_composite_preview (=5) in the same change. Blast radius: hooks/hooks.json:14,18 (release-managed), skills refactor/modernize/migrate-package/refactor-loop (apply_composite_preview), surface-test prompts (quick.md:96, setup-and-analysis.md:131, apply-and-test.md:153), AliasToolsTests.cs:165, SurfaceCatalogTests.cs:187,278; refresh the .ai-doc-audit.md Live Surface snapshot and README counts (175 tools). Most get_symbol_outline hits in skills are the Jedi name-collision boilerplate, not Roslyn alias calls.

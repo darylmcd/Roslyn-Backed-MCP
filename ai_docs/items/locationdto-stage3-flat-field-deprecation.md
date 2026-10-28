@@ -20,3 +20,7 @@
 ## Regression shape
 
 A reflection test asserts all legacy fields are obsolete and `Location` remains the supported replacement.
+
+## Notes
+
+2026-10-27: ships in 4.4.0 from release/4.x (tag v4.3.0), not from main, because 9 BREAKING fragments on main force any cut from main to a major (-RequireConsumedFragments). Precondition met: v4.3.0 contains nested Location on SymbolDto/DiagnosticDto/TypeUsageDto. Internal consumers of the flat fields must migrate (CS0618, no suppression). Tracked by release-4-4-0-locationdto-deprecation-cut; forward-port to main closes this row.
