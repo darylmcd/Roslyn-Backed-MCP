@@ -46,8 +46,13 @@ internal static class ClientRootPathValidator
     /// target closes that validation-to-use window.
     /// </returns>
     /// <exception cref="ArgumentException">
-    /// Thrown when no configured boundary exists in fail-closed mode, configuration is invalid, or
-    /// the requested path falls outside the effective boundary.
+    /// Thrown when no configured boundary exists in fail-closed mode, a request narrowing root is
+    /// unusable, or the requested path falls outside the effective boundary (caller denials).
+    /// </exception>
+    /// <exception cref="PublicInvalidOperationException">
+    /// Thrown for server-side faults: a configured sanctioned root that cannot be canonicalized, or a
+    /// failed client-roots request. The cause is preserved as the inner exception and never reaches
+    /// the client.
     /// </exception>
     public static async Task<string> ValidatePathAgainstRootsAsync(
         McpServer? server,
@@ -100,12 +105,14 @@ internal static class ClientRootPathValidator
                 canonicalPath,
                 configuredRoots,
                 expandSanctionedRoots,
-                narrowingRootPaths)
+                narrowingRootPaths,
+                nameof(narrowingRootPaths))
             || !IsPathAllowed(
                 canonicalPath,
                 configuredRoots,
                 expandSanctionedRoots,
-                legacyClientRootPaths))
+                legacyClientRootPaths,
+                nameof(path)))
         {
             throw CreateSanctionedRootBoundaryRefusal();
         }
@@ -117,15 +124,15 @@ internal static class ClientRootPathValidator
         string canonicalPath,
         IReadOnlyList<string> configuredRoots,
         bool expandSanctionedRoots,
-        IReadOnlyList<string>? narrowingRootPaths)
+        IReadOnlyList<string>? narrowingRootPaths,
+        string narrowingParameterName)
     {
         IReadOnlyList<string>? narrowingRoots = null;
         if (narrowingRootPaths is not null)
         {
-            narrowingRoots = ConfiguredRootBoundary.GetCanonicalRoots(new SecurityOptions
-            {
-                SanctionedRoots = narrowingRootPaths,
-            });
+            narrowingRoots = ConfiguredRootBoundary.GetCanonicalNarrowingRoots(
+                narrowingRootPaths,
+                narrowingParameterName);
         }
 
         return ConfiguredRootBoundary.IsPathAllowed(
@@ -185,7 +192,7 @@ internal static class ClientRootPathValidator
 
     private static ArgumentException CreateSanctionedRootBoundaryRefusal()
     {
-        var exception = new ArgumentException(SanctionedRootBoundaryRefusalMessage, "path");
+        var exception = ArgumentErrors.Redacted("path", SanctionedRootBoundaryRefusalMessage);
         exception.Data[_sanctionedRootBoundaryRefusalMarkerKey] = _sanctionedRootBoundaryRefusalMarkerValue;
         return exception;
     }
