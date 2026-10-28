@@ -1,6 +1,6 @@
 # interface-extraction-unsafe-signature-context — Preserve unsafe signature context
 
-**row:** `interface-extraction-unsafe-signature-context` · **pri:** `High` · **size:** `M` · **deps:** `interface-member-projection-shared-emitter`
+**row:** `interface-extraction-unsafe-signature-context` · **pri:** `High` · **size:** `M`
 
 ## Anchors
 
@@ -24,3 +24,7 @@
 
 - Current delivery order, superseding fixture diagnosis and preserved-candidate receipt limits: `ai_docs/reports/2026-10-26-interface-split-delivery.md`. Historical pending/hold statements above describe the original combined candidate; use that report for current state.
 - 2026-10-27: dependency `interface-extraction-nullable-context-projection` closed by PR1854 (hosted Linux budget fixed by PR1857). PR1840 closed as superseded; its design for this row is inlined here and its archive branches were deleted (head still at GitHub `refs/pull/1840/head`). Re-cut from current main; do not resume PR1840.
+
+## Notes
+
+2026-10-28 PR #1875: members whose emitted syntax contains pointer/function-pointer types get an 'unsafe' modifier and compile in an AllowUnsafeBlocks receiver (matrix, two routes). Remaining delta: no refusal before token storage when the receiving project disallows unsafe; the unsafe-disabled receiver case is untested.
