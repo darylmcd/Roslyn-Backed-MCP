@@ -45,7 +45,7 @@ public sealed class ToolErrorHandlerSpecificityTests
         [
             (new PreviewTokenStaleException("opaque", "private detail"), "PreviewTokenStale"),
             (new WorkspaceEvictedException("opaque", DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, "private-path", "private detail"), "WorkspaceEvicted"),
-            (new WorkspaceNotFoundException("opaque", "private detail"), "NotFound"),
+            (new WorkspaceNotFoundException("opaque", "private detail"), "WorkspaceNotFound"),
             (new KeyNotFoundException("Metadata name not found: private detail"), "NotFound"),
             (new KeyNotFoundException("Symbol handle is stale: private detail"), "NotFound"),
             (new KeyNotFoundException("private detail"), "NotFound"),
@@ -60,16 +60,16 @@ public sealed class ToolErrorHandlerSpecificityTests
     }
 
     [TestMethod]
-    public void WorkspaceMiss_KeepsV4NotFoundWireValues_AndAddsWorkspaceReason()
+    public void WorkspaceMiss_ReportsWorkspaceNotFoundCategoryAndExceptionType()
     {
         using var json = JsonDocument.Parse(
             ToolErrorHandler.ClassifyAndFormat(new WorkspaceNotFoundException("opaque", "private detail"), "compile_check"));
         var envelope = json.RootElement;
 
-        Assert.AreEqual("NotFound", envelope.GetProperty("category").GetString());
+        Assert.AreEqual("WorkspaceNotFound", envelope.GetProperty("category").GetString());
         Assert.AreEqual("WorkspaceNotFound", envelope.GetProperty("reason").GetString());
-        Assert.AreEqual("KeyNotFoundException", envelope.GetProperty("exceptionType").GetString(),
-            "exceptionType keeps its 4.x wire value for a workspace miss.");
+        Assert.AreEqual("WorkspaceNotFoundException", envelope.GetProperty("exceptionType").GetString(),
+            "5.0 reports the exception type name for a workspace miss.");
         StringAssert.Contains(envelope.GetProperty("message").GetString(), "workspace_load");
         Assert.IsFalse(envelope.GetRawText().Contains("private", StringComparison.Ordinal));
     }
@@ -93,13 +93,11 @@ public sealed class ToolErrorHandlerSpecificityTests
     }
 
     [TestMethod]
-    public async Task UnknownWorkspaceId_AfterAutoReload_KeepsV4ReloadRaceWireValues_AndAddsWorkspaceReason()
+    public async Task UnknownWorkspaceId_AfterAutoReload_ReportsWorkspaceNotFoundEnvelope()
     {
-        // v4.2.1 classified a workspace miss that raced an in-call auto-reload as
-        // WorkspaceReloadedDuringCall with exceptionType KeyNotFoundException. The 4.x line keeps
-        // both released values on this path and adds only the reason discriminator plus workspace
-        // remediation text; the category moves at 5.0
-        // (workspace-not-found-next-major-category-promotion).
+        // 4.x classified a workspace miss that raced an in-call auto-reload as
+        // WorkspaceReloadedDuringCall with exceptionType KeyNotFoundException. 5.0 returns the same
+        // WorkspaceNotFound envelope as the plain miss (workspace-not-found-next-major-category-promotion).
         var result = await ToolExecutionTestHarness.RunAsync(
             "get_source_text",
             () =>
@@ -114,10 +112,10 @@ public sealed class ToolErrorHandlerSpecificityTests
 
         using var doc = JsonDocument.Parse(result);
         var envelope = doc.RootElement;
-        Assert.AreEqual("WorkspaceReloadedDuringCall", envelope.GetProperty("category").GetString(),
-            $"The 4.x reload-race category must not change on this path. Payload: {result}");
-        Assert.AreEqual("KeyNotFoundException", envelope.GetProperty("exceptionType").GetString(),
-            $"exceptionType keeps its 4.x wire value on the reload-race path. Payload: {result}");
+        Assert.AreEqual("WorkspaceNotFound", envelope.GetProperty("category").GetString(),
+            $"A workspace miss must not be reported as a reload race. Payload: {result}");
+        Assert.AreEqual("WorkspaceNotFoundException", envelope.GetProperty("exceptionType").GetString(),
+            $"exceptionType names the exception on the reload-race path too. Payload: {result}");
         Assert.AreEqual("WorkspaceNotFound", envelope.GetProperty("reason").GetString(),
             $"The workspace reason must survive an in-call auto-reload. Payload: {result}");
         var message = envelope.GetProperty("message").GetString();

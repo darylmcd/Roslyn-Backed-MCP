@@ -34,16 +34,16 @@ Call `server_info` to get the current running version and check for updates. Rep
 - Latest NuGet version (from `update.latest` if available)
 - Whether an update is available (from `update.updateAvailable`, qualified by `update.checkStatus`)
 
-The `update` block is always present. `update.updateAvailable` is `true` only when a strictly newer NuGet version is known; `false` alone does not mean the build is current. Read `update.checkStatus` before reporting a `false` result:
+The `update` block is always present. `update.updateAvailable` is `true` when a strictly newer NuGet version is known, `false` only after a `succeeded` check found none, and `null` (unknown) otherwise. Read `update.checkStatus` to report the check outcome:
 
 | `updateAvailable` | `checkStatus` | Meaning |
 |-------------------|---------------|---------|
 | `true` | any | A strictly newer NuGet version is available (`update.latest`). |
 | `false` | `succeeded` | The check completed and found no newer version. |
-| `false` | `pending` / `neverChecked` | Unknown: the check has not completed yet. |
-| `false` | `failed` / `timedOut` | Unknown: the last check did not complete (`update.lastCheckedAt` records when it ended). |
+| `null` | `pending` / `neverChecked` | Unknown: the check has not completed yet. |
+| `null` | `failed` / `timedOut` | Unknown: the last check did not complete (`update.lastCheckedAt` records when it ended). |
 
-Treat a `null` `updateAvailable` (reserved for a future major release) the same as an unknown result. When availability is unknown, report the check status rather than claiming there is no update. Proceed to update anyway if the user wants the latest.
+A `null` `updateAvailable` means availability is unknown. Report the check status rather than claiming there is no update. Proceed to update anyway if the user wants the latest.
 
 ### Step 2: Update Claude Code Plugin
 

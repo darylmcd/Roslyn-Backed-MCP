@@ -1,5 +1,7 @@
 using System.Reflection;
 using System.Text.Json;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Text;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Roslyn.Helpers;
 
@@ -27,10 +29,36 @@ public sealed class LocationDtoMigrationTests
         var flat = dtoType.GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Select(p => p.Name)
             .Where(name => RemovedFlatFields.Contains(JsonNamingPolicy.CamelCase.ConvertName(name)))
+            .Where(name => !(dtoType == typeof(DiagnosticDto) && name == nameof(DiagnosticDto.FilePath)))
             .ToList();
 
         Assert.AreEqual(0, flat.Count, $"{dtoType.Name} must not expose flat location members: {string.Join(", ", flat)}");
         Assert.IsNotNull(dtoType.GetProperty("Location"));
+    }
+
+    [TestMethod]
+    public void DiagnosticFilePath_IsASupportedNonObsoleteMember()
+    {
+        var property = typeof(DiagnosticDto).GetProperty(nameof(DiagnosticDto.FilePath));
+
+        Assert.IsNotNull(property);
+        Assert.IsNull(property.GetCustomAttribute<ObsoleteAttribute>(), "4.4.0 marked it obsolete; 5.0 reverses that for diagnostics.");
+    }
+
+    [TestMethod]
+    public void DiagnosticFilePath_SerializesAsFilePath_AndAgreesWithLocation()
+    {
+        var location = new LocationDto("sample.cs", 2, 3, 2, 8, null, null);
+        var positioned = new DiagnosticDto("CS1002", "; expected", "Error", "Compiler", location.FilePath, location);
+        var fileOnly = new DiagnosticDto("NU1201", "incompatible", "Error", "Build", "App.csproj");
+
+        using var a = JsonDocument.Parse(JsonSerializer.Serialize(positioned, WireOptions));
+        using var b = JsonDocument.Parse(JsonSerializer.Serialize(fileOnly, WireOptions));
+
+        Assert.AreEqual("sample.cs", a.RootElement.GetProperty("filePath").GetString());
+        Assert.AreEqual(a.RootElement.GetProperty("filePath").GetString(), a.RootElement.GetProperty("location").GetProperty("filePath").GetString());
+        Assert.AreEqual("App.csproj", b.RootElement.GetProperty("filePath").GetString());
+        Assert.AreEqual(JsonValueKind.Null, b.RootElement.GetProperty("location").ValueKind);
     }
 
     [TestMethod]
@@ -55,7 +83,7 @@ public sealed class LocationDtoMigrationTests
                 Interfaces: null,
                 Documentation: null,
                 Location: location),
-            new DiagnosticDto("CS1002", "; expected", "Error", "Compiler", Location: location),
+            new DiagnosticDto("CS1002", "; expected", "Error", "Compiler", FilePath: location.FilePath, Location: location),
             new TypeUsageDto(location),
         ];
 
@@ -69,7 +97,7 @@ public sealed class LocationDtoMigrationTests
             Assert.AreEqual(location.FilePath, nested.GetProperty("filePath").GetString(), name);
             Assert.AreEqual(location.StartLine, nested.GetProperty("startLine").GetInt32(), name);
             Assert.AreEqual(location.EndColumn, nested.GetProperty("endColumn").GetInt32(), name);
-            foreach (var removed in RemovedFlatFields)
+            foreach (var removed in RemovedFlatFields.Where(r => !(contract is DiagnosticDto && r == "filePath")))
             {
                 Assert.IsFalse(root.TryGetProperty(removed, out _), $"{name} must not serialize flat '{removed}'.");
             }
@@ -77,25 +105,22 @@ public sealed class LocationDtoMigrationTests
     }
 
     [TestMethod]
-    public void SecondaryContracts_KeepTheirFlatCoordinatesAlongsideLocation()
+    [DataRow(typeof(PropertyWriteDto))]
+    [DataRow(typeof(MutationCallerDto))]
+    public void SecondaryContracts_HaveNoFlatLocationMembers(Type dtoType)
     {
-        // locationdto-secondary-dto-flat-field-lifecycle (open decision): PropertyWriteDto and
-        // MutationCallerDto are outside ADR 0001 stage 3 and keep flat-plus-nested for now.
-        var location = new LocationDto("sample.cs", 2, 3, 2, 8, "Sample.M", "value", "Read");
-        object[] contracts =
-        [
-            new PropertyWriteDto(
-                "sample.cs", 2, 3, 2, 8, "Sample.M", "value", "Assignment", location),
-            new MutationCallerDto("sample.cs", 2, 3, "Sample.M", "value", "Runtime", location),
-        ];
+        // Both DTOs already carried a complete location since stage 2; 5.0 removes the flat duplicates
+        // (operator exemption from docs/release-policy.md:38 dated 2026-10-28).
+        var flat = dtoType.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Select(p => p.Name)
+            .Where(name => RemovedFlatFields.Contains(JsonNamingPolicy.CamelCase.ConvertName(name)))
+            .ToList();
 
-        foreach (var contract in contracts)
-        {
-            using var document = JsonDocument.Parse(JsonSerializer.Serialize(contract, contract.GetType(), WireOptions));
-            Assert.IsTrue(document.RootElement.TryGetProperty("location", out _), contract.GetType().Name);
-            Assert.AreEqual(2, document.RootElement.GetProperty("startLine").GetInt32(), contract.GetType().Name);
-        }
+        Assert.AreEqual(0, flat.Count, $"{dtoType.Name} must not expose flat location members: {string.Join(", ", flat)}");
+        Assert.IsNotNull(dtoType.GetProperty("Location"));
+        Assert.IsFalse(Nullable.GetUnderlyingType(dtoType.GetProperty("Location")!.PropertyType) is not null);
     }
+
 
     [TestMethod]
     public void BuildDiagnosticParsing_CompleteSpanKeepsItsEnd_StartOnlySpanKeepsItsStart()
@@ -150,7 +175,7 @@ public sealed class LocationDtoMigrationTests
     [TestMethod]
     public void WithEndPosition_LeavesALocationlessDiagnosticUnchanged()
     {
-        var diagnostic = new DiagnosticDto("NU1101", "unable to find package", "Error", "Build");
+        var diagnostic = new DiagnosticDto("NU1101", "unable to find package", "Error", "Build", null);
 
         Assert.AreSame(diagnostic, SymbolMapper.WithEndPosition(diagnostic, 2, 8));
     }
@@ -163,5 +188,59 @@ public sealed class LocationDtoMigrationTests
             WireOptions);
 
         Assert.IsNull(symbol!.Location);
+    }
+
+    [TestMethod]
+    public void SecondaryContracts_SerializeOnlyANestedLocation()
+    {
+        var location = new LocationDto("sample.cs", 2, 3, 2, 8, "Sample.M", "value", "Assignment");
+        object[] contracts = [new PropertyWriteDto("Assignment", location), new MutationCallerDto("Runtime", location)];
+
+        foreach (var contract in contracts)
+        {
+            using var document = JsonDocument.Parse(JsonSerializer.Serialize(contract, contract.GetType(), WireOptions));
+            var root = document.RootElement;
+            var name = contract.GetType().Name;
+            Assert.AreEqual("sample.cs", root.GetProperty("location").GetProperty("filePath").GetString(), name);
+            Assert.AreEqual(2, root.GetProperty("location").GetProperty("startLine").GetInt32(), name);
+            foreach (var removed in RemovedFlatFields)
+            {
+                Assert.IsFalse(root.TryGetProperty(removed, out _), $"{name} must not serialize flat '{removed}'.");
+            }
+        }
+    }
+
+    [TestMethod]
+    public void ToRequiredLocationDto_BlankSpanPath_FallsBackToTheDocumentPath_InsteadOfDroppingTheLocation()
+    {
+        var span = new LinePositionSpan(new LinePosition(1, 2), new LinePosition(1, 6));
+
+        var fromBlank = SymbolMapper.ToRequiredLocationDto(
+            new FileLinePositionSpan("", span), "Virtual.cs", "Sample.M", "value", "Assignment");
+        var fromPath = SymbolMapper.ToRequiredLocationDto(
+            new FileLinePositionSpan("real.cs", span), "Virtual.cs", null, null, null);
+
+        Assert.AreEqual(new LocationDto("Virtual.cs", 2, 3, 2, 7, "Sample.M", "value", "Assignment"), fromBlank);
+        Assert.AreEqual("real.cs", fromPath.FilePath, "A real span path wins over the fallback.");
+    }
+
+    [TestMethod]
+    public void WithPathFallback_ReplacesABlankPathWithTheDocumentFilePathOrName()
+    {
+        using var workspace = new AdhocWorkspace();
+        var project = workspace.AddProject("P", LanguageNames.CSharp);
+        var unnamedPath = workspace.AddDocument(project.Id, "Doc.cs", SourceText.From("class C {}"));
+        var withPath = workspace.AddDocument(
+            DocumentInfo.Create(
+                DocumentId.CreateNewId(project.Id),
+                "Other.cs",
+                filePath: "C:/repo/Other.cs",
+                loader: TextLoader.From(TextAndVersion.Create(SourceText.From("class D {}"), VersionStamp.Create()))));
+        var blank = new LocationDto("", 2, 3, 2, 8, null, null);
+
+        Assert.AreEqual("Doc.cs", SymbolMapper.WithPathFallback(blank, unnamedPath).FilePath);
+        Assert.AreEqual("C:/repo/Other.cs", SymbolMapper.WithPathFallback(blank, withPath).FilePath);
+        var real = blank with { FilePath = "real.cs" };
+        Assert.AreSame(real, SymbolMapper.WithPathFallback(real, withPath));
     }
 }

@@ -60,6 +60,7 @@ internal class UnresolvedAnalyzerReferenceStripper
                              "then run `workspace_reload`.",
                     Severity: WorkspaceDiagnosticSeverityClassifier.Classify(WorkspaceDiagnosticKind.Warning, ""),
                     Category: "Workspace",
+                    FilePath: project.FilePath,
                     Location: null));
             }
         }

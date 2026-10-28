@@ -9,12 +9,12 @@ using RoslynMcp.Tests.Helpers;
 namespace RoslynMcp.Tests;
 
 /// <summary>
-/// workspace-id-unknown-error-category (4.x additive form): raw-wire pins for an unknown or
-/// never-loaded <c>workspaceId</c>. Within the 4.x line the envelope keeps the v4.2.1 values —
-/// <c>category: "NotFound"</c> and <c>exceptionType: "KeyNotFoundException"</c> — and adds the
-/// optional <c>reason: "WorkspaceNotFound"</c> discriminator, which symbol, file, and metadata
-/// misses never carry. <c>resources/read</c> keeps the v4.2.1 <c>NotFound</c> category prefix and
-/// era-correct not-found code, and carries the same reason token in the sanitized message.
+/// workspace-not-found-next-major-category-promotion (5.0): raw-wire pins for an unknown or
+/// never-loaded <c>workspaceId</c>. The envelope reports <c>category: "WorkspaceNotFound"</c> and
+/// <c>exceptionType: "WorkspaceNotFoundException"</c> and keeps the <c>reason: "WorkspaceNotFound"</c>
+/// discriminator as a deprecated alias for one major; symbol, file, and metadata misses stay
+/// <c>NotFound</c> and never carry a reason. <c>resources/read</c> uses the <c>WorkspaceNotFound</c>
+/// category prefix with the era-correct not-found code.
 /// </summary>
 [TestClass]
 public sealed class WorkspaceNotFoundWireContractTests
@@ -30,7 +30,7 @@ public sealed class WorkspaceNotFoundWireContractTests
     ];
 
     [TestMethod]
-    public async Task UnknownWorkspaceId_ToolErrors_KeepNotFoundAndAddWorkspaceReason_AcrossProtocolEras()
+    public async Task UnknownWorkspaceId_ToolErrors_ReportWorkspaceNotFoundCategory_AcrossProtocolEras()
     {
         foreach (var protocol in _protocolEras)
         {
@@ -55,7 +55,7 @@ public sealed class WorkspaceNotFoundWireContractTests
     }
 
     [TestMethod]
-    public async Task UnknownWorkspaceId_ResourceRead_KeepsNotFoundPrefixAndCarriesWorkspaceReason_AcrossProtocolEras()
+    public async Task UnknownWorkspaceId_ResourceRead_UsesWorkspaceNotFoundPrefix_AcrossProtocolEras()
     {
         foreach (var protocol in _protocolEras)
         {
@@ -76,8 +76,8 @@ public sealed class WorkspaceNotFoundWireContractTests
                 $"{label}: wrong not-found code. Frame: {frame.ToJsonString()}");
 
             var message = error["message"]!.GetValue<string>();
-            Assert.IsTrue(message.StartsWith("NotFound: ", StringComparison.Ordinal),
-                $"{label}: the 4.x category prefix must stay NotFound. Message: '{message}'");
+            Assert.IsTrue(message.StartsWith("WorkspaceNotFound: ", StringComparison.Ordinal),
+                $"{label}: the category prefix must be WorkspaceNotFound. Message: '{message}'");
             StringAssert.Contains(message, "reason: WorkspaceNotFound", $"{label}: message '{message}'");
             Assert.IsFalse(message.Contains("Exception", StringComparison.Ordinal),
                 $"{label}: resource errors never carry exception type names. Message: '{message}'");
@@ -119,12 +119,12 @@ public sealed class WorkspaceNotFoundWireContractTests
     {
         var label = $"[{protocol}] {toolName}";
         var json = envelope.ToJsonString();
-        Assert.AreEqual("NotFound", envelope["category"]?.GetValue<string>(),
-            $"{label}: an unknown workspaceId keeps the 4.x NotFound category. Envelope: {json}");
+        Assert.AreEqual("WorkspaceNotFound", envelope["category"]?.GetValue<string>(),
+            $"{label}: an unknown workspaceId reports the WorkspaceNotFound category. Envelope: {json}");
         Assert.AreEqual("WorkspaceNotFound", envelope["reason"]?.GetValue<string>(),
             $"{label}: the additive reason discriminator must identify the workspace miss. Envelope: {json}");
-        Assert.AreEqual("KeyNotFoundException", envelope["exceptionType"]?.GetValue<string>(),
-            $"{label}: exceptionType keeps its 4.x value. Envelope: {json}");
+        Assert.AreEqual("WorkspaceNotFoundException", envelope["exceptionType"]?.GetValue<string>(),
+            $"{label}: exceptionType names the exception. Envelope: {json}");
         Assert.AreEqual(toolName, envelope["tool"]?.GetValue<string>(), label);
         StringAssert.Contains(envelope["message"]?.GetValue<string>(), "workspace_load",
             $"{label}: the remediation must name the recovery tool. Envelope: {json}");

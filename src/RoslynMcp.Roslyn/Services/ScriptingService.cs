@@ -296,6 +296,7 @@ public sealed class ScriptingService : IScriptingService
                     Message: d.GetMessage(),
                     Severity: d.Severity.ToString(),
                     Category: d.Descriptor.Category,
+                    FilePath: SymbolMapper.ScriptSourceName,
                     Location: SymbolMapper.ToOptionalLocationDto(
                         SymbolMapper.ScriptSourceName,
                         lineSpan.IsValid ? lineSpan.StartLinePosition.Line + 1 : null,

@@ -21,16 +21,9 @@ public sealed record MutatingMemberDto(
     IReadOnlyList<string> MutationScopes);
 
 /// <summary>
-/// Represents a caller that invokes a mutating member.
+/// Represents a caller that invokes a mutating member. The span, containing member and preview text live on <see cref="Location"/>.
 /// </summary>
-public sealed record MutationCallerDto(
-    string FilePath,
-    int StartLine,
-    int StartColumn,
-    string? ContainingMember,
-    string? PreviewText,
-    string CallerPhase,
-    LocationDto? Location = null);
+public sealed record MutationCallerDto(string CallerPhase, LocationDto Location);
 
 /// <summary>
 /// Represents state mutation analysis results for a type.

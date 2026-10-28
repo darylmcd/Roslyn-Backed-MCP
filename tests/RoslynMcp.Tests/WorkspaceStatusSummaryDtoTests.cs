@@ -35,7 +35,7 @@ public sealed class WorkspaceStatusSummaryDtoTests
     {
         var severity = WorkspaceDiagnosticSeverityClassifier.Classify(WorkspaceDiagnosticKind.Failure, message);
         Assert.AreEqual(requiresVsMsbuild ? "Warning" : "Error", severity);
-        var diagnostic = new DiagnosticDto("WORKSPACE_FAILURE", message, severity, "Workspace", Location: null);
+        var diagnostic = new DiagnosticDto("WORKSPACE_FAILURE", message, severity, "Workspace", null, Location: null);
         var summary = WorkspaceStatusSummaryDto.From(BaselineStatus([diagnostic]));
         Assert.AreEqual(!requiresVsMsbuild, summary.AnalyzersReady);
         Assert.AreEqual(requiresVsMsbuild, summary.RestoreHint?.Contains("Visual Studio MSBuild", StringComparison.Ordinal) == true);
@@ -82,7 +82,7 @@ public sealed class WorkspaceStatusSummaryDtoTests
     {
         var diagnostics = new[]
         {
-            new DiagnosticDto("W1", "fail", "Error", "Workspace", Location: null),
+            new DiagnosticDto("W1", "fail", "Error", "Workspace", null, Location: null),
         };
         var summary = WorkspaceStatusSummaryDto.From(BaselineStatus(diagnostics));
         Assert.IsFalse(summary.IsReady);
@@ -116,7 +116,7 @@ public sealed class WorkspaceStatusSummaryDtoTests
     {
         var diagnostics = new DiagnosticDto[]
         {
-            new("WORKSPACE_UNRESOLVED_ANALYZER", "Failed to load analyzer reference 'Foo'", "Warning", "Workspace", Location: null),
+            new("WORKSPACE_UNRESOLVED_ANALYZER", "Failed to load analyzer reference 'Foo'", "Warning", "Workspace", null, Location: null),
         };
         var summary = WorkspaceStatusSummaryDto.From(BaselineStatus(diagnostics));
         Assert.IsFalse(summary.AnalyzersReady, "AnalyzersReady must be false when an unresolved-analyzer warning is present");

@@ -32,6 +32,7 @@ internal sealed class DiagnosticProjectAnalyzer(
                 $"Could not get compilation for project '{project.Name}'",
                 "Error",
                 "Workspace",
+                project.FilePath,
                 Location: null);
             return new DiagnosticProjectAnalysisResult(
                 [miss],

@@ -825,7 +825,7 @@ public sealed class TestRunFailureEnvelopeTests
     /// true worst case a paginated response can serialize.
     /// </summary>
     [TestMethod]
-    public async Task RunTestCommandAsync_PlanWithoutTargetPath_ThrowsArgumentException()
+    public async Task RunTestCommandAsync_PlanWithoutTargetPath_ThrowsInternalInvalidOperation()
     {
         var service = new TestRunnerService(
             new SingleTestProjectWorkspaceManager(),
@@ -833,9 +833,9 @@ public sealed class TestRunFailureEnvelopeTests
             NullLogger<TestRunnerService>.Instance,
             new ThrowingTestDiscoveryService(new InvalidOperationException("not expected")));
 
-        var thrown = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+        var thrown = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             service.RunTestCommandAsync(new TestRunPlan("ws-no-target", null, null), CancellationToken.None));
-        Assert.AreEqual("plan", thrown.ParamName);
+        StringAssert.Contains(thrown.Message, "no target path");
     }
 
     [TestMethod]

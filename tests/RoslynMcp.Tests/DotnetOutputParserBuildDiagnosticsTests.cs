@@ -16,6 +16,7 @@ public sealed class DotnetOutputParserBuildDiagnosticsTests
         Assert.AreEqual("Error", diagnostic.Severity);
         Assert.AreEqual("Build", diagnostic.Category);
         Assert.AreEqual("Project SampleLib is not compatible with net10.0.", diagnostic.Message);
+        Assert.AreEqual(@"D:\repo\SampleLib.Tests.csproj", diagnostic.FilePath);
         Assert.IsNull(diagnostic.Location, "A file-only diagnostic has no start position, so it has no nested location.");
     }
 
@@ -26,6 +27,7 @@ public sealed class DotnetOutputParserBuildDiagnosticsTests
             "MSBUILD : error MSB1009: Project file does not exist.").Single();
 
         Assert.AreEqual("MSB1009", diagnostic.Id);
+        Assert.AreEqual("MSBUILD", diagnostic.FilePath);
         Assert.IsNull(diagnostic.Location, "A diagnostic with no position has no nested location (path and start are both required).");
         Assert.AreEqual("Project file does not exist.", diagnostic.Message);
     }
@@ -48,6 +50,7 @@ public sealed class DotnetOutputParserBuildDiagnosticsTests
 
         Assert.AreEqual("CS1002", diagnostic.Id);
         Assert.AreEqual("sample.cs", diagnostic.Location?.FilePath);
+        Assert.AreEqual("sample.cs", diagnostic.FilePath, "filePath and location.filePath must agree.");
         Assert.AreEqual(2, diagnostic.Location?.StartLine);
         Assert.AreEqual(3, diagnostic.Location?.StartColumn);
     }

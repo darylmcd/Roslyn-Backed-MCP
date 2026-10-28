@@ -70,20 +70,18 @@ traces, and failure-envelope summaries and tails. Internal execution records rem
 
 ### Update availability (`server_info.update`)
 
-`server_info` always returns an `update` block. In the 4.x line, `updateAvailable` is a boolean. It
-is `true` only when a known registry version is strictly newer than the running build; `latest`
-and `command` are populated in that case and `null` otherwise. A `false` value does not by itself
-mean the build is current. `checkStatus` is the authority for that, and `lastCheckedAt` records
-when the most recent check finished:
+`server_info` always returns an `update` block. `updateAvailable` is a nullable boolean:
 
-| `checkStatus` | What `updateAvailable: false` means |
+| `updateAvailable` | When |
 |---|---|
-| `succeeded` | The registry check completed and found no newer stable release. |
-| `neverChecked`, `pending` | Unknown: no check has completed yet. |
-| `failed`, `timedOut` | Unknown: the most recent check did not complete. |
+| `true` | A known registry version is strictly newer than the running build. `latest` and `command` are populated. |
+| `false` | Only when `checkStatus` is `succeeded` and the check found no newer stable release. |
+| `null` | Unknown: `checkStatus` is `neverChecked`, `pending`, `failed` or `timedOut` and no newer version is known. |
 
-A background refresh can report `pending` while a newer version found by an earlier check keeps
-`updateAvailable: true`.
+`checkStatus` reports the check outcome (`succeeded`, `neverChecked`, `pending`, `failed`,
+`timedOut`) and `lastCheckedAt` records when the most recent check finished. A background refresh can
+report `pending` while a newer version found by an earlier check keeps `updateAvailable: true`.
+Consumers must treat `null` as unknown and must not claim the build is current.
 
 ### Tool error envelope
 
@@ -93,17 +91,16 @@ A failed tool call returns `isError: true` and a JSON envelope with `error`, `ca
 apply: `reason`, `schemaHint`, `closestMatches`, `blockingDependencies`, and `_meta`. Consumers
 must ignore fields they do not recognize. Server-authored public-message refusals report the BCL base name (`ArgumentException` or `InvalidOperationException`) as `exceptionType`, never the internal class name.
 
-`reason` refines a category without changing it, so code that branches only on `category` keeps
-working. The current value is `WorkspaceNotFound`. It accompanies `category: "NotFound"` (and
-`exceptionType: "KeyNotFoundException"`) when the `workspaceId` is unknown to this server, because
-it was never loaded or was lost with a prior process. Symbol, file, and metadata-name misses also
-use `NotFound`, but never carry a `reason`. If the workspace miss races an in-call auto-reload
-(for example, another session closed the workspace), the envelope keeps the 4.x
-`category: "WorkspaceReloadedDuringCall"` and `exceptionType: "KeyNotFoundException"` and carries
-the same `reason`. Recover from a workspace miss by calling `workspace_list`, then
-`workspace_load`; do not re-resolve the symbol. Workspace-scoped `resources/read` failures keep
-their category prefix (`NotFound:` for a plain miss) and error code, and carry the same token as
-`reason: WorkspaceNotFound` inside the sanitized error message.
+`reason` refines a category without changing it. The current value is `WorkspaceNotFound`. An
+unknown `workspaceId` (never loaded, or lost with a prior process) reports
+`category: "WorkspaceNotFound"` and `exceptionType: "WorkspaceNotFoundException"`, on the plain path
+and when the miss races an in-call auto-reload (for example, another session closed the workspace).
+The `reason: "WorkspaceNotFound"` field is retained as a deprecated alias of that category for one
+major release. Symbol, file, and metadata-name misses stay `NotFound` and never carry a `reason`.
+Recover from a workspace miss by calling `workspace_list`, then `workspace_load`; do not re-resolve
+the symbol. Workspace-scoped `resources/read` failures use the `WorkspaceNotFound:` category prefix
+with the era-correct not-found error code, and carry `reason: WorkspaceNotFound` inside the
+sanitized error message.
 
 ### `workspace_close` process drain
 
@@ -147,9 +144,9 @@ migration notes, as `docs/release-policy.md` requires.
 
 | Surface | 4.x behavior | 5.0 behavior | Prepare now |
 |---|---|---|---|
-| `server_info.update.updateAvailable` | `boolean`; `checkStatus` carries "unknown" | Nullable: `null` until a check succeeds | Read `checkStatus` before trusting `false`, and accept `null` |
 | Unknown `workspaceId` error | `category: "NotFound"` (`"WorkspaceReloadedDuringCall"` when the miss races an in-call auto-reload), `exceptionType: "KeyNotFoundException"`, `reason: "WorkspaceNotFound"` | `category: "WorkspaceNotFound"` and `exceptionType: "WorkspaceNotFoundException"` on both paths | Branch on `reason`, and accept the `WorkspaceNotFound` category |
-| Flat location members of `SymbolDto`, `DiagnosticDto` and `TypeUsageDto` (`filePath`, `startLine`, `startColumn`, `endLine`, `endColumn`; `TypeUsageDto` also `containingMember`, `previewText`, `classification`) | Serialized and populated alongside the nested `location`; `[Obsolete]` for in-process C# consumers since 4.4.0. `location` is null when the span is partial (for example a build diagnostic with a start but no end), so the flat members can be the only source of a position | Flat members removed; `location` is the sole representation. `location.endLine` and `location.endColumn` are nullable (both null for a start-only span such as a build diagnostic with no end); `location.filePath`, `startLine` and `startColumn` are always present. `location` is null only when the finding has no file and start position. Diagnostics from `analyze_snippet` and `evaluate_csharp` carry `filePath` `<snippet>` / `<script>` | Read `location` first and fall back to the flat members when it is null; do not rely on the flat members being present after 5.0, and accept a null `endLine`/`endColumn` |
+| Flat location members of `PropertyWriteDto` (`filePath`, `startLine`, `startColumn`, `endLine`, `endColumn`, `containingMember`, `previewText`) and `MutationCallerDto` (`filePath`, `startLine`, `startColumn`, `containingMember`, `previewText`) | Serialized alongside the nested `location`, never deprecated | Flat members removed; `location` is the sole, always-present representation (`writeKind` / `callerPhase` stay top-level). **Operator exemption from `docs/release-policy.md:38` dated 2026-10-28:** these DTOs never had a deprecation window; removed anyway because both already carry a complete `location` since stage 2, to match the primary DTOs, and to avoid another flat-plus-nested major | Read `location.filePath`, `location.startLine`, `location.startColumn`, `location.endLine`, `location.endColumn`, `location.containingMember` and `location.previewText` |
+| Flat location members of `SymbolDto`, `DiagnosticDto` and `TypeUsageDto` (`filePath`, `startLine`, `startColumn`, `endLine`, `endColumn`; `TypeUsageDto` also `containingMember`, `previewText`, `classification`) | Serialized and populated alongside the nested `location`; `[Obsolete]` for in-process C# consumers since 4.4.0. `location` is null when the span is partial (for example a build diagnostic with a start but no end), so the flat members can be the only source of a position | Flat members removed; `location` is the sole representation. `location.endLine` and `location.endColumn` are nullable (both null for a start-only span such as a build diagnostic with no end); `location.filePath`, `startLine` and `startColumn` are always present. `location` is null only when the finding has no file and start position. Diagnostics from `analyze_snippet` and `evaluate_csharp` carry `filePath` `<snippet>` / `<script>`. Exception: `DiagnosticDto.filePath` stays (not obsolete) and is set whenever a file is known, including file-only diagnostics where `location` is null; when both exist they agree | Read `location` first and fall back to the flat members when it is null; do not rely on the flat members other than `DiagnosticDto.filePath` being present after 5.0, and accept a null `endLine`/`endColumn` |
 
 ## Experimental Surface
 
