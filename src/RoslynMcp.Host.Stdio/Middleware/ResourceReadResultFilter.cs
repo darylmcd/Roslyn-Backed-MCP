@@ -30,6 +30,7 @@ internal static class ResourceReadResultFilter
             [ToolErrorHandler.ToolErrorCategory.FileNotFound] = McpErrorCode.ResourceNotFound,
             [ToolErrorHandler.ToolErrorCategory.DirectoryNotFound] = McpErrorCode.ResourceNotFound,
             [ToolErrorHandler.ToolErrorCategory.WorkspaceEvicted] = McpErrorCode.ResourceNotFound,
+            [ToolErrorHandler.ToolErrorCategory.WorkspaceNotFound] = McpErrorCode.ResourceNotFound,
             [ToolErrorHandler.ToolErrorCategory.InvalidArgument] = McpErrorCode.InvalidParams,
             [ToolErrorHandler.ToolErrorCategory.StaleWorkspaceTransition] = McpErrorCode.InternalError,
             [ToolErrorHandler.ToolErrorCategory.WorkspaceReloadedDuringCall] = McpErrorCode.InternalError,
@@ -126,8 +127,8 @@ internal static class ResourceReadResultFilter
         // PublicExceptionDetailPolicy) — raw exception detail stays server-side.
         var correlationId = info.CorrelationId ?? RequestCorrelationContext.Current ?? "unavailable";
         var paramSuffix = string.IsNullOrEmpty(info.ParamName) ? string.Empty : $"; param: {info.ParamName}";
-        // workspace-id-unknown-error-category: the optional reason refines the category (e.g.
-        // NotFound + WorkspaceNotFound) without changing the category prefix or the error code.
+        // The optional reason refines the category (the deprecated WorkspaceNotFound alias on a
+        // workspace miss) without changing the category prefix or the error code.
         var reasonSuffix = string.IsNullOrEmpty(info.Reason) ? string.Empty : $"; reason: {info.Reason}";
         return $"{info.Category}: {info.Message} (resource: {uri}{paramSuffix}{reasonSuffix}; correlationId: {correlationId})";
     }

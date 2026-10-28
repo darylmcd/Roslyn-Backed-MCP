@@ -39,6 +39,7 @@ internal static class ToolErrorHandler
         RateLimited,
         InvalidOperation,
         WorkspaceReloadedDuringCall,
+        WorkspaceNotFound,
     }
 
     /// <summary>
@@ -71,6 +72,7 @@ internal static class ToolErrorHandler
         public const ToolErrorCategory RateLimited = ToolErrorCategory.RateLimited;
         public const ToolErrorCategory InvalidOperation = ToolErrorCategory.InvalidOperation;
         public const ToolErrorCategory WorkspaceReloadedDuringCall = ToolErrorCategory.WorkspaceReloadedDuringCall;
+        public const ToolErrorCategory WorkspaceNotFound = ToolErrorCategory.WorkspaceNotFound;
     }
 
     /// <summary>
@@ -81,11 +83,10 @@ internal static class ToolErrorHandler
     internal static class ErrorReasons
     {
         /// <summary>
-        /// workspace-id-unknown-error-category: the supplied <c>workspaceId</c> is unknown to this
-        /// server (never loaded, or lost with a prior process). Emitted with
-        /// <see cref="ErrorCategories.NotFound"/> in the 4.x line, or with
-        /// <see cref="ErrorCategories.WorkspaceReloadedDuringCall"/> when the miss races an in-call
-        /// auto-reload; the next major release promotes it to its own category.
+        /// The supplied <c>workspaceId</c> is unknown to this server (never loaded, or lost with a
+        /// prior process). Since 5.0 this is also the error category
+        /// (<see cref="ErrorCategories.WorkspaceNotFound"/>); the reason remains a deprecated alias
+        /// for one major release so 4.x consumers that branch on it keep working.
         /// </summary>
         public const string WorkspaceNotFound = "WorkspaceNotFound";
     }
@@ -108,17 +109,14 @@ internal static class ToolErrorHandler
                 "The workspace session is no longer available because it was closed, evicted, or owned by a prior host process. " +
                 "Call workspace_load with the original solution or project path, then retry with the new workspaceId.");
         },
-        // workspace-id-unknown-error-category: an unknown or never-loaded workspaceId. The 4.x wire
-        // contract keeps the values every 4.x release emitted for this miss — category NotFound
-        // and exceptionType KeyNotFoundException — and adds the optional reason discriminator so
-        // callers can tell it from a symbol/file/metadata miss (NotFound without a reason).
-        // Derives from KeyNotFoundException; the nearest-base lookup selects this handler before
-        // the generic KeyNotFoundException one.
-        [typeof(WorkspaceNotFoundException)] = (_, _) => new(ErrorCategories.NotFound,
+        // An unknown or never-loaded workspaceId: its own category and exception type since 5.0
+        // (4.x reported NotFound / KeyNotFoundException with a reason discriminator, which stays as
+        // a deprecated alias). Derives from KeyNotFoundException; the nearest-base lookup selects
+        // this handler before the generic KeyNotFoundException one.
+        [typeof(WorkspaceNotFoundException)] = (_, _) => new(ErrorCategories.WorkspaceNotFound,
             "The workspaceId is unknown to this server (never loaded, or lost after a restart). " +
             "Call workspace_list to see active sessions, then workspace_load to create one and retry with its workspaceId.",
-            Reason: ErrorReasons.WorkspaceNotFound,
-            WireExceptionType: nameof(KeyNotFoundException)),
+            Reason: ErrorReasons.WorkspaceNotFound),
         [typeof(FileNotFoundException)] = (_, _) => new(ErrorCategories.FileNotFound,
             "The requested file was not found. Verify the file path is absolute and the file exists on disk. " +
             "If the workspace was recently reloaded, the file may have been removed."),
@@ -397,28 +395,15 @@ internal static class ToolErrorHandler
         // gate stamps ReloadConfirmedNotFound=true. That confirms the file path is genuinely
         // absent — not a stale-snapshot race — so fall through to the generic NotFound handler
         // rather than emitting the misleading WorkspaceReloadedDuringCall category.
-        if (ex is KeyNotFoundException && ex is not WorkspaceEvictedException &&
+        //
+        // workspace-not-found-next-major-category-promotion: an unknown workspaceId is excluded
+        // for the same reason as an eviction. Re-resolving a symbol cannot recover a workspace the
+        // server no longer knows, so it keeps the plain WorkspaceNotFound envelope (whose
+        // remediation names workspace_load) even when it races an in-call auto-reload.
+        if (ex is KeyNotFoundException && ex is not WorkspaceEvictedException and not WorkspaceNotFoundException &&
             AmbientGateMetrics.Current?.StaleAction == "auto-reloaded" &&
             AmbientGateMetrics.Current?.ReloadConfirmedNotFound != true)
         {
-            // workspace-id-unknown-error-category: an unknown workspaceId that races an in-call
-            // auto-reload (e.g. closed by another session before the lock re-check) keeps the
-            // category and exceptionType every 4.x release emitted on this path. The additive
-            // reason and the workspace remediation text tell the caller that re-resolving the
-            // symbol cannot recover it. workspace-not-found-next-major-category-promotion moves
-            // this path to the WorkspaceNotFound category at 5.0.
-            if (ex is WorkspaceNotFoundException)
-            {
-                info = new(ErrorCategories.WorkspaceReloadedDuringCall,
-                    "The workspace was auto-reloaded during this call, and the workspaceId is no longer known " +
-                    "to this server (closed by another session, or lost after a restart). Re-resolving the symbol " +
-                    "cannot recover it. Call workspace_list to see active sessions, then workspace_load to create " +
-                    "one and retry with its workspaceId.",
-                    Reason: ErrorReasons.WorkspaceNotFound,
-                    WireExceptionType: nameof(KeyNotFoundException));
-                return true;
-            }
-
             info = new(ErrorCategories.WorkspaceReloadedDuringCall,
                 "The workspace was auto-reloaded during this call. The symbol handle " +
                 "or metadata name may target the pre-reload compilation. Re-resolve the symbol " +

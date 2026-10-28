@@ -1,0 +1,4 @@
+---
+category: Changed — BREAKING
+---
+- **Changed — BREAKING:** An unknown `workspaceId` now reports `category: "WorkspaceNotFound"` and `exceptionType: "WorkspaceNotFoundException"`, including when the miss races an in-call auto-reload (4.x: `NotFound` or `WorkspaceReloadedDuringCall`, both with `exceptionType` `KeyNotFoundException`). The auto-reload race path now returns the same envelope and workspace remediation text as the plain miss. `resources/read` failures use the `WorkspaceNotFound:` prefix. The `reason: "WorkspaceNotFound"` field is kept as a deprecated alias for one major release; symbol, file and metadata-name misses stay `NotFound`. Migration: branch on `category == "WorkspaceNotFound"` (or `exceptionType`) instead of `NotFound` plus `reason`, treat `WorkspaceNotFound` as the single workspace-miss category on both paths, and recover with `workspace_list` then `workspace_load`.
