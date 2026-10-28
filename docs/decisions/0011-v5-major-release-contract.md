@@ -62,7 +62,7 @@ Migration: read `location.filePath`, `startLine`, `startColumn`, `endLine`, `end
 
 | Case | 4.x | 5.0 |
 |---|---|---|
-| Unknown `workspaceId` | `category: NotFound`, `exceptionType: KeyNotFoundException`, `reason: WorkspaceNotFound` | `category: WorkspaceNotFound`, `exceptionType: WorkspaceNotFoundException` |
+| Unknown `workspaceId` | `category: NotFound`, `exceptionType: KeyNotFoundException`, `reason: WorkspaceNotFound` | `category: WorkspaceNotFound`, `exceptionType: WorkspaceNotFoundException`, no `reason` |
 | Unknown `workspaceId` racing an in-call auto-reload | `category: WorkspaceReloadedDuringCall`, `KeyNotFoundException` | the same plain `WorkspaceNotFound` / `WorkspaceNotFoundException` envelope |
 | `resources/read` of an unknown workspace | message prefix `NotFound:` | `WorkspaceNotFound:`; JSON-RPC code unchanged |
 | Unknown `projectName`; unresolvable `symbolHandle` / `metadataName` / location in `rename_preview` and `rename_apply` | `category: InvalidOperation`, `InvalidOperationException` | `category: NotFound`, `KeyNotFoundException` (internal carrier `PublicNotFoundException`); messages unchanged in substance |
@@ -71,7 +71,7 @@ Migration: read `location.filePath`, `startLine`, `startColumn`, `endLine`, `end
 | Unusable request narrowing root | `InvalidArgument` attributed to `options` | `InvalidArgument` attributed to `narrowingRootPaths` (client roots: `path`) |
 | Caller boundary denial | `InvalidArgument` | unchanged: `InvalidArgument`, exact `ArgumentException`, opaque message, no path |
 
-`reason: "WorkspaceNotFound"` is kept as a deprecated alias for one major and is removed at 6.0. A malformed `symbolHandle` stays `InvalidArgument`. Symbol, file and metadata-name misses stay `NotFound`. `WorkspaceEvicted` is unchanged. Document and type not-found sites that still report `InvalidOperation` are tracked by `document-and-type-not-found-report-invalid-operation`.
+The `reason: "WorkspaceNotFound"` field is removed in 5.0 from the tool envelope and from the `resources/read` message suffix. **Operator exemption from `docs/release-policy.md:38`, dated 2026-10-28:** it never had a deprecation window and is removed anyway because the `WorkspaceNotFound` category now carries the same information. The cost is real: the 4.x product contract told consumers to branch on `reason`. Migration: branch on `category: "WorkspaceNotFound"` and `exceptionType` instead of `reason`. A malformed `symbolHandle` stays `InvalidArgument`. Symbol, file and metadata-name misses stay `NotFound`. `WorkspaceEvicted` is unchanged. Document and type not-found sites that still report `InvalidOperation` are tracked by `document-and-type-not-found-report-invalid-operation`.
 
 `ToolErrorHandler.BuildSafeArgumentMessage` is reduced to the sanctioned-root marker, the public-message marker and the generic fallback. The sniffing arms (ParamName `parametersJson`, `projectName`, `pattern` plus the regex sentinel, "Unsupported catalog diff", file-path-plus-column) are retired; `SemanticGrepService.InvalidRegexSentinel` is removed. Released messages came from public carriers and are unchanged for MCP callers.
 
@@ -79,13 +79,13 @@ Migration: branch on `category == "WorkspaceNotFound"` (or `exceptionType == "Wo
 
 ### 4. `server_info.update.updateAvailable` is nullable
 
-The schema changes from `boolean` to `["boolean","null"]` (still required). `true` = a known registry version is strictly newer than the running build, including while `checkStatus` is `pending` with a stale cached newer version; `false` only when `checkStatus` is `succeeded` and no newer version exists; `null` = unknown (`neverChecked`, `pending`, `failed`, `timedOut` with no newer version known). 4.x emitted `false` in every non-true state.
+The schema changes from `boolean` to `["boolean","null"]` (still required). `true` = a known registry version is strictly newer than the running build, even when the latest check is `pending` or `failed` (a stale cached newer version is still a valid signal, since versions only move forward); `false` only when `checkStatus` is `succeeded` and no newer version exists; `null` = unknown (`neverChecked`, `pending`, `failed`, `timedOut` with no newer version known). 4.x emitted `false` in every non-true state. `checkStatus` describes the latest check, not the validity of `updateAvailable`.
 
 Migration: treat `null` as unknown, not "no update"; read `update.checkStatus`; widen typed bindings to `bool?`.
 
 ### 5. Build-time guard
 
-Not a wire change. A banned-symbols rule forbidding direct `ArgumentException` and `ArgumentOutOfRangeException` construction (the public-message carriers excepted) is tracked by `argument-exception-public-message-guard` and ships in 5.0 once the release-managed files can be edited.
+Not a wire change. A banned-symbols rule forbidding direct `ArgumentException` and `ArgumentOutOfRangeException` construction (the public-message carriers excepted) ships in 5.0 (`argument-exception-public-message-guard`, `src/BannedSymbols.txt`): production code that constructs either type fails the build with RS0030 and must use `PublicArgumentException`, `PublicArgumentOutOfRangeException` or `ArgumentErrors.Redacted`.
 
 ## Consequences
 

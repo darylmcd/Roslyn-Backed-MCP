@@ -81,6 +81,7 @@ traces, and failure-envelope summaries and tails. Internal execution records rem
 `checkStatus` reports the check outcome (`succeeded`, `neverChecked`, `pending`, `failed`,
 `timedOut`) and `lastCheckedAt` records when the most recent check finished. A background refresh can
 report `pending` while a newer version found by an earlier check keeps `updateAvailable: true`.
+`checkStatus` describes the latest check, not the validity of `updateAvailable`.
 Consumers must treat `null` as unknown and must not claim the build is current.
 
 ### Tool error envelope
