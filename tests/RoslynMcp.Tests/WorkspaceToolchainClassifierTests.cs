@@ -126,10 +126,10 @@ public sealed class WorkspaceToolchainClassifierTests
     {
         var diagnostics = new DiagnosticDto[]
         {
-            new("WORKSPACE_FAILURE", "ResolveComReference failed for tlbimp output.", "Warning", "Workspace", Location: null),
-            new("CS0234", "Type 'A' could not be found", "Error", "Workspace", Location: null),
-            new("CS0234", "Type 'B' could not be found", "Error", "Workspace", Location: null),
-            new("CS0234", "Type 'C' could not be found", "Error", "Workspace", Location: null),
+            new("WORKSPACE_FAILURE", "ResolveComReference failed for tlbimp output.", "Warning", "Workspace", null, Location: null),
+            new("CS0234", "Type 'A' could not be found", "Error", "Workspace", null, Location: null),
+            new("CS0234", "Type 'B' could not be found", "Error", "Workspace", null, Location: null),
+            new("CS0234", "Type 'C' could not be found", "Error", "Workspace", null, Location: null),
         };
 
         var summary = WorkspaceStatusSummaryDto.From(BaselineStatus(diagnostics));

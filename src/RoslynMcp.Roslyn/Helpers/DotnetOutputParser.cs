@@ -90,6 +90,7 @@ internal static partial class DotnetOutputParser
                 Message: match.Groups["message"].Value,
                 Severity: Capitalize(match.Groups["severity"].Value),
                 Category: "Build",
+                FilePath: SymbolMapper.FileOrNull(file),
                 Location: SymbolMapper.ToOptionalLocationDto(
                     file, startLine, startColumn, endLine, endColumn)));
         }

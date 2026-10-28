@@ -39,6 +39,7 @@ internal sealed class WorkspaceDiagnosticsSink
                 Message: args.Diagnostic.Message,
                 Severity: severity,
                 Category: "Workspace",
+                FilePath: null,
                 Location: null);
             _queue.Enqueue(dto);
             while (_queue.Count > _maxDiagnostics)
