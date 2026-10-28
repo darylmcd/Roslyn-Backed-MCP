@@ -52,7 +52,7 @@ repo root:
 
     cd "$(git rev-parse --git-common-dir)/.." && gh pr merge <n> --squash --delete-branch
 
-See `~/.claude/prompts/backlog-remediate.md` and `~/.claude/prompts/_subagent-result-protocol.md` for the current subagent-flow wording (global prompts; not in this repo).
+See `~/.claude/prompts/remediate.md` (the remediation loop, including the subagent flow) and `~/.claude/HELPERS.md` (the helpers it may use) for the current wording (global files; not in this repo).
 
 ## Release-managed file guard
 

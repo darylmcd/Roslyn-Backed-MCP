@@ -1,6 +1,6 @@
 # interface-extraction-parameter-contract-attributes — Copy caller-info and nullable-flow parameter attributes to extracted interfaces
 
-**row:** `interface-extraction-parameter-contract-attributes` · **pri:** `High` · **size:** `M` · **deps:** `cross-project-interface-parameter-semantics`
+**row:** `interface-extraction-parameter-contract-attributes` · **pri:** `High` · **size:** `M` · **deps:** `cross-project-interface-parameter-semantics,interface-member-projection-shared-emitter`
 
 ## Anchors
 

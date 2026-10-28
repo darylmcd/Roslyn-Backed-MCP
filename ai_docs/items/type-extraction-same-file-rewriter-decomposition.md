@@ -1,6 +1,6 @@
 # type-extraction-same-file-rewriter-decomposition — Isolate semantic consumer rewriting
 
-**row:** `type-extraction-same-file-rewriter-decomposition` · **pri:** `Low` · **size:** `M`
+**row:** `type-extraction-same-file-rewriter-decomposition` · **pri:** `High` · **size:** `M`
 
 ## Anchors
 

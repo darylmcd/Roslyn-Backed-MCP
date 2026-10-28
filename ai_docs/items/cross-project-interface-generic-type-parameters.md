@@ -1,6 +1,6 @@
 # cross-project-interface-generic-type-parameters — Preserve generic parameters in extracted interfaces
 
-**row:** `cross-project-interface-generic-type-parameters` · **pri:** `Medium` · **size:** `M`
+**row:** `cross-project-interface-generic-type-parameters` · **pri:** `Medium` · **size:** `M` · **deps:** `interface-member-projection-shared-emitter`
 
 ## Anchors
 

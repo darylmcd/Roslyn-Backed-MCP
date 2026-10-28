@@ -1,6 +1,6 @@
 # symbol-tools-disambiguation-collaborator-extraction — Extract symbol disambiguation orchestration
 
-**row:** `symbol-tools-disambiguation-collaborator-extraction` · **pri:** `Low` · **size:** `M` · **deps:** `elicitation-choiceprompt-test-suite-consolidation`
+**row:** `symbol-tools-disambiguation-collaborator-extraction` · **pri:** `Medium` · **size:** `M` · **deps:** `elicitation-choiceprompt-test-suite-consolidation`
 
 ## Anchors
 
