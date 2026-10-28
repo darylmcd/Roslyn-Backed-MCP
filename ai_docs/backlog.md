@@ -464,7 +464,6 @@
 | `dockerfile-restore-project-graph` | Low | — | Align Docker restore inputs with the full referenced solution project graph. [type: bug] [source: linux-reproduction-context] | M | items/dockerfile-restore-project-graph.md |
 | `preview-store-explicit-original-snapshot` | Low | — | Remove PreviewStore overloads that infer the original snapshot, truncation or kind; every producer passes its base snapshot explicitly. [type: bug] [source: archive-diagnostic-2026-10-27] | L | items/preview-store-explicit-original-snapshot.md |
 | `preview-stores-without-compile-delta-audit` | Low | extract-type-compile-gate-dependent-projects | Audit preview producers that store tokens without a compile-error delta check; file per-producer rows. | L | items/preview-stores-without-compile-delta-audit.md |
-| `fork-source-session-retention-fragment-migration-note` | Low | — | **Add a labeled Migration section to the fork source-session retention BREAKING fragment** — the only one of 9 BREAKING fragments without one. [type: docs] [source: 5.0.0 release planning 2026-10-27] | S | items/fork-source-session-retention-fragment-migration-note.md |
 | `locationdto-secondary-dto-flat-field-lifecycle` | Low | — | **Give PropertyWriteDto and MutationCallerDto flat fields a lifecycle** — ADR 0001 stage 3 names only the three primary DTOs, so these two keep flat-plus-nested by omission. [type: design] [source: stage-3 migration 2026-10-28] | S | items/locationdto-secondary-dto-flat-field-lifecycle.md |
 
 ## Defer
