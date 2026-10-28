@@ -21,6 +21,14 @@ public sealed class ToolErrorHandlerParameterValidationTests
     [DataRow("lineRange", "PRIVATE malformed range")]
     [DataRow("lineRange", "PRIVATE range past the end")]
     [DataRow("startLine", "PRIVATE startLine must be <= endLine")]
+    // Parameter names and message fragments that the retired producer-guidance arms used to
+    // recognize: with every producer now throwing a Public carrier, a plain exception carrying
+    // them gets no special treatment.
+    [DataRow("projectName", "PRIVATE submitted value and loaded projects")]
+    [DataRow("parametersJson", "PRIVATE prompt parameter detail")]
+    [DataRow("pattern", "The 'pattern' argument is not a valid .NET regular expression. PRIVATE parser detail")]
+    [DataRow("version", "Unsupported catalog diff PRIVATE version pair")]
+    [DataRow("filePath", "PRIVATE filePath without its column")]
     public void PlainArgumentExceptions_DoNotGainProducerGuidance(string parameter, string privateDetail)
     {
         var payload = ToolErrorHandler.ClassifyAndFormat(new ArgumentException(privateDetail, parameter), "compile_check");
@@ -28,19 +36,6 @@ public sealed class ToolErrorHandlerParameterValidationTests
         Assert.AreEqual("InvalidArgument", doc.RootElement.GetProperty("category").GetString());
         Assert.AreEqual("ArgumentException", doc.RootElement.GetProperty("exceptionType").GetString());
         Assert.AreEqual($"Parameter '{parameter}' is invalid. Check that all required parameters are provided and values match the expected types.",
-            doc.RootElement.GetProperty("message").GetString());
-        Assert.IsFalse(payload.Contains("PRIVATE", StringComparison.Ordinal));
-    }
-
-    [TestMethod]
-    public void PlainProjectNameException_RetainsSafeFallbackForOtherProducers()
-    {
-        var payload = ToolErrorHandler.ClassifyAndFormat(
-            new ArgumentException("PRIVATE submitted value and loaded projects", "projectName"), "compile_check");
-        using var doc = JsonDocument.Parse(payload);
-        Assert.AreEqual("InvalidArgument", doc.RootElement.GetProperty("category").GetString());
-        Assert.AreEqual("ArgumentException", doc.RootElement.GetProperty("exceptionType").GetString());
-        Assert.AreEqual("No loaded project matches parameter 'projectName'. Use workspace_status with verbose=true to list project names, then retry.",
             doc.RootElement.GetProperty("message").GetString());
         Assert.IsFalse(payload.Contains("PRIVATE", StringComparison.Ordinal));
     }

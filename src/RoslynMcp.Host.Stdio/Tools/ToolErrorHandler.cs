@@ -582,7 +582,6 @@ internal static class ToolErrorHandler
     private static string BuildSafeArgumentMessage(ArgumentException exception)
     {
         var parameter = exception.ParamName ?? "<unknown>";
-        var rawMessage = exception.Message;
 
         if (ClientRootPathValidator.IsSanctionedRootBoundaryRefusal(exception))
         {
@@ -592,43 +591,6 @@ internal static class ToolErrorHandler
         if (exception is IPublicMessageException publicArgument)
         {
             return publicArgument.PublicMessage;
-        }
-
-        if (string.Equals(exception.ParamName, "parametersJson", StringComparison.Ordinal))
-        {
-            return "Parameter 'parametersJson' must be a JSON object whose properties match the prompt schema. " +
-                "Include every required prompt parameter and use values of the advertised types.";
-        }
-
-        if (string.Equals(exception.ParamName, "projectName", StringComparison.Ordinal))
-        {
-            return "No loaded project matches parameter 'projectName'. Use workspace_status with verbose=true to list project names, then retry.";
-        }
-
-        // semantic-grep-pattern-error-detail-redaction: retain legacy input-free sentinel
-        // recognition for ordinary argument exceptions. SemanticGrepService now publishes
-        // typed public regex guidance directly, keeping parser details private. Guard on BOTH
-        // ParamName and the sentinel substring so other tools' 'pattern' parameters (e.g.
-        // RestructureService's non-empty check) keep the generic fallback below.
-        if (string.Equals(exception.ParamName, "pattern", StringComparison.Ordinal) &&
-            rawMessage.Contains(RoslynMcp.Roslyn.Services.SemanticGrepService.InvalidRegexSentinel, StringComparison.Ordinal))
-        {
-            return "Parameter 'pattern' is not a valid .NET regular expression. Patterns use " +
-                "System.Text.RegularExpressions syntax, not ripgrep/PCRE. Check for unbalanced " +
-                "parentheses or brackets, invalid quantifier ranges, and unescaped metacharacters, " +
-                "then retry with a corrected pattern.";
-        }
-
-        if (rawMessage.Contains("Unsupported catalog diff", StringComparison.Ordinal))
-        {
-            return "Unsupported catalog diff. Request one of the version pairs advertised by the catalog resource.";
-        }
-
-        if (rawMessage.Contains("filePath", StringComparison.OrdinalIgnoreCase) &&
-            rawMessage.Contains("column", StringComparison.OrdinalIgnoreCase))
-        {
-            return "Source-location mode is incomplete; provide filePath, line, and column together. " +
-                "Alternatively supply symbolHandle or metadataName.";
         }
 
         return $"Parameter '{parameter}' is invalid. Check that all required parameters are provided and values match the expected types.";
