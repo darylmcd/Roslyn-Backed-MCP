@@ -91,17 +91,16 @@ A failed tool call returns `isError: true` and a JSON envelope with `error`, `ca
 apply: `reason`, `schemaHint`, `closestMatches`, `blockingDependencies`, and `_meta`. Consumers
 must ignore fields they do not recognize. Server-authored public-message refusals report the BCL base name (`ArgumentException` or `InvalidOperationException`) as `exceptionType`, never the internal class name.
 
-`reason` refines a category without changing it, so code that branches only on `category` keeps
-working. The current value is `WorkspaceNotFound`. It accompanies `category: "NotFound"` (and
-`exceptionType: "KeyNotFoundException"`) when the `workspaceId` is unknown to this server, because
-it was never loaded or was lost with a prior process. Symbol, file, and metadata-name misses also
-use `NotFound`, but never carry a `reason`. If the workspace miss races an in-call auto-reload
-(for example, another session closed the workspace), the envelope keeps the 4.x
-`category: "WorkspaceReloadedDuringCall"` and `exceptionType: "KeyNotFoundException"` and carries
-the same `reason`. Recover from a workspace miss by calling `workspace_list`, then
-`workspace_load`; do not re-resolve the symbol. Workspace-scoped `resources/read` failures keep
-their category prefix (`NotFound:` for a plain miss) and error code, and carry the same token as
-`reason: WorkspaceNotFound` inside the sanitized error message.
+`reason` refines a category without changing it. The current value is `WorkspaceNotFound`. An
+unknown `workspaceId` (never loaded, or lost with a prior process) reports
+`category: "WorkspaceNotFound"` and `exceptionType: "WorkspaceNotFoundException"`, on the plain path
+and when the miss races an in-call auto-reload (for example, another session closed the workspace).
+The `reason: "WorkspaceNotFound"` field is retained as a deprecated alias of that category for one
+major release. Symbol, file, and metadata-name misses stay `NotFound` and never carry a `reason`.
+Recover from a workspace miss by calling `workspace_list`, then `workspace_load`; do not re-resolve
+the symbol. Workspace-scoped `resources/read` failures use the `WorkspaceNotFound:` category prefix
+with the era-correct not-found error code, and carry `reason: WorkspaceNotFound` inside the
+sanitized error message.
 
 ### `workspace_close` process drain
 

@@ -214,14 +214,14 @@ Console.WriteLine(ReadResponse(2));
 
 ## Session lifetime
 
-- Sessions live only for the stdio process lifetime — there's **no inactivity TTL**. A `KeyNotFoundException` on `workspaceId` means the host died (Cursor/Claude Code may transparently restart it between conversations), `workspace_close` was called, or the concurrent-workspace cap (`ROSLYNMCP_MAX_WORKSPACES`, default 16) evicted the session.
+- Sessions live only for the stdio process lifetime — there's **no inactivity TTL**. A `WorkspaceNotFound` error on `workspaceId` means the host died (Cursor/Claude Code may transparently restart it between conversations), `workspace_close` was called, or the concurrent-workspace cap (`ROSLYNMCP_MAX_WORKSPACES`, default 16) evicted the session.
 - Recovery: call `workspace_load` again with the same path. It's idempotent — repeat loads of the same path return the existing `workspaceId`.
 
 ## When things go wrong
 
 - **"Server not initialized"**: you skipped the `notifications/initialized` step after the `initialize` response.
 - **Parse errors on line 1**: you sent LSP `Content-Length:` headers. Drop them — NDJSON is one JSON object per line.
-- **`workspaceId` NotFound**: the host restarted; reload with `workspace_load`.
+- **`workspaceId` WorkspaceNotFound**: the host restarted; reload with `workspace_load`.
 - **No response at all**: check stderr, or the configured `file` sink. The server logs load errors and per-tool warnings there.
 
 ## Next steps
