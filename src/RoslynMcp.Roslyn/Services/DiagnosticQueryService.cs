@@ -169,9 +169,9 @@ internal sealed class DiagnosticQueryService
         var matchingFile = fileFilter is null
             ? rawWorkspace
             : rawWorkspace.Where(diagnostic =>
-                    diagnostic.FilePath is not null
+                    diagnostic.ResolvedFilePath() is { } diagnosticPath
                     && string.Equals(
-                        Path.GetFullPath(diagnostic.FilePath),
+                        Path.GetFullPath(diagnosticPath),
                         Path.GetFullPath(fileFilter),
                         StringComparison.OrdinalIgnoreCase))
                 .ToList();

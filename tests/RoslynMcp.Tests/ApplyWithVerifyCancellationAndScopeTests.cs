@@ -320,7 +320,7 @@ public sealed class ApplyWithVerifyCancellationAndScopeTests
             "back. This assertion FAILS against the pre-fix Limit:50 default (the new error is truncated " +
             "out of the post-apply page, so the outcome is a false 'applied').");
         Assert.IsTrue(
-            rolledBack.IntroducedErrors.Any(d => d.Id == "CS0103" && d.FilePath == "New.cs"),
+            rolledBack.IntroducedErrors.Any(d => d.Id == "CS0103" && d.ResolvedFilePath() == "New.cs"),
             "The introduced error must surface in IntroducedErrors, not be silently dropped.");
 
         // Regression guard: both legs must request a page large enough to cover the COMPLETE

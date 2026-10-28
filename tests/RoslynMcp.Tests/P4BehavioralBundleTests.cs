@@ -52,17 +52,11 @@ public sealed class P4BehavioralBundleTests : SharedWorkspaceTestBase
             SymbolLocator.ByMetadataName("SampleLib.Dog"),
             CancellationToken.None);
 
-        var crefHit = results.FirstOrDefault(r => r.FilePath.EndsWith("DiagnosticsProbe.cs", StringComparison.OrdinalIgnoreCase));
+        var crefHit = results.FirstOrDefault(r => r.ResolvedFilePath().EndsWith("DiagnosticsProbe.cs", StringComparison.OrdinalIgnoreCase));
         Assert.IsNotNull(crefHit, "Expected DiagnosticsProbe's <see cref=\"Dog\"/> to surface as a type usage.");
-        Assert.AreEqual(TypeUsageClassification.Documentation, crefHit.Classification,
+        Assert.AreEqual(nameof(TypeUsageClassification.Documentation), crefHit.ResolvedClassification(),
             "Doc-comment cref references must be classified as Documentation, not Other.");
-        Assert.IsNotNull(crefHit.Location);
-        Assert.AreEqual(crefHit.FilePath, crefHit.Location.FilePath);
-        Assert.AreEqual(crefHit.StartLine, crefHit.Location.StartLine);
-        Assert.AreEqual(crefHit.StartColumn, crefHit.Location.StartColumn);
-        Assert.AreEqual(crefHit.EndLine, crefHit.Location.EndLine);
-        Assert.AreEqual(crefHit.EndColumn, crefHit.Location.EndColumn);
-        Assert.AreEqual(nameof(TypeUsageClassification.Documentation), crefHit.Location.Classification);
+        FlatLocationContract.AssertAgreesWithLocation(crefHit);
     }
 
     // ── find-overrides-virtual-declaration-site-doc ──
@@ -84,7 +78,7 @@ public sealed class P4BehavioralBundleTests : SharedWorkspaceTestBase
             CancellationToken.None);
 
         Assert.IsTrue(
-            fromOverrideSite.Any(symbol => symbol.FilePath?.EndsWith("Rectangle.cs", StringComparison.OrdinalIgnoreCase) == true),
+            fromOverrideSite.Any(symbol => symbol.ResolvedFilePath()?.EndsWith("Rectangle.cs", StringComparison.OrdinalIgnoreCase) == true),
             "Promoted FindOverrides should include Rectangle.Describe in the override set.");
     }
 
@@ -109,8 +103,8 @@ public sealed class P4BehavioralBundleTests : SharedWorkspaceTestBase
         Assert.AreEqual(fromVirtual.Count, fromOverride.Count,
             "Virtual-site and override-site FindOverrides must return the same number of locations.");
         CollectionAssert.AreEquivalent(
-            fromVirtual.Select(s => s.FilePath).ToList(),
-            fromOverride.Select(s => s.FilePath).ToList(),
+            fromVirtual.Select(s => s.ResolvedFilePath()).ToList(),
+            fromOverride.Select(s => s.ResolvedFilePath()).ToList(),
             "The override set must be identical regardless of caret position.");
     }
 
@@ -140,13 +134,13 @@ public sealed class P4BehavioralBundleTests : SharedWorkspaceTestBase
         Assert.IsTrue(
             fromIface.Any(symbol =>
                 symbol.Name == "Speak" &&
-                symbol.FilePath?.EndsWith("Dog.cs", StringComparison.OrdinalIgnoreCase) == true),
+                symbol.ResolvedFilePath()?.EndsWith("Dog.cs", StringComparison.OrdinalIgnoreCase) == true),
             "Interface-member FindSiblingInterfaceImplementations must include the implicit Dog.Speak implementation.");
         Assert.AreEqual(fromIface.Count, fromImpl.Count,
             "Implicit interface implementation site should promote to the interface member and match the interface declaration query.");
         CollectionAssert.AreEquivalent(
-            fromIface.Select(s => (s.FilePath, s.StartLine, s.StartColumn)).OrderBy(t => t.FilePath).ToList(),
-            fromImpl.Select(s => (s.FilePath, s.StartLine, s.StartColumn)).OrderBy(t => t.FilePath).ToList(),
+            fromIface.Select(s => (s.ResolvedFilePath(), s.ResolvedStartLine(), s.ResolvedStartColumn())).OrderBy(t => t.Item1).ToList(),
+            fromImpl.Select(s => (s.ResolvedFilePath(), s.ResolvedStartLine(), s.ResolvedStartColumn())).OrderBy(t => t.Item1).ToList(),
             "Sibling implementation locations should match after promotion.");
 
         // Cross-check the new semantic boundary: FindOverridesAsync at either site MUST be
@@ -266,16 +260,16 @@ public sealed class P4BehavioralBundleTests : SharedWorkspaceTestBase
 
         var error = result.Diagnostics.FirstOrDefault(d => d.Id == "CS0029");
         Assert.IsNotNull(error, "Expected CS0029 for the broken assignment.");
-        Assert.AreEqual(1, error.StartLine, "Start on user line 1.");
-        Assert.AreEqual(1, error.EndLine, "Single-line snippet → end on user line 1.");
+        Assert.AreEqual(1, error.ResolvedStartLine(), "Start on user line 1.");
+        Assert.AreEqual(1, error.ResolvedEndLine(), "Single-line snippet → end on user line 1.");
 
         // The literal `"hello"` occupies user columns 9-16 (closing quote at col 15,
         // Roslyn's end position is one past the end, so EndColumn ≥ 16). Allow a ±1
         // fudge for potential off-by-one variants in Roslyn's reported span.
-        Assert.IsTrue(error.StartColumn is >= 8 and <= 10,
-            $"StartColumn must point at the opening quote of the literal; got {error.StartColumn}.");
-        Assert.IsTrue(error.EndColumn is >= 15 and <= 17,
-            $"EndColumn must point past the closing quote of the literal; got {error.EndColumn}.");
+        Assert.IsTrue(error.ResolvedStartColumn() is >= 8 and <= 10,
+            $"StartColumn must point at the opening quote of the literal; got {error.ResolvedStartColumn()}.");
+        Assert.IsTrue(error.ResolvedEndColumn() is >= 15 and <= 17,
+            $"EndColumn must point past the closing quote of the literal; got {error.ResolvedEndColumn()}.");
         Assert.IsNull(error.Location,
             "In-memory snippets have no resolvable file path and must not fabricate a nested location.");
     }

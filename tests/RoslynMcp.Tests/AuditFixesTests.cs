@@ -44,10 +44,10 @@ public sealed class AuditFixesTests : SharedWorkspaceTestBase
         Assert.IsFalse(result.IsValid, "Expected a CS0029 error for the broken assignment.");
         var error = result.Diagnostics.FirstOrDefault(d => d.Id == "CS0029");
         Assert.IsNotNull(error, "Expected CS0029 in diagnostics.");
-        Assert.AreEqual(1, error.StartLine, "User code is single-line; line should be 1.");
+        Assert.AreEqual(1, error.ResolvedStartLine(), "User code is single-line; line should be 1.");
         Assert.IsTrue(
-            error.StartColumn is >= 7 and <= 11,
-            $"Expected user-relative column ~9 for the literal; got {error.StartColumn}.");
+            error.ResolvedStartColumn() is >= 7 and <= 11,
+            $"Expected user-relative column ~9 for the literal; got {error.ResolvedStartColumn()}.");
     }
 
     // ── FLAG-007: analyze_snippet returnExpression kind ──
