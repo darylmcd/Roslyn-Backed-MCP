@@ -1,6 +1,6 @@
 # interface-extraction-indexer-declarations — Emit extracted indexers as indexer declarations
 
-**row:** `interface-extraction-indexer-declarations` · **pri:** `High` · **size:** `M` · **deps:** `interface-extraction-ref-return-contracts`
+**row:** `interface-extraction-indexer-declarations` · **pri:** `High` · **size:** `M` · **deps:** `interface-extraction-ref-return-contracts,interface-member-projection-shared-emitter`
 
 ## Anchors
 

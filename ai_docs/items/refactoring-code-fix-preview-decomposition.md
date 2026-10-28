@@ -1,6 +1,6 @@
 # refactoring-code-fix-preview-decomposition — Decompose diagnostic code-fix preview orchestration
 
-**row:** `refactoring-code-fix-preview-decomposition` · **pri:** `Low` · **size:** `S` · **deps:** `refactoring-format-range-preview-decomposition`
+**row:** `refactoring-code-fix-preview-decomposition` · **pri:** `High` · **size:** `S` · **deps:** `refactoring-format-range-preview-decomposition`
 
 ## Anchors
 
