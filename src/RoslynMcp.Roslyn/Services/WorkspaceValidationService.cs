@@ -511,7 +511,7 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
             .Concat(nonCompilerCategoryRows)
             .Concat(diagResult.AnalyzerDiagnostics)
             .Where(d => string.Equals(d.Severity, "Error", StringComparison.Ordinal))
-            .DistinctBy(d => (d.Id, d.FilePath, d.StartLine, d.StartColumn))
+            .DistinctBy(d => (d.Id, d.ResolvedFilePath(), d.ResolvedStartLine(), d.ResolvedStartColumn()))
             .ToArray();
     }
 

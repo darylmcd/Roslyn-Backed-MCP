@@ -131,6 +131,7 @@ migration notes, as `docs/release-policy.md` requires.
 |---|---|---|---|
 | `server_info.update.updateAvailable` | `boolean`; `checkStatus` carries "unknown" | Nullable: `null` until a check succeeds | Read `checkStatus` before trusting `false`, and accept `null` |
 | Unknown `workspaceId` error | `category: "NotFound"` (`"WorkspaceReloadedDuringCall"` when the miss races an in-call auto-reload), `exceptionType: "KeyNotFoundException"`, `reason: "WorkspaceNotFound"` | `category: "WorkspaceNotFound"` and `exceptionType: "WorkspaceNotFoundException"` on both paths | Branch on `reason`, and accept the `WorkspaceNotFound` category |
+| Flat location members of `SymbolDto`, `DiagnosticDto` and `TypeUsageDto` (`filePath`, `startLine`, `startColumn`, `endLine`, `endColumn`; `TypeUsageDto` also `containingMember`, `previewText`, `classification`) | Serialized and populated alongside the nested `location`; `[Obsolete]` for in-process C# consumers since 4.4.0. `location` is null when the span is partial (for example a build diagnostic with a start but no end), so the flat members can be the only source of a position | Flat members removed; `location` becomes the sole representation, and how it represents a partial span is decided in the 5.0 ADR | Read `location` first and fall back to the flat members when it is null; do not rely on the flat members being present after 5.0 |
 
 ## Experimental Surface
 

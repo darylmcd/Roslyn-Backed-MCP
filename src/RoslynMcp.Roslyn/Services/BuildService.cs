@@ -78,19 +78,11 @@ public sealed class BuildService : IBuildService
         CancellationToken ct)
     {
         var candidates = diagnostics
-            .Where(diagnostic => diagnostic is
-            {
-                FilePath.Length: > 0,
-                StartLine: not null,
-                StartColumn: not null,
-                EndLine: null
-            } or
-            {
-                FilePath.Length: > 0,
-                StartLine: not null,
-                StartColumn: not null,
-                EndColumn: null
-            })
+            .Where(diagnostic =>
+                !string.IsNullOrEmpty(diagnostic.ResolvedFilePath())
+                && diagnostic.ResolvedStartLine() is not null
+                && diagnostic.ResolvedStartColumn() is not null
+                && (diagnostic.ResolvedEndLine() is null || diagnostic.ResolvedEndColumn() is null))
             .ToList();
         if (candidates.Count == 0)
         {
@@ -120,9 +112,9 @@ public sealed class BuildService : IBuildService
             {
                 var key = BuildDiagnosticSpanKey(
                     diagnostic.Id,
-                    diagnostic.FilePath,
-                    diagnostic.StartLine,
-                    diagnostic.StartColumn);
+                    diagnostic.ResolvedFilePath(),
+                    diagnostic.ResolvedStartLine(),
+                    diagnostic.ResolvedStartColumn());
                 return key is not null && spans.TryGetValue(key, out var span)
                     ? SymbolMapper.WithEndPosition(diagnostic, span.EndLine, span.EndColumn)
                     : diagnostic;
@@ -139,7 +131,7 @@ public sealed class BuildService : IBuildService
     {
         var spans = new Dictionary<string, (int EndLine, int EndColumn)>(StringComparer.OrdinalIgnoreCase);
         foreach (var filePath in candidates
-            .Select(candidate => candidate.FilePath)
+            .Select(candidate => candidate.ResolvedFilePath())
             .Where(static filePath => !string.IsNullOrWhiteSpace(filePath))
             .Cast<string>()
             .Distinct(StringComparer.OrdinalIgnoreCase))

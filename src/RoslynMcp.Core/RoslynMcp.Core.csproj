@@ -4,4 +4,11 @@
     <RootNamespace>RoslynMcp.Core</RootNamespace>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- LocationDtoFlatAccess is the single seam over the deprecated flat location members (ADR 0001 stage 3). -->
+    <InternalsVisibleTo Include="RoslynMcp.Roslyn" />
+    <InternalsVisibleTo Include="RoslynMcp.Host.Stdio" />
+    <InternalsVisibleTo Include="RoslynMcp.Tests" />
+  </ItemGroup>
+
 </Project>

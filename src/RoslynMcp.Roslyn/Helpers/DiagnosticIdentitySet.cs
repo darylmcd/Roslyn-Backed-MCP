@@ -52,7 +52,7 @@ public static class DiagnosticIdentitySet
     public static string FormatIdentity(DiagnosticDto diagnostic)
     {
         ArgumentNullException.ThrowIfNull(diagnostic);
-        return $"{diagnostic.Id}|{diagnostic.FilePath}|{diagnostic.StartLine}";
+        return $"{diagnostic.Id}|{diagnostic.ResolvedFilePath()}|{diagnostic.ResolvedStartLine()}";
     }
 
     /// <summary>
