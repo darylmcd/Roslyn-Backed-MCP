@@ -10,13 +10,12 @@ using RoslynMcp.Tests.Helpers;
 namespace RoslynMcp.Tests;
 
 /// <summary>
-/// server-info-update-unknown-not-false (4.x additive form): raw-wire pins for the stable
-/// <c>server_info.update</c> block across both protocol eras. Within the 4.x line
-/// <c>updateAvailable</c> stays the v4.2.1 non-nullable boolean — <c>true</c> only when a known
-/// registry version is strictly newer than the running build, otherwise <c>false</c> — and
-/// <c>checkStatus</c> (with <c>lastCheckedAt</c>) is the authority that distinguishes "up to
-/// date" (<c>succeeded</c>) from "unknown" (<c>neverChecked</c>, <c>pending</c>, <c>failed</c>,
-/// <c>timedOut</c>). The advertised output schema for the block must stay identical to v4.2.1.
+/// server-info-update-available-next-major-nullable (5.0): raw-wire pins for the
+/// <c>server_info.update</c> block across both protocol eras. <c>updateAvailable</c> is
+/// <c>true</c> when a known registry version is strictly newer than the running build,
+/// <c>false</c> only after a <c>succeeded</c> check found none, and <c>null</c> (unknown) while the
+/// check is <c>neverChecked</c>, <c>pending</c>, <c>failed</c> or <c>timedOut</c> without a known
+/// newer version. <c>checkStatus</c> (with <c>lastCheckedAt</c>) reports the check outcome.
 /// </summary>
 [TestClass]
 public sealed class ServerInfoUpdateWireContractTests
@@ -28,18 +27,16 @@ public sealed class ServerInfoUpdateWireContractTests
     private const string _updateCommand = "dotnet tool update -g Darylmcd.RoslynMcp";
 
     /// <summary>
-    /// The <c>update</c> subtree of the <c>server_info</c> output schema exactly as the v4.2.1
-    /// release advertises it (captured from a running 4.2.1 build's
-    /// <c>roslyn://server/catalog/tools/0/5</c> entry). A 4.x build must not change a byte of it:
-    /// widening <c>updateAvailable</c> to <c>["boolean","null"]</c> is the 5.0 contract change.
+    /// The <c>update</c> subtree of the <c>server_info</c> output schema as 5.0 advertises it:
+    /// the 4.x shape with <c>updateAvailable</c> widened to <c>["boolean","null"]</c>.
     /// </summary>
-    private const string _v421UpdateSchema = """
+    private const string _updateSchema = """
         {
           "type": ["object", "null"],
           "properties": {
             "current": { "type": "string" },
             "latest": { "type": ["string", "null"] },
-            "updateAvailable": { "type": "boolean" },
+            "updateAvailable": { "type": ["boolean", "null"] },
             "command": { "type": ["string", "null"] },
             "checkStatus": { "type": "string" },
             "lastCheckedAt": { "type": ["string", "null"] }
@@ -52,21 +49,21 @@ public sealed class ServerInfoUpdateWireContractTests
 
     private static readonly UpdateCase[] _cases =
     [
-        new("never checked", null, VersionCheckStatus.NeverChecked, null, "neverChecked", ExpectedAvailable: false),
-        new("first check pending", null, VersionCheckStatus.Pending, null, "pending", ExpectedAvailable: false),
+        new("never checked", null, VersionCheckStatus.NeverChecked, null, "neverChecked", ExpectedAvailable: null),
+        new("first check pending", null, VersionCheckStatus.Pending, null, "pending", ExpectedAvailable: null),
         // A refresh after cache expiry reports pending while GetLatestVersion still returns the
         // previously fetched value; v4.2.1 reports that known newer version.
         new("refresh pending with known newer version", _newerThanAnyBuild, VersionCheckStatus.Pending, null, "pending", ExpectedAvailable: true),
         new("succeeded, no newer version", _olderThanAnyBuild, VersionCheckStatus.Succeeded, _completedAt, "succeeded", ExpectedAvailable: false),
         new("succeeded, newer version", _newerThanAnyBuild, VersionCheckStatus.Succeeded, _completedAt, "succeeded", ExpectedAvailable: true),
-        new("failed", null, VersionCheckStatus.Failed, _completedAt, "failed", ExpectedAvailable: false),
-        new("timed out", null, VersionCheckStatus.TimedOut, _completedAt, "timedOut", ExpectedAvailable: false),
+        new("failed", null, VersionCheckStatus.Failed, _completedAt, "failed", ExpectedAvailable: null),
+        new("timed out", null, VersionCheckStatus.TimedOut, _completedAt, "timedOut", ExpectedAvailable: null),
     ];
 
     [TestMethod]
-    public async Task ServerInfo_UpdateBlockOutputSchema_IsByteIdenticalToV421AcrossProtocolEras()
+    public async Task ServerInfo_UpdateBlockOutputSchema_AdvertisesNullableUpdateAvailableAcrossProtocolEras()
     {
-        var expected = JsonNode.Parse(_v421UpdateSchema)!;
+        var expected = JsonNode.Parse(_updateSchema)!;
 
         foreach (var protocolVersion in new[] { _legacyProtocolVersion, (string?)null })
         {
@@ -79,7 +76,7 @@ public sealed class ServerInfoUpdateWireContractTests
 
             Assert.IsTrue(
                 JsonNode.DeepEquals(expected, update),
-                $"[{protocolVersion ?? _modernProtocolVersion}] server_info.update output schema drifted from v4.2.1. " +
+                $"[{protocolVersion ?? _modernProtocolVersion}] server_info.update output schema drifted from the 5.0 contract. " +
                 $"Actual: {update?.ToJsonString()}");
         }
 
@@ -88,11 +85,11 @@ public sealed class ServerInfoUpdateWireContractTests
             .OutputSchema!["properties"]!["update"];
         Assert.IsTrue(
             JsonNode.DeepEquals(expected, catalogUpdate),
-            $"roslyn://server/catalog server_info.update schema drifted from v4.2.1. Actual: {catalogUpdate?.ToJsonString()}");
+            $"roslyn://server/catalog server_info.update schema drifted from the 5.0 contract. Actual: {catalogUpdate?.ToJsonString()}");
     }
 
     [TestMethod]
-    public async Task ServerInfo_UpdateAvailableIsBooleanAndCheckStatusCarriesUnknown_AcrossProtocolEras()
+    public async Task ServerInfo_UpdateAvailableIsNullWhileUnknown_AcrossProtocolEras()
     {
         foreach (var protocolVersion in new[] { _legacyProtocolVersion, (string?)null })
         {
@@ -120,13 +117,13 @@ public sealed class ServerInfoUpdateWireContractTests
                 var update = structured.GetProperty("update");
                 var updateAvailable = update.GetProperty("updateAvailable");
                 Assert.AreEqual(
-                    updateCase.ExpectedAvailable ? JsonValueKind.True : JsonValueKind.False,
+                    updateCase.ExpectedAvailable switch { true => JsonValueKind.True, false => JsonValueKind.False, null => JsonValueKind.Null },
                     updateAvailable.ValueKind,
-                    $"{label}: updateAvailable must be a JSON boolean (never null) within 4.x. Update: {update.GetRawText()}");
+                    $"{label}: updateAvailable must be true for a known newer version, false only after a succeeded check, null while availability is unknown. Update: {update.GetRawText()}");
                 Assert.AreEqual(updateCase.ExpectedStatus, update.GetProperty("checkStatus").GetString(),
                     $"{label}: checkStatus must report the check outcome. Update: {update.GetRawText()}");
 
-                if (updateCase.ExpectedAvailable)
+                if (updateCase.ExpectedAvailable is true)
                 {
                     Assert.AreEqual(updateCase.Latest, update.GetProperty("latest").GetString(), label);
                     Assert.AreEqual(_updateCommand, update.GetProperty("command").GetString(), label);
@@ -183,5 +180,5 @@ public sealed class ServerInfoUpdateWireContractTests
         VersionCheckStatus Status,
         DateTime? LastCheckedAt,
         string ExpectedStatus,
-        bool ExpectedAvailable);
+        bool? ExpectedAvailable);
 }

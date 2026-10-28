@@ -163,8 +163,8 @@ public sealed partial class TestRunnerService : ITestRunnerService
     {
         ArgumentNullException.ThrowIfNull(plan);
         var targetPath = plan.TargetPath
-            ?? throw new ArgumentException(
-                "The test run plan has no target path; create it with PrepareTestRunAsync.", nameof(plan));
+            ?? throw InvalidOperationErrors.Internal(
+                "The test run plan has no target path; create it with PrepareTestRunAsync.");
         var workspaceId = plan.WorkspaceId;
 
         var resultsDirectory = Path.Combine(Path.GetTempPath(), "RoslynMcpTestResults", Guid.NewGuid().ToString("N"));
