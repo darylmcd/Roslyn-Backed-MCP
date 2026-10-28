@@ -56,7 +56,7 @@ internal sealed class BatchTestScaffolder
     /// Item 8: batch scaffold-test. Runs the single-type resolver once per target but reuses a
     /// single workspace solution snapshot across all targets, aggregating the document adds into
     /// one <see cref="RefactoringPreviewDto"/>/preview token. Callers redeem the token with
-    /// <c>apply_composite_preview</c> (or the regular apply path) to commit the whole batch
+    /// <c>apply_composite</c> (or the regular apply path) to commit the whole batch
     /// atomically.
     /// </summary>
     public async Task<RefactoringPreviewDto> PreviewBatchAsync(

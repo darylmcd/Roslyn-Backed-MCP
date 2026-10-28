@@ -348,7 +348,7 @@ internal static class ToolDispatch
     /// only requirement from the dispatch helper is a token → workspaceId peek. Accepts the
     /// peek as a <see cref="Func{T, TResult}"/> delegate so the helper stays decoupled from
     /// the concrete store interface — phase-1.6 widening to cover
-    /// <c>ApplyCompositePreview</c> and <c>ApplyProjectMutation</c>, which otherwise match
+    /// <c>ApplyComposite</c> and <c>ApplyProjectMutation</c>, which otherwise match
     /// the same 7-line dispatch pattern but can't consume the primary overload because their
     /// store interfaces don't derive from <see cref="IPreviewStore"/>.
     /// </summary>

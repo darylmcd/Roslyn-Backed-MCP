@@ -41,7 +41,6 @@ public sealed class TestCoverageFailureEnvelopeTests
             new ValidationServiceOptions(),
             workspaceId: "ws-coverage-timeout",
             projectName: null,
-            deprecation: null,
             progress: null,
             ct: CancellationToken.None);
 
@@ -82,7 +81,6 @@ public sealed class TestCoverageFailureEnvelopeTests
             new ValidationServiceOptions(),
             workspaceId: "ws-coverage-gate-timeout",
             projectName: null,
-            deprecation: null,
             progress: null,
             ct: CancellationToken.None);
 
@@ -119,7 +117,6 @@ public sealed class TestCoverageFailureEnvelopeTests
                 new ValidationServiceOptions(),
                 workspaceId: "ws-coverage-unknown",
                 projectName: null,
-                deprecation: null,
                 progress: null,
                 ct: CancellationToken.None));
         Assert.AreEqual("runner exploded", thrown.Message);
@@ -155,7 +152,6 @@ public sealed class TestCoverageFailureEnvelopeTests
             new ValidationServiceOptions(),
             workspaceId: "ws-coverage-testfailure",
             projectName: null,
-            deprecation: null,
             progress: null,
             ct: CancellationToken.None);
 
@@ -201,7 +197,6 @@ public sealed class TestCoverageFailureEnvelopeTests
                 new ValidationServiceOptions(),
                 workspaceId: "ws-coverage-caller-cancelled",
                 projectName: null,
-                deprecation: null,
                 progress: null,
                 ct: cts.Token));
     }
@@ -230,7 +225,6 @@ public sealed class TestCoverageFailureEnvelopeTests
                 new ValidationServiceOptions(),
                 workspaceId: "ws-coverage-status-throws",
                 projectName: null,
-                deprecation: null,
                 progress: null,
                 ct: CancellationToken.None));
         Assert.AreEqual("workspace status unavailable", thrown.Message);
@@ -257,7 +251,6 @@ public sealed class TestCoverageFailureEnvelopeTests
                 new ValidationServiceOptions(),
                 workspaceId: "ws-coverage-cleanup-throw",
                 projectName: null,
-                deprecation: null,
                 progress: null,
                 ct: CancellationToken.None));
 

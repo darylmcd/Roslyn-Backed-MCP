@@ -5,9 +5,9 @@ using RoslynMcp.Host.Stdio.Tools;
 namespace RoslynMcp.Tests;
 
 /// <summary>
-/// document-symbols-accepts-symbol-handle: verifies that <c>document_symbols</c> and its alias
-/// <c>get_symbol_outline</c> accept a <c>symbolHandle</c> (or <c>metadataName</c>) in place of a
-/// <c>filePath</c>, returning the same outline as the equivalent filePath-driven invocation.
+/// document-symbols-accepts-symbol-handle: verifies that <c>document_symbols</c> accepts a
+/// <c>symbolHandle</c> (or <c>metadataName</c>) in place of a <c>filePath</c>, returning the same
+/// outline as the equivalent filePath-driven invocation.
 /// </summary>
 [TestClass]
 public sealed class DocumentSymbolsSymbolHandleTests : SharedWorkspaceTestBase
@@ -95,41 +95,5 @@ public sealed class DocumentSymbolsSymbolHandleTests : SharedWorkspaceTestBase
             "document_symbols response must include a 'count' field.");
         Assert.IsTrue(countProp.GetInt32() > 0,
             "document_symbols(metadataName) must return at least one symbol for AnimalService.");
-    }
-
-    [TestMethod]
-    public async Task GetSymbolOutline_AcceptsSymbolHandle_ReturnsMatchingOutline()
-    {
-        // get_symbol_outline is the alias for document_symbols — must accept symbolHandle too.
-        var symbolInfoJson = await SymbolTools.GetSymbolInfo(
-            gate: WorkspaceExecutionGate,
-            symbolSearchService: SymbolSearchService,
-            workspaceId: WorkspaceId,
-            metadataName: "SampleLib.AnimalService",
-            ct: CancellationToken.None);
-
-        using var symbolInfoDoc = JsonDocument.Parse(symbolInfoJson);
-        var symbolHandle = symbolInfoDoc.RootElement.GetProperty("symbolHandle").GetString();
-        Assert.IsNotNull(symbolHandle);
-
-        var aliasJson = await SymbolTools.GetSymbolOutline(
-            server: null!,
-            gate: WorkspaceExecutionGate,
-            symbolSearchService: SymbolSearchService,
-            workspaceId: WorkspaceId,
-            symbolHandle: symbolHandle,
-            ct: CancellationToken.None);
-
-        using var aliasDoc = JsonDocument.Parse(aliasJson);
-        Assert.IsTrue(aliasDoc.RootElement.TryGetProperty("count", out var countProp),
-            "get_symbol_outline response must include a 'count' field.");
-        Assert.IsTrue(countProp.GetInt32() > 0,
-            "get_symbol_outline(symbolHandle) must return at least one symbol for AnimalService.");
-
-        // The alias must populate the deprecation envelope.
-        Assert.IsTrue(aliasDoc.RootElement.TryGetProperty("deprecation", out var deprecation),
-            "get_symbol_outline must return a 'deprecation' field.");
-        Assert.AreNotEqual(JsonValueKind.Null, deprecation.ValueKind,
-            "get_symbol_outline 'deprecation' must not be null.");
     }
 }

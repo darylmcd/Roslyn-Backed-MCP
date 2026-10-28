@@ -20,7 +20,7 @@ public sealed record ScaffoldTypeDto(
 /// <summary>
 /// Represents a request to scaffold tests for multiple target types in a single preview token.
 /// All targets share one composite preview which applies atomically via
-/// <c>apply_composite_preview</c>.
+/// <c>apply_composite</c>.
 /// </summary>
 public sealed record ScaffoldTestBatchDto(
     string TestProjectName,

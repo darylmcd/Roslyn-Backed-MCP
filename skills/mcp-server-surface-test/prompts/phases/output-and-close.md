@@ -26,7 +26,7 @@
 
 1. `scaffold_type_preview`. v1.8+ default is `internal sealed class`; records, interfaces, enums stay `public`. The file lands at `{projectRoot}/{namespace-folders}/T.cs` even when the namespace doesn't start with the project name. v1.17+ auto-implements interface stubs (`throw new NotImplementedException()` + required usings) when `baseType`/`interfaces` resolve to an interface with members — opt out with `implementInterface: false` and assert the body becomes empty.
 2. `scaffold_test_preview` for an existing type. v1.8+ constructor-arg expressions: `IEnumerable<T>` / `ICollection<T>` / `IList<T>` / `IReadOnlyList<T>` → `System.Array.Empty<T>()`; dictionaries → `new Dictionary<K,V>()`; `string` → `string.Empty`. Previously every parameter was `default(T)`.
-3. `scaffold_test_batch_preview(testProjectName, targets=[{targetTypeName, targetMethodName?}, …])` on 3–5 targets. Verify one composite token covers every generated file (not N tokens). Apply via `preview_multi_file_edit_apply` (**not** `apply_composite_preview`). Confirm every scaffolded test is discoverable.
+3. `scaffold_test_batch_preview(testProjectName, targets=[{targetTypeName, targetMethodName?}, …])` on 3–5 targets. Verify one composite token covers every generated file (not N tokens). Apply via `preview_multi_file_edit_apply` (**not** `apply_composite`). Confirm every scaffolded test is discoverable.
 4. `scaffold_first_test_file_preview` for a project that has no test file yet — bootstraps the test project shape.
 5. Apply one scaffold via `scaffold_type_apply` (using a token from `scaffold_type_preview`) — verify the resulting file matches the preview diff and that `compile_check` passes.
 6. Apply one test scaffold via `scaffold_test_apply` (using a token from `scaffold_test_preview`) — verify the new test is discoverable via `test_discover` and runs green via `test_run`.
@@ -57,12 +57,12 @@
 1. `go_to_definition` on a usage → correct declaration.
 2. `goto_type_definition` on a variable → the type, not the variable declaration.
 3. `enclosing_symbol` inside a method → the method.
-4. `get_symbol_outline` on a non-trivial file (≥3 types or ≥10 members) — verify the outline tree depth, kind classification, and ordering match what `document_symbols` returns. Drift between these two surfaces (different kinds, different ordering, or one missing a member the other lists) is a FLAG.
+4. `document_symbols` on a non-trivial file (≥3 types or ≥10 members) — verify the outline tree depth, kind classification, and ordering against the source file; a missing or misclassified member is a FLAG.
 5. `get_completions` after a dot. v1.8+ ranks locals/parameters → type members → types → long tail. For `filterText="To"`, in-scope `ToString` should appear before namespace-qualified externals like `ToBase64Transform`.
 6. `find_references_bulk` with multiple symbol handles — batch results match individual `find_references`.
 7. `find_overrides` on a virtual method; `find_base_members` on an override.
 
-**MCP audit checkpoint:** Are navigation results accurate? Does `get_symbol_outline` agree with `document_symbols`? Does `get_completions` rank sensibly? Does `find_references_bulk` match individual calls?
+**MCP audit checkpoint:** Are navigation results accurate? Does `document_symbols` return the expected declaration tree? Does `get_completions` rank sensibly? Does `find_references_bulk` match individual calls?
 
 ---
 

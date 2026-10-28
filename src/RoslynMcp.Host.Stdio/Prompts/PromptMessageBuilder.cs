@@ -142,7 +142,7 @@ internal static class PromptMessageBuilder
                 """,
             "project-mutation" => """
                 - **Add Package**: `add_package_reference_preview` → `apply_project_mutation` → `workspace_reload` → `build_workspace`
-                - **Package Migration**: `migrate_package_preview` → `apply_composite_preview` → `build_workspace`
+                - **Package Migration**: `migrate_package_preview` → `apply_composite` → `build_workspace`
                 - **Central Versioning**: `add_central_package_version_preview` → `apply_project_mutation`
                 """,
             "scaffolding" => """

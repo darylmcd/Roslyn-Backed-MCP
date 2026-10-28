@@ -37,7 +37,7 @@ namespace RoslynMcp.Core.Models;
 /// splice in. When <see cref="InferredPattern"/> is empty this list is also empty.
 /// </param>
 /// <param name="PreviewToken">
-/// Composite preview token redeemable via <c>apply_composite_preview</c>. The token is issued
+/// Composite preview token redeemable via <c>apply_composite</c>. The token is issued
 /// only when <see cref="InferredPattern"/> is non-empty; empty previews return <c>null</c> here
 /// because there is nothing to apply.
 /// </param>

@@ -69,7 +69,7 @@ Execute each stage in order. Do not start stage N+1 until stage N validates clea
 
 **3b. Preview.** Call the selected `*_preview` primitive. Capture the returned `previewToken` and show the per-file diff summary to the user (count of files touched, per-file change counts, representative hunks). If the preview returns warnings, summarize them and pause for confirmation.
 
-**3c. Apply with verify.** Always route through `apply_with_verify(previewToken)`. For composite previews, use `apply_composite_preview` followed immediately by an explicit `compile_check`. If `apply_with_verify` returns `status: "rolled_back"` or `"applied_with_errors"`, stop — do not retry blindly. Report the introduced errors to the user and record this as a rollback event for the stage.
+**3c. Apply with verify.** Always route through `apply_with_verify(previewToken)`. For composite previews, use `apply_composite` followed immediately by an explicit `compile_check`. If `apply_with_verify` returns `status: "rolled_back"` or `"applied_with_errors"`, stop — do not retry blindly. Report the introduced errors to the user and record this as a rollback event for the stage.
 
 **3d. Validate workspace.** After a successful apply, call `validate_workspace(workspaceId, runTests: true)` to run the compile + analyzer + test bundle over the changed file set. Inspect `overallStatus`:
 
@@ -97,14 +97,14 @@ Use this table to map each stage of the goal onto a primitive. Mix-and-match acr
 | **Analyzer-driven modernization** (file-scoped namespaces, primary constructors, collection expressions, `is null` vs `== null`, using declarations, pattern matching) | `fix_all_preview(diagnosticId)` → `fix_all_apply` (via `apply_with_verify`) | Common IDs: `IDE0161` (file-scoped namespaces), `IDE0290` (primary constructors), `IDE0300`/`IDE0301`/`IDE0305` (collection expressions), `IDE0041` (`is null`), `IDE0063` (using declarations), `IDE0066` (switch expressions). `list_analyzers` enumerates the live set. |
 | **Magic-string centralization** (e.g. `"application/json"` literals → a `MediaTypes.Json` constant; hard-coded header names → named constants) | `replace_string_literals_preview` | Position-aware — only rewrites arg / initializer positions, not arbitrary occurrences. Scope by namespace / file glob. |
 | **Per-diagnostic single-site fix** (e.g. a handful of `CS8618` nullable-init warnings) | `code_fix_preview` → `code_fix_apply` (via `apply_with_verify`) | Prefer `fix_all_preview` when the diagnostic count exceeds ~10. |
-| **Multi-primitive atomic stage** (e.g. rename + restructure + bulk-replace in one commit boundary) | Chain preview tokens into `apply_composite_preview`; follow with `compile_check` | Use sparingly. Composite stages trade granularity for atomicity — plan the rollback story before applying. |
+| **Multi-primitive atomic stage** (e.g. rename + restructure + bulk-replace in one commit boundary) | Chain preview tokens into `apply_composite`; follow with `compile_check` | Use sparingly. Composite stages trade granularity for atomicity — plan the rollback story before applying. |
 | **Package-level substitution under the hood** (e.g. `Newtonsoft.Json` → `System.Text.Json` as the attribute source) | Delegate to the `migrate-package` skill for the `.csproj` edit, then run the attribute stages from this table | Keep the package swap in its own stage so rollback semantics stay clean. |
 
 When the goal doesn't cleanly fit a row, surface the ambiguity to the user rather than picking a primitive by guess.
 
 ## Safety Rules
 
-1. **Preview before every apply.** Never call an `*_apply` or `apply_composite_preview` without first showing the user the corresponding preview diff.
+1. **Preview before every apply.** Never call an `*_apply` or `apply_composite` without first showing the user the corresponding preview diff.
 2. **Always route apply through `apply_with_verify`.** It runs `compile_check` against the pre-apply baseline and auto-rolls-back on new errors. Bare `*_apply` tools are for tooling — not for this skill.
 3. **Run `validate_workspace` after every stage.** Do not begin stage N+1 until stage N's validation reports `clean`. A green compile without tests is not enough for modernization work.
 4. **Stage granularity is load-bearing.** One modernization concern per stage. Composite previews exist for true atomicity (e.g., a rename that must land alongside a restructure), not for convenience.

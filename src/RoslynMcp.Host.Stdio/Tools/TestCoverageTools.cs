@@ -16,9 +16,7 @@ public static class TestCoverageTools
 
     /// <remarks>
     /// Response shape is the <see cref="TestCoverageResultDto"/> fields (success, error,
-    /// lineCoveragePercent, branchCoveragePercent, modules, failureEnvelope) with an additional
-    /// top-level <c>deprecation</c> field — null on this canonical tool, populated on aliases
-    /// (e.g. <c>get_test_coverage_map</c>).
+    /// lineCoveragePercent, branchCoveragePercent, modules, failureEnvelope, coverageGaps).
     /// </remarks>
     [McpServerTool(Name = "test_coverage", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("validation", "stable", false, false,
@@ -35,15 +33,10 @@ public static class TestCoverageTools
         CancellationToken ct = default)
     {
         return RunTestCoverageCore(
-            gate, workspace, commandExecutor, options, workspaceId, projectName, deprecation: null,
+            gate, workspace, commandExecutor, options, workspaceId, projectName,
             progress, ct);
     }
 
-    // roslyn-mcp-sister-tool-name-aliases: shared core invoked by both the canonical
-    // `test_coverage` tool and the `get_test_coverage_map` alias. Wraps the
-    // <see cref="TestCoverageResultDto"/> in an anonymous envelope so the same JSON shape
-    // can carry the `deprecation` field on every emit path (success, coverlet-missing
-    // short-circuit, post-run no-coverage-file fallback).
     /// <remarks>
     /// Three phases so the workspace gate is NOT held across the long <c>dotnet test</c>: (1) a
     /// gated read resolves workspace status, the coverlet partition and the coverage directory,
@@ -61,7 +54,6 @@ public static class TestCoverageTools
         ValidationServiceOptions options,
         string workspaceId,
         string? projectName,
-        ToolAliasDeprecation? deprecation,
         IProgress<ProgressNotificationValue>? progress = null,
         CancellationToken ct = default)
     {
@@ -79,7 +71,7 @@ public static class TestCoverageTools
             if (prepared.EarlyResult is { } earlyResult)
             {
                 ProgressHelper.Report(progress, 1, 1);
-                return SerializeWithDeprecation(earlyResult, deprecation);
+                return Serialize(earlyResult);
             }
 
             var plan = prepared.Plan!;
@@ -98,14 +90,13 @@ public static class TestCoverageTools
                 if (coverageFiles.Length == 0)
                 {
                     ProgressHelper.Report(progress, 1, 1);
-                    return SerializeWithDeprecation(
-                        TestCoverageCoordinator.BuildNoCoverageFileResult(execution.Succeeded, execution.ExitCode, coverageGaps),
-                        deprecation);
+                    return Serialize(
+                        TestCoverageCoordinator.BuildNoCoverageFileResult(execution.Succeeded, execution.ExitCode, coverageGaps));
                 }
 
                 var result = TestCoverageCoordinator.ParseAndAggregateCoberturaXml(coverageFiles, coverageGaps);
                 ProgressHelper.Report(progress, 1, 1);
-                return SerializeWithDeprecation(result, deprecation);
+                return Serialize(result);
             }
             finally
             {
@@ -130,7 +121,7 @@ public static class TestCoverageTools
             // reclassified. Ordered after the caller-cancellation rethrow and before the generic
             // catch below so neither is rethrown as an unexpected failure.
             ProgressHelper.Report(progress, 1, 1);
-            return SerializeWithDeprecation(TestCoverageCoordinator.BuildTimeoutResult(), deprecation);
+            return Serialize(TestCoverageCoordinator.BuildTimeoutResult());
         }
         catch
         {
@@ -274,58 +265,9 @@ public static class TestCoverageTools
         return (partialExecution, partialCoverageFiles, partition.WithoutCoverlet);
     }
 
-    // roslyn-mcp-sister-tool-name-aliases: thin alias for callers carrying the python-refactor
-    // (Jedi) tool name `get_test_coverage_map`. Delegates to the canonical `test_coverage`
-    // implementation and surfaces the migration path inline via the `deprecation` envelope.
-    /// <remarks>
-    /// Returns the canonical <c>test_coverage</c> response envelope with
-    /// <c>deprecation.canonicalName</c> populated.
-    /// </remarks>
-    [McpServerTool(Name = "get_test_coverage_map", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false),
-     McpToolMetadata("validation", "stable", false, false,
-        "Alias for test_coverage (cross-MCP-server name compatibility)."),
-     Description("Alias for `test_coverage` (cross-MCP-server name compatibility — matches the python-refactor tool name). Prefer `test_coverage` directly in new code.")]
-    public static Task<string> GetTestCoverageMap(
-        IWorkspaceExecutionGate gate,
-        IWorkspaceManager workspace,
-        IGatedCommandExecutor commandExecutor,
-        ValidationServiceOptions options,
-        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
-        [Description("Optional: specific test project name")] string? projectName = null,
-        IProgress<ProgressNotificationValue>? progress = null,
-        CancellationToken ct = default)
-    {
-        return RunTestCoverageCore(
-            gate,
-            workspace,
-            commandExecutor,
-            options,
-            workspaceId,
-            projectName,
-            ToolAliasDeprecation.ForSisterAlias("test_coverage"),
-            progress,
-            ct);
-    }
-
-    // roslyn-mcp-sister-tool-name-aliases: project the TestCoverageResultDto's record fields
-    // onto an anonymous envelope so we can splice the top-level `deprecation` field without
-    // mutating the DTO record (which is part of the Core models surface). Field names are
-    // emitted lower-camel-cased to match the rest of the JSON the tool emits via JsonDefaults.
     // Stays in the tool class because `JsonDefaults` is internal to RoslynMcp.Host.Stdio.
-    private static string SerializeWithDeprecation(TestCoverageResultDto result, ToolAliasDeprecation? deprecation)
-    {
-        return JsonSerializer.Serialize(new
-        {
-            success = result.Success,
-            error = result.Error,
-            lineCoveragePercent = result.LineCoveragePercent,
-            branchCoveragePercent = result.BranchCoveragePercent,
-            modules = result.Modules,
-            failureEnvelope = result.FailureEnvelope,
-            coverageGaps = result.CoverageGaps,
-            deprecation,
-        }, JsonDefaults.Indented);
-    }
+    private static string Serialize(TestCoverageResultDto result) =>
+        JsonSerializer.Serialize(result, JsonDefaults.Indented);
 
     // test-coverage-temp-dir-leak (workspace-fork-apply-security-hardening): best-effort deletion
     // of the per-run temp coverage results dir. Internal for direct assertion in tests. Swallows

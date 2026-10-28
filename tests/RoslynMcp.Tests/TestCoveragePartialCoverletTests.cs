@@ -52,7 +52,6 @@ public sealed class TestCoveragePartialCoverletTests
             new ValidationServiceOptions(),
             workspaceId: "ws-coverage-partial",
             projectName: null,
-            deprecation: null,
             progress: null,
             ct: CancellationToken.None);
 
@@ -104,7 +103,6 @@ public sealed class TestCoveragePartialCoverletTests
             new ValidationServiceOptions { TestTimeout = total },
             workspaceId: "ws-coverage-budget",
             projectName: null,
-            deprecation: null,
             progress: null,
             ct: CancellationToken.None);
 
@@ -183,7 +181,6 @@ public sealed class TestCoveragePartialCoverletTests
             new ValidationServiceOptions(),
             workspaceId: "ws-coverage-allmissing",
             projectName: null,
-            deprecation: null,
             progress: null,
             ct: CancellationToken.None);
 
@@ -239,7 +236,6 @@ public sealed class TestCoveragePartialCoverletTests
             new ValidationServiceOptions(),
             workspaceId: "ws-coverage-allcoverlet",
             projectName: null,
-            deprecation: null,
             progress: null,
             ct: CancellationToken.None);
 
@@ -278,7 +274,6 @@ public sealed class TestCoveragePartialCoverletTests
             new ValidationServiceOptions(),
             workspaceId: "ws-coverage-cleanup",
             projectName: null,
-            deprecation: null,
             progress: null,
             ct: CancellationToken.None);
 

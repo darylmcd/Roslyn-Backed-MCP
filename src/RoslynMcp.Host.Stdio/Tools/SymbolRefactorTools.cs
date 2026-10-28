@@ -68,7 +68,7 @@ public static class SymbolRefactorTools
     /// Composite preset <c>record-field-add-satellite-member-sync</c>. It inspects the type's
     /// existing fields, infers the satellite-sync pattern (Clone/Snapshot/With/ToJson/Increment),
     /// and proposes edits for every mirror site. Redeem the returned <c>previewToken</c> via
-    /// <c>apply_composite_preview</c>.
+    /// <c>apply_composite</c>.
     /// </remarks>
     [McpServerTool(Name = "record_field_add_with_satellites_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("refactoring", "experimental", true, false,

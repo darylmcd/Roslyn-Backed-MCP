@@ -11,7 +11,7 @@ namespace RoslynMcp.Tests;
 /// each newly-opened metadataName surface end-to-end against the sample workspace.
 ///
 /// The 5th documented reproduction across audits was the canonical motivator: agents
-/// holding a fully-qualified type name (from DI registrations, <c>get_symbol_outline</c>,
+/// holding a fully-qualified type name (from DI registrations, <c>document_symbols</c>,
 /// <c>find_unused_symbols</c>, etc.) had to fall back to <c>Grep</c> because the resolver
 /// path was hard-disabled by the tool schema. Tests below replicate that agent flow.
 /// </summary>

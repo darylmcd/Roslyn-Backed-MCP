@@ -148,7 +148,7 @@ public sealed class ChangeTrackerTests : IsolatedWorkspaceTestBase
         var changes = ChangeTracker.GetChanges(wsId);
         Assert.AreEqual(1, changes.Count,
             "A 2-file apply_multi_file_edit batch must produce ONE consolidated " +
-            "ChangeTracker entry, not one per file — mirrors apply_composite_preview.");
+            "ChangeTracker entry, not one per file — mirrors apply_composite.");
         Assert.AreEqual("apply_multi_file_edit", changes[0].ToolName,
             "The single consolidated entry must surface with the originating tool name.");
         Assert.AreEqual(2, changes[0].AffectedFiles.Count,

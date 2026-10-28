@@ -1,0 +1,5 @@
+---
+category: Changed — BREAKING
+---
+
+- **Changed — BREAKING:** removed the four deprecated tool aliases `get_symbol_outline`, `find_duplicated_code`, `get_test_coverage_map` and `apply_composite_preview` from the tool list, the catalog and dispatch (a call now fails as an unknown tool), together with the alias-lifecycle `deprecation` metadata that described them. The `deprecation` field is gone from the catalog entries and from the `document_symbols`, `find_duplicated_methods` and `test_coverage` responses (it was always `null` on those canonical tools). The workspace change ledger now records composite applies under `apply_composite` instead of `apply_composite_preview`. Surface is now 171 tools (110 stable / 61 experimental). Migration: call `document_symbols`, `find_duplicated_methods`, `test_coverage` and `apply_composite` instead (same parameters, same payloads); stop reading `deprecation` from tool responses and catalog entries, and match `apply_composite` (not `apply_composite_preview`) in `workspace_changes` tool names and in any PostToolUse hook matcher.

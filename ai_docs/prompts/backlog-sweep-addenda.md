@@ -245,7 +245,7 @@ hooks:
       Runs eng/verify-skills-are-generic.ps1 on any edit under skills/ and
       exits with the verifier's code, so a non-generic shipped-skill edit
       fails in the same turn. Silent on every other path.
-  - tool: mcp__(?:plugin_roslyn-mcp_)?roslyn__(rename_apply|extract_interface_apply|extract_type_apply|move_type_to_file_apply|bulk_replace_type_apply|remove_dead_code_apply|apply_composite_preview|move_file_apply|create_file_apply)
+  - tool: mcp__(?:plugin_roslyn-mcp_)?roslyn__(rename_apply|extract_interface_apply|extract_type_apply|move_type_to_file_apply|bulk_replace_type_apply|remove_dead_code_apply|apply_composite|move_file_apply|create_file_apply)
     script: hooks/hooks.json                       # PostToolUse, type "prompt"
     effect: |
       ADVISORY ONLY — never blocks. Nudges the agent to run compile_check /

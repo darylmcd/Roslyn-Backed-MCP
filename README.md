@@ -57,7 +57,7 @@ The JSON shape is the same across MCP clients (VS Code uses a top-level `"server
 
 ## Live Surface
 
-The current release exposes **175 tools** (113 stable / 62 experimental), **14 resources** (9 stable / 5 experimental), and **20 prompts** (all experimental).
+The current release exposes **171 tools** (110 stable / 61 experimental), **14 resources** (9 stable / 5 experimental), and **20 prompts** (all experimental).
 
 Use the running server for the authoritative live catalog and support tiers:
 
@@ -65,7 +65,7 @@ Use the running server for the authoritative live catalog and support tiers:
 - `roslyn://server/catalog` for the machine-readable contract
 - `roslyn://server/resource-templates` for resource URI templates
 
-Stable families include workspace/session management, semantic navigation, diagnostics, build/test helpers, and preview/apply refactoring flows. Experimental families include broader project mutation, scaffolding, orchestration, direct text-edit helpers, and prompts. Set `ROSLYNMCP_TOOL_TIERS=stable` to register only the closed stable workflow (currently 94 callable tools) for clients that eagerly load tool definitions.
+Stable families include workspace/session management, semantic navigation, diagnostics, build/test helpers, and preview/apply refactoring flows. Experimental families include broader project mutation, scaffolding, orchestration, direct text-edit helpers, and prompts. Set `ROSLYNMCP_TOOL_TIERS=stable` to register only the closed stable workflow (currently 91 callable tools) for clients that eagerly load tool definitions.
 
 ## Configuration And Security
 

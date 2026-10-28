@@ -93,7 +93,7 @@ If any phase below would require an apply or a worktree, mark it `skipped-safety
 8. `get_nuget_dependencies` — audit package references.
 9. `suggest_refactorings` — ranked aggregation.
 
-**Skipped in this tier:** `find_duplicated_methods`, `find_duplicate_helpers`, `find_duplicated_code` (heavier scans — defer to `--full`).
+**Skipped in this tier:** `find_duplicated_methods`, `find_duplicate_helpers` (heavier scans — defer to `--full`).
 
 **MCP audit checkpoint:** Are complexity scores plausible? Are LCOM4 scores sane? Does `find_unused_symbols` miss obvious dead code or falsely flag used symbols? Does `suggest_refactorings` rank sensibly?
 
@@ -135,11 +135,11 @@ Pick ONE type that surfaces from Phase 2 (high complexity, LCOM4 > 1, or central
 1. `go_to_definition` on a usage → correct declaration.
 2. `goto_type_definition` on a variable → the type, not the variable declaration.
 3. `enclosing_symbol` inside a method → the method.
-4. `get_symbol_outline` on a non-trivial file (≥3 types or ≥10 members).
+4. `document_symbols` on a non-trivial file (≥3 types or ≥10 members).
 5. `get_completions` after a dot.
 6. `find_overrides` on a virtual method; `find_base_members` on an override.
 
-**MCP audit checkpoint:** Are navigation results accurate? Does `get_symbol_outline` agree with `document_symbols`? Does `get_completions` rank sensibly?
+**MCP audit checkpoint:** Are navigation results accurate? Does `document_symbols` return the expected declaration tree? Does `get_completions` rank sensibly?
 
 ---
 

@@ -128,9 +128,8 @@ When the SKILL receives `--single-agent`, skip this dispatch plan and run all ph
 4. `find_unused_symbols(includePublic=false)`.
 5. `find_unused_symbols(includePublic=true)` — public APIs with zero internal references?
 6. `find_duplicated_methods` and `find_duplicate_helpers` — cross-check output against reads of the flagged locations; note any false positives (the BCL-wrapper false positive is tracked as `find-duplicate-helpers-framework-wrapper-false-positive`).
-7. `find_duplicated_code` — token-stream-level duplication (broader than `find_duplicated_methods`); spot-check 2–3 reported clusters against actual source ranges.
-8. `find_dead_locals` on a few chosen methods (complements `find_unused_symbols`'s symbol-level scope).
-9. `find_dead_fields` — class-field-level dead detection; complements `find_unused_symbols(includePublic=false)` with finer granularity at private/internal field scope.
+7. `find_dead_locals` on a few chosen methods (complements `find_unused_symbols`'s symbol-level scope).
+8. `find_dead_fields` — class-field-level dead detection; complements `find_unused_symbols(includePublic=false)` with finer granularity at private/internal field scope.
 8. `get_namespace_dependencies` — circular dependencies?
 9. `get_nuget_dependencies` — audit package references.
 10. `suggest_refactorings` — ranked aggregation across complexity / cohesion / dead code. Do the recommended tool sequences match the actual tools for each category?

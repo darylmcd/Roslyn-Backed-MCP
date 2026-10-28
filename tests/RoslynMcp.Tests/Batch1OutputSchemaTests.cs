@@ -286,13 +286,6 @@ public sealed class Batch1OutputSchemaTests
     }
 
     [TestMethod]
-    public void SisterAliasLookupOfUnknownCanonicalNameIsAnInvariantViolation()
-    {
-        Assert.ThrowsExactly<InvalidOperationException>(
-            () => ToolAliasDeprecation.ForSisterAlias("no_such_canonical_tool"));
-    }
-
-    [TestMethod]
     public void UnionDeclarationsCannotNameACombinatorOutsideAnyOfAndOneOf()
     {
         // Regression for the fail-open the declaration API shipped with: the combinator used to be

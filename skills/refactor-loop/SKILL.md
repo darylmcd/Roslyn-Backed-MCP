@@ -77,7 +77,7 @@ apply_with_verify(previewToken)
 
 `apply_with_verify` runs the apply, then immediately runs `compile_check`. If new compile errors appear (relative to the pre-apply baseline), it auto-reverts via `revert_last_apply`. The response carries `status: "applied" | "rolled_back" | "applied_with_errors"`.
 
-For previews stored in `IPreviewStore` (rename, extract, restructure, etc.), `apply_with_verify` works directly. For composite previews backed by `ICompositePreviewStore`, use `apply_composite_preview` followed by an explicit `compile_check`.
+For previews stored in `IPreviewStore` (rename, extract, restructure, etc.), `apply_with_verify` works directly. For composite previews backed by `ICompositePreviewStore`, use `apply_composite` followed by an explicit `compile_check`.
 
 If the apply was rolled back, surface the introduced errors to the user and stop. Do not attempt a second apply without addressing the root cause.
 

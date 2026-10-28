@@ -15,8 +15,7 @@ using RoslynMcp.Tests.Helpers;
 namespace RoslynMcp.Tests;
 
 /// <summary>
-/// test-coverage-unexpected-error-not-iserror: <c>test_coverage</c> and its
-/// <c>get_test_coverage_map</c> alias used to catch every exception and return a
+/// test-coverage-unexpected-error-not-iserror: <c>test_coverage</c> used to catch every exception and return a
 /// success-shaped <c>failureEnvelope</c> result, so the wire frame carried
 /// <c>isError: false</c>. These tests drive the real <see cref="StructuredCallToolFilter"/> over an
 /// in-memory MCP transport with a runner that throws, and assert the failure reaches the client
@@ -26,12 +25,11 @@ namespace RoslynMcp.Tests;
 public sealed class TestCoverageErrorWireTests
 {
     private const string Sentinel = "SECRET-SENTINEL-C:/private/coverage.runsettings";
+    private const string ToolName = "test_coverage";
 
     [TestMethod]
-    [DataRow("test_coverage")]
-    [DataRow("get_test_coverage_map")]
     [Timeout(60_000, CooperativeCancellation = true)]
-    public async Task UnexpectedRunnerFailure_ReturnsWireIsErrorWithInternalErrorEnvelope(string toolName)
+    public async Task UnexpectedRunnerFailure_ReturnsWireIsErrorWithInternalErrorEnvelope()
     {
         var gate = new PassThroughWorkspaceExecutionGate();
         var workspace = new FailClosedWorkspaceManagerStub
@@ -47,17 +45,15 @@ public sealed class TestCoverageErrorWireTests
         // layer between the throw and the wire.
         var tool = McpServerTool.Create(
             (string workspaceId, string? projectName = null, CancellationToken ct = default) =>
-                string.Equals(toolName, "test_coverage", StringComparison.Ordinal)
-                    ? TestCoverageTools.RunTestCoverage(gate, workspace, executor, options, workspaceId, projectName, ct: ct)
-                    : TestCoverageTools.GetTestCoverageMap(gate, workspace, executor, options, workspaceId, projectName, ct: ct),
-            new McpServerToolCreateOptions { Name = toolName });
+                TestCoverageTools.RunTestCoverage(gate, workspace, executor, options, workspaceId, projectName, ct: ct),
+            new McpServerToolCreateOptions { Name = ToolName });
         await using var harness = await CreateHarnessAsync(tool);
 
         var prior = harness.RawServerMessages.Count;
         var result = await harness.Client.CallToolAsync(
-            toolName,
+            ToolName,
             new Dictionary<string, object?> { ["workspaceId"] = "ws-coverage-wire" });
-        Assert.IsTrue(result.IsError, $"{toolName} unexpected failure must be reported as isError=true.");
+        Assert.IsTrue(result.IsError, $"{ToolName} unexpected failure must be reported as isError=true.");
 
         var frame = harness.RawServerMessages.Skip(prior)
             .Select(raw => JsonNode.Parse(raw))
@@ -73,7 +69,7 @@ public sealed class TestCoverageErrorWireTests
         var envelope = Assert.IsInstanceOfType<JsonObject>(JsonNode.Parse(text));
         Assert.AreEqual(true, envelope["error"]?.GetValue<bool>());
         Assert.AreEqual("InternalError", envelope["category"]?.GetValue<string>(), envelope.ToJsonString());
-        Assert.AreEqual(toolName, envelope["tool"]?.GetValue<string>());
+        Assert.AreEqual(ToolName, envelope["tool"]?.GetValue<string>());
         Assert.IsFalse(string.IsNullOrWhiteSpace(envelope["correlationId"]?.GetValue<string>()),
             "InternalError envelopes must carry a correlation id.");
         Assert.IsNotNull(envelope["_meta"], $"The shared filter must inject _meta. Envelope: {envelope.ToJsonString()}");

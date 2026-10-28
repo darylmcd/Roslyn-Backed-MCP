@@ -36,8 +36,6 @@ public sealed class MethodDescriptionDietTestToolingTests
     [
         new("test_coverage", "Run tests with code coverage collection"),
         new("test_coverage", "coverlet.collector"),
-        new("get_test_coverage_map", "Alias for `test_coverage`"),
-        new("get_test_coverage_map", "Prefer `test_coverage`"),
         new("test_reference_map", "statically, without running tests"),
         new("symbol_impact_sweep", "references"),
         new("symbol_impact_sweep", "CS8509/CS8524/IDE0072"),

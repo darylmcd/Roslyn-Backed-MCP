@@ -453,24 +453,6 @@ public static class AdvancedAnalysisTools
         [Description("When true, omit each group's per-member `Methods` array (file paths + line spans) and return only per-cluster metadata. Smaller payload for large solutions where full member lists exceed the MCP output cap. Default false.")] bool summary = false,
         CancellationToken ct = default)
     {
-        return FindDuplicatedMethodsCore(gate, duplicateMethodDetectorService, workspaceId, minLines, similarityThreshold, projectFilter, limit, excludeMcpToolWrappers, summary, deprecation: null, ct);
-    }
-
-    // roslyn-mcp-sister-tool-name-aliases: shared core invoked by both the canonical
-    // `find_duplicated_methods` tool and the `find_duplicated_code` alias.
-    internal static Task<string> FindDuplicatedMethodsCore(
-        IWorkspaceExecutionGate gate,
-        IDuplicateMethodDetectorService duplicateMethodDetectorService,
-        string workspaceId,
-        int minLines,
-        double similarityThreshold,
-        string? projectFilter,
-        int limit,
-        bool excludeMcpToolWrappers,
-        bool summary,
-        ToolAliasDeprecation? deprecation,
-        CancellationToken ct = default)
-    {
         return gate.RunReadAsync(workspaceId, async c =>
         {
             var results = await duplicateMethodDetectorService.FindDuplicatedMethodsAsync(
@@ -504,48 +486,12 @@ public static class AdvancedAnalysisTools
                     .ToList();
 
                 return JsonSerializer.Serialize(
-                    new { count = results.Count, summary = true, deprecation, groups = compactGroups },
+                    new { count = results.Count, summary = true, groups = compactGroups },
                     JsonDefaults.Indented);
             }
 
-            return JsonSerializer.Serialize(new { count = results.Count, groups = results, deprecation }, JsonDefaults.Indented);
+            return JsonSerializer.Serialize(new { count = results.Count, groups = results }, JsonDefaults.Indented);
         }, ct);
-    }
-
-    // roslyn-mcp-sister-tool-name-aliases: thin alias for callers carrying the python-refactor
-    // (Jedi) tool name `find_duplicated_code`. The plan-document evidence cites both
-    // `find_duplicated_methods` and `find_duplicate_helpers` as candidate canonicals; the
-    // broader semantic match is `find_duplicated_methods` (clusters of internal copy-paste),
-    // so the alias delegates there. Callers wanting the BCL/NuGet-wrapper detection should
-    // call `find_duplicate_helpers` directly.
-    [McpServerTool(Name = "find_duplicated_code", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
-     McpToolMetadata("advanced-analysis", "stable", true, false,
-        "Alias for find_duplicated_methods (cross-MCP-server name compatibility)."),
-     Description("Alias for find_duplicated_methods for cross-MCP-server compatibility. Use find_duplicate_helpers for BCL or NuGet re-wraps; prefer the canonical tools in new code.")]
-    public static Task<string> FindDuplicatedCode(
-        IWorkspaceExecutionGate gate,
-        IDuplicateMethodDetectorService duplicateMethodDetectorService,
-        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
-        [Description("Minimum body line count for a method to be considered (default: 10).")] int minLines = 10,
-        [Description("Structural similarity threshold in [0.0, 1.0] (default: 0.85).")] double similarityThreshold = 0.85,
-        [Description("Optional: filter by project name to scope the scan on large solutions.")] string? projectFilter = null,
-        [Description("Maximum number of groups to return (default: 50).")] int limit = 50,
-        [Description("When true (default), skip [McpServerTool]-attributed methods whose body is a single delegation, since MCP requires one wrapper shim per tool name.")] bool excludeMcpToolWrappers = true,
-        [Description("When true, omit each group's per-member `Methods` array (file paths + line spans) and return only per-cluster metadata. Smaller payload for large solutions where full member lists exceed the MCP output cap. Default false.")] bool summary = false,
-        CancellationToken ct = default)
-    {
-        return FindDuplicatedMethodsCore(
-            gate,
-            duplicateMethodDetectorService,
-            workspaceId,
-            minLines,
-            similarityThreshold,
-            projectFilter,
-            limit,
-            excludeMcpToolWrappers,
-            summary,
-            ToolAliasDeprecation.ForSisterAlias("find_duplicated_methods"),
-            ct);
     }
 
     [McpServerTool(Name = "semantic_search", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
