@@ -19,15 +19,6 @@ public sealed class SemanticGrepService : ISemanticGrepService
     /// <summary>Hard cap on per-pattern regex evaluation time per document, in milliseconds.</summary>
     private static readonly TimeSpan RegexTimeout = TimeSpan.FromSeconds(2);
 
-    /// <summary>
-    /// semantic-grep-pattern-error-detail-redaction: legacy input-free sentinel retained for
-    /// compatibility. <c>ToolErrorHandler.BuildSafeArgumentMessage</c> recognizes this exact
-    /// substring (plus <c>ParamName == "pattern"</c>) for ordinary argument exceptions.
-    /// Current regex parse failures publish typed public guidance instead of this sentinel.
-    /// Keep this value free of the pattern text and the .NET parser message.
-    /// </summary>
-    public const string InvalidRegexSentinel = "The 'pattern' argument is not a valid .NET regular expression.";
-
     public const string ScopeIdentifiers = "identifiers";
     public const string ScopeStrings = "strings";
     public const string ScopeComments = "comments";
