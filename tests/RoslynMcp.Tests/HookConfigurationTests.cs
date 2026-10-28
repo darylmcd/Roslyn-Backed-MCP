@@ -66,12 +66,10 @@ public sealed class HookConfigurationTests
     [TestMethod]
     public void Shipped_ServerInfoPrompt_ReadsCheckStatusForUnknownAvailability()
     {
-        // 4.x keeps server_info.update.updateAvailable a strict bool (a check that has not
-        // succeeded reports false), so the hook must treat false as "no newer release" only
-        // when update.checkStatus is 'succeeded'. #1553's prompt keyed "unknown" on a null
-        // updateAvailable that a 4.x server never emits, silently reading pending/failed
-        // checks as "no update". A null-as-unknown clause is not forbidden here: the 5.0 row
-        // server-info-update-available-next-major-nullable adds one alongside checkStatus.
+        // server_info.update.updateAvailable is bool? (null = unknown) since 5.0, but the hook prompt
+        // must still read update.checkStatus: false means "no newer release" only when checkStatus
+        // is 'succeeded', so the prompt names every non-succeeded status. An explicit
+        // null-as-unknown clause is tracked by server-info-update-hook-prompt-null-clause.
         using var document = LoadShippedHooks();
         var prompt = GetHookEntries(document, "PostToolUse")
             .SelectMany(GetPromptTexts)

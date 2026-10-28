@@ -70,20 +70,18 @@ traces, and failure-envelope summaries and tails. Internal execution records rem
 
 ### Update availability (`server_info.update`)
 
-`server_info` always returns an `update` block. In the 4.x line, `updateAvailable` is a boolean. It
-is `true` only when a known registry version is strictly newer than the running build; `latest`
-and `command` are populated in that case and `null` otherwise. A `false` value does not by itself
-mean the build is current. `checkStatus` is the authority for that, and `lastCheckedAt` records
-when the most recent check finished:
+`server_info` always returns an `update` block. `updateAvailable` is a nullable boolean:
 
-| `checkStatus` | What `updateAvailable: false` means |
+| `updateAvailable` | When |
 |---|---|
-| `succeeded` | The registry check completed and found no newer stable release. |
-| `neverChecked`, `pending` | Unknown: no check has completed yet. |
-| `failed`, `timedOut` | Unknown: the most recent check did not complete. |
+| `true` | A known registry version is strictly newer than the running build. `latest` and `command` are populated. |
+| `false` | Only when `checkStatus` is `succeeded` and the check found no newer stable release. |
+| `null` | Unknown: `checkStatus` is `neverChecked`, `pending`, `failed` or `timedOut` and no newer version is known. |
 
-A background refresh can report `pending` while a newer version found by an earlier check keeps
-`updateAvailable: true`.
+`checkStatus` reports the check outcome (`succeeded`, `neverChecked`, `pending`, `failed`,
+`timedOut`) and `lastCheckedAt` records when the most recent check finished. A background refresh can
+report `pending` while a newer version found by an earlier check keeps `updateAvailable: true`.
+Consumers must treat `null` as unknown and must not claim the build is current.
 
 ### Tool error envelope
 
@@ -147,7 +145,6 @@ migration notes, as `docs/release-policy.md` requires.
 
 | Surface | 4.x behavior | 5.0 behavior | Prepare now |
 |---|---|---|---|
-| `server_info.update.updateAvailable` | `boolean`; `checkStatus` carries "unknown" | Nullable: `null` until a check succeeds | Read `checkStatus` before trusting `false`, and accept `null` |
 | Unknown `workspaceId` error | `category: "NotFound"` (`"WorkspaceReloadedDuringCall"` when the miss races an in-call auto-reload), `exceptionType: "KeyNotFoundException"`, `reason: "WorkspaceNotFound"` | `category: "WorkspaceNotFound"` and `exceptionType: "WorkspaceNotFoundException"` on both paths | Branch on `reason`, and accept the `WorkspaceNotFound` category |
 | Flat location members of `SymbolDto`, `DiagnosticDto` and `TypeUsageDto` (`filePath`, `startLine`, `startColumn`, `endLine`, `endColumn`; `TypeUsageDto` also `containingMember`, `previewText`, `classification`) | Serialized and populated alongside the nested `location`; `[Obsolete]` for in-process C# consumers since 4.4.0. `location` is null when the span is partial (for example a build diagnostic with a start but no end), so the flat members can be the only source of a position | Flat members removed; `location` is the sole representation. `location.endLine` and `location.endColumn` are nullable (both null for a start-only span such as a build diagnostic with no end); `location.filePath`, `startLine` and `startColumn` are always present. `location` is null only when the finding has no file and start position. Diagnostics from `analyze_snippet` and `evaluate_csharp` carry `filePath` `<snippet>` / `<script>` | Read `location` first and fall back to the flat members when it is null; do not rely on the flat members being present after 5.0, and accept a null `endLine`/`endColumn` |
 
