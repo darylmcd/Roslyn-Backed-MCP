@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Server;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
 using RoslynMcp.Roslyn.Services;
 
@@ -35,14 +36,49 @@ internal static class ConfiguredRootBoundary
         ?? server?.Services?.GetService<SecurityOptions>()
         ?? new SecurityOptions();
 
+    /// <summary>
+    /// Canonicalizes the operator-configured sanctioned roots. A root that cannot be canonicalized
+    /// is a server configuration fault, not a caller error: it surfaces as a path-free
+    /// <see cref="PublicInvalidOperationException"/> that keeps the underlying cause for server logs.
+    /// </summary>
     internal static IReadOnlyList<string> GetCanonicalRoots(SecurityOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
 
-        var roots = new List<string>(options.SanctionedRoots.Count);
-        foreach (var configuredRoot in options.SanctionedRoots)
+        return CanonicalizeRoots(
+            options.SanctionedRoots,
+            static inner => new PublicInvalidOperationException(
+                "A configured sanctioned root could not be canonicalized. Check ROSLYNMCP_SANCTIONED_ROOTS on the server.",
+                inner));
+    }
+
+    /// <summary>
+    /// Canonicalizes request-supplied narrowing roots. These come from the caller (or the client's
+    /// roots capability), so an unusable value is a caller-argument refusal attributed to
+    /// <paramref name="parameterName"/>; the detail stays path-free and the cause stays server-side.
+    /// </summary>
+    internal static IReadOnlyList<string> GetCanonicalNarrowingRoots(
+        IReadOnlyList<string> narrowingRootPaths,
+        string parameterName)
+    {
+        ArgumentNullException.ThrowIfNull(narrowingRootPaths);
+
+        return CanonicalizeRoots(
+            narrowingRootPaths,
+            inner => ArgumentErrors.Redacted(
+                parameterName,
+                "A narrowing root could not be canonicalized.",
+                inner));
+    }
+
+    private static List<string> CanonicalizeRoots(
+        IReadOnlyList<string> rootPaths,
+        Func<Exception, Exception> createFailure)
+    {
+        var roots = new List<string>(rootPaths.Count);
+        foreach (var rootPath in rootPaths)
         {
-            if (string.IsNullOrWhiteSpace(configuredRoot))
+            if (string.IsNullOrWhiteSpace(rootPath))
             {
                 continue;
             }
@@ -50,15 +86,12 @@ internal static class ConfiguredRootBoundary
             string canonicalRoot;
             try
             {
-                canonicalRoot = ResolvePath(configuredRoot);
+                canonicalRoot = ResolvePath(rootPath);
             }
             catch (Exception ex) when (ex is ArgumentException or IOException or NotSupportedException
                                        or UnauthorizedAccessException)
             {
-                throw new ArgumentException(
-                    $"Configured sanctioned root '{configuredRoot}' could not be canonicalized.",
-                    nameof(options),
-                    ex);
+                throw createFailure(ex);
             }
 
             if (!roots.Any(root => string.Equals(root, canonicalRoot, FileSystemPathComparison)))
