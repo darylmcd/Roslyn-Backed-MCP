@@ -407,7 +407,7 @@ internal static class ToolErrorHandler
         // for the same reason as an eviction. Re-resolving a symbol cannot recover a workspace the
         // server no longer knows, so it keeps the plain WorkspaceNotFound envelope (whose
         // remediation names workspace_load) even when it races an in-call auto-reload.
-        if (ex is KeyNotFoundException && ex is not WorkspaceEvictedException and not WorkspaceNotFoundException &&
+        if (ex is KeyNotFoundException && ex is not WorkspaceEvictedException and not WorkspaceNotFoundException and not IPublicMessageException &&
             AmbientGateMetrics.Current?.StaleAction == "auto-reloaded" &&
             AmbientGateMetrics.Current?.ReloadConfirmedNotFound != true)
         {

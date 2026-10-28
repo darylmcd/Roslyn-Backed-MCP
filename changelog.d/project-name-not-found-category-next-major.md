@@ -1,0 +1,4 @@
+---
+category: Changed — BREAKING
+---
+- **Changed — BREAKING:** An unknown `projectName` (`build_project`, `test_run`, `fix_all_preview`, `evaluate_msbuild_property`, project-mutation, scaffolding and cross-project tools, restructure scope) and a `rename_preview` target that resolves to no symbol (`symbolHandle`, `metadataName` or source location) now report `category: "NotFound"` (`exceptionType` `KeyNotFoundException`) instead of `InvalidOperation`. A project miss that races an in-call auto-reload no longer gets the symbol re-resolution advice. Messages are unchanged in substance, list the loaded project names and never echo the submitted value. Migration: treat `NotFound` as "the named project or symbol does not exist; pick a name from `workspace_status`", and stop special-casing `InvalidOperation` for these misses. A malformed `symbolHandle` remains `InvalidArgument`.
