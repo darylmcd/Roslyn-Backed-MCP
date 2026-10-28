@@ -1,6 +1,6 @@
 # release-5-0-0-cut — Cut 5.0.0 once every row parked on the next major has shipped
 
-**row:** `release-5-0-0-cut` · **pri:** `Medium` · **size:** `L` · **deps:** `release-4-4-0-locationdto-deprecation-cut,root-boundary-argument-refusals-public-message,tool-error-handler-argument-sniffing-arms-retired,argument-exception-public-message-guard,server-info-update-available-next-major-nullable,workspace-not-found-next-major-category-promotion,project-name-not-found-category-next-major,locationdto-next-major-flat-field-removal,tool-alias-deprecation-stale-removal-major,v5-major-release-contract-prereqs`
+**row:** `release-5-0-0-cut` · **pri:** `Medium` · **size:** `L` · **deps:** `release-4-4-0-locationdto-deprecation-cut,root-boundary-argument-refusals-public-message,tool-error-handler-argument-sniffing-arms-retired,argument-exception-public-message-guard,server-info-update-available-next-major-nullable,workspace-not-found-next-major-category-promotion,project-name-not-found-category-next-major,locationdto-next-major-flat-field-removal,tool-alias-deprecation-stale-removal-major,v5-major-release-contract-prereqs,locationdto-partial-span-representation-5-0`
 
 ## Anchors
 
