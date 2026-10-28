@@ -88,7 +88,7 @@ public sealed class RestructureService : IRestructureService
     /// never touches the workspace, the disk, or <see cref="IPreviewStore"/>. Used by
     /// <see cref="SymbolRefactorService.PreviewAsync"/> to chain ops in-memory so each op
     /// sees its predecessor's rewrites without the previous auto-apply-each-step disk write
-    /// that fired before the agent ever called <c>apply_composite_preview</c>.
+    /// that fired before the agent ever called <c>apply_composite</c>.
     /// </summary>
     internal async Task<(Solution NewSolution, IReadOnlyList<FileChangeDto> Changes, string Description)>
         PreviewRestructureOnSolutionAsync(

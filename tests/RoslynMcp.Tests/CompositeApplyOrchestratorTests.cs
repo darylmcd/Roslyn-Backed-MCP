@@ -633,7 +633,7 @@ public sealed class CompositeApplyOrchestratorTests
 
     /// <summary>
     /// Regression guard for <c>composite-apply-undo-encoding-still-lossy</c>:
-    /// <c>apply_composite_preview</c> wrote every mutation through
+    /// <c>apply_composite</c> wrote every mutation through
     /// <c>AtomicFileWriter.WriteAllTextAsync</c> with no <see cref="Encoding"/>, so a UTF-8-BOM or
     /// UTF-16 source file was silently re-encoded as UTF-8-no-BOM on every composite apply. This is
     /// the third write path PR #1157 (<c>mutation-write-paths-drop-original-encoding</c>) deferred.
@@ -675,7 +675,7 @@ public sealed class CompositeApplyOrchestratorTests
         var afterBytes = await File.ReadAllBytesAsync(path, CancellationToken.None);
         Assert.IsTrue(
             afterBytes.AsSpan().StartsWith(preamble),
-            $"apply_composite_preview must re-emit the original {encodingKind} byte-order mark instead of rewriting the file as UTF-8-no-BOM.");
+            $"apply_composite must re-emit the original {encodingKind} byte-order mark instead of rewriting the file as UTF-8-no-BOM.");
         if (preamble.Length == 0)
         {
             Assert.IsFalse(
@@ -721,7 +721,7 @@ public sealed class CompositeApplyOrchestratorTests
     /// <summary>
     /// Regression guard for <c>apply-composite-no-undo-capture</c>: the composite apply recorded a
     /// change but never captured an undo snapshot, so <c>revert_last_apply</c> immediately after
-    /// <c>apply_composite_preview</c> reverted the PREVIOUS apply instead. The revert must restore the
+    /// <c>apply_composite</c> reverted the PREVIOUS apply instead. The revert must restore the
     /// composite's modified, created, and deleted files, leave the previous apply intact, and the
     /// composite must appear in <c>workspace_changes</c>.
     /// </summary>
@@ -781,7 +781,7 @@ public sealed class CompositeApplyOrchestratorTests
         // (3) workspace_changes records the composite apply.
         var changes = changeTracker.GetChanges(workspaceId);
         Assert.HasCount(2, changes);
-        Assert.AreEqual("apply_composite_preview", changes[^1].ToolName);
+        Assert.AreEqual("apply_composite", changes[^1].ToolName);
         CollectionAssert.AreEquivalent(
             new[] { modifiedPath, createdPath, deletedPath },
             changes[^1].AffectedFiles.ToArray());

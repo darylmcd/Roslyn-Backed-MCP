@@ -209,7 +209,7 @@ public static partial class RoslynPrompts
 
                     Use this workflow:
                             1. Prefer a single call to `migrate_package_preview` and inspect the combined diff across all affected project files.
-                            2. If the preview looks correct, call `apply_composite_preview`.
+                            2. If the preview looks correct, call `apply_composite`.
                             3. If you need more granular control, fall back to `remove_package_reference_preview`, `add_package_reference_preview`, and `add_central_package_version_preview` per project.
                             4. After project-file changes, call `build_workspace` and inspect resulting diagnostics.
                             5. For any API or namespace incompatibilities, use `symbol_search`, `find_references`, `get_code_actions`, `preview_code_action`, or text-edit tools to adapt consumers.

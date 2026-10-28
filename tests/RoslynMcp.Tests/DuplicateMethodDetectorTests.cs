@@ -792,7 +792,7 @@ public sealed class DuplicateMethodDetectorTests
     public async Task FindDuplicatedMethods_SummaryMode_OmitsMethodsArrayButKeepsClusterMetadata()
     {
         // Drive the tool wrapper (not the service) so the summary-mode serialization branch in
-        // FindDuplicatedMethodsCore is exercised. The tool runs through the real
+        // FindDuplicatedMethods is exercised. The tool runs through the real
         // WorkspaceExecutionGate against the AdhocWorkspace-backed FailClosedWorkspaceManagerStub.
         var (service, gate) = BuildServiceAndGate(ThreeClusterSource);
         using var gateScope = gate;
@@ -816,9 +816,8 @@ public sealed class DuplicateMethodDetectorTests
             "All three clusters must be counted in summary mode.");
         Assert.IsTrue(root.GetProperty("summary").GetBoolean(),
             "Summary mode must stamp summary=true.");
-        Assert.IsTrue(root.TryGetProperty("deprecation", out var deprecation));
-        Assert.AreEqual(JsonValueKind.Null, deprecation.ValueKind,
-            "Canonical tool must publish deprecation=null even in summary mode.");
+        Assert.IsFalse(root.TryGetProperty("deprecation", out _),
+            "The tool must not carry an alias-lifecycle deprecation field, even in summary mode.");
 
         var groups = root.GetProperty("groups");
         Assert.AreEqual(3, groups.GetArrayLength(), "Each cluster must still appear as a group.");

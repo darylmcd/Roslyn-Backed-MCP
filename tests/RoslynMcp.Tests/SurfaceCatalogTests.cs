@@ -156,53 +156,6 @@ public sealed class SurfaceCatalogTests
     }
 
     [TestMethod]
-    public void ServerCatalogFull_ExposesAliasLifecycleMetadata()
-    {
-        using var document = JsonDocument.Parse(ServerResources.GetServerCatalogFull());
-        var alias = document.RootElement
-            .GetProperty("tools")
-            .EnumerateArray()
-            .Single(static entry => entry.GetProperty("name").GetString() == "get_symbol_outline");
-
-        var deprecation = alias.GetProperty("deprecation");
-        Assert.AreEqual("get_symbol_outline", deprecation.GetProperty("aliasName").GetString());
-        Assert.AreEqual("document_symbols", deprecation.GetProperty("canonicalName").GetString());
-        Assert.AreEqual(ToolAliasDeprecation.SisterServerReason, deprecation.GetProperty("reason").GetString());
-        Assert.AreEqual(JsonValueKind.Null, deprecation.GetProperty("riskBucket").ValueKind);
-        Assert.AreEqual("1.33.0", deprecation.GetProperty("introducedRelease").GetString());
-        Assert.AreEqual(2, deprecation.GetProperty("earliestRemovalMajor").GetInt32());
-    }
-
-    [TestMethod]
-    public void ApplyCompositeAlias_PublishesCanonicalReplacementAndMatchingParameters()
-    {
-        var canonicalEntry = ServerSurfaceCatalog.Tools.Single(entry => entry.Name == "apply_composite");
-        var aliasEntry = ServerSurfaceCatalog.Tools.Single(entry => entry.Name == "apply_composite_preview");
-
-        Assert.IsNull(canonicalEntry.Deprecation, "The canonical apply_composite route must not be deprecated.");
-        Assert.IsNotNull(aliasEntry.Deprecation, "The compatibility alias must publish lifecycle metadata.");
-        Assert.AreEqual("apply_composite_preview", aliasEntry.Deprecation.AliasName);
-        Assert.AreEqual("apply_composite", aliasEntry.Deprecation.CanonicalName);
-        Assert.AreEqual("1.0.0", aliasEntry.Deprecation.IntroducedRelease);
-        Assert.AreEqual(5, aliasEntry.Deprecation.EarliestRemovalMajor);
-
-        var canonicalMethod = typeof(OrchestrationTools).GetMethod(
-            nameof(OrchestrationTools.ApplyComposite),
-            BindingFlags.Public | BindingFlags.Static);
-        var aliasMethod = typeof(OrchestrationTools).GetMethod(
-            nameof(OrchestrationTools.ApplyCompositePreview),
-            BindingFlags.Public | BindingFlags.Static);
-        Assert.IsNotNull(canonicalMethod);
-        Assert.IsNotNull(aliasMethod);
-
-        CollectionAssert.AreEqual(
-            canonicalMethod.GetParameters().Select(ParameterContract).ToArray(),
-            aliasMethod.GetParameters().Select(ParameterContract).ToArray(),
-            "The deprecated alias must remain parameter-compatible with apply_composite.");
-        Assert.AreEqual(canonicalMethod.ReturnType, aliasMethod.ReturnType);
-    }
-
-    [TestMethod]
     public void PageEntries_HonoursOffsetAndLimit_SurfacesPaginationMetadata()
     {
         var page = ServerSurfaceCatalog.PageEntries(ServerSurfaceCatalog.Tools, offset: 0, limit: 10, resourceName: "test");
@@ -268,14 +221,7 @@ public sealed class SurfaceCatalogTests
                     "changed_tool",
                     "stable",
                     summary: "new",
-                    outputSchema: """{"type":"object","properties":{"new":{"type":"string"}}}""",
-                    deprecation: new ToolAliasDeprecation(
-                        "old_changed_tool",
-                        "changed_tool",
-                        ToolAliasDeprecation.SisterServerReason,
-                        RiskBucket: null,
-                        IntroducedRelease: "1.33.0",
-                        EarliestRemovalMajor: 2))
+                    outputSchema: """{"type":"object","properties":{"new":{"type":"string"}}}""")
             ],
             Resources: [],
             Prompts:
@@ -291,7 +237,7 @@ public sealed class SurfaceCatalogTests
 
         var changedTool = diff.Tools.Changed.Single(entry => entry.Name == "changed_tool");
         CollectionAssert.AreEquivalent(
-            new[] { "summary", "outputSchema", "deprecation" },
+            new[] { "summary", "outputSchema" },
             changedTool.ChangedFields.Select(field => field.Field).ToArray());
 
         var changedPrompt = diff.Prompts.Changed.Single(entry => entry.Name == "changed_prompt");
@@ -323,9 +269,7 @@ public sealed class SurfaceCatalogTests
 
         // validate_recent_git_changes also corrects its tracker fallback summary.
         // The full changed-tool set: get_completions, bulk_replace_type_apply, and
-        // replace_invocation_preview changed summary; apply_composite_preview changed summary and
-        // gained alias lifecycle metadata; server_info changed outputSchema; the three
-        // retained aliases gained additive catalog deprecation metadata. The three
+        // replace_invocation_preview changed summary; server_info changed outputSchema. The three
         // workspace-status-family tools below changed outputSchema because
         // restore-required-vs-build-conflation added `buildRequired` to
         // WorkspaceStatusSummaryDto, which every workspace-status tool serializes.
@@ -337,11 +281,7 @@ public sealed class SurfaceCatalogTests
                 "replace_invocation_preview",
                 "change_signature_preview",
                 "validate_recent_git_changes",
-                "apply_composite_preview",
                 "server_info",
-                "get_symbol_outline",
-                "find_duplicated_code",
-                "get_test_coverage_map",
                 "workspace_status",
                 "workspace_health",
                 "workspace_list",
@@ -363,22 +303,8 @@ public sealed class SurfaceCatalogTests
                 changedSummaryTool.ChangedFields.Select(field => field.Field).ToArray());
         }
 
-        var changedCompositeAlias = diff.Tools.Changed.Single(entry => entry.Name == "apply_composite_preview");
-        CollectionAssert.AreEqual(
-            new[] { "summary", "deprecation" },
-            changedCompositeAlias.ChangedFields.Select(field => field.Field).ToArray());
-
         var changedServerInfo = diff.Tools.Changed.Single(entry => entry.Name == "server_info");
         CollectionAssert.AreEqual(new[] { "outputSchema" }, changedServerInfo.ChangedFields.Select(field => field.Field).ToArray());
-
-        foreach (var aliasToolName in new[] { "get_symbol_outline", "find_duplicated_code", "get_test_coverage_map" })
-        {
-            var changedAliasTool = diff.Tools.Changed.Single(entry => entry.Name == aliasToolName);
-            CollectionAssert.AreEqual(
-                new[] { "deprecation" },
-                changedAliasTool.ChangedFields.Select(field => field.Field).ToArray(),
-                $"{aliasToolName} changed only its additive lifecycle declaration.");
-        }
 
         foreach (var workspaceToolName in new[] { "workspace_status", "workspace_health", "workspace_list" })
         {
@@ -390,9 +316,13 @@ public sealed class SurfaceCatalogTests
         }
 
         Assert.AreEqual(5, diff.Summary.Added);
-        Assert.AreEqual(0, diff.Summary.Removed);
+        CollectionAssert.AreEquivalent(
+            new[] { "apply_composite_preview", "get_symbol_outline", "find_duplicated_code", "get_test_coverage_map" },
+            diff.Tools.Removed.Select(entry => entry.Name).ToArray(),
+            "The four 5.0.0 alias removals are the only removed tools since 2.3.1.");
+        Assert.AreEqual(4, diff.Summary.Removed);
         Assert.AreEqual(0, diff.Summary.Promoted);
-        Assert.AreEqual(13, diff.Summary.Changed);
+        Assert.AreEqual(9, diff.Summary.Changed);
     }
 
     [TestMethod]
@@ -415,27 +345,17 @@ public sealed class SurfaceCatalogTests
                 "replace_invocation_preview",
                 "change_signature_preview",
                 "validate_recent_git_changes",
-                "apply_composite_preview",
                 "server_info",
-                "get_symbol_outline",
-                "find_duplicated_code",
-                "get_test_coverage_map",
                 "workspace_status",
                 "workspace_health",
                 "workspace_list",
             },
             changed.EnumerateArray().Select(entry => entry.GetProperty("name").GetString()).ToArray());
 
-        var aliasChange = changed.EnumerateArray().Single(
-            entry => entry.GetProperty("name").GetString() == "get_symbol_outline");
-        var deprecationChange = aliasChange.GetProperty("changedFields").EnumerateArray().Single(
-            field => field.GetProperty("field").GetString() == "deprecation");
-        Assert.AreEqual(JsonValueKind.Null, deprecationChange.GetProperty("before").ValueKind);
-        var lifecycle = deprecationChange.GetProperty("after");
-        Assert.AreEqual("get_symbol_outline", lifecycle.GetProperty("aliasName").GetString());
-        Assert.AreEqual("document_symbols", lifecycle.GetProperty("canonicalName").GetString());
-        Assert.AreEqual("1.33.0", lifecycle.GetProperty("introducedRelease").GetString());
-        Assert.AreEqual(2, lifecycle.GetProperty("earliestRemovalMajor").GetInt32());
+        var removed = tools.GetProperty("removed").EnumerateArray().Select(entry => entry.GetProperty("name").GetString()).ToArray();
+        CollectionAssert.AreEquivalent(
+            new[] { "apply_composite_preview", "get_symbol_outline", "find_duplicated_code", "get_test_coverage_map" },
+            removed);
     }
 
     [TestMethod]
@@ -847,8 +767,7 @@ public sealed class SurfaceCatalogTests
         string name,
         string supportTier,
         string summary,
-        string? outputSchema = null,
-        ToolAliasDeprecation? deprecation = null) =>
+        string? outputSchema = null) =>
         new(
             "tool",
             name,
@@ -859,16 +778,7 @@ public sealed class SurfaceCatalogTests
             summary,
             UriTemplate: null,
             Parameters: null,
-            OutputSchema: outputSchema is null ? null : JsonNode.Parse(outputSchema))
-        {
-            Deprecation = deprecation,
-        };
-
-    private static string ParameterContract(ParameterInfo parameter)
-    {
-        var description = parameter.GetCustomAttribute<System.ComponentModel.DescriptionAttribute>()?.Description;
-        return $"{parameter.Name}|{parameter.ParameterType}|{parameter.HasDefaultValue}|{parameter.DefaultValue}|{description}";
-    }
+            OutputSchema: outputSchema is null ? null : JsonNode.Parse(outputSchema));
 
     private static SurfaceEntry PromptEntry(
         string name,

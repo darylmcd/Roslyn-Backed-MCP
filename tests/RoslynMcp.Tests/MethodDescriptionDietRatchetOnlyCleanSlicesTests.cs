@@ -43,9 +43,6 @@ public sealed class MethodDescriptionDietRatchetOnlyCleanSlicesTests
                 new("migrate_package_preview", "across all affected projects"),
                 new("split_class_preview", "partial class file by moving selected members"),
                 new("extract_and_wire_interface_preview", "rewriting DI registrations"),
-                new("apply_composite_preview", "DESTRUCTIVE"),
-                new("apply_composite_preview", "applies a previously-previewed orchestration operation to disk"),
-                new("apply_composite_preview", "in the same session before invoking"),
                 new("extract_type_preview", "private field for the new type"),
                 new("extract_type_apply", "previously previewed type extraction"),
             ]);

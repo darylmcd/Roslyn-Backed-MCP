@@ -26,7 +26,6 @@ public sealed class MethodDescriptionDietSymbolAdvancedAnalysisTests
     private static readonly ToolDescriptionBudgetHarness.TriggerExpectation[] _triggerExpectations =
     [
         new("symbol_search", "wildcards and regex metacharacters are matched literally"),
-        new("get_symbol_outline", "Alias for document_symbols"),
         new("find_overrides", "only symbols actually marked `override`"),
         new("find_references_bulk", "up to 50 symbols"),
         new("find_unused_symbols", "zero solution-wide references"),

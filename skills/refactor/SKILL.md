@@ -95,8 +95,8 @@ Call the appropriate preview tool based on refactoring type:
 | Extract Method | `extract_method_preview` (after `analyze_data_flow` / `analyze_control_flow` on the span) |
 | Code actions (incl. selection) | `get_code_actions` with optional `endLine`/`endColumn` → `preview_code_action` → `apply_code_action` |
 | Fix all (diagnostic ID) | `fix_all_preview` → `fix_all_apply` |
-| Dependency inversion | `dependency_inversion_preview` → `apply_composite_preview` (preview token from the preview response) |
-| Extract interface + DI | `extract_and_wire_interface_preview` → `apply_composite_preview` |
+| Dependency inversion | `dependency_inversion_preview` → `apply_composite` (preview token from the preview response) |
+| Extract interface + DI | `extract_and_wire_interface_preview` → `apply_composite` |
 | Format range | `format_range_preview` → `format_range_apply` |
 
 For **project/file mutations** (add package, move file, etc.), use the corresponding `*_preview` / `apply_project_mutation` or file-operation tools listed in **`server_catalog`**.

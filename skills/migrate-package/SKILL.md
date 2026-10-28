@@ -54,7 +54,7 @@ Use **`discover_capabilities`** (`project-mutation` / `all`) or **`guided_packag
 ### Step 4: Apply Migration
 
 After user confirmation:
-1. Call `apply_composite_preview` with the preview token.
+1. Call `apply_composite` with the preview token.
 2. Call `compile_check` to verify the solution still compiles.
 3. If compilation fails:
    - Call `project_diagnostics` to identify breaking changes.
@@ -109,7 +109,7 @@ When the user says "migrate all of Moq to NSubstitute" or "replace Newtonsoft wi
    | `FluentAssertions.*` | `Shouldly.*` | `x.Should().Be(y)` → `x.ShouldBe(y)`; `x.Should().Throw<T>()` → `Should.Throw<T>(() => x)` |
 
 3. **Per-package migration.** For each package in the old family, run the single-package workflow (Steps 1-5 above) with the corresponding new-package id. Accumulate per-project preview tokens.
-4. **Code edits via `bulk_replace_type_preview`.** After package references are swapped, run `bulk_replace_type_preview` for each type in the API map (e.g., `Moq.Mock<T>` → `NSubstitute.Substitute`). Preview → apply via `apply_composite_preview` → `compile_check` per step.
+4. **Code edits via `bulk_replace_type_preview`.** After package references are swapped, run `bulk_replace_type_preview` for each type in the API map (e.g., `Moq.Mock<T>` → `NSubstitute.Substitute`). Preview → apply via `apply_composite` → `compile_check` per step.
 5. **Residual manual edits.** Report any remaining diagnostics from `project_diagnostics` with suggested fixes — family migrations rarely reach 100% automation, and some call-site rewrites need human judgment.
 6. **Verify tests still green.** Run `test_run` after each apply.
 

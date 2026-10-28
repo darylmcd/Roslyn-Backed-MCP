@@ -169,7 +169,7 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
             workspaceId,
             $"Composite operation ({distinctFiles.Count} files)",
             distinctFiles,
-            "apply_composite_preview");
+            "apply_composite");
         return new ApplyResultDto(true, distinctFiles, null);
     }
 

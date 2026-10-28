@@ -12,7 +12,7 @@ namespace RoslynMcp.Tests;
 /// sub-operation by calling <c>RefactoringService.ApplyRefactoringAsync</c> between steps so
 /// the next step could read the rewritten state from the live workspace — a side-effect that
 /// wrote files to disk and recorded change-tracker entries before the agent ever called
-/// <c>apply_composite_preview</c>. The fix threads a single <see cref="Microsoft.CodeAnalysis.Solution"/>
+/// <c>apply_composite</c>. The fix threads a single <see cref="Microsoft.CodeAnalysis.Solution"/>
 /// snapshot through the loop and stores the accumulated mutations under one composite-preview
 /// token, deferring all disk writes until the apply call.
 ///
@@ -30,7 +30,7 @@ namespace RoslynMcp.Tests;
 ///   <item><description>
 ///     Redeem the composite token via <see cref="CompositeApplyOrchestrator.ApplyCompositeAsync"/>:
 ///     both edits land on disk AND <see cref="IChangeTracker.GetChanges"/> shows exactly ONE
-///     entry whose <c>ToolName</c> is <c>apply_composite_preview</c> (the inner-apply
+///     entry whose <c>ToolName</c> is <c>apply_composite</c> (the inner-apply
 ///     entries that polluted the ledger pre-fix are gone).
 ///   </description></item>
 /// </list>
@@ -213,7 +213,7 @@ public sealed class SymbolRefactorPreviewTests : IsolatedWorkspaceTestBase
             },
             CancellationToken.None);
 
-        // Redeem through CompositeApplyOrchestrator (the production path for apply_composite_preview).
+        // Redeem through CompositeApplyOrchestrator (the production path for apply_composite).
         var orchestrator = new CompositeApplyOrchestrator(WorkspaceManager, compositeStore, ChangeTracker);
         var applyResult = await orchestrator.ApplyCompositeAsync(preview.PreviewToken, CancellationToken.None);
 
@@ -235,15 +235,15 @@ public sealed class SymbolRefactorPreviewTests : IsolatedWorkspaceTestBase
         Assert.IsTrue(finalContent.Contains("\"Yip\"", StringComparison.Ordinal),
             $"Literal edit from op#2 must land on disk after redeem. Content: {finalContent}");
 
-        // Change tracker must show exactly ONE entry attributed to apply_composite_preview.
+        // Change tracker must show exactly ONE entry attributed to apply_composite.
         // Pre-fix, this assertion would have failed: each chained sub-op recorded its own
         // entry under the bogus "symbol_refactor_preview" tool name, polluting the ledger
         // with N inner-apply records before the outer redeem fired.
         var changes = ChangeTracker.GetChanges(wsId);
         Assert.AreEqual(1, changes.Count,
             $"Exactly one ledger entry expected after composite redeem; got [{string.Join(", ", changes.Select(c => c.ToolName))}].");
-        Assert.AreEqual("apply_composite_preview", changes[0].ToolName,
-            "The single ledger entry must be attributed to apply_composite_preview, not the inner sub-op tool name.");
+        Assert.AreEqual("apply_composite", changes[0].ToolName,
+            "The single ledger entry must be attributed to apply_composite, not the inner sub-op tool name.");
     }
 
     /// <summary>

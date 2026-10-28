@@ -60,7 +60,7 @@ public sealed class HookConfigurationTests
 
         AssertMatcherCoversRoslynPrefixes(serverInfoMatcher, "server_info");
         AssertMatcherCoversRoslynPrefixes(applyMatcher, "rename_apply");
-        AssertMatcherCoversRoslynPrefixes(applyMatcher, "apply_composite_preview");
+        AssertMatcherCoversRoslynPrefixes(applyMatcher, "apply_composite");
     }
 
     [TestMethod]

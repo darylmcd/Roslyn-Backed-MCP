@@ -39,7 +39,7 @@ public sealed class PersistentCompositeStorageTests
         var exception = Assert.Throws<ArgumentException>(() => store.Write(sentinel, entry));
         Assert.IsInstanceOfType<IPublicMessageException>(exception);
         using var envelope = System.Text.Json.JsonDocument.Parse(
-            RoslynMcp.Host.Stdio.Tools.ToolErrorHandler.ClassifyAndFormat(exception, "apply_composite_preview"));
+            RoslynMcp.Host.Stdio.Tools.ToolErrorHandler.ClassifyAndFormat(exception, "apply_composite"));
         Assert.AreEqual("InvalidArgument", envelope.RootElement.GetProperty("category").GetString());
         Assert.AreEqual("ArgumentException", envelope.RootElement.GetProperty("exceptionType").GetString());
         StringAssert.Contains(envelope.RootElement.GetProperty("message").GetString()!, "32 hexadecimal GUID characters");

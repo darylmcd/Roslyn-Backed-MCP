@@ -18,7 +18,7 @@ This document tracks promotion history and criteria, not the live surface totals
 
 Operational evidence for promotion decisions should come from the latest deep-review rollup in `ai_docs/reports/`, backed by immutable raw audits in `ai_docs/audit-reports/`.
 
-**Current state (server 4.2.1):** the tool surface is 113 stable / 62 experimental (see [README](../README.md#live-surface)). Most of the tools named in the historical tiers below have since been promoted; the Tier 1 sections after v1.9.0 and the "Next promotion pass" section reflect that. Verify any individual tool's tier against the live catalog before relying on this document.
+**Current state (server 4.4.0):** the tool surface is 110 stable / 61 experimental (see [README](../README.md#live-surface)). Most of the tools named in the historical tiers below have since been promoted; the Tier 1 sections after v1.9.0 and the "Next promotion pass" section reflect that. Verify any individual tool's tier against the live catalog before relying on this document.
 
 ## Tier 1 — promoted (v1.6.0)
 

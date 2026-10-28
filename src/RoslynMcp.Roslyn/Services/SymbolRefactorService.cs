@@ -61,12 +61,12 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
     /// auto-applied each sub-operation's preview to disk between steps so the next step's
     /// service call could read the rewritten state from the live workspace — a side-effect
     /// that wrote files and recorded ledger entries before the agent ever called
-    /// <c>apply_composite_preview</c> (gh #770). The current implementation threads a single
+    /// <c>apply_composite</c> (gh #770). The current implementation threads a single
     /// <see cref="Solution"/> snapshot through the loop via the concrete services'
     /// <c>Preview*OnSolutionAsync</c> internal overloads, so no disk write or change-tracker
     /// entry occurs at preview time. The composite token is stored in
     /// <see cref="ICompositePreviewStore"/> (NOT <see cref="IPreviewStore"/>) so that
-    /// <c>apply_composite_preview</c>'s file-mutation replay path can redeem it.
+    /// <c>apply_composite</c>'s file-mutation replay path can redeem it.
     /// </summary>
     public async Task<RefactoringPreviewDto> PreviewAsync(
         string workspaceId, IReadOnlyList<SymbolRefactorOperation> operations, CancellationToken ct)
@@ -121,7 +121,7 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
         }
 
         // Build a CompositeFileMutation list from the accumulated Solution diff. The redeem
-        // path (apply_composite_preview / CompositeApplyOrchestrator) iterates this list and
+        // path (apply_composite / CompositeApplyOrchestrator) iterates this list and
         // performs a plain File.WriteAllText per entry, so we materialize per-file text snapshots
         // here from the post-final-op Solution.
         var mutations = await BuildCompositeMutationsAsync(initialSolution, accumulator, ct).ConfigureAwait(false);
@@ -1344,7 +1344,7 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
     //      coverage before declaring the set as "the pattern" — keeps us conservative.
     //   4) For each pattern kind, synthesize edits at syntax-node boundaries.
     //   5) Wrap the edits into a composite-preview token so callers can apply via the
-    //      same apply_composite_preview tool used by sibling SymbolRefactor* previews.
+    //      same apply_composite tool used by sibling SymbolRefactor* previews.
     // ═══════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>

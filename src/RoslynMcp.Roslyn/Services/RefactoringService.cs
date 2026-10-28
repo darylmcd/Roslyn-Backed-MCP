@@ -129,7 +129,7 @@ public sealed class RefactoringService : IRefactoringService
     /// resolver. Used by <see cref="SymbolRefactorService.PreviewAsync"/> to chain ops
     /// in-memory so each op sees its predecessor's rewrites without the previous
     /// auto-apply-each-step disk write that fired before the agent ever called
-    /// <c>apply_composite_preview</c>.
+    /// <c>apply_composite</c>.
     /// </summary>
     /// <remarks>
     /// Returned tuple carries the modified solution plus a per-file <see cref="FileChangeDto"/>

@@ -376,7 +376,7 @@ public static class SymbolTools
         }, ct);
     }
 
-    [McpServerTool(Name = "document_symbols", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get a document's declarations as a hierarchical tree. Accepts filePath or a symbol locator, like symbol_info; get_symbol_outline is its deprecated alias.")]
+    [McpServerTool(Name = "document_symbols", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get a document's declarations as a hierarchical tree. Accepts filePath or a symbol locator, like symbol_info.")]
     [McpToolMetadata("symbols", "stable", true, false,
         "List declared symbols in a document.")]
     public static Task<string> GetDocumentSymbols(
@@ -390,27 +390,10 @@ public static class SymbolTools
         CancellationToken ct = default)
     {
         workspaceId = ToolDispatch.RequireResolvedWorkspaceId(workspaceId);
-        return GetDocumentSymbolsCore(server, gate, symbolSearchService, workspaceId, filePath, symbolHandle, metadataName, deprecation: null, ct);
-    }
 
-    // roslyn-mcp-sister-tool-name-aliases: shared core invoked by both the canonical
-    // `document_symbols` tool and the `get_symbol_outline` alias. The alias passes a populated
-    // `deprecation` envelope so callers can see the canonical name inline; the canonical method
-    // passes `null` so the response schema always carries the field.
-    // document-symbols-accepts-symbol-handle: when symbolHandle or metadataName is provided,
-    // delegates to the locator-based service overload which resolves the handle to a source path.
-    // When only filePath is provided, delegates to the original filePath-based overload.
-    internal static Task<string> GetDocumentSymbolsCore(
-        McpServer server,
-        IWorkspaceExecutionGate gate,
-        ISymbolSearchService symbolSearchService,
-        string workspaceId,
-        string? filePath,
-        string? symbolHandle,
-        string? metadataName,
-        ToolAliasDeprecation? deprecation,
-        CancellationToken ct = default)
-    {
+        // document-symbols-accepts-symbol-handle: when symbolHandle or metadataName is provided,
+        // delegates to the locator-based service overload which resolves the handle to a source path.
+        // When only filePath is provided, delegates to the original filePath-based overload.
         if (string.IsNullOrWhiteSpace(symbolHandle) &&
             string.IsNullOrWhiteSpace(metadataName) &&
             string.IsNullOrWhiteSpace(filePath))
@@ -435,37 +418,8 @@ public static class SymbolTools
                 results = await symbolSearchService.GetDocumentSymbolsAsync(workspaceId, filePath!, c).ConfigureAwait(false);
             }
 
-            return JsonSerializer.Serialize(new { count = results.Count, symbols = results, deprecation }, JsonDefaults.Indented);
+            return JsonSerializer.Serialize(new { count = results.Count, symbols = results }, JsonDefaults.Indented);
         }, ct);
-    }
-
-    // roslyn-mcp-sister-tool-name-aliases: thin alias for callers carrying the python-refactor
-    // (Jedi) tool name `get_symbol_outline`. Delegates to the canonical `document_symbols`
-    // implementation and surfaces the migration path inline via the `deprecation` envelope.
-    [McpServerTool(Name = "get_symbol_outline", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Alias for document_symbols for cross-MCP-server compatibility. Returns its canonical envelope with deprecation.canonicalName; prefer document_symbols in new code.")]
-    [McpToolMetadata("symbols", "stable", true, false,
-        "Alias for document_symbols (cross-MCP-server name compatibility).")]
-    public static Task<string> GetSymbolOutline(
-        McpServer server,
-        IWorkspaceExecutionGate gate,
-        ISymbolSearchService symbolSearchService,
-        [Description("Optional: the workspace session identifier returned by workspace_load. With one workspace loaded you may omit it — the read-path middleware resolves it automatically; pass it explicitly when two or more are loaded.")] string? workspaceId = null,
-        [Description("Optional: absolute path to the source file")] string? filePath = null,
-        [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
-        [Description("Optional: fully qualified metadata name, e.g. Namespace.TypeName")] string? metadataName = null,
-        CancellationToken ct = default)
-    {
-        workspaceId = ToolDispatch.RequireResolvedWorkspaceId(workspaceId);
-        return GetDocumentSymbolsCore(
-            server,
-            gate,
-            symbolSearchService,
-            workspaceId,
-            filePath,
-            symbolHandle,
-            metadataName,
-            ToolAliasDeprecation.ForSisterAlias("document_symbols"),
-            ct);
     }
 
     [McpServerTool(Name = "find_overrides", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find true virtual or abstract overrides — only symbols actually marked `override`. Excludes sibling interface implementations; use member_hierarchy for those.")]

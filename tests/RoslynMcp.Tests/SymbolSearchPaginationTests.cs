@@ -375,8 +375,8 @@ public sealed class SymbolSearchPaginationTests : SharedWorkspaceTestBase
     public async Task DocumentSymbols_MissingLocator_PublishesAlternatives()
     {
         var exception = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
-            SymbolTools.GetDocumentSymbolsCore(null!, WorkspaceExecutionGate, SymbolSearchService, WorkspaceId,
-                null, null, null, null));
+            SymbolTools.GetDocumentSymbols(null!, WorkspaceExecutionGate, SymbolSearchService, WorkspaceId,
+                null, null, null));
         ParameterValidationTests.AssertPublicEnvelope(exception, "filePath", "filePath, a symbolHandle, or a metadataName");
     }
 }

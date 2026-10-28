@@ -21,7 +21,7 @@ namespace RoslynMcp.Tests;
 /// missed rename — or a future experimental tool that reintroduces the old name — fails here.
 ///
 /// NOTE — negative space: STABLE-tier tools that still legitimately expose <c>projectFilter</c>
-/// (e.g. <c>find_duplicated_methods</c> / <c>find_duplicated_code</c> in AdvancedAnalysisTools,
+/// (e.g. <c>find_duplicated_methods</c> in AdvancedAnalysisTools,
 /// <c>find_type_consumers</c> in ConsumerAnalysisTools) are intentionally out of scope of this
 /// migration and are NOT asserted on — the SupportTier filter excludes them.
 /// </summary>

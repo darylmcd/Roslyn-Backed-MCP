@@ -90,7 +90,7 @@ Any stdio-capable MCP client uses the same command (VS Code's `.vscode/mcp.json`
 
 ## What's in the box
 
-Catalog `2026.04` ships **175 tools** (113 stable / 62 experimental), **14 resources** (9 stable / 5 experimental), and **20 prompts** (all experimental). Use `server_info` and `roslyn://server/catalog` for the authoritative live surface; the categories below are a quick orientation.
+Catalog `2026.04` ships **171 tools** (110 stable / 61 experimental), **14 resources** (9 stable / 5 experimental), and **20 prompts** (all experimental). Use `server_info` and `roslyn://server/catalog` for the authoritative live surface; the categories below are a quick orientation.
 
 | Family | Highlights |
 |---|---|

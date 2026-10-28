@@ -135,7 +135,7 @@ public static partial class ServerSurfaceCatalog
         new("Change Validation", ["validate_recent_git_changes", "test_related_files", "test_run"], "Use the auto-scoped validation bundle or find tests related to changed files, then run the filtered test slice."),
         new("Post-edit Verify (auto-scoped)", ["validate_recent_git_changes"], "Preferred post-edit bundle: derives changedFilePaths from git status --porcelain for related-test discovery; compile_check and project_diagnostics remain workspace-wide. Falls back to session change-tracker scope with a warning when git is unavailable."),
         new("Dead Code Cleanup", ["find_unused_symbols", "remove_dead_code_preview", "remove_dead_code_apply", "compile_check"], "Find unused symbols, preview removal, apply, then verify with compile_check."),
-        new("Package Migration", ["migrate_package_preview", "apply_composite_preview", "build_workspace"], "Preview migrating a package across projects, apply, then verify."),
+        new("Package Migration", ["migrate_package_preview", "apply_composite", "build_workspace"], "Preview migrating a package across projects, apply, then verify."),
         new("Coverage Analysis", ["test_discover", "test_coverage", "scaffold_test_preview", "scaffold_test_apply"], "Discover tests, run coverage, scaffold new tests for gaps."),
         new("SRP Analysis & Type Extraction", ["get_cohesion_metrics", "find_shared_members", "extract_type_preview", "extract_type_apply", "build_workspace"], "Identify types with multiple responsibilities via LCOM4 metrics, find shared private members that complicate extraction, preview and apply the extraction, then verify the build."),
         new("Consumer Impact Analysis", ["find_consumers", "find_references_bulk", "impact_analysis"], "Find all types that depend on a type or interface, understand dependency kinds (constructor, field, parameter, base type), then assess change impact."),
@@ -427,7 +427,6 @@ public static partial class ServerSurfaceCatalog
         AddIfChanged(changes, "uriTemplate", prior.UriTemplate, current.UriTemplate);
         AddIfChanged(changes, "parameters", prior.Parameters, current.Parameters);
         AddIfChanged(changes, "outputSchema", prior.OutputSchema, current.OutputSchema);
-        AddIfChanged(changes, "deprecation", prior.Deprecation, current.Deprecation);
         return changes;
     }
 
@@ -445,14 +444,10 @@ public static partial class ServerSurfaceCatalog
     // an opt-in stay schema-less (OutputSchema == null) — the existing text-only contract.
     private static SurfaceEntry Tool(string name, string category, string supportTier, bool readOnly, bool destructive, string summary)
     {
-        var entry = new SurfaceEntry("tool", name, category, supportTier, readOnly, destructive, summary,
+        return new SurfaceEntry("tool", name, category, supportTier, readOnly, destructive, summary,
             UriTemplate: null,
             Parameters: null,
             OutputSchema: ToolOutputSchemaIndex.GetSchema(name));
-
-        return ToolAliasDeprecation.TryGet(name, out var deprecation)
-            ? entry with { Deprecation = deprecation }
-            : entry;
     }
 
     private static SurfaceEntry Resource(string name, string category, string supportTier, bool readOnly, bool destructive, string summary, string uriTemplate) =>
@@ -505,16 +500,7 @@ public sealed record SurfaceEntry(
     string Summary,
     string? UriTemplate,
     IReadOnlyList<PromptParameterEntry>? Parameters,
-    System.Text.Json.Nodes.JsonNode? OutputSchema = null)
-{
-    /// <summary>
-    /// Lifecycle metadata for a retained deprecated tool alias, or <see langword="null"/> for
-    /// canonical tools, resources, and prompts. This init-only property deliberately stays out
-    /// of the public positional constructor so existing catalog consumers remain source and
-    /// binary compatible.
-    /// </summary>
-    public ToolAliasDeprecation? Deprecation { get; init; }
-}
+    System.Text.Json.Nodes.JsonNode? OutputSchema = null);
 
 /// <summary>
 /// get-prompt-text-publish-parameter-schema: per-parameter schema row published on each

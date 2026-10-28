@@ -54,12 +54,6 @@
     "Count": 1
   },
   {
-    "Path": "src/RoslynMcp.Host.Stdio/Catalog/ToolAliasDeprecation.cs",
-    "Member": "M:RoslynMcp.Host.Stdio.Catalog.ToolAliasDeprecation.ForSisterAlias(System.String)",
-    "Fingerprint": "6262586FC392B1CC03D02D137A2B40C742F3BEC9D7A582D4F2DBFFA9EF40F42E",
-    "Count": 1
-  },
-  {
     "Path": "src/RoslynMcp.Host.Stdio/Catalog/ToolOutputSchemaIndex.cs",
     "Member": "M:RoslynMcp.Host.Stdio.Catalog.OutputSchemaDeclaration.UnionOf(RoslynMcp.Host.Stdio.Catalog.OutputSchemaUnionCombinator,System.Type[])",
     "Fingerprint": "4B08E5AA984D85673205BC8E555B34B500D94F329AA5E0FC5C8E2D593B2F12AF",

@@ -101,26 +101,6 @@ public static class OrchestrationTools
         ICompositePreviewStore compositePreviewStore,
         [Description("The preview token returned by an orchestration preview tool")] string previewToken,
         CancellationToken ct = default)
-        => ApplyCompositeCore(gate, compositeApplyOrchestrator, compositePreviewStore, previewToken, ct);
-
-    [McpServerTool(Name = "apply_composite_preview", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
-     McpToolMetadata("orchestration", "experimental", false, true,
-        "DESTRUCTIVE — deprecated compatibility alias for apply_composite; applies a previously-previewed orchestration operation to disk. Use apply_composite instead."),
-     Description("DESTRUCTIVE — deprecated apply_composite alias; applies a previously-previewed orchestration operation to disk in the same session before invoking.")]
-    public static Task<string> ApplyCompositePreview(
-        IWorkspaceExecutionGate gate,
-        ICompositeApplyOrchestrator compositeApplyOrchestrator,
-        ICompositePreviewStore compositePreviewStore,
-        [Description("The preview token returned by an orchestration preview tool")] string previewToken,
-        CancellationToken ct = default)
-        => ApplyCompositeCore(gate, compositeApplyOrchestrator, compositePreviewStore, previewToken, ct);
-
-    private static Task<string> ApplyCompositeCore(
-        IWorkspaceExecutionGate gate,
-        ICompositeApplyOrchestrator compositeApplyOrchestrator,
-        ICompositePreviewStore compositePreviewStore,
-        string previewToken,
-        CancellationToken ct)
         => ToolDispatch.ApplyByTokenAsync(
             gate,
             compositePreviewStore.PeekWorkspaceId,

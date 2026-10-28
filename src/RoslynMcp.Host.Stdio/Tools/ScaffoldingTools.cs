@@ -57,12 +57,12 @@ public static class ScaffoldingTools
     /// <remarks>
     /// Reusing one snapshot avoids the per-target compilation cost of calling
     /// <c>scaffold_test_preview</c> once per type. The composite is redeemed through
-    /// <c>apply_composite_preview</c> or the returned token.
+    /// <c>apply_composite</c> or the returned token.
     /// </remarks>
     [McpServerTool(Name = "scaffold_test_batch_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("scaffolding", "experimental", true, false,
         "Preview scaffolding multiple test files for related target types in one composite preview."),
-     Description("Preview scaffolding test files for multiple target types in one composite preview; apply via apply_composite_preview.")]
+     Description("Preview scaffolding test files for multiple target types in one composite preview; apply via apply_composite.")]
     public static Task<string> PreviewScaffoldTestBatch(
         IWorkspaceExecutionGate gate,
         IScaffoldingService scaffoldingService,
