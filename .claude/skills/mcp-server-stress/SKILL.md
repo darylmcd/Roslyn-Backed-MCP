@@ -34,7 +34,7 @@ Functionally equivalent to typing `/mcp-server-surface-test --output-mode=fragme
 
 ## Hard rules (inherited from `/mcp-server-surface-test`)
 
-- **Server-required.** No generic non-MCP fallback exists. If the Roslyn `server_info` tool (prefix resolved as `/mcp-server-surface-test` does) is not callable or `connection.state` is not `ready`, halt.
+- **Server-required.** No generic non-MCP fallback exists. If `mcp__roslyn__server_info` is not callable or `connection.state` is not `ready`, halt.
 - **Read-only against `main`.** Phase 6 apply-mode mutations confine to the disposable worktree the prompt creates. Never push or merge from inside this skill.
 - **Mutation isolation contract.** Phase 7 / 8b / 13 writes target the disposable worktree only. Run-end primary-checkout `git status` MUST be empty (Phase 0 baseline + Final surface closure step 3a hard gate).
 - **No silent truncation.** Subagent phases that return `skipped-budget` / `skipped-context` / `truncated` markers are hard FAILs; orchestrator re-dispatches or records `phase-failed-budget` as P1.

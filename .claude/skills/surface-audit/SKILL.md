@@ -16,7 +16,7 @@ The 2026-04-10→04-24 retro showed multiple self-audit sessions spending signif
 
 ### 1. Collect live surface
 
-Roslyn tools register under `mcp__plugin_roslyn-mcp_roslyn__` (plugin install) or `mcp__roslyn__` (dev build), so never assume one: find the tool whose name ends in `server_info`, bind that prefix as `<roslyn>`, and use `<roslyn><tool>` for every later call. Call `<roslyn>server_info`. Record from the response:
+Call `mcp__roslyn__server_info`. Record from the response:
 - `surface.tools.stable`, `surface.tools.experimental`, `surface.registered.tools`
 - `surface.resources.stable`, `surface.resources.experimental`, `surface.registered.resources`
 - `surface.prompts.stable`, `surface.prompts.experimental`, `surface.registered.prompts`
@@ -88,7 +88,7 @@ Do NOT rely on a hand-maintained skill list — it drifts.
 ### Per-skill verification (for each glob result)
 
 1. **Frontmatter parity.** `name` matches the directory name; `description` is non-empty and accurate.
-2. **Tool-reference resolution.** Extract every `mcp__roslyn__<tool>` or `mcp__plugin_roslyn-mcp_roslyn__<tool>` reference from the SKILL.md body and any `prompts/*.md` siblings. Cross-check each against the live catalog from Step 1's `server_info` / `roslyn://server/catalog` capture. Any reference to a renamed/removed tool is a **P2 FAIL** — record it in the audit table and the suggested-next-steps section.
+2. **Tool-reference resolution.** Extract every `mcp__roslyn__<tool>` reference from the SKILL.md body and any `prompts/*.md` siblings. Cross-check each against the live catalog from Step 1's `server_info` / `roslyn://server/catalog` capture. Any reference to a renamed/removed tool is a **P2 FAIL** — record it in the audit table and the suggested-next-steps section.
 3. **Doc consistency.** Output formats and field references in the SKILL.md body should match what the referenced tools actually return. Drift here is a FLAG, not a FAIL.
 
 Skills are **not** rows in `roslyn://server/catalog`; this audit is a quality/contract check, not a tier-promotion pipeline.

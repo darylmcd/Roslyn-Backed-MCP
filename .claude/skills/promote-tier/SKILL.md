@@ -83,7 +83,7 @@ If either argument is missing, refuse with a one-line usage message.
 
 ### Step 1 — Resolve the entry kind and category
 
-Roslyn tools register under `mcp__plugin_roslyn-mcp_roslyn__` (plugin install) or `mcp__roslyn__` (dev build), so never assume one: find the tool whose name ends in `server_info`, bind that prefix as `<roslyn>`, and use `<roslyn><tool>` for every later call. Use `<roslyn>symbol_search` (preferred over `Grep`) to locate the entry in the catalog files. The `ServerSurfaceCatalog.*.cs` partials each carry an array of `Tool(...)`, `Resource(...)`, or `Prompt(...)` factory calls — find the one whose first string argument matches the input name. Capture:
+Use `mcp__roslyn__symbol_search` (preferred over `Grep`) to locate the entry in the catalog files. The `ServerSurfaceCatalog.*.cs` partials each carry an array of `Tool(...)`, `Resource(...)`, or `Prompt(...)` factory calls — find the one whose first string argument matches the input name. Capture:
 
 - **Kind**: `tool` | `resource` | `prompt` (which factory is used).
 - **Category**: 2nd argument of the factory call (e.g. `"workspace"`, `"server"`, `"prompts"`).
@@ -100,7 +100,7 @@ Three resolver paths, one per kind:
 
 The implementation site is a static method annotated with `[McpServerTool(Name = "<name>")]` AND `[McpToolMetadata("<category>", "<tier>", ...)]`. To find it:
 
-1. Use `<roslyn>symbol_search` with the search hint `<name>` to find the static method whose `[McpServerTool]` attribute carries `Name = "<name>"`. (Method names usually mirror the tool name in PascalCase, but not always — the attribute is the source of truth.)
+1. Use `mcp__roslyn__symbol_search` with the search hint `<name>` to find the static method whose `[McpServerTool]` attribute carries `Name = "<name>"`. (Method names usually mirror the tool name in PascalCase, but not always — the attribute is the source of truth.)
 2. Read the file. Locate the `[McpToolMetadata(...)]` attribute literal on that method. The tier literal is **parameter index 1** (0-based: `category`, `tier`, `readOnly`, `destructive`, `summary`).
 
 #### Resources (kind == `resource`)
@@ -145,7 +145,7 @@ Run:
 dotnet test --filter SurfaceCatalogTests --nologo --no-restore
 ```
 
-(Or, when the workspace is loaded, prefer `<roslyn>test_run --filter "SurfaceCatalogTests"` for faster feedback.)
+(Or, when the workspace is loaded, prefer `mcp__roslyn__test_run --filter "SurfaceCatalogTests"` for faster feedback.)
 
 **Pass** → both edits landed correctly; the dual-write contract holds.
 
