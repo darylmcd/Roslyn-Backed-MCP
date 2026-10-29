@@ -91,7 +91,7 @@ $docsOnlyPullRequest = @(
     New-CiTopologyLeg -Name 'docs-linux-3-of-3' -RunsOn 'ubuntu-latest' -ArtifactOwner $true -TimeoutMinutes 30 -TestShardIndex 2 -TestShardCount 3
 )
 $scheduledValidation = @(
-    New-CiTopologyLeg -Name 'linux-full' -RunsOn 'ubuntu-latest' -ArtifactOwner $true -TimeoutMinutes 45 -TestShardIndex 0 -TestShardCount 1
+    New-CiTopologyLeg -Name 'linux-full' -RunsOn 'ubuntu-latest' -ArtifactOwner $true -TimeoutMinutes 90 -TestShardIndex 0 -TestShardCount 1
 )
 
 # Three validation tiers; a pull request takes the highest tier any of its paths (including rename

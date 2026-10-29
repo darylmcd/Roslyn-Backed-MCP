@@ -321,7 +321,7 @@ public sealed class CiTopologyDecisionContractTests
         Assert.AreEqual("linux-full", leg.Name);
         Assert.AreEqual("ubuntu-latest", leg.RunsOn);
         Assert.IsTrue(leg.ArtifactOwner);
-        Assert.AreEqual(45, leg.TimeoutMinutes);
+        Assert.AreEqual(90, leg.TimeoutMinutes);
         Assert.AreEqual(0, leg.TestShardIndex);
         Assert.AreEqual(1, leg.TestShardCount);
     }
