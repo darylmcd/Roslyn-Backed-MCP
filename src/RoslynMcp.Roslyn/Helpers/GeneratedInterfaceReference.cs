@@ -29,9 +29,22 @@ internal static class GeneratedInterfaceReference
     /// <summary>Identity across compilations: a referenced project's symbol is not guaranteed to be the same instance.</summary>
     public static bool IsSame(ISymbol? candidate, INamedTypeSymbol expected) =>
         candidate is INamedTypeSymbol type &&
-        type.MetadataName == expected.MetadataName &&
-        type.ContainingNamespace.ToDisplayString() == expected.ContainingNamespace.ToDisplayString() &&
-        type.ContainingAssembly?.Identity.Name == expected.ContainingAssembly?.Identity.Name;
+        (SymbolEqualityComparer.Default.Equals(type, expected) || IsSameAcrossCompilations(type, expected));
+
+    // Same metadata name, same chain of containing types (a nested `Outer.IFoo` is not `IFoo`), and for the
+    // outermost type the same namespace and assembly.
+    private static bool IsSameAcrossCompilations(INamedTypeSymbol type, INamedTypeSymbol expected)
+    {
+        if (type.MetadataName != expected.MetadataName) return false;
+        if (type.ContainingType is null || expected.ContainingType is null)
+        {
+            return type.ContainingType is null && expected.ContainingType is null &&
+                type.ContainingNamespace.ToDisplayString() == expected.ContainingNamespace.ToDisplayString() &&
+                type.ContainingAssembly?.Identity.Name == expected.ContainingAssembly?.Identity.Name;
+        }
+
+        return IsSameAcrossCompilations(type.ContainingType, expected.ContainingType);
+    }
 
     private static bool Binds(SemanticModel model, int position, TypeSyntax candidate, INamedTypeSymbol generated) =>
         IsSame(model.GetSpeculativeSymbolInfo(position, candidate, SpeculativeBindingOption.BindAsTypeOrNamespace).Symbol, generated);

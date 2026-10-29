@@ -321,7 +321,6 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
                 }
             }
 
-
             var parameters = root.DescendantNodes().OfType<ParameterSyntax>()
                 .Where(parameter => parameterSpans.Contains(parameter.Span))
                 .ToArray();
