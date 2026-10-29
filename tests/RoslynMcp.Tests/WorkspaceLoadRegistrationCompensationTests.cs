@@ -1,5 +1,8 @@
+using Microsoft.CodeAnalysis.MSBuild;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Helpers;
 using RoslynMcp.Roslyn.Services;
 using RoslynMcp.Tests.Helpers;
 
@@ -31,14 +34,18 @@ public sealed class WorkspaceLoadRegistrationCompensationTests
             "SampleSolution.sln");
     }
 
-    private static WorkspaceManager CreateManager(IFileWatcherService watcher, int cap) =>
+    private static WorkspaceManager CreateManager(
+        IFileWatcherService watcher,
+        int cap,
+        ILogger<WorkspaceManager>? logger = null,
+        WorkspaceSessionLoader? loader = null) =>
         new(
-            NullLogger<WorkspaceManager>.Instance,
+            logger ?? NullLogger<WorkspaceManager>.Instance,
             new PreviewStore(),
             watcher,
             new WorkspaceManagerOptions { MaxConcurrentWorkspaces = cap },
             cacheStore: null,
-            sessionLoader: null,
+            sessionLoader: loader,
             ownsFileWatcher: false);
 
     [TestMethod]
@@ -110,7 +117,8 @@ public sealed class WorkspaceLoadRegistrationCompensationTests
     public async Task LoadAsync_WatchAndUnwatchBothThrow_PreservesPrimaryFailure_AndReturnsSlot()
     {
         using var watcher = new ScriptedWatcher { ThrowOnUnwatch = true };
-        using var manager = CreateManager(watcher, cap: 1);
+        var logger = new ListLogger<WorkspaceManager>();
+        using var manager = CreateManager(watcher, cap: 1, logger);
         watcher.ThrowOnWatchCalls = 1;
 
         var thrown = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
@@ -118,9 +126,84 @@ public sealed class WorkspaceLoadRegistrationCompensationTests
         StringAssert.Contains(thrown.Message, ScriptedWatcher.WatchFailureMessage);
 
         Assert.AreEqual(0, manager.ListWorkspaces().Count);
+        var cleanupLog = logger.Entries.Single(e => e.Level == LogLevel.Error && e.Exception is AggregateException);
+        StringAssert.Contains(cleanupLog.Message, "Cleanup after failed workspace load");
+        StringAssert.Contains(cleanupLog.Exception!.ToString(), "Simulated unwatch failure");
         watcher.ThrowOnUnwatch = false;
         var status = await manager.LoadAsync(_sampleSolutionPath, CancellationToken.None);
         Assert.IsTrue(status.IsLoaded, "Slot must be returned even when the cleanup itself fails.");
+    }
+
+    [TestMethod]
+    public async Task LoadAsync_RaceLoserDisposeThrows_StillReturnsWinnerStatus_AndLogsFailure()
+    {
+        using var watcher = new ScriptedWatcher();
+        var logger = new ListLogger<WorkspaceManager>();
+        var loader = new GatedLoader();
+        using var manager = CreateManager(watcher, cap: 2, logger, loader);
+
+        // Both loads pass the pre-load dedup check and block inside the loader; A is then released
+        // first and registers, so B deterministically loses the post-load race check.
+        var loadA = manager.LoadAsync(_sampleSolutionPath, CancellationToken.None);
+        await loader.Entered[0].Task.WaitAsync(TimeSpan.FromSeconds(60));
+        var loadB = manager.LoadAsync(_sampleSolutionPath, CancellationToken.None);
+        await loader.Entered[1].Task.WaitAsync(TimeSpan.FromSeconds(60));
+
+        loader.Release[0].SetResult();
+        var statusA = await loadA.WaitAsync(TimeSpan.FromSeconds(120));
+        loader.Release[1].SetResult();
+        var statusB = await loadB.WaitAsync(TimeSpan.FromSeconds(120));
+
+        Assert.AreEqual(statusA.WorkspaceId, statusB.WorkspaceId, "The loser must return the winner's status.");
+        Assert.AreEqual(1, manager.ListWorkspaces().Count);
+        var log = logger.Entries.Single(e => e.Level == LogLevel.Error && e.Exception is AggregateException);
+        StringAssert.Contains(log.Message, "race-losing workspace");
+        Assert.IsInstanceOfType<NullReferenceException>(((AggregateException)log.Exception!).InnerExceptions.Single());
+
+        // Loser's slot was returned: cap 2 still admits another (distinct) session.
+        var third = await manager.LoadAsync(
+            _sampleSolutionPath,
+            new Dictionary<string, string> { ["Configuration"] = "Release" },
+            CancellationToken.None);
+        Assert.IsTrue(third.IsLoaded);
+        Assert.AreEqual(2, manager.ListWorkspaces().Count);
+    }
+
+    /// <summary>
+    /// Real loads gated per call so two concurrent loads can be ordered. The second call's lease throws
+    /// on Dispose (null loader element: NullReferenceException is deterministic; the real loader type is sealed).
+    /// </summary>
+    private sealed class GatedLoader : WorkspaceSessionLoader
+    {
+        private int _calls = -1;
+
+        public TaskCompletionSource[] Entered { get; } = [NewGate(), NewGate()];
+        public TaskCompletionSource[] Release { get; } = [NewGate(), NewGate()];
+
+        private static TaskCompletionSource NewGate() => new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public override async Task<(MSBuildWorkspace Workspace, AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease Lease)> CreateAndOpenAsync(
+            string workspaceId,
+            string path,
+            IDictionary<string, string>? globalProperties,
+            WorkspaceDiagnosticsSink diagnostics,
+            ILogger logger,
+            CancellationToken ct)
+        {
+            var call = Interlocked.Increment(ref _calls);
+            if (call > 1)
+                return await base.CreateAndOpenAsync(workspaceId, path, globalProperties, diagnostics, logger, ct).ConfigureAwait(false);
+
+            Entered[call].SetResult();
+            await Release[call].Task.ConfigureAwait(false);
+            var (workspace, lease) = await base.CreateAndOpenAsync(
+                workspaceId, path, globalProperties, diagnostics, logger, ct).ConfigureAwait(false);
+            if (call == 0) return (workspace, lease);
+
+            lease.Dispose();
+            return (workspace, new AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease(
+                null, new AnalyzerReferenceIsolation.ShadowCopyAnalyzerAssemblyLoader[] { null! }, 0, null));
+        }
     }
 
     /// <summary>Delegates to a real watcher; throws on demand from Watch / IsStale / Unwatch.</summary>
