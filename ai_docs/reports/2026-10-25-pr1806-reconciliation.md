@@ -62,8 +62,8 @@ Each current finding is source-supported or explicitly an investigation. Require
 | [watcher-delivery-loss-observation](../items/watcher-delivery-loss-observation.md) | Medium / M | — | Treat lost watcher delivery as unknown freshness |
 | [cache-graph-identity-framing](../items/cache-graph-identity-framing.md) | Medium / S | — | Frame graph cache identity unambiguously |
 | [workspace-idle-diagnostic-touch-order](../items/workspace-idle-diagnostic-touch-order.md) | Low / S | — | Measure idle time before access updates |
-| [workspace-load-registration-compensation](../items/workspace-load-registration-compensation.md) | High / M | — | Compensate failed watcher registration |
-| [workspace-native-load-cleanup-gate-release](../items/workspace-native-load-cleanup-gate-release.md) | High / M | — | Release the load gate after resource cleanup failure |
+| `workspace-load-registration-compensation` (shipped, PR 1902) | High / M | — | Compensate failed watcher registration |
+| `workspace-native-load-cleanup-gate-release` (shipped, PR 1904) | High / M | — | Release the load gate after resource cleanup failure |
 | [test-concurrency-observation-atomicity](../items/test-concurrency-observation-atomicity.md) | Medium / S | — | Make maximum concurrency observation atomic |
 | [test-probe-custom-output-paths](../items/test-probe-custom-output-paths.md) | Medium / S | — | Copy the current referenced process-probe outputs |
 | [fixture-restore-process-lifetime](../items/fixture-restore-process-lifetime.md) | Medium / M | — | Bound fixture-owned restore processes |
