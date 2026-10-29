@@ -1692,12 +1692,6 @@
     "Count": 1
   },
   {
-    "Path": "src/RoslynMcp.Roslyn/Services/TypeExtractionService.cs",
-    "Member": "M:RoslynMcp.Roslyn.Services.TypeExtractionService.ValidateAbstractMethodHasBody(Microsoft.CodeAnalysis.CSharp.Syntax.MemberDeclarationSyntax,Microsoft.CodeAnalysis.SyntaxTokenList)",
-    "Fingerprint": "660E52BFC39BAD14F32C8DC89D1A85D70F3235B00A579234F584A8CBDEE79C89",
-    "Count": 1
-  },
-  {
     "Path": "src/RoslynMcp.Roslyn/Services/TypeMoveService.cs",
     "Member": "M:RoslynMcp.Roslyn.Services.TypeMoveService.PreviewMoveTypeToFileAsync(System.String,System.String,System.String,System.String,System.Threading.CancellationToken)",
     "Fingerprint": "94BF67D4C6C8A31A251AEE14F71454D7B0DAE60998A0D0CBE4CB367FDDD5D06E",

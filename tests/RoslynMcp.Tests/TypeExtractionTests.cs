@@ -488,80 +488,204 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
                 wsId, doc.FilePath!, "NonExistentType", ["Foo"], "NewType", null, CancellationToken.None));
     }
 
+    /// <summary>
+    /// extract-type-override-modifier-stripped: the extracted type is a base-less <c>public sealed class</c>, so
+    /// moving an <c>override</c> member silently changes dispatch (<c>ToString()</c> falls back to
+    /// <c>object.ToString</c>) or leaves the source without a required implementation (CS0534). The preview must be
+    /// refused with a structured blocking dependency before any token, version change or disk effect exists.
+    /// </summary>
     [TestMethod]
-    public async Task ExtractType_OverrideMember_StripsOverrideFromNewType()
+    public async Task ExtractType_OverrideToString_RefusesWithStructuredBlockingDependency()
     {
-        // Regression for `dr-9-3-preserves-when-new-type-does-not-inherit-the-bas` (P4): when a
-        // member carries `override` / `virtual` / `abstract` / `sealed` / `new`, the extracted
-        // type (which is emitted as a plain `public sealed class` with no base list) must strip
-        // those modifiers. Source audit: IT-Chat-Bot experimental promotion §9.3 — extracting
-        // `Down()` from a class inheriting `Migration` produced `public override void Down(...)`
-        // inside the new class and yielded CS0115 on the first compile_check.
-        var copiedSolutionPath = CreateSampleSolutionCopy();
-        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
-        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
-        var fixturePath = Path.Combine(sampleLibDir, "OverrideMemberFixture.cs");
-        await File.WriteAllTextAsync(fixturePath,
-            string.Join("\r\n", new[]
+        var fixture = await CreateExtractionFixtureAsync("OverrideToStringFixture.cs", """
+            namespace SampleLib;
+
+            public class OverrideToStringFixture
             {
-                "namespace SampleLib;",
-                "",
-                "public class BaseMigration",
-                "{",
-                "    public virtual void Down() { }",
-                "    public virtual void Up() { }",
-                "}",
-                "",
-                "public class OverrideMemberFixture : BaseMigration",
-                "{",
-                "    public override void Down() { }",
-                "    public sealed override void Up() { }",
-                "}",
-                "",
-            }));
-
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
-        var wsId = loadResult.WorkspaceId;
-
+                public override string ToString() => "O1";
+                public int Keep() => 1;
+            }
+            """);
         try
         {
-            var result = await TypeExtractionService.PreviewExtractTypeAsync(
-                wsId, fixturePath, "OverrideMemberFixture", ["Down", "Up"], "RollbackHelper", null,
-                CancellationToken.None);
+            var version = WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId);
+            var ex = await Assert.ThrowsExactlyAsync<ExtractTypeBlockingDependencyException>(() =>
+                TypeExtractionService.PreviewExtractTypeAsync(
+                    fixture.WorkspaceId, fixture.FilePath, "OverrideToStringFixture", ["ToString"], "ExtractedHelper", null,
+                    CancellationToken.None));
 
-            Assert.IsNotNull(result);
-            Assert.IsFalse(string.IsNullOrWhiteSpace(result.PreviewToken));
-
-            // Locate the diff for the new file (RollbackHelper.cs) and assert no override/virtual
-            // modifiers leaked into the extracted members.
-            var newFileDiff = result.Changes.FirstOrDefault(
-                c => c.FilePath.EndsWith("RollbackHelper.cs", StringComparison.OrdinalIgnoreCase));
-            Assert.IsNotNull(newFileDiff, "preview must emit a change entry for the new extracted type file");
-            var diffText = newFileDiff!.UnifiedDiff;
-
-            // The added lines (prefixed with '+') must not carry override/virtual/abstract — the
-            // new type has no base to override. `new` and member-level `sealed` are also stripped.
-            var addedLines = diffText
-                .Split('\n')
-                .Where(line => line.StartsWith('\u002B') && !line.StartsWith("\u002B\u002B\u002B"))
-                .ToArray();
-
-            foreach (var forbidden in new[] { "override", "virtual", "abstract" })
-            {
-                Assert.IsFalse(
-                    addedLines.Any(line => System.Text.RegularExpressions.Regex.IsMatch(line, $@"\b{forbidden}\b")),
-                    $"extracted members must not carry '{forbidden}' (the new type has no base). Diff:\n{diffText}");
-            }
-
-            // Sanity: the method declarations themselves still appear.
-            Assert.IsTrue(addedLines.Any(l => l.Contains("void Down")),
-                $"Down method should still be present in extracted type. Diff:\n{diffText}");
-            Assert.IsTrue(addedLines.Any(l => l.Contains("void Up")),
-                $"Up method should still be present in extracted type. Diff:\n{diffText}");
+            Assert.AreEqual(1, ex.BlockingDependencies.Count);
+            Assert.AreEqual("ToString", ex.BlockingDependencies[0].Member);
+            StringAssert.Contains(ex.BlockingDependencies[0].Reason, "overrides");
+            StringAssert.Contains(ex.BlockingDependencies[0].Reason, "object.ToString");
+            FileOperationIntegrationTests.AssertNoStoredPreviews(PreviewStore, fixture.WorkspaceId);
+            Assert.AreEqual(version, WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId));
+            Assert.IsFalse(File.Exists(Path.Combine(Path.GetDirectoryName(fixture.FilePath)!, "ExtractedHelper.cs")));
         }
         finally
         {
-            WorkspaceManager.Close(wsId);
+            WorkspaceManager.Close(fixture.WorkspaceId);
+            QueueDirectoryForCleanup(fixture.SolutionDirectory);
+        }
+    }
+
+    [TestMethod]
+    public async Task ExtractType_SealedOverrideMember_RefusesWithStructuredBlockingDependency()
+    {
+        var ex = await PreviewRefusedFixtureAsync(
+            "SealedOverrideFixture",
+            [
+                "public class SealedOverrideBase { public virtual void Up() { } }",
+                "",
+                "public class SealedOverrideFixture : SealedOverrideBase",
+                "{",
+                "    public sealed override void Up() { }",
+                "}",
+            ],
+            "Up");
+
+        Assert.AreEqual(1, ex.BlockingDependencies.Count);
+        Assert.AreEqual("Up", ex.BlockingDependencies[0].Member);
+        StringAssert.Contains(ex.BlockingDependencies[0].Reason, "overrides");
+        StringAssert.Contains(ex.BlockingDependencies[0].Reason, "SealedOverrideBase.Up");
+    }
+
+    [TestMethod]
+    public async Task ExtractType_OverrideOfAbstractMember_RefusesWithStructuredBlockingDependency()
+    {
+        // Previously reached only the compile-delta backstop (CS0534): the source lost the implementation.
+        var ex = await PreviewRefusedFixtureAsync(
+            "AbstractOverrideDerived",
+            [
+                "public abstract class AbstractOverrideBase { public abstract void Down(); }",
+                "",
+                "public class AbstractOverrideDerived : AbstractOverrideBase",
+                "{",
+                "    public override void Down() { }",
+                "    public int Keep() => 1;",
+                "}",
+            ],
+            "Down");
+
+        Assert.AreEqual(1, ex.BlockingDependencies.Count);
+        Assert.AreEqual("Down", ex.BlockingDependencies[0].Member);
+        StringAssert.Contains(ex.BlockingDependencies[0].Reason, "AbstractOverrideBase.Down");
+    }
+
+    [TestMethod]
+    public async Task ExtractType_OverrideProperty_RefusesWithStructuredBlockingDependency()
+    {
+        var ex = await PreviewRefusedFixtureAsync(
+            "OverridePropertyFixture",
+            [
+                "public class OverridePropertyBase { public virtual int Count => 1; }",
+                "",
+                "public class OverridePropertyFixture : OverridePropertyBase",
+                "{",
+                "    public override int Count => 2;",
+                "}",
+            ],
+            "Count");
+
+        Assert.AreEqual(1, ex.BlockingDependencies.Count);
+        Assert.AreEqual("Count", ex.BlockingDependencies[0].Member);
+        StringAssert.Contains(ex.BlockingDependencies[0].Reason, "OverridePropertyBase.Count");
+    }
+
+    [TestMethod]
+    public async Task ExtractType_AbstractMember_RefusesWithStructuredBlockingDependency()
+    {
+        // Previously an unstructured InvalidOperationException from the (now removed) body validator.
+        var ex = await PreviewRefusedFixtureAsync(
+            "AbstractHostFixture",
+            [
+                "public abstract class AbstractHostFixture",
+                "{",
+                "    public abstract void Run();",
+                "    public int Keep() => 1;",
+                "}",
+            ],
+            "Run");
+
+        Assert.AreEqual(1, ex.BlockingDependencies.Count);
+        Assert.AreEqual("Run", ex.BlockingDependencies[0].Member);
+        StringAssert.Contains(ex.BlockingDependencies[0].Reason, "abstract");
+    }
+
+    [TestMethod]
+    public async Task ExtractType_VirtualMemberWithOverrides_RefusesWithStructuredBlockingDependency()
+    {
+        // Stripping `virtual` would orphan the derived override (CS0115) or silently mis-dispatch.
+        var ex = await PreviewRefusedFixtureAsync(
+            "VirtualHostFixture",
+            [
+                "public class VirtualHostFixture { public virtual int Slot() => 1; }",
+                "",
+                "public class VirtualHostDerived : VirtualHostFixture { public override int Slot() => 2; }",
+            ],
+            "Slot");
+
+        Assert.AreEqual(1, ex.BlockingDependencies.Count);
+        Assert.AreEqual("Slot", ex.BlockingDependencies[0].Member);
+        StringAssert.Contains(ex.BlockingDependencies[0].Reason, "overridden");
+        StringAssert.Contains(ex.BlockingDependencies[0].Reason, "VirtualHostDerived.Slot");
+    }
+
+    [TestMethod]
+    public async Task ExtractType_OverrideThatImplementsInterface_ReportsOneBlockerWithBothReasons()
+    {
+        var ex = await PreviewRefusedFixtureAsync(
+            "OverrideInterfaceFixture",
+            [
+                "public interface IOverrideContract { int Compute(int x); }",
+                "",
+                "public class OverrideInterfaceBase { public virtual int Compute(int x) => x; }",
+                "",
+                "public class OverrideInterfaceFixture : OverrideInterfaceBase, IOverrideContract",
+                "{",
+                "    public override int Compute(int x) => x * 2;",
+                "}",
+            ],
+            "Compute");
+
+        Assert.AreEqual(1, ex.BlockingDependencies.Count);
+        Assert.AreEqual("Compute", ex.BlockingDependencies[0].Member);
+        StringAssert.Contains(ex.BlockingDependencies[0].Reason, "IOverrideContract.Compute");
+        StringAssert.Contains(ex.BlockingDependencies[0].Reason, "OverrideInterfaceBase.Compute");
+    }
+
+    [TestMethod]
+    public async Task ExtractType_VirtualMemberWithoutOverrides_StillExtractsWithoutVirtual()
+    {
+        // Control: the virtual rule is not over-broad. A never-overridden `virtual` member keeps extracting;
+        // the modifier is dropped because the new type is sealed and every reference is rebound or refused.
+        var fixture = await CreateExtractionFixtureAsync("VirtualFreeFixture.cs", """
+            namespace SampleLib;
+
+            public class VirtualFreeFixture
+            {
+                public virtual int Slot() => 1;
+                public int Keep() => 2;
+            }
+            """);
+        try
+        {
+            var preview = await TypeExtractionService.PreviewExtractTypeAsync(
+                fixture.WorkspaceId, fixture.FilePath, "VirtualFreeFixture", ["Slot"], "SlotHelper", null,
+                CancellationToken.None);
+
+            var newFilePath = Path.Combine(Path.GetDirectoryName(fixture.FilePath)!, "SlotHelper.cs");
+            var newTypeSource = await GetModifiedDocumentTextAsync(preview.PreviewToken, newFilePath);
+            StringAssert.Contains(newTypeSource, "public int Slot(");
+            Assert.IsFalse(
+                System.Text.RegularExpressions.Regex.IsMatch(newTypeSource, @"\bvirtual\b"),
+                $"the extracted member must not keep 'virtual'. Source:\n{newTypeSource}");
+            await AssertModifiedSolutionCompilesAsync(preview.PreviewToken);
+        }
+        finally
+        {
+            WorkspaceManager.Close(fixture.WorkspaceId);
+            QueueDirectoryForCleanup(fixture.SolutionDirectory);
         }
     }
 
@@ -752,7 +876,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
     {
         // extract-type-interface-implementation-guard: moving a member that implements an interface of
         // the source type leaves `: IGuardedContract` on the source without the member (CS0535).
-        var ex = await PreviewInterfaceFixtureAsync(
+        var ex = await PreviewRefusedFixtureAsync(
             "ImplicitInterfaceFixture",
             [
                 "public interface IGuardedContract { int Compute(int x); }",
@@ -773,7 +897,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
     public async Task ExtractType_ExplicitInterfaceImplementation_RefusesWithStructuredBlockingDependency()
     {
         // Explicit implementations are selected by bare identifier and would gain `public` (CS0106).
-        var ex = await PreviewInterfaceFixtureAsync(
+        var ex = await PreviewRefusedFixtureAsync(
             "ExplicitInterfaceFixture",
             [
                 "public interface IGuardedExplicit { int Compute(int x); }",
@@ -832,7 +956,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         }
     }
 
-    private async Task<ExtractTypeBlockingDependencyException> PreviewInterfaceFixtureAsync(
+    private async Task<ExtractTypeBlockingDependencyException> PreviewRefusedFixtureAsync(
         string typeName, string[] bodyLines, string memberName)
     {
         var copiedSolutionPath = CreateSampleSolutionCopy();
@@ -1493,7 +1617,6 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
     [TestMethod]
     [DataRow("StaticHostFixture", "StaticHostFixture", "Compute", "CS0708")]
     [DataRow("PartialHostFixture", "PartialHostFixture", "Hook", "CS0751")]
-    [DataRow("AbstractOverrideFixture", "AbstractOverrideDerived", "Down", "CS0534")]
     public async Task ExtractType_PreviewThatAddsCompilerErrors_IsRefusedWithoutToken(
         string fixtureName, string typeName, string member, string expectedId)
     {
@@ -1518,20 +1641,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
                     public int Keep() => 1;
                 }
                 """,
-            _ => """
-                namespace SampleLib;
-
-                public abstract class AbstractOverrideBase
-                {
-                    public abstract void Down();
-                }
-
-                public class AbstractOverrideDerived : AbstractOverrideBase
-                {
-                    public override void Down() { }
-                    public int Keep() => 1;
-                }
-                """,
+            _ => throw new ArgumentOutOfRangeException(nameof(fixtureName), fixtureName, null),
         };
         var fixture = await CreateExtractionFixtureAsync(fixtureName + ".cs", source);
         try
