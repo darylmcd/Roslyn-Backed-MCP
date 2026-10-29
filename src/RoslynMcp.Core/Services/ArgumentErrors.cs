@@ -23,6 +23,8 @@ public static class ArgumentErrors
     public static ArgumentException Redacted(string parameterName, string serverDetail, Exception? inner = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(parameterName);
+#pragma warning disable RS0030 // The single sanctioned redacted-argument construction site (src/BannedSymbols.txt).
         return new ArgumentException(serverDetail, parameterName, inner);
+#pragma warning restore RS0030
     }
 }

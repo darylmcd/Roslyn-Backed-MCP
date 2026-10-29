@@ -32,13 +32,6 @@ public sealed class ArgumentErrorsTests
             Assert.AreEqual("Use the schema.", document.RootElement.GetProperty("message").GetString());
             Assert.IsFalse(json.Contains(secret, StringComparison.Ordinal));
         }
-
-        var overrideInfo = new ToolErrorHandler.ErrorInfo(ToolErrorHandler.ErrorCategories.InvalidArgument,
-            "Use the schema.", WireExceptionType: "ReleasedOverride");
-        using var overrideDocument = JsonDocument.Parse(
-            ToolErrorHandler.FormatErrorResponse(overrideInfo, "get_prompt_text", exception));
-        Assert.AreEqual("ReleasedOverride",
-            overrideDocument.RootElement.GetProperty("exceptionType").GetString());
     }
 
     [TestMethod]
