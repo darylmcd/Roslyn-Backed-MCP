@@ -1472,31 +1472,64 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
         }
         finally
         {
-            if (swapped)
+            // workspace-native-load-cleanup-gate-release: every disposal step is attempted
+            // independently (a throwing workspace must not skip its lease) and LoadLock is released
+            // in a terminal finally that no disposal failure can bypass. The lock was acquired
+            // above the try, so this finally only runs when this frame owns it. Cleanup failures
+            // are logged, never thrown: on the failure branch a primary exception or cancellation
+            // is propagating and must not be replaced; on the swap branch the reload is already
+            // committed (state swapped, version bumped, previews invalidated) and must not be
+            // reported as failed.
+            var cleanupFailures = new List<Exception>();
+            try
             {
-                // Successful swap: oldWorkspace/oldLease were captured before the swap and are
-                // no longer referenced by the session. Safe to dispose — lease after workspace
-                // so Roslyn has released the old analyzer references first.
-                oldWorkspace?.Dispose();
-                // Null before disposing the lease: this async frame's local would otherwise
-                // keep the old solution graph (and its loaded analyzer assemblies) rooted
-                // while the lease's GC-assisted delete retries run.
-                oldWorkspace = null;
-                oldLease?.Dispose();
+                if (swapped)
+                {
+                    // Successful swap: oldWorkspace/oldLease were captured before the swap and are
+                    // no longer referenced by the session. Safe to dispose — lease after workspace
+                    // so Roslyn has released the old analyzer references first.
+                    AttemptCleanup(() =>
+                    {
+                        // Null before disposing: this async frame's local would otherwise keep the
+                        // old solution graph (and its loaded analyzer assemblies) rooted while the
+                        // lease's GC-assisted delete retries run.
+                        var retired = oldWorkspace;
+                        oldWorkspace = null;
+                        retired?.Dispose();
+                    }, cleanupFailures);
+                    AttemptCleanup(() => oldLease?.Dispose(), cleanupFailures);
+                }
+                else
+                {
+                    // Load failed mid-way after the loader returned: dispose the half-initialized
+                    // new workspace (and its analyzer shadow lease) and leave the session's prior
+                    // state untouched. Readers continue to see the previous valid workspace rather
+                    // than a broken one (or null). If the loader itself threw, it already disposed
+                    // both — `newWorkspace`/`newLease` are null here so this is a no-op — the
+                    // autoreload-cascade invariant holds.
+                    AttemptCleanup(() =>
+                    {
+                        var abandoned = newWorkspace;
+                        newWorkspace = null;
+                        abandoned?.Dispose();
+                    }, cleanupFailures);
+                    AttemptCleanup(() => newLease?.Dispose(), cleanupFailures);
+                }
             }
-            else
+            finally
             {
-                // Load failed mid-way after the loader returned: dispose the half-initialized
-                // new workspace (and its analyzer shadow lease) and leave the session's prior
-                // state untouched. Readers continue to see the previous valid workspace rather
-                // than a broken one (or null). If the loader itself threw, it already disposed
-                // both — `newWorkspace`/`newLease` are null here so this is a no-op — the
-                // autoreload-cascade invariant holds.
-                newWorkspace?.Dispose();
-                newWorkspace = null;
-                newLease?.Dispose();
+                session.LoadLock.Release();
             }
-            session.LoadLock.Release();
+
+            if (cleanupFailures.Count > 0)
+            {
+                _logger.LogError(
+                    new AggregateException(cleanupFailures),
+                    swapped
+                        ? "Disposing the retired workspace resources of reloaded workspace '{WorkspaceId}' failed; the reload is committed"
+                        : "Disposing the half-loaded workspace resources of workspace '{WorkspaceId}' failed; the original load failure is preserved",
+                    session.WorkspaceId);
+            }
         }
     }
 
