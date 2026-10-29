@@ -1,6 +1,6 @@
 # extract-and-wire-same-file-composition — Compose DI edits on the extracted snapshot
 
-**row:** `extract-and-wire-same-file-composition` · **pri:** `Medium` · **size:** `M`
+**row:** `extract-and-wire-same-file-composition` · **pri:** `Medium` · **size:** `M` · **deps:** `cross-project-interface-reference-binding`
 
 ## Anchors
 

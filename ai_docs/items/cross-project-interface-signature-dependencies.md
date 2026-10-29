@@ -1,6 +1,6 @@
 # cross-project-interface-signature-dependencies — Validate emitted interface signature dependencies
 
-**row:** `cross-project-interface-signature-dependencies` · **pri:** `High` · **size:** `M`
+**row:** `cross-project-interface-signature-dependencies` · **pri:** `High` · **size:** `M` · **deps:** `cross-project-interface-reference-binding`
 
 ## Anchors
 
