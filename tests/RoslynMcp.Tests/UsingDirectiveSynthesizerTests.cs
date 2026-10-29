@@ -58,4 +58,91 @@ public class UsingDirectiveSynthesizerTests
         Assert.IsNotNull(result[3].Alias, "alias using should be preserved");
         Assert.AreEqual(4, result.Count);
     }
+
+    private static bool IsGlobal(UsingDirectiveSyntax u) => u.GlobalKeyword.IsKind(SyntaxKind.GlobalKeyword);
+
+    // CS8915: a global using must precede every non-global using in a file.
+    private static void AssertGlobalsPrecedeOrdinary(SyntaxList<UsingDirectiveSyntax> result)
+    {
+        var firstOrdinary = result.ToList().FindIndex(u => !IsGlobal(u));
+        if (firstOrdinary < 0)
+        {
+            return;
+        }
+
+        for (var i = firstOrdinary; i < result.Count; i++)
+        {
+            Assert.IsFalse(IsGlobal(result[i]), $"global using at index {i} follows an ordinary using (CS8915): {result[i]}");
+        }
+    }
+
+    [TestMethod]
+    public void BuildUsingDirectives_PlacesGlobalUsingsBeforeOrdinary()
+    {
+        var sourceUsings = ParseUsings(
+            "global using System.Globalization;\nusing Zeta.Lib;\nusing System.Text;\n");
+        var required = new[] { "System.Text", "Zeta.Lib" };
+
+        var result = UsingDirectiveSynthesizer.BuildUsingDirectives(sourceUsings, required);
+
+        AssertGlobalsPrecedeOrdinary(result);
+        CollectionAssert.AreEqual(
+            new[] { "System.Globalization", "System.Text", "Zeta.Lib" },
+            result.Select(u => u.Name!.ToString()).ToArray());
+        Assert.IsTrue(IsGlobal(result[0]));
+    }
+
+    [TestMethod]
+    public void BuildUsingDirectives_GlobalAliasAndStatic_PreservedFirstInSourceOrder_LocalSpecialsLast()
+    {
+        var sourceUsings = ParseUsings(
+            "using static System.Console;\nglobal using GA = Some.Thing;\nusing LA = Other.Thing;\n"
+            + "global using static System.Math;\nusing Zeta.Lib;\n");
+        var required = new[] { "Zeta.Lib" };
+
+        var result = UsingDirectiveSynthesizer.BuildUsingDirectives(sourceUsings, required);
+
+        AssertGlobalsPrecedeOrdinary(result);
+        Assert.AreEqual(5, result.Count);
+        // Globals first, in source order, with alias/static semantics intact.
+        Assert.IsTrue(IsGlobal(result[0]));
+        Assert.AreEqual("GA", result[0].Alias!.Name.Identifier.Text);
+        Assert.IsTrue(IsGlobal(result[1]));
+        Assert.IsTrue(result[1].StaticKeyword.IsKind(SyntaxKind.StaticKeyword));
+        Assert.AreEqual("System.Math", result[1].Name!.ToString());
+        // Then plain usings, then non-global alias/static in source order.
+        Assert.AreEqual("Zeta.Lib", result[2].Name!.ToString());
+        Assert.IsTrue(result[3].StaticKeyword.IsKind(SyntaxKind.StaticKeyword));
+        Assert.IsFalse(IsGlobal(result[3]));
+        Assert.AreEqual("LA", result[4].Alias!.Name.Identifier.Text);
+        Assert.IsFalse(IsGlobal(result[4]));
+    }
+
+    [TestMethod]
+    public void BuildUsingDirectives_GlobalOnlySource_SynthesizedPlainFollowsGlobal()
+    {
+        var sourceUsings = ParseUsings("global using System.Globalization;\n");
+        var required = new[] { "System.Linq" };
+
+        var result = UsingDirectiveSynthesizer.BuildUsingDirectives(sourceUsings, required);
+
+        AssertGlobalsPrecedeOrdinary(result);
+        Assert.AreEqual(2, result.Count);
+        Assert.IsTrue(IsGlobal(result[0]));
+        Assert.AreEqual("System.Linq", result[1].Name!.ToString());
+        Assert.IsFalse(IsGlobal(result[1]));
+    }
+
+    [TestMethod]
+    public void BuildUsingDirectives_NoGlobalSource_OrderUnchanged()
+    {
+        var sourceUsings = ParseUsings("using Zeta.Lib;\nusing static System.Math;\nusing System.Text;\n");
+        var required = new[] { "System.Text", "Zeta.Lib" };
+
+        var result = UsingDirectiveSynthesizer.BuildUsingDirectives(sourceUsings, required);
+
+        CollectionAssert.AreEqual(
+            new[] { "System.Text", "Zeta.Lib", "System.Math" },
+            result.Select(u => u.Name!.ToString()).ToArray());
+    }
 }
