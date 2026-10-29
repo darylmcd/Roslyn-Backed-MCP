@@ -1,0 +1,12 @@
+<Project>
+  <!-- Import the repo-wide settings first: MSBuild stops at the nearest Directory.Build.props, so a
+       nested file must chain to its parent explicitly. -->
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+
+  <!-- Production code (src/**) only: every ArgumentException / ArgumentOutOfRangeException
+       constructor is banned so a caller-facing refusal cannot silently fall back to the generic
+       redacted message. tests/, analyzers/ and samples/ sit outside src/ and keep the root list. -->
+  <ItemGroup>
+    <AdditionalFiles Include="$(MSBuildThisFileDirectory)BannedSymbols.txt" />
+  </ItemGroup>
+</Project>

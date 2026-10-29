@@ -23,8 +23,10 @@ public sealed class PublicArgumentException : ArgumentException, IPublicMessageE
     }
 
     /// <summary>Retains lower-layer detail for server diagnostics without publishing it.</summary>
+#pragma warning disable RS0030 // The sanctioned public-argument carrier constructs its base type (src/BannedSymbols.txt).
     public PublicArgumentException(string publicMessage, string parameterName, Exception? innerException)
         : base(publicMessage, parameterName, innerException)
+#pragma warning restore RS0030
     {
         PublicMessage = publicMessage;
         WireExceptionType = nameof(ArgumentException);
