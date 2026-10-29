@@ -1,0 +1,151 @@
+{
+  "audit_run": {
+    "id": "20261028-1500",
+    "scope": "refactor",
+    "since": "full",
+    "repo": "Roslyn-Backed-MCP",
+    "commit": "f8734a2f8a12d5445c7c831696b6f1f5e9fd52d4",
+    "started_at": "2026-10-29T03:30:00Z",
+    "finished_at": "2026-10-29T03:54:55.585Z",
+    "tiers_run": [
+      0,
+      1
+    ],
+    "parallel_subagents": 0
+  },
+  "findings": [
+    {
+      "id": "security-mcp-publisher-unpinned-download",
+      "title": "Pin and checksum-verify the mcp-publisher download in publish-registry",
+      "severity": "Medium",
+      "dimension": "Security",
+      "sizing": "S",
+      "confidence": "medium",
+      "tier": 0,
+      "anchors": [
+        ".github/workflows/publish-nuget.yml:199",
+        "tests/RoslynMcp.Tests/PublishWorkflowContractTests.cs:15"
+      ],
+      "evidence": [
+        ".github/workflows/publish-nuget.yml:196-211 (read this session)",
+        "eng/verify-actionlint.ps1:255-285 (pinned SHA-256 precedent)",
+        "gh api repos/darylmcd/Roslyn-Backed-MCP/actions/secrets → NUGET_API_KEY only"
+      ],
+      "description": "The publish-registry job pipes `releases/latest/download/mcp-publisher_*.tar.gz` into `tar` with no version pin and no checksum, then executes the binary after `mcp-publisher login github-oidc` in a job that holds `id-token: write`. A compromised or replaced latest release runs with the repository OIDC identity that proves ownership of the io.github.darylmcd/* registry namespace. The repo already pins and hash-verifies the actionlint binary (verify-actionlint.ps1), so the control is known and missing here. No contract test locks the download shape.",
+      "acceptance": [
+        "publish-nuget.yml downloads mcp-publisher from a fixed release tag URL, never `latest`",
+        "The archive SHA-256 is verified before extraction; mismatch fails the job before login",
+        "A contract test in PublishWorkflowContractTests fails when the workflow contains `releases/latest` or omits the hash check",
+        "The pinned version and hashes are documented where a maintainer bumps them"
+      ],
+      "suggested_approach": "Pin version + per-arch SHA-256 as workflow env, verify with sha256sum -c before tar, add the contract assertion. Model the bump procedure on verify-actionlint.ps1.",
+      "counterargument": "The binary comes from the official modelcontextprotocol org over TLS and the registry docs recommend this exact command; pinning adds a manual bump chore Dependabot cannot track and a hash per arch. Cost is one workflow step plus one test; the job is the only one holding id-token write.",
+      "blast_radius": "publish-registry job only; runs on tag/release publishes.",
+      "verify_verdict": "n/a",
+      "fingerprint": "9fb757fb0f7ded0e7a677582d45265171b18c558",
+      "status": "open",
+      "first_seen_run": "20261028-1500",
+      "backlog_id": "security-mcp-publisher-unpinned-download"
+    },
+    {
+      "id": "security-ci-base-ref-interpolated-into-run",
+      "title": "Extend the run-body interpolation guard to ci.yml and bind its expressions through env",
+      "severity": "Low",
+      "dimension": "Security",
+      "sizing": "M",
+      "confidence": "medium",
+      "tier": 0,
+      "anchors": [
+        ".github/workflows/ci.yml:313",
+        ".github/workflows/ci.yml:56",
+        "tests/RoslynMcp.Tests/PublishVersionContextTests.cs:181",
+        "tests/RoslynMcp.Tests/CiRunnerParityContractTests.cs:178"
+      ],
+      "evidence": [
+        ".github/workflows/ci.yml:310-313 and rg -c \"\\$\\{\\{\" ci.yml → 42 expression sites (read this session)",
+        "tests/RoslynMcp.Tests/PublishVersionContextTests.cs:181-247 guards publish-nuget.yml only",
+        "tests/RoslynMcp.Tests/CiRunnerParityContractTests.cs:178 locks the interpolated base_ref line verbatim"
+      ],
+      "description": "PublishWorkflow_NeverInterpolatesContextIntoRunBodies bans `${{ }}` in run bodies, but only for publish-nuget.yml. ci.yml keeps the opposite shape: the quality job expands `github.base_ref` into a pwsh command line (:313), the route and validate steps expand event, PR-number and matrix values into script text, and CiRunnerParityContractTests.cs:178 asserts the interpolated line verbatim. A base branch name carrying pwsh metacharacters becomes command text. Only the sole write collaborator can create base branches today, so exploitability is low; the defect is one workflow held to a rule the other is exempt from.",
+      "acceptance": [
+        "The guard test covers every workflow file under .github/workflows, not only publish-nuget.yml",
+        "ci.yml run bodies read context through env: and $env: (base_ref first), with the parity test updated to the new shape",
+        "The extended guard fails on the current ci.yml before the fix"
+      ],
+      "suggested_approach": "Generalise the existing guard over all workflows, then move each ci.yml run-body expression into step env. Keep the parity assertions pointing at the env bindings.",
+      "counterargument": "base_ref can only name a branch in this repo, darylmcd is the only collaborator with push, and most ci.yml expressions are integers or enums; the fix touches about 40 expression sites for a Low-exploitability class. It removes the per-site judgment and protects a future-collaborator case.",
+      "blast_radius": "ci.yml route, validate, quality, validate-gate jobs; the parity contract test.",
+      "verify_verdict": "n/a",
+      "fingerprint": "9da181f5193342ce5d4fa4f15af68a4c0fbd728a",
+      "status": "open",
+      "first_seen_run": "20261028-1500",
+      "backlog_id": "security-ci-base-ref-interpolated-into-run"
+    },
+    {
+      "id": "contract-breaking-fragment-adr-migration-ungated",
+      "title": "Gate Changed — BREAKING fragments on a migration note and an existing ADR",
+      "severity": "Low",
+      "dimension": "Contract",
+      "sizing": "S",
+      "confidence": "medium",
+      "tier": 0,
+      "anchors": [
+        "eng/verify-changelog-fragments.ps1:27",
+        "eng/verify-breaking-version-bump.ps1:104",
+        "tests/RoslynMcp.Tests/BreakingVersionGateTests.cs:1"
+      ],
+      "evidence": [
+        "AGENTS.md § Breaking-change posture; docs/release-policy.md:23-28,70",
+        "CHANGELOG.md 5.0.0: 18 BREAKING bullets, all carry a migration or ADR reference (hand-kept)",
+        "rg -n \"migration|decisions\" eng/verify-changelog-fragments.ps1 eng/verify-breaking-version-bump.ps1 → no hit"
+      ],
+      "description": "Repo policy for this public, published package requires an ADR in docs/decisions plus a migration note for every breaking change. The mechanical gates enforce only the category vocabulary (verify-changelog-fragments.ps1:27) and the major version bump (verify-breaking-version-bump.ps1:104,192). Nothing checks that a BREAKING fragment carries the migration text or points at an ADR file that exists, so the contract-care rule holds by author discipline alone.",
+      "acceptance": [
+        "verify-changelog-fragments.ps1 rejects a Changed — BREAKING fragment with no `Migration:` text and no `ADR NNNN` reference",
+        "An `ADR NNNN` reference must resolve to docs/decisions/NNNN-*.md",
+        "Tests cover pass, missing-migration, and dangling-ADR cases"
+      ],
+      "suggested_approach": "Extend the fragment validator with a BREAKING-only body check; reuse the existing fragment parser; extend BreakingVersionGateTests.",
+      "counterargument": "The author has met the rule on all 18 entries by hand and a regex cannot judge note quality; a heuristic gate risks friction. The policy is still written as mandatory for a published contract, so the missing machine check is the gap.",
+      "blast_radius": "changelog fragment validation in verify-release and docs-only CI.",
+      "verify_verdict": "n/a",
+      "fingerprint": "997cf838a6844c773839d694d3fabd7858d4f7b8",
+      "status": "open",
+      "first_seen_run": "20261028-1500",
+      "backlog_id": "contract-breaking-fragment-adr-migration-ungated"
+    },
+    {
+      "id": "testquality-elapsed-bound-in-correctness-tests",
+      "title": "Replace wall-clock pass/fail bounds in two correctness tests with structural assertions",
+      "severity": "Medium",
+      "dimension": "TestQuality",
+      "sizing": "S",
+      "confidence": "medium",
+      "tier": 0,
+      "anchors": [
+        "tests/RoslynMcp.Tests/WorkspaceToolsIntegrationTests.cs:468",
+        "tests/RoslynMcp.Tests/ValidationToolsIntegrationTests.cs:423"
+      ],
+      "evidence": [
+        "tests/RoslynMcp.Tests/WorkspaceToolsIntegrationTests.cs:432-470 (read this session)",
+        "tests/RoslynMcp.Tests/ValidationToolsIntegrationTests.cs:405-424",
+        "rg -l WorkspaceToolsIntegrationTests ai_docs/items → not an anchor of timing-test-reaudit-wave or gate-timing-tests-fail-under-machine-load"
+      ],
+      "description": "WorkspaceTools_GetWorkspaceStatus_Verbose_DoesNotBlockOnConcurrentLoadLock asserts the call returns in under 1000 ms. Its own header says the pre-fix failure was a thrown TimeoutException after a 5 s lock wait, so a regression already fails the test without the stopwatch; the bound only adds load sensitivity on the shared Windows legs. The fallback-broadening test fails when elapsed exceeds 30 s, a correctness test carrying a perf budget the suite has no perf category for. Both fit the fixed wall-clock shape the neighbouring timing rows track, on sites they do not list.",
+      "acceptance": [
+        "The 1000 ms assertion is removed; the test still fails against a status path that waits on LoadLock (a hang guard of 60 s or more may remain)",
+        "The held LoadLock is still held when the call returns, asserted structurally",
+        "ValidationToolsIntegrationTests:423 asserts a structural scan bound or keeps only a 60 s or longer hang guard",
+        "Each fix is shown red against a simulated slow host or the pre-fix lock behaviour, not a retry"
+      ],
+      "suggested_approach": "Drop the stopwatch; rely on the thrown TimeoutException as the regression signal and add a structural held-lock assertion. For the 30 s bound use scanned-document counts from the diagnostics envelope.",
+      "counterargument": "The bounds are generous (sub-millisecond work against 1 s; 1-3 s typical against 30 s) and document the pre-fix 5 s stall; Performance-category tests keep intentional budgets. Cost is a small test rewrite; the benefit is one fewer shared-runner flake source.",
+      "blast_radius": "two test methods; no product code.",
+      "verify_verdict": "n/a",
+      "fingerprint": "0b76756fb7320c31d75e7511d6abdf3018a3dcaf",
+      "status": "open",
+      "first_seen_run": "20261028-1500",
+      "backlog_id": "testquality-elapsed-bound-in-correctness-tests"
+    }
+  ]
+}
