@@ -1,14 +1,14 @@
 ---
 name: backlog-intake
 installed_as: backlog-intake
-description: "Consolidate deep-review artifacts (mcp-server-audit, experimental-promotion, roslyn-mcp-retro) into ai_docs/backlog.md with anchor verification, dedupe, priority classification, and sizing for the `/backlog-remediate` workflow. Use when: a deep-review / audit wave has produced `*_mcp-server-audit.md` / `*_roslyn-mcp-retro.md` / `*_experimental-promotion.md` files across sibling repos (or this one) and you want them reviewed, deduped, and merged into the backlog as properly-sized initiative rows."
+description: "Consolidate deep-review artifacts (mcp-server-audit, experimental-promotion, roslyn-mcp-retro) into ai_docs/backlog.md with anchor verification, dedupe, priority classification, and sizing for remediation sessions (`~/.claude/prompts/remediate.md`). Use when: a deep-review / audit wave has produced `*_mcp-server-audit.md` / `*_roslyn-mcp-retro.md` / `*_experimental-promotion.md` files across sibling repos (or this one) and you want them reviewed, deduped, and merged into the backlog as properly-sized initiative rows."
 user-invocable: true
 argument-hint: "[--stage | --skip-verify | --no-commit | --publish] — defaults: stage files first, verify against CHANGELOG, commit on a fresh branch; pass --publish to file each accepted row as a public GitHub Issue via gh issue create"
 ---
 
 # Backlog intake
 
-You are triaging a batch of deep-review artifacts into `ai_docs/backlog.md`. Your job is to turn raw audit / retro / experimental-promotion markdown files into **properly-sized, anchor-verified, de-duplicated, priority-ranked** rows that `/backlog-remediate` can route without re-processing.
+You are triaging a batch of deep-review artifacts into `ai_docs/backlog.md`. Your job is to turn raw audit / retro / experimental-promotion markdown files into **properly-sized, anchor-verified, de-duplicated, priority-ranked** rows that a remediation session can route without re-processing.
 
 This skill replaces the `eng/new-deep-review-batch.ps1 → sync-deep-review-backlog.ps1` pipeline. The PowerShell pipeline handled only `*_mcp-server-audit.md`, did literal-text dedupe, and couldn't verify anchors or size rows to Rule 1/3/4. The judgment work belongs in an LLM; the mechanical file-staging is delegated to `eng/stage-review-inbox.ps1`.
 
@@ -27,7 +27,7 @@ Raw external-source severity maps only as `P0 -> Critical`, `P1 -> High`, `P2 ->
 
 No raw source severity maps to `Defer`. Emit only `Critical`, `High`, `Medium`, or `Low` in an actionable local row; preserve the raw value in source evidence or public-issue metadata when it matters.
 
-Every mutation of `ai_docs/backlog.md`, its paired `ai_docs/items/<id>.md` files, its preamble, or its `updated_at` stamp uses the global writer: `node ~/.claude/scripts/backlog.mjs <subcommand> <repo-root> …`. Use `add` for a new row/detail pair, `update` for an existing slim row, `note` for an existing detail file, `preamble-replace` for one verified preamble replacement, and `touch` only when no row changed. The writer transactionally lint-checks, synchronizes the row/detail pair, and bumps `updated_at`; if it exits nonzero, stop that mutation and retain the source artifact. Do not hand-edit, append, re-sort, or count the backlog table. Derive the final count only with `node ~/.claude/scripts/backlog.mjs count <repo-root>`.
+Every mutation of `ai_docs/backlog.md`, its paired `ai_docs/items/<id>.md` files, or its preamble uses the global writer: `node ~/.claude/scripts/backlog.mjs <subcommand> <repo-root> …`. Use `add` for a new row/detail pair, `update` for an existing slim row, `note` for an existing detail file, and `preamble-replace` for one verified preamble replacement. The writer transactionally lint-checks and synchronizes the row/detail pair; if it exits nonzero, stop that mutation and retain the source artifact. Do not hand-edit, append, re-sort, or count the backlog table. Derive the final count only with `node ~/.claude/scripts/backlog.mjs count <repo-root>`.
 
 Moving staged reports and deleting a consumed source fragment are artifact operations, not local backlog writes. Do them only after the corresponding writer transaction succeeded, or after an exact duplicate match was recorded with no local mutation; never delete evidence to compensate for a failed or rolled-back writer call.
 
@@ -159,7 +159,7 @@ Skip this phase if `--skip-verify` is set.
 For each candidate row, cross-check:
 
 1. **`CHANGELOG.md` [Unreleased] + last 3 versions** — grep for the tool name, service, or symbol the row cites.
-2. **Newest remediation plan** under `ai_docs/plans/*_backlog-remediate/` — read its `state.json` and `plan.md`. Also inspect `*_backlog-sweep/` when historical compatibility evidence is relevant. Does any shipped initiative describe the same fix?
+2. **Merged and open PRs** — `gh pr list --state all --limit 20 --search "<keyword>"`. Does any PR describe the same fix?
 3. **Git log, last 100 commits** — `git log --oneline -n 100 | grep -i <keyword>` on tool / service / symbol names.
 4. **Code spot-check for rows flagged by 1-3** — open the named service / tool file and confirm the specific behavior still reproduces. For example, if the row says `symbol_search("")` overflows, grep `SymbolSearchService.cs` for an empty-query guard.
 
@@ -181,11 +181,11 @@ For each remaining row, verify every service class, tool file, and file:line anc
 
 Prepare each row's revised `do` text to cite **both** the core service (under `src/RoslynMcp.Roslyn/Services/`) **and** the tool registration (under `src/RoslynMcp.Host.Stdio/Tools/`). Materialize a new row with `backlog.mjs add --do-file` or refine an existing row with `backlog.mjs update --do-file`; do not edit the table directly. Executors can then land on the right file immediately.
 
-If an anchor genuinely cannot be resolved, prepare `do` text tagged with `[stale — cited anchor not found; executor may use synthetic examples]` per the `/backlog-remediate` anchor-verification contract, then persist it through the applicable writer command rather than dropping the row.
+If an anchor genuinely cannot be resolved, prepare `do` text tagged with `[stale — cited anchor not found; executor may use synthetic examples]`, then persist it through the applicable writer command rather than dropping the row.
 
 ### Phase 4 — Split heroic rows
 
-Apply the `/backlog-remediate` initiative-sizing contract to each row. A row is **heroic** (and must be split) if any of:
+Apply the row-sizing rule in Phase 6 step 3 to each row. A row is **heroic** (and must be split) if any of:
 
 - It describes two or more distinct bugs that live in **different code paths** (different functions, different files).
 - It asks for more than 4 production-file edits to fulfill.
@@ -203,9 +203,9 @@ Common heroic shapes to watch for:
 
 For each split, give each child a distinct kebab-case id (prefix with the original id where readable — e.g. `scaffold-test-preview-dotted-identifier` / `-static-target-body` / `-ctor-arg-stubs`).
 
-### Phase 5 — Ensure planner-prompt refs
+### Phase 5 — Ensure Refs entries
 
-Before a transactional mutation, verify the Refs table in `ai_docs/backlog.md` includes these entries. Add a missing one only through one exact `backlog.mjs preamble-replace` call. Note: the remediation contract is NOT a repo Refs entry — it lives globally in `~/.claude/prompts/backlog-remediate.md` and `~/.claude/prompts/backlog-remediate-rules.md`, so do NOT add repo-local rows for it:
+Before a transactional mutation, verify the Refs table in `ai_docs/backlog.md` includes these entries. Add a missing one only through one exact `backlog.mjs preamble-replace` call. The remediation prompt (`~/.claude/prompts/remediate.md`) is global, not a repo Refs entry, so do NOT add a repo-local row for it:
 
 | Path | Role (template text) |
 |---|---|
@@ -215,9 +215,9 @@ Before a transactional mutation, verify the Refs table in `ai_docs/backlog.md` i
 
 ### Phase 6 — Persist through the writer, archive processed files, commit
 
-1. Generate `BATCH_ID` in the form `YYYYMMDDTHHMMSSZ` from current UTC before the first writer transaction. It names the archive directory only; do not write `updated_at` manually.
-2. Build each accepted row's slim `do` text and, when needed, its detail file before its writer call. Use the target `review-inbox/archive/{BATCH_ID}/<file>` citation in the generated text, then use `backlog.mjs add`, `update`, or `note` for every local row/detail change. Do not edit or re-sort the table. The successful transaction owns the `updated_at` bump.
-3. Ensure the "Standing rules" section includes the initiative-sizing rule through one verified `backlog.mjs preamble-replace` call when it is missing: `"Size every row to a single /backlog-remediate initiative: one code path, ≤4 production files, ≤3 test files, one regression-test shape."` If any writer call fails or rolls back, stop and retain its source report or fragment for a later retry.
+1. Generate `BATCH_ID` in the form `YYYYMMDDTHHMMSSZ` from current UTC before the first writer transaction. It names the archive directory only.
+2. Build each accepted row's slim `do` text and, when needed, its detail file before its writer call. Use the target `review-inbox/archive/{BATCH_ID}/<file>` citation in the generated text, then use `backlog.mjs add`, `update`, or `note` for every local row/detail change. Do not edit or re-sort the table.
+3. Ensure the "Standing rules" section includes the initiative-sizing rule through one verified `backlog.mjs preamble-replace` call when it is missing: `"Size every row to a single remediation session: one code path, ≤4 production files, ≤3 test files, one regression-test shape."` If any writer call fails or rolls back, stop and retain its source report or fragment for a later retry.
 4. **Archive the processed review files only after all associated writer calls succeed.** Only move files that produced accepted rows this batch — do NOT touch any existing `review-inbox/archive/<prior-batch>/` subdirectories.
    ```bash
    mkdir -p "review-inbox/archive/${BATCH_ID}"
@@ -247,9 +247,7 @@ Before a transactional mutation, verify the Refs table in `ai_docs/backlog.md` i
 
    - Splits applied: {list of heroic rows that were split}
    - Dropped (already shipped): {list, if any}
-   - Verified against CHANGELOG [Unreleased] + last 3 versions + newest remediation plan.
-
-   Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+   - Verified against CHANGELOG [Unreleased] + last 3 versions + recent PRs.
    ```
 8. Do NOT push unless the user asked. Leave the branch local.
 
@@ -330,11 +328,6 @@ If the batch is small (≤3 files, ≤1000 total lines), skip the subagent and r
 
 ## Distinct from related skills
 
-- **`close-backlog-rows`**: removes specific row ids from the open table after their PRs ship. This skill (`backlog-intake`) ADDS rows from raw audit evidence. Use `close-backlog-rows` after a ship, this one after an audit wave.
-- **`reconcile-backlog-sweep-plan`**: legacy-named compatibility skill that updates a remediation plan's `state.json` when its PRs have merged. Different file, different concern.
-- **`draft-changelog-entry`**: drafts one changelog fragment per PR from commit metadata. Different artifact.
-- **`/backlog-remediate`**: consumes the backlog this skill produces. Run `backlog-intake` first, then remediation.
-
-## Historical note
-
-This skill replaces five PowerShell scripts that were deleted when it shipped: `compare-external-audit-sources.ps1`, `import-deep-review-audit.ps1`, `new-deep-review-batch.ps1`, `new-deep-review-rollup.ps1`, `sync-deep-review-backlog.ps1`. The last (the "sync" script) was the lossiest — it did literal-text dedupe via PowerShell regex and couldn't verify anchors, dedupe semantically, cross-check against CHANGELOG, or size rows to Rule 1/3/4. The only piece worth keeping from the pipeline was file staging, which is now a 150-line `eng/stage-review-inbox.ps1`.
+- **`close-backlog-rows`** (global): removes specific row ids from the open table after their PRs ship. This skill ADDS rows from raw audit evidence. Use `close-backlog-rows` after a ship, this one after an audit wave.
+- **`draft-changelog-entry`** (global): drafts one changelog fragment per PR from commit metadata. Different artifact.
+- **Remediation** (`~/.claude/prompts/remediate.md`): consumes the backlog this skill produces. Run `backlog-intake` first, then remediation.

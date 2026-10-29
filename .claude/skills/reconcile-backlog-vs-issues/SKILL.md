@@ -150,7 +150,6 @@ to infer those rows from GitHub Issue state here.
 ## Distinct from related skills
 
 - **`/close-backlog-rows`**: deletes rows by id. This skill identifies WHICH rows are closable; `/close-backlog-rows` does the deletion. Two-step pipeline.
-- **`/reconcile-backlog-sweep-plan`**: compatibility-named skill that reconciles a remediation plan's `state.json` + `plan.md` against PR state. Different file set, different mutation target. Both skills run "between waves" but address different drift sources (PR↔plan vs Issue↔backlog).
 - **`/backlog-intake`**: ingests deep-review artifacts into new backlog rows. This skill can flag `issue-reopened-row-missing` as an input signal for `/backlog-intake`, but never invokes it directly.
 
 ## Example output

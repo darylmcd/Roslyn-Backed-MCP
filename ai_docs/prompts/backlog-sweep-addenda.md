@@ -291,7 +291,6 @@ See [ai_docs/runtime.md § Write-side by session shape](../runtime.md#write-side
 
 ```yaml
 pr_reconciler:       .claude/agents/pr-reconciler.md         # readiness-only; parent owns /ship --land=<pr>
-backlog_anchor_auditor: .claude/agents/backlog-anchor-auditor.md  # pre-plan anchor scan
 backlog_intake_extractor: .claude/agents/backlog-intake-extractor.md  # Phase 1 of /backlog-intake
 ```
 
@@ -302,7 +301,6 @@ When the global execute command's Step 7 subagent briefing mentions "if availabl
 ```yaml
 draft_changelog_entry: /draft-changelog-entry
 close_backlog_rows: /close-backlog-rows
-reconcile_backlog_sweep_plan: /reconcile-backlog-sweep-plan
 reconcile_backlog_vs_issues: /reconcile-backlog-vs-issues
 recover_stalled_subagent: /recover-stalled-subagent
 ship: /ship

@@ -1,0 +1,5 @@
+---
+category: Maintenance
+---
+
+- **Maintenance:** Removed the repo-local agent and skill definitions left behind by the retired `/backlog-remediate` engine: the `close-backlog-rows`, `draft-changelog-entry` and `reconcile-backlog-sweep-plan` skills (the global `close-backlog-rows` and `draft-changelog-entry` skills replace the first two) and the `backlog-anchor-auditor` agent (`backlog-lint.mjs` already reports `anchor-missing` and `anchor-line-past-eof`). `eng/verify-ai-docs.ps1` no longer requires the deleted reconciliation skill or guards the nonexistent `initiative-executor` agent, and the matching reconciliation-cleanup contract script and test are gone. `backlog-intake`, `recover-stalled-subagent` (now emits `RECOVERY_SUMMARY`), `pr-reconciler` and the release/bump examples no longer cite deleted prompts, `state.json`, or pinned model names, and the backlog preamble and writer-contract gate strings no longer mention the retired `updated_at` stamp or `touch` subcommand. Closes `claude-initiative-executor-override-dead`.

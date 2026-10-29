@@ -3,14 +3,12 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-10-28T13:55:49Z
-
 ## Agent contract
 
 | | |
 |---|---|
 | **Scope** | This file lists unfinished work only. It is not a changelog. |
-| **MUST** | Write rows via the only sanctioned writer, **not** by hand-editing this file: `node ~/.claude/scripts/backlog.mjs <add|close|update|note|restore|touch> <repo-root> …` (absolute path — the script is NOT in the repo; run `backlog.mjs --help` for flags). It lint-checks transactionally, keeps the slim row + `items/<id>.md` in lockstep, and bumps `updated_at`. If Node or the writer is unavailable, stop and report the blocker. |
+| **MUST** | Write rows via the only sanctioned writer, **not** by hand-editing this file: `node ~/.claude/scripts/backlog.mjs <add|close|update|note|preamble-replace|restore> <repo-root> …` (absolute path — the script is NOT in the repo; run `backlog.mjs --help` for flags). It lint-checks transactionally, keeps the slim row + `items/<id>.md` in lockstep. If Node or the writer is unavailable, stop and report the blocker. |
 | **MUST** | Remove or update backlog rows when work ships; do it in the same PR or an immediate follow-up. Closing a row also deletes its `ai_docs/items/<id>.md` — use `/close-backlog-rows`, which does both atomically. |
 | **MUST** | End implementation plans with a final todo: `backlog: sync ai_docs/backlog.md`. |
 | **MUST** | Use stable, kebab-case `id` values per open row. |
@@ -447,7 +445,6 @@
 | `project-list-refusals-missing-verbose-status` | Low | — | Give usable project-list recovery through workspace_status with verbose=true across copied public refusals. [type: bug] [source: correctness15 cold review] | L | items/project-list-refusals-missing-verbose-status.md |
 | `compile-check-file-scope-path-identity` | Low | — | Preserve physical file-filter and owner identity for case-distinct Linux paths in compile_check. [type: bug] [source: correctness15 guidance review] | S | items/compile-check-file-scope-path-identity.md |
 | `cancellation-swallowed-partial-results-services` | Low | — | Make remaining traversal loops throw on cancellation instead of returning partial results. [type: bug] [source: correctness15 cold review] | L | items/cancellation-swallowed-partial-results-services.md |
-| `claude-initiative-executor-override-dead` | Low | — | **`.claude/agents/initiative-executor.md` overrides an agent deleted from ~/.claude on 2026-10-19** — delete it or rename its still-needed Roslyn guidance so nothing poses as an engine agent override. [type: chore] [source: remediation-simplification-20261020] | S | items/claude-initiative-executor-override-dead.md |
 | `path-identity-host-stdio-comparer-duplication` | Low | — | **Use FileSystemPath in Host.Stdio path helpers instead of hand-rolled OS ternaries** — SolutionDiscoveryHelper, ConfiguredRootBoundary, TestRunPublicProjection duplicate its decision or compare unconditionally. [type: refactor] [source: path-identity sweep 20261020] | M | items/path-identity-host-stdio-comparer-duplication.md |
 | `linux-msbuild-load-drops-case-distinct-documents` | Low | — | **Investigate Linux MSBuild workspace load surfacing only one of two case-distinct Compile documents** — decide loader defect vs fixture limitation and cover it. [type: chore] [source: path-identity PR fixture finding 20261020] | S | items/linux-msbuild-load-drops-case-distinct-documents.md |
 | `composite-apply-orchestrator-extract-atomic-file-writer` | Low | — | **Move AtomicFileWriter out of CompositeApplyOrchestrator.cs into its own file** — a 250-line P/Invoke type shares the orchestrator file. [type: refactor] [source: path-identity sweep 20261020] | S | items/composite-apply-orchestrator-extract-atomic-file-writer.md |

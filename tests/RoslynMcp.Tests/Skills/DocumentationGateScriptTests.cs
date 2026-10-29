@@ -53,27 +53,6 @@ public sealed class DocumentationGateScriptTests
         StringAssert.Contains(issues[0], missing);
     }
 
-    [TestMethod]
-    [DataRow("")]
-    [DataRow("\nUse `git worktree remove --force .worktrees/example` after reconciliation.")]
-    [DataRow("\n```bash\ngit -C \"repo with spaces\" worktree remove -f .worktrees/example\n```\n")]
-    [DataRow("\ngit worktree remove .worktrees/example\n")]
-    public async Task Reconciliation_RequiresCanonicalCleanupAndRejectsRemovalCommandsAsync(string appendedInstruction)
-    {
-        var root = TestFixtureFileSystem.FindRepositoryRoot();
-        var guidance = File.ReadAllText(Path.Combine(root, ".claude", "skills", "reconcile-backlog-sweep-plan", "SKILL.md"));
-        var issues = await RunContractAsync(
-            "reconciliation-cleanup-contract.ps1",
-            "@(Get-ReconciliationCleanupIssue -Content ([System.IO.File]::ReadAllText($args[1])))",
-            guidance + appendedInstruction);
-
-        Assert.AreEqual(appendedInstruction.Length == 0 ? 0 : 1, issues.Length, string.Join(Environment.NewLine, issues));
-        if (issues.Length > 0)
-        {
-            StringAssert.Contains(issues[0], "contains a worktree removal command");
-        }
-    }
-
     // Samples are assembled at runtime so this source file never contains a literal profile path
     // (the guard under test scans every tracked file, including this one).
     private const string Drive = "C:";

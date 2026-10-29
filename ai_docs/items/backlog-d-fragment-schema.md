@@ -64,7 +64,7 @@ Each fragment is a markdown file with YAML frontmatter, then a single-paragraph 
 
 `severity` is an upstream observation. The local backlog has only `Critical`, `High`, `Medium`, `Low`, and `Defer` bands; actionable fragment rows use the four mapped bands above, and no raw value maps to `Defer`.
 
-Every mutation of the local backlog row/detail pair, preamble, or `updated_at` stamp uses the global `node ~/.claude/scripts/backlog.mjs` writer. Use `add` for a new pair, `update` for a slim-row change, `note` for additional detail evidence, `preamble-replace` for a verified preamble correction, and `touch` only when no row changed. Do not hand-edit or append the `ai_docs/backlog.md` table. A nonzero writer exit leaves the source fragment in place and stops that mutation.
+Every mutation of the local backlog row/detail pair or preamble uses the global `node ~/.claude/scripts/backlog.mjs` writer. Use `add` for a new pair, `update` for a slim-row change, `note` for additional detail evidence, and `preamble-replace` for a verified preamble correction. Do not hand-edit or append the `ai_docs/backlog.md` table. A nonzero writer exit leaves the source fragment in place and stops that mutation.
 
 Deleting a source `backlog.d/` fragment or archiving a staged report is separate artifact bookkeeping. It is safe only after the related writer transaction succeeds (or after an exact duplicate is confirmed without a local mutation). Re-resolve the exact source path beneath the configured repo's `backlog.d/` immediately before deletion; do not make the evidence disappear before the local row is durable.
 
