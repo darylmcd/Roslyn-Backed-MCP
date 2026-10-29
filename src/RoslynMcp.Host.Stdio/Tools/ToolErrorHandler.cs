@@ -75,22 +75,6 @@ internal static class ToolErrorHandler
         public const ToolErrorCategory WorkspaceNotFound = ToolErrorCategory.WorkspaceNotFound;
     }
 
-    /// <summary>
-    /// Values of the optional <c>reason</c> envelope field. A reason refines a category without
-    /// changing it, so consumers that branch only on <c>category</c> keep working; consumers must
-    /// ignore reason values they do not recognize.
-    /// </summary>
-    internal static class ErrorReasons
-    {
-        /// <summary>
-        /// The supplied <c>workspaceId</c> is unknown to this server (never loaded, or lost with a
-        /// prior process). Since 5.0 this is also the error category
-        /// (<see cref="ErrorCategories.WorkspaceNotFound"/>); the reason remains a deprecated alias
-        /// for one major release so 4.x consumers that branch on it keep working.
-        /// </summary>
-        public const string WorkspaceNotFound = "WorkspaceNotFound";
-    }
-
     private static readonly Dictionary<Type, Func<Exception, string, ErrorInfo>> _errorHandlers = new()
     {
         // autoreload-cascade-stdio-host-crash: wraps a state-read that raced with (or followed)
@@ -110,13 +94,12 @@ internal static class ToolErrorHandler
                 "Call workspace_load with the original solution or project path, then retry with the new workspaceId.");
         },
         // An unknown or never-loaded workspaceId: its own category and exception type since 5.0
-        // (4.x reported NotFound / KeyNotFoundException with a reason discriminator, which stays as
-        // a deprecated alias). Derives from KeyNotFoundException; the nearest-base lookup selects
-        // this handler before the generic KeyNotFoundException one.
+        // (4.x reported NotFound / KeyNotFoundException plus a reason discriminator, dropped in
+        // 5.0). Derives from KeyNotFoundException; the nearest-base lookup selects this handler
+        // before the generic KeyNotFoundException one.
         [typeof(WorkspaceNotFoundException)] = (_, _) => new(ErrorCategories.WorkspaceNotFound,
             "The workspaceId is unknown to this server (never loaded, or lost after a restart). " +
-            "Call workspace_list to see active sessions, then workspace_load to create one and retry with its workspaceId.",
-            Reason: ErrorReasons.WorkspaceNotFound),
+            "Call workspace_list to see active sessions, then workspace_load to create one and retry with its workspaceId."),
         [typeof(FileNotFoundException)] = (_, _) => new(ErrorCategories.FileNotFound,
             "The requested file was not found. Verify the file path is absolute and the file exists on disk. " +
             "If the workspace was recently reloaded, the file may have been removed."),
@@ -621,17 +604,11 @@ internal static class ToolErrorHandler
             ["tool"] = toolName,
             ["message"] = info.Message,
             // Public arguments preserve their trusted released identity; other public-message
-            // exceptions report their BCL base name. An explicit WireExceptionType wins.
-            ["exceptionType"] = info.WireExceptionType
-                ?? (ex is PublicArgumentException publicArgument
-                    ? publicArgument.WireExceptionType
-                    : ex is IPublicMessageException ? ex.GetType().BaseType!.Name : ex.GetType().Name),
+            // exceptions report their BCL base name.
+            ["exceptionType"] = ex is PublicArgumentException publicArgument
+                ? publicArgument.WireExceptionType
+                : ex is IPublicMessageException ? ex.GetType().BaseType!.Name : ex.GetType().Name,
         };
-
-        if (info.Reason is not null)
-        {
-            envelope["reason"] = info.Reason;
-        }
 
         if (extraFieldName is not null)
         {
@@ -751,18 +728,11 @@ internal static class ToolErrorHandler
     /// <param name="Message">Sanitized remediation text.</param>
     /// <param name="ParamName">Offending parameter, when known.</param>
     /// <param name="CorrelationId">Correlation id for unexpected failures.</param>
-    /// <param name="Reason">Optional <see cref="ErrorReasons"/> refinement of <paramref name="Category"/>.</param>
-    /// <param name="WireExceptionType">
-    /// Optional <c>exceptionType</c> override that keeps a released wire value stable when the
-    /// server throws a more specific internal type; <see langword="null"/> emits the thrown type.
-    /// </param>
     internal readonly record struct ErrorInfo(
         ToolErrorCategory Category,
         string Message,
         string? ParamName = null,
-        string? CorrelationId = null,
-        string? Reason = null,
-        string? WireExceptionType = null);
+        string? CorrelationId = null);
 }
 
 /// <summary>

@@ -4,8 +4,8 @@ namespace RoslynMcp.Core.Services;
 /// Signals that a workspace lookup missed because the supplied <c>workspaceId</c> is unknown:
 /// never issued by this host, or otherwise not classifiable as an eviction (see
 /// <see cref="WorkspaceEvictedException"/>). Surfaced by <c>ToolErrorHandler</c> as
-/// <c>category=WorkspaceNotFound</c> and <c>exceptionType=WorkspaceNotFoundException</c> (with the
-/// deprecated <c>reason=WorkspaceNotFound</c> alias), on the plain path and when the miss races an
+/// <c>category=WorkspaceNotFound</c> and <c>exceptionType=WorkspaceNotFoundException</c> (no
+/// <c>reason</c> field since 5.0), on the plain path and when the miss races an
 /// in-call auto-reload, so callers can tell a bad workspace id apart from a missing symbol, file,
 /// or metadata name (<c>NotFound</c>).
 /// </summary>

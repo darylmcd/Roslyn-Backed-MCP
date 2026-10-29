@@ -74,21 +74,6 @@ public sealed class PublicMessageExceptionTests
     }
 
     [TestMethod]
-    public void FormatErrorResponse_WireExceptionTypeOverride_WinsOverBaseTypeNormalization()
-    {
-        var info = new ToolErrorHandler.ErrorInfo(
-            ToolErrorHandler.ErrorCategories.InvalidArgument,
-            "Safe message.",
-            WireExceptionType: nameof(KeyNotFoundException));
-
-        var json = ToolErrorHandler.FormatErrorResponse(
-            info, "some_tool", new PublicArgumentException("Safe message.", "mode"));
-        using var doc = JsonDocument.Parse(json);
-
-        Assert.AreEqual(nameof(KeyNotFoundException), doc.RootElement.GetProperty("exceptionType").GetString());
-    }
-
-    [TestMethod]
     public void ClassifyAndFormat_PlainArgumentException_StillReportsThrownTypeName()
     {
         var json = ToolErrorHandler.ClassifyAndFormat(new ArgumentOutOfRangeException("count"), "some_tool");
