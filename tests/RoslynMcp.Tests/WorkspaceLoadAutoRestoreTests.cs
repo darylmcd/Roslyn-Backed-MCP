@@ -216,6 +216,112 @@ public sealed class WorkspaceLoadAutoRestoreTests : SharedWorkspaceTestBase
         });
     }
 
+    /// <summary>
+    /// automatic-reload-analyzer-reader-lifetime: <c>workspace_load</c> can return an ALREADY-LIVE
+    /// session (path dedup) that gated readers are using, and its restore reload retires that
+    /// session's workspace and analyzer lease. The reload must run inside the per-workspace writer;
+    /// the <c>dotnet restore</c> before it must not (the writer is not held across the restore).
+    /// </summary>
+    [TestMethod]
+    public async Task LoadWorkspace_RestoreReload_RunsInsideWriterAndRestoreRunsOutsideIt()
+    {
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var copiedRoot = Path.GetDirectoryName(copiedSolutionPath)!;
+        try
+        {
+            foreach (var objDir in Directory.EnumerateDirectories(copiedRoot, "obj", SearchOption.AllDirectories).ToArray())
+            {
+                TestFixtureFileSystem.DeleteDirectoryIfExists(objDir);
+            }
+
+            using var manager = new WorkspaceManager(
+                NullLogger<WorkspaceManager>.Instance,
+                new PreviewStore(),
+                new FileWatcherService(NullLogger<FileWatcherService>.Instance),
+                new WorkspaceManagerOptions { MaxConcurrentWorkspaces = 4, RestoreRaceWaitMs = 0 });
+            var existing = await manager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+            Assert.IsTrue(existing.RestoreRequired, "Precondition: a never-restored solution reports restoreRequired.");
+
+            using var gate = new WriterTrackingGate(new WorkspaceExecutionGate(new ExecutionGateOptions(), manager));
+            var insideWriterAtReload = new List<bool>();
+            manager.WorkspaceReloaded += _ => insideWriterAtReload.Add(gate.InsideWriter);
+            var executor = new WriterProbeExecutor(gate, new ScriptedExecutor(ExecutionResult.Success));
+
+            // Same path -> dedup returns the existing session, whose restore reload is the shared-session case.
+            var json = await WorkspaceTools.LoadWorkspace(
+                server: await GetPathAuthorizedServerAsync(),
+                gate: gate,
+                workspace: manager,
+                warmService: WorkspaceWarmService,
+                commandExecutor: executor,
+                validationOptions: ValidationOptions,
+                path: copiedSolutionPath,
+                verbose: false,
+                autoRestore: true,
+                prewarm: false,
+                progress: null,
+                ct: CancellationToken.None);
+
+            using var response = JsonDocument.Parse(json);
+            Assert.AreEqual(existing.WorkspaceId, response.RootElement.GetProperty("workspaceId").GetString(),
+                "The load must have deduplicated onto the existing session.");
+            CollectionAssert.AreEqual(new[] { false }, executor.InsideWriterAtRestore,
+                "The restore must run outside the writer so it does not block readers for its whole duration.");
+            CollectionAssert.AreEqual(new[] { true }, insideWriterAtReload,
+                "The restore reload retires the live session's workspace and analyzer lease, so it must run inside the writer.");
+        }
+        finally
+        {
+            DeleteDirectoryIfExists(copiedRoot);
+        }
+    }
+
+    /// <summary>Forwards to a real gate and records whether the current async flow is inside a <c>RunWriteAsync</c> action.</summary>
+    private sealed class WriterTrackingGate(WorkspaceExecutionGate inner) : IWorkspaceExecutionGate, IDisposable
+    {
+        private readonly AsyncLocal<bool> _insideWriter = new();
+
+        public bool InsideWriter => _insideWriter.Value;
+
+        public Task<T> RunReadAsync<T>(string workspaceId, Func<CancellationToken, Task<T>> action, CancellationToken ct) =>
+            inner.RunReadAsync(workspaceId, action, ct);
+
+        public Task<T> RunWriteAsync<T>(
+            string workspaceId,
+            Func<CancellationToken, Task<T>> action,
+            CancellationToken ct,
+            bool applyStalenessPolicy = true) =>
+            inner.RunWriteAsync(workspaceId, async c =>
+            {
+                _insideWriter.Value = true;
+                return await action(c).ConfigureAwait(false);
+            }, ct, applyStalenessPolicy);
+
+        public Task<T> RunLoadGateAsync<T>(Func<CancellationToken, Task<T>> action, CancellationToken ct) =>
+            inner.RunLoadGateAsync(action, ct);
+
+        public void RemoveGate(string workspaceId) => inner.RemoveGate(workspaceId);
+
+        public void Dispose() => inner.Dispose();
+    }
+
+    /// <summary>Wraps the scripted restore executor and records whether each restore ran inside a writer action.</summary>
+    private sealed class WriterProbeExecutor(WriterTrackingGate gate, ScriptedExecutor inner) : IGatedCommandExecutor
+    {
+        public List<bool> InsideWriterAtRestore { get; } = [];
+
+        public Task<CommandExecutionDto> ExecuteAsync(
+            string workspaceId, string targetPath, IReadOnlyList<string> arguments, TimeSpan timeout, CancellationToken ct)
+        {
+            InsideWriterAtRestore.Add(gate.InsideWriter);
+            return inner.ExecuteAsync(workspaceId, targetPath, arguments, timeout, ct);
+        }
+
+        public ProjectStatusDto ResolveProject(string workspaceId, string projectName) => inner.ResolveProject(workspaceId, projectName);
+
+        public void Dispose() => inner.Dispose();
+    }
+
     private static void AssertPathFree(string reason, string root)
     {
         Assert.IsFalse(reason.Contains(root, StringComparison.OrdinalIgnoreCase), $"Reason leaked the workspace path: {reason}");
