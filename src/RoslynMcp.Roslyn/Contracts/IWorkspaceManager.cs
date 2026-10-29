@@ -8,7 +8,7 @@ namespace RoslynMcp.Roslyn.Contracts;
 /// Manages the lifecycle of Roslyn <c>MSBuildWorkspace</c> sessions, providing load, reload,
 /// query, and mutation operations over named workspace instances.
 /// </summary>
-public interface IWorkspaceManager
+public interface IWorkspaceManager : IWorkspaceReloader
 {
     /// <summary>
     /// Raised when a workspace session is closed (via <see cref="Close"/> or process disposal).
@@ -47,13 +47,6 @@ public interface IWorkspaceManager
     /// </param>
     /// <param name="ct">Cancellation token.</param>
     Task<WorkspaceStatusDto> LoadAsync(string path, EvictPolicy evictPolicy, CancellationToken ct);
-
-    /// <summary>
-    /// Reloads an existing workspace session from disk, discarding any pending previews.
-    /// </summary>
-    /// <param name="workspaceId">The workspace session identifier to reload.</param>
-    /// <param name="ct">Cancellation token.</param>
-    Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct);
 
     /// <summary>
     /// Returns whether an active workspace session exists for the given identifier.

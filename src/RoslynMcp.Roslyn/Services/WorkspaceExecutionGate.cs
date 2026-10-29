@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Collections.Immutable;
 using System.Diagnostics;
 using Nito.AsyncEx;
 using RoslynMcp.Core.Services;
@@ -228,37 +229,43 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
 
         try
         {
-            // Item 1: stale-gate policy. Checked once per call, before the per-workspace lock is
-            // acquired, so an auto-reload path runs under the same load gate as explicit
-            // workspace_reload calls — the reload's own write-locking is handled by
-            // WorkspaceManager. workspace_close skips this: reloading requires the on-disk
-            // solution, which may already be deleted while the in-memory session is still
-            // registered (F21 / missing worktree).
+            // Item 1: stale-gate policy. Checked once per call. Warn only stamps metrics. AutoReload
+            // reloads UNDER THE PER-WORKSPACE WRITER LOCK (automatic-reload-analyzer-reader-lifetime):
+            // the reload retires the session's MSBuildWorkspace and analyzer lease, so it must be
+            // excluded from every gated reader exactly like explicit workspace_reload/close and LRU
+            // eviction (each takes the writer). A write call reloads and then runs its action under
+            // the same writer hold; a read call escalates to the writer only to reload, releases it,
+            // then takes the reader lock (the lock cannot downgrade; readers only need that nothing
+            // is retired during their own hold). workspace_close skips the policy: reloading
+            // requires the on-disk solution, which may already be deleted while the in-memory
+            // session is still registered (F21 / missing worktree).
             //
             // gate-timeout-escapes-as-bare-sdk-error (test-run-unfiltered-bare-error-rootcause):
-            // this leg is now INSIDE the try so a gate-internal timeout firing during
-            // ApplyStalenessPolicyAsync's own ReloadAsync call (see the comment below on
-            // parallel-fanout-auto-reload-timeout-floor: the reload can consume "some, possibly
-            // all" of the request-timeout budget) is caught by the same reclassification catch
-            // as the rest of this method, instead of escaping unclassified.
+            // the writer wait and the reload both run INSIDE the try, so a gate-internal timeout
+            // firing while queued behind a reader or during the reload itself (see the comment below
+            // on parallel-fanout-auto-reload-timeout-floor: the reload can consume "some, possibly
+            // all" of the request-timeout budget) is caught by the same reclassification catch as
+            // the rest of this method, instead of escaping unclassified.
             var autoReloaded = false;
             if (applyStalenessPolicy)
             {
-                autoReloaded = await ApplyStalenessPolicyAsync(workspaceId, linked).ConfigureAwait(false);
+                StampWarnIfStale(workspaceId);
+            }
 
-                // parallel-fanout-auto-reload-timeout-floor: when an auto-reload just completed,
-                // the timeout CTS has consumed some (possibly all) of the _requestTimeout budget
-                // for infrastructure work the caller cannot control. Reset the deadline to give the
-                // actual tool action a fresh _requestTimeout budget. This prevents parallel fan-out
-                // reads from hitting the 5-second floor when the reload finishes in <2s but the
-                // remaining budget is already exhausted.
-                //
-                // The extension fires only when ApplyStalenessPolicyAsync reports a successful
-                // reload. A reload that threw KeyNotFoundException leaves autoReloaded=false and
-                // the original deadline stands. The token must not already be cancelled (e.g. the
-                // caller cancelled, or the reload itself used all budget) — in that case the catch
-                // below reclassifies a gate-internal timeout into TimeoutException, or lets a
-                // genuine caller cancellation propagate as OperationCanceledException unchanged.
+            // parallel-fanout-auto-reload-timeout-floor: when an auto-reload just completed, the
+            // timeout CTS has consumed some (possibly all) of the _requestTimeout budget for
+            // infrastructure work the caller cannot control. Reset the deadline to give the actual
+            // tool action a fresh _requestTimeout budget. This prevents parallel fan-out reads from
+            // hitting the 5-second floor when the reload finishes in <2s but the remaining budget is
+            // already exhausted.
+            //
+            // The extension fires only when the reload ran. A reload that threw KeyNotFoundException
+            // leaves autoReloaded=false and the original deadline stands. The token must not already
+            // be cancelled (e.g. the caller cancelled, or the reload itself used all budget) — in
+            // that case the catch below reclassifies a gate-internal timeout into TimeoutException,
+            // or lets a genuine caller cancellation propagate as OperationCanceledException unchanged.
+            void ExtendBudgetAfterReload()
+            {
                 if (autoReloaded && !linked.IsCancellationRequested)
                 {
                     timeoutCts.CancelAfter(_requestTimeout);
@@ -269,19 +276,45 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
             return await WithGlobalThrottle(async () =>
             {
                 var rwLock = _rwLocks.Get(workspaceId);
+
+                // A call nested inside a gated action that already holds THIS workspace's lock must
+                // not escalate: waiting for the writer while the enclosing call holds a reader lock
+                // can never complete. It keeps the snapshot the enclosing call already runs against;
+                // the next top-level call reloads.
+                var mayAutoReload = applyStalenessPolicy
+                    && _onStale == StalenessPolicy.AutoReload
+                    && !HoldsWorkspaceLock(workspaceId);
+
                 if (isWrite)
                 {
                     using (await rwLock.WriterLockAsync(linked).ConfigureAwait(false))
                     {
                         EnsureWorkspaceStillExists(workspaceId);
-                        return await RunWithMetricsAsync("rw-lock", queueStopwatch, () => RunActionWithPostReloadRetryAsync(action, linked, autoReloaded)).ConfigureAwait(false);
+                        if (mayAutoReload)
+                        {
+                            autoReloaded = await ReloadIfStaleAsync(workspaceId, linked).ConfigureAwait(false);
+                            ExtendBudgetAfterReload();
+                        }
+
+                        return await RunWithMetricsAsync("rw-lock", queueStopwatch, () => RunHoldingWorkspaceAsync(workspaceId, () => RunActionWithPostReloadRetryAsync(action, linked, autoReloaded))).ConfigureAwait(false);
                     }
+                }
+
+                if (mayAutoReload && _workspaceManager.IsStale(workspaceId))
+                {
+                    using (await rwLock.WriterLockAsync(linked).ConfigureAwait(false))
+                    {
+                        EnsureWorkspaceStillExists(workspaceId);
+                        autoReloaded = await ReloadIfStaleAsync(workspaceId, linked).ConfigureAwait(false);
+                    }
+
+                    ExtendBudgetAfterReload();
                 }
 
                 using (await rwLock.ReaderLockAsync(linked).ConfigureAwait(false))
                 {
                     EnsureWorkspaceStillExists(workspaceId);
-                    return await RunWithMetricsAsync("rw-lock", queueStopwatch, () => RunActionWithPostReloadRetryAsync(action, linked, autoReloaded)).ConfigureAwait(false);
+                    return await RunWithMetricsAsync("rw-lock", queueStopwatch, () => RunHoldingWorkspaceAsync(workspaceId, () => RunActionWithPostReloadRetryAsync(action, linked, autoReloaded))).ConfigureAwait(false);
                 }
             }, linked).ConfigureAwait(false);
         }
@@ -321,7 +354,7 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
     }
 
     /// <summary>
-    /// auto-reload-retry-inside-call: when <see cref="ApplyStalenessPolicyAsync"/> just
+    /// auto-reload-retry-inside-call: when <see cref="ReloadIfStaleAsync"/> just
     /// auto-reloaded the workspace for this call (<see cref="AmbientGateMetrics.StaleAction"/>
     /// stamped <c>"auto-reloaded"</c>) and the action immediately fails with a transient
     /// stale-snapshot error (<c>"Document not found"</c> / <c>"not found in workspace"</c>),
@@ -446,18 +479,34 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
     }
 
     /// <summary>
-    /// Item 1: enforces <see cref="ExecutionGateOptions.OnStale"/> when the underlying file
-    /// watcher has flagged the workspace as stale. AutoReload transparently reloads, Warn
-    /// leaves the snapshot alone but stamps <see cref="AmbientGateMetrics"/> so the response
-    /// envelope surfaces a structured signal, Off is a no-op.
+    /// Item 1: <see cref="StalenessPolicy.Warn"/> half of <see cref="ExecutionGateOptions.OnStale"/>.
+    /// Leaves the snapshot alone but stamps <see cref="AmbientGateMetrics"/> so the response envelope
+    /// surfaces a structured signal. Takes no lock. <see cref="StalenessPolicy.AutoReload"/> is
+    /// <see cref="ReloadIfStaleAsync"/>; <see cref="StalenessPolicy.Off"/> is a no-op.
     /// </summary>
-    private async Task<bool> ApplyStalenessPolicyAsync(string workspaceId, CancellationToken ct)
+    private void StampWarnIfStale(string workspaceId)
     {
-        if (_onStale == StalenessPolicy.Off)
+        if (_onStale != StalenessPolicy.Warn || !_workspaceManager.IsStale(workspaceId))
         {
-            return false;
+            return;
         }
 
+        if (AmbientGateMetrics.Current is { } metrics)
+        {
+            metrics.StaleAction = "warn";
+        }
+    }
+
+    /// <summary>
+    /// Item 1: the <see cref="StalenessPolicy.AutoReload"/> half. The caller MUST hold the
+    /// per-workspace WRITER lock (automatic-reload-analyzer-reader-lifetime): the reload disposes the
+    /// previous workspace and analyzer lease, which no gated reader may still be using. The stale
+    /// flag is re-read under the writer, so concurrent stale callers that queued behind one reload
+    /// observe it and skip theirs.
+    /// </summary>
+    /// <returns><see langword="true"/> only when this call performed a reload.</returns>
+    private async Task<bool> ReloadIfStaleAsync(string workspaceId, CancellationToken ct)
+    {
         if (!_workspaceManager.IsStale(workspaceId))
         {
             return false;
@@ -465,16 +514,6 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
 
         var metrics = AmbientGateMetrics.Current;
 
-        if (_onStale == StalenessPolicy.Warn)
-        {
-            if (metrics is not null)
-            {
-                metrics.StaleAction = "warn";
-            }
-            return false;
-        }
-
-        // AutoReload: reload under the existing load-gate path so writes can't race with us.
         // dr-9-9-response-claims: only stamp the "auto-reloaded" signal when reload actually
         // succeeded. Pre-fix, the finally block stamped unconditionally — a reload that
         // short-circuited on KeyNotFoundException (workspace closed between stale check and
@@ -490,8 +529,8 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
         catch (KeyNotFoundException)
         {
             // Workspace was closed between the stale check and the reload attempt — fall through
-            // and let the caller's ContainsWorkspace check throw a user-facing error. Leave
-            // StaleAction unset so the response does not falsely claim an auto-reload.
+            // and let the action surface a user-facing error. Leave StaleAction unset so the
+            // response does not falsely claim an auto-reload.
         }
         finally
         {
@@ -504,6 +543,31 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
         }
 
         return reloaded;
+    }
+
+    /// <summary>
+    /// Workspace ids whose per-workspace lock the CURRENT async flow already holds (set while a gated
+    /// action runs). Lets a nested same-workspace call skip the reload escalation that would wait
+    /// forever on its own enclosing reader. Immutable: an <see cref="AsyncLocal{T}"/> value is copied
+    /// into child flows, so it must never be mutated in place.
+    /// </summary>
+    private readonly AsyncLocal<ImmutableHashSet<string>?> _heldWorkspaces = new();
+
+    private bool HoldsWorkspaceLock(string workspaceId) =>
+        _heldWorkspaces.Value?.Contains(workspaceId) == true;
+
+    private async Task<T> RunHoldingWorkspaceAsync<T>(string workspaceId, Func<Task<T>> body)
+    {
+        var previous = _heldWorkspaces.Value;
+        _heldWorkspaces.Value = (previous ?? ImmutableHashSet.Create<string>(StringComparer.Ordinal)).Add(workspaceId);
+        try
+        {
+            return await body().ConfigureAwait(false);
+        }
+        finally
+        {
+            _heldWorkspaces.Value = previous;
+        }
     }
 
     /// <summary>

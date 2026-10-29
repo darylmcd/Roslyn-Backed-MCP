@@ -571,7 +571,7 @@ public class WorkspaceExecutionGateTests
     }
 
     // test-run-unfiltered-bare-error-rootcause (finding 1, second review pass): RunPerWorkspaceAsync's
-    // try block originally started AFTER ApplyStalenessPolicyAsync, so a gate-internal timeout
+    // try block originally started AFTER ReloadIfStaleAsync, so a gate-internal timeout
     // firing WHILE the auto-reload's own ReloadAsync call was in flight escaped the
     // reclassification catch entirely — the identical bare-error bug via a code path the first
     // fix cycle missed (the method's own parallel-fanout-auto-reload-timeout-floor comment already
@@ -957,7 +957,7 @@ public class WorkspaceExecutionGateTests
             manager,
             clock);
 
-        // Launch three concurrent reads. All three hit ApplyStalenessPolicyAsync; the first
+        // Launch three concurrent reads. All three hit ReloadIfStaleAsync; the first
         // triggers the reload (and resets its budget), the others observe a fresh workspace
         // (IsStale returns false after the first reload). All three should complete without timeout.
         var tasks = Enumerable.Range(0, 3).Select(i =>
@@ -1062,6 +1062,187 @@ public class WorkspaceExecutionGateTests
         }
 
         Assert.AreEqual(TimeSpan.Zero, RequestDeadline.Remaining);
+    }
+
+    // ---------- automatic-reload-analyzer-reader-lifetime ----------
+    // The auto-reload must run under the per-workspace WRITER lock so an in-flight gated reader
+    // (an analyzer/generator consumer) never races the retirement of its workspace and analyzer
+    // lease. Each gate call below runs synchronously up to its first genuinely pending await
+    // (rate limit, free throttle slot and lock-waiter registration are all synchronous), so a
+    // returned pending task proves the writer is already queued; no sleeps are needed.
+
+    private static WorkspaceExecutionGate CreateAutoReloadGate(FakeGateWorkspaceManager manager) =>
+        new(new ExecutionGateOptions { OnStale = StalenessPolicy.AutoReload }, manager);
+
+    [TestMethod]
+    public async Task StaleAutoReload_WaitsForInFlightReader_ThenReloadsOnce()
+    {
+        var manager = new FakeGateWorkspaceManager();
+        var gate = CreateAutoReloadGate(manager);
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var reloadCountSeenByReaderAtExit = -1;
+
+        var reader = gate.RunReadAsync(WorkspaceA, async _ =>
+        {
+            entered.SetResult();
+            await release.Task;
+            reloadCountSeenByReaderAtExit = Volatile.Read(ref manager.ReloadCount);
+            return 0;
+        }, CancellationToken.None);
+        await entered.Task;
+
+        manager.MarkStale(WorkspaceA);
+        var staleCall = gate.RunReadAsync(WorkspaceA, _ => Task.FromResult(manager.IsStale(WorkspaceA)), CancellationToken.None);
+
+        Assert.IsFalse(staleCall.IsCompleted, "the stale invocation must queue behind the live reader.");
+        Assert.AreEqual(0, Volatile.Read(ref manager.ReloadCount),
+            "auto-reload must not run (and retire the workspace/lease) while a gated reader is in flight.");
+
+        release.SetResult();
+        await reader;
+        var staleSeenByAction = await staleCall;
+
+        Assert.AreEqual(0, reloadCountSeenByReaderAtExit, "the reader must finish before any reload.");
+        Assert.AreEqual(1, manager.ReloadCount);
+        Assert.IsFalse(staleSeenByAction, "the stale invocation's action must observe the reloaded workspace.");
+    }
+
+    [TestMethod]
+    public async Task ConcurrentStaleReaders_CollapseIntoOneReload()
+    {
+        var manager = new FakeGateWorkspaceManager();
+        var gate = CreateAutoReloadGate(manager);
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var reader = gate.RunReadAsync(WorkspaceA, async _ =>
+        {
+            entered.SetResult();
+            await release.Task;
+            return 0;
+        }, CancellationToken.None);
+        await entered.Task;
+
+        manager.MarkStale(WorkspaceA);
+        var first = gate.RunReadAsync(WorkspaceA, _ => Task.FromResult(0), CancellationToken.None);
+        var second = gate.RunReadAsync(WorkspaceA, _ => Task.FromResult(0), CancellationToken.None);
+        Assert.AreEqual(0, Volatile.Read(ref manager.ReloadCount));
+
+        release.SetResult();
+        await Task.WhenAll(reader, first, second);
+
+        Assert.AreEqual(1, manager.ReloadCount, "the second stale caller must observe the first caller's reload under the writer lock.");
+    }
+
+    [TestMethod]
+    public async Task StaleWriter_ReloadsUnderItsOwnWriterLock_AfterInFlightReader()
+    {
+        var manager = new FakeGateWorkspaceManager();
+        var gate = CreateAutoReloadGate(manager);
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var reader = gate.RunReadAsync(WorkspaceA, async _ =>
+        {
+            entered.SetResult();
+            await release.Task;
+            return 0;
+        }, CancellationToken.None);
+        await entered.Task;
+
+        manager.MarkStale(WorkspaceA);
+        var writer = gate.RunWriteAsync(WorkspaceA, _ => Task.FromResult(manager.IsStale(WorkspaceA)), CancellationToken.None);
+        Assert.AreEqual(0, Volatile.Read(ref manager.ReloadCount));
+
+        release.SetResult();
+        await reader;
+
+        Assert.IsFalse(await writer);
+        Assert.AreEqual(1, manager.ReloadCount);
+    }
+
+    [TestMethod]
+    public async Task StaleNestedSameWorkspaceRead_SkipsWriterEscalation_AndDoesNotDeadlock()
+    {
+        var manager = new FakeGateWorkspaceManager();
+        var gate = CreateAutoReloadGate(manager);
+
+        var result = await gate.RunReadAsync(WorkspaceA, async _ =>
+        {
+            manager.MarkStale(WorkspaceA);
+            // Escalating here would wait for the writer lock while this outer reader is held.
+            var nested = await gate.RunReadAsync(WorkspaceA, _ => Task.FromResult(manager.ReloadCount), CancellationToken.None);
+            return (nested, reloadsWhileOuterHeld: manager.ReloadCount);
+        }, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(30));
+
+        Assert.AreEqual(0, result.nested, "a nested read must not reload underneath its own outer reader.");
+        Assert.AreEqual(0, result.reloadsWhileOuterHeld);
+        Assert.IsTrue(manager.IsStale(WorkspaceA), "the workspace stays stale; the next top-level call reloads it.");
+
+        await gate.RunReadAsync(WorkspaceA, _ => Task.FromResult(0), CancellationToken.None);
+        Assert.AreEqual(1, manager.ReloadCount);
+    }
+
+    [TestMethod]
+    public async Task StaleReloadQueuedBehindReader_IsBoundedByRequestTimeout_AndNeverReloads()
+    {
+        // Liveness: a queued stale writer holds a throttle slot and blocks later readers of the
+        // same workspace, exactly like any queued RunWriteAsync. The request timeout bounds it.
+        var clock = new FakeTimeProvider();
+        var manager = new FakeGateWorkspaceManager();
+        var gate = new WorkspaceExecutionGate(
+            new ExecutionGateOptions { OnStale = StalenessPolicy.AutoReload, RequestTimeout = TimeSpan.FromSeconds(30) },
+            manager,
+            clock);
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var reader = gate.RunReadAsync(WorkspaceA, async _ =>
+        {
+            entered.SetResult();
+            await release.Task; // deliberately ignores the token: a long uncooperative reader
+            return 0;
+        }, CancellationToken.None);
+        await entered.Task;
+
+        manager.MarkStale(WorkspaceA);
+        var stale = gate.RunReadAsync(WorkspaceA, _ => Task.FromResult(0), CancellationToken.None);
+        clock.Advance(TimeSpan.FromSeconds(31));
+
+        await Assert.ThrowsExactlyAsync<TimeoutException>(() => stale);
+        Assert.AreEqual(0, manager.ReloadCount);
+
+        // The timed-out waiter released its throttle slot and queue position.
+        release.SetResult();
+        await reader;
+        await gate.RunReadAsync(WorkspaceB, _ => Task.FromResult(0), CancellationToken.None);
+    }
+
+    [TestMethod]
+    public async Task LoadRestoreReload_WriterLockedReloader_WaitsForInFlightReader()
+    {
+        // workspace_load's restore reload may target an already-live session (path dedup) that
+        // gated readers are using: only the reload itself takes the writer.
+        var manager = new FakeGateWorkspaceManager();
+        var gate = CreateAutoReloadGate(manager);
+        var reloader = new RoslynMcp.Host.Stdio.Tools.WorkspaceTools.WriterLockedReloader(gate, manager);
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var reader = gate.RunReadAsync(WorkspaceA, async _ =>
+        {
+            entered.SetResult();
+            await release.Task;
+            return 0;
+        }, CancellationToken.None);
+        await entered.Task;
+
+        var reload = reloader.ReloadAsync(WorkspaceA, CancellationToken.None);
+        Assert.IsFalse(reload.IsCompleted);
+        Assert.AreEqual(0, Volatile.Read(ref manager.ReloadCount));
+
+        release.SetResult();
+        await reader;
+        await reload;
+
+        Assert.AreEqual(1, manager.ReloadCount);
     }
 
     private sealed class FakeGateWorkspaceManager : IWorkspaceManager

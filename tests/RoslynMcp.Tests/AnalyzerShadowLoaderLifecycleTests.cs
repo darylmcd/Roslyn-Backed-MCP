@@ -730,6 +730,197 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
         return new WeakReference(System.Runtime.Loader.AssemblyLoadContext.GetLoadContext(analyzer.GetType().Assembly));
     }
 
+    /// <summary>
+    /// automatic-reload-analyzer-reader-lifetime: a gated reader that holds a workspace's analyzer
+    /// load context must keep resolving analyzer DEPENDENCIES until it releases, even when another
+    /// stale invocation triggers the automatic reload. Pre-fix the reload ran before the gate and
+    /// disposed the old analyzer lease (clearing its dependency map and unloading its contexts)
+    /// under the live reader.
+    /// </summary>
+    [TestMethod]
+    public async Task AutoReload_WhileGatedReaderHoldsAnalyzer_RetainsDependencyResolutionUntilRelease()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("Analyzer shadow-file lifecycle relies on Windows file-lock semantics.");
+            return;
+        }
+
+        var repoRoot = TestFixtureFileSystem.FindRepositoryRoot();
+        var solutionPath = TestFixtureFileSystem.CreateSampleSolutionCopy(
+            repoRoot, Path.Combine(repoRoot, "samples", "SampleSolution", "SampleSolution.slnx"));
+        var copiedRoot = Path.GetDirectoryName(solutionPath)!;
+
+        try
+        {
+            var analyzerAssemblyPath = InjectFixtureAnalyzer(copiedRoot);
+            EmitFixtureDependency(copiedRoot);
+
+            MsBuildInitializer.EnsureInitialized();
+            using var watcher = new ControllableStaleWatcher(new FileWatcherService(NullLogger<FileWatcherService>.Instance));
+            using var manager = new WorkspaceManager(
+                NullLogger<WorkspaceManager>.Instance,
+                new PreviewStore(),
+                watcher,
+                new WorkspaceManagerOptions { MaxConcurrentWorkspaces = 4 },
+                cacheStore: null,
+                sessionLoader: new WorkspaceSessionLoader());
+            var observed = new ReloadObservingManager(manager);
+            using var gate = new WorkspaceExecutionGate(
+                new ExecutionGateOptions { OnStale = StalenessPolicy.AutoReload }, observed);
+
+            var status = await manager.LoadAsync(solutionPath, CancellationToken.None);
+            Assert.IsTrue(status.IsLoaded);
+            var analyzerContext = (System.Runtime.Loader.AssemblyLoadContext)ForceAnalyzerLoad(
+                manager, status.WorkspaceId, analyzerAssemblyPath).Target!;
+
+            var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var reader = gate.RunReadAsync(status.WorkspaceId, async _ =>
+            {
+                entered.SetResult();
+                await release.Task;
+                // Probing an unloaded context crashes the runtime (0xC0000005 on the pre-fix code), so
+                // detect the lost context first and report it as the dependency-resolution failure.
+                if (!System.Runtime.Loader.AssemblyLoadContext.All.Contains(analyzerContext))
+                {
+                    return new InvalidOperationException("the analyzer load context was unloaded while the reader held it");
+                }
+
+                try
+                {
+                    // Not yet loaded: forces a LAZY dependency resolution through the old lease.
+                    analyzerContext.LoadFromAssemblyName(new System.Reflection.AssemblyName(_fixtureDependencyAssemblyName));
+                    return (Exception?)null;
+                }
+                catch (Exception ex)
+                {
+                    return ex;
+                }
+            }, CancellationToken.None);
+            await entered.Task;
+
+            watcher.ForceStale();
+            var staleInvocation = gate.RunReadAsync(status.WorkspaceId, _ => Task.FromResult(0), CancellationToken.None);
+
+            // Pre-fix the reload starts synchronously inside the call above (no lock), so wait for
+            // it to complete; post-fix it is parked behind the reader and has not started.
+            if (observed.ReloadStarted)
+            {
+                await observed.ReloadFinished.WaitAsync(TimeSpan.FromMinutes(5));
+            }
+
+            release.SetResult();
+            var probeFailure = await reader;
+            await staleInvocation;
+
+            Assert.IsNull(probeFailure,
+                "The in-flight reader lost analyzer dependency resolution because the automatic reload " +
+                $"retired its lease. reloadStartedWhileReaderHeld={observed.ReloadStarted}; failure: {probeFailure}");
+            Assert.AreEqual(1, observed.ReloadCount, "The stale invocation must still reload exactly once, after the reader releases.");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(copiedRoot);
+        }
+    }
+
+    private const string _fixtureDependencyAssemblyName = "LifecycleFixtureDependency";
+
+    /// <summary>Emits a plain library beside the fixture analyzer; never referenced, so it loads only on demand.</summary>
+    private static void EmitFixtureDependency(string copiedRoot)
+    {
+        var runtimeDirectory = Path.GetDirectoryName(typeof(object).Assembly.Location)!;
+        var compilation = CSharpCompilation.Create(
+            _fixtureDependencyAssemblyName,
+            [CSharpSyntaxTree.ParseText("public static class LifecycleFixtureDependencyMarker { public static int Value => 1; }")],
+            [
+                MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
+                MetadataReference.CreateFromFile(Path.Combine(runtimeDirectory, "System.Runtime.dll")),
+            ],
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        using var stream = File.Create(Path.Combine(copiedRoot, _fixtureDependencyAssemblyName + ".dll"));
+        var emit = compilation.Emit(stream);
+        Assert.IsTrue(emit.Success, $"Fixture dependency compilation must succeed. Diagnostics: {string.Join("; ", emit.Diagnostics)}");
+    }
+
+    /// <summary>File watcher whose stale flag the test controls; everything else forwards to the real watcher.</summary>
+    private sealed class ControllableStaleWatcher(IFileWatcherService inner) : IFileWatcherService
+    {
+        private int _forcedStale;
+
+        public void ForceStale() => Volatile.Write(ref _forcedStale, 1);
+
+        public event Action<string>? WorkspaceRootMissing
+        {
+            add => inner.WorkspaceRootMissing += value;
+            remove => inner.WorkspaceRootMissing -= value;
+        }
+
+        public void Watch(string workspaceId, string workspacePath) => inner.Watch(workspaceId, workspacePath);
+        public void Unwatch(string workspaceId) => inner.Unwatch(workspaceId);
+        public bool IsStale(string workspaceId) => Volatile.Read(ref _forcedStale) == 1 || inner.IsStale(workspaceId);
+        public Task WaitForStaleAsync(string workspaceId, CancellationToken ct) => inner.WaitForStaleAsync(workspaceId, ct);
+        public string? GetStaleReason(string workspaceId) => inner.GetStaleReason(workspaceId);
+        public void MarkStale(string workspaceId, string reason) => inner.MarkStale(workspaceId, reason);
+
+        public void ClearStale(string workspaceId)
+        {
+            Volatile.Write(ref _forcedStale, 0);
+            inner.ClearStale(workspaceId);
+        }
+
+        public void Dispose() => inner.Dispose();
+    }
+
+    /// <summary>Forwards every call and records when a reload starts and finishes.</summary>
+    private sealed class ReloadObservingManager(RoslynMcp.Roslyn.Contracts.IWorkspaceManager inner)
+        : RoslynMcp.Roslyn.Contracts.IWorkspaceManager
+    {
+        private int _reloadCount;
+        private int _reloadStarted;
+
+        public bool ReloadStarted => Volatile.Read(ref _reloadStarted) == 1;
+        public int ReloadCount => Volatile.Read(ref _reloadCount);
+        public TaskCompletionSource ReloadFinishedSource { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public Task ReloadFinished => ReloadFinishedSource.Task;
+
+        public event Action<string>? WorkspaceClosed { add => inner.WorkspaceClosed += value; remove => inner.WorkspaceClosed -= value; }
+        public event Action<string>? WorkspaceReloaded { add => inner.WorkspaceReloaded += value; remove => inner.WorkspaceReloaded -= value; }
+
+        public async Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct)
+        {
+            Interlocked.Increment(ref _reloadCount);
+            Volatile.Write(ref _reloadStarted, 1);
+            try
+            {
+                return await inner.ReloadAsync(workspaceId, ct).ConfigureAwait(false);
+            }
+            finally
+            {
+                ReloadFinishedSource.TrySetResult();
+            }
+        }
+
+        public Task<WorkspaceStatusDto> LoadAsync(string path, EvictPolicy evictPolicy, CancellationToken ct) => inner.LoadAsync(path, evictPolicy, ct);
+        public bool ContainsWorkspace(string workspaceId) => inner.ContainsWorkspace(workspaceId);
+        public WorkspaceNotFoundException CreateWorkspaceNotFoundException(string workspaceId) => inner.CreateWorkspaceNotFoundException(workspaceId);
+        public bool IsStale(string workspaceId) => inner.IsStale(workspaceId);
+        public bool Close(string workspaceId) => inner.Close(workspaceId);
+        public IReadOnlyList<WorkspaceStatusDto> ListWorkspaces() => inner.ListWorkspaces();
+        public IReadOnlyList<string> FindWorkspaceIdsContainingFile(string filePath) => inner.FindWorkspaceIdsContainingFile(filePath);
+        public WorkspaceStatusDto GetStatus(string workspaceId) => inner.GetStatus(workspaceId);
+        public Task<WorkspaceStatusDto> GetStatusAsync(string workspaceId, CancellationToken cancellationToken = default) => inner.GetStatusAsync(workspaceId, cancellationToken);
+        public ProjectGraphDto GetProjectGraph(string workspaceId) => inner.GetProjectGraph(workspaceId);
+        public Task<IReadOnlyList<GeneratedDocumentDto>> GetSourceGeneratedDocumentsAsync(string workspaceId, string? projectName, CancellationToken ct) => inner.GetSourceGeneratedDocumentsAsync(workspaceId, projectName, ct);
+        public Task<string?> GetSourceTextAsync(string workspaceId, string filePath, CancellationToken ct) => inner.GetSourceTextAsync(workspaceId, filePath, ct);
+        public int GetCurrentVersion(string workspaceId) => inner.GetCurrentVersion(workspaceId);
+        public Solution GetCurrentSolution(string workspaceId) => inner.GetCurrentSolution(workspaceId);
+        public Project? GetProject(string workspaceId, string projectNameOrPath) => inner.GetProject(workspaceId, projectNameOrPath);
+        public bool TryApplyChanges(string workspaceId, Solution newSolution) => inner.TryApplyChanges(workspaceId, newSolution);
+        public void RestoreVersion(string workspaceId, int version) => inner.RestoreVersion(workspaceId, version);
+    }
+
     private static List<string> ListLeaseDirectories(string workspaceDirectory) =>
         Directory.Exists(workspaceDirectory)
             ? Directory.EnumerateDirectories(workspaceDirectory).ToList()

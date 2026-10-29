@@ -78,7 +78,10 @@ public static class WorkspaceTools
             ProgressHelper.ReportStage(progress, 1, totalStages, "opening-workspace");
             var status = await workspace.LoadAsync(path, evictPolicy, c).ConfigureAwait(false);
             ProgressHelper.ReportStage(progress, 2, totalStages, "checking-restore");
-            var restoreOutcome = await RestoreAndReloadIfRequiredAsync(commandExecutor, validationOptions, workspace, status, autoRestore, logger, c).ConfigureAwait(false);
+            // Only the reload itself takes the workspace writer: workspace_load may have returned an
+            // ALREADY-LIVE session (path dedup) that gated readers are using, and the reload retires
+            // its workspace and analyzer lease. The `dotnet restore` stays outside the writer.
+            var restoreOutcome = await RestoreAndReloadIfRequiredAsync(commandExecutor, validationOptions, new WriterLockedReloader(gate, workspace), status, autoRestore, logger, c).ConfigureAwait(false);
             status = restoreOutcome.Status;
             if (expandSanctionedRoots)
             {
@@ -573,6 +576,17 @@ public static class WorkspaceTools
         }, ct);
     }
 
+    /// <summary>
+    /// Reloads under the per-workspace writer lock, nested inside the load gate exactly like
+    /// <c>workspace_reload</c> (the throttle depth counter reuses the slot). The staleness policy is
+    /// off: this IS the reload.
+    /// </summary>
+    internal sealed class WriterLockedReloader(IWorkspaceExecutionGate gate, IWorkspaceReloader inner) : IWorkspaceReloader
+    {
+        public Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct) =>
+            gate.RunWriteAsync(workspaceId, c => inner.ReloadAsync(workspaceId, c), ct, applyStalenessPolicy: false);
+    }
+
     /// <summary>Result of the load-time restore step: the (possibly reloaded) status plus, when a
     /// default (omitted-<c>autoRestore</c>) restore failed non-fatally, a path-free reason.</summary>
     internal readonly record struct RestoreReloadOutcome(WorkspaceStatusDto Status, string? FailureReason = null);
@@ -588,7 +602,7 @@ public static class WorkspaceTools
     internal static async Task<RestoreReloadOutcome> RestoreAndReloadIfRequiredAsync(
         IGatedCommandExecutor commandExecutor,
         ValidationServiceOptions validationOptions,
-        IWorkspaceManager workspace,
+        IWorkspaceReloader workspace,
         WorkspaceStatusDto status,
         bool? autoRestore,
         ILogger logger,
