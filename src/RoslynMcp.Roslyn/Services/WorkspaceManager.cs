@@ -440,7 +440,9 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
     slotAcquired:
         var workspaceId = Guid.NewGuid().ToString("N");
         var session = new WorkspaceSession(workspaceId);
-        var sessionAdded = false;
+        // True once the registered session owns the capacity slot. From then on only the exact-session
+        // removal path (RemoveSessionEffects) returns it; this method returns it only while still false.
+        var slotTransferred = false;
         try
         {
             await LoadIntoSessionAsync(session, fullPath, globalProperties, ct).ConfigureAwait(false);
@@ -460,7 +462,14 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
                         raceWinner.WorkspaceId,
                         fullPath,
                         workspaceId);
-                    session.Dispose();
+                    // The loser was never registered: a dispose failure must not fail the winner's successful status.
+                    var loserFailures = new List<Exception>();
+                    AttemptCleanup(session.Dispose, loserFailures);
+                    if (loserFailures.Count > 0)
+                        _logger.LogError(
+                            new AggregateException(loserFailures),
+                            "Disposing race-losing workspace '{WorkspaceId}' failed",
+                            workspaceId);
                     raceWinner.TouchAccess();
                     return BuildStatus(raceWinner);
                 }
@@ -471,38 +480,56 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
                 throw new InvalidOperationException($"Workspace '{workspaceId}' already exists.");
             }
 
-            sessionAdded = true;
+            slotTransferred = true;
             _fileWatcher.Watch(workspaceId, session.LoadedPath!);
             return BuildStatus(session);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex)
         {
-            // Capture any workspace diagnostics collected before the failure
-            var diagnostics = session.WorkspaceDiagnostics.ToArray();
-            if (diagnostics.Length > 0)
+            if (ex is not OperationCanceledException)
             {
-                _logger.LogError(
-                    ex,
-                    "Workspace load failed for {Path} with {DiagnosticCount} diagnostics captured",
-                    fullPath,
-                    diagnostics.Length);
-                foreach (var diag in diagnostics.Take(10))
+                // Capture any workspace diagnostics collected before the failure
+                var diagnostics = session.WorkspaceDiagnostics.ToArray();
+                if (diagnostics.Length > 0)
                 {
-                    _logger.LogError("  [{Severity}] {Message}", diag.Severity, diag.Message);
+                    _logger.LogError(
+                        ex,
+                        "Workspace load failed for {Path} with {DiagnosticCount} diagnostics captured",
+                        fullPath,
+                        diagnostics.Length);
+                    foreach (var diag in diagnostics.Take(10))
+                    {
+                        _logger.LogError("  [{Severity}] {Message}", diag.Severity, diag.Message);
+                    }
                 }
             }
 
-            session.Dispose();
-            throw;
-        }
-        catch
-        {
-            session.Dispose();
+            // Compensate without replacing the primary failure or cancellation: cleanup failures are logged.
+            var cleanupFailures = new List<Exception>();
+            if (slotTransferred)
+            {
+                // Registered: remove exactly this session through the single removal path (unwatch, preview
+                // invalidation, dispose, slot return, WorkspaceClosed). It is a no-op if a concurrent close,
+                // eviction or shutdown already removed (and so owns the slot return for) this session.
+                AttemptCleanup(
+                    () => CloseCore(workspaceId, recordEviction: false, refuseRetained: false, expected: session),
+                    cleanupFailures);
+            }
+            else
+            {
+                AttemptCleanup(session.Dispose, cleanupFailures);
+            }
+
+            if (cleanupFailures.Count > 0)
+                _logger.LogError(
+                    new AggregateException(cleanupFailures),
+                    "Cleanup after failed workspace load of '{WorkspaceId}' failed; original failure is rethrown",
+                    workspaceId);
             throw;
         }
         finally
         {
-            if (!sessionAdded)
+            if (!slotTransferred)
             {
                 _workspaceSlots.Release();
             }
