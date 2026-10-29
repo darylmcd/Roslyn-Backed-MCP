@@ -95,7 +95,9 @@ The quality job has a 30-minute cap, full-history checkout, and latest-`10.0.x` 
 
 CI and `just vuln-audit` invoke `eng/verify-nuget-audit.ps1`. It forces restore with `NuGetAuditMode=all` and promotes NU1900-NU1904 to errors, covering advisory-source failure plus vulnerable direct/transitive packages.
 
-## Current Timing Evidence
+## Pre-Sharding Timing Evidence (historical)
+
+Superseded by the 2026-10-29 recheck under § Hosted Shard Weighting Decision. Every number in this section predates sharding and the suite growth since; none describes the current steady state.
 
 Measured from the five most recent successful PR legs before this refactor:
 
@@ -137,7 +139,35 @@ The four-shard calibration is closed. `eng/collect-hosted-shard-timings.ps1` mea
 | `windows-latest` | 4 | 720.4s | 647.1s | 73.4s (10.2%) | 82.9s | 1.87x | 1.50x |
 | `ubuntu-latest` | 2 | 743.2s | 662.6s | 80.6s (10.8%) | 140.3s | 2.21x | 1.18x |
 
-Decision: the deterministic discovered-case weights in `eng/get-test-shard-plan.ps1` remain the shard weighting on both hosted images. Do not add an OS-specific duration profile. A perfect duration partition recovers less than the single-leg wall-time noise band on either image, and summed TRX case duration is not a partition signal at all: its same-leg run-to-run swing exceeds the between-leg spread, so ranking legs by it reproduces runner noise rather than class cost. At that calibration, the residual `ubuntu-latest` gap was structural rather than class skew: the artifact-owner leg also ran docs validation, formatting, the NuGet audit, and publish upload. Formatting and audit now run in the independent quality job; docs validation and publish remain with the artifact owner. This movement triggers a fresh five-complete-green-run timing recheck; the historical measurements above do not establish the new steady state or a numerical improvement.
+Superseded by the 2026-10-29 recheck below. Decision at that calibration: the deterministic discovered-case weights in `eng/get-test-shard-plan.ps1` remain the shard weighting on both hosted images. Do not add an OS-specific duration profile. A perfect duration partition recovers less than the single-leg wall-time noise band on either image, and summed TRX case duration is not a partition signal at all: its same-leg run-to-run swing exceeds the between-leg spread, so ranking legs by it reproduces runner noise rather than class cost. At that calibration, the residual `ubuntu-latest` gap was structural rather than class skew: the artifact-owner leg also ran docs validation, formatting, the NuGet audit, and publish upload. Formatting and audit now run in the independent quality job; docs validation and publish remain with the artifact owner. This movement triggers a fresh five-complete-green-run timing recheck; the historical measurements above do not establish the new steady state or a numerical improvement.
+
+### 2026-10-29 recheck (seven-leg topology)
+
+Trigger met: the Linux shard count changed (2 to 3) and non-test work moved to the quality job. `eng/collect-hosted-shard-timings.ps1` measured five complete green first-attempt `ci` pull-request runs (35 leg observations; 4 Windows + 3 Linux legs each), TRX downloaded inside the 14-day window, no local timing mixed in:
+
+| Run | Head | Created (UTC) |
+|---|---|---|
+| 40783926346 | b74f0546 | 2026-10-28 22:58 |
+| 40788319028 | e24d0063 | 2026-10-28 23:34 |
+| 40788434338 | a92e1033 | 2026-10-28 23:35 |
+| 40800095395 | a7cf6874 | 2026-10-29 01:23 |
+| 40803366211 | 35477746 | 2026-10-29 01:56 |
+
+Image evidence is the `windows-latest` / `ubuntu-latest` job label only; runner image build versions were not captured. The five heads are different pull requests (cases per Windows leg ranged 1358-1428), so the sample mixes suite revisions.
+
+| Hosted image | Legs | Critical path | Balanced floor | Achievable gain | Single-leg noise band | Worst same-leg case-duration spread | Between-leg case-duration spread |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `windows-latest` | 4 | 1827.2s | 1348.9s | 478.4s (26.2%) | 325.9s | 1.93x | 2.09x |
+| `ubuntu-latest` | 3 | 1322.8s | 1093.8s | 229.0s (17.3%) | 224.2s | 1.68x | 1.98x |
+
+Findings:
+
+- The collector reports material skew on both images: the achievable gain exceeds the single-leg noise band, and summed case duration ranks legs (between-leg spread above same-leg spread, narrowly on Windows). Under the re-check trigger above, the case-count weighting no longer stands. An image-specific duration profile is warranted for both images; implementation is tracked in `ci-shard-duration-profile-hosted`, not done by this recheck.
+- Static case counts misjudge cost. Mean TRX case seconds per run on `windows-latest`: `InterfaceBaseTypeInsertionIntegrationTests` 1013s (12 test methods in the file, so about 85s each), `ForkNativeAdmissionTests` 759s, `MovedDeclarationFileOwnershipIntegrationTests` 569s, `CrossProjectReceivingNamespaceIntegrationTests` 511s. The same four lead `ubuntu-latest`. MSTest runs a class's cases serially, so one such class floors its leg's wall time; a partition cannot beat the largest class. Cost reduction for these classes is tracked in `test-heavy-integration-class-cost` and its `test-heavy-class-cost-*` siblings.
+- The Windows critical path moved from 720.4s (earlier calibration, about 2,500 total cases) to 1827.2s with about 5,600 cases across the four legs: the growth is mostly suite size, not shard topology.
+- `windows-hosted-1-of-4` (1621.8s mean) and `windows-hosted-4-of-4` (1646.2s mean) bound the critical path; `windows-hosted-2-of-4` averages 860.6s.
+
+Evidence limits: five runs across five heads, one image version unknown, per-leg wall spread 1.4x-1.9x. Re-run the collector after the profile lands; do not tune a profile from fewer than five complete green runs.
 
 ## Linux Shard Count Decision
 
@@ -150,7 +180,7 @@ Operator decision 2026-10-26 supersedes the two-Linux-shard topology for code an
 | Code run 40412863293 (#1854) | linux-1 cancelled at 30m after 2,660 passed, 0 failed (28m23 of tests) |
 | Docs runs for #1853 / #1848 | 22m–27m27 per leg |
 
-The complete Linux partition no longer fits two legs with margin: ordinary test growth reaches the deadline. A third shard keeps the static case-count weighting above (no duration profile), preserves the complete disjoint partition, fail-closed planning, deadlines and single-owner artifact/cache rules, and adds one hosted runner per Linux route. The shard-count change fires the re-check trigger below; `ci-quality-move-hosted-timing-recheck` stays open until five fresh complete green runs are measured.
+The complete Linux partition no longer fits two legs with margin: ordinary test growth reaches the deadline. A third shard keeps the static case-count weighting above (no duration profile), preserves the complete disjoint partition, fail-closed planning, deadlines and single-owner artifact/cache rules, and adds one hosted runner per Linux route. The shard-count change fired the re-check trigger below; the 2026-10-29 recheck under § Hosted Shard Weighting Decision measured it.
 
 Re-check trigger: re-run `eng/collect-hosted-shard-timings.ps1` when the shard count changes, when non-test work moves between legs, or when a hosted image's achievable gain exceeds its own single-leg noise band across at least five complete green runs. Uploaded per-leg TRX expires after 14 days, so always re-derive from fresh in-window runs. Never calibrate from a single sample, and never feed a local Windows profile into the hosted `windows-latest` profile.
 
