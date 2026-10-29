@@ -1,6 +1,6 @@
 # extract-and-wire-semantic-registration-rewrite — Rewrite bound DI registrations semantically
 
-**row:** `extract-and-wire-semantic-registration-rewrite` · **pri:** `Medium` · **size:** `M`
+**row:** `extract-and-wire-semantic-registration-rewrite` · **pri:** `Medium` · **size:** `M` · **deps:** `cross-project-interface-reference-binding`
 
 ## Anchors
 

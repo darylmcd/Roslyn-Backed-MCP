@@ -51,7 +51,7 @@
 | `logging-default-sink-disabled-stderr-swallowed` | High | logging-retention-destroys-repro-evidence | **Enable the bounded file sink by default for installed users** — ROSLYNMCP_OBSERVABILITY_SINK defaults to `disabled` and the plugin mcp.json never sets it, so an MCP host that swallows stderr leaves no evidence of a first failure. [type: quality] [source: logging-audit 20260930-1340] | M | items/logging-default-sink-disabled-stderr-swallowed.md |
 | `persistent-composite-workspace-identity-not-portable` | High | — | Resolve persisted composite tokens to the correct receiving workspace and source snapshot before claim or mutation. [type: bug] [source: token-lifecycle-independence-revet] | L | items/persistent-composite-workspace-identity-not-portable.md |
 | `cross-project-interface-reference-binding` | High | — | Bind generated interface uses to the generated symbol | M | items/cross-project-interface-reference-binding.md |
-| `cross-project-interface-signature-dependencies` | High | — | Validate emitted interface signature dependencies | M | items/cross-project-interface-signature-dependencies.md |
+| `cross-project-interface-signature-dependencies` | High | cross-project-interface-reference-binding | Validate emitted interface signature dependencies | M | items/cross-project-interface-signature-dependencies.md |
 | `refactoring-rebase-source-kind-preservation` | High | — | Preserve reviewed document source kind during replay | M | items/refactoring-rebase-source-kind-preservation.md |
 | `automatic-reload-analyzer-reader-lifetime` | High | — | Exclude readers before automatic reload retires providers | M | items/automatic-reload-analyzer-reader-lifetime.md |
 | `analyzer-shadow-sweep-path-authority` | High | — | Keep analyzer sweeping inside owned no-follow paths | M | items/analyzer-shadow-sweep-path-authority.md |
@@ -195,9 +195,9 @@
 | `mtp-resolved-engine-version-selection` | Medium | — | Gate MTP filters on every applicable resolved engine | M | items/mtp-resolved-engine-version-selection.md |
 | `test-run-global-json-fail-closed-authority` | Medium | — | Distinguish invalid runner configuration from no configuration | M | items/test-run-global-json-fail-closed-authority.md |
 | `composite-batch-final-diff-composition` | Medium | — | Review the complete initial-to-final composite delta | M | items/composite-batch-final-diff-composition.md |
-| `extract-and-wire-same-file-composition` | Medium | — | Compose DI edits on the extracted snapshot | M | items/extract-and-wire-same-file-composition.md |
+| `extract-and-wire-same-file-composition` | Medium | cross-project-interface-reference-binding | Compose DI edits on the extracted snapshot | M | items/extract-and-wire-same-file-composition.md |
 | `cross-project-interface-generic-type-parameters` | Medium | — | Preserve generic parameters in extracted interfaces | M | items/cross-project-interface-generic-type-parameters.md |
-| `extract-and-wire-semantic-registration-rewrite` | Medium | — | Rewrite bound DI registrations semantically | M | items/extract-and-wire-semantic-registration-rewrite.md |
+| `extract-and-wire-semantic-registration-rewrite` | Medium | cross-project-interface-reference-binding | Rewrite bound DI registrations semantically | M | items/extract-and-wire-semantic-registration-rewrite.md |
 | `gated-command-executor-disposal-drains-active-runs` | Medium | — | Drain owned command runs before disposing gates | M | items/gated-command-executor-disposal-drains-active-runs.md |
 | `watcher-delivery-loss-observation` | Medium | — | Treat lost watcher delivery as unknown freshness | M | items/watcher-delivery-loss-observation.md |
 | `cache-graph-identity-framing` | Medium | — | Frame graph cache identity unambiguously | S | items/cache-graph-identity-framing.md |
