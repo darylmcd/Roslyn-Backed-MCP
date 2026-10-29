@@ -165,7 +165,9 @@ public sealed class FileOperationService : IFileOperationService
 
         var folders = GetFolders(destinationProject.FilePath, destinationPath);
         var createdDocument = destinationProject.AddDocument(Path.GetFileName(destinationPath), updatedText, folders, destinationPath);
-        var newSolution = createdDocument.Project.Solution.RemoveDocument(sourceDocument.Id);
+        var newSolution = createdDocument.Project.Solution
+            .WithDocumentSourceCodeKind(createdDocument.Id, sourceDocument.SourceCodeKind)
+            .RemoveDocument(sourceDocument.Id);
 
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
         var description = $"Move file '{Path.GetFileName(sourcePath)}' to '{destinationPath}'";

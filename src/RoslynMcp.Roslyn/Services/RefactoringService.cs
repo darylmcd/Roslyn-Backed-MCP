@@ -836,7 +836,7 @@ public sealed class RefactoringService : IRefactoringService
     /// prepares that result; <c>ApplyRefactoringAsync</c> delegates its persistence to
     /// <c>DocumentSetPersistenceService.PersistAsync</c>.
     /// </summary>
-    private static async Task<Solution> RebaseModifiedSolutionOntoCurrentAsync(
+    internal static async Task<Solution> RebaseModifiedSolutionOntoCurrentAsync(
         Solution originalSolution,
         Solution modifiedSolution,
         Solution currentSolution,
@@ -918,6 +918,13 @@ public sealed class RefactoringService : IRefactoringService
             if (currentDocument is not null)
             {
                 var sourceText = await modifiedDocument.GetTextAsync(ct).ConfigureAwait(false);
+                // Reviewed source kind is part of the preview's intent; set it before the text so
+                // the kind change cannot discard the freshly replayed syntax tree.
+                if (modifiedDocument.SourceCodeKind != currentDocument.SourceCodeKind)
+                {
+                    rebased = rebased.WithDocumentSourceCodeKind(currentDocument.Id, modifiedDocument.SourceCodeKind);
+                }
+
                 rebased = rebased.WithDocumentText(currentDocument.Id, sourceText);
             }
         }
@@ -953,6 +960,8 @@ public sealed class RefactoringService : IRefactoringService
                 sourceText,
                 document.Folders,
                 document.FilePath);
+            // Unconditional: AddDocument always creates Regular, so this is a no-op for Regular clones.
+            rebased = rebased.WithDocumentSourceCodeKind(newDocumentId, document.SourceCodeKind);
         }
 
         return rebased;
