@@ -213,7 +213,7 @@ public sealed class RefactoringToolsIntegrationTests : SharedWorkspaceTestBase
     /// preview could return <c>"Invalid operation: Document not found"</c> while the other
     /// succeeded against the reloaded snapshot. The simulated mid-sequence
     /// <c>WorkspaceManager.ReloadAsync</c> stands in for the execution-gate's
-    /// <c>ApplyStalenessPolicyAsync</c> auto-reload; both preview services now re-acquire the
+    /// <c>ReloadIfStaleAsync</c> auto-reload; both preview services now re-acquire the
     /// current solution via <c>DocumentResolution.GetDocumentFromFreshSolutionOrThrow</c> so
     /// the second call sees the refreshed snapshot and resolves the document correctly.
     /// </summary>
