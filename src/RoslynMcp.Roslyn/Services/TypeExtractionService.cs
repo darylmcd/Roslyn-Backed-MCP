@@ -58,7 +58,8 @@ public sealed class TypeExtractionService : ITypeExtractionService
         var (membersToExtract, _, analysisNodes) = PartitionMembers(typeDecl, memberNames, sourceTypeName);
 
         var blockingDependencies = CollectExtractTypeBlockingDependencies(semanticModel, typeSymbol, analysisNodes, ct);
-        blockingDependencies.AddRange(CollectInterfaceImplementationBlockers(semanticModel, typeSymbol, analysisNodes, ct));
+        blockingDependencies.AddRange(await CollectMemberContractBlockersAsync(
+            solution, semanticModel, typeSymbol, analysisNodes, ct).ConfigureAwait(false));
 
         // BUG-005 (#2/#3): Refuse to generate code that the warnings prove will not compile.
         // The previous behavior emitted the warnings but still produced a preview that referenced
@@ -607,10 +608,11 @@ public sealed class TypeExtractionService : ITypeExtractionService
     {
         // Extracted members keep their original accessibility; only those the retained source type
         // still references (rebound to `_field.Member` / `NewType.Member`) are widened to `public`.
-        // The new type is emitted as `public sealed class NewType` with NO base list, so any
-        // inheritance-only modifiers on the extracted members (`override`, `virtual`, `abstract`,
-        // `sealed`, `new`) become compile errors or meaningless noise. Strip them after the
-        // widening. Tracked by `dr-9-3-preserves-when-new-type-does-not-inherit-the-bas`.
+        // The new type is emitted as `public sealed class NewType` with NO base list.
+        // CollectMemberContractBlockersAsync has already refused every member that fills a base-class
+        // slot (override, abstract, virtual-with-overrides), so only a never-overridden `virtual` and a
+        // hiding `new` can reach here; strip them after the widening because neither means anything
+        // in a base-less sealed class.
         var extractedMembers = membersToExtract
             .Select(member => WidenIfReferencedByRetainedCode(member, referencedExtractedNames))
             .Select(StripInheritanceOnlyModifiers)
@@ -1057,21 +1059,27 @@ public sealed class TypeExtractionService : ITypeExtractionService
     }
 
     /// <summary>
-    /// extract-type-interface-implementation-guard: refuses members that implement an interface member
-    /// of the source type (implicit or explicit). The extracted type is a base-less composed class, so
-    /// moving such a member leaves the source declaring <c>: IFoo</c> without the member (CS0535); an
-    /// explicit implementation additionally gains an illegal <c>public</c> modifier (CS0106).
-    /// One entry per offending member, naming every interface member it implements.
+    /// Refuses members whose contract with the source type's bases cannot survive the move. The extracted type
+    /// is a base-less composed <c>public sealed class</c>, so a moved member loses every slot it fills:
+    /// <list type="bullet">
+    /// <item><c>extract-type-interface-implementation-guard</c>: a member implementing an interface member of the
+    /// source type leaves the source declaring <c>: IFoo</c> without it (CS0535); an explicit implementation also
+    /// gains an illegal <c>public</c> (CS0106).</item>
+    /// <item><c>extract-type-override-modifier-stripped</c>: an <c>override</c> (including <c>sealed override</c>)
+    /// would silently change dispatch (<c>ToString()</c> falls back to <c>object.ToString</c>) or leave the source
+    /// without a required implementation (CS0534); an <c>abstract</c> member cannot live in a sealed class; a
+    /// <c>virtual</c> member that has overrides in the solution would orphan them.</item>
+    /// </list>
+    /// One entry per offending member, carrying every reason that applies to it.
     /// </summary>
-    private static List<BlockingDependencyDto> CollectInterfaceImplementationBlockers(
+    private static async Task<List<BlockingDependencyDto>> CollectMemberContractBlockersAsync(
+        Solution solution,
         SemanticModel semanticModel,
         INamedTypeSymbol typeSymbol,
         IReadOnlyList<SyntaxNode> analysisNodes,
         CancellationToken ct)
     {
         var blockers = new List<BlockingDependencyDto>();
-        if (typeSymbol.AllInterfaces.IsDefaultOrEmpty)
-            return blockers;
 
         foreach (var node in analysisNodes)
         {
@@ -1080,33 +1088,99 @@ public sealed class TypeExtractionService : ITypeExtractionService
             var declared = semanticModel.GetDeclaredSymbol(node, ct);
             if (declared is null) continue;
 
-            var implemented = new List<string>();
-            foreach (var iface in typeSymbol.AllInterfaces)
-            {
-                foreach (var interfaceMember in iface.GetMembers())
-                {
-                    ct.ThrowIfCancellationRequested();
-                    var impl = typeSymbol.FindImplementationForInterfaceMember(interfaceMember);
-                    if (impl is not null && SymbolEqualityComparer.Default.Equals(impl, declared))
-                    {
-                        implemented.Add(
-                            $"{iface.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)}." +
-                            interfaceMember.Name);
-                    }
-                }
-            }
-
-            if (implemented.Count == 0) continue;
-
             var memberName = GetAnalysisNodeName(node) ?? node.Kind().ToString();
-            blockers.Add(new BlockingDependencyDto(
-                memberName,
-                $"Member '{memberName}' implements interface member(s) {string.Join(", ", implemented)} of the source type " +
-                $"'{typeSymbol.Name}'; moving it would leave the source type without the required implementation. " +
-                "Drop it from memberNames or extract the interface contract manually."));
+            var reasons = new List<string>();
+
+            var interfaceReason = BuildInterfaceImplementationReason(typeSymbol, declared, memberName, ct);
+            if (interfaceReason is not null) reasons.Add(interfaceReason);
+
+            var baseContractReason = await BuildBaseContractReasonAsync(solution, declared, memberName, ct).ConfigureAwait(false);
+            if (baseContractReason is not null) reasons.Add(baseContractReason);
+
+            if (reasons.Count > 0)
+                blockers.Add(new BlockingDependencyDto(memberName, string.Join(" ", reasons)));
         }
 
         return blockers;
+    }
+
+    private static string? BuildInterfaceImplementationReason(
+        INamedTypeSymbol typeSymbol,
+        ISymbol declared,
+        string memberName,
+        CancellationToken ct)
+    {
+        var implemented = new List<string>();
+        foreach (var iface in typeSymbol.AllInterfaces)
+        {
+            foreach (var interfaceMember in iface.GetMembers())
+            {
+                ct.ThrowIfCancellationRequested();
+                var impl = typeSymbol.FindImplementationForInterfaceMember(interfaceMember);
+                if (impl is not null && SymbolEqualityComparer.Default.Equals(impl, declared))
+                {
+                    implemented.Add(
+                        $"{iface.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)}." +
+                        interfaceMember.Name);
+                }
+            }
+        }
+
+        if (implemented.Count == 0) return null;
+
+        return $"Member '{memberName}' implements interface member(s) {string.Join(", ", implemented)} of the source type " +
+            $"'{typeSymbol.Name}'; moving it would leave the source type without the required implementation. " +
+            "Drop it from memberNames or extract the interface contract manually.";
+    }
+
+    /// <summary>
+    /// Base-class contract of one member. <c>override</c> and <c>abstract</c> are refused unconditionally;
+    /// <c>virtual</c> only when the solution holds an override (stripping it from a never-overridden member
+    /// preserves behavior). <c>new</c> is deliberately not a blocker: the moved member's same-file references are
+    /// rebound and external ones are refused, so nothing can silently bind to the hidden base member.
+    /// </summary>
+    private static async Task<string?> BuildBaseContractReasonAsync(
+        Solution solution,
+        ISymbol declared,
+        string memberName,
+        CancellationToken ct)
+    {
+        if (declared.IsOverride)
+        {
+            var overridden = declared switch
+            {
+                IMethodSymbol method => (ISymbol?)method.OverriddenMethod,
+                IPropertySymbol property => property.OverriddenProperty,
+                IEventSymbol evt => evt.OverriddenEvent,
+                _ => null
+            };
+            var target = overridden is null
+                ? "a base-class member"
+                : $"'{overridden.ContainingType.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)}.{overridden.Name}'";
+            return $"Member '{memberName}' overrides {target} of the source type's base class; the extracted type has " +
+                "no base, so moving it would change dispatch or leave the source without the override. " +
+                "Drop it from memberNames.";
+        }
+
+        if (declared.IsAbstract)
+        {
+            return $"Member '{memberName}' is abstract and has no body; it cannot be moved into the extracted sealed " +
+                "class and the source type would lose the abstract contract. Drop it from memberNames.";
+        }
+
+        if (declared.IsVirtual)
+        {
+            var overrides = await SymbolFinder.FindOverridesAsync(declared, solution, cancellationToken: ct).ConfigureAwait(false);
+            if (overrides.Any())
+            {
+                var names = string.Join(", ", overrides.Select(o =>
+                    $"'{o.ContainingType.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)}.{o.Name}'"));
+                return $"Member '{memberName}' is virtual and is overridden by {names}; moving it would orphan " +
+                    "those overrides. Drop it from memberNames.";
+            }
+        }
+
+        return null;
     }
 
     private static bool IsDeclaredInOrUnderType(ISymbol sym, INamedTypeSymbol typeSymbol)
@@ -1223,12 +1297,13 @@ public sealed class TypeExtractionService : ITypeExtractionService
     }
 
     /// <summary>
-    /// Strips modifiers that only make sense in the context of a base class or hidden member
-    /// (<c>override</c>, <c>virtual</c>, <c>abstract</c>, <c>sealed</c>, <c>new</c>) from an
-    /// extracted member. The new type has no base list, so these modifiers either fail to
-    /// compile (CS0115 on <c>override</c>, CS0549 on <c>virtual</c>/<c>abstract</c> inside a
-    /// sealed class) or silently hide nothing (<c>new</c>). Called after
-    /// <see cref="EnsurePublicAccessibility"/> so both transforms compose.
+    /// Strips <c>virtual</c> (only ever a never-overridden one, see
+    /// <see cref="CollectMemberContractBlockersAsync"/>) and <c>new</c> from an extracted member. The new type has
+    /// no base list, so <c>virtual</c> would fail to compile in a sealed class (CS0549) and <c>new</c> hides
+    /// nothing. <c>new</c> is the one base-related modifier that is safe to drop without a guard: the moved
+    /// member's same-file references are rebound and external references are refused, so nothing can silently bind
+    /// to the base member it used to hide. Called after <see cref="EnsurePublicAccessibility"/> so both transforms
+    /// compose.
     /// </summary>
     private static MemberDeclarationSyntax StripInheritanceOnlyModifiers(MemberDeclarationSyntax member)
     {
@@ -1244,14 +1319,6 @@ public sealed class TypeExtractionService : ITypeExtractionService
             return member;
         }
 
-        // For members whose method body remains valid after dropping `abstract`, we need to
-        // also ensure the declaration has a body (abstract members carry `;` instead). Roslyn
-        // keeps a null body as an abstract-method shape; if we stripped `abstract` from a
-        // method without a body we leave an invalid declaration. This cannot occur in the
-        // current extract path (the source method already had a body to be extracted), but we
-        // guard defensively so any future caller shape surfaces an explicit error instead of
-        // silently emitting broken syntax.
-        ValidateAbstractMethodHasBody(member, currentModifiers);
         return WithMemberModifiers(member, strippedModifiers);
     }
 
@@ -1261,28 +1328,12 @@ public sealed class TypeExtractionService : ITypeExtractionService
         if (kept.Length > 0)
         {
             // Preserve the leading trivia from the original first modifier so the declaration
-            // does not collapse against the preceding newline when an override-only modifier sat
+            // does not collapse against the preceding newline when a stripped modifier sat
             // at the front of the list.
             kept[0] = kept[0].WithLeadingTrivia(currentModifiers[0].LeadingTrivia);
         }
 
         return SyntaxFactory.TokenList(kept);
-    }
-
-    private static void ValidateAbstractMethodHasBody(MemberDeclarationSyntax member, SyntaxTokenList currentModifiers)
-    {
-        if (member is not MethodDeclarationSyntax method || !currentModifiers.Any(IsAbstractModifier))
-        {
-            return;
-        }
-
-        if (method.Body is not null || method.ExpressionBody is not null)
-        {
-            return;
-        }
-
-        throw new InvalidOperationException(
-            $"Cannot extract abstract member '{method.Identifier.Text}' into a non-inheriting type: the source has no body.");
     }
 
     private static SyntaxTokenList GetMemberModifiers(MemberDeclarationSyntax member)
@@ -1309,17 +1360,9 @@ public sealed class TypeExtractionService : ITypeExtractionService
         };
     }
 
-    private static bool IsAbstractModifier(SyntaxToken token)
-    {
-        return token.IsKind(SyntaxKind.AbstractKeyword);
-    }
-
     private static bool IsInheritanceOnlyModifier(SyntaxToken token)
     {
-        return token.IsKind(SyntaxKind.OverrideKeyword)
-            || token.IsKind(SyntaxKind.VirtualKeyword)
-            || token.IsKind(SyntaxKind.AbstractKeyword)
-            || token.IsKind(SyntaxKind.SealedKeyword)
+        return token.IsKind(SyntaxKind.VirtualKeyword)
             || token.IsKind(SyntaxKind.NewKeyword);
     }
 }
