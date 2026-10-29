@@ -81,6 +81,7 @@ traces, and failure-envelope summaries and tails. Internal execution records rem
 `checkStatus` reports the check outcome (`succeeded`, `neverChecked`, `pending`, `failed`,
 `timedOut`) and `lastCheckedAt` records when the most recent check finished. A background refresh can
 report `pending` while a newer version found by an earlier check keeps `updateAvailable: true`.
+`checkStatus` describes the latest check, not the validity of `updateAvailable`.
 Consumers must treat `null` as unknown and must not claim the build is current.
 
 ### Tool error envelope
@@ -142,13 +143,18 @@ missing or out-of-date package assets. Clients must ignore unknown fields, per `
 | `true` | Restores for any `restoreRequired` (drift included); a failed restore fails the call. |
 | `false` | Never restores. |
 
-### Deprecations scheduled for 5.0
+### 5.0 contract
 
-These 4.x behaviors are deprecated. The 5.0.0 release will change them under an ADR with
-migration notes, as `docs/release-policy.md` requires.
+The 5.0.0 release changes these 4.x behaviors under [ADR 0011](decisions/0011-v5-major-release-contract.md),
+which also indexes the nine earlier breaking ADRs (0012, 0015, 0016, 0018, 0019, 0027, 0028, 0029, 0030).
+Each row has a migration note in the 5.0.0 changelog.
 
-| Surface | 4.x behavior | 5.0 behavior | Prepare now |
+| Surface | 4.x behavior | 5.0 behavior | Migration |
 |---|---|---|---|
+| Tools `get_symbol_outline`, `find_duplicated_code`, `get_test_coverage_map`, `apply_composite_preview` | Callable aliases carrying a `deprecation` property | Removed (unknown-tool failure); `deprecation` property removed from catalog entries and responses; `workspace_changes` records `apply_composite` | Call `document_symbols`, `find_duplicated_methods`, `test_coverage`, `apply_composite` |
+| `server_info.update.updateAvailable` | `boolean` | `boolean` or `null`; `null` = unknown (see Update availability) | Treat `null` as unknown; widen typed bindings to `bool?` |
+| Unknown `projectName`; unresolvable `symbolHandle` in rename | `category: "InvalidOperation"` | `category: "NotFound"`, `exceptionType: "KeyNotFoundException"` | Treat `NotFound` as "named item does not exist" |
+| Configured-root canonicalization fault; client-roots RPC failure | `category: "InvalidArgument"` | `category: "InvalidOperation"`; caller boundary denials stay `InvalidArgument` | Treat `InvalidOperation` from path tools as a server or client-roots fault |
 | Unknown `workspaceId` error | `category: "NotFound"` (`"WorkspaceReloadedDuringCall"` when the miss races an in-call auto-reload), `exceptionType: "KeyNotFoundException"`, `reason: "WorkspaceNotFound"` | `category: "WorkspaceNotFound"` and `exceptionType: "WorkspaceNotFoundException"` on both paths; no `reason` field | Branch on `category`/`exceptionType` (accept `WorkspaceNotFound`), not on `reason` |
 | Flat location members of `PropertyWriteDto` (`filePath`, `startLine`, `startColumn`, `endLine`, `endColumn`, `containingMember`, `previewText`) and `MutationCallerDto` (`filePath`, `startLine`, `startColumn`, `containingMember`, `previewText`) | Serialized alongside the nested `location`, never deprecated | Flat members removed; `location` is the sole, always-present representation (`writeKind` / `callerPhase` stay top-level). **Operator exemption from `docs/release-policy.md:38` dated 2026-10-28:** these DTOs never had a deprecation window; removed anyway because both already carry a complete `location` since stage 2, to match the primary DTOs, and to avoid another flat-plus-nested major | Read `location.filePath`, `location.startLine`, `location.startColumn`, `location.endLine`, `location.endColumn`, `location.containingMember` and `location.previewText` |
 | Flat location members of `SymbolDto`, `DiagnosticDto` and `TypeUsageDto` (`filePath`, `startLine`, `startColumn`, `endLine`, `endColumn`; `TypeUsageDto` also `containingMember`, `previewText`, `classification`) | Serialized and populated alongside the nested `location`; `[Obsolete]` for in-process C# consumers since 4.4.0. `location` is null when the span is partial (for example a build diagnostic with a start but no end), so the flat members can be the only source of a position | Flat members removed; `location` is the sole representation. `location.endLine` and `location.endColumn` are nullable (both null for a start-only span such as a build diagnostic with no end); `location.filePath`, `startLine` and `startColumn` are always present. `location` is null only when the finding has no file and start position. Diagnostics from `analyze_snippet` and `evaluate_csharp` carry `filePath` `<snippet>` / `<script>`. Exception: `DiagnosticDto.filePath` stays (not obsolete) and is set whenever a file is known, including file-only diagnostics where `location` is null; when both exist they agree | Read `location` first and fall back to the flat members when it is null; do not rely on the flat members other than `DiagnosticDto.filePath` being present after 5.0, and accept a null `endLine`/`endColumn` |

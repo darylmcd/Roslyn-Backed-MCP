@@ -3,7 +3,7 @@
 - **Status:** Accepted (2026-08-06 operator decision; recorded 2026-08-07)
 - **Deciders:** repository owner
 - **Supersedes:** nothing
-- **Superseded by:** nothing
+- **Superseded by:** nothing; section 2 is amended by [ADR 0011](0011-v5-major-release-contract.md) (5.0 end-span nullability and flat-member removal)
 - **Implementation:** Stage 1 and the additive secondary DTO slice landed together through
   `locationdto-stage1-*` and `core-dto-location-quartet-consolidation-secondary`.
 
