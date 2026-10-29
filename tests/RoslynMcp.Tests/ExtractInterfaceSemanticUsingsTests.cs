@@ -241,12 +241,13 @@ public sealed class ExtractInterfaceSemanticUsingsTests : TestBase
         var servicePath = Path.Combine(sampleLibDir, "Item3SpecialUsingService.cs");
         await File.WriteAllTextAsync(servicePath,
             """
+            global using System.Globalization;
+
             using System.Text;
             using System.Threading.Tasks;
             using SampleLib.Models;
             using AliasModel = SampleLib.Models.Item3AliasModel;
             using static System.Math;
-            global using System.Globalization;
 
             namespace SampleLib;
 
@@ -296,12 +297,12 @@ public sealed class ExtractInterfaceSemanticUsingsTests : TestBase
             var globalIndex = generatedText.IndexOf("global using System.Globalization;", StringComparison.Ordinal);
 
             Assert.IsTrue(
-                threadingIndex >= 0
+                globalIndex >= 0
+                && threadingIndex > globalIndex
                 && modelsIndex > threadingIndex
                 && aliasIndex > modelsIndex
-                && staticIndex > aliasIndex
-                && globalIndex > staticIndex,
-                $"Expected sorted plain usings followed by special usings in source order. Generated:\n{generatedText}");
+                && staticIndex > aliasIndex,
+                $"Expected global usings first (CS8915), then sorted plain usings, then non-global special usings in source order. Generated:\n{generatedText}");
         }
         finally
         {

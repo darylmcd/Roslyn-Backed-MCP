@@ -5,15 +5,15 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 namespace RoslynMcp.Roslyn.Helpers;
 
 /// <summary>
-/// Shared using-directive synthesis for refactors that emit a new file from an existing
-/// symbol (interface extraction, cross-project type move). Merges the semantically-required
-/// namespaces with the source file's using block: keeps source-file aliases, static usings,
-/// and global usings (they cannot be re-synthesized from symbols), adds plain-<c>using</c>
-/// directives for every required namespace, and drops plain source-file usings the semantic
-/// walk determined are unnecessary (the previous text-grep heuristic kept too much or too
-/// little). Previously duplicated verbatim in <c>InterfaceExtractionService</c> and
-/// <c>CrossProjectRefactoringService</c>; the copies drifted independently, so the cluster
-/// is hoisted here.
+/// Shared using-directive synthesis for refactors that emit a new interface file from an
+/// existing symbol. Consumers: <c>InterfaceExtractionService.BuildInterfaceFile</c> and
+/// <c>CrossProjectRefactoringService.CreateInterfaceCompilationUnit</c>. Raw cross-project type
+/// move does not use this helper (it copies source usings verbatim via
+/// <c>MovedDeclarationFileWriter</c>). Merges the semantically-required namespaces with the
+/// source file's using block: keeps source-file aliases, static usings, and global usings (they
+/// cannot be re-synthesized from symbols), adds plain-<c>using</c> directives for every required
+/// namespace, and drops plain source-file usings the semantic walk determined are unnecessary.
+/// Output always lists global usings before non-global ones (CS8915).
 /// </summary>
 internal static class UsingDirectiveSynthesizer
 {
@@ -79,16 +79,23 @@ internal static class UsingDirectiveSynthesizer
 
     private static SyntaxList<UsingDirectiveSyntax> SortUsingDirectives(List<UsingDirectiveSyntax> usings)
     {
-        // Sort: System.* first alphabetically, then other plain usings alphabetically,
-        // then aliases/static/global at the end in their original order.
+        // CS8915: every global using precedes every non-global using. Order: global usings
+        // (plain/alias/static, original order), System.* plain alphabetically, other plain
+        // alphabetically, then non-global aliases/static in their original order.
+        var globalUsings = usings.Where(IsGlobalUsingDirective);
         var systemUsings = usings
             .Where(IsSystemUsingDirective)
             .OrderBy(u => u.Name!.ToString(), StringComparer.Ordinal);
         var otherPlain = usings
             .Where(u => !IsSpecialUsingDirective(u) && !IsSystemUsingDirective(u))
             .OrderBy(u => u.Name!.ToString(), StringComparer.Ordinal);
-        var specials = usings.Where(IsSpecialUsingDirective);
-        return SyntaxFactory.List(systemUsings.Concat(otherPlain).Concat(specials));
+        var localSpecials = usings.Where(u => IsSpecialUsingDirective(u) && !IsGlobalUsingDirective(u));
+        return SyntaxFactory.List(globalUsings.Concat(systemUsings).Concat(otherPlain).Concat(localSpecials));
+    }
+
+    private static bool IsGlobalUsingDirective(UsingDirectiveSyntax usingDirective)
+    {
+        return usingDirective.GlobalKeyword.IsKind(SyntaxKind.GlobalKeyword);
     }
 
     private static string? GetUsingNamespace(UsingDirectiveSyntax source)
@@ -107,6 +114,6 @@ internal static class UsingDirectiveSynthesizer
     {
         return usingDirective.Alias is not null
             || usingDirective.StaticKeyword.IsKind(SyntaxKind.StaticKeyword)
-            || usingDirective.GlobalKeyword.IsKind(SyntaxKind.GlobalKeyword);
+            || IsGlobalUsingDirective(usingDirective);
     }
 }
