@@ -17,9 +17,9 @@ This skill edits repository files. Roslyn MCP **`server_catalog`** is unrelated 
 ## Input
 
 `$ARGUMENTS` is the bump type: `patch`, `minor`, or `major`. If not provided, ask the user which type of bump to perform with a brief explanation:
-- **patch** (1.11.1 -> 1.11.2): bug fixes, doc changes, no new features
-- **minor** (1.11.1 -> 1.12.0): new features, new stable tools, backward-compatible changes
-- **major** (1.11.1 -> 2.0.0): breaking changes to stable tool contracts
+- **patch** (X.Y.Z -> X.Y.(Z+1)): bug fixes, doc changes, no new features
+- **minor** (X.Y.Z -> X.(Y+1).0): new features, new stable tools, backward-compatible changes
+- **major** (X.Y.Z -> (X+1).0.0): breaking changes to stable tool contracts
 
 ## Version Files
 

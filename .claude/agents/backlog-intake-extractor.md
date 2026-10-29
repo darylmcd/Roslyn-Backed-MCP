@@ -108,7 +108,7 @@ overlapsWithExisting: <int>
 ## Hard rules
 
 - **Do NOT write to disk.** Read-only agent. If you find yourself calling a writer, stop and emit `ERROR: writer called`.
-- **Do NOT prescribe a direct table edit.** This result is a proposal only. The caller persists accepted rows, refinements, detail notes, preamble changes, and timestamps through the global `node ~/.claude/scripts/backlog.mjs` writer.
+- **Do NOT prescribe a direct table edit.** This result is a proposal only. The caller persists accepted rows, refinements, detail notes, and preamble changes through the global `node ~/.claude/scripts/backlog.mjs` writer.
 - **Do NOT invent anchors.** If a review file names a service class like `FooService`, verify (via Glob or Grep in `src/RoslynMcp.Roslyn/Services/`) that the file exists before citing it in a row's `do` text. If the file doesn't exist but the described behavior is real, cite the actual file you found that handles the behavior.
 - **Do NOT exceed 50 rows** after dedupe. If you produce 50+, dedupe harder or return with `status: error, message: "dedupe ratio too low — review file set may need manual triage"`.
 - **Do NOT rank every row Medium** to avoid decisions. Use the v15 bands that match the evidence.
@@ -117,9 +117,3 @@ overlapsWithExisting: <int>
 ## Why this agent exists
 
 The `review-inbox/` files are typically 200-800 lines each; a 14-file batch is 6000+ lines. Reading them in main-agent context would consume 30-50K tokens before any write work starts. This agent returns a compact (1-3K tokens) structured block, leaving main-agent context free for the anchor-verify / heroic-split / commit phases of `/backlog-intake` which need repo source reads.
-
-## Distinct from related agents
-
-- **`initiative-executor`**: ships one initiative's code changes. This agent produces backlog rows that eventually become initiatives. Different phase.
-- **`plan-vetter`**: vets a drafted plan against Rules 1/3/4/5. This agent produces the rows the plan will be drafted against. Earlier phase.
-- **`changelog-and-backlog-sync`** (retired): used to sync CHANGELOG.md + backlog.md for a merged PR. This agent does NOT edit files.

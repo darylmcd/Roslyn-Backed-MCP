@@ -1,6 +1,6 @@
 ---
 name: pr-reconciler
-description: Assess one open PR for merge readiness and hand only a ready PR to the parent /ship owner. Never merge or clean up directly. Does not edit CHANGELOG.md, backlog.md, state.json, or plan.md.
+description: Assess one open PR for merge readiness and hand only a ready PR to the parent /ship owner. Never merge or clean up directly. Does not edit CHANGELOG.md or backlog.md.
 model: haiku
 ---
 
@@ -13,8 +13,6 @@ The orchestrator provides:
 - `prNumberOrUrl` — required PR number or full URL.
 - `branch` — optional remediation branch, for report correlation only.
 - `worktreePath` — optional worktree path, for report correlation only.
-
-Legacy fields `planPath` and `initiativeId` are accepted for report context only. Do not mutate plan state from either field.
 
 If `prNumberOrUrl` is missing, emit `STATUS: error` and name the missing field.
 
@@ -62,9 +60,9 @@ If `prNumberOrUrl` is missing, emit `STATUS: error` and name the missing field.
 
    `SHIP_STATUS=landed-cleanup-failed` means the merge may have succeeded but cleanup has not. Do not collapse it into a success report; retain the residue evidence for the parent to remediate.
 
-## Plan-state handoff
+## Parent-owned state
 
-Do not edit `plan.md`, `state.json`, `ai_docs/backlog.md`, `CHANGELOG.md`, or changelog fragments. After the parent reports a clean landing, it owns the batch-boundary reconciliation that records PR URL, merge SHA, row closure, and plan status atomically.
+Do not edit `ai_docs/backlog.md`, `CHANGELOG.md`, or changelog fragments. After the parent reports a clean landing, it owns recording the PR URL and merge SHA and closing the backlog row.
 
 ## Output contract
 
@@ -83,5 +81,5 @@ NOTES: <one line when needed>
 - Never bypass failing checks or review gates.
 - Never force-push, merge, delete a branch, or remove a worktree.
 - Never perform partial cleanup or hide cleanup errors.
-- Never edit release, backlog, fragment, or plan state owned by the parent.
+- Never edit release, backlog, or fragment state owned by the parent.
 - If readiness is uncertain, return `STATUS: error` rather than infer a safe state.

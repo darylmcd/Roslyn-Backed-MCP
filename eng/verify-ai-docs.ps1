@@ -54,15 +54,6 @@ $issues.AddRange([string[]]@(Get-MarkdownLinkIssue -Files $markdownFiles))
 . (Join-Path $PSScriptRoot 'local-path-leak-validation.ps1')
 $issues.AddRange([string[]]@(Get-LocalPathLeakIssue -Files @($allFiles) -RepoRoot $RepoRoot))
 
-. (Join-Path $PSScriptRoot 'reconciliation-cleanup-contract.ps1')
-$planReconcilerPath = Join-Path $RepoRoot '.claude/skills/reconcile-backlog-sweep-plan/SKILL.md'
-if (-not [System.IO.File]::Exists($planReconcilerPath)) {
-    $issues.Add('Missing remediation-plan reconciliation guidance.')
-}
-else {
-    $issues.AddRange([string[]]@(Get-ReconciliationCleanupIssue -Content ([System.IO.File]::ReadAllText($planReconcilerPath))))
-}
-
 try {
     & (Join-Path $PSScriptRoot 'verify-upgrade-matrix.ps1') -RepoRoot $RepoRoot
 }
@@ -117,61 +108,6 @@ $prReconcilerRelativePath = '.claude/agents/pr-reconciler.md'
 $prReconcilerPath = Join-Path $RepoRoot $prReconcilerRelativePath
 $backlogAddendaRelativePath = 'ai_docs/prompts/backlog-sweep-addenda.md'
 $backlogAddendaPath = Join-Path $RepoRoot $backlogAddendaRelativePath
-$initiativeExecutorRelativePath = '.claude/agents/initiative-executor.md'
-$initiativeExecutorPath = Join-Path $RepoRoot $initiativeExecutorRelativePath
-
-# sweep-executor-override-stale-roslyn-prefix: a repo-local executor supersedes the maintained
-# global agent. If an override is reintroduced, keep its Roslyn calls prefix-agnostic and preserve
-# the live discovery and result-evidence contract that prevents silent CLI fallback.
-function Get-InitiativeExecutorRoslynContractIssue {
-    param(
-        [Parameter(Mandatory)]
-        [string]$Content,
-
-        [string]$Source = $initiativeExecutorRelativePath
-    )
-
-    $contractIssues = New-Object System.Collections.Generic.List[string]
-    if ([regex]::IsMatch($Content, 'mcp__(?:plugin_roslyn-mcp_)?roslyn__[A-Za-z0-9][A-Za-z0-9_-]*')) {
-        $contractIssues.Add("Initiative executor hardcodes a Roslyn tool prefix: $Source")
-    }
-
-    $requiredStatements = @(
-        'tool whose name ends in `server_info`',
-        'bind that prefix as `<roslyn>`',
-        'Call `<roslyn>server_info`',
-        'roslyn: <prefix> used=[tools] | unavailable (<reason>)'
-    )
-    foreach ($requiredStatement in $requiredStatements) {
-        if (-not $Content.Contains($requiredStatement, [System.StringComparison]::Ordinal)) {
-            $contractIssues.Add("Initiative executor is missing live Roslyn prefix discovery/evidence: $Source -> $requiredStatement")
-        }
-    }
-
-    return [string[]]$contractIssues
-}
-
-$staleInitiativeExecutorFixture = @'
-Use `mcp__roslyn__compile_check` after every edit.
-'@
-$staleFixtureIssues = @(Get-InitiativeExecutorRoslynContractIssue -Content $staleInitiativeExecutorFixture -Source '<stale-fixture>')
-if ($staleFixtureIssues.Count -ne 5 -or -not ($staleFixtureIssues | Where-Object { $_ -like 'Initiative executor hardcodes a Roslyn tool prefix:*' })) {
-    $issues.Add('Initiative-executor Roslyn contract guard does not reject the bounded stale-prefix fixture.')
-}
-
-$validInitiativeExecutorFixture = @'
-The server registers under `mcp__plugin_roslyn-mcp_roslyn__` or `mcp__roslyn__`, so never assume one.
-Find the tool whose name ends in `server_info`, bind that prefix as `<roslyn>`, and Call `<roslyn>server_info` once.
-Report `roslyn: <prefix> used=[tools] | unavailable (<reason>)` in notes.
-'@
-if (@(Get-InitiativeExecutorRoslynContractIssue -Content $validInitiativeExecutorFixture -Source '<valid-fixture>').Count -ne 0) {
-    $issues.Add('Initiative-executor Roslyn contract guard rejects the bounded prefix-aware fixture.')
-}
-
-if ([System.IO.File]::Exists($initiativeExecutorPath)) {
-    $initiativeExecutor = [System.IO.File]::ReadAllText($initiativeExecutorPath)
-    $issues.AddRange([string[]]@(Get-InitiativeExecutorRoslynContractIssue -Content $initiativeExecutor))
-}
 
 # pr-reconciler-fail-closed-ship-cleanup: both the reconciler and its repository addenda are
 # readiness-only documents. Required handoff words alone are insufficient: a destructive command
@@ -319,16 +255,16 @@ foreach ($relativePath in $backlogIntakeContractPaths) {
 
 $requiredBacklogIntakeStatements = @{
     '.claude/skills/backlog-intake/SKILL.md' = @(
-        'Every mutation of `ai_docs/backlog.md`, its paired `ai_docs/items/<id>.md` files, its preamble, or its `updated_at` stamp uses the global writer',
+        'Every mutation of `ai_docs/backlog.md`, its paired `ai_docs/items/<id>.md` files, or its preamble uses the global writer',
         'Do not hand-edit, append, re-sort, or count the backlog table.',
         'backlog.mjs count <repo-root>'
     )
     '.claude/agents/backlog-intake-extractor.md' = @(
-        'The caller persists accepted rows, refinements, detail notes, preamble changes, and timestamps through the global `node ~/.claude/scripts/backlog.mjs` writer.',
+        'The caller persists accepted rows, refinements, detail notes, and preamble changes through the global `node ~/.claude/scripts/backlog.mjs` writer.',
         'Do NOT prescribe a direct table edit.'
     )
     'ai_docs/items/backlog-d-fragment-schema.md' = @(
-        'Every mutation of the local backlog row/detail pair, preamble, or `updated_at` stamp uses the global `node ~/.claude/scripts/backlog.mjs` writer.',
+        'Every mutation of the local backlog row/detail pair or preamble uses the global `node ~/.claude/scripts/backlog.mjs` writer.',
         'Do not hand-edit or append the `ai_docs/backlog.md` table.'
     )
 }

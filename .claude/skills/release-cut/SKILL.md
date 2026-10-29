@@ -22,9 +22,9 @@ Neither layer is optional. They drift apart silently and in both directions: v1.
 ## Input
 
 The `$ARGUMENTS` parameter is the bump type: `patch`, `minor`, or `major`. If not provided, ask the user which type of bump to perform with a brief explanation:
-- **patch** (1.27.0 -> 1.27.1): bug fixes, doc changes, no new features
-- **minor** (1.27.0 -> 1.28.0): new features, new stable tools, backward-compatible changes
-- **major** (1.27.0 -> 2.0.0): breaking changes to stable tool contracts
+- **patch** (X.Y.Z -> X.Y.(Z+1)): bug fixes, doc changes, no new features
+- **minor** (X.Y.Z -> X.(Y+1).0): new features, new stable tools, backward-compatible changes
+- **major** (X.Y.Z -> (X+1).0.0): breaking changes to stable tool contracts
 
 ## Refusal conditions (check these FIRST, before any action)
 
@@ -73,9 +73,9 @@ The snapshot gate is the only non-git preflight check. It compares the `.ai-doc-
 If any refusal condition fires, emit the refusal and STOP.
 
 Record the current version by reading `Directory.Build.props` (extract the `<Version>` value). Compute the new version from the bump type:
-- `patch`: increment patch (1.27.0 -> 1.27.1)
-- `minor`: increment minor, reset patch (1.27.0 -> 1.28.0)
-- `major`: increment major, reset minor and patch (1.27.0 -> 2.0.0)
+- `patch`: increment patch (X.Y.Z -> X.Y.(Z+1))
+- `minor`: increment minor, reset patch (X.Y.Z -> X.(Y+1).0)
+- `major`: increment major, reset minor and patch (X.Y.Z -> (X+1).0.0)
 
 Display current -> new and the planned flow (Bump, Verify, Ship, Tag, Reinstall). No confirmation prompt — the user invoked the skill with an explicit bump type.
 
@@ -275,19 +275,19 @@ If any step is in a skipped state (re-run from mid-flow failure), annotate it `s
 **What you see:**
 
 ```
-Current: 1.27.0
-New:     1.27.1 (patch)
+Current: X.Y.Z
+New:     X.Y.(Z+1) (patch)
 Plan:    Bump -> Verify -> Ship -> Tag -> Reinstall
 
 Step 1 Preflight... ok (clean tree, on main, up-to-date with origin/main)
-Step 2 Bump      ... ok (Directory.Build.props, plugin.json, marketplace.json, manifest.json, mcp.json, server.json, CHANGELOG.md -> 1.27.1)
-                   [CHANGELOG.md ## [1.27.1] - 2026-04-22 header inserted. Review section content.]
+Step 2 Bump      ... ok (Directory.Build.props, plugin.json, marketplace.json, manifest.json, mcp.json, server.json, CHANGELOG.md -> X.Y.(Z+1))
+                   [CHANGELOG.md ## [X.Y.(Z+1)] - YYYY-MM-DD header inserted. Review section content.]
 Step 3 Verify    ... ok (N tests pass, artifacts/verify-release.log written)
 Step 4 Ship      ... ok (PR #<n> opened, checks green, squash-merged)
-Step 5 Tag       ... ok (v1.27.1 pushed to origin)
-Step 6 Refresh   ... ok (Layer 2 cache shows only 1.27.1; Layer 1 global tool 1.27.1; verify-install-layers exit 0; pinned dnx server 1.27.1)
+Step 5 Tag       ... ok (vX.Y.(Z+1) pushed to origin)
+Step 6 Refresh   ... ok (Layer 2 cache shows only X.Y.(Z+1); Layer 1 global tool X.Y.(Z+1); verify-install-layers exit 0; pinned dnx server X.Y.(Z+1))
 
-Release v1.27.1 cut complete.
+Release vX.Y.(Z+1) cut complete.
 Reminder: restart Claude Code to load the refreshed pinned server, skills, and hooks.
 ```
 

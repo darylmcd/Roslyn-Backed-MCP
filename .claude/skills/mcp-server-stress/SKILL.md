@@ -14,18 +14,9 @@ Maintainer-only repo-local alias for `/mcp-server-surface-test --output-mode=fra
 
 Invoke `/mcp-server-surface-test --output-mode=fragments` against the current Claude Code session's repo root (the only path the Roslyn MCP server's sanctioned-root restriction permits — see *Limitations* below). Forward any additional flags (`--no-worktree`, `--single-agent`, `--quick`) verbatim.
 
-## Why this skill exists (and why it's a thin alias)
+## Why this skill exists
 
-Before v1.X.Y, `/mcp-server-stress` used a separate `maintainer-overlay.md` prompt that duplicated ~85% of `full.md` while adding three repo-coupled phases (backlog.d/ fragment emission, ai_docs/audit-reports/ report path, ai_docs/backlog.md regression cross-check). Every prompt fix had to be applied to both files, and they drifted in subtle ways.
-
-The v1.X.Y refactor folded the maintainer-overlay's unique content into `full.md` behind:
-- `--output-mode=fragments` → Phase 19 emits backlog.d/ fragments (the maintainer-overlay's Phase 19 behavior).
-- Auto-detection of `ai_docs/audit-reports/` vs `audit-reports/` → reports land in the maintainer's doc-audit schema location when that schema exists, top-level otherwise.
-- Auto-detection of `ai_docs/backlog.md` vs `backlog.md` for regression source → Phase 18's "prior source" probe handles both.
-
-`/mcp-server-stress` survives as a 1-line alias because:
-1. **Muscle memory.** The maintainer types `/mcp-server-stress` reflexively; renaming to `/mcp-server-surface-test --output-mode=fragments` everywhere is friction.
-2. **Repo-local discoverability.** This skill is only available from Claude Code sessions rooted in Roslyn-Backed-MCP (per `.claude/skills/` discovery). The repo-local placement signals that fragments-mode is the maintainer-standard invocation.
+`/mcp-server-stress` is a one-line alias for `/mcp-server-surface-test --output-mode=fragments`. Fragments mode (backlog.d/ fragment emission, `ai_docs/audit-reports/` report path, `ai_docs/backlog.md` regression cross-check) lives in the shared `full.md` prompt, so the alias carries no prompt text of its own. It exists because the maintainer types it reflexively, and because it is discoverable only from sessions rooted in this repo (`.claude/skills/` discovery), which signals that fragments mode is the maintainer-standard invocation.
 
 ## Invocation
 
@@ -43,7 +34,7 @@ Functionally equivalent to typing `/mcp-server-surface-test --output-mode=fragme
 
 ## Hard rules (inherited from `/mcp-server-surface-test`)
 
-- **Server-required.** No generic non-MCP fallback exists. If `mcp__roslyn__server_info` is not callable or `connection.state` is not `ready`, halt.
+- **Server-required.** No generic non-MCP fallback exists. If the Roslyn `server_info` tool (prefix resolved as `/mcp-server-surface-test` does) is not callable or `connection.state` is not `ready`, halt.
 - **Read-only against `main`.** Phase 6 apply-mode mutations confine to the disposable worktree the prompt creates. Never push or merge from inside this skill.
 - **Mutation isolation contract.** Phase 7 / 8b / 13 writes target the disposable worktree only. Run-end primary-checkout `git status` MUST be empty (Phase 0 baseline + Final surface closure step 3a hard gate).
 - **No silent truncation.** Subagent phases that return `skipped-budget` / `skipped-context` / `truncated` markers are hard FAILs; orchestrator re-dispatches or records `phase-failed-budget` as P1.
