@@ -44,7 +44,7 @@ public sealed class RebaseSourceKindPreservationTests : IsolatedWorkspaceTestBas
         Assert.AreEqual(SourceCodeKind.Script, rebasedTarget.SourceCodeKind);
         var text = await rebasedTarget.GetTextAsync();
         Assert.AreEqual("// reviewed\n", text.ToString());
-        Assert.AreEqual(reviewedText.Encoding?.WebName, text.Encoding?.WebName);
+        Assert.AreEqual(3, text.Encoding?.GetPreamble().Length, "UTF-8 BOM must be retained.");
         Assert.AreEqual(target.Project.Id, rebasedTarget.Project.Id);
         Assert.AreEqual(target.FilePath, rebasedTarget.FilePath);
         Assert.AreEqual("// sibling apply\n", (await rebased.GetDocument(sibling.Id)!.GetTextAsync()).ToString());
@@ -81,7 +81,7 @@ public sealed class RebaseSourceKindPreservationTests : IsolatedWorkspaceTestBas
         CollectionAssert.AreEqual(new[] { "Generated" }, added.Folders.ToArray());
         var text = await added.GetTextAsync();
         Assert.AreEqual("var reviewed = 1;\n", text.ToString());
-        Assert.AreEqual(addedText.Encoding?.WebName, text.Encoding?.WebName);
+        Assert.AreEqual(3, text.Encoding?.GetPreamble().Length, "UTF-8 BOM must be retained.");
         Assert.AreEqual("// sibling apply\n", (await rebased.GetDocument(sibling.Id)!.GetTextAsync()).ToString(),
             "The sibling's edit must survive the replay.");
     }
@@ -96,7 +96,10 @@ public sealed class RebaseSourceKindPreservationTests : IsolatedWorkspaceTestBas
         var source = SymbolResolver.FindDocument(real, sourcePath)!;
         // Test-only seam: the workspace manager is stubbed so the producer observes a loaded
         // document whose kind is Script (MSBuildWorkspace never assigns Script to a .cs Compile item).
-        var scripted = real.WithDocumentSourceCodeKind(source.Id, SourceCodeKind.Script);
+        var bomText = SourceText.From((await source.GetTextAsync()).ToString(), new UTF8Encoding(true));
+        var scripted = real.WithDocumentSourceCodeKind(source.Id, SourceCodeKind.Script)
+            .WithDocumentText(source.Id, bomText);
+        source = scripted.GetDocument(source.Id)!;
         var version = WorkspaceManager.GetCurrentVersion(workspace.WorkspaceId);
         var stub = new FailClosedWorkspaceManagerStub
         {
@@ -119,6 +122,7 @@ public sealed class RebaseSourceKindPreservationTests : IsolatedWorkspaceTestBas
         Assert.AreEqual(
             (await source.GetTextAsync()).ToString(),
             (await moved.GetTextAsync()).ToString());
+        Assert.AreEqual(3, (await moved.GetTextAsync()).Encoding?.GetPreamble().Length, "UTF-8 BOM must be retained.");
         Assert.IsNull(SymbolResolver.FindDocument(stored.Value.ModifiedSolution, sourcePath));
     }
 }

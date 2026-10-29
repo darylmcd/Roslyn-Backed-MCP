@@ -960,6 +960,7 @@ public sealed class RefactoringService : IRefactoringService
                 sourceText,
                 document.Folders,
                 document.FilePath);
+            // Unconditional: AddDocument always creates Regular, so this is a no-op for Regular clones.
             rebased = rebased.WithDocumentSourceCodeKind(newDocumentId, document.SourceCodeKind);
         }
 
