@@ -52,6 +52,24 @@ internal static class InterfaceExtractionTestContext
             Assert.AreEqual(NullableContextOptions.Enable, (await project.GetCompilationAsync())!.Options.NullableContextOptions, project.Name);
     }
 
+    /// <summary>
+    /// Asserts the named projects have no unresolved-name errors (CS0246/CS0234/CS0400/CS0104): every
+    /// reference to the generated interface binds. Unlike <see cref="AssertCompilesAsync"/> it tolerates
+    /// the member-mismatch errors (CS0535/CS0738) a fixture gets while its signature types still live in
+    /// the source project and the generated interface cannot name them: the signature-dependency row.
+    /// </summary>
+    internal static async Task AssertNoUnresolvedNamesAsync(Solution solution, params string[] projectNames)
+    {
+        string[] unresolved = ["CS0246", "CS0234", "CS0400", "CS0104"];
+        foreach (var name in projectNames)
+        {
+            var project = solution.Projects.Single(p => p.Name == name);
+            var errors = (await project.GetCompilationAsync())!.GetDiagnostics()
+                .Where(d => d.Severity == DiagnosticSeverity.Error && unresolved.Contains(d.Id)).ToArray();
+            Assert.AreEqual(0, errors.Length, name + ": " + string.Join(Environment.NewLine, errors.Select(e => e.ToString())));
+        }
+    }
+
     internal static async Task AssertCompilesAsync(Solution solution)
     {
         foreach (var project in solution.Projects)

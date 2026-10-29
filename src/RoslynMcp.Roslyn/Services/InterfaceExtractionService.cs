@@ -85,16 +85,7 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
 
         var interfaceFileRoot = BuildInterfaceFile(interfaceDecl, typeDecl, sourceRoot, requiredNamespaces);
 
-        var updatedTypeDecl = alreadyImplements
-            ? typeDecl
-            : InterfaceBaseTypeWriter.AddBaseType(typeDecl, interfaceName, multilineContinuation: false);
-
-        // BUG-004: Do NOT call NormalizeWhitespace() here — that re-flows the entire file and
-        // produces unrelated formatting churn (collapses multi-line bodies, alters string format
-        // specifier spacing). ReplaceNode preserves the surrounding source layout.
-        var updatedSourceRoot = sourceRoot.ReplaceNode(typeDecl, updatedTypeDecl);
-
-        var newSolution = solution.WithDocumentSyntaxRoot(sourceDocument.Id, updatedSourceRoot);
+        var newSolution = solution;
 
         var warnings = new List<string>();
         if (!alreadyImplements)
@@ -108,10 +99,16 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
             var interfaceDoc = targetProject.AddDocument($"{interfaceName}.cs", interfaceFileRoot.ToFullString(), folders: folders, filePath: interfaceFilePath);
             newSolution = await nullableProjection.ApplyAsync(interfaceDoc, interfaceFileRoot, ct).ConfigureAwait(false);
 
+            // BUG-004: Do NOT call NormalizeWhitespace() here — that re-flows the entire file and
+            // produces unrelated formatting churn. The base list is a targeted node replacement,
+            // spelled after the generated symbol exists so it binds to it.
+            newSolution = await GeneratedInterfaceReference.AddToBaseListAsync(
+                newSolution, sourceDocument.Id, typeDecl.Span, interfaceDoc.Id, multilineContinuation: false, ct).ConfigureAwait(false);
+
             if (replaceUsages)
             {
                 newSolution = await ReplaceConcreteUsagesAsync(
-                    newSolution, sourceDocument.Project.Id, typeSymbol, interfaceName, ct).ConfigureAwait(false);
+                    newSolution, sourceDocument.Project.Id, typeSymbol, interfaceDoc.Id, ct).ConfigureAwait(false);
             }
         }
         else
@@ -270,38 +267,44 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
     /// </remarks>
     private static async Task<Solution> ReplaceConcreteUsagesAsync(
         Solution solution, ProjectId projectId, INamedTypeSymbol typeSymbol,
-        string interfaceName, CancellationToken ct)
+        DocumentId interfaceDocumentId, CancellationToken ct)
     {
         var compilation = await solution.GetProject(projectId)!
             .GetCompilationAsync(ct).ConfigureAwait(false);
         if (compilation is null) return solution;
 
-        var updatedTypeSymbol = compilation.GetTypeByMetadataName(typeSymbol.ToDisplayString());
+        // A symbol-identity lookup, not `GetTypeByMetadataName(ToDisplayString())`: the display string escapes keyword
+        // namespace segments (`@namespace.Type`) and nested/generic names, which no metadata lookup finds.
+        var updatedTypeSymbol = SymbolFinder.FindSimilarSymbols(typeSymbol, compilation, ct).FirstOrDefault();
         if (updatedTypeSymbol is null) return solution;
 
+        var generated = await GeneratedInterfaceReference.ResolveGeneratedAsync(solution, interfaceDocumentId, ct).ConfigureAwait(false);
         var refs = await SymbolFinder.FindReferencesAsync(updatedTypeSymbol, solution, ct).ConfigureAwait(false);
-        foreach (var refSymbol in refs)
+
+        // One rewrite per document: every location is a span of the same document snapshot, so applying
+        // them together keeps each edit (re-reading the document per location would drop all but the last).
+        foreach (var documentLocations in refs.SelectMany(r => r.Locations).GroupBy(l => l.Document.Id))
         {
-            foreach (var refLocation in refSymbol.Locations)
-            {
-                var refDoc = refLocation.Document;
-                var refRoot = await refDoc.GetSyntaxRootAsync(ct).ConfigureAwait(false);
-                if (refRoot is null) continue;
+            var document = solution.GetDocument(documentLocations.Key);
+            var root = document is null ? null : await document.GetSyntaxRootAsync(ct).ConfigureAwait(false);
+            var model = document is null ? null : await document.GetSemanticModelAsync(ct).ConfigureAwait(false);
+            if (document is null || root is null || model is null) continue;
 
-                var refNode = refRoot.FindNode(refLocation.Location.SourceSpan);
-                var parent = refNode.Parent;
+            // Only a bare identifier directly under a parameter or field declaration is rewritten; a
+            // qualified or aliased spelling of the concrete type is left typed at the concrete class.
+            var targets = documentLocations
+                .Select(l => root.FindNode(l.Location.SourceSpan))
+                .OfType<IdentifierNameSyntax>()
+                .Where(identifier => identifier.Parent is ParameterSyntax ||
+                    (identifier.Parent is VariableDeclarationSyntax { Parent: FieldDeclarationSyntax }))
+                .Distinct()
+                .ToArray();
+            if (targets.Length == 0) continue;
 
-                bool shouldReplace = parent is ParameterSyntax ||
-                    (parent is VariableDeclarationSyntax vd && vd.Parent is FieldDeclarationSyntax);
-
-                if (shouldReplace && refNode is IdentifierNameSyntax identNode)
-                {
-                    var newIdentNode = SyntaxFactory.IdentifierName(interfaceName)
-                        .WithTriviaFrom(identNode);
-                    refRoot = refRoot.ReplaceNode(identNode, newIdentNode);
-                    solution = solution.WithDocumentSyntaxRoot(refDoc.Id, refRoot);
-                }
-            }
+            var updatedRoot = root.ReplaceNodes(
+                targets,
+                (original, _) => GeneratedInterfaceReference.Create(generated, model, original.SpanStart).WithTriviaFrom(original));
+            solution = solution.WithDocumentSyntaxRoot(document.Id, updatedRoot);
         }
 
         return solution;

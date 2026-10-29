@@ -7,10 +7,9 @@ namespace RoslynMcp.Roslyn.Helpers;
 /// <summary>Preserves header token boundaries and trivia when adding an extracted interface.</summary>
 internal static class InterfaceBaseTypeWriter
 {
-    public static TypeDeclarationSyntax AddBaseType(TypeDeclarationSyntax declaration, string interfaceName, bool multilineContinuation)
+    public static TypeDeclarationSyntax AddBaseType(TypeDeclarationSyntax declaration, TypeSyntax interfaceName, bool multilineContinuation)
     {
-        if (declaration.BaseList?.Types.Any(baseType =>
-                string.Equals(baseType.Type.ToString(), interfaceName, StringComparison.Ordinal)) == true)
+        if (declaration.BaseList?.Types.Any(baseType => baseType.Type.WithoutTrivia().IsEquivalentTo(interfaceName.WithoutTrivia())) == true)
             return declaration;
 
         // Header trivia belongs after the inserted base type, whether its old
@@ -23,7 +22,7 @@ internal static class InterfaceBaseTypeWriter
         declaration = declaration.ReplaceToken(anchor, anchor.WithTrailingTrivia(default(SyntaxTriviaList)));
         if (trailing.Count == 0 && declaration.ConstraintClauses.Count > 0)
             trailing = SyntaxFactory.TriviaList(SyntaxFactory.Space);
-        var interfaceType = SyntaxFactory.SimpleBaseType(SyntaxFactory.ParseTypeName(interfaceName)).WithTrailingTrivia(trailing);
+        var interfaceType = SyntaxFactory.SimpleBaseType(interfaceName.WithoutTrivia()).WithTrailingTrivia(trailing);
         if (declaration.BaseList is { } existing)
         {
             var leading = multilineContinuation
