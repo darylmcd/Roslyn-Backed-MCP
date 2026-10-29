@@ -19,9 +19,11 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    # Verify + pack + push is ~15 min on hosted ubuntu; without an explicit budget a
-    # hung step holds the 6-hour default on the release path.
-    timeout-minutes: 30
+    # Verify + pack + push runs the whole suite in one job. It took ~15 min at 4.4.0 but the suite has
+    # since outgrown that: on main the three Linux PR shards total 44-53 min, so a single job needs
+    # roughly 35-50 min. 90 min leaves headroom for suite growth and still bounds a hung step well
+    # below the 6-hour default on the release path.
+    timeout-minutes: 90
     permissions:
       contents: read
 
