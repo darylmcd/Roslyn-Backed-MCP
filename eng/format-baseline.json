@@ -7,12 +7,12 @@
     "IMPORTS"
   ],
   "totals": {
-    "findingCount": 93,
-    "fileCount": 89,
+    "findingCount": 84,
+    "fileCount": 80,
     "countsByDiagnosticId": {
       "FINALNEWLINE": 1,
       "IDE1006": 10,
-      "IMPORTS": 82
+      "IMPORTS": 73
     }
   },
   "files": [
@@ -397,16 +397,6 @@
       }
     },
     {
-      "path": "src/RoslynMcp.Roslyn/Contracts/IWorkspaceManager.cs",
-      "findingCount": 1,
-      "diagnosticIds": [
-        "IMPORTS"
-      ],
-      "countsByDiagnosticId": {
-        "IMPORTS": 1
-      }
-    },
-    {
       "path": "src/RoslynMcp.Roslyn/Helpers/AnalyzerReferenceIsolation.cs",
       "findingCount": 2,
       "diagnosticIds": [
@@ -429,27 +419,7 @@
       }
     },
     {
-      "path": "src/RoslynMcp.Roslyn/Helpers/ProjectMetadataParser.cs",
-      "findingCount": 1,
-      "diagnosticIds": [
-        "IMPORTS"
-      ],
-      "countsByDiagnosticId": {
-        "IMPORTS": 1
-      }
-    },
-    {
       "path": "src/RoslynMcp.Roslyn/Helpers/ReferenceLocationMaterializer.cs",
-      "findingCount": 1,
-      "diagnosticIds": [
-        "IMPORTS"
-      ],
-      "countsByDiagnosticId": {
-        "IMPORTS": 1
-      }
-    },
-    {
-      "path": "src/RoslynMcp.Roslyn/Helpers/SolutionDiffHelper.cs",
       "findingCount": 1,
       "diagnosticIds": [
         "IMPORTS"
@@ -549,16 +519,6 @@
       }
     },
     {
-      "path": "src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs",
-      "findingCount": 1,
-      "diagnosticIds": [
-        "IMPORTS"
-      ],
-      "countsByDiagnosticId": {
-        "IMPORTS": 1
-      }
-    },
-    {
       "path": "src/RoslynMcp.Roslyn/Services/DeadCodeService.cs",
       "findingCount": 1,
       "diagnosticIds": [
@@ -609,26 +569,6 @@
       }
     },
     {
-      "path": "src/RoslynMcp.Roslyn/Services/InterfaceExtractionService.cs",
-      "findingCount": 1,
-      "diagnosticIds": [
-        "IMPORTS"
-      ],
-      "countsByDiagnosticId": {
-        "IMPORTS": 1
-      }
-    },
-    {
-      "path": "src/RoslynMcp.Roslyn/Services/MsBuildEvaluationService.cs",
-      "findingCount": 1,
-      "diagnosticIds": [
-        "IMPORTS"
-      ],
-      "countsByDiagnosticId": {
-        "IMPORTS": 1
-      }
-    },
-    {
       "path": "src/RoslynMcp.Roslyn/Services/MutationAnalysisService.cs",
       "findingCount": 1,
       "diagnosticIds": [
@@ -640,16 +580,6 @@
     },
     {
       "path": "src/RoslynMcp.Roslyn/Services/NamespaceDependencyService.cs",
-      "findingCount": 1,
-      "diagnosticIds": [
-        "IMPORTS"
-      ],
-      "countsByDiagnosticId": {
-        "IMPORTS": 1
-      }
-    },
-    {
-      "path": "src/RoslynMcp.Roslyn/Services/NamespaceRelocationService.cs",
       "findingCount": 1,
       "diagnosticIds": [
         "IMPORTS"
@@ -810,26 +740,6 @@
     },
     {
       "path": "tests/RoslynMcp.Tests/HostProcessMetadataTests.cs",
-      "findingCount": 1,
-      "diagnosticIds": [
-        "IMPORTS"
-      ],
-      "countsByDiagnosticId": {
-        "IMPORTS": 1
-      }
-    },
-    {
-      "path": "tests/RoslynMcp.Tests/NamespaceRelocationTests.cs",
-      "findingCount": 1,
-      "diagnosticIds": [
-        "IMPORTS"
-      ],
-      "countsByDiagnosticId": {
-        "IMPORTS": 1
-      }
-    },
-    {
-      "path": "tests/RoslynMcp.Tests/ParameterObjectPreviewTests.cs",
       "findingCount": 1,
       "diagnosticIds": [
         "IMPORTS"
