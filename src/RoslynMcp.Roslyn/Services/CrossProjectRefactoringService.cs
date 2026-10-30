@@ -181,12 +181,15 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             workspaceId, _compilationCache, solution, namespaceName, resolvedInterfaceName, ct).ConfigureAwait(false);
 
         // gh #765 — the projector records every type the projected members refer to; the generated
-        // interface file's using block is built from those symbols (plus aliases/static/global from
-        // the source file) instead of a text-grep that dropped source-project usings.
+        // interface file's using block is built from those symbols (plus applicable source
+        // aliases/static/globals) instead of a text-grep that dropped source-project usings.
         var nullableProjection = new InterfaceNullableProjection();
         var projector = await InterfaceMemberProjector.CreateAsync(sourceDocument, nullableProjection, ct).ConfigureAwait(false);
+        var destinationGlobalPlainNamespaces = await UsingDirectiveSynthesizer
+            .GetProjectGlobalPlainNamespacesAsync(targetProject, ct).ConfigureAwait(false);
         var interfaceRoot = CreateInterfaceCompilationUnit(sourceRoot, typeSymbol, resolvedInterfaceName, namespaceName, isCrossProject,
-            ReceivingNamespaceFactory.RequireCSharpOptions(targetProject.ParseOptions), projector);
+            ReceivingNamespaceFactory.RequireCSharpOptions(targetProject.ParseOptions), projector,
+            destinationGlobalPlainNamespaces, semanticModel, ct);
         var interfaceFilePath = Path.Combine(interfaceDirectory, resolvedInterfaceName + ".cs");
         if (File.Exists(interfaceFilePath))
         {
@@ -468,7 +471,10 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         string namespaceName,
         bool isCrossProject,
         CSharpParseOptions receivingOptions,
-        InterfaceMemberProjector projector)
+        InterfaceMemberProjector projector,
+        IReadOnlyCollection<string> destinationGlobalPlainNamespaces,
+        SemanticModel sourceSemanticModel,
+        CancellationToken ct)
     {
         var interfaceMembers = typeSymbol.GetMembers().Where(InterfaceMemberProjector.IsProjectable).Select(projector.Project).ToList();
 
@@ -491,7 +497,10 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             .WithMembers(SyntaxFactory.List(interfaceMembers));
 
         var usings = UsingDirectiveSynthesizer.BuildUsingDirectives(
-            sourceRoot.Usings, projector.RequiredNamespaces(string.IsNullOrWhiteSpace(namespaceName) ? null : namespaceName));
+            sourceRoot.Usings, projector.RequiredNamespaces(string.IsNullOrWhiteSpace(namespaceName) ? null : namespaceName),
+            preserveGlobalUsings: isCrossProject,
+            destinationGlobalPlainNamespaces: destinationGlobalPlainNamespaces,
+            sourceSemanticModel: sourceSemanticModel, ct: ct);
         var cleanUsings = SyntaxFactory.List(usings.Select(u => u.WithoutTrivia()));
         var destinationNamespace = ReceivingNamespaceFactory.Create(namespaceName, receivingOptions);
         MemberDeclarationSyntax wrappedMember = destinationNamespace is null
@@ -563,8 +572,13 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         // PreviewExtractInterfaceAsync). The DI-inversion path routes through here too.
         var nullableProjection = new InterfaceNullableProjection();
         var projector = await InterfaceMemberProjector.CreateAsync(sourceDocument, nullableProjection, ct).ConfigureAwait(false);
+        var destinationGlobalPlainNamespaces = await UsingDirectiveSynthesizer
+            .GetProjectGlobalPlainNamespacesAsync(targetProject, ct).ConfigureAwait(false);
+        var sourceSemanticModel = await sourceDocument.GetSemanticModelAsync(ct).ConfigureAwait(false)
+            ?? throw InvalidOperationErrors.Internal("Source semantic model is unavailable.");
         var interfaceRoot = CreateInterfaceCompilationUnit(sourceRoot, typeSymbol, interfaceName, namespaceName, isCrossProject,
-            ReceivingNamespaceFactory.RequireCSharpOptions(targetProject.ParseOptions), projector);
+            ReceivingNamespaceFactory.RequireCSharpOptions(targetProject.ParseOptions), projector,
+            destinationGlobalPlainNamespaces, sourceSemanticModel, ct);
         var interfaceFileDirectory = isCrossProject
             ? ResolvePreferredInterfaceSubdirectory(solution, targetProject, targetProjectDirectory)
             : targetProjectDirectory;

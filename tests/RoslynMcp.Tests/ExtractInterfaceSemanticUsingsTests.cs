@@ -18,8 +18,8 @@ namespace RoslynMcp.Tests;
 /// that inspects the candidate members' type symbols (return types, parameters, property
 /// types, event types, type-parameter constraints, recursive generic arguments) and
 /// collects their containing namespaces. The generated interface file's using block is
-/// derived from that set, with source-file aliases / static-usings / global-usings
-/// preserved.
+/// derived from that set, with local aliases/static usings preserved and destination
+/// project globals reused.
 /// </summary>
 [TestClass]
 public sealed class ExtractInterfaceSemanticUsingsTests : TestBase
@@ -97,6 +97,9 @@ public sealed class ExtractInterfaceSemanticUsingsTests : TestBase
             var applyResult = await RefactoringService.ApplyRefactoringAsync(previewDto.PreviewToken, "test_apply", CancellationToken.None);
             Assert.IsTrue(applyResult.Success, $"Apply failed: {applyResult.Error}");
 
+            await TestInfrastructure.InterfaceExtractionTestContext.AssertCompilesAsync(
+                WorkspaceManager.GetCurrentSolution(workspaceId));
+
             var interfaceFilePath = Path.Combine(sampleLibDir, "IItem3InventoryService.cs");
             Assert.IsTrue(File.Exists(interfaceFilePath), "Interface file must be generated.");
 
@@ -109,9 +112,8 @@ public sealed class ExtractInterfaceSemanticUsingsTests : TestBase
                 "Generated interface MUST `using SampleLib.Models;` — parameter and return types reference Item3Inventory from that namespace. " +
                 "Before Item #3, the text-grep FilterRelevantUsings couldn't see the full namespace string in the short-name-rendered interface text.");
 
-            // Also verify: Task is available because System.Threading.Tasks was both declared
-            // in the source AND is needed by the interface (LoadAsync returns Task<...>).
-            StringAssert.Contains(generatedText, "using System.Threading.Tasks;");
+            // Task is supplied by the destination project's implicit global using.
+            Assert.IsFalse(generatedText.Contains("using System.Threading.Tasks;", StringComparison.Ordinal));
 
             // Sanity: generated file must parse cleanly (no fabricated 'publicinterfaceI…' shapes).
             var tree = CSharpSyntaxTree.ParseText(generatedText);
@@ -192,13 +194,16 @@ public sealed class ExtractInterfaceSemanticUsingsTests : TestBase
             var applyResult = await RefactoringService.ApplyRefactoringAsync(previewDto.PreviewToken, "test_apply", CancellationToken.None);
             Assert.IsTrue(applyResult.Success, $"Apply failed: {applyResult.Error}");
 
+            await TestInfrastructure.InterfaceExtractionTestContext.AssertCompilesAsync(
+                WorkspaceManager.GetCurrentSolution(workspaceId));
+
             var interfaceFilePath = Path.Combine(sampleLibDir, "IItem3GenericService.cs");
             var generatedText = await File.ReadAllTextAsync(interfaceFilePath);
 
-            StringAssert.Contains(generatedText, "using System.Threading.Tasks;",
-                "Outer generic container's namespace must be present.");
-            StringAssert.Contains(generatedText, "using System.Collections.Generic;",
-                "Intermediate generic's namespace must be present.");
+            Assert.IsFalse(generatedText.Contains("using System.Threading.Tasks;", StringComparison.Ordinal),
+                "The destination project's implicit global using supplies Task.");
+            Assert.IsFalse(generatedText.Contains("using System.Collections.Generic;", StringComparison.Ordinal),
+                "The destination project's implicit global using supplies IReadOnlyList.");
             StringAssert.Contains(generatedText, "using SampleLib.Models;",
                 "Innermost generic argument's namespace must be present — recursion through TypeArguments is the Item #3 fix.");
         }
@@ -278,31 +283,31 @@ public sealed class ExtractInterfaceSemanticUsingsTests : TestBase
             var applyResult = await RefactoringService.ApplyRefactoringAsync(previewDto.PreviewToken, "test_apply", CancellationToken.None);
             Assert.IsTrue(applyResult.Success, $"Apply failed: {applyResult.Error}");
 
+            await TestInfrastructure.InterfaceExtractionTestContext.AssertCompilesAsync(
+                WorkspaceManager.GetCurrentSolution(workspaceId));
+
             var interfaceFilePath = Path.Combine(sampleLibDir, "IItem3SpecialUsingService.cs");
             var generatedText = await File.ReadAllTextAsync(interfaceFilePath);
 
-            StringAssert.Contains(generatedText, "using System.Threading.Tasks;");
+            Assert.IsFalse(generatedText.Contains("using System.Threading.Tasks;", StringComparison.Ordinal),
+                "The destination project's implicit global using supplies Task.");
             StringAssert.Contains(generatedText, "using SampleLib.Models;");
             StringAssert.Contains(generatedText, "using AliasModel = SampleLib.Models.Item3AliasModel;");
             StringAssert.Contains(generatedText, "using static System.Math;");
-            StringAssert.Contains(generatedText, "global using System.Globalization;");
+            Assert.IsFalse(generatedText.Contains("global using System.Globalization;", StringComparison.Ordinal),
+                "Same-project global using is already in scope and must not be copied.");
             Assert.IsFalse(
                 generatedText.Contains("using System.Text;", StringComparison.Ordinal),
                 $"Unused plain using should be dropped. Generated:\n{generatedText}");
 
-            var threadingIndex = generatedText.IndexOf("using System.Threading.Tasks;", StringComparison.Ordinal);
             var modelsIndex = generatedText.IndexOf("using SampleLib.Models;", StringComparison.Ordinal);
             var aliasIndex = generatedText.IndexOf("using AliasModel = SampleLib.Models.Item3AliasModel;", StringComparison.Ordinal);
             var staticIndex = generatedText.IndexOf("using static System.Math;", StringComparison.Ordinal);
-            var globalIndex = generatedText.IndexOf("global using System.Globalization;", StringComparison.Ordinal);
-
             Assert.IsTrue(
-                globalIndex >= 0
-                && threadingIndex > globalIndex
-                && modelsIndex > threadingIndex
+                modelsIndex >= 0
                 && aliasIndex > modelsIndex
                 && staticIndex > aliasIndex,
-                $"Expected global usings first (CS8915), then sorted plain usings, then non-global special usings in source order. Generated:\n{generatedText}");
+                $"Expected sorted plain usings, then local special usings in source order. Generated:\n{generatedText}");
         }
         finally
         {
