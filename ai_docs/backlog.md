@@ -48,10 +48,7 @@
 |----|-----|------|----|------|--------|
 | `logging-default-sink-disabled-stderr-swallowed` | High | logging-retention-destroys-repro-evidence | **Enable the bounded file sink by default for installed users** — ROSLYNMCP_OBSERVABILITY_SINK defaults to `disabled` and the plugin mcp.json never sets it, so an MCP host that swallows stderr leaves no evidence of a first failure. [type: quality] [source: logging-audit 20260930-1340] | M | items/logging-default-sink-disabled-stderr-swallowed.md |
 | `persistent-composite-workspace-identity-not-portable` | High | — | Resolve persisted composite tokens to the correct receiving workspace and source snapshot before claim or mutation. [type: bug] [source: token-lifecycle-independence-revet] | L | items/persistent-composite-workspace-identity-not-portable.md |
-| `cross-project-interface-reference-binding` | High | — | Bind generated interface uses to the generated symbol | M | items/cross-project-interface-reference-binding.md |
 | `cross-project-interface-signature-dependencies` | High | cross-project-interface-reference-binding | Validate emitted interface signature dependencies | M | items/cross-project-interface-signature-dependencies.md |
-| `refactoring-rebase-source-kind-preservation` | High | — | Preserve reviewed document source kind during replay | M | items/refactoring-rebase-source-kind-preservation.md |
-| `automatic-reload-analyzer-reader-lifetime` | High | — | Exclude readers before automatic reload retires providers | M | items/automatic-reload-analyzer-reader-lifetime.md |
 | `analyzer-shadow-sweep-path-authority` | High | — | Keep analyzer sweeping inside owned no-follow paths | M | items/analyzer-shadow-sweep-path-authority.md |
 | `restore-package-root-authoritative-read-fail-closed` | High | — | Keep unreadable assets distinct from an absent recorded root | M | items/restore-package-root-authoritative-read-fail-closed.md |
 | `cross-project-interface-parameter-semantics` | High | — | Preserve emitted interface parameter semantics | M | items/cross-project-interface-parameter-semantics.md |
@@ -241,6 +238,14 @@
 | `extract-type-protected-member-external-consumers` | Medium | — | **Refuse or rebind protected members used by external derived classes** — extraction currently ignores them. [type: bug] [source: 2026-10-29 remediation] | S | items/extract-type-protected-member-external-consumers.md |
 | `workspace-reload-swap-version-failure-ownership` | Medium | — | **Fix reload ownership when IncrementVersion/InvalidateOnVersionBump throws after the workspace swap** — the failure branch disposes the workspace the session now points at and leaks the old one. [type: bug] [source: 2026-10-29 remediation] | S | items/workspace-reload-swap-version-failure-ownership.md |
 | `analyzer-shadow-lease-dispose-disposed-flag-early` | Medium | — | **Set AnalyzerShadowLoaderLease _disposed only after cleanup succeeds** — a throw mid-loop leaves the shadow root undeleted and a retry becomes a no-op; only the sweeper backstops it. [type: bug] [source: 2026-10-29 remediation] | S | items/analyzer-shadow-lease-dispose-disposed-flag-early.md |
+| `undo-restore-source-kind` | Medium | — | **Restore SourceCodeKind on undo** — UndoService restores documents with WithDocumentText only; a kind change is never reverted. | S | items/undo-restore-source-kind.md |
+| `rebase-changed-document-silent-drop` | Medium | — | **Refuse or warn when rebase drops a changed document** — RebaseChangedDocumentsAsync silently continues when no matching current document exists. | S | items/rebase-changed-document-silent-drop.md |
+| `receiving-namespace-keyword-segment-escaping` | Medium | — | **Escape keyword segments in derived receiving namespaces** — ReceivingNamespaceFactory and DeriveTargetNamespace emit an unescaped keyword RootNamespace segment. | S | items/receiving-namespace-keyword-segment-escaping.md |
+| `di-inversion-interface-namespace-folder-mismatch` | Medium | — | **Align DI-inversion interface namespace with its file folder** — the DI route derives the namespace from the project default but places the file under Interfaces/, unlike the extract route. | S | items/di-inversion-interface-namespace-folder-mismatch.md |
+| `replace-concrete-usages-non-identifier-spellings` | Medium | — | **Rewrite non-bare concrete-type spellings in same-project extraction** — ReplaceConcreteUsagesAsync only rewrites a bare IdentifierName directly under a parameter or field. | M | items/replace-concrete-usages-non-identifier-spellings.md |
+| `move-type-to-project-signature-dependency-edge` | Medium | — | **Add project-reference edges for moved-type body dependencies** — PreviewMoveTypeToProjectAsync adds only the source-to-target edge. | M | items/move-type-to-project-signature-dependency-edge.md |
+| `reload-clearstale-swallows-midreload-watcher-event` | Medium | — | **Do not clear staleness raised during a reload** — ReloadAsync calls ClearStale after LoadIntoSessionAsync and can swallow a watcher event that arrived mid-reload. | S | items/reload-clearstale-swallows-midreload-watcher-event.md |
+| `release-lag-guard-fixed-30s-process-timeout` | Medium | — | **Make ReleaseLagGuardTests robust to loaded hosted runners** — six sequential pwsh runs each carry a fixed 30 s timeout and time out at ~32 s on windows-hosted shard 4. | S | items/release-lag-guard-fixed-30s-process-timeout.md |
 
 ## Low
 
@@ -473,6 +478,7 @@
 | `using-directive-synthesizer-sort-hygiene` | Low | — | **Fix UsingDirectiveSynthesizer sort hygiene** — IsSystemUsingDirective StartsWith("System") mis-sort and null-forgiving OrderBy key. [type: bug] [source: 2026-10-29 remediation] | S | items/using-directive-synthesizer-sort-hygiene.md |
 | `extract-type-member-modifier-dispatch-duplication` | Low | — | **Consolidate TypeExtractionService modifier dispatch** — one member-kind helper; no silent fallthrough. [type: bug] [source: 2026-10-29 remediation] | S | items/extract-type-member-modifier-dispatch-duplication.md |
 | `extract-type-tests-temp-dir-leak` | Low | — | **Queue temp dirs for cleanup in older ExtractType tests** — no leaked fixture directories. [type: bug] [source: 2026-10-29 remediation] | S | items/extract-type-tests-temp-dir-leak.md |
+| `gate-tests-task-delay-writer-queue` | Low | — | **Replace Task.Delay(50) writer-queue waits in WorkspaceExecutionGateTests** — timing-dependent; synchronous waiter registration makes them unnecessary. | S | items/gate-tests-task-delay-writer-queue.md |
 
 ## Defer
 
@@ -486,6 +492,7 @@
 | `editorconfig-posix-uncooperative-write-race` | Defer | editorconfig-owned-write-external-race | Define an enforceable POSIX conflict protocol for external .editorconfig writers that ignore advisory locks. [type: bug] [source: backlog-remediate Linux regression 20260929] | M | items/editorconfig-posix-uncooperative-write-race.md |
 | `atomic-file-writer-external-temp-path-swap` | Defer | editorconfig-write-no-workspace-invalidation | Prevent an external process from swapping a temp pathname between atomic-writer identity validation and File.Move commit. [type: bug] [source: PR #1678 cold review 2026-09-30] | M | items/atomic-file-writer-external-temp-path-swap.md |
 | `extract-type-module-initialization-effects` | Defer | — | Decide whether moving members must preserve module-initializer ordering and source-generator reactions; implement detection/refusal only if adopted. [type: feature] [source: archive-diagnostic-2026-10-27] | — | items/extract-type-module-initialization-effects.md |
+| `carved-file-script-kind-inheritance-decision` | Defer | — | **Decide whether files carved from a Script-kind source inherit its SourceCodeKind** — TypeMove, TypeExtraction, NamespaceRelocation, InterfaceExtraction create Regular documents. | S | items/carved-file-script-kind-inheritance-decision.md |
 
 ## Refs
 
