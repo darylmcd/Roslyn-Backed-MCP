@@ -38,6 +38,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
             "Contracts",
             CancellationToken.None);
 
+        await TestInfrastructure.InterfaceExtractionTestContext.AssertNoUnresolvedNamesAsync(PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution, "SampleLib");
         var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
         Assert.IsTrue(File.Exists(interfaceFilePath));
@@ -178,6 +179,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
             "Contracts",
             CancellationToken.None);
 
+        await TestInfrastructure.InterfaceExtractionTestContext.AssertNoUnresolvedNamesAsync(PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution, "SampleLib", "SampleApp");
         var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
         Assert.IsTrue(File.Exists(interfaceFilePath));
@@ -229,6 +231,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
             "Contracts",
             CancellationToken.None);
 
+        await TestInfrastructure.InterfaceExtractionTestContext.AssertNoUnresolvedNamesAsync(PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution, "SampleLib");
         var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
 
@@ -236,11 +239,11 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
         var normalized = sourceContents.Replace("\r\n", "\n", StringComparison.Ordinal);
 
         Assert.IsFalse(
-            normalized.Contains("IJobQueue<JobRequest>\n, IJobQueueInverted", StringComparison.Ordinal),
+            normalized.Contains("IJobQueue<JobRequest>\n, Contracts.IJobQueueInverted", StringComparison.Ordinal),
             $"Existing base-list append must not put the comma at the start of the new line.\nFile contents:\n{sourceContents}");
         StringAssert.Contains(
             normalized,
-            "public class JobQueue : IJobQueue<JobRequest>,\n    IJobQueueInverted",
+            "public class JobQueue : IJobQueue<JobRequest>,\n    Contracts.IJobQueueInverted",
             $"Interface list should use comma-trailing formatting.\nFile contents:\n{sourceContents}");
     }
 
@@ -368,6 +371,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
             "Contracts",
             CancellationToken.None);
 
+        await TestInfrastructure.InterfaceExtractionTestContext.AssertNoUnresolvedNamesAsync(PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution, "SampleLib", "SampleApp");
         var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
 
@@ -398,7 +402,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
             $"Source blank-line structure was collapsed (FORMAT-BUG-002 regression).\nFile contents:\n{sourceContents}");
 
         // (4) The targeted `: IAnimalService` edit was applied with correct spacing.
-        StringAssert.Contains(sourceContents, "class AnimalService : IAnimalService");
+        StringAssert.Contains(sourceContents, "class AnimalService : Contracts.IAnimalService");
         Assert.IsFalse(
             sourceContents.Contains("IAnimalService{", StringComparison.Ordinal),
             $"Source class has `{{` glued onto the interface base type (regression).\nFile contents:\n{sourceContents}");
@@ -486,6 +490,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
             "Contracts",
             CancellationToken.None);
 
+        await TestInfrastructure.InterfaceExtractionTestContext.AssertNoUnresolvedNamesAsync(PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution, "SampleLib");
         var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
         Assert.IsTrue(File.Exists(interfaceFilePath));
@@ -564,6 +569,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
             "Contracts",
             CancellationToken.None);
 
+        await TestInfrastructure.InterfaceExtractionTestContext.AssertNoUnresolvedNamesAsync(PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution, "SampleLib");
         var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
 
@@ -729,6 +735,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
             "Contracts",
             CancellationToken.None);
 
+        await TestInfrastructure.InterfaceExtractionTestContext.AssertNoUnresolvedNamesAsync(PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution, "SampleLib", "SampleApp", "MidLib", "Downstream");
         var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
         Assert.IsTrue(File.Exists(interfaceFilePath));

@@ -193,22 +193,21 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             throw new PublicInvalidOperationException($"Target interface file already exists: {DescribeProjectRelativePath(targetProjectDirectory, interfaceFilePath)}");
         }
 
-        var updatedTypeDeclaration = InterfaceBaseTypeWriter.AddBaseType(typeDeclaration, resolvedInterfaceName, multilineContinuation: true);
-        var updatedSourceRoot = sourceRoot.ReplaceNode(typeDeclaration, updatedTypeDeclaration);
         // BUG-004: Do not normalize whitespace on the entire compilation unit — that re-flows
-        // unrelated code (collapses multi-line bodies, reshuffles format specifiers). ReplaceNode
-        // preserves the surrounding source layout while still applying our targeted edit.
+        // unrelated code (collapses multi-line bodies, reshuffles format specifiers). The base list
+        // is added by a targeted node replacement. The interface document and project reference are
+        // added first so the base-list spelling is bound against the generated symbol, not guessed
+        // from its name.
 
         // Item #1 — pass folders so MSBuildWorkspace resolves the disk path consistently.
         var interfaceFolders = ProjectMetadataParser.ComputeDocumentFolders(targetProject.FilePath, interfaceFilePath);
         var interfaceDocumentId = DocumentId.CreateNewId(targetProject.Id);
-        var updatedSolution = solution.WithDocumentSyntaxRoot(sourceDocument.Id, updatedSourceRoot)
-            .AddDocument(
-                interfaceDocumentId,
-                resolvedInterfaceName + ".cs",
-                SourceText.From(interfaceRoot.ToFullString()),
-                folders: interfaceFolders,
-                filePath: interfaceFilePath);
+        var updatedSolution = solution.AddDocument(
+            interfaceDocumentId,
+            resolvedInterfaceName + ".cs",
+            SourceText.From(interfaceRoot.ToFullString()),
+            folders: interfaceFolders,
+            filePath: interfaceFilePath);
 
         if (isCrossProject)
         {
@@ -217,6 +216,8 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
 
         updatedSolution = await nullableProjection.ApplyAsync(updatedSolution.GetDocument(interfaceDocumentId)
             ?? throw InvalidOperationErrors.Internal("Generated interface document is unavailable."), interfaceRoot, ct).ConfigureAwait(false);
+        updatedSolution = await GeneratedInterfaceReference.AddToBaseListAsync(
+            updatedSolution, sourceDocument.Id, typeDeclaration.Span, interfaceDocumentId, multilineContinuation: true, ct).ConfigureAwait(false);
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, updatedSolution, ct).ConfigureAwait(false);
         var description = $"Extract interface '{resolvedInterfaceName}' from '{typeName}'";
         var token = _previewStore.Store(workspaceId, updatedSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
@@ -243,7 +244,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             ?? throw new PublicInvalidOperationException($"Type '{typeName}' could not be resolved.");
 
         var resolvedInterfaceName = string.IsNullOrWhiteSpace(interfaceName) ? $"I{typeName}" : interfaceName;
-        var updatedSolution = await CreateInterfaceExtractionSolutionAsync(
+        var (updatedSolution, interfaceDocumentId) = await CreateInterfaceExtractionSolutionAsync(
             workspaceId,
             _compilationCache,
             solution,
@@ -255,7 +256,11 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             interfaceProjectName,
             ct).ConfigureAwait(false);
 
-        var updatedConcreteType = await SymbolResolver.ResolveByMetadataNameAsync(updatedSolution, GetMetadataName(typeSymbol), ct).ConfigureAwait(false) as INamedTypeSymbol
+        // A symbol-identity lookup, not a display-string metadata name: the display string escapes keyword namespace
+        // segments (`@namespace.Type`), which no metadata lookup finds.
+        var updatedSourceCompilation = await updatedSolution.GetProject(sourceDocument.Project.Id)!
+            .GetCompilationAsync(ct).ConfigureAwait(false);
+        var updatedConcreteType = (updatedSourceCompilation is null ? null : SymbolFinder.FindSimilarSymbols(typeSymbol, updatedSourceCompilation, ct).FirstOrDefault())
             ?? throw new PublicInvalidOperationException($"Type '{typeName}' could not be resolved after interface extraction.");
 
         // Only documents that actually reference the extracted concrete type can hold a
@@ -267,6 +272,9 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             .SelectMany(reference => reference.Locations)
             .Select(location => location.Document.Id)
             .Distinct();
+
+        var generatedInterface = await GeneratedInterfaceReference.ResolveGeneratedAsync(updatedSolution, interfaceDocumentId, ct).ConfigureAwait(false);
+        var interfaceProjectId = interfaceDocumentId.ProjectId;
 
         foreach (var documentId in referencingDocumentIds)
         {
@@ -283,31 +291,48 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
                 continue;
             }
 
-            var parameterReplacements = root.DescendantNodes()
+            var parameterSpans = root.DescendantNodes()
                 .OfType<ParameterSyntax>()
                 .Where(parameter => parameter.FirstAncestorOrSelf<ConstructorDeclarationSyntax>() is not null && parameter.Type is not null)
-                .Select(parameter => new
-                {
-                    Parameter = parameter,
-                    Type = model.GetTypeInfo(parameter.Type!, ct).Type
-                })
-                .Where(entry => SymbolEqualityComparer.Default.Equals(entry.Type, updatedConcreteType))
+                .Where(parameter => GeneratedInterfaceReference.IsSame(model.GetTypeInfo(parameter.Type!, ct).Type, updatedConcreteType))
+                .Select(parameter => parameter.Span)
                 .ToArray();
 
-            if (parameterReplacements.Length == 0)
+            if (parameterSpans.Length == 0)
             {
                 continue;
             }
 
+            // The consumer must be able to see the interface's assembly. A compilation that already
+            // references it needs no new edge. Otherwise add one: a cycle is impossible here (the
+            // consumer sees the concrete type, so the interface project would have to reach the source
+            // project, which EnsureProjectReference already refused), and it refuses one anyway.
+            var consumerProject = document.Project;
+            var interfaceProject = updatedSolution.GetProject(interfaceProjectId)!;
+            if (!await ProjectGraphHelpers.CompilationReferencesProjectAsync(consumerProject, interfaceProject, ct).ConfigureAwait(false))
+            {
+                updatedSolution = EnsureProjectReference(updatedSolution, consumerProject.Id, interfaceProjectId);
+                document = updatedSolution.GetDocument(documentId)!;
+                root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false);
+                model = await document.GetSemanticModelAsync(ct).ConfigureAwait(false);
+                if (root is null || model is null)
+                {
+                    continue;
+                }
+            }
+
+            var parameters = root.DescendantNodes().OfType<ParameterSyntax>()
+                .Where(parameter => parameterSpans.Contains(parameter.Span))
+                .ToArray();
             var updatedRoot = root.ReplaceNodes(
-                parameterReplacements.Select(entry => entry.Parameter),
+                parameters,
                 (original, _) =>
                 {
-                    // FORMAT-BUG-002: Preserve the original type node's surrounding trivia.
-                    // `ParseTypeName` produces a bare identifier with no trivia; without
-                    // `WithTriviaFrom` the trailing space between type and parameter name is
-                    // lost, producing `IAnimalServiceservice` instead of `IAnimalService service`.
-                    var replacementType = SyntaxFactory.ParseTypeName(resolvedInterfaceName)
+                    // FORMAT-BUG-002: Preserve the original type node's surrounding trivia, or the
+                    // trailing space between type and parameter name is lost
+                    // (`IAnimalServiceservice` instead of `IAnimalService service`). The spelling is
+                    // bound against the generated symbol at this parameter, not guessed from its name.
+                    var replacementType = GeneratedInterfaceReference.Create(generatedInterface, model, original.Type!.SpanStart)
                         .WithTriviaFrom(original.Type!);
                     return original.WithType(replacementType);
                 });
@@ -511,7 +536,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         return solution.AddProjectReference(sourceProjectId, new ProjectReference(targetProjectId));
     }
 
-    private static async Task<Solution> CreateInterfaceExtractionSolutionAsync(
+    private static async Task<(Solution Solution, DocumentId InterfaceDocumentId)> CreateInterfaceExtractionSolutionAsync(
         string workspaceId,
         ICompilationCache compilationCache,
         Solution solution,
@@ -549,40 +574,33 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             throw new PublicInvalidOperationException($"Target interface file already exists: {DescribeProjectRelativePath(targetProjectDirectory, interfaceFilePath)}");
         }
 
-        var updatedTypeDeclaration = InterfaceBaseTypeWriter.AddBaseType(typeDeclaration, interfaceName, multilineContinuation: true);
-        var updatedSourceRoot = sourceRoot.ReplaceNode(typeDeclaration, updatedTypeDeclaration);
         // FORMAT-BUG-002 (dr-9-3-format-bug-002-destroys-source-formatting): do NOT
         // NormalizeWhitespace() the entire source compilation unit — that re-flows every node
         // in the file (collapses multi-line bodies, strips intentional spacing, reshuffles
-        // indentation). `InterfaceBaseTypeWriter.AddBaseType` already emits the targeted
-        // `: IName\n{` edit with correct trivia; ReplaceNode preserves surrounding source layout.
-        // Mirrors the same decision made in PreviewExtractInterfaceAsync.
+        // indentation). The targeted `: IName\n{` edit keeps surrounding source layout. Mirrors
+        // PreviewExtractInterfaceAsync: the interface document and project reference exist before
+        // the base list is spelled, so it binds to the generated symbol.
 
         // Item #1 — pass folders so MSBuildWorkspace resolves the disk path consistently.
         var diInterfaceFolders = ProjectMetadataParser.ComputeDocumentFolders(targetProject.FilePath, interfaceFilePath);
         var interfaceDocumentId = DocumentId.CreateNewId(targetProject.Id);
-        var updatedSolution = solution.WithDocumentSyntaxRoot(sourceDocument.Id, updatedSourceRoot)
-            .AddDocument(
-                interfaceDocumentId,
-                interfaceName + ".cs",
-                SourceText.From(interfaceRoot.ToFullString()),
-                folders: diInterfaceFolders,
-                filePath: interfaceFilePath);
+        var updatedSolution = solution.AddDocument(
+            interfaceDocumentId,
+            interfaceName + ".cs",
+            SourceText.From(interfaceRoot.ToFullString()),
+            folders: diInterfaceFolders,
+            filePath: interfaceFilePath);
 
         if (isCrossProject)
         {
             updatedSolution = EnsureProjectReference(updatedSolution, sourceDocument.Project.Id, targetProject.Id);
         }
 
-        return await nullableProjection.ApplyAsync(updatedSolution.GetDocument(interfaceDocumentId)
+        updatedSolution = await nullableProjection.ApplyAsync(updatedSolution.GetDocument(interfaceDocumentId)
             ?? throw InvalidOperationErrors.Internal("Generated interface document is unavailable."), interfaceRoot, ct).ConfigureAwait(false);
-    }
-
-    private static string GetMetadataName(INamedTypeSymbol typeSymbol)
-    {
-        return typeSymbol.ContainingNamespace.IsGlobalNamespace
-            ? typeSymbol.MetadataName
-            : typeSymbol.ContainingNamespace.ToDisplayString() + "." + typeSymbol.MetadataName;
+        updatedSolution = await GeneratedInterfaceReference.AddToBaseListAsync(
+            updatedSolution, sourceDocument.Id, typeDeclaration.Span, interfaceDocumentId, multilineContinuation: true, ct).ConfigureAwait(false);
+        return (updatedSolution, interfaceDocumentId);
     }
 
 }

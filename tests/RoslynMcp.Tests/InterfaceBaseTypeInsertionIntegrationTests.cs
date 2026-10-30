@@ -43,8 +43,8 @@ public sealed class InterfaceBaseTypeInsertionIntegrationTests : IsolatedWorkspa
         var declaration = root.DescendantNodes().OfType<TypeDeclarationSyntax>().Single();
         foreach (var multiline in new[] { false, true })
         {
-            var updated = InterfaceBaseTypeWriter.AddBaseType(declaration, "IEchoService", multiline);
-            Assert.AreSame(updated, InterfaceBaseTypeWriter.AddBaseType(updated, "IEchoService", multiline));
+            var updated = InterfaceBaseTypeWriter.AddBaseType(declaration, SyntaxFactory.IdentifierName("IEchoService"), multiline);
+            Assert.AreSame(updated, InterfaceBaseTypeWriter.AddBaseType(updated, SyntaxFactory.IdentifierName("IEchoService"), multiline));
             var text = updated.ToFullString();
             StringAssert.Contains(text, semicolon ? "/* terminator */;" : "/* brace */");
             var tree = CSharpSyntaxTree.ParseText(text + "\npublic interface IEchoService { }");
