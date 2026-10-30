@@ -246,6 +246,7 @@
 | `move-type-to-project-signature-dependency-edge` | Medium | — | **Add project-reference edges for moved-type body dependencies** — PreviewMoveTypeToProjectAsync adds only the source-to-target edge. | M | items/move-type-to-project-signature-dependency-edge.md |
 | `reload-clearstale-swallows-midreload-watcher-event` | Medium | — | **Do not clear staleness raised during a reload** — ReloadAsync calls ClearStale after LoadIntoSessionAsync and can swallow a watcher event that arrived mid-reload. | S | items/reload-clearstale-swallows-midreload-watcher-event.md |
 | `release-lag-guard-fixed-30s-process-timeout` | Medium | — | **Make ReleaseLagGuardTests robust to loaded hosted runners** — six sequential pwsh runs each carry a fixed 30 s timeout and time out at ~32 s on windows-hosted shard 4. | S | items/release-lag-guard-fixed-30s-process-timeout.md |
+| `compile-check-winforms-generator-dependency` | Medium | — | **Resolve WinForms generator dependencies in compile_check** — match dotnet build on restored .NET 10 projects instead of reporting spurious CS8784. [type: bug] [source: SnipCue remediation 2026-10-29] | M | items/compile-check-winforms-generator-dependency.md |
 
 ## Low
 
