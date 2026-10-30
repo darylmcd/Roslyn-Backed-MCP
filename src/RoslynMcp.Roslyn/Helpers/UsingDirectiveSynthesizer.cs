@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using RoslynMcp.Core.Services;
 
 namespace RoslynMcp.Roslyn.Helpers;
 
@@ -45,7 +46,7 @@ internal static class UsingDirectiveSynthesizer
         Project project, CancellationToken ct)
     {
         var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false)
-            ?? throw new InvalidOperationException("Destination project compilation is unavailable.");
+            ?? throw InvalidOperationErrors.Internal("Destination project compilation is unavailable.");
         var namespaces = new HashSet<string>(StringComparer.Ordinal);
         foreach (var tree in compilation.SyntaxTrees)
         {
