@@ -574,10 +574,8 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
         Assert.IsTrue(applyResult.Success, applyResult.Error);
 
         var interfaceText = await File.ReadAllTextAsync(interfaceFilePath, CancellationToken.None);
-        StringAssert.Contains(
-            interfaceText,
-            "using System.Threading.Tasks;",
-            $"Generated interface MUST emit `using System.Threading.Tasks;` — the outer generic Task lives there.\nFile contents:\n{interfaceText}");
+        Assert.IsFalse(interfaceText.Contains("using System.Threading.Tasks;", StringComparison.Ordinal),
+            $"Destination project implicit global using already supplies Task.\nFile contents:\n{interfaceText}");
         StringAssert.Contains(
             interfaceText,
             "using SampleLib.Hierarchy;",

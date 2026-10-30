@@ -83,7 +83,13 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
             .WithModifiers(SyntaxFactory.TokenList(interfaceAccessibilityToken))
             .WithMembers(SyntaxFactory.List(interfaceMembers));
 
-        var interfaceFileRoot = BuildInterfaceFile(interfaceDecl, typeDecl, sourceRoot, requiredNamespaces);
+        var destinationGlobalPlainNamespaces = await UsingDirectiveSynthesizer
+            .GetProjectGlobalPlainNamespacesAsync(sourceDocument.Project, ct).ConfigureAwait(false);
+        var sourceSemanticModel = await sourceDocument.GetSemanticModelAsync(ct).ConfigureAwait(false)
+            ?? throw InvalidOperationErrors.Internal("Source semantic model is unavailable.");
+        var interfaceFileRoot = BuildInterfaceFile(
+            interfaceDecl, typeDecl, sourceRoot, requiredNamespaces, destinationGlobalPlainNamespaces,
+            sourceSemanticModel, ct);
 
         var newSolution = solution;
 
@@ -183,10 +189,16 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
         InterfaceDeclarationSyntax interfaceDecl,
         TypeDeclarationSyntax typeDecl,
         CompilationUnitSyntax sourceRoot,
-        IReadOnlyCollection<string> requiredNamespaces)
+        IReadOnlyCollection<string> requiredNamespaces,
+        IReadOnlyCollection<string> destinationGlobalPlainNamespaces,
+        SemanticModel sourceSemanticModel,
+        CancellationToken ct)
     {
         var namespaceDecl = typeDecl.Ancestors().OfType<BaseNamespaceDeclarationSyntax>().FirstOrDefault();
-        var usings = UsingDirectiveSynthesizer.BuildUsingDirectives(sourceRoot.Usings, requiredNamespaces);
+        var usings = UsingDirectiveSynthesizer.BuildUsingDirectives(
+            sourceRoot.Usings, requiredNamespaces, preserveGlobalUsings: false,
+            destinationGlobalPlainNamespaces: destinationGlobalPlainNamespaces,
+            sourceSemanticModel: sourceSemanticModel, ct: ct);
 
         if (namespaceDecl is FileScopedNamespaceDeclarationSyntax fileScopedNs)
         {

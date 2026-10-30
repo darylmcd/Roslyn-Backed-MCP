@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using RoslynMcp.Core.Services;
 
 namespace RoslynMcp.Roslyn.Helpers;
 
@@ -10,40 +11,100 @@ namespace RoslynMcp.Roslyn.Helpers;
 /// <c>CrossProjectRefactoringService.CreateInterfaceCompilationUnit</c>. Raw cross-project type
 /// move does not use this helper (it copies source usings verbatim via
 /// <c>MovedDeclarationFileWriter</c>). Merges the semantically-required namespaces with the
-/// source file's using block: keeps source-file aliases, static usings, and global usings (they
-/// cannot be re-synthesized from symbols), adds plain-<c>using</c> directives for every required
-/// namespace, and drops plain source-file usings the semantic walk determined are unnecessary.
-/// Output always lists global usings before non-global ones (CS8915).
+/// source file's using block: keeps source-file aliases and static usings, and keeps global
+/// usings only when the receiving project differs (same-project globals are already in scope).
+/// Adds plain-<c>using</c> directives for required namespaces that are not already supplied by
+/// a source or destination-project global using, and drops unrelated plain source-file usings.
+/// Copied globals always precede non-global usings (CS8915).
 /// </summary>
 internal static class UsingDirectiveSynthesizer
 {
     public static SyntaxList<UsingDirectiveSyntax> BuildUsingDirectives(
         SyntaxList<UsingDirectiveSyntax> sourceUsings,
-        IReadOnlyCollection<string> requiredNamespaces)
+        IReadOnlyCollection<string> requiredNamespaces,
+        bool preserveGlobalUsings,
+        IReadOnlyCollection<string> destinationGlobalPlainNamespaces,
+        SemanticModel? sourceSemanticModel,
+        CancellationToken ct)
     {
         var result = new List<UsingDirectiveSyntax>();
-        var alreadyAddedPlainNamespaces = new HashSet<string>(StringComparer.Ordinal);
+        var alreadyAddedPlainNamespaces = new HashSet<string>(destinationGlobalPlainNamespaces, StringComparer.Ordinal);
 
         PreserveSpecialAndRequiredSourceUsings(
             sourceUsings,
             requiredNamespaces,
+            preserveGlobalUsings,
+            sourceSemanticModel,
+            ct,
             result,
             alreadyAddedPlainNamespaces);
         AddMissingRequiredUsingDirectives(requiredNamespaces, alreadyAddedPlainNamespaces, result);
         return SortUsingDirectives(result);
     }
 
+    public static async Task<IReadOnlyCollection<string>> GetProjectGlobalPlainNamespacesAsync(
+        Project project, CancellationToken ct)
+    {
+        var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false)
+            ?? throw InvalidOperationErrors.Internal("Destination project compilation is unavailable.");
+        var namespaces = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var tree in compilation.SyntaxTrees)
+        {
+            if (await tree.GetRootAsync(ct).ConfigureAwait(false) is not CompilationUnitSyntax root)
+            {
+                continue;
+            }
+
+            SemanticModel? model = null;
+            foreach (var usingDirective in root.Usings)
+            {
+                if (!IsGlobalUsingDirective(usingDirective) || usingDirective.Alias is not null
+                    || usingDirective.StaticKeyword.IsKind(SyntaxKind.StaticKeyword)
+                    || usingDirective.Name is null)
+                {
+                    continue;
+                }
+
+                model ??= compilation.GetSemanticModel(tree);
+                if (model.GetSymbolInfo(usingDirective.Name, ct).Symbol is INamespaceSymbol namespaceSymbol)
+                {
+                    namespaces.Add(namespaceSymbol.ToDisplayString());
+                }
+            }
+        }
+
+        return namespaces;
+    }
+
     private static void PreserveSpecialAndRequiredSourceUsings(
         SyntaxList<UsingDirectiveSyntax> sourceUsings,
         IReadOnlyCollection<string> requiredNamespaces,
+        bool preserveGlobalUsings,
+        SemanticModel? sourceSemanticModel,
+        CancellationToken ct,
         List<UsingDirectiveSyntax> result,
         ISet<string> alreadyAddedPlainNamespaces)
     {
-        // Preserve aliases, static usings, and global usings — the semantic walker cannot
-        // reproduce these, they may carry meaningful intent, and they never cause the
-        // missing-using bug we're fixing.
+        // Local aliases and static usings cannot be re-synthesized from symbols. Global
+        // directives are already available throughout the source project; copying them into
+        // another file of that project can duplicate an alias (CS1537).
         foreach (var source in sourceUsings)
         {
+            var isGlobal = IsGlobalUsingDirective(source);
+            if (isGlobal && source.Alias is null
+                && !source.StaticKeyword.IsKind(SyntaxKind.StaticKeyword)
+                && GetGlobalUsingNamespace(source, sourceSemanticModel, ct) is { } globalNamespace
+                && !alreadyAddedPlainNamespaces.Add(globalNamespace)
+                && preserveGlobalUsings)
+            {
+                continue;
+            }
+
+            if (isGlobal && !preserveGlobalUsings)
+            {
+                continue;
+            }
+
             if (IsSpecialUsingDirective(source))
             {
                 result.Add(source);
@@ -58,8 +119,10 @@ internal static class UsingDirectiveSynthesizer
                 continue;
             }
 
-            result.Add(source);
-            alreadyAddedPlainNamespaces.Add(name);
+            if (alreadyAddedPlainNamespaces.Add(name))
+            {
+                result.Add(source);
+            }
         }
     }
 
@@ -70,7 +133,7 @@ internal static class UsingDirectiveSynthesizer
     {
         foreach (var ns in requiredNamespaces)
         {
-            if (!alreadyAddedPlainNamespaces.Contains(ns))
+            if (alreadyAddedPlainNamespaces.Add(ns))
             {
                 result.Add(SyntaxFactory.UsingDirective(SyntaxFactory.ParseName(ns)));
             }
@@ -80,15 +143,15 @@ internal static class UsingDirectiveSynthesizer
     private static SyntaxList<UsingDirectiveSyntax> SortUsingDirectives(List<UsingDirectiveSyntax> usings)
     {
         // CS8915: every global using precedes every non-global using. Order: global usings
-        // (plain/alias/static, original order), System.* plain alphabetically, other plain
-        // alphabetically, then non-global aliases/static in their original order.
+        // (plain/alias/static, original order), System and System.* plain alphabetically,
+        // other plain alphabetically, then non-global aliases/static in their original order.
         var globalUsings = usings.Where(IsGlobalUsingDirective);
         var systemUsings = usings
             .Where(IsSystemUsingDirective)
-            .OrderBy(u => u.Name!.ToString(), StringComparer.Ordinal);
+            .OrderBy(u => GetUsingNamespace(u), StringComparer.Ordinal);
         var otherPlain = usings
             .Where(u => !IsSpecialUsingDirective(u) && !IsSystemUsingDirective(u))
-            .OrderBy(u => u.Name!.ToString(), StringComparer.Ordinal);
+            .OrderBy(u => GetUsingNamespace(u), StringComparer.Ordinal);
         var localSpecials = usings.Where(u => IsSpecialUsingDirective(u) && !IsGlobalUsingDirective(u));
         return SyntaxFactory.List(globalUsings.Concat(systemUsings).Concat(otherPlain).Concat(localSpecials));
     }
@@ -104,10 +167,25 @@ internal static class UsingDirectiveSynthesizer
         return string.IsNullOrWhiteSpace(name) ? null : name;
     }
 
+    private static string? GetGlobalUsingNamespace(
+        UsingDirectiveSyntax source, SemanticModel? sourceSemanticModel, CancellationToken ct)
+    {
+        if (sourceSemanticModel is null)
+        {
+            return GetUsingNamespace(source);
+        }
+
+        return source.Name is { } name
+            && sourceSemanticModel.GetSymbolInfo(name, ct).Symbol is INamespaceSymbol namespaceSymbol
+            ? namespaceSymbol.ToDisplayString()
+            : null;
+    }
+
     private static bool IsSystemUsingDirective(UsingDirectiveSyntax usingDirective)
     {
+        var name = GetUsingNamespace(usingDirective);
         return !IsSpecialUsingDirective(usingDirective)
-            && (usingDirective.Name?.ToString().StartsWith("System", StringComparison.Ordinal) ?? false);
+            && (name == "System" || (name?.StartsWith("System.", StringComparison.Ordinal) ?? false));
     }
 
     private static bool IsSpecialUsingDirective(UsingDirectiveSyntax usingDirective)

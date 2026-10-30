@@ -7,9 +7,8 @@ using static RoslynMcp.Tests.TestInfrastructure.InterfaceExtractionTestContext;
 namespace RoslynMcp.Tests;
 
 /// <summary>
-/// CS8915: every <c>global using</c> must precede every ordinary using in a file. A source file that
-/// is valid (globals first) must still yield a valid generated interface file on every route that
-/// shares <c>UsingDirectiveSynthesizer</c>.
+/// Same-project interface files use existing project-global directives without copying them.
+/// Cross-project interface files copy globals before ordinary usings (CS8915).
 /// </summary>
 [TestClass]
 public sealed class GeneratedInterfaceGlobalUsingOrderIntegrationTests : IsolatedWorkspaceTestBase
@@ -39,9 +38,9 @@ public sealed class GeneratedInterfaceGlobalUsingOrderIntegrationTests : Isolate
 
         public class GlobalOrderService
         {
-            public Task<StringBuilder> LoadAsync(GlobalMap map, LocalMap list)
+            public Task<StringBuilder> LoadAsync(GlobalMap map, LocalMap list, CultureInfo culture)
             {
-                WriteLine(CultureInfo.InvariantCulture.Name);
+                WriteLine(culture.Name);
                 return Task.FromResult(new StringBuilder().Append(Sqrt(map.Count + list.Count)));
             }
         }
@@ -49,21 +48,75 @@ public sealed class GeneratedInterfaceGlobalUsingOrderIntegrationTests : Isolate
 
     [TestMethod]
     [DataRow("standalone")]
+    [DataRow("same-project")]
+    [DataRow("cross-project")]
+    [DataRow("cross-project-reverse")]
+    public async Task Extraction_UsesDestinationGlobalPlainUsingFromSeparateFile(string route)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        AddProjectToCopiedSolution(workspace.RootPath, "Contracts", "net10.0");
+        var sourcePath = workspace.GetPath("SampleLib", "SeparateGlobalService.cs");
+        var isCrossProject = route.StartsWith("cross-project", StringComparison.Ordinal);
+        if (!isCrossProject)
+        {
+            await File.WriteAllTextAsync(workspace.GetPath("SampleLib", "GlobalUsings.cs"),
+                "global using System.Globalization;\n");
+        }
+        await File.WriteAllTextAsync(workspace.GetPath("Contracts", "GlobalUsings.cs"),
+            route == "cross-project-reverse"
+                ? "global using System.Globalization;\n"
+                : "global using global::System.Globalization;\n");
+        var sourceGlobal = route switch
+        {
+            "cross-project" => "global using System.Globalization;\n\n",
+            "cross-project-reverse" => "global using global::System.Globalization;\n\n",
+            _ => "",
+        };
+        var source = sourceGlobal + """
+            namespace Contracts;
+
+            public class SeparateGlobalService
+            {
+                public CultureInfo Load(CultureInfo culture) => culture;
+            }
+            """;
+        await File.WriteAllTextAsync(sourcePath, source);
+        await workspace.LoadAsync();
+        await AssertCompilesAsync(WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
+
+        RefactoringPreviewDto preview = route switch
+        {
+            "standalone" => await InterfaceExtractionService.PreviewExtractInterfaceAsync(workspace.WorkspaceId,
+                sourcePath, "SeparateGlobalService", "ISeparateGlobalService", null, false, CancellationToken.None),
+            "same-project" => await CrossProjectRefactoringService.PreviewExtractInterfaceAsync(workspace.WorkspaceId,
+                sourcePath, "SeparateGlobalService", "ISeparateGlobalService", "SampleLib", CancellationToken.None),
+            "cross-project" => await CrossProjectRefactoringService.PreviewExtractInterfaceAsync(workspace.WorkspaceId,
+                sourcePath, "SeparateGlobalService", "ISeparateGlobalService", "Contracts", CancellationToken.None),
+            "cross-project-reverse" => await CrossProjectRefactoringService.PreviewExtractInterfaceAsync(workspace.WorkspaceId,
+                sourcePath, "SeparateGlobalService", "ISeparateGlobalService", "Contracts", CancellationToken.None),
+            _ => throw new ArgumentOutOfRangeException(nameof(route)),
+        };
+
+        var pending = await ReparseSerializedDocumentsAsync(PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution);
+        await AssertCompilesAsync(pending);
+        var generatedText = await DocumentTextAsync(pending, "ISeparateGlobalService.cs");
+        CollectionAssert.DoesNotContain(generatedText.Split('\n').Select(line => line.Trim()).ToArray(),
+            "using System.Globalization;", "Destination global using already supplies CultureInfo.");
+        Assert.IsFalse(generatedText.Contains("global using ", StringComparison.Ordinal),
+            "Cross-project source global plain using is redundant with the destination global using.");
+        StringAssert.Contains(generatedText, "CultureInfo Load(CultureInfo culture);");
+    }
+
+    [TestMethod]
+    [DataRow("standalone")]
+    [DataRow("same-project")]
     [DataRow("cross-project")]
     public async Task Extraction_Emits_Global_Usings_Before_Ordinary_Usings(string route)
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
         AddProjectToCopiedSolution(workspace.RootPath, "Contracts", "net10.0");
         var sourcePath = workspace.GetPath("SampleLib", "GlobalOrderService.cs");
-        // A global alias copied into a generated file of the SAME project duplicates the alias
-        // (CS1537) regardless of order, so the standalone route cannot carry one; the alias form is
-        // covered on the cross-project route (destination project lacks the alias) and by the
-        // pure UsingDirectiveSynthesizerTests.
-        var hasGlobalAlias = route == "cross-project";
-        var source = hasGlobalAlias
-            ? ServiceSource
-            : ServiceSource.Replace(GlobalAlias + "\n", "").Replace("GlobalMap map", "System.Collections.Generic.Dictionary<string, int> map");
-        await File.WriteAllTextAsync(sourcePath, source);
+        await File.WriteAllTextAsync(sourcePath, ServiceSource);
         await workspace.LoadAsync();
         await AssertNativeContextAsync(WorkspaceManager, workspace.WorkspaceId);
         await AssertCompilesAsync(WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
@@ -72,6 +125,8 @@ public sealed class GeneratedInterfaceGlobalUsingOrderIntegrationTests : Isolate
         {
             "standalone" => await InterfaceExtractionService.PreviewExtractInterfaceAsync(workspace.WorkspaceId,
                 sourcePath, "GlobalOrderService", "IGlobalOrderService", null, false, CancellationToken.None),
+            "same-project" => await CrossProjectRefactoringService.PreviewExtractInterfaceAsync(workspace.WorkspaceId,
+                sourcePath, "GlobalOrderService", "IGlobalOrderService", "SampleLib", CancellationToken.None),
             "cross-project" => await CrossProjectRefactoringService.PreviewExtractInterfaceAsync(workspace.WorkspaceId,
                 sourcePath, "GlobalOrderService", "IGlobalOrderService", "Contracts", CancellationToken.None),
             _ => throw new ArgumentOutOfRangeException(nameof(route)),
@@ -80,7 +135,7 @@ public sealed class GeneratedInterfaceGlobalUsingOrderIntegrationTests : Isolate
         var pending = await ReparseSerializedDocumentsAsync(PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution);
         var pendingText = await DocumentTextAsync(pending, "IGlobalOrderService.cs");
         await AssertCompilesAsync(pending);
-        AssertGlobalsPrecedeOrdinary(pendingText, hasGlobalAlias);
+        AssertGlobalsPrecedeOrdinary(pendingText, route == "cross-project");
 
         var result = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "fixture_context_test", CancellationToken.None);
         Assert.IsTrue(result.Success, result.Error);
@@ -88,26 +143,30 @@ public sealed class GeneratedInterfaceGlobalUsingOrderIntegrationTests : Isolate
         await AssertNativeContextAsync(WorkspaceManager, workspace.WorkspaceId);
         var applied = await ReparseSerializedDocumentsAsync(WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
         await AssertCompilesAsync(applied);
-        AssertGlobalsPrecedeOrdinary(await DocumentTextAsync(applied, "IGlobalOrderService.cs"), hasGlobalAlias);
+        AssertGlobalsPrecedeOrdinary(await DocumentTextAsync(applied, "IGlobalOrderService.cs"), route == "cross-project");
     }
 
     private static async Task<string> DocumentTextAsync(Solution solution, string name) =>
         (await solution.Projects.SelectMany(p => p.Documents).Single(d => d.Name == name).GetTextAsync()).ToString();
 
-    private static void AssertGlobalsPrecedeOrdinary(string text, bool hasGlobalAlias)
+    private static void AssertGlobalsPrecedeOrdinary(string text, bool copiesGlobals)
     {
-        foreach (var line in hasGlobalAlias ? new[] { GlobalPlain, GlobalAlias, GlobalStatic } : new[] { GlobalPlain, GlobalStatic })
+        foreach (var line in new[] { GlobalPlain, GlobalAlias, GlobalStatic })
         {
-            StringAssert.Contains(text, line, "Global using must be retained.");
+            Assert.AreEqual(copiesGlobals, text.Contains(line, StringComparison.Ordinal),
+                $"Global using should be copied only for cross-project extraction: {line}\n{text}");
         }
 
         var lines = text.Split('\n').Select(l => l.Trim()).ToList();
+        CollectionAssert.DoesNotContain(lines, "using System.Globalization;",
+            "A source global plain using already supplies the interface signature namespace.");
         var lastGlobal = lines.FindLastIndex(l => l.StartsWith("global using ", StringComparison.Ordinal));
         var firstOrdinary = lines.FindIndex(l => l.StartsWith("using ", StringComparison.Ordinal));
         Assert.IsTrue(firstOrdinary >= 0, "Controls: ordinary usings expected.\n" + text);
         Assert.IsTrue(lastGlobal < firstOrdinary, "Every global using must precede every ordinary using (CS8915).\n" + text);
         StringAssert.Contains(text, "using System.Text;");
-        StringAssert.Contains(text, "using System.Threading.Tasks;");
+        CollectionAssert.DoesNotContain(lines, "using System.Threading.Tasks;",
+            "Destination project implicit global using already supplies Task.");
         StringAssert.Contains(text, "using LocalMap = System.Collections.Generic.List<int>;");
         StringAssert.Contains(text, "using static System.Console;");
     }

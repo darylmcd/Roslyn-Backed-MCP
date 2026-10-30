@@ -26,7 +26,7 @@ public class UsingDirectiveSynthesizerTests
         var sourceUsings = ParseUsings("using Foo.Bar;\nusing System.Text;\n");
         var required = new[] { "System.Text", "System.Collections.Generic" };
 
-        var result = UsingDirectiveSynthesizer.BuildUsingDirectives(sourceUsings, required);
+        var result = UsingDirectiveSynthesizer.BuildUsingDirectives(sourceUsings, required, preserveGlobalUsings: true, destinationGlobalPlainNamespaces: [], sourceSemanticModel: null, ct: CancellationToken.None);
         var names = result.Select(u => u.Name!.ToString()).ToList();
 
         // Plain source using whose namespace is NOT required is dropped.
@@ -45,13 +45,13 @@ public class UsingDirectiveSynthesizerTests
             "using Zeta.Lib;\nusing System.Text;\nusing static System.Math;\nusing Alias = Some.Thing;\n");
         var required = new[] { "System.Text", "Zeta.Lib" };
 
-        var result = UsingDirectiveSynthesizer.BuildUsingDirectives(sourceUsings, required);
+        var result = UsingDirectiveSynthesizer.BuildUsingDirectives(sourceUsings, required, preserveGlobalUsings: true, destinationGlobalPlainNamespaces: [], sourceSemanticModel: null, ct: CancellationToken.None);
 
         // Plain usings first — System.* alphabetically ahead of other plains.
         Assert.AreEqual("System.Text", result[0].Name!.ToString());
         Assert.AreEqual("Zeta.Lib", result[1].Name!.ToString());
-        // Aliases / static / global usings cannot be re-synthesized from symbols, so they are
-        // always preserved, ordered after the plain usings in their original order.
+        // Local aliases/static cannot be re-synthesized from symbols. With no global
+        // source directives, they follow plain usings in their original order.
         Assert.IsTrue(
             result[2].StaticKeyword.IsKind(SyntaxKind.StaticKeyword),
             "static using should be preserved after the plain usings");
@@ -83,7 +83,7 @@ public class UsingDirectiveSynthesizerTests
             "global using System.Globalization;\nusing Zeta.Lib;\nusing System.Text;\n");
         var required = new[] { "System.Text", "Zeta.Lib" };
 
-        var result = UsingDirectiveSynthesizer.BuildUsingDirectives(sourceUsings, required);
+        var result = UsingDirectiveSynthesizer.BuildUsingDirectives(sourceUsings, required, preserveGlobalUsings: true, destinationGlobalPlainNamespaces: [], sourceSemanticModel: null, ct: CancellationToken.None);
 
         AssertGlobalsPrecedeOrdinary(result);
         CollectionAssert.AreEqual(
@@ -100,7 +100,7 @@ public class UsingDirectiveSynthesizerTests
             + "global using static System.Math;\nusing Zeta.Lib;\n");
         var required = new[] { "Zeta.Lib" };
 
-        var result = UsingDirectiveSynthesizer.BuildUsingDirectives(sourceUsings, required);
+        var result = UsingDirectiveSynthesizer.BuildUsingDirectives(sourceUsings, required, preserveGlobalUsings: true, destinationGlobalPlainNamespaces: [], sourceSemanticModel: null, ct: CancellationToken.None);
 
         AssertGlobalsPrecedeOrdinary(result);
         Assert.AreEqual(5, result.Count);
@@ -124,7 +124,7 @@ public class UsingDirectiveSynthesizerTests
         var sourceUsings = ParseUsings("global using System.Globalization;\n");
         var required = new[] { "System.Linq" };
 
-        var result = UsingDirectiveSynthesizer.BuildUsingDirectives(sourceUsings, required);
+        var result = UsingDirectiveSynthesizer.BuildUsingDirectives(sourceUsings, required, preserveGlobalUsings: true, destinationGlobalPlainNamespaces: [], sourceSemanticModel: null, ct: CancellationToken.None);
 
         AssertGlobalsPrecedeOrdinary(result);
         Assert.AreEqual(2, result.Count);
@@ -139,10 +139,57 @@ public class UsingDirectiveSynthesizerTests
         var sourceUsings = ParseUsings("using Zeta.Lib;\nusing static System.Math;\nusing System.Text;\n");
         var required = new[] { "System.Text", "Zeta.Lib" };
 
-        var result = UsingDirectiveSynthesizer.BuildUsingDirectives(sourceUsings, required);
+        var result = UsingDirectiveSynthesizer.BuildUsingDirectives(sourceUsings, required, preserveGlobalUsings: true, destinationGlobalPlainNamespaces: [], sourceSemanticModel: null, ct: CancellationToken.None);
 
         CollectionAssert.AreEqual(
             new[] { "System.Text", "Zeta.Lib", "System.Math" },
+            result.Select(u => u.Name!.ToString()).ToArray());
+    }
+
+    [TestMethod]
+    public void BuildUsingDirectives_GlobalPlainSatisfiesRequiredNamespace()
+    {
+        var sourceUsings = ParseUsings("global using System.Globalization;\n");
+
+        var result = UsingDirectiveSynthesizer.BuildUsingDirectives(
+            sourceUsings, ["System.Globalization"], preserveGlobalUsings: true, destinationGlobalPlainNamespaces: [], sourceSemanticModel: null, ct: CancellationToken.None);
+
+        Assert.AreEqual(1, result.Count);
+        Assert.IsTrue(IsGlobal(result[0]));
+        Assert.AreEqual("System.Globalization", result[0].Name!.ToString());
+    }
+
+    [TestMethod]
+    public void BuildUsingDirectives_SameProjectGlobalPlainNeedsNoLocalCopy()
+    {
+        var sourceUsings = ParseUsings("global using System.Globalization;\n");
+
+        var result = UsingDirectiveSynthesizer.BuildUsingDirectives(
+            sourceUsings, ["System.Globalization"], preserveGlobalUsings: false, destinationGlobalPlainNamespaces: [], sourceSemanticModel: null, ct: CancellationToken.None);
+
+        Assert.AreEqual(0, result.Count);
+    }
+
+    [TestMethod]
+    public void BuildUsingDirectives_DestinationGlobalPlainNeedsNoLocalCopy()
+    {
+        var result = UsingDirectiveSynthesizer.BuildUsingDirectives(
+            ParseUsings(""), ["System.Globalization"], preserveGlobalUsings: false,
+            destinationGlobalPlainNamespaces: ["System.Globalization"], sourceSemanticModel: null, ct: CancellationToken.None);
+
+        Assert.AreEqual(0, result.Count);
+    }
+
+    [TestMethod]
+    public void BuildUsingDirectives_SystemPrefixIsNotSystemNamespace()
+    {
+        var sourceUsings = ParseUsings("using SystemTools.X;\nusing System.Z;\nusing Alpha.X;\n");
+
+        var result = UsingDirectiveSynthesizer.BuildUsingDirectives(
+            sourceUsings, ["SystemTools.X", "System.Z", "Alpha.X"], preserveGlobalUsings: true, destinationGlobalPlainNamespaces: [], sourceSemanticModel: null, ct: CancellationToken.None);
+
+        CollectionAssert.AreEqual(
+            new[] { "System.Z", "Alpha.X", "SystemTools.X" },
             result.Select(u => u.Name!.ToString()).ToArray());
     }
 }
