@@ -1,12 +1,12 @@
 using System.Collections.Concurrent;
 using Microsoft.Build.Evaluation;
+using Microsoft.CodeAnalysis;
+using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
-using Microsoft.CodeAnalysis;
-using Microsoft.Extensions.Logging;
-using RoslynProject = Microsoft.CodeAnalysis.Project;
 using MsBuildProject = Microsoft.Build.Evaluation.Project;
+using RoslynProject = Microsoft.CodeAnalysis.Project;
 
 namespace RoslynMcp.Roslyn.Services;
 
