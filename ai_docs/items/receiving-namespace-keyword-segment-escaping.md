@@ -4,8 +4,8 @@
 
 ## Anchors
 
-- `src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs (DeriveTargetNamespace, DeriveTargetNamespaceForPath)`
-- `src/RoslynMcp.Roslyn/Services/ReceivingNamespaceFactory.cs`
+- `src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs` (DeriveTargetNamespace, DeriveTargetNamespaceForPath)
+- `src/RoslynMcp.Roslyn/Helpers/ReceivingNamespaceFactory.cs`
 
 ## Acceptance
 
