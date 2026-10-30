@@ -19,11 +19,11 @@ namespace RoslynMcp.Tests.Skills;
 ///      `--output-mode=fragments` flag) so the slash-command picker conveys what the skill does.
 ///   3. SKILL.md body references the canonical invocation `/mcp-server-surface-test --output-mode=fragments`
 ///      so the alias is grep-able and auditable.
-///   4. The hard precondition `mcp__roslyn__server_info` is documented (inherited from surface-test).
+///   4. The alias resolves the Roslyn server by response shape, accepts idle before workspace load, and requires ready afterward.
 ///   5. No residue from the OLD architecture survives: no `Phase 16b`, no `plugin-skill`, no historical
 ///      mode tokens (`mode=full`, `mode=promotion-only`, `mode=read-only`), no reference to the deleted
 ///      `prompts/maintainer-overlay.md` file.
-///   6. Tool references resolve to the live `ServerSurfaceCatalog`.
+///   6. The named `server_info` tool resolves to the live `ServerSurfaceCatalog`.
 ///
 /// What is NOT tested here:
 ///   - The audit prompt itself (`prompts/maintainer-overlay.md` was deleted). The canonical prompt is
@@ -87,9 +87,14 @@ public sealed class McpServerStressSkillFrontmatterTests
         // delegates to surface-test, which enforces this gate; the SKILL.md should at minimum mention the
         // tool name so the contract is auditable from inside this file).
         Assert.IsTrue(
-            contents.Contains("mcp__roslyn__server_info", StringComparison.Ordinal),
-            "mcp-server-stress SKILL.md must mention `mcp__roslyn__server_info` so the inherited hard-precondition contract is auditable from this file alone. " +
-            "Without that, a cold reader cannot verify that the alias preserves the server-required gate.");
+            contents.Contains("name ends in `server_info`", StringComparison.Ordinal),
+            "mcp-server-stress SKILL.md must resolve Roslyn server_info dynamically. " +
+            "The alias must not require a registration-specific prefix.");
+        Assert.IsTrue(contents.Contains("Roslyn-shaped response", StringComparison.Ordinal));
+        Assert.IsTrue(contents.Contains("Pin its prefix", StringComparison.Ordinal));
+        Assert.IsTrue(contents.Contains("Accept `idle` before workspace load", StringComparison.Ordinal));
+        Assert.IsTrue(contents.Contains("require `connection.state` of `ready`", StringComparison.Ordinal));
+        Assert.IsTrue(contents.Contains("Halt if no Roslyn server is callable", StringComparison.Ordinal));
     }
 
     [TestMethod]
@@ -136,11 +141,10 @@ public sealed class McpServerStressSkillFrontmatterTests
         var skillPath = ResolveSkillPath();
         var contents = File.ReadAllText(skillPath);
 
-        // Match `mcp__roslyn__<name>` references — the canonical fully-qualified tool name shape used
-        // throughout the deep-review prompt. The trailing word boundary stops at `(`, `\`` (backtick),
-        // ` `, `.`, `,`, `)`, end-of-line, etc.
-        var matches = Regex.Matches(contents, @"mcp__roslyn__([a-zA-Z_][a-zA-Z0-9_]*)");
-        Assert.IsTrue(matches.Count > 0, "The skill must name Roslyn tools so surface validation exercises its contract.");
+        // Match the alias infrastructure tool names without assuming a registration prefix.
+
+        var matches = Regex.Matches(contents, @"`(server_info|workspace_load)`");
+        Assert.IsTrue(matches.Count > 0, "The alias must name its Roslyn infrastructure tools.");
 
         var liveToolNames = new HashSet<string>(
             ServerSurfaceCatalog.Tools.Select(t => t.Name),
