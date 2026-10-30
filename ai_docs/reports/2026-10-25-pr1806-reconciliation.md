@@ -51,13 +51,13 @@ Each current finding is source-supported or explicitly an investigation. Require
 | [test-run-global-json-fail-closed-authority](../items/test-run-global-json-fail-closed-authority.md) | Medium / M | — | Distinguish invalid runner configuration from no configuration |
 | [composite-batch-final-diff-composition](../items/composite-batch-final-diff-composition.md) | Medium / M | — | Review the complete initial-to-final composite delta |
 | [extract-and-wire-same-file-composition](../items/extract-and-wire-same-file-composition.md) | Medium / M | — | Compose DI edits on the extracted snapshot |
-| [cross-project-interface-reference-binding](../items/cross-project-interface-reference-binding.md) | High / M | — | Bind generated interface uses to the generated symbol |
+| `cross-project-interface-reference-binding` (shipped, #1910) | High / M | — | Bind generated interface uses to the generated symbol |
 | [cross-project-interface-generic-type-parameters](../items/cross-project-interface-generic-type-parameters.md) | Medium / M | — | Preserve generic parameters in extracted interfaces |
 | [cross-project-interface-signature-dependencies](../items/cross-project-interface-signature-dependencies.md) | High / M | — | Validate emitted interface signature dependencies |
 | [extract-and-wire-semantic-registration-rewrite](../items/extract-and-wire-semantic-registration-rewrite.md) | Medium / M | — | Rewrite bound DI registrations semantically |
 | `file-move-namespace-text-encoding` (shipped, PR 1862) | High / S | — | Preserve encoding during moved namespace rewrites |
-| [refactoring-rebase-source-kind-preservation](../items/refactoring-rebase-source-kind-preservation.md) | High / M | — | Preserve reviewed document source kind during replay |
-| [automatic-reload-analyzer-reader-lifetime](../items/automatic-reload-analyzer-reader-lifetime.md) | High / M | — | Exclude readers before automatic reload retires providers |
+| `refactoring-rebase-source-kind-preservation` (shipped, #1908) | High / M | — | Preserve reviewed document source kind during replay |
+| `automatic-reload-analyzer-reader-lifetime` (shipped, #1909) | High / M | — | Exclude readers before automatic reload retires providers |
 | [gated-command-executor-disposal-drains-active-runs](../items/gated-command-executor-disposal-drains-active-runs.md) | Medium / M | — | Drain owned command runs before disposing gates |
 | [watcher-delivery-loss-observation](../items/watcher-delivery-loss-observation.md) | Medium / M | — | Treat lost watcher delivery as unknown freshness |
 | [cache-graph-identity-framing](../items/cache-graph-identity-framing.md) | Medium / S | — | Frame graph cache identity unambiguously |
