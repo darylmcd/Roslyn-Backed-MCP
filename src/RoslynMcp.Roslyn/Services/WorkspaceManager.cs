@@ -382,7 +382,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
             var existing = FindSessionByLoadedPath(fullPath);
             if (existing is not null)
             {
-                existing.TouchAccess();
+                existing.TouchAccess(_timeProvider.GetUtcNow());
                 _logger.LogInformation(
                     "workspace_load: returning existing workspace '{WorkspaceId}' for path '{Path}' (idempotent)",
                     existing.WorkspaceId,
@@ -439,7 +439,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
 
     slotAcquired:
         var workspaceId = Guid.NewGuid().ToString("N");
-        var session = new WorkspaceSession(workspaceId);
+        var session = new WorkspaceSession(workspaceId, _timeProvider.GetUtcNow());
         // True once the registered session owns the capacity slot. From then on only the exact-session
         // removal path (RemoveSessionEffects) returns it; this method returns it only while still false.
         var slotTransferred = false;
@@ -470,7 +470,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
                             new AggregateException(loserFailures),
                             "Disposing race-losing workspace '{WorkspaceId}' failed",
                             workspaceId);
-                    raceWinner.TouchAccess();
+                    raceWinner.TouchAccess(_timeProvider.GetUtcNow());
                     return BuildStatus(raceWinner);
                 }
             }
@@ -1454,7 +1454,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
             session.LoadedPath = path;
             session.RestoreRequired = restoreRequired;
             session.BuildRequired = buildRequired;
-            session.LoadedAtUtc = DateTimeOffset.UtcNow;
+            session.LoadedAtUtc = _timeProvider.GetUtcNow();
             session.IncrementVersion();
             // format-range-apply-preview-token-lifetime: drop only the tokens whose pinned
             // workspace-version range has been exceeded by this reload bump (default span = 1,
@@ -1639,10 +1639,10 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
             throw CreateWorkspaceNotFoundException(workspaceId);
         }
 
-        session.TouchAccess();
-
         // Log if session has been idle for a long time (informational)
-        var idleMinutes = (DateTimeOffset.UtcNow - session.LastAccessedUtc).TotalMinutes;
+        var now = _timeProvider.GetUtcNow();
+        var idleMinutes = (now - session.LastAccessedUtc).TotalMinutes;
+        session.TouchAccess(now);
         if (idleMinutes > 60 && session.Workspace is not null)
         {
             _logger.LogDebug(
@@ -1808,7 +1808,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
         }).ToImmutableArray();
     }
 
-    private sealed class WorkspaceSession(string workspaceId) : IDisposable
+    private sealed class WorkspaceSession(string workspaceId, DateTimeOffset createdAtUtc) : IDisposable
     {
         private int _version;
 
@@ -1830,13 +1830,13 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
         public string? LoadedPath { get; set; }
         public bool RestoreRequired { get; set; }
         public bool BuildRequired { get; set; }
-        public DateTimeOffset LoadedAtUtc { get; set; } = DateTimeOffset.UtcNow;
-        public DateTimeOffset LastAccessedUtc { get; set; } = DateTimeOffset.UtcNow;
+        public DateTimeOffset LoadedAtUtc { get; set; } = createdAtUtc;
+        public DateTimeOffset LastAccessedUtc { get; private set; } = createdAtUtc;
         public int Version => Volatile.Read(ref _version);
         public int IncrementVersion() => Interlocked.Increment(ref _version);
         public void SetVersion(int value) => Interlocked.Exchange(ref _version, value);
 
-        public void TouchAccess() => LastAccessedUtc = DateTimeOffset.UtcNow;
+        public void TouchAccess(DateTimeOffset now) => LastAccessedUtc = now;
 
         public void Dispose()
         {
