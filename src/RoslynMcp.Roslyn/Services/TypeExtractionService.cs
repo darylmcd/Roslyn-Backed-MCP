@@ -210,6 +210,74 @@ public sealed class TypeExtractionService : ITypeExtractionService
                         Expression: IdentifierNameSyntax { Identifier.Text: "nameof" }
                     }));
 
+        bool InvokedDelegateMayReach(InvocationExpressionSyntax invocation, SemanticModel model,
+            Func<SyntaxNode, SemanticModel, bool> inspectBody, Func<ISymbol, bool> inspectMember)
+        {
+            var invoked = model.GetSymbolInfo(invocation.Expression, ct).Symbol;
+            if (invoked is not ILocalSymbol and not IParameterSymbol) return false;
+            var delegateType = invoked switch
+            {
+                ILocalSymbol local => local.Type,
+                IParameterSymbol parameter => parameter.Type,
+                _ => null
+            };
+            if (delegateType?.TypeKind != TypeKind.Delegate) return false;
+
+            var visitedDelegates = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
+            bool InspectValue(ExpressionSyntax value)
+            {
+                switch (value)
+                {
+                    case AnonymousFunctionExpressionSyntax lambda:
+                        return inspectBody(lambda, model);
+                    case ParenthesizedExpressionSyntax parenthesized:
+                        return InspectValue(parenthesized.Expression);
+                    case CastExpressionSyntax cast:
+                        return InspectValue(cast.Expression);
+                    case ConditionalExpressionSyntax conditional:
+                        return InspectValue(conditional.WhenTrue) || InspectValue(conditional.WhenFalse);
+                }
+
+                return model.GetSymbolInfo(value, ct).Symbol switch
+                {
+                    ILocalSymbol local => InspectLocal(local),
+                    IParameterSymbol => true, // The caller may supply a closure over the current instance.
+                    IMethodSymbol method => inspectMember(method),
+                    _ => true // Unknown delegate origin cannot prove the dispatch safe.
+                };
+            }
+
+            bool InspectLocal(ILocalSymbol local)
+            {
+                if (!visitedDelegates.Add(local.OriginalDefinition)) return true;
+                var hasSource = false;
+                foreach (var reference in local.DeclaringSyntaxReferences)
+                {
+                    if (reference.GetSyntax(ct) is not VariableDeclaratorSyntax variable) continue;
+                    if (variable.Initializer?.Value is { } initializer)
+                    {
+                        hasSource = true;
+                        if (InspectValue(initializer)) return true;
+                    }
+
+                    var scope = variable.FirstAncestorOrSelf<BaseMethodDeclarationSyntax>() as SyntaxNode
+                        ?? variable.FirstAncestorOrSelf<LocalFunctionStatementSyntax>();
+                    if (scope is null) return true;
+                    var scopeModel = compilation.GetSemanticModel(variable.SyntaxTree);
+                    foreach (var assignment in scope.DescendantNodes().OfType<AssignmentExpressionSyntax>())
+                    {
+                        if (!SymbolEqualityComparer.Default.Equals(scopeModel.GetSymbolInfo(assignment.Left, ct).Symbol, local))
+                            continue;
+                        hasSource = true;
+                        if (InspectValue(assignment.Right)) return true;
+                    }
+                }
+                return !hasSource;
+            }
+
+            return invoked is IParameterSymbol || InspectLocal((ILocalSymbol)invoked);
+        }
+
         var visited = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
         bool UsesExtractedInstance(ISymbol member)
         {
@@ -217,17 +285,27 @@ public sealed class TypeExtractionService : ITypeExtractionService
             foreach (var reference in member.DeclaringSyntaxReferences)
             {
                 var declaration = reference.GetSyntax(ct);
+                if (!compilation.SyntaxTrees.Contains(declaration.SyntaxTree)) return true;
                 var model = compilation.GetSemanticModel(declaration.SyntaxTree);
-                foreach (var expression in ExecutedDescendants(declaration).OfType<ExpressionSyntax>())
-                {
-                    if (expression is InvocationExpressionSyntax
-                        { Expression: IdentifierNameSyntax { Identifier.Text: "nameof" } }) continue;
-                    var target = model.GetSymbolInfo(expression, ct).Symbol;
-                    if (target is null) continue;
-                    if (extracted.Contains(target.OriginalDefinition)) return true;
-                    if (SymbolEqualityComparer.Default.Equals(target.ContainingType, typeSymbol)
-                        && UsesExtractedInstance(target)) return true;
-                }
+                if (UsesExtractedInstanceBody(declaration, model)) return true;
+            }
+            return false;
+        }
+
+        bool UsesExtractedInstanceBody(SyntaxNode declaration, SemanticModel model)
+        {
+            foreach (var expression in ExecutedDescendants(declaration).OfType<ExpressionSyntax>())
+            {
+                if (expression is InvocationExpressionSyntax
+                    { Expression: IdentifierNameSyntax { Identifier.Text: "nameof" } }) continue;
+                if (expression is InvocationExpressionSyntax invocation
+                    && InvokedDelegateMayReach(invocation, model, UsesExtractedInstanceBody, UsesExtractedInstance))
+                    return true;
+                var target = model.GetSymbolInfo(expression, ct).Symbol;
+                if (target is null) continue;
+                if (extracted.Contains(target.OriginalDefinition)) return true;
+                if (SymbolEqualityComparer.Default.Equals(target.ContainingType, typeSymbol)
+                    && UsesExtractedInstance(target)) return true;
             }
             return false;
         }
@@ -362,7 +440,6 @@ public sealed class TypeExtractionService : ITypeExtractionService
                 return false;
             }
 
-            var visitedDelegateLocals = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
             bool BodyReachesDispatch(SyntaxNode declaration, SemanticModel model)
             {
                 foreach (var expression in ExecutedDescendants(declaration).OfType<ExpressionSyntax>())
@@ -370,16 +447,7 @@ public sealed class TypeExtractionService : ITypeExtractionService
                     if (expression is InvocationExpressionSyntax
                         { Expression: IdentifierNameSyntax { Identifier.Text: "nameof" } }) continue;
                     if (expression is InvocationExpressionSyntax invocation
-                        && model.GetSymbolInfo(invocation.Expression, ct).Symbol is ILocalSymbol delegateLocal
-                        && visitedDelegateLocals.Add(delegateLocal.OriginalDefinition))
-                    {
-                        foreach (var reference in delegateLocal.DeclaringSyntaxReferences)
-                        {
-                            if (reference.GetSyntax(ct) is not VariableDeclaratorSyntax
-                                { Initializer.Value: AnonymousFunctionExpressionSyntax lambda }) continue;
-                            if (BodyReachesDispatch(lambda, model)) return true;
-                        }
-                    }
+                        && InvokedDelegateMayReach(invocation, model, BodyReachesDispatch, ReachesDispatch)) return true;
                     var called = model.GetSymbolInfo(expression, ct).Symbol;
                     if (called is null) continue;
                     if (!CallMayTargetCurrentInstance(expression, model)) continue;

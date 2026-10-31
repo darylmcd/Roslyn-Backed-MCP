@@ -2216,6 +2216,88 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally { WorkspaceManager.Close(fixture.WorkspaceId); }
     }
 
+    [TestMethod]
+    [DataRow("System.Action first = () => _ = Read(); System.Action second = first; second();")]
+    [DataRow("System.Action first = () => { }; first = () => _ = Read(); System.Action second = first; second();")]
+    [DataRow("Run(() => _ = Read());")]
+    public async Task ExtractType_BaseConstructorInvokedDelegateAliasCallsOverride_Refuses(string constructorBody)
+    {
+        var fixture = await CreateExtractionFixtureAsync("DelegateAliasFixture.cs", $$"""
+            namespace SampleLib;
+            public class DelegateAliasBase
+            {
+                public DelegateAliasBase()
+                {
+                    {{constructorBody}}
+                }
+                private void Run(System.Action callback) => callback();
+                public virtual int Read() => 0;
+            }
+            public class DelegateAliasDerived : DelegateAliasBase
+            {
+                public override int Read() => Compute();
+                private int Compute() => 7;
+            }
+            """);
+        try
+        {
+            var version = WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId);
+            await Assert.ThrowsExactlyAsync<ExtractTypeBlockingDependencyException>(() =>
+                TypeExtractionService.PreviewExtractTypeAsync(
+                    fixture.WorkspaceId, fixture.FilePath, "DelegateAliasDerived", ["Compute"],
+                    "ComputeHelper", null, CancellationToken.None));
+            FileOperationIntegrationTests.AssertNoStoredPreviews(PreviewStore, fixture.WorkspaceId);
+            Assert.AreEqual(version, WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId));
+        }
+        finally { WorkspaceManager.Close(fixture.WorkspaceId); }
+    }
+
+    [TestMethod]
+    [DataRow("return callback();", true)]
+    [DataRow("return 0;", false)]
+    public async Task ExtractType_RetainedOverrideDelegateUse_RespectsInvocation(
+        string returnStatement, bool shouldRefuse)
+    {
+        var fixture = await CreateExtractionFixtureAsync("RetainedDelegateFixture.cs", $$"""
+            namespace SampleLib;
+            public class RetainedDelegateBase
+            {
+                public RetainedDelegateBase() { _ = Read(); }
+                public virtual int Read() => 0;
+            }
+            public class RetainedDelegateDerived : RetainedDelegateBase
+            {
+                public override int Read()
+                {
+                    System.Func<int> callback = () => Compute();
+                    {{returnStatement}}
+                }
+                private int Compute() => 7;
+            }
+            """);
+        try
+        {
+            if (shouldRefuse)
+            {
+                var version = WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId);
+                await Assert.ThrowsExactlyAsync<ExtractTypeBlockingDependencyException>(() =>
+                    TypeExtractionService.PreviewExtractTypeAsync(
+                        fixture.WorkspaceId, fixture.FilePath, "RetainedDelegateDerived", ["Compute"],
+                        "ComputeHelper", null, CancellationToken.None));
+                FileOperationIntegrationTests.AssertNoStoredPreviews(PreviewStore, fixture.WorkspaceId);
+                Assert.AreEqual(version, WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId));
+            }
+            else
+            {
+                var preview = await TypeExtractionService.PreviewExtractTypeAsync(
+                    fixture.WorkspaceId, fixture.FilePath, "RetainedDelegateDerived", ["Compute"],
+                    "ComputeHelper", null, CancellationToken.None);
+                await AssertModifiedSolutionCompilesAsync(preview.PreviewToken);
+            }
+        }
+        finally { WorkspaceManager.Close(fixture.WorkspaceId); }
+    }
+
     /// <summary>
     /// Acceptance gate for type-extraction-composition-constructor-coverage: the previewed source
     /// (updated source type + generated new type) must compile with zero errors — specifically none
