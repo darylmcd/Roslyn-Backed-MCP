@@ -276,12 +276,6 @@
     "Count": 1
   },
   {
-    "Path": "src/RoslynMcp.Roslyn/Helpers/MsBuildMetadataHelper.cs",
-    "Member": "M:RoslynMcp.Roslyn.Helpers.MsBuildMetadataHelper.EvaluatePropertiesCore(System.String,System.String[])",
-    "Fingerprint": "C07DEE3928F44EB158034CD5CAA58F2A625CF0C2A07182910669CCA6F61356F0",
-    "Count": 1
-  },
-  {
     "Path": "src/RoslynMcp.Roslyn/Helpers/ProjectRelativePathValidation.cs",
     "Member": "M:RoslynMcp.Roslyn.Helpers.ProjectRelativePathValidation.EnsureDescendantOfRoot(System.String,System.String,System.String)",
     "Fingerprint": "6188F7D22AA5BE1F626D005EA28E0E480447D7B4D0F64170FF579CE37ACB3386",

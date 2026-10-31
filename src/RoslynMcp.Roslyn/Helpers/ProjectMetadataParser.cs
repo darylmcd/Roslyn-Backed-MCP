@@ -179,7 +179,7 @@ internal static class ProjectMetadataParser
     private static readonly HashSet<string> TestPackageNames = new(StringComparer.OrdinalIgnoreCase)
     {
         "xunit", "xunit.core", "xunit.v3", "xunit.v3.core",
-        "NUnit", "nunit", "NUnit3TestAdapter",
+        "NUnit", "NUnit3TestAdapter",
         "MSTest.TestFramework", "Microsoft.NET.Test.Sdk",
         // TUnit ships its own Microsoft.Testing.Platform host instead of the classic VSTest
         // adapter, so it never references Microsoft.NET.Test.Sdk and doesn't stamp
