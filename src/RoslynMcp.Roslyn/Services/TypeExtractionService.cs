@@ -260,6 +260,35 @@ public sealed class TypeExtractionService : ITypeExtractionService
         bool BaseConstructorMayCall(ISymbol implementation)
         {
             var visitedBaseMembers = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
+            bool MayBeCurrentInstanceCore(ExpressionSyntax expression, SemanticModel model,
+                HashSet<ISymbol> visitedLocals)
+            {
+                switch (expression)
+                {
+                    case ParenthesizedExpressionSyntax parenthesized:
+                        return MayBeCurrentInstanceCore(parenthesized.Expression, model, visitedLocals);
+                    case CastExpressionSyntax cast:
+                        return MayBeCurrentInstanceCore(cast.Expression, model, visitedLocals);
+                    case ObjectCreationExpressionSyntax or ImplicitObjectCreationExpressionSyntax:
+                    case LiteralExpressionSyntax { RawKind: (int)SyntaxKind.NullLiteralExpression }:
+                        return false;
+                    case IdentifierNameSyntax name when model.GetSymbolInfo(name, ct).Symbol is ILocalSymbol local:
+                        if (!visitedLocals.Add(local)) return true;
+                        foreach (var reference in local.DeclaringSyntaxReferences)
+                        {
+                            if (reference.GetSyntax(ct) is VariableDeclaratorSyntax { Initializer.Value: { } value })
+                                return MayBeCurrentInstanceCore(value, model, visitedLocals);
+                        }
+                        return true;
+                    default:
+                        // A call, property or parameter may return/alias `this`.
+                        return true;
+                }
+            }
+
+            bool MayBeCurrentInstance(ExpressionSyntax expression, SemanticModel model)
+                => MayBeCurrentInstanceCore(expression, model, new HashSet<ISymbol>(SymbolEqualityComparer.Default));
+
             bool ReachesDispatch(ISymbol member)
             {
                 if (!visitedBaseMembers.Add(member.OriginalDefinition)) return false;
@@ -279,6 +308,13 @@ public sealed class TypeExtractionService : ITypeExtractionService
                             && ReachesDispatch(called)) return true;
                     }
 
+                    foreach (var each in declaration.DescendantNodes().OfType<CommonForEachStatementSyntax>())
+                    {
+                        if (!MayBeCurrentInstance(each.Expression, model)) continue;
+                        var enumerator = model.GetForEachStatementInfo(each).GetEnumeratorMethod;
+                        if (enumerator is not null && DispatchesTo(enumerator, implementation)) return true;
+                    }
+
                     // `using` emits an implicit IDisposable.Dispose call; no expression node
                     // binds to that call, even though it can dispatch virtually into the derived type.
                     var disposable = compilation.GetSpecialType(SpecialType.System_IDisposable);
@@ -292,7 +328,10 @@ public sealed class TypeExtractionService : ITypeExtractionService
                                 : usingStatement.Declaration is { Variables.Count: > 0 } variables
                                     ? (model.GetDeclaredSymbol(variables.Variables[0], ct) as ILocalSymbol)?.Type as INamedTypeSymbol
                                     : null;
-                            if (resourceType is not null
+                            var resourceExpression = usingStatement.Expression
+                                ?? usingStatement.Declaration?.Variables.FirstOrDefault()?.Initializer?.Value;
+                            if (resourceType is not null && resourceExpression is not null
+                                && MayBeCurrentInstance(resourceExpression, model)
                                 && (SymbolEqualityComparer.Default.Equals(resourceType, disposable)
                                     || resourceType.AllInterfaces.Contains(disposable, SymbolEqualityComparer.Default))
                                 && DispatchesTo(dispose, implementation)) return true;
@@ -305,6 +344,8 @@ public sealed class TypeExtractionService : ITypeExtractionService
                             foreach (var variable in usingDeclaration.Declaration.Variables)
                             {
                                 if (model.GetDeclaredSymbol(variable, ct) is not ILocalSymbol { Type: INamedTypeSymbol resourceType }) continue;
+                                if (variable.Initializer?.Value is not { } resourceExpression
+                                    || !MayBeCurrentInstance(resourceExpression, model)) continue;
                                 if ((SymbolEqualityComparer.Default.Equals(resourceType, disposable)
                                      || resourceType.AllInterfaces.Contains(disposable, SymbolEqualityComparer.Default))
                                     && DispatchesTo(dispose, implementation)) return true;

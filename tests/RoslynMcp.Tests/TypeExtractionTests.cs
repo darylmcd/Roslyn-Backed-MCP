@@ -1897,6 +1897,71 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         }
     }
 
+    [TestMethod]
+    public async Task ExtractType_BaseConstructorImplicitGetEnumerator_RefusesBeforeStorage()
+    {
+        var fixture = await CreateExtractionFixtureAsync("ForeachDispatchFixture.cs", """
+            namespace SampleLib;
+            public class ForeachBase
+            {
+                public ForeachBase() { foreach (var item in this) { break; } }
+                public virtual System.Collections.Generic.IEnumerator<int> GetEnumerator()
+                    => System.Linq.Enumerable.Empty<int>().GetEnumerator();
+            }
+            public class ForeachDerived : ForeachBase
+            {
+                public override System.Collections.Generic.IEnumerator<int> GetEnumerator()
+                    => System.Linq.Enumerable.Repeat(Compute(), 1).GetEnumerator();
+                private int Compute() => 7;
+            }
+            """);
+        try
+        {
+            var version = WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId);
+            await Assert.ThrowsExactlyAsync<ExtractTypeBlockingDependencyException>(() =>
+                TypeExtractionService.PreviewExtractTypeAsync(
+                    fixture.WorkspaceId, fixture.FilePath, "ForeachDerived", ["Compute"],
+                    "ComputeHelper", null, CancellationToken.None));
+            FileOperationIntegrationTests.AssertNoStoredPreviews(PreviewStore, fixture.WorkspaceId);
+            Assert.AreEqual(version, WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId));
+            Assert.IsFalse(File.Exists(Path.Combine(Path.GetDirectoryName(fixture.FilePath)!, "ComputeHelper.cs")));
+        }
+        finally
+        {
+            WorkspaceManager.Close(fixture.WorkspaceId);
+        }
+    }
+
+    [TestMethod]
+    public async Task ExtractType_BaseConstructorDisposesNewBaseInstance_AllowsPreview()
+    {
+        var fixture = await CreateExtractionFixtureAsync("NewResourceFixture.cs", """
+            namespace SampleLib;
+            public class NewResourceBase : System.IDisposable
+            {
+                public NewResourceBase() { using (new NewResourceBase(true)) { } }
+                private NewResourceBase(bool unused) { }
+                public virtual void Dispose() { }
+            }
+            public class NewResourceDerived : NewResourceBase
+            {
+                public override void Dispose() => Compute();
+                private void Compute() { }
+            }
+            """);
+        try
+        {
+            var preview = await TypeExtractionService.PreviewExtractTypeAsync(
+                fixture.WorkspaceId, fixture.FilePath, "NewResourceDerived", ["Compute"],
+                "ComputeHelper", null, CancellationToken.None);
+            await AssertModifiedSolutionCompilesAsync(preview.PreviewToken);
+        }
+        finally
+        {
+            WorkspaceManager.Close(fixture.WorkspaceId);
+        }
+    }
+
     /// <summary>
     /// Acceptance gate for type-extraction-composition-constructor-coverage: the previewed source
     /// (updated source type + generated new type) must compile with zero errors — specifically none
