@@ -71,10 +71,10 @@ Each current finding is source-supported or explicitly an investigation. Require
 | [solution-diff-truncation-source-substring-test](../items/solution-diff-truncation-source-substring-test.md) | Low / S | — | Assert real omitted-file preview behavior |
 | [compile-check-diagnostic-suppressor-parity](../items/compile-check-diagnostic-suppressor-parity.md) | Medium / S | — | Investigate suppressor parity with native compiler results |
 | [workspace-cache-retention-policy](../items/workspace-cache-retention-policy.md) | Low / M | — | Decide bounded persisted cache retention |
-| [analyzer-shadow-sweep-path-authority](../items/analyzer-shadow-sweep-path-authority.md) | High / M | — | Keep analyzer sweeping inside owned no-follow paths |
+| [analyzer-shadow-sweep-path-authority](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1923) | High / M | — | Keep analyzer sweeping inside owned no-follow paths (closed by PR #1923) |
 | [central-package-query-evaluated-policy](../items/central-package-query-evaluated-policy.md) | Medium / M | — | Read central package versions from the active evaluated context |
 | [central-package-mutation-evaluated-owner](../items/central-package-mutation-evaluated-owner.md) | Medium / M | central-package-query-evaluated-policy | Bind central-package edits to their effective authored owner |
-| [restore-package-root-authoritative-read-fail-closed](../items/restore-package-root-authoritative-read-fail-closed.md) | High / M | — | Keep unreadable assets distinct from an absent recorded root |
+| [restore-package-root-authoritative-read-fail-closed](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1924) | High / M | — | Keep unreadable assets distinct from an absent recorded root (closed by PR #1924) |
 | [cross-project-interface-parameter-semantics](../items/cross-project-interface-parameter-semantics.md) | High / M | — | Preserve emitted interface parameter semantics |
 | [workspace-cache-coordinator-unexpected-failure-propagation](../items/workspace-cache-coordinator-unexpected-failure-propagation.md) | Medium / S | — | Do not hide cache-coordinator programming failures |
 | [mstest-formatter-enum-zero-comparison](../items/mstest-formatter-enum-zero-comparison.md) | Medium / M | — | Investigate enum-zero assertion formatter dependency behavior |
