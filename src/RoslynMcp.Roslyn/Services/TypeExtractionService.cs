@@ -542,23 +542,27 @@ public sealed class TypeExtractionService : ITypeExtractionService
                         return false;
                     case IdentifierNameSyntax name when model.GetSymbolInfo(name, ct).Symbol is ILocalSymbol local:
                         if (!visitedLocals.Add(local)) return true;
-                        foreach (var reference in local.DeclaringSyntaxReferences)
+                        try
                         {
-                            if (reference.GetSyntax(ct) is VariableDeclaratorSyntax { Initializer.Value: { } value })
+                            foreach (var reference in local.DeclaringSyntaxReferences)
                             {
-                                var scope = value.FirstAncestorOrSelf<BaseMethodDeclarationSyntax>() as SyntaxNode
-                                    ?? value.FirstAncestorOrSelf<LocalFunctionStatementSyntax>();
-                                if (scope is null || scope.DescendantNodes().OfType<AssignmentExpressionSyntax>().Any(assignment =>
-                                        SymbolEqualityComparer.Default.Equals(model.GetSymbolInfo(assignment.Left, ct).Symbol, local))
-                                    || scope.DescendantNodes().OfType<ArgumentSyntax>().Any(argument =>
-                                        (argument.RefOrOutKeyword.IsKind(SyntaxKind.RefKeyword)
-                                            || argument.RefOrOutKeyword.IsKind(SyntaxKind.OutKeyword))
-                                        && SymbolEqualityComparer.Default.Equals(model.GetSymbolInfo(argument.Expression, ct).Symbol, local)))
-                                    return true;
-                                return MayBeCurrentInstanceCore(value, model, visitedLocals);
+                                if (reference.GetSyntax(ct) is VariableDeclaratorSyntax { Initializer.Value: { } value })
+                                {
+                                    var scope = value.FirstAncestorOrSelf<BaseMethodDeclarationSyntax>() as SyntaxNode
+                                        ?? value.FirstAncestorOrSelf<LocalFunctionStatementSyntax>();
+                                    if (scope is null || scope.DescendantNodes().OfType<AssignmentExpressionSyntax>().Any(assignment =>
+                                            SymbolEqualityComparer.Default.Equals(model.GetSymbolInfo(assignment.Left, ct).Symbol, local))
+                                        || scope.DescendantNodes().OfType<ArgumentSyntax>().Any(argument =>
+                                            (argument.RefOrOutKeyword.IsKind(SyntaxKind.RefKeyword)
+                                                || argument.RefOrOutKeyword.IsKind(SyntaxKind.OutKeyword))
+                                            && SymbolEqualityComparer.Default.Equals(model.GetSymbolInfo(argument.Expression, ct).Symbol, local)))
+                                        return true;
+                                    return MayBeCurrentInstanceCore(value, model, visitedLocals);
+                                }
                             }
+                            return true;
                         }
-                        return true;
+                        finally { visitedLocals.Remove(local); }
                     default:
                         // A call, property or parameter may return/alias `this`.
                         return true;

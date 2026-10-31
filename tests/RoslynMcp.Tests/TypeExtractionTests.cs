@@ -2700,6 +2700,48 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task ExtractType_BaseConstructorRepeatedSafeLocalInCarrier_AllowsPreview()
+    {
+        var fixture = await CreateExtractionFixtureAsync("RepeatedSafeCarrierFixture.cs", """
+            namespace SampleLib;
+            public sealed class SafeCarrier
+            {
+                private readonly RepeatedSafeBase _first;
+                private readonly RepeatedSafeBase _second;
+                public SafeCarrier(RepeatedSafeBase first, RepeatedSafeBase second)
+                {
+                    _first = first;
+                    _second = second;
+                }
+                public override string ToString() => (_first.Read() + _second.Read()).ToString();
+            }
+            public class RepeatedSafeBase
+            {
+                public RepeatedSafeBase()
+                {
+                    RepeatedSafeBase other = new RepeatedSafeBase(true);
+                    System.Console.WriteLine(new SafeCarrier(other, other));
+                }
+                private RepeatedSafeBase(bool unused) { }
+                public virtual int Read() => 0;
+            }
+            public class RepeatedSafeDerived : RepeatedSafeBase
+            {
+                public override int Read() => Compute();
+                private int Compute() => 7;
+            }
+            """);
+        try
+        {
+            var preview = await TypeExtractionService.PreviewExtractTypeAsync(
+                fixture.WorkspaceId, fixture.FilePath, "RepeatedSafeDerived", ["Compute"],
+                "ComputeHelper", null, CancellationToken.None);
+            await AssertModifiedSolutionCompilesAsync(preview.PreviewToken);
+        }
+        finally { WorkspaceManager.Close(fixture.WorkspaceId); }
+    }
+
+    [TestMethod]
     public async Task ExtractType_BaseConstructorCollectionCarrierOfThis_Refuses()
     {
         var fixture = await CreateExtractionFixtureAsync("CollectionCarrierFixture.cs", """
