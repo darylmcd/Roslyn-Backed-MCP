@@ -522,6 +522,57 @@ public sealed class SymbolDisambiguationElicitationTests : IsolatedWorkspaceTest
             "Note must direct clients to re-call with the chosen symbolHandle.");
     }
 
+    [TestMethod]
+    public async Task FindReferences_MetadataOverloadCandidateHandle_RoundTripsThroughPublicTool()
+    {
+        var discovery = await ToolExecutionTestHarness.RunAsync(
+            "find_references",
+            () => SymbolTools.FindReferences(
+                requestContext: null!, WorkspaceManager, WorkspaceExecutionGate,
+                ReferenceService, _workspaceId,
+                metadataName: "System.Diagnostics.Process.Kill",
+                ct: CancellationToken.None));
+        using var discoveryDoc = JsonDocument.Parse(discovery);
+        Assert.IsTrue(discoveryDoc.RootElement.GetProperty("ambiguous").GetBoolean());
+        var candidates = discoveryDoc.RootElement.GetProperty("candidates");
+        Assert.AreEqual(2, candidates.GetArrayLength());
+
+        var sawKillBool = false;
+        foreach (var candidate in candidates.EnumerateArray())
+        {
+            var returnedHandle = candidate.GetProperty("symbolHandle").GetString();
+            Assert.IsFalse(string.IsNullOrWhiteSpace(returnedHandle));
+            var references = await ToolExecutionTestHarness.RunAsync(
+                "find_references",
+                () => SymbolTools.FindReferences(
+                    requestContext: null!, WorkspaceManager, WorkspaceExecutionGate,
+                    ReferenceService, _workspaceId,
+                    symbolHandle: returnedHandle,
+                    ct: CancellationToken.None));
+            using var referencesDoc = JsonDocument.Parse(references);
+            Assert.IsFalse(referencesDoc.RootElement.TryGetProperty("error", out _),
+                $"Returned candidate {candidate.GetProperty("label").GetString()} failed: {references}");
+
+            if (candidate.GetProperty("label").GetString() == "Method System.Diagnostics.Process.Kill(bool)")
+            {
+                sawKillBool = true;
+                var definition = await ToolExecutionTestHarness.RunAsync(
+                    "go_to_definition",
+                    () => SymbolTools.GoToDefinition(
+                        requestContext: null!, WorkspaceManager, WorkspaceExecutionGate,
+                        SymbolNavigationService, _workspaceId,
+                        symbolHandle: returnedHandle,
+                        ct: CancellationToken.None));
+                using var definitionDoc = JsonDocument.Parse(definition);
+                Assert.AreEqual("NotFound", definitionDoc.RootElement.GetProperty("category").GetString(),
+                    "Metadata-only definitions retain the stable NotFound category.");
+                Assert.IsFalse(definitionDoc.RootElement.TryGetProperty("locations", out _),
+                    "Metadata-only navigation must not return a source location for another overload.");
+            }
+        }
+        Assert.IsTrue(sawKillBool, "The public candidate set must include Kill(bool).");
+    }
+
     private static RequestContext<CallToolRequestParams> CreateModernFormRequestContext(
         McpServer server,
         IDictionary<string, InputResponse>? inputResponses = null,
