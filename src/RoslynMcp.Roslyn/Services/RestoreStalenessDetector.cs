@@ -435,7 +435,7 @@ internal class RestoreStalenessDetector
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         {
-            // Unreadable assets file: treated as a first restore (no --packages override).
+            // Best-effort read cannot infer a recorded package root from unreadable assets.
         }
 
         return null;
