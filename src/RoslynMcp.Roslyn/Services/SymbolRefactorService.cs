@@ -439,6 +439,7 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
         List<CompositeFileMutation> mutations,
         List<FileChangeDto> changes)
     {
+        var receivingOptions = ReceivingNamespaceFactory.RequireCSharpOptions(context.Document.Project.ParseOptions);
         var claimedPartitionFiles = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var partition in partitions)
         {
@@ -462,7 +463,8 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
             RefuseInjectionsNamingSourceMembers(context.TypeDeclaration, partition.TypeName, partitionInjections);
 
             var partitionContent = BuildPartitionFile(
-                context.NamespaceName, partition.TypeName, referencedFields, partitionInjections, partitionMethods, context.Usings);
+                context.NamespaceName, partition.TypeName, referencedFields, partitionInjections, partitionMethods, context.Usings,
+                receivingOptions);
             mutations.Add(new CompositeFileMutation(partitionFilePath, partitionContent));
             changes.Add(new FileChangeDto(partitionFilePath, DiffGenerator.GenerateUnifiedDiff(string.Empty, partitionContent, partitionFilePath)));
         }
@@ -775,7 +777,8 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
         IReadOnlyList<FieldDeclarationSyntax> referencedFields,
         IReadOnlyList<ConstructorInjection> partitionInjections,
         IReadOnlyList<MethodDeclarationSyntax> methods,
-        SyntaxList<UsingDirectiveSyntax> usings)
+        SyntaxList<UsingDirectiveSyntax> usings,
+        CSharpParseOptions receivingOptions)
     {
         // split-service-with-di-broken-output: assemble fields + (optional) ctor + methods so the
         // partition file compiles when its migrated methods reference instance fields.
@@ -798,7 +801,7 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
             .WithMembers(SyntaxFactory.List(partitionMembers));
 
         var compilationUnit = SyntaxFactory.CompilationUnit().WithUsings(usings);
-        compilationUnit = WrapInNamespace(compilationUnit, namespaceName, classDecl);
+        compilationUnit = WrapInNamespace(compilationUnit, namespaceName, classDecl, receivingOptions);
         return compilationUnit.NormalizeWhitespace().ToFullString() + Environment.NewLine;
     }
 
@@ -1295,17 +1298,16 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
     private static CompilationUnitSyntax WrapInNamespace(
         CompilationUnitSyntax compilationUnit,
         string namespaceName,
-        MemberDeclarationSyntax member)
+        MemberDeclarationSyntax member,
+        CSharpParseOptions receivingOptions)
     {
-        if (string.IsNullOrWhiteSpace(namespaceName))
+        var namespaceDeclaration = ReceivingNamespaceFactory.Create(namespaceName, receivingOptions);
+        if (namespaceDeclaration is null)
         {
             return compilationUnit.WithMembers(SyntaxFactory.SingletonList(member));
         }
 
-        var nsDecl = SyntaxFactory.FileScopedNamespaceDeclaration(SyntaxFactory.ParseName(namespaceName))
-            .WithNamespaceKeyword(
-                SyntaxFactory.Token(SyntaxKind.NamespaceKeyword).WithTrailingTrivia(SyntaxFactory.Space))
-            .WithMembers(SyntaxFactory.SingletonList(member));
+        var nsDecl = namespaceDeclaration.WithMembers(SyntaxFactory.SingletonList(member));
         return compilationUnit.WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(nsDecl));
     }
 
