@@ -1898,13 +1898,16 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
-    public async Task ExtractType_BaseConstructorImplicitGetEnumerator_RefusesBeforeStorage()
+    [DataRow("foreach (var item in this) { break; }")]
+    [DataRow("ForeachBase resource = new ForeachBase(true); resource = this; foreach (var item in resource) { break; }")]
+    public async Task ExtractType_BaseConstructorImplicitGetEnumerator_RefusesBeforeStorage(string constructorBody)
     {
-        var fixture = await CreateExtractionFixtureAsync("ForeachDispatchFixture.cs", """
+        var fixture = await CreateExtractionFixtureAsync("ForeachDispatchFixture.cs", $$"""
             namespace SampleLib;
             public class ForeachBase
             {
-                public ForeachBase() { foreach (var item in this) { break; } }
+                public ForeachBase() { {{constructorBody}} }
+                private ForeachBase(bool unused) { }
                 public virtual System.Collections.Generic.IEnumerator<int> GetEnumerator()
                     => System.Linq.Enumerable.Empty<int>().GetEnumerator();
             }
@@ -1960,6 +1963,191 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         {
             WorkspaceManager.Close(fixture.WorkspaceId);
         }
+    }
+
+    [TestMethod]
+    public async Task ExtractType_BaseConstructorDisposesReassignedCurrentInstance_Refuses()
+    {
+        var fixture = await CreateExtractionFixtureAsync("ReassignedResourceFixture.cs", """
+            namespace SampleLib;
+            public class ReassignedResourceBase : System.IDisposable
+            {
+                public ReassignedResourceBase()
+                {
+                    ReassignedResourceBase resource = new ReassignedResourceBase(true);
+                    resource = this;
+                    using (resource) { }
+                }
+                private ReassignedResourceBase(bool unused) { }
+                public virtual void Dispose() { }
+            }
+            public class ReassignedResourceDerived : ReassignedResourceBase
+            {
+                public override void Dispose() => Compute();
+                private void Compute() { }
+            }
+            """);
+        try
+        {
+            var version = WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId);
+            await Assert.ThrowsExactlyAsync<ExtractTypeBlockingDependencyException>(() =>
+                TypeExtractionService.PreviewExtractTypeAsync(
+                    fixture.WorkspaceId, fixture.FilePath, "ReassignedResourceDerived", ["Compute"],
+                    "ComputeHelper", null, CancellationToken.None));
+            FileOperationIntegrationTests.AssertNoStoredPreviews(PreviewStore, fixture.WorkspaceId);
+            Assert.AreEqual(version, WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId));
+        }
+        finally
+        {
+            WorkspaceManager.Close(fixture.WorkspaceId);
+        }
+    }
+
+    [TestMethod]
+    [DataRow("this", "public override bool MoveNext() => Compute() > 0;", true)]
+    [DataRow("this", "public override int Current => Compute();", true)]
+    [DataRow("this", "public override void Dispose() => _ = Compute();", true)]
+    [DataRow("new SelfEnumeratorBase(true)", "public override bool MoveNext() => Compute() > 0;", false)]
+    public async Task ExtractType_BaseConstructorEnumeratorMembers_RespectReceiverIdentity(
+        string enumerator, string memberOverride, bool shouldRefuse)
+    {
+        var fixture = await CreateExtractionFixtureAsync("SelfEnumeratorFixture.cs", $$"""
+            namespace SampleLib;
+            public class SelfEnumeratorBase : System.Collections.Generic.IEnumerator<int>
+            {
+                public SelfEnumeratorBase() { foreach (var item in this) { break; } }
+                private SelfEnumeratorBase(bool unused) { }
+                public SelfEnumeratorBase GetEnumerator() => {{enumerator}};
+                public virtual bool MoveNext() => true;
+                public virtual int Current => 0;
+                object System.Collections.IEnumerator.Current => Current;
+                public void Reset() { }
+                public virtual void Dispose() { }
+            }
+            public class SelfEnumeratorDerived : SelfEnumeratorBase
+            {
+                {{memberOverride}}
+                private int Compute() => 7;
+            }
+            """);
+        try
+        {
+            if (shouldRefuse)
+            {
+                var version = WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId);
+                await Assert.ThrowsExactlyAsync<ExtractTypeBlockingDependencyException>(() =>
+                    TypeExtractionService.PreviewExtractTypeAsync(
+                        fixture.WorkspaceId, fixture.FilePath, "SelfEnumeratorDerived", ["Compute"],
+                        "ComputeHelper", null, CancellationToken.None));
+                FileOperationIntegrationTests.AssertNoStoredPreviews(PreviewStore, fixture.WorkspaceId);
+                Assert.AreEqual(version, WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId));
+            }
+            else
+            {
+                var preview = await TypeExtractionService.PreviewExtractTypeAsync(
+                    fixture.WorkspaceId, fixture.FilePath, "SelfEnumeratorDerived", ["Compute"],
+                    "ComputeHelper", null, CancellationToken.None);
+                await AssertModifiedSolutionCompilesAsync(preview.PreviewToken);
+            }
+        }
+        finally
+        {
+            WorkspaceManager.Close(fixture.WorkspaceId);
+        }
+    }
+
+    [TestMethod]
+    public async Task ExtractType_BaseConstructorCallsVirtualOnNewBase_AllowsPreview()
+    {
+        var fixture = await CreateExtractionFixtureAsync("NewReceiverFixture.cs", """
+            namespace SampleLib;
+            public class NewReceiverBase
+            {
+                public NewReceiverBase() { _ = new NewReceiverBase(true).Read(); }
+                private NewReceiverBase(bool unused) { }
+                public virtual int Read() => 0;
+            }
+            public class NewReceiverDerived : NewReceiverBase
+            {
+                public override int Read() => Compute();
+                private int Compute() => 7;
+            }
+            """);
+        try
+        {
+            var preview = await TypeExtractionService.PreviewExtractTypeAsync(
+                fixture.WorkspaceId, fixture.FilePath, "NewReceiverDerived", ["Compute"],
+                "ComputeHelper", null, CancellationToken.None);
+            await AssertModifiedSolutionCompilesAsync(preview.PreviewToken);
+        }
+        finally { WorkspaceManager.Close(fixture.WorkspaceId); }
+    }
+
+    [TestMethod]
+    [DataRow("System.Func<int> unused = () => Read();")]
+    [DataRow("int Local() => Read();")]
+    [DataRow("_ = nameof(Read);")]
+    public async Task ExtractType_UninvokedNestedBodiesAndNameof_AllowsPreview(string constructorBody)
+    {
+        var fixture = await CreateExtractionFixtureAsync("UninvokedFixture.cs", $$"""
+            namespace SampleLib;
+            public class UninvokedBase
+            {
+                public UninvokedBase()
+                {
+                    {{constructorBody}}
+                }
+                public virtual int Read() => 0;
+            }
+            public class UninvokedDerived : UninvokedBase
+            {
+                public override int Read() => Compute();
+                private int Compute() => 7;
+            }
+            """);
+        try
+        {
+            var preview = await TypeExtractionService.PreviewExtractTypeAsync(
+                fixture.WorkspaceId, fixture.FilePath, "UninvokedDerived", ["Compute"],
+                "ComputeHelper", null, CancellationToken.None);
+            await AssertModifiedSolutionCompilesAsync(preview.PreviewToken);
+        }
+        finally { WorkspaceManager.Close(fixture.WorkspaceId); }
+    }
+
+    [TestMethod]
+    public async Task ExtractType_BaseConstructorImplicitAsyncDispose_RefusesBeforeStorage()
+    {
+        var fixture = await CreateExtractionFixtureAsync("AsyncDisposeFixture.cs", """
+            namespace SampleLib;
+            public class AsyncDisposeBase : System.IAsyncDisposable
+            {
+                public AsyncDisposeBase() { _ = InitAsync(); }
+                private async System.Threading.Tasks.Task InitAsync() { await using (this) { } }
+                public virtual System.Threading.Tasks.ValueTask DisposeAsync()
+                    => System.Threading.Tasks.ValueTask.CompletedTask;
+            }
+            public class AsyncDisposeDerived : AsyncDisposeBase
+            {
+                public override System.Threading.Tasks.ValueTask DisposeAsync()
+                {
+                    Compute();
+                    return System.Threading.Tasks.ValueTask.CompletedTask;
+                }
+                private void Compute() { }
+            }
+            """);
+        try
+        {
+            var version = WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId);
+            await Assert.ThrowsExactlyAsync<ExtractTypeBlockingDependencyException>(() =>
+                TypeExtractionService.PreviewExtractTypeAsync(
+                    fixture.WorkspaceId, fixture.FilePath, "AsyncDisposeDerived", ["Compute"],
+                    "ComputeHelper", null, CancellationToken.None));
+            FileOperationIntegrationTests.AssertNoStoredPreviews(PreviewStore, fixture.WorkspaceId);
+            Assert.AreEqual(version, WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId));
+        }
+        finally { WorkspaceManager.Close(fixture.WorkspaceId); }
     }
 
     /// <summary>

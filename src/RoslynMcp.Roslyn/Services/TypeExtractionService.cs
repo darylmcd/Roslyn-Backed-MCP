@@ -201,6 +201,15 @@ public sealed class TypeExtractionService : ITypeExtractionService
 
         // Follow retained calls as well as direct references: a dispatched override may reach
         // the helper through another method or property on the derived type.
+        static IEnumerable<SyntaxNode> ExecutedDescendants(SyntaxNode declaration)
+            => declaration.DescendantNodes().Where(node => !node.AncestorsAndSelf()
+                .TakeWhile(ancestor => ancestor != declaration)
+                .Any(ancestor => ancestor is AnonymousFunctionExpressionSyntax or LocalFunctionStatementSyntax
+                    or InvocationExpressionSyntax
+                    {
+                        Expression: IdentifierNameSyntax { Identifier.Text: "nameof" }
+                    }));
+
         var visited = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
         bool UsesExtractedInstance(ISymbol member)
         {
@@ -209,8 +218,10 @@ public sealed class TypeExtractionService : ITypeExtractionService
             {
                 var declaration = reference.GetSyntax(ct);
                 var model = compilation.GetSemanticModel(declaration.SyntaxTree);
-                foreach (var expression in declaration.DescendantNodes().OfType<ExpressionSyntax>())
+                foreach (var expression in ExecutedDescendants(declaration).OfType<ExpressionSyntax>())
                 {
+                    if (expression is InvocationExpressionSyntax
+                        { Expression: IdentifierNameSyntax { Identifier.Text: "nameof" } }) continue;
                     var target = model.GetSymbolInfo(expression, ct).Symbol;
                     if (target is null) continue;
                     if (extracted.Contains(target.OriginalDefinition)) return true;
@@ -277,7 +288,18 @@ public sealed class TypeExtractionService : ITypeExtractionService
                         foreach (var reference in local.DeclaringSyntaxReferences)
                         {
                             if (reference.GetSyntax(ct) is VariableDeclaratorSyntax { Initializer.Value: { } value })
+                            {
+                                var scope = value.FirstAncestorOrSelf<BaseMethodDeclarationSyntax>() as SyntaxNode
+                                    ?? value.FirstAncestorOrSelf<LocalFunctionStatementSyntax>();
+                                if (scope is null || scope.DescendantNodes().OfType<AssignmentExpressionSyntax>().Any(assignment =>
+                                        SymbolEqualityComparer.Default.Equals(model.GetSymbolInfo(assignment.Left, ct).Symbol, local))
+                                    || scope.DescendantNodes().OfType<ArgumentSyntax>().Any(argument =>
+                                        (argument.RefOrOutKeyword.IsKind(SyntaxKind.RefKeyword)
+                                            || argument.RefOrOutKeyword.IsKind(SyntaxKind.OutKeyword))
+                                        && SymbolEqualityComparer.Default.Equals(model.GetSymbolInfo(argument.Expression, ct).Symbol, local)))
+                                    return true;
                                 return MayBeCurrentInstanceCore(value, model, visitedLocals);
+                            }
                         }
                         return true;
                     default:
@@ -289,6 +311,44 @@ public sealed class TypeExtractionService : ITypeExtractionService
             bool MayBeCurrentInstance(ExpressionSyntax expression, SemanticModel model)
                 => MayBeCurrentInstanceCore(expression, model, new HashSet<ISymbol>(SymbolEqualityComparer.Default));
 
+            bool CallMayTargetCurrentInstance(ExpressionSyntax expression, SemanticModel model)
+            {
+                return expression switch
+                {
+                    MemberAccessExpressionSyntax member => MayBeCurrentInstance(member.Expression, model),
+                    ElementAccessExpressionSyntax element => MayBeCurrentInstance(element.Expression, model),
+                    InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax member } =>
+                        MayBeCurrentInstance(member.Expression, model),
+                    SimpleNameSyntax { Parent: MemberAccessExpressionSyntax member } when member.Name == expression =>
+                        MayBeCurrentInstance(member.Expression, model),
+                    _ => true
+                };
+            }
+
+            bool EnumeratorMayBeCurrentInstance(IMethodSymbol getEnumerator)
+            {
+                if (getEnumerator.DeclaringSyntaxReferences.Length == 0) return true;
+                foreach (var reference in getEnumerator.DeclaringSyntaxReferences)
+                {
+                    var body = reference.GetSyntax(ct);
+                    if (!compilation.SyntaxTrees.Contains(body.SyntaxTree)) return true;
+                    var model = compilation.GetSemanticModel(body.SyntaxTree);
+                    var returned = body switch
+                    {
+                        MethodDeclarationSyntax method when method.ExpressionBody is { } arrow =>
+                            new[] { arrow.Expression },
+                        MethodDeclarationSyntax method => ExecutedDescendants(method)
+                            .OfType<ReturnStatementSyntax>()
+                            .Where(statement => statement.Expression is not null)
+                            .Select(statement => statement.Expression!)
+                            .ToArray(),
+                        _ => []
+                    };
+                    if (returned.Length == 0 || returned.Any(value => MayBeCurrentInstance(value, model))) return true;
+                }
+                return false;
+            }
+
             bool ReachesDispatch(ISymbol member)
             {
                 if (!visitedBaseMembers.Add(member.OriginalDefinition)) return false;
@@ -297,10 +357,13 @@ public sealed class TypeExtractionService : ITypeExtractionService
                     var declaration = reference.GetSyntax(ct);
                     if (!compilation.SyntaxTrees.Contains(declaration.SyntaxTree)) return true;
                     var model = compilation.GetSemanticModel(declaration.SyntaxTree);
-                    foreach (var expression in declaration.DescendantNodes().OfType<ExpressionSyntax>())
+                    foreach (var expression in ExecutedDescendants(declaration).OfType<ExpressionSyntax>())
                     {
+                        if (expression is InvocationExpressionSyntax
+                            { Expression: IdentifierNameSyntax { Identifier.Text: "nameof" } }) continue;
                         var called = model.GetSymbolInfo(expression, ct).Symbol;
                         if (called is null) continue;
+                        if (!CallMayTargetCurrentInstance(expression, model)) continue;
                         if (DispatchesTo(called, implementation)) return true;
                         if (called is IMethodSymbol or IPropertySymbol
                             && called.ContainingType is { } owner
@@ -308,20 +371,31 @@ public sealed class TypeExtractionService : ITypeExtractionService
                             && ReachesDispatch(called)) return true;
                     }
 
-                    foreach (var each in declaration.DescendantNodes().OfType<CommonForEachStatementSyntax>())
+                    foreach (var each in ExecutedDescendants(declaration).OfType<CommonForEachStatementSyntax>())
                     {
                         if (!MayBeCurrentInstance(each.Expression, model)) continue;
-                        var enumerator = model.GetForEachStatementInfo(each).GetEnumeratorMethod;
+                        var info = model.GetForEachStatementInfo(each);
+                        var enumerator = info.GetEnumeratorMethod;
                         if (enumerator is not null && DispatchesTo(enumerator, implementation)) return true;
+                        if (enumerator is not null && EnumeratorMayBeCurrentInstance(enumerator)
+                            && (info.MoveNextMethod is { } next && DispatchesTo(next, implementation)
+                                || info.CurrentProperty is { } current && DispatchesTo(current, implementation)
+                                || info.DisposeMethod is { } disposeEnumerator && DispatchesTo(disposeEnumerator, implementation)))
+                            return true;
                     }
 
                     // `using` emits an implicit IDisposable.Dispose call; no expression node
                     // binds to that call, even though it can dispatch virtually into the derived type.
-                    var disposable = compilation.GetSpecialType(SpecialType.System_IDisposable);
-                    var dispose = disposable.GetMembers("Dispose").OfType<IMethodSymbol>().FirstOrDefault();
-                    if (dispose is not null)
+                    foreach (var asyncDisposal in new[] { false, true })
                     {
-                        foreach (var usingStatement in declaration.DescendantNodes().OfType<UsingStatementSyntax>())
+                        var disposable = asyncDisposal
+                            ? compilation.GetTypeByMetadataName("System.IAsyncDisposable")
+                            : compilation.GetSpecialType(SpecialType.System_IDisposable);
+                        var dispose = disposable?.GetMembers(asyncDisposal ? "DisposeAsync" : "Dispose")
+                            .OfType<IMethodSymbol>().FirstOrDefault();
+                        if (disposable is null || dispose is null) continue;
+                        foreach (var usingStatement in ExecutedDescendants(declaration).OfType<UsingStatementSyntax>()
+                            .Where(statement => statement.AwaitKeyword.IsKind(SyntaxKind.AwaitKeyword) == asyncDisposal))
                         {
                             var resourceType = usingStatement.Expression is { } resource
                                 ? model.GetTypeInfo(resource, ct).Type as INamedTypeSymbol
@@ -337,9 +411,10 @@ public sealed class TypeExtractionService : ITypeExtractionService
                                 && DispatchesTo(dispose, implementation)) return true;
                         }
 
-                        foreach (var usingDeclaration in declaration.DescendantNodes()
+                        foreach (var usingDeclaration in ExecutedDescendants(declaration)
                             .OfType<LocalDeclarationStatementSyntax>()
-                            .Where(local => local.UsingKeyword.IsKind(SyntaxKind.UsingKeyword)))
+                            .Where(local => local.UsingKeyword.IsKind(SyntaxKind.UsingKeyword)
+                                && local.AwaitKeyword.IsKind(SyntaxKind.AwaitKeyword) == asyncDisposal))
                         {
                             foreach (var variable in usingDeclaration.Declaration.Variables)
                             {
