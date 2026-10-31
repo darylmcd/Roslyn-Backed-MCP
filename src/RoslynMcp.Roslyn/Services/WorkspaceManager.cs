@@ -126,6 +126,8 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
     private TaskCompletionSource? _loadsDrained;
     private Task? _shutdownTask;
     private ExceptionDispatchInfo? _shutdownFailure;
+    // Test seam: rendezvous completed loads before the atomic dedup/publication decision.
+    internal Action? BeforeLoadPublicationForTesting { get; set; }
 
     /// <summary>
     /// Retains the exact registered source session until the callback and its cleanup finish.
@@ -481,6 +483,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
             // Otherwise two completed loads can both miss the winner and register duplicate paths.
             WorkspaceStatusDto winnerStatus;
             string winnerId;
+            BeforeLoadPublicationForTesting?.Invoke();
             lock (_lifecycleSync)
             {
                 ObjectDisposedException.ThrowIf(_disposing || _removalAdmissionClosed, this);
