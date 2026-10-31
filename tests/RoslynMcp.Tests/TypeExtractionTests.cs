@@ -2433,6 +2433,74 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally { WorkspaceManager.Close(fixture.WorkspaceId); }
     }
 
+    [TestMethod]
+    public async Task ExtractType_BaseConstructorLoopReassignsDelegateBeforeNextCall_Refuses()
+    {
+        var fixture = await CreateExtractionFixtureAsync("LoopDelegateParameterFixture.cs", """
+            namespace SampleLib;
+            public class LoopDelegateParameterBase
+            {
+                public LoopDelegateParameterBase() { Run(() => true); }
+                private void Run(System.Func<bool> callback)
+                {
+                    while (callback() && (callback = () => Read() > 0) != null) { }
+                }
+                public virtual int Read() => 0;
+            }
+            public class LoopDelegateParameterDerived : LoopDelegateParameterBase
+            {
+                public override int Read() => Compute();
+                private int Compute() => 7;
+            }
+            """);
+        try
+        {
+            var version = WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId);
+            await Assert.ThrowsExactlyAsync<ExtractTypeBlockingDependencyException>(() =>
+                TypeExtractionService.PreviewExtractTypeAsync(
+                    fixture.WorkspaceId, fixture.FilePath, "LoopDelegateParameterDerived", ["Compute"],
+                    "ComputeHelper", null, CancellationToken.None));
+            FileOperationIntegrationTests.AssertNoStoredPreviews(PreviewStore, fixture.WorkspaceId);
+            Assert.AreEqual(version, WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId));
+        }
+        finally { WorkspaceManager.Close(fixture.WorkspaceId); }
+    }
+
+    [TestMethod]
+    public async Task ExtractType_BaseConstructorRecursiveCallUsesReassignedDelegate_Refuses()
+    {
+        var fixture = await CreateExtractionFixtureAsync("RecursiveParameterFixture.cs", """
+            namespace SampleLib;
+            public class RecursiveParameterBase
+            {
+                public RecursiveParameterBase() { Run(() => { }); }
+                private void Run(System.Action callback)
+                {
+                    callback();
+                    callback = () => _ = Read();
+                    Run(callback);
+                }
+                public virtual int Read() => 0;
+            }
+            public class RecursiveParameterDerived : RecursiveParameterBase
+            {
+                public override int Read() => Compute();
+                private int Compute() => 7;
+            }
+            """);
+        try
+        {
+            var version = WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId);
+            await Assert.ThrowsExactlyAsync<ExtractTypeBlockingDependencyException>(() =>
+                TypeExtractionService.PreviewExtractTypeAsync(
+                    fixture.WorkspaceId, fixture.FilePath, "RecursiveParameterDerived", ["Compute"],
+                    "ComputeHelper", null, CancellationToken.None));
+            FileOperationIntegrationTests.AssertNoStoredPreviews(PreviewStore, fixture.WorkspaceId);
+            Assert.AreEqual(version, WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId));
+        }
+        finally { WorkspaceManager.Close(fixture.WorkspaceId); }
+    }
+
     /// <summary>
     /// Acceptance gate for type-extraction-composition-constructor-coverage: the previewed source
     /// (updated source type + generated new type) must compile with zero errors — specifically none

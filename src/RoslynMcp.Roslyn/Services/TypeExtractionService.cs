@@ -295,11 +295,17 @@ public sealed class TypeExtractionService : ITypeExtractionService
                         if (write.SyntaxTree != invocation.SyntaxTree || write.SpanStart < invocation.SpanStart)
                             return true;
                         var callBlock = invocation.FirstAncestorOrSelf<BlockSyntax>();
-                        // Only straight-line statements in the same top-level body prove that a
-                        // later write cannot affect this invocation. Loops, branches and jumps do not.
+                        // Source order proves safety only for direct statements in one top-level
+                        // body. A nested/repeated region may execute a later write before a later
+                        // invocation even when the write has a greater source position.
+                        var callStatement = invocation.FirstAncestorOrSelf<StatementSyntax>();
+                        var writeStatement = write.FirstAncestorOrSelf<StatementSyntax>();
                         return callBlock is null || callBlock.Parent != scope
-                            || write.FirstAncestorOrSelf<BlockSyntax>() != callBlock
-                            || callBlock.DescendantNodes().Any(node => node is GotoStatementSyntax or LabeledStatementSyntax);
+                            || callStatement is not ExpressionStatementSyntax || callStatement.Parent != callBlock
+                            || writeStatement is not ExpressionStatementSyntax || writeStatement.Parent != callBlock
+                            || callBlock.DescendantNodes().Any(node => node is GotoStatementSyntax or LabeledStatementSyntax)
+                            || ExecutedDescendants(scope).OfType<InvocationExpressionSyntax>()
+                                .Any(otherCall => otherCall != invocation);
                     }
 
                     foreach (var reference in parameter.DeclaringSyntaxReferences)
