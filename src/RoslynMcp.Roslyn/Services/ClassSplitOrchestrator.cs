@@ -74,7 +74,8 @@ public sealed class ClassSplitOrchestrator : IClassSplitOrchestrator
             .WithMembers(SyntaxFactory.List(selectedMembers))
             .WithLeadingTrivia(SyntaxFactory.TriviaList(SyntaxFactory.ElasticCarriageReturnLineFeed)));
         var namespaceName = GetNamespaceName(typeDeclaration);
-        var partialCompilationUnit = CreateCompilationUnit(root, partialNewType, namespaceName);
+        var receivingOptions = ReceivingNamespaceFactory.RequireCSharpOptions(document.Project.ParseOptions);
+        var partialCompilationUnit = CreateCompilationUnit(root, partialNewType, namespaceName, receivingOptions);
         var newFilePath = Path.Combine(Path.GetDirectoryName(filePath)!, newFileName);
         // dependency-inversion-noisy-diff: preserve trivia in the original tree; only format the new partial's type subtree if needed.
         var newFileContent = partialCompilationUnit.ToFullString();
@@ -123,7 +124,8 @@ public sealed class ClassSplitOrchestrator : IClassSplitOrchestrator
         return declaration.FirstAncestorOrSelf<BaseNamespaceDeclarationSyntax>()?.Name.ToString() ?? string.Empty;
     }
 
-    private static CompilationUnitSyntax CreateCompilationUnit(CompilationUnitSyntax sourceRoot, TypeDeclarationSyntax declaration, string namespaceName)
+    private static CompilationUnitSyntax CreateCompilationUnit(CompilationUnitSyntax sourceRoot, TypeDeclarationSyntax declaration,
+        string namespaceName, CSharpParseOptions receivingOptions)
     {
         // FORMAT-BUG-006 (dr-9-11-format-bug-006-duplicates-leading-trivia-into-b):
         // The first `using` directive in the source carries the file-level license header in
@@ -131,15 +133,27 @@ public sealed class ClassSplitOrchestrator : IClassSplitOrchestrator
         // into the new partial. Strip the leading trivia from the first using only.
         var copiedUsings = StripLeadingTriviaFromFirstUsing(sourceRoot.Usings);
         var compilationUnit = SyntaxFactory.CompilationUnit().WithUsings(copiedUsings);
-        if (string.IsNullOrWhiteSpace(namespaceName))
+        var nsDecl = ReceivingNamespaceFactory.Create(namespaceName, receivingOptions);
+        if (nsDecl is null)
         {
             return compilationUnit.WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(declaration));
         }
 
-        var nsDecl = SyntaxFactory.FileScopedNamespaceDeclaration(SyntaxFactory.ParseName(namespaceName))
+        nsDecl = nsDecl
             .WithNamespaceKeyword(
                 SyntaxFactory.Token(SyntaxKind.NamespaceKeyword).WithTrailingTrivia(SyntaxFactory.Space))
             .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(declaration));
+        if (nsDecl is NamespaceDeclarationSyntax blockNamespace)
+        {
+            var closingBrace = blockNamespace.CloseBraceToken;
+            if (!declaration.GetTrailingTrivia().LastOrDefault().IsKind(SyntaxKind.EndOfLineTrivia))
+                closingBrace = closingBrace.WithLeadingTrivia(SyntaxFactory.CarriageReturnLineFeed);
+            nsDecl = blockNamespace
+                .WithOpenBraceToken(blockNamespace.OpenBraceToken
+                    .WithLeadingTrivia(SyntaxFactory.CarriageReturnLineFeed)
+                    .WithTrailingTrivia(SyntaxFactory.CarriageReturnLineFeed))
+                .WithCloseBraceToken(closingBrace);
+        }
         return compilationUnit.WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(nsDecl));
     }
 
