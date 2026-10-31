@@ -111,6 +111,50 @@ public sealed class WorkspaceLoadRegistrationCompensationTests
         }
     }
 
+    [TestMethod]
+    public async Task LoadAsync_TwoLoadsReadyToPublish_ReturnOneSession()
+    {
+        using var watcher = new ScriptedWatcher();
+        var loader = new PairedLoader();
+        using var manager = CreateManager(watcher, cap: 2, loader: loader);
+        var first = manager.LoadAsync(_sampleSolutionPath, CancellationToken.None);
+        var second = manager.LoadAsync(_sampleSolutionPath, CancellationToken.None);
+        await loader.BothReady.Task.WaitAsync(TimeSpan.FromSeconds(120));
+
+        // The lifecycle lock holds publication while both completed loads leave the loader.
+        // On the old path, both dedup scans can pass before either publication acquires it.
+        var sync = typeof(WorkspaceManager).GetField("_lifecycleSync",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(manager)!;
+        lock (sync)
+        {
+            loader.Release.SetResult();
+            Thread.Sleep(500);
+        }
+
+        var statusA = await first.WaitAsync(TimeSpan.FromSeconds(120));
+        var statusB = await second.WaitAsync(TimeSpan.FromSeconds(120));
+        Assert.AreEqual(statusA.WorkspaceId, statusB.WorkspaceId);
+        Assert.AreEqual(1, manager.ListWorkspaces().Count);
+        Assert.AreEqual(1, watcher.WatchedIds.Count);
+    }
+
+    private sealed class PairedLoader : WorkspaceSessionLoader
+    {
+        private int _ready;
+        public TaskCompletionSource BothReady { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public override async Task<(MSBuildWorkspace Workspace, AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease Lease)> CreateAndOpenAsync(
+            string workspaceId, string path, IDictionary<string, string>? globalProperties,
+            WorkspaceDiagnosticsSink diagnostics, ILogger logger, CancellationToken ct)
+        {
+            var loaded = await base.CreateAndOpenAsync(workspaceId, path, globalProperties, diagnostics, logger, ct).ConfigureAwait(false);
+            if (Interlocked.Increment(ref _ready) == 2) BothReady.SetResult();
+            await Release.Task.ConfigureAwait(false);
+            return loaded;
+        }
+    }
+
     private sealed class CompletedLoadGate : WorkspaceSessionLoader
     {
         public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);

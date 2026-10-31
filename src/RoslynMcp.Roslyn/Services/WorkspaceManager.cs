@@ -477,45 +477,42 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
             await LoadIntoSessionAsync(session, fullPath, globalProperties, ct).ConfigureAwait(false);
             ct.ThrowIfCancellationRequested();
 
-            // Second dedup check, this time for the race window between our scan above and
-            // another concurrent LoadAsync call that won the semaphore with the same path.
-            // Whichever caller lost the race returns the winner's session and releases its
-            // slot in the finally block so we do not leak a slot per racing caller. Skipped
-            // under global-property overrides for the same reason as the pre-load dedup above.
-            if (!skipDedup)
-            {
-                var raceWinner = FindSessionByLoadedPath(fullPath);
-                if (raceWinner is not null)
-                {
-                    _logger.LogInformation(
-                        "workspace_load: race lost; returning winner '{WorkspaceId}' for path '{Path}' instead of new '{NewId}'",
-                        raceWinner.WorkspaceId,
-                        fullPath,
-                        workspaceId);
-                    // The loser was never registered: a dispose failure must not fail the winner's successful status.
-                    var loserFailures = new List<Exception>();
-                    AttemptCleanup(session.Dispose, loserFailures);
-                    if (loserFailures.Count > 0)
-                        _logger.LogError(
-                            new AggregateException(loserFailures),
-                            "Disposing race-losing workspace '{WorkspaceId}' failed",
-                            workspaceId);
-                    raceWinner.TouchAccess(_timeProvider.GetUtcNow());
-                    return BuildStatus(raceWinner);
-                }
-            }
-
+            // Keep the post-load path check and publication in one lifecycle decision.
+            // Otherwise two completed loads can both miss the winner and register duplicate paths.
+            WorkspaceStatusDto winnerStatus;
+            string winnerId;
             lock (_lifecycleSync)
             {
                 ObjectDisposedException.ThrowIf(_disposing || _removalAdmissionClosed, this);
                 ct.ThrowIfCancellationRequested();
-                if (!_sessions.TryAdd(workspaceId, session))
-                    throw new InvalidOperationException($"Workspace '{workspaceId}' already exists.");
+                var raceWinner = skipDedup ? null : FindSessionByLoadedPath(fullPath);
+                if (raceWinner is not null)
+                {
+                    raceWinner.TouchAccess(_timeProvider.GetUtcNow());
+                    winnerStatus = BuildStatus(raceWinner);
+                    winnerId = raceWinner.WorkspaceId;
+                }
+                else
+                {
+                    if (!_sessions.TryAdd(workspaceId, session))
+                        throw new InvalidOperationException($"Workspace '{workspaceId}' already exists.");
 
-                slotTransferred = true;
-                _fileWatcher.Watch(workspaceId, session.LoadedPath!);
-                return BuildStatus(session);
+                    slotTransferred = true;
+                    _fileWatcher.Watch(workspaceId, session.LoadedPath!);
+                    return BuildStatus(session);
+                }
             }
+
+            _logger.LogInformation(
+                "workspace_load: race lost; returning winner '{WorkspaceId}' for path '{Path}' instead of new '{NewId}'",
+                winnerId, fullPath, workspaceId);
+            // The loser was never registered: a dispose failure must not fail the winner's successful status.
+            var loserFailures = new List<Exception>();
+            AttemptCleanup(session.Dispose, loserFailures);
+            if (loserFailures.Count > 0)
+                _logger.LogError(new AggregateException(loserFailures),
+                    "Disposing race-losing workspace '{WorkspaceId}' failed", workspaceId);
+            return winnerStatus;
         }
         catch (Exception ex)
         {
