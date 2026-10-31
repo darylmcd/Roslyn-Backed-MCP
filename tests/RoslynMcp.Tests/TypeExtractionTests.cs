@@ -2150,6 +2150,72 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally { WorkspaceManager.Close(fixture.WorkspaceId); }
     }
 
+    [TestMethod]
+    [DataRow("foreach (var item in this) { break; }", "public System.Collections.Generic.IEnumerator<int> GetEnumerator() { _ = Read(); return System.Linq.Enumerable.Empty<int>().GetEnumerator(); } public void Dispose() { }")]
+    [DataRow("using (this) { }", "public void Dispose() { _ = Read(); }")]
+    public async Task ExtractType_ImplicitMemberBodyCallsOverride_RefusesBeforeStorage(
+        string constructorBody, string implicitMember)
+    {
+        var fixture = await CreateExtractionFixtureAsync("ImplicitBodyFixture.cs", $$"""
+            namespace SampleLib;
+            public class ImplicitBodyBase : System.IDisposable
+            {
+                public ImplicitBodyBase() { {{constructorBody}} }
+                public virtual int Read() => 0;
+                {{implicitMember}}
+            }
+            public class ImplicitBodyDerived : ImplicitBodyBase
+            {
+                public override int Read() => Compute();
+                private int Compute() => 7;
+            }
+            """);
+        try
+        {
+            var version = WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId);
+            await Assert.ThrowsExactlyAsync<ExtractTypeBlockingDependencyException>(() =>
+                TypeExtractionService.PreviewExtractTypeAsync(
+                    fixture.WorkspaceId, fixture.FilePath, "ImplicitBodyDerived", ["Compute"],
+                    "ComputeHelper", null, CancellationToken.None));
+            FileOperationIntegrationTests.AssertNoStoredPreviews(PreviewStore, fixture.WorkspaceId);
+            Assert.AreEqual(version, WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId));
+        }
+        finally { WorkspaceManager.Close(fixture.WorkspaceId); }
+    }
+
+    [TestMethod]
+    public async Task ExtractType_BaseConstructorInvokedLambdaCallsOverride_RefusesBeforeStorage()
+    {
+        var fixture = await CreateExtractionFixtureAsync("InvokedLambdaFixture.cs", """
+            namespace SampleLib;
+            public class InvokedLambdaBase
+            {
+                public InvokedLambdaBase()
+                {
+                    System.Action action = () => _ = Read();
+                    action();
+                }
+                public virtual int Read() => 0;
+            }
+            public class InvokedLambdaDerived : InvokedLambdaBase
+            {
+                public override int Read() => Compute();
+                private int Compute() => 7;
+            }
+            """);
+        try
+        {
+            var version = WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId);
+            await Assert.ThrowsExactlyAsync<ExtractTypeBlockingDependencyException>(() =>
+                TypeExtractionService.PreviewExtractTypeAsync(
+                    fixture.WorkspaceId, fixture.FilePath, "InvokedLambdaDerived", ["Compute"],
+                    "ComputeHelper", null, CancellationToken.None));
+            FileOperationIntegrationTests.AssertNoStoredPreviews(PreviewStore, fixture.WorkspaceId);
+            Assert.AreEqual(version, WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId));
+        }
+        finally { WorkspaceManager.Close(fixture.WorkspaceId); }
+    }
+
     /// <summary>
     /// Acceptance gate for type-extraction-composition-constructor-coverage: the previewed source
     /// (updated source type + generated new type) must compile with zero errors — specifically none

@@ -357,74 +357,98 @@ public sealed class TypeExtractionService : ITypeExtractionService
                     var declaration = reference.GetSyntax(ct);
                     if (!compilation.SyntaxTrees.Contains(declaration.SyntaxTree)) return true;
                     var model = compilation.GetSemanticModel(declaration.SyntaxTree);
-                    foreach (var expression in ExecutedDescendants(declaration).OfType<ExpressionSyntax>())
-                    {
-                        if (expression is InvocationExpressionSyntax
-                            { Expression: IdentifierNameSyntax { Identifier.Text: "nameof" } }) continue;
-                        var called = model.GetSymbolInfo(expression, ct).Symbol;
-                        if (called is null) continue;
-                        if (!CallMayTargetCurrentInstance(expression, model)) continue;
-                        if (DispatchesTo(called, implementation)) return true;
-                        if (called is IMethodSymbol or IPropertySymbol
-                            && called.ContainingType is { } owner
-                            && !SymbolEqualityComparer.Default.Equals(owner, typeSymbol)
-                            && ReachesDispatch(called)) return true;
-                    }
+                    if (BodyReachesDispatch(declaration, model)) return true;
+                }
+                return false;
+            }
 
-                    foreach (var each in ExecutedDescendants(declaration).OfType<CommonForEachStatementSyntax>())
+            var visitedDelegateLocals = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
+            bool BodyReachesDispatch(SyntaxNode declaration, SemanticModel model)
+            {
+                foreach (var expression in ExecutedDescendants(declaration).OfType<ExpressionSyntax>())
+                {
+                    if (expression is InvocationExpressionSyntax
+                        { Expression: IdentifierNameSyntax { Identifier.Text: "nameof" } }) continue;
+                    if (expression is InvocationExpressionSyntax invocation
+                        && model.GetSymbolInfo(invocation.Expression, ct).Symbol is ILocalSymbol delegateLocal
+                        && visitedDelegateLocals.Add(delegateLocal.OriginalDefinition))
                     {
-                        if (!MayBeCurrentInstance(each.Expression, model)) continue;
-                        var info = model.GetForEachStatementInfo(each);
-                        var enumerator = info.GetEnumeratorMethod;
-                        if (enumerator is not null && DispatchesTo(enumerator, implementation)) return true;
-                        if (enumerator is not null && EnumeratorMayBeCurrentInstance(enumerator)
-                            && (info.MoveNextMethod is { } next && DispatchesTo(next, implementation)
-                                || info.CurrentProperty is { } current && DispatchesTo(current, implementation)
-                                || info.DisposeMethod is { } disposeEnumerator && DispatchesTo(disposeEnumerator, implementation)))
-                            return true;
-                    }
-
-                    // `using` emits an implicit IDisposable.Dispose call; no expression node
-                    // binds to that call, even though it can dispatch virtually into the derived type.
-                    foreach (var asyncDisposal in new[] { false, true })
-                    {
-                        var disposable = asyncDisposal
-                            ? compilation.GetTypeByMetadataName("System.IAsyncDisposable")
-                            : compilation.GetSpecialType(SpecialType.System_IDisposable);
-                        var dispose = disposable?.GetMembers(asyncDisposal ? "DisposeAsync" : "Dispose")
-                            .OfType<IMethodSymbol>().FirstOrDefault();
-                        if (disposable is null || dispose is null) continue;
-                        foreach (var usingStatement in ExecutedDescendants(declaration).OfType<UsingStatementSyntax>()
-                            .Where(statement => statement.AwaitKeyword.IsKind(SyntaxKind.AwaitKeyword) == asyncDisposal))
+                        foreach (var reference in delegateLocal.DeclaringSyntaxReferences)
                         {
-                            var resourceType = usingStatement.Expression is { } resource
-                                ? model.GetTypeInfo(resource, ct).Type as INamedTypeSymbol
-                                : usingStatement.Declaration is { Variables.Count: > 0 } variables
-                                    ? (model.GetDeclaredSymbol(variables.Variables[0], ct) as ILocalSymbol)?.Type as INamedTypeSymbol
-                                    : null;
-                            var resourceExpression = usingStatement.Expression
-                                ?? usingStatement.Declaration?.Variables.FirstOrDefault()?.Initializer?.Value;
-                            if (resourceType is not null && resourceExpression is not null
-                                && MayBeCurrentInstance(resourceExpression, model)
-                                && (SymbolEqualityComparer.Default.Equals(resourceType, disposable)
-                                    || resourceType.AllInterfaces.Contains(disposable, SymbolEqualityComparer.Default))
-                                && DispatchesTo(dispose, implementation)) return true;
+                            if (reference.GetSyntax(ct) is not VariableDeclaratorSyntax
+                                { Initializer.Value: AnonymousFunctionExpressionSyntax lambda }) continue;
+                            if (BodyReachesDispatch(lambda, model)) return true;
                         }
+                    }
+                    var called = model.GetSymbolInfo(expression, ct).Symbol;
+                    if (called is null) continue;
+                    if (!CallMayTargetCurrentInstance(expression, model)) continue;
+                    if (DispatchesTo(called, implementation)) return true;
+                    if (called is IMethodSymbol or IPropertySymbol
+                        && called.ContainingType is { } owner
+                        && !SymbolEqualityComparer.Default.Equals(owner, typeSymbol)
+                        && ReachesDispatch(called)) return true;
+                }
 
-                        foreach (var usingDeclaration in ExecutedDescendants(declaration)
-                            .OfType<LocalDeclarationStatementSyntax>()
-                            .Where(local => local.UsingKeyword.IsKind(SyntaxKind.UsingKeyword)
-                                && local.AwaitKeyword.IsKind(SyntaxKind.AwaitKeyword) == asyncDisposal))
+                foreach (var each in ExecutedDescendants(declaration).OfType<CommonForEachStatementSyntax>())
+                {
+                    if (!MayBeCurrentInstance(each.Expression, model)) continue;
+                    var info = model.GetForEachStatementInfo(each);
+                    var enumerator = info.GetEnumeratorMethod;
+                    if (enumerator is not null
+                        && (DispatchesTo(enumerator, implementation) || ReachesDispatch(enumerator))) return true;
+                    if (enumerator is not null && EnumeratorMayBeCurrentInstance(enumerator)
+                        && (info.MoveNextMethod is { } next
+                                && (DispatchesTo(next, implementation) || ReachesDispatch(next))
+                            || info.CurrentProperty is { } current
+                                && (DispatchesTo(current, implementation) || ReachesDispatch(current))
+                            || info.DisposeMethod is { } disposeEnumerator
+                                && (DispatchesTo(disposeEnumerator, implementation) || ReachesDispatch(disposeEnumerator))))
+                        return true;
+                }
+
+                // `using` emits an implicit IDisposable.Dispose call; no expression node
+                // binds to that call, even though it can dispatch virtually into the derived type.
+                foreach (var asyncDisposal in new[] { false, true })
+                {
+                    var disposable = asyncDisposal
+                        ? compilation.GetTypeByMetadataName("System.IAsyncDisposable")
+                        : compilation.GetSpecialType(SpecialType.System_IDisposable);
+                    var dispose = disposable?.GetMembers(asyncDisposal ? "DisposeAsync" : "Dispose")
+                        .OfType<IMethodSymbol>().FirstOrDefault();
+                    if (disposable is null || dispose is null) continue;
+                    foreach (var usingStatement in ExecutedDescendants(declaration).OfType<UsingStatementSyntax>()
+                        .Where(statement => statement.AwaitKeyword.IsKind(SyntaxKind.AwaitKeyword) == asyncDisposal))
+                    {
+                        var resourceType = usingStatement.Expression is { } resource
+                            ? model.GetTypeInfo(resource, ct).Type as INamedTypeSymbol
+                            : usingStatement.Declaration is { Variables.Count: > 0 } variables
+                                ? (model.GetDeclaredSymbol(variables.Variables[0], ct) as ILocalSymbol)?.Type as INamedTypeSymbol
+                                : null;
+                        var resourceExpression = usingStatement.Expression
+                            ?? usingStatement.Declaration?.Variables.FirstOrDefault()?.Initializer?.Value;
+                        if (resourceType is not null && resourceExpression is not null
+                            && MayBeCurrentInstance(resourceExpression, model)
+                            && (SymbolEqualityComparer.Default.Equals(resourceType, disposable)
+                                || resourceType.AllInterfaces.Contains(disposable, SymbolEqualityComparer.Default))
+                            && (DispatchesTo(dispose, implementation)
+                                || ReachesDispatch(resourceType.FindImplementationForInterfaceMember(dispose) ?? dispose))) return true;
+                    }
+
+                    foreach (var usingDeclaration in ExecutedDescendants(declaration)
+                        .OfType<LocalDeclarationStatementSyntax>()
+                        .Where(local => local.UsingKeyword.IsKind(SyntaxKind.UsingKeyword)
+                            && local.AwaitKeyword.IsKind(SyntaxKind.AwaitKeyword) == asyncDisposal))
+                    {
+                        foreach (var variable in usingDeclaration.Declaration.Variables)
                         {
-                            foreach (var variable in usingDeclaration.Declaration.Variables)
-                            {
-                                if (model.GetDeclaredSymbol(variable, ct) is not ILocalSymbol { Type: INamedTypeSymbol resourceType }) continue;
-                                if (variable.Initializer?.Value is not { } resourceExpression
-                                    || !MayBeCurrentInstance(resourceExpression, model)) continue;
-                                if ((SymbolEqualityComparer.Default.Equals(resourceType, disposable)
-                                     || resourceType.AllInterfaces.Contains(disposable, SymbolEqualityComparer.Default))
-                                    && DispatchesTo(dispose, implementation)) return true;
-                            }
+                            if (model.GetDeclaredSymbol(variable, ct) is not ILocalSymbol { Type: INamedTypeSymbol resourceType }) continue;
+                            if (variable.Initializer?.Value is not { } resourceExpression
+                                || !MayBeCurrentInstance(resourceExpression, model)) continue;
+                            if ((SymbolEqualityComparer.Default.Equals(resourceType, disposable)
+                                 || resourceType.AllInterfaces.Contains(disposable, SymbolEqualityComparer.Default))
+                                 && (DispatchesTo(dispose, implementation)
+                                     || ReachesDispatch(resourceType.FindImplementationForInterfaceMember(dispose) ?? dispose))) return true;
                         }
                     }
                 }
