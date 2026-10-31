@@ -207,9 +207,9 @@ public sealed class TypeExtractionService : ITypeExtractionService
                 .TakeWhile(ancestor => ancestor != declaration)
                 .Any(ancestor => ancestor is AnonymousFunctionExpressionSyntax or LocalFunctionStatementSyntax
                     or InvocationExpressionSyntax
-                    {
-                        Expression: IdentifierNameSyntax { Identifier.Text: "nameof" }
-                    }));
+                {
+                    Expression: IdentifierNameSyntax { Identifier.Text: "nameof" }
+                }));
 
         var boundDelegateArguments = new Dictionary<ISymbol, (ExpressionSyntax Value, SemanticModel Model)>(
             SymbolEqualityComparer.Default);
