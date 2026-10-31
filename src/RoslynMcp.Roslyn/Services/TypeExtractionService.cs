@@ -60,8 +60,6 @@ public sealed class TypeExtractionService : ITypeExtractionService
         var blockingDependencies = CollectExtractTypeBlockingDependencies(semanticModel, typeSymbol, analysisNodes, ct);
         blockingDependencies.AddRange(await CollectMemberContractBlockersAsync(
             solution, semanticModel, typeSymbol, analysisNodes, ct).ConfigureAwait(false));
-        blockingDependencies.AddRange(CollectBaseConstructorDispatchBlockers(
-            semanticModel, typeSymbol, typeDecl, analysisNodes, ct));
 
         // BUG-005 (#2/#3): Refuse to generate code that the warnings prove will not compile.
         // The previous behavior emitted the warnings but still produced a preview that referenced
@@ -80,6 +78,17 @@ public sealed class TypeExtractionService : ITypeExtractionService
                 $"Either include the referenced members in the extraction or perform a manual redesign first. " +
                 $"Details: {summary}",
                 blockingDependencies);
+        }
+
+        var constructorDispatchBlockers = CollectBaseConstructorDispatchBlockers(
+            semanticModel, typeSymbol, typeDecl, analysisNodes, ct);
+        if (constructorDispatchBlockers.Count > 0)
+        {
+            throw new ExtractTypeBlockingDependencyException(
+                $"Refusing to extract type '{newTypeName}' from '{sourceTypeName}': base construction can dispatch " +
+                "into a retained member before the extracted helper is assigned. " +
+                $"Details: {string.Join("; ", constructorDispatchBlockers.Select(blocker => blocker.Reason))}",
+                constructorDispatchBlockers);
         }
 
         // dr-9-1-does-not-update-external-consumer-call-sites (SampleSolution audit §9.1):
@@ -200,9 +209,9 @@ public sealed class TypeExtractionService : ITypeExtractionService
             {
                 var declaration = reference.GetSyntax(ct);
                 var model = compilation.GetSemanticModel(declaration.SyntaxTree);
-                foreach (var name in declaration.DescendantNodes().OfType<SimpleNameSyntax>())
+                foreach (var expression in declaration.DescendantNodes().OfType<ExpressionSyntax>())
                 {
-                    var target = model.GetSymbolInfo(name, ct).Symbol;
+                    var target = model.GetSymbolInfo(expression, ct).Symbol;
                     if (target is null) continue;
                     if (extracted.Contains(target.OriginalDefinition)) return true;
                     if (SymbolEqualityComparer.Default.Equals(target.ContainingType, typeSymbol)
@@ -237,8 +246,15 @@ public sealed class TypeExtractionService : ITypeExtractionService
                     return true;
             }
             return typeSymbol.AllInterfaces.Any(iface => iface.GetMembers().Any(contract =>
-                SymbolEqualityComparer.Default.Equals(called.OriginalDefinition, contract.OriginalDefinition)
-                && SymbolEqualityComparer.Default.Equals(typeSymbol.FindImplementationForInterfaceMember(contract), implementation)));
+            {
+                if (!SymbolEqualityComparer.Default.Equals(called.OriginalDefinition, contract.OriginalDefinition))
+                    return false;
+                var mapped = typeSymbol.FindImplementationForInterfaceMember(contract);
+                return mapped is not null
+                    && (SymbolEqualityComparer.Default.Equals(mapped.OriginalDefinition, implementation.OriginalDefinition)
+                        || (!SymbolEqualityComparer.Default.Equals(mapped.OriginalDefinition, called.OriginalDefinition)
+                            && DispatchesTo(mapped, implementation)));
+            }));
         }
 
         bool BaseConstructorMayCall(ISymbol implementation)
@@ -252,9 +268,9 @@ public sealed class TypeExtractionService : ITypeExtractionService
                     var declaration = reference.GetSyntax(ct);
                     if (!compilation.SyntaxTrees.Contains(declaration.SyntaxTree)) return true;
                     var model = compilation.GetSemanticModel(declaration.SyntaxTree);
-                    foreach (var name in declaration.DescendantNodes().OfType<SimpleNameSyntax>())
+                    foreach (var expression in declaration.DescendantNodes().OfType<ExpressionSyntax>())
                     {
-                        var called = model.GetSymbolInfo(name, ct).Symbol;
+                        var called = model.GetSymbolInfo(expression, ct).Symbol;
                         if (called is null) continue;
                         if (DispatchesTo(called, implementation)) return true;
                         if (called is IMethodSymbol or IPropertySymbol
@@ -262,18 +278,102 @@ public sealed class TypeExtractionService : ITypeExtractionService
                             && !SymbolEqualityComparer.Default.Equals(owner, typeSymbol)
                             && ReachesDispatch(called)) return true;
                     }
+
+                    // `using` emits an implicit IDisposable.Dispose call; no expression node
+                    // binds to that call, even though it can dispatch virtually into the derived type.
+                    var disposable = compilation.GetSpecialType(SpecialType.System_IDisposable);
+                    var dispose = disposable.GetMembers("Dispose").OfType<IMethodSymbol>().FirstOrDefault();
+                    if (dispose is not null)
+                    {
+                        foreach (var usingStatement in declaration.DescendantNodes().OfType<UsingStatementSyntax>())
+                        {
+                            var resourceType = usingStatement.Expression is { } resource
+                                ? model.GetTypeInfo(resource, ct).Type as INamedTypeSymbol
+                                : usingStatement.Declaration is { Variables.Count: > 0 } variables
+                                    ? (model.GetDeclaredSymbol(variables.Variables[0], ct) as ILocalSymbol)?.Type as INamedTypeSymbol
+                                    : null;
+                            if (resourceType is not null
+                                && (SymbolEqualityComparer.Default.Equals(resourceType, disposable)
+                                    || resourceType.AllInterfaces.Contains(disposable, SymbolEqualityComparer.Default))
+                                && DispatchesTo(dispose, implementation)) return true;
+                        }
+
+                        foreach (var usingDeclaration in declaration.DescendantNodes()
+                            .OfType<LocalDeclarationStatementSyntax>()
+                            .Where(local => local.UsingKeyword.IsKind(SyntaxKind.UsingKeyword)))
+                        {
+                            foreach (var variable in usingDeclaration.Declaration.Variables)
+                            {
+                                if (model.GetDeclaredSymbol(variable, ct) is not ILocalSymbol { Type: INamedTypeSymbol resourceType }) continue;
+                                if ((SymbolEqualityComparer.Default.Equals(resourceType, disposable)
+                                     || resourceType.AllInterfaces.Contains(disposable, SymbolEqualityComparer.Default))
+                                    && DispatchesTo(dispose, implementation)) return true;
+                            }
+                        }
+                    }
                 }
                 return false;
             }
-            for (var baseType = typeSymbol.BaseType; baseType is not null && baseType.SpecialType != SpecialType.System_Object;
-                 baseType = baseType.BaseType)
+            static IMethodSymbol? ParameterlessBaseConstructor(INamedTypeSymbol baseType)
             {
-                // Metadata bodies cannot be inspected. Refuse a hazardous dispatch conservatively.
-                if (baseType.InstanceConstructors.Any(ctor =>
-                    ctor.DeclaringSyntaxReferences.Length == 0 && !ctor.IsImplicitlyDeclared)) return true;
-                foreach (var ctor in baseType.InstanceConstructors)
+                return baseType.InstanceConstructors.FirstOrDefault(ctor => ctor.Parameters.Length == 0)
+                    ?? baseType.InstanceConstructors.FirstOrDefault(ctor =>
+                        ctor.Parameters.All(parameter => parameter.IsOptional || parameter.IsParams));
+            }
+
+            var visitedConstructors = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
+            bool WalkConstructor(IMethodSymbol ctor)
+            {
+                if (!visitedConstructors.Add(ctor.OriginalDefinition)) return false;
+                if (ctor.ContainingType.SpecialType == SpecialType.System_Object) return false;
+                if (!ctor.IsImplicitlyDeclared && ctor.DeclaringSyntaxReferences.Length == 0) return true;
+                if (ReachesDispatch(ctor)) return true;
+
+                ConstructorDeclarationSyntax? declaration = null;
+                foreach (var reference in ctor.DeclaringSyntaxReferences)
                 {
-                    if (ReachesDispatch(ctor)) return true;
+                    declaration = reference.GetSyntax(ct) as ConstructorDeclarationSyntax;
+                    if (declaration is not null) break;
+                }
+
+                if (declaration?.Initializer is { } initializer)
+                {
+                    if (!compilation.SyntaxTrees.Contains(declaration.SyntaxTree)) return true;
+                    var model = compilation.GetSemanticModel(declaration.SyntaxTree);
+                    var target = model.GetSymbolInfo(initializer, ct).Symbol as IMethodSymbol;
+                    return target is null || WalkConstructor(target);
+                }
+
+                var parent = ctor.ContainingType.BaseType;
+                if (parent is null || parent.SpecialType == SpecialType.System_Object) return false;
+                var defaultCtor = ParameterlessBaseConstructor(parent);
+                return defaultCtor is null || WalkConstructor(defaultCtor);
+            }
+
+            foreach (var ctor in typeSymbol.InstanceConstructors)
+            {
+                if (!ctor.IsImplicitlyDeclared && ctor.DeclaringSyntaxReferences.Length == 0) return true;
+                if (ctor.IsImplicitlyDeclared)
+                {
+                    var selected = ParameterlessBaseConstructor(typeSymbol.BaseType!);
+                    if (selected is null || WalkConstructor(selected)) return true;
+                    continue;
+                }
+
+                foreach (var reference in ctor.DeclaringSyntaxReferences)
+                {
+                    if (reference.GetSyntax(ct) is not ConstructorDeclarationSyntax derivedCtor) continue;
+                    if (derivedCtor.Initializer?.IsKind(SyntaxKind.ThisConstructorInitializer) == true) continue;
+                    IMethodSymbol? selected;
+                    if (derivedCtor.Initializer is { } initializer)
+                    {
+                        selected = semanticModel.GetSymbolInfo(initializer, ct).Symbol as IMethodSymbol;
+                    }
+                    else
+                    {
+                        selected = ParameterlessBaseConstructor(typeSymbol.BaseType!);
+                    }
+                    if (selected is null || WalkConstructor(selected)) return true;
                 }
             }
             return false;

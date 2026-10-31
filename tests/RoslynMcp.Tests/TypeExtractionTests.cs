@@ -1791,6 +1791,112 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         }
     }
 
+    [TestMethod]
+    [DataRow("this[0]", "public override int this[int index] => Compute();")]
+    [DataRow("Read()", "public override int Read() => this[0]; public override int this[int index] => Compute();")]
+    [DataRow("Read()", "public override int Read() => -this; public static int operator -(IndexerDerived value) => value.Compute();")]
+    public async Task ExtractType_BaseConstructorIndexerDispatch_RefusesBeforeStorage(
+        string baseCall, string implementation)
+    {
+        var fixture = await CreateExtractionFixtureAsync("IndexerDispatchFixture.cs", $$"""
+            namespace SampleLib;
+            public class IndexerBase
+            {
+                public IndexerBase() { _ = {{baseCall}}; }
+                public virtual int Read() => 0;
+                public virtual int this[int index] => 0;
+            }
+            public class IndexerDerived : IndexerBase
+            {
+                {{implementation}}
+                private int Compute() => 7;
+            }
+            """);
+        try
+        {
+            var version = WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId);
+            var exception = await Assert.ThrowsExactlyAsync<ExtractTypeBlockingDependencyException>(() =>
+                TypeExtractionService.PreviewExtractTypeAsync(
+                    fixture.WorkspaceId, fixture.FilePath, "IndexerDerived", ["Compute"],
+                    "ComputeHelper", null, CancellationToken.None));
+            Assert.IsTrue(exception.BlockingDependencies.Count > 0);
+            FileOperationIntegrationTests.AssertNoStoredPreviews(PreviewStore, fixture.WorkspaceId);
+            Assert.AreEqual(version, WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId));
+            Assert.IsFalse(File.Exists(Path.Combine(Path.GetDirectoryName(fixture.FilePath)!, "ComputeHelper.cs")));
+        }
+        finally
+        {
+            WorkspaceManager.Close(fixture.WorkspaceId);
+        }
+    }
+
+    [TestMethod]
+    public async Task ExtractType_UnselectedBaseConstructorDispatch_AllowsPreview()
+    {
+        var fixture = await CreateExtractionFixtureAsync("SelectedCtorFixture.cs", """
+            namespace SampleLib;
+            public class SelectedCtorBase
+            {
+                public SelectedCtorBase() { }
+                public SelectedCtorBase(int value) { _ = Read(); }
+                public virtual int Read() => 0;
+            }
+            public class SelectedCtorDerived : SelectedCtorBase
+            {
+                public SelectedCtorDerived() : base() { }
+                public override int Read() => Compute();
+                private int Compute() => 7;
+            }
+            """);
+        try
+        {
+            var preview = await TypeExtractionService.PreviewExtractTypeAsync(
+                fixture.WorkspaceId, fixture.FilePath, "SelectedCtorDerived", ["Compute"],
+                "ComputeHelper", null, CancellationToken.None);
+            await AssertModifiedSolutionCompilesAsync(preview.PreviewToken);
+        }
+        finally
+        {
+            WorkspaceManager.Close(fixture.WorkspaceId);
+        }
+    }
+
+    [TestMethod]
+    [DataRow("using (this) { }")]
+    [DataRow("using (var owned = this) { }")]
+    [DataRow("using var owned = this;")]
+    public async Task ExtractType_BaseConstructorImplicitDispose_RefusesBeforeStorage(string constructorBody)
+    {
+        var fixture = await CreateExtractionFixtureAsync("DisposeDispatchFixture.cs", $$"""
+            namespace SampleLib;
+            public class DisposeBase : System.IDisposable
+            {
+                public DisposeBase() { {{constructorBody}} }
+                public virtual void Dispose() { }
+            }
+            public class DisposeDerived : DisposeBase
+            {
+                public override void Dispose() => Compute();
+                private void Compute() { }
+            }
+            """);
+        try
+        {
+            var version = WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId);
+            await Assert.ThrowsExactlyAsync<ExtractTypeBlockingDependencyException>(() =>
+                TypeExtractionService.PreviewExtractTypeAsync(
+                    fixture.WorkspaceId, fixture.FilePath, "DisposeDerived", ["Compute"],
+                    "ComputeHelper", null, CancellationToken.None));
+            FileOperationIntegrationTests.AssertNoStoredPreviews(PreviewStore, fixture.WorkspaceId);
+            Assert.AreEqual(version, WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId));
+            Assert.IsFalse(File.Exists(Path.Combine(Path.GetDirectoryName(fixture.FilePath)!, "ComputeHelper.cs")));
+        }
+        finally
+        {
+            WorkspaceManager.Close(fixture.WorkspaceId);
+        }
+    }
+
     /// <summary>
     /// Acceptance gate for type-extraction-composition-constructor-coverage: the previewed source
     /// (updated source type + generated new type) must compile with zero errors — specifically none
