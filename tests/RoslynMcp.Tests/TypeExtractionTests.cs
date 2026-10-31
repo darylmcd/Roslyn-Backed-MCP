@@ -1722,6 +1722,75 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         }
     }
 
+    [TestMethod]
+    [DataRow("Read()", "public override int Read() => Compute();")]
+    [DataRow("((IBaseRead)this).Read()", "int IBaseRead.Read() => Compute();")]
+    [DataRow("Read()", "public override int Read() => Relay(); private int Relay() => Compute();")]
+    [DataRow("Dispatch()", "public override int Read() => Compute();")]
+    public async Task ExtractType_BaseConstructorDispatchToExtractedHelper_RefusesBeforeStorage(
+        string baseCall, string implementation)
+    {
+        var fixture = await CreateExtractionFixtureAsync("BaseDispatchFixture.cs", $$"""
+            namespace SampleLib;
+
+            public interface IBaseRead { int Read(); }
+            public class BaseDispatchFixture : IBaseRead
+            {
+                public BaseDispatchFixture() { _ = {{baseCall}}; }
+                public virtual int Read() => 0;
+                private int Dispatch() => Read();
+            }
+            public class DerivedDispatchFixture : BaseDispatchFixture, IBaseRead
+            {
+                {{implementation}}
+                private int Compute() => 7;
+            }
+            """);
+        try
+        {
+            var version = WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId);
+            var target = Path.Combine(Path.GetDirectoryName(fixture.FilePath)!, "ComputeHelper.cs");
+            var exception = await Assert.ThrowsExactlyAsync<ExtractTypeBlockingDependencyException>(() =>
+                TypeExtractionService.PreviewExtractTypeAsync(
+                    fixture.WorkspaceId, fixture.FilePath, "DerivedDispatchFixture", ["Compute"],
+                    "ComputeHelper", null, CancellationToken.None));
+            Assert.IsTrue(exception.BlockingDependencies.Any(d => d.Member.Contains("Read", StringComparison.Ordinal)),
+                string.Join("; ", exception.BlockingDependencies.Select(d => $"{d.Member}: {d.Reason}")));
+            FileOperationIntegrationTests.AssertNoStoredPreviews(PreviewStore, fixture.WorkspaceId);
+            Assert.AreEqual(version, WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId));
+            Assert.IsFalse(File.Exists(target));
+        }
+        finally
+        {
+            WorkspaceManager.Close(fixture.WorkspaceId);
+        }
+    }
+
+    [TestMethod]
+    public async Task ExtractType_BaseConstructorWithoutDispatch_AllowsRetainedOverride()
+    {
+        var fixture = await CreateExtractionFixtureAsync("SafeBaseFixture.cs", """
+            namespace SampleLib;
+            public class SafeBase { public SafeBase() { } public virtual int Read() => 0; }
+            public class SafeDerived : SafeBase
+            {
+                public override int Read() => Compute();
+                private int Compute() => 7;
+            }
+            """);
+        try
+        {
+            var preview = await TypeExtractionService.PreviewExtractTypeAsync(
+                fixture.WorkspaceId, fixture.FilePath, "SafeDerived", ["Compute"],
+                "ComputeHelper", null, CancellationToken.None);
+            await AssertModifiedSolutionCompilesAsync(preview.PreviewToken);
+        }
+        finally
+        {
+            WorkspaceManager.Close(fixture.WorkspaceId);
+        }
+    }
+
     /// <summary>
     /// Acceptance gate for type-extraction-composition-constructor-coverage: the previewed source
     /// (updated source type + generated new type) must compile with zero errors — specifically none

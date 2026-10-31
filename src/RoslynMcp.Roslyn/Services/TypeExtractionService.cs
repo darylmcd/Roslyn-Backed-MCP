@@ -60,6 +60,8 @@ public sealed class TypeExtractionService : ITypeExtractionService
         var blockingDependencies = CollectExtractTypeBlockingDependencies(semanticModel, typeSymbol, analysisNodes, ct);
         blockingDependencies.AddRange(await CollectMemberContractBlockersAsync(
             solution, semanticModel, typeSymbol, analysisNodes, ct).ConfigureAwait(false));
+        blockingDependencies.AddRange(CollectBaseConstructorDispatchBlockers(
+            semanticModel, typeSymbol, typeDecl, analysisNodes, ct));
 
         // BUG-005 (#2/#3): Refuse to generate code that the warnings prove will not compile.
         // The previous behavior emitted the warnings but still produced a preview that referenced
@@ -167,6 +169,127 @@ public sealed class TypeExtractionService : ITypeExtractionService
         return new RefactoringPreviewDto(
             token, description, changes,
             Warnings: null);
+    }
+
+    private static List<BlockingDependencyDto> CollectBaseConstructorDispatchBlockers(
+        SemanticModel semanticModel, INamedTypeSymbol typeSymbol, TypeDeclarationSyntax typeDecl,
+        IReadOnlyList<SyntaxNode> analysisNodes, CancellationToken ct)
+    {
+        var result = new List<BlockingDependencyDto>();
+        if (typeSymbol.BaseType is null || typeSymbol.BaseType.SpecialType == SpecialType.System_Object)
+            return result;
+
+        var compilation = semanticModel.Compilation;
+        var extracted = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
+        foreach (var node in analysisNodes.Where(IsDeclarationNode))
+        {
+            if (semanticModel.GetDeclaredSymbol(node, ct) is { IsStatic: false } symbol)
+                extracted.Add(symbol.OriginalDefinition);
+        }
+
+        if (extracted.Count == 0)
+            return result;
+
+        // Follow retained calls as well as direct references: a dispatched override may reach
+        // the helper through another method or property on the derived type.
+        var visited = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
+        bool UsesExtractedInstance(ISymbol member)
+        {
+            if (!visited.Add(member.OriginalDefinition)) return false;
+            foreach (var reference in member.DeclaringSyntaxReferences)
+            {
+                var declaration = reference.GetSyntax(ct);
+                var model = compilation.GetSemanticModel(declaration.SyntaxTree);
+                foreach (var name in declaration.DescendantNodes().OfType<SimpleNameSyntax>())
+                {
+                    var target = model.GetSymbolInfo(name, ct).Symbol;
+                    if (target is null) continue;
+                    if (extracted.Contains(target.OriginalDefinition)) return true;
+                    if (SymbolEqualityComparer.Default.Equals(target.ContainingType, typeSymbol)
+                        && UsesExtractedInstance(target)) return true;
+                }
+            }
+            return false;
+        }
+
+        static bool IsDispatchImplementation(INamedTypeSymbol owner, ISymbol member)
+        {
+            if (member is IMethodSymbol { IsOverride: true }) return true;
+            if (member is IPropertySymbol { IsOverride: true }) return true;
+            return owner.AllInterfaces.Any(iface => iface.GetMembers().Any(contract =>
+                SymbolEqualityComparer.Default.Equals(owner.FindImplementationForInterfaceMember(contract), member)));
+        }
+
+        bool DispatchesTo(ISymbol called, ISymbol implementation)
+        {
+            if (SymbolEqualityComparer.Default.Equals(called.OriginalDefinition, implementation.OriginalDefinition))
+                return true;
+            for (var overridden = (implementation as IMethodSymbol)?.OverriddenMethod;
+                 overridden is not null; overridden = overridden.OverriddenMethod)
+            {
+                if (SymbolEqualityComparer.Default.Equals(called.OriginalDefinition, overridden.OriginalDefinition))
+                    return true;
+            }
+            for (var overridden = (implementation as IPropertySymbol)?.OverriddenProperty;
+                 overridden is not null; overridden = overridden.OverriddenProperty)
+            {
+                if (SymbolEqualityComparer.Default.Equals(called.OriginalDefinition, overridden.OriginalDefinition))
+                    return true;
+            }
+            return typeSymbol.AllInterfaces.Any(iface => iface.GetMembers().Any(contract =>
+                SymbolEqualityComparer.Default.Equals(called.OriginalDefinition, contract.OriginalDefinition)
+                && SymbolEqualityComparer.Default.Equals(typeSymbol.FindImplementationForInterfaceMember(contract), implementation)));
+        }
+
+        bool BaseConstructorMayCall(ISymbol implementation)
+        {
+            var visitedBaseMembers = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
+            bool ReachesDispatch(ISymbol member)
+            {
+                if (!visitedBaseMembers.Add(member.OriginalDefinition)) return false;
+                foreach (var reference in member.DeclaringSyntaxReferences)
+                {
+                    var declaration = reference.GetSyntax(ct);
+                    if (!compilation.SyntaxTrees.Contains(declaration.SyntaxTree)) return true;
+                    var model = compilation.GetSemanticModel(declaration.SyntaxTree);
+                    foreach (var name in declaration.DescendantNodes().OfType<SimpleNameSyntax>())
+                    {
+                        var called = model.GetSymbolInfo(name, ct).Symbol;
+                        if (called is null) continue;
+                        if (DispatchesTo(called, implementation)) return true;
+                        if (called is IMethodSymbol or IPropertySymbol
+                            && called.ContainingType is { } owner
+                            && !SymbolEqualityComparer.Default.Equals(owner, typeSymbol)
+                            && ReachesDispatch(called)) return true;
+                    }
+                }
+                return false;
+            }
+            for (var baseType = typeSymbol.BaseType; baseType is not null && baseType.SpecialType != SpecialType.System_Object;
+                 baseType = baseType.BaseType)
+            {
+                // Metadata bodies cannot be inspected. Refuse a hazardous dispatch conservatively.
+                if (baseType.InstanceConstructors.Any(ctor =>
+                    ctor.DeclaringSyntaxReferences.Length == 0 && !ctor.IsImplicitlyDeclared)) return true;
+                foreach (var ctor in baseType.InstanceConstructors)
+                {
+                    if (ReachesDispatch(ctor)) return true;
+                }
+            }
+            return false;
+        }
+
+        foreach (var member in typeDecl.Members)
+        {
+            if (analysisNodes.Any(node => node == member)) continue;
+            if (semanticModel.GetDeclaredSymbol(member, ct) is not { } symbol) continue;
+            if (!IsDispatchImplementation(typeSymbol, symbol)) continue;
+            visited.Clear();
+            if (!UsesExtractedInstance(symbol) || !BaseConstructorMayCall(symbol)) continue;
+            result.Add(new BlockingDependencyDto(symbol.Name,
+                $"Base construction can dispatch to retained member '{symbol.Name}' before the extracted helper is assigned."));
+        }
+        return result;
     }
 
     /// <summary>
