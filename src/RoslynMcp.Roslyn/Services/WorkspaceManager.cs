@@ -122,6 +122,8 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
     private TaskCompletionSource? _sourceOperationsDrained;
     private int _slowRemovalCount;
     private TaskCompletionSource? _slowRemovalsDrained;
+    private int _activeLoadCount;
+    private TaskCompletionSource? _loadsDrained;
     private Task? _shutdownTask;
     private ExceptionDispatchInfo? _shutdownFailure;
 
@@ -364,6 +366,33 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
         IDictionary<string, string>? globalProperties,
         CancellationToken ct)
     {
+        lock (_lifecycleSync)
+        {
+            ObjectDisposedException.ThrowIf(_disposing, this);
+            if (_activeLoadCount++ == 0)
+                _loadsDrained = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+        try
+        {
+            return await LoadCoreAsync(path, evictPolicy, globalProperties, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            lock (_lifecycleSync)
+            {
+                if (--_activeLoadCount == 0) _loadsDrained!.TrySetResult();
+            }
+        }
+    }
+
+    private async Task<WorkspaceStatusDto> LoadCoreAsync(
+        string path,
+        EvictPolicy evictPolicy,
+        IDictionary<string, string>? globalProperties,
+        CancellationToken ct)
+    {
+        using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(ct, _lifetimeCancellation.Token);
+        ct = linkedCancellation.Token;
         var fullPath = ValidateWorkspacePath(path);
 
         // workspace-session-deduplication: if the caller is loading a path that is already
@@ -446,6 +475,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
         try
         {
             await LoadIntoSessionAsync(session, fullPath, globalProperties, ct).ConfigureAwait(false);
+            ct.ThrowIfCancellationRequested();
 
             // Second dedup check, this time for the race window between our scan above and
             // another concurrent LoadAsync call that won the semaphore with the same path.
@@ -475,14 +505,17 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
                 }
             }
 
-            if (!_sessions.TryAdd(workspaceId, session))
+            lock (_lifecycleSync)
             {
-                throw new InvalidOperationException($"Workspace '{workspaceId}' already exists.");
-            }
+                ObjectDisposedException.ThrowIf(_disposing || _removalAdmissionClosed, this);
+                ct.ThrowIfCancellationRequested();
+                if (!_sessions.TryAdd(workspaceId, session))
+                    throw new InvalidOperationException($"Workspace '{workspaceId}' already exists.");
 
-            slotTransferred = true;
-            _fileWatcher.Watch(workspaceId, session.LoadedPath!);
-            return BuildStatus(session);
+                slotTransferred = true;
+                _fileWatcher.Watch(workspaceId, session.LoadedPath!);
+                return BuildStatus(session);
+            }
         }
         catch (Exception ex)
         {
@@ -1249,7 +1282,9 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
             _disposing = true;
             cancellationIssued = new TaskCompletionSource<Exception?>();
             shutdown = ShutdownAsync(cancellationIssued.Task,
-                _sourceOperationsDrained?.Task ?? Task.CompletedTask, _rootRetirementTasks.Values.ToArray());
+                _sourceOperationsDrained?.Task ?? Task.CompletedTask,
+                _loadsDrained?.Task ?? Task.CompletedTask,
+                _rootRetirementTasks.Values.ToArray());
             _shutdownTask = shutdown;
             // Observe failures even when the only caller uses deferred synchronous Dispose.
             // DisposeAsync still awaits and reports the original shared failure.
@@ -1267,12 +1302,14 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
         return shutdown;
     }
 
-    private async Task ShutdownAsync(Task<Exception?> cancellationIssued, Task sourceDrained, Task[] retirementTasks)
+    private async Task ShutdownAsync(Task<Exception?> cancellationIssued, Task sourceDrained, Task loadsDrained, Task[] retirementTasks)
     {
         var cancellationFailure = await cancellationIssued.ConfigureAwait(false);
         var failures = new List<Exception>();
         if (cancellationFailure is not null) failures.Add(cancellationFailure);
         try { await sourceDrained.ConfigureAwait(false); }
+        catch (Exception exception) { failures.Add(exception); }
+        try { await loadsDrained.ConfigureAwait(false); }
         catch (Exception exception) { failures.Add(exception); }
         try { await Task.WhenAll(retirementTasks).ConfigureAwait(false); }
         catch (Exception exception) { failures.Add(exception); }
