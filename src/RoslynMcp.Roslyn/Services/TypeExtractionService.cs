@@ -3,6 +3,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.CodeAnalysis.Formatting;
+using Microsoft.CodeAnalysis.Operations;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
@@ -78,6 +79,17 @@ public sealed class TypeExtractionService : ITypeExtractionService
                 $"Either include the referenced members in the extraction or perform a manual redesign first. " +
                 $"Details: {summary}",
                 blockingDependencies);
+        }
+
+        var constructorDispatchBlockers = CollectBaseConstructorDispatchBlockers(
+            semanticModel, typeSymbol, typeDecl, analysisNodes, ct);
+        if (constructorDispatchBlockers.Count > 0)
+        {
+            throw new ExtractTypeBlockingDependencyException(
+                $"Refusing to extract type '{newTypeName}' from '{sourceTypeName}': base construction can dispatch " +
+                "into a retained member before the extracted helper is assigned. " +
+                $"Details: {string.Join("; ", constructorDispatchBlockers.Select(blocker => blocker.Reason))}",
+                constructorDispatchBlockers);
         }
 
         // dr-9-1-does-not-update-external-consumer-call-sites (SampleSolution audit §9.1):
@@ -167,6 +179,686 @@ public sealed class TypeExtractionService : ITypeExtractionService
         return new RefactoringPreviewDto(
             token, description, changes,
             Warnings: null);
+    }
+
+    private static List<BlockingDependencyDto> CollectBaseConstructorDispatchBlockers(
+        SemanticModel semanticModel, INamedTypeSymbol typeSymbol, TypeDeclarationSyntax typeDecl,
+        IReadOnlyList<SyntaxNode> analysisNodes, CancellationToken ct)
+    {
+        var result = new List<BlockingDependencyDto>();
+        if (typeSymbol.BaseType is null || typeSymbol.BaseType.SpecialType == SpecialType.System_Object)
+            return result;
+
+        var compilation = semanticModel.Compilation;
+        var extracted = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
+        foreach (var node in analysisNodes.Where(IsDeclarationNode))
+        {
+            if (semanticModel.GetDeclaredSymbol(node, ct) is { IsStatic: false } symbol)
+                extracted.Add(symbol.OriginalDefinition);
+        }
+
+        if (extracted.Count == 0)
+            return result;
+
+        // Follow retained calls as well as direct references: a dispatched override may reach
+        // the helper through another method or property on the derived type.
+        static IEnumerable<SyntaxNode> ExecutedDescendants(SyntaxNode declaration)
+            => declaration.DescendantNodes().Where(node => !node.AncestorsAndSelf()
+                .TakeWhile(ancestor => ancestor != declaration)
+                .Any(ancestor => ancestor is AnonymousFunctionExpressionSyntax or LocalFunctionStatementSyntax
+                    or InvocationExpressionSyntax
+                {
+                    Expression: IdentifierNameSyntax { Identifier.Text: "nameof" }
+                }));
+
+        var boundDelegateArguments = new Dictionary<ISymbol, (ExpressionSyntax Value, SemanticModel Model)>(
+            SymbolEqualityComparer.Default);
+        bool InspectCalledMember(ExpressionSyntax expression, ISymbol target, SemanticModel model,
+            Func<ISymbol, bool> inspect)
+        {
+            if (expression is not InvocationExpressionSyntax invocation || target is not IMethodSymbol method)
+                return inspect(target);
+
+            var previous = new List<(ISymbol Parameter, bool HadValue, (ExpressionSyntax Value, SemanticModel Model) Binding)>();
+            for (var index = 0; index < invocation.ArgumentList.Arguments.Count; index++)
+            {
+                var argument = invocation.ArgumentList.Arguments[index];
+                var parameter = argument.NameColon is { } named
+                    ? method.Parameters.FirstOrDefault(candidate => candidate.Name == named.Name.Identifier.Text)
+                    : index < method.Parameters.Length ? method.Parameters[index] : null;
+                if (parameter?.Type.TypeKind != TypeKind.Delegate) continue;
+                var hadValue = boundDelegateArguments.TryGetValue(parameter, out var prior);
+                previous.Add((parameter, hadValue, prior));
+                boundDelegateArguments[parameter] = (argument.Expression, model);
+            }
+            try { return inspect(target); }
+            finally
+            {
+                foreach (var (parameter, hadValue, prior) in previous)
+                {
+                    if (hadValue) boundDelegateArguments[parameter] = prior;
+                    else boundDelegateArguments.Remove(parameter);
+                }
+            }
+        }
+
+        static bool IsInvocationCallee(SyntaxNode expression)
+            => expression.Parent is InvocationExpressionSyntax invocation && invocation.Expression == expression
+                || expression is SimpleNameSyntax name
+                    && name.Parent is MemberAccessExpressionSyntax member && member.Name == name
+                    && member.Parent is InvocationExpressionSyntax call && call.Expression == member;
+
+        bool InvokedDelegateMayReach(InvocationExpressionSyntax invocation, SemanticModel model,
+            ISet<ISymbol> activeDelegates,
+            Func<SyntaxNode, SemanticModel, bool> inspectBody, Func<ISymbol, bool> inspectMember)
+        {
+            var invoked = model.GetSymbolInfo(invocation.Expression, ct).Symbol;
+            if (invoked is not ILocalSymbol and not IParameterSymbol) return false;
+            var delegateType = invoked switch
+            {
+                ILocalSymbol local => local.Type,
+                IParameterSymbol parameter => parameter.Type,
+                _ => null
+            };
+            if (delegateType?.TypeKind != TypeKind.Delegate) return false;
+
+            bool InspectValue(ExpressionSyntax value, SemanticModel valueModel)
+            {
+                switch (value)
+                {
+                    case AnonymousFunctionExpressionSyntax lambda:
+                        return inspectBody(lambda, valueModel);
+                    case ParenthesizedExpressionSyntax parenthesized:
+                        return InspectValue(parenthesized.Expression, valueModel);
+                    case CastExpressionSyntax cast:
+                        return InspectValue(cast.Expression, valueModel);
+                    case ConditionalExpressionSyntax conditional:
+                        return InspectValue(conditional.WhenTrue, valueModel)
+                            || InspectValue(conditional.WhenFalse, valueModel);
+                }
+
+                return valueModel.GetSymbolInfo(value, ct).Symbol switch
+                {
+                    ILocalSymbol local => InspectLocal(local),
+                    IParameterSymbol parameter => InspectParameter(parameter),
+                    IMethodSymbol method => inspectMember(method),
+                    _ => true // Unknown delegate origin cannot prove the dispatch safe.
+                };
+            }
+
+            bool InspectParameter(IParameterSymbol parameter)
+            {
+                if (!activeDelegates.Add(parameter.OriginalDefinition)) return false;
+                try
+                {
+                    bool WriteMayPrecedeInvocation(SyntaxNode write, SyntaxNode scope)
+                    {
+                        if (write.SyntaxTree != invocation.SyntaxTree || write.SpanStart < invocation.SpanStart)
+                            return true;
+                        var callBlock = invocation.FirstAncestorOrSelf<BlockSyntax>();
+                        var scopeModel = compilation.GetSemanticModel(scope.SyntaxTree);
+                        var scopeSymbol = scopeModel.GetDeclaredSymbol(scope, ct);
+                        if (scopeSymbol is null) return true;
+
+                        var visitedCalls = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
+                        var visitedCallbacks = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
+                        bool CallbackMayReenter(ExpressionSyntax value, SemanticModel valueModel)
+                        {
+                            if (value is AnonymousFunctionExpressionSyntax lambda)
+                                return ExecutedDescendants(lambda).OfType<InvocationExpressionSyntax>()
+                                    .Any(MayReenterScope);
+                            if (value is ParenthesizedExpressionSyntax parenthesized)
+                                return CallbackMayReenter(parenthesized.Expression, valueModel);
+                            if (value is CastExpressionSyntax cast)
+                                return CallbackMayReenter(cast.Expression, valueModel);
+                            if (valueModel.GetSymbolInfo(value, ct).Symbol is not ILocalSymbol local
+                                || !visitedCallbacks.Add(local.OriginalDefinition)) return false;
+                            foreach (var reference in local.DeclaringSyntaxReferences)
+                            {
+                                if (reference.GetSyntax(ct) is not VariableDeclaratorSyntax variable) continue;
+                                var localModel = compilation.GetSemanticModel(variable.SyntaxTree);
+                                if (variable.Initializer?.Value is { } initializer
+                                    && CallbackMayReenter(initializer, localModel)) return true;
+                                var localScope = variable.FirstAncestorOrSelf<BaseMethodDeclarationSyntax>();
+                                if (localScope is null) continue;
+                                foreach (var assignment in localScope.DescendantNodes().OfType<AssignmentExpressionSyntax>())
+                                {
+                                    if (SymbolEqualityComparer.Default.Equals(
+                                            localModel.GetSymbolInfo(assignment.Left, ct).Symbol, local)
+                                        && CallbackMayReenter(assignment.Right, localModel)) return true;
+                                }
+                            }
+                            return false;
+                        }
+
+                        bool MayReenterScope(InvocationExpressionSyntax call)
+                        {
+                            var callModel = compilation.GetSemanticModel(call.SyntaxTree);
+                            var called = callModel.GetSymbolInfo(call, ct).Symbol;
+                            if (called is null) return true;
+                            if (SymbolEqualityComparer.Default.Equals(called.OriginalDefinition, scopeSymbol.OriginalDefinition))
+                                return true;
+                            if (called is IMethodSymbol { MethodKind: MethodKind.DelegateInvoke }) return true;
+                            if (!visitedCalls.Add(called.OriginalDefinition)) return false;
+                            foreach (var reference in called.DeclaringSyntaxReferences)
+                            {
+                                var declaration = reference.GetSyntax(ct);
+                                if (!compilation.SyntaxTrees.Contains(declaration.SyntaxTree)) return true;
+                                if (ExecutedDescendants(declaration).OfType<InvocationExpressionSyntax>()
+                                    .Any(MayReenterScope)) return true;
+                            }
+                            if (called.DeclaringSyntaxReferences.Length == 0
+                                && call.ArgumentList.Arguments.Any(argument =>
+                                    CallbackMayReenter(argument.Expression, callModel))) return true;
+                            // Metadata code cannot directly name a private source method unless
+                            // this instance is handed to it. Other visibility remains uncertain.
+                            return called.DeclaringSyntaxReferences.Length == 0
+                                && (scopeSymbol.DeclaredAccessibility != Accessibility.Private
+                                    || call.ArgumentList.Arguments.Any(argument =>
+                                        argument.Expression.DescendantNodesAndSelf().OfType<ThisExpressionSyntax>().Any()));
+                        }
+
+                        // Source order proves safety only for direct statements in one top-level
+                        // body. A nested/repeated region may execute a later write before a later
+                        // invocation even when the write has a greater source position.
+                        var callStatement = invocation.FirstAncestorOrSelf<StatementSyntax>();
+                        var writeStatement = write.FirstAncestorOrSelf<StatementSyntax>();
+                        return callBlock is null || callBlock.Parent != scope
+                            || callStatement is not ExpressionStatementSyntax || callStatement.Parent != callBlock
+                            || writeStatement is not ExpressionStatementSyntax || writeStatement.Parent != callBlock
+                            || callBlock.DescendantNodes().Any(node => node is GotoStatementSyntax or LabeledStatementSyntax)
+                            || ExecutedDescendants(scope).OfType<InvocationExpressionSyntax>()
+                                .Any(otherCall => otherCall != invocation && MayReenterScope(otherCall));
+                    }
+
+                    foreach (var reference in parameter.DeclaringSyntaxReferences)
+                    {
+                        var syntax = reference.GetSyntax(ct);
+                        if (!compilation.SyntaxTrees.Contains(syntax.SyntaxTree)) return true;
+                        var scope = syntax.FirstAncestorOrSelf<BaseMethodDeclarationSyntax>() as SyntaxNode
+                            ?? syntax.FirstAncestorOrSelf<LocalFunctionStatementSyntax>() as SyntaxNode
+                            ?? syntax.FirstAncestorOrSelf<AnonymousFunctionExpressionSyntax>();
+                        if (scope is null) return true;
+                        var scopeModel = compilation.GetSemanticModel(syntax.SyntaxTree);
+                        if (scope.DescendantNodes().OfType<AssignmentExpressionSyntax>().Any(assignment =>
+                                SymbolEqualityComparer.Default.Equals(
+                                    scopeModel.GetSymbolInfo(assignment.Left, ct).Symbol, parameter)
+                                && WriteMayPrecedeInvocation(assignment, scope))
+                            || scope.DescendantNodes().OfType<ArgumentSyntax>().Any(argument =>
+                                (argument.RefOrOutKeyword.IsKind(SyntaxKind.RefKeyword)
+                                    || argument.RefOrOutKeyword.IsKind(SyntaxKind.OutKeyword))
+                                && SymbolEqualityComparer.Default.Equals(
+                                    scopeModel.GetSymbolInfo(argument.Expression, ct).Symbol, parameter)
+                                && WriteMayPrecedeInvocation(argument, scope)))
+                            return true;
+                    }
+                    return !boundDelegateArguments.TryGetValue(parameter, out var binding)
+                        || InspectValue(binding.Value, binding.Model);
+                }
+                finally { activeDelegates.Remove(parameter.OriginalDefinition); }
+            }
+
+            bool InspectLocal(ILocalSymbol local)
+            {
+                if (!activeDelegates.Add(local.OriginalDefinition)) return false;
+                try
+                {
+                    var hasSource = false;
+                    foreach (var reference in local.DeclaringSyntaxReferences)
+                    {
+                        if (reference.GetSyntax(ct) is not VariableDeclaratorSyntax variable) continue;
+                        var scopeModel = compilation.GetSemanticModel(variable.SyntaxTree);
+                        if (variable.Initializer?.Value is { } initializer)
+                        {
+                            hasSource = true;
+                            if (InspectValue(initializer, scopeModel)) return true;
+                        }
+
+                        var scope = variable.FirstAncestorOrSelf<BaseMethodDeclarationSyntax>() as SyntaxNode
+                            ?? variable.FirstAncestorOrSelf<LocalFunctionStatementSyntax>();
+                        if (scope is null) return true;
+                        foreach (var assignment in scope.DescendantNodes().OfType<AssignmentExpressionSyntax>())
+                        {
+                            if (!SymbolEqualityComparer.Default.Equals(scopeModel.GetSymbolInfo(assignment.Left, ct).Symbol, local))
+                                continue;
+                            hasSource = true;
+                            if (InspectValue(assignment.Right, scopeModel)) return true;
+                        }
+                    }
+                    return !hasSource;
+                }
+                finally { activeDelegates.Remove(local.OriginalDefinition); }
+            }
+
+            return invoked is IParameterSymbol invokedParameter
+                ? InspectParameter(invokedParameter) : InspectLocal((ILocalSymbol)invoked);
+        }
+
+        var visited = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
+        var activeRetainedDelegates = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
+        bool UsesExtractedInstance(ISymbol member)
+        {
+            if (!visited.Add(member.OriginalDefinition)) return false;
+            try
+            {
+                foreach (var reference in member.DeclaringSyntaxReferences)
+                {
+                    var declaration = reference.GetSyntax(ct);
+                    if (!compilation.SyntaxTrees.Contains(declaration.SyntaxTree)) return true;
+                    var model = compilation.GetSemanticModel(declaration.SyntaxTree);
+                    if (UsesExtractedInstanceBody(declaration, model)) return true;
+                }
+                return false;
+            }
+            finally { visited.Remove(member.OriginalDefinition); }
+        }
+
+        bool UsesExtractedInstanceBody(SyntaxNode declaration, SemanticModel model)
+        {
+            foreach (var expression in ExecutedDescendants(declaration).OfType<ExpressionSyntax>())
+            {
+                if (expression is InvocationExpressionSyntax
+                    { Expression: IdentifierNameSyntax { Identifier.Text: "nameof" } }) continue;
+                if (IsInvocationCallee(expression)) continue;
+                if (expression is InvocationExpressionSyntax invocation
+                    && InvokedDelegateMayReach(invocation, model, activeRetainedDelegates,
+                        UsesExtractedInstanceBody, UsesExtractedInstance))
+                    return true;
+                var target = model.GetSymbolInfo(expression, ct).Symbol;
+                if (target is null) continue;
+                if (extracted.Contains(target.OriginalDefinition)) return true;
+                if (SymbolEqualityComparer.Default.Equals(target.ContainingType, typeSymbol)
+                    && InspectCalledMember(expression, target, model, UsesExtractedInstance)) return true;
+            }
+            return false;
+        }
+
+        static bool IsDispatchImplementation(INamedTypeSymbol owner, ISymbol member)
+        {
+            if (member is IMethodSymbol { IsOverride: true }) return true;
+            if (member is IPropertySymbol { IsOverride: true }) return true;
+            return owner.AllInterfaces.Any(iface => iface.GetMembers().Any(contract =>
+                SymbolEqualityComparer.Default.Equals(owner.FindImplementationForInterfaceMember(contract), member)));
+        }
+
+        bool DispatchesTo(ISymbol called, ISymbol implementation)
+        {
+            if (SymbolEqualityComparer.Default.Equals(called.OriginalDefinition, implementation.OriginalDefinition))
+                return true;
+            for (var overridden = (implementation as IMethodSymbol)?.OverriddenMethod;
+                 overridden is not null; overridden = overridden.OverriddenMethod)
+            {
+                if (SymbolEqualityComparer.Default.Equals(called.OriginalDefinition, overridden.OriginalDefinition))
+                    return true;
+            }
+            for (var overridden = (implementation as IPropertySymbol)?.OverriddenProperty;
+                 overridden is not null; overridden = overridden.OverriddenProperty)
+            {
+                if (SymbolEqualityComparer.Default.Equals(called.OriginalDefinition, overridden.OriginalDefinition))
+                    return true;
+            }
+            return typeSymbol.AllInterfaces.Any(iface => iface.GetMembers().Any(contract =>
+            {
+                if (!SymbolEqualityComparer.Default.Equals(called.OriginalDefinition, contract.OriginalDefinition))
+                    return false;
+                var mapped = typeSymbol.FindImplementationForInterfaceMember(contract);
+                return mapped is not null
+                    && (SymbolEqualityComparer.Default.Equals(mapped.OriginalDefinition, implementation.OriginalDefinition)
+                        || (!SymbolEqualityComparer.Default.Equals(mapped.OriginalDefinition, called.OriginalDefinition)
+                            && DispatchesTo(mapped, implementation)));
+            }));
+        }
+
+        bool BaseConstructorMayCall(ISymbol implementation)
+        {
+            var visitedBaseMembers = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
+            var activeBaseDelegates = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
+            bool MayBeCurrentInstanceCore(ExpressionSyntax expression, SemanticModel model,
+                HashSet<ISymbol> visitedLocals)
+            {
+                switch (expression)
+                {
+                    case ParenthesizedExpressionSyntax parenthesized:
+                        return MayBeCurrentInstanceCore(parenthesized.Expression, model, visitedLocals);
+                    case CastExpressionSyntax cast:
+                        return MayBeCurrentInstanceCore(cast.Expression, model, visitedLocals);
+                    case AssignmentExpressionSyntax assignment:
+                        return MayBeCurrentInstanceCore(assignment.Right, model, visitedLocals);
+                    case InitializerExpressionSyntax initializer:
+                        return initializer.Expressions.Any(value =>
+                            MayBeCurrentInstanceCore(value, model, visitedLocals));
+                    case ObjectCreationExpressionSyntax creation:
+                        return creation.ArgumentList?.Arguments.Any(argument =>
+                            MayBeCurrentInstanceCore(argument.Expression, model, visitedLocals)) == true
+                            || creation.Initializer is not null
+                                && MayBeCurrentInstanceCore(creation.Initializer, model, visitedLocals);
+                    case ImplicitObjectCreationExpressionSyntax implicitCreation:
+                        return implicitCreation.ArgumentList.Arguments.Any(argument =>
+                            MayBeCurrentInstanceCore(argument.Expression, model, visitedLocals))
+                            || implicitCreation.Initializer is not null
+                                && MayBeCurrentInstanceCore(implicitCreation.Initializer, model, visitedLocals);
+                    case LiteralExpressionSyntax:
+                    case AnonymousFunctionExpressionSyntax:
+                        return false;
+                    case IdentifierNameSyntax name when model.GetSymbolInfo(name, ct).Symbol is ILocalSymbol local:
+                        if (!visitedLocals.Add(local)) return true;
+                        try
+                        {
+                            foreach (var reference in local.DeclaringSyntaxReferences)
+                            {
+                                if (reference.GetSyntax(ct) is VariableDeclaratorSyntax { Initializer.Value: { } value })
+                                {
+                                    var scope = value.FirstAncestorOrSelf<BaseMethodDeclarationSyntax>() as SyntaxNode
+                                        ?? value.FirstAncestorOrSelf<LocalFunctionStatementSyntax>();
+                                    if (scope is null || scope.DescendantNodes().OfType<AssignmentExpressionSyntax>().Any(assignment =>
+                                            SymbolEqualityComparer.Default.Equals(model.GetSymbolInfo(assignment.Left, ct).Symbol, local))
+                                        || scope.DescendantNodes().OfType<ArgumentSyntax>().Any(argument =>
+                                            (argument.RefOrOutKeyword.IsKind(SyntaxKind.RefKeyword)
+                                                || argument.RefOrOutKeyword.IsKind(SyntaxKind.OutKeyword))
+                                            && SymbolEqualityComparer.Default.Equals(model.GetSymbolInfo(argument.Expression, ct).Symbol, local)))
+                                        return true;
+                                    return MayBeCurrentInstanceCore(value, model, visitedLocals);
+                                }
+                            }
+                            return true;
+                        }
+                        finally { visitedLocals.Remove(local); }
+                    default:
+                        // A call, property or parameter may return/alias `this`.
+                        return true;
+                }
+            }
+
+            bool MayBeCurrentInstance(ExpressionSyntax expression, SemanticModel model)
+                => MayBeCurrentInstanceCore(expression, model, new HashSet<ISymbol>(SymbolEqualityComparer.Default));
+
+            bool CallMayTargetCurrentInstance(ExpressionSyntax expression, SemanticModel model)
+            {
+                return expression switch
+                {
+                    MemberAccessExpressionSyntax member => MayBeCurrentInstance(member.Expression, model),
+                    ElementAccessExpressionSyntax element => MayBeCurrentInstance(element.Expression, model),
+                    InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax member } =>
+                        MayBeCurrentInstance(member.Expression, model),
+                    SimpleNameSyntax { Parent: MemberAccessExpressionSyntax member } when member.Name == expression =>
+                        MayBeCurrentInstance(member.Expression, model),
+                    _ => true
+                };
+            }
+
+            bool EnumeratorMayBeCurrentInstance(IMethodSymbol getEnumerator)
+            {
+                if (getEnumerator.DeclaringSyntaxReferences.Length == 0) return true;
+                foreach (var reference in getEnumerator.DeclaringSyntaxReferences)
+                {
+                    var body = reference.GetSyntax(ct);
+                    if (!compilation.SyntaxTrees.Contains(body.SyntaxTree)) return true;
+                    var model = compilation.GetSemanticModel(body.SyntaxTree);
+                    var returned = body switch
+                    {
+                        MethodDeclarationSyntax method when method.ExpressionBody is { } arrow =>
+                            new[] { arrow.Expression },
+                        MethodDeclarationSyntax method => ExecutedDescendants(method)
+                            .OfType<ReturnStatementSyntax>()
+                            .Where(statement => statement.Expression is not null)
+                            .Select(statement => statement.Expression!)
+                            .ToArray(),
+                        _ => []
+                    };
+                    if (returned.Length == 0 || returned.Any(value => MayBeCurrentInstance(value, model))) return true;
+                }
+                return false;
+            }
+
+            bool ReachesDispatch(ISymbol member)
+            {
+                if (!visitedBaseMembers.Add(member.OriginalDefinition)) return false;
+                try
+                {
+                    foreach (var reference in member.DeclaringSyntaxReferences)
+                    {
+                        var declaration = reference.GetSyntax(ct);
+                        if (!compilation.SyntaxTrees.Contains(declaration.SyntaxTree)) return true;
+                        var model = compilation.GetSemanticModel(declaration.SyntaxTree);
+                        if (BodyReachesDispatch(declaration, model)) return true;
+                    }
+                    return false;
+                }
+                finally { visitedBaseMembers.Remove(member.OriginalDefinition); }
+            }
+
+            bool OpaqueDelegateArgumentMayDispatch(ExpressionSyntax value, SemanticModel model,
+                HashSet<ISymbol> visitedDelegates)
+            {
+                if (value is AnonymousFunctionExpressionSyntax lambda)
+                    return BodyReachesDispatch(lambda, model);
+                if (value is ParenthesizedExpressionSyntax parenthesized)
+                    return OpaqueDelegateArgumentMayDispatch(parenthesized.Expression, model, visitedDelegates);
+                if (value is CastExpressionSyntax cast)
+                    return OpaqueDelegateArgumentMayDispatch(cast.Expression, model, visitedDelegates);
+                if (value is ConditionalExpressionSyntax conditional)
+                    return OpaqueDelegateArgumentMayDispatch(conditional.WhenTrue, model, visitedDelegates)
+                        || OpaqueDelegateArgumentMayDispatch(conditional.WhenFalse, model, visitedDelegates);
+
+                var symbol = model.GetSymbolInfo(value, ct).Symbol;
+                if (symbol is IMethodSymbol method)
+                    return DispatchesTo(method, implementation) || ReachesDispatch(method);
+                if (symbol is IParameterSymbol parameter)
+                {
+                    return !boundDelegateArguments.TryGetValue(parameter, out var binding)
+                        || OpaqueDelegateArgumentMayDispatch(binding.Value, binding.Model, visitedDelegates);
+                }
+                if (symbol is not ILocalSymbol local) return true;
+                if (!visitedDelegates.Add(local.OriginalDefinition)) return false;
+                var hasSource = false;
+                foreach (var reference in local.DeclaringSyntaxReferences)
+                {
+                    if (reference.GetSyntax(ct) is not VariableDeclaratorSyntax variable) continue;
+                    var localModel = compilation.GetSemanticModel(variable.SyntaxTree);
+                    if (variable.Initializer?.Value is { } initializer)
+                    {
+                        hasSource = true;
+                        if (OpaqueDelegateArgumentMayDispatch(initializer, localModel, visitedDelegates)) return true;
+                    }
+                    var scope = variable.FirstAncestorOrSelf<BaseMethodDeclarationSyntax>();
+                    if (scope is null) return true;
+                    foreach (var assignment in scope.DescendantNodes().OfType<AssignmentExpressionSyntax>())
+                    {
+                        if (!SymbolEqualityComparer.Default.Equals(
+                                localModel.GetSymbolInfo(assignment.Left, ct).Symbol, local)) continue;
+                        hasSource = true;
+                        if (OpaqueDelegateArgumentMayDispatch(assignment.Right, localModel, visitedDelegates)) return true;
+                    }
+                }
+                return !hasSource;
+            }
+
+            bool BodyReachesDispatch(SyntaxNode declaration, SemanticModel model)
+            {
+                foreach (var expression in ExecutedDescendants(declaration).OfType<ExpressionSyntax>())
+                {
+                    if (expression is InvocationExpressionSyntax
+                        { Expression: IdentifierNameSyntax { Identifier.Text: "nameof" } }) continue;
+                    if (IsInvocationCallee(expression)) continue;
+                    if (expression is InvocationExpressionSyntax invocation
+                        && InvokedDelegateMayReach(invocation, model, activeBaseDelegates,
+                            BodyReachesDispatch, ReachesDispatch)) return true;
+                    if (model.GetOperation(expression, ct) is IMethodReferenceOperation) continue;
+                    if (expression is InvocationExpressionSyntax dynamicInvocation
+                        && dynamicInvocation.Expression is MemberAccessExpressionSyntax dynamicMember
+                        && model.GetTypeInfo(dynamicMember.Expression, ct).Type?.TypeKind == TypeKind.Dynamic
+                        && MayBeCurrentInstance(dynamicMember.Expression, model)
+                        && implementation.Name == dynamicMember.Name.Identifier.ValueText) return true;
+                    if (expression is MemberAccessExpressionSyntax dynamicProperty
+                        && model.GetTypeInfo(dynamicProperty.Expression, ct).Type?.TypeKind == TypeKind.Dynamic
+                        && MayBeCurrentInstance(dynamicProperty.Expression, model)
+                        && implementation is IPropertySymbol { IsIndexer: false }
+                        && implementation.Name == dynamicProperty.Name.Identifier.ValueText) return true;
+                    if (expression is ElementAccessExpressionSyntax dynamicIndexer
+                        && model.GetTypeInfo(dynamicIndexer.Expression, ct).Type?.TypeKind == TypeKind.Dynamic
+                        && MayBeCurrentInstance(dynamicIndexer.Expression, model)
+                        && implementation is IPropertySymbol { IsIndexer: true }) return true;
+                    var called = model.GetSymbolInfo(expression, ct).Symbol;
+                    if (called is null) continue;
+                    if (expression is InvocationExpressionSyntax opaqueCall
+                        && called is IMethodSymbol { DeclaringSyntaxReferences.Length: 0 }
+                        && (opaqueCall.ArgumentList.Arguments.Any(argument =>
+                            (model.GetTypeInfo(argument.Expression, ct).ConvertedType?.TypeKind == TypeKind.Delegate
+                                || model.GetTypeInfo(argument.Expression, ct).Type?.TypeKind == TypeKind.Delegate)
+                                ? OpaqueDelegateArgumentMayDispatch(argument.Expression, model,
+                                    new HashSet<ISymbol>(SymbolEqualityComparer.Default))
+                                : MayBeCurrentInstance(argument.Expression, model))
+                            || called is IMethodSymbol { ReducedFrom: not null }
+                                && opaqueCall.Expression is MemberAccessExpressionSyntax reduced
+                                && MayBeCurrentInstance(reduced.Expression, model))) return true;
+                    if (!CallMayTargetCurrentInstance(expression, model)) continue;
+                    if (DispatchesTo(called, implementation)) return true;
+                    if (called is IMethodSymbol or IPropertySymbol
+                        && called.ContainingType is { } owner
+                        && !SymbolEqualityComparer.Default.Equals(owner, typeSymbol)
+                        && InspectCalledMember(expression, called, model, ReachesDispatch)) return true;
+                }
+
+                foreach (var each in ExecutedDescendants(declaration).OfType<CommonForEachStatementSyntax>())
+                {
+                    if (!MayBeCurrentInstance(each.Expression, model)) continue;
+                    var info = model.GetForEachStatementInfo(each);
+                    var enumerator = info.GetEnumeratorMethod;
+                    if (enumerator is not null
+                        && (DispatchesTo(enumerator, implementation) || ReachesDispatch(enumerator))) return true;
+                    if (enumerator is not null && EnumeratorMayBeCurrentInstance(enumerator)
+                        && (info.MoveNextMethod is { } next
+                                && (DispatchesTo(next, implementation) || ReachesDispatch(next))
+                            || info.CurrentProperty is { } current
+                                && (DispatchesTo(current, implementation) || ReachesDispatch(current))
+                            || info.DisposeMethod is { } disposeEnumerator
+                                && (DispatchesTo(disposeEnumerator, implementation) || ReachesDispatch(disposeEnumerator))))
+                        return true;
+                }
+
+                // `using` emits an implicit IDisposable.Dispose call; no expression node
+                // binds to that call, even though it can dispatch virtually into the derived type.
+                foreach (var asyncDisposal in new[] { false, true })
+                {
+                    var disposable = asyncDisposal
+                        ? compilation.GetTypeByMetadataName("System.IAsyncDisposable")
+                        : compilation.GetSpecialType(SpecialType.System_IDisposable);
+                    var dispose = disposable?.GetMembers(asyncDisposal ? "DisposeAsync" : "Dispose")
+                        .OfType<IMethodSymbol>().FirstOrDefault();
+                    if (disposable is null || dispose is null) continue;
+                    foreach (var usingStatement in ExecutedDescendants(declaration).OfType<UsingStatementSyntax>()
+                        .Where(statement => statement.AwaitKeyword.IsKind(SyntaxKind.AwaitKeyword) == asyncDisposal))
+                    {
+                        var resourceType = usingStatement.Expression is { } resource
+                            ? model.GetTypeInfo(resource, ct).Type as INamedTypeSymbol
+                            : usingStatement.Declaration is { Variables.Count: > 0 } variables
+                                ? (model.GetDeclaredSymbol(variables.Variables[0], ct) as ILocalSymbol)?.Type as INamedTypeSymbol
+                                : null;
+                        var resourceExpression = usingStatement.Expression
+                            ?? usingStatement.Declaration?.Variables.FirstOrDefault()?.Initializer?.Value;
+                        if (resourceType is not null && resourceExpression is not null
+                            && MayBeCurrentInstance(resourceExpression, model)
+                            && (SymbolEqualityComparer.Default.Equals(resourceType, disposable)
+                                || resourceType.AllInterfaces.Contains(disposable, SymbolEqualityComparer.Default))
+                            && (DispatchesTo(dispose, implementation)
+                                || ReachesDispatch(resourceType.FindImplementationForInterfaceMember(dispose) ?? dispose))) return true;
+                    }
+
+                    foreach (var usingDeclaration in ExecutedDescendants(declaration)
+                        .OfType<LocalDeclarationStatementSyntax>()
+                        .Where(local => local.UsingKeyword.IsKind(SyntaxKind.UsingKeyword)
+                            && local.AwaitKeyword.IsKind(SyntaxKind.AwaitKeyword) == asyncDisposal))
+                    {
+                        foreach (var variable in usingDeclaration.Declaration.Variables)
+                        {
+                            if (model.GetDeclaredSymbol(variable, ct) is not ILocalSymbol { Type: INamedTypeSymbol resourceType }) continue;
+                            if (variable.Initializer?.Value is not { } resourceExpression
+                                || !MayBeCurrentInstance(resourceExpression, model)) continue;
+                            if ((SymbolEqualityComparer.Default.Equals(resourceType, disposable)
+                                 || resourceType.AllInterfaces.Contains(disposable, SymbolEqualityComparer.Default))
+                                 && (DispatchesTo(dispose, implementation)
+                                     || ReachesDispatch(resourceType.FindImplementationForInterfaceMember(dispose) ?? dispose))) return true;
+                        }
+                    }
+                }
+                return false;
+            }
+            static IMethodSymbol? ParameterlessBaseConstructor(INamedTypeSymbol baseType)
+            {
+                return baseType.InstanceConstructors.FirstOrDefault(ctor => ctor.Parameters.Length == 0)
+                    ?? baseType.InstanceConstructors.FirstOrDefault(ctor =>
+                        ctor.Parameters.All(parameter => parameter.IsOptional || parameter.IsParams));
+            }
+
+            var visitedConstructors = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
+            bool WalkConstructor(IMethodSymbol ctor)
+            {
+                if (!visitedConstructors.Add(ctor.OriginalDefinition)) return false;
+                if (ctor.ContainingType.SpecialType == SpecialType.System_Object) return false;
+                if (!ctor.IsImplicitlyDeclared && ctor.DeclaringSyntaxReferences.Length == 0) return true;
+                if (ReachesDispatch(ctor)) return true;
+
+                ConstructorDeclarationSyntax? declaration = null;
+                foreach (var reference in ctor.DeclaringSyntaxReferences)
+                {
+                    declaration = reference.GetSyntax(ct) as ConstructorDeclarationSyntax;
+                    if (declaration is not null) break;
+                }
+
+                if (declaration?.Initializer is { } initializer)
+                {
+                    if (!compilation.SyntaxTrees.Contains(declaration.SyntaxTree)) return true;
+                    var model = compilation.GetSemanticModel(declaration.SyntaxTree);
+                    var target = model.GetSymbolInfo(initializer, ct).Symbol as IMethodSymbol;
+                    return target is null || WalkConstructor(target);
+                }
+
+                var parent = ctor.ContainingType.BaseType;
+                if (parent is null || parent.SpecialType == SpecialType.System_Object) return false;
+                var defaultCtor = ParameterlessBaseConstructor(parent);
+                return defaultCtor is null || WalkConstructor(defaultCtor);
+            }
+
+            foreach (var ctor in typeSymbol.InstanceConstructors)
+            {
+                if (!ctor.IsImplicitlyDeclared && ctor.DeclaringSyntaxReferences.Length == 0) return true;
+                if (ctor.IsImplicitlyDeclared)
+                {
+                    var selected = ParameterlessBaseConstructor(typeSymbol.BaseType!);
+                    if (selected is null || WalkConstructor(selected)) return true;
+                    continue;
+                }
+
+                foreach (var reference in ctor.DeclaringSyntaxReferences)
+                {
+                    if (reference.GetSyntax(ct) is not ConstructorDeclarationSyntax derivedCtor) continue;
+                    if (derivedCtor.Initializer?.IsKind(SyntaxKind.ThisConstructorInitializer) == true) continue;
+                    IMethodSymbol? selected;
+                    if (derivedCtor.Initializer is { } initializer)
+                    {
+                        selected = semanticModel.GetSymbolInfo(initializer, ct).Symbol as IMethodSymbol;
+                    }
+                    else
+                    {
+                        selected = ParameterlessBaseConstructor(typeSymbol.BaseType!);
+                    }
+                    if (selected is null || WalkConstructor(selected)) return true;
+                }
+            }
+            return false;
+        }
+
+        foreach (var member in typeDecl.Members)
+        {
+            if (analysisNodes.Any(node => node == member)) continue;
+            if (semanticModel.GetDeclaredSymbol(member, ct) is not { } symbol) continue;
+            if (!IsDispatchImplementation(typeSymbol, symbol)) continue;
+            visited.Clear();
+            if (!UsesExtractedInstance(symbol) || !BaseConstructorMayCall(symbol)) continue;
+            result.Add(new BlockingDependencyDto(symbol.Name,
+                $"Base construction can dispatch to retained member '{symbol.Name}' before the extracted helper is assigned."));
+        }
+        return result;
     }
 
     /// <summary>
