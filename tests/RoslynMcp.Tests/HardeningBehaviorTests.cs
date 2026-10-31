@@ -50,10 +50,16 @@ public sealed class HardeningBehaviorTests : SharedWorkspaceTestBase
 
         try
         {
-            await manager.LoadAsync(firstPath, CancellationToken.None);
+            var first = await manager.LoadAsync(firstPath, CancellationToken.None);
 
-            await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+            var refusal = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
                 manager.LoadAsync(secondPath, CancellationToken.None));
+            StringAssert.Contains(refusal.PublicMessage, "already tracking 1 workspaces");
+            StringAssert.Contains(refusal.PublicMessage, "evictPolicy=lru");
+            StringAssert.Contains(refusal.PublicMessage, "activeWorkspaces");
+            StringAssert.Contains(refusal.PublicMessage, $"lruCandidate={first.WorkspaceId}");
+            Assert.IsFalse(refusal.PublicMessage.Contains(firstPath, StringComparison.OrdinalIgnoreCase),
+                "The public cap refusal must not disclose an absolute workspace path.");
         }
         finally
         {

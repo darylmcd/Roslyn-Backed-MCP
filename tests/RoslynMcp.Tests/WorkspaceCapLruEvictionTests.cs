@@ -169,7 +169,7 @@ public sealed class WorkspaceCapLruEvictionTests
 
     /// <summary>
     /// When the cap is reached and <see cref="EvictPolicy.Strict"/> is requested (the default),
-    /// an <see cref="InvalidOperationException"/> is thrown whose message includes
+    /// a <see cref="PublicInvalidOperationException"/> is thrown whose message includes
     /// <c>activeWorkspaces</c> and <c>lruCandidate</c> fields for one-round-trip self-recovery.
     /// </summary>
     [TestMethod]
@@ -187,7 +187,7 @@ public sealed class WorkspaceCapLruEvictionTests
                 "First workspace must be tracked (sanity).");
 
             // Strict load: must throw because the cap is full.
-            var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+            var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(
                 () => manager.LoadAsync(path2, EvictPolicy.Strict, CancellationToken.None));
 
             // Message must carry activeWorkspaces JSON and lruCandidate for self-recovery.
@@ -197,6 +197,8 @@ public sealed class WorkspaceCapLruEvictionTests
                 "Strict-mode error must include 'lruCandidate' field for agent self-recovery.");
             StringAssert.Contains(ex.Message, status1.WorkspaceId,
                 "The active workspace ID must appear in the error to identify the eviction candidate.");
+            Assert.IsFalse(ex.Message.Contains(path1, StringComparison.OrdinalIgnoreCase),
+                "The public cap refusal must not disclose an absolute workspace path.");
         }
         finally
         {

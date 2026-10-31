@@ -122,8 +122,12 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
     private TaskCompletionSource? _sourceOperationsDrained;
     private int _slowRemovalCount;
     private TaskCompletionSource? _slowRemovalsDrained;
+    private int _activeLoadCount;
+    private TaskCompletionSource? _loadsDrained;
     private Task? _shutdownTask;
     private ExceptionDispatchInfo? _shutdownFailure;
+    // Test seam: rendezvous completed loads before the atomic dedup/publication decision.
+    internal Action? BeforeLoadPublicationForTesting { get; set; }
 
     /// <summary>
     /// Retains the exact registered source session until the callback and its cleanup finish.
@@ -364,6 +368,33 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
         IDictionary<string, string>? globalProperties,
         CancellationToken ct)
     {
+        lock (_lifecycleSync)
+        {
+            ObjectDisposedException.ThrowIf(_disposing, this);
+            if (_activeLoadCount++ == 0)
+                _loadsDrained = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+        try
+        {
+            return await LoadCoreAsync(path, evictPolicy, globalProperties, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            lock (_lifecycleSync)
+            {
+                if (--_activeLoadCount == 0) _loadsDrained!.TrySetResult();
+            }
+        }
+    }
+
+    private async Task<WorkspaceStatusDto> LoadCoreAsync(
+        string path,
+        EvictPolicy evictPolicy,
+        IDictionary<string, string>? globalProperties,
+        CancellationToken ct)
+    {
+        using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(ct, _lifetimeCancellation.Token);
+        ct = linkedCancellation.Token;
         var fullPath = ValidateWorkspacePath(path);
 
         // workspace-session-deduplication: if the caller is loading a path that is already
@@ -425,12 +456,11 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
                     id = s.WorkspaceId,
                     loadedAtUtc = s.LoadedAtUtc,
                     lastAccessedUtc = s.LastAccessedUtc,
-                    path = s.LoadedPath ?? string.Empty,
                 })
                 .OrderBy(s => s.lastAccessedUtc)
                 .ToList();
             var lruCandidateId = activeWorkspaces.FirstOrDefault()?.id;
-            throw new InvalidOperationException(
+            throw new PublicInvalidOperationException(
                 $"The server is already tracking {_options.MaxConcurrentWorkspaces} workspaces. " +
                 $"Close an existing workspace before loading another (or pass evictPolicy=lru to auto-evict the idle workspace). " +
                 $"activeWorkspaces={JsonSerializer.Serialize(activeWorkspaces)}" +
@@ -446,43 +476,45 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
         try
         {
             await LoadIntoSessionAsync(session, fullPath, globalProperties, ct).ConfigureAwait(false);
+            ct.ThrowIfCancellationRequested();
 
-            // Second dedup check, this time for the race window between our scan above and
-            // another concurrent LoadAsync call that won the semaphore with the same path.
-            // Whichever caller lost the race returns the winner's session and releases its
-            // slot in the finally block so we do not leak a slot per racing caller. Skipped
-            // under global-property overrides for the same reason as the pre-load dedup above.
-            if (!skipDedup)
+            // Keep the post-load path check and publication in one lifecycle decision.
+            // Otherwise two completed loads can both miss the winner and register duplicate paths.
+            WorkspaceStatusDto winnerStatus;
+            string winnerId;
+            BeforeLoadPublicationForTesting?.Invoke();
+            lock (_lifecycleSync)
             {
-                var raceWinner = FindSessionByLoadedPath(fullPath);
+                ObjectDisposedException.ThrowIf(_disposing || _removalAdmissionClosed, this);
+                ct.ThrowIfCancellationRequested();
+                var raceWinner = skipDedup ? null : FindSessionByLoadedPath(fullPath);
                 if (raceWinner is not null)
                 {
-                    _logger.LogInformation(
-                        "workspace_load: race lost; returning winner '{WorkspaceId}' for path '{Path}' instead of new '{NewId}'",
-                        raceWinner.WorkspaceId,
-                        fullPath,
-                        workspaceId);
-                    // The loser was never registered: a dispose failure must not fail the winner's successful status.
-                    var loserFailures = new List<Exception>();
-                    AttemptCleanup(session.Dispose, loserFailures);
-                    if (loserFailures.Count > 0)
-                        _logger.LogError(
-                            new AggregateException(loserFailures),
-                            "Disposing race-losing workspace '{WorkspaceId}' failed",
-                            workspaceId);
                     raceWinner.TouchAccess(_timeProvider.GetUtcNow());
-                    return BuildStatus(raceWinner);
+                    winnerStatus = BuildStatus(raceWinner);
+                    winnerId = raceWinner.WorkspaceId;
+                }
+                else
+                {
+                    if (!_sessions.TryAdd(workspaceId, session))
+                        throw InvalidOperationErrors.Internal($"Generated workspace id '{workspaceId}' already exists.");
+
+                    slotTransferred = true;
+                    _fileWatcher.Watch(workspaceId, session.LoadedPath!);
+                    return BuildStatus(session);
                 }
             }
 
-            if (!_sessions.TryAdd(workspaceId, session))
-            {
-                throw new InvalidOperationException($"Workspace '{workspaceId}' already exists.");
-            }
-
-            slotTransferred = true;
-            _fileWatcher.Watch(workspaceId, session.LoadedPath!);
-            return BuildStatus(session);
+            _logger.LogInformation(
+                "workspace_load: race lost; returning winner '{WorkspaceId}' for path '{Path}' instead of new '{NewId}'",
+                winnerId, fullPath, workspaceId);
+            // The loser was never registered: a dispose failure must not fail the winner's successful status.
+            var loserFailures = new List<Exception>();
+            AttemptCleanup(session.Dispose, loserFailures);
+            if (loserFailures.Count > 0)
+                _logger.LogError(new AggregateException(loserFailures),
+                    "Disposing race-losing workspace '{WorkspaceId}' failed", workspaceId);
+            return winnerStatus;
         }
         catch (Exception ex)
         {
@@ -1249,7 +1281,9 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
             _disposing = true;
             cancellationIssued = new TaskCompletionSource<Exception?>();
             shutdown = ShutdownAsync(cancellationIssued.Task,
-                _sourceOperationsDrained?.Task ?? Task.CompletedTask, _rootRetirementTasks.Values.ToArray());
+                _sourceOperationsDrained?.Task ?? Task.CompletedTask,
+                _loadsDrained?.Task ?? Task.CompletedTask,
+                _rootRetirementTasks.Values.ToArray());
             _shutdownTask = shutdown;
             // Observe failures even when the only caller uses deferred synchronous Dispose.
             // DisposeAsync still awaits and reports the original shared failure.
@@ -1267,12 +1301,14 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
         return shutdown;
     }
 
-    private async Task ShutdownAsync(Task<Exception?> cancellationIssued, Task sourceDrained, Task[] retirementTasks)
+    private async Task ShutdownAsync(Task<Exception?> cancellationIssued, Task sourceDrained, Task loadsDrained, Task[] retirementTasks)
     {
         var cancellationFailure = await cancellationIssued.ConfigureAwait(false);
         var failures = new List<Exception>();
         if (cancellationFailure is not null) failures.Add(cancellationFailure);
         try { await sourceDrained.ConfigureAwait(false); }
+        catch (Exception exception) { failures.Add(exception); }
+        try { await loadsDrained.ConfigureAwait(false); }
         catch (Exception exception) { failures.Add(exception); }
         try { await Task.WhenAll(retirementTasks).ConfigureAwait(false); }
         catch (Exception exception) { failures.Add(exception); }

@@ -49,6 +49,103 @@ public sealed class WorkspaceLoadRegistrationCompensationTests
             ownsFileWatcher: false);
 
     [TestMethod]
+    public async Task LoadAsync_ShutdownWaitsForUncooperativeLoad_WithoutPublishingSession()
+    {
+        using var watcher = new ScriptedWatcher();
+        var loader = new CompletedLoadGate();
+        var manager = CreateManager(watcher, cap: 1, loader: loader);
+        var load = manager.LoadAsync(_sampleSolutionPath, CancellationToken.None);
+        await loader.Entered.Task.WaitAsync(TimeSpan.FromSeconds(120));
+
+        try
+        {
+            var shutdown = manager.DisposeAsync().AsTask();
+            Assert.IsFalse(shutdown.IsCompleted, "Shutdown must drain the admitted load before disposing its slot and watcher.");
+            loader.Release.SetResult();
+            await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => load.WaitAsync(TimeSpan.FromSeconds(120)));
+            await shutdown.WaitAsync(TimeSpan.FromSeconds(120));
+            Assert.AreEqual(0, watcher.WatchedIds.Count);
+            Assert.AreEqual(0, manager.ListWorkspaces().Count);
+        }
+        finally
+        {
+            loader.Release.TrySetResult();
+            try { await manager.DisposeAsync(); } catch { /* Preserve the primary assertion failure. */ }
+            try { await load; } catch { /* Observe the load after the gate is released. */ }
+        }
+    }
+
+    [TestMethod]
+    public async Task LoadAsync_CloseCannotOvertakeWatcherRegistration()
+    {
+        using var watcher = new ScriptedWatcher { PauseWatch = true };
+        using var manager = CreateManager(watcher, cap: 1);
+        var load = manager.LoadAsync(_sampleSolutionPath, CancellationToken.None);
+        await watcher.WatchEntered.Task.WaitAsync(TimeSpan.FromSeconds(120));
+
+        try
+        {
+            var workspaceId = watcher.WatchedIds.Single();
+            var closeStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var close = Task.Run(() =>
+            {
+                closeStarted.SetResult();
+                return manager.Close(workspaceId);
+            });
+            await closeStarted.Task.WaitAsync(TimeSpan.FromSeconds(30));
+            await Task.Delay(100);
+            Assert.IsFalse(close.IsCompleted, "Close must wait for watcher registration to finish.");
+            watcher.ReleaseWatch.SetResult();
+            await load.WaitAsync(TimeSpan.FromSeconds(120));
+            Assert.IsTrue(await close.WaitAsync(TimeSpan.FromSeconds(30)));
+            CollectionAssert.AreEqual(new[] { workspaceId }, watcher.UnwatchedIds);
+            Assert.AreEqual(0, manager.ListWorkspaces().Count);
+
+            var replacement = await manager.LoadAsync(_sampleSolutionPath, CancellationToken.None);
+            Assert.IsTrue(replacement.IsLoaded, "Close must return the slot exactly once.");
+        }
+        finally
+        {
+            watcher.ReleaseWatch.TrySetResult();
+            try { await load; } catch { /* Observe the load after releasing the watcher. */ }
+        }
+    }
+
+    [TestMethod]
+    public async Task LoadAsync_TwoLoadsReadyToPublish_ReturnOneSession()
+    {
+        using var watcher = new ScriptedWatcher();
+        using var manager = CreateManager(watcher, cap: 2);
+        using var ready = new Barrier(2);
+        manager.BeforeLoadPublicationForTesting = () =>
+            Assert.IsTrue(ready.SignalAndWait(TimeSpan.FromSeconds(120)));
+        var first = manager.LoadAsync(_sampleSolutionPath, CancellationToken.None);
+        var second = manager.LoadAsync(_sampleSolutionPath, CancellationToken.None);
+
+        var statusA = await first.WaitAsync(TimeSpan.FromSeconds(120));
+        var statusB = await second.WaitAsync(TimeSpan.FromSeconds(120));
+        Assert.AreEqual(statusA.WorkspaceId, statusB.WorkspaceId);
+        Assert.AreEqual(1, manager.ListWorkspaces().Count);
+        Assert.AreEqual(1, watcher.WatchedIds.Count);
+    }
+
+    private sealed class CompletedLoadGate : WorkspaceSessionLoader
+    {
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public override async Task<(MSBuildWorkspace Workspace, AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease Lease)> CreateAndOpenAsync(
+            string workspaceId, string path, IDictionary<string, string>? globalProperties,
+            WorkspaceDiagnosticsSink diagnostics, ILogger logger, CancellationToken ct)
+        {
+            var loaded = await base.CreateAndOpenAsync(workspaceId, path, globalProperties, diagnostics, logger, ct).ConfigureAwait(false);
+            Entered.SetResult();
+            await Release.Task.ConfigureAwait(false);
+            return loaded;
+        }
+    }
+
+    [TestMethod]
     public async Task LoadAsync_WatchThrows_RemovesExactSession_ReturnsSlot_AndNextLoadSucceeds()
     {
         using var watcher = new ScriptedWatcher();
@@ -216,12 +313,21 @@ public sealed class WorkspaceLoadRegistrationCompensationTests
         public int ThrowOnWatchCalls { get; set; }
         public int ThrowOnIsStaleCalls { get; set; }
         public bool ThrowOnUnwatch { get; set; }
+        public bool PauseWatch { get; set; }
+        public TaskCompletionSource WatchEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource ReleaseWatch { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public List<string> WatchedIds { get; } = [];
         public List<string> UnwatchedIds { get; } = [];
 
         public void Watch(string workspaceId, string workspacePath)
         {
             WatchedIds.Add(workspaceId);
+            if (PauseWatch)
+            {
+                PauseWatch = false;
+                WatchEntered.SetResult();
+                ReleaseWatch.Task.GetAwaiter().GetResult();
+            }
             if (ThrowOnWatchCalls > 0)
             {
                 ThrowOnWatchCalls--;
