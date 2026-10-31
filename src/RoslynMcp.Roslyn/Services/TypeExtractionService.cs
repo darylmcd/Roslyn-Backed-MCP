@@ -290,6 +290,25 @@ public sealed class TypeExtractionService : ITypeExtractionService
                 if (!activeDelegates.Add(parameter.OriginalDefinition)) return false;
                 try
                 {
+                    foreach (var reference in parameter.DeclaringSyntaxReferences)
+                    {
+                        var syntax = reference.GetSyntax(ct);
+                        if (!compilation.SyntaxTrees.Contains(syntax.SyntaxTree)) return true;
+                        var scope = syntax.FirstAncestorOrSelf<BaseMethodDeclarationSyntax>() as SyntaxNode
+                            ?? syntax.FirstAncestorOrSelf<LocalFunctionStatementSyntax>() as SyntaxNode
+                            ?? syntax.FirstAncestorOrSelf<AnonymousFunctionExpressionSyntax>();
+                        if (scope is null) return true;
+                        var scopeModel = compilation.GetSemanticModel(syntax.SyntaxTree);
+                        if (scope.DescendantNodes().OfType<AssignmentExpressionSyntax>().Any(assignment =>
+                                SymbolEqualityComparer.Default.Equals(
+                                    scopeModel.GetSymbolInfo(assignment.Left, ct).Symbol, parameter))
+                            || scope.DescendantNodes().OfType<ArgumentSyntax>().Any(argument =>
+                                (argument.RefOrOutKeyword.IsKind(SyntaxKind.RefKeyword)
+                                    || argument.RefOrOutKeyword.IsKind(SyntaxKind.OutKeyword))
+                                && SymbolEqualityComparer.Default.Equals(
+                                    scopeModel.GetSymbolInfo(argument.Expression, ct).Symbol, parameter)))
+                            return true;
+                    }
                     return !boundDelegateArguments.TryGetValue(parameter, out var binding)
                         || InspectValue(binding.Value, binding.Model);
                 }

@@ -2368,6 +2368,40 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally { WorkspaceManager.Close(fixture.WorkspaceId); }
     }
 
+    [TestMethod]
+    public async Task ExtractType_BaseConstructorReassignsDelegateParameter_Refuses()
+    {
+        var fixture = await CreateExtractionFixtureAsync("ReassignedDelegateParameterFixture.cs", """
+            namespace SampleLib;
+            public class ReassignedDelegateParameterBase
+            {
+                public ReassignedDelegateParameterBase() { Run(() => { }); }
+                private void Run(System.Action callback)
+                {
+                    callback = () => _ = Read();
+                    callback();
+                }
+                public virtual int Read() => 0;
+            }
+            public class ReassignedDelegateParameterDerived : ReassignedDelegateParameterBase
+            {
+                public override int Read() => Compute();
+                private int Compute() => 7;
+            }
+            """);
+        try
+        {
+            var version = WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId);
+            await Assert.ThrowsExactlyAsync<ExtractTypeBlockingDependencyException>(() =>
+                TypeExtractionService.PreviewExtractTypeAsync(
+                    fixture.WorkspaceId, fixture.FilePath, "ReassignedDelegateParameterDerived", ["Compute"],
+                    "ComputeHelper", null, CancellationToken.None));
+            FileOperationIntegrationTests.AssertNoStoredPreviews(PreviewStore, fixture.WorkspaceId);
+            Assert.AreEqual(version, WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId));
+        }
+        finally { WorkspaceManager.Close(fixture.WorkspaceId); }
+    }
+
     /// <summary>
     /// Acceptance gate for type-extraction-composition-constructor-coverage: the previewed source
     /// (updated source type + generated new type) must compile with zero errors — specifically none
