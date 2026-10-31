@@ -290,6 +290,18 @@ public sealed class TypeExtractionService : ITypeExtractionService
                 if (!activeDelegates.Add(parameter.OriginalDefinition)) return false;
                 try
                 {
+                    bool WriteMayPrecedeInvocation(SyntaxNode write, SyntaxNode scope)
+                    {
+                        if (write.SyntaxTree != invocation.SyntaxTree || write.SpanStart < invocation.SpanStart)
+                            return true;
+                        var callBlock = invocation.FirstAncestorOrSelf<BlockSyntax>();
+                        // Only straight-line statements in the same top-level body prove that a
+                        // later write cannot affect this invocation. Loops, branches and jumps do not.
+                        return callBlock is null || callBlock.Parent != scope
+                            || write.FirstAncestorOrSelf<BlockSyntax>() != callBlock
+                            || callBlock.DescendantNodes().Any(node => node is GotoStatementSyntax or LabeledStatementSyntax);
+                    }
+
                     foreach (var reference in parameter.DeclaringSyntaxReferences)
                     {
                         var syntax = reference.GetSyntax(ct);
@@ -301,12 +313,14 @@ public sealed class TypeExtractionService : ITypeExtractionService
                         var scopeModel = compilation.GetSemanticModel(syntax.SyntaxTree);
                         if (scope.DescendantNodes().OfType<AssignmentExpressionSyntax>().Any(assignment =>
                                 SymbolEqualityComparer.Default.Equals(
-                                    scopeModel.GetSymbolInfo(assignment.Left, ct).Symbol, parameter))
+                                    scopeModel.GetSymbolInfo(assignment.Left, ct).Symbol, parameter)
+                                && WriteMayPrecedeInvocation(assignment, scope))
                             || scope.DescendantNodes().OfType<ArgumentSyntax>().Any(argument =>
                                 (argument.RefOrOutKeyword.IsKind(SyntaxKind.RefKeyword)
                                     || argument.RefOrOutKeyword.IsKind(SyntaxKind.OutKeyword))
                                 && SymbolEqualityComparer.Default.Equals(
-                                    scopeModel.GetSymbolInfo(argument.Expression, ct).Symbol, parameter)))
+                                    scopeModel.GetSymbolInfo(argument.Expression, ct).Symbol, parameter)
+                                && WriteMayPrecedeInvocation(argument, scope)))
                             return true;
                     }
                     return !boundDelegateArguments.TryGetValue(parameter, out var binding)
