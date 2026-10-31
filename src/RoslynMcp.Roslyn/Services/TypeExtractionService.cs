@@ -3,6 +3,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.CodeAnalysis.Formatting;
+using Microsoft.CodeAnalysis.Operations;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
@@ -521,7 +522,16 @@ public sealed class TypeExtractionService : ITypeExtractionService
                         return MayBeCurrentInstanceCore(parenthesized.Expression, model, visitedLocals);
                     case CastExpressionSyntax cast:
                         return MayBeCurrentInstanceCore(cast.Expression, model, visitedLocals);
-                    case ObjectCreationExpressionSyntax or ImplicitObjectCreationExpressionSyntax:
+                    case ObjectCreationExpressionSyntax creation:
+                        return creation.ArgumentList?.Arguments.Any(argument =>
+                            MayBeCurrentInstanceCore(argument.Expression, model, visitedLocals)) == true
+                            || creation.Initializer?.Expressions.Any(value => value is AssignmentExpressionSyntax assignment
+                                && MayBeCurrentInstanceCore(assignment.Right, model, visitedLocals)) == true;
+                    case ImplicitObjectCreationExpressionSyntax implicitCreation:
+                        return implicitCreation.ArgumentList.Arguments.Any(argument =>
+                            MayBeCurrentInstanceCore(argument.Expression, model, visitedLocals))
+                            || implicitCreation.Initializer?.Expressions.Any(value => value is AssignmentExpressionSyntax assignment
+                                && MayBeCurrentInstanceCore(assignment.Right, model, visitedLocals)) == true;
                     case LiteralExpressionSyntax:
                     case AnonymousFunctionExpressionSyntax:
                         return false;
@@ -608,6 +618,52 @@ public sealed class TypeExtractionService : ITypeExtractionService
                 finally { visitedBaseMembers.Remove(member.OriginalDefinition); }
             }
 
+            bool OpaqueDelegateArgumentMayDispatch(ExpressionSyntax value, SemanticModel model,
+                HashSet<ISymbol> visitedDelegates)
+            {
+                if (value is AnonymousFunctionExpressionSyntax lambda)
+                    return BodyReachesDispatch(lambda, model);
+                if (value is ParenthesizedExpressionSyntax parenthesized)
+                    return OpaqueDelegateArgumentMayDispatch(parenthesized.Expression, model, visitedDelegates);
+                if (value is CastExpressionSyntax cast)
+                    return OpaqueDelegateArgumentMayDispatch(cast.Expression, model, visitedDelegates);
+                if (value is ConditionalExpressionSyntax conditional)
+                    return OpaqueDelegateArgumentMayDispatch(conditional.WhenTrue, model, visitedDelegates)
+                        || OpaqueDelegateArgumentMayDispatch(conditional.WhenFalse, model, visitedDelegates);
+
+                var symbol = model.GetSymbolInfo(value, ct).Symbol;
+                if (symbol is IMethodSymbol method)
+                    return DispatchesTo(method, implementation) || ReachesDispatch(method);
+                if (symbol is IParameterSymbol parameter)
+                {
+                    return !boundDelegateArguments.TryGetValue(parameter, out var binding)
+                        || OpaqueDelegateArgumentMayDispatch(binding.Value, binding.Model, visitedDelegates);
+                }
+                if (symbol is not ILocalSymbol local) return true;
+                if (!visitedDelegates.Add(local.OriginalDefinition)) return false;
+                var hasSource = false;
+                foreach (var reference in local.DeclaringSyntaxReferences)
+                {
+                    if (reference.GetSyntax(ct) is not VariableDeclaratorSyntax variable) continue;
+                    var localModel = compilation.GetSemanticModel(variable.SyntaxTree);
+                    if (variable.Initializer?.Value is { } initializer)
+                    {
+                        hasSource = true;
+                        if (OpaqueDelegateArgumentMayDispatch(initializer, localModel, visitedDelegates)) return true;
+                    }
+                    var scope = variable.FirstAncestorOrSelf<BaseMethodDeclarationSyntax>();
+                    if (scope is null) return true;
+                    foreach (var assignment in scope.DescendantNodes().OfType<AssignmentExpressionSyntax>())
+                    {
+                        if (!SymbolEqualityComparer.Default.Equals(
+                                localModel.GetSymbolInfo(assignment.Left, ct).Symbol, local)) continue;
+                        hasSource = true;
+                        if (OpaqueDelegateArgumentMayDispatch(assignment.Right, localModel, visitedDelegates)) return true;
+                    }
+                }
+                return !hasSource;
+            }
+
             bool BodyReachesDispatch(SyntaxNode declaration, SemanticModel model)
             {
                 foreach (var expression in ExecutedDescendants(declaration).OfType<ExpressionSyntax>())
@@ -618,15 +674,26 @@ public sealed class TypeExtractionService : ITypeExtractionService
                     if (expression is InvocationExpressionSyntax invocation
                         && InvokedDelegateMayReach(invocation, model, activeBaseDelegates,
                             BodyReachesDispatch, ReachesDispatch)) return true;
+                    if (model.GetOperation(expression, ct) is IMethodReferenceOperation) continue;
+                    if (expression is InvocationExpressionSyntax dynamicInvocation
+                        && dynamicInvocation.Expression is MemberAccessExpressionSyntax dynamicMember
+                        && model.GetTypeInfo(dynamicMember.Expression, ct).Type?.TypeKind == TypeKind.Dynamic
+                        && MayBeCurrentInstance(dynamicMember.Expression, model)
+                        && implementation.Name == dynamicMember.Name.Identifier.ValueText) return true;
                     var called = model.GetSymbolInfo(expression, ct).Symbol;
                     if (called is null) continue;
-                    if (!CallMayTargetCurrentInstance(expression, model)) continue;
                     if (expression is InvocationExpressionSyntax opaqueCall
                         && called is IMethodSymbol { DeclaringSyntaxReferences.Length: 0 }
-                        && opaqueCall.ArgumentList.Arguments.Any(argument =>
-                            argument.Expression is AnonymousFunctionExpressionSyntax lambda
-                                ? BodyReachesDispatch(lambda, model)
-                                : MayBeCurrentInstance(argument.Expression, model))) return true;
+                        && (opaqueCall.ArgumentList.Arguments.Any(argument =>
+                            (model.GetTypeInfo(argument.Expression, ct).ConvertedType?.TypeKind == TypeKind.Delegate
+                                || model.GetTypeInfo(argument.Expression, ct).Type?.TypeKind == TypeKind.Delegate)
+                                ? OpaqueDelegateArgumentMayDispatch(argument.Expression, model,
+                                    new HashSet<ISymbol>(SymbolEqualityComparer.Default))
+                                : MayBeCurrentInstance(argument.Expression, model))
+                            || called is IMethodSymbol { ReducedFrom: not null }
+                                && opaqueCall.Expression is MemberAccessExpressionSyntax reduced
+                                && MayBeCurrentInstance(reduced.Expression, model))) return true;
+                    if (!CallMayTargetCurrentInstance(expression, model)) continue;
                     if (DispatchesTo(called, implementation)) return true;
                     if (called is IMethodSymbol or IPropertySymbol
                         && called.ContainingType is { } owner

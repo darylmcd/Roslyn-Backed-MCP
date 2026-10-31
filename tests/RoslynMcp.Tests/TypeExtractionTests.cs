@@ -2631,6 +2631,164 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally { WorkspaceManager.Close(fixture.WorkspaceId); }
     }
 
+    [TestMethod]
+    public async Task ExtractType_BaseConstructorOpaqueDelegateAliasCallsOverride_Refuses()
+    {
+        var fixture = await CreateExtractionFixtureAsync("OpaqueDelegateAliasFixture.cs", """
+            namespace SampleLib;
+            public class OpaqueDelegateAliasBase
+            {
+                public OpaqueDelegateAliasBase()
+                {
+                    System.Action<int> callback = _ => { _ = Read(); };
+                    new System.Collections.Generic.List<int> { 0 }.ForEach(callback);
+                }
+                public virtual int Read() => 0;
+            }
+            public class OpaqueDelegateAliasDerived : OpaqueDelegateAliasBase
+            {
+                public override int Read() => Compute();
+                private int Compute() => 7;
+            }
+            """);
+        try
+        {
+            var version = WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId);
+            await Assert.ThrowsExactlyAsync<ExtractTypeBlockingDependencyException>(() =>
+                TypeExtractionService.PreviewExtractTypeAsync(
+                    fixture.WorkspaceId, fixture.FilePath, "OpaqueDelegateAliasDerived", ["Compute"],
+                    "ComputeHelper", null, CancellationToken.None));
+            FileOperationIntegrationTests.AssertNoStoredPreviews(PreviewStore, fixture.WorkspaceId);
+            Assert.AreEqual(version, WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId));
+        }
+        finally { WorkspaceManager.Close(fixture.WorkspaceId); }
+    }
+
+    [TestMethod]
+    public async Task ExtractType_BaseConstructorOpaqueCarrierOfThis_Refuses()
+    {
+        var fixture = await CreateExtractionFixtureAsync("OpaqueCarrierFixture.cs", """
+            namespace SampleLib;
+            public sealed class OpaqueCarrier
+            {
+                private readonly OpaqueCarrierBase _owner;
+                public OpaqueCarrier(OpaqueCarrierBase owner) { _owner = owner; }
+                public override string ToString() => _owner.Read().ToString();
+            }
+            public class OpaqueCarrierBase
+            {
+                public OpaqueCarrierBase() { System.Console.WriteLine(new OpaqueCarrier(this)); }
+                public virtual int Read() => 0;
+            }
+            public class OpaqueCarrierDerived : OpaqueCarrierBase
+            {
+                public override int Read() => Compute();
+                private int Compute() => 7;
+            }
+            """);
+        try
+        {
+            var version = WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId);
+            await Assert.ThrowsExactlyAsync<ExtractTypeBlockingDependencyException>(() =>
+                TypeExtractionService.PreviewExtractTypeAsync(
+                    fixture.WorkspaceId, fixture.FilePath, "OpaqueCarrierDerived", ["Compute"],
+                    "ComputeHelper", null, CancellationToken.None));
+            FileOperationIntegrationTests.AssertNoStoredPreviews(PreviewStore, fixture.WorkspaceId);
+            Assert.AreEqual(version, WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId));
+        }
+        finally { WorkspaceManager.Close(fixture.WorkspaceId); }
+    }
+
+    [TestMethod]
+    [DataRow("this.Any()")]
+    [DataRow("System.Linq.Enumerable.Any(this)")]
+    public async Task ExtractType_BaseConstructorOpaqueEnumerableCall_Refuses(string call)
+    {
+        var fixture = await CreateExtractionFixtureAsync("OpaqueEnumerableFixture.cs", $$"""
+            using System.Linq;
+            namespace SampleLib;
+            public class OpaqueEnumerableBase : System.Collections.Generic.IEnumerable<int>
+            {
+                public OpaqueEnumerableBase() { _ = {{call}}; }
+                public virtual System.Collections.Generic.IEnumerator<int> GetEnumerator()
+                    => System.Linq.Enumerable.Empty<int>().GetEnumerator();
+                System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+            }
+            public class OpaqueEnumerableDerived : OpaqueEnumerableBase
+            {
+                public override System.Collections.Generic.IEnumerator<int> GetEnumerator()
+                    => System.Linq.Enumerable.Repeat(Compute(), 1).GetEnumerator();
+                private int Compute() => 7;
+            }
+            """);
+        try
+        {
+            var version = WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId);
+            await Assert.ThrowsExactlyAsync<ExtractTypeBlockingDependencyException>(() =>
+                TypeExtractionService.PreviewExtractTypeAsync(
+                    fixture.WorkspaceId, fixture.FilePath, "OpaqueEnumerableDerived", ["Compute"],
+                    "ComputeHelper", null, CancellationToken.None));
+            FileOperationIntegrationTests.AssertNoStoredPreviews(PreviewStore, fixture.WorkspaceId);
+            Assert.AreEqual(version, WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId));
+        }
+        finally { WorkspaceManager.Close(fixture.WorkspaceId); }
+    }
+
+    [TestMethod]
+    public async Task ExtractType_BaseConstructorUninvokedMethodGroup_AllowsPreview()
+    {
+        var fixture = await CreateExtractionFixtureAsync("UninvokedMethodGroupFixture.cs", """
+            namespace SampleLib;
+            public class UninvokedMethodGroupBase
+            {
+                public UninvokedMethodGroupBase() { System.Func<int> unused = Read; }
+                public virtual int Read() => 0;
+            }
+            public class UninvokedMethodGroupDerived : UninvokedMethodGroupBase
+            {
+                public override int Read() => Compute();
+                private int Compute() => 7;
+            }
+            """);
+        try
+        {
+            var preview = await TypeExtractionService.PreviewExtractTypeAsync(
+                fixture.WorkspaceId, fixture.FilePath, "UninvokedMethodGroupDerived", ["Compute"],
+                "ComputeHelper", null, CancellationToken.None);
+            await AssertModifiedSolutionCompilesAsync(preview.PreviewToken);
+        }
+        finally { WorkspaceManager.Close(fixture.WorkspaceId); }
+    }
+
+    [TestMethod]
+    public async Task ExtractType_BaseConstructorDynamicAliasDispatch_Refuses()
+    {
+        var fixture = await CreateExtractionFixtureAsync("DynamicAliasFixture.cs", """
+            namespace SampleLib;
+            public class DynamicAliasBase
+            {
+                public DynamicAliasBase() { dynamic target = this; _ = target.Read(); }
+                public virtual int Read() => 0;
+            }
+            public class DynamicAliasDerived : DynamicAliasBase
+            {
+                public override int Read() => Compute();
+                private int Compute() => 7;
+            }
+            """);
+        try
+        {
+            var version = WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId);
+            await Assert.ThrowsExactlyAsync<ExtractTypeBlockingDependencyException>(() =>
+                TypeExtractionService.PreviewExtractTypeAsync(
+                    fixture.WorkspaceId, fixture.FilePath, "DynamicAliasDerived", ["Compute"],
+                    "ComputeHelper", null, CancellationToken.None));
+            FileOperationIntegrationTests.AssertNoStoredPreviews(PreviewStore, fixture.WorkspaceId);
+            Assert.AreEqual(version, WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId));
+        }
+        finally { WorkspaceManager.Close(fixture.WorkspaceId); }
+    }
+
     /// <summary>
     /// Acceptance gate for type-extraction-composition-constructor-coverage: the previewed source
     /// (updated source type + generated new type) must compile with zero errors — specifically none
