@@ -2700,6 +2700,38 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task ExtractType_BaseConstructorCollectionCarrierOfThis_Refuses()
+    {
+        var fixture = await CreateExtractionFixtureAsync("CollectionCarrierFixture.cs", """
+            namespace SampleLib;
+            public class CollectionCarrierBase
+            {
+                public CollectionCarrierBase()
+                {
+                    _ = string.Join<CollectionCarrierBase>(",",
+                        new System.Collections.Generic.List<CollectionCarrierBase> { this });
+                }
+            }
+            public class CollectionCarrierDerived : CollectionCarrierBase
+            {
+                public override string ToString() => Compute();
+                private string Compute() => "value";
+            }
+            """);
+        try
+        {
+            var version = WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId);
+            await Assert.ThrowsExactlyAsync<ExtractTypeBlockingDependencyException>(() =>
+                TypeExtractionService.PreviewExtractTypeAsync(
+                    fixture.WorkspaceId, fixture.FilePath, "CollectionCarrierDerived", ["Compute"],
+                    "ComputeHelper", null, CancellationToken.None));
+            FileOperationIntegrationTests.AssertNoStoredPreviews(PreviewStore, fixture.WorkspaceId);
+            Assert.AreEqual(version, WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId));
+        }
+        finally { WorkspaceManager.Close(fixture.WorkspaceId); }
+    }
+
+    [TestMethod]
     [DataRow("this.Any()")]
     [DataRow("System.Linq.Enumerable.Any(this)")]
     public async Task ExtractType_BaseConstructorOpaqueEnumerableCall_Refuses(string call)
@@ -2782,6 +2814,39 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
             await Assert.ThrowsExactlyAsync<ExtractTypeBlockingDependencyException>(() =>
                 TypeExtractionService.PreviewExtractTypeAsync(
                     fixture.WorkspaceId, fixture.FilePath, "DynamicAliasDerived", ["Compute"],
+                    "ComputeHelper", null, CancellationToken.None));
+            FileOperationIntegrationTests.AssertNoStoredPreviews(PreviewStore, fixture.WorkspaceId);
+            Assert.AreEqual(version, WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId));
+        }
+        finally { WorkspaceManager.Close(fixture.WorkspaceId); }
+    }
+
+    [TestMethod]
+    [DataRow("target.Value")]
+    [DataRow("target[0]")]
+    public async Task ExtractType_BaseConstructorDynamicPropertyDispatch_Refuses(string access)
+    {
+        var fixture = await CreateExtractionFixtureAsync("DynamicPropertyFixture.cs", $$"""
+            namespace SampleLib;
+            public class DynamicPropertyBase
+            {
+                public DynamicPropertyBase() { dynamic target = this; _ = {{access}}; }
+                public virtual int Value => 0;
+                public virtual int this[int index] => 0;
+            }
+            public class DynamicPropertyDerived : DynamicPropertyBase
+            {
+                public override int Value => Compute();
+                public override int this[int index] => Compute();
+                private int Compute() => 7;
+            }
+            """);
+        try
+        {
+            var version = WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId);
+            await Assert.ThrowsExactlyAsync<ExtractTypeBlockingDependencyException>(() =>
+                TypeExtractionService.PreviewExtractTypeAsync(
+                    fixture.WorkspaceId, fixture.FilePath, "DynamicPropertyDerived", ["Compute"],
                     "ComputeHelper", null, CancellationToken.None));
             FileOperationIntegrationTests.AssertNoStoredPreviews(PreviewStore, fixture.WorkspaceId);
             Assert.AreEqual(version, WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId));

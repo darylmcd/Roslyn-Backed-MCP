@@ -522,16 +522,21 @@ public sealed class TypeExtractionService : ITypeExtractionService
                         return MayBeCurrentInstanceCore(parenthesized.Expression, model, visitedLocals);
                     case CastExpressionSyntax cast:
                         return MayBeCurrentInstanceCore(cast.Expression, model, visitedLocals);
+                    case AssignmentExpressionSyntax assignment:
+                        return MayBeCurrentInstanceCore(assignment.Right, model, visitedLocals);
+                    case InitializerExpressionSyntax initializer:
+                        return initializer.Expressions.Any(value =>
+                            MayBeCurrentInstanceCore(value, model, visitedLocals));
                     case ObjectCreationExpressionSyntax creation:
                         return creation.ArgumentList?.Arguments.Any(argument =>
                             MayBeCurrentInstanceCore(argument.Expression, model, visitedLocals)) == true
-                            || creation.Initializer?.Expressions.Any(value => value is AssignmentExpressionSyntax assignment
-                                && MayBeCurrentInstanceCore(assignment.Right, model, visitedLocals)) == true;
+                            || creation.Initializer is not null
+                                && MayBeCurrentInstanceCore(creation.Initializer, model, visitedLocals);
                     case ImplicitObjectCreationExpressionSyntax implicitCreation:
                         return implicitCreation.ArgumentList.Arguments.Any(argument =>
                             MayBeCurrentInstanceCore(argument.Expression, model, visitedLocals))
-                            || implicitCreation.Initializer?.Expressions.Any(value => value is AssignmentExpressionSyntax assignment
-                                && MayBeCurrentInstanceCore(assignment.Right, model, visitedLocals)) == true;
+                            || implicitCreation.Initializer is not null
+                                && MayBeCurrentInstanceCore(implicitCreation.Initializer, model, visitedLocals);
                     case LiteralExpressionSyntax:
                     case AnonymousFunctionExpressionSyntax:
                         return false;
@@ -680,6 +685,15 @@ public sealed class TypeExtractionService : ITypeExtractionService
                         && model.GetTypeInfo(dynamicMember.Expression, ct).Type?.TypeKind == TypeKind.Dynamic
                         && MayBeCurrentInstance(dynamicMember.Expression, model)
                         && implementation.Name == dynamicMember.Name.Identifier.ValueText) return true;
+                    if (expression is MemberAccessExpressionSyntax dynamicProperty
+                        && model.GetTypeInfo(dynamicProperty.Expression, ct).Type?.TypeKind == TypeKind.Dynamic
+                        && MayBeCurrentInstance(dynamicProperty.Expression, model)
+                        && implementation is IPropertySymbol { IsIndexer: false }
+                        && implementation.Name == dynamicProperty.Name.Identifier.ValueText) return true;
+                    if (expression is ElementAccessExpressionSyntax dynamicIndexer
+                        && model.GetTypeInfo(dynamicIndexer.Expression, ct).Type?.TypeKind == TypeKind.Dynamic
+                        && MayBeCurrentInstance(dynamicIndexer.Expression, model)
+                        && implementation is IPropertySymbol { IsIndexer: true }) return true;
                     var called = model.GetSymbolInfo(expression, ct).Symbol;
                     if (called is null) continue;
                     if (expression is InvocationExpressionSyntax opaqueCall
