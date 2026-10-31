@@ -3,6 +3,7 @@ using System.Xml;
 using System.Xml.Linq;
 using Microsoft.Build.Evaluation;
 using Microsoft.Extensions.Logging;
+using RoslynMcp.Core.Services;
 using RoslynProject = Microsoft.CodeAnalysis.Project;
 
 namespace RoslynMcp.Roslyn.Helpers;
@@ -69,17 +70,12 @@ internal static class ProjectMetadataParser
     /// <summary>Returns only an existing evaluated active assets file; stale default files are never fallback authority.</summary>
     internal static string? GetExistingAssetsPath(string projectFilePath, IReadOnlyDictionary<string, string> globalProperties)
     {
-        string? projectDirectory;
+        string projectDirectory;
         try
         {
-            projectDirectory = Path.GetDirectoryName(projectFilePath);
+            projectDirectory = GetProjectDirectory(projectFilePath);
         }
-        catch (Exception ex) when (ex is ArgumentException or NotSupportedException)
-        {
-            return null;
-        }
-
-        if (string.IsNullOrWhiteSpace(projectDirectory))
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or InvalidOperationException)
         {
             return null;
         }
@@ -97,25 +93,50 @@ internal static class ProjectMetadataParser
 
         try
         {
-            var assetsFile = values[0];
-            if (string.IsNullOrWhiteSpace(assetsFile))
-            {
-                if (string.IsNullOrWhiteSpace(values[1]))
-                {
-                    return null;
-                }
-
-                assetsFile = Path.Combine(values[1], "project.assets.json");
-            }
-
-            var activePath = Path.GetFullPath(assetsFile.Trim(), projectDirectory);
+            var activePath = ResolveAssetsPath(projectDirectory, values);
             return File.Exists(activePath) ? activePath : null;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException or InvalidOperationException)
         {
             // An invalid or unreadable active assets path provides no assets authority.
             return null;
         }
+    }
+
+    /// <summary>Resolve the evaluated active path without treating evaluation or access failure as absence.</summary>
+    internal static string GetEvaluatedAssetsPath(string projectFilePath, IReadOnlyDictionary<string, string> globalProperties)
+    {
+        var projectDirectory = GetProjectDirectory(projectFilePath);
+        var values = MsBuildMetadataHelper.EvaluateProperties(projectFilePath, globalProperties,
+            "ProjectAssetsFile", "MSBuildProjectExtensionsPath");
+        return ResolveAssetsPath(projectDirectory, values);
+    }
+
+    private static string GetProjectDirectory(string projectFilePath)
+    {
+        var projectDirectory = Path.GetDirectoryName(projectFilePath);
+        if (string.IsNullOrWhiteSpace(projectDirectory))
+        {
+            throw InvalidOperationErrors.Internal("The project has no parent directory.");
+        }
+
+        return projectDirectory;
+    }
+
+    private static string ResolveAssetsPath(string projectDirectory, string[] values)
+    {
+        var assetsFile = values[0];
+        if (string.IsNullOrWhiteSpace(assetsFile))
+        {
+            if (string.IsNullOrWhiteSpace(values[1]))
+            {
+                throw InvalidOperationErrors.Internal("The active assets path could not be evaluated.");
+            }
+
+            assetsFile = Path.Combine(values[1], "project.assets.json");
+        }
+
+        return Path.GetFullPath(assetsFile.Trim(), projectDirectory);
     }
 
     public static IReadOnlyList<string> GetTargetFrameworks(RoslynProject project, XDocument? document, ILogger? logger = null)

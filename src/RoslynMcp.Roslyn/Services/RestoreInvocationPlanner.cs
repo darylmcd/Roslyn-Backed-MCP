@@ -143,7 +143,7 @@ internal static class RestoreInvocationPlanner
             c =>
             {
                 CheckBudget();
-                return ProjectMetadataParser.GetExistingAssetsPath(c.Path, c.Properties);
+                return ProjectMetadataParser.GetEvaluatedAssetsPath(c.Path, c.Properties);
             }, ContextComparer.Instance);
         var unitContexts = new Dictionary<Context, Context>(ContextComparer.Instance);
         var rootsByAssets = new Dictionary<string, string?>(FileSystemPath.Comparer);
@@ -151,19 +151,16 @@ internal static class RestoreInvocationPlanner
         {
             CheckBudget();
             var context = ContextOf(node.ProjectInstance);
-            var root = RestoreStalenessDetector.TryReadRestorePackagesPath(context.Path, context.Properties);
+            var root = RestoreStalenessDetector.ReadRestorePackagesPathForInvocation(assetsByContext[context]);
             if (root is not null) root = Path.GetFullPath(root, Path.GetDirectoryName(context.Path)!);
             CheckBudget();
             var assets = assetsByContext[context];
-            if (assets is not null)
+            if (rootsByAssets.TryGetValue(assets, out var previousRoot) && !FileSystemPath.Comparer.Equals(root, previousRoot))
             {
-                if (rootsByAssets.TryGetValue(assets, out var previousRoot) && !FileSystemPath.Comparer.Equals(root, previousRoot))
-                {
-                    throw new PublicInvalidOperationException(
-                        "Required restore contexts record incompatible package folders in the same assets file. Restore those contexts to separate assets files and retry.");
-                }
-                rootsByAssets[assets] = root;
+                throw new PublicInvalidOperationException(
+                    "Required restore contexts record incompatible package folders in the same assets file. Restore those contexts to separate assets files and retry.");
             }
+            rootsByAssets[assets] = root;
             var restoreContext = RestoreContextOf(node.ProjectInstance);
             // Only collapse an inner build when its assets are the outer build's file.
             // A framework-specific assets file is an independent restore unit; retain its

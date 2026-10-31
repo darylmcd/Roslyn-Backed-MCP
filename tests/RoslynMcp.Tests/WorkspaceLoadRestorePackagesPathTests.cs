@@ -216,6 +216,84 @@ public sealed class WorkspaceLoadRestorePackagesPathTests : SharedWorkspaceTestB
     }
 
     [TestMethod]
+    public async Task AutoRestore_CorruptDependencyAssets_RefusesBeforeAnyCommand()
+    {
+        using var fixture = new RestoreFixture(nonCompilationChain: false);
+        await fixture.RestoreInitialAsync();
+        using var manager = fixture.CreateManager();
+        var status = await manager.LoadAsync(fixture.TargetPath, CancellationToken.None);
+        var dependencyAssets = Path.Combine(Path.GetDirectoryName(fixture.Projects[1])!, "obj", "project.assets.json");
+        File.WriteAllText(dependencyAssets, "{ not json");
+        var runner = new RecordingRestoreRunner();
+        using var executor = new GatedCommandExecutor(manager, runner, NullLogger<GatedCommandExecutor>.Instance);
+
+        await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
+            WorkspaceTools.RestoreAndReloadIfRequiredAsync(executor, ValidationOptions, manager,
+                status with { RestoreRequired = true }, true, NullLogger.Instance, CancellationToken.None));
+        Assert.IsEmpty(runner.Invocations, "An unreadable active dependency must refuse the whole captured plan.");
+    }
+
+    [TestMethod]
+    [DataRow("directory")]
+    [DataRow("missing-restore")]
+    [DataRow("non-string-root")]
+    public async Task AutoRestore_UnusableExistingDependencyAssets_RefusesBeforeAnyCommand(string failure)
+    {
+        using var fixture = new RestoreFixture(nonCompilationChain: false);
+        await fixture.RestoreInitialAsync();
+        using var manager = fixture.CreateManager();
+        var status = await manager.LoadAsync(fixture.TargetPath, CancellationToken.None);
+        var assets = Path.Combine(Path.GetDirectoryName(fixture.Projects[1])!, "obj", "project.assets.json");
+        if (failure == "directory")
+        {
+            File.Delete(assets);
+            Directory.CreateDirectory(assets);
+        }
+        else
+        {
+            File.WriteAllText(assets, failure == "missing-restore"
+                ? "{\"project\":{}}"
+                : "{\"project\":{\"restore\":{\"packagesPath\":42}}}");
+        }
+
+        var runner = new RecordingRestoreRunner();
+        using var executor = new GatedCommandExecutor(manager, runner, NullLogger<GatedCommandExecutor>.Instance);
+        await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
+            WorkspaceTools.RestoreAndReloadIfRequiredAsync(executor, ValidationOptions, manager,
+                status with { RestoreRequired = true }, true, NullLogger.Instance, CancellationToken.None));
+        Assert.IsEmpty(runner.Invocations);
+    }
+
+    [TestMethod]
+    [DataRow("extensions")]
+    [DataRow("explicit")]
+    public async Task AutoRestore_CorruptEvaluatedDependencyAssets_RefusesBeforeAnyCommand(string layout)
+    {
+        using var fixture = new RestoreFixture(nonCompilationChain: false);
+        await fixture.RestoreInitialAsync();
+        var dependencyDirectory = Path.GetDirectoryName(fixture.Projects[1])!;
+        var activeAssets = Path.Combine(dependencyDirectory, "active",
+            layout == "extensions" ? "project.assets.json" : "reviewed.assets.json");
+        File.WriteAllText(Path.Combine(dependencyDirectory, "Directory.Build.props"), layout == "extensions"
+            ? "<Project><PropertyGroup><MSBuildProjectExtensionsPath>active/</MSBuildProjectExtensionsPath></PropertyGroup></Project>"
+            : "<Project><PropertyGroup><ProjectAssetsFile>active/reviewed.assets.json</ProjectAssetsFile></PropertyGroup></Project>");
+        Directory.CreateDirectory(Path.GetDirectoryName(activeAssets)!);
+        File.Copy(Path.Combine(dependencyDirectory, "obj", "project.assets.json"), activeAssets);
+        using var manager = fixture.CreateManager();
+        var status = await manager.LoadAsync(fixture.TargetPath, CancellationToken.None);
+        Assert.AreEqual(activeAssets, RoslynMcp.Roslyn.Helpers.ProjectMetadataParser.GetExistingAssetsPath(
+            fixture.Projects[1], RoslynMcp.Roslyn.Helpers.MsBuildMetadataHelper.DefaultGlobalProperties));
+        File.WriteAllText(activeAssets, "{ not json");
+
+        var runner = new RecordingRestoreRunner();
+        using var executor = new GatedCommandExecutor(manager, runner, NullLogger<GatedCommandExecutor>.Instance);
+        await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
+            WorkspaceTools.RestoreAndReloadIfRequiredAsync(executor, ValidationOptions, manager,
+                status with { RestoreRequired = true }, true, NullLogger.Instance, CancellationToken.None));
+        Assert.IsEmpty(runner.Invocations, "A valid stale default file must not replace the evaluated active authority.");
+    }
+
+    [TestMethod]
     public async Task AutoRestore_RealReferencedAssets_PreservesEachPackageCache()
     {
         using var fixture = new RestoreFixture(nonCompilationChain: false);
