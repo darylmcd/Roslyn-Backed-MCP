@@ -405,7 +405,9 @@ internal class RestoreStalenessDetector
     /// workspace-restore-packages-path: reads <c>project.restore.packagesPath</c> from the project's
     /// evaluated active assets file — the package folder the last restore wrote to (for
     /// example a worktree scratch folder). Returns <see langword="null"/> when the assets file, the
-    /// property, or a non-empty string value is absent (first restore) or the file cannot be read.
+    /// property, or a non-empty string value is absent, or when the file cannot be read. This
+    /// best-effort drift read does not authorize restore commands; the invocation planner uses
+    /// <see cref="ReadRestorePackagesPathForInvocation"/> to refuse unreadable active assets.
     /// </summary>
     public static string? TryReadRestorePackagesPath(string projectFilePath, IReadOnlyDictionary<string, string> globalProperties)
     {
