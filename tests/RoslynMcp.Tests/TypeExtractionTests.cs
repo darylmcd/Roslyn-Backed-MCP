@@ -2501,6 +2501,38 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally { WorkspaceManager.Close(fixture.WorkspaceId); }
     }
 
+    [TestMethod]
+    public async Task ExtractType_BaseConstructorUnrelatedCallAfterDelegateWrite_AllowsPreview()
+    {
+        var fixture = await CreateExtractionFixtureAsync("UnrelatedDelegateCallFixture.cs", """
+            namespace SampleLib;
+            public class UnrelatedDelegateCallBase
+            {
+                public UnrelatedDelegateCallBase() { Run(() => { }); }
+                private void Run(System.Action callback)
+                {
+                    callback();
+                    callback = () => _ = Read();
+                    System.Console.WriteLine("done");
+                }
+                public virtual int Read() => 0;
+            }
+            public class UnrelatedDelegateCallDerived : UnrelatedDelegateCallBase
+            {
+                public override int Read() => Compute();
+                private int Compute() => 7;
+            }
+            """);
+        try
+        {
+            var preview = await TypeExtractionService.PreviewExtractTypeAsync(
+                fixture.WorkspaceId, fixture.FilePath, "UnrelatedDelegateCallDerived", ["Compute"],
+                "ComputeHelper", null, CancellationToken.None);
+            await AssertModifiedSolutionCompilesAsync(preview.PreviewToken);
+        }
+        finally { WorkspaceManager.Close(fixture.WorkspaceId); }
+    }
+
     /// <summary>
     /// Acceptance gate for type-extraction-composition-constructor-coverage: the previewed source
     /// (updated source type + generated new type) must compile with zero errors — specifically none

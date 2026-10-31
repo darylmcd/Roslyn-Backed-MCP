@@ -295,6 +295,35 @@ public sealed class TypeExtractionService : ITypeExtractionService
                         if (write.SyntaxTree != invocation.SyntaxTree || write.SpanStart < invocation.SpanStart)
                             return true;
                         var callBlock = invocation.FirstAncestorOrSelf<BlockSyntax>();
+                        var scopeModel = compilation.GetSemanticModel(scope.SyntaxTree);
+                        var scopeSymbol = scopeModel.GetDeclaredSymbol(scope, ct);
+                        if (scopeSymbol is null) return true;
+
+                        var visitedCalls = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
+                        bool MayReenterScope(InvocationExpressionSyntax call)
+                        {
+                            var callModel = compilation.GetSemanticModel(call.SyntaxTree);
+                            var called = callModel.GetSymbolInfo(call, ct).Symbol;
+                            if (called is null) return true;
+                            if (SymbolEqualityComparer.Default.Equals(called.OriginalDefinition, scopeSymbol.OriginalDefinition))
+                                return true;
+                            if (called is IMethodSymbol { MethodKind: MethodKind.DelegateInvoke }) return true;
+                            if (!visitedCalls.Add(called.OriginalDefinition)) return false;
+                            foreach (var reference in called.DeclaringSyntaxReferences)
+                            {
+                                var declaration = reference.GetSyntax(ct);
+                                if (!compilation.SyntaxTrees.Contains(declaration.SyntaxTree)) return true;
+                                if (ExecutedDescendants(declaration).OfType<InvocationExpressionSyntax>()
+                                    .Any(MayReenterScope)) return true;
+                            }
+                            // Metadata code cannot directly name a private source method unless
+                            // this instance is handed to it. Other visibility remains uncertain.
+                            return called.DeclaringSyntaxReferences.Length == 0
+                                && (scopeSymbol.DeclaredAccessibility != Accessibility.Private
+                                    || call.ArgumentList.Arguments.Any(argument =>
+                                        argument.Expression.DescendantNodesAndSelf().OfType<ThisExpressionSyntax>().Any()));
+                        }
+
                         // Source order proves safety only for direct statements in one top-level
                         // body. A nested/repeated region may execute a later write before a later
                         // invocation even when the write has a greater source position.
@@ -305,7 +334,7 @@ public sealed class TypeExtractionService : ITypeExtractionService
                             || writeStatement is not ExpressionStatementSyntax || writeStatement.Parent != callBlock
                             || callBlock.DescendantNodes().Any(node => node is GotoStatementSyntax or LabeledStatementSyntax)
                             || ExecutedDescendants(scope).OfType<InvocationExpressionSyntax>()
-                                .Any(otherCall => otherCall != invocation);
+                                .Any(otherCall => otherCall != invocation && MayReenterScope(otherCall));
                     }
 
                     foreach (var reference in parameter.DeclaringSyntaxReferences)
