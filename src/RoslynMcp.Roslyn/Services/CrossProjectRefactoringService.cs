@@ -81,25 +81,10 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
 
         var destinationNamespace = ReceivingNamespaceFactory.Create(resolvedTargetNamespace,
             ReceivingNamespaceFactory.RequireCSharpOptions(targetProject.ParseOptions));
-        destinationNamespace = destinationNamespace switch
-        {
-            FileScopedNamespaceDeclarationSyntax fileScoped => fileScoped
-                .WithNamespaceKeyword(SyntaxFactory.Token(SyntaxKind.NamespaceKeyword).WithTrailingTrivia(SyntaxFactory.Whitespace(" ")))
-                .WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken).WithTrailingTrivia(SyntaxFactory.CarriageReturnLineFeed)),
-            NamespaceDeclarationSyntax block => block
-                .WithNamespaceKeyword(SyntaxFactory.Token(SyntaxKind.NamespaceKeyword).WithTrailingTrivia(SyntaxFactory.Whitespace(" ")))
-                .WithOpenBraceToken(SyntaxFactory.Token(SyntaxKind.OpenBraceToken).WithTrailingTrivia(SyntaxFactory.CarriageReturnLineFeed)),
-            _ => destinationNamespace
-        };
+        destinationNamespace = MovedDeclarationFileWriter.FrameNamespace(destinationNamespace,
+            SyntaxFactory.TriviaList(SyntaxFactory.CarriageReturnLineFeed));
         var movedRoot = MovedDeclarationFileWriter.CreateCompilationUnit(
             sourceRoot, typeDeclaration, sourceRoot.Usings, destinationNamespace, semanticModel, ct);
-        if (movedRoot.Members.Single() is NamespaceDeclarationSyntax movedNamespace &&
-            !movedNamespace.Members.Last().ToFullString().EndsWith('\n'))
-        {
-            // A final line comment must end before the new namespace's closing brace.
-            movedRoot = movedRoot.ReplaceNode(movedNamespace, movedNamespace.WithCloseBraceToken(
-                movedNamespace.CloseBraceToken.WithLeadingTrivia(SyntaxFactory.CarriageReturnLineFeed)));
-        }
         // Item #1 — pass folders so MSBuildWorkspace.TryApplyChanges resolves the disk path
         // consistently with our explicit write. Without folders, Roslyn resolves cross-project
         // adds to {targetProjectDir}/{fileName} and produces a rogue project-root copy.

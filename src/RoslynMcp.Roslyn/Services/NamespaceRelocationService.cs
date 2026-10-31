@@ -348,7 +348,8 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
         // Build the new compilation unit for the moved type, wrapped in the destination namespace.
         var semanticModel = await sourceDocument.GetSemanticModelAsync(ct).ConfigureAwait(false)
             ?? throw InvalidOperationErrors.Internal("Semantic model could not be created for the source document.");
-        var newFileRoot = BuildMovedTypeCompilationUnit(sourceRoot, typeDecl, toNamespace, semanticModel, ct);
+        var newFileRoot = BuildMovedTypeCompilationUnit(sourceRoot, typeDecl, toNamespace,
+            ReceivingNamespaceFactory.RequireCSharpOptions(sourceDocument.Project.ParseOptions), semanticModel, ct);
         var targetProject = newSolution.GetProject(sourceDocument.Project.Id)!;
         var targetFileName = Path.GetFileName(destinationFilePath);
         var folders = ProjectMetadataParser.ComputeDocumentFolders(targetProject.FilePath, destinationFilePath);
@@ -442,12 +443,13 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
         CompilationUnitSyntax sourceRoot,
         TypeDeclarationSyntax typeDecl,
         string toNamespace,
+        CSharpParseOptions receivingOptions,
         SemanticModel semanticModel,
         CancellationToken ct)
     {
-        var destinationNs = SyntaxFactory.FileScopedNamespaceDeclaration(SyntaxFactory.ParseName(toNamespace))
-            .WithNamespaceKeyword(SyntaxFactory.Token(SyntaxKind.NamespaceKeyword).WithTrailingTrivia(SyntaxFactory.Whitespace(" ")))
-            .WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken).WithTrailingTrivia(SyntaxFactory.CarriageReturnLineFeed, SyntaxFactory.CarriageReturnLineFeed));
+        var destinationNs = MovedDeclarationFileWriter.FrameNamespace(
+            ReceivingNamespaceFactory.Create(toNamespace, receivingOptions),
+            SyntaxFactory.TriviaList(SyntaxFactory.CarriageReturnLineFeed, SyntaxFactory.CarriageReturnLineFeed));
         return MovedDeclarationFileWriter.CreateCompilationUnit(
             sourceRoot, typeDecl, sourceRoot.Usings, destinationNs, semanticModel, ct);
     }

@@ -8,6 +8,19 @@ namespace RoslynMcp.Roslyn.Helpers;
 /// <summary>Preserves physical file roles when an existing declaration moves into a new document.</summary>
 internal static class MovedDeclarationFileWriter
 {
+    internal static BaseNamespaceDeclarationSyntax? FrameNamespace(
+        BaseNamespaceDeclarationSyntax? destinationNamespace, SyntaxTriviaList bodySeparator) =>
+        destinationNamespace switch
+        {
+            FileScopedNamespaceDeclarationSyntax fileScoped => fileScoped
+                .WithNamespaceKeyword(SyntaxFactory.Token(SyntaxKind.NamespaceKeyword).WithTrailingTrivia(SyntaxFactory.Space))
+                .WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken).WithTrailingTrivia(bodySeparator)),
+            NamespaceDeclarationSyntax block => block
+                .WithNamespaceKeyword(SyntaxFactory.Token(SyntaxKind.NamespaceKeyword).WithTrailingTrivia(SyntaxFactory.Space))
+                .WithOpenBraceToken(SyntaxFactory.Token(SyntaxKind.OpenBraceToken).WithTrailingTrivia(bodySeparator)),
+            _ => destinationNamespace
+        };
+
     internal static CompilationUnitSyntax CreateCompilationUnit(
         CompilationUnitSyntax sourceRoot,
         MemberDeclarationSyntax member,
@@ -49,7 +62,15 @@ internal static class MovedDeclarationFileWriter
             .WithEndOfFileToken(sourceRoot.EndOfFileToken);
         // Set the prefix after the first real token exists; a prefix set on an empty factory
         // unit belongs to its EOF token and can disappear when members are subsequently added.
-        return root.WithLeadingTrivia(prelude.AddRange(root.GetLeadingTrivia()));
+        root = root.WithLeadingTrivia(prelude.AddRange(root.GetLeadingTrivia()));
+        if (root.Members.Single() is NamespaceDeclarationSyntax block &&
+            !block.Members.Last().ToFullString().EndsWith('\n'))
+        {
+            // A final line comment must end before the new namespace's closing brace.
+            root = root.ReplaceNode(block, block.WithCloseBraceToken(block.CloseBraceToken
+                .WithLeadingTrivia(SyntaxFactory.CarriageReturnLineFeed)));
+        }
+        return root;
     }
 
     internal static CompilationUnitSyntax RemoveDeclaration(CompilationUnitSyntax sourceRoot, MemberDeclarationSyntax member)
