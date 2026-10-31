@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.CodeAnalysis;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Contracts;
@@ -11,10 +12,11 @@ namespace RoslynMcp.Roslyn.Helpers;
 /// them back to symbols in a given <see cref="Solution"/>.
 /// </summary>
 /// <remarks>
-/// A handle encodes the symbol's metadata name, display name, and source location as a
+/// A handle encodes the symbol's metadata name, display name, source location and, for
+/// metadata members, exact assembly and declaration identity as a
 /// base-64-encoded JSON payload. The encoding is reversible and may contain a source path; it is
 /// an API locator, not a confidential or non-disclosing token. Resolution first attempts lookup
-/// by metadata name, then falls back to source position.
+/// by exact member identity, metadata name, then source position.
 /// </remarks>
 public static class SymbolHandleSerializer
 {
@@ -28,12 +30,27 @@ public static class SymbolHandleSerializer
     {
         var sourceLocation = symbol.Locations.FirstOrDefault(location => location.IsInSource);
         var lineSpan = sourceLocation?.GetLineSpan();
+        MemberIdentity? memberIdentity = null;
+        if (sourceLocation is null && symbol.ContainingType is not null && symbol is not INamedTypeSymbol)
+        {
+            var declarationId = DocumentationCommentId.CreateDeclarationId(symbol);
+            if (string.IsNullOrEmpty(declarationId))
+            {
+                throw new NotSupportedException($"The metadata member kind {symbol.Kind} has no stable declaration identity.");
+            }
+
+            memberIdentity = new MemberIdentity(
+                symbol.ContainingAssembly.Identity.ToString(),
+                GetTypeMetadataName(symbol.ContainingType),
+                declarationId);
+        }
         var payload = new SymbolHandlePayload(
             MetadataName: symbol is INamedTypeSymbol namedType ? namedType.ToDisplayString() : null,
             DisplayName: symbol.ToDisplayString(),
             FilePath: lineSpan?.Path,
             Line: lineSpan?.StartLinePosition.Line + 1,
-            Column: lineSpan?.StartLinePosition.Character + 1);
+            Column: lineSpan?.StartLinePosition.Character + 1,
+            MemberIdentity: memberIdentity);
 
         var json = JsonSerializer.Serialize(payload);
         return Convert.ToBase64String(Encoding.UTF8.GetBytes(json));
@@ -51,6 +68,11 @@ public static class SymbolHandleSerializer
     public static async Task<ISymbol?> ResolveHandleAsync(Solution solution, string symbolHandle, CancellationToken ct)
     {
         var payload = ParseHandlePayload(symbolHandle);
+
+        if (payload.MemberIdentity is not null)
+        {
+            return await ResolveMetadataMemberAsync(solution, payload.MemberIdentity, ct).ConfigureAwait(false);
+        }
 
         if (!string.IsNullOrWhiteSpace(payload.MetadataName))
         {
@@ -119,10 +141,18 @@ public static class SymbolHandleSerializer
             throw new PublicArgumentException("symbolHandle JSON deserialized to null.", nameof(symbolHandle));
         }
 
+        if (payload.MemberIdentity is { } memberIdentity &&
+            (string.IsNullOrWhiteSpace(memberIdentity.AssemblyIdentity) ||
+             string.IsNullOrWhiteSpace(memberIdentity.ContainingTypeMetadataName) ||
+             string.IsNullOrWhiteSpace(memberIdentity.DeclarationId)))
+        {
+            throw new PublicArgumentException("symbolHandle member identity is incomplete.", nameof(symbolHandle));
+        }
+
         var hasMetadata = !string.IsNullOrWhiteSpace(payload.MetadataName);
         var hasSource = !string.IsNullOrWhiteSpace(payload.FilePath) && payload.Line.HasValue && payload.Column.HasValue;
         var hasDisplay = !string.IsNullOrWhiteSpace(payload.DisplayName);
-        if (!hasMetadata && !hasSource && !hasDisplay)
+        if (!hasMetadata && !hasSource && !hasDisplay && payload.MemberIdentity is null)
         {
             throw new PublicArgumentException(
                 "symbolHandle payload must include MetadataName, source location (filePath, line, column), or DisplayName.",
@@ -137,7 +167,70 @@ public static class SymbolHandleSerializer
         string? DisplayName,
         string? FilePath,
         int? Line,
-        int? Column);
+        int? Column,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] MemberIdentity? MemberIdentity = null);
+
+    internal sealed record MemberIdentity(
+        string AssemblyIdentity,
+        string ContainingTypeMetadataName,
+        string DeclarationId);
+
+    private static string GetTypeMetadataName(INamedTypeSymbol type)
+    {
+        var prefix = type.ContainingType is not null
+            ? GetTypeMetadataName(type.ContainingType) + "+"
+            : type.ContainingNamespace.IsGlobalNamespace
+                ? string.Empty
+                : GetNamespaceMetadataName(type.ContainingNamespace) + ".";
+        return prefix + type.MetadataName;
+    }
+
+    private static string GetNamespaceMetadataName(INamespaceSymbol ns) =>
+        ns.ContainingNamespace.IsGlobalNamespace
+            ? ns.MetadataName
+            : GetNamespaceMetadataName(ns.ContainingNamespace) + "." + ns.MetadataName;
+
+    private static async Task<ISymbol?> ResolveMetadataMemberAsync(
+        Solution solution, MemberIdentity identity, CancellationToken ct)
+    {
+        ISymbol? result = null;
+        foreach (var project in solution.Projects)
+        {
+            ct.ThrowIfCancellationRequested();
+            var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
+            if (compilation is null) continue;
+
+            foreach (var assembly in compilation.References
+                .Select(compilation.GetAssemblyOrModuleSymbol)
+                .OfType<IAssemblySymbol>()
+                .Prepend(compilation.Assembly))
+            {
+                ct.ThrowIfCancellationRequested();
+                if (!string.Equals(assembly.Identity.ToString(), identity.AssemblyIdentity, StringComparison.Ordinal))
+                    continue;
+
+                var type = assembly.GetTypeByMetadataName(identity.ContainingTypeMetadataName);
+                if (type is null) continue;
+
+                var matches = type.GetMembers()
+                    .Where(member => string.Equals(
+                        DocumentationCommentId.CreateDeclarationId(member),
+                        identity.DeclarationId,
+                        StringComparison.Ordinal))
+                    .ToArray();
+                if (matches.Length > 1) return null;
+                if (matches.Length == 1)
+                {
+                    if (result is not null &&
+                        !string.Equals(result.ToDisplayString(), matches[0].ToDisplayString(), StringComparison.Ordinal))
+                        return null;
+                    result ??= matches[0];
+                }
+            }
+        }
+
+        return result;
+    }
 
     /// <summary>
     /// elicit-disambiguation-on-multi-symbol-resolve: builds a short, descriptive label that
