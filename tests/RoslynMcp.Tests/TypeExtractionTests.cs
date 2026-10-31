@@ -42,30 +42,24 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         var sanctionedRoot = Path.Combine(Path.GetTempPath(), "roots-legacy-sanctioned-" + Guid.NewGuid().ToString("N"));
         var outsideRoot = Path.Combine(Path.GetTempPath(), "roots-legacy-outside-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(sanctionedRoot);
+        QueueDirectoryForCleanup(sanctionedRoot);
         Directory.CreateDirectory(outsideRoot);
+        QueueDirectoryForCleanup(outsideRoot);
 
         await using var session = await McpRootsTestServerFactory.CreateWithSanctionedRootAsync(
             sanctionedRoot,
             CancellationToken.None);
 
-        try
-        {
-            var result = await session.Client.CallToolAsync(
-                "roots_boundary_probe",
-                new Dictionary<string, object?> { ["path"] = outsideRoot },
-                cancellationToken: CancellationToken.None);
+        var result = await session.Client.CallToolAsync(
+            "roots_boundary_probe",
+            new Dictionary<string, object?> { ["path"] = outsideRoot },
+            cancellationToken: CancellationToken.None);
 
-            Assert.AreNotEqual(true, result.IsError, "The probe should report the validator outcome as normal tool content.");
-            Assert.HasCount(1, result.Content);
-            var content = Assert.IsInstanceOfType<TextContentBlock>(result.Content[0]);
-            StringAssert.StartsWith(content.Text, "rejected: ");
-            StringAssert.Contains(content.Text, "outside the configured sanctioned-root boundary");
-        }
-        finally
-        {
-            QueueDirectoryForCleanup(sanctionedRoot);
-            QueueDirectoryForCleanup(outsideRoot);
-        }
+        Assert.AreNotEqual(true, result.IsError, "The probe should report the validator outcome as normal tool content.");
+        Assert.HasCount(1, result.Content);
+        var content = Assert.IsInstanceOfType<TextContentBlock>(result.Content[0]);
+        StringAssert.StartsWith(content.Text, "rejected: ");
+        StringAssert.Contains(content.Text, "outside the configured sanctioned-root boundary");
     }
 
     [TestMethod]
@@ -78,41 +72,35 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         var clientOnlyRoot = Path.Combine(Path.GetTempPath(), "roots-legacy-client-only-" + Guid.NewGuid().ToString("N"));
         var clientOnlyPath = Path.Combine(clientOnlyRoot, "outside.cs");
         Directory.CreateDirectory(clientRoot);
+        QueueDirectoryForCleanup(configuredRoot);
         Directory.CreateDirectory(clientOnlyRoot);
+        QueueDirectoryForCleanup(clientOnlyRoot);
 
         await using var session = await McpRootsTestServerFactory.CreateWithSanctionedRootAsync(
             configuredRoot,
             CancellationToken.None,
             clientRootPaths: [clientRoot, clientOnlyRoot]);
 
-        try
-        {
-            var allowed = await session.Client.CallToolAsync(
-                "roots_boundary_probe",
-                new Dictionary<string, object?> { ["path"] = allowedPath },
-                cancellationToken: CancellationToken.None);
-            var configuredOnly = await session.Client.CallToolAsync(
-                "roots_boundary_probe",
-                new Dictionary<string, object?> { ["path"] = configuredOnlyPath },
-                cancellationToken: CancellationToken.None);
-            var clientOnly = await session.Client.CallToolAsync(
-                "roots_boundary_probe",
-                new Dictionary<string, object?> { ["path"] = clientOnlyPath },
-                cancellationToken: CancellationToken.None);
+        var allowed = await session.Client.CallToolAsync(
+            "roots_boundary_probe",
+            new Dictionary<string, object?> { ["path"] = allowedPath },
+            cancellationToken: CancellationToken.None);
+        var configuredOnly = await session.Client.CallToolAsync(
+            "roots_boundary_probe",
+            new Dictionary<string, object?> { ["path"] = configuredOnlyPath },
+            cancellationToken: CancellationToken.None);
+        var clientOnly = await session.Client.CallToolAsync(
+            "roots_boundary_probe",
+            new Dictionary<string, object?> { ["path"] = clientOnlyPath },
+            cancellationToken: CancellationToken.None);
 
-            Assert.AreEqual("allowed", Assert.IsInstanceOfType<TextContentBlock>(allowed.Content[0]).Text);
-            StringAssert.StartsWith(
-                Assert.IsInstanceOfType<TextContentBlock>(configuredOnly.Content[0]).Text,
-                "rejected: ");
-            StringAssert.StartsWith(
-                Assert.IsInstanceOfType<TextContentBlock>(clientOnly.Content[0]).Text,
-                "rejected: ");
-        }
-        finally
-        {
-            QueueDirectoryForCleanup(configuredRoot);
-            QueueDirectoryForCleanup(clientOnlyRoot);
-        }
+        Assert.AreEqual("allowed", Assert.IsInstanceOfType<TextContentBlock>(allowed.Content[0]).Text);
+        StringAssert.StartsWith(
+            Assert.IsInstanceOfType<TextContentBlock>(configuredOnly.Content[0]).Text,
+            "rejected: ");
+        StringAssert.StartsWith(
+            Assert.IsInstanceOfType<TextContentBlock>(clientOnly.Content[0]).Text,
+            "rejected: ");
     }
 
     [TestMethod]
@@ -120,28 +108,22 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
     {
         var root = Path.Combine(Path.GetTempPath(), "roots-modern-no-capability-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
+        QueueDirectoryForCleanup(root);
 
         await using var session = await McpRootsTestServerFactory.CreateWithSanctionedRootAsync(
             root,
             CancellationToken.None,
             useLatestProtocol: true);
 
-        try
-        {
-            var result = await session.Client.CallToolAsync(
-                "roots_boundary_probe",
-                new Dictionary<string, object?> { ["path"] = root },
-                cancellationToken: CancellationToken.None);
+        var result = await session.Client.CallToolAsync(
+            "roots_boundary_probe",
+            new Dictionary<string, object?> { ["path"] = root },
+            cancellationToken: CancellationToken.None);
 
-            Assert.AreNotEqual(true, result.IsError);
-            Assert.HasCount(1, result.Content);
-            var content = Assert.IsInstanceOfType<TextContentBlock>(result.Content[0]);
-            Assert.AreEqual("allowed", content.Text);
-        }
-        finally
-        {
-            QueueDirectoryForCleanup(root);
-        }
+        Assert.AreNotEqual(true, result.IsError);
+        Assert.HasCount(1, result.Content);
+        var content = Assert.IsInstanceOfType<TextContentBlock>(result.Content[0]);
+        Assert.AreEqual("allowed", content.Text);
     }
 
     // Direct tool calls use an explicitly configured, connected test server. A missing server no
@@ -150,7 +132,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public async Task PreviewExtractType_Tool_ConfiguredServer_ProducesPreview()
     {
-        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var copiedSolutionPath = CreateQueuedSampleSolutionCopy();
         var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
         var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
         var fixturePath = Path.Combine(sampleLibDir, "ExtractTypeToolFixture.cs");
@@ -191,7 +173,6 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally
         {
             WorkspaceManager.Close(wsId);
-            QueueDirectoryForCleanup(solutionDir);
         }
     }
 
@@ -202,7 +183,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         // does NOT cover the requested file, extract_type_preview must reject before
         // dispatching to the service. Uses a real client/server pair so the actual
         // ValidatePathAgainstRootsAsync root-matching path is exercised end-to-end.
-        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var copiedSolutionPath = CreateQueuedSampleSolutionCopy();
         var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
         var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
         var fixturePath = Path.Combine(sampleLibDir, "ExtractTypeOutOfRootFixture.cs");
@@ -225,6 +206,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         // Sanction a root that is a SIBLING of solutionDir, not an ancestor of fixturePath.
         var sanctionedRoot = Path.Combine(Path.GetTempPath(), "roots-boundary-sanctioned-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(sanctionedRoot);
+        QueueDirectoryForCleanup(sanctionedRoot);
 
         await using var session = await McpRootsTestServerFactory.CreateWithSanctionedRootAsync(
             sanctionedRoot, CancellationToken.None);
@@ -249,8 +231,6 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally
         {
             WorkspaceManager.Close(wsId);
-            QueueDirectoryForCleanup(solutionDir);
-            QueueDirectoryForCleanup(sanctionedRoot);
         }
     }
 
@@ -261,7 +241,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         // a member with references from another source file must refuse the preview before any
         // disk mutation. Keep the fixture local to this test so it does not drift as the shared
         // sample solution evolves.
-        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var copiedSolutionPath = CreateQueuedSampleSolutionCopy();
         var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
         var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
         var sourcePath = Path.Combine(sampleLibDir, "ExternalConsumerFixture.cs");
@@ -307,7 +287,6 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally
         {
             WorkspaceManager.Close(wsId);
-            QueueDirectoryForCleanup(solutionDir);
         }
     }
 
@@ -317,7 +296,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         // When the extracted member is only referenced from inside the source file (the
         // class itself), the new external-consumer guard does not fire and the preview
         // succeeds as before. Use a fresh fixture to control external reference state.
-        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var copiedSolutionPath = CreateQueuedSampleSolutionCopy();
         var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
         var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
         var fixturePath = Path.Combine(sampleLibDir, "ExtractTypeNoConsumersFixture.cs");
@@ -363,7 +342,6 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally
         {
             WorkspaceManager.Close(wsId);
-            QueueDirectoryForCleanup(solutionDir);
         }
     }
 
@@ -403,7 +381,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         // extract-type-preview-refusal-missing-blocking-deps: the compile-safety refusal already
         // computed per-(member, referenced-symbol) detail but flattened it into prose. It must now
         // also carry the structured list so a caller can widen `memberNames` programmatically.
-        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var copiedSolutionPath = CreateQueuedSampleSolutionCopy();
         var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
         var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
         var fixturePath = Path.Combine(sampleLibDir, "ExtractTypeDanglingFixture.cs");
@@ -445,7 +423,6 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally
         {
             WorkspaceManager.Close(wsId);
-            QueueDirectoryForCleanup(solutionDir);
         }
     }
 
@@ -525,7 +502,6 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally
         {
             WorkspaceManager.Close(fixture.WorkspaceId);
-            QueueDirectoryForCleanup(fixture.SolutionDirectory);
         }
     }
 
@@ -685,14 +661,13 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally
         {
             WorkspaceManager.Close(fixture.WorkspaceId);
-            QueueDirectoryForCleanup(fixture.SolutionDirectory);
         }
     }
 
     [TestMethod]
     public async Task ExtractType_NewMember_StripsNewModifierFromNewType()
     {
-        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var copiedSolutionPath = CreateQueuedSampleSolutionCopy();
         var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
         var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
         var fixturePath = Path.Combine(sampleLibDir, "NewModifierFixture.cs");
@@ -760,7 +735,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         // Root cause: `BuildNewFileRoot` called `NormalizeWhitespace()` which collapses the
         // blank line. Fixed by injecting a blank line on the type declaration's leading
         // trivia after normalization.
-        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var copiedSolutionPath = CreateQueuedSampleSolutionCopy();
         var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
         var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
         var fixturePath = Path.Combine(sampleLibDir, "BlankLineFixture.cs");
@@ -829,7 +804,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         // `EnsurePublicAccessibility` retargets a constructor identifier, so the declaration was
         // emitted verbatim inside `public sealed class {newTypeName}` — an ill-formed member named
         // after the OLD type (CS1520-class breakage). It must be refused with structured data now.
-        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var copiedSolutionPath = CreateQueuedSampleSolutionCopy();
         var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
         var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
         var fixturePath = Path.Combine(sampleLibDir, "ConstructorShapeFixture.cs");
@@ -867,7 +842,6 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally
         {
             WorkspaceManager.Close(wsId);
-            QueueDirectoryForCleanup(solutionDir);
         }
     }
 
@@ -918,7 +892,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
     public async Task ExtractType_NonInterfaceMemberOfInterfaceImplementingType_StillExtracts()
     {
         // Control: the guard keys on the selected member, not on the source type having interfaces.
-        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var copiedSolutionPath = CreateQueuedSampleSolutionCopy();
         var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
         var fixturePath = Path.Combine(solutionDir, "SampleLib", "InterfaceControlFixture.cs");
         await File.WriteAllTextAsync(fixturePath,
@@ -952,14 +926,13 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally
         {
             WorkspaceManager.Close(wsId);
-            QueueDirectoryForCleanup(solutionDir);
         }
     }
 
     private async Task<ExtractTypeBlockingDependencyException> PreviewRefusedFixtureAsync(
         string typeName, string[] bodyLines, string memberName)
     {
-        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var copiedSolutionPath = CreateQueuedSampleSolutionCopy();
         var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
         var fixturePath = Path.Combine(solutionDir, "SampleLib", typeName + ".cs");
         await File.WriteAllTextAsync(fixturePath,
@@ -977,7 +950,6 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally
         {
             WorkspaceManager.Close(wsId);
-            QueueDirectoryForCleanup(solutionDir);
         }
     }
 
@@ -989,7 +961,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         // moved the whole declaration and silently dragged `b` along (and requesting "b" matched
         // nothing at all). The declaration must now be split, with attributes/modifiers/type and
         // every initializer preserved on BOTH halves — including the retained, non-extracted one.
-        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var copiedSolutionPath = CreateQueuedSampleSolutionCopy();
         var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
         var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
         var fixturePath = Path.Combine(sampleLibDir, "MultiDeclaratorFieldFixture.cs");
@@ -1039,7 +1011,6 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally
         {
             WorkspaceManager.Close(wsId);
-            QueueDirectoryForCleanup(solutionDir);
         }
     }
 
@@ -1050,7 +1021,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         // a name from its pending set on the FIRST source-order match, so for an overloaded name the
         // first-declared overload was extracted and every later same-named overload silently fell
         // through to the keep list — the caller was never told a choice had been made for them.
-        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var copiedSolutionPath = CreateQueuedSampleSolutionCopy();
         var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
         var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
         var fixturePath = Path.Combine(sampleLibDir, "OverloadShapeFixture.cs");
@@ -1091,7 +1062,6 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally
         {
             WorkspaceManager.Close(wsId);
-            QueueDirectoryForCleanup(solutionDir);
         }
     }
 
@@ -1102,7 +1072,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         // with no declared constructor previously got the readonly composition field with no
         // parameter and no assignment — a permanently-null field that compiled cleanly, so the
         // breakage was silent. The extraction must now synthesize a constructor that assigns it.
-        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var copiedSolutionPath = CreateQueuedSampleSolutionCopy();
         var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
         var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
         var fixturePath = Path.Combine(sampleLibDir, "ImplicitCtorFixture.cs");
@@ -1139,7 +1109,6 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally
         {
             WorkspaceManager.Close(wsId);
-            QueueDirectoryForCleanup(solutionDir);
         }
     }
 
@@ -1151,7 +1120,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         // `: this(...)`-chained overload additionally produced CS1729 at apply time because the
         // delegated argument list was never updated. Every constructor must now carry the
         // parameter, only the root assigns, and the chain forwards the new argument.
-        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var copiedSolutionPath = CreateQueuedSampleSolutionCopy();
         var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
         var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
         var fixturePath = Path.Combine(sampleLibDir, "ChainedCtorFixture.cs");
@@ -1197,7 +1166,6 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally
         {
             WorkspaceManager.Close(wsId);
-            QueueDirectoryForCleanup(solutionDir);
         }
     }
 
@@ -1209,7 +1177,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         // silently skipped the assignment, so callers passed a value that was thrown away. The
         // constructor must be rewritten to a block body carrying both the original expression
         // and the field assignment.
-        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var copiedSolutionPath = CreateQueuedSampleSolutionCopy();
         var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
         var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
         var fixturePath = Path.Combine(sampleLibDir, "ExpressionBodiedCtorFixture.cs");
@@ -1252,7 +1220,6 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally
         {
             WorkspaceManager.Close(wsId);
-            QueueDirectoryForCleanup(solutionDir);
         }
     }
 
@@ -1264,7 +1231,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         // `OfType<ConstructorDeclarationSyntax>()` scan, so the old code shipped a preview with
         // an unassigned composition field. The topology must be refused before any syntax is
         // emitted, with prose naming the unsupported shape and the remedy.
-        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var copiedSolutionPath = CreateQueuedSampleSolutionCopy();
         var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
         var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
         var fixturePath = Path.Combine(sampleLibDir, "PrimaryCtorFixture.cs");
@@ -1299,7 +1266,6 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally
         {
             WorkspaceManager.Close(wsId);
-            QueueDirectoryForCleanup(solutionDir);
         }
     }
 
@@ -1362,7 +1328,6 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally
         {
             WorkspaceManager.Close(fixture.WorkspaceId);
-            QueueDirectoryForCleanup(fixture.SolutionDirectory);
         }
     }
 
@@ -1406,14 +1371,13 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally
         {
             WorkspaceManager.Close(fixture.WorkspaceId);
-            QueueDirectoryForCleanup(fixture.SolutionDirectory);
         }
     }
 
     [TestMethod]
     public async Task ExtractType_MultipartPartialType_RefusesBeforeCompositionRewrite()
     {
-        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var copiedSolutionPath = CreateQueuedSampleSolutionCopy();
         var solutionDirectory = Path.GetDirectoryName(copiedSolutionPath)!;
         var sampleLibDirectory = Path.Combine(solutionDirectory, "SampleLib");
         var fixturePath = Path.Combine(sampleLibDirectory, "PartialFixture.cs");
@@ -1457,7 +1421,6 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally
         {
             WorkspaceManager.Close(loadResult.WorkspaceId);
-            QueueDirectoryForCleanup(solutionDirectory);
         }
     }
 
@@ -1508,7 +1471,6 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally
         {
             WorkspaceManager.Close(fixture.WorkspaceId);
-            QueueDirectoryForCleanup(fixture.SolutionDirectory);
         }
     }
 
@@ -1556,7 +1518,6 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally
         {
             WorkspaceManager.Close(fixture.WorkspaceId);
-            QueueDirectoryForCleanup(fixture.SolutionDirectory);
         }
     }
 
@@ -1606,7 +1567,6 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally
         {
             WorkspaceManager.Close(fixture.WorkspaceId);
-            QueueDirectoryForCleanup(fixture.SolutionDirectory);
         }
     }
 
@@ -1659,20 +1619,33 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally
         {
             WorkspaceManager.Close(fixture.WorkspaceId);
-            QueueDirectoryForCleanup(fixture.SolutionDirectory);
         }
     }
 
-    private static async Task<(string WorkspaceId, string FilePath, string SolutionDirectory)> CreateExtractionFixtureAsync(
+    private async Task<(string WorkspaceId, string FilePath, string SolutionDirectory)> CreateExtractionFixtureAsync(
         string fileName,
         string source)
     {
-        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var copiedSolutionPath = CreateQueuedSampleSolutionCopy();
         var solutionDirectory = Path.GetDirectoryName(copiedSolutionPath)!;
         var filePath = Path.Combine(solutionDirectory, "SampleLib", fileName);
         await File.WriteAllTextAsync(filePath, source);
         var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
         return (loadResult.WorkspaceId, filePath, solutionDirectory);
+    }
+
+    [TestMethod]
+    public async Task CreateExtractionFixture_WhenFixtureWriteFails_DeletesCopiedSolution()
+    {
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            CreateExtractionFixtureAsync("invalid\0name.cs", "namespace SampleLib;"));
+
+        var copiedDirectory = _directoriesToDelete.Single();
+        Assert.IsTrue(Directory.Exists(copiedDirectory), "Fixture setup must have created the copied solution before the write failed.");
+
+        await TestCleanup();
+
+        Assert.IsFalse(Directory.Exists(copiedDirectory), "Cleanup must delete a copied solution even when fixture setup fails.");
     }
 
     /// <summary>
@@ -1746,7 +1719,6 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally
         {
             WorkspaceManager.Close(fixture.WorkspaceId);
-            QueueDirectoryForCleanup(fixture.SolutionDirectory);
         }
     }
 
@@ -1785,6 +1757,13 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
             .Where(line => line.StartsWith('+') && !line.StartsWith("+++"))
             .Select(line => line.TrimEnd('\r')[1..])
             .ToArray();
+    }
+
+    private string CreateQueuedSampleSolutionCopy()
+    {
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        QueueDirectoryForCleanup(Path.GetDirectoryName(copiedSolutionPath)!);
+        return copiedSolutionPath;
     }
 
     private void QueueDirectoryForCleanup(string path) => _directoriesToDelete.Add(path);
