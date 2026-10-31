@@ -456,12 +456,11 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
                     id = s.WorkspaceId,
                     loadedAtUtc = s.LoadedAtUtc,
                     lastAccessedUtc = s.LastAccessedUtc,
-                    path = s.LoadedPath ?? string.Empty,
                 })
                 .OrderBy(s => s.lastAccessedUtc)
                 .ToList();
             var lruCandidateId = activeWorkspaces.FirstOrDefault()?.id;
-            throw new InvalidOperationException(
+            throw new PublicInvalidOperationException(
                 $"The server is already tracking {_options.MaxConcurrentWorkspaces} workspaces. " +
                 $"Close an existing workspace before loading another (or pass evictPolicy=lru to auto-evict the idle workspace). " +
                 $"activeWorkspaces={JsonSerializer.Serialize(activeWorkspaces)}" +
@@ -498,7 +497,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
                 else
                 {
                     if (!_sessions.TryAdd(workspaceId, session))
-                        throw new InvalidOperationException($"Workspace '{workspaceId}' already exists.");
+                        throw InvalidOperationErrors.Internal($"Generated workspace id '{workspaceId}' already exists.");
 
                     slotTransferred = true;
                     _fileWatcher.Watch(workspaceId, session.LoadedPath!);
