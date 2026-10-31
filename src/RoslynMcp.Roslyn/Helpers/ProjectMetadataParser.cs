@@ -69,53 +69,42 @@ internal static class ProjectMetadataParser
     /// <summary>Returns only an existing evaluated active assets file; stale default files are never fallback authority.</summary>
     internal static string? GetExistingAssetsPath(string projectFilePath, IReadOnlyDictionary<string, string> globalProperties)
     {
-        string? projectDirectory;
         try
         {
-            projectDirectory = Path.GetDirectoryName(projectFilePath);
-        }
-        catch (Exception ex) when (ex is ArgumentException or NotSupportedException)
-        {
-            return null;
-        }
-
-        if (string.IsNullOrWhiteSpace(projectDirectory))
-        {
-            return null;
-        }
-
-        string[] values;
-        try
-        {
-            values = MsBuildMetadataHelper.EvaluateProperties(projectFilePath, globalProperties,
-                "ProjectAssetsFile", "MSBuildProjectExtensionsPath");
-        }
-        catch (Exception ex) when (MsBuildMetadataHelper.IsExpectedEvaluationFailure(ex))
-        {
-            return null;
-        }
-
-        try
-        {
-            var assetsFile = values[0];
-            if (string.IsNullOrWhiteSpace(assetsFile))
-            {
-                if (string.IsNullOrWhiteSpace(values[1]))
-                {
-                    return null;
-                }
-
-                assetsFile = Path.Combine(values[1], "project.assets.json");
-            }
-
-            var activePath = Path.GetFullPath(assetsFile.Trim(), projectDirectory);
+            var activePath = GetEvaluatedAssetsPath(projectFilePath, globalProperties);
             return File.Exists(activePath) ? activePath : null;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException or InvalidOperationException ||
+            MsBuildMetadataHelper.IsExpectedEvaluationFailure(ex))
         {
             // An invalid or unreadable active assets path provides no assets authority.
             return null;
         }
+    }
+
+    /// <summary>Resolve the evaluated active path without treating evaluation or access failure as absence.</summary>
+    internal static string GetEvaluatedAssetsPath(string projectFilePath, IReadOnlyDictionary<string, string> globalProperties)
+    {
+        var projectDirectory = Path.GetDirectoryName(projectFilePath);
+        if (string.IsNullOrWhiteSpace(projectDirectory))
+        {
+            throw new InvalidOperationException("The project has no parent directory.");
+        }
+
+        var values = MsBuildMetadataHelper.EvaluateProperties(projectFilePath, globalProperties,
+            "ProjectAssetsFile", "MSBuildProjectExtensionsPath");
+        var assetsFile = values[0];
+        if (string.IsNullOrWhiteSpace(assetsFile))
+        {
+            if (string.IsNullOrWhiteSpace(values[1]))
+            {
+                throw new InvalidOperationException("The active assets path could not be evaluated.");
+            }
+
+            assetsFile = Path.Combine(values[1], "project.assets.json");
+        }
+
+        return Path.GetFullPath(assetsFile.Trim(), projectDirectory);
     }
 
     public static IReadOnlyList<string> GetTargetFrameworks(RoslynProject project, XDocument? document, ILogger? logger = null)

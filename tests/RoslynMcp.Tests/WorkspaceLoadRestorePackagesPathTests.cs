@@ -216,6 +216,24 @@ public sealed class WorkspaceLoadRestorePackagesPathTests : SharedWorkspaceTestB
     }
 
     [TestMethod]
+    public async Task AutoRestore_CorruptDependencyAssets_RefusesBeforeAnyCommand()
+    {
+        using var fixture = new RestoreFixture(nonCompilationChain: false);
+        await fixture.RestoreInitialAsync();
+        using var manager = fixture.CreateManager();
+        var status = await manager.LoadAsync(fixture.TargetPath, CancellationToken.None);
+        var dependencyAssets = Path.Combine(Path.GetDirectoryName(fixture.Projects[1])!, "obj", "project.assets.json");
+        File.WriteAllText(dependencyAssets, "{ not json");
+        var runner = new RecordingRestoreRunner();
+        using var executor = new GatedCommandExecutor(manager, runner, NullLogger<GatedCommandExecutor>.Instance);
+
+        await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
+            WorkspaceTools.RestoreAndReloadIfRequiredAsync(executor, ValidationOptions, manager,
+                status with { RestoreRequired = true }, true, NullLogger.Instance, CancellationToken.None));
+        Assert.IsEmpty(runner.Invocations, "An unreadable active dependency must refuse the whole captured plan.");
+    }
+
+    [TestMethod]
     public async Task AutoRestore_RealReferencedAssets_PreservesEachPackageCache()
     {
         using var fixture = new RestoreFixture(nonCompilationChain: false);

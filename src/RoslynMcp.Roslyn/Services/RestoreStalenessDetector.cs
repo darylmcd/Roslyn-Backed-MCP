@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Xml.Linq;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Roslyn.Services;
@@ -436,6 +437,50 @@ internal class RestoreStalenessDetector
         }
 
         return null;
+    }
+
+    /// <summary>Read the active restore authority for command planning; only a missing file is a first restore.</summary>
+    internal static string? ReadRestorePackagesPathForInvocation(string assetsPath)
+    {
+        try
+        {
+            // File.Exists also returns false on access failures, so it cannot establish absence.
+            var attributes = File.GetAttributes(assetsPath);
+            if ((attributes & FileAttributes.Directory) != 0)
+            {
+                throw new IOException("The evaluated assets path is a directory.");
+            }
+
+            using var stream = File.OpenRead(assetsPath);
+            using var document = JsonDocument.Parse(stream);
+            if (document.RootElement.ValueKind != JsonValueKind.Object ||
+                !document.RootElement.TryGetProperty("project", out var project) ||
+                project.ValueKind != JsonValueKind.Object ||
+                !project.TryGetProperty("restore", out var restore) ||
+                restore.ValueKind != JsonValueKind.Object)
+            {
+                throw new JsonException("The active assets file has no restore object.");
+            }
+
+            if (!restore.TryGetProperty("packagesPath", out var packagesPath)) return null;
+            if (packagesPath.ValueKind != JsonValueKind.String)
+            {
+                throw new JsonException("The active assets file has an invalid packagesPath.");
+            }
+
+            var value = packagesPath.GetString();
+            return string.IsNullOrWhiteSpace(value) ? null : value;
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+        {
+            return null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        {
+            throw new PublicInvalidOperationException(
+                "The active restore assets file could not be read. Restore it in its evaluated location and retry.",
+                InvalidOperationErrors.Internal("Could not read the active restore assets file.", ex));
+        }
     }
 
     /// <summary>
