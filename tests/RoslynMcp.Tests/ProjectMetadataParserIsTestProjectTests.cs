@@ -52,6 +52,17 @@ public sealed class ProjectMetadataParserIsTestProjectTests
     }
 
     [TestMethod]
+    [DataRow("NUnit", true)]
+    [DataRow("nUnIt", true)]
+    [DataRow("Unrelated.Library", false)]
+    public void IsTestProject_PackageNameMatching_IsCaseInsensitiveAndSelective(string packageName, bool expected)
+    {
+        var document = XDocument.Parse($"<Project><ItemGroup><PackageReference Include=\"{packageName}\" /></ItemGroup></Project>");
+
+        Assert.AreEqual(expected, ProjectMetadataParser.IsTestProject(document));
+    }
+
+    [TestMethod]
     public void IsTestProject_NullDocument_ReturnsFalse()
     {
         Assert.IsFalse(ProjectMetadataParser.IsTestProject((XDocument?)null));
