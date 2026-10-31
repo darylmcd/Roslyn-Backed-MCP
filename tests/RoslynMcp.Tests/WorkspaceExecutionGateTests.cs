@@ -104,7 +104,7 @@ public class WorkspaceExecutionGateTests
             return Task.FromResult(2);
         }, CancellationToken.None);
 
-        await Task.Delay(50);
+        Assert.IsFalse(reader.IsCompleted, "Reader should remain queued while writer holds the lock.");
         Assert.IsFalse(readerStarted, "Reader should not start while writer holds the lock.");
 
         releaseWriter.SetResult();
@@ -136,7 +136,7 @@ public class WorkspaceExecutionGateTests
             return Task.FromResult(2);
         }, CancellationToken.None);
 
-        await Task.Delay(50);
+        Assert.IsFalse(writer.IsCompleted, "Writer should remain queued while reader holds the lock.");
         Assert.IsFalse(writerStarted, "Writer should not start while reader holds the lock.");
 
         releaseReader.SetResult();
@@ -171,7 +171,6 @@ public class WorkspaceExecutionGateTests
             return Task.FromResult(2);
         }, CancellationToken.None);
 
-        await Task.Delay(50);
         Assert.IsFalse(second.IsCompleted);
         Assert.AreEqual(1, tracker.MaxConcurrent);
 
@@ -251,8 +250,7 @@ public class WorkspaceExecutionGateTests
             return Task.FromResult(0);
         }, CancellationToken.None);
 
-        // Give the writer time to queue.
-        await Task.Delay(50);
+        Assert.IsFalse(writer.IsCompleted, "Writer must queue behind the active reader.");
 
         var laterRead = gate.RunReadAsync(WorkspaceA, ct =>
         {
@@ -260,8 +258,7 @@ public class WorkspaceExecutionGateTests
             return Task.FromResult(0);
         }, CancellationToken.None);
 
-        // Give the later read time to queue.
-        await Task.Delay(50);
+        Assert.IsFalse(laterRead.IsCompleted, "Later reader must queue behind the writer.");
 
         releaseFirstRead.SetResult();
         await Task.WhenAll(firstRead, writer, laterRead);
@@ -331,7 +328,7 @@ public class WorkspaceExecutionGateTests
                 return Task.FromResult(0);
             }, CancellationToken.None), CancellationToken.None);
 
-        await Task.Delay(50);
+        Assert.IsFalse(close.IsCompleted, "Close must remain queued behind the active reader.");
         Assert.IsFalse(closeCompleted, "Close must wait for in-flight reader to release.");
 
         releaseReader.SetResult();
