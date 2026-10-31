@@ -2298,6 +2298,76 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally { WorkspaceManager.Close(fixture.WorkspaceId); }
     }
 
+    [TestMethod]
+    [DataRow("action = () => action();", false)]
+    [DataRow("action = () => { _ = Read(); action(); };", true)]
+    public async Task ExtractType_RecursiveDelegateAnalysisTerminates(string assignment, bool shouldRefuse)
+    {
+        var fixture = await CreateExtractionFixtureAsync("RecursiveDelegateFixture.cs", $$"""
+            namespace SampleLib;
+            public class RecursiveDelegateBase
+            {
+                public RecursiveDelegateBase()
+                {
+                    System.Action action = () => { };
+                    {{assignment}}
+                    action();
+                }
+                public virtual int Read() => 0;
+            }
+            public class RecursiveDelegateDerived : RecursiveDelegateBase
+            {
+                public override int Read() => Compute();
+                private int Compute() => 7;
+            }
+            """);
+        try
+        {
+            if (shouldRefuse)
+            {
+                await Assert.ThrowsExactlyAsync<ExtractTypeBlockingDependencyException>(() =>
+                    TypeExtractionService.PreviewExtractTypeAsync(
+                        fixture.WorkspaceId, fixture.FilePath, "RecursiveDelegateDerived", ["Compute"],
+                        "ComputeHelper", null, CancellationToken.None));
+            }
+            else
+            {
+                var preview = await TypeExtractionService.PreviewExtractTypeAsync(
+                    fixture.WorkspaceId, fixture.FilePath, "RecursiveDelegateDerived", ["Compute"],
+                    "ComputeHelper", null, CancellationToken.None);
+                await AssertModifiedSolutionCompilesAsync(preview.PreviewToken);
+            }
+        }
+        finally { WorkspaceManager.Close(fixture.WorkspaceId); }
+    }
+
+    [TestMethod]
+    public async Task ExtractType_BaseConstructorInvokesSafeDelegateParameter_AllowsPreview()
+    {
+        var fixture = await CreateExtractionFixtureAsync("SafeDelegateParameterFixture.cs", """
+            namespace SampleLib;
+            public class SafeDelegateParameterBase
+            {
+                public SafeDelegateParameterBase() { Run(() => { }); }
+                private void Run(System.Action callback) => callback();
+                public virtual int Read() => 0;
+            }
+            public class SafeDelegateParameterDerived : SafeDelegateParameterBase
+            {
+                public override int Read() => Compute();
+                private int Compute() => 7;
+            }
+            """);
+        try
+        {
+            var preview = await TypeExtractionService.PreviewExtractTypeAsync(
+                fixture.WorkspaceId, fixture.FilePath, "SafeDelegateParameterDerived", ["Compute"],
+                "ComputeHelper", null, CancellationToken.None);
+            await AssertModifiedSolutionCompilesAsync(preview.PreviewToken);
+        }
+        finally { WorkspaceManager.Close(fixture.WorkspaceId); }
+    }
+
     /// <summary>
     /// Acceptance gate for type-extraction-composition-constructor-coverage: the previewed source
     /// (updated source type + generated new type) must compile with zero errors — specifically none
