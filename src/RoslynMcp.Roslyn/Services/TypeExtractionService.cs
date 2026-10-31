@@ -300,6 +300,36 @@ public sealed class TypeExtractionService : ITypeExtractionService
                         if (scopeSymbol is null) return true;
 
                         var visitedCalls = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
+                        var visitedCallbacks = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
+                        bool CallbackMayReenter(ExpressionSyntax value, SemanticModel valueModel)
+                        {
+                            if (value is AnonymousFunctionExpressionSyntax lambda)
+                                return ExecutedDescendants(lambda).OfType<InvocationExpressionSyntax>()
+                                    .Any(MayReenterScope);
+                            if (value is ParenthesizedExpressionSyntax parenthesized)
+                                return CallbackMayReenter(parenthesized.Expression, valueModel);
+                            if (value is CastExpressionSyntax cast)
+                                return CallbackMayReenter(cast.Expression, valueModel);
+                            if (valueModel.GetSymbolInfo(value, ct).Symbol is not ILocalSymbol local
+                                || !visitedCallbacks.Add(local.OriginalDefinition)) return false;
+                            foreach (var reference in local.DeclaringSyntaxReferences)
+                            {
+                                if (reference.GetSyntax(ct) is not VariableDeclaratorSyntax variable) continue;
+                                var localModel = compilation.GetSemanticModel(variable.SyntaxTree);
+                                if (variable.Initializer?.Value is { } initializer
+                                    && CallbackMayReenter(initializer, localModel)) return true;
+                                var localScope = variable.FirstAncestorOrSelf<BaseMethodDeclarationSyntax>();
+                                if (localScope is null) continue;
+                                foreach (var assignment in localScope.DescendantNodes().OfType<AssignmentExpressionSyntax>())
+                                {
+                                    if (SymbolEqualityComparer.Default.Equals(
+                                            localModel.GetSymbolInfo(assignment.Left, ct).Symbol, local)
+                                        && CallbackMayReenter(assignment.Right, localModel)) return true;
+                                }
+                            }
+                            return false;
+                        }
+
                         bool MayReenterScope(InvocationExpressionSyntax call)
                         {
                             var callModel = compilation.GetSemanticModel(call.SyntaxTree);
@@ -316,6 +346,9 @@ public sealed class TypeExtractionService : ITypeExtractionService
                                 if (ExecutedDescendants(declaration).OfType<InvocationExpressionSyntax>()
                                     .Any(MayReenterScope)) return true;
                             }
+                            if (called.DeclaringSyntaxReferences.Length == 0
+                                && call.ArgumentList.Arguments.Any(argument =>
+                                    CallbackMayReenter(argument.Expression, callModel))) return true;
                             // Metadata code cannot directly name a private source method unless
                             // this instance is handed to it. Other visibility remains uncertain.
                             return called.DeclaringSyntaxReferences.Length == 0
@@ -489,7 +522,8 @@ public sealed class TypeExtractionService : ITypeExtractionService
                     case CastExpressionSyntax cast:
                         return MayBeCurrentInstanceCore(cast.Expression, model, visitedLocals);
                     case ObjectCreationExpressionSyntax or ImplicitObjectCreationExpressionSyntax:
-                    case LiteralExpressionSyntax { RawKind: (int)SyntaxKind.NullLiteralExpression }:
+                    case LiteralExpressionSyntax:
+                    case AnonymousFunctionExpressionSyntax:
                         return false;
                     case IdentifierNameSyntax name when model.GetSymbolInfo(name, ct).Symbol is ILocalSymbol local:
                         if (!visitedLocals.Add(local)) return true;
@@ -587,6 +621,12 @@ public sealed class TypeExtractionService : ITypeExtractionService
                     var called = model.GetSymbolInfo(expression, ct).Symbol;
                     if (called is null) continue;
                     if (!CallMayTargetCurrentInstance(expression, model)) continue;
+                    if (expression is InvocationExpressionSyntax opaqueCall
+                        && called is IMethodSymbol { DeclaringSyntaxReferences.Length: 0 }
+                        && opaqueCall.ArgumentList.Arguments.Any(argument =>
+                            argument.Expression is AnonymousFunctionExpressionSyntax lambda
+                                ? BodyReachesDispatch(lambda, model)
+                                : MayBeCurrentInstance(argument.Expression, model))) return true;
                     if (DispatchesTo(called, implementation)) return true;
                     if (called is IMethodSymbol or IPropertySymbol
                         && called.ContainingType is { } owner

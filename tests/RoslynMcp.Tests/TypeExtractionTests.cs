@@ -2533,6 +2533,104 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally { WorkspaceManager.Close(fixture.WorkspaceId); }
     }
 
+    [TestMethod]
+    [DataRow("new System.Collections.Generic.List<int> { 0 }.ForEach(_ => Run(callback));")]
+    [DataRow("System.Action<int> again = _ => Run(callback); new System.Collections.Generic.List<int> { 0 }.ForEach(again);")]
+    public async Task ExtractType_BaseConstructorMetadataCallbackReentersWithChangedDelegate_Refuses(
+        string callbackCall)
+    {
+        var fixture = await CreateExtractionFixtureAsync("MetadataCallbackFixture.cs", $$"""
+            namespace SampleLib;
+            public class MetadataCallbackBase
+            {
+                public MetadataCallbackBase() { Run(() => { }); }
+                private void Run(System.Action callback)
+                {
+                    callback();
+                    callback = () => _ = Read();
+                    {{callbackCall}}
+                }
+                public virtual int Read() => 0;
+            }
+            public class MetadataCallbackDerived : MetadataCallbackBase
+            {
+                public override int Read() => Compute();
+                private int Compute() => 7;
+            }
+            """);
+        try
+        {
+            var version = WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId);
+            await Assert.ThrowsExactlyAsync<ExtractTypeBlockingDependencyException>(() =>
+                TypeExtractionService.PreviewExtractTypeAsync(
+                    fixture.WorkspaceId, fixture.FilePath, "MetadataCallbackDerived", ["Compute"],
+                    "ComputeHelper", null, CancellationToken.None));
+            FileOperationIntegrationTests.AssertNoStoredPreviews(PreviewStore, fixture.WorkspaceId);
+            Assert.AreEqual(version, WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId));
+        }
+        finally { WorkspaceManager.Close(fixture.WorkspaceId); }
+    }
+
+    [TestMethod]
+    public async Task ExtractType_BaseConstructorOpaqueCallReceivesThis_Refuses()
+    {
+        var fixture = await CreateExtractionFixtureAsync("OpaqueThisFixture.cs", """
+            namespace SampleLib;
+            public class OpaqueThisBase
+            {
+                public OpaqueThisBase() { System.Console.WriteLine(this); }
+            }
+            public class OpaqueThisDerived : OpaqueThisBase
+            {
+                public override string ToString() => Compute();
+                private string Compute() => "value";
+            }
+            """);
+        try
+        {
+            var version = WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId);
+            await Assert.ThrowsExactlyAsync<ExtractTypeBlockingDependencyException>(() =>
+                TypeExtractionService.PreviewExtractTypeAsync(
+                    fixture.WorkspaceId, fixture.FilePath, "OpaqueThisDerived", ["Compute"],
+                    "ComputeHelper", null, CancellationToken.None));
+            FileOperationIntegrationTests.AssertNoStoredPreviews(PreviewStore, fixture.WorkspaceId);
+            Assert.AreEqual(version, WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId));
+        }
+        finally { WorkspaceManager.Close(fixture.WorkspaceId); }
+    }
+
+    [TestMethod]
+    public async Task ExtractType_BaseConstructorUnrelatedMetadataCallback_AllowsPreview()
+    {
+        var fixture = await CreateExtractionFixtureAsync("UnrelatedMetadataCallbackFixture.cs", """
+            namespace SampleLib;
+            public class UnrelatedMetadataCallbackBase
+            {
+                public UnrelatedMetadataCallbackBase() { Run(() => { }); }
+                private void Run(System.Action callback)
+                {
+                    callback();
+                    callback = () => _ = Read();
+                    new System.Collections.Generic.List<int> { 0 }.ForEach(_ => { });
+                }
+                public virtual int Read() => 0;
+            }
+            public class UnrelatedMetadataCallbackDerived : UnrelatedMetadataCallbackBase
+            {
+                public override int Read() => Compute();
+                private int Compute() => 7;
+            }
+            """);
+        try
+        {
+            var preview = await TypeExtractionService.PreviewExtractTypeAsync(
+                fixture.WorkspaceId, fixture.FilePath, "UnrelatedMetadataCallbackDerived", ["Compute"],
+                "ComputeHelper", null, CancellationToken.None);
+            await AssertModifiedSolutionCompilesAsync(preview.PreviewToken);
+        }
+        finally { WorkspaceManager.Close(fixture.WorkspaceId); }
+    }
+
     /// <summary>
     /// Acceptance gate for type-extraction-composition-constructor-coverage: the previewed source
     /// (updated source type + generated new type) must compile with zero errors — specifically none
