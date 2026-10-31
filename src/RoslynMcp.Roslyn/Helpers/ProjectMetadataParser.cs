@@ -69,13 +69,33 @@ internal static class ProjectMetadataParser
     /// <summary>Returns only an existing evaluated active assets file; stale default files are never fallback authority.</summary>
     internal static string? GetExistingAssetsPath(string projectFilePath, IReadOnlyDictionary<string, string> globalProperties)
     {
+        string projectDirectory;
         try
         {
-            var activePath = GetEvaluatedAssetsPath(projectFilePath, globalProperties);
+            projectDirectory = GetProjectDirectory(projectFilePath);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or InvalidOperationException)
+        {
+            return null;
+        }
+
+        string[] values;
+        try
+        {
+            values = MsBuildMetadataHelper.EvaluateProperties(projectFilePath, globalProperties,
+                "ProjectAssetsFile", "MSBuildProjectExtensionsPath");
+        }
+        catch (Exception ex) when (MsBuildMetadataHelper.IsExpectedEvaluationFailure(ex))
+        {
+            return null;
+        }
+
+        try
+        {
+            var activePath = ResolveAssetsPath(projectDirectory, values);
             return File.Exists(activePath) ? activePath : null;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException or InvalidOperationException ||
-            MsBuildMetadataHelper.IsExpectedEvaluationFailure(ex))
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException or InvalidOperationException)
         {
             // An invalid or unreadable active assets path provides no assets authority.
             return null;
@@ -85,14 +105,25 @@ internal static class ProjectMetadataParser
     /// <summary>Resolve the evaluated active path without treating evaluation or access failure as absence.</summary>
     internal static string GetEvaluatedAssetsPath(string projectFilePath, IReadOnlyDictionary<string, string> globalProperties)
     {
+        var projectDirectory = GetProjectDirectory(projectFilePath);
+        var values = MsBuildMetadataHelper.EvaluateProperties(projectFilePath, globalProperties,
+            "ProjectAssetsFile", "MSBuildProjectExtensionsPath");
+        return ResolveAssetsPath(projectDirectory, values);
+    }
+
+    private static string GetProjectDirectory(string projectFilePath)
+    {
         var projectDirectory = Path.GetDirectoryName(projectFilePath);
         if (string.IsNullOrWhiteSpace(projectDirectory))
         {
             throw new InvalidOperationException("The project has no parent directory.");
         }
 
-        var values = MsBuildMetadataHelper.EvaluateProperties(projectFilePath, globalProperties,
-            "ProjectAssetsFile", "MSBuildProjectExtensionsPath");
+        return projectDirectory;
+    }
+
+    private static string ResolveAssetsPath(string projectDirectory, string[] values)
+    {
         var assetsFile = values[0];
         if (string.IsNullOrWhiteSpace(assetsFile))
         {

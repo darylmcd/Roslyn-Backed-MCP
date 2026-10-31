@@ -361,7 +361,7 @@ public sealed class WorkspaceLoadAutoRestoreTests : SharedWorkspaceTestBase
                 {
                     var objDirectory = Path.Combine(Path.GetDirectoryName(project.FilePath)!, "obj");
                     Directory.CreateDirectory(objDirectory);
-                    File.WriteAllText(Path.Combine(objDirectory, "project.assets.json"), "{\"project\":{\"frameworks\":{}}}");
+                    File.WriteAllText(Path.Combine(objDirectory, "project.assets.json"), "{\"project\":{\"restore\":{},\"frameworks\":{}}}");
                 }
             }
 
