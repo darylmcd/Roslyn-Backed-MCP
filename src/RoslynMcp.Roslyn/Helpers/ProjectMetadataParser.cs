@@ -3,6 +3,7 @@ using System.Xml;
 using System.Xml.Linq;
 using Microsoft.Build.Evaluation;
 using Microsoft.Extensions.Logging;
+using RoslynMcp.Core.Services;
 using RoslynProject = Microsoft.CodeAnalysis.Project;
 
 namespace RoslynMcp.Roslyn.Helpers;
@@ -116,7 +117,7 @@ internal static class ProjectMetadataParser
         var projectDirectory = Path.GetDirectoryName(projectFilePath);
         if (string.IsNullOrWhiteSpace(projectDirectory))
         {
-            throw new InvalidOperationException("The project has no parent directory.");
+            throw InvalidOperationErrors.Internal("The project has no parent directory.");
         }
 
         return projectDirectory;
@@ -129,7 +130,7 @@ internal static class ProjectMetadataParser
         {
             if (string.IsNullOrWhiteSpace(values[1]))
             {
-                throw new InvalidOperationException("The active assets path could not be evaluated.");
+                throw InvalidOperationErrors.Internal("The active assets path could not be evaluated.");
             }
 
             assetsFile = Path.Combine(values[1], "project.assets.json");
