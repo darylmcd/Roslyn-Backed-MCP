@@ -1,6 +1,6 @@
 # relocation-source-delete-drops-enum-delegate — Preserve other namespace members during namespace changes
 
-**row:** `relocation-source-delete-drops-enum-delegate` · **pri:** `High` · **size:** `S`
+**row:** `relocation-source-delete-drops-enum-delegate` · **pri:** `High` · **size:** `L`
 
 ## Anchors
 
@@ -16,6 +16,11 @@
 - [ ] Preserve delegates and other direct namespace members under the same sibling and source-removal decisions, including nested namespaces; retain the existing sole-type source removal behavior.
 - [ ] Preserve `using Old;` in consumers when another source member still occupies `Old`, whether in the source file or another document.
 - [ ] The resulting solution compiles and the existing relocation ownership matrix remains green.
+
+## Scope
+
+- `L` reflects three regression paths in one production file: same-file namespace rewrite, relocation source deletion, and consumer using removal.
+- Change the shared direct-namespace-member classification for all three decisions in one fix. Splitting by output path would leave the same enum/delegate exclusion active in the other branches.
 
 ## Evidence
 

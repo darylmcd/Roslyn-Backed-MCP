@@ -65,7 +65,7 @@
 | `refactoring-code-fix-preview-decomposition` | High | refactoring-format-range-preview-decomposition | Decompose diagnostic code-fix preview selection and assembly while preserving fix behavior. [type: quality] [source: 2026-08-05 direct remediation adjacent review] | S | items/refactoring-code-fix-preview-decomposition.md |
 | `workspace-session-dispose-unchained-disposal` | High | — | **Chain WorkspaceSession.Dispose disposals** — a throwing Workspace/lease dispose must not skip the rest or leak LoadLock; needs an observable seam first. [type: bug] [source: 2026-10-29 remediation] | M | items/workspace-session-dispose-unchained-disposal.md |
 | `analyzer-shadow-lease-disposal-no-follow` | High | — | **Bound lease disposal deletion.** Keep analyzer shadow cleanup inside owned no-follow paths. | S | items/analyzer-shadow-lease-disposal-no-follow.md |
-| `relocation-source-delete-drops-enum-delegate` | High | — | **Preserve enum and delegate namespace members when changing or relocating a type** — sibling decisions count only type declarations, so they can rewrite or delete other members and drop a needed old-namespace using. [type: bug] [source: relocation comment review 20261101] | S | items/relocation-source-delete-drops-enum-delegate.md |
+| `relocation-source-delete-drops-enum-delegate` | High | — | **Preserve enum and delegate namespace members when changing or relocating a type** — sibling decisions count only type declarations, so they can rewrite or delete other members and drop a needed old-namespace using. [type: bug] [source: relocation comment review 20261101] | L | items/relocation-source-delete-drops-enum-delegate.md |
 
 ## Medium
 
