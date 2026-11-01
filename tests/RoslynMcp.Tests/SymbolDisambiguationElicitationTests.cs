@@ -44,14 +44,14 @@ namespace RoslynMcp.Tests;
 /// </para>
 /// </summary>
 // donotparallelize-audit-wave-28: [DoNotParallelize] removed. The class reads the assembly-shared
-// SampleSolution only through the synchronized WorkspaceIdCache (GetOrLoadWorkspaceIdAsync) and
-// only calls read paths (SymbolTools.FindReferences/SearchSymbols, SymbolHandleSerializer); the
+// SampleSolution only through the synchronized WorkspaceIdCache (GetOrLoadWorkspaceIdAsync),
+// except for the per-test copied workspace used by the metadata overload reference test. All
+// tests call read paths (SymbolTools.FindReferences/SearchSymbols, SymbolHandleSerializer); the
 // MRTR tests use per-test RecordingReferenceService/StaticSymbolSearchService fakes and per-test
 // RequestContext instances over the assembly-shared path-authorized server, which they never
 // mutate (RequestScopedInputAdapter keeps no session/static cache; gate metrics are AsyncLocal).
 // The dedupe tests build per-test in-memory AdhocWorkspaces. No *_apply, no reload, no disk
-// writes, no statics or environment mutation. Validated by a bounded repeated (3x) concurrent run
-// alongside its wave-28 siblings and parallel-enabled workspace-loading classes, green every time.
+// writes to shared paths or environment mutation. The copied workspace is disposed per test.
 [TestClass]
 public sealed class SymbolDisambiguationElicitationTests : IsolatedWorkspaceTestBase
 {
@@ -525,11 +525,25 @@ public sealed class SymbolDisambiguationElicitationTests : IsolatedWorkspaceTest
     [TestMethod]
     public async Task FindReferences_MetadataOverloadCandidateHandle_RoundTripsThroughPublicTool()
     {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var probePath = workspace.GetPath("SampleLib", "ProcessKillReferenceProbe.cs");
+        await File.WriteAllTextAsync(probePath, """
+            using System.Diagnostics;
+            internal static class ProcessKillReferenceProbe
+            {
+                internal static void Invoke(Process process)
+                {
+                    process.Kill();
+                    process.Kill(entireProcessTree: true);
+                }
+            }
+            """);
+        var workspaceId = await workspace.LoadAsync();
         var discovery = await ToolExecutionTestHarness.RunAsync(
             "find_references",
             () => SymbolTools.FindReferences(
                 requestContext: null!, WorkspaceManager, WorkspaceExecutionGate,
-                ReferenceService, _workspaceId,
+                ReferenceService, workspaceId,
                 metadataName: "System.Diagnostics.Process.Kill",
                 ct: CancellationToken.None));
         using var discoveryDoc = JsonDocument.Parse(discovery);
@@ -537,30 +551,52 @@ public sealed class SymbolDisambiguationElicitationTests : IsolatedWorkspaceTest
         var candidates = discoveryDoc.RootElement.GetProperty("candidates");
         Assert.AreEqual(2, candidates.GetArrayLength());
 
-        var sawKillBool = false;
+        var expectedLines = new Dictionary<string, int>(StringComparer.Ordinal)
+        {
+            ["Method System.Diagnostics.Process.Kill()"] = 6,
+            ["Method System.Diagnostics.Process.Kill(bool)"] = 7,
+        };
+        var handles = new HashSet<string>(StringComparer.Ordinal);
+        var referenceLines = new HashSet<int>();
         foreach (var candidate in candidates.EnumerateArray())
         {
-            var returnedHandle = candidate.GetProperty("symbolHandle").GetString();
+            var label = candidate.GetProperty("label").GetString()
+                ?? throw new AssertFailedException("Candidate label must be present.");
+            Assert.IsTrue(expectedLines.TryGetValue(label, out var expectedLine),
+                $"Unexpected Process.Kill overload: {label}");
+            var returnedHandle = candidate.GetProperty("symbolHandle").GetString()
+                ?? throw new AssertFailedException("Candidate handle must be present.");
             Assert.IsFalse(string.IsNullOrWhiteSpace(returnedHandle));
+            Assert.IsTrue(handles.Add(returnedHandle), "Each overload must advertise a distinct handle.");
             var references = await ToolExecutionTestHarness.RunAsync(
                 "find_references",
                 () => SymbolTools.FindReferences(
                     requestContext: null!, WorkspaceManager, WorkspaceExecutionGate,
-                    ReferenceService, _workspaceId,
+                    ReferenceService, workspaceId,
                     symbolHandle: returnedHandle,
                     ct: CancellationToken.None));
             using var referencesDoc = JsonDocument.Parse(references);
             Assert.IsFalse(referencesDoc.RootElement.TryGetProperty("error", out _),
-                $"Returned candidate {candidate.GetProperty("label").GetString()} failed: {references}");
+                $"Returned candidate {label} failed: {references}");
+            Assert.AreEqual(1, referencesDoc.RootElement.GetProperty("totalCount").GetInt32(),
+                $"{label} must resolve to exactly its own source call.");
+            Assert.AreEqual(1, referencesDoc.RootElement.GetProperty("count").GetInt32());
+            var item = referencesDoc.RootElement.GetProperty("items").EnumerateArray().Single();
+            Assert.IsTrue(FileSystemPath.Comparer.Equals(
+                    Path.GetFullPath(probePath),
+                    Path.GetFullPath(item.GetProperty("filePath").GetString()!)),
+                $"{label} must resolve to the isolated probe file.");
+            var actualLine = item.GetProperty("startLine").GetInt32();
+            Assert.AreEqual(expectedLine, actualLine, $"{label} resolved the wrong overload's source call.");
+            Assert.IsTrue(referenceLines.Add(actualLine), "The overloads must return distinct reference sets.");
 
-            if (candidate.GetProperty("label").GetString() == "Method System.Diagnostics.Process.Kill(bool)")
+            if (label == "Method System.Diagnostics.Process.Kill(bool)")
             {
-                sawKillBool = true;
                 var definition = await ToolExecutionTestHarness.RunAsync(
                     "go_to_definition",
                     () => SymbolTools.GoToDefinition(
                         requestContext: null!, WorkspaceManager, WorkspaceExecutionGate,
-                        SymbolNavigationService, _workspaceId,
+                        SymbolNavigationService, workspaceId,
                         symbolHandle: returnedHandle,
                         ct: CancellationToken.None));
                 using var definitionDoc = JsonDocument.Parse(definition);
@@ -570,7 +606,7 @@ public sealed class SymbolDisambiguationElicitationTests : IsolatedWorkspaceTest
                     "Metadata-only navigation must not return a source location for another overload.");
             }
         }
-        Assert.IsTrue(sawKillBool, "The public candidate set must include Kill(bool).");
+        Assert.AreEqual(2, referenceLines.Count, "Both advertised overloads must have distinct source calls.");
     }
 
     private static RequestContext<CallToolRequestParams> CreateModernFormRequestContext(
