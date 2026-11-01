@@ -25,7 +25,8 @@ internal sealed class FakeUndo : IUndoService
     }
 
     public void CaptureBeforeApply(string workspaceId, string description, object? preApplySolution,
-        IReadOnlyList<FileSnapshotDto>? fileSnapshots = null) { }
+        IReadOnlyList<FileSnapshotDto>? fileSnapshots = null)
+    { }
 
     public UndoEntry? GetLastOperation(string workspaceId) => null;
 
