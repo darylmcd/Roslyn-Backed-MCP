@@ -4,6 +4,7 @@ using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Contracts;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -314,31 +315,6 @@ public sealed class ApplyUndoWorkflowServiceTests
 
         public Task<RefactoringPreviewDto> PreviewCodeFixAsync(string workspaceId, string diagnosticId, string filePath, int line, int column, string? fixId, CancellationToken ct)
             => throw new NotImplementedException();
-    }
-
-    private sealed class FakeUndo : IUndoService
-    {
-        public int RevertCalls;
-        public bool RevertReturns = true;
-        public RevertBySequenceResult SequenceResult =
-            new(false, null, Array.Empty<string>(), "unknown-sequence", null);
-
-        public Task<bool> RevertAsync(string workspaceId, CancellationToken cancellationToken = default)
-        {
-            RevertCalls++;
-            return Task.FromResult(RevertReturns);
-        }
-
-        public void CaptureBeforeApply(string workspaceId, string description, object? preApplySolution, IReadOnlyList<FileSnapshotDto>? fileSnapshots = null) { }
-
-        public UndoEntry? GetLastOperation(string workspaceId) => null;
-
-        public Task<RevertBySequenceResult> RevertBySequenceAsync(string workspaceId, int sequenceNumber, CancellationToken cancellationToken = default)
-            => Task.FromResult(SequenceResult);
-
-        public void CommitPendingCapture(string workspaceId, int sequenceNumber, IReadOnlyList<string> affectedFiles) { }
-
-        public void Clear(string workspaceId) { }
     }
 
     private sealed class FakePreviewStore : IPreviewStore
