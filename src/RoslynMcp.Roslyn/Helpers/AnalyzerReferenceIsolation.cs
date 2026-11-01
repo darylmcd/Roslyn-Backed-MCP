@@ -548,10 +548,10 @@ internal static class AnalyzerReferenceIsolation
     /// Owns one workspace load's shadow-copy loaders: the collectible
     /// <see cref="AssemblyLoadContext"/>s they created and the uniquely-keyed on-disk shadow
     /// root they copy into. <see cref="Dispose"/> is idempotent (eviction, explicit close, and
-    /// host shutdown can all reach the same session): it unloads every context — containing any
-    /// failure so a third-party analyzer's leaked root can never fault workspace close — then
-    /// best-effort deletes the lease root with a bounded GC-assisted retry (ALC unload is
-    /// asynchronous; mapped shadow files stay locked until collection completes). A root that
+    /// host shutdown can all reach the same session): it unloads every context, containing
+    /// context-unload failures, then best-effort deletes the lease root with a bounded GC-assisted
+    /// retry. Unexpected loader cleanup failures propagate and leave the lease retryable. ALC unload is
+    /// asynchronous; mapped shadow files stay locked until collection completes. A root that
     /// remains undeletable is logged at Debug and left for <see cref="SweepAbandonedRoots"/>.
     /// </summary>
     public sealed class AnalyzerShadowLoaderLease : IDisposable
@@ -563,7 +563,8 @@ internal static class AnalyzerReferenceIsolation
 
         private IReadOnlyList<ShadowCopyAnalyzerAssemblyLoader> _loaders;
         private readonly ILogger? _logger;
-        private int _disposed;
+        private readonly object _disposeGate = new();
+        private bool _disposed;
 
         internal AnalyzerShadowLoaderLease(
             string? shadowRoot,
@@ -597,29 +598,34 @@ internal static class AnalyzerReferenceIsolation
 
         public void Dispose()
         {
-            if (Interlocked.Exchange(ref _disposed, 1) != 0)
+            lock (_disposeGate)
             {
-                return;
+                if (_disposed)
+                {
+                    return;
+                }
+
+                foreach (var loader in _loaders)
+                {
+                    loader.UnloadAndRelease();
+                }
+
+                // Drop the loader references BEFORE the GC-assisted delete retries: the loaders'
+                // cached Assembly instances strongly root their collectible contexts, and this
+                // lease (alive on the disposing stack) roots the loaders — without this release
+                // the retry loop's collections could never complete the unload.
+                _loaders = [];
+
+                if (ShadowRoot is not null)
+                {
+                    TryDeleteShadowRoot();
+                    s_liveRoots.TryRemove(ShadowRoot, out _);
+                }
+
+                // A failure in any cleanup step leaves the lease retryable. The lock also
+                // prevents concurrent disposals from unloading or deleting the same root.
+                _disposed = true;
             }
-
-            foreach (var loader in _loaders)
-            {
-                loader.UnloadAndRelease();
-            }
-
-            // Drop the loader references BEFORE the GC-assisted delete retries: the loaders'
-            // cached Assembly instances strongly root their collectible contexts, and this
-            // lease (alive on the disposing stack) roots the loaders — without this release
-            // the retry loop's collections could never complete the unload.
-            _loaders = [];
-
-            if (ShadowRoot is null)
-            {
-                return;
-            }
-
-            s_liveRoots.TryRemove(ShadowRoot, out _);
-            TryDeleteShadowRoot();
         }
 
         private void TryDeleteShadowRoot()
