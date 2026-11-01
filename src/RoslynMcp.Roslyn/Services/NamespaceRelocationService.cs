@@ -115,14 +115,12 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
 
         var warnings = new List<string>();
 
-        // Build the updated source-file syntax. Three cases:
-        //   (a) the source file's namespace declaration IS fromNamespace and contains only this
-        //       type -> rewrite the namespace name in place.
-        //   (b) the source file's namespace IS fromNamespace but contains other types -> if we
-        //       are also relocating, extract the type into the new file; otherwise rewrite
-        //       namespace declaration for the whole file (co-located types move together).
-        //   (c) the source file has nested namespaces or the type sits in a deeper namespace -
-        //       we reject with a clear error for the initial scope (flagged as a warning).
+        // Rewrite the type's nearest containing namespace, including when it is nested:
+        //   (a) without file relocation or sibling types, rename that declaration in place;
+        //   (b) without file relocation but with siblings, move only the selected type into a
+        //       new namespace declaration in the same file;
+        //   (c) with file relocation, write the selected type to the destination file and
+        //       remove its declaration from the source file.
         var (updatedSolution, siblingTypesRemaining) = await ApplyNamespaceRewriteAsync(
             solution,
             sourceDocument,
