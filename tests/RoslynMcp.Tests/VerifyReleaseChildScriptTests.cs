@@ -266,7 +266,8 @@ public sealed class VerifyReleaseChildScriptTests
                 .Replace("${{ needs.route.outputs.docs_only }}", "true");
             Assert.IsFalse(command.Contains("${{", StringComparison.Ordinal), "Every workflow expression must be resolved for this executed route.");
             var wrapper = Path.Combine(fixtureRoot, "docs-workflow.ps1");
-            await File.WriteAllTextAsync(wrapper, ". (Join-Path $PSScriptRoot 'fake-dotnet.ps1')\n" + command);
+            await File.WriteAllTextAsync(wrapper,
+                "$env:HOSTED_IMAGE = 'ubuntu-latest'\n. (Join-Path $PSScriptRoot 'fake-dotnet.ps1')\n" + command);
             fixture = fixture with { ScriptPath = wrapper };
 
             var result = await RunVerifyReleaseAsync(fixture, false, trxMode: produceTrx ? null : "missing");
@@ -281,6 +282,7 @@ public sealed class VerifyReleaseChildScriptTests
                 ? "ClassName=RoslynMcp.Tests.DocumentationContract|ClassName=RoslynMcp.Tests.ShardSentinel0"
                 : "ClassName=RoslynMcp.Tests.ShardSentinel1";
             Assert.AreEqual($"({expectedClasses})&TestCategory!=Benchmark&TestCategory!=Network", calls[0][filterIndex + 1], diagnostic);
+            StringAssert.Contains(result.StdOut, "Test shard weighting: hosted-duration", diagnostic);
             if (produceTrx)
             {
                 Assert.AreEqual(0, result.ExitCode, diagnostic);
@@ -906,15 +908,28 @@ public sealed class VerifyReleaseChildScriptTests
             param(
                 [Parameter(Mandatory)][string]$TestAssemblyPath,
                 [Parameter(Mandatory)][int]$TestShardCount,
-                [Parameter(Mandatory)][int]$TestShardIndex
+                [Parameter(Mandatory)][int]$TestShardIndex,
+                [string]$DurationProfilePath,
+                [string]$HostedImage
             )
 
             if ($TestShardCount -ne 2 -or $TestShardIndex -lt 0 -or $TestShardIndex -gt 1) {
                 throw "Unexpected shard selection $TestShardIndex/$TestShardCount."
             }
+            if ([string]::IsNullOrWhiteSpace($DurationProfilePath) -ne
+                [string]::IsNullOrWhiteSpace($HostedImage)) {
+                throw 'Hosted image and duration profile must be supplied together.'
+            }
+            if ($HostedImage -and ($HostedImage -cne 'ubuntu-latest' -or
+                (Split-Path -Leaf $DurationProfilePath) -cne 'shard-duration-profile.json')) {
+                throw 'Unexpected hosted duration profile selection.'
+            }
 
             [pscustomobject]@{
                 SchemaVersion = 1
+                WeightingMode = if ($HostedImage) { 'hosted-duration' } else { 'static-cases' }
+                ProfiledClassCount = if ($HostedImage) { 3 } else { 0 }
+                FallbackClassCount = 0
                 SelectedFilter = if ($TestShardIndex -eq 0) {
                     'ClassName=RoslynMcp.Tests.DocumentationContract|ClassName=RoslynMcp.Tests.ShardSentinel0'
                 } else {
@@ -926,8 +941,8 @@ public sealed class VerifyReleaseChildScriptTests
                     [pscustomobject]@{ ClassName = 'RoslynMcp.Tests.ShardSentinel1' }
                 )
                 Shards = @(
-                    [pscustomobject]@{ Index = 0; ClassCount = 2; StaticCaseWeight = 2 },
-                    [pscustomobject]@{ Index = 1; ClassCount = 1; StaticCaseWeight = 1 }
+                    [pscustomobject]@{ Index = 0; ClassCount = 2; StaticCaseWeight = 2; BalanceWeight = 2.0 },
+                    [pscustomobject]@{ Index = 1; ClassCount = 1; StaticCaseWeight = 1; BalanceWeight = 1.0 }
                 )
             } | ConvertTo-Json -Depth 4
             """);

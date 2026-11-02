@@ -17,9 +17,17 @@ internal static class ReceivingNamespaceFactory
         if (string.IsNullOrWhiteSpace(namespaceName))
             return null;
 
-        var name = SyntaxFactory.ParseName(namespaceName);
+        var escapedName = string.Join('.', namespaceName.Split('.').Select(EscapeKeywordSegment));
+        var name = SyntaxFactory.ParseName(escapedName);
         return receivingOptions.LanguageVersion < LanguageVersion.CSharp10
             ? SyntaxFactory.NamespaceDeclaration(name)
             : SyntaxFactory.FileScopedNamespaceDeclaration(name);
+    }
+
+    private static string EscapeKeywordSegment(string segment)
+    {
+        return segment.StartsWith('@') || SyntaxFacts.GetKeywordKind(segment) == SyntaxKind.None
+            ? segment
+            : '@' + segment;
     }
 }

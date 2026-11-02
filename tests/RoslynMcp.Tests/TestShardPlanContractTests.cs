@@ -47,10 +47,166 @@ public sealed class TestShardPlanContractTests
         AssertSelectedShard(maxIndexFourShardPlan, expectedIndex: 3);
     }
 
+    [TestMethod]
+    [TestCategory("Process")]
+    public async Task Planner_HostedDurationProfile_SeparatesSlowClassAndPreservesPartitionAsync()
+    {
+        var assemblyPath = typeof(TestShardPlanContractTests).Assembly.Location;
+        var baselineResult = await RunPlannerAsync(assemblyPath, shardCount: 1, shardIndex: 0);
+        AssertSucceeded(baselineResult);
+        var baseline = ParsePlan(baselineResult.StdOut);
+        var slowClass = baseline.TestClasses.First(testClass => testClass.StaticCaseWeight == 1).ClassName;
+        var fallbackClasses = baseline.TestClasses.Where(testClass =>
+            testClass.StaticCaseWeight == 1 && testClass.ClassName != slowClass).Take(2).ToArray();
+        Assert.AreEqual(2, fallbackClasses.Length);
+        var omittedClass = fallbackClasses[0].ClassName;
+        var changedClass = fallbackClasses[1].ClassName;
+        var fixtureRoot = Path.Combine(TestTempRoot.Current, nameof(TestShardPlanContractTests),
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(fixtureRoot);
+        var profilePath = Path.Combine(fixtureRoot, "profile.json");
+        try
+        {
+            var profile = new
+            {
+                SchemaVersion = 1,
+                MinimumSamples = 5,
+                Images = new[]
+                {
+                    new
+                    {
+                        Image = "ubuntu-latest",
+                        RunIds = new[] { "r1", "r2", "r3", "r4", "r5" },
+                        Classes = baseline.TestClasses.Select(testClass => new
+                        {
+                            testClass.ClassName,
+                            testClass.StaticCaseWeight,
+                            MeanCaseSeconds = testClass.ClassName == slowClass
+                                ? 100_000d : testClass.StaticCaseWeight,
+                        }).ToArray(),
+                    },
+                },
+            };
+            await File.WriteAllTextAsync(profilePath, JsonSerializer.Serialize(profile));
+            var result = await RunPlannerAsync(assemblyPath, shardCount: 2, shardIndex: 0,
+                durationProfilePath: profilePath, hostedImage: "ubuntu-latest");
+            AssertSucceeded(result);
+            var planned = ParsePlan(result.StdOut);
+            Assert.AreEqual(1, planned.Shards[0].ClassCount,
+                "The expensive class must occupy its own shard under measured duration weighting.");
+            CollectionAssert.AreEqual(new[] { slowClass }, planned.Shards[0].Classes);
+            AssertCompleteDisjointBalancedPlan(baseline, planned, expectedShardCount: 2,
+                checkStaticBalance: false);
+            using var document = JsonDocument.Parse(result.StdOut);
+            Assert.AreEqual("hosted-duration", document.RootElement.GetProperty("WeightingMode").GetString());
+            Assert.AreEqual(baseline.TotalClassCount,
+                document.RootElement.GetProperty("ProfiledClassCount").GetInt32());
+            Assert.AreEqual(0, document.RootElement.GetProperty("FallbackClassCount").GetInt32());
+
+            var fallbackProfile = new
+            {
+                SchemaVersion = 1,
+                MinimumSamples = 5,
+                Images = new[]
+                {
+                    new
+                    {
+                        Image = "ubuntu-latest",
+                        RunIds = new[] { "r1", "r2", "r3", "r4", "r5" },
+                        Classes = baseline.TestClasses.Where(testClass => testClass.ClassName != omittedClass)
+                            .Select(testClass => new
+                            {
+                                testClass.ClassName,
+                                StaticCaseWeight = testClass.StaticCaseWeight +
+                                    (testClass.ClassName == changedClass ? 1 : 0),
+                                MeanCaseSeconds = testClass.ClassName == changedClass ? 1_000_000_000d :
+                                    testClass.ClassName == slowClass ? 100_000d : testClass.StaticCaseWeight,
+                            }).ToArray(),
+                    },
+                },
+            };
+            await File.WriteAllTextAsync(profilePath, JsonSerializer.Serialize(fallbackProfile));
+            var fallbackResult = await RunPlannerAsync(assemblyPath, shardCount: 2, shardIndex: 0,
+                durationProfilePath: profilePath, hostedImage: "ubuntu-latest");
+            AssertSucceeded(fallbackResult);
+            var fallbackPlan = ParsePlan(fallbackResult.StdOut);
+            AssertCompleteDisjointBalancedPlan(baseline, fallbackPlan, expectedShardCount: 2,
+                checkStaticBalance: false);
+            CollectionAssert.AreEqual(new[] { slowClass }, fallbackPlan.Shards[0].Classes,
+                "The stale billion-second profile entry must not control placement.");
+            CollectionAssert.IsSubsetOf(new[] { omittedClass, changedClass }, fallbackPlan.Shards[1].Classes);
+            using var fallbackDocument = JsonDocument.Parse(fallbackResult.StdOut);
+            Assert.AreEqual(2, fallbackDocument.RootElement.GetProperty("FallbackClassCount").GetInt32());
+            var profiledEntries = fallbackProfile.Images[0].Classes
+                .Where(entry => entry.ClassName != changedClass).ToArray();
+            var secondsPerStaticCase = profiledEntries.Sum(entry => entry.MeanCaseSeconds) /
+                profiledEntries.Sum(entry => entry.StaticCaseWeight);
+            foreach (var className in new[] { omittedClass, changedClass })
+            {
+                var plannedClass = fallbackDocument.RootElement.GetProperty("TestClasses")
+                    .EnumerateArray().Single(entry => entry.GetProperty("ClassName").GetString() == className);
+                Assert.AreEqual(secondsPerStaticCase,
+                    plannedClass.GetProperty("BalanceWeight").GetDouble(), 0.001);
+            }
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
+    public async Task Planner_InvalidHostedProfile_FailsClosedAsync()
+    {
+        var assemblyPath = typeof(TestShardPlanContractTests).Assembly.Location;
+        var fixtureRoot = Path.Combine(TestTempRoot.Current, nameof(TestShardPlanContractTests),
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(fixtureRoot);
+        var profilePath = Path.Combine(fixtureRoot, "profile.json");
+        try
+        {
+            var cases = new[]
+            {
+                (Json: "{invalid", Diagnostic: "Duration profile is invalid JSON"),
+                (Json: JsonSerializer.Serialize(new
+                {
+                    SchemaVersion = 1,
+                    MinimumSamples = 5,
+                    Images = new[] { new { Image = "windows-latest", RunIds = new[] { "r1", "r2", "r3", "r4", "r5" }, Classes = Array.Empty<object>() } },
+                }), Diagnostic: "has no 'ubuntu-latest' image"),
+                (Json: JsonSerializer.Serialize(new
+                {
+                    SchemaVersion = 1,
+                    MinimumSamples = 5,
+                    Images = new[] { new
+                    {
+                        Image = "ubuntu-latest",
+                        RunIds = new[] { "r1" },
+                        Classes = new[] { new { ClassName = "RoslynMcp.Tests.TestShardPlanContractTests", StaticCaseWeight = 1, MeanCaseSeconds = 10d } },
+                    } },
+                }), Diagnostic: "fewer than 5 source runs"),
+            };
+            foreach (var testCase in cases)
+            {
+                await File.WriteAllTextAsync(profilePath, testCase.Json);
+                var result = await RunPlannerAsync(assemblyPath, shardCount: 2, shardIndex: 0,
+                    durationProfilePath: profilePath, hostedImage: "ubuntu-latest");
+                Assert.AreNotEqual(0, result.ExitCode, "Invalid hosted profile must fail closed.");
+                StringAssert.Contains(result.StdOut + result.StdErr, testCase.Diagnostic);
+            }
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
     private static void AssertCompleteDisjointBalancedPlan(
         TestShardPlan completePlan,
         TestShardPlan shardedPlan,
-        int expectedShardCount)
+        int expectedShardCount,
+        bool checkStaticBalance = true)
     {
         Assert.AreEqual(expectedShardCount, shardedPlan.TestShardCount);
         Assert.AreEqual(expectedShardCount, shardedPlan.Shards.Length);
@@ -81,13 +237,16 @@ public sealed class TestShardPlanContractTests
             expectedClasses.SetEquals(assignedClasses),
             $"The {shardedPlan.TestShardCount}-shard union must equal the complete class catalog.");
 
-        var lightestWeight = shardedPlan.Shards.Min(shard => shard.StaticCaseWeight);
-        var heaviestWeight = shardedPlan.Shards.Max(shard => shard.StaticCaseWeight);
-        var largestClassWeight = shardedPlan.TestClasses.Max(testClass => testClass.StaticCaseWeight);
-        Assert.IsTrue(
-            heaviestWeight - lightestWeight <= largestClassWeight,
-            $"Greedy balance regressed: shard delta {heaviestWeight - lightestWeight}, " +
-            $"largest class weight {largestClassWeight}.");
+        if (checkStaticBalance)
+        {
+            var lightestWeight = shardedPlan.Shards.Min(shard => shard.StaticCaseWeight);
+            var heaviestWeight = shardedPlan.Shards.Max(shard => shard.StaticCaseWeight);
+            var largestClassWeight = shardedPlan.TestClasses.Max(testClass => testClass.StaticCaseWeight);
+            Assert.IsTrue(
+                heaviestWeight - lightestWeight <= largestClassWeight,
+                $"Greedy balance regressed: shard delta {heaviestWeight - lightestWeight}, " +
+                $"largest class weight {largestClassWeight}.");
+        }
     }
 
     private static void AssertSelectedShard(TestShardPlan plan, int expectedIndex)
@@ -338,7 +497,9 @@ public sealed class TestShardPlanContractTests
         string testAssemblyPath,
         int shardCount,
         int shardIndex,
-        string? adapterResultsPath = null)
+        string? adapterResultsPath = null,
+        string? durationProfilePath = null,
+        string? hostedImage = null)
     {
         var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
         var plannerPath = Path.Combine(repositoryRoot, "eng", "get-test-shard-plan.ps1");
@@ -358,6 +519,13 @@ public sealed class TestShardPlanContractTests
         {
             arguments.Add("-AdapterResultsPath");
             arguments.Add(adapterResultsPath);
+        }
+        if (durationProfilePath is not null)
+        {
+            arguments.Add("-DurationProfilePath");
+            arguments.Add(durationProfilePath);
+            arguments.Add("-HostedImage");
+            arguments.Add(hostedImage!);
         }
 
         return PwshScriptRunner.RunAsync(
