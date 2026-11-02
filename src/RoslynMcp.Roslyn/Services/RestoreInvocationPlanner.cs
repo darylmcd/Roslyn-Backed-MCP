@@ -54,7 +54,7 @@ internal static class RestoreInvocationPlanner
         {
             throw new TimeoutException("The restore inventory exceeded the remaining restore time budget.");
         }
-        catch (AggregateException ex) when (phase.IsCancellationRequested ||
+        catch (AggregateException ex) when (
             ex.Flatten().InnerExceptions.Any(inner => inner is OperationCanceledException or TimeoutException))
         {
             // ProjectGraph aggregates project-instance factory failures. Preserve the phase
@@ -89,7 +89,21 @@ internal static class RestoreInvocationPlanner
         while (true)
         {
             CheckBudget();
-            graph = new ProjectGraph(entryPoints, collection, CreateInstance, degreeOfParallelism: 1, cancellationToken: ct);
+            try
+            {
+                graph = new ProjectGraph(entryPoints, collection, CreateInstance, degreeOfParallelism: 1, cancellationToken: ct);
+            }
+            catch (KeyNotFoundException ex) when (ct.IsCancellationRequested)
+            {
+                // MSBuild can link an incomplete graph after its work set is canceled and
+                // surface a missing configuration key instead of a cancellation exception.
+                throw new TimeoutException("The restore inventory exceeded the remaining restore time budget.", ex);
+            }
+            catch (AggregateException ex) when (ct.IsCancellationRequested)
+            {
+                // A project-instance factory may fault while the graph's phase expires.
+                throw new TimeoutException("The restore inventory exceeded the remaining restore time budget.", ex);
+            }
             var contexts = graph.ProjectNodes.Select(n => ContextOf(n.ProjectInstance)).ToHashSet(ContextComparer.Instance);
             var missingOuterContexts = graph.ProjectNodes
                 .Where(n => IsFrameworkInner(n.ProjectInstance))

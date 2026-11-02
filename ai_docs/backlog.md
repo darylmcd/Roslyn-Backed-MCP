@@ -237,6 +237,7 @@
 | `fork-admission-dispose-lock-release` | Medium | — | **Release fork locks after disposal failure** — Release fork apply locks even when registration disposal throws. [type: bug] [source: 2026-10-31 remediation] | M | items/fork-admission-dispose-lock-release.md |
 | `split-service-nested-namespace-identity` | Medium | — | **Preserve split-service namespace identity** — Emit partitions in the full nested namespace chain. [type: bug] [source: 2026-10-31 remediation] | M | items/split-service-nested-namespace-identity.md |
 | `symbol-resolver-metadata-member-first-match` | Medium | — | **Refuse ambiguous metadata member names** — Return ambiguity rather than the first overload by enumeration order. [type: bug] [source: 2026-10-31 remediation] | M | items/symbol-resolver-metadata-member-first-match.md |
+| `restore-graph-phase-cancellation-key-lookup` | Medium | — | **Preserve graph timeout outcome.** Report the expired restore inventory phase as a timeout when canceled MSBuild graph work leaves missing nodes. | S | items/restore-graph-phase-cancellation-key-lookup.md |
 
 ## Low
 
