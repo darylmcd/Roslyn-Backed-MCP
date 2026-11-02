@@ -15,6 +15,45 @@ public sealed class ForkGraphPreparationTests : IsolatedWorkspaceTestBase
     public static void ClassCleanup() => DisposeServices();
 
     [TestMethod]
+    public void RestoreGraph_PhaseExpiresBeforeGraphWorkStarts_ReportsTimeout()
+    {
+        using var fixture = new GraphFixture();
+        fixture.Write();
+        var budgetChecks = 0;
+
+        Assert.ThrowsExactly<TimeoutException>(() => RestoreInvocationPlanner.EvaluateGraph(
+            fixture.Entry,
+            () =>
+            {
+                // The graph's phase token expires after the initial check but before MSBuild
+                // starts its work set. MSBuild can then throw for an incomplete node map.
+                if (++budgetChecks == 1) return TimeSpan.FromSeconds(2);
+                Thread.Sleep(TimeSpan.FromSeconds(3));
+                return TimeSpan.FromMinutes(1);
+            },
+            CancellationToken.None,
+            (_, _) => true));
+    }
+
+    [TestMethod]
+    public void RestoreGraph_InspectFailureAfterPhaseExpiry_RemainsEvaluationError()
+    {
+        using var fixture = new GraphFixture();
+        fixture.Write();
+
+        var failure = Assert.ThrowsExactly<PublicInvalidOperationException>(() => RestoreInvocationPlanner.EvaluateGraph<bool>(
+            fixture.Entry,
+            () => TimeSpan.FromSeconds(2),
+            CancellationToken.None,
+            (_, _) =>
+            {
+                Thread.Sleep(TimeSpan.FromSeconds(3));
+                throw new AggregateException(new InvalidOperationException("inspection failed"));
+            }));
+        Assert.IsInstanceOfType<AggregateException>(failure.InnerException?.InnerException);
+    }
+
+    [TestMethod]
     [DataRow("IntermediateOutputPath")]
     [DataRow("BaseIntermediateOutputPath")]
     [DataRow("MSBuildProjectExtensionsPath")]
