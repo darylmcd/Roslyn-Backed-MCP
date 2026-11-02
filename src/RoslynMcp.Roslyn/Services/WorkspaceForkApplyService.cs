@@ -419,7 +419,9 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService, IA
             return false;
         }
 
-        return explicitTestRun is null || (explicitTestRun.Failed == 0 && explicitTestRun.Total > 0);
+        return explicitTestRun is null ||
+            (explicitTestRun.Execution.Succeeded && explicitTestRun.FailureEnvelope is null &&
+             explicitTestRun.Failed == 0 && explicitTestRun.Total > 0);
     }
 
     private static string SelectForkPool(string sourceRoot, IReadOnlyList<ForkAdmissionMaterial.Configuration> ancestry)

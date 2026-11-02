@@ -12,6 +12,17 @@ namespace RoslynMcp.Tests;
 [TestClass]
 public sealed class WorkspaceValidationOverallStatusTests
 {
+    [TestMethod]
+    public void ComputeOverallStatus_AdverseReportWithZeroFailedCounter_IsTestFailure()
+    {
+        var execution = new CommandExecutionDto("dotnet", ["test"], "/repo", "sample.csproj", 0, true, 1, "", "");
+        var report = new TestRunResultDto(execution, 1, 1, 0, 0, [],
+            new TestRunFailureEnvelopeDto("TestReportFailure", false, "TRX summary failed", null, null));
+
+        Assert.AreEqual("test-failure", WorkspaceValidationService.ComputeOverallStatus(
+            CleanCompile(), [], report, runTests: true));
+    }
+
     // ---- CompileCheckDto builders ----
     // The compile inputs driving these tests are Success, ErrorCount, Cancelled,
     // CompletedProjects-vs-TotalProjects, and Diagnostics. Restating the

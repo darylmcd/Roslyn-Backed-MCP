@@ -811,12 +811,39 @@ public sealed class TestRunFailureEnvelopeTests
               <Results>
                 <UnitTestResult testName="Sample.Test" outcome="Passed" />
               </Results>
-              <ResultSummary outcome="Failed">
+              <ResultSummary outcome="Completed">
                 <Counters total="1" executed="1" passed="1" failed="0" notExecuted="0" />
               </ResultSummary>
             </TestRun>
             """);
         return path;
+    }
+
+    [TestMethod]
+    public async Task RunTests_SuccessfulProcessWithFailedReport_ExposesReportFailureOnWire()
+    {
+        var trxPath = WritePassedTrxFixture();
+        try
+        {
+            var xml = await File.ReadAllTextAsync(trxPath);
+            await File.WriteAllTextAsync(trxPath, xml.Replace(
+                "<ResultSummary outcome=\"Completed\">",
+                "<ResultSummary outcome=\"Failed\">", StringComparison.Ordinal));
+            var report = DotnetOutputParser.ParseTestRun(FakeExecution(exitCode: 0, stdOut: "", stdErr: ""), [trxPath]);
+            var json = await ValidationTools.RunTests(new PassthroughGate(), new CannedReportTestRunnerService(report),
+                workspaceId: "ws-failed-report", projectName: null, filter: null, progress: null, ct: CancellationToken.None);
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            Assert.IsTrue(root.GetProperty("execution").GetProperty("succeeded").GetBoolean());
+            Assert.AreEqual("TestReportFailure", root.GetProperty("failureEnvelope").GetProperty("errorKind").GetString());
+        }
+        finally { File.Delete(trxPath); }
+    }
+
+    private sealed class CannedReportTestRunnerService(TestRunResultDto report) : ITestRunnerService
+    {
+        public Task<TestRunResultDto> RunTestsAsync(string workspaceId, string? projectName, string? filter, CancellationToken ct) =>
+            Task.FromResult(report);
     }
 
     /// <summary>
