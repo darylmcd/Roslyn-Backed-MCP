@@ -497,6 +497,90 @@ public sealed class TestResultsSummaryContractTests
     }
 
     [TestMethod]
+    [TestCategory("Process")]
+    public async Task Collector_ProfileJson_UsesFiveCompleteHostedRunsAndClassDurationsAsync()
+    {
+        var fixtureRoot = CreateFixtureRoot();
+        try
+        {
+            var observations = new List<LegObservation>();
+            for (var run = 1; run <= 5; run++)
+            {
+                observations.Add(new LegObservation($"r{run}", "w-1", "windows-latest", 100, 10));
+                observations.Add(new LegObservation($"r{run}", "u-1", "ubuntu-latest", 200, 70));
+            }
+
+            var result = await RunCollectorAsync(fixtureRoot, observations, profileJson: true);
+            AssertSucceeded(result);
+            using var profile = JsonDocument.Parse(result.StdOut);
+            var images = profile.RootElement.GetProperty("Images").EnumerateArray().ToArray();
+            Assert.AreEqual(2, images.Length);
+            foreach (var image in images)
+            {
+                Assert.AreEqual(5, image.GetProperty("RunIds").GetArrayLength());
+                Assert.AreEqual(2, image.GetProperty("Classes").GetArrayLength());
+                var alpha = image.GetProperty("Classes").EnumerateArray().Single(
+                    entry => entry.GetProperty("ClassName").GetString() == "Example.Alpha");
+                Assert.AreEqual(image.GetProperty("Image").GetString() == "windows-latest" ? 9d : 69d,
+                    alpha.GetProperty("MeanCaseSeconds").GetDouble());
+            }
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
+    public async Task Collector_ProfileJson_RequiresSameRunsOnBothHostedImagesAsync()
+    {
+        var fixtureRoot = CreateFixtureRoot();
+        try
+        {
+            var observations = new List<LegObservation>();
+            for (var run = 1; run <= 5; run++)
+            {
+                observations.Add(new LegObservation($"w{run}", "w-1", "windows-latest", 100, 10));
+                observations.Add(new LegObservation($"u{run}", "u-1", "ubuntu-latest", 200, 70));
+            }
+
+            var result = await RunCollectorAsync(fixtureRoot, observations, profileJson: true);
+            AssertFailedWith(result, "same complete run IDs on both hosted images");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
+    public async Task Collector_ProfileJson_RequiresShardPlanForEveryLegAsync()
+    {
+        var fixtureRoot = CreateFixtureRoot();
+        try
+        {
+            var observations = new List<LegObservation>();
+            for (var run = 1; run <= 5; run++)
+            {
+                observations.Add(new LegObservation($"r{run}", "w-1", "windows-latest", 100, 10));
+                observations.Add(new LegObservation($"r{run}", "u-1", "ubuntu-latest", 200, 70));
+            }
+
+            var result = await RunCollectorAsync(fixtureRoot, observations,
+                mutate: (_, resultsRoot) => File.Delete(Path.Combine(resultsRoot,
+                    "r1", "test-results-w-1", "results-plan.json")),
+                profileJson: true);
+            AssertFailedWith(result, "requires exactly one shard plan");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
+    [TestMethod]
     public async Task CollectorScript_HasNoPowerShellAstParseErrorsAsync()
     {
         const string parseCommand =
@@ -574,7 +658,8 @@ public sealed class TestResultsSummaryContractTests
     private static async Task<PwshScriptResult> RunCollectorAsync(
         string fixtureRoot,
         IReadOnlyList<LegObservation> observations,
-        Action<List<Dictionary<string, object>>, string>? mutate = null)
+        Action<List<Dictionary<string, object>>, string>? mutate = null,
+        bool profileJson = false)
     {
         var resultsRoot = Path.Combine(fixtureRoot, "downloads");
         var manifest = new List<Dictionary<string, object>>();
@@ -589,6 +674,22 @@ public sealed class TestResultsSummaryContractTests
             await File.WriteAllTextAsync(
                 Path.Combine(legDirectory, "results.trx"),
                 BuildTwoCaseTrx(observation.CaseDurationSeconds));
+            if (profileJson)
+            {
+                await File.WriteAllTextAsync(Path.Combine(legDirectory, "results-plan.json"),
+                    JsonSerializer.Serialize(new
+                    {
+                        SchemaVersion = 1,
+                        SelectedShardIndex = 0,
+                        TestShardCount = 1,
+                        TestClasses = new[]
+                        {
+                            new { ClassName = "Example.Alpha", StaticCaseWeight = 1 },
+                            new { ClassName = "Example.Beta", StaticCaseWeight = 1 },
+                        },
+                        Shards = new[] { new { Classes = new[] { "Example.Alpha", "Example.Beta" } } },
+                    }));
+            }
 
             manifest.Add(new Dictionary<string, object>
             {
@@ -605,8 +706,8 @@ public sealed class TestResultsSummaryContractTests
         var manifestPath = Path.Combine(fixtureRoot, "legs.json");
         await File.WriteAllTextAsync(manifestPath, JsonSerializer.Serialize(manifest));
 
-        return await RunPowerShellAsync(
-            [
+        var arguments = new List<string>
+        {
                 "-NoProfile",
                 "-NonInteractive",
                 "-File",
@@ -615,7 +716,10 @@ public sealed class TestResultsSummaryContractTests
                 resultsRoot,
                 "-LegManifest",
                 manifestPath,
-            ],
+        };
+        if (profileJson) arguments.Add("-ProfileJson");
+        return await RunPowerShellAsync(
+            arguments,
             environment: null,
             description: CollectorDescription);
     }

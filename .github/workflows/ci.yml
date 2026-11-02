@@ -180,6 +180,7 @@ jobs:
         shell: pwsh
         env:
           CHANGELOG_BASE_SHA: ${{ github.event.merge_group.base_sha }}
+          HOSTED_IMAGE: ${{ matrix.leg.runs_on }}
         run: |
           $parameters = @{
             Configuration = 'Release'
@@ -187,6 +188,7 @@ jobs:
             ExcludeNetworkTests = $true
             TestShardIndex = ${{ matrix.leg.test_shard_index }}
             TestShardCount = ${{ matrix.leg.test_shard_count }}
+            HostedImage = $env:HOSTED_IMAGE
           }
           if ('${{ matrix.leg.artifact_owner }}' -ne 'true' -or
               '${{ needs.route.outputs.docs_only }}' -eq 'true') {

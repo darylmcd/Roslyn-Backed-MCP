@@ -1,0 +1,4560 @@
+{
+  "SchemaVersion": 1,
+  "MinimumSamples": 5,
+  "Images": [
+    {
+      "Image": "ubuntu-latest",
+      "RunIds": [
+        "40783926346",
+        "40788319028",
+        "40788434338",
+        "40800095395",
+        "40803366211"
+      ],
+      "Classes": [
+        {
+          "ClassName": "RoslynMcp.Tests.ActionlintGateContractTests",
+          "StaticCaseWeight": 15,
+          "MeanCaseSeconds": 9.438179
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.AliasRemovalTests",
+          "StaticCaseWeight": 5,
+          "MeanCaseSeconds": 0.646536
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.AnalysisFlowFailureRedactionTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 0.018228
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.AnalysisScanCompletenessTests",
+          "StaticCaseWeight": 8,
+          "MeanCaseSeconds": 49.805435
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.AnalysisToolsTests",
+          "StaticCaseWeight": 13,
+          "MeanCaseSeconds": 2.895475
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.AnalyzerInfoToolsTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 2.066327
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.AnalyzerShadowCreatorOwnershipTests",
+          "StaticCaseWeight": 29,
+          "MeanCaseSeconds": 0.028406
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.AnalyzerShadowLoaderLifecycleTests",
+          "StaticCaseWeight": 10,
+          "MeanCaseSeconds": 0.008546
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.AnalyzerShadowStartupSweepRegressionTests",
+          "StaticCaseWeight": 5,
+          "MeanCaseSeconds": 0.02523
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ApplyTextEditVerifyTests",
+          "StaticCaseWeight": 11,
+          "MeanCaseSeconds": 67.241713
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ApplyUndoWorkflowServiceTests",
+          "StaticCaseWeight": 9,
+          "MeanCaseSeconds": 0.029734
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ApplyWithVerifyCancellationAndScopeTests",
+          "StaticCaseWeight": 9,
+          "MeanCaseSeconds": 1.151657
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ArgumentErrorsTests",
+          "StaticCaseWeight": 9,
+          "MeanCaseSeconds": 0.05817
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.AuditFixesTests",
+          "StaticCaseWeight": 13,
+          "MeanCaseSeconds": 2.621036
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.AutoReloadCascadeHostCrashTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 13.596159
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.BacklogFixTests",
+          "StaticCaseWeight": 17,
+          "MeanCaseSeconds": 6.295552
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.BacklogPublicArgumentRefusalTests",
+          "StaticCaseWeight": 38,
+          "MeanCaseSeconds": 21.3788
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Batch1OutputSchemaTests",
+          "StaticCaseWeight": 10,
+          "MeanCaseSeconds": 0.06999
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.BoundedStoreEvictionTests",
+          "StaticCaseWeight": 7,
+          "MeanCaseSeconds": 0.024339
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.BreakingVersionGateTests",
+          "StaticCaseWeight": 9,
+          "MeanCaseSeconds": 21.397926
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.BuildTestToolsShimTests",
+          "StaticCaseWeight": 8,
+          "MeanCaseSeconds": 5.479872
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.BulkRefactoringTests",
+          "StaticCaseWeight": 7,
+          "MeanCaseSeconds": 3.960639
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CSharpFeatureProviderLoaderTests",
+          "StaticCaseWeight": 12,
+          "MeanCaseSeconds": 0.101955
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CaseDistinctCallsitePreviewTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 1.772531
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CatalogDestructiveWarningTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.041348
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CatalogTypeNameFormatterTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 0.001272
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ChangeSignatureActivatorTests",
+          "StaticCaseWeight": 33,
+          "MeanCaseSeconds": 95.673325
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ChangeSignatureAliasesTests",
+          "StaticCaseWeight": 28,
+          "MeanCaseSeconds": 88.671765
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ChangeSignatureBindingsTests",
+          "StaticCaseWeight": 55,
+          "MeanCaseSeconds": 157.728292
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ChangeSignatureCollectionsTests",
+          "StaticCaseWeight": 51,
+          "MeanCaseSeconds": 145.399588
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ChangeSignatureConstructorsTests",
+          "StaticCaseWeight": 43,
+          "MeanCaseSeconds": 112.507267
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ChangeSignaturePreviewMetadataNameShapeTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 8.444639
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ChangeSignaturePreviewTests",
+          "StaticCaseWeight": 18,
+          "MeanCaseSeconds": 46.848797
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ChangeSignatureRefusalPublicationTests",
+          "StaticCaseWeight": 19,
+          "MeanCaseSeconds": 41.648349
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ChangeSignatureRefusalsTests",
+          "StaticCaseWeight": 27,
+          "MeanCaseSeconds": 67.719046
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ChangeSignatureStructConstructionTests",
+          "StaticCaseWeight": 24,
+          "MeanCaseSeconds": 61.839667
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ChangeSignatureStructInitializationTests",
+          "StaticCaseWeight": 54,
+          "MeanCaseSeconds": 142.941795
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ChangeTrackerTests",
+          "StaticCaseWeight": 11,
+          "MeanCaseSeconds": 39.437677
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ChangelogFragmentRequirementTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 33.697065
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CiEvidenceTierConsumerContractTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.118588
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CiRunnerParityContractTests",
+          "StaticCaseWeight": 28,
+          "MeanCaseSeconds": 119.565337
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CiTopologyDecisionContractTests",
+          "StaticCaseWeight": 27,
+          "MeanCaseSeconds": 20.399994
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CleanupFailureCollectorTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 0.012153
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ClientRootPathValidatorTests",
+          "StaticCaseWeight": 51,
+          "MeanCaseSeconds": 0.096543
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CodeActionArgumentRefusalWireTests",
+          "StaticCaseWeight": 8,
+          "MeanCaseSeconds": 29.438039
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CodeActionServiceTests",
+          "StaticCaseWeight": 14,
+          "MeanCaseSeconds": 0.061475
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CodeFixProviderRegistryTests",
+          "StaticCaseWeight": 12,
+          "MeanCaseSeconds": 0.390591
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CodeMetricsNestingTests",
+          "StaticCaseWeight": 8,
+          "MeanCaseSeconds": 0.122039
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CodexChangelogHookTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 21.968369
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CohesionAnalysisTests",
+          "StaticCaseWeight": 16,
+          "MeanCaseSeconds": 35.391961
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CohesionSemanticIdentityTests",
+          "StaticCaseWeight": 14,
+          "MeanCaseSeconds": 0.520195
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CompilationCacheAdoptionTests",
+          "StaticCaseWeight": 33,
+          "MeanCaseSeconds": 132.163804
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CompilationCacheTests",
+          "StaticCaseWeight": 7,
+          "MeanCaseSeconds": 0.044312
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CompileCheckRestoreRequiredWireTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 7.886467
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CompileCheckServiceTests",
+          "StaticCaseWeight": 9,
+          "MeanCaseSeconds": 27.072858
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CompileCheckZeroProjectsTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 0.133538
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CompositeApplyOrchestratorTests",
+          "StaticCaseWeight": 33,
+          "MeanCaseSeconds": 0.214106
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CompositeSplitServiceDiPreviewTests",
+          "StaticCaseWeight": 9,
+          "MeanCaseSeconds": 100.893377
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ConsumerAnalysisCancellationTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.15136
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ConsumerAnalysisTests",
+          "StaticCaseWeight": 5,
+          "MeanCaseSeconds": 5.318746
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CouplingAnalysisTests",
+          "StaticCaseWeight": 9,
+          "MeanCaseSeconds": 12.068588
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CrossProjectReceivingNamespaceIntegrationTests",
+          "StaticCaseWeight": 17,
+          "MeanCaseSeconds": 503.081377
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CrossProjectRefactoringIntegrationTests",
+          "StaticCaseWeight": 19,
+          "MeanCaseSeconds": 68.90754
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CsprojReserializationTests",
+          "StaticCaseWeight": 14,
+          "MeanCaseSeconds": 4.352234
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.DeadCodeIntegrationTests",
+          "StaticCaseWeight": 7,
+          "MeanCaseSeconds": 1.980946
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.DeadFieldDetectorTests",
+          "StaticCaseWeight": 26,
+          "MeanCaseSeconds": 0.49144
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.DeadLocalDetectorTests",
+          "StaticCaseWeight": 18,
+          "MeanCaseSeconds": 0.705939
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.DeadLoggerFieldsTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 0.00148
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.DetachedFixtureCiIntegrationTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 49.649211
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.DetachedFixtureNativeContextIntegrationTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 36.945343
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.DiLifetimeOverrideTests",
+          "StaticCaseWeight": 15,
+          "MeanCaseSeconds": 55.875984
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.DiagnosticFixIntegrationTests",
+          "StaticCaseWeight": 20,
+          "MeanCaseSeconds": 2.14877
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.DiagnosticIdentitySetTests",
+          "StaticCaseWeight": 13,
+          "MeanCaseSeconds": 0.005145
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.DiagnosticQueryServiceRegressionTests",
+          "StaticCaseWeight": 23,
+          "MeanCaseSeconds": 2.057576
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.DiagnosticServiceFilterTotalsTests",
+          "StaticCaseWeight": 19,
+          "MeanCaseSeconds": 2.158307
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.DiagnosticServicePerfTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 4.154016
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.DiagnosticSourceGeneratorParityTests",
+          "StaticCaseWeight": 1,
+          "MeanCaseSeconds": 12.365769
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.DiffGeneratorTests",
+          "StaticCaseWeight": 13,
+          "MeanCaseSeconds": 0.011462
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.DocumentSymbolsSymbolHandleTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.019791
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.DocumentationOwnershipContractTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 3.05889
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.DotnetCommandRunnerPipeLifetimeTests",
+          "StaticCaseWeight": 8,
+          "MeanCaseSeconds": 8.207378
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.DotnetOutputParserBuildDiagnosticsTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 0.012406
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.DotnetTestModeResolverTests",
+          "StaticCaseWeight": 10,
+          "MeanCaseSeconds": 0.017301
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.DryRunPreviewSideEffectAuditTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 8.575854
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.DuplicateHelperDetectionTests",
+          "StaticCaseWeight": 14,
+          "MeanCaseSeconds": 0.359406
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.DuplicateMethodDetectorTests",
+          "StaticCaseWeight": 17,
+          "MeanCaseSeconds": 0.039514
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.EditUndoCohesionTests",
+          "StaticCaseWeight": 24,
+          "MeanCaseSeconds": 132.301003
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.EditUndoIntegrationTests",
+          "StaticCaseWeight": 9,
+          "MeanCaseSeconds": 62.232876
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.EditorConfigArgumentRefusalWireTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 30.406197
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.EditorConfigServiceTests",
+          "StaticCaseWeight": 54,
+          "MeanCaseSeconds": 208.121214
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ElicitationAllowlistPolicyTests",
+          "StaticCaseWeight": 21,
+          "MeanCaseSeconds": 0.005605
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ElicitationChoicePromptTests",
+          "StaticCaseWeight": 12,
+          "MeanCaseSeconds": 0.099019
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ErrorResponseObservabilityTests",
+          "StaticCaseWeight": 21,
+          "MeanCaseSeconds": 5.062386
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ExceptionFlowServiceTests",
+          "StaticCaseWeight": 8,
+          "MeanCaseSeconds": 52.51359
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ExpandedSurfaceIntegrationTests",
+          "StaticCaseWeight": 33,
+          "MeanCaseSeconds": 8.343406
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ExpandedSurfaceIntegrationTests_CoverageProcess",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.00222
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ExpandedSurfaceIntegrationTests_RepoSolutionAnalysis",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 13.745707
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ExpandedSurfaceIntegrationTests_ToolContract",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 1.168269
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ExperimentalSurfaceParameterNamingTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.014076
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ExternalEditStalenessTests",
+          "StaticCaseWeight": 25,
+          "MeanCaseSeconds": 47.10374
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ExtractInterfaceSemanticUsingsTests",
+          "StaticCaseWeight": 7,
+          "MeanCaseSeconds": 27.836496
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ExtractMethodFormatRegressionTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 9.419844
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ExtractMethodTests",
+          "StaticCaseWeight": 35,
+          "MeanCaseSeconds": 115.435524
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ExtractMethodThisExclusionTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 7.28012
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ExtractSharedExpressionTests",
+          "StaticCaseWeight": 40,
+          "MeanCaseSeconds": 121.550066
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ExtractionApplyRouteBindingTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 0.012648
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ExtractionArgumentRefusalWireTests",
+          "StaticCaseWeight": 14,
+          "MeanCaseSeconds": 49.633742
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.FailClosedTestDoublesTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.003424
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.FetchMcpResourceReadinessTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 2.011122
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.FileEditsDtoTests",
+          "StaticCaseWeight": 15,
+          "MeanCaseSeconds": 0.020069
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.FileOperationIntegrationTests",
+          "StaticCaseWeight": 36,
+          "MeanCaseSeconds": 136.53439
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.FileSnapshotCaptureTests",
+          "StaticCaseWeight": 8,
+          "MeanCaseSeconds": 0.021961
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.FileSystemPathTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 0.00236
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.FileWatcherClearStaleAwaiterTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.044088
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.FindImplementationsCorlibHintTests",
+          "StaticCaseWeight": 7,
+          "MeanCaseSeconds": 0.307041
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.FindOverloadsTests",
+          "StaticCaseWeight": 9,
+          "MeanCaseSeconds": 0.590973
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.FindOverridesCorlibSuppressionTests",
+          "StaticCaseWeight": 7,
+          "MeanCaseSeconds": 0.042446
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.FindPropertyWritesHintLocatorShapeTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.065189
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.FindPropertyWritesPositionalRecordTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.099162
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.FindReferencesSummaryTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.07035
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.FindReflectionUsagesPaginationTests",
+          "StaticCaseWeight": 5,
+          "MeanCaseSeconds": 13.661919
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.FixAllEquivalenceKeyIntegrationTests",
+          "StaticCaseWeight": 20,
+          "MeanCaseSeconds": 9.021375
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.FixAllServiceGuidanceTests",
+          "StaticCaseWeight": 8,
+          "MeanCaseSeconds": 0.256506
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.FixAllServiceIntegrationTests",
+          "StaticCaseWeight": 12,
+          "MeanCaseSeconds": 0.955752
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.FixAllServiceTests",
+          "StaticCaseWeight": 28,
+          "MeanCaseSeconds": 0.072062
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.FlowAnalysisServiceTests",
+          "StaticCaseWeight": 10,
+          "MeanCaseSeconds": 17.719237
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ForkGraphPreparationTests",
+          "StaticCaseWeight": 42,
+          "MeanCaseSeconds": 0.858637
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ForkNativeAdmissionTests",
+          "StaticCaseWeight": 173,
+          "MeanCaseSeconds": 611.469153
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ForkRetainedSourceDeletionTests",
+          "StaticCaseWeight": 9,
+          "MeanCaseSeconds": 153.379778
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ForkStorageBoundaryTests",
+          "StaticCaseWeight": 13,
+          "MeanCaseSeconds": 144.197291
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ForkStorageLockOrderTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 18.347337
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.FormatRangeServiceTests",
+          "StaticCaseWeight": 35,
+          "MeanCaseSeconds": 69.238897
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.FormatterBaselineContractTests",
+          "StaticCaseWeight": 12,
+          "MeanCaseSeconds": 254.64353
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.GateOperationDeadlineTests",
+          "StaticCaseWeight": 24,
+          "MeanCaseSeconds": 0.633882
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.GeneratedJsonSchemaMatcherTests",
+          "StaticCaseWeight": 33,
+          "MeanCaseSeconds": 0.03716
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.GeneratorProjectSymbolIdentityTests",
+          "StaticCaseWeight": 1,
+          "MeanCaseSeconds": 3.510382
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.GetSyntaxTreeBudgetTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 0.014193
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.GetSyntaxTreeRangeOverlapTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.007322
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.GoToTypeDefinitionTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 0.020164
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.HardeningBehaviorTests",
+          "StaticCaseWeight": 5,
+          "MeanCaseSeconds": 1.959444
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Helpers.InMemoryMcpClientServerHarnessTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 18.01921
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Helpers.PwshScriptRunnerTests",
+          "StaticCaseWeight": 14,
+          "MeanCaseSeconds": 88.573446
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.HighValueCoverageIntegrationTests",
+          "StaticCaseWeight": 8,
+          "MeanCaseSeconds": 3.300949
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.HookConfigurationTests",
+          "StaticCaseWeight": 10,
+          "MeanCaseSeconds": 14.557075
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.HostArgumentRefusalEnvelopeTests",
+          "StaticCaseWeight": 19,
+          "MeanCaseSeconds": 15.567943
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.HostAssemblyMarkerTests",
+          "StaticCaseWeight": 1,
+          "MeanCaseSeconds": 0.000926
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.HostProcessMetadataTests",
+          "StaticCaseWeight": 20,
+          "MeanCaseSeconds": 0.081257
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.HostShutdownLifecycleTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.134374
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.IdentifierValidationTests",
+          "StaticCaseWeight": 12,
+          "MeanCaseSeconds": 0.001668
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.InstallLayerRefreshContractTests",
+          "StaticCaseWeight": 10,
+          "MeanCaseSeconds": 6.056638
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.IntegrationTests_EditApply",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 19.096248
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.IntegrationTests_SymbolNavigation",
+          "StaticCaseWeight": 14,
+          "MeanCaseSeconds": 0.810395
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.IntegrationTests_WorkspaceCore",
+          "StaticCaseWeight": 8,
+          "MeanCaseSeconds": 0.011724
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.InterfaceBaseTypeInsertionIntegrationTests",
+          "StaticCaseWeight": 11,
+          "MeanCaseSeconds": 706.815816
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.InterfaceMemberProjectorTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 15.629708
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.InterfaceNullableContextProjectionIntegrationTests",
+          "StaticCaseWeight": 8,
+          "MeanCaseSeconds": 148.207809
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.InterfaceNullableProjectionTests",
+          "StaticCaseWeight": 28,
+          "MeanCaseSeconds": 0.272303
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.InvalidOperationConstructionRatchetTests",
+          "StaticCaseWeight": 88,
+          "MeanCaseSeconds": 76.095749
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.InvalidOperationErrorsTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 0.001953
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.IsolatedWorkspaceTestBaseTests",
+          "StaticCaseWeight": 7,
+          "MeanCaseSeconds": 0.018716
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.JustfilePortabilityTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.001059
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.LinuxPowerShellStartupCacheOwnershipTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 23.914573
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.LocalToolReinstallProcessOwnershipTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.003246
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.LocationDtoMigrationTests",
+          "StaticCaseWeight": 16,
+          "MeanCaseSeconds": 0.020428
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.LspSourceLocationAliasWireTests",
+          "StaticCaseWeight": 1,
+          "MeanCaseSeconds": 0.052468
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ManualNuGetPublishContractTests",
+          "StaticCaseWeight": 7,
+          "MeanCaseSeconds": 19.252061
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.McpLoggingLifecycleWireTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 1.388716
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.MemberHierarchyCrossToolConsistencyTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.341677
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.MetaProjectionObservabilityTests",
+          "StaticCaseWeight": 7,
+          "MeanCaseSeconds": 0.013309
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.MetadataNameLocatorTests",
+          "StaticCaseWeight": 8,
+          "MeanCaseSeconds": 0.100825
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.MethodDescriptionDietDiagnosticsSecurityTests",
+          "StaticCaseWeight": 5,
+          "MeanCaseSeconds": 0.028335
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.MethodDescriptionDietEditingMsBuildTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.005036
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.MethodDescriptionDietFixallBulkOperationsTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.017054
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.MethodDescriptionDietRatchetOnlyCleanSlicesTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.019545
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.MethodDescriptionDietRefactoringEditorconfigTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.001933
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.MethodDescriptionDietRestructureInterfaceTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.001176
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.MethodDescriptionDietScaffoldingMutationTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.002147
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.MethodDescriptionDietServerSurfaceTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.006676
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.MethodDescriptionDietSignatureExtractionTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.000975
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.MethodDescriptionDietSymbolAdvancedAnalysisTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.002447
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.MethodDescriptionDietTestToolingTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.001251
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.MethodDescriptionDietUndoWorkspaceLifecycleTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.001558
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.MissingWorkspaceRootRetirementTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 13.825891
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.MoveTypeDiskStateTests",
+          "StaticCaseWeight": 1,
+          "MeanCaseSeconds": 4.11657
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.MovedDeclarationFileOwnershipIntegrationTests",
+          "StaticCaseWeight": 5,
+          "MeanCaseSeconds": 391.997678
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.MsBuildEvaluationCacheTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 10.74542
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.MsBuildEvaluationServiceTests",
+          "StaticCaseWeight": 1,
+          "MeanCaseSeconds": 3.641876
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.MsBuildMetadataLifetimeTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 3.057353
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.MutationAnalysisSideEffectsTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.141051
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.NamespaceRelocationTests",
+          "StaticCaseWeight": 17,
+          "MeanCaseSeconds": 53.122195
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.NavigationArgumentRefusalTests",
+          "StaticCaseWeight": 12,
+          "MeanCaseSeconds": 6.158345
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.NegativeEdgeCaseTests",
+          "StaticCaseWeight": 8,
+          "MeanCaseSeconds": 0.050889
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.NuGetAuditGateTests",
+          "StaticCaseWeight": 5,
+          "MeanCaseSeconds": 2.461172
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.NuGetDependencySummaryTests",
+          "StaticCaseWeight": 5,
+          "MeanCaseSeconds": 0.031461
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.NuGetVersionCheckerTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 0.040113
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.NuGetVulnerabilityScanIntegrationTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.016175
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.OrchestrationIntegrationTests",
+          "StaticCaseWeight": 14,
+          "MeanCaseSeconds": 116.407803
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.P4BehavioralBundleTests",
+          "StaticCaseWeight": 9,
+          "MeanCaseSeconds": 1.098129
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.PackageFamilyContractTests",
+          "StaticCaseWeight": 10,
+          "MeanCaseSeconds": 5.417822
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ParamDescriptionCanonicalFormCodeActionSuppressionTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.021294
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ParameterDescriptionBudgetHarnessTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.028334
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ParameterDescriptionCanonicalizationTests",
+          "StaticCaseWeight": 1,
+          "MeanCaseSeconds": 0.00644
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ParameterObjectPreviewTests",
+          "StaticCaseWeight": 85,
+          "MeanCaseSeconds": 160.512198
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ParameterValidationTests",
+          "StaticCaseWeight": 41,
+          "MeanCaseSeconds": 0.018097
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.PerformanceBaselineTests",
+          "StaticCaseWeight": 7,
+          "MeanCaseSeconds": 2.175034
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.PerformanceBehaviorTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 6.016015
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.PluginInstallDocumentationContractTests",
+          "StaticCaseWeight": 1,
+          "MeanCaseSeconds": 0.001149
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.PluginLaunchManifestContractTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.008688
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.PluginPackageAllowlistTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 5.355731
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.PositionProbeTests",
+          "StaticCaseWeight": 8,
+          "MeanCaseSeconds": 0.009962
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.PostApplySymbolRotationTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 7.240766
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.PowerShellOutputNormalizerTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 0.001737
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.PragmaScopeManipulationTests",
+          "StaticCaseWeight": 9,
+          "MeanCaseSeconds": 24.999223
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.PreviewApplyBoundaryRevalidationTests",
+          "StaticCaseWeight": 7,
+          "MeanCaseSeconds": 0.039999
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.PreviewMultiFileEditSyntaxRegressionTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 16.348142
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.PreviewRouteBindingEditingProducerTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.444844
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.PreviewRouteBindingEditingTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 0.028249
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.PreviewRouteBindingFileOpsTests",
+          "StaticCaseWeight": 16,
+          "MeanCaseSeconds": 9.054365
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.PreviewStoreAssertionTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 0.010347
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.PreviewStoreTests",
+          "StaticCaseWeight": 17,
+          "MeanCaseSeconds": 0.05569
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.PreviewTokenCrossCouplingTests",
+          "StaticCaseWeight": 24,
+          "MeanCaseSeconds": 135.135609
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.PreviewTokenStaleAcrossAutoReloadTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.005746
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Progress.ProgressEmissionTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 6.386413
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ProjectFilterTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 0.027423
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ProjectFilterUnknownNameMetricsTests",
+          "StaticCaseWeight": 10,
+          "MeanCaseSeconds": 0.150123
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ProjectFilterUnknownNamePatternTests",
+          "StaticCaseWeight": 11,
+          "MeanCaseSeconds": 0.053438
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ProjectFilterUnknownNameScanTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.040809
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ProjectGraphHelpersTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.005651
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ProjectMetadataParserFailureClassificationTests",
+          "StaticCaseWeight": 22,
+          "MeanCaseSeconds": 0.029072
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ProjectMetadataParserIsTestProjectTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 0.00054
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ProjectMetadataParserRequiresMtpNativeExecutionTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 0.001418
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ProjectMetadataParserTryGetResolvedPackageVersionTests",
+          "StaticCaseWeight": 13,
+          "MeanCaseSeconds": 1.55266
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ProjectMutationIntegrationTests",
+          "StaticCaseWeight": 33,
+          "MeanCaseSeconds": 130.985884
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ProjectOutputTypeTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 3.904116
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ProjectRelativePathValidationTests",
+          "StaticCaseWeight": 15,
+          "MeanCaseSeconds": 0.003795
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.PromptCallErrorFilterTests",
+          "StaticCaseWeight": 13,
+          "MeanCaseSeconds": 0.480901
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.PromptShimToolsTests",
+          "StaticCaseWeight": 9,
+          "MeanCaseSeconds": 0.038097
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.PromptSmokeTests",
+          "StaticCaseWeight": 27,
+          "MeanCaseSeconds": 0.31629
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ProtocolVersionResultShapeWireTests",
+          "StaticCaseWeight": 1,
+          "MeanCaseSeconds": 0.048778
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.PublicExceptionDetailPolicyTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 0.002713
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.PublishVersionContextTests",
+          "StaticCaseWeight": 14,
+          "MeanCaseSeconds": 6.297874
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.PublishWorkflowContractTests",
+          "StaticCaseWeight": 1,
+          "MeanCaseSeconds": 0.001929
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ReadmeSurfaceCountTests",
+          "StaticCaseWeight": 5,
+          "MeanCaseSeconds": 0.05048
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ReceivingNamespaceFactoryTests",
+          "StaticCaseWeight": 12,
+          "MeanCaseSeconds": 0.002648
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.RecordFieldAddSatelliteTests",
+          "StaticCaseWeight": 16,
+          "MeanCaseSeconds": 126.411702
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.RecordFieldAdditionImpactTests",
+          "StaticCaseWeight": 7,
+          "MeanCaseSeconds": 6.461562
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.RefactoringCoreDescriptionBudgetTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.017623
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.RefactoringFixtureOwnershipTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 8.03761
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.RefactoringPhysicalUndoCaptureTests",
+          "StaticCaseWeight": 11,
+          "MeanCaseSeconds": 57.492939
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.RefactoringRefusalPublicationWireTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 6.251407
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.RefactoringSuggestionTests",
+          "StaticCaseWeight": 32,
+          "MeanCaseSeconds": 4.887805
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.RefactoringToolsIntegrationTests",
+          "StaticCaseWeight": 12,
+          "MeanCaseSeconds": 8.982432
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ReferenceResponsePagerTests",
+          "StaticCaseWeight": 14,
+          "MeanCaseSeconds": 6.776711
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ReferenceServiceFindImplementationsTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.005943
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ReleaseLagGuardTests",
+          "StaticCaseWeight": 5,
+          "MeanCaseSeconds": 7.892029
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ReleaseManagedFileGuardDocumentationTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.00307
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.RenameSummaryModeTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 3.993321
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ReplaceInvocationTests",
+          "StaticCaseWeight": 51,
+          "MeanCaseSeconds": 114.569157
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.RequestCorrelationContextTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.014942
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ResourceReadWireContractTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 1.076021
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.RestoreStalenessDetectorTests",
+          "StaticCaseWeight": 56,
+          "MeanCaseSeconds": 8.622027
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.RestructureServiceTests",
+          "StaticCaseWeight": 16,
+          "MeanCaseSeconds": 0.048378
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.RootBoundaryErrorWireTests",
+          "StaticCaseWeight": 7,
+          "MeanCaseSeconds": 0.160295
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SamplingMrtrWireTests",
+          "StaticCaseWeight": 24,
+          "MeanCaseSeconds": 16.012426
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ScaffoldingFirstTestFileTests",
+          "StaticCaseWeight": 12,
+          "MeanCaseSeconds": 41.430418
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ScaffoldingIntegrationTests",
+          "StaticCaseWeight": 43,
+          "MeanCaseSeconds": 116.273522
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ScriptingOptionsEnvironmentBinderTests",
+          "StaticCaseWeight": 9,
+          "MeanCaseSeconds": 0.003168
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ScriptingServiceTests",
+          "StaticCaseWeight": 19,
+          "MeanCaseSeconds": 15.275499
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ScriptingSyncOverAsyncGuardTests",
+          "StaticCaseWeight": 1,
+          "MeanCaseSeconds": 0.000508
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SdkStyleCsprojInjectionTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 3.986046
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SecurityDiagnosticIntegrationTests",
+          "StaticCaseWeight": 22,
+          "MeanCaseSeconds": 5.133008
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SelectionRangeCodeActionTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.336242
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SemanticExpansionTests",
+          "StaticCaseWeight": 10,
+          "MeanCaseSeconds": 12.324438
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SemanticGrepServiceTests",
+          "StaticCaseWeight": 21,
+          "MeanCaseSeconds": 0.096037
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SemanticSearchFallbackTests",
+          "StaticCaseWeight": 8,
+          "MeanCaseSeconds": 0.042504
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ServerDiscoveryWireTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 3.907004
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ServerHeartbeatTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 0.01403
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ServerInfoPathBoundaryTests",
+          "StaticCaseWeight": 8,
+          "MeanCaseSeconds": 0.004379
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ServerInfoUpdateLatestTests",
+          "StaticCaseWeight": 9,
+          "MeanCaseSeconds": 0.031758
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ServerInfoUpdateWireContractTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.925267
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ServerObservabilitySinkTests",
+          "StaticCaseWeight": 17,
+          "MeanCaseSeconds": 0.102752
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ServerSurfaceCatalogAnalyzerTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 1.444984
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ServiceCollectionExtensionsTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 0.0239
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ServiceCoverageTests",
+          "StaticCaseWeight": 16,
+          "MeanCaseSeconds": 5.621899
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Services.GatedCommandExecutorTests",
+          "StaticCaseWeight": 5,
+          "MeanCaseSeconds": 0.108884
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Services.NavigationToolsNotFoundMessageTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 6.562187
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Services.PersistentCompositeStorageTests",
+          "StaticCaseWeight": 17,
+          "MeanCaseSeconds": 0.050629
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Services.SymbolInfoNotFoundMessageTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 8.617277
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Services.WorkspaceCacheCoordinatorTests",
+          "StaticCaseWeight": 5,
+          "MeanCaseSeconds": 0.027212
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Services.WorkspaceCacheStoreInvalidationTests",
+          "StaticCaseWeight": 7,
+          "MeanCaseSeconds": 0.015491
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Services.WorkspaceCacheStoreRoundTripTests",
+          "StaticCaseWeight": 5,
+          "MeanCaseSeconds": 0.038823
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Services.WorkspaceDriftServiceTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 13.071615
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Skills.AggregatePromotionScorecardsScriptTests",
+          "StaticCaseWeight": 9,
+          "MeanCaseSeconds": 7.0631
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Skills.ArchiveOldReportsScriptTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 2.524314
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Skills.AuditPhaseRunnerHandoffTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 0.002993
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Skills.ChangedFormatGateScriptTests",
+          "StaticCaseWeight": 17,
+          "MeanCaseSeconds": 71.38493
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Skills.DocumentationGateScriptTests",
+          "StaticCaseWeight": 33,
+          "MeanCaseSeconds": 30.953557
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Skills.ExperimentalAgeAuditScriptTests",
+          "StaticCaseWeight": 5,
+          "MeanCaseSeconds": 3.787015
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Skills.IssueTemplateAndLabelSeedTests",
+          "StaticCaseWeight": 10,
+          "MeanCaseSeconds": 0.004776
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Skills.McpServerStressSkillFrontmatterTests",
+          "StaticCaseWeight": 5,
+          "MeanCaseSeconds": 0.012515
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Skills.McpServerSurfaceTestSkillTests",
+          "StaticCaseWeight": 20,
+          "MeanCaseSeconds": 0.043818
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Skills.PromoteTierRoundTripTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.004904
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Skills.RenderFindingScriptTests",
+          "StaticCaseWeight": 11,
+          "MeanCaseSeconds": 7.001829
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Skills.RoslynBookendPromptTests",
+          "StaticCaseWeight": 8,
+          "MeanCaseSeconds": 0.002067
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Skills.ShippedSkillBacklogCitationTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.036196
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Skills.SkillFrontmatterInstalledAsTests",
+          "StaticCaseWeight": 1,
+          "MeanCaseSeconds": 0.010749
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Skills.SkillPrefixGenericityTests",
+          "StaticCaseWeight": 17,
+          "MeanCaseSeconds": 0.075137
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SliceFieldDetectionTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 1.232024
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SolutionDiffHelperTests",
+          "StaticCaseWeight": 33,
+          "MeanCaseSeconds": 0.15115
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SolutionDiscoveryHelperTests",
+          "StaticCaseWeight": 21,
+          "MeanCaseSeconds": 0.053482
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SourceFileEncodingTests",
+          "StaticCaseWeight": 19,
+          "MeanCaseSeconds": 0.003714
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SourceTextRequestProjectionTests",
+          "StaticCaseWeight": 14,
+          "MeanCaseSeconds": 0.01552
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.StartupDiagnosticsTests",
+          "StaticCaseWeight": 21,
+          "MeanCaseSeconds": 1.507476
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.StaticListResultFilterTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.008834
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.StdoutWriteAnalyzerTests",
+          "StaticCaseWeight": 11,
+          "MeanCaseSeconds": 0.186767
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.StringLiteralReplaceSemanticTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 18.703666
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.StringLiteralReplaceServiceTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 0.014449
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.StructuredCallContentProjectorTests",
+          "StaticCaseWeight": 19,
+          "MeanCaseSeconds": 0.019099
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.StructuredCallElicitationCoordinatorTests",
+          "StaticCaseWeight": 13,
+          "MeanCaseSeconds": 0.064495
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.StructuredCallToolFilterAutoLoadTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.023779
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.StructuredCallToolFilterElicitationTests",
+          "StaticCaseWeight": 1,
+          "MeanCaseSeconds": 0.00047
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.StructuredCallToolFilterResolutionTests",
+          "StaticCaseWeight": 28,
+          "MeanCaseSeconds": 0.018312
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.StructuredCallToolFilterTests",
+          "StaticCaseWeight": 11,
+          "MeanCaseSeconds": 0.053174
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.StructuredContentRoundTripTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.0079
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.StructuredContentWireContractTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 9.949116
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SuppressionArgumentRefusalWireTests",
+          "StaticCaseWeight": 8,
+          "MeanCaseSeconds": 54.352036
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SuppressionServiceTests",
+          "StaticCaseWeight": 65,
+          "MeanCaseSeconds": 0.064056
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SuppressionToolsTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 6.598526
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SurfaceCatalogTests",
+          "StaticCaseWeight": 28,
+          "MeanCaseSeconds": 0.198949
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SurfaceSnapshotFreshnessGateTests",
+          "StaticCaseWeight": 5,
+          "MeanCaseSeconds": 2.354511
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SymbolDisambiguationElicitationTests",
+          "StaticCaseWeight": 10,
+          "MeanCaseSeconds": 0.105937
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SymbolDisambiguationMrtrWireTests",
+          "StaticCaseWeight": 20,
+          "MeanCaseSeconds": 0.144824
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SymbolImpactSweepBudgetTests",
+          "StaticCaseWeight": 5,
+          "MeanCaseSeconds": 0.128912
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SymbolLocatorTests",
+          "StaticCaseWeight": 9,
+          "MeanCaseSeconds": 0.001625
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SymbolMapperTests",
+          "StaticCaseWeight": 10,
+          "MeanCaseSeconds": 0.045177
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SymbolRefactorPreviewTests",
+          "StaticCaseWeight": 35,
+          "MeanCaseSeconds": 55.726039
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SymbolRelationshipsBuiltinTypeSuppressionTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.303449
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SymbolResolverRenameCaretTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 29.541012
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SymbolSearchPaginationTests",
+          "StaticCaseWeight": 17,
+          "MeanCaseSeconds": 0.823051
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SymbolServiceHelpersContainingSymbolTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 0.138475
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SymbolTraversalTests",
+          "StaticCaseWeight": 7,
+          "MeanCaseSeconds": 0.249678
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TUnitMtpNativeTestRunTests",
+          "StaticCaseWeight": 17,
+          "MeanCaseSeconds": 30.900962
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TestAssemblyFixtureSharingAlphaTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.001168
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TestAssemblyFixtureSharingBetaTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 3.181938
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TestCoverageErrorWireTests",
+          "StaticCaseWeight": 1,
+          "MeanCaseSeconds": 0.017368
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TestCoverageFailureEnvelopeTests",
+          "StaticCaseWeight": 7,
+          "MeanCaseSeconds": 0.029588
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TestCoveragePartialCoverletTests",
+          "StaticCaseWeight": 5,
+          "MeanCaseSeconds": 0.078321
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TestDiscoverFqdnDriftTests",
+          "StaticCaseWeight": 8,
+          "MeanCaseSeconds": 0.007078
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TestDiscoveryFileIdentityTests",
+          "StaticCaseWeight": 9,
+          "MeanCaseSeconds": 0.221551
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TestFixtureFileSystemTests",
+          "StaticCaseWeight": 22,
+          "MeanCaseSeconds": 0.106336
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TestFixturePreparationContractTests",
+          "StaticCaseWeight": 9,
+          "MeanCaseSeconds": 22.159785
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TestReferenceMapServiceTests",
+          "StaticCaseWeight": 10,
+          "MeanCaseSeconds": 0.384772
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TestResultsSummaryContractTests",
+          "StaticCaseWeight": 17,
+          "MeanCaseSeconds": 12.978632
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TestRunFailureEnvelopeTests",
+          "StaticCaseWeight": 48,
+          "MeanCaseSeconds": 0.488537
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TestRunPublicProjectionTests",
+          "StaticCaseWeight": 11,
+          "MeanCaseSeconds": 0.427062
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TestRunTimeoutWireTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 0.015992
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TestRunnerPublicRefusalsTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 9.906262
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TestServiceContainerTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 0.004685
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TestShardPlanContractTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 26.357435
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TestTempRootTests",
+          "StaticCaseWeight": 7,
+          "MeanCaseSeconds": 0.018661
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ThirdPartyNoticeDriftTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 4.375731
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ToolCallErrorWireContractTests",
+          "StaticCaseWeight": 24,
+          "MeanCaseSeconds": 37.602379
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ToolDescriptionDietAnalysisMetricsTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 0.003483
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ToolDescriptionDietWorkspaceValidationTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 0.001867
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ToolDiResolutionTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.267083
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ToolDispatchTests",
+          "StaticCaseWeight": 20,
+          "MeanCaseSeconds": 0.045876
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ToolErrorHandlerParameterValidationTests",
+          "StaticCaseWeight": 14,
+          "MeanCaseSeconds": 0.009482
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ToolErrorHandlerSpecificityTests",
+          "StaticCaseWeight": 8,
+          "MeanCaseSeconds": 0.008073
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ToolErrorHandlerWorkspaceReloadRaceTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 0.003034
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ToolInputSchemaHygieneTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.304274
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ToolParameterCanonicalFormTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 0.126072
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ToolUpdateOwnedProcessShutdownTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 0.010717
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Top10V2RegressionTests",
+          "StaticCaseWeight": 10,
+          "MeanCaseSeconds": 10.294725
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Top10V3RegressionTests",
+          "StaticCaseWeight": 9,
+          "MeanCaseSeconds": 0.27898
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TreeNodeFilterTranslatorTests",
+          "StaticCaseWeight": 20,
+          "MeanCaseSeconds": 0.012391
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TriviaNormalizationHelperTests",
+          "StaticCaseWeight": 10,
+          "MeanCaseSeconds": 0.011024
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TruncatedPreviewApplyGateTests",
+          "StaticCaseWeight": 5,
+          "MeanCaseSeconds": 0.005077
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TypeConsumersServiceTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 0.05158
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TypeExtractionTests",
+          "StaticCaseWeight": 50,
+          "MeanCaseSeconds": 118.259245
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TypeExtractionTriviaPreservationTests",
+          "StaticCaseWeight": 1,
+          "MeanCaseSeconds": 43.432941
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TypeMoveTests",
+          "StaticCaseWeight": 31,
+          "MeanCaseSeconds": 104.911023
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TypeNamespaceWalkerTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.110669
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.UndoFileOperationsTests",
+          "StaticCaseWeight": 10,
+          "MeanCaseSeconds": 47.550465
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.UndoIntegrationTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 13.369159
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.UndoServiceTests",
+          "StaticCaseWeight": 22,
+          "MeanCaseSeconds": 102.124269
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.UnknownReferenceNotFoundWireContractTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 5.759794
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.UnknownToolArgumentWireTests",
+          "StaticCaseWeight": 12,
+          "MeanCaseSeconds": 0.047638
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.UnresolvedAnalyzerReferenceStripperTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 4.271465
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.UnresolvedAnalyzerReferenceTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 12.65028
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.UnusedSymbolScanFailSafeTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.082934
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.UnusedSymbolsTestBridgeExclusionTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 0.047451
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.UsingDirectiveSynthesizerTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.001881
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ValidateRecentGitChangesTests",
+          "StaticCaseWeight": 22,
+          "MeanCaseSeconds": 34.909765
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ValidateWorkspaceChangeTrackerReconcileTests",
+          "StaticCaseWeight": 15,
+          "MeanCaseSeconds": 55.435402
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ValidateWorkspaceMarkdownFormatterTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 0.006471
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ValidateWorkspaceSummaryTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 0.167816
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ValidationBundleToolsTests",
+          "StaticCaseWeight": 44,
+          "MeanCaseSeconds": 0.372959
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ValidationIntegrationTests",
+          "StaticCaseWeight": 7,
+          "MeanCaseSeconds": 17.845121
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ValidationIsolationContractTests",
+          "StaticCaseWeight": 1,
+          "MeanCaseSeconds": 0.005305
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ValidationServiceOptionsEnvironmentBinderTests",
+          "StaticCaseWeight": 9,
+          "MeanCaseSeconds": 0.002708
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ValidationToolsCompactTestRunTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 0.015683
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ValidationToolsErrorWireTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.019134
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ValidationToolsIntegrationTests",
+          "StaticCaseWeight": 17,
+          "MeanCaseSeconds": 2.180342
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.VerifyReleaseChildScriptTests",
+          "StaticCaseWeight": 15,
+          "MeanCaseSeconds": 43.787048
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.VersionDriftGateTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 2.254493
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WindowsPathResourceTests",
+          "StaticCaseWeight": 9,
+          "MeanCaseSeconds": 0.013306
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkflowRecommendationToolsTests",
+          "StaticCaseWeight": 21,
+          "MeanCaseSeconds": 0.01344
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Workspace.WorkspaceCachePrewarmTests",
+          "StaticCaseWeight": 5,
+          "MeanCaseSeconds": 8.232533
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Workspace.WorkspaceLoadCacheFastPathTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 17.875719
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Workspace.WorkspaceReloadGlobalPropertiesTests",
+          "StaticCaseWeight": 7,
+          "MeanCaseSeconds": 21.12988
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceCapLruEvictionTests",
+          "StaticCaseWeight": 5,
+          "MeanCaseSeconds": 22.813889
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceCloseDrainTests",
+          "StaticCaseWeight": 33,
+          "MeanCaseSeconds": 0.97318
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceDiagnosticSeverityClassifierTests",
+          "StaticCaseWeight": 15,
+          "MeanCaseSeconds": 0.001085
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceDispatchValidationPrecedenceTests",
+          "StaticCaseWeight": 21,
+          "MeanCaseSeconds": 0.006005
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceEvictionAutoRetryTests",
+          "StaticCaseWeight": 9,
+          "MeanCaseSeconds": 49.824259
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceExecutionGateTests",
+          "StaticCaseWeight": 36,
+          "MeanCaseSeconds": 0.928791
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceExplicitReloadTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 21.934099
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceFilePathInferenceWireTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.022444
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceForkApplyCancellationTests",
+          "StaticCaseWeight": 5,
+          "MeanCaseSeconds": 0.045619
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceForkApplyTests",
+          "StaticCaseWeight": 17,
+          "MeanCaseSeconds": 87.085402
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceForkDocumentEncodingTests",
+          "StaticCaseWeight": 8,
+          "MeanCaseSeconds": 123.027724
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceForkGitIsolationTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.20836
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceForkGraphReplayTests",
+          "StaticCaseWeight": 10,
+          "MeanCaseSeconds": 83.027903
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceForkSourceLifecycleTests",
+          "StaticCaseWeight": 14,
+          "MeanCaseSeconds": 63.279299
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceForkSourceSessionTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 62.51873
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceIdOptionalSurfaceTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.001701
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceLifecycleArgumentRefusalTests",
+          "StaticCaseWeight": 13,
+          "MeanCaseSeconds": 0.36941
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceLoadAutoRestoreTests",
+          "StaticCaseWeight": 11,
+          "MeanCaseSeconds": 26.64826
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceLoadDedupTests",
+          "StaticCaseWeight": 8,
+          "MeanCaseSeconds": 21.773065
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceLoadRestoreBudgetTests",
+          "StaticCaseWeight": 7,
+          "MeanCaseSeconds": 18.612182
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceLoadRestoreFailureWireTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 4.094378
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceLoadRestoreNextCallTests",
+          "StaticCaseWeight": 10,
+          "MeanCaseSeconds": 0.008321
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceLoadRestorePackagesPathTests",
+          "StaticCaseWeight": 14,
+          "MeanCaseSeconds": 117.200477
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceLoadRestoreRaceTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 10.947471
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceManagerEvictionTests",
+          "StaticCaseWeight": 7,
+          "MeanCaseSeconds": 3.787787
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceNotFoundWireContractTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 8.464502
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspacePathMrtrWireTests",
+          "StaticCaseWeight": 22,
+          "MeanCaseSeconds": 0.221025
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceProjectAliasLookupTests",
+          "StaticCaseWeight": 13,
+          "MeanCaseSeconds": 9.444544
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceReadinessReportIntegrationTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 24.834495
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceReadinessReportTests",
+          "StaticCaseWeight": 10,
+          "MeanCaseSeconds": 0.045061
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceReloadedEventTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 13.688148
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceReloadedNotFoundConflationTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 0.00335
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceResourceListNotificationWireTests",
+          "StaticCaseWeight": 1,
+          "MeanCaseSeconds": 11.867553
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceResourceTests",
+          "StaticCaseWeight": 14,
+          "MeanCaseSeconds": 0.049193
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceSessionLoaderFailureTests",
+          "StaticCaseWeight": 1,
+          "MeanCaseSeconds": 3.728029
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceStatusSummaryDtoTests",
+          "StaticCaseWeight": 20,
+          "MeanCaseSeconds": 0.010851
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceSupportBundleTests",
+          "StaticCaseWeight": 9,
+          "MeanCaseSeconds": 0.033378
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceToolchainClassifierTests",
+          "StaticCaseWeight": 7,
+          "MeanCaseSeconds": 0.001833
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceToolsIntegrationTests",
+          "StaticCaseWeight": 22,
+          "MeanCaseSeconds": 3.773916
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceValidationOverallStatusTests",
+          "StaticCaseWeight": 20,
+          "MeanCaseSeconds": 0.012143
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceValidationTimeoutTests",
+          "StaticCaseWeight": 5,
+          "MeanCaseSeconds": 11.017702
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceValidationVerdictTests",
+          "StaticCaseWeight": 26,
+          "MeanCaseSeconds": 72.815969
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceWarmServiceTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 9.356709
+        }
+      ]
+    },
+    {
+      "Image": "windows-latest",
+      "RunIds": [
+        "40783926346",
+        "40788319028",
+        "40788434338",
+        "40800095395",
+        "40803366211"
+      ],
+      "Classes": [
+        {
+          "ClassName": "RoslynMcp.Tests.ActionlintGateContractTests",
+          "StaticCaseWeight": 15,
+          "MeanCaseSeconds": 10.026632
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.AliasRemovalTests",
+          "StaticCaseWeight": 5,
+          "MeanCaseSeconds": 0.973198
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.AnalysisFlowFailureRedactionTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 0.023676
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.AnalysisScanCompletenessTests",
+          "StaticCaseWeight": 8,
+          "MeanCaseSeconds": 72.22614
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.AnalysisToolsTests",
+          "StaticCaseWeight": 13,
+          "MeanCaseSeconds": 4.01773
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.AnalyzerInfoToolsTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 3.1181
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.AnalyzerShadowCreatorOwnershipTests",
+          "StaticCaseWeight": 29,
+          "MeanCaseSeconds": 0.195821
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.AnalyzerShadowLoaderLifecycleTests",
+          "StaticCaseWeight": 10,
+          "MeanCaseSeconds": 18.818892
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.AnalyzerShadowStartupSweepRegressionTests",
+          "StaticCaseWeight": 5,
+          "MeanCaseSeconds": 0.035326
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ApplyTextEditVerifyTests",
+          "StaticCaseWeight": 11,
+          "MeanCaseSeconds": 90.70152
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ApplyUndoWorkflowServiceTests",
+          "StaticCaseWeight": 9,
+          "MeanCaseSeconds": 0.039139
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ApplyWithVerifyCancellationAndScopeTests",
+          "StaticCaseWeight": 9,
+          "MeanCaseSeconds": 0.859433
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ArgumentErrorsTests",
+          "StaticCaseWeight": 9,
+          "MeanCaseSeconds": 0.066318
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.AuditFixesTests",
+          "StaticCaseWeight": 13,
+          "MeanCaseSeconds": 3.698192
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.AutoReloadCascadeHostCrashTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 16.637371
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.BacklogFixTests",
+          "StaticCaseWeight": 17,
+          "MeanCaseSeconds": 7.791674
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.BacklogPublicArgumentRefusalTests",
+          "StaticCaseWeight": 38,
+          "MeanCaseSeconds": 31.816384
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Batch1OutputSchemaTests",
+          "StaticCaseWeight": 10,
+          "MeanCaseSeconds": 0.138971
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.BoundedStoreEvictionTests",
+          "StaticCaseWeight": 7,
+          "MeanCaseSeconds": 0.03613
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.BreakingVersionGateTests",
+          "StaticCaseWeight": 9,
+          "MeanCaseSeconds": 20.56602
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.BuildTestToolsShimTests",
+          "StaticCaseWeight": 8,
+          "MeanCaseSeconds": 6.138569
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.BulkRefactoringTests",
+          "StaticCaseWeight": 7,
+          "MeanCaseSeconds": 4.936999
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CSharpFeatureProviderLoaderTests",
+          "StaticCaseWeight": 12,
+          "MeanCaseSeconds": 0.164719
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CaseDistinctCallsitePreviewTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 2.689639
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CatalogDestructiveWarningTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.059375
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CatalogTypeNameFormatterTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 0.00081
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ChangeSignatureActivatorTests",
+          "StaticCaseWeight": 33,
+          "MeanCaseSeconds": 136.41708
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ChangeSignatureAliasesTests",
+          "StaticCaseWeight": 28,
+          "MeanCaseSeconds": 103.959778
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ChangeSignatureBindingsTests",
+          "StaticCaseWeight": 55,
+          "MeanCaseSeconds": 212.072925
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ChangeSignatureCollectionsTests",
+          "StaticCaseWeight": 51,
+          "MeanCaseSeconds": 195.145255
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ChangeSignatureConstructorsTests",
+          "StaticCaseWeight": 43,
+          "MeanCaseSeconds": 174.9815
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ChangeSignaturePreviewMetadataNameShapeTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 10.95613
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ChangeSignaturePreviewTests",
+          "StaticCaseWeight": 18,
+          "MeanCaseSeconds": 79.005657
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ChangeSignatureRefusalPublicationTests",
+          "StaticCaseWeight": 19,
+          "MeanCaseSeconds": 68.068169
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ChangeSignatureRefusalsTests",
+          "StaticCaseWeight": 27,
+          "MeanCaseSeconds": 109.926154
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ChangeSignatureStructConstructionTests",
+          "StaticCaseWeight": 24,
+          "MeanCaseSeconds": 88.081438
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ChangeSignatureStructInitializationTests",
+          "StaticCaseWeight": 54,
+          "MeanCaseSeconds": 180.64695
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ChangeTrackerTests",
+          "StaticCaseWeight": 11,
+          "MeanCaseSeconds": 51.719343
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ChangelogFragmentRequirementTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 65.721837
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CiEvidenceTierConsumerContractTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.151953
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CiRunnerParityContractTests",
+          "StaticCaseWeight": 28,
+          "MeanCaseSeconds": 153.578663
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CiTopologyDecisionContractTests",
+          "StaticCaseWeight": 27,
+          "MeanCaseSeconds": 21.786139
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CleanupFailureCollectorTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 0.009944
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ClientRootPathValidatorTests",
+          "StaticCaseWeight": 51,
+          "MeanCaseSeconds": 6.058289
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CodeActionArgumentRefusalWireTests",
+          "StaticCaseWeight": 8,
+          "MeanCaseSeconds": 54.542823
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CodeActionServiceTests",
+          "StaticCaseWeight": 14,
+          "MeanCaseSeconds": 0.211128
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CodeFixProviderRegistryTests",
+          "StaticCaseWeight": 12,
+          "MeanCaseSeconds": 0.310687
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CodeMetricsNestingTests",
+          "StaticCaseWeight": 8,
+          "MeanCaseSeconds": 0.085173
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CodexChangelogHookTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 25.711349
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CohesionAnalysisTests",
+          "StaticCaseWeight": 16,
+          "MeanCaseSeconds": 61.267767
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CohesionSemanticIdentityTests",
+          "StaticCaseWeight": 14,
+          "MeanCaseSeconds": 1.048998
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CompilationCacheAdoptionTests",
+          "StaticCaseWeight": 33,
+          "MeanCaseSeconds": 214.003229
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CompilationCacheTests",
+          "StaticCaseWeight": 7,
+          "MeanCaseSeconds": 0.046442
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CompileCheckRestoreRequiredWireTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 11.682098
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CompileCheckServiceTests",
+          "StaticCaseWeight": 9,
+          "MeanCaseSeconds": 49.49415
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CompileCheckZeroProjectsTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 0.213003
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CompositeApplyOrchestratorTests",
+          "StaticCaseWeight": 33,
+          "MeanCaseSeconds": 2.971191
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CompositeSplitServiceDiPreviewTests",
+          "StaticCaseWeight": 9,
+          "MeanCaseSeconds": 144.988642
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ConsumerAnalysisCancellationTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.320819
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ConsumerAnalysisTests",
+          "StaticCaseWeight": 5,
+          "MeanCaseSeconds": 3.967556
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CouplingAnalysisTests",
+          "StaticCaseWeight": 9,
+          "MeanCaseSeconds": 17.03222
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CrossProjectReceivingNamespaceIntegrationTests",
+          "StaticCaseWeight": 17,
+          "MeanCaseSeconds": 511.356604
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CrossProjectRefactoringIntegrationTests",
+          "StaticCaseWeight": 19,
+          "MeanCaseSeconds": 110.056868
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.CsprojReserializationTests",
+          "StaticCaseWeight": 14,
+          "MeanCaseSeconds": 8.071715
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.DeadCodeIntegrationTests",
+          "StaticCaseWeight": 7,
+          "MeanCaseSeconds": 3.047605
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.DeadFieldDetectorTests",
+          "StaticCaseWeight": 26,
+          "MeanCaseSeconds": 0.568015
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.DeadLocalDetectorTests",
+          "StaticCaseWeight": 18,
+          "MeanCaseSeconds": 0.494961
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.DeadLoggerFieldsTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 0.001495
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.DetachedFixtureCiIntegrationTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 74.454966
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.DetachedFixtureNativeContextIntegrationTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 50.536031
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.DiLifetimeOverrideTests",
+          "StaticCaseWeight": 15,
+          "MeanCaseSeconds": 83.503908
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.DiagnosticFixIntegrationTests",
+          "StaticCaseWeight": 20,
+          "MeanCaseSeconds": 3.192316
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.DiagnosticIdentitySetTests",
+          "StaticCaseWeight": 13,
+          "MeanCaseSeconds": 0.008373
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.DiagnosticQueryServiceRegressionTests",
+          "StaticCaseWeight": 23,
+          "MeanCaseSeconds": 2.701466
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.DiagnosticServiceFilterTotalsTests",
+          "StaticCaseWeight": 19,
+          "MeanCaseSeconds": 1.795332
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.DiagnosticServicePerfTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 5.293991
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.DiagnosticSourceGeneratorParityTests",
+          "StaticCaseWeight": 1,
+          "MeanCaseSeconds": 13.889787
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.DiffGeneratorTests",
+          "StaticCaseWeight": 13,
+          "MeanCaseSeconds": 0.005991
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.DocumentSymbolsSymbolHandleTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.059726
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.DocumentationOwnershipContractTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 2.32758
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.DotnetCommandRunnerPipeLifetimeTests",
+          "StaticCaseWeight": 8,
+          "MeanCaseSeconds": 8.352237
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.DotnetOutputParserBuildDiagnosticsTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 0.013974
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.DotnetTestModeResolverTests",
+          "StaticCaseWeight": 10,
+          "MeanCaseSeconds": 0.028805
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.DryRunPreviewSideEffectAuditTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 10.039484
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.DuplicateHelperDetectionTests",
+          "StaticCaseWeight": 14,
+          "MeanCaseSeconds": 0.422216
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.DuplicateMethodDetectorTests",
+          "StaticCaseWeight": 17,
+          "MeanCaseSeconds": 0.087566
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.EditUndoCohesionTests",
+          "StaticCaseWeight": 24,
+          "MeanCaseSeconds": 260.028613
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.EditUndoIntegrationTests",
+          "StaticCaseWeight": 9,
+          "MeanCaseSeconds": 106.099005
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.EditorConfigArgumentRefusalWireTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 54.320859
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.EditorConfigServiceTests",
+          "StaticCaseWeight": 54,
+          "MeanCaseSeconds": 370.513142
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ElicitationAllowlistPolicyTests",
+          "StaticCaseWeight": 21,
+          "MeanCaseSeconds": 0.00644
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ElicitationChoicePromptTests",
+          "StaticCaseWeight": 12,
+          "MeanCaseSeconds": 0.103918
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ErrorResponseObservabilityTests",
+          "StaticCaseWeight": 21,
+          "MeanCaseSeconds": 3.616369
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ExceptionFlowServiceTests",
+          "StaticCaseWeight": 8,
+          "MeanCaseSeconds": 85.992688
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ExpandedSurfaceIntegrationTests",
+          "StaticCaseWeight": 33,
+          "MeanCaseSeconds": 11.828632
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ExpandedSurfaceIntegrationTests_CoverageProcess",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.002789
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ExpandedSurfaceIntegrationTests_RepoSolutionAnalysis",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 17.737654
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ExpandedSurfaceIntegrationTests_ToolContract",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 1.56345
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ExperimentalSurfaceParameterNamingTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.032154
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ExternalEditStalenessTests",
+          "StaticCaseWeight": 25,
+          "MeanCaseSeconds": 65.276451
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ExtractInterfaceSemanticUsingsTests",
+          "StaticCaseWeight": 7,
+          "MeanCaseSeconds": 45.280261
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ExtractMethodFormatRegressionTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 25.785666
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ExtractMethodTests",
+          "StaticCaseWeight": 35,
+          "MeanCaseSeconds": 208.356417
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ExtractMethodThisExclusionTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 10.656587
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ExtractSharedExpressionTests",
+          "StaticCaseWeight": 40,
+          "MeanCaseSeconds": 239.962468
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ExtractionApplyRouteBindingTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 0.01992
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ExtractionArgumentRefusalWireTests",
+          "StaticCaseWeight": 14,
+          "MeanCaseSeconds": 93.158004
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.FailClosedTestDoublesTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.009878
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.FetchMcpResourceReadinessTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 2.574731
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.FileEditsDtoTests",
+          "StaticCaseWeight": 15,
+          "MeanCaseSeconds": 0.021978
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.FileOperationIntegrationTests",
+          "StaticCaseWeight": 36,
+          "MeanCaseSeconds": 220.963019
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.FileSnapshotCaptureTests",
+          "StaticCaseWeight": 8,
+          "MeanCaseSeconds": 0.026889
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.FileSystemPathTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 0.003705
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.FileWatcherClearStaleAwaiterTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.012113
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.FindImplementationsCorlibHintTests",
+          "StaticCaseWeight": 7,
+          "MeanCaseSeconds": 0.40306
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.FindOverloadsTests",
+          "StaticCaseWeight": 9,
+          "MeanCaseSeconds": 0.536464
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.FindOverridesCorlibSuppressionTests",
+          "StaticCaseWeight": 7,
+          "MeanCaseSeconds": 0.053464
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.FindPropertyWritesHintLocatorShapeTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.090442
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.FindPropertyWritesPositionalRecordTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.142712
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.FindReferencesSummaryTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.12824
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.FindReflectionUsagesPaginationTests",
+          "StaticCaseWeight": 5,
+          "MeanCaseSeconds": 26.56396
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.FixAllEquivalenceKeyIntegrationTests",
+          "StaticCaseWeight": 20,
+          "MeanCaseSeconds": 9.582877
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.FixAllServiceGuidanceTests",
+          "StaticCaseWeight": 8,
+          "MeanCaseSeconds": 0.173331
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.FixAllServiceIntegrationTests",
+          "StaticCaseWeight": 12,
+          "MeanCaseSeconds": 1.095907
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.FixAllServiceTests",
+          "StaticCaseWeight": 28,
+          "MeanCaseSeconds": 0.096763
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.FlowAnalysisServiceTests",
+          "StaticCaseWeight": 10,
+          "MeanCaseSeconds": 27.54609
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ForkGraphPreparationTests",
+          "StaticCaseWeight": 42,
+          "MeanCaseSeconds": 1.686665
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ForkNativeAdmissionTests",
+          "StaticCaseWeight": 173,
+          "MeanCaseSeconds": 759.176302
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ForkRetainedSourceDeletionTests",
+          "StaticCaseWeight": 9,
+          "MeanCaseSeconds": 130.671661
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ForkStorageBoundaryTests",
+          "StaticCaseWeight": 13,
+          "MeanCaseSeconds": 192.464775
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ForkStorageLockOrderTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 37.479778
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.FormatRangeServiceTests",
+          "StaticCaseWeight": 35,
+          "MeanCaseSeconds": 113.391843
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.FormatterBaselineContractTests",
+          "StaticCaseWeight": 12,
+          "MeanCaseSeconds": 233.836136
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.GateOperationDeadlineTests",
+          "StaticCaseWeight": 24,
+          "MeanCaseSeconds": 0.674804
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.GeneratedJsonSchemaMatcherTests",
+          "StaticCaseWeight": 33,
+          "MeanCaseSeconds": 0.03354
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.GeneratorProjectSymbolIdentityTests",
+          "StaticCaseWeight": 1,
+          "MeanCaseSeconds": 4.554208
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.GetSyntaxTreeBudgetTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 0.01187
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.GetSyntaxTreeRangeOverlapTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.019371
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.GoToTypeDefinitionTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 0.047494
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.HardeningBehaviorTests",
+          "StaticCaseWeight": 5,
+          "MeanCaseSeconds": 3.276637
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Helpers.InMemoryMcpClientServerHarnessTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 18.045379
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Helpers.PwshScriptRunnerTests",
+          "StaticCaseWeight": 14,
+          "MeanCaseSeconds": 91.705626
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.HighValueCoverageIntegrationTests",
+          "StaticCaseWeight": 8,
+          "MeanCaseSeconds": 2.858627
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.HookConfigurationTests",
+          "StaticCaseWeight": 10,
+          "MeanCaseSeconds": 25.259159
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.HostArgumentRefusalEnvelopeTests",
+          "StaticCaseWeight": 19,
+          "MeanCaseSeconds": 23.4078
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.HostAssemblyMarkerTests",
+          "StaticCaseWeight": 1,
+          "MeanCaseSeconds": 0.000872
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.HostProcessMetadataTests",
+          "StaticCaseWeight": 20,
+          "MeanCaseSeconds": 0.112221
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.HostShutdownLifecycleTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.087027
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.IdentifierValidationTests",
+          "StaticCaseWeight": 12,
+          "MeanCaseSeconds": 0.002549
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.InstallLayerRefreshContractTests",
+          "StaticCaseWeight": 10,
+          "MeanCaseSeconds": 4.88161
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.IntegrationTests_EditApply",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 26.42416
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.IntegrationTests_SymbolNavigation",
+          "StaticCaseWeight": 14,
+          "MeanCaseSeconds": 0.599026
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.IntegrationTests_WorkspaceCore",
+          "StaticCaseWeight": 8,
+          "MeanCaseSeconds": 0.012517
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.InterfaceBaseTypeInsertionIntegrationTests",
+          "StaticCaseWeight": 11,
+          "MeanCaseSeconds": 1013.205202
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.InterfaceMemberProjectorTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 13.619281
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.InterfaceNullableContextProjectionIntegrationTests",
+          "StaticCaseWeight": 8,
+          "MeanCaseSeconds": 258.522852
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.InterfaceNullableProjectionTests",
+          "StaticCaseWeight": 28,
+          "MeanCaseSeconds": 0.307694
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.InvalidOperationConstructionRatchetTests",
+          "StaticCaseWeight": 88,
+          "MeanCaseSeconds": 41.998159
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.InvalidOperationErrorsTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 0.0017
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.IsolatedWorkspaceTestBaseTests",
+          "StaticCaseWeight": 7,
+          "MeanCaseSeconds": 0.016085
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.JustfilePortabilityTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.001772
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.LinuxPowerShellStartupCacheOwnershipTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.009425
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.LocalToolReinstallProcessOwnershipTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 2.182359
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.LocationDtoMigrationTests",
+          "StaticCaseWeight": 16,
+          "MeanCaseSeconds": 0.03079
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.LspSourceLocationAliasWireTests",
+          "StaticCaseWeight": 1,
+          "MeanCaseSeconds": 0.076837
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ManualNuGetPublishContractTests",
+          "StaticCaseWeight": 7,
+          "MeanCaseSeconds": 9.795945
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.McpLoggingLifecycleWireTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 2.458253
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.MemberHierarchyCrossToolConsistencyTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.426025
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.MetaProjectionObservabilityTests",
+          "StaticCaseWeight": 7,
+          "MeanCaseSeconds": 0.010299
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.MetadataNameLocatorTests",
+          "StaticCaseWeight": 8,
+          "MeanCaseSeconds": 0.091787
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.MethodDescriptionDietDiagnosticsSecurityTests",
+          "StaticCaseWeight": 5,
+          "MeanCaseSeconds": 0.031486
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.MethodDescriptionDietEditingMsBuildTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.027695
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.MethodDescriptionDietFixallBulkOperationsTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.001963
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.MethodDescriptionDietRatchetOnlyCleanSlicesTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.020166
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.MethodDescriptionDietRefactoringEditorconfigTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.021428
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.MethodDescriptionDietRestructureInterfaceTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.010054
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.MethodDescriptionDietScaffoldingMutationTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.005731
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.MethodDescriptionDietServerSurfaceTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.007132
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.MethodDescriptionDietSignatureExtractionTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.001565
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.MethodDescriptionDietSymbolAdvancedAnalysisTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.002164
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.MethodDescriptionDietTestToolingTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.001604
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.MethodDescriptionDietUndoWorkspaceLifecycleTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.001429
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.MissingWorkspaceRootRetirementTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 17.707516
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.MoveTypeDiskStateTests",
+          "StaticCaseWeight": 1,
+          "MeanCaseSeconds": 7.693577
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.MovedDeclarationFileOwnershipIntegrationTests",
+          "StaticCaseWeight": 5,
+          "MeanCaseSeconds": 568.968587
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.MsBuildEvaluationCacheTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 11.129297
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.MsBuildEvaluationServiceTests",
+          "StaticCaseWeight": 1,
+          "MeanCaseSeconds": 5.085875
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.MsBuildMetadataLifetimeTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 5.133964
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.MutationAnalysisSideEffectsTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.317472
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.NamespaceRelocationTests",
+          "StaticCaseWeight": 17,
+          "MeanCaseSeconds": 101.241274
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.NavigationArgumentRefusalTests",
+          "StaticCaseWeight": 12,
+          "MeanCaseSeconds": 11.893464
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.NegativeEdgeCaseTests",
+          "StaticCaseWeight": 8,
+          "MeanCaseSeconds": 0.07317
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.NuGetAuditGateTests",
+          "StaticCaseWeight": 5,
+          "MeanCaseSeconds": 2.624146
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.NuGetDependencySummaryTests",
+          "StaticCaseWeight": 5,
+          "MeanCaseSeconds": 0.824148
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.NuGetVersionCheckerTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 0.048215
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.NuGetVulnerabilityScanIntegrationTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.03169
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.OrchestrationIntegrationTests",
+          "StaticCaseWeight": 14,
+          "MeanCaseSeconds": 221.946289
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.P4BehavioralBundleTests",
+          "StaticCaseWeight": 9,
+          "MeanCaseSeconds": 0.224788
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.PackageFamilyContractTests",
+          "StaticCaseWeight": 10,
+          "MeanCaseSeconds": 7.693941
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ParamDescriptionCanonicalFormCodeActionSuppressionTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.042558
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ParameterDescriptionBudgetHarnessTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.028353
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ParameterDescriptionCanonicalizationTests",
+          "StaticCaseWeight": 1,
+          "MeanCaseSeconds": 0.037633
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ParameterObjectPreviewTests",
+          "StaticCaseWeight": 85,
+          "MeanCaseSeconds": 377.636305
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ParameterValidationTests",
+          "StaticCaseWeight": 41,
+          "MeanCaseSeconds": 0.025328
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.PerformanceBaselineTests",
+          "StaticCaseWeight": 7,
+          "MeanCaseSeconds": 2.831687
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.PerformanceBehaviorTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 11.198378
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.PluginInstallDocumentationContractTests",
+          "StaticCaseWeight": 1,
+          "MeanCaseSeconds": 0.008653
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.PluginLaunchManifestContractTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.004889
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.PluginPackageAllowlistTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 4.13362
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.PositionProbeTests",
+          "StaticCaseWeight": 8,
+          "MeanCaseSeconds": 0.081179
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.PostApplySymbolRotationTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 9.310176
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.PowerShellOutputNormalizerTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 0.000763
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.PragmaScopeManipulationTests",
+          "StaticCaseWeight": 9,
+          "MeanCaseSeconds": 42.868753
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.PreviewApplyBoundaryRevalidationTests",
+          "StaticCaseWeight": 7,
+          "MeanCaseSeconds": 0.063995
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.PreviewMultiFileEditSyntaxRegressionTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 29.434404
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.PreviewRouteBindingEditingProducerTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.833995
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.PreviewRouteBindingEditingTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 0.021639
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.PreviewRouteBindingFileOpsTests",
+          "StaticCaseWeight": 16,
+          "MeanCaseSeconds": 17.135941
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.PreviewStoreAssertionTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 0.007798
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.PreviewStoreTests",
+          "StaticCaseWeight": 17,
+          "MeanCaseSeconds": 0.052278
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.PreviewTokenCrossCouplingTests",
+          "StaticCaseWeight": 24,
+          "MeanCaseSeconds": 270.10001
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.PreviewTokenStaleAcrossAutoReloadTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.006135
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Progress.ProgressEmissionTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 8.495687
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ProjectFilterTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 0.045495
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ProjectFilterUnknownNameMetricsTests",
+          "StaticCaseWeight": 10,
+          "MeanCaseSeconds": 0.088928
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ProjectFilterUnknownNamePatternTests",
+          "StaticCaseWeight": 11,
+          "MeanCaseSeconds": 0.102299
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ProjectFilterUnknownNameScanTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.046723
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ProjectGraphHelpersTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.004591
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ProjectMetadataParserFailureClassificationTests",
+          "StaticCaseWeight": 22,
+          "MeanCaseSeconds": 0.050853
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ProjectMetadataParserIsTestProjectTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 0.000767
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ProjectMetadataParserRequiresMtpNativeExecutionTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 0.000896
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ProjectMetadataParserTryGetResolvedPackageVersionTests",
+          "StaticCaseWeight": 13,
+          "MeanCaseSeconds": 2.942739
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ProjectMutationIntegrationTests",
+          "StaticCaseWeight": 33,
+          "MeanCaseSeconds": 234.386804
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ProjectOutputTypeTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 6.152714
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ProjectRelativePathValidationTests",
+          "StaticCaseWeight": 15,
+          "MeanCaseSeconds": 0.004897
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.PromptCallErrorFilterTests",
+          "StaticCaseWeight": 13,
+          "MeanCaseSeconds": 0.810803
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.PromptShimToolsTests",
+          "StaticCaseWeight": 9,
+          "MeanCaseSeconds": 0.103962
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.PromptSmokeTests",
+          "StaticCaseWeight": 27,
+          "MeanCaseSeconds": 1.021603
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ProtocolVersionResultShapeWireTests",
+          "StaticCaseWeight": 1,
+          "MeanCaseSeconds": 0.085611
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.PublicExceptionDetailPolicyTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 0.003034
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.PublishVersionContextTests",
+          "StaticCaseWeight": 14,
+          "MeanCaseSeconds": 8.413494
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.PublishWorkflowContractTests",
+          "StaticCaseWeight": 1,
+          "MeanCaseSeconds": 0.001835
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ReadmeSurfaceCountTests",
+          "StaticCaseWeight": 5,
+          "MeanCaseSeconds": 0.077717
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ReceivingNamespaceFactoryTests",
+          "StaticCaseWeight": 12,
+          "MeanCaseSeconds": 0.004057
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.RecordFieldAddSatelliteTests",
+          "StaticCaseWeight": 16,
+          "MeanCaseSeconds": 159.37453
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.RecordFieldAdditionImpactTests",
+          "StaticCaseWeight": 7,
+          "MeanCaseSeconds": 11.436831
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.RefactoringCoreDescriptionBudgetTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.009576
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.RefactoringFixtureOwnershipTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 15.21753
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.RefactoringPhysicalUndoCaptureTests",
+          "StaticCaseWeight": 11,
+          "MeanCaseSeconds": 83.506698
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.RefactoringRefusalPublicationWireTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 11.241808
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.RefactoringSuggestionTests",
+          "StaticCaseWeight": 32,
+          "MeanCaseSeconds": 7.283533
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.RefactoringToolsIntegrationTests",
+          "StaticCaseWeight": 12,
+          "MeanCaseSeconds": 15.43259
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ReferenceResponsePagerTests",
+          "StaticCaseWeight": 14,
+          "MeanCaseSeconds": 12.211132
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ReferenceServiceFindImplementationsTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.007696
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ReleaseLagGuardTests",
+          "StaticCaseWeight": 5,
+          "MeanCaseSeconds": 16.705948
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ReleaseManagedFileGuardDocumentationTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.009485
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.RenameSummaryModeTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 4.681788
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ReplaceInvocationTests",
+          "StaticCaseWeight": 51,
+          "MeanCaseSeconds": 207.361544
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.RequestCorrelationContextTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.014619
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ResourceReadWireContractTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 1.394894
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.RestoreStalenessDetectorTests",
+          "StaticCaseWeight": 56,
+          "MeanCaseSeconds": 14.231928
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.RestructureServiceTests",
+          "StaticCaseWeight": 16,
+          "MeanCaseSeconds": 0.101747
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.RootBoundaryErrorWireTests",
+          "StaticCaseWeight": 7,
+          "MeanCaseSeconds": 0.300192
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SamplingMrtrWireTests",
+          "StaticCaseWeight": 24,
+          "MeanCaseSeconds": 25.624993
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ScaffoldingFirstTestFileTests",
+          "StaticCaseWeight": 12,
+          "MeanCaseSeconds": 68.608937
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ScaffoldingIntegrationTests",
+          "StaticCaseWeight": 43,
+          "MeanCaseSeconds": 211.348935
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ScriptingOptionsEnvironmentBinderTests",
+          "StaticCaseWeight": 9,
+          "MeanCaseSeconds": 0.004839
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ScriptingServiceTests",
+          "StaticCaseWeight": 19,
+          "MeanCaseSeconds": 16.761633
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ScriptingSyncOverAsyncGuardTests",
+          "StaticCaseWeight": 1,
+          "MeanCaseSeconds": 0.006961
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SdkStyleCsprojInjectionTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 6.176428
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SecurityDiagnosticIntegrationTests",
+          "StaticCaseWeight": 22,
+          "MeanCaseSeconds": 6.643618
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SelectionRangeCodeActionTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.592966
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SemanticExpansionTests",
+          "StaticCaseWeight": 10,
+          "MeanCaseSeconds": 14.277467
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SemanticGrepServiceTests",
+          "StaticCaseWeight": 21,
+          "MeanCaseSeconds": 0.074183
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SemanticSearchFallbackTests",
+          "StaticCaseWeight": 8,
+          "MeanCaseSeconds": 0.03851
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ServerDiscoveryWireTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 6.509678
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ServerHeartbeatTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 0.026924
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ServerInfoPathBoundaryTests",
+          "StaticCaseWeight": 8,
+          "MeanCaseSeconds": 0.010271
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ServerInfoUpdateLatestTests",
+          "StaticCaseWeight": 9,
+          "MeanCaseSeconds": 0.032214
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ServerInfoUpdateWireContractTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.737594
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ServerObservabilitySinkTests",
+          "StaticCaseWeight": 17,
+          "MeanCaseSeconds": 0.164738
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ServerSurfaceCatalogAnalyzerTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 6.134244
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ServiceCollectionExtensionsTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 0.016599
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ServiceCoverageTests",
+          "StaticCaseWeight": 16,
+          "MeanCaseSeconds": 7.090047
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Services.GatedCommandExecutorTests",
+          "StaticCaseWeight": 5,
+          "MeanCaseSeconds": 0.118164
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Services.NavigationToolsNotFoundMessageTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 4.56395
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Services.PersistentCompositeStorageTests",
+          "StaticCaseWeight": 17,
+          "MeanCaseSeconds": 0.086512
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Services.SymbolInfoNotFoundMessageTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 9.315886
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Services.WorkspaceCacheCoordinatorTests",
+          "StaticCaseWeight": 5,
+          "MeanCaseSeconds": 0.039764
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Services.WorkspaceCacheStoreInvalidationTests",
+          "StaticCaseWeight": 7,
+          "MeanCaseSeconds": 0.04536
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Services.WorkspaceCacheStoreRoundTripTests",
+          "StaticCaseWeight": 5,
+          "MeanCaseSeconds": 0.035795
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Services.WorkspaceDriftServiceTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 15.592871
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Skills.AggregatePromotionScorecardsScriptTests",
+          "StaticCaseWeight": 9,
+          "MeanCaseSeconds": 10.269805
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Skills.ArchiveOldReportsScriptTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 3.571475
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Skills.AuditPhaseRunnerHandoffTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 0.003649
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Skills.ChangedFormatGateScriptTests",
+          "StaticCaseWeight": 17,
+          "MeanCaseSeconds": 113.181149
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Skills.DocumentationGateScriptTests",
+          "StaticCaseWeight": 33,
+          "MeanCaseSeconds": 31.22163
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Skills.ExperimentalAgeAuditScriptTests",
+          "StaticCaseWeight": 5,
+          "MeanCaseSeconds": 6.970673
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Skills.IssueTemplateAndLabelSeedTests",
+          "StaticCaseWeight": 10,
+          "MeanCaseSeconds": 0.00785
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Skills.McpServerStressSkillFrontmatterTests",
+          "StaticCaseWeight": 5,
+          "MeanCaseSeconds": 0.013986
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Skills.McpServerSurfaceTestSkillTests",
+          "StaticCaseWeight": 20,
+          "MeanCaseSeconds": 0.197501
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Skills.PromoteTierRoundTripTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.013183
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Skills.RenderFindingScriptTests",
+          "StaticCaseWeight": 11,
+          "MeanCaseSeconds": 7.108703
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Skills.RoslynBookendPromptTests",
+          "StaticCaseWeight": 8,
+          "MeanCaseSeconds": 0.007332
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Skills.ShippedSkillBacklogCitationTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.056709
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Skills.SkillFrontmatterInstalledAsTests",
+          "StaticCaseWeight": 1,
+          "MeanCaseSeconds": 0.020888
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Skills.SkillPrefixGenericityTests",
+          "StaticCaseWeight": 17,
+          "MeanCaseSeconds": 0.075781
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SliceFieldDetectionTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 4.478607
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SolutionDiffHelperTests",
+          "StaticCaseWeight": 33,
+          "MeanCaseSeconds": 0.149001
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SolutionDiscoveryHelperTests",
+          "StaticCaseWeight": 21,
+          "MeanCaseSeconds": 0.130871
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SourceFileEncodingTests",
+          "StaticCaseWeight": 19,
+          "MeanCaseSeconds": 0.00402
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SourceTextRequestProjectionTests",
+          "StaticCaseWeight": 14,
+          "MeanCaseSeconds": 0.007803
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.StartupDiagnosticsTests",
+          "StaticCaseWeight": 21,
+          "MeanCaseSeconds": 1.318902
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.StaticListResultFilterTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.004355
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.StdoutWriteAnalyzerTests",
+          "StaticCaseWeight": 11,
+          "MeanCaseSeconds": 23.58913
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.StringLiteralReplaceSemanticTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 35.374699
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.StringLiteralReplaceServiceTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 0.021762
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.StructuredCallContentProjectorTests",
+          "StaticCaseWeight": 19,
+          "MeanCaseSeconds": 0.016809
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.StructuredCallElicitationCoordinatorTests",
+          "StaticCaseWeight": 13,
+          "MeanCaseSeconds": 0.057891
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.StructuredCallToolFilterAutoLoadTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.076497
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.StructuredCallToolFilterElicitationTests",
+          "StaticCaseWeight": 1,
+          "MeanCaseSeconds": 0.000996
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.StructuredCallToolFilterResolutionTests",
+          "StaticCaseWeight": 28,
+          "MeanCaseSeconds": 0.022901
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.StructuredCallToolFilterTests",
+          "StaticCaseWeight": 11,
+          "MeanCaseSeconds": 0.079606
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.StructuredContentRoundTripTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.0048
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.StructuredContentWireContractTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 17.937242
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SuppressionArgumentRefusalWireTests",
+          "StaticCaseWeight": 8,
+          "MeanCaseSeconds": 87.711227
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SuppressionServiceTests",
+          "StaticCaseWeight": 65,
+          "MeanCaseSeconds": 0.120201
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SuppressionToolsTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 10.64668
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SurfaceCatalogTests",
+          "StaticCaseWeight": 28,
+          "MeanCaseSeconds": 0.291896
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SurfaceSnapshotFreshnessGateTests",
+          "StaticCaseWeight": 5,
+          "MeanCaseSeconds": 4.453995
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SymbolDisambiguationElicitationTests",
+          "StaticCaseWeight": 10,
+          "MeanCaseSeconds": 0.11079
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SymbolDisambiguationMrtrWireTests",
+          "StaticCaseWeight": 20,
+          "MeanCaseSeconds": 0.159515
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SymbolImpactSweepBudgetTests",
+          "StaticCaseWeight": 5,
+          "MeanCaseSeconds": 0.911592
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SymbolLocatorTests",
+          "StaticCaseWeight": 9,
+          "MeanCaseSeconds": 0.002183
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SymbolMapperTests",
+          "StaticCaseWeight": 10,
+          "MeanCaseSeconds": 0.035998
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SymbolRefactorPreviewTests",
+          "StaticCaseWeight": 35,
+          "MeanCaseSeconds": 82.584775
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SymbolRelationshipsBuiltinTypeSuppressionTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.153632
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SymbolResolverRenameCaretTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 43.51744
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SymbolSearchPaginationTests",
+          "StaticCaseWeight": 17,
+          "MeanCaseSeconds": 0.744312
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SymbolServiceHelpersContainingSymbolTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 0.099925
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.SymbolTraversalTests",
+          "StaticCaseWeight": 7,
+          "MeanCaseSeconds": 0.182711
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TUnitMtpNativeTestRunTests",
+          "StaticCaseWeight": 17,
+          "MeanCaseSeconds": 51.053117
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TestAssemblyFixtureSharingAlphaTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.00125
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TestAssemblyFixtureSharingBetaTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 4.764183
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TestCoverageErrorWireTests",
+          "StaticCaseWeight": 1,
+          "MeanCaseSeconds": 0.014964
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TestCoverageFailureEnvelopeTests",
+          "StaticCaseWeight": 7,
+          "MeanCaseSeconds": 0.020601
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TestCoveragePartialCoverletTests",
+          "StaticCaseWeight": 5,
+          "MeanCaseSeconds": 0.136682
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TestDiscoverFqdnDriftTests",
+          "StaticCaseWeight": 8,
+          "MeanCaseSeconds": 0.007462
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TestDiscoveryFileIdentityTests",
+          "StaticCaseWeight": 9,
+          "MeanCaseSeconds": 0.163048
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TestFixtureFileSystemTests",
+          "StaticCaseWeight": 22,
+          "MeanCaseSeconds": 1.645701
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TestFixturePreparationContractTests",
+          "StaticCaseWeight": 9,
+          "MeanCaseSeconds": 25.520336
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TestReferenceMapServiceTests",
+          "StaticCaseWeight": 10,
+          "MeanCaseSeconds": 0.603573
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TestResultsSummaryContractTests",
+          "StaticCaseWeight": 17,
+          "MeanCaseSeconds": 19.088838
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TestRunFailureEnvelopeTests",
+          "StaticCaseWeight": 48,
+          "MeanCaseSeconds": 0.487753
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TestRunPublicProjectionTests",
+          "StaticCaseWeight": 11,
+          "MeanCaseSeconds": 0.531391
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TestRunTimeoutWireTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 0.031739
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TestRunnerPublicRefusalsTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 19.069039
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TestServiceContainerTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 0.005462
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TestShardPlanContractTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 28.83294
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TestTempRootTests",
+          "StaticCaseWeight": 7,
+          "MeanCaseSeconds": 0.008639
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ThirdPartyNoticeDriftTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 5.644212
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ToolCallErrorWireContractTests",
+          "StaticCaseWeight": 24,
+          "MeanCaseSeconds": 60.013382
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ToolDescriptionDietAnalysisMetricsTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 0.002248
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ToolDescriptionDietWorkspaceValidationTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 0.003469
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ToolDiResolutionTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.192509
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ToolDispatchTests",
+          "StaticCaseWeight": 20,
+          "MeanCaseSeconds": 0.063541
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ToolErrorHandlerParameterValidationTests",
+          "StaticCaseWeight": 14,
+          "MeanCaseSeconds": 0.007026
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ToolErrorHandlerSpecificityTests",
+          "StaticCaseWeight": 8,
+          "MeanCaseSeconds": 0.009797
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ToolErrorHandlerWorkspaceReloadRaceTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 0.011123
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ToolInputSchemaHygieneTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.22669
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ToolParameterCanonicalFormTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 0.089261
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ToolUpdateOwnedProcessShutdownTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 3.431875
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Top10V2RegressionTests",
+          "StaticCaseWeight": 10,
+          "MeanCaseSeconds": 17.775367
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Top10V3RegressionTests",
+          "StaticCaseWeight": 9,
+          "MeanCaseSeconds": 0.222112
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TreeNodeFilterTranslatorTests",
+          "StaticCaseWeight": 20,
+          "MeanCaseSeconds": 0.009131
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TriviaNormalizationHelperTests",
+          "StaticCaseWeight": 10,
+          "MeanCaseSeconds": 0.029037
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TruncatedPreviewApplyGateTests",
+          "StaticCaseWeight": 5,
+          "MeanCaseSeconds": 0.005684
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TypeConsumersServiceTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 0.058324
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TypeExtractionTests",
+          "StaticCaseWeight": 50,
+          "MeanCaseSeconds": 198.681057
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TypeExtractionTriviaPreservationTests",
+          "StaticCaseWeight": 1,
+          "MeanCaseSeconds": 61.767048
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TypeMoveTests",
+          "StaticCaseWeight": 31,
+          "MeanCaseSeconds": 166.003014
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.TypeNamespaceWalkerTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.11542
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.UndoFileOperationsTests",
+          "StaticCaseWeight": 10,
+          "MeanCaseSeconds": 83.227046
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.UndoIntegrationTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 20.814245
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.UndoServiceTests",
+          "StaticCaseWeight": 22,
+          "MeanCaseSeconds": 220.41517
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.UnknownReferenceNotFoundWireContractTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 9.548262
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.UnknownToolArgumentWireTests",
+          "StaticCaseWeight": 12,
+          "MeanCaseSeconds": 0.062421
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.UnresolvedAnalyzerReferenceStripperTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 9.057193
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.UnresolvedAnalyzerReferenceTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 18.008491
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.UnusedSymbolScanFailSafeTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.109979
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.UnusedSymbolsTestBridgeExclusionTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 0.059137
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.UsingDirectiveSynthesizerTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.001991
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ValidateRecentGitChangesTests",
+          "StaticCaseWeight": 22,
+          "MeanCaseSeconds": 51.423012
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ValidateWorkspaceChangeTrackerReconcileTests",
+          "StaticCaseWeight": 15,
+          "MeanCaseSeconds": 88.430777
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ValidateWorkspaceMarkdownFormatterTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 0.0216
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ValidateWorkspaceSummaryTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 0.205499
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ValidationBundleToolsTests",
+          "StaticCaseWeight": 44,
+          "MeanCaseSeconds": 1.655184
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ValidationIntegrationTests",
+          "StaticCaseWeight": 7,
+          "MeanCaseSeconds": 45.871816
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ValidationIsolationContractTests",
+          "StaticCaseWeight": 1,
+          "MeanCaseSeconds": 0.0105
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ValidationServiceOptionsEnvironmentBinderTests",
+          "StaticCaseWeight": 9,
+          "MeanCaseSeconds": 0.004657
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ValidationToolsCompactTestRunTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 0.017084
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ValidationToolsErrorWireTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.042632
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.ValidationToolsIntegrationTests",
+          "StaticCaseWeight": 17,
+          "MeanCaseSeconds": 3.2523
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.VerifyReleaseChildScriptTests",
+          "StaticCaseWeight": 15,
+          "MeanCaseSeconds": 53.483636
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.VersionDriftGateTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 2.658666
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WindowsPathResourceTests",
+          "StaticCaseWeight": 9,
+          "MeanCaseSeconds": 0.060048
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkflowRecommendationToolsTests",
+          "StaticCaseWeight": 21,
+          "MeanCaseSeconds": 0.012753
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Workspace.WorkspaceCachePrewarmTests",
+          "StaticCaseWeight": 5,
+          "MeanCaseSeconds": 13.146107
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Workspace.WorkspaceLoadCacheFastPathTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 32.696144
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.Workspace.WorkspaceReloadGlobalPropertiesTests",
+          "StaticCaseWeight": 7,
+          "MeanCaseSeconds": 40.140029
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceCapLruEvictionTests",
+          "StaticCaseWeight": 5,
+          "MeanCaseSeconds": 37.187655
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceCloseDrainTests",
+          "StaticCaseWeight": 33,
+          "MeanCaseSeconds": 1.896377
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceDiagnosticSeverityClassifierTests",
+          "StaticCaseWeight": 15,
+          "MeanCaseSeconds": 0.001281
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceDispatchValidationPrecedenceTests",
+          "StaticCaseWeight": 21,
+          "MeanCaseSeconds": 0.005259
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceEvictionAutoRetryTests",
+          "StaticCaseWeight": 9,
+          "MeanCaseSeconds": 95.390298
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceExecutionGateTests",
+          "StaticCaseWeight": 36,
+          "MeanCaseSeconds": 1.011342
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceExplicitReloadTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 35.417446
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceFilePathInferenceWireTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 0.015637
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceForkApplyCancellationTests",
+          "StaticCaseWeight": 5,
+          "MeanCaseSeconds": 0.030623
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceForkApplyTests",
+          "StaticCaseWeight": 17,
+          "MeanCaseSeconds": 127.298943
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceForkDocumentEncodingTests",
+          "StaticCaseWeight": 8,
+          "MeanCaseSeconds": 149.958494
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceForkGitIsolationTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 3.911573
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceForkGraphReplayTests",
+          "StaticCaseWeight": 10,
+          "MeanCaseSeconds": 133.703702
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceForkSourceLifecycleTests",
+          "StaticCaseWeight": 14,
+          "MeanCaseSeconds": 119.051626
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceForkSourceSessionTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 73.824097
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceIdOptionalSurfaceTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 0.003088
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceLifecycleArgumentRefusalTests",
+          "StaticCaseWeight": 13,
+          "MeanCaseSeconds": 0.391054
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceLoadAutoRestoreTests",
+          "StaticCaseWeight": 11,
+          "MeanCaseSeconds": 42.920522
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceLoadDedupTests",
+          "StaticCaseWeight": 8,
+          "MeanCaseSeconds": 40.502277
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceLoadRestoreBudgetTests",
+          "StaticCaseWeight": 7,
+          "MeanCaseSeconds": 28.862222
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceLoadRestoreFailureWireTests",
+          "StaticCaseWeight": 2,
+          "MeanCaseSeconds": 6.877807
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceLoadRestoreNextCallTests",
+          "StaticCaseWeight": 10,
+          "MeanCaseSeconds": 0.008374
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceLoadRestorePackagesPathTests",
+          "StaticCaseWeight": 14,
+          "MeanCaseSeconds": 180.601905
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceLoadRestoreRaceTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 15.591808
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceManagerEvictionTests",
+          "StaticCaseWeight": 7,
+          "MeanCaseSeconds": 5.313871
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceNotFoundWireContractTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 12.478878
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspacePathMrtrWireTests",
+          "StaticCaseWeight": 22,
+          "MeanCaseSeconds": 0.269412
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceProjectAliasLookupTests",
+          "StaticCaseWeight": 13,
+          "MeanCaseSeconds": 19.207164
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceReadinessReportIntegrationTests",
+          "StaticCaseWeight": 4,
+          "MeanCaseSeconds": 33.907313
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceReadinessReportTests",
+          "StaticCaseWeight": 10,
+          "MeanCaseSeconds": 0.035022
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceReloadedEventTests",
+          "StaticCaseWeight": 6,
+          "MeanCaseSeconds": 15.7048
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceReloadedNotFoundConflationTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 0.00385
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceResourceListNotificationWireTests",
+          "StaticCaseWeight": 1,
+          "MeanCaseSeconds": 22.163938
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceResourceTests",
+          "StaticCaseWeight": 14,
+          "MeanCaseSeconds": 0.097702
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceSessionLoaderFailureTests",
+          "StaticCaseWeight": 1,
+          "MeanCaseSeconds": 6.336358
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceStatusSummaryDtoTests",
+          "StaticCaseWeight": 20,
+          "MeanCaseSeconds": 0.006663
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceSupportBundleTests",
+          "StaticCaseWeight": 9,
+          "MeanCaseSeconds": 0.035354
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceToolchainClassifierTests",
+          "StaticCaseWeight": 7,
+          "MeanCaseSeconds": 0.001424
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceToolsIntegrationTests",
+          "StaticCaseWeight": 22,
+          "MeanCaseSeconds": 5.181781
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceValidationOverallStatusTests",
+          "StaticCaseWeight": 20,
+          "MeanCaseSeconds": 0.014873
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceValidationTimeoutTests",
+          "StaticCaseWeight": 5,
+          "MeanCaseSeconds": 13.995809
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceValidationVerdictTests",
+          "StaticCaseWeight": 26,
+          "MeanCaseSeconds": 168.964858
+        },
+        {
+          "ClassName": "RoslynMcp.Tests.WorkspaceWarmServiceTests",
+          "StaticCaseWeight": 3,
+          "MeanCaseSeconds": 14.975091
+        }
+      ]
+    }
+  ]
+}
