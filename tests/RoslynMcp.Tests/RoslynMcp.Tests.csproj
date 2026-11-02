@@ -48,16 +48,34 @@
   </ItemGroup>
 
   <Target Name="CopyGitFixtureWorkerProbe" AfterTargets="Build">
+    <MSBuild Projects="../GitFixtureWorkerProbe/GitFixtureWorkerProbe.csproj" Targets="GetTargetPath">
+      <Output TaskParameter="TargetOutputs" ItemName="GitFixtureWorkerProbeTargetPath" />
+    </MSBuild>
+    <PropertyGroup>
+      <GitFixtureWorkerProbeOutputPrefix>@(GitFixtureWorkerProbeTargetPath->'%(RootDir)%(Directory)%(Filename)')</GitFixtureWorkerProbeOutputPrefix>
+    </PropertyGroup>
     <ItemGroup>
-      <GitFixtureWorkerProbeOutput Include="../GitFixtureWorkerProbe/bin/$(Configuration)/$(TargetFramework)/*" />
+      <GitFixtureWorkerProbeOutput Include="$(GitFixtureWorkerProbeOutputPrefix).*" />
     </ItemGroup>
+    <Error Condition="!Exists('$(GitFixtureWorkerProbeOutputPrefix).dll')" Text="Git fixture worker probe output is missing: $(GitFixtureWorkerProbeOutputPrefix).dll" />
+    <Error Condition="!Exists('$(GitFixtureWorkerProbeOutputPrefix).deps.json')" Text="Git fixture worker probe output is missing: $(GitFixtureWorkerProbeOutputPrefix).deps.json" />
+    <Error Condition="!Exists('$(GitFixtureWorkerProbeOutputPrefix).runtimeconfig.json')" Text="Git fixture worker probe output is missing: $(GitFixtureWorkerProbeOutputPrefix).runtimeconfig.json" />
     <Copy SourceFiles="@(GitFixtureWorkerProbeOutput)" DestinationFolder="$(OutDir)ProcessProbes/GitFixtureWorkerProbe" SkipUnchangedFiles="true" />
   </Target>
 
   <Target Name="CopyProcessPipeWorkerProbe" AfterTargets="Build">
+    <MSBuild Projects="../ProcessPipeWorkerProbe/ProcessPipeWorkerProbe.csproj" Targets="GetTargetPath">
+      <Output TaskParameter="TargetOutputs" ItemName="ProcessPipeWorkerProbeTargetPath" />
+    </MSBuild>
+    <PropertyGroup>
+      <ProcessPipeWorkerProbeOutputPrefix>@(ProcessPipeWorkerProbeTargetPath->'%(RootDir)%(Directory)%(Filename)')</ProcessPipeWorkerProbeOutputPrefix>
+    </PropertyGroup>
     <ItemGroup>
-      <ProcessPipeWorkerProbeOutput Include="../ProcessPipeWorkerProbe/bin/$(Configuration)/$(TargetFramework)/*" />
+      <ProcessPipeWorkerProbeOutput Include="$(ProcessPipeWorkerProbeOutputPrefix).*" />
     </ItemGroup>
+    <Error Condition="!Exists('$(ProcessPipeWorkerProbeOutputPrefix).dll')" Text="Process pipe worker probe output is missing: $(ProcessPipeWorkerProbeOutputPrefix).dll" />
+    <Error Condition="!Exists('$(ProcessPipeWorkerProbeOutputPrefix).deps.json')" Text="Process pipe worker probe output is missing: $(ProcessPipeWorkerProbeOutputPrefix).deps.json" />
+    <Error Condition="!Exists('$(ProcessPipeWorkerProbeOutputPrefix).runtimeconfig.json')" Text="Process pipe worker probe output is missing: $(ProcessPipeWorkerProbeOutputPrefix).runtimeconfig.json" />
     <Copy SourceFiles="@(ProcessPipeWorkerProbeOutput)" DestinationFolder="$(OutDir)ProcessProbes/ProcessPipeWorkerProbe" SkipUnchangedFiles="true" />
   </Target>
 
