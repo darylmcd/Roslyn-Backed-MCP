@@ -27,6 +27,41 @@ public sealed class CrossProjectReceivingNamespaceIntegrationTests : IsolatedWor
     }
 
     [TestMethod]
+    [DataRow("move", "Acme.namespace")]
+    [DataRow("extract", "Acme.namespace")]
+    [DataRow("move", "Acme.@namespace")]
+    [DataRow("extract", "Acme.@namespace")]
+    public async Task Derived_Receiving_Namespace_Escapes_Keyword_Segments(string route, string rootNamespace)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        AddProjectToCopiedSolution(workspace.RootPath, "Contracts", "net10.0");
+        var targetProjectPath = workspace.GetPath("Contracts", "Contracts.csproj");
+        var projectXml = XDocument.Load(targetProjectPath);
+        projectXml.Root!.Add(new XElement("PropertyGroup", new XElement("RootNamespace", rootNamespace)));
+        projectXml.Save(targetProjectPath);
+
+        var sourcePath = workspace.GetPath("SampleLib", "EchoService.cs");
+        await File.WriteAllTextAsync(sourcePath,
+            "namespace Source; public class EchoService { public int Echo(int value) => value + 1; }");
+        await workspace.LoadAsync();
+        var before = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        await AssertCompilesAsync(before);
+
+        var preview = route == "move"
+            ? await CrossProjectRefactoringService.PreviewMoveTypeToProjectAsync(workspace.WorkspaceId,
+                sourcePath, "EchoService", "Contracts", null, CancellationToken.None)
+            : await CrossProjectRefactoringService.PreviewExtractInterfaceAsync(workspace.WorkspaceId,
+                sourcePath, "EchoService", "IEchoService", "Contracts", CancellationToken.None);
+        var pending = await ReparseSerializedDocumentsAsync(PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution);
+        await AssertCompilesAsync(pending);
+
+        var targetName = route == "move" ? "EchoService.cs" : "IEchoService.cs";
+        var targetDocument = pending.Projects.Single(p => p.Name == "Contracts").Documents.Single(d => d.Name == targetName);
+        var targetText = (await targetDocument.GetTextAsync()).ToString();
+        StringAssert.Contains(targetText, "namespace Acme.@namespace");
+    }
+
+    [TestMethod]
     [DynamicData(nameof(ReceivingCases))]
     public async Task Receiving_Syntax_Compiles_Through_Serialized_Preview_Apply_And_Reload(string route, string version)
     {
