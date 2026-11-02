@@ -188,21 +188,51 @@ internal sealed class WorkspaceCacheCoordinator
 
     internal static string ComputeMsbuildGraphHash(IReadOnlyList<CachedProjectGraphNode> graph)
     {
-        var sb = new System.Text.StringBuilder();
-        foreach (var node in graph.OrderBy(n => n.ProjectPath, StringComparer.OrdinalIgnoreCase))
+        // Frame every collection and string independently. Unix paths may contain the tab,
+        // pipe, and newline characters that made the former delimiter stream ambiguous.
+        using var stream = new MemoryStream();
+        using (var writer = new BinaryWriter(stream, System.Text.Encoding.UTF8, leaveOpen: true))
         {
-            sb.Append(node.ProjectPath);
-            sb.Append('\t');
-            foreach (var refPath in node.ProjectReferences.OrderBy(p => p, StringComparer.OrdinalIgnoreCase))
+            writer.Write(graph.Count);
+            var orderedNodes = graph
+                .Select(node => (node.ProjectPath, References: node.ProjectReferences.OrderBy(path => path, StringComparer.Ordinal).ToArray()))
+                .OrderBy(node => node.ProjectPath, StringComparer.Ordinal)
+                .ThenBy(node => node.References, Comparer<string[]>.Create(CompareSortedReferences));
+            foreach (var node in orderedNodes)
             {
-                sb.Append(refPath);
-                sb.Append('|');
+                WriteExactString(writer, node.ProjectPath);
+                writer.Write(node.References.Length);
+                foreach (var refPath in node.References)
+                {
+                    WriteExactString(writer, refPath);
+                }
             }
-            sb.Append('\n');
         }
-        var bytes = System.Text.Encoding.UTF8.GetBytes(sb.ToString());
-        var hash = System.Security.Cryptography.SHA256.HashData(bytes);
+
+        var hash = System.Security.Cryptography.SHA256.HashData(stream.GetBuffer().AsSpan(0, (int)stream.Length));
         return Convert.ToHexString(hash).ToLowerInvariant();
+    }
+
+    private static int CompareSortedReferences(string[] left, string[] right)
+    {
+        for (var i = 0; i < Math.Min(left.Length, right.Length); i++)
+        {
+            var comparison = StringComparer.Ordinal.Compare(left[i], right[i]);
+            if (comparison != 0) return comparison;
+        }
+
+        return left.Length.CompareTo(right.Length);
+    }
+
+    private static void WriteExactString(BinaryWriter writer, string value)
+    {
+        // Write UTF-16 code units rather than an encoder's replacement fallback. This keeps
+        // canonically distinct spellings and even unmatched surrogates distinct as .NET strings.
+        writer.Write(value.Length);
+        foreach (var codeUnit in value)
+        {
+            writer.Write((ushort)codeUnit);
+        }
     }
 
     internal static IReadOnlyList<CachedProjectGraphNode> BuildCachedGraphFromSolution(Solution solution)

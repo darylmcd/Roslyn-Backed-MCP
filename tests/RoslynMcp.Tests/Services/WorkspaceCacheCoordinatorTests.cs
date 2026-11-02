@@ -37,6 +37,73 @@ public sealed class WorkspaceCacheCoordinatorTests
     }
 
     [TestMethod]
+    public void ComputeMsbuildGraphHash_DelimiterInUnixPath_DoesNotAliasDifferentReferences()
+    {
+        // All four project paths are identical in both graphs. On Unix, '|' is legal in a
+        // directory name, so /a|/b is one valid path as well as two serialized references.
+        var nodes = new[] { "/a", "/b", "/a|/b" };
+        var oneReference = new[]
+        {
+            new CachedProjectGraphNode("/root/App.csproj", ["/a|/b"]),
+        }.Concat(nodes.Select(path => new CachedProjectGraphNode(path, []))).ToArray();
+        var twoReferences = new[]
+        {
+            new CachedProjectGraphNode("/root/App.csproj", ["/a", "/b"]),
+        }.Concat(nodes.Select(path => new CachedProjectGraphNode(path, []))).ToArray();
+
+        Assert.AreNotEqual(
+            WorkspaceCacheCoordinator.ComputeMsbuildGraphHash(oneReference),
+            WorkspaceCacheCoordinator.ComputeMsbuildGraphHash(twoReferences),
+            "Distinct project-reference graphs must never share the delimiter-framed identity.");
+    }
+
+    [TestMethod]
+    public void ComputeMsbuildGraphHash_NodeAndReferenceOrder_DoesNotChangeIdentity()
+    {
+        var first = new[]
+        {
+            new CachedProjectGraphNode("/root/B.csproj", ["/z", "/a"]),
+            new CachedProjectGraphNode("/root/A.csproj", []),
+        };
+        var reordered = new[]
+        {
+            new CachedProjectGraphNode("/root/A.csproj", []),
+            new CachedProjectGraphNode("/root/B.csproj", ["/a", "/z"]),
+        };
+
+        Assert.AreEqual(
+            WorkspaceCacheCoordinator.ComputeMsbuildGraphHash(first),
+            WorkspaceCacheCoordinator.ComputeMsbuildGraphHash(reordered));
+    }
+
+    [TestMethod]
+    public void ComputeMsbuildGraphHash_EqualProjectPaths_StillHaveOrderIndependentReferences()
+    {
+        // A solution can represent multiple evaluated projects from one project path.
+        var first = new[]
+        {
+            new CachedProjectGraphNode("/root/Multi.csproj", ["/z"]),
+            new CachedProjectGraphNode("/root/Multi.csproj", ["/a"]),
+        };
+
+        Assert.AreEqual(
+            WorkspaceCacheCoordinator.ComputeMsbuildGraphHash(first),
+            WorkspaceCacheCoordinator.ComputeMsbuildGraphHash(first.Reverse().ToArray()));
+    }
+
+    [TestMethod]
+    public void ComputeMsbuildGraphHash_UnicodeUsesExactCodeUnitsWithoutNormalizationOrReplacement()
+    {
+        static string Hash(string path) => WorkspaceCacheCoordinator.ComputeMsbuildGraphHash(
+            [new CachedProjectGraphNode(path, [])]);
+
+        Assert.AreNotEqual(Hash("/caf\u00e9.csproj"), Hash("/cafe\u0301.csproj"),
+            "Canonically equivalent Unicode spellings are distinct path strings.");
+        Assert.AreNotEqual(Hash("/\ud800.csproj"), Hash("/\ufffd.csproj"),
+            "An unmatched surrogate must not silently encode as the replacement character.");
+    }
+
+    [TestMethod]
     public async Task TryProbeAsync_EmptyStore_ReturnsMissProbe()
     {
         var solutionPath = WriteSolutionFile("empty.slnx", "<Solution></Solution>");
