@@ -76,14 +76,18 @@ run:
 
 # --- Aggregates ---
 
-# Fast local sanity check before pushing (build + test)
-validate: build test
+# Fast local sanity check before pushing. Reuse the checked Debug build;
+# standalone `just test` still prepares fixtures and builds for itself.
+validate: build prepare-test-fixtures
+    dotnet test {{ solution }} --no-build --no-restore --nologo -p:TestFixturesPrepared=true
 
-# Local equivalent of the required pull-request pipeline (no coverage/live-network canary)
-ci: verify-docs verify-skills verify-changed-format verify-actionlint verify-release-pr vuln-audit
+# Local equivalent of the required pull-request pipeline (no coverage/live-network canary).
+# verify-release-pr owns the shipped-skill check.
+ci: verify-docs verify-changed-format verify-actionlint verify-release-pr vuln-audit
 
-# Everything including coverage and the live-network canary
-full: verify-docs verify-skills verify-changed-format verify-actionlint verify-release vuln-audit
+# Everything including coverage and the live-network canary.
+# verify-release owns the shipped-skill check.
+full: verify-docs verify-changed-format verify-actionlint verify-release vuln-audit
 
 # --- Clean ---
 
