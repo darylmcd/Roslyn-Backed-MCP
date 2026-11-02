@@ -61,7 +61,9 @@ param(
     [string]$LegManifest,
 
     [ValidateRange(1, 1000)]
-    [int]$MinimumSamples = 5
+    [int]$MinimumSamples = 5,
+
+    [switch]$ProfileJson
 )
 
 Set-StrictMode -Version Latest
@@ -214,7 +216,7 @@ function Read-TrxCaseDuration {
         throw 'Input XML is not an MSTest TRX document.'
     }
 
-    $definitions = [System.Collections.Generic.HashSet[string]]::new(
+    $definitions = [System.Collections.Generic.Dictionary[string, string]]::new(
         [System.StringComparer]::OrdinalIgnoreCase)
     foreach ($unitTest in $document.SelectNodes(
         "/*[local-name()='TestRun']/*[local-name()='TestDefinitions']/*[local-name()='UnitTest']")) {
@@ -222,17 +224,25 @@ function Read-TrxCaseDuration {
         if ([string]::IsNullOrWhiteSpace($testId)) {
             throw 'Malformed MSTest TRX test definition.'
         }
-        if (-not $definitions.Add($testId)) {
+        if ($definitions.ContainsKey($testId)) {
             throw 'Malformed MSTest TRX contains duplicate test definitions.'
         }
+        $method = $unitTest.SelectSingleNode("*[local-name()='TestMethod']")
+        $className = if ($null -eq $method) { '' } else { $method.GetAttribute('className') }
+        if ($ProfileJson -and [string]::IsNullOrWhiteSpace($className)) {
+            throw 'Malformed MSTest TRX test definition has no className for a duration profile.'
+        }
+        $definitions.Add($testId, $className)
     }
 
     [long]$sumTicks = 0
     [int]$caseCount = 0
+    $classTicks = [System.Collections.Generic.Dictionary[string, long]]::new(
+        [System.StringComparer]::Ordinal)
     foreach ($result in $document.SelectNodes(
         "/*[local-name()='TestRun']/*[local-name()='Results']/*[local-name()='UnitTestResult']")) {
         $testId = $result.GetAttribute('testId')
-        if ([string]::IsNullOrWhiteSpace($testId) -or -not $definitions.Contains($testId)) {
+        if ([string]::IsNullOrWhiteSpace($testId) -or -not $definitions.ContainsKey($testId)) {
             throw 'Malformed MSTest TRX result cannot be joined to a test definition.'
         }
 
@@ -248,6 +258,11 @@ function Read-TrxCaseDuration {
 
         $sumTicks += $duration.Ticks
         $caseCount++
+        if ($ProfileJson) {
+            $className = $definitions[$testId]
+            if (-not $classTicks.ContainsKey($className)) { $classTicks.Add($className, 0) }
+            $classTicks[$className] += $duration.Ticks
+        }
     }
 
     if ($caseCount -eq 0) {
@@ -257,6 +272,7 @@ function Read-TrxCaseDuration {
     return [pscustomobject]@{
         SumSeconds = $sumTicks / [double][TimeSpan]::TicksPerSecond
         CaseCount = $caseCount
+        ClassTicks = $classTicks
     }
 }
 
@@ -345,10 +361,55 @@ for ($index = 0; $index -lt $manifest.Count; $index++) {
 
     [double]$sumSeconds = 0
     [int]$caseCount = 0
+    $classTicks = [System.Collections.Generic.Dictionary[string, long]]::new(
+        [System.StringComparer]::Ordinal)
     foreach ($trxFile in $trxFiles) {
         $parsed = Read-TrxCaseDuration -Path $trxFile
         $sumSeconds += $parsed.SumSeconds
         $caseCount += $parsed.CaseCount
+        if ($ProfileJson) {
+            foreach ($className in $parsed.ClassTicks.Keys) {
+                if (-not $classTicks.ContainsKey($className)) { $classTicks.Add($className, 0) }
+                $classTicks[$className] += $parsed.ClassTicks[$className]
+            }
+        }
+    }
+
+    $classWeights = [System.Collections.Generic.Dictionary[string, int]]::new(
+        [System.StringComparer]::Ordinal)
+    if ($ProfileJson) {
+        $planFiles = @(Get-ChildItem -LiteralPath $resolvedPath -File -Recurse -Filter '*-plan.json')
+        if ($planFiles.Count -ne 1) {
+            throw "Duration profile requires exactly one shard plan in '$relativePath'."
+        }
+        try { $plan = Get-Content -LiteralPath $planFiles[0].FullName -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop }
+        catch { throw "Invalid shard plan in '$relativePath': $($_.Exception.Message)" }
+        if ($plan.SchemaVersion -ne 1 -or $plan.SelectedShardIndex -lt 0 -or
+            $plan.SelectedShardIndex -ge $plan.Shards.Count -or
+            $plan.TestShardCount -ne $plan.Shards.Count) {
+            throw "Invalid shard plan structure in '$relativePath'."
+        }
+        $catalogWeights = [System.Collections.Generic.Dictionary[string, int]]::new(
+            [System.StringComparer]::Ordinal)
+        foreach ($testClass in $plan.TestClasses) {
+            if ([string]::IsNullOrWhiteSpace($testClass.ClassName) -or
+                $testClass.StaticCaseWeight -le 0 -or
+                $catalogWeights.ContainsKey($testClass.ClassName)) {
+                throw "Invalid class catalog in '$relativePath'."
+            }
+            $catalogWeights.Add($testClass.ClassName, [int]$testClass.StaticCaseWeight)
+        }
+        foreach ($className in $plan.Shards[$plan.SelectedShardIndex].Classes) {
+            if (-not $catalogWeights.ContainsKey($className) -or $classWeights.ContainsKey($className)) {
+                throw "Invalid selected class in '$relativePath'."
+            }
+            $classWeights.Add($className, $catalogWeights[$className])
+        }
+        foreach ($className in $classTicks.Keys) {
+            if (-not $classWeights.ContainsKey($className)) {
+                throw "TRX class '$className' is absent from the selected shard plan in '$relativePath'."
+            }
+        }
     }
 
     $observations.Add([pscustomobject]@{
@@ -358,6 +419,8 @@ for ($index = 0; $index -lt $manifest.Count; $index++) {
         WallTimeSeconds = $wallTimeSeconds
         CaseDurationSeconds = $sumSeconds
         CaseCount = $caseCount
+        ClassTicks = $classTicks
+        ClassWeights = $classWeights
     })
 }
 
@@ -549,4 +612,104 @@ foreach ($imageName in $imageNames) {
     }
 }
 
-[Console]::Out.WriteLine($lines -join [Environment]::NewLine)
+if ($ProfileJson) {
+    if ($imageNames.Count -ne 2 -or
+        -not $imageNames.Contains('ubuntu-latest') -or
+        -not $imageNames.Contains('windows-latest')) {
+        throw 'A duration profile requires both hosted images.'
+    }
+    $expectedRunIds = [System.Collections.Generic.HashSet[string]]::new(
+        [System.StringComparer]::Ordinal)
+    foreach ($observation in $observations | Where-Object { $_.Image -ceq $imageNames[0] }) {
+        [void]$expectedRunIds.Add($observation.RunId)
+    }
+    $otherRunIds = [System.Collections.Generic.HashSet[string]]::new(
+        [System.StringComparer]::Ordinal)
+    foreach ($observation in $observations | Where-Object { $_.Image -ceq $imageNames[1] }) {
+        [void]$otherRunIds.Add($observation.RunId)
+    }
+    if (-not $expectedRunIds.SetEquals($otherRunIds)) {
+        throw 'A duration profile requires the same complete run IDs on both hosted images.'
+    }
+    $profileImages = [System.Collections.Generic.List[object]]::new()
+    foreach ($imageName in $imageNames) {
+        $imageObservations = @($observations | Where-Object { $_.Image -ceq $imageName })
+        $runIds = @($imageObservations.RunId | Sort-Object -Unique)
+        $runTicks = [System.Collections.Generic.Dictionary[string, object]]::new(
+            [System.StringComparer]::Ordinal)
+        $runWeights = [System.Collections.Generic.Dictionary[string, object]]::new(
+            [System.StringComparer]::Ordinal)
+        foreach ($runId in $runIds) {
+            $ticks = [System.Collections.Generic.Dictionary[string, long]]::new(
+                [System.StringComparer]::Ordinal)
+            $weights = [System.Collections.Generic.Dictionary[string, int]]::new(
+                [System.StringComparer]::Ordinal)
+            foreach ($observation in $imageObservations | Where-Object { $_.RunId -ceq $runId }) {
+                foreach ($className in $observation.ClassWeights.Keys) {
+                    if ($weights.ContainsKey($className)) {
+                        throw "Class '$className' appears on multiple legs of run '$runId'."
+                    }
+                    $weights.Add($className, $observation.ClassWeights[$className])
+                    if ($observation.ClassTicks.ContainsKey($className)) {
+                        $ticks.Add($className, $observation.ClassTicks[$className])
+                    }
+                }
+            }
+            $runTicks.Add($runId, $ticks)
+            $runWeights.Add($runId, $weights)
+        }
+
+        $classNames = [System.Collections.Generic.HashSet[string]]::new(
+            [System.StringComparer]::Ordinal)
+        foreach ($runId in $runIds) {
+            foreach ($className in $runWeights[$runId].Keys) { [void]$classNames.Add($className) }
+        }
+        $sortedClasses = [System.Collections.Generic.List[string]]::new()
+        $sortedClasses.AddRange([string[]]@($classNames))
+        $sortedClasses.Sort([System.StringComparer]::Ordinal)
+        $profileClasses = [System.Collections.Generic.List[object]]::new()
+        foreach ($className in $sortedClasses) {
+            $firstWeight = $null
+            [long]$totalTicks = 0
+            $stable = $true
+            foreach ($runId in $runIds) {
+                if (-not $runWeights[$runId].ContainsKey($className) -or
+                    -not $runTicks[$runId].ContainsKey($className)) {
+                    $stable = $false
+                    break
+                }
+                $weight = $runWeights[$runId][$className]
+                if ($null -eq $firstWeight) { $firstWeight = $weight }
+                elseif ($firstWeight -ne $weight) { $stable = $false; break }
+                $totalTicks += $runTicks[$runId][$className]
+            }
+            if (-not $stable -or $totalTicks -le 0) { continue }
+            $meanSeconds = [Math]::Round(
+                $totalTicks / [double]$runIds.Count / [double][TimeSpan]::TicksPerSecond,
+                6)
+            if ($meanSeconds -le 0) { continue }
+            $profileClasses.Add([ordered]@{
+                ClassName = $className
+                StaticCaseWeight = $firstWeight
+                MeanCaseSeconds = $meanSeconds
+            })
+        }
+        if ($profileClasses.Count -eq 0) {
+            throw "Hosted image '$imageName' has no stable class durations."
+        }
+        $profileImages.Add([ordered]@{
+            Image = $imageName
+            RunIds = @($runIds)
+            Classes = @($profileClasses)
+        })
+    }
+    $profile = [ordered]@{
+        SchemaVersion = 1
+        MinimumSamples = $MinimumSamples
+        Images = @($profileImages)
+    }
+    [Console]::Out.WriteLine(($profile | ConvertTo-Json -Depth 8))
+}
+else {
+    [Console]::Out.WriteLine($lines -join [Environment]::NewLine)
+}

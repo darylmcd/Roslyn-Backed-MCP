@@ -22,7 +22,11 @@ param(
 
     [int]$TestShardIndex = 0,
 
-    [string]$AdapterResultsPath
+    [string]$AdapterResultsPath,
+
+    [string]$DurationProfilePath,
+
+    [string]$HostedImage
 )
 
 Set-StrictMode -Version Latest
@@ -85,6 +89,10 @@ if ($TestShardCount -lt 1 -or $TestShardCount -gt 16) {
 
 if ($TestShardIndex -lt 0 -or $TestShardIndex -ge $TestShardCount) {
     throw "TestShardIndex must be between 0 and $($TestShardCount - 1); received $TestShardIndex."
+}
+if ([string]::IsNullOrWhiteSpace($DurationProfilePath) -ne
+    [string]::IsNullOrWhiteSpace($HostedImage)) {
+    throw 'DurationProfilePath and HostedImage must be supplied together.'
 }
 
 $canonicalAssemblyPath = [System.IO.Path]::GetFullPath($TestAssemblyPath)
@@ -268,12 +276,102 @@ if (-not [string]::IsNullOrWhiteSpace($AdapterResultsPath)) {
     $adapterParityVerified = $true
 }
 
+$weightingMode = 'static-cases'
+$profiledClassCount = 0
+$fallbackClassCount = 0
+if (-not [string]::IsNullOrWhiteSpace($DurationProfilePath)) {
+    if ($HostedImage -cnotin @('windows-latest', 'ubuntu-latest')) {
+        throw "Unsupported hosted image '$HostedImage'."
+    }
+    if (-not (Test-Path -LiteralPath $DurationProfilePath -PathType Leaf)) {
+        throw "Duration profile not found: '$DurationProfilePath'."
+    }
+    try {
+        $profile = Get-Content -LiteralPath $DurationProfilePath -Raw -Encoding UTF8 |
+            ConvertFrom-Json -ErrorAction Stop
+    }
+    catch { throw "Duration profile is invalid JSON: $($_.Exception.Message)" }
+    if ($profile.SchemaVersion -ne 1 -or $profile.MinimumSamples -lt 5 -or
+        $null -eq $profile.Images -or $profile.Images.Count -eq 0) {
+        throw 'Duration profile has an invalid schema or insufficient sample requirement.'
+    }
+    $seenImages = [System.Collections.Generic.HashSet[string]]::new(
+        [System.StringComparer]::Ordinal)
+    $selectedImage = $null
+    foreach ($image in $profile.Images) {
+        if ($image.Image -cnotin @('windows-latest', 'ubuntu-latest') -or
+            -not $seenImages.Add($image.Image)) {
+            throw 'Duration profile contains an unknown or duplicate hosted image.'
+        }
+        if ($image.Image -ceq $HostedImage) { $selectedImage = $image }
+    }
+    if ($null -eq $selectedImage) {
+        throw "Duration profile has no '$HostedImage' image."
+    }
+    $runIds = [System.Collections.Generic.HashSet[string]]::new(
+        [System.StringComparer]::Ordinal)
+    foreach ($runId in $selectedImage.RunIds) {
+        if ([string]::IsNullOrWhiteSpace($runId) -or -not $runIds.Add($runId)) {
+            throw "Duration profile '$HostedImage' has an empty or duplicate run ID."
+        }
+    }
+    if ($runIds.Count -lt $profile.MinimumSamples) {
+        throw "Duration profile '$HostedImage' has fewer than $($profile.MinimumSamples) source runs."
+    }
+    $profileClasses = [System.Collections.Generic.Dictionary[string, object]]::new(
+        [System.StringComparer]::Ordinal)
+    foreach ($entry in $selectedImage.Classes) {
+        if ($entry.ClassName -notmatch '\A[A-Za-z_][A-Za-z0-9_.]*\z' -or
+            $entry.StaticCaseWeight -le 0 -or
+            $entry.MeanCaseSeconds -le 0 -or
+            [double]::IsNaN([double]$entry.MeanCaseSeconds) -or
+            [double]::IsInfinity([double]$entry.MeanCaseSeconds) -or
+            $profileClasses.ContainsKey($entry.ClassName)) {
+            throw "Duration profile '$HostedImage' contains an invalid or duplicate class."
+        }
+        $profileClasses.Add($entry.ClassName, $entry)
+    }
+    [double]$profileSeconds = 0
+    [long]$profileStaticCases = 0
+    $entry = $null
+    foreach ($testClass in $testClasses) {
+        if ($profileClasses.TryGetValue($testClass.ClassName, [ref]$entry) -and
+            $entry.StaticCaseWeight -eq $testClass.StaticCaseWeight) {
+            $profileSeconds += [double]$entry.MeanCaseSeconds
+            $profileStaticCases += $testClass.StaticCaseWeight
+        }
+    }
+    if ($profileStaticCases -eq 0 -or $profileSeconds -le 0) {
+        throw "Duration profile '$HostedImage' has no matching current classes."
+    }
+    $fallbackSecondsPerCase = $profileSeconds / $profileStaticCases
+    foreach ($testClass in $testClasses) {
+        $entry = $null
+        if ($profileClasses.TryGetValue($testClass.ClassName, [ref]$entry) -and
+            $entry.StaticCaseWeight -eq $testClass.StaticCaseWeight) {
+            $balanceWeight = [double]$entry.MeanCaseSeconds
+            $profiledClassCount++
+        }
+        else {
+            $balanceWeight = $testClass.StaticCaseWeight * $fallbackSecondsPerCase
+            $fallbackClassCount++
+        }
+        $testClass | Add-Member -NotePropertyName BalanceWeight -NotePropertyValue $balanceWeight
+    }
+    $weightingMode = 'hosted-duration'
+}
+else {
+    foreach ($testClass in $testClasses) {
+        $testClass | Add-Member -NotePropertyName BalanceWeight -NotePropertyValue ([double]$testClass.StaticCaseWeight)
+    }
+}
+
 $assignmentOrder = [System.Collections.Generic.List[object]]::new()
 $assignmentOrder.AddRange($testClasses)
 $assignmentOrder.Sort([System.Comparison[object]]{
     param($left, $right)
 
-    $weightComparison = $right.StaticCaseWeight.CompareTo($left.StaticCaseWeight)
+    $weightComparison = $right.BalanceWeight.CompareTo($left.BalanceWeight)
     if ($weightComparison -ne 0) {
         return $weightComparison
     }
@@ -286,6 +384,7 @@ for ($index = 0; $index -lt $TestShardCount; $index++) {
     $mutableShards.Add([pscustomobject]@{
         Index = $index
         StaticCaseWeight = 0
+        BalanceWeight = [double]0
         Classes = [System.Collections.Generic.List[object]]::new()
     })
 }
@@ -293,8 +392,8 @@ for ($index = 0; $index -lt $TestShardCount; $index++) {
 foreach ($testClass in $assignmentOrder) {
     $selectedShard = $mutableShards[0]
     foreach ($candidate in $mutableShards) {
-        if ($candidate.StaticCaseWeight -lt $selectedShard.StaticCaseWeight -or
-            ($candidate.StaticCaseWeight -eq $selectedShard.StaticCaseWeight -and
+        if ($candidate.BalanceWeight -lt $selectedShard.BalanceWeight -or
+            ($candidate.BalanceWeight -eq $selectedShard.BalanceWeight -and
              $candidate.Index -lt $selectedShard.Index)) {
             $selectedShard = $candidate
         }
@@ -302,6 +401,7 @@ foreach ($testClass in $assignmentOrder) {
 
     $selectedShard.Classes.Add($testClass)
     $selectedShard.StaticCaseWeight += $testClass.StaticCaseWeight
+    $selectedShard.BalanceWeight += $testClass.BalanceWeight
 }
 
 $assignedClassNames = [System.Collections.Generic.HashSet[string]]::new(
@@ -332,6 +432,7 @@ foreach ($mutableShard in $mutableShards) {
         Index = $mutableShard.Index
         ClassCount = $classNames.Count
         StaticCaseWeight = $mutableShard.StaticCaseWeight
+        BalanceWeight = $mutableShard.BalanceWeight
         Classes = @($classNames)
         Filter = $exactFilter
     })
@@ -358,6 +459,9 @@ $plan = [pscustomobject]@{
     TotalStaticCaseWeight = $expectedWeight
     AdapterParityVerified = $adapterParityVerified
     AdapterClassCount = $adapterClassCount
+    WeightingMode = $weightingMode
+    ProfiledClassCount = $profiledClassCount
+    FallbackClassCount = $fallbackClassCount
     TestClasses = @($classCatalog)
     Shards = @($shards)
     SelectedFilter = $shards[$TestShardIndex].Filter

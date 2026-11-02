@@ -6,7 +6,8 @@ param(
     [switch]$RequireConsumedFragments,
     [switch]$TestShardOnly,
     [int]$TestShardIndex = 0,
-    [int]$TestShardCount = 1
+    [int]$TestShardCount = 1,
+    [string]$HostedImage
 )
 
 $ErrorActionPreference = "Stop"
@@ -19,6 +20,13 @@ if ($TestShardIndex -lt 0 -or $TestShardIndex -ge $TestShardCount) {
 }
 if ($TestShardOnly -and $RequireConsumedFragments) {
     throw 'TestShardOnly cannot be combined with RequireConsumedFragments.'
+}
+if (-not [string]::IsNullOrWhiteSpace($HostedImage) -and
+    $HostedImage -cnotin @('windows-latest', 'ubuntu-latest')) {
+    throw "Unsupported hosted image '$HostedImage'."
+}
+if (-not [string]::IsNullOrWhiteSpace($HostedImage) -and $TestShardCount -eq 1) {
+    throw 'HostedImage requires a sharded test run.'
 }
 
 # PowerShell does not honor $ErrorActionPreference = "Stop" for native commands.
@@ -395,6 +403,10 @@ if ($TestShardCount -gt 1) {
         TestShardCount = $TestShardCount
         TestShardIndex = $TestShardIndex
     }
+    if (-not [string]::IsNullOrWhiteSpace($HostedImage)) {
+        $planParameters.HostedImage = $HostedImage
+        $planParameters.DurationProfilePath = Join-Path $PSScriptRoot 'shard-duration-profile.json'
+    }
     $planJson = & (Join-Path $PSScriptRoot 'get-test-shard-plan.ps1') @planParameters
     $testShardPlan = $planJson | ConvertFrom-Json
     if ([string]::IsNullOrWhiteSpace($testShardPlan.SelectedFilter)) {
@@ -409,6 +421,11 @@ if ($TestShardCount -gt 1) {
         $TestShardCount,
         $testShardPlan.Shards[$TestShardIndex].ClassCount,
         $testShardPlan.Shards[$TestShardIndex].StaticCaseWeight))
+    Write-Host ("Test shard weighting: {0}; balance weight {1:N1}; profiled classes {2}; fallback classes {3}" -f @(
+        $testShardPlan.WeightingMode,
+        $testShardPlan.Shards[$TestShardIndex].BalanceWeight,
+        $testShardPlan.ProfiledClassCount,
+        $testShardPlan.FallbackClassCount))
     Write-Host "Test shard plan: $planPath"
 }
 
