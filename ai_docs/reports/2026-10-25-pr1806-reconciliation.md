@@ -45,8 +45,8 @@ Each current finding is source-supported or explicitly an investigation. Require
 |---|---|---|---|
 | `pr1806-unshipped-authority-proposal` (closed 2026-10-27, rejected; see Addendum) | Defer / — | — | Decide the retained preview/native/physical authority proposal |
 | [build-command-captured-evaluation-context](../items/build-command-captured-evaluation-context.md) | Medium / M | — | Build with the loaded evaluation context |
-| [test-trx-definition-qualified-identity](../items/test-trx-definition-qualified-identity.md) | Medium / S | — | Resolve failed TRX methods through test definitions |
-| [test-trx-verdict-consistency](../items/test-trx-verdict-consistency.md) | Medium / M | — | Reject inconsistent and unsuccessful test-report proof |
+| [test-trx-definition-qualified-identity](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1943) (shipped, PR #1943) | Medium / S | — | Resolve failed TRX methods through test definitions |
+| [test-trx-verdict-consistency](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1943) (shipped, PR #1943) | Medium / M | — | Reject inconsistent and unsuccessful test-report proof |
 | [mtp-resolved-engine-version-selection](../items/mtp-resolved-engine-version-selection.md) | Medium / M | — | Gate MTP filters on every applicable resolved engine |
 | [test-run-global-json-fail-closed-authority](../items/test-run-global-json-fail-closed-authority.md) | Medium / M | — | Distinguish invalid runner configuration from no configuration |
 | [composite-batch-final-diff-composition](../items/composite-batch-final-diff-composition.md) | Medium / M | — | Review the complete initial-to-final composite delta |
@@ -60,12 +60,12 @@ Each current finding is source-supported or explicitly an investigation. Require
 | `automatic-reload-analyzer-reader-lifetime` (shipped, #1909) | High / M | — | Exclude readers before automatic reload retires providers |
 | [gated-command-executor-disposal-drains-active-runs](../items/gated-command-executor-disposal-drains-active-runs.md) | Medium / M | — | Drain owned command runs before disposing gates |
 | [watcher-delivery-loss-observation](../items/watcher-delivery-loss-observation.md) | Medium / M | — | Treat lost watcher delivery as unknown freshness |
-| [cache-graph-identity-framing](../items/cache-graph-identity-framing.md) | Medium / S | — | Frame graph cache identity unambiguously |
+| [cache-graph-identity-framing](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1940) (shipped, PR #1940) | Medium / S | — | Frame graph cache identity unambiguously |
 | `workspace-idle-diagnostic-touch-order` (shipped, PR #1920) | Low / S | — | Measure idle time before access updates |
 | `workspace-load-registration-compensation` (shipped, PR 1902) | High / M | — | Compensate failed watcher registration |
 | `workspace-native-load-cleanup-gate-release` (shipped, PR 1904) | High / M | — | Release the load gate after resource cleanup failure |
 | [test-concurrency-observation-atomicity](../items/test-concurrency-observation-atomicity.md) | Medium / S | — | Make maximum concurrency observation atomic |
-| [test-probe-custom-output-paths](../items/test-probe-custom-output-paths.md) | Medium / S | — | Copy the current referenced process-probe outputs |
+| [test-probe-custom-output-paths](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1942) (shipped, PR #1942) | Medium / S | — | Copy the current referenced process-probe outputs |
 | [fixture-restore-process-lifetime](../items/fixture-restore-process-lifetime.md) | Medium / M | — | Bound fixture-owned restore processes |
 | [test-fixture-primary-cleanup-preservation](../items/test-fixture-primary-cleanup-preservation.md) | Medium / L | — | Preserve primary failures while attempting all owned cleanup |
 | [solution-diff-truncation-source-substring-test](../items/solution-diff-truncation-source-substring-test.md) | Low / S | — | Assert real omitted-file preview behavior |
