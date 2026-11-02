@@ -598,6 +598,8 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
             return "analyzer-error";
         if (runTests && testRunResult?.FailureEnvelope?.ErrorKind == "Timeout")
             return "timeout";
+        if (runTests && testRunResult?.FailureEnvelope is not null)
+            return "test-failure";
         if (runTests && testRunResult is not null && testRunResult.Failed > 0)
             return "test-failure";
         if (runTests && testRunResult is not null && testRunResult.Total == 0)

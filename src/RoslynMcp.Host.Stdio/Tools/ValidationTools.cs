@@ -203,7 +203,7 @@ public static class ValidationTools
     }
 
     /// <remarks>
-    /// <para>FailureEnvelope carries ErrorKind (FileLock | BuildFailure | Timeout | Unknown), IsRetryable, Summary, and tails of StdOut/StdErr.</para>
+    /// <para>FailureEnvelope carries ErrorKind (FileLock | BuildFailure | Timeout | TestReportFailure | Unknown), IsRetryable, Summary, and tails of StdOut/StdErr. TestReportFailure means supplied TRX proof is invalid or unsuccessful even if the command exited zero.</para>
     /// <para>Windows note: MSB3027/MSB3021 file-lock failures typically mean another testhost.exe (IDE test runner, background build) is holding the test assembly; the envelope classifies these as retryable so callers can close the conflicting runner and retry without touching source.</para>
     /// <para>The failures array is paginated via failuresOffset/failuresLimit (default limit 25) and each entry Message/StackTrace is head-truncated to 500/1500 chars with a trailing "... [truncated]" marker - a broad, unfiltered run over a large suite would otherwise produce an unbounded payload. Aggregate total/passed/failed/skipped always reflect the full run; failuresTotal/hasMoreFailures tell you when more failure detail exists.</para>
     /// </remarks>

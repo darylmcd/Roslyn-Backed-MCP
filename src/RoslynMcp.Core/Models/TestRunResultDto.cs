@@ -4,8 +4,8 @@ namespace RoslynMcp.Core.Models;
 
 /// <summary>
 /// Represents the result of executing a test run. When <paramref name="FailureEnvelope"/>
-/// is non-null, execution failed (even if TRX results were produced) and the
-/// envelope carries a typed classification (file lock, build failure, timeout, unknown)
+/// is non-null, the command or its report failed and the
+/// envelope carries a typed classification (file lock, build failure, timeout, test report, unknown)
 /// plus the tail of StdOut/StdErr so callers can decide whether to retry.
 /// </summary>
 public sealed record TestRunResultDto(
@@ -44,7 +44,7 @@ public sealed record TestFailureDto(
     string? StackTrace);
 
 /// <summary>
-/// Structured failure envelope populated when <c>dotnet test</c> fails, including failures
+/// Structured failure envelope populated when <c>dotnet test</c> or its TRX report fails, including failures
 /// after producing TRX output (e.g., MSBuild file locks, build failures, timeouts). Carries an
 /// <see cref="ErrorKind"/> classification, a retry hint, and the tail of the captured
 /// StdOut/StdErr streams so callers do not need to re-run just to see what happened.
@@ -53,6 +53,7 @@ public sealed record TestFailureDto(
 /// Classification of the failure. One of: <c>"FileLock"</c> (MSB3027/MSB3021),
 /// <c>"BuildFailure"</c> (compilation errors prevented the test run),
 /// <c>"Timeout"</c> (the invocation exceeded the configured test timeout),
+/// <c>"TestReportFailure"</c> (TRX proof is invalid or unsuccessful),
 /// <c>"Unknown"</c> (non-zero exit with no TRX and no recognized pattern).
 /// </param>
 /// <param name="IsRetryable">

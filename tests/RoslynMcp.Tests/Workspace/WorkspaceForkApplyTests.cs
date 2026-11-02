@@ -24,6 +24,20 @@ namespace RoslynMcp.Tests;
 [TestClass]
 public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
 {
+    [TestMethod]
+    public void ForkRetention_ReportFailureEnvelopeCannotQualifyAsSuccess()
+    {
+        var execution = new CommandExecutionDto("dotnet", ["test"], "/repo", "sample.csproj", 0, true, 1, "", "");
+        var report = new TestRunResultDto(execution, 1, 1, 0, 0, [],
+            new TestRunFailureEnvelopeDto("TestReportFailure", false, "TRX summary failed", null, null));
+        var validation = new WorkspaceValidationDto("clean", [], [],
+            new CompileCheckDto(true, 0, 0, 0, 0, 0, 200, false, [], 1),
+            [], 0, 0, [], null, null, []);
+        var method = typeof(WorkspaceForkApplyService).GetMethod("IsValidationSuccess",
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
+
+        Assert.AreEqual(false, method.Invoke(null, [validation, report]));
+    }
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
