@@ -259,15 +259,16 @@ public sealed class VerifyReleaseChildScriptTests
             var runEnd = workflow.IndexOf("\n      - ", runStart, StringComparison.Ordinal);
             Assert.IsTrue(runEnd > runStart);
             var command = string.Join('\n', workflow[runStart..runEnd].Split('\n')
-                .Select(line => line.StartsWith("          ", StringComparison.Ordinal) ? line[10..] : line))
-                .Replace("${{ matrix.leg.test_shard_index }}", shardIndex.ToString(System.Globalization.CultureInfo.InvariantCulture))
-                .Replace("${{ matrix.leg.test_shard_count }}", "2")
-                .Replace("${{ matrix.leg.artifact_owner }}", shardIndex == 0 ? "true" : "false")
-                .Replace("${{ needs.route.outputs.docs_only }}", "true");
+                .Select(line => line.StartsWith("          ", StringComparison.Ordinal) ? line[10..] : line));
             Assert.IsFalse(command.Contains("${{", StringComparison.Ordinal), "Every workflow expression must be resolved for this executed route.");
             var wrapper = Path.Combine(fixtureRoot, "docs-workflow.ps1");
             await File.WriteAllTextAsync(wrapper,
-                "$env:HOSTED_IMAGE = 'ubuntu-latest'\n. (Join-Path $PSScriptRoot 'fake-dotnet.ps1')\n" + command);
+                "$env:HOSTED_IMAGE = 'ubuntu-latest'\n" +
+                $"$env:TEST_SHARD_INDEX = '{shardIndex}'\n" +
+                "$env:TEST_SHARD_COUNT = '2'\n" +
+                $"$env:ARTIFACT_OWNER = '{(shardIndex == 0 ? "true" : "false")}'\n" +
+                "$env:DOCS_ONLY = 'true'\n" +
+                ". (Join-Path $PSScriptRoot 'fake-dotnet.ps1')\n" + command);
             fixture = fixture with { ScriptPath = wrapper };
 
             var result = await RunVerifyReleaseAsync(fixture, false, trxMode: produceTrx ? null : "missing");

@@ -178,14 +178,94 @@ public sealed class PublishVersionContextTests
     }
 
     [TestMethod]
-    public void PublishWorkflow_NeverInterpolatesContextIntoRunBodies()
+    public void Workflows_NeverInterpolateContextIntoRunBodies()
     {
         var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
-        var workflowPath = Path.Combine(repositoryRoot, ".github", "workflows", "publish-nuget.yml");
-        var lines = File.ReadAllLines(workflowPath);
+        var offenders = new List<string>();
+        var workflowsDirectory = Path.Combine(repositoryRoot, ".github", "workflows");
+        var workflowPaths = Directory.EnumerateFiles(workflowsDirectory)
+            .Where(path => Path.GetExtension(path) is ".yml" or ".yaml")
+            .ToArray();
+        Assert.IsNotEmpty(workflowPaths);
+        foreach (var workflowPath in workflowPaths)
+        {
+            offenders.AddRange(FindInterpolatedRunBodies(File.ReadAllLines(workflowPath))
+                .Select(offender => $"{workflowPath}:{offender}"));
+        }
 
+        Assert.AreEqual(
+            0,
+            offenders.Count,
+            "GitHub Actions script injection: ${{ }} expressions must never be interpolated "
+                + "into a run: body. Bind context via env: and read it from the shell. Offending lines:"
+                + Environment.NewLine
+                + string.Join(Environment.NewLine, offenders));
+    }
+
+    [TestMethod]
+    public void RunBodyGuard_RecognizesYamlBlockScalarVariants()
+    {
+        foreach (var indicator in new[] { "|", ">", "|-", ">-", "|+", ">+", "|2", ">2", "|+2", ">2+" })
+        {
+            var lines = new[]
+            {
+                $"        run: {indicator} # valid scalar",
+                "        # A YAML comment can separate the indicator from its body.",
+                "          echo ${{ github.ref_name }}",
+            };
+            Assert.HasCount(1, FindInterpolatedRunBodies(lines), indicator);
+        }
+    }
+
+    [TestMethod]
+    public void RunBodyGuard_RecognizesMultilineScalarsAndCommentsWithinScripts()
+    {
+        var cases = new[]
+        {
+            new[] { "        run: |", "          # ${{ github.event.pull_request.body }}" },
+            new[] { "        run: echo safe", "          ${{ github.event.pull_request.body }}" },
+            new[] { "        run: \"echo safe", "          ${{ github.event.pull_request.body }}\"" },
+            new[] { "        run: \"echo safe", "          # ${{ github.event.pull_request.body }}\"" },
+        };
+        var detected = cases.Select(lines => FindInterpolatedRunBodies(lines).Count).ToArray();
+        CollectionAssert.AreEqual(new[] { 1, 1, 1, 1 }, detected);
+    }
+
+    [TestMethod]
+    public void RunBodyGuard_IgnoresExpressionsOutsideRunScalars()
+    {
+        var lines = new[]
+        {
+            "        # run: ${{ github.event.pull_request.body }}",
+            "        env:",
+            "          VALUE: ${{ github.ref_name }}",
+            "        run: echo safe",
+            "        # ${{ github.event.pull_request.body }}",
+            "        next: done",
+        };
+        Assert.IsEmpty(FindInterpolatedRunBodies(lines));
+    }
+
+    [TestMethod]
+    public void RunBodyGuard_IgnoresDeeperYamlCommentsAfterCompletedInlineScalars()
+    {
+        var cases = new[]
+        {
+            new[] { "        run: echo safe", "          # ${{ github.ref_name }}" },
+            new[] { "        run: \"echo safe\"", "          # ${{ github.ref_name }}" },
+            new[] { "        run: 'echo safe'", "          # ${{ github.ref_name }}" },
+            new[] { "        run: \"echo", "          safe\"", "          # ${{ github.ref_name }}" },
+        };
+        var detected = cases.Select(lines => FindInterpolatedRunBodies(lines).Count).ToArray();
+        CollectionAssert.AreEqual(new[] { 0, 0, 0, 0 }, detected);
+    }
+
+    private static List<string> FindInterpolatedRunBodies(string[] lines)
+    {
         var offenders = new List<string>();
         var runBodyIndent = -1;
+        var blockScalar = false;
+        var openQuote = '\0';
 
         for (var i = 0; i < lines.Length; i++)
         {
@@ -195,8 +275,8 @@ public sealed class PublishVersionContextTests
 
             if (runBodyIndent >= 0)
             {
-                // A run: | block body continues while lines are blank or indented deeper
-                // than the `run:` key itself.
+                // Block, plain, and quoted YAML scalars can all continue on deeper lines.
+                // A comment at the key's indentation does not end a following scalar body.
                 if (trimmed.Length == 0)
                 {
                     continue;
@@ -204,46 +284,79 @@ public sealed class PublishVersionContextTests
 
                 if (indent > runBodyIndent)
                 {
-                    if (line.Contains("${{", StringComparison.Ordinal))
+                    if ((!trimmed.StartsWith('#') || blockScalar || openQuote != '\0') &&
+                        line.Contains("${{", StringComparison.Ordinal))
                     {
-                        offenders.Add($"{workflowPath}:{i + 1}: {trimmed}");
+                        offenders.Add($"{i + 1}: {trimmed}");
                     }
 
+                    if (openQuote != '\0' && HasClosingYamlQuote(trimmed, openQuote, 0))
+                    {
+                        openQuote = '\0';
+                    }
+
+                    continue;
+                }
+
+                if (trimmed.StartsWith('#'))
+                {
                     continue;
                 }
 
                 runBodyIndent = -1;
             }
 
-            if (!trimmed.StartsWith("run:", StringComparison.Ordinal))
+            var runKey = System.Text.RegularExpressions.Regex.Match(
+                trimmed,
+                "\\A(?:run|'run'|\\\"run\\\")\\s*:\\s*(?<value>.*)\\z",
+                System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+            if (!runKey.Success)
             {
-                continue;
-            }
-
-            var inline = trimmed["run:".Length..].Trim();
-            if (inline is "|" or ">" or "|-" or ">-" or "")
-            {
-                runBodyIndent = indent;
                 continue;
             }
 
             if (line.Contains("${{", StringComparison.Ordinal))
             {
-                offenders.Add($"{workflowPath}:{i + 1}: {trimmed}");
+                offenders.Add($"{i + 1}: {trimmed}");
+            }
+
+            var scalar = runKey.Groups["value"].Value.TrimStart();
+            blockScalar = System.Text.RegularExpressions.Regex.IsMatch(
+                scalar,
+                @"\A[|>](?:[1-9][-+]?|[-+]?[1-9]?|[-+])(?:\s+#.*)?\s*\z",
+                System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+            openQuote = scalar.Length > 0 && (scalar[0] is '\'' or '"') &&
+                !HasClosingYamlQuote(scalar, scalar[0], 1)
+                    ? scalar[0]
+                    : '\0';
+            runBodyIndent = indent;
+        }
+
+        return offenders;
+    }
+
+    private static bool HasClosingYamlQuote(string text, char quote, int start)
+    {
+        for (var i = start; i < text.Length; i++)
+        {
+            if (quote == '"' && text[i] == '\\')
+            {
+                i++;
+            }
+            else if (text[i] == quote)
+            {
+                if (quote == '\'' && i + 1 < text.Length && text[i + 1] == '\'')
+                {
+                    i++;
+                }
+                else
+                {
+                    return true;
+                }
             }
         }
 
-        Assert.AreEqual(
-            0,
-            offenders.Count,
-            "GitHub Actions script injection: ${{ }} expressions must never be interpolated "
-                + "into a run: body — they are substituted as source text before the shell parses "
-                + "them, so attacker-influenced values (github.event.release.tag_name, "
-                + "github.ref_name, PR titles/branches) can break out and execute commands in a "
-                + "job holding NUGET_API_KEY. Bind them via env: and read $env:NAME / $NAME "
-                + "instead. Offending lines:"
-                + Environment.NewLine
-                + string.Join(Environment.NewLine, offenders));
+        return false;
     }
 
     private static async Task<ProcessResult> RunAsync(

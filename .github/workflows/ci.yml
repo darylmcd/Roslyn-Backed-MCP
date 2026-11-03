@@ -46,6 +46,11 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          CI_IS_PULL_REQUEST: ${{ github.event_name == 'pull_request' }}
+          CI_PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number }}
+          CI_REPOSITORY: ${{ github.repository }}
+          CI_CHANGED_FILE_COUNT: ${{ github.event.pull_request.changed_files }}
+          CI_EVENT_NAME: ${{ github.event_name }}
         run: |
           $ErrorActionPreference = 'Stop'
 
@@ -53,27 +58,27 @@ jobs:
           # decision itself -- leg construction, docs-only classification, and the fail-closed
           # count-mismatch/cap guard -- is a pure function in eng/resolve-ci-topology.ps1, so it
           # can run (and be table-tested) outside GitHub Actions. See CiTopologyDecisionContractTests.
-          $isPullRequest = '${{ github.event_name == 'pull_request' }}' -eq 'true'
+          $isPullRequest = $env:CI_IS_PULL_REQUEST -eq 'true'
           $changedFilesJson = '[]'
           $reportedChangedFileCount = $null
           if ($isPullRequest) {
-            $pullRequestNumber = '${{ github.event.pull_request.number }}'
+            $pullRequestNumber = $env:CI_PULL_REQUEST_NUMBER
             $changedFilesJson = gh api `
               --paginate `
               --slurp `
-              "repos/${{ github.repository }}/pulls/$pullRequestNumber/files?per_page=100" |
+              "repos/$env:CI_REPOSITORY/pulls/$pullRequestNumber/files?per_page=100" |
               Out-String
             if ($LASTEXITCODE -ne 0) {
               throw "Could not enumerate pull-request files and rename origins (gh exit $LASTEXITCODE)."
             }
-            $reportedChangedFileCount = [int]'${{ github.event.pull_request.changed_files }}'
+            $reportedChangedFileCount = [int]$env:CI_CHANGED_FILE_COUNT
           }
 
           # eng/resolve-ci-topology.ps1 signals failure by throwing (Set-StrictMode/
           # $ErrorActionPreference = 'Stop' in that script, propagated by this step's own
           # 'Stop' preference) rather than a process exit code, so no separate $LASTEXITCODE
           # check follows this call -- an uncaught exception here already fails the step.
-          $eventName = if ($isPullRequest) { 'pull_request' } else { '${{ github.event_name }}' }
+          $eventName = if ($isPullRequest) { 'pull_request' } else { $env:CI_EVENT_NAME }
           $decisionJson = & ./eng/resolve-ci-topology.ps1 `
             -EventName $eventName `
             -ChangedFilesJson $changedFilesJson `
@@ -181,17 +186,21 @@ jobs:
         env:
           CHANGELOG_BASE_SHA: ${{ github.event.merge_group.base_sha }}
           HOSTED_IMAGE: ${{ matrix.leg.runs_on }}
+          TEST_SHARD_INDEX: ${{ matrix.leg.test_shard_index }}
+          TEST_SHARD_COUNT: ${{ matrix.leg.test_shard_count }}
+          ARTIFACT_OWNER: ${{ matrix.leg.artifact_owner }}
+          DOCS_ONLY: ${{ needs.route.outputs.docs_only }}
         run: |
           $parameters = @{
             Configuration = 'Release'
             NoCoverage = $true
             ExcludeNetworkTests = $true
-            TestShardIndex = ${{ matrix.leg.test_shard_index }}
-            TestShardCount = ${{ matrix.leg.test_shard_count }}
+            TestShardIndex = [int]$env:TEST_SHARD_INDEX
+            TestShardCount = [int]$env:TEST_SHARD_COUNT
             HostedImage = $env:HOSTED_IMAGE
           }
-          if ('${{ matrix.leg.artifact_owner }}' -ne 'true' -or
-              '${{ needs.route.outputs.docs_only }}' -eq 'true') {
+          if ($env:ARTIFACT_OWNER -ne 'true' -or
+              $env:DOCS_ONLY -eq 'true') {
             $parameters.TestShardOnly = $true
           }
           ./eng/verify-release.ps1 @parameters
@@ -312,7 +321,9 @@ jobs:
       - name: Verify changed-file formatting
         if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
         shell: pwsh
-        run: ./eng/verify-changed-format.ps1 -BaseRef ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || format('origin/{0}', github.base_ref) }} -NoRestore
+        env:
+          FORMAT_BASE_REF: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || format('origin/{0}', github.base_ref) }}
+        run: ./eng/verify-changed-format.ps1 -BaseRef $env:FORMAT_BASE_REF -NoRestore
 
   # Bound the declared SDK floor independently of the latest-10.0 full matrix.
   # This lane restores/builds the product, loads a representative workspace and
@@ -418,20 +429,28 @@ jobs:
     steps:
       - name: Require routing and every validate leg green
         shell: pwsh
+        env:
+          ROUTE_RESULT: ${{ needs.route.result }}
+          VALIDATE_RESULT: ${{ needs.validate.result }}
+          SDK_FLOOR_RESULT: ${{ needs.sdk_floor.result }}
+          QUALITY_RESULT: ${{ needs.quality.result }}
+          DOCS_ONLY_OUTPUT: ${{ needs.route.outputs.docs_only }}
+          EVIDENCE_ONLY_OUTPUT: ${{ needs.route.outputs.evidence_only }}
+          EVIDENCE_LINT_RESULT: ${{ needs.evidence_lint.result }}
         run: |
-          $routeResult = '${{ needs.route.result }}'
-          $validateResult = '${{ needs.validate.result }}'
-          $sdkFloorResult = '${{ needs.sdk_floor.result }}'
-          $qualityResult = '${{ needs.quality.result }}'
-          $docsOnlyOutput = '${{ needs.route.outputs.docs_only }}'
-          $evidenceOnlyOutput = '${{ needs.route.outputs.evidence_only }}'
+          $routeResult = $env:ROUTE_RESULT
+          $validateResult = $env:VALIDATE_RESULT
+          $sdkFloorResult = $env:SDK_FLOOR_RESULT
+          $qualityResult = $env:QUALITY_RESULT
+          $docsOnlyOutput = $env:DOCS_ONLY_OUTPUT
+          $evidenceOnlyOutput = $env:EVIDENCE_ONLY_OUTPUT
           if ($docsOnlyOutput -cnotin @('true', 'false') -or
               $evidenceOnlyOutput -cnotin @('true', 'false')) {
             throw 'Routing outputs must be explicit booleans.'
           }
-          $docsOnly = '${{ needs.route.outputs.docs_only }}' -eq 'true'
-          $evidenceOnly = '${{ needs.route.outputs.evidence_only }}' -eq 'true'
-          $evidenceLintResult = '${{ needs.evidence_lint.result }}'
+          $docsOnly = $docsOnlyOutput -eq 'true'
+          $evidenceOnly = $evidenceOnlyOutput -eq 'true'
+          $evidenceLintResult = $env:EVIDENCE_LINT_RESULT
           if ($evidenceOnly) {
             # Evidence route: the lint job is the whole validation; build/test and the SDK floor
             # must have been skipped, never failed or cancelled.
