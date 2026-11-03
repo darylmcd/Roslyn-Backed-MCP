@@ -1,3 +1,4 @@
+using System.Runtime.ExceptionServices;
 using Microsoft.CodeAnalysis.MSBuild;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Services;
@@ -25,7 +26,8 @@ internal class WorkspaceSessionLoader
 {
     internal const string SupportedPathCorrection = "Path must identify a solution (.sln/.slnx) or C# project (.csproj).";
     internal WorkspaceResourceDisposer? ResourceDisposerForTesting { get; set; }
-    internal Action<ForkAdmissionExecution?>? AdmissionDisposalForTesting { get; set; }
+    internal Func<CancellationToken, ValueTask<IWorkspaceAdmissionLifetime?>>? AdmissionFactoryForTesting { get; set; }
+    internal Action<MSBuildWorkspace, AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease>? AfterLeaseCreatedForTesting { get; set; }
 
     /// <summary>
     /// Creates a new <see cref="MSBuildWorkspace"/>, attaches the diagnostics sink, opens
@@ -47,11 +49,14 @@ internal class WorkspaceSessionLoader
     {
         MsBuildInitializer.EnsureInitialized();
         var forkConfig = ForkAdmissionMaterial.Find(path);
-        var admissionExecution = forkConfig is null ? null : await ForkAdmissionExecution.CreateAsync(forkConfig, null, ct).ConfigureAwait(false);
+        IWorkspaceAdmissionLifetime? admissionExecution = AdmissionFactoryForTesting is { } admissionFactory
+            ? await admissionFactory(ct).ConfigureAwait(false)
+            : forkConfig is null ? null : await ForkAdmissionExecution.CreateAsync(forkConfig, null, ct).ConfigureAwait(false);
         MSBuildWorkspace? workspace = null;
         AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease? analyzerLease = null;
         var returningWorkspace = false;
         var nativeStarted = false;
+        Exception? primaryFailure = null;
         var disposer = ResourceDisposerForTesting ?? WorkspaceResourceDisposer.Default;
         List<Exception> CleanupOwnedResources() => WorkspaceResourceDisposer.DisposeOrdered(
             () =>
@@ -124,6 +129,7 @@ internal class WorkspaceSessionLoader
                 workspace.CurrentSolution,
                 workspaceId,
                 logger);
+            AfterLeaseCreatedForTesting?.Invoke(workspace, analyzerLease);
             if (analyzerLease.RetargetedReferenceCount > 0)
             {
                 logger.LogInformation(
@@ -135,24 +141,28 @@ internal class WorkspaceSessionLoader
             returningWorkspace = true;
             return (workspace, analyzerLease);
         }
-        catch
+        catch (Exception failure)
         {
             // Partial-load failure: dispose the half-initialized workspace (and any analyzer
             // shadow lease created before the throw — lease after workspace, so Roslyn has
             // released the analyzer references first) before propagating, so the caller does
             // not have to track ownership of a return-value-not-yet-handed-out.
+            primaryFailure = failure;
+            var cleanupFailures = new List<Exception>();
             if (!nativeStarted)
             {
                 try { admissionExecution?.Complete(); }
                 catch (Exception completionFailure)
-                {
-                    logger.LogError(completionFailure, "Fork admission completion after failed workspace load failed");
-                }
+                { cleanupFailures.Add(completionFailure); }
             }
-            var cleanupFailures = CleanupOwnedResources();
+            cleanupFailures.AddRange(CleanupOwnedResources());
             if (cleanupFailures.Count > 0)
-                logger.LogError(new AggregateException(cleanupFailures),
-                    "Disposing resources after failed workspace load failed; the original load failure is preserved");
+            {
+                var cleanupError = new AggregateException(cleanupFailures);
+                failure.Data["WorkspaceSessionLoader.CleanupFailures"] = cleanupError;
+                ReportSafely(failure, () => logger.LogError(cleanupError,
+                    "Disposing resources after failed workspace load failed; the original load failure is preserved"));
+            }
             throw;
         }
         finally
@@ -160,26 +170,45 @@ internal class WorkspaceSessionLoader
             Exception? admissionCleanupFailure = null;
             try
             {
-                if (AdmissionDisposalForTesting is { } disposeAdmission)
-                    disposeAdmission(admissionExecution);
-                else
-                    admissionExecution?.Dispose();
+                admissionExecution?.Dispose();
             }
             catch (Exception failure) { admissionCleanupFailure = failure; }
-            if (admissionCleanupFailure is not null)
-                logger.LogError(admissionCleanupFailure,
-                    "Disposing fork admission execution failed");
-            if (admissionExecution?.CleanupWarning is { } warning)
-                logger.LogWarning("{Warning}", warning);
-            if (returningWorkspace && (admissionCleanupFailure is not null || admissionExecution?.CleanupWarning is not null))
+            var warning = admissionExecution?.CleanupWarning;
+            Exception? terminalFailure = null;
+            List<Exception>? cleanupFailures = null;
+            if (returningWorkspace && (admissionCleanupFailure is not null || warning is not null))
             {
-                var cleanupFailures = CleanupOwnedResources();
-                if (cleanupFailures.Count > 0)
-                    logger.LogError(new AggregateException(cleanupFailures),
-                        "Disposing resources after fork admission cleanup failed");
-                if (admissionCleanupFailure is not null) throw admissionCleanupFailure;
-                throw InvalidOperationErrors.Internal(admissionExecution!.CleanupWarning!);
+                terminalFailure = admissionCleanupFailure;
+                if (terminalFailure is null && warning is { } retainedWarning)
+                    terminalFailure = InvalidOperationErrors.Internal(retainedWarning);
+                cleanupFailures = CleanupOwnedResources();
             }
+            var protectedFailure = primaryFailure ?? terminalFailure;
+            if (admissionCleanupFailure is not null)
+                ReportSafely(protectedFailure ?? admissionCleanupFailure,
+                    () => logger.LogError(admissionCleanupFailure, "Disposing fork admission execution failed"));
+            if (warning is not null && protectedFailure is { } warningFailure)
+                ReportSafely(warningFailure, () => logger.LogWarning("{Warning}", warning));
+            if (cleanupFailures is { Count: > 0 } && terminalFailure is { } cleanupTerminal)
+            {
+                var cleanupError = new AggregateException(cleanupFailures);
+                cleanupTerminal.Data["WorkspaceSessionLoader.CleanupFailures"] = cleanupError;
+                ReportSafely(cleanupTerminal, () => logger.LogError(cleanupError,
+                    "Disposing resources after fork admission cleanup failed"));
+            }
+            if (terminalFailure is not null) ExceptionDispatchInfo.Capture(terminalFailure).Throw();
+        }
+    }
+
+    private static void ReportSafely(Exception protectedFailure, Action report)
+    {
+        try { report(); }
+        catch (Exception reportingFailure)
+        {
+            const string key = "WorkspaceSessionLoader.ReportingFailures";
+            if (protectedFailure.Data[key] is not List<Exception> failures)
+                protectedFailure.Data[key] = failures = [];
+            failures.Add(reportingFailure);
         }
     }
 }

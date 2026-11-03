@@ -161,7 +161,15 @@ internal static class ForkAdmissionMaterial
     }
 }
 
-internal sealed class ForkAdmissionExecution : IDisposable
+internal interface IWorkspaceAdmissionLifetime : IDisposable
+{
+    Dictionary<string, string> Properties(IDictionary<string, string>? original);
+    void Complete();
+    void ThrowIfRefused();
+    string? CleanupWarning { get; }
+}
+
+internal sealed class ForkAdmissionExecution : IWorkspaceAdmissionLifetime
 {
     private readonly CancellationTokenRegistration _registration;
     private readonly IReadOnlyList<IDisposable> _forkOwnership;
@@ -260,6 +268,11 @@ internal sealed class ForkAdmissionExecution : IDisposable
                 "The copied project paths were refused before a native build effect. Make source paths fork-relative or independent before retrying.",
                 InvalidOperationErrors.Internal("A native fork admission task refused this invocation."));
     }
+
+    Dictionary<string, string> IWorkspaceAdmissionLifetime.Properties(IDictionary<string, string>? original) => Properties(original);
+    void IWorkspaceAdmissionLifetime.Complete() => Complete();
+    void IWorkspaceAdmissionLifetime.ThrowIfRefused() => ThrowIfRefused();
+    string? IWorkspaceAdmissionLifetime.CleanupWarning => CleanupWarning;
 
     public void Dispose()
     {
