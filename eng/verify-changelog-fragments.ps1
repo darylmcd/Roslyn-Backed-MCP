@@ -29,8 +29,12 @@ function Write-StageTrace {
     param([Parameter(Mandatory)][string] $Stage)
 
     if ($traceStages) {
-        [Console]::Error.WriteLine(
-            "changelog-stage pid=$PID elapsedMs=$([int][System.Diagnostics.Stopwatch]::GetElapsedTime($traceStart).TotalMilliseconds) stage=$Stage")
+        $line = "changelog-stage pid=$PID elapsedMs=$([int][System.Diagnostics.Stopwatch]::GetElapsedTime($traceStart).TotalMilliseconds) stage=$Stage"
+        [Console]::Error.WriteLine($line)
+        # The process runner may lose a pipe's partial output if a descendant
+        # keeps it open after termination. This file is inside the test repo's
+        # Git metadata, so it is ignored by changed-path validation.
+        Add-Content -LiteralPath (Join-Path $repoRoot '.git/changelog-stage-trace.log') -Value $line -Encoding utf8
     }
 }
 Write-StageTrace 'script-entry'

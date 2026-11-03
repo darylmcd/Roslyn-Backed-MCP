@@ -16,6 +16,29 @@ public sealed class ReleaseLagGuardTests
 
     [TestMethod]
     [TestCategory("Process")]
+    public async Task VerifierStages_ArePersistedInsideGitMetadata()
+    {
+        await GitFixtureRunner.RequireAvailableAsync();
+        var root = await CreateFixtureAsync("Fixed", DateTimeOffset.UtcNow);
+        try
+        {
+            var result = await RunVerifierAsync(root);
+            Assert.AreEqual(0, result.ExitCode, result.AllOutput);
+
+            var stages = File.ReadAllText(Path.Combine(root, ".git", "changelog-stage-trace.log"));
+            StringAssert.Contains(stages, "stage=script-entry");
+            StringAssert.Contains(stages, "stage=git-fragment-log-begin");
+            StringAssert.Contains(stages, "stage=git-fragment-log-end");
+            StringAssert.Contains(stages, "stage=script-complete");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(root);
+        }
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
     public async Task FreshFixedFragment_DoesNotWarn()
     {
         await GitFixtureRunner.RequireAvailableAsync();
@@ -179,23 +202,35 @@ public sealed class ReleaseLagGuardTests
         Assert.AreEqual(0, result.ExitCode, result.AllOutput);
     }
 
-    private static Task<PwshScriptResult> RunVerifierAsync(string fixtureRoot, string? maxAgeDays = null)
-        => PwshScriptRunner.RunAsync(
-            new[]
-            {
-                "-NoProfile",
-                "-File",
-                Path.Combine(fixtureRoot, "eng", "verify-changelog-fragments.ps1"),
-                "-RepoRoot",
-                fixtureRoot,
-            },
-            environment: new Dictionary<string, string?>
-            {
-                ["CHANGELOG_FIXED_MAX_AGE_DAYS"] = maxAgeDays,
-                ["GITHUB_ACTIONS"] = null,
-                ["ROSLYNMCP_TEST_CHANGELOG_STAGE_TRACE"] = "1",
-            },
-            timeout: TimeSpan.FromSeconds(30),
-            description: "changelog verifier");
+    private static async Task<PwshScriptResult> RunVerifierAsync(string fixtureRoot, string? maxAgeDays = null)
+    {
+        try
+        {
+            return await PwshScriptRunner.RunAsync(
+                new[]
+                {
+                    "-NoProfile",
+                    "-File",
+                    Path.Combine(fixtureRoot, "eng", "verify-changelog-fragments.ps1"),
+                    "-RepoRoot",
+                    fixtureRoot,
+                },
+                environment: new Dictionary<string, string?>
+                {
+                    ["CHANGELOG_FIXED_MAX_AGE_DAYS"] = maxAgeDays,
+                    ["GITHUB_ACTIONS"] = null,
+                    ["ROSLYNMCP_TEST_CHANGELOG_STAGE_TRACE"] = "1",
+                },
+                timeout: TimeSpan.FromSeconds(30),
+                description: "changelog verifier");
+        }
+        catch (TimeoutException ex)
+        {
+            var tracePath = Path.Combine(fixtureRoot, ".git", "changelog-stage-trace.log");
+            var stages = PwshScriptRunner.CaptureDiagnostic(() =>
+                File.Exists(tracePath) ? File.ReadAllText(tracePath) : "No script stage marker was written.");
+            throw new TimeoutException($"{ex.Message}{Environment.NewLine}Verifier stages:{Environment.NewLine}{stages}", ex);
+        }
+    }
 
 }
