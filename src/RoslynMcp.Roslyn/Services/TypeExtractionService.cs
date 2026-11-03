@@ -2049,7 +2049,7 @@ public sealed class TypeExtractionService : ITypeExtractionService
     }
 
     private static InvalidOperationException UnsupportedModifierMember(MemberDeclarationSyntax member) =>
-        new($"Unsupported member declaration kind for modifier rewrite: {member.Kind()}.");
+        InvalidOperationErrors.Internal($"Unsupported member declaration kind for modifier rewrite: {member.Kind()}.");
 
     private static bool IsInheritanceOnlyModifier(SyntaxToken token)
     {
