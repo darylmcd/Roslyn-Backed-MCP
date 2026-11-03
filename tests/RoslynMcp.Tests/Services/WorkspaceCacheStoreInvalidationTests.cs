@@ -31,19 +31,7 @@ public sealed class WorkspaceCacheStoreInvalidationTests
 
     [TestCleanup]
     public void Teardown()
-    {
-        try
-        {
-            if (Directory.Exists(_cacheRoot))
-            {
-                Directory.Delete(_cacheRoot, recursive: true);
-            }
-        }
-        catch
-        {
-            // Best-effort cleanup — another test runner instance may hold a lock.
-        }
-    }
+        => TestFixtureFileSystem.DeleteDirectoryIfExists(_cacheRoot);
 
     /// <summary>
     /// Primary scenario from the plan's risk #1 ("on-disk format becomes a compatibility

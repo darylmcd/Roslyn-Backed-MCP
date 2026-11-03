@@ -26,23 +26,7 @@ public sealed class FileSnapshotCaptureTests
 
     [TestCleanup]
     public void Cleanup()
-    {
-        try
-        {
-            if (Directory.Exists(_tempDir))
-            {
-                Directory.Delete(_tempDir, recursive: true);
-            }
-        }
-        catch (IOException)
-        {
-            // Best-effort temp cleanup.
-        }
-        catch (UnauthorizedAccessException)
-        {
-            // Best-effort temp cleanup.
-        }
-    }
+        => TestFixtureFileSystem.DeleteDirectoryIfExists(_tempDir);
 
     [TestMethod]
     public void FromBytesOrFallback_With_Bytes_Captures_Them_Byte_Exact()

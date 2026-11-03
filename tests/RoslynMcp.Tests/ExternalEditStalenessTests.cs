@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -756,8 +757,8 @@ public sealed class FileWatcherClearStaleAwaiterTests
         // its parent directory must, which Watch verifies before registering the entry.
         var workspacePath = Path.Combine(tempDir, "Sentinel.slnx");
 
-        using var watcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance);
-        try
+        var watcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance);
+        await FixtureCleanupScope.RunAsync(async () =>
         {
             const string workspaceId = "ws-clearstale-awaiter";
             watcher.Watch(workspaceId, workspacePath);
@@ -804,18 +805,55 @@ public sealed class FileWatcherClearStaleAwaiterTests
             {
                 // Expected path: the re-arm canceled the abandoned stale-wait.
             }
-        }
-        finally
-        {
-            try
+        }, () => CleanupWatchedRootAsync(watcher.Dispose,
+            () => TestFixtureFileSystem.DeleteDirectoryIfExists(tempDir)));
+    }
+
+    private static ValueTask CleanupWatchedRootAsync(Action disposeWatcher, Action deleteRoot) =>
+        CleanupFailureCollector.RunAsync(
+            "Failed to dispose a fixture watcher or delete its owned root.",
+            CleanupFailureCollector.FromAction(disposeWatcher),
+            CleanupFailureCollector.FromAction(deleteRoot));
+
+    [TestMethod]
+    public async Task WatchedRootCleanup_DisposesWatcherBeforeDeletingRoot()
+    {
+        var order = new List<string>();
+        await CleanupWatchedRootAsync(
+            () => order.Add("dispose"),
+            () =>
             {
-                Directory.Delete(tempDir, recursive: true);
-            }
-            catch (IOException)
-            {
-                // Best-effort temp cleanup; a lingering FileSystemWatcher handle can briefly hold
-                // the directory. Not material to the assertion under test.
-            }
-        }
+                CollectionAssert.AreEqual(new[] { "dispose" }, order);
+                order.Add("delete");
+            });
+        CollectionAssert.AreEqual(new[] { "dispose", "delete" }, order);
+    }
+
+    [TestMethod]
+    public async Task WatchedRootCleanup_AttemptsDeletionAfterWatcherDisposalFails()
+    {
+        var deleted = false;
+        var failure = await Assert.ThrowsExactlyAsync<AggregateException>(async () =>
+            await CleanupWatchedRootAsync(
+                () => throw new IOException("watcher disposal failed"),
+                () => deleted = true));
+
+        Assert.IsTrue(deleted);
+        Assert.IsInstanceOfType<IOException>(failure.InnerExceptions.Single());
+    }
+
+    [TestMethod]
+    public async Task WatchedRootCleanup_FailureSurvivesFixtureScope()
+    {
+        var deleted = false;
+        var failure = await Assert.ThrowsExactlyAsync<AggregateException>(() =>
+            FixtureCleanupScope.RunAsync(
+                () => Task.CompletedTask,
+                () => CleanupWatchedRootAsync(
+                    () => throw new IOException("watcher disposal failed"),
+                    () => deleted = true)));
+
+        Assert.IsTrue(deleted);
+        Assert.IsInstanceOfType<AggregateException>(failure.InnerExceptions.Single());
     }
 }

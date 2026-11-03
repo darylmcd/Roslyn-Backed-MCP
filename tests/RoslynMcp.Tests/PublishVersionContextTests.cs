@@ -1,5 +1,6 @@
 using System.Diagnostics;
 
+using RoslynMcp.Tests.Helpers;
 namespace RoslynMcp.Tests;
 
 /// <summary>
@@ -15,63 +16,78 @@ public sealed class PublishVersionContextTests
     [TestMethod]
     public async Task PushEvent_WithMatchingTag_Succeeds()
     {
-        using var fixture = new VersionFixture(FixtureVersion);
+        var fixture = new VersionFixture(FixtureVersion);
+        await FixtureCleanupScope.RunAsync(async () =>
+        {
 
-        var result = await RunAsync(fixture.Root, "push", refName: $"v{FixtureVersion}");
+            var result = await RunAsync(fixture.Root, "push", refName: $"v{FixtureVersion}");
 
-        Assert.AreEqual(0, result.ExitCode, result.Combined);
-        StringAssert.Contains(result.Combined, "Release provenance OK");
+            Assert.AreEqual(0, result.ExitCode, result.Combined);
+            StringAssert.Contains(result.Combined, "Release provenance OK");
+        }, fixture.Dispose);
     }
 
     [TestMethod]
     public async Task PushEvent_WithMismatchedTag_FailsNamingBothVersions()
     {
-        using var fixture = new VersionFixture(FixtureVersion);
+        var fixture = new VersionFixture(FixtureVersion);
+        await FixtureCleanupScope.RunAsync(async () =>
+        {
 
-        var result = await RunAsync(fixture.Root, "push", refName: "v0.0.1");
+            var result = await RunAsync(fixture.Root, "push", refName: "v0.0.1");
 
-        Assert.AreEqual(1, result.ExitCode, result.Combined);
-        StringAssert.Contains(result.Combined, "v0.0.1");
-        StringAssert.Contains(result.Combined, FixtureVersion);
+            Assert.AreEqual(1, result.ExitCode, result.Combined);
+            StringAssert.Contains(result.Combined, "v0.0.1");
+            StringAssert.Contains(result.Combined, FixtureVersion);
+        }, fixture.Dispose);
     }
 
     [TestMethod]
     public async Task ReleaseEvent_WithMatchingTagName_Succeeds()
     {
-        using var fixture = new VersionFixture(FixtureVersion);
+        var fixture = new VersionFixture(FixtureVersion);
+        await FixtureCleanupScope.RunAsync(async () =>
+        {
 
-        var result = await RunAsync(fixture.Root, "release", releaseTag: $"v{FixtureVersion}");
+            var result = await RunAsync(fixture.Root, "release", releaseTag: $"v{FixtureVersion}");
 
-        Assert.AreEqual(0, result.ExitCode, result.Combined);
-        StringAssert.Contains(result.Combined, "github.event.release.tag_name");
+            Assert.AreEqual(0, result.ExitCode, result.Combined);
+            StringAssert.Contains(result.Combined, "github.event.release.tag_name");
+        }, fixture.Dispose);
     }
 
     [TestMethod]
     public async Task ReleaseEvent_WithMismatchedTagName_Fails()
     {
-        using var fixture = new VersionFixture(FixtureVersion);
+        var fixture = new VersionFixture(FixtureVersion);
+        await FixtureCleanupScope.RunAsync(async () =>
+        {
 
-        var result = await RunAsync(fixture.Root, "release", releaseTag: "v9.9.9");
+            var result = await RunAsync(fixture.Root, "release", releaseTag: "v9.9.9");
 
-        Assert.AreEqual(1, result.ExitCode, result.Combined);
-        StringAssert.Contains(result.Combined, "v9.9.9");
+            Assert.AreEqual(1, result.ExitCode, result.Combined);
+            StringAssert.Contains(result.Combined, "v9.9.9");
+        }, fixture.Dispose);
     }
 
     [TestMethod]
     public async Task ReleaseEvent_IgnoresRefNameAndComparesTagName()
     {
-        using var fixture = new VersionFixture(FixtureVersion);
+        var fixture = new VersionFixture(FixtureVersion);
+        await FixtureCleanupScope.RunAsync(async () =>
+        {
 
-        // A release published from a branch carries ref_name = the branch; only the
-        // release tag is authoritative, so a matching ref_name must not rescue a bad tag.
-        var result = await RunAsync(
-            fixture.Root,
-            "release",
-            refName: $"v{FixtureVersion}",
-            releaseTag: "v0.0.1");
+            // A release published from a branch carries ref_name = the branch; only the
+            // release tag is authoritative, so a matching ref_name must not rescue a bad tag.
+            var result = await RunAsync(
+                fixture.Root,
+                "release",
+                refName: $"v{FixtureVersion}",
+                releaseTag: "v0.0.1");
 
-        Assert.AreEqual(1, result.ExitCode, result.Combined);
-        StringAssert.Contains(result.Combined, "github.event.release.tag_name");
+            Assert.AreEqual(1, result.ExitCode, result.Combined);
+            StringAssert.Contains(result.Combined, "github.event.release.tag_name");
+        }, fixture.Dispose);
     }
 
     [TestMethod]
@@ -80,56 +96,71 @@ public sealed class PublishVersionContextTests
     [DataRow("push", "release-4.2.1")]
     public async Task PushEvent_WithMalformedTag_Fails(string eventName, string refName)
     {
-        using var fixture = new VersionFixture(FixtureVersion);
+        var fixture = new VersionFixture(FixtureVersion);
+        await FixtureCleanupScope.RunAsync(async () =>
+        {
 
-        var result = await RunAsync(fixture.Root, eventName, refName: refName);
+            var result = await RunAsync(fixture.Root, eventName, refName: refName);
 
-        Assert.AreEqual(1, result.ExitCode, result.Combined);
-        StringAssert.Contains(result.Combined, refName);
+            Assert.AreEqual(1, result.ExitCode, result.Combined);
+            StringAssert.Contains(result.Combined, refName);
+        }, fixture.Dispose);
     }
 
     [TestMethod]
     public async Task PushEvent_WithEmptyRefName_Fails()
     {
-        using var fixture = new VersionFixture(FixtureVersion);
+        var fixture = new VersionFixture(FixtureVersion);
+        await FixtureCleanupScope.RunAsync(async () =>
+        {
 
-        var result = await RunAsync(fixture.Root, "push");
+            var result = await RunAsync(fixture.Root, "push");
 
-        Assert.AreEqual(1, result.ExitCode, result.Combined);
-        StringAssert.Contains(result.Combined, "was empty");
+            Assert.AreEqual(1, result.ExitCode, result.Combined);
+            StringAssert.Contains(result.Combined, "was empty");
+        }, fixture.Dispose);
     }
 
     [TestMethod]
     public async Task ReleaseEvent_WithEmptyTagName_Fails()
     {
-        using var fixture = new VersionFixture(FixtureVersion);
+        var fixture = new VersionFixture(FixtureVersion);
+        await FixtureCleanupScope.RunAsync(async () =>
+        {
 
-        var result = await RunAsync(fixture.Root, "release");
+            var result = await RunAsync(fixture.Root, "release");
 
-        Assert.AreEqual(1, result.ExitCode, result.Combined);
-        StringAssert.Contains(result.Combined, "was empty");
+            Assert.AreEqual(1, result.ExitCode, result.Combined);
+            StringAssert.Contains(result.Combined, "was empty");
+        }, fixture.Dispose);
     }
 
     [TestMethod]
     public async Task WorkflowDispatch_WithoutAnyTag_SkipsComparison()
     {
-        using var fixture = new VersionFixture(FixtureVersion);
+        var fixture = new VersionFixture(FixtureVersion);
+        await FixtureCleanupScope.RunAsync(async () =>
+        {
 
-        var result = await RunAsync(fixture.Root, "workflow_dispatch");
+            var result = await RunAsync(fixture.Root, "workflow_dispatch");
 
-        Assert.AreEqual(0, result.ExitCode, result.Combined);
-        StringAssert.Contains(result.Combined, "skipping provenance comparison");
-        StringAssert.Contains(result.Combined, FixtureVersion);
+            Assert.AreEqual(0, result.ExitCode, result.Combined);
+            StringAssert.Contains(result.Combined, "skipping provenance comparison");
+            StringAssert.Contains(result.Combined, FixtureVersion);
+        }, fixture.Dispose);
     }
 
     [TestMethod]
     public async Task UnversionedTagPrefixIsOptional()
     {
-        using var fixture = new VersionFixture(FixtureVersion);
+        var fixture = new VersionFixture(FixtureVersion);
+        await FixtureCleanupScope.RunAsync(async () =>
+        {
 
-        var result = await RunAsync(fixture.Root, "push", refName: FixtureVersion);
+            var result = await RunAsync(fixture.Root, "push", refName: FixtureVersion);
 
-        Assert.AreEqual(0, result.ExitCode, result.Combined);
+            Assert.AreEqual(0, result.ExitCode, result.Combined);
+        }, fixture.Dispose);
     }
 
     [TestMethod]
@@ -435,16 +466,6 @@ public sealed class PublishVersionContextTests
         public string Root { get; }
 
         public void Dispose()
-        {
-            try
-            {
-                if (Directory.Exists(Root))
-                    Directory.Delete(Root, recursive: true);
-            }
-            catch (IOException)
-            {
-                // Best-effort temp cleanup; a locked fixture directory must not fail the test.
-            }
-        }
+            => TestFixtureFileSystem.DeleteDirectoryIfExists(Root);
     }
 }

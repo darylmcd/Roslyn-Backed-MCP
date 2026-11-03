@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests.Workspace;
 
@@ -61,20 +62,48 @@ public sealed class WorkspaceLoadCacheFastPathTests : TestBase
     }
 
     [TestCleanup]
-    public void Teardown()
+    public async Task TeardownAsync()
     {
-        TestFixtureFileSystem.DeleteDirectoryIfExists(_solutionCopyRoot);
+        await CleanupFailureCollector.RunAsync(
+            "Failed to delete one or more workspace cache fixture roots.",
+            CleanupFailureCollector.FromAction(() =>
+            {
+                if (_solutionCopyRoot is not null)
+                    TestFixtureFileSystem.DeleteDirectoryIfExists(_solutionCopyRoot);
+            }),
+            CleanupFailureCollector.FromAction(() => TestFixtureFileSystem.DeleteDirectoryIfExists(_cacheRoot)));
+    }
+
+    [TestMethod]
+    public async Task Teardown_ReportsInvalidCacheRoot()
+    {
+        var originalRoot = _cacheRoot;
         try
         {
-            if (Directory.Exists(_cacheRoot))
-            {
-                Directory.Delete(_cacheRoot, recursive: true);
-            }
+            _cacheRoot = Path.Combine(TestTempRoot.Current, "invalid\0cache");
+            var failure = await Assert.ThrowsExactlyAsync<AggregateException>(TeardownAsync);
+            Assert.IsInstanceOfType<ArgumentException>(failure.InnerExceptions.Single());
         }
-        catch
+        finally
         {
-            // Best-effort cleanup. A locked file under the cache root just leaks a temp
-            // directory; the next OS-level cleanup will reclaim it.
+            _cacheRoot = originalRoot;
+        }
+    }
+
+    [TestMethod]
+    public async Task Teardown_DeletesCacheRootEvenWhenSolutionCleanupFails()
+    {
+        var originalRoot = _solutionCopyRoot;
+        try
+        {
+            _solutionCopyRoot = Path.Combine(TestTempRoot.Current, "invalid\0solution");
+            var failure = await Assert.ThrowsExactlyAsync<AggregateException>(TeardownAsync);
+            Assert.IsInstanceOfType<ArgumentException>(failure.InnerExceptions.Single());
+            Assert.IsFalse(Directory.Exists(_cacheRoot));
+        }
+        finally
+        {
+            _solutionCopyRoot = originalRoot;
         }
     }
 

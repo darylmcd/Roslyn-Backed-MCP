@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Roslyn.Helpers;
 
+using RoslynMcp.Tests.Helpers;
 namespace RoslynMcp.Tests;
 
 /// <summary>
@@ -34,7 +35,7 @@ public sealed class ProjectOutputTypeTests : TestBase
         // Pre-fix: GetOutputType(XDocument?) saw no <OutputType> element and returned "Library".
         // Post-fix: GetEvaluatedOutputType opens the project under MSBuild and reads the
         // SDK-defaulted property, returning "Exe".
-        using var fixture = CreateProjectFixture(
+        var fixture = CreateProjectFixture(
             "WebApp.csproj",
             """
             <Project Sdk="Microsoft.NET.Sdk.Web">
@@ -43,11 +44,14 @@ public sealed class ProjectOutputTypeTests : TestBase
               </PropertyGroup>
             </Project>
             """);
+        FixtureCleanupScope.Run(() =>
+        {
 
-        var result = ProjectMetadataParser.GetEvaluatedOutputType(fixture.ProjectPath, MsBuildMetadataHelper.DefaultGlobalProperties, NullLogger.Instance);
+            var result = ProjectMetadataParser.GetEvaluatedOutputType(fixture.ProjectPath, MsBuildMetadataHelper.DefaultGlobalProperties, NullLogger.Instance);
 
-        Assert.AreEqual("Exe", result,
-            "Microsoft.NET.Sdk.Web projects inherit OutputType=Exe from the SDK targets; the evaluator must surface it even when the XML omits the element.");
+            Assert.AreEqual("Exe", result,
+                "Microsoft.NET.Sdk.Web projects inherit OutputType=Exe from the SDK targets; the evaluator must surface it even when the XML omits the element.");
+        }, fixture.Dispose);
     }
 
     [TestMethod]
@@ -56,7 +60,7 @@ public sealed class ProjectOutputTypeTests : TestBase
         // Worker SDK is the other commonly-affected case — generic-host background services
         // (ASP.NET Core hosted services, IHostedService apps) use Microsoft.NET.Sdk.Worker
         // and rely on the same SDK-defaulted OutputType=Exe.
-        using var fixture = CreateProjectFixture(
+        var fixture = CreateProjectFixture(
             "WorkerApp.csproj",
             """
             <Project Sdk="Microsoft.NET.Sdk.Worker">
@@ -65,11 +69,14 @@ public sealed class ProjectOutputTypeTests : TestBase
               </PropertyGroup>
             </Project>
             """);
+        FixtureCleanupScope.Run(() =>
+        {
 
-        var result = ProjectMetadataParser.GetEvaluatedOutputType(fixture.ProjectPath, MsBuildMetadataHelper.DefaultGlobalProperties, NullLogger.Instance);
+            var result = ProjectMetadataParser.GetEvaluatedOutputType(fixture.ProjectPath, MsBuildMetadataHelper.DefaultGlobalProperties, NullLogger.Instance);
 
-        Assert.AreEqual("Exe", result,
-            "Microsoft.NET.Sdk.Worker projects inherit OutputType=Exe from the SDK targets; the evaluator must surface it.");
+            Assert.AreEqual("Exe", result,
+                "Microsoft.NET.Sdk.Worker projects inherit OutputType=Exe from the SDK targets; the evaluator must surface it.");
+        }, fixture.Dispose);
     }
 
     [TestMethod]
@@ -78,7 +85,7 @@ public sealed class ProjectOutputTypeTests : TestBase
         // Regression guard: a plain Microsoft.NET.Sdk library project (no <OutputType>) must
         // still return "Library" via MSBuild evaluation — the SDK defaults the property to
         // "Library" for this case. This proves the evaluator did not just hard-code "Exe".
-        using var fixture = CreateProjectFixture(
+        var fixture = CreateProjectFixture(
             "PlainLib.csproj",
             """
             <Project Sdk="Microsoft.NET.Sdk">
@@ -87,11 +94,14 @@ public sealed class ProjectOutputTypeTests : TestBase
               </PropertyGroup>
             </Project>
             """);
+        FixtureCleanupScope.Run(() =>
+        {
 
-        var result = ProjectMetadataParser.GetEvaluatedOutputType(fixture.ProjectPath, MsBuildMetadataHelper.DefaultGlobalProperties, NullLogger.Instance);
+            var result = ProjectMetadataParser.GetEvaluatedOutputType(fixture.ProjectPath, MsBuildMetadataHelper.DefaultGlobalProperties, NullLogger.Instance);
 
-        Assert.AreEqual("Library", result,
-            "Microsoft.NET.Sdk library projects default OutputType=Library; the evaluator must report that value, not silently misreport.");
+            Assert.AreEqual("Library", result,
+                "Microsoft.NET.Sdk library projects default OutputType=Library; the evaluator must report that value, not silently misreport.");
+        }, fixture.Dispose);
     }
 
     [TestMethod]
@@ -100,7 +110,7 @@ public sealed class ProjectOutputTypeTests : TestBase
         // An explicit <OutputType>Exe</OutputType> on a plain Microsoft.NET.Sdk console
         // project must still produce "Exe" — the evaluator and the XML-only path agree
         // on this case.
-        using var fixture = CreateProjectFixture(
+        var fixture = CreateProjectFixture(
             "ConsoleApp.csproj",
             """
             <Project Sdk="Microsoft.NET.Sdk">
@@ -110,11 +120,14 @@ public sealed class ProjectOutputTypeTests : TestBase
               </PropertyGroup>
             </Project>
             """);
+        FixtureCleanupScope.Run(() =>
+        {
 
-        var result = ProjectMetadataParser.GetEvaluatedOutputType(fixture.ProjectPath, MsBuildMetadataHelper.DefaultGlobalProperties, NullLogger.Instance);
+            var result = ProjectMetadataParser.GetEvaluatedOutputType(fixture.ProjectPath, MsBuildMetadataHelper.DefaultGlobalProperties, NullLogger.Instance);
 
-        Assert.AreEqual("Exe", result,
-            "Explicit <OutputType>Exe</OutputType> must round-trip through the evaluator unchanged.");
+            Assert.AreEqual("Exe", result,
+                "Explicit <OutputType>Exe</OutputType> must round-trip through the evaluator unchanged.");
+        }, fixture.Dispose);
     }
 
     [TestMethod]
@@ -146,7 +159,7 @@ public sealed class ProjectOutputTypeTests : TestBase
         //
         // Both must return "Exe" for SDK.Web projects. Divergence (e.g. "Library" vs "Exe")
         // would mean one surface regressed back to the pre-fix XML-only path.
-        using var fixture = CreateProjectFixture(
+        var fixture = CreateProjectFixture(
             "SdkWebCrossSurface.csproj",
             """
             <Project Sdk="Microsoft.NET.Sdk.Web">
@@ -155,45 +168,48 @@ public sealed class ProjectOutputTypeTests : TestBase
               </PropertyGroup>
             </Project>
             """);
-
-        var loadStatus = await WorkspaceManager.LoadAsync(fixture.ProjectPath, CancellationToken.None);
-        try
+        await FixtureCleanupScope.RunAsync(async () =>
         {
-            // Surface 1: workspace_reload result. The single project in the loaded csproj
-            // surfaces via WorkspaceStatusDto.Projects with its evaluated OutputType.
-            var status = await WorkspaceManager.GetStatusAsync(loadStatus.WorkspaceId, CancellationToken.None);
-            Assert.AreEqual(1, status.Projects.Count, "Loading a single .csproj must surface exactly one project.");
-            var workspaceReloadOutputType = status.Projects[0].OutputType;
-            var projectName = status.Projects[0].Name;
 
-            // Surface 2: get_msbuild_properties result. Filtering by includedNames=["OutputType"]
-            // narrows the dump to just the property we care about, mirroring the typical caller
-            // pattern (small allowlist, not a full ~600-property dump).
-            var propertiesDump = await MsBuildEvaluationService.GetEvaluatedPropertiesAsync(
-                loadStatus.WorkspaceId,
-                projectName,
-                propertyNameFilter: null,
-                includedNames: new[] { "OutputType" },
-                CancellationToken.None);
+            var loadStatus = await WorkspaceManager.LoadAsync(fixture.ProjectPath, CancellationToken.None);
+            try
+            {
+                // Surface 1: workspace_reload result. The single project in the loaded csproj
+                // surfaces via WorkspaceStatusDto.Projects with its evaluated OutputType.
+                var status = await WorkspaceManager.GetStatusAsync(loadStatus.WorkspaceId, CancellationToken.None);
+                Assert.AreEqual(1, status.Projects.Count, "Loading a single .csproj must surface exactly one project.");
+                var workspaceReloadOutputType = status.Projects[0].OutputType;
+                var projectName = status.Projects[0].Name;
 
-            Assert.IsTrue(
-                propertiesDump.Properties.TryGetValue("OutputType", out var msbuildOutputType),
-                "get_msbuild_properties must include OutputType when the caller's allowlist requests it.");
+                // Surface 2: get_msbuild_properties result. Filtering by includedNames=["OutputType"]
+                // narrows the dump to just the property we care about, mirroring the typical caller
+                // pattern (small allowlist, not a full ~600-property dump).
+                var propertiesDump = await MsBuildEvaluationService.GetEvaluatedPropertiesAsync(
+                    loadStatus.WorkspaceId,
+                    projectName,
+                    propertyNameFilter: null,
+                    includedNames: new[] { "OutputType" },
+                    CancellationToken.None);
 
-            // Cross-surface assertion: both surfaces must agree, and the agreed-upon value
-            // must be "Exe" (the SDK-defaulted value for Microsoft.NET.Sdk.Web).
-            Assert.AreEqual("Exe", workspaceReloadOutputType,
-                "workspace_reload surface must report OutputType=Exe for Microsoft.NET.Sdk.Web projects (SDK-defaulted value).");
-            Assert.AreEqual("Exe", msbuildOutputType,
-                "get_msbuild_properties surface must report OutputType=Exe for Microsoft.NET.Sdk.Web projects (SDK-defaulted value).");
-            Assert.AreEqual(workspaceReloadOutputType, msbuildOutputType,
-                $"Cross-surface mismatch: workspace_reload reported '{workspaceReloadOutputType}' but get_msbuild_properties reported '{msbuildOutputType}'. " +
-                "Both surfaces draw from MSBuild evaluation and must agree — divergence indicates a regression in ProjectMetadataParser.GetOutputType or MsBuildEvaluationService.");
-        }
-        finally
-        {
-            WorkspaceManager.Close(loadStatus.WorkspaceId);
-        }
+                Assert.IsTrue(
+                    propertiesDump.Properties.TryGetValue("OutputType", out var msbuildOutputType),
+                    "get_msbuild_properties must include OutputType when the caller's allowlist requests it.");
+
+                // Cross-surface assertion: both surfaces must agree, and the agreed-upon value
+                // must be "Exe" (the SDK-defaulted value for Microsoft.NET.Sdk.Web).
+                Assert.AreEqual("Exe", workspaceReloadOutputType,
+                    "workspace_reload surface must report OutputType=Exe for Microsoft.NET.Sdk.Web projects (SDK-defaulted value).");
+                Assert.AreEqual("Exe", msbuildOutputType,
+                    "get_msbuild_properties surface must report OutputType=Exe for Microsoft.NET.Sdk.Web projects (SDK-defaulted value).");
+                Assert.AreEqual(workspaceReloadOutputType, msbuildOutputType,
+                    $"Cross-surface mismatch: workspace_reload reported '{workspaceReloadOutputType}' but get_msbuild_properties reported '{msbuildOutputType}'. " +
+                    "Both surfaces draw from MSBuild evaluation and must agree — divergence indicates a regression in ProjectMetadataParser.GetOutputType or MsBuildEvaluationService.");
+            }
+            finally
+            {
+                WorkspaceManager.Close(loadStatus.WorkspaceId);
+            }
+        }, fixture.Dispose);
     }
 
     private static ProjectFixture CreateProjectFixture(string fileName, string content)
@@ -213,19 +229,23 @@ public sealed class ProjectOutputTypeTests : TestBase
         public string ProjectPath { get; } = projectPath;
 
         public void Dispose()
-        {
-            try
-            {
-                if (Directory.Exists(rootPath))
-                {
-                    Directory.Delete(rootPath, recursive: true);
-                }
-            }
-            catch
-            {
-                // Best-effort cleanup. Locked files just leak a temp directory that the
-                // OS will reclaim on the next sweep.
-            }
-        }
+            => TestFixtureFileSystem.DeleteDirectoryIfExists(rootPath);
+    }
+
+    [TestMethod]
+    public void ProjectFixtureDispose_ReportsInvalidRoot()
+    {
+        var fixture = new ProjectFixture(Path.Combine(TestTempRoot.Current, "invalid\0project"), "unused");
+        Assert.ThrowsExactly<ArgumentException>(fixture.Dispose);
+    }
+
+    [TestMethod]
+    public void ProjectFixtureDispose_PreservesBodyAndCleanupFailures()
+    {
+        var fixture = new ProjectFixture(Path.Combine(TestTempRoot.Current, "invalid\0project"), "unused");
+        var failure = Assert.ThrowsExactly<AggregateException>(() =>
+            FixtureCleanupScope.Run(() => throw new InvalidOperationException("body failure"), fixture.Dispose));
+        Assert.IsInstanceOfType<InvalidOperationException>(failure.InnerExceptions[0]);
+        Assert.IsInstanceOfType<ArgumentException>(failure.InnerExceptions[1]);
     }
 }
