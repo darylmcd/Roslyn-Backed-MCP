@@ -841,4 +841,19 @@ public sealed class FileWatcherClearStaleAwaiterTests
         Assert.IsTrue(deleted);
         Assert.IsInstanceOfType<IOException>(failure.InnerExceptions.Single());
     }
+
+    [TestMethod]
+    public async Task WatchedRootCleanup_FailureSurvivesFixtureScope()
+    {
+        var deleted = false;
+        var failure = await Assert.ThrowsExactlyAsync<AggregateException>(() =>
+            FixtureCleanupScope.RunAsync(
+                () => Task.CompletedTask,
+                () => CleanupWatchedRootAsync(
+                    () => throw new IOException("watcher disposal failed"),
+                    () => deleted = true)));
+
+        Assert.IsTrue(deleted);
+        Assert.IsInstanceOfType<AggregateException>(failure.InnerExceptions.Single());
+    }
 }
