@@ -534,16 +534,6 @@ public sealed class TestCoveragePartialCoverletTests
         }
 
         public void Dispose()
-        {
-            try
-            {
-                if (Directory.Exists(_root))
-                    Directory.Delete(_root, recursive: true);
-            }
-            catch
-            {
-                // Best-effort cleanup — test temp dirs are non-critical.
-            }
-        }
+            => TestFixtureFileSystem.DeleteDirectoryIfExists(_root);
     }
 }

@@ -435,16 +435,6 @@ public sealed class PublishVersionContextTests
         public string Root { get; }
 
         public void Dispose()
-        {
-            try
-            {
-                if (Directory.Exists(Root))
-                    Directory.Delete(Root, recursive: true);
-            }
-            catch (IOException)
-            {
-                // Best-effort temp cleanup; a locked fixture directory must not fail the test.
-            }
-        }
+            => TestFixtureFileSystem.DeleteDirectoryIfExists(Root);
     }
 }

@@ -213,19 +213,13 @@ public sealed class ProjectOutputTypeTests : TestBase
         public string ProjectPath { get; } = projectPath;
 
         public void Dispose()
-        {
-            try
-            {
-                if (Directory.Exists(rootPath))
-                {
-                    Directory.Delete(rootPath, recursive: true);
-                }
-            }
-            catch
-            {
-                // Best-effort cleanup. Locked files just leak a temp directory that the
-                // OS will reclaim on the next sweep.
-            }
-        }
+            => TestFixtureFileSystem.DeleteDirectoryIfExists(rootPath);
+    }
+
+    [TestMethod]
+    public void ProjectFixtureDispose_ReportsInvalidRoot()
+    {
+        var fixture = new ProjectFixture(Path.Combine(TestTempRoot.Current, "invalid\0project"), "unused");
+        Assert.ThrowsExactly<ArgumentException>(fixture.Dispose);
     }
 }

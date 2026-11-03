@@ -22,19 +22,7 @@ public sealed class WorkspaceCacheCoordinatorTests
 
     [TestCleanup]
     public void Cleanup()
-    {
-        try
-        {
-            if (Directory.Exists(_root))
-            {
-                Directory.Delete(_root, recursive: true);
-            }
-        }
-        catch
-        {
-            // Best-effort cleanup; temp files are safe to leak until OS cleanup.
-        }
-    }
+        => TestFixtureFileSystem.DeleteDirectoryIfExists(_root);
 
     [TestMethod]
     public void ComputeMsbuildGraphHash_DelimiterInUnixPath_DoesNotAliasDifferentReferences()

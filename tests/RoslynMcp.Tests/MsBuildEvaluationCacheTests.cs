@@ -160,18 +160,21 @@ public sealed class MsBuildEvaluationCacheTests : TestBase
         public string ProjectPath { get; } = projectPath;
 
         public void Dispose()
-        {
-            try
-            {
-                if (Directory.Exists(rootPath))
-                {
-                    Directory.Delete(rootPath, recursive: true);
-                }
-            }
-            catch
-            {
-                // Best-effort cleanup; a locked temp dir is reclaimed by the OS sweep.
-            }
-        }
+            => TestFixtureFileSystem.DeleteDirectoryIfExists(rootPath);
+    }
+
+    [TestMethod]
+    public void ProjectFixtureDispose_ReportsInvalidRoot_AndAcceptsMissingRoot()
+    {
+        var invalid = new ProjectFixture(Path.Combine(TestTempRoot.Current, "invalid\0project"), "unused");
+        Assert.ThrowsExactly<ArgumentException>(invalid.Dispose);
+
+        var missing = new ProjectFixture(Path.Combine(TestTempRoot.Current, Guid.NewGuid().ToString("N")), "unused");
+        missing.Dispose();
+
+        var root = Path.Combine(TestTempRoot.Current, Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        new ProjectFixture(root, "unused").Dispose();
+        Assert.IsFalse(Directory.Exists(root));
     }
 }

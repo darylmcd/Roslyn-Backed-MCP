@@ -807,15 +807,7 @@ public sealed class FileWatcherClearStaleAwaiterTests
         }
         finally
         {
-            try
-            {
-                Directory.Delete(tempDir, recursive: true);
-            }
-            catch (IOException)
-            {
-                // Best-effort temp cleanup; a lingering FileSystemWatcher handle can briefly hold
-                // the directory. Not material to the assertion under test.
-            }
+            TestFixtureFileSystem.DeleteDirectoryIfExists(tempDir);
         }
     }
 }
