@@ -193,6 +193,7 @@ public sealed class ReleaseLagGuardTests
             {
                 ["CHANGELOG_FIXED_MAX_AGE_DAYS"] = maxAgeDays,
                 ["GITHUB_ACTIONS"] = null,
+                ["ROSLYNMCP_TEST_CHANGELOG_STAGE_TRACE"] = "1",
             },
             timeout: TimeSpan.FromSeconds(30),
             description: "changelog verifier");

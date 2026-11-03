@@ -23,6 +23,17 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = [System.IO.Path]::GetFullPath($RepoRoot)
+$traceStages = $env:ROSLYNMCP_TEST_CHANGELOG_STAGE_TRACE -eq '1'
+$traceStart = [System.Diagnostics.Stopwatch]::GetTimestamp()
+function Write-StageTrace {
+    param([Parameter(Mandatory)][string] $Stage)
+
+    if ($traceStages) {
+        [Console]::Error.WriteLine(
+            "changelog-stage pid=$PID elapsedMs=$([int][System.Diagnostics.Stopwatch]::GetElapsedTime($traceStart).TotalMilliseconds) stage=$Stage")
+    }
+}
+Write-StageTrace 'script-entry'
 $fragmentDir = Join-Path $repoRoot 'changelog.d'
 $validCategories = @('Fixed', 'Changed', 'Changed — BREAKING', 'Added', 'Maintenance')
 $releaseVersionPaths = @(
@@ -38,8 +49,10 @@ $releaseVersionPaths = @(
 function Invoke-Git {
     param([Parameter(Mandatory)][string[]] $Arguments)
 
+    Write-StageTrace "git-$($Arguments[0])-begin"
     $output = @(& git -C $repoRoot @Arguments 2>$null)
     $exitCode = $LASTEXITCODE
+    Write-StageTrace "git-$($Arguments[0])-end"
     if ($exitCode -ne 0) {
         throw "git $($Arguments[0]) failed while evaluating changelog requirements (exit $exitCode)."
     }
@@ -48,7 +61,9 @@ function Invoke-Git {
 }
 
 function Get-ChangedPaths {
+    Write-StageTrace 'git-inside-worktree-begin'
     $insideWorkTree = (& git -C $repoRoot rev-parse --is-inside-work-tree 2>$null | Out-String).Trim()
+    Write-StageTrace 'git-inside-worktree-end'
     if ($LASTEXITCODE -ne 0 -or $insideWorkTree -ne 'true') {
         throw "Changelog change enforcement requires a git worktree: $repoRoot"
     }
@@ -76,7 +91,9 @@ function Get-ChangedPaths {
 
     $baseRef = $null
     foreach ($candidate in ($baseCandidates | Select-Object -Unique)) {
+        Write-StageTrace 'git-base-verify-begin'
         & git -C $repoRoot rev-parse --verify --quiet $candidate *> $null
+        Write-StageTrace 'git-base-verify-end'
         if ($LASTEXITCODE -eq 0) {
             $baseRef = $candidate
             break
@@ -153,7 +170,9 @@ function Get-StaleFixedFragments {
     param([Parameter(Mandatory)][AllowEmptyCollection()][object[]] $Candidates)
 
     # Advisory only: any git failure or a shallow clone (no reliable add dates) yields no warnings.
+    Write-StageTrace 'git-shallow-begin'
     $shallow = (& git -C $repoRoot rev-parse --is-shallow-repository 2>$null | Out-String).Trim()
+    Write-StageTrace 'git-shallow-end'
     if ($LASTEXITCODE -ne 0 -or $shallow -ne 'false') {
         return @()
     }
@@ -165,7 +184,9 @@ function Get-StaleFixedFragments {
     }
 
     # Committer date (%ct): squash/rebase merges stamp merge time, so it measures time on main.
+    Write-StageTrace 'git-fragment-log-begin'
     $log = @(& git -C $repoRoot log --diff-filter=A --name-only --format=%x01%ct -- changelog.d 2>$null)
+    Write-StageTrace 'git-fragment-log-end'
     if ($LASTEXITCODE -ne 0) {
         return @()
     }
@@ -200,6 +221,7 @@ function Get-StaleFixedFragments {
     return @($stale)
 }
 
+Write-StageTrace 'fragment-scan-begin'
 if (-not (Test-Path -LiteralPath $fragmentDir -PathType Container)) {
     throw "Missing changelog fragment directory: $fragmentDir"
 }
@@ -303,7 +325,10 @@ if ($errors.Count -gt 0) {
     exit 1
 }
 
+Write-StageTrace 'fragment-scan-end'
+Write-StageTrace 'changed-paths-begin'
 $changedPaths = @(Get-ChangedPaths)
+Write-StageTrace 'changed-paths-end'
 $changeBearingPaths = @($changedPaths | Where-Object { Test-IsChangeBearingPath $_ })
 $changedCurrentFragments = @($fragments | Where-Object {
     $changedPaths -contains "changelog.d/$($_.Name)"
@@ -322,6 +347,7 @@ if ($changeBearingPaths.Count -gt 0 -and
     exit 1
 }
 
+Write-StageTrace 'stale-fragments-begin'
 foreach ($stale in @(Get-StaleFixedFragments -Candidates @($fixedFragments))) {
     $text = "changelog.d/$($stale.Name): Fixed fragment unreleased for $($stale.AgeDays) days (threshold $($stale.MaxDays); set CHANGELOG_FIXED_MAX_AGE_DAYS to change). Cut a release."
     Write-Warning $text
@@ -329,10 +355,12 @@ foreach ($stale in @(Get-StaleFixedFragments -Candidates @($fixedFragments))) {
         Write-Host "::warning::$text"
     }
 }
+Write-StageTrace 'stale-fragments-end'
 
 if ($assembledRelease) {
     Write-Host 'Changelog fragment verification passed (strict assembled release).'
     exit 0
 }
 
+Write-StageTrace 'script-complete'
 Write-Host "changelog.d/ fragment verification passed ($($fragments.Count) current; $($changedCurrentFragments.Count) changed)."
