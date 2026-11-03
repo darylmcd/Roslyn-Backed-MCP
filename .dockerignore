@@ -1,0 +1,15 @@
+.git
+.worktrees
+.vs
+.idea
+.roslynmcp
+.claude
+.cursor
+.mcp.json
+.env*
+**/bin
+**/obj
+**/artifacts
+**/TestResults
+**/test-results
+**/node_modules
