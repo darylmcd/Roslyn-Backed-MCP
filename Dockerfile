@@ -40,8 +40,9 @@ RUN groupadd --system mcpuser && \
 WORKDIR /app
 COPY --from=build /app .
 
-# Set read-only filesystem hint (mount volumes for workspace data)
-# Container should be run with: docker run --read-only --tmpdir /tmp -v /path/to/workspace:/workspace
+# Keep the image filesystem read-only; mount a workspace for MCP tools.
+# docker run --rm -i --read-only --tmpfs /tmp:mode=1777 -v /path/to/workspace:/workspace -e ROSLYNMCP_SANCTIONED_ROOTS=/workspace roslynmcp
+# The mounted workspace must be writable by mcpuser for restore and edit tools.
 ENV DOTNET_EnableDiagnostics=0
 
 USER mcpuser
