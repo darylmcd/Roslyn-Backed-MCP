@@ -39,6 +39,31 @@ public sealed class ReleaseLagGuardTests
 
     [TestMethod]
     [TestCategory("Process")]
+    public async Task VerifierTimeout_IncludesPersistedStages()
+    {
+        await GitFixtureRunner.RequireAvailableAsync();
+        var root = await CreateFixtureAsync("Fixed", DateTimeOffset.UtcNow);
+        try
+        {
+            File.WriteAllText(Path.Combine(root, ".git", "changelog-stage-trace.log"),
+                "stage=known-before-timeout");
+            File.WriteAllText(Path.Combine(root, "eng", "verify-changelog-fragments.ps1"),
+                "param([string] $RepoRoot)\n" +
+                "Start-Sleep -Seconds 60\n");
+
+            var failure = await Assert.ThrowsExactlyAsync<TimeoutException>(() =>
+                RunVerifierWithTimeoutAsync(root, null, TimeSpan.FromMilliseconds(250)));
+            StringAssert.Contains(failure.Message, "Verifier stages:");
+            StringAssert.Contains(failure.Message, "stage=known-before-timeout");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(root);
+        }
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
     public async Task FreshFixedFragment_DoesNotWarn()
     {
         await GitFixtureRunner.RequireAvailableAsync();
@@ -202,7 +227,11 @@ public sealed class ReleaseLagGuardTests
         Assert.AreEqual(0, result.ExitCode, result.AllOutput);
     }
 
-    private static async Task<PwshScriptResult> RunVerifierAsync(string fixtureRoot, string? maxAgeDays = null)
+    private static Task<PwshScriptResult> RunVerifierAsync(string fixtureRoot, string? maxAgeDays = null)
+        => RunVerifierWithTimeoutAsync(fixtureRoot, maxAgeDays, TimeSpan.FromSeconds(30));
+
+    private static async Task<PwshScriptResult> RunVerifierWithTimeoutAsync(
+        string fixtureRoot, string? maxAgeDays, TimeSpan timeout)
     {
         try
         {
@@ -221,7 +250,7 @@ public sealed class ReleaseLagGuardTests
                     ["GITHUB_ACTIONS"] = null,
                     ["ROSLYNMCP_TEST_CHANGELOG_STAGE_TRACE"] = "1",
                 },
-                timeout: TimeSpan.FromSeconds(30),
+                timeout: timeout,
                 description: "changelog verifier");
         }
         catch (TimeoutException ex)
