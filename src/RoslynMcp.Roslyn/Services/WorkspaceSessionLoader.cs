@@ -24,6 +24,8 @@ namespace RoslynMcp.Roslyn.Services;
 internal class WorkspaceSessionLoader
 {
     internal const string SupportedPathCorrection = "Path must identify a solution (.sln/.slnx) or C# project (.csproj).";
+    internal WorkspaceResourceDisposer? ResourceDisposerForTesting { get; set; }
+    internal Action<ForkAdmissionExecution?>? AdmissionDisposalForTesting { get; set; }
 
     /// <summary>
     /// Creates a new <see cref="MSBuildWorkspace"/>, attaches the diagnostics sink, opens
@@ -50,6 +52,20 @@ internal class WorkspaceSessionLoader
         AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease? analyzerLease = null;
         var returningWorkspace = false;
         var nativeStarted = false;
+        var disposer = ResourceDisposerForTesting ?? WorkspaceResourceDisposer.Default;
+        List<Exception> CleanupOwnedResources() => WorkspaceResourceDisposer.DisposeOrdered(
+            () =>
+            {
+                var abandoned = workspace;
+                workspace = null;
+                disposer.DisposeWorkspace(abandoned);
+            },
+            () =>
+            {
+                var abandoned = analyzerLease;
+                analyzerLease = null;
+                disposer.DisposeLease(abandoned);
+            });
         try
         {
             var effectiveProperties = admissionExecution?.Properties(globalProperties) ?? globalProperties;
@@ -125,23 +141,44 @@ internal class WorkspaceSessionLoader
             // shadow lease created before the throw — lease after workspace, so Roslyn has
             // released the analyzer references first) before propagating, so the caller does
             // not have to track ownership of a return-value-not-yet-handed-out.
-            if (!nativeStarted) admissionExecution?.Complete();
-            workspace?.Dispose();
-            analyzerLease?.Dispose();
+            if (!nativeStarted)
+            {
+                try { admissionExecution?.Complete(); }
+                catch (Exception completionFailure)
+                {
+                    logger.LogError(completionFailure, "Fork admission completion after failed workspace load failed");
+                }
+            }
+            var cleanupFailures = CleanupOwnedResources();
+            if (cleanupFailures.Count > 0)
+                logger.LogError(new AggregateException(cleanupFailures),
+                    "Disposing resources after failed workspace load failed; the original load failure is preserved");
             throw;
         }
         finally
         {
-            admissionExecution?.Dispose();
-            if (admissionExecution?.CleanupWarning is { } warning)
+            Exception? admissionCleanupFailure = null;
+            try
             {
+                if (AdmissionDisposalForTesting is { } disposeAdmission)
+                    disposeAdmission(admissionExecution);
+                else
+                    admissionExecution?.Dispose();
+            }
+            catch (Exception failure) { admissionCleanupFailure = failure; }
+            if (admissionCleanupFailure is not null)
+                logger.LogError(admissionCleanupFailure,
+                    "Disposing fork admission execution after workspace load failed");
+            if (admissionExecution?.CleanupWarning is { } warning)
                 logger.LogWarning("{Warning}", warning);
-                if (returningWorkspace)
-                {
-                    workspace?.Dispose();
-                    analyzerLease?.Dispose();
-                    throw InvalidOperationErrors.Internal(warning);
-                }
+            if (returningWorkspace && (admissionCleanupFailure is not null || admissionExecution?.CleanupWarning is not null))
+            {
+                var cleanupFailures = CleanupOwnedResources();
+                if (cleanupFailures.Count > 0)
+                    logger.LogError(new AggregateException(cleanupFailures),
+                        "Disposing resources after fork admission cleanup failed");
+                if (admissionCleanupFailure is not null) throw admissionCleanupFailure;
+                throw InvalidOperationErrors.Internal(admissionExecution!.CleanupWarning!);
             }
         }
     }

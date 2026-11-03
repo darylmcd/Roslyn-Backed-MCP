@@ -128,6 +128,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
     private ExceptionDispatchInfo? _shutdownFailure;
     // Test seam: rendezvous completed loads before the atomic dedup/publication decision.
     internal Action? BeforeLoadPublicationForTesting { get; set; }
+    internal WorkspaceResourceDisposer? ResourceDisposerForTesting { get; set; }
 
     /// <summary>
     /// Retains the exact registered source session until the callback and its cleanup finish.
@@ -469,7 +470,8 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
 
     slotAcquired:
         var workspaceId = Guid.NewGuid().ToString("N");
-        var session = new WorkspaceSession(workspaceId, _timeProvider.GetUtcNow());
+        var session = new WorkspaceSession(workspaceId, _timeProvider.GetUtcNow(),
+            ResourceDisposerForTesting ?? WorkspaceResourceDisposer.Default);
         // True once the registered session owns the capacity slot. From then on only the exact-session
         // removal path (RemoveSessionEffects) returns it; this method returns it only while still false.
         var slotTransferred = false;
@@ -1844,7 +1846,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
         }).ToImmutableArray();
     }
 
-    private sealed class WorkspaceSession(string workspaceId, DateTimeOffset createdAtUtc) : IDisposable
+    private sealed class WorkspaceSession(string workspaceId, DateTimeOffset createdAtUtc, WorkspaceResourceDisposer disposer) : IDisposable
     {
         private int _version;
 
@@ -1876,16 +1878,23 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
 
         public void Dispose()
         {
-            Workspace?.Dispose();
             // Lease after workspace so Roslyn has released the analyzer references before the
             // load contexts are unloaded and the shadow root is deleted; the Workspace field is
             // nulled first so this frame's session reference does not keep the solution graph
             // (and through it the loaded analyzer assemblies) rooted while the lease's
             // GC-assisted delete retries run. Lease disposal is idempotent, so the
             // eviction/close/host-shutdown paths can all reach here safely.
-            Workspace = null;
-            AnalyzerLease?.Dispose();
-            LoadLock.Dispose();
+            var failures = WorkspaceResourceDisposer.DisposeOrdered(
+                () =>
+                {
+                    var retired = Workspace;
+                    Workspace = null;
+                    disposer.DisposeWorkspace(retired);
+                },
+                () => disposer.DisposeLease(AnalyzerLease),
+                () => disposer.DisposeLoadLock(LoadLock));
+            if (failures.Count == 1) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failures[0]).Throw();
+            if (failures.Count > 1) throw new AggregateException("Workspace session disposal failed.", failures);
         }
     }
 }
