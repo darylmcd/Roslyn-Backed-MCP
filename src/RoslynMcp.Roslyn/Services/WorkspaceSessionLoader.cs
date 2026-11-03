@@ -168,7 +168,7 @@ internal class WorkspaceSessionLoader
             catch (Exception failure) { admissionCleanupFailure = failure; }
             if (admissionCleanupFailure is not null)
                 logger.LogError(admissionCleanupFailure,
-                    "Disposing fork admission execution after workspace load failed");
+                    "Disposing fork admission execution failed");
             if (admissionExecution?.CleanupWarning is { } warning)
                 logger.LogWarning("{Warning}", warning);
             if (returningWorkspace && (admissionCleanupFailure is not null || admissionExecution?.CleanupWarning is not null))
