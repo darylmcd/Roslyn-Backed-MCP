@@ -7,6 +7,7 @@ using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Services;
 
+using RoslynMcp.Tests.Helpers;
 namespace RoslynMcp.Tests;
 
 /// <summary>
@@ -33,51 +34,54 @@ public sealed class TestCoveragePartialCoverletTests
     {
         // Build two on-disk csproj files: one with the coverlet.collector reference and one
         // without. FindTestProjectsWithoutCoverlet reads from disk so we need real files.
-        using var fixture = new CoverletProjectFixture();
-        var withCoverletPath = fixture.WriteCsproj("WithCoverlet", includesCoverletCollector: true);
-        var withoutCoverletPath = fixture.WriteCsproj("WithoutCoverlet", includesCoverletCollector: false);
+        var fixture = new CoverletProjectFixture();
+        await FixtureCleanupScope.RunAsync(async () =>
+        {
+            var withCoverletPath = fixture.WriteCsproj("WithCoverlet", includesCoverletCollector: true);
+            var withoutCoverletPath = fixture.WriteCsproj("WithoutCoverlet", includesCoverletCollector: false);
 
-        var gate = new PassthroughGate();
-        var workspace = new MixedCoverletWorkspaceManager(withCoverletPath, withoutCoverletPath);
-        // Use a runner that writes a fake Cobertura XML into the coverage results directory
-        // so the parser produces a real TestCoverageResultDto rather than the no-coverage-
-        // file fallback. The runner inspects the --results-directory argument and drops a
-        // minimal but valid Cobertura document there.
-        var runner = new CoberturaWritingDotnetCommandRunner();
+            var gate = new PassthroughGate();
+            var workspace = new MixedCoverletWorkspaceManager(withCoverletPath, withoutCoverletPath);
+            // Use a runner that writes a fake Cobertura XML into the coverage results directory
+            // so the parser produces a real TestCoverageResultDto rather than the no-coverage-
+            // file fallback. The runner inspects the --results-directory argument and drops a
+            // minimal but valid Cobertura document there.
+            var runner = new CoberturaWritingDotnetCommandRunner();
 
-        var json = await TestCoverageTools.RunTestCoverageCore(
-            gate,
-            workspace,
-            new GatedCommandExecutor(workspace, runner, NullLogger<GatedCommandExecutor>.Instance),
-            new ValidationServiceOptions(),
-            workspaceId: "ws-coverage-partial",
-            projectName: null,
-            progress: null,
-            ct: CancellationToken.None);
+            var json = await TestCoverageTools.RunTestCoverageCore(
+                gate,
+                workspace,
+                new GatedCommandExecutor(workspace, runner, NullLogger<GatedCommandExecutor>.Instance),
+                new ValidationServiceOptions(),
+                workspaceId: "ws-coverage-partial",
+                projectName: null,
+                progress: null,
+                ct: CancellationToken.None);
 
-        using var doc = JsonDocument.Parse(json);
-        var root = doc.RootElement;
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
 
-        Assert.IsTrue(root.GetProperty("success").GetBoolean(),
-            "Mixed-coverlet runs must report success=true — partial coverage is a recoverable state.");
-        Assert.AreEqual(JsonValueKind.Null, root.GetProperty("failureEnvelope").ValueKind,
-            "failureEnvelope must be null when partial coverage succeeds.");
+            Assert.IsTrue(root.GetProperty("success").GetBoolean(),
+                "Mixed-coverlet runs must report success=true — partial coverage is a recoverable state.");
+            Assert.AreEqual(JsonValueKind.Null, root.GetProperty("failureEnvelope").ValueKind,
+                "failureEnvelope must be null when partial coverage succeeds.");
 
-        var coverageGaps = root.GetProperty("coverageGaps");
-        Assert.AreEqual(JsonValueKind.Array, coverageGaps.ValueKind,
-            "coverageGaps must be a JSON array of project names when partial coverage is returned.");
-        var gapNames = coverageGaps.EnumerateArray().Select(e => e.GetString()).ToList();
-        Assert.AreEqual(1, gapNames.Count, "Exactly one project lacked coverlet in this fixture.");
-        Assert.AreEqual("WithoutCoverlet", gapNames[0],
-            "coverageGaps must contain the name of the project that was skipped.");
+            var coverageGaps = root.GetProperty("coverageGaps");
+            Assert.AreEqual(JsonValueKind.Array, coverageGaps.ValueKind,
+                "coverageGaps must be a JSON array of project names when partial coverage is returned.");
+            var gapNames = coverageGaps.EnumerateArray().Select(e => e.GetString()).ToList();
+            Assert.AreEqual(1, gapNames.Count, "Exactly one project lacked coverlet in this fixture.");
+            Assert.AreEqual("WithoutCoverlet", gapNames[0],
+                "coverageGaps must contain the name of the project that was skipped.");
 
-        // The classic modules / line-coverage fields must remain populated from the per-project
-        // Cobertura run on WithCoverlet.
-        Assert.AreEqual(JsonValueKind.Array, root.GetProperty("modules").ValueKind);
-        Assert.IsTrue(root.GetProperty("modules").GetArrayLength() > 0,
-            "modules array must be populated from the per-project Cobertura output.");
-        Assert.AreEqual(JsonValueKind.Number, root.GetProperty("lineCoveragePercent").ValueKind,
-            "lineCoveragePercent must be a number, not null, when the per-project run produced a Cobertura file.");
+            // The classic modules / line-coverage fields must remain populated from the per-project
+            // Cobertura run on WithCoverlet.
+            Assert.AreEqual(JsonValueKind.Array, root.GetProperty("modules").ValueKind);
+            Assert.IsTrue(root.GetProperty("modules").GetArrayLength() > 0,
+                "modules array must be populated from the per-project Cobertura output.");
+            Assert.AreEqual(JsonValueKind.Number, root.GetProperty("lineCoveragePercent").ValueKind,
+                "lineCoveragePercent must be a number, not null, when the per-project run produced a Cobertura file.");
+        }, fixture.Dispose);
     }
 
     /// <summary>
@@ -88,27 +92,30 @@ public sealed class TestCoveragePartialCoverletTests
     [TestMethod]
     public async Task RunTestCoverageCore_PartialPath_SharesOneTestTimeoutBudgetAcrossProjects()
     {
-        using var fixture = new CoverletProjectFixture();
-        var first = fixture.WriteCsproj("WithCoverlet", includesCoverletCollector: true);
-        var second = fixture.WriteCsproj("SecondCoverlet", includesCoverletCollector: true);
-        var without = fixture.WriteCsproj("WithoutCoverlet", includesCoverletCollector: false);
-        var workspace = new MixedCoverletWorkspaceManager(first, without, [("SecondCoverlet", second, true)]);
-        var executor = new BudgetRecordingExecutor(delayAfterFirstCall: TimeSpan.FromMilliseconds(50));
-        var total = TimeSpan.FromMinutes(5);
+        var fixture = new CoverletProjectFixture();
+        await FixtureCleanupScope.RunAsync(async () =>
+        {
+            var first = fixture.WriteCsproj("WithCoverlet", includesCoverletCollector: true);
+            var second = fixture.WriteCsproj("SecondCoverlet", includesCoverletCollector: true);
+            var without = fixture.WriteCsproj("WithoutCoverlet", includesCoverletCollector: false);
+            var workspace = new MixedCoverletWorkspaceManager(first, without, [("SecondCoverlet", second, true)]);
+            var executor = new BudgetRecordingExecutor(delayAfterFirstCall: TimeSpan.FromMilliseconds(50));
+            var total = TimeSpan.FromMinutes(5);
 
-        await TestCoverageTools.RunTestCoverageCore(
-            new PassthroughGate(),
-            workspace,
-            executor,
-            new ValidationServiceOptions { TestTimeout = total },
-            workspaceId: "ws-coverage-budget",
-            projectName: null,
-            progress: null,
-            ct: CancellationToken.None);
+            await TestCoverageTools.RunTestCoverageCore(
+                new PassthroughGate(),
+                workspace,
+                executor,
+                new ValidationServiceOptions { TestTimeout = total },
+                workspaceId: "ws-coverage-budget",
+                projectName: null,
+                progress: null,
+                ct: CancellationToken.None);
 
-        Assert.HasCount(2, executor.Budgets);
-        Assert.IsLessThanOrEqualTo(total, executor.Budgets[0]);
-        Assert.IsLessThan(executor.Budgets[0], executor.Budgets[1]);
+            Assert.HasCount(2, executor.Budgets);
+            Assert.IsLessThanOrEqualTo(total, executor.Budgets[0]);
+            Assert.IsLessThan(executor.Budgets[0], executor.Budgets[1]);
+        }, fixture.Dispose);
     }
 
     private sealed class BudgetRecordingExecutor(TimeSpan delayAfterFirstCall) : IGatedCommandExecutor
@@ -156,54 +163,57 @@ public sealed class TestCoveragePartialCoverletTests
     [TestMethod]
     public async Task RunTestCoverageCore_AllProjectsLackCoverlet_FailFastsWithCoverletMissingEnvelope()
     {
-        using var fixture = new CoverletProjectFixture();
-        var withoutA = fixture.WriteCsproj("WithoutCoverletA", includesCoverletCollector: false);
-        var withoutB = fixture.WriteCsproj("WithoutCoverletB", includesCoverletCollector: false);
+        var fixture = new CoverletProjectFixture();
+        await FixtureCleanupScope.RunAsync(async () =>
+        {
+            var withoutA = fixture.WriteCsproj("WithoutCoverletA", includesCoverletCollector: false);
+            var withoutB = fixture.WriteCsproj("WithoutCoverletB", includesCoverletCollector: false);
 
-        var gate = new PassthroughGate();
-        var workspace = new MixedCoverletWorkspaceManager(
-            withCoverletProjectPath: null,
-            withoutCoverletProjectPath: null,
-            extraProjects: [
-                ("WithoutCoverletA", withoutA, true),
-                ("WithoutCoverletB", withoutB, true),
-            ]);
-        // Runner must NOT be invoked on the all-missing path. The throwing stub guards that
-        // contract — if execution reaches the dotnet test step the test will fail with the
-        // throw-on-invocation message instead of the fail-fast envelope assertion.
-        var runner = new ThrowingDotnetCommandRunner(
-            new InvalidOperationException("fail-fast path must not invoke dotnet test"));
+            var gate = new PassthroughGate();
+            var workspace = new MixedCoverletWorkspaceManager(
+                withCoverletProjectPath: null,
+                withoutCoverletProjectPath: null,
+                extraProjects: [
+                    ("WithoutCoverletA", withoutA, true),
+                    ("WithoutCoverletB", withoutB, true),
+                ]);
+            // Runner must NOT be invoked on the all-missing path. The throwing stub guards that
+            // contract — if execution reaches the dotnet test step the test will fail with the
+            // throw-on-invocation message instead of the fail-fast envelope assertion.
+            var runner = new ThrowingDotnetCommandRunner(
+                new InvalidOperationException("fail-fast path must not invoke dotnet test"));
 
-        var json = await TestCoverageTools.RunTestCoverageCore(
-            gate,
-            workspace,
-            new GatedCommandExecutor(workspace, runner, NullLogger<GatedCommandExecutor>.Instance),
-            new ValidationServiceOptions(),
-            workspaceId: "ws-coverage-allmissing",
-            projectName: null,
-            progress: null,
-            ct: CancellationToken.None);
+            var json = await TestCoverageTools.RunTestCoverageCore(
+                gate,
+                workspace,
+                new GatedCommandExecutor(workspace, runner, NullLogger<GatedCommandExecutor>.Instance),
+                new ValidationServiceOptions(),
+                workspaceId: "ws-coverage-allmissing",
+                projectName: null,
+                progress: null,
+                ct: CancellationToken.None);
 
-        using var doc = JsonDocument.Parse(json);
-        var root = doc.RootElement;
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
 
-        Assert.IsFalse(root.GetProperty("success").GetBoolean(),
-            "All-projects-lack-coverlet must still fail-fast with success=false.");
+            Assert.IsFalse(root.GetProperty("success").GetBoolean(),
+                "All-projects-lack-coverlet must still fail-fast with success=false.");
 
-        var envelope = root.GetProperty("failureEnvelope");
-        Assert.AreEqual(JsonValueKind.Object, envelope.ValueKind);
-        Assert.AreEqual("CoverletMissing", envelope.GetProperty("errorKind").GetString());
+            var envelope = root.GetProperty("failureEnvelope");
+            Assert.AreEqual(JsonValueKind.Object, envelope.ValueKind);
+            Assert.AreEqual("CoverletMissing", envelope.GetProperty("errorKind").GetString());
 
-        var missingPackages = envelope.GetProperty("missingPackages");
-        Assert.AreEqual(JsonValueKind.Array, missingPackages.ValueKind);
-        Assert.AreEqual(2, missingPackages.GetArrayLength(),
-            "Both lacking projects must surface in missingPackages.");
+            var missingPackages = envelope.GetProperty("missingPackages");
+            Assert.AreEqual(JsonValueKind.Array, missingPackages.ValueKind);
+            Assert.AreEqual(2, missingPackages.GetArrayLength(),
+                "Both lacking projects must surface in missingPackages.");
 
-        // coverageGaps is the partial-success surface and must NOT be populated on the
-        // all-missing fail-fast path (the missingPackages field inside failureEnvelope is the
-        // canonical surface there). The serializer emits null for unset coverageGaps.
-        Assert.AreEqual(JsonValueKind.Null, root.GetProperty("coverageGaps").ValueKind,
-            "coverageGaps must be null on the all-missing fail-fast path — failureEnvelope.missingPackages is the canonical surface.");
+            // coverageGaps is the partial-success surface and must NOT be populated on the
+            // all-missing fail-fast path (the missingPackages field inside failureEnvelope is the
+            // canonical surface there). The serializer emits null for unset coverageGaps.
+            Assert.AreEqual(JsonValueKind.Null, root.GetProperty("coverageGaps").ValueKind,
+                "coverageGaps must be null on the all-missing fail-fast path — failureEnvelope.missingPackages is the canonical surface.");
+        }, fixture.Dispose);
     }
 
     /// <summary>
@@ -215,37 +225,40 @@ public sealed class TestCoveragePartialCoverletTests
     [TestMethod]
     public async Task RunTestCoverageCore_AllProjectsHaveCoverlet_ClassicPathNoGaps()
     {
-        using var fixture = new CoverletProjectFixture();
-        var pathA = fixture.WriteCsproj("WithCoverletA", includesCoverletCollector: true);
-        var pathB = fixture.WriteCsproj("WithCoverletB", includesCoverletCollector: true);
+        var fixture = new CoverletProjectFixture();
+        await FixtureCleanupScope.RunAsync(async () =>
+        {
+            var pathA = fixture.WriteCsproj("WithCoverletA", includesCoverletCollector: true);
+            var pathB = fixture.WriteCsproj("WithCoverletB", includesCoverletCollector: true);
 
-        var gate = new PassthroughGate();
-        var workspace = new MixedCoverletWorkspaceManager(
-            withCoverletProjectPath: null,
-            withoutCoverletProjectPath: null,
-            extraProjects: [
-                ("WithCoverletA", pathA, true),
-                ("WithCoverletB", pathB, true),
-            ]);
-        var runner = new CoberturaWritingDotnetCommandRunner();
+            var gate = new PassthroughGate();
+            var workspace = new MixedCoverletWorkspaceManager(
+                withCoverletProjectPath: null,
+                withoutCoverletProjectPath: null,
+                extraProjects: [
+                    ("WithCoverletA", pathA, true),
+                    ("WithCoverletB", pathB, true),
+                ]);
+            var runner = new CoberturaWritingDotnetCommandRunner();
 
-        var json = await TestCoverageTools.RunTestCoverageCore(
-            gate,
-            workspace,
-            new GatedCommandExecutor(workspace, runner, NullLogger<GatedCommandExecutor>.Instance),
-            new ValidationServiceOptions(),
-            workspaceId: "ws-coverage-allcoverlet",
-            projectName: null,
-            progress: null,
-            ct: CancellationToken.None);
+            var json = await TestCoverageTools.RunTestCoverageCore(
+                gate,
+                workspace,
+                new GatedCommandExecutor(workspace, runner, NullLogger<GatedCommandExecutor>.Instance),
+                new ValidationServiceOptions(),
+                workspaceId: "ws-coverage-allcoverlet",
+                projectName: null,
+                progress: null,
+                ct: CancellationToken.None);
 
-        using var doc = JsonDocument.Parse(json);
-        var root = doc.RootElement;
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
 
-        Assert.IsTrue(root.GetProperty("success").GetBoolean());
-        Assert.AreEqual(JsonValueKind.Null, root.GetProperty("failureEnvelope").ValueKind);
-        Assert.AreEqual(JsonValueKind.Null, root.GetProperty("coverageGaps").ValueKind,
-            "All-projects-have-coverlet must NOT populate coverageGaps — that field is partial-only.");
+            Assert.IsTrue(root.GetProperty("success").GetBoolean());
+            Assert.AreEqual(JsonValueKind.Null, root.GetProperty("failureEnvelope").ValueKind);
+            Assert.AreEqual(JsonValueKind.Null, root.GetProperty("coverageGaps").ValueKind,
+                "All-projects-have-coverlet must NOT populate coverageGaps — that field is partial-only.");
+        }, fixture.Dispose);
     }
 
     /// <summary>
@@ -257,30 +270,33 @@ public sealed class TestCoveragePartialCoverletTests
     [TestMethod]
     public async Task RunTestCoverageCore_SuccessPath_DeletesTempCoverageDir()
     {
-        using var fixture = new CoverletProjectFixture();
-        var pathA = fixture.WriteCsproj("WithCoverletA", includesCoverletCollector: true);
+        var fixture = new CoverletProjectFixture();
+        await FixtureCleanupScope.RunAsync(async () =>
+        {
+            var pathA = fixture.WriteCsproj("WithCoverletA", includesCoverletCollector: true);
 
-        var gate = new PassthroughGate();
-        var workspace = new MixedCoverletWorkspaceManager(
-            withCoverletProjectPath: null,
-            withoutCoverletProjectPath: null,
-            extraProjects: [("WithCoverletA", pathA, true)]);
-        var runner = new CoberturaWritingDotnetCommandRunner();
+            var gate = new PassthroughGate();
+            var workspace = new MixedCoverletWorkspaceManager(
+                withCoverletProjectPath: null,
+                withoutCoverletProjectPath: null,
+                extraProjects: [("WithCoverletA", pathA, true)]);
+            var runner = new CoberturaWritingDotnetCommandRunner();
 
-        await TestCoverageTools.RunTestCoverageCore(
-            gate,
-            workspace,
-            new GatedCommandExecutor(workspace, runner, NullLogger<GatedCommandExecutor>.Instance),
-            new ValidationServiceOptions(),
-            workspaceId: "ws-coverage-cleanup",
-            projectName: null,
-            progress: null,
-            ct: CancellationToken.None);
+            await TestCoverageTools.RunTestCoverageCore(
+                gate,
+                workspace,
+                new GatedCommandExecutor(workspace, runner, NullLogger<GatedCommandExecutor>.Instance),
+                new ValidationServiceOptions(),
+                workspaceId: "ws-coverage-cleanup",
+                projectName: null,
+                progress: null,
+                ct: CancellationToken.None);
 
-        Assert.IsNotNull(runner.LastResultsDirectory,
-            "Runner should have received a --results-directory argument.");
-        Assert.IsFalse(Directory.Exists(runner.LastResultsDirectory!),
-            "The temp coverage dir must be deleted after a successful coverage run — it previously leaked.");
+            Assert.IsNotNull(runner.LastResultsDirectory,
+                "Runner should have received a --results-directory argument.");
+            Assert.IsFalse(Directory.Exists(runner.LastResultsDirectory!),
+                "The temp coverage dir must be deleted after a successful coverage run — it previously leaked.");
+        }, fixture.Dispose);
     }
 
     // ── Test doubles ────────────────────────────────────────────────────────
