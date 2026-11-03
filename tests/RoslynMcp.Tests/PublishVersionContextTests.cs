@@ -211,7 +211,7 @@ public sealed class PublishVersionContextTests
             {
                 $"        run: {indicator} # valid scalar",
                 "        # A YAML comment can separate the indicator from its body.",
-                "          echo ${{{{ github.ref_name }}}}",
+                "          echo ${{ github.ref_name }}",
             };
             Assert.HasCount(1, FindInterpolatedRunBodies(lines), indicator);
         }
@@ -230,7 +230,7 @@ public sealed class PublishVersionContextTests
 
             if (runBodyIndent >= 0)
             {
-                // A run: | block body continues while lines are blank or indented deeper
+                // A block scalar body continues while lines are blank or indented deeper
                 // than the `run:` key itself.
                 if (trimmed.Length == 0 || trimmed.StartsWith('#'))
                 {
