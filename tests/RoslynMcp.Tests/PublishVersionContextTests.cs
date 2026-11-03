@@ -217,6 +217,34 @@ public sealed class PublishVersionContextTests
         }
     }
 
+    [TestMethod]
+    public void RunBodyGuard_RecognizesMultilineScalarsAndCommentsWithinScripts()
+    {
+        var cases = new[]
+        {
+            new[] { "        run: |", "          # ${{ github.event.pull_request.body }}" },
+            new[] { "        run: echo safe", "          ${{ github.event.pull_request.body }}" },
+            new[] { "        run: \"echo safe", "          ${{ github.event.pull_request.body }}\"" },
+        };
+        var detected = cases.Select(lines => FindInterpolatedRunBodies(lines).Count).ToArray();
+        CollectionAssert.AreEqual(new[] { 1, 1, 1 }, detected);
+    }
+
+    [TestMethod]
+    public void RunBodyGuard_IgnoresExpressionsOutsideRunScalars()
+    {
+        var lines = new[]
+        {
+            "        # run: ${{ github.event.pull_request.body }}",
+            "        env:",
+            "          VALUE: ${{ github.ref_name }}",
+            "        run: echo safe",
+            "        # ${{ github.event.pull_request.body }}",
+            "        next: done",
+        };
+        Assert.IsEmpty(FindInterpolatedRunBodies(lines));
+    }
+
     private static List<string> FindInterpolatedRunBodies(string[] lines)
     {
         var offenders = new List<string>();
@@ -230,9 +258,9 @@ public sealed class PublishVersionContextTests
 
             if (runBodyIndent >= 0)
             {
-                // A block scalar body continues while lines are blank or indented deeper
-                // than the `run:` key itself.
-                if (trimmed.Length == 0 || trimmed.StartsWith('#'))
+                // Block, plain, and quoted YAML scalars can all continue on deeper lines.
+                // A comment at the key's indentation does not end a following scalar body.
+                if (trimmed.Length == 0)
                 {
                     continue;
                 }
@@ -247,23 +275,20 @@ public sealed class PublishVersionContextTests
                     continue;
                 }
 
+                if (trimmed.StartsWith('#'))
+                {
+                    continue;
+                }
+
                 runBodyIndent = -1;
             }
 
             var runKey = System.Text.RegularExpressions.Regex.Match(
                 trimmed,
-                "\\A(?:run|'run'|\\\"run\\\")\\s*:\\s*(?<value>.*)\\z",
+                "\\A(?:run|'run'|\\\"run\\\")\\s*:\\s*.*\\z",
                 System.Text.RegularExpressions.RegexOptions.CultureInvariant);
             if (!runKey.Success)
             {
-                continue;
-            }
-
-            var inline = runKey.Groups["value"].Value.Split('#', 2)[0].Trim();
-            if (inline.Length == 0 || System.Text.RegularExpressions.Regex.IsMatch(
-                    inline, @"\A[|>](?:[1-9][-+]?|[-+]?[1-9]?|[-+])\z", System.Text.RegularExpressions.RegexOptions.CultureInvariant))
-            {
-                runBodyIndent = indent;
                 continue;
             }
 
@@ -271,6 +296,8 @@ public sealed class PublishVersionContextTests
             {
                 offenders.Add($"{i + 1}: {trimmed}");
             }
+
+            runBodyIndent = indent;
         }
 
         return offenders;
