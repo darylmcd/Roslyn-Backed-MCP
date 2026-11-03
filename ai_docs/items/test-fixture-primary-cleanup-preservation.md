@@ -9,7 +9,7 @@
 
 ## Acceptance
 
-- [ ] Inventory identical primary-plus-cleanup failure paths and group independently correct cohesive batches; advisory file counts do not limit complete root-cause coverage. Exclude existing fork-source-fixture-cleanup-failure-propagation, fork-source-fixture-initialization-cleanup-ownership, process-pipe-worker-probe-cleanup-ownership, workspace-cache-test-close-masks-primary and project-fixture-construction-failure-leaks-root ownership; amend their inventory if needed rather than duplicate it. Fixture disposal ownership from closed PR #1953 is complete.
+- [ ] Inventory identical primary-plus-cleanup failure paths and group independently correct cohesive batches; advisory file counts do not limit complete root-cause coverage. Exclude existing fork-source-fixture-cleanup-failure-propagation, fork-source-fixture-initialization-cleanup-ownership, process-pipe-worker-probe-cleanup-ownership, workspace-cache-test-close-masks-primary, project-fixture-construction-failure-leaks-root and publish-verifier-timeout-process-ownership; amend their inventory if needed rather than duplicate it. Fixture disposal ownership from closed PR #1953 is complete.
 - [ ] Preserve primary failure, attempt each independent owned cleanup and surface secondary failures; retain fixture initialization ownership.
 - [ ] Use deterministic primary-plus-cleanup controls; preserve every real scenario assertion and child/workspace/temp ownership.
 
