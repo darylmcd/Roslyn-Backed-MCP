@@ -178,12 +178,47 @@ public sealed class PublishVersionContextTests
     }
 
     [TestMethod]
-    public void PublishWorkflow_NeverInterpolatesContextIntoRunBodies()
+    public void Workflows_NeverInterpolateContextIntoRunBodies()
     {
         var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
-        var workflowPath = Path.Combine(repositoryRoot, ".github", "workflows", "publish-nuget.yml");
-        var lines = File.ReadAllLines(workflowPath);
+        var offenders = new List<string>();
+        var workflowsDirectory = Path.Combine(repositoryRoot, ".github", "workflows");
+        var workflowPaths = Directory.EnumerateFiles(workflowsDirectory)
+            .Where(path => Path.GetExtension(path) is ".yml" or ".yaml")
+            .ToArray();
+        Assert.IsNotEmpty(workflowPaths);
+        foreach (var workflowPath in workflowPaths)
+        {
+            offenders.AddRange(FindInterpolatedRunBodies(File.ReadAllLines(workflowPath))
+                .Select(offender => $"{workflowPath}:{offender}"));
+        }
 
+        Assert.AreEqual(
+            0,
+            offenders.Count,
+            "GitHub Actions script injection: ${{ }} expressions must never be interpolated "
+                + "into a run: body. Bind context via env: and read it from the shell. Offending lines:"
+                + Environment.NewLine
+                + string.Join(Environment.NewLine, offenders));
+    }
+
+    [TestMethod]
+    public void RunBodyGuard_RecognizesYamlBlockScalarVariants()
+    {
+        foreach (var indicator in new[] { "|", ">", "|-", ">-", "|+", ">+", "|2", ">2", "|+2", ">2+" })
+        {
+            var lines = new[]
+            {
+                $"        run: {indicator} # valid scalar",
+                "        # A YAML comment can separate the indicator from its body.",
+                "          echo ${{{{ github.ref_name }}}}",
+            };
+            Assert.HasCount(1, FindInterpolatedRunBodies(lines), indicator);
+        }
+    }
+
+    private static List<string> FindInterpolatedRunBodies(string[] lines)
+    {
         var offenders = new List<string>();
         var runBodyIndent = -1;
 
@@ -197,7 +232,7 @@ public sealed class PublishVersionContextTests
             {
                 // A run: | block body continues while lines are blank or indented deeper
                 // than the `run:` key itself.
-                if (trimmed.Length == 0)
+                if (trimmed.Length == 0 || trimmed.StartsWith('#'))
                 {
                     continue;
                 }
@@ -206,7 +241,7 @@ public sealed class PublishVersionContextTests
                 {
                     if (line.Contains("${{", StringComparison.Ordinal))
                     {
-                        offenders.Add($"{workflowPath}:{i + 1}: {trimmed}");
+                        offenders.Add($"{i + 1}: {trimmed}");
                     }
 
                     continue;
@@ -215,13 +250,18 @@ public sealed class PublishVersionContextTests
                 runBodyIndent = -1;
             }
 
-            if (!trimmed.StartsWith("run:", StringComparison.Ordinal))
+            var runKey = System.Text.RegularExpressions.Regex.Match(
+                trimmed,
+                "\\A(?:run|'run'|\\\"run\\\")\\s*:\\s*(?<value>.*)\\z",
+                System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+            if (!runKey.Success)
             {
                 continue;
             }
 
-            var inline = trimmed["run:".Length..].Trim();
-            if (inline is "|" or ">" or "|-" or ">-" or "")
+            var inline = runKey.Groups["value"].Value.Split('#', 2)[0].Trim();
+            if (inline.Length == 0 || System.Text.RegularExpressions.Regex.IsMatch(
+                    inline, @"\A[|>](?:[1-9][-+]?|[-+]?[1-9]?|[-+])\z", System.Text.RegularExpressions.RegexOptions.CultureInvariant))
             {
                 runBodyIndent = indent;
                 continue;
@@ -229,21 +269,11 @@ public sealed class PublishVersionContextTests
 
             if (line.Contains("${{", StringComparison.Ordinal))
             {
-                offenders.Add($"{workflowPath}:{i + 1}: {trimmed}");
+                offenders.Add($"{i + 1}: {trimmed}");
             }
         }
 
-        Assert.AreEqual(
-            0,
-            offenders.Count,
-            "GitHub Actions script injection: ${{ }} expressions must never be interpolated "
-                + "into a run: body — they are substituted as source text before the shell parses "
-                + "them, so attacker-influenced values (github.event.release.tag_name, "
-                + "github.ref_name, PR titles/branches) can break out and execute commands in a "
-                + "job holding NUGET_API_KEY. Bind them via env: and read $env:NAME / $NAME "
-                + "instead. Offending lines:"
-                + Environment.NewLine
-                + string.Join(Environment.NewLine, offenders));
+        return offenders;
     }
 
     private static async Task<ProcessResult> RunAsync(

@@ -59,7 +59,8 @@ public sealed class CiRunnerParityContractTests
         StringAssert.Contains(decide, "/pulls/$pullRequestNumber/files?per_page=100");
         StringAssert.Contains(decide, "if ($LASTEXITCODE -ne 0)");
         StringAssert.Contains(decide, "throw \"Could not enumerate pull-request files and rename origins");
-        StringAssert.Contains(decide, "$reportedChangedFileCount = [int]'${{ github.event.pull_request.changed_files }}'");
+        StringAssert.Contains(decide, "CI_CHANGED_FILE_COUNT: ${{ github.event.pull_request.changed_files }}");
+        StringAssert.Contains(decide, "$reportedChangedFileCount = [int]$env:CI_CHANGED_FILE_COUNT");
         StringAssert.Contains(decide, "& ./eng/resolve-ci-topology.ps1");
         StringAssert.Contains(decide, "-EventName $eventName");
         StringAssert.Contains(decide, "-ChangedFilesJson $changedFilesJson");
@@ -134,7 +135,8 @@ public sealed class CiRunnerParityContractTests
 
         StringAssert.Contains(validate, "if: matrix.leg.artifact_owner == true");
         StringAssert.Contains(validate, "if: github.event_name == 'pull_request'");
-        StringAssert.Contains(validate, "'${{ needs.route.outputs.docs_only }}' -eq 'true'");
+        StringAssert.Contains(validate, "DOCS_ONLY: ${{ needs.route.outputs.docs_only }}");
+        StringAssert.Contains(validate, "$env:DOCS_ONLY -eq 'true'");
         Assert.IsFalse(
             releaseStep.Contains("if: needs.route.outputs.docs_only != 'true'", StringComparison.Ordinal),
             "Policy-only documentation must still execute the complete test class set.");
@@ -151,10 +153,14 @@ public sealed class CiRunnerParityContractTests
         StringAssert.Contains(releaseStep, "Configuration = 'Release'");
         StringAssert.Contains(releaseStep, "NoCoverage = $true");
         StringAssert.Contains(releaseStep, "ExcludeNetworkTests = $true");
-        StringAssert.Contains(releaseStep, "TestShardIndex = ${{ matrix.leg.test_shard_index }}");
-        StringAssert.Contains(releaseStep, "TestShardCount = ${{ matrix.leg.test_shard_count }}");
-        StringAssert.Contains(releaseStep, "if ('${{ matrix.leg.artifact_owner }}' -ne 'true' -or");
-        StringAssert.Contains(releaseStep, "'${{ needs.route.outputs.docs_only }}' -eq 'true')");
+        StringAssert.Contains(releaseStep, "TEST_SHARD_INDEX: ${{ matrix.leg.test_shard_index }}");
+        StringAssert.Contains(releaseStep, "TEST_SHARD_COUNT: ${{ matrix.leg.test_shard_count }}");
+        StringAssert.Contains(releaseStep, "ARTIFACT_OWNER: ${{ matrix.leg.artifact_owner }}");
+        StringAssert.Contains(releaseStep, "DOCS_ONLY: ${{ needs.route.outputs.docs_only }}");
+        StringAssert.Contains(releaseStep, "TestShardIndex = [int]$env:TEST_SHARD_INDEX");
+        StringAssert.Contains(releaseStep, "TestShardCount = [int]$env:TEST_SHARD_COUNT");
+        StringAssert.Contains(releaseStep, "if ($env:ARTIFACT_OWNER -ne 'true' -or");
+        StringAssert.Contains(releaseStep, "$env:DOCS_ONLY -eq 'true')");
         StringAssert.Contains(releaseStep, "$parameters.TestShardOnly = $true");
         StringAssert.Contains(releaseStep, "./eng/verify-release.ps1 @parameters");
         Assert.IsFalse(releaseStep.Contains("--filter", StringComparison.Ordinal));
@@ -180,7 +186,8 @@ public sealed class CiRunnerParityContractTests
             "if: github.event_name == 'pull_request' || github.event_name == 'merge_group'");
         StringAssert.Contains(
             formatStep,
-            "./eng/verify-changed-format.ps1 -BaseRef ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || format('origin/{0}', github.base_ref) }} -NoRestore");
+            "FORMAT_BASE_REF: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || format('origin/{0}', github.base_ref) }}");
+        StringAssert.Contains(formatStep, "./eng/verify-changed-format.ps1 -BaseRef $env:FORMAT_BASE_REF -NoRestore");
         StringAssert.Contains(
             justfile,
             "verify-changed-format:\n" +
@@ -216,7 +223,8 @@ public sealed class CiRunnerParityContractTests
         Assert.AreEqual(1, CountOccurrences(floorJob, "dotnet test "));
         StringAssert.Contains(gate, "- sdk_floor\n");
         StringAssert.Contains(gate, "${{ needs.sdk_floor.result }}");
-        StringAssert.Contains(gate, "$docsOnly = '${{ needs.route.outputs.docs_only }}' -eq 'true'");
+        StringAssert.Contains(gate, "DOCS_ONLY_OUTPUT: ${{ needs.route.outputs.docs_only }}");
+        StringAssert.Contains(gate, "$docsOnly = $docsOnlyOutput -eq 'true'");
         StringAssert.Contains(
             gate,
             "$sdkFloorSucceeded = if ($docsOnly) { $sdkFloorResult -eq 'skipped' } else { $sdkFloorResult -eq 'success' }");
@@ -273,8 +281,10 @@ public sealed class CiRunnerParityContractTests
         // The required `validate` check must fail closed: evidence routing only passes when the
         // lint job succeeded AND the build/test matrix and SDK floor were skipped, never failed.
         StringAssert.Contains(gate, "- evidence_lint\n");
-        StringAssert.Contains(gate, "$evidenceOnly = '${{ needs.route.outputs.evidence_only }}' -eq 'true'");
-        StringAssert.Contains(gate, "$evidenceLintResult = '${{ needs.evidence_lint.result }}'");
+        StringAssert.Contains(gate, "EVIDENCE_ONLY_OUTPUT: ${{ needs.route.outputs.evidence_only }}");
+        StringAssert.Contains(gate, "EVIDENCE_LINT_RESULT: ${{ needs.evidence_lint.result }}");
+        StringAssert.Contains(gate, "$evidenceOnly = $evidenceOnlyOutput -eq 'true'");
+        StringAssert.Contains(gate, "$evidenceLintResult = $env:EVIDENCE_LINT_RESULT");
         StringAssert.Contains(gate, "$evidenceLintResult -ne 'success'");
         StringAssert.Contains(gate, "$validateResult -ne 'skipped'");
         StringAssert.Contains(gate, "$sdkFloorResult -ne 'skipped'");
@@ -468,6 +478,18 @@ public sealed class CiRunnerParityContractTests
 
     private static async Task AssertAggregateAsync(string script, IReadOnlyDictionary<string, string> values, bool succeeds)
     {
+        var environmentNames = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["needs.route.result"] = "ROUTE_RESULT",
+            ["needs.validate.result"] = "VALIDATE_RESULT",
+            ["needs.sdk_floor.result"] = "SDK_FLOOR_RESULT",
+            ["needs.quality.result"] = "QUALITY_RESULT",
+            ["needs.route.outputs.docs_only"] = "DOCS_ONLY_OUTPUT",
+            ["needs.route.outputs.evidence_only"] = "EVIDENCE_ONLY_OUTPUT",
+            ["needs.evidence_lint.result"] = "EVIDENCE_LINT_RESULT",
+        };
+        var environment = values.Where(pair => environmentNames.ContainsKey(pair.Key))
+            .ToDictionary(pair => environmentNames[pair.Key], pair => (string?)pair.Value, StringComparer.Ordinal);
         foreach (var (key, value) in values)
         {
             script = script.Replace("${{ " + key + " }}", value, StringComparison.Ordinal);
@@ -477,6 +499,7 @@ public sealed class CiRunnerParityContractTests
         var encoded = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes("$ErrorActionPreference = 'Stop'\n" + script));
         var result = await PwshScriptRunner.RunAsync(
             ["-NoProfile", "-NonInteractive", "-EncodedCommand", encoded],
+            environment: environment,
             timeout: TimeSpan.FromSeconds(30),
             description: "workflow aggregate contract");
         Assert.AreEqual(succeeds, result.ExitCode == 0,
