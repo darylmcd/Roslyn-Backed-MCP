@@ -225,9 +225,10 @@ public sealed class PublishVersionContextTests
             new[] { "        run: |", "          # ${{ github.event.pull_request.body }}" },
             new[] { "        run: echo safe", "          ${{ github.event.pull_request.body }}" },
             new[] { "        run: \"echo safe", "          ${{ github.event.pull_request.body }}\"" },
+            new[] { "        run: \"echo safe", "          # ${{ github.event.pull_request.body }}\"" },
         };
         var detected = cases.Select(lines => FindInterpolatedRunBodies(lines).Count).ToArray();
-        CollectionAssert.AreEqual(new[] { 1, 1, 1 }, detected);
+        CollectionAssert.AreEqual(new[] { 1, 1, 1, 1 }, detected);
     }
 
     [TestMethod]
@@ -245,10 +246,26 @@ public sealed class PublishVersionContextTests
         Assert.IsEmpty(FindInterpolatedRunBodies(lines));
     }
 
+    [TestMethod]
+    public void RunBodyGuard_IgnoresDeeperYamlCommentsAfterCompletedInlineScalars()
+    {
+        var cases = new[]
+        {
+            new[] { "        run: echo safe", "          # ${{ github.ref_name }}" },
+            new[] { "        run: \"echo safe\"", "          # ${{ github.ref_name }}" },
+            new[] { "        run: 'echo safe'", "          # ${{ github.ref_name }}" },
+            new[] { "        run: \"echo", "          safe\"", "          # ${{ github.ref_name }}" },
+        };
+        var detected = cases.Select(lines => FindInterpolatedRunBodies(lines).Count).ToArray();
+        CollectionAssert.AreEqual(new[] { 0, 0, 0, 0 }, detected);
+    }
+
     private static List<string> FindInterpolatedRunBodies(string[] lines)
     {
         var offenders = new List<string>();
         var runBodyIndent = -1;
+        var blockScalar = false;
+        var openQuote = '\0';
 
         for (var i = 0; i < lines.Length; i++)
         {
@@ -267,9 +284,15 @@ public sealed class PublishVersionContextTests
 
                 if (indent > runBodyIndent)
                 {
-                    if (line.Contains("${{", StringComparison.Ordinal))
+                    if ((!trimmed.StartsWith('#') || blockScalar || openQuote != '\0') &&
+                        line.Contains("${{", StringComparison.Ordinal))
                     {
                         offenders.Add($"{i + 1}: {trimmed}");
+                    }
+
+                    if (openQuote != '\0' && HasClosingYamlQuote(trimmed, openQuote, 0))
+                    {
+                        openQuote = '\0';
                     }
 
                     continue;
@@ -285,7 +308,7 @@ public sealed class PublishVersionContextTests
 
             var runKey = System.Text.RegularExpressions.Regex.Match(
                 trimmed,
-                "\\A(?:run|'run'|\\\"run\\\")\\s*:\\s*.*\\z",
+                "\\A(?:run|'run'|\\\"run\\\")\\s*:\\s*(?<value>.*)\\z",
                 System.Text.RegularExpressions.RegexOptions.CultureInvariant);
             if (!runKey.Success)
             {
@@ -297,10 +320,43 @@ public sealed class PublishVersionContextTests
                 offenders.Add($"{i + 1}: {trimmed}");
             }
 
+            var scalar = runKey.Groups["value"].Value.TrimStart();
+            blockScalar = System.Text.RegularExpressions.Regex.IsMatch(
+                scalar,
+                @"\A[|>](?:[1-9][-+]?|[-+]?[1-9]?|[-+])(?:\s+#.*)?\s*\z",
+                System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+            openQuote = scalar.Length > 0 && (scalar[0] is '\'' or '"') &&
+                !HasClosingYamlQuote(scalar, scalar[0], 1)
+                    ? scalar[0]
+                    : '\0';
             runBodyIndent = indent;
         }
 
         return offenders;
+    }
+
+    private static bool HasClosingYamlQuote(string text, char quote, int start)
+    {
+        for (var i = start; i < text.Length; i++)
+        {
+            if (quote == '"' && text[i] == '\\')
+            {
+                i++;
+            }
+            else if (text[i] == quote)
+            {
+                if (quote == '\'' && i + 1 < text.Length && text[i + 1] == '\'')
+                {
+                    i++;
+                }
+                else
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private static async Task<ProcessResult> RunAsync(
