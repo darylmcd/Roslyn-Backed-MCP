@@ -767,6 +767,144 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
     }
 
 
+    private const string RefServiceSource = """
+        namespace Contracts;
+
+        public class RefService
+        {
+            private int _f;
+
+            public ref int RefMethod() => ref _f;
+            public ref readonly int RefReadonlyMethod() => ref _f;
+            public ref int RefProperty => ref _f;
+            public ref readonly int this[int index] => ref _f;
+            public int Value() => _f;
+        }
+        """;
+
+    private const string RefConsumerSource = """
+        namespace Contracts;
+
+        public class RefConsumer
+        {
+            public RefConsumer(RefService service)
+            {
+                ref int viaMethod = ref service.RefMethod();
+                ref readonly int viaReadonly = ref service.RefReadonlyMethod();
+                ref int viaProperty = ref service.RefProperty;
+                ref readonly int viaIndexer = ref service[0];
+                viaMethod = viaProperty + viaReadonly + viaIndexer + service.Value();
+            }
+        }
+        """;
+
+    private static async Task<string> PrepareRefFixtureAsync(IsolatedWorkspaceScope workspace)
+    {
+        AddProjectToCopiedSolution(workspace.RootPath, "Contracts", "net10.0");
+        AddProjectToCopiedSolution(workspace.RootPath, "Consumer", "net10.0");
+        var solution = XDocument.Load(workspace.SolutionPath);
+        var kept = new[] { "SampleLib/SampleLib.csproj", "Contracts/Contracts.csproj", "Consumer/Consumer.csproj" };
+        foreach (var project in solution.Descendants("Project").Where(p => !kept.Contains(p.Attribute("Path")!.Value.Replace('\\', '/'))).ToArray())
+            project.Remove();
+        solution.Save(workspace.SolutionPath);
+
+        var libPath = workspace.GetPath("SampleLib", "SampleLib.csproj");
+        var lib = XDocument.Load(libPath);
+        lib.Root!.Add(new XElement("PropertyGroup", new XElement("EnableDefaultCompileItems", "false")),
+            new XElement("ItemGroup", new XElement("Compile", new XAttribute("Include", "RefService.cs"))));
+        lib.Save(libPath);
+        var consumerPath = workspace.GetPath("Consumer", "Consumer.csproj");
+        var consumer = XDocument.Load(consumerPath);
+        consumer.Root!.Add(new XElement("ItemGroup",
+            new XElement("ProjectReference", new XAttribute("Include", "../SampleLib/SampleLib.csproj")),
+            new XElement("ProjectReference", new XAttribute("Include", "../Contracts/Contracts.csproj"))));
+        consumer.Save(consumerPath);
+
+        var sourcePath = workspace.GetPath("SampleLib", "RefService.cs");
+        await File.WriteAllTextAsync(sourcePath, RefServiceSource);
+        await File.WriteAllTextAsync(workspace.GetPath("Consumer", "RefConsumer.cs"), RefConsumerSource);
+        await workspace.LoadAsync();
+        await TestInfrastructure.InterfaceExtractionTestContext.AssertCompilesAsync(WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
+        return sourcePath;
+    }
+
+    private static Task<RoslynMcp.Core.Models.RefactoringPreviewDto> PreviewRefRouteAsync(
+        string route, string workspaceId, string sourcePath, RoslynMcp.Roslyn.Services.CompositePreviewStore stores) => route switch
+        {
+            "standalone" => InterfaceExtractionService.PreviewExtractInterfaceAsync(
+                workspaceId, sourcePath, "RefService", "IRefService", null, false, CancellationToken.None),
+            "cross-project" => CrossProjectRefactoringService.PreviewExtractInterfaceAsync(
+                workspaceId, sourcePath, "RefService", "IRefService", "Contracts", CancellationToken.None),
+            "dependency-inversion" => CrossProjectRefactoringService.PreviewDependencyInversionAsync(
+                workspaceId, sourcePath, "RefService", "IRefService", "Contracts", CancellationToken.None),
+            "extract-and-wire" => new RoslynMcp.Roslyn.Services.ExtractAndWireOrchestrator(WorkspaceManager, stores, PreviewStore, CrossProjectRefactoringService, DiRegistrationService)
+                .PreviewExtractAndWireInterfaceAsync(workspaceId, sourcePath, "RefService", "IRefService", "Contracts", true, CancellationToken.None),
+            _ => throw new ArgumentOutOfRangeException(nameof(route)),
+        };
+
+    private static async Task AssertRefContractAsync(Microsoft.CodeAnalysis.Solution solution, string receiverProject)
+    {
+        var contract = (await solution.Projects.Single(p => p.Name == receiverProject).GetCompilationAsync())!
+            .GetTypeByMetadataName("Contracts.IRefService")!;
+        Assert.IsNotNull(contract);
+        Microsoft.CodeAnalysis.IMethodSymbol Method(string name) => contract.GetMembers(name).OfType<Microsoft.CodeAnalysis.IMethodSymbol>().Single();
+        Assert.AreEqual(Microsoft.CodeAnalysis.RefKind.Ref, Method("RefMethod").RefKind);
+        Assert.AreEqual(Microsoft.CodeAnalysis.RefKind.RefReadOnly, Method("RefReadonlyMethod").RefKind);
+        Assert.AreEqual(Microsoft.CodeAnalysis.RefKind.Ref, contract.GetMembers("RefProperty").OfType<Microsoft.CodeAnalysis.IPropertySymbol>().Single().RefKind);
+        Assert.AreEqual(Microsoft.CodeAnalysis.RefKind.RefReadOnly, contract.GetMembers().OfType<Microsoft.CodeAnalysis.IPropertySymbol>().Single(p => p.IsIndexer).RefKind);
+        Assert.AreEqual(Microsoft.CodeAnalysis.RefKind.None, Method("Value").RefKind);
+    }
+
+    [TestMethod]
+    [DataRow("dependency-inversion")]
+    [DataRow("extract-and-wire")]
+    public async Task Ref_Returning_Members_Keep_Ref_Contract_With_Real_Ref_Call_Site_On_Route(string route)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var sourcePath = await PrepareRefFixtureAsync(workspace);
+        var before = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        var stores = new RoslynMcp.Roslyn.Services.CompositePreviewStore();
+
+        var preview = await PreviewRefRouteAsync(route, workspace.WorkspaceId, sourcePath, stores);
+
+        // Ref kinds on the emitted interface prove the route reached InterfaceMemberProjector: no other emitter exists.
+        var pending = route == "extract-and-wire"
+            ? TestInfrastructure.InterfaceExtractionTestContext.SerializedCompositePreview(before, stores.Retrieve(preview.PreviewToken)!.Value.Mutations)
+            : PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution;
+        pending = await TestInfrastructure.InterfaceExtractionTestContext.ReparseSerializedDocumentsAsync(pending);
+        await AssertRefContractAsync(pending, "Contracts");
+        await TestInfrastructure.InterfaceExtractionTestContext.AssertCompilesAsync(pending);
+        if (route == "dependency-inversion")
+        {
+            var consumerText = (await pending.Projects.Single(p => p.Name == "Consumer").Documents.Single(d => d.Name == "RefConsumer.cs").GetTextAsync()).ToString();
+            StringAssert.Contains(consumerText, "IRefService service");
+            StringAssert.Contains(consumerText, "ref int viaMethod = ref service.RefMethod()");
+        }
+    }
+
+    [TestMethod]
+    [DataRow("standalone")]
+    [DataRow("cross-project")]
+    [DataRow("dependency-inversion")]
+    [DataRow("extract-and-wire")]
+    public async Task Ref_Returning_Interface_Apply_And_Reload_Preserves_Ref_Contract(string route)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var sourcePath = await PrepareRefFixtureAsync(workspace);
+        var stores = new RoslynMcp.Roslyn.Services.CompositePreviewStore();
+        var preview = await PreviewRefRouteAsync(route, workspace.WorkspaceId, sourcePath, stores);
+
+        var applied = route == "extract-and-wire"
+            ? await new RoslynMcp.Roslyn.Services.CompositeApplyOrchestrator(WorkspaceManager, stores, undoService: UndoService).ApplyCompositeAsync(preview.PreviewToken, CancellationToken.None)
+            : await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "ref_return_apply", CancellationToken.None);
+        Assert.IsTrue(applied.Success, applied.Error);
+        await workspace.ReloadAsync();
+
+        var reloaded = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        await AssertRefContractAsync(reloaded, route == "standalone" ? "SampleLib" : "Contracts");
+        await TestInfrastructure.InterfaceExtractionTestContext.AssertCompilesAsync(reloaded);
+    }
+
     [TestMethod]
     [DataRow("prefix")]
     [DataRow("parent")]
