@@ -12,7 +12,8 @@ namespace RoslynMcp.Host.Stdio.Diagnostics;
 /// </summary>
 internal sealed class JsonLinesFileLoggerProvider : ILoggerProvider, ISupportExternalScope
 {
-    private const long _defaultMaxFileBytes = 5 * 1024 * 1024;
+    private const int _maxMarkerCategoryChars = 128;
+    private const int _maxMarkerNameChars = 64;
     private static readonly UTF8Encoding _utf8WithoutBom = new(encoderShouldEmitUTF8Identifier: false);
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
@@ -20,7 +21,7 @@ internal sealed class JsonLinesFileLoggerProvider : ILoggerProvider, ISupportExt
     };
 
     private readonly object _writeLock = new();
-    private readonly long _maxFileBytes;
+    private readonly JsonLinesSegmentWriter _segments;
     private readonly Func<DateTimeOffset> _utcNow;
     private IExternalScopeProvider? _scopeProvider;
     private bool _disposed;
@@ -28,24 +29,23 @@ internal sealed class JsonLinesFileLoggerProvider : ILoggerProvider, ISupportExt
 
     public JsonLinesFileLoggerProvider(
         string logDirectory,
-        long maxFileBytes = _defaultMaxFileBytes,
+        JsonLinesRetentionOptions? retention = null,
         int? processId = null,
         Func<DateTimeOffset>? utcNow = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(logDirectory);
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxFileBytes);
 
-        var resolvedProcessId = processId ?? Environment.ProcessId;
-        var absoluteDirectory = Path.GetFullPath(logDirectory);
-        FilePath = Path.Combine(absoluteDirectory, $"roslyn-mcp-{resolvedProcessId}.jsonl");
-        RotatedFilePath = Path.Combine(absoluteDirectory, $"roslyn-mcp-{resolvedProcessId}.1.jsonl");
-        _maxFileBytes = maxFileBytes;
+        _segments = new JsonLinesSegmentWriter(
+            logDirectory,
+            processId ?? Environment.ProcessId,
+            retention ?? JsonLinesRetentionOptions.Default);
         _utcNow = utcNow ?? (static () => DateTimeOffset.UtcNow);
     }
 
-    internal string FilePath { get; }
+    internal string FilePath => _segments.ActivePath;
 
-    internal string RotatedFilePath { get; }
+    /// <summary>Path of rotated segment <paramref name="index"/> (1 = newest).</summary>
+    internal string SegmentPath(int index) => _segments.SegmentPath(index);
 
     public ILogger CreateLogger(string categoryName)
     {
@@ -90,11 +90,14 @@ internal sealed class JsonLinesFileLoggerProvider : ILoggerProvider, ISupportExt
                     level.ToString(), category, eventId.Id, formatter(state, null), correlationId, eventId.Name, fields);
                 var line = JsonSerializer.Serialize(record, _jsonOptions) + Environment.NewLine;
                 var lineByteCount = _utf8WithoutBom.GetByteCount(line);
-                var directory = Path.GetDirectoryName(FilePath)
-                    ?? throw new InvalidOperationException("The observability log path has no directory.");
-                Directory.CreateDirectory(directory);
-                RotateIfNeeded(lineByteCount);
-                File.AppendAllText(FilePath, line, _utf8WithoutBom);
+                if (lineByteCount > _segments.MaxSegmentBytes)
+                {
+                    line = JsonSerializer.Serialize(CreateTruncationMarker(record, lineByteCount), _jsonOptions)
+                        + Environment.NewLine;
+                    lineByteCount = _utf8WithoutBom.GetByteCount(line);
+                }
+
+                _segments.Append(line, lineByteCount);
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
             {
@@ -200,21 +203,33 @@ internal sealed class JsonLinesFileLoggerProvider : ILoggerProvider, ISupportExt
         return null;
     }
 
-    private void RotateIfNeeded(int pendingByteCount)
+    /// <summary>
+    /// Replaces a record larger than one segment with a bounded valid-JSON marker that keeps the
+    /// identifying fields (truncated where unbounded) and records how many bytes were dropped.
+    /// </summary>
+    private JsonLinesLogRecord CreateTruncationMarker(JsonLinesLogRecord record, int droppedBytes) => new(
+        record.Ts,
+        record.Level,
+        Truncate(record.Category, _maxMarkerCategoryChars),
+        record.EventId,
+        "record truncated: " + droppedBytes.ToString(CultureInfo.InvariantCulture) + " bytes exceeds segment limit",
+        record.CorrelationId is null ? null : Truncate(record.CorrelationId, _maxMarkerNameChars),
+        record.EventName is null ? null : Truncate(record.EventName, _maxMarkerNameChars),
+        new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["droppedBytes"] = droppedBytes,
+            ["maxSegmentBytes"] = _segments.MaxSegmentBytes,
+        });
+
+    private static string Truncate(string value, int maxChars)
     {
-        if (!File.Exists(FilePath))
+        if (value.Length <= maxChars)
         {
-            return;
+            return value;
         }
 
-        var currentLength = new FileInfo(FilePath).Length;
-        if (currentLength == 0 || currentLength + pendingByteCount <= _maxFileBytes)
-        {
-            return;
-        }
-
-        File.Delete(RotatedFilePath);
-        File.Move(FilePath, RotatedFilePath);
+        var length = char.IsHighSurrogate(value[maxChars - 1]) ? maxChars - 1 : maxChars;
+        return value[..length];
     }
 
     private void ReportFailureOnce()

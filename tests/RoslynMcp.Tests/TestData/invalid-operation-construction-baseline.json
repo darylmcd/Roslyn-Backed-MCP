@@ -114,12 +114,6 @@
     "Count": 1
   },
   {
-    "Path": "src/RoslynMcp.Host.Stdio/Diagnostics/JsonLinesFileLoggerProvider.cs",
-    "Member": "M:RoslynMcp.Host.Stdio.Diagnostics.JsonLinesFileLoggerProvider.Write``1(System.String,Microsoft.Extensions.Logging.LogLevel,Microsoft.Extensions.Logging.EventId,``0,System.Func{``0,System.Exception,System.String})",
-    "Fingerprint": "CF9E59DDF31BE46DFC9F50D98CBB151B158B4E5FFCD808C117822BD4BAFCFA45",
-    "Count": 1
-  },
-  {
     "Path": "src/RoslynMcp.Host.Stdio/Diagnostics/ServerObservability.cs",
     "Member": "M:RoslynMcp.Host.Stdio.Diagnostics.ServerObservabilityOptions.Parse(System.String)",
     "Fingerprint": "BEFACD3FFF5EE0BBFA48D34C4A6EBFC69BD61FC9F90C419ED3F800D1A6438901",

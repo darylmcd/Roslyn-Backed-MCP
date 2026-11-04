@@ -121,6 +121,8 @@ are optional literal `env` overrides. Copy-ready examples live in
 | `ROSLYNMCP_REQUEST_TIMEOUT_SECONDS` | `120` | Per-request timeout |
 | `ROSLYNMCP_TOOL_TIERS` | `stable,experimental` | Registered MCP surface tiers. Set `stable` to expose the closed stable-only workflow (see the README's Live Surface section for its current callable-tool count) to clients that eagerly load discovery definitions; previews whose apply route is experimental are omitted, and experimental requires the stable baseline |
 | `ROSLYNMCP_OBSERVABILITY_SINK` | `disabled` | Operator-side diagnostics: `disabled`, structured unexpected failures on `stderr`, or the full enabled `ILogger` stream as bounded JSON lines with `file` |
+| `ROSLYNMCP_OBSERVABILITY_MAX_SEGMENT_BYTES` | `5242880` | With `file`: rotation threshold in bytes for one JSON-lines segment (minimum 8192); a larger record is replaced by a bounded truncation marker |
+| `ROSLYNMCP_OBSERVABILITY_MAX_SEGMENTS` | `3` | With `file`: rotated numbered segments kept beside the active file per process (1 to 100); rotation deletes only the oldest |
 
 The packaged NuGet README lists further script, rate-limit, and preview-store variables. For log
 destinations, verbosity controls, correlation identifiers, and health probes, see the
