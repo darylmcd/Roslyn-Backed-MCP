@@ -404,6 +404,38 @@ public sealed class AnalyzerShadowLeaseNoFollowTests
     }
 
     [TestMethod]
+    public void Delete_ChildOpenWithShareDelete_RemovesTheWholeTreeImmediately()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("Delete-pending semantics are a Windows file-system behavior.");
+            return;
+        }
+
+        var root = NewRoot("open-child");
+        try
+        {
+            var shadowRoot = Path.Combine(root, "lease");
+            var nested = Path.Combine(shadowRoot, "nested");
+            var held = Path.Combine(nested, "held.dll");
+            Directory.CreateDirectory(nested);
+            File.WriteAllText(held, "fixture");
+
+            // A watcher, indexer or scanner that holds a child open with FILE_SHARE_DELETE leaves
+            // a classic delete pending until it closes, so the parent would be "not empty". POSIX
+            // delete semantics unlink the name at once; the tree must be gone while it is still open.
+            using var holder = new FileStream(held, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            NoFollowDirectoryDeleter.Delete(shadowRoot, CancellationToken.None);
+
+            Assert.IsFalse(Directory.Exists(shadowRoot), "A child still open with FILE_SHARE_DELETE must not leave its parent undeletable.");
+        }
+        finally
+        {
+            Cleanup(root);
+        }
+    }
+
+    [TestMethod]
     public void Delete_TrailingDotAndSpaceNames_RemovesExactlyTheEnumeratedEntries()
     {
         if (!OperatingSystem.IsWindows())

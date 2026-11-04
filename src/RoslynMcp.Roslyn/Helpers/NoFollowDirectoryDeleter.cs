@@ -19,7 +19,7 @@ namespace RoslynMcp.Roslyn.Helpers;
 /// Windows: the walk is iterative and postorder over a depth-bounded stack of open handles. Every
 /// entry is opened with <c>FILE_FLAG_OPEN_REPARSE_POINT</c> (so a link is opened as the link, never
 /// its target), classified from that handle, and mutated through a handle to the same object
-/// (<c>FileDispositionInfoEx</c>; the handle also carries the read-only override). Files and links
+/// (<c>FileDispositionInfoEx</c> with POSIX semantics, so an open child does not leave its parent non-empty; the handle also carries the read-only override). Files and links
 /// are opened with <c>DELETE | FILE_READ_ATTRIBUTES</c> and full sharing (write-attributes access is acquired only by the legacy read-only-clearing fallback), the same footprint as
 /// <see cref="File.Delete(string)"/>, so a holder that tolerates delete but not read does not block
 /// the walk. A directory is re-opened with list access and no delete sharing, and the re-open is
@@ -67,6 +67,7 @@ internal static class NoFollowDirectoryDeleter
     private const int FileIdInfoClass = 18;
     private const int FileDispositionInfoExClass = 21;
     private const uint DispositionDelete = 0x1;
+    private const uint DispositionPosixSemantics = 0x2;
     private const uint DispositionIgnoreReadOnly = 0x10;
     private const int ErrorFileNotFound = 2;
     private const int ErrorPathNotFound = 3;
@@ -299,7 +300,10 @@ internal static class NoFollowDirectoryDeleter
     [SupportedOSPlatform("windows")]
     private static void DeleteByHandle(SafeFileHandle handle, string path, string extended)
     {
-        var ex = new FileDispositionInfoEx { Flags = DispositionDelete | DispositionIgnoreReadOnly };
+        // POSIX semantics unlink the name immediately. A classic disposition stays pending while any
+        // other handle (watcher, indexer, scanner) is open with FILE_SHARE_DELETE, which leaves the
+        // parent "not empty" and unremovable until that handle closes.
+        var ex = new FileDispositionInfoEx { Flags = DispositionDelete | DispositionPosixSemantics | DispositionIgnoreReadOnly };
         if (SetFileInformationByHandle(handle, FileDispositionInfoExClass, ref ex, (uint)Marshal.SizeOf<FileDispositionInfoEx>()))
         {
             return;
