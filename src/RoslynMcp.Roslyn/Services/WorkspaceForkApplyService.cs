@@ -1021,34 +1021,7 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService, IA
             return;
         }
 
-        // Walk one physical level at a time and delete in postorder. Recursive file
-        // enumeration follows junction targets, mutating independent readonly files;
-        // recursive managed descent can also exhaust the stack on deep owned trees.
-        var pending = new Stack<(string Path, bool Enumerated)>();
-        pending.Push((path, false));
-        while (pending.TryPop(out var current))
-        {
-            ct.ThrowIfCancellationRequested();
-            var attributes = File.GetAttributes(current.Path);
-            if ((attributes & FileAttributes.ReparsePoint) != 0)
-            {
-                if ((attributes & FileAttributes.Directory) != 0) Directory.Delete(current.Path);
-                else File.Delete(current.Path);
-            }
-            else if ((attributes & FileAttributes.Directory) == 0)
-            {
-                if ((attributes & FileAttributes.ReadOnly) != 0)
-                    File.SetAttributes(current.Path, attributes & ~FileAttributes.ReadOnly);
-                File.Delete(current.Path);
-            }
-            else if (current.Enumerated) Directory.Delete(current.Path);
-            else
-            {
-                pending.Push((current.Path, true));
-                foreach (var entry in Directory.EnumerateFileSystemEntries(current.Path))
-                    pending.Push((entry, false));
-            }
-        }
+        NoFollowDirectoryDeleter.Delete(path, ct);
     }
 
     private sealed record ForkValidationState(
