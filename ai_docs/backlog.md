@@ -62,6 +62,7 @@
 | `type-extraction-same-file-rewriter-decomposition` | High | — | Isolate type-extraction same-file semantic rewriting behind one internal collaborator while preserving symbol-identity and refusal semantics. [type: refactor] [source: 2026-08-22 adjacent review] | M | items/type-extraction-same-file-rewriter-decomposition.md |
 | `refactoring-code-fix-preview-decomposition` | High | refactoring-format-range-preview-decomposition | Decompose diagnostic code-fix preview selection and assembly while preserving fix behavior. [type: quality] [source: 2026-08-05 direct remediation adjacent review] | S | items/refactoring-code-fix-preview-decomposition.md |
 | `relocation-source-delete-drops-enum-delegate` | High | — | **Preserve enum and delegate namespace members when changing or relocating a type** — sibling decisions count only type declarations, so they can rewrite or delete other members and drop a needed old-namespace using. [type: bug] [source: relocation comment review 20261101] | L | items/relocation-source-delete-drops-enum-delegate.md |
+| `linux-pwsh-startup-cache-functional-cohort-failure` | High | — | **Identify and repair the Linux startup-cache functional cohort failure** — retain failed-parent evidence and prove its cause without changing coverage or deadlines. [type: test-infrastructure] [source: PR 1971 hosted Linux3] | S | items/linux-pwsh-startup-cache-functional-cohort-failure.md |
 
 ## Medium
 
