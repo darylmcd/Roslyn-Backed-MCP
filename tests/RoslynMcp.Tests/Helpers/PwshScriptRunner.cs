@@ -26,6 +26,21 @@ internal static class PwshScriptRunner
             cancellationToken,
             description);
 
+    internal static Task<PwshScriptResult> RunWithInputAsync(
+        IEnumerable<string> arguments,
+        string standardInput,
+        TimeSpan timeout,
+        string description)
+        => RunExecutableCoreAsync(
+            OperatingSystem.IsWindows() ? "pwsh.exe" : "pwsh",
+            arguments,
+            environment: null,
+            workingDirectory: null,
+            timeout,
+            cancellationToken: default,
+            description,
+            standardInput);
+
     internal static Task<PwshScriptResult> RunExecutableAsync(
         string fileName,
         IEnumerable<string> arguments,
@@ -34,6 +49,18 @@ internal static class PwshScriptRunner
         TimeSpan? timeout = null,
         CancellationToken cancellationToken = default,
         string description = "external process")
+        => RunExecutableCoreAsync(fileName, arguments, environment, workingDirectory,
+            timeout, cancellationToken, description, standardInput: null);
+
+    private static Task<PwshScriptResult> RunExecutableCoreAsync(
+        string fileName,
+        IEnumerable<string> arguments,
+        IReadOnlyDictionary<string, string?>? environment,
+        string? workingDirectory,
+        TimeSpan? timeout,
+        CancellationToken cancellationToken,
+        string description,
+        string? standardInput)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(fileName);
         ArgumentNullException.ThrowIfNull(arguments);
@@ -69,14 +96,16 @@ internal static class PwshScriptRunner
             startInfo,
             timeout,
             cancellationToken,
-            description);
+            description,
+            standardInput);
     }
 
     private static async Task<PwshScriptResult> RunConfiguredProcessAsync(
         ProcessStartInfo startInfo,
         TimeSpan? timeout,
         CancellationToken cancellationToken,
-        string description)
+        string description,
+        string? standardInput)
     {
         var runnerStarted = Stopwatch.GetTimestamp();
         using var process = Process.Start(startInfo)
@@ -85,7 +114,6 @@ internal static class PwshScriptRunner
         var processStartedUtc = CaptureDiagnostic(() => process.StartTime.ToUniversalTime().ToString("O"));
         // These verifier processes are non-interactive. Some execute native grandchildren
         // (notably Git), which must see EOF instead of inheriting a test host's open stdin pipe.
-        process.StandardInput.Close();
         using var readerCancellation = new CancellationTokenSource();
         var stdoutTask = ProcessPipeReader.ReadToEndAsync(process.StandardOutput, readerCancellation.Token);
         var stderrTask = ProcessPipeReader.ReadToEndAsync(process.StandardError, readerCancellation.Token);
@@ -96,11 +124,16 @@ internal static class PwshScriptRunner
         using var waitCancellation = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken,
             timeoutCancellation?.Token ?? CancellationToken.None);
+        var inputTask = WriteInputAsync(process.StandardInput, standardInput, waitCancellation.Token);
 
-        var phase = "process exit";
+        var phase = "standard input";
         var phaseStarted = runnerStarted;
+        Exception? primaryException = null;
         try
         {
+            await inputTask.ConfigureAwait(false);
+            phase = "process exit";
+            phaseStarted = Stopwatch.GetTimestamp();
             await process.WaitForExitAsync(waitCancellation.Token).ConfigureAwait(false);
             phase = "output drain";
             phaseStarted = Stopwatch.GetTimestamp();
@@ -136,19 +169,39 @@ internal static class PwshScriptRunner
                 description).ConfigureAwait(false);
             if (timeoutCancellation?.IsCancellationRequested == true && !cancellationToken.IsCancellationRequested)
             {
-                throw new TimeoutException(
+                primaryException = new TimeoutException(
                     $"{description} timed out after {timeout!.Value.TotalSeconds:g} seconds. {diagnostics}. Output:" +
                     $"{Environment.NewLine}{output}",
                     exception);
+                throw primaryException;
             }
 
+            primaryException = exception;
+            throw;
+        }
+        catch (Exception exception)
+        {
+            primaryException ??= exception;
+            try
+            {
+                exception.Data["process cleanup output"] = await RequestTerminationAndDrainAsync(
+                    process, outputTask, description).ConfigureAwait(false);
+            }
+            catch (Exception cleanupException)
+            {
+                exception.Data["process cleanup failure"] = cleanupException;
+            }
             throw;
         }
         finally
         {
             // A descendant can keep a pipe open after its parent exits. Cancel and observe
             // both owned reads before Process.Dispose closes their streams.
-            await readerCancellation.CancelAsync().ConfigureAwait(false);
+            try { await readerCancellation.CancelAsync().ConfigureAwait(false); }
+            catch (Exception exception) when (primaryException is not null)
+            {
+                primaryException.Data["reader cancellation failure"] = exception;
+            }
             try
             {
                 await outputTask.ConfigureAwait(false);
@@ -156,6 +209,42 @@ internal static class PwshScriptRunner
             catch (OperationCanceledException) when (readerCancellation.IsCancellationRequested)
             {
                 // Expected when cleanup exhausted its drain budget before EOF.
+            }
+            catch (Exception exception) when (primaryException is not null)
+            {
+                primaryException.Data["output drain failure"] = exception;
+            }
+            try { await inputTask.ConfigureAwait(false); }
+            catch (Exception exception) when (primaryException is not null && !ReferenceEquals(exception, primaryException))
+            {
+                primaryException.Data["standard input failure"] = exception;
+            }
+            catch (Exception exception) when (ReferenceEquals(exception, primaryException))
+            {
+                // The primary failure was already propagated by the main path.
+            }
+        }
+    }
+
+    private static async Task WriteInputAsync(StreamWriter writer, string? input, CancellationToken cancellationToken)
+    {
+        Exception? writeFailure = null;
+        try
+        {
+            if (input is not null)
+                await writer.WriteAsync(input.AsMemory(), cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            writeFailure = exception;
+            throw;
+        }
+        finally
+        {
+            try { writer.Close(); }
+            catch (Exception exception) when (writeFailure is not null)
+            {
+                writeFailure.Data["standard input close failure"] = exception;
             }
         }
     }
@@ -199,33 +288,52 @@ internal static class PwshScriptRunner
         Task<string[]> outputTask,
         string description)
     {
-        if (!process.HasExited)
+        var failures = new List<string>();
+        try
         {
-            try
+            if (!process.HasExited)
             {
                 process.Kill(entireProcessTree: true);
             }
-            catch (InvalidOperationException) when (process.HasExited)
-            {
-                // The process exited between the state check and termination request.
-            }
+        }
+        catch (InvalidOperationException exception)
+        {
+            // The process may exit between the state check and termination request.
+            if (CaptureDiagnostic(() => process.HasExited.ToString()) != bool.TrueString)
+                failures.Add($"termination failed: {exception.GetType().Name}: {exception.Message}");
+        }
+        catch (Exception exception)
+        {
+            failures.Add($"termination failed: {exception.GetType().Name}: {exception.Message}");
         }
 
         using var cleanupCancellation = new CancellationTokenSource(CleanupTimeout);
         try
         {
             await process.WaitForExitAsync(cleanupCancellation.Token).ConfigureAwait(false);
-            var output = await outputTask.WaitAsync(cleanupCancellation.Token)
-                .ConfigureAwait(false);
-            return string.Join(Environment.NewLine, output);
         }
         catch (OperationCanceledException) when (cleanupCancellation.IsCancellationRequested)
         {
-            // Preserve the caller's cancellation or configured-timeout classification.
-            // The outer finally cancels and observes both readers even without EOF.
-            return $"{description} did not terminate and drain redirected output within " +
-                $"{CleanupTimeout.TotalSeconds:g} seconds after process-tree termination was requested.";
+            failures.Add($"{description} did not exit within {CleanupTimeout.TotalSeconds:g} seconds after termination was requested.");
         }
+        catch (Exception exception)
+        {
+            failures.Add($"exit wait failed: {exception.GetType().Name}: {exception.Message}");
+        }
+        try
+        {
+            var output = await outputTask.WaitAsync(cleanupCancellation.Token).ConfigureAwait(false);
+            return string.Join(Environment.NewLine, output.Concat(failures));
+        }
+        catch (OperationCanceledException) when (cleanupCancellation.IsCancellationRequested)
+        {
+            failures.Add($"{description} did not drain redirected output within {CleanupTimeout.TotalSeconds:g} seconds after termination was requested.");
+        }
+        catch (Exception exception)
+        {
+            failures.Add($"output drain failed: {exception.GetType().Name}: {exception.Message}");
+        }
+        return string.Join(Environment.NewLine, failures);
     }
 }
 

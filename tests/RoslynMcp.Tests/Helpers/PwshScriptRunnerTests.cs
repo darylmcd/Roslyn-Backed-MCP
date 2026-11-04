@@ -159,6 +159,119 @@ public sealed class PwshScriptRunnerTests
 
     [TestMethod]
     [TestCategory("Process")]
+    public async Task RunAsync_TimedOutVerifierExitsAndDrainsBothStreams()
+    {
+        var root = CreateFixtureRoot();
+        var pidPath = Path.Combine(root, "verifier.pid");
+        try
+        {
+            var scriptPath = Path.Combine(root, "blocked-verifier.ps1");
+            await File.WriteAllTextAsync(scriptPath, """
+                param([string]$PidPath)
+                [IO.File]::WriteAllText($PidPath, [string]$PID)
+                [Console]::Out.WriteLine('stdout-verifier-sentinel')
+                [Console]::Error.WriteLine('stderr-verifier-sentinel')
+                Start-Sleep -Seconds 30
+                """);
+            var exception = await Assert.ThrowsExactlyAsync<TimeoutException>(() =>
+                PwshScriptRunner.RunAsync(["-NoProfile", "-File", scriptPath, pidPath],
+                    timeout: TimeSpan.FromSeconds(3), description: "blocked verifier"));
+            StringAssert.Contains(exception.Message, "stdout-verifier-sentinel");
+            StringAssert.Contains(exception.Message, "stderr-verifier-sentinel");
+            Assert.IsTrue(File.Exists(pidPath), "Verifier did not start before its timeout.");
+            var pid = int.Parse(await File.ReadAllTextAsync(pidPath), System.Globalization.CultureInfo.InvariantCulture);
+            Assert.IsTrue(await WaitForProcessExitAsync(pid), "Timed-out verifier survived runner completion.");
+        }
+        finally
+        {
+            await StopFixtureChildAsync(pidPath);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(root);
+        }
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
+    public async Task RunAsync_StdinVerifierTimeoutPreservesOutputAndTerminates()
+    {
+        var root = CreateFixtureRoot();
+        var pidPath = Path.Combine(root, "stdin-verifier.pid");
+        try
+        {
+            var scriptPath = Path.Combine(root, "blocked-stdin-verifier.ps1");
+            await File.WriteAllTextAsync(scriptPath, """
+                param([string]$PidPath)
+                $payload = [Console]::In.ReadToEnd()
+                [IO.File]::WriteAllText($PidPath, [string]$PID)
+                [Console]::Out.WriteLine('stdin=' + $payload)
+                [Console]::Error.WriteLine('stderr-stdin-sentinel')
+                Start-Sleep -Seconds 30
+                """);
+            var exception = await Assert.ThrowsExactlyAsync<TimeoutException>(() =>
+                PwshScriptRunner.RunWithInputAsync(["-NoProfile", "-File", scriptPath, pidPath],
+                    "json-stdin-sentinel", TimeSpan.FromSeconds(3), "stdin verifier"));
+            StringAssert.Contains(exception.Message, "stdin=json-stdin-sentinel");
+            StringAssert.Contains(exception.Message, "stderr-stdin-sentinel");
+            Assert.IsTrue(File.Exists(pidPath), "Verifier did not read stdin before its timeout.");
+            var pid = int.Parse(await File.ReadAllTextAsync(pidPath), System.Globalization.CultureInfo.InvariantCulture);
+            Assert.IsTrue(await WaitForProcessExitAsync(pid), "Timed-out stdin verifier survived runner completion.");
+        }
+        finally
+        {
+            await StopFixtureChildAsync(pidPath);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(root);
+        }
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
+    public async Task RunWithInputAsync_BrokenPipeTerminatesAndDrainsBeforeReturningFailure()
+    {
+        var root = CreateFixtureRoot();
+        var pidPath = Path.Combine(root, "broken-stdin.pid");
+        try
+        {
+            var scriptPath = Path.Combine(root, "close-stdin.ps1");
+            await File.WriteAllTextAsync(scriptPath, """
+                param([string]$PidPath)
+                [IO.File]::WriteAllText($PidPath, [string]$PID)
+                [Console]::Out.WriteLine('broken-pipe-stdout')
+                [Console]::Error.WriteLine('broken-pipe-stderr')
+                Add-Type -TypeDefinition @'
+                using System;
+                using System.Runtime.InteropServices;
+                public static class CloseStdinProbe {
+                    [DllImport("kernel32.dll")] public static extern IntPtr GetStdHandle(int id);
+                    [DllImport("kernel32.dll")] public static extern bool CloseHandle(IntPtr handle);
+                    [DllImport("libc")] public static extern int close(int fd);
+                }
+                '@
+                if ($IsWindows) {
+                    [CloseStdinProbe]::CloseHandle([CloseStdinProbe]::GetStdHandle(-10)) | Out-Null
+                } else {
+                    [CloseStdinProbe]::close(0) | Out-Null
+                }
+                Start-Sleep -Seconds 30
+                """);
+            var failure = await Assert.ThrowsAsync<IOException>(() =>
+                PwshScriptRunner.RunWithInputAsync(["-NoProfile", "-File", scriptPath, pidPath],
+                    new string('x', 8 * 1024 * 1024), TimeSpan.FromSeconds(10), "broken stdin verifier"));
+            Assert.IsTrue(File.Exists(pidPath), "The verifier did not start before stdin failed.");
+            var cleanup = failure.Data["process cleanup output"] as string;
+            Assert.IsNotNull(cleanup, "The input failure must retain process-cleanup evidence.");
+            StringAssert.Contains(cleanup, "broken-pipe-stdout");
+            StringAssert.Contains(cleanup, "broken-pipe-stderr");
+            var pid = int.Parse(await File.ReadAllTextAsync(pidPath), System.Globalization.CultureInfo.InvariantCulture);
+            Assert.IsTrue(await WaitForProcessExitAsync(pid), "The broken-stdin verifier survived runner completion.");
+        }
+        finally
+        {
+            await StopFixtureChildAsync(pidPath);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(root);
+        }
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
     [DataRow(false)]
     [DataRow(true)]
     public async Task RunAsync_CancellationTerminatesChildProcessTree(bool callerCancellation)
