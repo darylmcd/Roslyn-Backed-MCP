@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 
@@ -14,7 +13,6 @@ internal sealed class JsonLinesFileLoggerProvider : ILoggerProvider, ISupportExt
 {
     private const int _maxMarkerCategoryChars = 128;
     private const int _maxMarkerNameChars = 64;
-    private static readonly UTF8Encoding _utf8WithoutBom = new(encoderShouldEmitUTF8Identifier: false);
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -89,12 +87,12 @@ internal sealed class JsonLinesFileLoggerProvider : ILoggerProvider, ISupportExt
                     _utcNow().UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", CultureInfo.InvariantCulture),
                     level.ToString(), category, eventId.Id, formatter(state, null), correlationId, eventId.Name, fields);
                 var line = JsonSerializer.Serialize(record, _jsonOptions) + Environment.NewLine;
-                var lineByteCount = _utf8WithoutBom.GetByteCount(line);
+                var lineByteCount = JsonLinesSegmentWriter.Utf8WithoutBom.GetByteCount(line);
                 if (lineByteCount > _segments.MaxSegmentBytes)
                 {
                     line = JsonSerializer.Serialize(CreateTruncationMarker(record, lineByteCount), _jsonOptions)
                         + Environment.NewLine;
-                    lineByteCount = _utf8WithoutBom.GetByteCount(line);
+                    lineByteCount = JsonLinesSegmentWriter.Utf8WithoutBom.GetByteCount(line);
                 }
 
                 _segments.Append(line, lineByteCount);

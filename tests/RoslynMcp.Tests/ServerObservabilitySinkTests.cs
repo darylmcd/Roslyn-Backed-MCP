@@ -344,6 +344,41 @@ public sealed class ServerObservabilitySinkTests
             () => JsonLinesRetentionOptions.Create(JsonLinesRetentionOptions.MinimumSegmentBytes, 0));
     }
 
+    [TestMethod]
+    public void SegmentWriter_FailedRotationNeverLosesSegmentContentAcrossTheRetry()
+    {
+        var retention = JsonLinesRetentionOptions.Create(JsonLinesRetentionOptions.MinimumSegmentBytes, maxSegments: 3);
+        var directory = Path.Combine(TestTempRoot.Current, nameof(ServerObservabilitySinkTests), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var writer = new JsonLinesSegmentWriter(directory, 4321, retention);
+        File.WriteAllText(writer.ActivePath, "X");
+        File.WriteAllText(writer.SegmentPath(1), "A");
+        File.WriteAllText(writer.SegmentPath(2), "B");
+        File.WriteAllText(writer.SegmentPath(3), "C");
+
+        // A reader holding the newest segment makes its Move fail on Windows (no-op elsewhere; the
+        // end-state assertions below hold either way).
+        using (new FileStream(writer.SegmentPath(1), FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            try
+            {
+                writer.Rotate();
+            }
+            catch (IOException)
+            {
+                // Expected while the reader holds the segment; the provider swallows this too.
+            }
+        }
+
+        writer.Rotate();
+
+        // A successful rotation of the active file X evicts only the oldest segment C.
+        Assert.AreEqual("X", File.ReadAllText(writer.SegmentPath(1)));
+        Assert.AreEqual("A", File.ReadAllText(writer.SegmentPath(2)));
+        Assert.AreEqual("B", File.ReadAllText(writer.SegmentPath(3)), "A failed shift must not make the retry delete B.");
+        Assert.IsFalse(File.Exists(writer.ActivePath));
+    }
+
     private static string[] ReadRetainedLines(JsonLinesFileLoggerProvider provider, int maxSegments) =>
         Enumerable.Range(1, maxSegments).Reverse().Select(provider.SegmentPath).Append(provider.FilePath)
             .Where(File.Exists).SelectMany(File.ReadAllLines).ToArray();
