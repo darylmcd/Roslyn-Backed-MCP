@@ -278,8 +278,12 @@ internal sealed class DocumentSetPersistenceService
         CancellationToken ct)
     {
         // MSBuildWorkspace must see the original references while it applies its change set.
-        // It rewrites project files (and may rewrite document files) itself, so every effect
-        // below is followed by a read-back that records what this operation left on disk.
+        // It rewrites project files (and may rewrite document files) itself. Before every effect
+        // group each captured path is verified against the last state this operation recorded for
+        // it; a mismatch marks the path foreign, and the read-back after the effect then never
+        // adopts it. A change landing inside an effect's own window cannot be told apart from
+        // the effect's output (best-effort ownership).
+        await VerifyRecordedStateAsync(persistenceState).ConfigureAwait(false);
         bool applied;
         try
         {
@@ -293,41 +297,26 @@ internal sealed class DocumentSetPersistenceService
         var plannedPaths = persistenceState.ProjectFileMutations.Select(mutation => mutation.Path)
             .ToHashSet(FileSystemPath.Comparer);
 
-        try
-        {
-            await RestoreSdkProjectSnapshotsAsync(
-                persistenceState.SdkProjectCsprojSnapshots, plannedPaths, ct).ConfigureAwait(false);
-        }
-        finally
-        {
-            await ObserveSnapshotPathsAsync(persistenceState).ConfigureAwait(false);
-        }
+        await RunVerifiedEffectAsync(
+            persistenceState,
+            () => RestoreSdkProjectSnapshotsAsync(
+                persistenceState.SdkProjectCsprojSnapshots, plannedPaths, ct)).ConfigureAwait(false);
 
         var skipTriviaPaths = persistenceState.SdkProjectCsprojSnapshots.Keys.ToHashSet(FileSystemPath.Comparer);
         skipTriviaPaths.UnionWith(plannedPaths);
-        try
-        {
-            await CsprojSemanticEquality.RestoreTriviaOnlyDriftAsync(
+        await RunVerifiedEffectAsync(
+            persistenceState,
+            () => CsprojSemanticEquality.RestoreTriviaOnlyDriftAsync(
                 persistenceState.AllCsprojSnapshots,
                 skipTriviaPaths,
                 _logger,
                 operationTag: "csproj-reserialization-msbuildworkspace",
                 ct: ct,
-                throwOnFailure: true).ConfigureAwait(false);
-        }
-        finally
-        {
-            await ObserveSnapshotPathsAsync(persistenceState).ConfigureAwait(false);
-        }
+                throwOnFailure: true)).ConfigureAwait(false);
 
-        try
-        {
-            await PersistProjectFileMutationsAsync(persistenceState.ProjectFileMutations, ct).ConfigureAwait(false);
-        }
-        finally
-        {
-            await ObserveSnapshotPathsAsync(persistenceState).ConfigureAwait(false);
-        }
+        await RunVerifiedEffectAsync(
+            persistenceState,
+            () => PersistProjectFileMutationsAsync(persistenceState.ProjectFileMutations, ct)).ConfigureAwait(false);
 
         if (!applied)
         {
@@ -381,23 +370,72 @@ internal sealed class DocumentSetPersistenceService
         }
     }
 
+    private async Task RunVerifiedEffectAsync(
+        DocumentSetPersistenceState persistenceState,
+        Func<Task> effect)
+    {
+        await VerifyRecordedStateAsync(persistenceState).ConfigureAwait(false);
+        try
+        {
+            await effect().ConfigureAwait(false);
+        }
+        finally
+        {
+            await ObserveSnapshotPathsAsync(persistenceState).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Compares every captured path with the last state this operation recorded for it (the
+    /// original snapshot for a path it has not touched). A mismatch, or a path that cannot be
+    /// read, means something else changed it: the path is marked foreign and is never adopted
+    /// into the ownership ledger again.
+    /// </summary>
+    private async Task VerifyRecordedStateAsync(DocumentSetPersistenceState persistenceState)
+    {
+        foreach (var path in persistenceState.FileSnapshots.Keys)
+        {
+            if (persistenceState.IsForeign(path))
+            {
+                continue;
+            }
+
+            try
+            {
+                var current = await ReadFileStateAsync(path, CancellationToken.None).ConfigureAwait(false);
+                if (current.SameAs(persistenceState.GetLastKnownState(path)))
+                {
+                    continue;
+                }
+
+                _logger.LogWarning(
+                    "'{Path}' changed outside the persistence operation; rollback will not overwrite it.",
+                    path);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Could not verify '{Path}' before the next persistence effect; treating it as foreign.",
+                    path);
+            }
+
+            persistenceState.MarkForeign(path);
+        }
+    }
+
     /// <summary>
     /// Reads <paramref name="path"/> back after an effect and records the on-disk state as
-    /// owned by this operation. A path is recorded only when the operation already wrote it or
-    /// its state differs from the original snapshot, so untouched captured files are never
-    /// claimed. Runs inside <c>finally</c> blocks: it must not throw over the primary failure.
+    /// owned by this operation unless the path is foreign. Runs inside <c>finally</c> blocks:
+    /// it must not throw over the primary failure. An unreadable path keeps its previous
+    /// recorded state, so the next verification marks it foreign.
     /// </summary>
     private async Task ObservePathAsync(DocumentSetPersistenceState persistenceState, string path)
     {
         try
         {
             var observed = await ReadFileStateAsync(path, CancellationToken.None).ConfigureAwait(false);
-            if (persistenceState.OwnsPath(path)
-                || !persistenceState.FileSnapshots.TryGetValue(path, out var original)
-                || !observed.SameAs(original))
-            {
-                persistenceState.RecordOwnedPostState(path, observed);
-            }
+            persistenceState.RecordObservedState(path, observed);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -549,7 +587,7 @@ internal sealed class DocumentSetPersistenceService
                     continue;
                 }
 
-                if (!ownedPostStates.Any(current.SameAs))
+                if (persistenceState.IsForeign(path) || !ownedPostStates.Any(current.SameAs))
                 {
                     rollbackFailures.Add(new IOException(
                         $"Rollback preserved '{path}': its content changed outside this operation after the operation wrote it."));
@@ -640,6 +678,9 @@ internal sealed class DocumentSetPersistenceService
     {
         private readonly Dictionary<string, List<FileMutationSnapshot>> _ownedPostStates =
             new(FileSystemPath.Comparer);
+        private readonly Dictionary<string, FileMutationSnapshot> _lastKnownStates =
+            new(FileSystemPath.Comparer);
+        private readonly HashSet<string> _foreignPaths = new(FileSystemPath.Comparer);
 
         public Dictionary<string, CsprojSemanticEquality.ProjectFileSnapshot> SdkProjectCsprojSnapshots { get; } =
             sdkProjectCsprojSnapshots;
@@ -668,7 +709,33 @@ internal sealed class DocumentSetPersistenceService
             }
         }
 
-        public bool OwnsPath(string path) => _ownedPostStates.ContainsKey(path);
+        public bool IsForeign(string path) => _foreignPaths.Contains(path);
+
+        public void MarkForeign(string path) => _foreignPaths.Add(path);
+
+        /// <summary>The last state recorded for the path; the original snapshot until the operation touches it.</summary>
+        public FileMutationSnapshot GetLastKnownState(string path) =>
+            _lastKnownStates.TryGetValue(path, out var state) ? state : FileSnapshots[path];
+
+        /// <summary>
+        /// Adopts a read-back state for a path that has not been marked foreign. It joins the
+        /// ledger when the operation already owns the path or the state differs from the original.
+        /// </summary>
+        public void RecordObservedState(string path, FileMutationSnapshot observed)
+        {
+            if (IsForeign(path))
+            {
+                return;
+            }
+
+            _lastKnownStates[path] = observed;
+            if (_ownedPostStates.ContainsKey(path)
+                || !FileSnapshots.TryGetValue(path, out var original)
+                || !observed.SameAs(original))
+            {
+                RecordOwnedPostState(path, observed);
+            }
+        }
 
         public IReadOnlyList<FileMutationSnapshot> GetOwnedPostStates(string path) =>
             _ownedPostStates.TryGetValue(path, out var states) ? states : [];

@@ -5,7 +5,9 @@ using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Roslyn.Helpers;
+using RoslynMcp.Roslyn.Contracts;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -625,12 +627,164 @@ public sealed class UndoFileOperationsTests : IsolatedWorkspaceTestBase
         }
     }
 
+    [TestMethod]
+    public async Task DocumentSetPersistence_ExternalEditBeforeTryApply_OwnedDoc_NotAdopted()
+    {
+        var scenario = await LoadPersistenceScenarioAsync(addContractsProject: false);
+        try
+        {
+            var modified = scenario.Current
+                .WithDocumentText(scenario.Dog.Id, SourceText.From("namespace SampleLib; public class Dog { }"))
+                .WithDocumentText(scenario.Cat.Id, SourceText.From("namespace SampleLib; public class Cat { }"));
+            var fileSystem = new FaultInjectingFileSystem();
+            fileSystem.EditFirstTextWriteAfterSecondDistinctWrite(ExternalBytes);
+            var manager = new ApplyRejectingWorkspaceManager(scenario.Manager);
+
+            var failure = await Assert.ThrowsExactlyAsync<AggregateException>(
+                () => PersistAsync(scenario, modified, fileSystem, manager));
+
+            var editedPath = fileSystem.FirstTextWritePath!;
+            CollectionAssert.AreEqual(ExternalBytes, await File.ReadAllBytesAsync(editedPath),
+                "An edit that landed after our write and before TryApplyChanges must not be adopted as owned.");
+            AssertOwnershipConflict(failure, editedPath, "TryApplyChanges rejected");
+        }
+        finally
+        {
+            scenario.Dispose();
+        }
+    }
+
+    [TestMethod]
+    public async Task DocumentSetPersistence_ExternalEditBeforeTryApply_UntouchedCsproj_NotAdopted()
+    {
+        var scenario = await LoadPersistenceScenarioAsync(addContractsProject: true);
+        try
+        {
+            var contractsProjectPath = Path.Combine(scenario.SolutionDir, "Contracts", "Contracts.csproj");
+            var modified = scenario.Current
+                .WithDocumentText(scenario.Dog.Id, SourceText.From("namespace SampleLib; public class Dog { }"))
+                .WithDocumentText(scenario.Cat.Id, SourceText.From("namespace SampleLib; public class Cat { }"));
+            var fileSystem = new FaultInjectingFileSystem();
+            fileSystem.EditPathAfterSecondDistinctTextWrite(contractsProjectPath, ExternalBytes);
+            var manager = new ApplyRejectingWorkspaceManager(scenario.Manager);
+
+            var result = await PersistAsync(scenario, modified, fileSystem, manager);
+
+            Assert.IsFalse(result.Success, "TryApplyChanges rejection must fail the transaction.");
+            CollectionAssert.AreEqual(ExternalBytes, await File.ReadAllBytesAsync(contractsProjectPath),
+                "An externally edited captured project file must not be adopted and restored over.");
+            foreach (var (path, originalBytes) in scenario.OriginalBytes.Where(entry => entry.Key != contractsProjectPath))
+            {
+                CollectionAssert.AreEqual(originalBytes, await File.ReadAllBytesAsync(path),
+                    $"Operation-owned path '{path}' must hold its original bytes.");
+            }
+        }
+        finally
+        {
+            scenario.Dispose();
+        }
+    }
+
+    [TestMethod]
+    public async Task DocumentSetPersistence_ExternalEditBeforeTryApply_ProjectFileWriteFails_UntouchedCsprojPreserved()
+    {
+        var scenario = await LoadPersistenceScenarioAsync(addContractsProject: true);
+        try
+        {
+            var contractsProjectPath = Path.Combine(scenario.SolutionDir, "Contracts", "Contracts.csproj");
+            var contracts = scenario.Current.Projects.Single(project => project.Name == "Contracts");
+            var modified = scenario.Current
+                .AddProjectReference(scenario.SampleLib.Id, new ProjectReference(contracts.Id))
+                .WithDocumentText(scenario.Dog.Id, SourceText.From("namespace SampleLib; public class Dog { }"))
+                .WithDocumentText(scenario.Cat.Id, SourceText.From("namespace SampleLib; public class Cat { }"));
+            var sampleLibProjectPath = scenario.SampleLib.FilePath!;
+            var projectFileWriteFailed = false;
+            var fileSystem = new FaultInjectingFileSystem();
+            fileSystem.EditPathAfterSecondDistinctTextWrite(contractsProjectPath, ExternalBytes);
+            fileSystem.BeforeWriteBytes = path =>
+            {
+                if (!projectFileWriteFailed
+                    && string.Equals(path, sampleLibProjectPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    projectFileWriteFailed = true;
+                    throw new IOException("Injected project-file write failure.");
+                }
+            };
+
+            var result = await PersistAsync(scenario, modified, fileSystem);
+
+            Assert.IsTrue(projectFileWriteFailed, "The project-file mutation write must have been attempted.");
+            Assert.IsFalse(result.Success);
+            CollectionAssert.AreEqual(ExternalBytes, await File.ReadAllBytesAsync(contractsProjectPath),
+                "A captured project file edited before TryApplyChanges must not be adopted and restored over.");
+            foreach (var (path, originalBytes) in scenario.OriginalBytes.Where(entry => entry.Key != contractsProjectPath))
+            {
+                CollectionAssert.AreEqual(originalBytes, await File.ReadAllBytesAsync(path),
+                    $"Operation-owned path '{path}' must be restored to its original bytes.");
+            }
+        }
+        finally
+        {
+            scenario.Dispose();
+        }
+    }
+
+    [TestMethod]
+    public async Task DocumentSetPersistence_UnreadablePartialFile_PreservedAndConflictReported()
+    {
+        var scenario = await LoadPersistenceScenarioAsync(addContractsProject: false);
+        try
+        {
+            var modified = scenario.Current
+                .WithDocumentText(scenario.Dog.Id, SourceText.From("namespace SampleLib; public class Dog { }"))
+                .WithDocumentText(scenario.Cat.Id, SourceText.From("namespace SampleLib; public class Cat { }"));
+            var partial = Encoding.UTF8.GetBytes("namespace SampleLib; public class Par");
+            string? partialPath = null;
+            var readBackFailed = false;
+            var fileSystem = new FaultInjectingFileSystem();
+            fileSystem.FailOnSecondDistinctTextWrite((_, failingPath) =>
+            {
+                partialPath = failingPath;
+                File.WriteAllBytes(failingPath, partial);
+            });
+            fileSystem.BeforeRead = path =>
+            {
+                if (!readBackFailed && partialPath is not null
+                    && string.Equals(path, partialPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    readBackFailed = true;
+                    throw new IOException("Injected read-back failure.");
+                }
+            };
+
+            var failure = await Assert.ThrowsExactlyAsync<AggregateException>(
+                () => PersistAsync(scenario, modified, fileSystem));
+
+            Assert.IsTrue(readBackFailed, "The post-write read-back must have been attempted and failed.");
+            CollectionAssert.AreEqual(partial, await File.ReadAllBytesAsync(partialPath!),
+                "A partial file whose post-state could not be read back is unproven and must be preserved.");
+            AssertOwnershipConflict(failure, partialPath!);
+        }
+        finally
+        {
+            scenario.Dispose();
+        }
+    }
+
+    private sealed class ApplyRejectingWorkspaceManager(IWorkspaceManager inner) : DelegatingWorkspaceManager(inner)
+    {
+        public override bool TryApplyChanges(string workspaceId, Solution newSolution) => false;
+    }
+
     private static readonly byte[] ExternalBytes = Encoding.UTF8.GetBytes("// edited outside the operation\n");
 
-    private static void AssertOwnershipConflict(AggregateException failure, string path)
+    private static void AssertOwnershipConflict(
+        AggregateException failure,
+        string path,
+        string primaryMessageFragment = "injected")
     {
         Assert.IsTrue(
-            failure.InnerExceptions.Any(ex => ex is IOException && ex.Message.Contains("injected", StringComparison.OrdinalIgnoreCase)),
+            failure.InnerExceptions.Any(ex => ex.Message.Contains(primaryMessageFragment, StringComparison.OrdinalIgnoreCase)),
             "The primary persistence failure must be preserved in the aggregate.");
         Assert.IsTrue(
             failure.InnerExceptions.Any(ex => ex is IOException
@@ -667,8 +821,9 @@ public sealed class UndoFileOperationsTests : IsolatedWorkspaceTestBase
     private static Task<(bool Success, IReadOnlyList<string> AppliedFiles)> PersistAsync(
         PersistenceScenario scenario,
         Solution modified,
-        IDocumentSetFileSystem fileSystem) =>
-        new DocumentSetPersistenceService(scenario.Manager, NullLogger.Instance, fileSystem).PersistAsync(
+        IDocumentSetFileSystem fileSystem,
+        IWorkspaceManager? manager = null) =>
+        new DocumentSetPersistenceService(manager ?? scenario.Manager, NullLogger.Instance, fileSystem).PersistAsync(
             scenario.WorkspaceId,
             scenario.Current,
             modified,
@@ -701,6 +856,8 @@ public sealed class UndoFileOperationsTests : IsolatedWorkspaceTestBase
         public Action<string>? BeforeWriteText { get; set; }
         public Action<string>? BeforeWriteBytes { get; set; }
         public Action<string>? BeforeDelete { get; set; }
+        public Action<string>? AfterWriteText { get; set; }
+        public Action<string>? BeforeRead { get; set; }
         public string? FirstTextWritePath => _firstTextWritePath;
         public string? FirstDeletePath => _firstDeletePath;
 
@@ -719,6 +876,26 @@ public sealed class UndoFileOperationsTests : IsolatedWorkspaceTestBase
                     throw new IOException("Injected deterministic failure on the second distinct document write.");
                 }
             };
+
+        /// <summary>
+        /// After the second distinct document write completes, replaces the first-written
+        /// document's bytes (an external edit between our write and the next effect).
+        /// </summary>
+        public void EditFirstTextWriteAfterSecondDistinctWrite(byte[] externalBytes) =>
+            EditPathAfterSecondDistinctTextWrite(null, externalBytes);
+
+        public void EditPathAfterSecondDistinctTextWrite(string? pathToEdit, byte[] externalBytes)
+        {
+            BeforeWriteText = path => _firstTextWritePath ??= path;
+            AfterWriteText = path =>
+            {
+                if (!_failed && !SamePath(_firstTextWritePath!, path))
+                {
+                    _failed = true;
+                    File.WriteAllBytes(pathToEdit ?? _firstTextWritePath!, externalBytes);
+                }
+            };
+        }
 
         public void FailOnSecondDistinctDelete(Action<string, string> sabotage) =>
             BeforeDelete = path =>
@@ -741,8 +918,12 @@ public sealed class UndoFileOperationsTests : IsolatedWorkspaceTestBase
             File.Delete(path);
         }
 
-        public Task<byte[]> ReadAllBytesAsync(string path, CancellationToken ct) =>
-            File.ReadAllBytesAsync(path, ct);
+        public Task<byte[]> ReadAllBytesAsync(string path, CancellationToken ct)
+        {
+            BeforeRead?.Invoke(path);
+            return File.ReadAllBytesAsync(path, ct);
+        }
+
         public Task<string> ReadAllTextAsync(string path, CancellationToken ct) =>
             File.ReadAllTextAsync(path, ct);
 
@@ -752,10 +933,11 @@ public sealed class UndoFileOperationsTests : IsolatedWorkspaceTestBase
             return File.WriteAllBytesAsync(path, bytes, ct);
         }
 
-        public Task WriteAllTextAsync(string path, string content, CancellationToken ct)
+        public async Task WriteAllTextAsync(string path, string content, CancellationToken ct)
         {
             BeforeWriteText?.Invoke(path);
-            return File.WriteAllTextAsync(path, content, ct);
+            await File.WriteAllTextAsync(path, content, ct).ConfigureAwait(false);
+            AfterWriteText?.Invoke(path);
         }
 
         private static bool SamePath(string left, string right) =>
