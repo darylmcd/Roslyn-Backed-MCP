@@ -1,3 +1,4 @@
+using System.Text;
 using System.Xml.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.Extensions.Logging;
@@ -66,7 +67,7 @@ internal sealed class DocumentSetPersistenceService
             {
                 await RollBackAsync(
                     workspaceId,
-                    persistenceState.FileSnapshots,
+                    persistenceState,
                     ex).ConfigureAwait(false);
             }
 
@@ -143,9 +144,7 @@ internal sealed class DocumentSetPersistenceService
         await ApplyChangesAsync(
             workspaceId,
             modifiedSolution,
-            persistenceState.SdkProjectCsprojSnapshots,
-            persistenceState.AllCsprojSnapshots,
-            persistenceState.ProjectFileMutations,
+            persistenceState,
             ct).ConfigureAwait(false);
     }
 
@@ -160,17 +159,17 @@ internal sealed class DocumentSetPersistenceService
         await PersistAddedDocumentsAsync(
             modifiedSolution,
             addedDocuments,
-            persistenceState.AppliedFiles,
+            persistenceState,
             ct).ConfigureAwait(false);
         await PersistChangedDocumentsAsync(
             modifiedSolution,
             projectChange.GetChangedDocuments(),
-            persistenceState.AppliedFiles,
+            persistenceState,
             ct).ConfigureAwait(false);
-        PersistRemovedDocuments(
+        await PersistRemovedDocumentsAsync(
             currentSolution,
             projectChange.GetRemovedDocuments(),
-            persistenceState.AppliedFiles);
+            persistenceState).ConfigureAwait(false);
     }
 
     private static Dictionary<string, CsprojSemanticEquality.ProjectFileSnapshot> SnapshotSdkProjectCsprojs(
@@ -207,7 +206,7 @@ internal sealed class DocumentSetPersistenceService
     private async Task PersistAddedDocumentsAsync(
         Solution modifiedSolution,
         IReadOnlyCollection<DocumentId> addedDocuments,
-        List<string> appliedFiles,
+        DocumentSetPersistenceState persistenceState,
         CancellationToken ct)
     {
         foreach (var documentId in addedDocuments)
@@ -225,15 +224,15 @@ internal sealed class DocumentSetPersistenceService
             }
 
             var text = (await document.GetTextAsync(ct).ConfigureAwait(false)).ToString();
-            await _fileSystem.WriteAllTextAsync(document.FilePath, text, ct).ConfigureAwait(false);
-            appliedFiles.Add(document.FilePath);
+            await WriteOwnedTextAsync(persistenceState, document.FilePath, text, ct).ConfigureAwait(false);
+            persistenceState.AppliedFiles.Add(document.FilePath);
         }
     }
 
     private async Task PersistChangedDocumentsAsync(
         Solution modifiedSolution,
         IEnumerable<DocumentId> changedDocuments,
-        List<string> appliedFiles,
+        DocumentSetPersistenceState persistenceState,
         CancellationToken ct)
     {
         foreach (var documentId in changedDocuments)
@@ -245,15 +244,15 @@ internal sealed class DocumentSetPersistenceService
             }
 
             var text = (await document.GetTextAsync(ct).ConfigureAwait(false)).ToString();
-            await _fileSystem.WriteAllTextAsync(document.FilePath, text, ct).ConfigureAwait(false);
-            appliedFiles.Add(document.FilePath);
+            await WriteOwnedTextAsync(persistenceState, document.FilePath, text, ct).ConfigureAwait(false);
+            persistenceState.AppliedFiles.Add(document.FilePath);
         }
     }
 
-    private void PersistRemovedDocuments(
+    private async Task PersistRemovedDocumentsAsync(
         Solution currentSolution,
         IEnumerable<DocumentId> removedDocuments,
-        List<string> appliedFiles)
+        DocumentSetPersistenceState persistenceState)
     {
         foreach (var documentId in removedDocuments)
         {
@@ -265,42 +264,166 @@ internal sealed class DocumentSetPersistenceService
 
             if (_fileSystem.FileExists(document.FilePath))
             {
-                _fileSystem.DeleteFile(document.FilePath);
+                await DeleteOwnedFileAsync(persistenceState, document.FilePath).ConfigureAwait(false);
             }
 
-            appliedFiles.Add(document.FilePath);
+            persistenceState.AppliedFiles.Add(document.FilePath);
         }
     }
 
     private async Task ApplyChangesAsync(
         string workspaceId,
         Solution modifiedSolution,
-        Dictionary<string, CsprojSemanticEquality.ProjectFileSnapshot> sdkProjectCsprojSnapshots,
-        IReadOnlyDictionary<string, CsprojSemanticEquality.ProjectFileSnapshot> allCsprojSnapshots,
-        IReadOnlyList<ProjectReferenceMutationRenderer.Mutation> projectFileMutations,
+        DocumentSetPersistenceState persistenceState,
         CancellationToken ct)
     {
         // MSBuildWorkspace must see the original references while it applies its change set.
-        var applied = _workspace.TryApplyChanges(workspaceId, modifiedSolution);
-        var plannedPaths = projectFileMutations.Select(mutation => mutation.Path)
+        // It rewrites project files (and may rewrite document files) itself, so every effect
+        // below is followed by a read-back that records what this operation left on disk.
+        bool applied;
+        try
+        {
+            applied = _workspace.TryApplyChanges(workspaceId, modifiedSolution);
+        }
+        finally
+        {
+            await ObserveSnapshotPathsAsync(persistenceState).ConfigureAwait(false);
+        }
+
+        var plannedPaths = persistenceState.ProjectFileMutations.Select(mutation => mutation.Path)
             .ToHashSet(FileSystemPath.Comparer);
 
-        await RestoreSdkProjectSnapshotsAsync(sdkProjectCsprojSnapshots, plannedPaths, ct).ConfigureAwait(false);
-        var skipTriviaPaths = sdkProjectCsprojSnapshots.Keys.ToHashSet(FileSystemPath.Comparer);
+        try
+        {
+            await RestoreSdkProjectSnapshotsAsync(
+                persistenceState.SdkProjectCsprojSnapshots, plannedPaths, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            await ObserveSnapshotPathsAsync(persistenceState).ConfigureAwait(false);
+        }
+
+        var skipTriviaPaths = persistenceState.SdkProjectCsprojSnapshots.Keys.ToHashSet(FileSystemPath.Comparer);
         skipTriviaPaths.UnionWith(plannedPaths);
-        await CsprojSemanticEquality.RestoreTriviaOnlyDriftAsync(
-            allCsprojSnapshots,
-            skipTriviaPaths,
-            _logger,
-            operationTag: "csproj-reserialization-msbuildworkspace",
-            ct: ct,
-            throwOnFailure: true).ConfigureAwait(false);
-        await PersistProjectFileMutationsAsync(projectFileMutations, ct).ConfigureAwait(false);
+        try
+        {
+            await CsprojSemanticEquality.RestoreTriviaOnlyDriftAsync(
+                persistenceState.AllCsprojSnapshots,
+                skipTriviaPaths,
+                _logger,
+                operationTag: "csproj-reserialization-msbuildworkspace",
+                ct: ct,
+                throwOnFailure: true).ConfigureAwait(false);
+        }
+        finally
+        {
+            await ObserveSnapshotPathsAsync(persistenceState).ConfigureAwait(false);
+        }
+
+        try
+        {
+            await PersistProjectFileMutationsAsync(persistenceState.ProjectFileMutations, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            await ObserveSnapshotPathsAsync(persistenceState).ConfigureAwait(false);
+        }
 
         if (!applied)
         {
             throw InvalidOperationErrors.Internal(
                 $"TryApplyChanges rejected persisted document-set changes for workspace '{workspaceId}'.");
+        }
+    }
+
+    private async Task WriteOwnedTextAsync(
+        DocumentSetPersistenceState persistenceState,
+        string path,
+        string text,
+        CancellationToken ct)
+    {
+        var fullPath = Path.GetFullPath(path);
+        // Record the intended post-state before the effect: a write that throws can still have
+        // left bytes behind, and those must stay compensable. File.WriteAllTextAsync(path, text)
+        // encodes as UTF-8 without a BOM.
+        persistenceState.RecordOwnedPostState(
+            fullPath,
+            new FileMutationSnapshot(Existed: true, Bytes: Utf8NoBom.GetBytes(text)));
+        try
+        {
+            await _fileSystem.WriteAllTextAsync(path, text, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            await ObservePathAsync(persistenceState, fullPath).ConfigureAwait(false);
+        }
+    }
+
+    private async Task DeleteOwnedFileAsync(DocumentSetPersistenceState persistenceState, string path)
+    {
+        var fullPath = Path.GetFullPath(path);
+        persistenceState.RecordOwnedPostState(fullPath, FileMutationSnapshot.Absent);
+        try
+        {
+            _fileSystem.DeleteFile(path);
+        }
+        finally
+        {
+            await ObservePathAsync(persistenceState, fullPath).ConfigureAwait(false);
+        }
+    }
+
+    private async Task ObserveSnapshotPathsAsync(DocumentSetPersistenceState persistenceState)
+    {
+        foreach (var path in persistenceState.FileSnapshots.Keys)
+        {
+            await ObservePathAsync(persistenceState, path).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Reads <paramref name="path"/> back after an effect and records the on-disk state as
+    /// owned by this operation. A path is recorded only when the operation already wrote it or
+    /// its state differs from the original snapshot, so untouched captured files are never
+    /// claimed. Runs inside <c>finally</c> blocks: it must not throw over the primary failure.
+    /// </summary>
+    private async Task ObservePathAsync(DocumentSetPersistenceState persistenceState, string path)
+    {
+        try
+        {
+            var observed = await ReadFileStateAsync(path, CancellationToken.None).ConfigureAwait(false);
+            if (persistenceState.OwnsPath(path)
+                || !persistenceState.FileSnapshots.TryGetValue(path, out var original)
+                || !observed.SameAs(original))
+            {
+                persistenceState.RecordOwnedPostState(path, observed);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogWarning(
+                ex,
+                "Could not read back '{Path}' to record its post-persistence state; rollback treats only recorded states as owned.",
+                path);
+        }
+    }
+
+    private async Task<FileMutationSnapshot> ReadFileStateAsync(string path, CancellationToken ct)
+    {
+        if (!_fileSystem.FileExists(path))
+        {
+            return FileMutationSnapshot.Absent;
+        }
+
+        try
+        {
+            return new FileMutationSnapshot(
+                Existed: true,
+                Bytes: await _fileSystem.ReadAllBytesAsync(path, ct).ConfigureAwait(false));
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+        {
+            return FileMutationSnapshot.Absent;
         }
     }
 
@@ -397,16 +520,43 @@ internal sealed class DocumentSetPersistenceService
         }
     }
 
+    /// <summary>
+    /// Compensates only paths this operation provably left in a recorded post-state. A path whose
+    /// current bytes match neither the original snapshot nor a recorded post-state was changed
+    /// outside this operation; it is preserved and reported as an ownership conflict. This is
+    /// best-effort ownership, not atomic protection: another writer can still change a path
+    /// between the ownership check and the restore or delete that follows it.
+    /// </summary>
     private async Task RollBackAsync(
         string workspaceId,
-        IReadOnlyDictionary<string, FileMutationSnapshot> snapshots,
+        DocumentSetPersistenceState persistenceState,
         Exception persistenceFailure)
     {
         var rollbackFailures = new List<Exception>();
-        foreach (var (path, snapshot) in snapshots)
+        foreach (var (path, snapshot) in persistenceState.FileSnapshots)
         {
             try
             {
+                var ownedPostStates = persistenceState.GetOwnedPostStates(path);
+                if (ownedPostStates.Count == 0)
+                {
+                    continue;
+                }
+
+                var current = await ReadFileStateAsync(path, CancellationToken.None).ConfigureAwait(false);
+                if (current.SameAs(snapshot))
+                {
+                    continue;
+                }
+
+                if (!ownedPostStates.Any(current.SameAs))
+                {
+                    rollbackFailures.Add(new IOException(
+                        $"Rollback preserved '{path}': its content changed outside this operation after the operation wrote it."));
+                    continue;
+                }
+
+                // No await between the ownership check above and the destructive action below.
                 if (snapshot.Existed)
                 {
                     var directory = Path.GetDirectoryName(path);
@@ -422,7 +572,7 @@ internal sealed class DocumentSetPersistenceService
                                 $"Snapshot for existing file '{path}' did not contain bytes."),
                         CancellationToken.None).ConfigureAwait(false);
                 }
-                else if (_fileSystem.FileExists(path))
+                else
                 {
                     _fileSystem.DeleteFile(path);
                 }
@@ -488,6 +638,9 @@ internal sealed class DocumentSetPersistenceService
         IReadOnlyDictionary<string, FileMutationSnapshot> fileSnapshots,
         IReadOnlyList<ProjectReferenceMutationRenderer.Mutation> projectFileMutations)
     {
+        private readonly Dictionary<string, List<FileMutationSnapshot>> _ownedPostStates =
+            new(FileSystemPath.Comparer);
+
         public Dictionary<string, CsprojSemanticEquality.ProjectFileSnapshot> SdkProjectCsprojSnapshots { get; } =
             sdkProjectCsprojSnapshots;
         public List<string> AppliedFiles { get; } = appliedFiles;
@@ -499,9 +652,38 @@ internal sealed class DocumentSetPersistenceService
 
         public IReadOnlyList<string> GetDistinctAppliedFiles() =>
             AppliedFiles.Distinct(FileSystemPath.Comparer).ToList();
+
+        /// <summary>Ownership ledger: every on-disk state this operation produced for a path.</summary>
+        public void RecordOwnedPostState(string path, FileMutationSnapshot postState)
+        {
+            if (!_ownedPostStates.TryGetValue(path, out var states))
+            {
+                states = [];
+                _ownedPostStates[path] = states;
+            }
+
+            if (!states.Any(postState.SameAs))
+            {
+                states.Add(postState);
+            }
+        }
+
+        public bool OwnsPath(string path) => _ownedPostStates.ContainsKey(path);
+
+        public IReadOnlyList<FileMutationSnapshot> GetOwnedPostStates(string path) =>
+            _ownedPostStates.TryGetValue(path, out var states) ? states : [];
     }
 
-    private sealed record FileMutationSnapshot(bool Existed, byte[]? Bytes);
+    private static readonly UTF8Encoding Utf8NoBom = new(encoderShouldEmitUTF8Identifier: false);
+
+    private sealed record FileMutationSnapshot(bool Existed, byte[]? Bytes)
+    {
+        public static FileMutationSnapshot Absent { get; } = new(Existed: false, Bytes: null);
+
+        public bool SameAs(FileMutationSnapshot other) =>
+            Existed == other.Existed
+            && (!Existed || (Bytes ?? []).AsSpan().SequenceEqual(other.Bytes ?? []));
+    }
 }
 
 internal interface IDocumentSetFileSystem

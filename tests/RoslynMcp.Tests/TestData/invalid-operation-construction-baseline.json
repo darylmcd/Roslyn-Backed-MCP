@@ -619,7 +619,7 @@
   },
   {
     "Path": "src/RoslynMcp.Roslyn/Services/DocumentSetPersistenceService.cs",
-    "Member": "M:RoslynMcp.Roslyn.Services.DocumentSetPersistenceService.RollBackAsync(System.String,System.Collections.Generic.IReadOnlyDictionary{System.String,RoslynMcp.Roslyn.Services.DocumentSetPersistenceService.FileMutationSnapshot},System.Exception)",
+    "Member": "M:RoslynMcp.Roslyn.Services.DocumentSetPersistenceService.RollBackAsync(System.String,RoslynMcp.Roslyn.Services.DocumentSetPersistenceService.DocumentSetPersistenceState,System.Exception)",
     "Fingerprint": "DF6F6C56DE708A184D911CE84E7BFD3DCB5D3F38AC8C3E478CB9D1EB14EA654A",
     "Count": 1
   },

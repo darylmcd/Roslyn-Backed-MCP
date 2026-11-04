@@ -420,6 +420,349 @@ public sealed class UndoFileOperationsTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task DocumentSetPersistence_LaterWriteFails_ExternallyEditedChangedDoc_Preserved()
+    {
+        var scenario = await LoadPersistenceScenarioAsync(addContractsProject: false);
+        try
+        {
+            var modified = scenario.Current
+                .WithDocumentText(scenario.Dog.Id, SourceText.From("namespace SampleLib; public class Dog { }"))
+                .WithDocumentText(scenario.Cat.Id, SourceText.From("namespace SampleLib; public class Cat { }"));
+            var otherPath = (string?)null;
+            var fileSystem = new FaultInjectingFileSystem();
+            fileSystem.FailOnSecondDistinctTextWrite((firstPath, failingPath) =>
+            {
+                otherPath = failingPath;
+                File.WriteAllBytes(firstPath, ExternalBytes);
+            });
+
+            var failure = await Assert.ThrowsExactlyAsync<AggregateException>(
+                () => PersistAsync(scenario, modified, fileSystem));
+
+            var firstPath = fileSystem.FirstTextWritePath!;
+            CollectionAssert.AreEqual(ExternalBytes, await File.ReadAllBytesAsync(firstPath),
+                "An externally edited document must not be overwritten by compensation.");
+            CollectionAssert.AreEqual(scenario.OriginalBytes[otherPath!], await File.ReadAllBytesAsync(otherPath!),
+                "The document whose write failed before landing must keep its original bytes.");
+            AssertOwnershipConflict(failure, firstPath);
+        }
+        finally
+        {
+            scenario.Dispose();
+        }
+    }
+
+    [TestMethod]
+    public async Task DocumentSetPersistence_ExternallyReplacedCreatedFile_NotDeleted()
+    {
+        var scenario = await LoadPersistenceScenarioAsync(addContractsProject: false);
+        try
+        {
+            var addedPath = Path.Combine(
+                Path.GetDirectoryName(scenario.SampleLib.FilePath!)!,
+                "OwnershipAddition.cs");
+            var modified = scenario.Current
+                .AddDocument(
+                    DocumentId.CreateNewId(scenario.SampleLib.Id, "OwnershipAddition.cs"),
+                    "OwnershipAddition.cs",
+                    SourceText.From("namespace SampleLib; public class OwnershipAddition { }"),
+                    filePath: addedPath)
+                .WithDocumentText(scenario.Dog.Id, SourceText.From("namespace SampleLib; public class Dog { }"));
+            var fileSystem = new FaultInjectingFileSystem();
+            fileSystem.FailOnSecondDistinctTextWrite((firstPath, _) => File.WriteAllBytes(firstPath, ExternalBytes));
+
+            var failure = await Assert.ThrowsExactlyAsync<AggregateException>(
+                () => PersistAsync(scenario, modified, fileSystem));
+
+            Assert.AreEqual(Path.GetFullPath(addedPath), Path.GetFullPath(fileSystem.FirstTextWritePath!),
+                "Added documents are written first; the scenario depends on that order.");
+            Assert.IsTrue(File.Exists(addedPath), "An externally replaced created file must not be deleted.");
+            CollectionAssert.AreEqual(ExternalBytes, await File.ReadAllBytesAsync(addedPath));
+            AssertOwnershipConflict(failure, addedPath);
+        }
+        finally
+        {
+            scenario.Dispose();
+        }
+    }
+
+    [TestMethod]
+    public async Task DocumentSetPersistence_ExternallyRecreatedRemovedDoc_Preserved()
+    {
+        var scenario = await LoadPersistenceScenarioAsync(addContractsProject: false);
+        try
+        {
+            var modified = scenario.Current
+                .RemoveDocument(scenario.Dog.Id)
+                .RemoveDocument(scenario.Cat.Id);
+            var fileSystem = new FaultInjectingFileSystem();
+            fileSystem.FailOnSecondDistinctDelete((firstPath, _) => File.WriteAllBytes(firstPath, ExternalBytes));
+
+            var failure = await Assert.ThrowsExactlyAsync<AggregateException>(
+                () => PersistAsync(scenario, modified, fileSystem));
+
+            var firstDeleted = fileSystem.FirstDeletePath!;
+            Assert.IsTrue(File.Exists(firstDeleted), "An externally recreated removed document must be kept.");
+            CollectionAssert.AreEqual(ExternalBytes, await File.ReadAllBytesAsync(firstDeleted));
+            AssertOwnershipConflict(failure, firstDeleted);
+        }
+        finally
+        {
+            scenario.Dispose();
+        }
+    }
+
+    [TestMethod]
+    public async Task DocumentSetPersistence_UntouchedCapturedCsproj_ExternalEditPreserved()
+    {
+        var scenario = await LoadPersistenceScenarioAsync(addContractsProject: true);
+        try
+        {
+            var contractsProjectPath = Path.Combine(scenario.SolutionDir, "Contracts", "Contracts.csproj");
+            var modified = scenario.Current
+                .WithDocumentText(scenario.Dog.Id, SourceText.From("namespace SampleLib; public class Dog { }"))
+                .WithDocumentText(scenario.Cat.Id, SourceText.From("namespace SampleLib; public class Cat { }"));
+            var fileSystem = new FaultInjectingFileSystem();
+            fileSystem.FailOnSecondDistinctTextWrite((_, _) => File.WriteAllBytes(contractsProjectPath, ExternalBytes));
+
+            var result = await PersistAsync(scenario, modified, fileSystem);
+
+            Assert.IsFalse(result.Success, "The injected write failure must fail the transaction.");
+            CollectionAssert.AreEqual(ExternalBytes, await File.ReadAllBytesAsync(contractsProjectPath),
+                "A captured project file this operation never wrote must keep its external edit.");
+            foreach (var (path, originalBytes) in scenario.OriginalBytes.Where(entry => entry.Key != contractsProjectPath))
+            {
+                CollectionAssert.AreEqual(originalBytes, await File.ReadAllBytesAsync(path),
+                    $"Operation-owned or untouched path '{path}' must hold its original bytes.");
+            }
+        }
+        finally
+        {
+            scenario.Dispose();
+        }
+    }
+
+    [TestMethod]
+    public async Task DocumentSetPersistence_ConflictPlusCleanupFailure_AggregatesAll()
+    {
+        var scenario = await LoadPersistenceScenarioAsync(addContractsProject: false);
+        try
+        {
+            var addedPath = Path.Combine(
+                Path.GetDirectoryName(scenario.SampleLib.FilePath!)!,
+                "OwnershipAddition.cs");
+            var modified = scenario.Current
+                .AddDocument(
+                    DocumentId.CreateNewId(scenario.SampleLib.Id, "OwnershipAddition.cs"),
+                    "OwnershipAddition.cs",
+                    SourceText.From("namespace SampleLib; public class OwnershipAddition { }"),
+                    filePath: addedPath)
+                .WithDocumentText(scenario.Dog.Id, SourceText.From("namespace SampleLib; public class Dog { }"))
+                .WithDocumentText(scenario.Cat.Id, SourceText.From("namespace SampleLib; public class Cat { }"));
+            var fileSystem = new FaultInjectingFileSystem();
+            var writtenPaths = new List<string>();
+            var failedThirdWrite = false;
+            fileSystem.BeforeWriteText = path =>
+            {
+                writtenPaths.Add(path);
+                if (writtenPaths.Count == 3)
+                {
+                    failedThirdWrite = true;
+                    File.WriteAllBytes(writtenPaths[0], ExternalBytes);
+                    throw new IOException("Injected primary failure on the third document write.");
+                }
+            };
+            fileSystem.BeforeWriteBytes = path =>
+            {
+                if (failedThirdWrite && string.Equals(path, writtenPaths[1], StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new IOException("Injected independent cleanup failure.");
+                }
+            };
+
+            var failure = await Assert.ThrowsExactlyAsync<AggregateException>(
+                () => PersistAsync(scenario, modified, fileSystem));
+
+            Assert.AreEqual(Path.GetFullPath(addedPath), Path.GetFullPath(writtenPaths[0]));
+            AssertOwnershipConflict(failure, writtenPaths[0]);
+            Assert.IsTrue(failure.InnerExceptions.Any(ex => ex.Message.Contains("Injected primary failure")),
+                "The primary persistence failure must be preserved.");
+            Assert.IsTrue(failure.InnerExceptions.Any(ex => ex.Message.Contains("Injected independent cleanup failure")),
+                "An independent cleanup failure must be preserved.");
+            CollectionAssert.AreEqual(ExternalBytes, await File.ReadAllBytesAsync(addedPath));
+        }
+        finally
+        {
+            scenario.Dispose();
+        }
+    }
+
+    [TestMethod]
+    public async Task DocumentSetPersistence_FailingWriteLeavesPartialFile_StillRestored()
+    {
+        var scenario = await LoadPersistenceScenarioAsync(addContractsProject: false);
+        try
+        {
+            var modified = scenario.Current
+                .WithDocumentText(scenario.Dog.Id, SourceText.From("namespace SampleLib; public class Dog { }"))
+                .WithDocumentText(scenario.Cat.Id, SourceText.From("namespace SampleLib; public class Cat { }"));
+            var fileSystem = new FaultInjectingFileSystem();
+            fileSystem.FailOnSecondDistinctTextWrite((_, failingPath) =>
+                File.WriteAllText(failingPath, "namespace SampleLib; public class Par"));
+
+            var result = await PersistAsync(scenario, modified, fileSystem);
+
+            Assert.IsFalse(result.Success);
+            foreach (var (path, originalBytes) in scenario.OriginalBytes)
+            {
+                CollectionAssert.AreEqual(originalBytes, await File.ReadAllBytesAsync(path),
+                    $"'{path}' must be restored, including a file the failing write itself left partial.");
+            }
+        }
+        finally
+        {
+            scenario.Dispose();
+        }
+    }
+
+    private static readonly byte[] ExternalBytes = Encoding.UTF8.GetBytes("// edited outside the operation\n");
+
+    private static void AssertOwnershipConflict(AggregateException failure, string path)
+    {
+        Assert.IsTrue(
+            failure.InnerExceptions.Any(ex => ex is IOException && ex.Message.Contains("injected", StringComparison.OrdinalIgnoreCase)),
+            "The primary persistence failure must be preserved in the aggregate.");
+        Assert.IsTrue(
+            failure.InnerExceptions.Any(ex => ex is IOException
+                && ex.Message.Contains("changed outside this operation", StringComparison.Ordinal)
+                && ex.Message.Contains(path, StringComparison.OrdinalIgnoreCase)),
+            $"An ownership conflict naming '{path}' must be reported.");
+    }
+
+    private async Task<PersistenceScenario> LoadPersistenceScenarioAsync(bool addContractsProject)
+    {
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
+        if (addContractsProject)
+        {
+            AddProjectToCopiedSolution(solutionDir, "Contracts", "net10.0");
+        }
+
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var current = WorkspaceManager.GetCurrentSolution(loadResult.WorkspaceId);
+        var sampleLib = current.Projects.Single(project => project.Name == "SampleLib");
+        var dog = sampleLib.Documents.Single(document => document.Name == "Dog.cs");
+        var cat = sampleLib.Documents.Single(document => document.Name == "Cat.cs");
+        var originalBytes = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase);
+        foreach (var path in new[] { dog.FilePath!, cat.FilePath! }
+                     .Concat(current.Projects.Select(project => project.FilePath!)))
+        {
+            originalBytes[path] = await File.ReadAllBytesAsync(path);
+        }
+
+        return new PersistenceScenario(
+            loadResult.WorkspaceId, solutionDir, current, sampleLib, dog, cat, originalBytes, WorkspaceManager);
+    }
+
+    private static Task<(bool Success, IReadOnlyList<string> AppliedFiles)> PersistAsync(
+        PersistenceScenario scenario,
+        Solution modified,
+        IDocumentSetFileSystem fileSystem) =>
+        new DocumentSetPersistenceService(scenario.Manager, NullLogger.Instance, fileSystem).PersistAsync(
+            scenario.WorkspaceId,
+            scenario.Current,
+            modified,
+            modified.GetChanges(scenario.Current),
+            CancellationToken.None);
+
+    private sealed record PersistenceScenario(
+        string WorkspaceId,
+        string SolutionDir,
+        Solution Current,
+        Project SampleLib,
+        Document Dog,
+        Document Cat,
+        Dictionary<string, byte[]> OriginalBytes,
+        IWorkspaceManager Manager) : IDisposable
+    {
+        public void Dispose()
+        {
+            Manager.Close(WorkspaceId);
+            DeleteDirectoryIfExists(SolutionDir);
+        }
+    }
+
+    private sealed class FaultInjectingFileSystem : IDocumentSetFileSystem
+    {
+        private string? _firstTextWritePath;
+        private string? _firstDeletePath;
+        private bool _failed;
+
+        public Action<string>? BeforeWriteText { get; set; }
+        public Action<string>? BeforeWriteBytes { get; set; }
+        public Action<string>? BeforeDelete { get; set; }
+        public string? FirstTextWritePath => _firstTextWritePath;
+        public string? FirstDeletePath => _firstDeletePath;
+
+        /// <summary>
+        /// On the first text write to a path other than the first-written one: runs
+        /// <paramref name="sabotage"/> (first path, failing path) then throws before the real write.
+        /// </summary>
+        public void FailOnSecondDistinctTextWrite(Action<string, string> sabotage) =>
+            BeforeWriteText = path =>
+            {
+                _firstTextWritePath ??= path;
+                if (!_failed && !SamePath(_firstTextWritePath, path))
+                {
+                    _failed = true;
+                    sabotage(_firstTextWritePath, path);
+                    throw new IOException("Injected deterministic failure on the second distinct document write.");
+                }
+            };
+
+        public void FailOnSecondDistinctDelete(Action<string, string> sabotage) =>
+            BeforeDelete = path =>
+            {
+                _firstDeletePath ??= path;
+                if (!_failed && !SamePath(_firstDeletePath, path))
+                {
+                    _failed = true;
+                    sabotage(_firstDeletePath, path);
+                    throw new IOException("Injected deterministic failure on the second distinct document delete.");
+                }
+            };
+
+        public bool FileExists(string path) => File.Exists(path);
+        public void CreateDirectory(string path) => Directory.CreateDirectory(path);
+
+        public void DeleteFile(string path)
+        {
+            BeforeDelete?.Invoke(path);
+            File.Delete(path);
+        }
+
+        public Task<byte[]> ReadAllBytesAsync(string path, CancellationToken ct) =>
+            File.ReadAllBytesAsync(path, ct);
+        public Task<string> ReadAllTextAsync(string path, CancellationToken ct) =>
+            File.ReadAllTextAsync(path, ct);
+
+        public Task WriteAllBytesAsync(string path, byte[] bytes, CancellationToken ct)
+        {
+            BeforeWriteBytes?.Invoke(path);
+            return File.WriteAllBytesAsync(path, bytes, ct);
+        }
+
+        public Task WriteAllTextAsync(string path, string content, CancellationToken ct)
+        {
+            BeforeWriteText?.Invoke(path);
+            return File.WriteAllTextAsync(path, content, ct);
+        }
+
+        private static bool SamePath(string left, string right) =>
+            string.Equals(Path.GetFullPath(left), Path.GetFullPath(right), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [TestMethod]
     public void ProjectReferenceTargetsPath_DistinguishesSameNamedProjects()
     {
         var projectDirectory = Path.Combine(Path.GetTempPath(), "RoslynMcp", "App");
