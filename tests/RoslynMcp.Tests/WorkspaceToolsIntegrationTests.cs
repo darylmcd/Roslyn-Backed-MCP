@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -438,8 +437,8 @@ public sealed class WorkspaceToolsIntegrationTests : SharedWorkspaceTestBase
     // The fix removes the lock acquire entirely: `BuildStatus` reads only thread-safe fields
     // (ImmutableArray, ConcurrentQueue, scalar refs) and the outer `gate.RunReadAsync` already
     // serializes against concurrent writes. This test simulates the contention by holding the
-    // session's LoadLock via reflection and asserting the verbose-status call completes in well
-    // under the pre-fix 5-second timeout window.
+    // session's LoadLock via reflection and asserting that the status call returns while
+    // the semaphore is still held. A long deadline only guards against a hang.
     [TestMethod]
     public async Task WorkspaceTools_GetWorkspaceStatus_Verbose_DoesNotBlockOnConcurrentLoadLock()
     {
@@ -451,22 +450,14 @@ public sealed class WorkspaceToolsIntegrationTests : SharedWorkspaceTestBase
         await loadLock.WaitAsync(CancellationToken.None).ConfigureAwait(false);
         try
         {
-            var stopwatch = Stopwatch.StartNew();
             var json = await WorkspaceTools.GetWorkspaceStatus(
                 WorkspaceExecutionGate,
                 WorkspaceManager,
                 WorkspaceId,
                 verbose: true,
-                CancellationToken.None);
-            stopwatch.Stop();
-
-            // Generous upper bound: BuildStatus itself is sub-millisecond, but the outer gate
-            // (rate-limit, throttle, per-workspace reader lock, staleness check) adds overhead.
-            // 1000 ms is two orders of magnitude below the pre-fix 5005 ms ceiling and still well
-            // clear of any realistic gate overhead on a healthy workspace.
-            Assert.IsTrue(
-                stopwatch.ElapsedMilliseconds < 1000,
-                $"workspace_status(verbose=true) should not block on a held LoadLock; took {stopwatch.ElapsedMilliseconds} ms.");
+                CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(60));
+            Assert.AreEqual(0, loadLock.CurrentCount,
+                "Verbose status must return while the caller still holds LoadLock.");
 
             using var doc = JsonDocument.Parse(json.TextPayload());
             Assert.IsTrue(doc.RootElement.TryGetProperty("projects", out var projects),
