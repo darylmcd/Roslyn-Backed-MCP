@@ -1948,7 +1948,7 @@ public sealed class TypeExtractionService : ITypeExtractionService
             MethodDeclarationSyntax m => referencedExtractedNames.Contains(m.Identifier.ValueText),
             PropertyDeclarationSyntax p => referencedExtractedNames.Contains(p.Identifier.ValueText),
             EventDeclarationSyntax e => referencedExtractedNames.Contains(e.Identifier.ValueText),
-            _ => false
+            _ => throw UnsupportedModifierMember(member)
         };
 
         return isReferenced ? EnsurePublicAccessibility(member) : member;
@@ -1963,29 +1963,31 @@ public sealed class TypeExtractionService : ITypeExtractionService
             SyntaxKind.InternalKeyword
         };
 
-        var currentModifiers = member switch
+        return RewriteMemberModifiers(member, currentModifiers =>
         {
-            MethodDeclarationSyntax m => m.Modifiers,
-            PropertyDeclarationSyntax p => p.Modifiers,
-            FieldDeclarationSyntax f => f.Modifiers,
-            EventDeclarationSyntax e => e.Modifiers,
-            _ => default
-        };
+            var kept = currentModifiers.Where(m => !accessModifiers.Contains(m.Kind())).ToArray();
+            var publicToken = SyntaxFactory.Token(SyntaxKind.PublicKeyword);
+            if (currentModifiers.Count > 0)
+            {
+                publicToken = publicToken.WithLeadingTrivia(currentModifiers[0].LeadingTrivia);
+                if (kept.Length > 0 && kept[0] == currentModifiers[0])
+                {
+                    // Leading comments now belong to the inserted public token, not both tokens.
+                    kept[0] = kept[0].WithLeadingTrivia(default(SyntaxTriviaList));
+                    publicToken = publicToken.WithTrailingTrivia(SyntaxFactory.Space);
+                }
+                else
+                {
+                    publicToken = publicToken.WithTrailingTrivia(currentModifiers[0].TrailingTrivia);
+                }
+            }
+            else
+            {
+                publicToken = publicToken.WithTrailingTrivia(SyntaxFactory.Space);
+            }
 
-        var newModifiers = currentModifiers
-            .Where(m => !accessModifiers.Contains(m.Kind()))
-            .Prepend(SyntaxFactory.Token(SyntaxKind.PublicKeyword));
-
-        var tokenList = SyntaxFactory.TokenList(newModifiers);
-
-        return member switch
-        {
-            MethodDeclarationSyntax m => m.WithModifiers(tokenList),
-            PropertyDeclarationSyntax p => p.WithModifiers(tokenList),
-            FieldDeclarationSyntax f => f.WithModifiers(tokenList),
-            EventDeclarationSyntax e => e.WithModifiers(tokenList),
-            _ => member
-        };
+            return SyntaxFactory.TokenList(kept.Prepend(publicToken));
+        });
     }
 
     /// <summary>
@@ -1999,19 +2001,10 @@ public sealed class TypeExtractionService : ITypeExtractionService
     /// </summary>
     private static MemberDeclarationSyntax StripInheritanceOnlyModifiers(MemberDeclarationSyntax member)
     {
-        var currentModifiers = GetMemberModifiers(member);
-        if (currentModifiers.Count == 0)
-        {
-            return member;
-        }
-
-        var strippedModifiers = BuildStrippedModifierList(currentModifiers);
-        if (strippedModifiers.Count == currentModifiers.Count)
-        {
-            return member;
-        }
-
-        return WithMemberModifiers(member, strippedModifiers);
+        return RewriteMemberModifiers(member, currentModifiers =>
+            currentModifiers.Any(IsInheritanceOnlyModifier)
+                ? BuildStrippedModifierList(currentModifiers)
+                : currentModifiers);
     }
 
     private static SyntaxTokenList BuildStrippedModifierList(SyntaxTokenList currentModifiers)
@@ -2028,29 +2021,35 @@ public sealed class TypeExtractionService : ITypeExtractionService
         return SyntaxFactory.TokenList(kept);
     }
 
-    private static SyntaxTokenList GetMemberModifiers(MemberDeclarationSyntax member)
+    private static MemberDeclarationSyntax RewriteMemberModifiers(
+        MemberDeclarationSyntax member,
+        Func<SyntaxTokenList, SyntaxTokenList> rewrite)
     {
         return member switch
         {
-            MethodDeclarationSyntax m => m.Modifiers,
-            PropertyDeclarationSyntax p => p.Modifiers,
-            FieldDeclarationSyntax f => f.Modifiers,
-            EventDeclarationSyntax e => e.Modifiers,
-            _ => default
+            MethodDeclarationSyntax m => RewriteModifiers(m, m.Modifiers, rewrite, (node, tokens) => node.WithModifiers(tokens)),
+            PropertyDeclarationSyntax p => RewriteModifiers(p, p.Modifiers, rewrite, (node, tokens) => node.WithModifiers(tokens)),
+            FieldDeclarationSyntax f => RewriteModifiers(f, f.Modifiers, rewrite, (node, tokens) => node.WithModifiers(tokens)),
+            EventDeclarationSyntax e => RewriteModifiers(e, e.Modifiers, rewrite, (node, tokens) => node.WithModifiers(tokens)),
+            _ => throw UnsupportedModifierMember(member)
         };
     }
 
-    private static MemberDeclarationSyntax WithMemberModifiers(MemberDeclarationSyntax member, SyntaxTokenList tokenList)
+    private static TMember RewriteModifiers<TMember>(
+        TMember member,
+        SyntaxTokenList currentModifiers,
+        Func<SyntaxTokenList, SyntaxTokenList> rewrite,
+        Func<TMember, SyntaxTokenList, TMember> withModifiers)
+        where TMember : MemberDeclarationSyntax
     {
-        return member switch
-        {
-            MethodDeclarationSyntax m => m.WithModifiers(tokenList),
-            PropertyDeclarationSyntax p => p.WithModifiers(tokenList),
-            FieldDeclarationSyntax f => f.WithModifiers(tokenList),
-            EventDeclarationSyntax e => e.WithModifiers(tokenList),
-            _ => member
-        };
+        var rewrittenModifiers = rewrite(currentModifiers);
+        return currentModifiers.SequenceEqual(rewrittenModifiers)
+            ? member
+            : withModifiers(member, rewrittenModifiers);
     }
+
+    private static InvalidOperationException UnsupportedModifierMember(MemberDeclarationSyntax member) =>
+        InvalidOperationErrors.Internal($"Unsupported member declaration kind for modifier rewrite: {member.Kind()}.");
 
     private static bool IsInheritanceOnlyModifier(SyntaxToken token)
     {

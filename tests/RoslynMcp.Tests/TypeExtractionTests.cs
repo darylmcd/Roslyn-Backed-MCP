@@ -1,4 +1,6 @@
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using ModelContextProtocol.Protocol;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
@@ -29,6 +31,61 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
 
     [ClassCleanup]
     public static void ClassCleanup() => DisposeServices();
+
+    [TestMethod]
+    public void ModifierRewrites_RejectUnsupportedMemberKinds()
+    {
+        var source = CSharpSyntaxTree.ParseText("class C { C() {} class Nested {} }");
+        var members = source.GetRoot().DescendantNodes().OfType<ClassDeclarationSyntax>()
+            .First().Members;
+        foreach (var methodName in new[] { "EnsurePublicAccessibility", "StripInheritanceOnlyModifiers" })
+        {
+            var method = typeof(RoslynMcp.Roslyn.Services.TypeExtractionService).GetMethod(
+                methodName,
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+            foreach (var member in members)
+            {
+                var exception = Assert.ThrowsExactly<System.Reflection.TargetInvocationException>(
+                    () => method.Invoke(null, [member]));
+                var cause = Assert.IsInstanceOfType<InvalidOperationException>(exception.InnerException);
+                StringAssert.Contains(cause.Message, member.Kind().ToString());
+            }
+        }
+    }
+
+    [TestMethod]
+    public void ModifierRewrites_HandleEveryExtractableMemberKindAndPreserveTrivia()
+    {
+        var declarations = new[]
+        {
+            "private new void M() {}",
+            "private new int P { get; set; }",
+            "private new int F;",
+            "private new event System.Action E { add {} remove {} }",
+            "static private int G;"
+        };
+        var serviceType = typeof(RoslynMcp.Roslyn.Services.TypeExtractionService);
+        var widen = serviceType.GetMethod("EnsurePublicAccessibility",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+        var strip = serviceType.GetMethod("StripInheritanceOnlyModifiers",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+
+        foreach (var declaration in declarations)
+        {
+            var source = CSharpSyntaxTree.ParseText($"class C {{\n    // marker\n    {declaration}\n}}");
+            var member = source.GetRoot().DescendantNodes().OfType<ClassDeclarationSyntax>()
+                .First().Members.Single();
+            var widened = Assert.IsInstanceOfType<MemberDeclarationSyntax>(widen.Invoke(null, [member]));
+            var rewritten = Assert.IsInstanceOfType<MemberDeclarationSyntax>(strip.Invoke(null, [widened]));
+            StringAssert.Contains(rewritten.ToFullString(), "// marker");
+            Assert.AreEqual(1, rewritten.ToFullString().Split("// marker", StringSplitOptions.None).Length - 1);
+            StringAssert.Contains(rewritten.ToFullString(), "public");
+            Assert.IsFalse(rewritten.ToFullString().Contains("private", StringComparison.Ordinal));
+            Assert.IsFalse(rewritten.ToFullString().Contains("new ", StringComparison.Ordinal));
+            Assert.AreSame(rewritten, strip.Invoke(null, [rewritten]),
+                "A modifier rewrite with no matching tokens must return the original syntax node.");
+        }
+    }
 
     [TestCleanup]
     public async Task TestCleanup() =>
