@@ -1,6 +1,6 @@
-using System.Diagnostics;
-using System.Text.Json;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using RoslynMcp.Tests.Helpers;
+using RoslynMcp.Tests.Support;
 
 namespace RoslynMcp.Tests.Skills;
 
@@ -46,7 +46,17 @@ public sealed class RenderFindingScriptTests
     }
 
     [TestMethod]
-    public void RenderFindingBody_IsDeterministic_SameInputProducesIdenticalOutput()
+    public async Task RunPwshSnippet_DrainsStderrBeforeWaitingForStdout()
+    {
+        // A child that fills stderr before writing stdout deadlocks the old sequential reads.
+        var result = await RunPwshSnippetAsync("[Console]::Error.Write(('e' * 1048576)); [Console]::Out.Write('done')");
+        AssertExitCodeZero(result);
+        Assert.AreEqual("done", result.StdOut);
+        Assert.AreEqual(1_048_576, result.StdErr.Length);
+    }
+
+    [TestMethod]
+    public async Task RenderFindingBody_IsDeterministic_SameInputProducesIdenticalOutput()
     {
         var scriptPath = ResolveScriptPath();
         // Anchors deliberately out of order on input — the renderer must sort them alphabetically.
@@ -67,7 +77,7 @@ public sealed class RenderFindingScriptTests
             $a
             """;
 
-        var result = RunPwshSnippet(pwshSnippet);
+        var result = await RunPwshSnippetAsync(pwshSnippet);
         AssertExitCodeZero(result);
 
         var lines = result.StdOut.Split('\n').Select(l => l.TrimEnd('\r')).ToArray();
@@ -84,7 +94,7 @@ public sealed class RenderFindingScriptTests
     }
 
     [TestMethod]
-    public void RenderFindingBody_PopulatesAllFields_WithoutVariableShadowingBug()
+    public async Task RenderFindingBody_PopulatesAllFields_WithoutVariableShadowingBug()
     {
         // Regression: the renderer's `Render-FindingBody` originally used a local `$finding`
         // variable that case-collided with the `$Finding` parameter (PowerShell variable names
@@ -101,7 +111,7 @@ public sealed class RenderFindingScriptTests
             Render-FindingBody -Finding $f
             """;
 
-        var result = RunPwshSnippet(pwshSnippet);
+        var result = await RunPwshSnippetAsync(pwshSnippet);
         AssertExitCodeZero(result);
 
         StringAssert.Contains(result.StdOut, "- finding: F-VALUE",
@@ -113,18 +123,18 @@ public sealed class RenderFindingScriptTests
     }
 
     [TestMethod]
-    public void TestFindingShouldRefusePublicFile_ReturnsTrueOnP0()
+    public async Task TestFindingShouldRefusePublicFile_ReturnsTrueOnP0()
     {
-        var result = RunRefusalProbe(severity: "P0", area: "tools");
+        var result = await RunRefusalProbeAsync(severity: "P0", area: "tools");
         AssertExitCodeZero(result);
         StringAssert.Contains(result.StdOut, "refused=True",
             "Test-FindingShouldRefusePublicFile must return $true for severity=P0. This is the load-bearing pre-disclosure safeguard — both auto-file paths short-circuit on it.");
     }
 
     [TestMethod]
-    public void TestFindingShouldRefusePublicFile_ReturnsTrueOnSecurityArea()
+    public async Task TestFindingShouldRefusePublicFile_ReturnsTrueOnSecurityArea()
     {
-        var result = RunRefusalProbe(severity: "P3", area: "security");
+        var result = await RunRefusalProbeAsync(severity: "P3", area: "security");
         AssertExitCodeZero(result);
         StringAssert.Contains(result.StdOut, "refused=True",
             "Test-FindingShouldRefusePublicFile must return $true for area=security regardless of severity. " +
@@ -132,16 +142,16 @@ public sealed class RenderFindingScriptTests
     }
 
     [TestMethod]
-    public void TestFindingShouldRefusePublicFile_ReturnsFalseOnP2Tools()
+    public async Task TestFindingShouldRefusePublicFile_ReturnsFalseOnP2Tools()
     {
-        var result = RunRefusalProbe(severity: "P2", area: "tools");
+        var result = await RunRefusalProbeAsync(severity: "P2", area: "tools");
         AssertExitCodeZero(result);
         StringAssert.Contains(result.StdOut, "refused=False",
             "Test-FindingShouldRefusePublicFile must return $false on a routine P2/tools finding. The refusal must be narrow — every other finding ships through the public path.");
     }
 
     [TestMethod]
-    public void RenderFindingIssue_PrependsBannerOnRefused()
+    public async Task RenderFindingIssue_PrependsBannerOnRefused()
     {
         var scriptPath = ResolveScriptPath();
         var pwshSnippet = $$"""
@@ -157,7 +167,7 @@ public sealed class RenderFindingScriptTests
             $issue.body
             """;
 
-        var result = RunPwshSnippet(pwshSnippet);
+        var result = await RunPwshSnippetAsync(pwshSnippet);
         AssertExitCodeZero(result);
 
         StringAssert.Contains(result.StdOut, "refusedPublic=True",
@@ -172,7 +182,7 @@ public sealed class RenderFindingScriptTests
     }
 
     [TestMethod]
-    public void RenderFindingIssue_DoesNotPrependBannerOnNormalFinding()
+    public async Task RenderFindingIssue_DoesNotPrependBannerOnNormalFinding()
     {
         var scriptPath = ResolveScriptPath();
         var pwshSnippet = $$"""
@@ -188,7 +198,7 @@ public sealed class RenderFindingScriptTests
             $issue.body
             """;
 
-        var result = RunPwshSnippet(pwshSnippet);
+        var result = await RunPwshSnippetAsync(pwshSnippet);
         AssertExitCodeZero(result);
 
         StringAssert.Contains(result.StdOut, "refusedPublic=False",
@@ -198,13 +208,13 @@ public sealed class RenderFindingScriptTests
     }
 
     [TestMethod]
-    public void GetFindingRepoId_DerivesFromGitRemote()
+    public async Task GetFindingRepoId_DerivesFromGitRemote()
     {
         // Seed a temp repo with a remote URL — the function should parse owner/repo from it.
         var repoRoot = Path.Combine(_tempRoot, "WeirdCasing-RepoName");
         Directory.CreateDirectory(repoRoot);
-        RunGit(repoRoot, "init", "-q");
-        RunGit(repoRoot, "remote", "add", "origin", "https://github.com/example-owner/MixedCase-Repo.git");
+        await GitFixtureRunner.RunGitAsync(repoRoot, "init", "-q");
+        await GitFixtureRunner.RunGitAsync(repoRoot, "remote", "add", "origin", "https://github.com/example-owner/MixedCase-Repo.git");
 
         var scriptPath = ResolveScriptPath();
         var pwshSnippet = $$"""
@@ -212,7 +222,7 @@ public sealed class RenderFindingScriptTests
             Get-FindingRepoId -RepoRoot '{{EscapeForPwshSingleQuoted(repoRoot)}}'
             """;
 
-        var result = RunPwshSnippet(pwshSnippet);
+        var result = await RunPwshSnippetAsync(pwshSnippet);
         AssertExitCodeZero(result);
 
         var stdoutTrimmed = result.StdOut.Trim();
@@ -222,12 +232,12 @@ public sealed class RenderFindingScriptTests
     }
 
     [TestMethod]
-    public void GetFindingRepoId_FallsBackToDirectoryBasenameWhenNoRemote()
+    public async Task GetFindingRepoId_FallsBackToDirectoryBasenameWhenNoRemote()
     {
         // Repo with no remote — falls back to the directory basename slug.
         var repoRoot = Path.Combine(_tempRoot, "MyLocalRepo");
         Directory.CreateDirectory(repoRoot);
-        RunGit(repoRoot, "init", "-q");
+        await GitFixtureRunner.RunGitAsync(repoRoot, "init", "-q");
 
         var scriptPath = ResolveScriptPath();
         var pwshSnippet = $$"""
@@ -235,7 +245,7 @@ public sealed class RenderFindingScriptTests
             Get-FindingRepoId -RepoRoot '{{EscapeForPwshSingleQuoted(repoRoot)}}'
             """;
 
-        var result = RunPwshSnippet(pwshSnippet);
+        var result = await RunPwshSnippetAsync(pwshSnippet);
         AssertExitCodeZero(result);
 
         var stdoutTrimmed = result.StdOut.Trim();
@@ -245,7 +255,7 @@ public sealed class RenderFindingScriptTests
     }
 
     [TestMethod]
-    public void RenderFindingFragment_IncludesServerVersionFrontmatter()
+    public async Task RenderFindingFragment_IncludesServerVersionFrontmatter()
     {
         // Row 2 contract: server_version is a required frontmatter key. The fragment renderer must
         // emit it under the YAML --- block so /backlog-intake's Phase 0.5 schema check passes.
@@ -261,7 +271,7 @@ public sealed class RenderFindingScriptTests
             Render-FindingFragment -Finding $f
             """;
 
-        var result = RunPwshSnippet(pwshSnippet);
+        var result = await RunPwshSnippetAsync(pwshSnippet);
         AssertExitCodeZero(result);
 
         StringAssert.Contains(result.StdOut, "server_version: 2.7.1-rc.4",
@@ -271,7 +281,7 @@ public sealed class RenderFindingScriptTests
 
     // ---------- Helpers ----------
 
-    private PwshResult RunRefusalProbe(string severity, string area)
+    private Task<PwshScriptResult> RunRefusalProbeAsync(string severity, string area)
     {
         var scriptPath = ResolveScriptPath();
         var pwshSnippet = $$"""
@@ -283,7 +293,7 @@ public sealed class RenderFindingScriptTests
             }
             "refused=" + (Test-FindingShouldRefusePublicFile -Finding $f)
             """;
-        return RunPwshSnippet(pwshSnippet);
+        return RunPwshSnippetAsync(pwshSnippet);
     }
 
     private static string ResolveScriptPath()
@@ -298,70 +308,15 @@ public sealed class RenderFindingScriptTests
         return value.Replace("'", "''");
     }
 
-    private static PwshResult RunPwshSnippet(string snippet)
-    {
-        var pwshExecutable = ResolvePwshExecutable();
+    private static Task<PwshScriptResult> RunPwshSnippetAsync(string snippet)
+        => PwshScriptRunner.RunAsync(
+            ["-NoProfile", "-NonInteractive", "-Command", snippet],
+            timeout: TimeSpan.FromSeconds(60),
+            description: "pwsh render-finding.ps1 invocation");
 
-        var psi = new ProcessStartInfo
-        {
-            FileName = pwshExecutable,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-        psi.ArgumentList.Add("-NoProfile");
-        psi.ArgumentList.Add("-NonInteractive");
-        psi.ArgumentList.Add("-Command");
-        psi.ArgumentList.Add(snippet);
-
-        using var proc = Process.Start(psi)
-            ?? throw new InvalidOperationException($"Failed to start '{pwshExecutable}'.");
-        var stdout = proc.StandardOutput.ReadToEnd();
-        var stderr = proc.StandardError.ReadToEnd();
-        if (!proc.WaitForExit(milliseconds: 60_000))
-        {
-            proc.Kill(entireProcessTree: true);
-            throw new TimeoutException("pwsh render-finding.ps1 invocation timed out after 60s.");
-        }
-
-        return new PwshResult(proc.ExitCode, stdout, stderr);
-    }
-
-    private static void RunGit(string workingDir, params string[] args)
-    {
-        var psi = new ProcessStartInfo
-        {
-            FileName = "git",
-            WorkingDirectory = workingDir,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-        foreach (var a in args) { psi.ArgumentList.Add(a); }
-
-        using var proc = Process.Start(psi)
-            ?? throw new InvalidOperationException("Failed to start git.");
-        proc.WaitForExit(30_000);
-        if (proc.ExitCode != 0)
-        {
-            var err = proc.StandardError.ReadToEnd();
-            throw new InvalidOperationException($"git {string.Join(' ', args)} failed: {err}");
-        }
-    }
-
-    private static string ResolvePwshExecutable()
-    {
-        if (OperatingSystem.IsWindows()) { return "pwsh.exe"; }
-        return "pwsh";
-    }
-
-    private static void AssertExitCodeZero(PwshResult result)
+    private static void AssertExitCodeZero(PwshScriptResult result)
     {
         Assert.AreEqual(0, result.ExitCode,
             $"pwsh exited with code {result.ExitCode}. stdout: {result.StdOut} | stderr: {result.StdErr}");
     }
-
-    private sealed record PwshResult(int ExitCode, string StdOut, string StdErr);
 }
