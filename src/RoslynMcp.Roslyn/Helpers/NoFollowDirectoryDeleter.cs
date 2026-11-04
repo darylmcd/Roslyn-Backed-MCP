@@ -17,13 +17,25 @@ namespace RoslynMcp.Roslyn.Helpers;
 /// <remarks>
 /// <para>
 /// Windows: the walk is iterative and postorder over a depth-bounded stack of open handles. Every
-/// entry is opened once with <c>FILE_FLAG_OPEN_REPARSE_POINT</c> (so a link is opened as the link,
-/// never its target), classified from that handle, and mutated through that same handle
-/// (<c>FileDispositionInfoEx</c>; the handle also carries the read-only override), so the object
-/// that was classified is the object that is deleted. A directory's handle stays open, denying
-/// delete/rename sharing, from before its children are enumerated until its own postorder delete.
-/// No ancestor of any queued child path can therefore be renamed away and replaced by a junction.
-/// Win32 calls use <c>\\?\</c> paths, so depth beyond MAX_PATH works without a long-path manifest.
+/// entry is opened with <c>FILE_FLAG_OPEN_REPARSE_POINT</c> (so a link is opened as the link, never
+/// its target), classified from that handle, and mutated through a handle to the same object
+/// (<c>FileDispositionInfoEx</c>; the handle also carries the read-only override). Files and links
+/// are opened with <c>DELETE | FILE_READ_ATTRIBUTES</c> and full sharing, the same footprint as
+/// <see cref="File.Delete(string)"/>, so a holder that tolerates delete but not read does not block
+/// the walk. A directory is re-opened with list access and no delete sharing, and the re-open is
+/// accepted only if it has the same volume/file identity as the classified object. That handle stays
+/// open, denying delete/rename sharing, from before the directory's children are enumerated until
+/// its own postorder delete, so no ancestor of any queued child can be renamed away and replaced
+/// by a junction.
+/// </para>
+/// <para>
+/// Path handling: the root is normalized exactly once (<see cref="Path.GetFullPath(string)"/>) into
+/// an extended-length <c>\\?\</c> path, so depth beyond MAX_PATH works without a long-path
+/// manifest. Child paths are the parent's extended path plus the raw enumerated name, never
+/// re-normalized: names with trailing dots or spaces, legal only under <c>\\?\</c>, therefore open
+/// exactly the entry that was enumerated. The root's own ancestor chain is resolved by the OS and
+/// followed if it contains links: the caller owns that trust boundary (callers pass roots they
+/// created under a directory they hold).
 /// </para>
 /// <para>
 /// Other platforms: no handle-relative API is used. The walk is path-based
@@ -41,6 +53,7 @@ internal static class NoFollowDirectoryDeleter
     private const uint FileReadAttributes = 0x80;
     private const uint FileWriteAttributes = 0x100;
     private const uint FileShareReadWrite = 0x1 | 0x2;
+    private const uint FileShareAll = 0x1 | 0x2 | 0x4;
     private const uint OpenExisting = 3;
     private const uint FileFlagBackupSemantics = 0x02000000;
     private const uint FileFlagOpenReparsePoint = 0x00200000;
@@ -114,7 +127,7 @@ internal static class NoFollowDirectoryDeleter
         // A zero-access handle never participates in sharing checks, so it would not deny a
         // concurrent delete/rename. List + read-attributes access makes the missing FILE_SHARE_DELETE
         // bite: other opens that need DELETE fail while we hold the directory.
-        var handle = OpenNoFollow(path, FileListDirectory | FileReadAttributes);
+        var handle = OpenNoFollow(ToExtendedPath(path), FileListDirectory | FileReadAttributes, FileShareReadWrite);
         if (handle.IsInvalid)
         {
             logger?.LogDebug("Could not hold an analyzer shadow directory; Win32 error {ErrorCode}.", Marshal.GetLastPInvokeError());
@@ -144,13 +157,20 @@ internal static class NoFollowDirectoryDeleter
         var frames = new Stack<DirectoryFrame>();
         try
         {
-            VisitWindows(path, frames, beforeEnumerate, afterEnumerate, beforeMutate);
+            VisitWindows(path, ToExtendedPath(path), frames, beforeEnumerate, afterEnumerate, beforeMutate);
             while (frames.TryPeek(out var frame))
             {
                 ct.ThrowIfCancellationRequested();
-                if (frame.Next < frame.Children.Length)
+                if (frame.Next < frame.Names.Length)
                 {
-                    VisitWindows(frame.Children[frame.Next++], frames, beforeEnumerate, afterEnumerate, beforeMutate);
+                    var name = frame.Names[frame.Next++];
+                    VisitWindows(
+                        Path.Combine(frame.Path, name),
+                        AppendName(frame.ExtendedPath, name),
+                        frames,
+                        beforeEnumerate,
+                        afterEnumerate,
+                        beforeMutate);
                     continue;
                 }
 
@@ -177,13 +197,16 @@ internal static class NoFollowDirectoryDeleter
 
     [SupportedOSPlatform("windows")]
     private static void VisitWindows(
-        string entry,
+        string display,
+        string extended,
         Stack<DirectoryFrame> frames,
         Action<string>? beforeEnumerate,
         Action<string>? afterEnumerate,
         Action<string>? beforeMutate)
     {
-        var handle = OpenNoFollow(entry, AccessDelete | FileListDirectory | FileReadAttributes | FileWriteAttributes);
+        // Minimal footprint first: the same access and sharing File.Delete needs, which also
+        // classifies the entry without requesting read or list access.
+        var handle = OpenNoFollow(extended, AccessDelete | FileReadAttributes | FileWriteAttributes, FileShareAll);
         if (handle.IsInvalid)
         {
             var error = Marshal.GetLastPInvokeError();
@@ -194,30 +217,71 @@ internal static class NoFollowDirectoryDeleter
                 return;
             }
 
-            throw Failure("open", entry, error);
+            throw Failure("open", display, error);
         }
 
         var retained = false;
         try
         {
-            if (!TryReadAttributes(handle, out var attributes))
+            if (!TryReadIdentity(handle, out var info))
             {
-                throw Failure("inspect", entry, Marshal.GetLastPInvokeError());
+                throw Failure("inspect", display, Marshal.GetLastPInvokeError());
             }
 
-            if ((attributes & FileAttributeDirectory) != 0 && (attributes & FileAttributeReparsePoint) == 0)
+            var isRealDirectory = (info.FileAttributes & FileAttributeDirectory) != 0 &&
+                                  (info.FileAttributes & FileAttributeReparsePoint) == 0;
+            if (!isRealDirectory)
             {
-                beforeEnumerate?.Invoke(entry);
-                var children = Directory.GetFileSystemEntries(entry);
-                afterEnumerate?.Invoke(entry);
-                frames.Push(new DirectoryFrame(entry, handle, children));
-                retained = true;
+                // File, file symlink, directory symlink or junction: delete the object we opened.
+                beforeMutate?.Invoke(display);
+                DeleteByHandle(handle, display);
                 return;
             }
 
-            // File, file symlink, directory symlink or junction: delete the object we opened.
-            beforeMutate?.Invoke(entry);
-            DeleteByHandle(handle, entry);
+            // A directory needs list access and no delete sharing so that it cannot be renamed
+            // away while its children are processed. Re-open it, and accept the re-open only if it
+            // is the very object that was classified (a swap in between changes the identity).
+            handle.Dispose();
+            handle = OpenNoFollow(
+                extended,
+                AccessDelete | FileListDirectory | FileReadAttributes | FileWriteAttributes,
+                FileShareReadWrite);
+            if (handle.IsInvalid)
+            {
+                var error = Marshal.GetLastPInvokeError();
+                if (error is ErrorFileNotFound or ErrorPathNotFound)
+                {
+                    return;
+                }
+
+                throw Failure("hold", display, error);
+            }
+
+            if (!TryReadIdentity(handle, out var held) ||
+                (held.FileAttributes & (FileAttributeDirectory | FileAttributeReparsePoint)) != FileAttributeDirectory ||
+                held.VolumeSerialNumber != info.VolumeSerialNumber ||
+                held.FileIndexHigh != info.FileIndexHigh ||
+                held.FileIndexLow != info.FileIndexLow)
+            {
+                throw new IOException($"'{display}' changed while it was being opened for no-follow deletion.");
+            }
+
+            beforeEnumerate?.Invoke(display);
+            var names = new List<string>();
+            foreach (var entry in Directory.EnumerateFileSystemEntries(extended))
+            {
+                var name = Path.GetFileName(entry);
+                if (string.IsNullOrEmpty(name) || name is "." or "..")
+                {
+                    throw new IOException($"Refusing an unexpected directory entry name under '{display}'.");
+                }
+
+                names.Add(name);
+            }
+
+            afterEnumerate?.Invoke(display);
+            frames.Push(new DirectoryFrame(display, extended, handle, names.ToArray()));
+            retained = true;
         }
         finally
         {
@@ -264,8 +328,8 @@ internal static class NoFollowDirectoryDeleter
     }
 
     [SupportedOSPlatform("windows")]
-    private static SafeFileHandle OpenNoFollow(string path, uint desiredAccess) =>
-        CreateFileW(ToExtendedPath(path), desiredAccess, FileShareReadWrite, IntPtr.Zero, OpenExisting,
+    private static SafeFileHandle OpenNoFollow(string extendedPath, uint desiredAccess, uint shareMode) =>
+        CreateFileW(extendedPath, desiredAccess, shareMode, IntPtr.Zero, OpenExisting,
             FileFlagBackupSemantics | FileFlagOpenReparsePoint, IntPtr.Zero);
 
     [SupportedOSPlatform("windows")]
@@ -282,9 +346,16 @@ internal static class NoFollowDirectoryDeleter
         return false;
     }
 
+    [SupportedOSPlatform("windows")]
+    private static bool TryReadIdentity(SafeFileHandle handle, out ByHandleFileInformation info) =>
+        GetFileInformationByHandle(handle, out info);
+
+    private static string AppendName(string extendedParent, string name) =>
+        extendedParent.EndsWith('\\') ? extendedParent + name : extendedParent + '\\' + name;
+
     /// <summary>
-    /// Win32 calls here take <c>\\?\</c> paths: no long-path manifest exists, so a plain path over
-    /// MAX_PATH would fail to open.
+    /// Normalizes <paramref name="path"/> once and returns it as an extended-length path. Called
+    /// for the root only: children are built by appending raw enumerated names.
     /// </summary>
     internal static string ToExtendedPath(string path)
     {
@@ -357,7 +428,7 @@ internal static class NoFollowDirectoryDeleter
         }
     }
 
-    private sealed record DirectoryFrame(string Path, SafeFileHandle Handle, string[] Children)
+    private sealed record DirectoryFrame(string Path, string ExtendedPath, SafeFileHandle Handle, string[] Names)
     {
         public int Next { get; set; }
     }
@@ -367,6 +438,21 @@ internal static class NoFollowDirectoryDeleter
     {
         public uint FileAttributes;
         public uint ReparseTag;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 4)]
+    private struct ByHandleFileInformation
+    {
+        public uint FileAttributes;
+        public long CreationTime;
+        public long LastAccessTime;
+        public long LastWriteTime;
+        public uint VolumeSerialNumber;
+        public uint FileSizeHigh;
+        public uint FileSizeLow;
+        public uint NumberOfLinks;
+        public uint FileIndexHigh;
+        public uint FileIndexLow;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -395,6 +481,11 @@ internal static class NoFollowDirectoryDeleter
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     private static extern SafeFileHandle CreateFileW(string fileName, uint desiredAccess, uint shareMode,
         IntPtr securityAttributes, uint creationDisposition, uint flagsAndAttributes, IntPtr templateFile);
+
+    [DllImport("kernel32.dll", SetLastError = true, ExactSpelling = true)]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetFileInformationByHandle(SafeFileHandle file, out ByHandleFileInformation fileInformation);
 
     [DllImport("kernel32.dll", SetLastError = true, ExactSpelling = true)]
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]

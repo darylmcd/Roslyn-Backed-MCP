@@ -325,6 +325,126 @@ public sealed class AnalyzerShadowLeaseNoFollowTests
     }
 
     [TestMethod]
+    public void TryHoldOwnedDirectory_OnPathBeyondMaxPath_HoldsAndBlocksRename()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("The directory hold is a Windows handle.");
+            return;
+        }
+
+        var root = NewRoot("longpath-hold");
+        try
+        {
+            var deep = root;
+            for (var i = 0; i < 8; i++)
+            {
+                deep = Path.Combine(deep, new string((char)('a' + i), 50));
+            }
+
+            Assert.IsTrue(deep.Length > 300, "The fixture must exceed MAX_PATH.");
+            Directory.CreateDirectory(deep);
+
+            using (var hold = NoFollowDirectoryDeleter.TryHoldOwnedDirectory(deep, NullLogger.Instance))
+            {
+                Assert.IsNotNull(hold, "A path longer than MAX_PATH must be holdable.");
+                Assert.ThrowsExactly<IOException>(() => Directory.Move(deep, deep + "-moved"));
+            }
+        }
+        finally
+        {
+            Cleanup(root);
+        }
+    }
+
+    [TestMethod]
+    public void Delete_FileHeldWithoutShareRead_IsStillDeleted()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("Share-mode semantics are a Windows file-system behavior.");
+            return;
+        }
+
+        var root = NewRoot("share-read");
+        try
+        {
+            var shadowRoot = Path.Combine(root, "lease");
+            var held = Path.Combine(shadowRoot, "held.dll");
+            Directory.CreateDirectory(shadowRoot);
+            File.WriteAllText(held, "fixture");
+
+            // File.Delete needs only DELETE; a holder that tolerates delete but not read must not
+            // make the walker fail merely because it asked for read access it never needed.
+            var holder = new FileStream(held, FileMode.Open, FileAccess.Write, FileShare.Write | FileShare.Delete);
+            try
+            {
+                try
+                {
+                    NoFollowDirectoryDeleter.Delete(shadowRoot, CancellationToken.None, logger: NullLogger.Instance);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // The root cannot complete while the holder keeps the delete pending.
+                }
+            }
+            finally
+            {
+                holder.Dispose();
+            }
+
+            Assert.IsFalse(File.Exists(held), "The file must have been marked for deletion despite the holder.");
+            NoFollowDirectoryDeleter.Delete(shadowRoot, CancellationToken.None, logger: NullLogger.Instance);
+            Assert.IsFalse(Directory.Exists(shadowRoot));
+        }
+        finally
+        {
+            Cleanup(root);
+        }
+    }
+
+    [TestMethod]
+    public void Delete_TrailingDotAndSpaceNames_RemovesExactlyTheEnumeratedEntries()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("Trailing dots and spaces are only legal through the extended-length prefix on Windows.");
+            return;
+        }
+
+        var root = NewRoot("trailing");
+        try
+        {
+            var shadowRoot = Path.Combine(root, "lease");
+            var outside = Path.Combine(root, "outside");
+            Directory.CreateDirectory(shadowRoot);
+            Directory.CreateDirectory(outside);
+            File.WriteAllText(Path.Combine(outside, "stem"), "outside");
+            var extended = @"\\?\" + Path.GetFullPath(shadowRoot);
+
+            // Same-stem siblings: a normalizing open of "stem." or "stem " would hit "stem".
+            foreach (var name in new[] { "stem", "stem.", "stem " })
+            {
+                File.WriteAllText(extended + @"\" + name, name);
+            }
+
+            Directory.CreateDirectory(extended + @"\dd");
+            File.WriteAllText(extended + @"\dd\inner", "inner");
+            Directory.CreateDirectory(extended + @"\dd.");
+            File.WriteAllText(extended + @"\dd.\inner", "inner-dot");
+
+            NoFollowDirectoryDeleter.Delete(shadowRoot, CancellationToken.None, logger: NullLogger.Instance);
+
+            Assert.IsFalse(Directory.Exists(shadowRoot), "Every enumerated entry, including dot/space-suffixed names, must be removed.");
+            Assert.AreEqual("outside", File.ReadAllText(Path.Combine(outside, "stem")));
+        }
+        finally
+        {
+            Cleanup(root);
+        }
+    }
+
+    [TestMethod]
     public void Dispose_OrdinaryOwnedRoot_IsFullyRemoved()
     {
         var root = NewRoot("ordinary");
