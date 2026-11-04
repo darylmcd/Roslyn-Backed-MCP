@@ -450,12 +450,14 @@ public sealed class WorkspaceToolsIntegrationTests : SharedWorkspaceTestBase
         await loadLock.WaitAsync(CancellationToken.None).ConfigureAwait(false);
         try
         {
-            var json = await WorkspaceTools.GetWorkspaceStatus(
-                WorkspaceExecutionGate,
-                WorkspaceManager,
-                WorkspaceId,
-                verbose: true,
-                CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(60));
+            var json = await TimeBoundTestOperation.RunAsync(
+                ct => WorkspaceTools.GetWorkspaceStatus(
+                    WorkspaceExecutionGate,
+                    WorkspaceManager,
+                    WorkspaceId,
+                    verbose: true,
+                    ct),
+                TimeSpan.FromSeconds(60));
             Assert.AreEqual(0, loadLock.CurrentCount,
                 "Verbose status must return while the caller still holds LoadLock.");
 
