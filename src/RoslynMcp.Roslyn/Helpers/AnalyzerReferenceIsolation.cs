@@ -6,12 +6,9 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.Reflection;
-using System.Runtime.InteropServices;
 using System.Runtime.Loader;
-using System.Runtime.Versioning;
 using System.Security.Cryptography;
 using System.Text;
-using Microsoft.Win32.SafeHandles;
 
 namespace RoslynMcp.Roslyn.Helpers;
 
@@ -240,13 +237,13 @@ internal static class AnalyzerReferenceIsolation
             return;
         }
 
-        using var sharedHandle = TryHoldOwnedDirectory(sharedParent, logger);
+        using var sharedHandle = NoFollowDirectoryDeleter.TryHoldOwnedDirectory(sharedParent, logger);
         if (OperatingSystem.IsWindows() && sharedHandle is null) return;
 
         var utcNow = DateTime.UtcNow;
         foreach (var workspaceDirectory in EnumerateDirectoriesSafe(sharedParent, logger))
         {
-            using var workspaceHandle = TryHoldOwnedDirectory(workspaceDirectory, logger);
+            using var workspaceHandle = NoFollowDirectoryDeleter.TryHoldOwnedDirectory(workspaceDirectory, logger);
             if (OperatingSystem.IsWindows() && workspaceHandle is null) continue;
 
             var directoryName = Path.GetFileName(workspaceDirectory);
@@ -296,7 +293,7 @@ internal static class AnalyzerReferenceIsolation
                     // leaves the root for the next sweep.
                     try
                     {
-                        Directory.Delete(leaseDirectory, recursive: true);
+                        NoFollowDirectoryDeleter.Delete(leaseDirectory, CancellationToken.None, logger: logger);
                         logger.LogDebug("Swept one abandoned analyzer shadow lease.");
                     }
                     catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -339,67 +336,6 @@ internal static class AnalyzerReferenceIsolation
             }
         }
     }
-
-    /// <summary>
-    /// Open the path itself, rather than its reparse target, and deny delete sharing for the
-    /// duration of path-based traversal. A competing rename/delete cannot replace a verified
-    /// directory while the sweep enumerates children or deletes stale leases beneath it.
-    /// </summary>
-    private static SafeFileHandle? TryHoldOwnedDirectory(string path, ILogger logger)
-    {
-        if (!OperatingSystem.IsWindows()) return null;
-        return TryHoldOwnedDirectoryWindows(path, logger);
-    }
-
-    [SupportedOSPlatform("windows")]
-    private static SafeFileHandle? TryHoldOwnedDirectoryWindows(string path, ILogger logger)
-    {
-        const uint fileFlagBackupSemantics = 0x02000000;
-        const uint fileFlagOpenReparsePoint = 0x00200000;
-        const uint openExisting = 3;
-        const uint fileShareReadWrite = 0x1 | 0x2;
-        const uint fileAttributeDirectory = 0x10;
-        const uint fileAttributeReparsePoint = 0x400;
-        const int fileAttributeTagInfo = 9;
-
-        var handle = CreateFileW(path, 0, fileShareReadWrite, IntPtr.Zero, openExisting,
-            fileFlagBackupSemantics | fileFlagOpenReparsePoint, IntPtr.Zero);
-        if (handle.IsInvalid)
-        {
-            logger.LogDebug("Could not hold an analyzer shadow directory; Win32 error {ErrorCode}.", Marshal.GetLastPInvokeError());
-            handle.Dispose();
-            return null;
-        }
-
-        if (!GetFileInformationByHandleEx(handle, fileAttributeTagInfo, out var info,
-                (uint)Marshal.SizeOf<FileAttributeTagInfo>()) ||
-            (info.FileAttributes & (fileAttributeDirectory | fileAttributeReparsePoint)) != fileAttributeDirectory)
-        {
-            logger.LogDebug("An analyzer shadow directory is a reparse point or cannot be inspected; skipping it.");
-            handle.Dispose();
-            return null;
-        }
-
-        return handle;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct FileAttributeTagInfo
-    {
-        public uint FileAttributes;
-        public uint ReparseTag;
-    }
-
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true, ExactSpelling = true)]
-    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    private static extern SafeFileHandle CreateFileW(string fileName, uint desiredAccess, uint shareMode,
-        IntPtr securityAttributes, uint creationDisposition, uint flagsAndAttributes, IntPtr templateFile);
-
-    [DllImport("kernel32.dll", SetLastError = true, ExactSpelling = true)]
-    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool GetFileInformationByHandleEx(SafeFileHandle file, int fileInformationClass,
-        out FileAttributeTagInfo fileInformation, uint bufferSize);
 
     private static void StartAbandonedRootSweepOnce(ILogger logger)
     {
@@ -646,7 +582,7 @@ internal static class AnalyzerReferenceIsolation
                 {
                     if (Directory.Exists(ShadowRoot))
                     {
-                        Directory.Delete(ShadowRoot, recursive: true);
+                        NoFollowDirectoryDeleter.Delete(ShadowRoot, CancellationToken.None, logger: _logger);
                     }
 
                     return;
