@@ -44,7 +44,7 @@
         . "${env:CLAUDE_PLUGIN_ROOT}/skills/mcp-server-surface-test/lib/render-finding.ps1"
         $body = Render-FindingBody -Finding $finding
 
-    Tested in `tests/RoslynMcp.Tests/Skills/RenderFindingScriptTests.cs` via in-process
+    Tested in `tests/RoslynMcp.Tests/Skills/RenderFindingScriptTests.cs` via out-of-process
     pwsh invocation; no live `gh` call ever runs in CI.
 #>
 
