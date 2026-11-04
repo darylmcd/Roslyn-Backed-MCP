@@ -79,7 +79,7 @@ Each current finding is source-supported or explicitly an investigation. Require
 | [workspace-cache-coordinator-unexpected-failure-propagation](../items/workspace-cache-coordinator-unexpected-failure-propagation.md) | Medium / S | — | Do not hide cache-coordinator programming failures |
 | [mstest-formatter-enum-zero-comparison](../items/mstest-formatter-enum-zero-comparison.md) | Medium / M | — | Investigate enum-zero assertion formatter dependency behavior |
 | [process-environment-fixture-isolation](../items/process-environment-fixture-isolation.md) | Medium / M | — | Isolate shared process environment fixture actors |
-| [physical-compensation-external-edit-ownership](../items/physical-compensation-external-edit-ownership.md) | High / M | — | Preserve external edits during failed persistence compensation |
+| `physical-compensation-external-edit-ownership` (closed; shipped in PR 1963) | High / M | — | Preserve external edits during failed persistence compensation |
 | [evaluated-test-project-classification](../items/evaluated-test-project-classification.md) | Medium / M | msbuild-evaluation-project-context-cache | Classify test projects from actual evaluated context |
 
 ## Existing and held ownership
