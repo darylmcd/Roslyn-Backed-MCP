@@ -14,6 +14,59 @@ public sealed class PublishVersionContextTests
     private const string FixtureVersion = "4.2.1";
 
     [TestMethod]
+    [TestCategory("Process")]
+    public async Task TimedOutVerifier_ExitsAndDrainsBothStreamsBeforeFixtureDeletion()
+    {
+        var root = Path.Combine(TestTempRoot.Current, nameof(PublishVersionContextTests), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var pidPath = Path.Combine(root, "verifier.pid");
+        try
+        {
+            var scriptPath = Path.Combine(root, "blocked-verifier.ps1");
+            await File.WriteAllTextAsync(scriptPath, """
+                param([string]$PidPath)
+                [IO.File]::WriteAllText($PidPath, [string]$PID)
+                [Console]::Out.WriteLine('publish-stdout-sentinel')
+                [Console]::Error.WriteLine('publish-stderr-sentinel')
+                Start-Sleep -Seconds 30
+                """);
+            var failure = await Assert.ThrowsExactlyAsync<TimeoutException>(() =>
+                RunVerifierProcessAsync(["-NoProfile", "-File", scriptPath, pidPath], TimeSpan.FromSeconds(3)));
+            StringAssert.Contains(failure.Message, "publish-stdout-sentinel");
+            StringAssert.Contains(failure.Message, "publish-stderr-sentinel");
+            Assert.IsTrue(File.Exists(pidPath), "The verifier must start before its timeout.");
+            var pid = int.Parse(await File.ReadAllTextAsync(pidPath), System.Globalization.CultureInfo.InvariantCulture);
+            try
+            {
+                using var child = Process.GetProcessById(pid);
+                Assert.IsTrue(child.HasExited, "The timed-out verifier must exit before helper completion.");
+            }
+            catch (ArgumentException)
+            {
+                // The OS already reaped the terminated verifier.
+            }
+        }
+        finally
+        {
+            if (File.Exists(pidPath))
+            {
+                var pid = int.Parse(await File.ReadAllTextAsync(pidPath), System.Globalization.CultureInfo.InvariantCulture);
+                try
+                {
+                    using var child = Process.GetProcessById(pid);
+                    if (!child.HasExited)
+                    {
+                        child.Kill(entireProcessTree: true);
+                        await child.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+                    }
+                }
+                catch (ArgumentException) { /* The verifier already exited. */ }
+            }
+            TestFixtureFileSystem.DeleteDirectoryIfExists(root);
+        }
+    }
+
+    [TestMethod]
     public async Task PushEvent_WithMatchingTag_Succeeds()
     {
         var fixture = new VersionFixture(FixtureVersion);
@@ -401,50 +454,26 @@ public sealed class PublishVersionContextTests
             "eng",
             "verify-publish-version-context.ps1");
 
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = OperatingSystem.IsWindows() ? "pwsh.exe" : "pwsh",
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-        };
-        startInfo.ArgumentList.Add("-NoProfile");
-        startInfo.ArgumentList.Add("-File");
-        startInfo.ArgumentList.Add(scriptPath);
-        startInfo.ArgumentList.Add("-EventName");
-        startInfo.ArgumentList.Add(eventName);
+        var arguments = new List<string> { "-NoProfile", "-File", scriptPath, "-EventName", eventName };
         if (refName is not null)
         {
-            startInfo.ArgumentList.Add("-RefName");
-            startInfo.ArgumentList.Add(refName);
+            arguments.AddRange(["-RefName", refName]);
         }
 
         if (releaseTag is not null)
         {
-            startInfo.ArgumentList.Add("-ReleaseTag");
-            startInfo.ArgumentList.Add(releaseTag);
+            arguments.AddRange(["-ReleaseTag", releaseTag]);
         }
 
-        startInfo.ArgumentList.Add("-RepoRoot");
-        startInfo.ArgumentList.Add(repoRoot);
+        arguments.AddRange(["-RepoRoot", repoRoot]);
+        return await RunVerifierProcessAsync(arguments, TimeSpan.FromSeconds(30));
+    }
 
-        using var process = Process.Start(startInfo)
-            ?? throw new InvalidOperationException("Could not start the publish provenance verifier.");
-        var stdoutTask = process.StandardOutput.ReadToEndAsync();
-        var stderrTask = process.StandardError.ReadToEndAsync();
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        try
-        {
-            await process.WaitForExitAsync(timeout.Token);
-        }
-        catch (OperationCanceledException) when (timeout.IsCancellationRequested)
-        {
-            process.Kill(entireProcessTree: true);
-            throw new TimeoutException("Publish provenance verifier did not exit within 30 seconds.");
-        }
-
-        return new ProcessResult(process.ExitCode, await stdoutTask, await stderrTask);
+    private static async Task<ProcessResult> RunVerifierProcessAsync(IEnumerable<string> arguments, TimeSpan timeout)
+    {
+        var result = await PwshScriptRunner.RunAsync(arguments,
+            timeout: timeout, description: "Publish provenance verifier");
+        return new ProcessResult(result.ExitCode, result.StdOut, result.StdErr);
     }
 
     private sealed record ProcessResult(int ExitCode, string StdOut, string StdErr)

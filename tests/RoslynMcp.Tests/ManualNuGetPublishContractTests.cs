@@ -1,4 +1,4 @@
-using System.Diagnostics;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -268,58 +268,28 @@ public sealed class ManualNuGetPublishContractTests
             bool noPush = false,
             string? versionArgument = null)
         {
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = OperatingSystem.IsWindows() ? "pwsh.exe" : "pwsh",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                WorkingDirectory = Root,
-            };
-            startInfo.ArgumentList.Add("-NoProfile");
-            startInfo.ArgumentList.Add("-File");
-            startInfo.ArgumentList.Add(ScriptPath);
+            var arguments = new List<string> { "-NoProfile", "-File", ScriptPath };
             if (noPush)
             {
-                startInfo.ArgumentList.Add("-NoPush");
+                arguments.Add("-NoPush");
             }
 
             if (versionArgument is not null)
             {
-                startInfo.ArgumentList.Add("-Version");
-                startInfo.ArgumentList.Add(versionArgument);
+                arguments.AddRange(["-Version", versionArgument]);
             }
 
             // Prepend the stub bin so `dotnet` resolves to the fixture shim.
             var pathVariableName = OperatingSystem.IsWindows() ? "Path" : "PATH";
-            startInfo.Environment[pathVariableName] =
-                BinDirectory + Path.PathSeparator + Environment.GetEnvironmentVariable("PATH");
-            if (apiKey is not null)
+            var environment = new Dictionary<string, string?>
             {
-                startInfo.Environment["NUGET_API_KEY"] = apiKey;
-            }
-            else
-            {
-                startInfo.Environment.Remove("NUGET_API_KEY");
-            }
-
-            using var process = Process.Start(startInfo)
-                ?? throw new InvalidOperationException("Could not start the manual publisher fixture.");
-            var stdoutTask = process.StandardOutput.ReadToEndAsync();
-            var stderrTask = process.StandardError.ReadToEndAsync();
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-            try
-            {
-                await process.WaitForExitAsync(timeout.Token);
-            }
-            catch (OperationCanceledException) when (timeout.IsCancellationRequested)
-            {
-                process.Kill(entireProcessTree: true);
-                throw new TimeoutException("Manual publisher fixture did not exit within 60 seconds.");
-            }
-
-            return new PublisherResult(process.ExitCode, await stdoutTask + await stderrTask);
+                [pathVariableName] = BinDirectory + Path.PathSeparator + Environment.GetEnvironmentVariable("PATH"),
+                ["NUGET_API_KEY"] = apiKey,
+            };
+            var result = await PwshScriptRunner.RunAsync(arguments,
+                workingDirectory: Root, environment: environment,
+                timeout: TimeSpan.FromSeconds(60), description: "Manual publisher fixture");
+            return new PublisherResult(result.ExitCode, result.StdOut + result.StdErr);
         }
 
         public void Dispose() => TestFixtureFileSystem.DeleteDirectoryIfExists(Root);

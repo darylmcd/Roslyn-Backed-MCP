@@ -55,7 +55,17 @@ for index in "${!pids[@]}"; do
     printf '%s\n' "$status" > "$output/parent-$((index+1)).exit"
     if [[ $status != 0 ]]; then failed=1; fi
 done
-[[ $failed == 0 ]] || { echo 'Functional cohort failed.' >&2; exit 1; }
+if [[ $failed != 0 ]]; then
+    echo 'Functional cohort failed.' >&2
+    for index in "${!pids[@]}"; do
+        launch=$((index+1))
+        if [[ $(< "$output/parent-$launch.exit") != 0 ]]; then
+            printf 'parent-%s exit=%s\n' "$launch" "$(< "$output/parent-$launch.exit")" >&2
+            cat "$output/parent-$launch.log" >&2
+        fi
+    done
+    exit 1
+fi
 sha256sum "$profile" > "$output/after.sha256"
 cmp "$output/before.sha256" "$output/after.sha256"
 mapfile -t profiles < <(find "$XDG_CACHE_HOME/powershell" -maxdepth 1 -name 'StartupProfileData*' -printf '%f\n')

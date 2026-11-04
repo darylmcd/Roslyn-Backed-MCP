@@ -1,4 +1,4 @@
-using System.Diagnostics;
+using RoslynMcp.Tests.Helpers;
 using RoslynMcp.Tests.Support;
 
 namespace RoslynMcp.Tests;
@@ -367,40 +367,19 @@ public sealed class ChangelogFragmentRequirementTests
     private static async Task<ProcessResult> RunVerifierAsync(string fixtureRoot, bool tagRun = false)
     {
         var scriptPath = Path.Combine(fixtureRoot, "eng", "verify-changelog-fragments.ps1");
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = OperatingSystem.IsWindows() ? "pwsh.exe" : "pwsh",
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-        };
-        startInfo.ArgumentList.Add("-NoProfile");
-        startInfo.ArgumentList.Add("-File");
-        startInfo.ArgumentList.Add(scriptPath);
-        startInfo.ArgumentList.Add("-RepoRoot");
-        startInfo.ArgumentList.Add(fixtureRoot);
         // Pin the CI context so the host's own GitHub Actions environment cannot leak into the fixture.
-        startInfo.Environment["GITHUB_REF_TYPE"] = tagRun ? "tag" : "branch";
-        startInfo.Environment.Remove("GITHUB_BASE_REF");
-        startInfo.Environment.Remove("CHANGELOG_BASE_SHA");
-
-        using var process = Process.Start(startInfo)
-            ?? throw new InvalidOperationException("Could not start the changelog verifier.");
-        var stdoutTask = process.StandardOutput.ReadToEndAsync();
-        var stderrTask = process.StandardError.ReadToEndAsync();
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        try
+        var environment = new Dictionary<string, string?>
         {
-            await process.WaitForExitAsync(timeout.Token);
-        }
-        catch (OperationCanceledException) when (timeout.IsCancellationRequested)
-        {
-            process.Kill(entireProcessTree: true);
-            throw new TimeoutException("Changelog verifier did not exit within 30 seconds.");
-        }
-
-        return new ProcessResult(process.ExitCode, await stdoutTask, await stderrTask);
+            ["GITHUB_REF_TYPE"] = tagRun ? "tag" : "branch",
+            ["GITHUB_BASE_REF"] = null,
+            ["CHANGELOG_BASE_SHA"] = null,
+        };
+        var result = await PwshScriptRunner.RunAsync(
+            ["-NoProfile", "-File", scriptPath, "-RepoRoot", fixtureRoot],
+            environment: environment,
+            timeout: TimeSpan.FromSeconds(30),
+            description: "Changelog verifier");
+        return new ProcessResult(result.ExitCode, result.StdOut, result.StdErr);
     }
 
 

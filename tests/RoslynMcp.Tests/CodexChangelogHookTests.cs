@@ -1,5 +1,5 @@
-using System.Diagnostics;
 using System.Text.Json;
+using RoslynMcp.Tests.Helpers;
 using RoslynMcp.Tests.Support;
 
 namespace RoslynMcp.Tests;
@@ -165,45 +165,15 @@ public sealed class CodexChangelogHookTests
     {
         var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
         var hookPath = Path.Combine(repositoryRoot, ".codex", "hooks", "pre-publish-changelog.ps1");
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = OperatingSystem.IsWindows() ? "pwsh.exe" : "pwsh",
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-        };
-        startInfo.ArgumentList.Add("-NoProfile");
-        startInfo.ArgumentList.Add("-File");
-        startInfo.ArgumentList.Add(hookPath);
-        startInfo.ArgumentList.Add("-RepoRoot");
-        startInfo.ArgumentList.Add(fixtureRoot);
+        var arguments = new List<string> { "-NoProfile", "-File", hookPath, "-RepoRoot", fixtureRoot };
         if (verifierPath is not null)
         {
-            startInfo.ArgumentList.Add("-VerifierPath");
-            startInfo.ArgumentList.Add(verifierPath);
+            arguments.AddRange(["-VerifierPath", verifierPath]);
         }
 
-        using var process = Process.Start(startInfo)
-            ?? throw new InvalidOperationException("Could not start the Codex changelog hook.");
-        await process.StandardInput.WriteAsync(input);
-        process.StandardInput.Close();
-        var stdoutTask = process.StandardOutput.ReadToEndAsync();
-        var stderrTask = process.StandardError.ReadToEndAsync();
-        using var timeout = new CancellationTokenSource(HookProcessTimeout);
-        try
-        {
-            await process.WaitForExitAsync(timeout.Token);
-        }
-        catch (OperationCanceledException) when (timeout.IsCancellationRequested)
-        {
-            process.Kill(entireProcessTree: true);
-            throw new TimeoutException(
-                $"Codex changelog hook did not exit within {HookProcessTimeout.TotalSeconds:F0} seconds.");
-        }
-
-        return new ProcessResult(process.ExitCode, await stdoutTask, await stderrTask);
+        var result = await PwshScriptRunner.RunWithInputAsync(arguments,
+            input, HookProcessTimeout, "Codex changelog hook");
+        return new ProcessResult(result.ExitCode, result.StdOut, result.StdErr);
     }
 
     private static void AssertDenial(ProcessResult result, string scenario)
