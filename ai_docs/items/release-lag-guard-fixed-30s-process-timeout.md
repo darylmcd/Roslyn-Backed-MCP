@@ -19,3 +19,7 @@
 - PR #1910 run 40927393890 failed `windows-hosted-4-of-4` twice in this test (`changelog verifier timed out after 30 seconds`, elapsedMs 31769 then 32462), while the class passed 5/5 in 9 seconds locally on that head. This was not base-commit proof.
 - PR #1951 run 41581270680, job 125736496364 failed `windows-hosted-2-of-4` on the **first** of five verifier calls at `ReleaseLagGuardTests.cs:84`. The process was still running at 30.165 seconds, with the runner in `process exit` phase and zero pipe bytes. Zero bytes do not distinguish startup from script or Git work because successful verification emits output only after those operations. The affected test/helper/script files are unchanged from PR base.
 - Unchanged-source PR #1954 (`620159a565287764659440eb66b1068fbf5ed5fc`, zero changed files) passed the full hosted code matrix, including Windows shard 2, in this session. Draft diagnostic PR #1955 at `97c0d47598d661def08f088af590d9b428cc7b64` also passed every hosted check; no timeout occurred to locate the delayed stage. PR #1951 was returned to draft. The failed gate remains unattributed and this row remains open.
+
+## Notes
+
+Evidence 2026-11-04 (remediation review): 30 s timeout on hosted Windows is probably contention, not logic: cold pwsh start plus at least 7 git.exe spawns under Defender scanning, with tests/RoslynMcp.Tests/AssemblyInfo.cs:9 Parallelize(Workers = 0, ClassLevel). PR 1955 (draft, parked) holds an unmerged attempt; root cause not proven.
