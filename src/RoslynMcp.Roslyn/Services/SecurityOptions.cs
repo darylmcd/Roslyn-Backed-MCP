@@ -15,8 +15,10 @@ public sealed class SecurityOptions
 
     /// <summary>
     /// Allows a request that explicitly sets <c>expandSanctionedRoots</c> to widen each configured
-    /// root by exactly one parent directory. This is disabled by default so request input alone
-    /// can never widen the server-owned boundary. Set via
+    /// root by exactly one parent directory. When that parent is a filesystem root (<c>D:\</c>,
+    /// <c>/</c>) the widening is limited to sibling directories named
+    /// <c>&lt;rootName&gt;-&lt;non-empty suffix&gt;</c>, never the whole drive. This is disabled by
+    /// default so request input alone can never widen the server-owned boundary. Set via
     /// <c>ROSLYNMCP_ALLOW_ROOT_EXPANSION</c> (true/false).
     /// </summary>
     public bool AllowRootExpansion { get; init; }

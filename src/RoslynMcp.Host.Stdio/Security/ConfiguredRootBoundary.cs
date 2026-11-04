@@ -26,11 +26,6 @@ internal static class ConfiguredRootBoundary
     internal static bool PathsEqual(string left, string right) =>
         string.Equals(left, right, FileSystemPathComparison);
 
-    private static readonly StringComparer FileSystemPathComparer =
-        OperatingSystem.IsWindows()
-            ? StringComparer.OrdinalIgnoreCase
-            : StringComparer.Ordinal;
-
     internal static SecurityOptions ResolveOptions(McpServer? server, SecurityOptions? explicitOptions) =>
         explicitOptions
         ?? server?.Services?.GetService<SecurityOptions>()
@@ -128,9 +123,10 @@ internal static class ConfiguredRootBoundary
             return false;
         }
 
-        foreach (var root in EnumerateAllowedRoots(canonicalRoots, expandSanctionedRoots))
+        foreach (var root in canonicalRoots)
         {
-            if (IsPathUnderRoot(canonicalPath, root))
+            if (IsPathUnderRoot(canonicalPath, root)
+                || (expandSanctionedRoots && IsPathUnderWidenedBoundary(canonicalPath, root)))
             {
                 return true;
             }
@@ -146,34 +142,47 @@ internal static class ConfiguredRootBoundary
     internal static string ResolvePath(string path)
         => PhysicalPathResolver.Resolve(path);
 
-    private static IEnumerable<string> EnumerateAllowedRoots(
-        IReadOnlyList<string> canonicalRoots,
-        bool expandSanctionedRoots)
+    /// <summary>
+    /// One-level sibling-worktree widening for a configured root. An ordinary parent directory is
+    /// accepted whole. A parent that is a filesystem root (<c>D:\</c>, a UNC share root, or
+    /// <c>/</c>) is never accepted whole: only siblings named <c>&lt;rootName&gt;-&lt;non-empty suffix&gt;</c>
+    /// are. A root that is itself a filesystem root has no parent and is not widened (so <c>/</c>
+    /// never yields the prefix <c>-</c>). Paths are already physically resolved, so a prefixed
+    /// sibling that is a link to elsewhere is judged by its target.
+    /// </summary>
+    private static bool IsPathUnderWidenedBoundary(string canonicalPath, string canonicalRoot)
     {
-        foreach (var root in canonicalRoots)
+        var trimmedRoot = canonicalRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var parent = Path.GetDirectoryName(trimmedRoot);
+        if (string.IsNullOrEmpty(parent))
         {
-            yield return root;
-
-            if (!expandSanctionedRoots)
-            {
-                continue;
-            }
-
-            var parent = GetWidenedParent(root);
-            if (parent is not null)
-            {
-                yield return parent;
-            }
+            return false;
         }
+
+        if (Path.GetPathRoot(parent) != parent)
+        {
+            return IsPathUnderRoot(canonicalPath, parent);
+        }
+
+        var rootName = Path.GetFileName(trimmedRoot);
+        return rootName.Length > 0 && IsPathUnderPrefixedSibling(canonicalPath, parent, rootName + "-");
     }
 
-    private static string? GetWidenedParent(string root)
+    private static bool IsPathUnderPrefixedSibling(string canonicalPath, string filesystemRoot, string siblingPrefix)
     {
-        var parent = Path.GetDirectoryName(
-            root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
-        return !string.IsNullOrEmpty(parent) && Path.GetPathRoot(parent) != parent
-            ? parent
-            : null;
+        var normalizedRoot = filesystemRoot.EndsWith(Path.DirectorySeparatorChar)
+            ? filesystemRoot
+            : filesystemRoot + Path.DirectorySeparatorChar;
+        if (!canonicalPath.StartsWith(normalizedRoot, FileSystemPathComparison))
+        {
+            return false;
+        }
+
+        var remainder = canonicalPath.AsSpan(normalizedRoot.Length);
+        var separatorIndex = remainder.IndexOf(Path.DirectorySeparatorChar);
+        var firstSegment = separatorIndex < 0 ? remainder : remainder[..separatorIndex];
+        return firstSegment.Length > siblingPrefix.Length
+               && firstSegment.StartsWith(siblingPrefix.AsSpan(), FileSystemPathComparison);
     }
 
     private static bool IsPathUnderRoot(string canonicalPath, string canonicalRoot)

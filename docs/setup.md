@@ -51,7 +51,9 @@ non-empty configured boundary. Client Roots are not an authority and cannot wide
 access. Sibling-worktree widening requires both the server-owned
 `ROSLYNMCP_ALLOW_ROOT_EXPANSION=true` setting and `expandSanctionedRoots=true` on the individual
 `workspace_load` request. Both default to false; request input alone cannot widen access, and the
-widening is limited to each configured root's immediate parent. See
+widening is limited to each configured root's immediate parent. When that parent is a drive or
+filesystem root (a repo at `D:\repo`), widening never grants the whole drive: only sibling
+directories named `<repo>-<suffix>` (for example `D:\repo-audit-x`) are reachable. See
 [ADR 0002](decisions/0002-configured-sanctioned-root-boundary.md) for the decision and migration
 details.
 
@@ -113,7 +115,7 @@ are optional literal `env` overrides. Copy-ready examples live in
 |----------|---------|---------|
 | `ROSLYNMCP_SANCTIONED_ROOTS` | empty (deny path access) | Server-owned path-validation and solution-discovery boundary; `.` resolves against the server process's cwd, which for a plugin-launched server is the session's own working directory (see [Claude Code Plugin](#claude-code-plugin)) |
 | `ROSLYNMCP_PATH_VALIDATION_FAIL_OPEN` | `false` | Temporary compatibility escape hatch for the **empty**-boundary case only: allows path access when no roots are configured. It never bypasses a non-empty boundary. Prefer configuring roots |
-| `ROSLYNMCP_ALLOW_ROOT_EXPANSION` | `false` | Allows a request with `expandSanctionedRoots=true` to reach sibling worktrees under each sanctioned root's immediate parent; both opt-ins are required |
+| `ROSLYNMCP_ALLOW_ROOT_EXPANSION` | `false` | Allows a request with `expandSanctionedRoots=true` to reach sibling worktrees under each sanctioned root's immediate parent (or, for a drive-root parent, only `<root>-<suffix>` siblings); both opt-ins are required |
 | `ROSLYNMCP_MAX_WORKSPACES` | `16` | Concurrent workspace cap |
 | `ROSLYNMCP_BUILD_TIMEOUT_SECONDS` | `300` | Build timeout |
 | `ROSLYNMCP_TEST_TIMEOUT_SECONDS` | `600` | Test timeout |
@@ -141,7 +143,9 @@ can never widen it or act as the sole authority. This is deliberate: the control
 the **agent**, so a model that is confused or prompt-injected into reading outside your project
 cannot do so, even if it asks. Sibling-worktree widening needs two independent opt-ins, the server
 operator setting `ROSLYNMCP_ALLOW_ROOT_EXPANSION=true` *and* the request setting
-`expandSanctionedRoots=true`, so request input alone never widens access.
+`expandSanctionedRoots=true`, so request input alone never widens access. The widening is one
+level and never covers a whole drive: for a root directly under a drive root, only `<root>-<suffix>`
+siblings qualify.
 
 Paths are canonicalized component by component, resolving every symlink and junction in the ancestor
 chain before comparison, so a file under a linked ancestor cannot present an in-boundary logical
@@ -232,6 +236,7 @@ session at a different repo, each with its own trade-off:
 3. **Reach a sibling worktree without changing roots.** Set `ROSLYNMCP_ALLOW_ROOT_EXPANSION=true`
    (server-owned) and pass `expandSanctionedRoots=true` on the individual request; both opt-ins are
    required and the boundary stays fail-closed otherwise (see [Security model](#security-model)).
+   With a repo at a drive root (`D:\repo`), name the worktree `D:\repo-<suffix>`.
 
 ## Related
 

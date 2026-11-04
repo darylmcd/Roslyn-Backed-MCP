@@ -71,6 +71,27 @@ explicitly, or pass `workspaceId`.
 - A configured search root containing multiple solutions produces the existing deterministic
   ambiguity response instead of guessing.
 
+## Addendum 2026-11-03: sibling widening under a drive-root parent
+
+Decision recorded by the operator 2026-10-15; implemented in `ConfiguredRootBoundary`.
+
+| Case | Behavior with both opt-ins |
+|---|---|
+| Root's parent is an ordinary directory (`D:\Dev\repo`) | Unchanged: the whole parent is accepted. |
+| Root's parent is a filesystem root (`D:\repo`, `\\srv\share\repo`, `/repo`) | Only direct siblings named `<rootName>-<non-empty suffix>` are accepted (`D:\repo-audit-x\...`, `D:\repo-x`). `D:\repo2`, `D:\repository`, `D:\repo-`, `D:\other`, nested `D:\other\repo-x` and the drive itself stay rejected. Never the whole drive. |
+| Root is itself a filesystem root (`D:\`, `/`) | No parent, no widening (the prefix `-` is never synthesized). `/` on Linux behaves like `D:\`. |
+
+- Matching uses the boundary's platform comparison (case-insensitive on Windows, ordinal elsewhere).
+- Paths are canonicalized (every symlink/junction resolved) before the check, so a `<root>-x`
+  link that resolves outside the boundary is rejected.
+- Load, `ClientRootPathValidator`, apply-time revalidation (`ToolDispatch.RevalidateChangedPathsAsync`
+  via `RootExpansionGrantRegistry`) and fork storage all call the single `ConfiguredRootBoundary`
+  predicate, so load and apply cannot diverge.
+- Migration: operators who previously saw sibling worktrees at `D:\<repo>-<suffix>` rejected under
+  `expandSanctionedRoots` can now load them. Worktrees outside the `<repo>-` naming remain
+  rejected; rename them or add their path to `ROSLYNMCP_SANCTIONED_ROOTS`. No existing accepted path
+  is newly rejected.
+
 ## References
 
 - `docs/setup.md` — operator configuration and migration

@@ -425,6 +425,120 @@ public sealed class PreviewApplyBoundaryRevalidationTests
         }
     }
 
+    // Drive-root-parent fixtures: the sanctioned root sits directly under the filesystem root of the
+    // temp volume (the D:\<repo> layout). Nothing is created on disk; the boundary check is
+    // path-only and nonexistent components canonicalize lexically.
+    private static string DriveRootChild(string name)
+        => Path.Combine(Path.GetPathRoot(TestTempRoot.Current)!, name);
+
+    private static async Task<string> ApplyWithDriveRootRootAsync(string documentPath, string sanctionedRoot, bool granted)
+    {
+        var previousSnapshot = SecurityOptionsSnapshot.Value;
+        try
+        {
+            SecurityOptionsSnapshot.Value = new SecurityOptions
+            {
+                SanctionedRoots = [sanctionedRoot],
+                AllowRootExpansion = true,
+            };
+            if (granted)
+            {
+                RootExpansionGrantRegistry.Grant(WorkspaceId);
+            }
+            else
+            {
+                RootExpansionGrantRegistry.Revoke(WorkspaceId);
+            }
+
+            var (store, token) = StagePreview(documentPath);
+            return await ToolDispatch.ApplyByTokenAsync<FakeResultDto>(
+                new FakeGate(),
+                store,
+                token,
+                serviceCall: _ => Task.FromResult(new FakeResultDto("applied")),
+                ct: CancellationToken.None,
+                expectedKind: PreviewKind.SymbolRename,
+                invokedRoute: "rename_apply");
+        }
+        finally
+        {
+            RootExpansionGrantRegistry.Revoke(WorkspaceId);
+            SecurityOptionsSnapshot.Value = previousSnapshot;
+        }
+    }
+
+    [TestMethod]
+    public async Task ApplyByToken_DriveRootParent_GrantedPrefixedSibling_StillApplies()
+    {
+        var root = DriveRootChild("rmcp-dr-" + Guid.NewGuid().ToString("N"));
+        var result = await ApplyWithDriveRootRootAsync(
+            Path.Combine(root + "-audit-x", "Program.cs"), root, granted: true);
+        StringAssert.Contains(result, "applied");
+    }
+
+    [TestMethod]
+    public async Task ApplyByToken_DriveRootParent_PrefixedSiblingWithoutGrant_RefusesRedemption()
+    {
+        var root = DriveRootChild("rmcp-dr-" + Guid.NewGuid().ToString("N"));
+        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+            ApplyWithDriveRootRootAsync(Path.Combine(root + "-audit-x", "Program.cs"), root, granted: false));
+        StringAssert.Contains(ex.Message, "outside the configured sanctioned-root boundary");
+    }
+
+    [TestMethod]
+    public async Task ApplyByToken_DriveRootParent_NonPrefixedSiblingRefusedEvenWhenGranted()
+    {
+        var root = DriveRootChild("rmcp-dr-" + Guid.NewGuid().ToString("N"));
+        // "<root>2" shares the name prefix but not the "<root>-" separator; "<root>-" has no suffix.
+        foreach (var sibling in new[] { root + "2", root + "-" })
+        {
+            var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+                ApplyWithDriveRootRootAsync(Path.Combine(sibling, "Program.cs"), root, granted: true));
+            StringAssert.Contains(ex.Message, "outside the configured sanctioned-root boundary");
+        }
+    }
+
+    [TestMethod]
+    public async Task ApplyByToken_DriveRootParent_PrefixedSiblingLinkEscapingElsewhere_RefusesRedemption()
+    {
+        var root = DriveRootChild("rmcp-dr-" + Guid.NewGuid().ToString("N"));
+        var link = root + "-escape";
+        var outside = Path.Combine(TestTempRoot.Current, "rmcp-dr-outside-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(outside);
+        var linkCreated = false;
+        try
+        {
+            try
+            {
+                linkCreated = TestFixtureFileSystem.TryCreateDirectoryLink(link, outside);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // The filesystem root is not writable here (e.g. Linux CI): the link cannot exist.
+            }
+
+            if (!linkCreated)
+            {
+                Assert.Inconclusive("A link directly under the filesystem root cannot be created in this test environment.");
+                return;
+            }
+
+            // The path is lexically a prefixed sibling, but physically resolves outside the boundary.
+            var ex2 = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+                ApplyWithDriveRootRootAsync(Path.Combine(link, "Program.cs"), root, granted: true));
+            StringAssert.Contains(ex2.Message, "outside the configured sanctioned-root boundary");
+        }
+        finally
+        {
+            if (linkCreated)
+            {
+                TestFixtureFileSystem.DeleteDirectoryIfExists(link);
+            }
+
+            TestFixtureFileSystem.DeleteDirectoryIfExists(outside);
+        }
+    }
+
     /// <summary>
     /// Stages a real <see cref="PreviewStore"/> entry whose single changed document carries
     /// <paramref name="documentFilePath"/>, mirroring how every in-tree preview service stores an
