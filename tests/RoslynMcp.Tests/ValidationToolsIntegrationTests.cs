@@ -388,11 +388,13 @@ public sealed class ValidationToolsIntegrationTests : SharedWorkspaceTestBase
         // Sanity guard: pre-fix, the primary pass would produce zero matches because
         // "IAnimal" is not a substring of any test name/path. We assert the fallback now
         // recovers AnimalServiceTests.
-        var result = await TestDiscoveryService.FindRelatedTestsForFilesAsync(
-            WorkspaceId,
-            new[] { iAnimalPath },
-            maxResults: 100,
-            CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(60));
+        var result = await TimeBoundTestOperation.RunAsync(
+            ct => TestDiscoveryService.FindRelatedTestsForFilesAsync(
+                WorkspaceId,
+                new[] { iAnimalPath },
+                maxResults: 100,
+                ct),
+            TimeSpan.FromSeconds(60));
 
         Assert.IsTrue(result.Tests.Count > 0,
             $"Fallback broadening should surface at least one related test for IAnimal.cs; got 0. Diagnostics: " +
