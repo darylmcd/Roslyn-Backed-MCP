@@ -46,7 +46,9 @@ if (observabilityOptions.Sink == ServerObservabilitySinkKind.File)
 {
     var metadataRoot = Path.GetDirectoryName(HostProcessMetadataStore.ResolveDefaultPath())
         ?? throw new InvalidOperationException("The host-process metadata path has no directory.");
-    fileLoggerProvider = new JsonLinesFileLoggerProvider(Path.Combine(metadataRoot, "logs"));
+    fileLoggerProvider = new JsonLinesFileLoggerProvider(
+        Path.Combine(metadataRoot, "logs"),
+        JsonLinesRetentionOptions.Parse(ReadEnv));
     builder.Logging.AddProvider(fileLoggerProvider);
 }
 

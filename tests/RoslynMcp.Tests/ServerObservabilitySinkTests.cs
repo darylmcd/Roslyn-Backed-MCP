@@ -146,7 +146,7 @@ public sealed class ServerObservabilitySinkTests
         var timestamp = new DateTimeOffset(2026, 8, 26, 12, 34, 56, 789, TimeSpan.Zero);
         using var provider = new JsonLinesFileLoggerProvider(
             logDirectory,
-            maxFileBytes: 450,
+            JsonLinesRetentionOptions.Create(JsonLinesRetentionOptions.MinimumSegmentBytes, maxSegments: 2),
             processId: 1234,
             utcNow: () => timestamp);
         using var loggerFactory = LoggerFactory.Create(logging =>
@@ -179,12 +179,213 @@ public sealed class ServerObservabilitySinkTests
 
         Assert.IsFalse(firstLine.Contains(_secretSentinel, StringComparison.Ordinal));
 
-        logger.LogWarning("{Payload}", new string('x', 500));
+        // One record larger than the whole segment is replaced by a marker; it never rotates away
+        // the earlier evidence and is never appended whole.
+        logger.LogWarning("{Payload}", new string('x', 20_000));
 
-        Assert.IsTrue(File.Exists(provider.RotatedFilePath));
-        Assert.AreEqual(firstLine, File.ReadLines(provider.RotatedFilePath).Single());
-        Assert.HasCount(1, File.ReadLines(provider.FilePath).ToArray());
+        Assert.IsFalse(File.Exists(provider.SegmentPath(1)));
+        var lines = File.ReadAllLines(provider.FilePath);
+        Assert.HasCount(2, lines);
+        Assert.AreEqual(firstLine, lines[0]);
+        using var marker = JsonDocument.Parse(lines[1]);
+        var dropped = marker.RootElement.GetProperty("fields").GetProperty("droppedBytes").GetInt64();
+        Assert.IsGreaterThan(20_000, dropped);
+        Assert.AreEqual(
+            $"record truncated: {dropped} bytes exceeds segment limit",
+            marker.RootElement.GetProperty("message").GetString());
     }
+
+    [TestMethod]
+    public void FileProvider_RotationKeepsFirstRecordReachableAcrossThreeThresholds()
+    {
+        var retention = JsonLinesRetentionOptions.Create(JsonLinesRetentionOptions.MinimumSegmentBytes, maxSegments: 3);
+        using var provider = NewProvider(retention);
+        var logger = provider.CreateLogger("evidence");
+        logger.LogInformation(new EventId(1, "First"), "first-written-record");
+
+        // Total volume = 3x the threshold; fixed record count so the loop cannot depend on what is retained.
+        var beforeFiller = new FileInfo(provider.FilePath).Length;
+        logger.LogInformation(new EventId(2, "Filler"), "filler {Index} {Pad}", 0, new string('p', 200));
+        var fillerBytes = new FileInfo(provider.FilePath).Length - beforeFiller;
+        for (var i = 1; i < 3 * retention.MaxSegmentBytes / fillerBytes; i++)
+        {
+            logger.LogInformation(new EventId(2, "Filler"), "filler {Index} {Pad}", i, new string('p', 200));
+        }
+
+        var retained = ReadRetainedLines(provider, retention.MaxSegments);
+        Assert.IsTrue(retained.Any(line => line.Contains("first-written-record", StringComparison.Ordinal)),
+            "The first-written record must stay reachable within the retained segment bound.");
+        foreach (var line in retained)
+        {
+            using var parsedLine = JsonDocument.Parse(line);
+        }
+    }
+
+    [TestMethod]
+    public void FileProvider_RotationDeletesOnlyTheOldestSegmentAndRespectsCount()
+    {
+        var retention = JsonLinesRetentionOptions.Create(JsonLinesRetentionOptions.MinimumSegmentBytes, maxSegments: 2);
+        using var provider = NewProvider(retention);
+        var logger = provider.CreateLogger("count");
+        for (var i = 0; i < 80; i++)
+        {
+            logger.LogInformation(new EventId(3, "Seq"), "seq-{Index} {Pad}", i.ToString("D3", System.Globalization.CultureInfo.InvariantCulture), new string('p', 400));
+        }
+
+        Assert.IsTrue(File.Exists(provider.SegmentPath(1)));
+        Assert.IsTrue(File.Exists(provider.SegmentPath(2)));
+        Assert.IsFalse(File.Exists(provider.SegmentPath(3)), "MaxSegments=2 must never create a third numbered segment.");
+        var retained = ReadRetainedLines(provider, 2);
+        var indexes = retained.Select(line => JsonDocument.Parse(line).RootElement.GetProperty("fields")
+            .GetProperty("index").GetString()!).ToArray();
+        CollectionAssert.AreEqual(indexes.OrderBy(static value => value, StringComparer.Ordinal).ToArray(), indexes,
+            "Retained segments read oldest to newest must be contiguous and ordered.");
+        Assert.AreEqual("079", indexes[^1]);
+        var oldestKept = int.Parse(indexes[0], System.Globalization.CultureInfo.InvariantCulture);
+        Assert.IsGreaterThan(0, oldestKept, "Only the oldest segment may have been deleted.");
+        for (var i = 0; i < indexes.Length; i++)
+        {
+            Assert.AreEqual(oldestKept + i, int.Parse(indexes[i], System.Globalization.CultureInfo.InvariantCulture));
+        }
+
+        foreach (var path in new[] { provider.FilePath, provider.SegmentPath(1), provider.SegmentPath(2) })
+        {
+            Assert.IsLessThanOrEqualTo(retention.MaxSegmentBytes, new FileInfo(path).Length);
+        }
+    }
+
+    [TestMethod]
+    public void FileProvider_OversizedRecordBecomesBoundedValidMarkerInFirstEmptyAndNonEmptyFiles()
+    {
+        var retention = JsonLinesRetentionOptions.Create(JsonLinesRetentionOptions.MinimumSegmentBytes, maxSegments: 2);
+        var hugeCategory = new string('c', 50_000);
+        var hugeCorrelation = new string('k', 50_000);
+        var timestamp = new DateTimeOffset(2026, 8, 26, 12, 34, 56, 789, TimeSpan.Zero);
+
+        // First record ever (file absent), then an empty existing file, then a non-empty file.
+        foreach (var setup in new[] { "absent", "empty", "nonempty" })
+        {
+            using var provider = new JsonLinesFileLoggerProvider(
+                Path.Combine(TestTempRoot.Current, nameof(ServerObservabilitySinkTests), Guid.NewGuid().ToString("N")),
+                retention, processId: 99, utcNow: () => timestamp);
+            Directory.CreateDirectory(Path.GetDirectoryName(provider.FilePath)!);
+            if (setup == "empty")
+            {
+                File.WriteAllText(provider.FilePath, string.Empty);
+            }
+
+            using var loggerFactory = LoggerFactory.Create(logging => logging.SetMinimumLevel(LogLevel.Trace).AddProvider(provider));
+            var logger = loggerFactory.CreateLogger(hugeCategory);
+            if (setup == "nonempty")
+            {
+                logger.LogInformation("seed");
+            }
+
+            using (logger.BeginScope("correlationId={CorrelationId}", hugeCorrelation))
+            {
+                logger.LogError(new EventId(77, "BigEvent"), "{Payload}", new string('x', (int)retention.MaxSegmentBytes * 2));
+            }
+
+            var lines = File.ReadAllLines(provider.FilePath);
+            Assert.HasCount(setup == "nonempty" ? 2 : 1, lines, setup);
+            Assert.IsFalse(File.Exists(provider.SegmentPath(1)), setup + ": marker must not force a rotation.");
+            var markerLine = lines[^1];
+            Assert.IsLessThan(retention.MaxSegmentBytes, markerLine.Length * 2L, setup);
+            using var document = JsonDocument.Parse(markerLine);
+            var root = document.RootElement;
+            Assert.AreEqual("2026-08-26T12:34:56.789Z", root.GetProperty("ts").GetString());
+            Assert.AreEqual("Error", root.GetProperty("level").GetString());
+            Assert.IsLessThanOrEqualTo(128, root.GetProperty("category").GetString()!.Length);
+            Assert.IsTrue(hugeCategory.StartsWith(root.GetProperty("category").GetString()!, StringComparison.Ordinal));
+            Assert.AreEqual(77, root.GetProperty("eventId").GetInt32());
+            Assert.AreEqual("BigEvent", root.GetProperty("eventName").GetString());
+            Assert.IsLessThanOrEqualTo(64, root.GetProperty("correlationId").GetString()!.Length);
+            var fields = root.GetProperty("fields");
+            Assert.AreEqual(retention.MaxSegmentBytes, fields.GetProperty("maxSegmentBytes").GetInt64());
+            Assert.IsGreaterThan(retention.MaxSegmentBytes, fields.GetProperty("droppedBytes").GetInt64());
+            Assert.IsTrue(root.GetProperty("message").GetString()!.StartsWith("record truncated: ", StringComparison.Ordinal));
+        }
+    }
+
+    [TestMethod]
+    public void RetentionOptions_ParseDefaultsRejectInvalidValuesAndEnforceFloor()
+    {
+        var defaults = JsonLinesRetentionOptions.Parse(static _ => null);
+        Assert.AreEqual(5L * 1024 * 1024, defaults.MaxSegmentBytes);
+        Assert.AreEqual(3, defaults.MaxSegments);
+        Assert.AreEqual(5L * 1024 * 1024, JsonLinesRetentionOptions.Parse(static _ => " ").MaxSegmentBytes);
+
+        var parsed = JsonLinesRetentionOptions.Parse(name =>
+            name == JsonLinesRetentionOptions.MaxSegmentBytesVariable ? " 16384 " : "7");
+        Assert.AreEqual(16384L, parsed.MaxSegmentBytes);
+        Assert.AreEqual(7, parsed.MaxSegments);
+
+        var belowFloor = (JsonLinesRetentionOptions.MinimumSegmentBytes - 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        foreach (var (variable, value) in new[]
+        {
+            (JsonLinesRetentionOptions.MaxSegmentBytesVariable, belowFloor),
+            (JsonLinesRetentionOptions.MaxSegmentBytesVariable, "0"),
+            (JsonLinesRetentionOptions.MaxSegmentBytesVariable, _secretSentinel),
+            (JsonLinesRetentionOptions.MaxSegmentsVariable, "0"),
+            (JsonLinesRetentionOptions.MaxSegmentsVariable, "-1"),
+            (JsonLinesRetentionOptions.MaxSegmentsVariable, "101"),
+            (JsonLinesRetentionOptions.MaxSegmentsVariable, _secretSentinel),
+        })
+        {
+            var exception = Assert.ThrowsExactly<InvalidOperationException>(
+                () => JsonLinesRetentionOptions.Parse(name => name == variable ? value : null));
+            Assert.Contains(variable, exception.Message);
+            Assert.IsFalse(exception.Message.Contains(_secretSentinel, StringComparison.Ordinal));
+        }
+
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(
+            () => JsonLinesRetentionOptions.Create(JsonLinesRetentionOptions.MinimumSegmentBytes - 1, 1));
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(
+            () => JsonLinesRetentionOptions.Create(JsonLinesRetentionOptions.MinimumSegmentBytes, 0));
+    }
+
+    [TestMethod]
+    public void SegmentWriter_FailedRotationNeverLosesSegmentContentAcrossTheRetry()
+    {
+        var retention = JsonLinesRetentionOptions.Create(JsonLinesRetentionOptions.MinimumSegmentBytes, maxSegments: 3);
+        var directory = Path.Combine(TestTempRoot.Current, nameof(ServerObservabilitySinkTests), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var writer = new JsonLinesSegmentWriter(directory, 4321, retention);
+        File.WriteAllText(writer.ActivePath, "X");
+        File.WriteAllText(writer.SegmentPath(1), "A");
+        File.WriteAllText(writer.SegmentPath(3), "C");
+
+        // Slot .2 is a non-empty directory: moving A onto it fails on every OS, with .3 holding live evidence.
+        var blocker = writer.SegmentPath(2);
+        Directory.CreateDirectory(blocker);
+        File.WriteAllText(Path.Combine(blocker, "occupied"), "blocker");
+
+        var failed = false;
+        try
+        {
+            writer.Rotate();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            failed = true;
+        }
+
+        Assert.IsTrue(failed, "The blocked shift must fail, as the sink's swallowed-failure path assumes.");
+        Assert.AreEqual("C", File.ReadAllText(writer.SegmentPath(3)), "A failed rotation must not delete unmoved evidence.");
+
+        Directory.Delete(blocker, recursive: true);
+        writer.Rotate();
+
+        // No segment is evicted (three segments fit), so X, A and C must all survive the failed + retried rotation.
+        Assert.AreEqual("X", File.ReadAllText(writer.SegmentPath(1)));
+        Assert.AreEqual("A", File.ReadAllText(writer.SegmentPath(2)));
+        Assert.AreEqual("C", File.ReadAllText(writer.SegmentPath(3)));
+        Assert.IsFalse(File.Exists(writer.ActivePath));
+    }
+
+    private static string[] ReadRetainedLines(JsonLinesFileLoggerProvider provider, int maxSegments) =>
+        Enumerable.Range(1, maxSegments).Reverse().Select(provider.SegmentPath).Append(provider.FilePath)
+            .Where(File.Exists).SelectMany(File.ReadAllLines).ToArray();
 
     [TestMethod]
     public void FileProvider_PreservesTypedFieldsAndSafeProjection()
@@ -420,8 +621,9 @@ public sealed class ServerObservabilitySinkTests
         }
     }
 
-    private static JsonLinesFileLoggerProvider NewProvider() => new(
-        Path.Combine(TestTempRoot.Current, nameof(ServerObservabilitySinkTests), Guid.NewGuid().ToString("N")));
+    private static JsonLinesFileLoggerProvider NewProvider(JsonLinesRetentionOptions? retention = null) => new(
+        Path.Combine(TestTempRoot.Current, nameof(ServerObservabilitySinkTests), Guid.NewGuid().ToString("N")),
+        retention);
 
     private sealed class SafeOpaque
     {

@@ -46,7 +46,7 @@ the MCP protocol surface:
 |---|---|
 | `disabled` (default) | None. Normal operational logs still go to `stderr`. |
 | `stderr` | Secret-safe JSON for unexpected failures is added to `stderr`. |
-| `file` | The full enabled `ILogger` stream is written as JSON lines under the per-user metadata root's `logs/` directory. Each process owns a 5 MiB current file plus one rotated file. |
+| `file` | The full enabled `ILogger` stream is written as JSON lines under the per-user metadata root's `logs/` directory. Each process owns an active file plus numbered rotated segments (see the retention paragraph below). |
 
 The file path is independent of the process working directory:
 
@@ -55,6 +55,24 @@ The file path is independent of the process working directory:
 | Windows default | `%LOCALAPPDATA%/roslyn-mcp/logs/` |
 | `XDG_STATE_HOME` set | `$XDG_STATE_HOME/roslyn-mcp/logs/` |
 | Other fallback | The platform `LocalApplicationData/roslyn-mcp/logs/` directory; the system temp directory is the last resort when no local-application-data path exists. |
+
+Retention is per process: `roslyn-mcp-{pid}.jsonl` is the active file and
+`roslyn-mcp-{pid}.1.jsonl` (newest) through `.N.jsonl` (oldest) are rotated segments.
+`ROSLYNMCP_OBSERVABILITY_MAX_SEGMENT_BYTES` (default 5 MiB, minimum 8192) is the rotation threshold:
+before a record would push the active file past it, the segments shift up one slot and only the oldest
+is deleted. `ROSLYNMCP_OBSERVABILITY_MAX_SEGMENTS` (default 3, range 1 to 100) sets how many rotated
+segments are kept, so the default retains the active file plus three segments. Invalid values fail
+startup without echoing the value.
+
+A single record larger than the threshold is never appended whole and never evicts earlier evidence.
+It is replaced by a valid JSON marker that keeps `ts`, `level`, `category` (truncated to 128
+characters), `eventId`, `eventName` and `correlationId` (each truncated to 64 characters), with message
+`record truncated: N bytes exceeds segment limit` and `fields` `droppedBytes` and `maxSegmentBytes`.
+The threshold is a rotation trigger, not a hard file-size guarantee: a segment is bounded by
+`max(threshold, marker size)` for files this process wrote (the 8192-byte floor keeps the marker under the
+threshold), and a file left by an earlier process with the same pid or a larger setting can exceed it
+until it ages out of the segment set. Per-process disk use is therefore at most
+`(MAX_SEGMENTS + 1) x` that bound. Files of other (dead) processes are not pruned by this setting.
 
 JSON-lines records contain `ts`, `level`, `category`, `eventId`, `message`, `correlationId`,
 `eventName`, and `fields`. `eventName` is null when the logger has no named event.
