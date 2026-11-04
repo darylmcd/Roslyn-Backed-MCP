@@ -9,11 +9,11 @@
 
 ## Acceptance
 
-- [ ] Segment threshold and segment count are configurable (env) and documented; default keeps ≥3 segments.
-- [ ] Define and enforce a valid-JSON oversized-record policy, preserving explicit evidence of that policy and documenting its resulting size bound.
-- [ ] Cover first, empty and nonempty files with one record exceeding the threshold; never imply the current rotation threshold is a strict record or file ceiling.
-- [ ] Startup prunes files of other processes older than N days (default14) or beyond a total-size cap, never the live-pid file or files held open by another live host.
-- [ ] Writing 3× the threshold keeps the first-written record reachable within retained segments up to the documented bound; pruning preserves live-pid files.
+- [ ] Segment threshold (`ROSLYNMCP_OBSERVABILITY_MAX_SEGMENT_BYTES`, with a floor) and segment count (`ROSLYNMCP_OBSERVABILITY_MAX_SEGMENTS`) are configurable and documented; default keeps >=3 numbered segments; rotation shifts segments and deletes only the oldest.
+- [ ] Define and enforce a valid-JSON oversized-record policy (bounded marker record, truncating unbounded fields), preserving explicit evidence of the policy and documenting the resulting bound `max(segment, marker)`.
+- [ ] Cover first, empty and nonempty files with one record exceeding the threshold; change `FileProvider_WritesScopedJsonLinesAndRotatesWithoutExceptionDetail`, which pins the oversized append; never imply the rotation threshold is a strict record or file ceiling.
+- [ ] Writing 3x the threshold keeps the first-written record reachable within retained segments up to the documented bound.
+- [ ] Startup pruning of other processes' files (age, total size, live-pid preservation) is carried by `logging-retention-dead-pid-sweep`; leave one segment-writer seam for it and for `logging-file-sink-sync-io-per-record`.
 
 ## Evidence
 

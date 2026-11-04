@@ -1,6 +1,6 @@
 # analyzer-shadow-sweep-live-child-authority — Preserve active foreign-host analyzer lease children
 
-**row:** `analyzer-shadow-sweep-live-child-authority` · **pri:** `High` · **size:** `S`
+**row:** `analyzer-shadow-sweep-live-child-authority` · **pri:** `High` · **size:** `S` · **deps:** `analyzer-shadow-lease-disposal-no-follow`
 
 ## Anchors
 
