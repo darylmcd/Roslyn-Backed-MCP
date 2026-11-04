@@ -177,6 +177,98 @@ public sealed class InterfaceMemberProjectorTests : IsolatedWorkspaceTestBase
         StringAssert.EndsWith(Method("Substituted").Parameters[0].Type.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat), "Outer<string>.Middle<object>.Deep<int>", interfaceText);
     }
 
+    private const string RefReturnSourceText = """
+        using System.Diagnostics.CodeAnalysis;
+
+        namespace Contracts;
+
+        public struct RefFieldStruct
+        {
+            private int _f;
+
+            [UnscopedRef] public ref int V => ref _f;
+            public ref int P { [UnscopedRef] get => ref _f; }
+            [UnscopedRef] public ref int M() => ref _f;
+            [UnscopedRef] public ref readonly int RoMethod() => ref _f;
+            [UnscopedRef] public ref readonly int RoProperty => ref _f;
+            [UnscopedRef] public ref readonly int this[int index] => ref _f;
+
+            public int Value => _f;
+            public int Plain() => _f;
+        }
+
+        public ref struct RefStructSource
+        {
+            private int _f;
+
+            [UnscopedRef] public ref int V => ref _f;
+            public ref int P { [UnscopedRef] get => ref _f; }
+            [UnscopedRef] public ref int M() => ref _f;
+            [UnscopedRef] public ref readonly int RoMethod() => ref _f;
+            [UnscopedRef] public ref readonly int RoProperty => ref _f;
+            [UnscopedRef] public ref readonly int this[int index] => ref _f;
+
+            public int Value => _f;
+            public int Plain() => _f;
+        }
+        """;
+
+    [TestMethod]
+    [DataRow("standalone", "RefFieldStruct")]
+    [DataRow("cross-project", "RefFieldStruct")]
+    [DataRow("standalone", "RefStructSource")]
+    [DataRow("cross-project", "RefStructSource")]
+    public async Task Ref_Returning_Struct_And_RefStruct_Members_Keep_Contract_And_UnscopedRef(string route, string typeName)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        PrepareFixture(workspace);
+        var sourcePath = workspace.GetPath("SampleLib", "MatrixService.cs");
+        await File.WriteAllTextAsync(sourcePath, RefReturnSourceText);
+        await workspace.LoadAsync();
+        await AssertCompilesAsync(WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
+
+        var interfaceName = "I" + typeName;
+        var preview = route == "standalone"
+            ? await InterfaceExtractionService.PreviewExtractInterfaceAsync(
+                workspace.WorkspaceId, sourcePath, typeName, interfaceName, null, false, CancellationToken.None)
+            : await CrossProjectRefactoringService.PreviewExtractInterfaceAsync(
+                workspace.WorkspaceId, sourcePath, typeName, interfaceName, "Contracts", CancellationToken.None);
+
+        var pending = await ReparseSerializedDocumentsAsync(PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution);
+        var interfaceProject = pending.Projects.Single(p => p.Name == (route == "standalone" ? "SampleLib" : "Contracts"));
+        var interfaceText = (await interfaceProject.Documents.Single(d => d.Name == interfaceName + ".cs").GetTextAsync()).ToString();
+
+        // CS9102 (an implementation's [UnscopedRef] missing from the interface member) and CS8170/CS0535 surface here.
+        await AssertCompilesAsync(pending);
+
+        var contract = (await interfaceProject.GetCompilationAsync())!.GetTypeByMetadataName("Contracts." + interfaceName)!;
+        IMethodSymbol Method(string name) => contract.GetMembers(name).OfType<IMethodSymbol>().Single();
+        IPropertySymbol Property(string name) => contract.GetMembers(name).OfType<IPropertySymbol>().Single();
+        IPropertySymbol Indexer() => contract.GetMembers().OfType<IPropertySymbol>().Single(p => p.IsIndexer);
+        static bool HasUnscopedRef(ISymbol? symbol) =>
+            symbol is not null && symbol.GetAttributes().Any(a => a.AttributeClass?.ToDisplayString() == "System.Diagnostics.CodeAnalysis.UnscopedRefAttribute");
+
+        Assert.AreEqual(RefKind.Ref, Property("V").RefKind, interfaceText);
+        Assert.IsTrue(HasUnscopedRef(Property("V")), interfaceText);
+        Assert.AreEqual(RefKind.Ref, Property("P").RefKind, interfaceText);
+        Assert.IsFalse(HasUnscopedRef(Property("P")), "Accessor-level [UnscopedRef] must stay on the accessor.\n" + interfaceText);
+        Assert.IsTrue(HasUnscopedRef(Property("P").GetMethod), interfaceText);
+        Assert.AreEqual(RefKind.Ref, Method("M").RefKind, interfaceText);
+        Assert.IsTrue(HasUnscopedRef(Method("M")), interfaceText);
+        Assert.AreEqual(RefKind.RefReadOnly, Method("RoMethod").RefKind, interfaceText);
+        Assert.IsTrue(HasUnscopedRef(Method("RoMethod")), interfaceText);
+        Assert.AreEqual(RefKind.RefReadOnly, Property("RoProperty").RefKind, interfaceText);
+        Assert.IsTrue(HasUnscopedRef(Property("RoProperty")), interfaceText);
+        Assert.AreEqual(RefKind.RefReadOnly, Indexer().RefKind, interfaceText);
+        Assert.IsTrue(HasUnscopedRef(Indexer()), interfaceText);
+
+        // Value-return controls: no ref kind and no invented [UnscopedRef].
+        Assert.AreEqual(RefKind.None, Property("Value").RefKind, interfaceText);
+        Assert.IsFalse(HasUnscopedRef(Property("Value")), interfaceText);
+        Assert.AreEqual(RefKind.None, Method("Plain").RefKind, interfaceText);
+        Assert.IsFalse(HasUnscopedRef(Method("Plain")), interfaceText);
+    }
+
     [TestMethod]
     public async Task Positional_Record_Properties_Without_Declaring_Member_Syntax_Are_Projected_Through_The_Generator()
     {
