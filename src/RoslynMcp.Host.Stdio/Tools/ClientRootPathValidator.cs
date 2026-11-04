@@ -31,7 +31,8 @@ internal static class ClientRootPathValidator
     /// <param name="expandSanctionedRoots">
     /// Requests acceptance under the immediate parent of a configured root. This takes effect only
     /// when the server-owned <see cref="SecurityOptions.AllowRootExpansion"/> option is also true;
-    /// filesystem roots themselves are never widened.
+    /// when the parent is a filesystem root (<c>D:\</c>, <c>/</c>) only siblings named
+    /// <c>&lt;rootName&gt;-&lt;suffix&gt;</c> are accepted, never the whole drive.
     /// </param>
     /// <param name="narrowingRootPaths">
     /// Optional request-scoped roots supplied by a compatibility adapter. When present, a path must

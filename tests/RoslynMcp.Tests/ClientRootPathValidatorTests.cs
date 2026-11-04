@@ -1019,12 +1019,11 @@ public class ClientRootPathValidatorTests
     [TestMethod]
     public void IsPathUnderAnyRoot_Worktree_Subdir_Allowed_With_Flag()
     {
-        // The mcp-server-surface-test skill's disposable worktree at ../<sibling> —
-        // verifies the canonical Phase 6/9/10/12/13 disposable-worktree audit path.
-        // The root's parent (D:\Dev) must not be a drive root: widening skips filesystem-root parents.
-        var roots = new[] { P(@"D:\Dev\TradeWise") };
+        // An external sibling worktree at ../<repo>-<suffix> of a root whose parent is a drive root
+        // (every local repo lives at D:\<repo>): admitted by prefix-scoped widening.
+        var roots = new[] { P(@"D:\TradeWise") };
         Assert.IsTrue(ClientRootPathValidator.IsPathUnderAnyRoot(
-            P(@"D:\Dev\TradeWise-surface-audit-20260511\src\App.csproj"),
+            P(@"D:\TradeWise-surface-audit-20260511\src\App.csproj"),
             roots,
             expandSanctionedRoots: true));
     }
@@ -1039,13 +1038,76 @@ public class ClientRootPathValidatorTests
     }
 
     [TestMethod]
-    public void IsPathUnderAnyRoot_Drive_Root_Never_Widens()
+    public void IsPathUnderAnyRoot_Drive_Root_Parent_Widens_Only_To_Prefixed_Siblings()
     {
-        // Defensive: if a client sanctions /repo (or C:\repo), widening to / (or C:\) is
-        // dangerous. The implementation skips filesystem-root parents.
-        var roots = new[] { P(@"C:\repo") };
+        // A root whose parent is a drive/filesystem root (D:\repo, or /repo) never widens to the
+        // whole drive; with the flag it widens only to siblings named <rootName>-<non-empty suffix>.
+        var roots = new[] { P(@"D:\repo") };
+
+        // Positive cases: rejected by the previous implementation (red before the fix).
+        Assert.IsTrue(ClientRootPathValidator.IsPathUnderAnyRoot(
+            P(@"D:\repo-audit-x\src\a.cs"), roots, expandSanctionedRoots: true));
+        Assert.IsTrue(ClientRootPathValidator.IsPathUnderAnyRoot(
+            P(@"D:\repo-x"), roots, expandSanctionedRoots: true));
+        Assert.IsTrue(ClientRootPathValidator.IsPathUnderAnyRoot(
+            P(@"D:\repo--double\a.cs"), roots, expandSanctionedRoots: true));
+
+        // Controls: also rejected by the previous implementation, pinned so the new
+        // implementation cannot regress into whole-drive or loose-prefix acceptance.
         Assert.IsFalse(ClientRootPathValidator.IsPathUnderAnyRoot(
-            P(@"C:\Windows\System32\cmd.exe"), roots, expandSanctionedRoots: true));
+            P(@"D:\repo-\a.cs"), roots, expandSanctionedRoots: true), "empty suffix");
+        Assert.IsFalse(ClientRootPathValidator.IsPathUnderAnyRoot(
+            P(@"D:\repo2\a.cs"), roots, expandSanctionedRoots: true), "no separator after the root name");
+        Assert.IsFalse(ClientRootPathValidator.IsPathUnderAnyRoot(
+            P(@"D:\repository\a.cs"), roots, expandSanctionedRoots: true), "name merely starts with the root name");
+        Assert.IsFalse(ClientRootPathValidator.IsPathUnderAnyRoot(
+            P(@"D:\other\a.cs"), roots, expandSanctionedRoots: true), "unrelated sibling");
+        Assert.IsFalse(ClientRootPathValidator.IsPathUnderAnyRoot(
+            P(@"D:\a-repo-x\a.cs"), roots, expandSanctionedRoots: true), "prefix must anchor at the sibling name");
+        Assert.IsFalse(ClientRootPathValidator.IsPathUnderAnyRoot(
+            P(@"D:\other\repo-x\a.cs"), roots, expandSanctionedRoots: true), "only direct siblings, not nested");
+        Assert.IsFalse(ClientRootPathValidator.IsPathUnderAnyRoot(
+            P(@"D:\"), roots, expandSanctionedRoots: true), "the drive root itself");
+
+        // Controls: the flag is required.
+        Assert.IsFalse(ClientRootPathValidator.IsPathUnderAnyRoot(
+            P(@"D:\repo-audit-x\src\a.cs"), roots, expandSanctionedRoots: false));
+        Assert.IsFalse(ClientRootPathValidator.IsPathUnderAnyRoot(
+            P(@"D:\repo-x"), roots, expandSanctionedRoots: false));
+    }
+
+    [TestMethod]
+    public void IsPathUnderAnyRoot_Drive_Root_Parent_Widening_Uses_Platform_Case_Comparison()
+    {
+        var roots = new[] { P(@"D:\repo") };
+        var accepted = ClientRootPathValidator.IsPathUnderAnyRoot(
+            P(@"D:\REPO-x\a.cs"), roots, expandSanctionedRoots: true);
+        Assert.AreEqual(OperatingSystem.IsWindows(), accepted,
+            "Prefix matching must use the boundary's platform comparison, like every other root check.");
+    }
+
+    [TestMethod]
+    public void IsPathUnderAnyRoot_Root_That_Is_A_Drive_Root_Does_Not_Widen()
+    {
+        // A root that is itself a filesystem root has no parent: widening must not synthesize the
+        // sibling prefix "-" (accepting "<root>-x"). Decision: '/' on Linux behaves like 'D:\'.
+        var driveRoot = Path.GetPathRoot(P(@"D:\repo"))!;
+        var roots = new[] { driveRoot };
+        Assert.IsTrue(ClientRootPathValidator.IsPathUnderAnyRoot(
+            P(@"D:\repo\a.cs"), roots, expandSanctionedRoots: true), "control: the root itself covers its subtree");
+        Assert.IsFalse(ClientRootPathValidator.IsPathUnderAnyRoot(
+            "-x" + Path.DirectorySeparatorChar + "a.cs", roots, expandSanctionedRoots: true));
+    }
+
+    [TestMethod]
+    public void IsPathUnderAnyRoot_Non_Drive_Root_Parent_Still_Widens_Whole_Parent()
+    {
+        // Control: unchanged one-level widening for ordinary parents (D:\Dev, /Dev).
+        var roots = new[] { P(@"D:\Dev\repo") };
+        Assert.IsTrue(ClientRootPathValidator.IsPathUnderAnyRoot(
+            P(@"D:\Dev\anything\a.cs"), roots, expandSanctionedRoots: true));
+        Assert.IsFalse(ClientRootPathValidator.IsPathUnderAnyRoot(
+            P(@"D:\other\a.cs"), roots, expandSanctionedRoots: true));
     }
 
     [TestMethod]
