@@ -230,8 +230,12 @@ public sealed class PwshScriptRunnerTests
         var pidPath = Path.Combine(root, "broken-stdin.pid");
         try
         {
-            var scriptPath = Path.Combine(root, "close-stdin.ps1");
-            await File.WriteAllTextAsync(scriptPath, """
+            string executable;
+            string[] arguments;
+            if (OperatingSystem.IsWindows())
+            {
+                var scriptPath = Path.Combine(root, "close-stdin.ps1");
+                await File.WriteAllTextAsync(scriptPath, """
                 param([string]$PidPath)
                 [IO.File]::WriteAllText($PidPath, [string]$PID)
                 [Console]::Out.WriteLine('broken-pipe-stdout')
@@ -252,8 +256,24 @@ public sealed class PwshScriptRunnerTests
                 }
                 Start-Sleep -Seconds 30
                 """);
+                executable = "pwsh.exe";
+                arguments = ["-NoProfile", "-File", scriptPath, pidPath];
+            }
+            else
+            {
+                var scriptPath = Path.Combine(root, "close-stdin.sh");
+                await File.WriteAllTextAsync(scriptPath, """
+                    printf '%s' "$$" > "$1"
+                    printf '%s\n' 'broken-pipe-stdout'
+                    printf '%s\n' 'broken-pipe-stderr' >&2
+                    exec 0<&-
+                    sleep 30
+                    """);
+                executable = "bash";
+                arguments = [scriptPath, pidPath];
+            }
             var failure = await Assert.ThrowsAsync<IOException>(() =>
-                PwshScriptRunner.RunWithInputAsync(["-NoProfile", "-File", scriptPath, pidPath],
+                PwshScriptRunner.RunExecutableWithInputAsync(executable, arguments,
                     new string('x', 8 * 1024 * 1024), TimeSpan.FromSeconds(10), "broken stdin verifier"));
             Assert.IsTrue(File.Exists(pidPath), "The verifier did not start before stdin failed.");
             var cleanup = failure.Data["process cleanup output"] as string;

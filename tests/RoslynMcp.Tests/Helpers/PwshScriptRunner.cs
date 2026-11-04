@@ -31,15 +31,20 @@ internal static class PwshScriptRunner
         string standardInput,
         TimeSpan timeout,
         string description)
-        => RunExecutableCoreAsync(
+        => RunExecutableWithInputAsync(
             OperatingSystem.IsWindows() ? "pwsh.exe" : "pwsh",
             arguments,
-            environment: null,
-            workingDirectory: null,
-            timeout,
-            cancellationToken: default,
-            description,
-            standardInput);
+            standardInput, timeout, description);
+
+    internal static Task<PwshScriptResult> RunExecutableWithInputAsync(
+        string fileName,
+        IEnumerable<string> arguments,
+        string standardInput,
+        TimeSpan timeout,
+        string description)
+        => RunExecutableCoreAsync(fileName, arguments, environment: null,
+            workingDirectory: null, timeout, cancellationToken: default,
+            description, standardInput);
 
     internal static Task<PwshScriptResult> RunExecutableAsync(
         string fileName,
