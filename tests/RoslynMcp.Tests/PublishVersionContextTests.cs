@@ -455,17 +455,51 @@ public sealed class PublishVersionContextTests
     private sealed class VersionFixture : IDisposable
     {
         public VersionFixture(string version)
+            : this(version, File.WriteAllText, TestFixtureFileSystem.DeleteDirectoryIfExists)
+        {
+        }
+
+        internal VersionFixture(string version, Action<string, string> writeFile, Action<string> deleteRoot)
         {
             Root = Path.Combine(Path.GetTempPath(), "roslynmcp-provenance-" + Guid.NewGuid().ToString("N"));
-            Directory.CreateDirectory(Root);
-            File.WriteAllText(
-                Path.Combine(Root, "Directory.Build.props"),
-                $"<Project>\n  <PropertyGroup>\n    <Version>{version}</Version>\n  </PropertyGroup>\n</Project>\n");
+            FixtureConstructionScope.Create(Root, () =>
+            {
+                writeFile(
+                    Path.Combine(Root, "Directory.Build.props"),
+                    $"<Project>\n  <PropertyGroup>\n    <Version>{version}</Version>\n  </PropertyGroup>\n</Project>\n");
+                return true;
+            }, deleteRoot);
         }
 
         public string Root { get; }
 
         public void Dispose()
             => TestFixtureFileSystem.DeleteDirectoryIfExists(Root);
+    }
+
+    [TestMethod]
+    public void VersionFixtureConstruction_CompensatesPropsWriteFailureAndPreservesCleanupFailure()
+    {
+        string? root = null;
+        var writeFailure = new IOException("props write failed");
+        var cleanupFailure = new IOException("root cleanup failed");
+        var failure = Assert.ThrowsExactly<AggregateException>(() =>
+            new VersionFixture("1.0.0",
+                (path, _) => { root = Path.GetDirectoryName(path); throw writeFailure; },
+                path => { TestFixtureFileSystem.DeleteDirectoryIfExists(path); throw cleanupFailure; }));
+
+        Assert.AreSame(writeFailure, failure.InnerExceptions[0]);
+        Assert.AreSame(cleanupFailure, failure.InnerExceptions[1]);
+        Assert.IsNotNull(root);
+        Assert.IsFalse(Directory.Exists(root));
+
+        root = null;
+        var observed = Assert.ThrowsExactly<IOException>(() =>
+            new VersionFixture("1.0.0",
+                (path, _) => { root = Path.GetDirectoryName(path); throw writeFailure; },
+                TestFixtureFileSystem.DeleteDirectoryIfExists));
+        Assert.AreSame(writeFailure, observed);
+        Assert.IsNotNull(root);
+        Assert.IsFalse(Directory.Exists(root));
     }
 }
