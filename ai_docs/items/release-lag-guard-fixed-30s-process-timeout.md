@@ -23,3 +23,5 @@
 ## Notes
 
 Evidence 2026-11-04 (remediation review): 30 s timeout on hosted Windows is probably contention, not logic: cold pwsh start plus at least 7 git.exe spawns under Defender scanning, with tests/RoslynMcp.Tests/AssemblyInfo.cs:9 Parallelize(Workers = 0, ClassLevel). PR 1955 (draft, parked) holds an unmerged attempt; root cause not proven.
+
+2026-11-04: PR 1955 (verifier stage trace, 17 test-only calls inside eng/verify-changelog-fragments.ps1) closed unmerged: speculative, edits the shipped script, and never captured a failing trace. Next attempt: on timeout, snapshot the child process tree (names, command lines, CPU) inside PwshScriptRunner's cancellation path, no verifier edits, then wait for one hosted failure. Branch head was 97c0d475.
