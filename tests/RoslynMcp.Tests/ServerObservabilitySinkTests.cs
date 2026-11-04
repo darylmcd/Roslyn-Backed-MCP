@@ -353,29 +353,33 @@ public sealed class ServerObservabilitySinkTests
         var writer = new JsonLinesSegmentWriter(directory, 4321, retention);
         File.WriteAllText(writer.ActivePath, "X");
         File.WriteAllText(writer.SegmentPath(1), "A");
-        File.WriteAllText(writer.SegmentPath(2), "B");
         File.WriteAllText(writer.SegmentPath(3), "C");
 
-        // A reader holding the newest segment makes its Move fail on Windows (no-op elsewhere; the
-        // end-state assertions below hold either way).
-        using (new FileStream(writer.SegmentPath(1), FileMode.Open, FileAccess.Read, FileShare.None))
+        // Slot .2 is a non-empty directory: moving A onto it fails on every OS, with .3 holding live evidence.
+        var blocker = writer.SegmentPath(2);
+        Directory.CreateDirectory(blocker);
+        File.WriteAllText(Path.Combine(blocker, "occupied"), "blocker");
+
+        var failed = false;
+        try
         {
-            try
-            {
-                writer.Rotate();
-            }
-            catch (IOException)
-            {
-                // Expected while the reader holds the segment; the provider swallows this too.
-            }
+            writer.Rotate();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            failed = true;
         }
 
+        Assert.IsTrue(failed, "The blocked shift must fail, as the sink's swallowed-failure path assumes.");
+        Assert.AreEqual("C", File.ReadAllText(writer.SegmentPath(3)), "A failed rotation must not delete unmoved evidence.");
+
+        Directory.Delete(blocker, recursive: true);
         writer.Rotate();
 
-        // A successful rotation of the active file X evicts only the oldest segment C.
+        // No segment is evicted (three segments fit), so X, A and C must all survive the failed + retried rotation.
         Assert.AreEqual("X", File.ReadAllText(writer.SegmentPath(1)));
         Assert.AreEqual("A", File.ReadAllText(writer.SegmentPath(2)));
-        Assert.AreEqual("B", File.ReadAllText(writer.SegmentPath(3)), "A failed shift must not make the retry delete B.");
+        Assert.AreEqual("C", File.ReadAllText(writer.SegmentPath(3)));
         Assert.IsFalse(File.Exists(writer.ActivePath));
     }
 
