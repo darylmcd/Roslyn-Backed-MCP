@@ -175,6 +175,156 @@ public sealed class AnalyzerShadowLeaseNoFollowTests
     }
 
     [TestMethod]
+    public void Delete_RenameEnumeratedParentAndPlantJunction_DoesNotTouchTarget()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("Directory junctions are a Windows reparse-point type.");
+            return;
+        }
+
+        var root = NewRoot("rename-parent");
+        try
+        {
+            var shadowRoot = Path.Combine(root, "lease");
+            var sub = Path.Combine(shadowRoot, "sub");
+            var target = Path.Combine(root, "external-target");
+            var targetFile = Path.Combine(target, "copy.dll");
+            Directory.CreateDirectory(sub);
+            File.WriteAllText(Path.Combine(sub, "copy.dll"), "fixture");
+            Directory.CreateDirectory(target);
+            File.WriteAllText(targetFile, "external");
+
+            var hookRan = false;
+            void RenameAndPlant(string directory)
+            {
+                // The children of 'sub' are already enumerated and queued by path. Moving 'sub'
+                // away and planting a junction at its name would redirect every queued child path
+                // into the external target unless the walker still holds 'sub'.
+                if (!OperatingSystem.IsWindows() || hookRan || !string.Equals(directory, sub, StringComparison.OrdinalIgnoreCase)) return;
+                hookRan = true;
+                try
+                {
+                    Directory.Move(sub, sub + "-moved");
+                    WindowsDirectoryJunction.Create(sub, target);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // Held open: the rename was denied, which is the protected outcome.
+                }
+            }
+
+            try
+            {
+                NoFollowDirectoryDeleter.Delete(
+                    shadowRoot, CancellationToken.None, afterEnumerate: RenameAndPlant, logger: NullLogger.Instance);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or DirectoryNotFoundException)
+            {
+                // A failed delete is acceptable; touching the target is not.
+            }
+
+            Assert.IsTrue(hookRan, "The afterEnumerate hook must run for the child directory.");
+            Assert.IsTrue(File.Exists(targetFile), "A queued child path must never resolve through a planted junction.");
+            Assert.AreEqual("external", File.ReadAllText(targetFile));
+        }
+        finally
+        {
+            Cleanup(root);
+        }
+    }
+
+    [TestMethod]
+    public void Delete_SwapLeafBeforeMutate_DoesNotTouchTarget()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("Directory junctions are a Windows reparse-point type.");
+            return;
+        }
+
+        var root = NewRoot("swap-leaf");
+        try
+        {
+            var shadowRoot = Path.Combine(root, "lease");
+            var leaf = Path.Combine(shadowRoot, "copy.dll");
+            var target = Path.Combine(root, "external-target");
+            var targetFile = Path.Combine(target, "keep.txt");
+            Directory.CreateDirectory(shadowRoot);
+            File.WriteAllText(leaf, "fixture");
+            File.SetAttributes(leaf, FileAttributes.ReadOnly);
+            Directory.CreateDirectory(target);
+            File.WriteAllText(targetFile, "external");
+            File.SetAttributes(target, FileAttributes.Directory | FileAttributes.ReadOnly);
+
+            var hookRan = false;
+            void Swap(string path)
+            {
+                if (!OperatingSystem.IsWindows() || hookRan || !string.Equals(path, leaf, StringComparison.OrdinalIgnoreCase)) return;
+                hookRan = true;
+                try
+                {
+                    File.Move(leaf, leaf + ".moved");
+                    WindowsDirectoryJunction.Create(leaf, target);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // Held open: the swap was denied, which is the protected outcome.
+                }
+            }
+
+            try
+            {
+                NoFollowDirectoryDeleter.Delete(
+                    shadowRoot, CancellationToken.None, beforeMutate: Swap, logger: NullLogger.Instance);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or DirectoryNotFoundException)
+            {
+                // A failed delete is acceptable; touching the target is not.
+            }
+
+            Assert.IsTrue(hookRan, "The beforeMutate hook must run for the leaf.");
+            Assert.IsTrue(File.Exists(targetFile), "The swapped-in target must be untouched.");
+            Assert.AreEqual(FileAttributes.ReadOnly, File.GetAttributes(target) & FileAttributes.ReadOnly,
+                "The external target directory read-only attribute must not be cleared.");
+        }
+        finally
+        {
+            try { File.SetAttributes(Path.Combine(root, "external-target"), FileAttributes.Directory); } catch (IOException) { }
+            Cleanup(root);
+        }
+    }
+
+    [TestMethod]
+    public void Dispose_PathBeyondMaxPath_RemovesRoot()
+    {
+        var root = NewRoot("longpath");
+        try
+        {
+            var shadowRoot = Path.Combine(root, "lease");
+            var deep = shadowRoot;
+            for (var i = 0; i < 8; i++)
+            {
+                deep = Path.Combine(deep, new string((char)('a' + i), 50));
+            }
+
+            Assert.IsTrue(deep.Length > 300, "The fixture must exceed MAX_PATH.");
+            Directory.CreateDirectory(deep);
+            File.WriteAllText(Path.Combine(deep, "copy.dll"), "fixture");
+
+            var lease = new AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease(
+                shadowRoot, [], 0, NullLogger.Instance);
+            lease.Dispose();
+
+            Assert.IsFalse(Directory.Exists(shadowRoot), "A path longer than MAX_PATH must still be removed.");
+        }
+        finally
+        {
+            Cleanup(root);
+        }
+    }
+
+    [TestMethod]
     public void Dispose_OrdinaryOwnedRoot_IsFullyRemoved()
     {
         var root = NewRoot("ordinary");
