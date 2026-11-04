@@ -293,7 +293,7 @@ internal static class AnalyzerReferenceIsolation
                     // leaves the root for the next sweep.
                     try
                     {
-                        NoFollowDirectoryDeleter.Delete(leaseDirectory, CancellationToken.None, logger: logger);
+                        NoFollowDirectoryDeleter.Delete(leaseDirectory, CancellationToken.None);
                         logger.LogDebug("Swept one abandoned analyzer shadow lease.");
                     }
                     catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -582,7 +582,7 @@ internal static class AnalyzerReferenceIsolation
                 {
                     if (Directory.Exists(ShadowRoot))
                     {
-                        NoFollowDirectoryDeleter.Delete(ShadowRoot, CancellationToken.None, logger: _logger);
+                        NoFollowDirectoryDeleter.Delete(ShadowRoot, CancellationToken.None);
                     }
 
                     return;

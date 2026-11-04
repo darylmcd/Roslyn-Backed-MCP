@@ -121,7 +121,7 @@ public sealed class AnalyzerShadowLeaseNoFollowTests
 
             try
             {
-                NoFollowDirectoryDeleter.Delete(shadowRoot, CancellationToken.None, Swap, NullLogger.Instance);
+                NoFollowDirectoryDeleter.Delete(shadowRoot, CancellationToken.None, Swap);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or DirectoryNotFoundException)
             {
@@ -217,7 +217,7 @@ public sealed class AnalyzerShadowLeaseNoFollowTests
             try
             {
                 NoFollowDirectoryDeleter.Delete(
-                    shadowRoot, CancellationToken.None, afterEnumerate: RenameAndPlant, logger: NullLogger.Instance);
+                    shadowRoot, CancellationToken.None, afterEnumerate: RenameAndPlant);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or DirectoryNotFoundException)
             {
@@ -276,7 +276,7 @@ public sealed class AnalyzerShadowLeaseNoFollowTests
             try
             {
                 NoFollowDirectoryDeleter.Delete(
-                    shadowRoot, CancellationToken.None, beforeMutate: Swap, logger: NullLogger.Instance);
+                    shadowRoot, CancellationToken.None, beforeMutate: Swap);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or DirectoryNotFoundException)
             {
@@ -381,7 +381,7 @@ public sealed class AnalyzerShadowLeaseNoFollowTests
             {
                 try
                 {
-                    NoFollowDirectoryDeleter.Delete(shadowRoot, CancellationToken.None, logger: NullLogger.Instance);
+                    NoFollowDirectoryDeleter.Delete(shadowRoot, CancellationToken.None);
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
@@ -394,7 +394,7 @@ public sealed class AnalyzerShadowLeaseNoFollowTests
             }
 
             Assert.IsFalse(File.Exists(held), "The file must have been marked for deletion despite the holder.");
-            NoFollowDirectoryDeleter.Delete(shadowRoot, CancellationToken.None, logger: NullLogger.Instance);
+            NoFollowDirectoryDeleter.Delete(shadowRoot, CancellationToken.None);
             Assert.IsFalse(Directory.Exists(shadowRoot));
         }
         finally
@@ -433,7 +433,7 @@ public sealed class AnalyzerShadowLeaseNoFollowTests
             Directory.CreateDirectory(extended + @"\dd.");
             File.WriteAllText(extended + @"\dd.\inner", "inner-dot");
 
-            NoFollowDirectoryDeleter.Delete(shadowRoot, CancellationToken.None, logger: NullLogger.Instance);
+            NoFollowDirectoryDeleter.Delete(shadowRoot, CancellationToken.None);
 
             Assert.IsFalse(Directory.Exists(shadowRoot), "Every enumerated entry, including dot/space-suffixed names, must be removed.");
             Assert.AreEqual("outside", File.ReadAllText(Path.Combine(outside, "stem")));
@@ -476,5 +476,19 @@ public sealed class AnalyzerShadowLeaseNoFollowTests
         return root;
     }
 
-    private static void Cleanup(string root) => TestFixtureFileSystem.DeleteDirectoryIfExists(root);
+    private static void Cleanup(string root)
+    {
+        // Path-based fixture cleanup cannot remove names with trailing dots or spaces, and a
+        // failure there would mask the assertion that actually failed. Walk the tree no-follow first.
+        try
+        {
+            NoFollowDirectoryDeleter.Delete(root, CancellationToken.None);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Best effort; the shared cleanup below reports what remains.
+        }
+
+        TestFixtureFileSystem.DeleteDirectoryIfExists(root);
+    }
 }

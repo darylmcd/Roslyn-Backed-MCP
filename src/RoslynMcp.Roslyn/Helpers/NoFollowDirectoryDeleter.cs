@@ -20,10 +20,10 @@ namespace RoslynMcp.Roslyn.Helpers;
 /// entry is opened with <c>FILE_FLAG_OPEN_REPARSE_POINT</c> (so a link is opened as the link, never
 /// its target), classified from that handle, and mutated through a handle to the same object
 /// (<c>FileDispositionInfoEx</c>; the handle also carries the read-only override). Files and links
-/// are opened with <c>DELETE | FILE_READ_ATTRIBUTES</c> and full sharing, the same footprint as
+/// are opened with <c>DELETE | FILE_READ_ATTRIBUTES</c> and full sharing (write-attributes access is acquired only by the legacy read-only-clearing fallback), the same footprint as
 /// <see cref="File.Delete(string)"/>, so a holder that tolerates delete but not read does not block
 /// the walk. A directory is re-opened with list access and no delete sharing, and the re-open is
-/// accepted only if it has the same volume/file identity as the classified object. That handle stays
+/// accepted only if it has the same <c>FILE_ID_INFO</c> (volume serial plus 128-bit file id, as ReFS ids are not 64-bit) as the classified object. That handle stays
 /// open, denying delete/rename sharing, from before the directory's children are enumerated until
 /// its own postorder delete, so no ancestor of any queued child can be renamed away and replaced
 /// by a junction.
@@ -64,6 +64,7 @@ internal static class NoFollowDirectoryDeleter
     private const int FileBasicInfoClass = 0;
     private const int FileDispositionInfoClass = 4;
     private const int FileAttributeTagInfoClass = 9;
+    private const int FileIdInfoClass = 18;
     private const int FileDispositionInfoExClass = 21;
     private const uint DispositionDelete = 0x1;
     private const uint DispositionIgnoreReadOnly = 0x10;
@@ -95,7 +96,6 @@ internal static class NoFollowDirectoryDeleter
         string path,
         CancellationToken ct,
         Action<string>? beforeEnumerate = null,
-        ILogger? logger = null,
         Action<string>? afterEnumerate = null,
         Action<string>? beforeMutate = null)
     {
@@ -178,7 +178,7 @@ internal static class NoFollowDirectoryDeleter
                 try
                 {
                     beforeMutate?.Invoke(frame.Path);
-                    DeleteByHandle(frame.Handle, frame.Path);
+                    DeleteByHandle(frame.Handle, frame.Path, frame.ExtendedPath);
                 }
                 finally
                 {
@@ -206,7 +206,7 @@ internal static class NoFollowDirectoryDeleter
     {
         // Minimal footprint first: the same access and sharing File.Delete needs, which also
         // classifies the entry without requesting read or list access.
-        var handle = OpenNoFollow(extended, AccessDelete | FileReadAttributes | FileWriteAttributes, FileShareAll);
+        var handle = OpenNoFollow(extended, AccessDelete | FileReadAttributes, FileShareAll);
         if (handle.IsInvalid)
         {
             var error = Marshal.GetLastPInvokeError();
@@ -223,28 +223,33 @@ internal static class NoFollowDirectoryDeleter
         var retained = false;
         try
         {
-            if (!TryReadIdentity(handle, out var info))
+            if (!TryReadAttributes(handle, out var attributes))
             {
                 throw Failure("inspect", display, Marshal.GetLastPInvokeError());
             }
 
-            var isRealDirectory = (info.FileAttributes & FileAttributeDirectory) != 0 &&
-                                  (info.FileAttributes & FileAttributeReparsePoint) == 0;
+            var isRealDirectory = (attributes & FileAttributeDirectory) != 0 &&
+                                  (attributes & FileAttributeReparsePoint) == 0;
             if (!isRealDirectory)
             {
                 // File, file symlink, directory symlink or junction: delete the object we opened.
                 beforeMutate?.Invoke(display);
-                DeleteByHandle(handle, display);
+                DeleteByHandle(handle, display, extended);
                 return;
             }
 
             // A directory needs list access and no delete sharing so that it cannot be renamed
             // away while its children are processed. Re-open it, and accept the re-open only if it
             // is the very object that was classified (a swap in between changes the identity).
+            if (!TryReadFileId(handle, out var classified))
+            {
+                throw Failure("identify", display, Marshal.GetLastPInvokeError());
+            }
+
             handle.Dispose();
             handle = OpenNoFollow(
                 extended,
-                AccessDelete | FileListDirectory | FileReadAttributes | FileWriteAttributes,
+                AccessDelete | FileListDirectory | FileReadAttributes,
                 FileShareReadWrite);
             if (handle.IsInvalid)
             {
@@ -257,11 +262,10 @@ internal static class NoFollowDirectoryDeleter
                 throw Failure("hold", display, error);
             }
 
-            if (!TryReadIdentity(handle, out var held) ||
-                (held.FileAttributes & (FileAttributeDirectory | FileAttributeReparsePoint)) != FileAttributeDirectory ||
-                held.VolumeSerialNumber != info.VolumeSerialNumber ||
-                held.FileIndexHigh != info.FileIndexHigh ||
-                held.FileIndexLow != info.FileIndexLow)
+            if (!TryReadAttributes(handle, out var heldAttributes) ||
+                !TryReadFileId(handle, out var held) ||
+                (heldAttributes & (FileAttributeDirectory | FileAttributeReparsePoint)) != FileAttributeDirectory ||
+                !held.Equals(classified))
             {
                 throw new IOException($"'{display}' changed while it was being opened for no-follow deletion.");
             }
@@ -293,7 +297,7 @@ internal static class NoFollowDirectoryDeleter
     }
 
     [SupportedOSPlatform("windows")]
-    private static void DeleteByHandle(SafeFileHandle handle, string path)
+    private static void DeleteByHandle(SafeFileHandle handle, string path, string extended)
     {
         var ex = new FileDispositionInfoEx { Flags = DispositionDelete | DispositionIgnoreReadOnly };
         if (SetFileInformationByHandle(handle, FileDispositionInfoExClass, ref ex, (uint)Marshal.SizeOf<FileDispositionInfoEx>()))
@@ -307,14 +311,29 @@ internal static class NoFollowDirectoryDeleter
             throw Failure("delete", path, error);
         }
 
-        // Pre-1809 / non-NTFS fallback: clear the read-only attribute through the same handle,
-        // then use the classic disposition.
+        // Pre-1809 / non-NTFS fallback: clear the read-only attribute, then use the classic
+        // disposition. FILE_WRITE_ATTRIBUTES is not part of the delete footprint (DeleteFileW does
+        // not need it), so it is acquired here only, through a second open that must be the same
+        // object as the handle being deleted.
         if (GetFileInformationByHandleEx(handle, FileBasicInfoClass, out FileBasicInfo basic, (uint)Marshal.SizeOf<FileBasicInfo>()) &&
             (basic.FileAttributes & FileAttributeReadOnly) != 0)
         {
+            using var attributeHandle = OpenNoFollow(extended, FileReadAttributes | FileWriteAttributes, FileShareAll);
+            if (attributeHandle.IsInvalid)
+            {
+                throw Failure("open for attribute change", path, Marshal.GetLastPInvokeError());
+            }
+
+            if (!TryReadFileId(handle, out var expected) ||
+                !TryReadFileId(attributeHandle, out var actual) ||
+                !actual.Equals(expected))
+            {
+                throw new IOException($"'{path}' changed while its read-only attribute was being cleared.");
+            }
+
             var remaining = basic.FileAttributes & ~FileAttributeReadOnly;
             var cleared = new FileBasicInfo { FileAttributes = remaining == 0 ? FileAttributeNormal : remaining };
-            if (!SetFileInformationByHandle(handle, FileBasicInfoClass, ref cleared, (uint)Marshal.SizeOf<FileBasicInfo>()))
+            if (!SetFileInformationByHandle(attributeHandle, FileBasicInfoClass, ref cleared, (uint)Marshal.SizeOf<FileBasicInfo>()))
             {
                 throw Failure("clear the read-only attribute of", path, Marshal.GetLastPInvokeError());
             }
@@ -347,8 +366,8 @@ internal static class NoFollowDirectoryDeleter
     }
 
     [SupportedOSPlatform("windows")]
-    private static bool TryReadIdentity(SafeFileHandle handle, out ByHandleFileInformation info) =>
-        GetFileInformationByHandle(handle, out info);
+    private static bool TryReadFileId(SafeFileHandle handle, out FileIdInfo id) =>
+        GetFileInformationByHandleEx(handle, FileIdInfoClass, out id, (uint)Marshal.SizeOf<FileIdInfo>());
 
     private static string AppendName(string extendedParent, string name) =>
         extendedParent.EndsWith('\\') ? extendedParent + name : extendedParent + '\\' + name;
@@ -440,19 +459,20 @@ internal static class NoFollowDirectoryDeleter
         public uint ReparseTag;
     }
 
-    [StructLayout(LayoutKind.Sequential, Pack = 4)]
-    private struct ByHandleFileInformation
+    /// <summary>FILE_ID_INFO: 64-bit volume serial plus the 128-bit file id (ReFS ids are 128-bit).</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FileIdInfo : IEquatable<FileIdInfo>
     {
-        public uint FileAttributes;
-        public long CreationTime;
-        public long LastAccessTime;
-        public long LastWriteTime;
-        public uint VolumeSerialNumber;
-        public uint FileSizeHigh;
-        public uint FileSizeLow;
-        public uint NumberOfLinks;
-        public uint FileIndexHigh;
-        public uint FileIndexLow;
+        public ulong VolumeSerialNumber;
+        public ulong FileIdLow;
+        public ulong FileIdHigh;
+
+        public readonly bool Equals(FileIdInfo other) =>
+            VolumeSerialNumber == other.VolumeSerialNumber && FileIdLow == other.FileIdLow && FileIdHigh == other.FileIdHigh;
+
+        public override readonly bool Equals(object? obj) => obj is FileIdInfo other && Equals(other);
+
+        public override readonly int GetHashCode() => HashCode.Combine(VolumeSerialNumber, FileIdLow, FileIdHigh);
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -485,7 +505,8 @@ internal static class NoFollowDirectoryDeleter
     [DllImport("kernel32.dll", SetLastError = true, ExactSpelling = true)]
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool GetFileInformationByHandle(SafeFileHandle file, out ByHandleFileInformation fileInformation);
+    private static extern bool GetFileInformationByHandleEx(SafeFileHandle file, int fileInformationClass,
+        out FileIdInfo fileInformation, uint bufferSize);
 
     [DllImport("kernel32.dll", SetLastError = true, ExactSpelling = true)]
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
