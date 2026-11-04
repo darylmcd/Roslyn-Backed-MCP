@@ -830,17 +830,17 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
 
     private static Task<RoslynMcp.Core.Models.RefactoringPreviewDto> PreviewRefRouteAsync(
         string route, string workspaceId, string sourcePath, RoslynMcp.Roslyn.Services.CompositePreviewStore stores) => route switch
-    {
-        "standalone" => InterfaceExtractionService.PreviewExtractInterfaceAsync(
-            workspaceId, sourcePath, "RefService", "IRefService", null, false, CancellationToken.None),
-        "cross-project" => CrossProjectRefactoringService.PreviewExtractInterfaceAsync(
-            workspaceId, sourcePath, "RefService", "IRefService", "Contracts", CancellationToken.None),
-        "dependency-inversion" => CrossProjectRefactoringService.PreviewDependencyInversionAsync(
-            workspaceId, sourcePath, "RefService", "IRefService", "Contracts", CancellationToken.None),
-        "extract-and-wire" => new RoslynMcp.Roslyn.Services.ExtractAndWireOrchestrator(WorkspaceManager, stores, PreviewStore, CrossProjectRefactoringService, DiRegistrationService)
-            .PreviewExtractAndWireInterfaceAsync(workspaceId, sourcePath, "RefService", "IRefService", "Contracts", true, CancellationToken.None),
-        _ => throw new ArgumentOutOfRangeException(nameof(route)),
-    };
+        {
+            "standalone" => InterfaceExtractionService.PreviewExtractInterfaceAsync(
+                workspaceId, sourcePath, "RefService", "IRefService", null, false, CancellationToken.None),
+            "cross-project" => CrossProjectRefactoringService.PreviewExtractInterfaceAsync(
+                workspaceId, sourcePath, "RefService", "IRefService", "Contracts", CancellationToken.None),
+            "dependency-inversion" => CrossProjectRefactoringService.PreviewDependencyInversionAsync(
+                workspaceId, sourcePath, "RefService", "IRefService", "Contracts", CancellationToken.None),
+            "extract-and-wire" => new RoslynMcp.Roslyn.Services.ExtractAndWireOrchestrator(WorkspaceManager, stores, PreviewStore, CrossProjectRefactoringService, DiRegistrationService)
+                .PreviewExtractAndWireInterfaceAsync(workspaceId, sourcePath, "RefService", "IRefService", "Contracts", true, CancellationToken.None),
+            _ => throw new ArgumentOutOfRangeException(nameof(route)),
+        };
 
     private static async Task AssertRefContractAsync(Microsoft.CodeAnalysis.Solution solution, string receiverProject)
     {
