@@ -35,8 +35,8 @@ appear to be inside an allowed root while its physical target was outside it.
 6. One-level sibling-worktree widening requires two independent opt-ins: the server operator sets
    `ROSLYNMCP_ALLOW_ROOT_EXPANSION=true`, and the individual request sets
    `expandSanctionedRoots=true`. Request input alone cannot widen access. The effective expansion
-   widens only configured roots, never request/client narrowing roots, and never widens to a
-   filesystem root.
+   widens only configured roots, never request/client narrowing roots, and never widens to a whole
+   filesystem root (a drive-root parent admits only `<root>-<suffix>` siblings; see the addendum).
 
 ## Compatibility and migration
 

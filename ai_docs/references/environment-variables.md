@@ -28,7 +28,7 @@ Optional overrides are read at startup from `src/RoslynMcp.Host.Stdio/Program.cs
 | `ROSLYNMCP_OBSERVABILITY_SINK` | Operator-side diagnostics: `disabled`, secret-safe structured unexpected failures on `stderr`, or the full enabled `ILogger` stream as bounded per-process JSON lines under the metadata root with `file`; independent of MCP protocol logging | `disabled` |
 | `ROSLYNMCP_SANCTIONED_ROOTS` | `SecurityOptions.SanctionedRoots` — canonical path-validation and solution-discovery boundary; delimit with `Path.PathSeparator` (`;` Windows, `:` macOS/Linux) | empty (path access denied) |
 | `ROSLYNMCP_PATH_VALIDATION_FAIL_OPEN` | `SecurityOptions.PathValidationFailOpen` | `false` |
-| `ROSLYNMCP_ALLOW_ROOT_EXPANSION` | `SecurityOptions.AllowRootExpansion` — server opt-in required in addition to a request's `expandSanctionedRoots=true`; widens each configured root by one parent for sibling worktrees | `false` |
+| `ROSLYNMCP_ALLOW_ROOT_EXPANSION` | `SecurityOptions.AllowRootExpansion` — server opt-in required in addition to a request's `expandSanctionedRoots=true`; widens each configured root by one parent for sibling worktrees; when that parent is a filesystem root, only to siblings named `<root>-<suffix>` (ADR 0002 addendum) | `false` |
 | `ROSLYNMCP_SCRIPT_MAX_CONCURRENT` | `ScriptingServiceOptions.MaxConcurrentEvaluations` | 4 |
 | `ROSLYNMCP_SCRIPT_SLOT_WAIT_SECONDS` | `ScriptingServiceOptions.ConcurrencySlotAcquireTimeoutSeconds` | 5 seconds |
 | `ROSLYNMCP_SCRIPT_MAX_ABANDONED` | `ScriptingServiceOptions.MaxAbandonedEvaluations` — fail-fast cap for worker processes the OS could not terminate | 8 |
