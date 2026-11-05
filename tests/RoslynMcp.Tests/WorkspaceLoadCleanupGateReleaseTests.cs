@@ -178,7 +178,7 @@ public sealed class WorkspaceLoadCleanupGateReleaseTests
 
             lease.Dispose();
             return (workspace, new AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease(
-                null, new AnalyzerReferenceIsolation.ShadowCopyAnalyzerAssemblyLoader[] { null! }, 0, null));
+                null, null, new AnalyzerReferenceIsolation.ShadowCopyAnalyzerAssemblyLoader[] { null! }, 0, null));
         }
     }
 
