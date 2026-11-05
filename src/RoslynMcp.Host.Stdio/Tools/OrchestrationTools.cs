@@ -14,7 +14,7 @@ namespace RoslynMcp.Host.Stdio.Tools;
 /// <c>PreviewExtractAndWireInterface</c> shim keeps its hand-written body because
 /// it wraps <see cref="ProgressHelper.Report"/> calls around the service call
 /// (non-dispatch bookkeeping). <c>ApplyCompositeCore</c> uses the phase-1.6
-/// delegate overload of <see cref="ToolDispatch.ApplyByTokenAsync{TDto}(IWorkspaceExecutionGate, Func{string, string?}, string, Func{CancellationToken, Task{TDto}}, CancellationToken)"/>
+/// delegate overload of <see cref="ToolDispatch.ApplyByTokenAsync{TDto}(IWorkspaceExecutionGate, Func{string, string?}, Func{string, IReadOnlyList{string}?}, string, Func{string, CancellationToken, Task{TDto}}, CancellationToken)"/>
 /// so it can reuse the shared dispatch body even though
 /// <c>ICompositePreviewStore</c> doesn't derive from <c>IPreviewStore</c>.
 /// </summary>

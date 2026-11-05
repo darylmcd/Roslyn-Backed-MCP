@@ -415,10 +415,16 @@ internal static class ToolDispatch
     /// <returns>The DTO serialized with <see cref="JsonDefaults.Indented"/>.</returns>
     /// <exception cref="PreviewTokenStaleException">
     /// Thrown when <paramref name="peekWorkspaceId"/> returns <see langword="null"/>
-    /// (token expired, invalidated by an auto-reload version bump, or never stored).
+    /// (token expired, invalidated by an auto-reload version bump, or never stored), and also,
+    /// inside the write gate, when <paramref name="peekChangedPaths"/> returns <see langword="null"/>
+    /// (the write set is unknown: record missing, already claimed or unreadable).
     /// Distinct from a bare <see cref="KeyNotFoundException"/> so <c>ToolErrorHandler</c>
     /// can surface the dedicated <c>PreviewTokenStale</c> category and direct callers to
     /// re-issue the paired <c>*_preview</c>.
+    /// </exception>
+    /// <exception cref="ArgumentException">
+    /// Thrown, before <paramref name="serviceCall"/> runs, when any path in the peeked write set
+    /// lies outside the configured sanctioned-root boundary.
     /// </exception>
     public static Task<string> ApplyByTokenAsync<TDto>(
         IWorkspaceExecutionGate gate,

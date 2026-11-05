@@ -12,7 +12,7 @@ namespace RoslynMcp.Host.Stdio.Tools;
 /// Each <c>Preview*</c> shim delegates to
 /// <see cref="ToolDispatch.ReadByWorkspaceIdAsync{TDto}"/>, and
 /// <c>ApplyProjectMutation</c> uses the delegate overload of
-/// <see cref="ToolDispatch.ApplyByTokenAsync{TDto}(IWorkspaceExecutionGate, Func{string, string?}, string, Func{CancellationToken, Task{TDto}}, CancellationToken)"/>
+/// <see cref="ToolDispatch.ApplyByTokenAsync{TDto}(IWorkspaceExecutionGate, Func{string, string?}, Func{string, IReadOnlyList{string}?}, string, Func{string, CancellationToken, Task{TDto}}, CancellationToken)"/>
 /// so it can reuse the shared dispatch body even though
 /// <see cref="IProjectMutationPreviewStore"/> doesn't derive from
 /// <c>IPreviewStore</c>.
