@@ -124,15 +124,13 @@ public sealed class DiagnosticService : IDiagnosticService
     private static string BuildDiagnosticDescription(Diagnostic diagnostic)
     {
         var fromDescription = diagnostic.Descriptor.Description.ToString();
-        if (!string.IsNullOrWhiteSpace(fromDescription))
+        if (!string.IsNullOrWhiteSpace(fromDescription) &&
+            !System.Text.RegularExpressions.Regex.IsMatch(fromDescription, @"\{\d+(?:[^{}]*)\}"))
         {
             return fromDescription;
         }
 
-        var fromFormat = diagnostic.Descriptor.MessageFormat.ToString();
-        return string.IsNullOrWhiteSpace(fromFormat)
-            ? diagnostic.GetMessage()
-            : fromFormat;
+        return diagnostic.GetMessage();
     }
 
     internal static string? BuildHelpLink(Diagnostic diagnostic)

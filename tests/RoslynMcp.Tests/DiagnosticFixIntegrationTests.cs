@@ -148,6 +148,8 @@ public class DiagnosticFixIntegrationTests : SharedWorkspaceTestBase
 
         Assert.IsNotNull(details);
         Assert.AreEqual("CS0414", details.Diagnostic.Id);
+        Assert.AreEqual(cs0414.GetMessage(), details.Description,
+            "Diagnostic details must format the field name instead of returning a descriptor placeholder.");
 
         // The honest-contract envelope: SupportedFixes and GuidanceMessage are mutually
         // exclusive in their non-empty/non-null forms. The previous bug was advertising
