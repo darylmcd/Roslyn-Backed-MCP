@@ -5,17 +5,8 @@ using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
-// donotparallelize-audit-wave-34: retained. Every method except BuildProject_SampleLib_Returns_Result is a
-// read through the synchronized WorkspaceIdCache, but that one calls ValidationTools.BuildProject, which spawns
-// a real child `dotnet build <SampleLib.csproj> --nologo` (BuildService: implicit restore + build, no
-// --no-restore) against the IN-REPO samples/SampleSolution shared workspace, rewriting SampleLib's obj/ tree.
-// Parallel-enabled classes concurrently call CreateSampleSolutionCopy, whose TestFixtureFileSystem.CopyDirectory
-// skips only bin/ and copies obj/ file-by-file, so a concurrent restore/build can hand them a torn or vanished
-// obj/ artifact; the per-workspace GatedCommandExecutor gate does not cover those plain file copies. A 3x run
-// with the opt-out removed alongside seven parallel-enabled sample-copying classes stayed green, so this is a
-// code-level hazard rather than an observed flake. Lifting the opt-out requires moving that build onto a
-// private CreateSampleSolutionCopy workspace.
-[DoNotParallelize]
+// The read-only cases use the synchronized shared SampleSolution workspace. BuildProject loads and builds
+// a private sample copy, then closes that workspace and deletes the copy; it cannot rewrite the shared obj tree.
 [TestClass]
 public sealed class ValidationToolsIntegrationTests : SharedWorkspaceTestBase
 {
@@ -50,15 +41,56 @@ public sealed class ValidationToolsIntegrationTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task BuildProject_SampleLib_Returns_Result()
     {
-        var json = await ValidationTools.BuildProject(
-            WorkspaceExecutionGate,
-            BuildService,
-            WorkspaceId,
-            "SampleLib",
-            CancellationToken.None);
-        using var doc = JsonDocument.Parse(json);
-        Assert.IsTrue(doc.RootElement.TryGetProperty("execution", out var exec));
-        Assert.IsTrue(exec.TryGetProperty("succeeded", out var ok) && ok.GetBoolean());
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var copiedRoot = Path.GetDirectoryName(copiedSolutionPath)!;
+        string? scopedWorkspaceId = null;
+        Exception? primaryFailure = null;
+
+        try
+        {
+            var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+            scopedWorkspaceId = status.WorkspaceId;
+            var sampleLib = WorkspaceManager.GetCurrentSolution(scopedWorkspaceId).Projects
+                .Single(project => project.Name == "SampleLib");
+            var expectedProjectPath = Path.Combine(copiedRoot, "SampleLib", "SampleLib.csproj");
+            Assert.AreEqual(Path.GetFullPath(expectedProjectPath), Path.GetFullPath(sampleLib.FilePath!),
+                "The build must target the private SampleSolution copy.");
+            var canonicalRoot = Path.GetDirectoryName(SampleSolutionPath)!;
+            Assert.IsFalse(Path.GetFullPath(sampleLib.FilePath!).StartsWith(
+                Path.GetFullPath(canonicalRoot) + Path.DirectorySeparatorChar,
+                OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal),
+                "The build must not target the shared in-repo SampleSolution.");
+
+            var json = await ValidationTools.BuildProject(
+                WorkspaceExecutionGate,
+                BuildService,
+                scopedWorkspaceId,
+                "SampleLib",
+                CancellationToken.None);
+            using var doc = JsonDocument.Parse(json);
+            Assert.IsTrue(doc.RootElement.TryGetProperty("execution", out var exec));
+            Assert.IsTrue(exec.TryGetProperty("succeeded", out var ok) && ok.GetBoolean());
+        }
+        catch (Exception ex)
+        {
+            primaryFailure = ex;
+            throw;
+        }
+        finally
+        {
+            await CleanupFailureCollector.RunAfterFailureAsync(
+                "Build-project assertion and fixture cleanup both failed.",
+                primaryFailure,
+                CleanupFailureCollector.FromAction(() =>
+                {
+                    if (scopedWorkspaceId is not null)
+                    {
+                        WorkspaceManager.Close(scopedWorkspaceId);
+                    }
+                }),
+                CleanupFailureCollector.FromAction(
+                    () => TestFixtureFileSystem.DeleteDirectoryIfExists(copiedRoot)));
+        }
     }
 
     [TestMethod]
