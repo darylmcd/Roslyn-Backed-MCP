@@ -28,13 +28,8 @@ public sealed class TypeMoveService : ITypeMoveService
         var sourceRoot = await sourceDocument.GetSyntaxRootAsync(ct).ConfigureAwait(false) as CompilationUnitSyntax
             ?? throw new PublicInvalidOperationException("Source document must be a C# compilation unit. Select a C# source file and retry.");
 
-        var declarations = sourceRoot.DescendantNodes().OfType<MemberDeclarationSyntax>()
-            .Where(t => t switch
-            {
-                BaseTypeDeclarationSyntax type => type.Identifier.ValueText == typeName,
-                DelegateDeclarationSyntax type => type.Identifier.ValueText == typeName,
-                _ => false,
-            })
+        var declarations = sourceRoot.DescendantNodes()
+            .Where(n => NamespaceMemberClassifier.GetTypeLikeName(n) == typeName)
             .ToArray();
 
         if (declarations.Length > 1)
@@ -72,9 +67,7 @@ public sealed class TypeMoveService : ITypeMoveService
         }
 
         // Validate source file has more than one type (otherwise move is pointless)
-        var typeCount = sourceRoot.DescendantNodes()
-            .Where(t => t is BaseTypeDeclarationSyntax or DelegateDeclarationSyntax)
-            .Count(t => t.Parent is CompilationUnitSyntax or BaseNamespaceDeclarationSyntax);
+        var typeCount = sourceRoot.DescendantNodes().Count(NamespaceMemberClassifier.IsDirectNamespaceMember);
         if (typeCount < 2)
         {
             throw new PublicInvalidOperationException(
