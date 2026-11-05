@@ -6,6 +6,7 @@ using RoslynMcp.Host.Stdio.Catalog;
 using RoslynMcp.Host.Stdio.Diagnostics;
 using RoslynMcp.Host.Stdio.Security;
 using RoslynMcp.Roslyn.Contracts;
+using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -85,9 +86,8 @@ internal static class ToolDispatch
     /// gate, revalidates the preview's write set against the sanctioned-root boundary
     /// (<see cref="RevalidateChangedPathsAsync"/> — preview-apply-token-write-path-toctou),
     /// invokes <paramref name="serviceCall"/>, and returns the indented-JSON-serialized DTO.
-    /// The delegate-peek overload below performs NO such revalidation because its stores
-    /// (<c>ICompositePreviewStore</c>, <c>IProjectMutationPreviewStore</c>) expose only a
-    /// token-to-workspace lookup and no write-set contract.
+    /// The delegate-peek overload below performs the same revalidation through a required
+    /// write-set peek, and — unlike this overload — fails closed when that peek is unknown.
     /// </summary>
     /// <typeparam name="TDto">The DTO type returned by the underlying service call.</typeparam>
     /// <param name="gate">The workspace execution gate.</param>
@@ -330,6 +330,44 @@ internal static class ToolDispatch
             return;
         }
 
+        await ValidateWriteSetAsync(changedPaths, workspaceId, securityOptions, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// composite-redemption-admission-boundary: the fail-CLOSED counterpart of
+    /// <see cref="RevalidateChangedPathsAsync"/> for stores that do not derive from
+    /// <see cref="IPreviewStore"/>. Their write set is read from a record that can be edited or
+    /// claimed independently of this process (the persisted composite payload), so a
+    /// <see langword="null"/> peek is "unknown", not "skip": the redemption is refused as stale
+    /// rather than waved through unverified. Skips only on an unbooted host
+    /// (<see cref="SecurityOptionsSnapshot.Value"/> is <see langword="null"/>), exactly like its
+    /// sibling.
+    /// </summary>
+    private static async Task RevalidateRequiredWriteSetAsync(
+        Func<string, IReadOnlyList<string>?> peekChangedPaths,
+        string previewToken,
+        string workspaceId,
+        CancellationToken ct)
+    {
+        var securityOptions = SecurityOptionsSnapshot.Value;
+        if (securityOptions is null)
+        {
+            return;
+        }
+
+        var changedPaths = peekChangedPaths(previewToken)
+            ?? throw new PreviewTokenStaleException(
+                previewToken,
+                $"Preview token '{previewToken}' can no longer be redeemed: it expired, was already redeemed, or its stored record could not be verified. Re-issue the paired *_preview call.");
+        await ValidateWriteSetAsync(changedPaths, workspaceId, securityOptions, ct).ConfigureAwait(false);
+    }
+
+    private static async Task ValidateWriteSetAsync(
+        IReadOnlyList<string> changedPaths,
+        string workspaceId,
+        SecurityOptions securityOptions,
+        CancellationToken ct)
+    {
         var expandSanctionedRoots = RootExpansionGrantRegistry.IsGranted(workspaceId);
         foreach (var path in changedPaths)
         {
@@ -344,13 +382,15 @@ internal static class ToolDispatch
 
     /// <summary>
     /// Overload for <c>*_apply</c> tools that use a non-<see cref="IPreviewStore"/> preview
-    /// store (e.g. <c>ICompositePreviewStore</c>, <c>IProjectMutationPreviewStore</c>) whose
-    /// only requirement from the dispatch helper is a token → workspaceId peek. Accepts the
-    /// peek as a <see cref="Func{T, TResult}"/> delegate so the helper stays decoupled from
-    /// the concrete store interface — phase-1.6 widening to cover
-    /// <c>ApplyComposite</c> and <c>ApplyProjectMutation</c>, which otherwise match
-    /// the same 7-line dispatch pattern but can't consume the primary overload because their
-    /// store interfaces don't derive from <see cref="IPreviewStore"/>.
+    /// store (e.g. <c>ICompositePreviewStore</c>, <c>IProjectMutationPreviewStore</c>).
+    /// Accepts the token → workspaceId peek and the token → write-set peek as
+    /// <see cref="Func{T, TResult}"/> delegates so the helper stays decoupled from the concrete
+    /// store interfaces — phase-1.6 widening to cover <c>ApplyComposite</c> and
+    /// <c>ApplyProjectMutation</c>, which otherwise match the same dispatch pattern but can't
+    /// consume the primary overload because their store interfaces don't derive from
+    /// <see cref="IPreviewStore"/>. Like the primary overload it revalidates the write set against
+    /// the sanctioned-root boundary at redemption time, under the write gate; unlike it, an
+    /// unknown write set refuses the redemption (see <see cref="RevalidateRequiredWriteSetAsync"/>).
     /// </summary>
     /// <typeparam name="TDto">The DTO type returned by the underlying service call.</typeparam>
     /// <param name="gate">The workspace execution gate.</param>
@@ -358,6 +398,11 @@ internal static class ToolDispatch
     /// A closure that returns the workspaceId for a given preview token without consuming
     /// the entry, or <see langword="null"/> if the token is expired or not found. Typically
     /// a method group reference to the store's <c>PeekWorkspaceId</c>.
+    /// </param>
+    /// <param name="peekChangedPaths">
+    /// A closure that returns every file path redeeming the token would write, without consuming
+    /// the entry, or <see langword="null"/> when that write set is unknown (the redemption is then
+    /// refused). Typically a method group reference to the store's <c>PeekChangedPaths</c>.
     /// </param>
     /// <param name="previewToken">The opaque token returned by the paired <c>*_preview</c> tool.</param>
     /// <param name="serviceCall">
@@ -379,6 +424,7 @@ internal static class ToolDispatch
     public static Task<string> ApplyByTokenAsync<TDto>(
         IWorkspaceExecutionGate gate,
         Func<string, string?> peekWorkspaceId,
+        Func<string, IReadOnlyList<string>?> peekChangedPaths,
         string previewToken,
         Func<CancellationToken, Task<TDto>> serviceCall,
         CancellationToken ct)
@@ -386,6 +432,7 @@ internal static class ToolDispatch
         var wsId = RequirePreviewWorkspaceId(peekWorkspaceId, previewToken);
         return gate.RunWriteAsync(wsId, async c =>
         {
+            await RevalidateRequiredWriteSetAsync(peekChangedPaths, previewToken, wsId, c).ConfigureAwait(false);
             var result = await serviceCall(c).ConfigureAwait(false);
             return JsonSerializer.Serialize(result, JsonDefaults.Indented);
         }, ct);

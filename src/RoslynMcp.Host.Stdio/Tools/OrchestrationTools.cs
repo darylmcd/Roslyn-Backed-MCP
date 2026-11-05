@@ -104,6 +104,7 @@ public static class OrchestrationTools
         => ToolDispatch.ApplyByTokenAsync(
             gate,
             compositePreviewStore.PeekWorkspaceId,
+            compositePreviewStore.PeekChangedPaths,
             previewToken,
             c => compositeApplyOrchestrator.ApplyCompositeAsync(previewToken, c),
             ct);

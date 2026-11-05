@@ -334,6 +334,114 @@ public sealed class PersistentCompositeStorageTests
             "Startup recovery must remove expired claims abandoned by a terminated process.");
     }
 
+    [TestMethod]
+    public void TryPeek_ReturnsEntryWithoutConsumingIt()
+    {
+        var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
+        var token = Guid.NewGuid().ToString("N");
+        store.Write(
+            token,
+            new CompositePreviewStore.Entry(
+                "ws-peek", 4, "peek", [new CompositeFileMutation(@"C:\proj\Peek.cs", "// peeked")], DateTime.UtcNow));
+
+        var first = store.TryPeek(token);
+        var second = store.TryPeek(token);
+
+        Assert.IsNotNull(first);
+        Assert.IsNotNull(second);
+        Assert.AreEqual("ws-peek", first.WorkspaceId);
+        Assert.AreEqual(@"C:\proj\Peek.cs", first.Mutations.Single().FilePath);
+        Assert.IsNotNull(store.TryClaim(token), "A peek must leave the one-time token claimable.");
+        Assert.IsNull(store.TryPeek(token), "A claimed token is no longer peekable.");
+    }
+
+    [TestMethod]
+    public void TryPeek_MissingInvalidOrExpiredToken_ReturnsNull()
+    {
+        var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
+        var expired = Guid.NewGuid().ToString("N");
+        store.Write(expired, new CompositePreviewStore.Entry("ws-old", 1, "old", [], DateTime.UtcNow));
+        File.SetLastWriteTimeUtc(
+            Directory.EnumerateFiles(_root, expired + ".json", SearchOption.AllDirectories).Single(),
+            DateTime.UtcNow - TimeSpan.FromMinutes(10));
+
+        Assert.IsNull(store.TryPeek(Guid.NewGuid().ToString("N")));
+        Assert.IsNull(store.TryPeek("../not-a-token"));
+        Assert.IsNull(store.TryPeek(expired));
+    }
+
+    [TestMethod]
+    public void TryPeek_ClaimInProgress_ReturnsNull()
+    {
+        var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
+        var token = Guid.NewGuid().ToString("N");
+        store.Write(token, new CompositePreviewStore.Entry("ws-locked", 1, "locked", [], DateTime.UtcNow));
+        var payload = Directory.EnumerateFiles(_root, token + ".json", SearchOption.AllDirectories).Single();
+        File.WriteAllText(payload + ".lock", string.Empty);
+
+        Assert.IsNull(store.TryPeek(token), "A lock sibling means a claimant is consuming the payload.");
+    }
+
+    [TestMethod]
+    [DataRow("{}")]
+    [DataRow("not json")]
+    [DataRow("""{"WorkspaceId":"ws","Mutations":null}""")]
+    [DataRow("""{"WorkspaceId":"ws","Mutations":[null]}""")]
+    [DataRow("""{"WorkspaceId":"ws","Mutations":[{"FilePath":" "}]}""")]
+    [DataRow("""{"WorkspaceId":null,"Mutations":[{"FilePath":"C:\\x.cs"}]}""")]
+    public void IncompletePersistedPayload_IsUnreadable_ForPeekAndClaim(string json)
+    {
+        var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
+        var token = Guid.NewGuid().ToString("N");
+        var versionDirectory = Path.Combine(_root, "1");
+        Directory.CreateDirectory(versionDirectory);
+        File.WriteAllText(Path.Combine(versionDirectory, token + ".json"), json);
+
+        Assert.IsNull(store.TryPeek(token), "A payload missing a required member must never reach a caller.");
+        Assert.IsNull(store.TryClaim(token), "The claim path shares the parser, so it must reject the same payloads.");
+    }
+
+    /// <summary>
+    /// A peek must never make a legitimate claimant fail: the winning host renames the payload with
+    /// <c>File.Move</c>, which throws a raw <see cref="IOException"/> on Windows while another handle
+    /// is open without <see cref="FileShare.Delete"/>. The claim runs from inside the peek's
+    /// timestamp probe, i.e. while the peek still holds the payload open.
+    /// </summary>
+    [TestMethod]
+    public void TryPeek_ClaimWhilePeekHoldsPayloadOpen_ClaimStillSucceeds()
+    {
+        var token = Guid.NewGuid().ToString("N");
+        new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5)).Write(
+            token,
+            new CompositePreviewStore.Entry(
+                "ws-race", 1, "peek vs claim", [new CompositeFileMutation(@"C:\proj\Race.cs", "// race")], DateTime.UtcNow));
+        var claimer = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
+        CompositePreviewStore.Entry? claimed = null;
+        Exception? claimFailure = null;
+        var peeker = CreateStore(
+            Directory.EnumerateDirectories,
+            path =>
+            {
+                try
+                {
+                    claimed = claimer.TryClaim(token);
+                }
+                catch (Exception ex)
+                {
+                    claimFailure = ex;
+                }
+
+                return DateTime.UtcNow;
+            });
+
+        var peeked = peeker.TryPeek(token);
+
+        Assert.IsNull(claimFailure, "The claimant must not fail while a peek holds the payload: " + claimFailure);
+        Assert.IsNotNull(claimed, "The claimant must win the one-time token.");
+        Assert.IsNotNull(peeked, "The peek read the payload before the claim consumed it.");
+        Assert.IsNull(peeker.TryPeek(token), "Once claimed, the token is gone.");
+    }
+
     private PersistentCompositeStorage CreateStore(
         Func<string, IEnumerable<string>> enumerateDirectoriesForRead,
         Func<string, DateTime> getLastWriteTimeUtc,

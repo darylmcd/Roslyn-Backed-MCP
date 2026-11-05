@@ -241,6 +241,7 @@ public static class ProjectMutationTools
         => ToolDispatch.ApplyByTokenAsync(
             gate,
             projectMutationPreviewStore.PeekWorkspaceId,
+            projectMutationPreviewStore.PeekChangedPaths,
             previewToken,
             c => projectMutationService.ApplyProjectMutationAsync(previewToken, c),
             ct);

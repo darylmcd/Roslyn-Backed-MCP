@@ -18,6 +18,12 @@ public sealed class ProjectMutationPreviewStore : BoundedStore<ProjectMutationPr
         return (entry.WorkspaceId, entry.ProjectFilePath, entry.UpdatedContent, entry.WorkspaceVersion, entry.Description);
     }
 
+    public IReadOnlyList<string>? PeekChangedPaths(string token)
+    {
+        var entry = RetrieveEntry(token);
+        return entry is null ? null : [entry.ProjectFilePath];
+    }
+
     public sealed record Entry(
         string WorkspaceId,
         string ProjectFilePath,

@@ -52,6 +52,16 @@ public sealed class CompositePreviewStore : BoundedStore<CompositePreviewStore.E
         return (entry.WorkspaceId, entry.WorkspaceVersion, entry.Description, entry.Mutations);
     }
 
+    public IReadOnlyList<string>? PeekChangedPaths(string token)
+    {
+        // With a disk backend the persisted record is the authority Retrieve claims, and it sits in
+        // a directory other hosts (or anything with write access to it) can edit: the creator's
+        // in-memory copy is not what would be written, so it must not stand in for it. A missing,
+        // already-claimed or unreadable record is "unknown", which the caller refuses.
+        var entry = _diskBackend is not null ? _diskBackend.TryPeek(token) : RetrieveEntry(token);
+        return entry?.Mutations.Select(m => m.FilePath).ToArray();
+    }
+
     public new void Invalidate(string token)
     {
         base.Invalidate(token);

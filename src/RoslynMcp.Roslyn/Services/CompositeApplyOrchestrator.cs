@@ -42,6 +42,15 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
         }
 
         var (workspaceId, _, _, mutations) = entry.Value;
+        // composite-redemption-admission-boundary: a token bound to a session this host never
+        // admitted (a persisted record redeemed by a different host, or a closed session) is refused
+        // BEFORE undo capture or the first write. The reload in CompleteApplyAsync used to be the
+        // first place the missing session surfaced, after every file had already been written.
+        if (!_workspace.ContainsWorkspace(workspaceId))
+        {
+            throw _workspace.CreateWorkspaceNotFoundException(workspaceId);
+        }
+
         // Lifecycle invalidation, not unrelated workspace-version changes, governs token validity.
         if (mutations.Count == 0)
         {
