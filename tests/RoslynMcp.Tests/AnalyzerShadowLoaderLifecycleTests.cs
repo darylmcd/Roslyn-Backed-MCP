@@ -445,51 +445,21 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
         var copyRoot = Path.Combine(processDirectory, "copies");
         Directory.CreateDirectory(copyRoot);
         File.WriteAllText(Path.Combine(copyRoot, "unloaded.dll"), "unmapped copy");
-        var readyPath = Path.Combine(TestTempRoot.Current, "process-owner-ready-" + Guid.NewGuid().ToString("N"));
-        // cmd.exe starts in milliseconds, unlike a PowerShell cold start that exceeded the ready
-        // deadline on loaded hosted runners. The group-wide `9>>` redirection keeps the lock file
-        // open for the lifetime of the group, which is all the sweeper's exclusive-open probe
-        // (FileShare.None) needs to treat the root as owned by a live host.
-        var ownerScriptPath = Path.Combine(TestTempRoot.Current, "process-owner-" + Guid.NewGuid().ToString("N") + ".cmd");
-        File.WriteAllText(
-            ownerScriptPath,
-            "@echo off\r\n" +
-            "( (echo ready>\"%RMCP_OWNER_READY%\") & ping -n 120 127.0.0.1 >nul ) 9>>\"%RMCP_OWNER_ROOT%\\.owner.lock\"\r\n");
-
-        using var owner = new Process
-        {
-            StartInfo = new ProcessStartInfo
-            {
-                FileName = ownerScriptPath,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardError = true,
-            }
-        };
-        owner.StartInfo.Environment["RMCP_OWNER_ROOT"] = processDirectory;
-        owner.StartInfo.Environment["RMCP_OWNER_READY"] = readyPath;
+        // The holder keeps the lock file open for its lifetime, which is all the sweeper's
+        // exclusive-open probe (FileShare.None) needs to treat the root as owned by a live host.
+        using var owner = new ForeignHostTestSupport.FileHolder();
 
         try
         {
-            Assert.IsTrue(owner.Start(), "The second host must start.");
-            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(15);
-            while (!File.Exists(readyPath) && !owner.HasExited && DateTime.UtcNow < deadline)
-            {
-                await Task.Delay(50);
-            }
-
-            Assert.IsTrue(File.Exists(readyPath),
-                owner.HasExited ? await owner.StandardError.ReadToEndAsync() : "The second host did not acquire its ownership marker.");
-            var staleTimestamp = DateTime.UtcNow - TimeSpan.FromDays(2);
-            Directory.SetCreationTimeUtc(copyRoot, staleTimestamp);
-            Directory.SetLastWriteTimeUtc(copyRoot, staleTimestamp);
+            await owner.StartAsync(Path.Combine(processDirectory, ".owner.lock"));
+            ForeignHostTestSupport.AgeBeyondStaleLease(copyRoot);
 
             AnalyzerReferenceIsolation.SweepAbandonedRoots(sharedParent, NullLogger.Instance);
             Assert.IsTrue(Directory.Exists(copyRoot),
                 "A live second host owns this process root even when its copies are old and no assembly file is mapped.");
 
-            owner.Kill(entireProcessTree: true);
-            Assert.IsTrue(owner.WaitForExit(10_000));
+            owner.Kill();
+            Assert.IsTrue(owner.HasExited);
             // The lock handle is held by the cmd.exe group and its ping child: the group's exit is
             // observable a few milliseconds before the last handle closes, so a single immediate
             // sweep can still see the root as owned. Re-sweep until the reclaim lands; the bounded
@@ -509,14 +479,7 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
         }
         finally
         {
-            if (!owner.HasExited)
-            {
-                owner.Kill(entireProcessTree: true);
-                owner.WaitForExit(10_000);
-            }
-
-            File.Delete(readyPath);
-            File.Delete(ownerScriptPath);
+            owner.Kill();
             TestFixtureFileSystem.DeleteDirectoryIfExists(sharedParent);
         }
     }

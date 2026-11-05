@@ -373,11 +373,14 @@ internal static class AnalyzerReferenceIsolation
     /// Tries to take a lease's ownership marker from the sweeper side. <c>Held</c> means a live
     /// lease owns it (or another sweeper does, or it is delete-pending): the lease is not ours to
     /// touch. <c>Acquired</c> means the marker exists and is released, so its lease is disposed or
-    /// its host exited. The probe shares only <see cref="FileShare.Delete"/>, which still excludes
-    /// the lease's <see cref="FileShare.None"/> handle and a second sweeper (both request read and
-    /// write), and lets the holder delete the marker while it is still open: on Windows a file
-    /// open with <see cref="FileShare.None"/> cannot be deleted by its own holder. On Unix the lease's
-    /// exclusive advisory lock rejects the probe's shared one.
+    /// its host exited. The probe shares only <see cref="FileShare.Delete"/>, which lets the sweeper
+    /// delete the marker while it still holds it open (a file open with <see cref="FileShare.None"/>
+    /// cannot be deleted by its own holder on Windows). On Windows the probe's non-shared read/write
+    /// excludes the lease's <see cref="FileShare.None"/> handle AND a second sweeper. On Unix the
+    /// runtime maps the lease's <see cref="FileShare.None"/> to an exclusive advisory lock, which
+    /// rejects the probe's shared one, but two sweepers can both hold the shared lock: sweeper-vs-
+    /// sweeper exclusion is Windows-only. That is harmless because the deletes are idempotent and
+    /// Unix never creates leases or markers (the Windows-only isolation gate).
     /// </summary>
     private static LeaseMarkerState TryAcquireLeaseOwnerMarker(
         string leaseDirectory, ILogger logger, out FileStream? probe)

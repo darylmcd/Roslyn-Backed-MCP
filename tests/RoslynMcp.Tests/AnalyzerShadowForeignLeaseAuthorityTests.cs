@@ -1,9 +1,9 @@
-using System.Diagnostics;
 using System.Reflection;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Roslyn.Helpers;
+using static RoslynMcp.Tests.ForeignHostTestSupport;
 
 namespace RoslynMcp.Tests;
 
@@ -52,7 +52,7 @@ public sealed class AnalyzerShadowForeignLeaseAuthorityTests
             File.WriteAllText(late, "late dependency copy");
             using (var held = HoldMarker(marker))
             {
-                Age(lease);
+                AgeBeyondStaleLease(lease);
                 AnalyzerReferenceIsolation.SweepAbandonedRoots(shared, NullLogger.Instance);
                 Assert.IsTrue(File.Exists(late), "A lease whose marker is held is live however old its directory is.");
                 Assert.IsTrue(File.Exists(marker));
@@ -85,7 +85,7 @@ public sealed class AnalyzerShadowForeignLeaseAuthorityTests
             File.WriteAllText(late, "late dependency copy");
             using var mappedHandle = new FileStream(mapped, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
             using var held = HoldMarker(MarkerPath(lease));
-            Age(lease);
+            AgeBeyondStaleLease(lease);
 
             AnalyzerReferenceIsolation.SweepAbandonedRoots(shared, NullLogger.Instance);
 
@@ -106,7 +106,7 @@ public sealed class AnalyzerShadowForeignLeaseAuthorityTests
             Directory.CreateDirectory(lease);
             File.WriteAllText(Path.Combine(lease, "copy.dll"), "copy");
             using (File.Create(MarkerPath(lease))) { }
-            Age(lease);
+            AgeBeyondStaleLease(lease);
 
             AnalyzerReferenceIsolation.SweepAbandonedRoots(shared, NullLogger.Instance);
 
@@ -180,7 +180,7 @@ public sealed class AnalyzerShadowForeignLeaseAuthorityTests
 
         var shared = NewSharedParent();
         using var peer = StartPeer(shared);
-        using var holder = new MarkerHolder();
+        using var holder = new FileHolder();
         try
         {
             await ReadReadyAsync(peer);
@@ -191,7 +191,7 @@ public sealed class AnalyzerShadowForeignLeaseAuthorityTests
             var late = Path.Combine(lease, "late.dll");
             File.WriteAllText(late, "late dependency copy");
             await holder.StartAsync(marker);
-            Age(lease);
+            AgeBeyondStaleLease(lease);
 
             AnalyzerReferenceIsolation.SweepAbandonedRoots(shared, NullLogger.Instance);
             Assert.IsTrue(File.Exists(late), "A live peer's lease with a held marker must keep an unmapped late copy.");
@@ -253,7 +253,7 @@ public sealed class AnalyzerShadowForeignLeaseAuthorityTests
             Assert.IsTrue(File.Exists(marker), "The disposed lease must leave its released marker with the leftover tree.");
             Assert.IsFalse(AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease.IsLiveRoot(lease));
 
-            Age(lease);
+            AgeBeyondStaleLease(lease);
             AnalyzerReferenceIsolation.SweepAbandonedRoots(shared, NullLogger.Instance);
             Assert.IsTrue(Directory.Exists(lease), "Still locked: the sweep fails and keeps the tree.");
             Assert.IsTrue(File.Exists(marker), "A failed reclaim must keep the released marker for the next sweep.");
@@ -270,6 +270,54 @@ public sealed class AnalyzerShadowForeignLeaseAuthorityTests
             if (!peer.HasExited) peer.Kill(entireProcessTree: true);
             await peer.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
             TestFixtureFileSystem.DeleteDirectoryIfExists(shared);
+        }
+    }
+
+    // The production path end to end: a real retarget of a workspace-owned analyzer reference holds the
+    // marker beside the lease's shadow root, exclusively, until the lease is disposed.
+    [TestMethod]
+    public void Retarget_WorkspaceOwnedAnalyzer_HoldsMarkerAtShadowRootUntilDispose()
+    {
+        if (!OperatingSystem.IsWindows())
+            Assert.Inconclusive("Analyzer shadow-file isolation is Windows-specific.");
+
+        var projectRoot = Path.Combine(TestTempRoot.Current, "foreign-lease-success-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(projectRoot);
+        var workspaceId = "marker-success-" + Guid.NewGuid().ToString("N");
+        try
+        {
+            var analyzerPath = Path.Combine(projectRoot, "OwnedAnalyzer.dll");
+            File.Copy(typeof(AnalyzerReferenceIsolation).Assembly.Location, analyzerPath);
+            using var adhoc = new AdhocWorkspace();
+            var project = adhoc.AddProject(ProjectInfo.Create(
+                ProjectId.CreateNewId(), VersionStamp.Create(), "SuccessProbe", "SuccessProbe", LanguageNames.CSharp,
+                filePath: Path.Combine(projectRoot, "SuccessProbe.csproj")));
+            var solution = project.Solution.AddAnalyzerReference(
+                project.Id, new AnalyzerFileReference(analyzerPath, new UnreachableLoader()));
+
+            var lease = AnalyzerReferenceIsolation.RetargetFileReferencesToShadowLoader(
+                solution, workspaceId, NullLogger.Instance);
+            try
+            {
+                Assert.AreEqual(1, lease.RetargetedReferenceCount);
+                var marker = MarkerPath(lease.ShadowRoot!);
+                Assert.IsTrue(File.Exists(marker), "The marker exists before the lease directory does (first copy is lazy).");
+                Assert.IsFalse(Directory.Exists(lease.ShadowRoot));
+                Assert.ThrowsExactly<IOException>(() =>
+                    new FileStream(marker, FileMode.Open, FileAccess.ReadWrite, FileShare.Delete).Dispose());
+
+                lease.Dispose();
+                Assert.IsFalse(File.Exists(marker), "Disposing the lease removes its marker.");
+            }
+            finally
+            {
+                lease.Dispose();
+            }
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(AnalyzerReferenceIsolation.GetWorkspaceShadowDirectory(workspaceId));
+            TestFixtureFileSystem.DeleteDirectoryIfExists(projectRoot);
         }
     }
 
@@ -328,97 +376,6 @@ public sealed class AnalyzerShadowForeignLeaseAuthorityTests
         var shared = Path.Combine(TestTempRoot.Current, "foreign-lease-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(shared);
         return shared;
-    }
-
-    /// <summary>Ages after the last write: writing into a directory refreshes its timestamps.</summary>
-    private static void Age(string directory)
-    {
-        var timestamp = DateTime.UtcNow - TimeSpan.FromDays(2);
-        Directory.SetCreationTimeUtc(directory, timestamp);
-        Directory.SetLastWriteTimeUtc(directory, timestamp);
-    }
-
-    private static Process StartPeer(string workingDirectory)
-    {
-        var startInfo = new ProcessStartInfo("cmd.exe")
-        {
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            WorkingDirectory = workingDirectory
-        };
-        startInfo.ArgumentList.Add("/d");
-        startInfo.ArgumentList.Add("/c");
-        startInfo.ArgumentList.Add("echo ready & set /p RMCP_SHADOW_WAIT=");
-        return Process.Start(startInfo) ?? throw new InvalidOperationException("Could not start owned peer.");
-    }
-
-    private static async Task ReadReadyAsync(Process peer)
-    {
-        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        Assert.AreEqual("ready", (await peer.StandardOutput.ReadLineAsync(cancellation.Token))?.Trim());
-    }
-
-    /// <summary>
-    /// A separate process that holds a file open until killed: the group-wide <c>9&gt;&gt;</c>
-    /// redirection keeps the marker open for the group's lifetime (the pattern
-    /// <c>AnalyzerShadowLoaderLifecycleTests</c> uses for the process-root marker).
-    /// </summary>
-    private sealed class MarkerHolder : IDisposable
-    {
-        private readonly string _readyPath = Path.Combine(TestTempRoot.Current, "marker-ready-" + Guid.NewGuid().ToString("N"));
-        private readonly string _scriptPath = Path.Combine(TestTempRoot.Current, "marker-holder-" + Guid.NewGuid().ToString("N") + ".cmd");
-        private Process? _process;
-
-        public async Task StartAsync(string markerPath)
-        {
-            // ping.exe by absolute path: a bare `ping` resolves through the inherited PATH, and a
-            // session without System32 on it ends the group at once, silently releasing the marker.
-            File.WriteAllText(
-                _scriptPath,
-                "@echo off\r\n" +
-                "( (echo ready>\"%RMCP_HOLD_READY%\") & \"%SystemRoot%\\System32\\ping.exe\" -n 120 127.0.0.1 >nul ) 9>>\"%RMCP_HOLD_FILE%\"\r\n");
-            var process = new Process
-            {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = _scriptPath,
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    RedirectStandardError = true,
-                }
-            };
-            process.StartInfo.Environment["RMCP_HOLD_FILE"] = markerPath;
-            process.StartInfo.Environment["RMCP_HOLD_READY"] = _readyPath;
-            _process = process;
-            Assert.IsTrue(process.Start(), "The marker holder must start.");
-            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(15);
-            while (!File.Exists(_readyPath) && !process.HasExited && DateTime.UtcNow < deadline)
-            {
-                await Task.Delay(50);
-            }
-
-            Assert.IsTrue(File.Exists(_readyPath),
-                process.HasExited ? await process.StandardError.ReadToEndAsync() : "The holder did not open the marker.");
-        }
-
-        public void Kill()
-        {
-            if (_process is { HasExited: false } running)
-            {
-                running.Kill(entireProcessTree: true);
-                running.WaitForExit(10_000);
-            }
-        }
-
-        public void Dispose()
-        {
-            Kill();
-            _process?.Dispose();
-            File.Delete(_readyPath);
-            File.Delete(_scriptPath);
-        }
     }
 
     private sealed class UnreachableLoader : IAnalyzerAssemblyLoader

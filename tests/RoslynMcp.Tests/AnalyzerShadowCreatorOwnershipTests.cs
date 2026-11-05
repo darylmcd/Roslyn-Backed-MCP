@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Roslyn.Helpers;
 using CreatorLiveness = RoslynMcp.Roslyn.Helpers.AnalyzerReferenceIsolation.CreatorLiveness;
@@ -146,23 +145,10 @@ public sealed class AnalyzerShadowCreatorOwnershipTests
             Assert.Inconclusive("The owned cmd stdin barrier and retained Windows process handle are Windows-specific.");
 
         var shared = NewSharedParent();
-        var startInfo = new ProcessStartInfo("cmd.exe")
-        {
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            WorkingDirectory = shared
-        };
-        startInfo.ArgumentList.Add("/d");
-        startInfo.ArgumentList.Add("/c");
-        startInfo.ArgumentList.Add("echo ready & set /p RMCP_SHADOW_WAIT=");
-        using var peer = Process.Start(startInfo) ?? throw new InvalidOperationException("Could not start owned peer.");
+        using var peer = ForeignHostTestSupport.StartPeer(shared);
         try
         {
-            using var readyCancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            var ready = await peer.StandardOutput.ReadLineAsync(readyCancellation.Token);
-            Assert.AreEqual("ready", ready?.Trim());
+            await ForeignHostTestSupport.ReadReadyAsync(peer);
             var name = $"process-{peer.Id}-{IdentityGuid}";
             Assert.AreEqual(CreatorLiveness.Live, AnalyzerReferenceIsolation.ObserveCreator(name));
             var parent = Path.Combine(shared, name);
