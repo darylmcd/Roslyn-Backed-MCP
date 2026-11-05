@@ -230,34 +230,22 @@ public sealed class PwshScriptRunnerTests
         var pidPath = Path.Combine(root, "broken-stdin.pid");
         try
         {
+            // The child must break the pipe well inside the runner's 10 s hang budget on a loaded host.
+            // Windows: the precompiled probe. The former pwsh child compiled C# with Add-Type before closing stdin
+            // (6-9 s under CPU saturation, over 10 s cold). Unix: a single exec'd process. The former shell child
+            // left a separate sleep grandchild that survived the tree kill and held the output pipes open, so
+            // cleanup waited out its full 10 s drain budget in ~0.8% of loaded runs. The CoreCLR PAL duplicates
+            // fds 0-2 in every dotnet child, so the probe cannot close stdin on Unix.
             string executable;
             string[] arguments;
             if (OperatingSystem.IsWindows())
             {
-                var scriptPath = Path.Combine(root, "close-stdin.ps1");
-                await File.WriteAllTextAsync(scriptPath, """
-                param([string]$PidPath)
-                [IO.File]::WriteAllText($PidPath, [string]$PID)
-                [Console]::Out.WriteLine('broken-pipe-stdout')
-                [Console]::Error.WriteLine('broken-pipe-stderr')
-                Add-Type -TypeDefinition @'
-                using System;
-                using System.Runtime.InteropServices;
-                public static class CloseStdinProbe {
-                    [DllImport("kernel32.dll")] public static extern IntPtr GetStdHandle(int id);
-                    [DllImport("kernel32.dll")] public static extern bool CloseHandle(IntPtr handle);
-                    [DllImport("libc")] public static extern int close(int fd);
-                }
-                '@
-                if ($IsWindows) {
-                    [CloseStdinProbe]::CloseHandle([CloseStdinProbe]::GetStdHandle(-10)) | Out-Null
-                } else {
-                    [CloseStdinProbe]::close(0) | Out-Null
-                }
-                Start-Sleep -Seconds 30
-                """);
-                executable = "pwsh.exe";
-                arguments = ["-NoProfile", "-File", scriptPath, pidPath];
+                executable = "dotnet";
+                arguments =
+                [
+                    Path.Combine(AppContext.BaseDirectory, "ProcessProbes", "ProcessPipeWorkerProbe", "ProcessPipeWorkerProbe.dll"),
+                    "close-stdin", pidPath
+                ];
             }
             else
             {
@@ -266,8 +254,7 @@ public sealed class PwshScriptRunnerTests
                     printf '%s' "$$" > "$1"
                     printf '%s\n' 'broken-pipe-stdout'
                     printf '%s\n' 'broken-pipe-stderr' >&2
-                    exec 0<&-
-                    sleep 30
+                    exec sleep 30 0<&-
                     """);
                 executable = "bash";
                 arguments = [scriptPath, pidPath];
