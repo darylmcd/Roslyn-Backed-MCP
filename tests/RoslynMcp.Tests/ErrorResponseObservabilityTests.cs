@@ -176,6 +176,50 @@ public sealed class ErrorResponseObservabilityTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
+    public void InvalidArgument_SchemaHintsRetainAbbreviationsAndConstraints()
+    {
+        var taskJson = ToolErrorHandler.ClassifyAndFormat(
+            new ArgumentException("Task is required.", paramName: "task"), "recommend_workflow");
+        using var taskDocument = JsonDocument.Parse(taskJson);
+        var taskHint = taskDocument.RootElement.GetProperty("schemaHint").GetString();
+        StringAssert.Contains(taskHint, "e.g. 'find callers'");
+        StringAssert.Contains(taskHint, "'rename this symbol'");
+
+        var timeoutJson = ToolErrorHandler.ClassifyAndFormat(
+            new ArgumentException("Invalid timeout.", paramName: "timeoutSeconds"), "evaluate_csharp");
+        using var timeoutDocument = JsonDocument.Parse(timeoutJson);
+        var timeoutHint = timeoutDocument.RootElement.GetProperty("schemaHint").GetString();
+        StringAssert.Contains(timeoutHint, "Must be > 0");
+    }
+
+    [TestMethod]
+    public void NotFound_DocumentPathCorrectionsRemainPathFree()
+    {
+        const string privatePath = "C:/private/secret.cs";
+        foreach (var message in new[]
+        {
+            "Document not found: " + privatePath,
+            "Document not found in workspace: " + privatePath,
+            "File '" + privatePath + "' is not part of the loaded workspace.",
+        })
+        {
+            var json = ToolErrorHandler.ClassifyAndFormat(
+                new KeyNotFoundException(message), "get_source_text");
+            using var document = JsonDocument.Parse(json);
+            Assert.AreEqual("NotFound", document.RootElement.GetProperty("category").GetString());
+            var correction = document.RootElement.GetProperty("message").GetString();
+            StringAssert.Contains(correction, "document in the loaded workspace");
+            Assert.IsFalse(json.Contains(privatePath, StringComparison.Ordinal));
+        }
+
+        var symbolJson = ToolErrorHandler.ClassifyAndFormat(
+            new KeyNotFoundException("Type not found: CallerSecret"), "find_references");
+        using var symbolDocument = JsonDocument.Parse(symbolJson);
+        Assert.IsFalse(symbolDocument.RootElement.GetProperty("message").GetString()!
+            .Contains("source file", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
     public void InvalidArgument_NullParam_EmitsToolLevelSchemaHintListingAllParameters()
     {
         // ParamName is unknown (e.g. JSON deserialization fails before binding picks a

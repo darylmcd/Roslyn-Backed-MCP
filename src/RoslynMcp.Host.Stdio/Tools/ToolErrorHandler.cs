@@ -541,6 +541,14 @@ internal static class ToolErrorHandler
 
     private static string BuildSafeNotFoundMessage(string rawMessage)
     {
+        if (rawMessage.StartsWith("Document not found:", StringComparison.Ordinal) ||
+            rawMessage.StartsWith("Document not found in workspace:", StringComparison.Ordinal) ||
+            (rawMessage.StartsWith("File '", StringComparison.Ordinal) &&
+             rawMessage.EndsWith("' is not part of the loaded workspace.", StringComparison.Ordinal)))
+        {
+            return "The requested source file is not a document in the loaded workspace. Choose a workspace document and retry.";
+        }
+
         if (rawMessage.StartsWith("No identifier at this position", StringComparison.Ordinal))
         {
             return "No identifier at this position. Move the source location onto a symbol name and retry.";
@@ -669,7 +677,7 @@ internal static class ToolErrorHandler
     /// tool catalog. Returns the matching parameter's signature when <paramref name="paramName"/>
     /// is known, the full tool signature when only the tool is known, or <see langword="null"/>
     /// when the tool itself is not in the index (e.g. resource calls). Description text is
-    /// trimmed to the first sentence to keep the hint compact.
+    /// capped to keep the hint compact without dropping examples or constraints.
     /// </summary>
     private static string? BuildSchemaHint(string toolName, string? paramName)
     {
@@ -699,7 +707,7 @@ internal static class ToolErrorHandler
     {
         var description = string.IsNullOrEmpty(schema.Description)
             ? string.Empty
-            : $" — {TrimToFirstSentence(schema.Description)}";
+            : $" — {TrimToHintBudget(schema.Description)}";
         return $"{toolName}({schema.Name}: {FormatTypeWithOptionalMarker(schema)}{description})";
     }
 
@@ -713,15 +721,11 @@ internal static class ToolErrorHandler
         return schema.Type + "?";
     }
 
-    private static string TrimToFirstSentence(string text)
+    private static string TrimToHintBudget(string text)
     {
-        // Tool descriptions often span multiple sentences (intent + caveats). Hint stays
-        // useful when only the first sentence ships; longer text bloats the envelope without
-        // proportional information gain. Cap at 160 chars even for single-sentence text so
-        // multi-kilobyte descriptions can't leak verbatim.
-        var period = text.IndexOf(". ", StringComparison.Ordinal);
-        var firstSentence = period > 0 ? text[..period] : text;
-        return firstSentence.Length > 160 ? firstSentence[..160] + "…" : firstSentence;
+        // Examples such as e.g. and short follow-on constraints belong in the hint.
+        // Bound long descriptions without treating every period as a sentence boundary.
+        return text.Length > 160 ? text[..160] + "…" : text;
     }
 
     /// <param name="Category">Stable public category.</param>

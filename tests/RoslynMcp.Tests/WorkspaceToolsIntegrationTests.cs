@@ -275,6 +275,28 @@ public sealed class WorkspaceToolsIntegrationTests : SharedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task WorkspaceTools_GetSourceText_MissingDocumentExplainsWorkspaceMembership()
+    {
+        var sourceDirectory = Path.GetDirectoryName(FindProgramPath())!;
+        foreach (var missingPath in new[]
+        {
+            Path.Combine(sourceDirectory, "Missing.cs"),
+            Path.Combine(sourceDirectory, "..", "private", "secret.cs"),
+        })
+        {
+            var exception = await Assert.ThrowsAsync<KeyNotFoundException>(async () =>
+                await WorkspaceTools.GetSourceText(
+                    WorkspaceExecutionGate, WorkspaceManager, WorkspaceId, missingPath,
+                    ct: CancellationToken.None));
+            using var document = JsonDocument.Parse(ToolErrorHandler.ClassifyAndFormat(exception, "get_source_text"));
+            Assert.AreEqual("NotFound", document.RootElement.GetProperty("category").GetString());
+            StringAssert.Contains(document.RootElement.GetProperty("message").GetString(), "document in the loaded workspace");
+            Assert.IsFalse(document.RootElement.GetProperty("message").GetString()!.Contains(missingPath, StringComparison.Ordinal));
+            Assert.IsFalse(document.RootElement.GetProperty("message").GetString()!.Contains("private", StringComparison.Ordinal));
+        }
+    }
+
+    [TestMethod]
     public async Task WorkspaceTools_GetSourceText_LineRange_ReturnsOnlyRequestedLines()
     {
         var programPath = FindProgramPath();
