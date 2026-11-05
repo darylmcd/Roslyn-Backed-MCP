@@ -4,6 +4,27 @@ using System.Runtime.ExceptionServices;
 using System.Runtime.Loader;
 using System.Text;
 
+if (args[0] is "close-stdin" or "close-stdin-after")
+{
+    // Windows fixture: a live child that never reads stdin and closes its inherited stdin handle (immediately for
+    // `close-stdin <pid>`, after <ms> for `close-stdin-after <ms> <pid>`), so the parent's pending stdin write sees
+    // a broken pipe without waiting on interpreter or compiler startup.
+    var closeDelayMs = args[0] == "close-stdin-after" ? int.Parse(args[1], System.Globalization.CultureInfo.InvariantCulture) : 0;
+    var closePidPath = args[0] == "close-stdin-after" ? args[2] : args[1];
+    File.WriteAllText(closePidPath + ".tmp", Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture));
+    File.Move(closePidPath + ".tmp", closePidPath);
+    Console.Out.WriteLine("broken-pipe-stdout");
+    Console.Error.WriteLine("broken-pipe-stderr");
+    Console.Out.Flush();
+    Console.Error.Flush();
+    if (closeDelayMs > 0)
+        Thread.Sleep(closeDelayMs);
+    StdinCloser.Close();
+    // Stay alive until the owning runner terminates this process.
+    Thread.Sleep(TimeSpan.FromSeconds(60));
+    return 93;
+}
+
 if (args[0] is "hold" or "exit" or "large" or "formatter-output")
 {
     File.WriteAllText(args[1] + ".tmp", Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture));
@@ -302,4 +323,25 @@ static int RunFormatterCaptureProbe(string assemblyPath, string root, bool failR
         try { cleanup(); }
         catch (Exception exception) { cleanupFailures.Add(exception); }
     }
+}
+
+static class StdinCloser
+{
+    internal static void Close()
+    {
+        // Windows only: the CoreCLR PAL on Unix duplicates fds 0-2 at startup (observed as fds 5-7 of every
+        // dotnet child), so close(0) there cannot release the parent's pipe; Unix fixtures use a shell child.
+        if (!OperatingSystem.IsWindows())
+            throw new PlatformNotSupportedException("close-stdin is a Windows-only probe mode.");
+        // STD_INPUT_HANDLE; closing it releases this process's reader end of the parent's stdin pipe.
+        if (!CloseHandle(GetStdHandle(-10)))
+            throw new System.ComponentModel.Win32Exception();
+    }
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr GetStdHandle(int id);
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool CloseHandle(IntPtr handle);
 }
