@@ -32,7 +32,10 @@ internal static class FixtureCleanupScope
     internal static Task RunAsync(Func<Task> body, Action cleanup) =>
         RunAsync(body, CleanupFailureCollector.FromAction(cleanup));
 
-    internal static async Task RunAsync(Func<Task> body, params Func<ValueTask>[] cleanupSteps)
+    internal static Task RunAsync(Func<Task> body, params Func<ValueTask>[] cleanupSteps) =>
+        RunAsync(body, (IReadOnlyList<Func<ValueTask>>)cleanupSteps);
+
+    internal static async Task RunAsync(Func<Task> body, IReadOnlyList<Func<ValueTask>> cleanupSteps)
     {
         Exception? primaryFailure = null;
         try
@@ -47,7 +50,7 @@ internal static class FixtureCleanupScope
         await CleanupFailureCollector.RunAfterFailureAsync(
             "Test body and fixture cleanup both failed.",
             primaryFailure,
-            cleanupSteps).ConfigureAwait(false);
+            cleanupSteps.ToArray()).ConfigureAwait(false);
 
         if (primaryFailure is not null)
             ExceptionDispatchInfo.Capture(primaryFailure).Throw();

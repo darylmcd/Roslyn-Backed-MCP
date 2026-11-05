@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -125,54 +126,52 @@ public sealed class WorkspaceReloadedEventTests : TestBase
     public async Task LifecycleHandlerFailures_LogOnlySanitizedMetadata_AndContinueDispatch(string lifecycle)
     {
         const string secretSentinel = "C:/private/workspace/subscriber-secret.txt";
-        var solutionPath = CreateSampleSolutionCopy();
         var logger = new ListLogger<WorkspaceManager>();
         using var watcher = new FileWatcherService(
             Microsoft.Extensions.Logging.Abstractions.NullLogger<FileWatcherService>.Instance);
-        using var manager = new WorkspaceManager(
-            logger,
-            new PreviewStore(),
-            watcher,
-            new WorkspaceManagerOptions { MaxConcurrentWorkspaces = 1 });
-
-        try
-        {
-            var status = await manager.LoadAsync(solutionPath, CancellationToken.None);
-            var observed = false;
-            void ThrowingHandler(string _) => throw new InvalidOperationException(secretSentinel);
-            void ObservingHandler(string id) => observed = id == status.WorkspaceId;
-
-            if (lifecycle == "reload")
+        await LocalWorkspaceManagerFixture.RunAsync(
+            () => new WorkspaceManager(
+                logger,
+                new PreviewStore(),
+                watcher,
+                new WorkspaceManagerOptions { MaxConcurrentWorkspaces = 1 }),
+            CreateSampleSolutionCopy,
+            1,
+            async (manager, paths) =>
             {
-                manager.WorkspaceReloaded += ThrowingHandler;
-                manager.WorkspaceReloaded += ObservingHandler;
-                await manager.ReloadAsync(status.WorkspaceId, CancellationToken.None);
-            }
-            else
-            {
-                manager.WorkspaceClosed += ThrowingHandler;
-                manager.WorkspaceClosed += ObservingHandler;
-                Assert.IsTrue(manager.Close(status.WorkspaceId));
-            }
+                var solutionPath = paths[0];
+                var status = await manager.LoadAsync(solutionPath, CancellationToken.None);
+                var observed = false;
+                void ThrowingHandler(string _) => throw new InvalidOperationException(secretSentinel);
+                void ObservingHandler(string id) => observed = id == status.WorkspaceId;
 
-            Assert.IsTrue(observed, $"A failing {lifecycle} subscriber must not suppress later subscribers.");
-            var warnings = logger.Entries
-                .Where(entry => entry.Level == LogLevel.Warning &&
-                                entry.Message.Contains("handler threw", StringComparison.Ordinal))
-                .ToArray();
-            Assert.AreEqual(1, warnings.Length, $"{lifecycle} should emit one sanitized warning.");
-            foreach (var warning in warnings)
-            {
-                Assert.IsNull(warning.Exception, "Raw subscriber exceptions must not be attached to logs.");
-                StringAssert.Contains(warning.Message, typeof(InvalidOperationException).FullName!);
-                Assert.IsFalse(warning.Message.Contains(secretSentinel, StringComparison.Ordinal), warning.Message);
-                StringAssert.Contains(warning.Message, status.WorkspaceId);
-            }
-        }
-        finally
-        {
-            DeleteDirectoryIfExists(Path.GetDirectoryName(solutionPath)!);
-        }
+                if (lifecycle == "reload")
+                {
+                    manager.WorkspaceReloaded += ThrowingHandler;
+                    manager.WorkspaceReloaded += ObservingHandler;
+                    await manager.ReloadAsync(status.WorkspaceId, CancellationToken.None);
+                }
+                else
+                {
+                    manager.WorkspaceClosed += ThrowingHandler;
+                    manager.WorkspaceClosed += ObservingHandler;
+                    Assert.IsTrue(manager.Close(status.WorkspaceId));
+                }
+
+                Assert.IsTrue(observed, $"A failing {lifecycle} subscriber must not suppress later subscribers.");
+                var warnings = logger.Entries
+                    .Where(entry => entry.Level == LogLevel.Warning &&
+                                    entry.Message.Contains("handler threw", StringComparison.Ordinal))
+                    .ToArray();
+                Assert.AreEqual(1, warnings.Length, $"{lifecycle} should emit one sanitized warning.");
+                foreach (var warning in warnings)
+                {
+                    Assert.IsNull(warning.Exception, "Raw subscriber exceptions must not be attached to logs.");
+                    StringAssert.Contains(warning.Message, typeof(InvalidOperationException).FullName!);
+                    Assert.IsFalse(warning.Message.Contains(secretSentinel, StringComparison.Ordinal), warning.Message);
+                    StringAssert.Contains(warning.Message, status.WorkspaceId);
+                }
+            });
     }
 
     [TestMethod]

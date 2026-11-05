@@ -4,6 +4,7 @@ using RoslynMcp.Roslyn.Services;
 using Microsoft.CodeAnalysis;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -39,33 +40,29 @@ public sealed class HardeningBehaviorTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task WorkspaceManager_RejectsLoadsPastConfiguredLimit()
     {
-        using var manager = new WorkspaceManager(
-            NullLogger<WorkspaceManager>.Instance,
-            new PreviewStore(),
-            new FileWatcherService(NullLogger<FileWatcherService>.Instance),
-            new WorkspaceManagerOptions { MaxConcurrentWorkspaces = 1 });
+        await LocalWorkspaceManagerFixture.RunAsync(
+            () => new WorkspaceManager(
+                NullLogger<WorkspaceManager>.Instance,
+                new PreviewStore(),
+                new FileWatcherService(NullLogger<FileWatcherService>.Instance),
+                new WorkspaceManagerOptions { MaxConcurrentWorkspaces = 1 }),
+            CreateSampleSolutionCopy,
+            2,
+            async (manager, paths) =>
+            {
+                var firstPath = paths[0];
+                var secondPath = paths[1];
+                var first = await manager.LoadAsync(firstPath, CancellationToken.None);
 
-        var firstPath = CreateSampleSolutionCopy();
-        var secondPath = CreateSampleSolutionCopy();
-
-        try
-        {
-            var first = await manager.LoadAsync(firstPath, CancellationToken.None);
-
-            var refusal = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
-                manager.LoadAsync(secondPath, CancellationToken.None));
-            StringAssert.Contains(refusal.PublicMessage, "already tracking 1 workspaces");
-            StringAssert.Contains(refusal.PublicMessage, "evictPolicy=lru");
-            StringAssert.Contains(refusal.PublicMessage, "activeWorkspaces");
-            StringAssert.Contains(refusal.PublicMessage, $"lruCandidate={first.WorkspaceId}");
-            Assert.IsFalse(refusal.PublicMessage.Contains(firstPath, StringComparison.OrdinalIgnoreCase),
-                "The public cap refusal must not disclose an absolute workspace path.");
-        }
-        finally
-        {
-            DeleteDirectoryIfExists(Path.GetDirectoryName(firstPath)!);
-            DeleteDirectoryIfExists(Path.GetDirectoryName(secondPath)!);
-        }
+                var refusal = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
+                    manager.LoadAsync(secondPath, CancellationToken.None));
+                StringAssert.Contains(refusal.PublicMessage, "already tracking 1 workspaces");
+                StringAssert.Contains(refusal.PublicMessage, "evictPolicy=lru");
+                StringAssert.Contains(refusal.PublicMessage, "activeWorkspaces");
+                StringAssert.Contains(refusal.PublicMessage, $"lruCandidate={first.WorkspaceId}");
+                Assert.IsFalse(refusal.PublicMessage.Contains(firstPath, StringComparison.OrdinalIgnoreCase),
+                    "The public cap refusal must not disclose an absolute workspace path.");
+            });
     }
 
     [TestMethod]

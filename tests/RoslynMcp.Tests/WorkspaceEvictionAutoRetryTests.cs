@@ -58,159 +58,151 @@ public sealed class WorkspaceEvictionAutoRetryTests
     [TestMethod]
     public async Task CompileCheck_EvictedWorkspace_TransparentlyReloadsAndRetries()
     {
-        using var manager = CreateManager(maxConcurrentWorkspaces: 1);
-        var compileCheckService = new CompileCheckService(manager, NullLogger<CompileCheckService>.Instance);
-        var gate = new WorkspaceExecutionGate(new ExecutionGateOptions(), manager);
+        await LocalWorkspaceManagerFixture.RunAsync(
+            () => CreateManager(maxConcurrentWorkspaces: 1),
+            () => TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath),
+            2,
+            async (manager, paths) =>
+            {
+                var path1 = paths[0];
+                var path2 = paths[1];
 
-        var path1 = TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath);
-        var path2 = TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath);
+                var compileCheckService = new CompileCheckService(manager, NullLogger<CompileCheckService>.Instance);
+                var gate = new WorkspaceExecutionGate(new ExecutionGateOptions(), manager);
 
-        try
-        {
-            var evictedId = await StageEvictionAsync(manager, path1, path2);
+                var evictedId = await StageEvictionAsync(manager, path1, path2);
 
-            var json = await CompileCheckTools.CompileCheck(
-                gate,
-                compileCheckService,
-                workspaceId: evictedId,
-                workspaceManager: manager,
-                ct: CancellationToken.None);
+                var json = await CompileCheckTools.CompileCheck(
+                    gate,
+                    compileCheckService,
+                    workspaceId: evictedId,
+                    workspaceManager: manager,
+                    ct: CancellationToken.None);
 
-            using var doc = JsonDocument.Parse(json);
-            var root = doc.RootElement;
-            Assert.IsFalse(root.TryGetProperty("error", out _),
-                $"compile_check must transparently recover from an eviction, not return an error envelope. Actual: {json}");
-            Assert.IsTrue(root.TryGetProperty("success", out _),
-                $"Expected a normal compile_check payload after the transparent reload+retry. Actual: {json}");
+                using var doc = JsonDocument.Parse(json);
+                var root = doc.RootElement;
+                Assert.IsFalse(root.TryGetProperty("error", out _),
+                    $"compile_check must transparently recover from an eviction, not return an error envelope. Actual: {json}");
+                Assert.IsTrue(root.TryGetProperty("success", out _),
+                    $"Expected a normal compile_check payload after the transparent reload+retry. Actual: {json}");
 
-            Assert.IsFalse(manager.ContainsWorkspace(evictedId),
-                "The retry must run against a NEW workspace id, not resurrect the evicted one.");
-        }
-        finally
-        {
-            TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path1)!);
-            TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path2)!);
-        }
+                Assert.IsFalse(manager.ContainsWorkspace(evictedId),
+                    "The retry must run against a NEW workspace id, not resurrect the evicted one.");
+            });
     }
 
     [TestMethod]
     public async Task RunTests_EvictedWorkspace_TransparentlyReloadsAndRetries()
     {
-        using var manager = CreateManager(maxConcurrentWorkspaces: 1);
-        var gate = new WorkspaceExecutionGate(new ExecutionGateOptions(), manager);
-        var runner = new RecordingTestRunnerService();
+        await LocalWorkspaceManagerFixture.RunAsync(
+            () => CreateManager(maxConcurrentWorkspaces: 1),
+            () => TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath),
+            2,
+            async (manager, paths) =>
+            {
+                var path1 = paths[0];
+                var path2 = paths[1];
 
-        var path1 = TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath);
-        var path2 = TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath);
+                var gate = new WorkspaceExecutionGate(new ExecutionGateOptions(), manager);
+                var runner = new RecordingTestRunnerService();
 
-        try
-        {
-            var evictedId = await StageEvictionAsync(manager, path1, path2);
+                var evictedId = await StageEvictionAsync(manager, path1, path2);
 
-            var json = await ValidationTools.RunTests(
-                gate,
-                runner,
-                workspaceId: evictedId,
-                projectName: null,
-                filter: null,
-                progress: null,
-                workspaceManager: manager,
-                ct: CancellationToken.None);
-
-            using var doc = JsonDocument.Parse(json);
-            Assert.IsFalse(doc.RootElement.TryGetProperty("error", out _),
-                $"test_run must transparently recover from an eviction, not return an error envelope. Actual: {json}");
-
-            // The gate's ContainsWorkspace precheck rejects the evicted id before the service is
-            // ever reached, so the runner sees exactly one invocation — the post-reload retry.
-            Assert.AreEqual(1, runner.ObservedWorkspaceIds.Count,
-                "The test runner must be invoked exactly once — on the post-reload retry leg.");
-            Assert.AreNotEqual(evictedId, runner.ObservedWorkspaceIds[0],
-                "The retry must target the rehydrated workspace id, not the evicted one.");
-            Assert.IsTrue(manager.ContainsWorkspace(runner.ObservedWorkspaceIds[0]),
-                "The id handed to the retry leg must be a live session.");
-        }
-        finally
-        {
-            TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path1)!);
-            TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path2)!);
-        }
-    }
-
-    [TestMethod]
-    public async Task CompileCheck_EvictedWorkspace_NoWorkspaceManagerSupplied_PreservesOriginalNotFoundEnvelope()
-    {
-        using var manager = CreateManager(maxConcurrentWorkspaces: 1);
-        var compileCheckService = new CompileCheckService(manager, NullLogger<CompileCheckService>.Instance);
-        var gate = new WorkspaceExecutionGate(new ExecutionGateOptions(), manager);
-
-        var path1 = TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath);
-        var path2 = TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath);
-
-        try
-        {
-            var evictedId = await StageEvictionAsync(manager, path1, path2);
-
-            var json = await ToolExecutionTestHarness.RunAsync(
-                "compile_check",
-                () => CompileCheckTools.CompileCheck(
-                    gate,
-                    compileCheckService,
-                    workspaceId: evictedId,
-                    ct: CancellationToken.None));
-
-            using var doc = JsonDocument.Parse(json);
-            var root = doc.RootElement;
-            Assert.IsTrue(root.TryGetProperty("error", out var errorProp) && errorProp.GetBoolean(),
-                $"Without an IWorkspaceManager the pre-fix error envelope must survive unchanged. Actual: {json}");
-            Assert.AreEqual("WorkspaceNotFound", root.GetProperty("category").GetString(),
-                $"The gate's ContainsWorkspace precheck classifies as WorkspaceNotFound; the retry wiring must not change that when unwired. Actual: {json}");
-            Assert.IsFalse(root.TryGetProperty("reason", out _),
-                $"The reason alias is gone. Actual: {json}");
-            Assert.AreEqual("compile_check", root.GetProperty("tool").GetString());
-        }
-        finally
-        {
-            TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path1)!);
-            TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path2)!);
-        }
-    }
-
-    [TestMethod]
-    public async Task RunTests_EvictedWorkspace_NoWorkspaceManagerSupplied_StillPropagatesLookupMiss()
-    {
-        using var manager = CreateManager(maxConcurrentWorkspaces: 1);
-        var gate = new WorkspaceExecutionGate(new ExecutionGateOptions(), manager);
-        var runner = new RecordingTestRunnerService();
-
-        var path1 = TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath);
-        var path2 = TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath);
-
-        try
-        {
-            var evictedId = await StageEvictionAsync(manager, path1, path2);
-
-            // Pre-fix behaviour: the gate precheck's KeyNotFoundException escapes test_run's
-            // inline envelope formatting and reaches the global filter as IsError=true. Pinning
-            // it here so the retry wiring cannot silently downgrade a hard failure to content.
-            await Assert.ThrowsExactlyAsync<WorkspaceNotFoundException>(
-                () => ValidationTools.RunTests(
+                var json = await ValidationTools.RunTests(
                     gate,
                     runner,
                     workspaceId: evictedId,
                     projectName: null,
                     filter: null,
                     progress: null,
-                    ct: CancellationToken.None));
+                    workspaceManager: manager,
+                    ct: CancellationToken.None);
 
-            Assert.AreEqual(0, runner.ObservedWorkspaceIds.Count,
-                "With no manager wired the service must never be reached.");
-        }
-        finally
-        {
-            TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path1)!);
-            TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path2)!);
-        }
+                using var doc = JsonDocument.Parse(json);
+                Assert.IsFalse(doc.RootElement.TryGetProperty("error", out _),
+                    $"test_run must transparently recover from an eviction, not return an error envelope. Actual: {json}");
+
+                // The gate's ContainsWorkspace precheck rejects the evicted id before the service is
+                // ever reached, so the runner sees exactly one invocation — the post-reload retry.
+                Assert.AreEqual(1, runner.ObservedWorkspaceIds.Count,
+                    "The test runner must be invoked exactly once — on the post-reload retry leg.");
+                Assert.AreNotEqual(evictedId, runner.ObservedWorkspaceIds[0],
+                    "The retry must target the rehydrated workspace id, not the evicted one.");
+                Assert.IsTrue(manager.ContainsWorkspace(runner.ObservedWorkspaceIds[0]),
+                    "The id handed to the retry leg must be a live session.");
+            });
+    }
+
+    [TestMethod]
+    public async Task CompileCheck_EvictedWorkspace_NoWorkspaceManagerSupplied_PreservesOriginalNotFoundEnvelope()
+    {
+        await LocalWorkspaceManagerFixture.RunAsync(
+            () => CreateManager(maxConcurrentWorkspaces: 1),
+            () => TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath),
+            2,
+            async (manager, paths) =>
+            {
+                var path1 = paths[0];
+                var path2 = paths[1];
+
+                var compileCheckService = new CompileCheckService(manager, NullLogger<CompileCheckService>.Instance);
+                var gate = new WorkspaceExecutionGate(new ExecutionGateOptions(), manager);
+
+                var evictedId = await StageEvictionAsync(manager, path1, path2);
+
+                var json = await ToolExecutionTestHarness.RunAsync(
+                    "compile_check",
+                    () => CompileCheckTools.CompileCheck(
+                        gate,
+                        compileCheckService,
+                        workspaceId: evictedId,
+                        ct: CancellationToken.None));
+
+                using var doc = JsonDocument.Parse(json);
+                var root = doc.RootElement;
+                Assert.IsTrue(root.TryGetProperty("error", out var errorProp) && errorProp.GetBoolean(),
+                    $"Without an IWorkspaceManager the pre-fix error envelope must survive unchanged. Actual: {json}");
+                Assert.AreEqual("WorkspaceNotFound", root.GetProperty("category").GetString(),
+                    $"The gate's ContainsWorkspace precheck classifies as WorkspaceNotFound; the retry wiring must not change that when unwired. Actual: {json}");
+                Assert.IsFalse(root.TryGetProperty("reason", out _),
+                    $"The reason alias is gone. Actual: {json}");
+                Assert.AreEqual("compile_check", root.GetProperty("tool").GetString());
+            });
+    }
+
+    [TestMethod]
+    public async Task RunTests_EvictedWorkspace_NoWorkspaceManagerSupplied_StillPropagatesLookupMiss()
+    {
+        await LocalWorkspaceManagerFixture.RunAsync(
+            () => CreateManager(maxConcurrentWorkspaces: 1),
+            () => TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath),
+            2,
+            async (manager, paths) =>
+            {
+                var path1 = paths[0];
+                var path2 = paths[1];
+
+                var gate = new WorkspaceExecutionGate(new ExecutionGateOptions(), manager);
+                var runner = new RecordingTestRunnerService();
+
+                var evictedId = await StageEvictionAsync(manager, path1, path2);
+
+                // Pre-fix behaviour: the gate precheck's KeyNotFoundException escapes test_run's
+                // inline envelope formatting and reaches the global filter as IsError=true. Pinning
+                // it here so the retry wiring cannot silently downgrade a hard failure to content.
+                await Assert.ThrowsExactlyAsync<WorkspaceNotFoundException>(
+                    () => ValidationTools.RunTests(
+                        gate,
+                        runner,
+                        workspaceId: evictedId,
+                        projectName: null,
+                        filter: null,
+                        progress: null,
+                        ct: CancellationToken.None));
+
+                Assert.AreEqual(0, runner.ObservedWorkspaceIds.Count,
+                    "With no manager wired the service must never be reached.");
+            });
     }
 
     /// <summary>
@@ -236,43 +228,42 @@ public sealed class WorkspaceEvictionAutoRetryTests
     [TestMethod]
     public async Task RunTests_NeverLoadedWorkspaceId_ManagerWired_AttemptsNoReloadAndPropagatesLookupMiss()
     {
-        using var manager = CreateManager(maxConcurrentWorkspaces: 1);
-        var gate = new WorkspaceExecutionGate(new ExecutionGateOptions(), manager);
-        var runner = new RecordingTestRunnerService();
+        await LocalWorkspaceManagerFixture.RunAsync(
+            () => CreateManager(maxConcurrentWorkspaces: 1),
+            () => TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath),
+            1,
+            async (manager, paths) =>
+            {
+                var path1 = paths[0];
 
-        var path1 = TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath);
+                var gate = new WorkspaceExecutionGate(new ExecutionGateOptions(), manager);
+                var runner = new RecordingTestRunnerService();
 
-        try
-        {
-            var liveStatus = await manager.LoadAsync(path1, EvictPolicy.Strict, CancellationToken.None);
-            var bogusId = $"never-loaded-{Guid.NewGuid():N}";
+                var liveStatus = await manager.LoadAsync(path1, EvictPolicy.Strict, CancellationToken.None);
+                var bogusId = $"never-loaded-{Guid.NewGuid():N}";
 
-            // Unit-level pin on the branch itself: a never-loaded id yields no eviction record,
-            // so the reclassification probe returns null and the retry leg is skipped outright.
-            Assert.IsNull(
-                ToolDispatch.TryReclassifyAsEvicted(manager, bogusId),
-                "A never-loaded id carries no eviction record; the reclassification probe must return null.");
+                // Unit-level pin on the branch itself: a never-loaded id yields no eviction record,
+                // so the reclassification probe returns null and the retry leg is skipped outright.
+                Assert.IsNull(
+                    ToolDispatch.TryReclassifyAsEvicted(manager, bogusId),
+                    "A never-loaded id carries no eviction record; the reclassification probe must return null.");
 
-            await Assert.ThrowsExactlyAsync<WorkspaceNotFoundException>(
-                () => ValidationTools.RunTests(
-                    gate,
-                    runner,
-                    workspaceId: bogusId,
-                    projectName: null,
-                    filter: null,
-                    progress: null,
-                    workspaceManager: manager,
-                    ct: CancellationToken.None));
+                await Assert.ThrowsExactlyAsync<WorkspaceNotFoundException>(
+                    () => ValidationTools.RunTests(
+                        gate,
+                        runner,
+                        workspaceId: bogusId,
+                        projectName: null,
+                        filter: null,
+                        progress: null,
+                        workspaceManager: manager,
+                        ct: CancellationToken.None));
 
-            Assert.AreEqual(0, runner.ObservedWorkspaceIds.Count,
-                "No reload is possible for a never-loaded id, so the runner must never be reached.");
-            Assert.IsTrue(manager.ContainsWorkspace(liveStatus.WorkspaceId),
-                "No rehydration load may be attempted — the unrelated live session must not be LRU-evicted to make room.");
-        }
-        finally
-        {
-            TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path1)!);
-        }
+                Assert.AreEqual(0, runner.ObservedWorkspaceIds.Count,
+                    "No reload is possible for a never-loaded id, so the runner must never be reached.");
+                Assert.IsTrue(manager.ContainsWorkspace(liveStatus.WorkspaceId),
+                    "No rehydration load may be attempted — the unrelated live session must not be LRU-evicted to make room.");
+            });
     }
 
     /// <summary>
@@ -293,56 +284,54 @@ public sealed class WorkspaceEvictionAutoRetryTests
     [TestMethod]
     public async Task RunTests_EvictedWorkspace_RehydrationReloadFails_PropagatesOriginalLookupMiss()
     {
-        using var manager = CreateManager(maxConcurrentWorkspaces: 1);
-        var gate = new WorkspaceExecutionGate(new ExecutionGateOptions(), manager);
-        var runner = new RecordingTestRunnerService();
+        await LocalWorkspaceManagerFixture.RunAsync(
+            () => CreateManager(maxConcurrentWorkspaces: 1),
+            () => TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath),
+            2,
+            async (manager, paths) =>
+            {
+                var path1 = paths[0];
+                var path2 = paths[1];
 
-        var path1 = TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath);
-        var path2 = TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath);
+                var gate = new WorkspaceExecutionGate(new ExecutionGateOptions(), manager);
+                var runner = new RecordingTestRunnerService();
 
-        try
-        {
-            var evictedId = await StageEvictionAsync(manager, path1, path2);
+                var evictedId = await StageEvictionAsync(manager, path1, path2);
 
-            // Fixture precondition AND the discriminator against the never-loaded case: this id
-            // DOES reclassify as evicted with a recoverable path, so the reload leg is entered.
-            var reclassified = ToolDispatch.TryReclassifyAsEvicted(manager, evictedId);
-            Assert.IsNotNull(reclassified,
-                "Fixture precondition: the LRU-evicted id must reclassify as an eviction.");
-            Assert.AreEqual(Path.GetFullPath(path1), reclassified.LoadedPath,
-                "Fixture precondition: the eviction record must carry the original solution path.");
+                // Fixture precondition AND the discriminator against the never-loaded case: this id
+                // DOES reclassify as evicted with a recoverable path, so the reload leg is entered.
+                var reclassified = ToolDispatch.TryReclassifyAsEvicted(manager, evictedId);
+                Assert.IsNotNull(reclassified,
+                    "Fixture precondition: the LRU-evicted id must reclassify as an eviction.");
+                Assert.AreEqual(Path.GetFullPath(path1), reclassified.LoadedPath,
+                    "Fixture precondition: the eviction record must carry the original solution path.");
 
-            // Make the recorded LoadedPath unloadable so the rehydration attempt fails.
-            TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path1)!);
+                // Make the recorded LoadedPath unloadable so the rehydration attempt fails.
+                TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path1)!);
 
-            await Assert.ThrowsExactlyAsync<WorkspaceNotFoundException>(
-                () => ValidationTools.RunTests(
-                    gate,
-                    runner,
-                    workspaceId: evictedId,
-                    projectName: null,
-                    filter: null,
-                    progress: null,
-                    workspaceManager: manager,
-                    ct: CancellationToken.None));
+                await Assert.ThrowsExactlyAsync<WorkspaceNotFoundException>(
+                    () => ValidationTools.RunTests(
+                        gate,
+                        runner,
+                        workspaceId: evictedId,
+                        projectName: null,
+                        filter: null,
+                        progress: null,
+                        workspaceManager: manager,
+                        ct: CancellationToken.None));
 
-            Assert.AreEqual(0, runner.ObservedWorkspaceIds.Count,
-                "A failed rehydration must not run the suite against some other session.");
+                Assert.AreEqual(0, runner.ObservedWorkspaceIds.Count,
+                    "A failed rehydration must not run the suite against some other session.");
 
-            // Unit-level pin on the swallow-and-report-null arm the orchestrator depends on.
-            var reloadResult = await ToolDispatch.TryReloadEvictedWorkspaceForRetryAsync(
-                manager,
-                evictedId,
-                new KeyNotFoundException("probe"),
-                CancellationToken.None);
-            Assert.IsNull(reloadResult,
-                "A reload that throws must be reported as an unrecoverable retry, not surfaced to the caller.");
-        }
-        finally
-        {
-            TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path1)!);
-            TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path2)!);
-        }
+                // Unit-level pin on the swallow-and-report-null arm the orchestrator depends on.
+                var reloadResult = await ToolDispatch.TryReloadEvictedWorkspaceForRetryAsync(
+                    manager,
+                    evictedId,
+                    new KeyNotFoundException("probe"),
+                    CancellationToken.None);
+                Assert.IsNull(reloadResult,
+                    "A reload that throws must be reported as an unrecoverable retry, not surfaced to the caller.");
+            });
     }
 
     /// <summary>
@@ -372,56 +361,55 @@ public sealed class WorkspaceEvictionAutoRetryTests
     [TestMethod]
     public async Task RunTests_MidCallEviction_UnrecoverableRetry_RethrowsOriginalEvictionToSharedFilter()
     {
-        using var manager = CreateManager(maxConcurrentWorkspaces: 1);
-        var gate = new WorkspaceExecutionGate(new ExecutionGateOptions(), manager);
+        await LocalWorkspaceManagerFixture.RunAsync(
+            () => CreateManager(maxConcurrentWorkspaces: 1),
+            () => TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath),
+            1,
+            async (manager, paths) =>
+            {
+                var path1 = paths[0];
 
-        // 3-arg ctor == cross-process recycle shape: LoadedPath is null, so there is nothing to
-        // rehydrate from and the retry bails before any load is attempted.
-        var midCallEviction = new WorkspaceEvictedException(
-            "ws-mid-call",
-            new DateTimeOffset(2026, 8, 6, 0, 0, 0, TimeSpan.Zero),
-            "Workspace 'ws-mid-call' was evicted while the call was in flight.");
-        var runner = new EvictingTestRunnerService(midCallEviction);
+                var gate = new WorkspaceExecutionGate(new ExecutionGateOptions(), manager);
 
-        var path1 = TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath);
+                // 3-arg ctor == cross-process recycle shape: LoadedPath is null, so there is nothing to
+                // rehydrate from and the retry bails before any load is attempted.
+                var midCallEviction = new WorkspaceEvictedException(
+                "ws-mid-call",
+                new DateTimeOffset(2026, 8, 6, 0, 0, 0, TimeSpan.Zero),
+                "Workspace 'ws-mid-call' was evicted while the call was in flight.");
+                var runner = new EvictingTestRunnerService(midCallEviction);
 
-        try
-        {
-            // Live workspace — the gate precheck must PASS so the eviction is observed mid-call.
-            var liveStatus = await manager.LoadAsync(path1, EvictPolicy.Strict, CancellationToken.None);
+                // Live workspace — the gate precheck must PASS so the eviction is observed mid-call.
+                var liveStatus = await manager.LoadAsync(path1, EvictPolicy.Strict, CancellationToken.None);
 
-            var thrown = await Assert.ThrowsExactlyAsync<WorkspaceEvictedException>(
-                () => ValidationTools.RunTests(
-                    gate,
-                    runner,
-                    workspaceId: liveStatus.WorkspaceId,
-                    projectName: null,
-                    filter: null,
-                    progress: null,
-                    workspaceManager: manager,
-                    ct: CancellationToken.None));
+                var thrown = await Assert.ThrowsExactlyAsync<WorkspaceEvictedException>(
+                    () => ValidationTools.RunTests(
+                        gate,
+                        runner,
+                        workspaceId: liveStatus.WorkspaceId,
+                        projectName: null,
+                        filter: null,
+                        progress: null,
+                        workspaceManager: manager,
+                        ct: CancellationToken.None));
 
-            Assert.AreSame(midCallEviction, thrown,
-                "The unrecoverable mid-call eviction must propagate unchanged to the shared error filter.");
-            Assert.AreEqual(1, runner.InvocationCount,
-                "The suite must be attempted exactly once — an unrecoverable eviction must not re-run it.");
+                Assert.AreSame(midCallEviction, thrown,
+                    "The unrecoverable mid-call eviction must propagate unchanged to the shared error filter.");
+                Assert.AreEqual(1, runner.InvocationCount,
+                    "The suite must be attempted exactly once — an unrecoverable eviction must not re-run it.");
 
-            var json = await ToolExecutionTestHarness.RunAsync("test_run", () => Task.FromException<string>(thrown));
-            using var doc = JsonDocument.Parse(json);
-            var root = doc.RootElement;
-            Assert.IsTrue(root.TryGetProperty("error", out var errorProp) && errorProp.GetBoolean(),
-                $"Expected an error envelope, not a test-run payload. Actual: {json}");
-            Assert.AreEqual("WorkspaceEvicted", root.GetProperty("category").GetString(),
-                $"The eviction category must survive the retry wiring. Actual: {json}");
-            Assert.AreEqual("test_run", root.GetProperty("tool").GetString());
-            Assert.IsTrue(root.TryGetProperty("schemaHint", out var schemaHint),
-                $"The shared filter must keep test_run's any-category schemaHint. Actual: {json}");
-            StringAssert.Contains(schemaHint.GetString() ?? string.Empty, "test_run(");
-        }
-        finally
-        {
-            TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path1)!);
-        }
+                var json = await ToolExecutionTestHarness.RunAsync("test_run", () => Task.FromException<string>(thrown));
+                using var doc = JsonDocument.Parse(json);
+                var root = doc.RootElement;
+                Assert.IsTrue(root.TryGetProperty("error", out var errorProp) && errorProp.GetBoolean(),
+                    $"Expected an error envelope, not a test-run payload. Actual: {json}");
+                Assert.AreEqual("WorkspaceEvicted", root.GetProperty("category").GetString(),
+                    $"The eviction category must survive the retry wiring. Actual: {json}");
+                Assert.AreEqual("test_run", root.GetProperty("tool").GetString());
+                Assert.IsTrue(root.TryGetProperty("schemaHint", out var schemaHint),
+                    $"The shared filter must keep test_run's any-category schemaHint. Actual: {json}");
+                StringAssert.Contains(schemaHint.GetString() ?? string.Empty, "test_run(");
+            });
     }
 
     /// <summary>
@@ -433,51 +421,49 @@ public sealed class WorkspaceEvictionAutoRetryTests
     [TestMethod]
     public async Task CompileCheck_EvictedWorkspace_RehydrationReloadFails_LogsWarning()
     {
-        using var manager = CreateManager(maxConcurrentWorkspaces: 1);
-        var compileCheckService = new CompileCheckService(manager, NullLogger<CompileCheckService>.Instance);
-        var gate = new WorkspaceExecutionGate(new ExecutionGateOptions(), manager);
-        var logger = new RecordingLogger();
-        var loggerFactory = new RecordingLoggerFactory(logger);
+        await LocalWorkspaceManagerFixture.RunAsync(
+            () => CreateManager(maxConcurrentWorkspaces: 1),
+            () => TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath),
+            2,
+            async (manager, paths) =>
+            {
+                var path1 = paths[0];
+                var path2 = paths[1];
 
-        var path1 = TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath);
-        var path2 = TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath);
+                var compileCheckService = new CompileCheckService(manager, NullLogger<CompileCheckService>.Instance);
+                var gate = new WorkspaceExecutionGate(new ExecutionGateOptions(), manager);
+                var logger = new RecordingLogger();
+                var loggerFactory = new RecordingLoggerFactory(logger);
 
-        try
-        {
-            var evictedId = await StageEvictionAsync(manager, path1, path2);
+                var evictedId = await StageEvictionAsync(manager, path1, path2);
 
-            // Make the recorded LoadedPath unloadable so the rehydration attempt fails.
-            TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path1)!);
+                // Make the recorded LoadedPath unloadable so the rehydration attempt fails.
+                TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path1)!);
 
-            var json = await ToolExecutionTestHarness.RunAsync(
-                "compile_check",
-                () => CompileCheckTools.CompileCheck(
-                    gate,
-                    compileCheckService,
-                    workspaceId: evictedId,
-                    workspaceManager: manager,
-                    loggerFactory: loggerFactory,
-                    ct: CancellationToken.None));
+                var json = await ToolExecutionTestHarness.RunAsync(
+                    "compile_check",
+                    () => CompileCheckTools.CompileCheck(
+                        gate,
+                        compileCheckService,
+                        workspaceId: evictedId,
+                        workspaceManager: manager,
+                        loggerFactory: loggerFactory,
+                        ct: CancellationToken.None));
 
-            using var doc = JsonDocument.Parse(json);
-            var root = doc.RootElement;
-            Assert.IsTrue(root.TryGetProperty("error", out var errorProp) && errorProp.GetBoolean(),
-                $"A failed reload must still surface the original WorkspaceNotFound envelope unchanged. Actual: {json}");
-            Assert.AreEqual("WorkspaceNotFound", root.GetProperty("category").GetString(),
-                $"Fallback behaviour must be preserved — only a log emission is added. Actual: {json}");
-            Assert.IsFalse(root.TryGetProperty("reason", out _),
-                $"The reason alias is gone. Actual: {json}");
+                using var doc = JsonDocument.Parse(json);
+                var root = doc.RootElement;
+                Assert.IsTrue(root.TryGetProperty("error", out var errorProp) && errorProp.GetBoolean(),
+                    $"A failed reload must still surface the original WorkspaceNotFound envelope unchanged. Actual: {json}");
+                Assert.AreEqual("WorkspaceNotFound", root.GetProperty("category").GetString(),
+                    $"Fallback behaviour must be preserved — only a log emission is added. Actual: {json}");
+                Assert.IsFalse(root.TryGetProperty("reason", out _),
+                    $"The reason alias is gone. Actual: {json}");
 
-            Assert.AreEqual(1,
-                logger.Entries.Count(e =>
-                    e.Level >= LogLevel.Warning && e.Message.Contains(evictedId, StringComparison.Ordinal)),
-                $"Expected exactly one Warning-or-higher log entry referencing the evicted workspace id. Entries: {string.Join(" | ", logger.Entries.Select(e => $"[{e.Level}] {e.Message}"))}");
-        }
-        finally
-        {
-            TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path1)!);
-            TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path2)!);
-        }
+                Assert.AreEqual(1,
+                    logger.Entries.Count(e =>
+                        e.Level >= LogLevel.Warning && e.Message.Contains(evictedId, StringComparison.Ordinal)),
+                    $"Expected exactly one Warning-or-higher log entry referencing the evicted workspace id. Entries: {string.Join(" | ", logger.Entries.Select(e => $"[{e.Level}] {e.Message}"))}");
+            });
     }
 
     /// <summary>
@@ -489,47 +475,45 @@ public sealed class WorkspaceEvictionAutoRetryTests
     [TestMethod]
     public async Task RunTests_EvictedWorkspace_RehydrationReloadFails_LogsWarning()
     {
-        using var manager = CreateManager(maxConcurrentWorkspaces: 1);
-        var gate = new WorkspaceExecutionGate(new ExecutionGateOptions(), manager);
-        var runner = new RecordingTestRunnerService();
-        var logger = new RecordingLogger();
-        var loggerFactory = new RecordingLoggerFactory(logger);
+        await LocalWorkspaceManagerFixture.RunAsync(
+            () => CreateManager(maxConcurrentWorkspaces: 1),
+            () => TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath),
+            2,
+            async (manager, paths) =>
+            {
+                var path1 = paths[0];
+                var path2 = paths[1];
 
-        var path1 = TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath);
-        var path2 = TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath);
+                var gate = new WorkspaceExecutionGate(new ExecutionGateOptions(), manager);
+                var runner = new RecordingTestRunnerService();
+                var logger = new RecordingLogger();
+                var loggerFactory = new RecordingLoggerFactory(logger);
 
-        try
-        {
-            var evictedId = await StageEvictionAsync(manager, path1, path2);
+                var evictedId = await StageEvictionAsync(manager, path1, path2);
 
-            // Make the recorded LoadedPath unloadable so the rehydration attempt fails.
-            TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path1)!);
+                // Make the recorded LoadedPath unloadable so the rehydration attempt fails.
+                TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path1)!);
 
-            await Assert.ThrowsExactlyAsync<WorkspaceNotFoundException>(
-                () => ValidationTools.RunTests(
-                    gate,
-                    runner,
-                    workspaceId: evictedId,
-                    projectName: null,
-                    filter: null,
-                    progress: null,
-                    workspaceManager: manager,
-                    loggerFactory: loggerFactory,
-                    ct: CancellationToken.None));
+                await Assert.ThrowsExactlyAsync<WorkspaceNotFoundException>(
+                    () => ValidationTools.RunTests(
+                        gate,
+                        runner,
+                        workspaceId: evictedId,
+                        projectName: null,
+                        filter: null,
+                        progress: null,
+                        workspaceManager: manager,
+                        loggerFactory: loggerFactory,
+                        ct: CancellationToken.None));
 
-            Assert.AreEqual(0, runner.ObservedWorkspaceIds.Count,
-                "A failed rehydration must not run the suite against some other session.");
+                Assert.AreEqual(0, runner.ObservedWorkspaceIds.Count,
+                    "A failed rehydration must not run the suite against some other session.");
 
-            Assert.AreEqual(1,
-                logger.Entries.Count(e =>
-                    e.Level >= LogLevel.Warning && e.Message.Contains(evictedId, StringComparison.Ordinal)),
-                $"Expected exactly one Warning-or-higher log entry referencing the evicted workspace id. Entries: {string.Join(" | ", logger.Entries.Select(e => $"[{e.Level}] {e.Message}"))}");
-        }
-        finally
-        {
-            TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path1)!);
-            TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path2)!);
-        }
+                Assert.AreEqual(1,
+                    logger.Entries.Count(e =>
+                        e.Level >= LogLevel.Warning && e.Message.Contains(evictedId, StringComparison.Ordinal)),
+                    $"Expected exactly one Warning-or-higher log entry referencing the evicted workspace id. Entries: {string.Join(" | ", logger.Entries.Select(e => $"[{e.Level}] {e.Message}"))}");
+            });
     }
 
     /// <summary>
