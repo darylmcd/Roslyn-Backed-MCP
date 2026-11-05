@@ -73,6 +73,13 @@ public sealed class InterfaceParameterSemanticsRouteTests : IsolatedWorkspaceTes
             public void MetadataDefaults([Optional, DateTimeConstant(123)] DateTime d) { }
         """;
 
+    private const string AttributeDefaultMembers = """
+            public void AttributeDefaults(
+                [Optional, DefaultParameterValue(5)] int a,
+                [Optional, DefaultParameterValue(OwnMax)] int b,
+                [Optional, DecimalConstant(0, 0, 0, 0, 7)] decimal c) { }
+        """;
+
     private const string CallerMembers = """
             public void Caller([CallerMemberName] string c = "", int m = Max) { }
             public int this[int a, [CallerMemberName] string c = "", int m = Max] => a;
@@ -142,6 +149,19 @@ public sealed class InterfaceParameterSemanticsRouteTests : IsolatedWorkspaceTes
             var metadata = Method(contract, "MetadataDefaults").Parameters[0];
             Assert.IsTrue(metadata.HasExplicitDefaultValue, text);
             Assert.IsTrue(metadata.GetAttributes().Any(a => a.AttributeClass?.Name == "DateTimeConstantAttribute"), text);
+        });
+
+    [TestMethod]
+    [DataRow("standalone")]
+    [DataRow("cross-project")]
+    [DataRow("dependency-inversion")]
+    [DataRow("extract-and-wire")]
+    public async Task Attribute_Encoded_Defaults_Keep_Their_Attribute_And_Value(string route) =>
+        await AssertRouteAsync(route, AttributeDefaultMembers, (contract, text) =>
+        {
+            var parameters = Method(contract, "AttributeDefaults").Parameters;
+            Assert.IsTrue(parameters.All(p => p.IsOptional), text);
+            CollectionAssert.AreEqual(new object[] { 5, 4, 7m }, parameters.Select(p => p.ExplicitDefaultValue).ToArray(), text);
         });
 
     [TestMethod]
