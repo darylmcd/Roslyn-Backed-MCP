@@ -615,9 +615,7 @@ public sealed class PreviewApplyBoundaryRevalidationTests
             var token = store.Store(
                 WorkspaceId, 1, "tampered composite", [new CompositeFileMutation(insideFile, "// OVERWRITTEN")]);
             var payloadPath = Directory.EnumerateFiles(persistDirectory, token + ".json", SearchOption.AllDirectories).Single();
-            var payload = JsonNode.Parse(File.ReadAllText(payloadPath))!;
-            payload["Mutations"]![0]!["FilePath"] = outsideFile;
-            File.WriteAllText(payloadPath, payload.ToJsonString());
+            RewritePersistedPayload(persistDirectory, token, payload => payload["Mutations"]![0]!["FilePath"] = outsideFile);
             var orchestrator = new CompositeApplyOrchestrator(new RecordingWorkspaceManager(), store);
 
             var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
@@ -634,6 +632,133 @@ public sealed class PreviewApplyBoundaryRevalidationTests
         {
             SecurityOptionsSnapshot.Value = previousSnapshot;
             TestFixtureFileSystem.DeleteDirectoryIfExists(testRoot);
+        }
+    }
+
+    /// <summary>
+    /// The peek-then-claim race: the pre-claim revalidation sees an in-root record, the shared
+    /// persist directory is then swapped to an out-of-root record, and the claim hands THAT record
+    /// to the orchestrator. The write set the orchestrator is about to apply is the one that must be
+    /// validated, so the swapped record is refused before any write.
+    /// </summary>
+    [TestMethod]
+    public async Task ApplyComposite_RecordSwappedOutOfBoundaryBetweenPeekAndClaim_RefusesBeforeWrite()
+    {
+        var testRoot = Path.Combine(TestTempRoot.Current, "rmcp-composite-swap-" + Guid.NewGuid().ToString("N"));
+        var sanctionedRoot = Path.Combine(testRoot, "sanctioned");
+        var outside = Path.Combine(testRoot, "outside");
+        var persistDirectory = Path.Combine(testRoot, "persist");
+        Directory.CreateDirectory(sanctionedRoot);
+        Directory.CreateDirectory(outside);
+        var insideFile = Path.Combine(sanctionedRoot, "Program.cs");
+        var outsideFile = Path.Combine(outside, "Program.cs");
+        File.WriteAllText(insideFile, "// inside original");
+        File.WriteAllText(outsideFile, OutsideOriginal);
+
+        var previousSnapshot = SecurityOptionsSnapshot.Value;
+        try
+        {
+            SecurityOptionsSnapshot.Value = new SecurityOptions { SanctionedRoots = [sanctionedRoot] };
+            var ttl = TimeSpan.FromMinutes(5);
+            var inner = new CompositePreviewStore(20, ttl, new PersistentCompositeStorage(persistDirectory, ttl));
+            var token = inner.Store(
+                WorkspaceId, 1, "swapped composite", [new CompositeFileMutation(insideFile, "// OVERWRITTEN")]);
+            var store = new SwapAfterPeekStore(inner, () => RewritePersistedPayload(
+                persistDirectory, token, payload => payload["Mutations"]![0]!["FilePath"] = outsideFile));
+            var orchestrator = new CompositeApplyOrchestrator(new RecordingWorkspaceManager(), store);
+
+            var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+                OrchestrationTools.ApplyComposite(new FakeGate(), orchestrator, store, token, CancellationToken.None));
+
+            StringAssert.Contains(ex.Message, "outside the configured sanctioned-root boundary");
+            Assert.IsTrue(store.Swapped, "Premise: the swap ran between the peek and the claim.");
+            Assert.AreEqual(OutsideOriginal, File.ReadAllText(outsideFile),
+                "The claimed record's write set must be validated, not the one peeked earlier.");
+            Assert.AreEqual("// inside original", File.ReadAllText(insideFile));
+        }
+        finally
+        {
+            SecurityOptionsSnapshot.Value = previousSnapshot;
+            TestFixtureFileSystem.DeleteDirectoryIfExists(testRoot);
+        }
+    }
+
+    /// <summary>
+    /// The write gate is taken on the workspace the peek reported. A record swapped to name another
+    /// workspace between the peek and the claim must not be applied (and reloaded) under a gate that
+    /// protects a different session.
+    /// </summary>
+    [TestMethod]
+    public async Task ApplyComposite_RecordSwappedToAnotherWorkspaceBetweenPeekAndClaim_RefusesBeforeWrite()
+    {
+        var testRoot = Path.Combine(TestTempRoot.Current, "rmcp-composite-wsswap-" + Guid.NewGuid().ToString("N"));
+        var sanctionedRoot = Path.Combine(testRoot, "sanctioned");
+        var persistDirectory = Path.Combine(testRoot, "persist");
+        Directory.CreateDirectory(sanctionedRoot);
+        var insideFile = Path.Combine(sanctionedRoot, "Program.cs");
+        File.WriteAllText(insideFile, "// inside original");
+
+        var previousSnapshot = SecurityOptionsSnapshot.Value;
+        try
+        {
+            SecurityOptionsSnapshot.Value = new SecurityOptions { SanctionedRoots = [sanctionedRoot] };
+            var ttl = TimeSpan.FromMinutes(5);
+            var inner = new CompositePreviewStore(20, ttl, new PersistentCompositeStorage(persistDirectory, ttl));
+            var token = inner.Store(
+                WorkspaceId, 1, "workspace swap", [new CompositeFileMutation(insideFile, "// OVERWRITTEN")]);
+            var store = new SwapAfterPeekStore(inner, () => RewritePersistedPayload(
+                persistDirectory, token, payload => payload["WorkspaceId"] = "ws-other"));
+            var orchestrator = new CompositeApplyOrchestrator(new RecordingWorkspaceManager(), store);
+
+            await Assert.ThrowsExactlyAsync<PreviewTokenStaleException>(() =>
+                OrchestrationTools.ApplyComposite(new FakeGate(), orchestrator, store, token, CancellationToken.None));
+
+            Assert.IsTrue(store.Swapped, "Premise: the swap ran between the peek and the claim.");
+            Assert.AreEqual("// inside original", File.ReadAllText(insideFile));
+        }
+        finally
+        {
+            SecurityOptionsSnapshot.Value = previousSnapshot;
+            TestFixtureFileSystem.DeleteDirectoryIfExists(testRoot);
+        }
+    }
+
+    private static void RewritePersistedPayload(string persistDirectory, string token, Action<JsonNode> edit)
+    {
+        var payloadPath = Directory.EnumerateFiles(persistDirectory, token + ".json", SearchOption.AllDirectories).Single();
+        var payload = JsonNode.Parse(File.ReadAllText(payloadPath))!;
+        edit(payload);
+        File.WriteAllText(payloadPath, payload.ToJsonString());
+    }
+
+    /// <summary>
+    /// Delegating store that runs <c>swap</c> right after the write-set peek returns, modelling a
+    /// party with write access to the shared persist directory winning the peek-to-claim window.
+    /// </summary>
+    private sealed class SwapAfterPeekStore(CompositePreviewStore inner, Action swap) : ICompositePreviewStore
+    {
+        public bool Swapped { get; private set; }
+
+        public string Store(string workspaceId, int workspaceVersion, string description, IReadOnlyList<CompositeFileMutation> mutations) =>
+            inner.Store(workspaceId, workspaceVersion, description, mutations);
+
+        public (string WorkspaceId, int WorkspaceVersion, string Description, IReadOnlyList<CompositeFileMutation> Mutations)? Retrieve(string token) =>
+            inner.Retrieve(token);
+
+        public void Invalidate(string token) => inner.Invalidate(token);
+
+        public string? PeekWorkspaceId(string token) => inner.PeekWorkspaceId(token);
+
+        public IReadOnlyList<string>? PeekChangedPaths(string token)
+        {
+            var peeked = inner.PeekChangedPaths(token);
+            if (!Swapped)
+            {
+                swap();
+                Swapped = true;
+            }
+
+            return peeked;
         }
     }
 
