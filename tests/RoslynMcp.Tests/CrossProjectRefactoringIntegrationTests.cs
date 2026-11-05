@@ -6,7 +6,7 @@ using RoslynMcp.Host.Stdio.Tools;
 namespace RoslynMcp.Tests;
 
 [TestClass]
-public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceTestBase
+public sealed class CrossProjectRefactoringIntegrationTests : InterfaceRouteTestBase
 {
     [ClassInitialize]
     public static void ClassInit(TestContext _)
@@ -862,49 +862,12 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
         }
         """;
 
-    private static async Task<string> PrepareRefFixtureAsync(IsolatedWorkspaceScope workspace)
-    {
-        AddProjectToCopiedSolution(workspace.RootPath, "Contracts", "net10.0");
-        AddProjectToCopiedSolution(workspace.RootPath, "Consumer", "net10.0");
-        var solution = XDocument.Load(workspace.SolutionPath);
-        var kept = new[] { "SampleLib/SampleLib.csproj", "Contracts/Contracts.csproj", "Consumer/Consumer.csproj" };
-        foreach (var project in solution.Descendants("Project").Where(p => !kept.Contains(p.Attribute("Path")!.Value.Replace('\\', '/'))).ToArray())
-            project.Remove();
-        solution.Save(workspace.SolutionPath);
-
-        var libPath = workspace.GetPath("SampleLib", "SampleLib.csproj");
-        var lib = XDocument.Load(libPath);
-        lib.Root!.Add(new XElement("PropertyGroup", new XElement("EnableDefaultCompileItems", "false")),
-            new XElement("ItemGroup", new XElement("Compile", new XAttribute("Include", "RefService.cs"))));
-        lib.Save(libPath);
-        var consumerPath = workspace.GetPath("Consumer", "Consumer.csproj");
-        var consumer = XDocument.Load(consumerPath);
-        consumer.Root!.Add(new XElement("ItemGroup",
-            new XElement("ProjectReference", new XAttribute("Include", "../SampleLib/SampleLib.csproj")),
-            new XElement("ProjectReference", new XAttribute("Include", "../Contracts/Contracts.csproj"))));
-        consumer.Save(consumerPath);
-
-        var sourcePath = workspace.GetPath("SampleLib", "RefService.cs");
-        await File.WriteAllTextAsync(sourcePath, RefServiceSource);
-        await File.WriteAllTextAsync(workspace.GetPath("Consumer", "RefConsumer.cs"), RefConsumerSource);
-        await workspace.LoadAsync();
-        await TestInfrastructure.InterfaceExtractionTestContext.AssertCompilesAsync(WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
-        return sourcePath;
-    }
+    private static Task<string> PrepareRefFixtureAsync(IsolatedWorkspaceScope workspace) =>
+        PrepareInterfaceRouteFixtureAsync(workspace, "RefService.cs", RefServiceSource, "RefConsumer.cs", RefConsumerSource);
 
     private static Task<RoslynMcp.Core.Models.RefactoringPreviewDto> PreviewRefRouteAsync(
-        string route, string workspaceId, string sourcePath, RoslynMcp.Roslyn.Services.CompositePreviewStore stores) => route switch
-        {
-            "standalone" => InterfaceExtractionService.PreviewExtractInterfaceAsync(
-                workspaceId, sourcePath, "RefService", "IRefService", null, false, CancellationToken.None),
-            "cross-project" => CrossProjectRefactoringService.PreviewExtractInterfaceAsync(
-                workspaceId, sourcePath, "RefService", "IRefService", "Contracts", CancellationToken.None),
-            "dependency-inversion" => CrossProjectRefactoringService.PreviewDependencyInversionAsync(
-                workspaceId, sourcePath, "RefService", "IRefService", "Contracts", CancellationToken.None),
-            "extract-and-wire" => new RoslynMcp.Roslyn.Services.ExtractAndWireOrchestrator(WorkspaceManager, stores, PreviewStore, CrossProjectRefactoringService, DiRegistrationService)
-                .PreviewExtractAndWireInterfaceAsync(workspaceId, sourcePath, "RefService", "IRefService", "Contracts", true, CancellationToken.None),
-            _ => throw new ArgumentOutOfRangeException(nameof(route)),
-        };
+        string route, string workspaceId, string sourcePath, RoslynMcp.Roslyn.Services.CompositePreviewStore stores) =>
+        PreviewInterfaceRouteAsync(route, workspaceId, sourcePath, "RefService", stores);
 
     private static async Task AssertRefContractAsync(Microsoft.CodeAnalysis.Solution solution, string receiverProject)
     {
