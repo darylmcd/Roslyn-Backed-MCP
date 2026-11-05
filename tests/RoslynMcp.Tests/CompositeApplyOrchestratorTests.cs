@@ -494,7 +494,7 @@ public sealed class CompositeApplyOrchestratorTests
         var workspace = new RecordingWorkspaceManager(reloadFailure);
         var orchestrator = new CompositeApplyOrchestrator(workspace, store);
 
-        var result = await orchestrator.ApplyCompositeAsync(token, CancellationToken.None);
+        var result = await orchestrator.ApplyCompositeAsync(token, CompositeAdmission.AdmitAll, CancellationToken.None);
 
         switch (scenario)
         {
@@ -570,7 +570,7 @@ public sealed class CompositeApplyOrchestratorTests
             exceptionReporter: reporter);
 
         // Act
-        var result = await orchestrator.ApplyCompositeAsync(token, CancellationToken.None);
+        var result = await orchestrator.ApplyCompositeAsync(token, CompositeAdmission.AdmitAll, CancellationToken.None);
 
         // Assert: failed, but the first write landed and is marked as a partial apply.
         Assert.IsFalse(result.Success, "A mid-loop failure must report success:false.");
@@ -620,7 +620,7 @@ public sealed class CompositeApplyOrchestratorTests
             store,
             exceptionReporter: new ServerObservabilityReporter(sink));
 
-        var result = await orchestrator.ApplyCompositeAsync(token, CancellationToken.None);
+        var result = await orchestrator.ApplyCompositeAsync(token, CompositeAdmission.AdmitAll, CancellationToken.None);
 
         Assert.IsFalse(result.Success);
         Assert.AreEqual(0, result.AppliedFiles.Count);
@@ -670,7 +670,7 @@ public sealed class CompositeApplyOrchestratorTests
             [new CompositeFileMutation(path, updatedContent, DeleteFile: false)]);
         var orchestrator = new CompositeApplyOrchestrator(new RecordingWorkspaceManager(), store);
 
-        var result = await orchestrator.ApplyCompositeAsync(token, CancellationToken.None);
+        var result = await orchestrator.ApplyCompositeAsync(token, CompositeAdmission.AdmitAll, CancellationToken.None);
         Assert.IsTrue(result.Success, result.Error);
 
         var afterBytes = await File.ReadAllBytesAsync(path, CancellationToken.None);
@@ -720,11 +720,49 @@ public sealed class CompositeApplyOrchestratorTests
         var orchestrator = new CompositeApplyOrchestrator(workspace, store, undoService: undoService);
 
         await Assert.ThrowsExactlyAsync<WorkspaceNotFoundException>(() =>
-            orchestrator.ApplyCompositeAsync(token, CancellationToken.None));
+            orchestrator.ApplyCompositeAsync(token, CompositeAdmission.AdmitAll, CancellationToken.None));
 
         Assert.AreEqual("original", await File.ReadAllTextAsync(target),
             "A refused apply must not have written any file.");
         Assert.IsFalse(workspace.ReloadCalled, "The refusal must precede the post-write reload.");
+    }
+
+    /// <summary>
+    /// The caller's write-set admission sees the CLAIMED entry's workspace id and every mutation
+    /// path, and a refusal propagates before undo capture or any write.
+    /// </summary>
+    [TestMethod]
+    public async Task ApplyComposite_AdmissionRefusal_PropagatesBeforeAnyWrite()
+    {
+        var target = Path.Combine(_tempDir, "target.cs");
+        var second = Path.Combine(_tempDir, "second.cs");
+        await File.WriteAllTextAsync(target, "original");
+        var store = new CompositePreviewStore();
+        var token = store.Store(
+            "ws-1",
+            1,
+            "admission refusal",
+            [new CompositeFileMutation(target, "replaced"), new CompositeFileMutation(second, "created")]);
+        var workspace = new RecordingWorkspaceManager();
+        var orchestrator = new CompositeApplyOrchestrator(workspace, store);
+        string? admittedWorkspaceId = null;
+        IReadOnlyList<string>? admittedWriteSet = null;
+
+        await Assert.ThrowsExactlyAsync<ArgumentException>(() => orchestrator.ApplyCompositeAsync(
+            token,
+            (workspaceId, writeSet, _) =>
+            {
+                admittedWorkspaceId = workspaceId;
+                admittedWriteSet = writeSet;
+                throw new ArgumentException("refused by the host boundary");
+            },
+            CancellationToken.None));
+
+        Assert.AreEqual("ws-1", admittedWorkspaceId);
+        CollectionAssert.AreEqual(new[] { target, second }, admittedWriteSet!.ToArray());
+        Assert.AreEqual("original", await File.ReadAllTextAsync(target));
+        Assert.IsFalse(File.Exists(second));
+        Assert.IsFalse(workspace.ReloadCalled);
     }
 
     /// <summary>
@@ -746,7 +784,7 @@ public sealed class CompositeApplyOrchestratorTests
             [new CompositeFileMutation(path, "class New { }\n", DeleteFile: false)]);
         var orchestrator = new CompositeApplyOrchestrator(new RecordingWorkspaceManager(), store);
 
-        var result = await orchestrator.ApplyCompositeAsync(token, CancellationToken.None);
+        var result = await orchestrator.ApplyCompositeAsync(token, CompositeAdmission.AdmitAll, CancellationToken.None);
         Assert.IsTrue(result.Success, result.Error);
 
         var afterBytes = await File.ReadAllBytesAsync(path, CancellationToken.None);
@@ -811,7 +849,7 @@ public sealed class CompositeApplyOrchestratorTests
             changeTracker,
             undoService: undoService);
 
-        var result = await orchestrator.ApplyCompositeAsync(token, CancellationToken.None);
+        var result = await orchestrator.ApplyCompositeAsync(token, CompositeAdmission.AdmitAll, CancellationToken.None);
         Assert.IsTrue(result.Success, result.Error);
         Assert.IsTrue(File.Exists(createdPath));
         Assert.IsFalse(File.Exists(deletedPath));
@@ -864,7 +902,7 @@ public sealed class CompositeApplyOrchestratorTests
         var orchestrator = new CompositeApplyOrchestrator(
             workspace, store, changeTracker, undoService: undoService);
 
-        var result = await orchestrator.ApplyCompositeAsync(token, CancellationToken.None);
+        var result = await orchestrator.ApplyCompositeAsync(token, CompositeAdmission.AdmitAll, CancellationToken.None);
 
         Assert.IsTrue(result.Success, result.Error);
         var expectedFiles = OperatingSystem.IsWindows() ? 1 : 2;
@@ -898,7 +936,7 @@ public sealed class CompositeApplyOrchestratorTests
             ]);
         var orchestrator = new CompositeApplyOrchestrator(new RecordingWorkspaceManager(), store);
 
-        var result = await orchestrator.ApplyCompositeAsync(token, CancellationToken.None);
+        var result = await orchestrator.ApplyCompositeAsync(token, CompositeAdmission.AdmitAll, CancellationToken.None);
 
         Assert.IsFalse(result.Success);
         Assert.HasCount(OperatingSystem.IsWindows() ? 1 : 2, result.AppliedFiles);

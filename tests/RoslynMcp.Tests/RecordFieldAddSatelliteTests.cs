@@ -1,5 +1,6 @@
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -55,7 +56,7 @@ public sealed class RecordFieldAddSatelliteTests : IsolatedWorkspaceTestBase
             workspace.WorkspaceId, "SampleLib.Satellites.Metrics", "C", "int", CancellationToken.None);
         Assert.IsTrue(preview.InferredPattern.Contains("CloneMethodBody"));
         var applied = await new CompositeApplyOrchestrator(WorkspaceManager, store)
-            .ApplyCompositeAsync(preview.PreviewToken!, CancellationToken.None);
+            .ApplyCompositeAsync(preview.PreviewToken!, CompositeAdmission.AdmitAll, CancellationToken.None);
         Assert.IsTrue(applied.Success, applied.Error);
         await AssertSampleLibCompilesAsync(workspace);
         StringAssert.Contains(await File.ReadAllTextAsync(fixturePath), "C = this.C");
@@ -112,7 +113,7 @@ public sealed class RecordFieldAddSatelliteTests : IsolatedWorkspaceTestBase
             "ProposedEdits must reproduce the exact composite mutation using original offsets.");
 
         var applied = await new CompositeApplyOrchestrator(WorkspaceManager, store)
-            .ApplyCompositeAsync(preview.PreviewToken!, CancellationToken.None);
+            .ApplyCompositeAsync(preview.PreviewToken!, CompositeAdmission.AdmitAll, CancellationToken.None);
         Assert.IsTrue(applied.Success, applied.Error);
         var content = await File.ReadAllTextAsync(fixturePath);
         StringAssert.Contains(content, "C = this.C");
@@ -139,7 +140,7 @@ public sealed class RecordFieldAddSatelliteTests : IsolatedWorkspaceTestBase
             workspace.WorkspaceId, "SampleLib.Satellites.CopyMetrics", "C", "int", CancellationToken.None);
         Assert.IsTrue(preview.InferredPattern.Contains("CloneMethodBody"));
         var applied = await new CompositeApplyOrchestrator(WorkspaceManager, store)
-            .ApplyCompositeAsync(preview.PreviewToken!, CancellationToken.None);
+            .ApplyCompositeAsync(preview.PreviewToken!, CompositeAdmission.AdmitAll, CancellationToken.None);
         Assert.IsTrue(applied.Success, applied.Error);
         StringAssert.Contains(await File.ReadAllTextAsync(fixturePath), "CopyC()");
         await AssertSampleLibCompilesAsync(workspace);
@@ -159,7 +160,7 @@ public sealed class RecordFieldAddSatelliteTests : IsolatedWorkspaceTestBase
             workspace.WorkspaceId, "SampleLib.Satellites.CloneAndCopyMetrics", "C", "int", CancellationToken.None);
         Assert.AreEqual(2, preview.ProposedEdits.Count(edit => edit.SiteKind == "CloneMethodBody"));
         var applied = await new CompositeApplyOrchestrator(WorkspaceManager, store)
-            .ApplyCompositeAsync(preview.PreviewToken!, CancellationToken.None);
+            .ApplyCompositeAsync(preview.PreviewToken!, CompositeAdmission.AdmitAll, CancellationToken.None);
         Assert.IsTrue(applied.Success, applied.Error);
         var content = await File.ReadAllTextAsync(fixturePath);
         StringAssert.Contains(content, "C = this.C");
@@ -198,7 +199,7 @@ public sealed class RecordFieldAddSatelliteTests : IsolatedWorkspaceTestBase
         Assert.AreEqual(2, preview.ProposedEdits.Count(edit => edit.SiteKind == "ResetMethodBody"));
         Assert.AreEqual(2, preview.ProposedEdits.Count(edit => edit.SiteKind == "ToJson.Case"));
         var applied = await new CompositeApplyOrchestrator(WorkspaceManager, store)
-            .ApplyCompositeAsync(preview.PreviewToken!, CancellationToken.None);
+            .ApplyCompositeAsync(preview.PreviewToken!, CompositeAdmission.AdmitAll, CancellationToken.None);
         Assert.IsTrue(applied.Success, applied.Error);
         await AssertSampleLibCompilesAsync(workspace);
     }
@@ -216,7 +217,7 @@ public sealed class RecordFieldAddSatelliteTests : IsolatedWorkspaceTestBase
         var preview = await CreateSymbolRefactorService(store).PreviewRecordFieldAddWithSatellitesAsync(
             workspace.WorkspaceId, "SampleLib.Satellites.ReceiverMetrics", "C", "int", CancellationToken.None);
         var applied = await new CompositeApplyOrchestrator(WorkspaceManager, store)
-            .ApplyCompositeAsync(preview.PreviewToken!, CancellationToken.None);
+            .ApplyCompositeAsync(preview.PreviewToken!, CompositeAdmission.AdmitAll, CancellationToken.None);
         Assert.IsTrue(applied.Success, applied.Error);
         StringAssert.Contains(await File.ReadAllTextAsync(fixturePath), "(source.A, source.B, source.C)");
         await AssertSampleLibCompilesAsync(workspace);
@@ -436,7 +437,7 @@ public sealed class RecordFieldAddSatelliteTests : IsolatedWorkspaceTestBase
             "All edits should land in the single declaring file for this fixture.");
 
         var applied = await new CompositeApplyOrchestrator(WorkspaceManager, compositeStore)
-            .ApplyCompositeAsync(result.PreviewToken!, CancellationToken.None);
+            .ApplyCompositeAsync(result.PreviewToken!, CompositeAdmission.AdmitAll, CancellationToken.None);
         Assert.IsTrue(applied.Success, applied.Error);
         StringAssert.Contains(await File.ReadAllTextAsync(fixturePath), "sb.Append(\"\\\"C\\\":\").Append(C)");
         await AssertSampleLibCompilesAsync(workspace);

@@ -106,6 +106,10 @@ public static class OrchestrationTools
             compositePreviewStore.PeekWorkspaceId,
             compositePreviewStore.PeekChangedPaths,
             previewToken,
-            c => compositeApplyOrchestrator.ApplyCompositeAsync(previewToken, c),
+            (gatedWorkspaceId, c) => compositeApplyOrchestrator.ApplyCompositeAsync(
+                previewToken,
+                (claimedWorkspaceId, writeSet, admitCt) => ToolDispatch.AdmitClaimedWriteSetAsync(
+                    previewToken, gatedWorkspaceId, claimedWorkspaceId, writeSet, admitCt),
+                c),
             ct);
 }

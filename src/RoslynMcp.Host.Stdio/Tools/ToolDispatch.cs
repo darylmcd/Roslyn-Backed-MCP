@@ -406,11 +406,10 @@ internal static class ToolDispatch
     /// </param>
     /// <param name="previewToken">The opaque token returned by the paired <c>*_preview</c> tool.</param>
     /// <param name="serviceCall">
-    /// A closure that invokes the service method with the <paramref name="previewToken"/>
-    /// and the gate-provided <see cref="CancellationToken"/>. Kept as
-    /// <c>Func&lt;CancellationToken, Task&lt;TDto&gt;&gt;</c> for the same reason as the
-    /// primary <see cref="ApplyByTokenAsync{TDto}(IWorkspaceExecutionGate, IPreviewStore, string, Func{CancellationToken, Task{TDto}}, CancellationToken, PreviewKind)"/>
-    /// overload: closure capture matches the existing hand-written shim bodies byte-for-byte.
+    /// A closure that invokes the service method with the <paramref name="previewToken"/>. It
+    /// receives the workspace id the write gate was taken on (so a composite redemption can bind
+    /// the claimed record to it, see <see cref="AdmitClaimedWriteSetAsync"/>) and the gate-provided
+    /// <see cref="CancellationToken"/>.
     /// </param>
     /// <param name="ct">The caller's cancellation token.</param>
     /// <returns>The DTO serialized with <see cref="JsonDefaults.Indented"/>.</returns>
@@ -426,16 +425,48 @@ internal static class ToolDispatch
         Func<string, string?> peekWorkspaceId,
         Func<string, IReadOnlyList<string>?> peekChangedPaths,
         string previewToken,
-        Func<CancellationToken, Task<TDto>> serviceCall,
+        Func<string, CancellationToken, Task<TDto>> serviceCall,
         CancellationToken ct)
     {
         var wsId = RequirePreviewWorkspaceId(peekWorkspaceId, previewToken);
         return gate.RunWriteAsync(wsId, async c =>
         {
             await RevalidateRequiredWriteSetAsync(peekChangedPaths, previewToken, wsId, c).ConfigureAwait(false);
-            var result = await serviceCall(c).ConfigureAwait(false);
+            var result = await serviceCall(wsId, c).ConfigureAwait(false);
             return JsonSerializer.Serialize(result, JsonDefaults.Indented);
         }, ct);
+    }
+
+    /// <summary>
+    /// composite-redemption-admission-boundary: the <see cref="CompositeWriteSetAdmission"/> a
+    /// composite redemption passes to the orchestrator. It runs on the CLAIMED record, after the
+    /// pre-claim peek revalidation, because a persisted record can be swapped between the two:
+    /// (1) the claimed record must be bound to the workspace the write gate was taken on, and
+    /// (2) every claimed path must lie inside the sanctioned-root boundary (skipped only on an
+    /// unbooted host, like its siblings).
+    /// </summary>
+    /// <exception cref="PreviewTokenStaleException">
+    /// The claimed record names a different workspace than the one gated: it is not the record that
+    /// was peeked, and it is discarded with the claim.
+    /// </exception>
+    internal static Task AdmitClaimedWriteSetAsync(
+        string previewToken,
+        string gatedWorkspaceId,
+        string claimedWorkspaceId,
+        IReadOnlyList<string> claimedWriteSet,
+        CancellationToken ct)
+    {
+        if (!string.Equals(gatedWorkspaceId, claimedWorkspaceId, StringComparison.Ordinal))
+        {
+            throw new PreviewTokenStaleException(
+                previewToken,
+                $"Preview token '{previewToken}' was discarded: its stored record is bound to a different workspace than the one this apply was gated on. Re-issue the paired *_preview call.");
+        }
+
+        var securityOptions = SecurityOptionsSnapshot.Value;
+        return securityOptions is null
+            ? Task.CompletedTask
+            : ValidateWriteSetAsync(claimedWriteSet, gatedWorkspaceId, securityOptions, ct);
     }
 
     private static string RequirePreviewWorkspaceId(

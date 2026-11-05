@@ -3,6 +3,7 @@ using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -215,7 +216,7 @@ public sealed class SymbolRefactorPreviewTests : IsolatedWorkspaceTestBase
 
         // Redeem through CompositeApplyOrchestrator (the production path for apply_composite).
         var orchestrator = new CompositeApplyOrchestrator(WorkspaceManager, compositeStore, ChangeTracker);
-        var applyResult = await orchestrator.ApplyCompositeAsync(preview.PreviewToken, CancellationToken.None);
+        var applyResult = await orchestrator.ApplyCompositeAsync(preview.PreviewToken, CompositeAdmission.AdmitAll, CancellationToken.None);
 
         Assert.IsTrue(applyResult.Success, $"Composite apply must succeed; error={applyResult.Error}");
 
@@ -283,7 +284,7 @@ public sealed class SymbolRefactorPreviewTests : IsolatedWorkspaceTestBase
             CancellationToken.None);
 
         var orchestrator = new CompositeApplyOrchestrator(WorkspaceManager, compositeStore, ChangeTracker);
-        var applyResult = await orchestrator.ApplyCompositeAsync(preview.PreviewToken, CancellationToken.None);
+        var applyResult = await orchestrator.ApplyCompositeAsync(preview.PreviewToken, CompositeAdmission.AdmitAll, CancellationToken.None);
 
         Assert.IsTrue(applyResult.Success,
             $"Single-rename composite apply must succeed; error={applyResult.Error}");
@@ -317,7 +318,7 @@ public sealed class SymbolRefactorPreviewTests : IsolatedWorkspaceTestBase
             mutations: Array.Empty<CompositeFileMutation>());
 
         var orchestrator = new CompositeApplyOrchestrator(WorkspaceManager, compositeStore, ChangeTracker);
-        var applyResult = await orchestrator.ApplyCompositeAsync(emptyToken, CancellationToken.None);
+        var applyResult = await orchestrator.ApplyCompositeAsync(emptyToken, CompositeAdmission.AdmitAll, CancellationToken.None);
 
         Assert.IsFalse(applyResult.Success,
             "Empty-mutations composite apply must NOT silently return success=true; the pre-fix behavior is the regression.");

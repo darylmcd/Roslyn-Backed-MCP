@@ -243,6 +243,6 @@ public static class ProjectMutationTools
             projectMutationPreviewStore.PeekWorkspaceId,
             projectMutationPreviewStore.PeekChangedPaths,
             previewToken,
-            c => projectMutationService.ApplyProjectMutationAsync(previewToken, c),
+            (_, c) => projectMutationService.ApplyProjectMutationAsync(previewToken, c),
             ct);
 }

@@ -33,7 +33,10 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
         _undoService = undoService;
     }
 
-    public async Task<ApplyResultDto> ApplyCompositeAsync(string previewToken, CancellationToken ct)
+    public async Task<ApplyResultDto> ApplyCompositeAsync(
+        string previewToken,
+        CompositeWriteSetAdmission admitWriteSet,
+        CancellationToken ct)
     {
         var entry = _compositePreviewStore.Retrieve(previewToken);
         if (entry is null)
@@ -59,6 +62,11 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
                 [],
                 "Preview token yielded no file mutations — the composite preview produced no file-level changes. Re-issue the preview with a different operation set.");
         }
+
+        // The caller's admission runs on the CLAIMED entry — the mutations about to be written — not on
+        // an earlier peek: a persisted record can be swapped between the two. A refusal throws here,
+        // before undo capture or any write, and propagates (it is not an I/O failure).
+        await admitWriteSet(workspaceId, mutations.Select(m => m.FilePath).ToArray(), ct).ConfigureAwait(false);
 
         var appliedFiles = new List<string>();
         try

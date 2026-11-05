@@ -7,6 +7,7 @@ using RoslynMcp.Host.Stdio.Security;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Helpers;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -569,7 +570,7 @@ public class ClientRootPathValidatorTests
                 new CompositeFileMutation(linkedExternalSource, "public class ChangedExternal { }")
             ]);
             var composite = new CompositeApplyOrchestrator(manager, previewStore);
-            var compositeResult = await composite.ApplyCompositeAsync(token, CancellationToken.None);
+            var compositeResult = await composite.ApplyCompositeAsync(token, CompositeAdmission.AdmitAll, CancellationToken.None);
             Assert.IsFalse(compositeResult.Success, "Composite apply must reject every aliased target before its first write.");
             Assert.AreEqual("public class Program { }", File.ReadAllText(programPath));
             Assert.AreEqual(externalSource, File.ReadAllText(externalSourcePath));

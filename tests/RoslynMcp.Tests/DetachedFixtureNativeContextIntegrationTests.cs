@@ -2,6 +2,7 @@ using Microsoft.CodeAnalysis;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 using static RoslynMcp.Tests.TestInfrastructure.InterfaceExtractionTestContext;
 
@@ -63,7 +64,7 @@ public sealed class DetachedFixtureNativeContextIntegrationTests : IsolatedWorks
 
         var result = route == "extract-and-wire"
             ? await new CompositeApplyOrchestrator(WorkspaceManager, compositeStore, undoService: UndoService)
-                .ApplyCompositeAsync(preview.PreviewToken, CancellationToken.None)
+                .ApplyCompositeAsync(preview.PreviewToken, CompositeAdmission.AdmitAll, CancellationToken.None)
             : await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "fixture_context_test", CancellationToken.None);
         Assert.IsTrue(result.Success, result.Error);
         await workspace.ReloadAsync();
