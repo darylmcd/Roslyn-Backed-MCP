@@ -241,6 +241,7 @@
 | `test-local-manager-sync-dispose-shutdown-qualification` | Medium | test-local-manager-dispose-before-copy-delete | **Qualify pending local-manager shutdown before fixture deletion** — reproduce or retire 17 synchronous-disposal candidate paths, then fix proven races. [type: test-infrastructure] [source: 2026-11-05 remediation audit] | L | items/test-local-manager-sync-dispose-shutdown-qualification.md |
 | `relocation-selected-enum-delegate-reported-not-found` | Medium | relocation-source-delete-preserves-other-members | **Name the unsupported kind when change_type_namespace targets an enum or delegate** — FindTypeInNamespaceAsync (:213) skips non-TypeDeclarationSyntax and reports "not found". [type: bug] [source: relocation plan 20261105] | S | items/relocation-selected-enum-delegate-reported-not-found.md |
 | `composite-token-cross-host-closeout` | Medium | composite-preview-source-fingerprint-refusal, composite-redemption-admission-boundary | **Close the portable composite token contract** — MCP-wire two-host evidence, docs and release-policy correction; consumers of the parent row repointed here. [type: tech-debt] [source: composite decomposition 20261105] | S | items/composite-token-cross-host-closeout.md |
+| `workspace-path-guard-extraction` | Medium | — | **Extract a static WorkspacePathGuard** — EnsurePhysicalPath and EnsureChangedDocumentPathsArePhysical live on WorkspaceManager and the load finalizer calls back into them; move the family and repoint its callers. [type: refactor] [source: PR 1993 review] | M | items/workspace-path-guard-extraction.md |
 
 ## Low
 
@@ -465,6 +466,8 @@
 | `process-pipe-worker-probe-private-reflection` | Low | — | **Replace private runner reflection in ProcessPipeWorkerProbe** — expose an explicit probe seam and retain scenario coverage. [type: test-infrastructure] [source: PR 1971 signature regression] | S | items/process-pipe-worker-probe-private-reflection.md |
 | `format-gate-pipe-filename-diagnostics` | Low | — | **Report formatter findings for Linux filenames containing a pipe** — preserve the full path and diagnostic id in changed-file gate output. [type: bug] [source: 2026-11-05 cold review] | S | items/format-gate-pipe-filename-diagnostics.md |
 | `file-not-found-workspace-document-guidance` | Low | — | **Distinguish workspace-document misses from disk misses** — preserve safe FileNotFound guidance and wire category. [type: bug] [source: 2026-11-05 remediation] | S | items/file-not-found-workspace-document-guidance.md |
+| `workspace-manager-project-index-extraction` | Low | — | **Extract ProjectIndexEntry, GetProject and fork retention/retirement** — WorkspaceManager is still 1835 lines after the finalizer extraction. [type: refactor] [source: PR 1993 review] | S | items/workspace-manager-project-index-extraction.md |
+| `workspace-load-projection-cache-order-test` | Low | — | **Add a cache-store double test for load finalization order** — no test fails if BuildLoadProjection runs after the cache write or a failed finalization still writes a cache entry. [type: test] [source: PR 1993 cold review] | S | items/workspace-load-projection-cache-order-test.md |
 
 ## Defer
 
