@@ -26,3 +26,5 @@
 ## Notes
 
 Cold plan review 2026-11-05 amendments: refuse FormatVersion > 2 before claim; TryPeek must open with FileShare.ReadWrite|Delete and treat IO errors as claimed (File.ReadAllText at PersistentCompositeStorage.cs:203 lacks FileShare.Delete and would break the claimer File.Move at :173) plus a race test; use an admit-callback inside TryClaim instead of peek, claim, assert; Entry.WorkspaceIdentity nullable (v1 records); disk PeekChangedPaths fails closed; ambiguity test needs LoadAsync with global properties; ADR 0032 README row above 0031; changelog fragment is exactly one - **Fixed:** line. Bad code to file: false retry-with-the-same-token message in disk mode, TryRead consuming shim.
+
+composite-redemption-admission-boundary shipped in PR 1997 (2026-11-05): peek+claimed-entry sanctioned-root revalidation, fail-closed disk PeekChangedPaths, CompositeWriteSetAdmission on the claimed record. This piece is now unblocked: use the existing admission seam; refuse FormatVersion > 2 before claim.
