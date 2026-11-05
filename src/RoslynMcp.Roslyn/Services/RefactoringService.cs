@@ -715,20 +715,21 @@ public sealed class RefactoringService : IRefactoringService
                 .ConfigureAwait(false);
         }
 
-        // code-fix-preview-vs-fix-all-preview-shape-inconsistency — mirror FixAllService.PreviewFixAllAsync's
-        // structured empty envelope when no provider is registered. Previously this branch threw
-        // InvalidOperationException, forcing callers to catch a generic exception to discover the
-        // same "no provider loaded" condition that fix_all_preview returns as data. Returning an
-        // envelope with empty PreviewToken/Changes + a non-null GuidanceMessage keeps the two
-        // tools' shape consistent. Reuses FixAllService.BuildNoProviderGuidance so the guidance
-        // text (suppression / severity-bump hints + id-specific tool pointers) stays unified.
+        // A registered provider can offer no action or an action without an apply operation.
+        // Preserve the empty preview contract and describe the observed absence of a source change.
         return new RefactoringPreviewDto(
             PreviewToken: string.Empty,
-            Description: $"No code fix provider for '{diagnosticId}'.",
+            Description: provider is null
+                ? $"No code fix provider for '{diagnosticId}'."
+                : $"No source change to preview for '{diagnosticId}' at this location.",
             Changes: Array.Empty<FileChangeDto>(),
             Warnings: null,
             CallsiteUpdates: null,
-            GuidanceMessage: FixAllService.BuildNoProviderGuidance(diagnosticId));
+            GuidanceMessage: provider is null
+                ? FixAllService.BuildNoProviderGuidance(diagnosticId)
+                : $"The loaded code fix provider offered no source change to preview for diagnostic '{diagnosticId}' " +
+                  "at this location. Use diagnostic_details to inspect supported fixes or get_code_actions " +
+                  "for alternative actions.");
     }
 
     private async Task<RefactoringPreviewDto> PreviewRemoveUnusedUsingFallbackAsync(
@@ -819,7 +820,7 @@ public sealed class RefactoringService : IRefactoringService
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            return null;
+            throw new CodeFixProviderRegistrationException(ex);
         }
 
         return matchingFixId ?? first;
