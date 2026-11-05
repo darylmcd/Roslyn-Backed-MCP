@@ -14,7 +14,8 @@ namespace RoslynMcp.Tests;
 /// cannot consume the whole gate deadline and starve the follow-up reload. Recording
 /// <see cref="IGatedCommandExecutor"/> and a fake clock; no real <c>dotnet restore</c> runs.
 /// </summary>
-[DoNotParallelize]
+// Each test owns its copied solution, manager and recording executor; request deadlines
+// are scoped to the async flow, so concurrent classes do not share budget state.
 [TestClass]
 public sealed class WorkspaceLoadRestoreBudgetTests : SharedWorkspaceTestBase
 {

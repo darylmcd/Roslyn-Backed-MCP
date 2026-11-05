@@ -14,7 +14,8 @@ namespace RoslynMcp.Tests;
 /// inner exception for logs. Fake runner, real <see cref="GatedCommandExecutor"/>, real tool
 /// error envelope (<see cref="ToolErrorHandler.ClassifyAndFormat"/>).
 /// </summary>
-[DoNotParallelize]
+// Each test owns its copied solution, manager, runner and command gate. The held build
+// in the budget case blocks only that test's manager.
 [TestClass]
 public sealed class WorkspaceLoadRestoreFailureWireTests : SharedWorkspaceTestBase
 {
