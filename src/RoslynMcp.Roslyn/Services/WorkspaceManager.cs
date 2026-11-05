@@ -73,6 +73,12 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
     /// </summary>
     private readonly RestoreStalenessDetector _restoreStalenessDetector;
     /// <summary>
+    /// workspace-manager-load-finalization-collaborator-extraction: post-open physical-path
+    /// validation plus status / document-index / readiness projection. Shares
+    /// <see cref="_restoreStalenessDetector"/> so an injected detector flows through both uses.
+    /// </summary>
+    private readonly WorkspaceLoadFinalizer _loadFinalizer;
+    /// <summary>
     /// workspace-manager-decompose-restore-and-analyzer-subsystems: unresolved-analyzer-
     /// reference stripping, extracted from <see cref="LoadIntoSessionAsync"/>.
     /// </summary>
@@ -276,7 +282,8 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
         UnresolvedAnalyzerReferenceStripper? analyzerReferenceStripper = null,
         Lazy<IWorkspaceExecutionGate>? evictionGate = null,
         bool ownsFileWatcher = true,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        WorkspaceLoadFinalizer? loadFinalizer = null)
     {
         _logger = logger;
         _previewStore = previewStore;
@@ -286,6 +293,8 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
         _cacheCoordinator = cacheStore is null ? null : new WorkspaceCacheCoordinator(cacheStore, logger);
         _sessionLoader = sessionLoader ?? new WorkspaceSessionLoader();
         _restoreStalenessDetector = restoreStalenessDetector ?? new RestoreStalenessDetector();
+        // Built from the assigned field so an injected detector double reaches the finalizer too.
+        _loadFinalizer = loadFinalizer ?? new WorkspaceLoadFinalizer(_restoreStalenessDetector);
         _analyzerReferenceStripper = analyzerReferenceStripper ?? new UnresolvedAnalyzerReferenceStripper();
         _evictionGate = evictionGate;
         _timeProvider = timeProvider ?? TimeProvider.System;
@@ -1231,7 +1240,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
         var result = session.Workspace.TryApplyChanges(newSolution);
         if (result)
         {
-            session.DocumentPaths = BuildDocumentPathIndex(session.Workspace.CurrentSolution);
+            session.DocumentPaths = WorkspaceLoadFinalizer.BuildDocumentPathIndex(session.Workspace.CurrentSolution);
             session.IncrementVersion();
             // workspace-stale-after-external-edit-feedback: attribute the pending watcher fire
             // (MSBuildWorkspace.TryApplyChanges writes .cs/.csproj files to disk on its way
@@ -1448,7 +1457,12 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
             // earlier per-service guards in CompilationCache/FixAllService are now unnecessary.
             await _analyzerReferenceStripper.StripAsync(session.WorkspaceId, newWorkspace, diagnosticsSink.Queue, MaxDiagnosticsPerWorkspace, _logger, ct).ConfigureAwait(false);
 
-            EnsureWorkspacePathsArePhysical(newWorkspace.CurrentSolution);
+            // workspace-manager-load-finalization-collaborator-extraction: refuse link-bearing
+            // paths, then project the opened solution into the status / document-index /
+            // readiness state published below. The finalizer never touches the session, so a
+            // throw here leaves the prior session untouched and the finally disposes the new
+            // workspace.
+            var projection = _loadFinalizer.BuildLoadProjection(newWorkspace, diagnosticsSink.Queue, _logger);
 
             // workspace-load-uses-cache-fast-path: capture the post-load project graph + per-
             // project metadata-reference list for cache write-back. Building the graph first
@@ -1458,16 +1472,6 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
             // the load. Validating the cache means: (a) graph hash matches what we just observed,
             // and (b) metadata-reference timestamps still match disk. Either mismatch downgrades
             // the result to a cache miss and writes a fresh entry.
-            var projectStatuses = BuildProjectStatuses(newWorkspace.CurrentSolution);
-            var documentPaths = BuildDocumentPathIndex(newWorkspace.CurrentSolution);
-            var restoreRequired = _restoreStalenessDetector.DetectRestoreRequired(projectStatuses, newWorkspace.Properties, _logger) ||
-                                  RestoreStalenessDetector.HasRestoreRequiredWorkspaceDiagnostics(diagnosticsSink.Queue);
-            // restore-required-vs-build-conflation: an unresolved-analyzer warning is a missing
-            // BUILD output, distinct from a missing NuGet package. Track it separately so the
-            // summary hint, readiness verdict, and autoRestore gate route to `dotnet build`
-            // rather than a no-op `dotnet restore`.
-            var buildRequired = WorkspaceDiagnosticClassifier.HasBuildRequired(diagnosticsSink.Queue);
-
             if (_cacheCoordinator is not null && cachedProbe is not null)
             {
                 var result = await _cacheCoordinator.ResolveAndWriteAsync(newWorkspace.CurrentSolution, cachedProbe, ct)
@@ -1487,11 +1491,11 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
             session.Workspace = newWorkspace;
             session.AnalyzerLease = newLease;
             session.WorkspaceDiagnostics = diagnosticsSink.Queue;
-            session.ProjectStatuses = projectStatuses;
-            session.DocumentPaths = documentPaths;
+            session.ProjectStatuses = projection.ProjectStatuses;
+            session.DocumentPaths = projection.DocumentPaths;
             session.LoadedPath = path;
-            session.RestoreRequired = restoreRequired;
-            session.BuildRequired = buildRequired;
+            session.RestoreRequired = projection.RestoreRequired;
+            session.BuildRequired = projection.BuildRequired;
             session.LoadedAtUtc = _timeProvider.GetUtcNow();
             session.IncrementVersion();
             // format-range-apply-preview-token-lifetime: drop only the tokens whose pinned
@@ -1719,30 +1723,6 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
         return fullPath;
     }
 
-    private static void EnsureWorkspacePathsArePhysical(Solution solution)
-    {
-        foreach (var project in solution.Projects)
-        {
-            EnsurePhysicalPath(project.FilePath);
-            var projectDirectory = Path.GetDirectoryName(project.FilePath);
-            foreach (var document in project.Documents
-                         .Concat<TextDocument>(project.AdditionalDocuments)
-                         .Concat(project.AnalyzerConfigDocuments))
-            {
-                if (string.IsNullOrWhiteSpace(document.FilePath)) continue;
-
-                var physicalPath = PhysicalPathResolver.Resolve(document.FilePath);
-                // MSBuild imports some source documents from outside the project (for example,
-                // SDK files in the NuGet cache). Those paths are read-only in this workspace:
-                // TryApplyChanges rejects edits to any document whose path is not physical.
-                if (IsPathUnderDirectory(physicalPath, projectDirectory))
-                {
-                    EnsurePhysicalPath(document.FilePath);
-                }
-            }
-        }
-    }
-
     internal static void EnsureChangedDocumentPathsArePhysical(Solution current, Solution next)
     {
         foreach (var project in next.Projects)
@@ -1799,51 +1779,6 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
         throw new InvalidOperationException(
             "Workspace project or modified document path has a filesystem-link component. " +
             "Load and edit through the physical path.");
-    }
-
-    private static bool IsPathUnderDirectory(string path, string? directory)
-    {
-        if (string.IsNullOrWhiteSpace(directory)) return false;
-        var prefix = directory.EndsWith(Path.DirectorySeparatorChar)
-            ? directory
-            : directory + Path.DirectorySeparatorChar;
-        return path.StartsWith(prefix, FileSystemPath.Comparison);
-    }
-
-    private static ImmutableHashSet<string> BuildDocumentPathIndex(Solution solution) =>
-        solution.Projects
-            .SelectMany(project => project.Documents)
-            .Select(document => document.FilePath)
-            .Where(path => !string.IsNullOrWhiteSpace(path))
-            .Select(path => PhysicalPathResolver.Resolve(path!))
-            .ToImmutableHashSet(FileSystemPath.Comparer);
-
-    private ImmutableArray<ProjectStatusDto> BuildProjectStatuses(Solution solution)
-    {
-        return solution.Projects.Select(project =>
-        {
-            var projectDoc = Helpers.ProjectMetadataParser.LoadProjectDocument(project.FilePath, _logger);
-            return new ProjectStatusDto(
-                // project-graph-missing-metadata-fields: never emit an empty Name / FilePath
-                // into the status DTO. ResolveProjectName falls back through AssemblyName →
-                // filename stem → "unknown"; ResolveProjectPath falls back to "unknown".
-                Name: Helpers.ProjectMetadataParser.ResolveProjectName(project),
-                FilePath: Helpers.ProjectMetadataParser.ResolveProjectPath(project),
-                DocumentCount: project.Documents.Count(),
-                ProjectReferences: project.ProjectReferences
-                    .Select(reference =>
-                    {
-                        var referenced = solution.GetProject(reference.ProjectId);
-                        return referenced is null
-                            ? "unknown"
-                            : Helpers.ProjectMetadataParser.ResolveProjectName(referenced);
-                    })
-                    .ToList(),
-                TargetFrameworks: Helpers.ProjectMetadataParser.GetTargetFrameworks(project, projectDoc, _logger),
-                IsTestProject: Helpers.ProjectMetadataParser.IsTestProject(projectDoc),
-                AssemblyName: Helpers.ProjectMetadataParser.GetAssemblyName(project),
-                OutputType: Helpers.ProjectMetadataParser.GetOutputType(project, projectDoc, _logger));
-        }).ToImmutableArray();
     }
 
     private sealed class WorkspaceSession(string workspaceId, DateTimeOffset createdAtUtc, WorkspaceResourceDisposer disposer) : IDisposable

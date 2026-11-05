@@ -1,5 +1,9 @@
+using System.Collections.Concurrent;
+using Microsoft.CodeAnalysis.MSBuild;
 using Microsoft.Extensions.Logging.Abstractions;
+using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Helpers;
 using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
@@ -84,6 +88,46 @@ public sealed class WorkspaceLoadLinkRefusalTests
         }
         finally
         {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(copiedRoot);
+        }
+    }
+
+    [TestMethod]
+    public async Task Finalizer_ProjectDocumentReachedThroughDirectoryLink_RefusesBeforeProjecting()
+    {
+        var copiedSolutionPath = TestFixtureFileSystem.CreateSampleSolutionCopy(_repoRoot, _sampleSolutionPath);
+        var copiedRoot = Path.GetDirectoryName(copiedSolutionPath)!;
+        MSBuildWorkspace? workspace = null;
+        AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease? lease = null;
+        try
+        {
+            if (TryCreateLinkInsideProject(copiedRoot) is null)
+            {
+                Assert.Inconclusive("Directory links are unavailable in this test environment.");
+                return;
+            }
+
+            // The loader does not validate paths, so it opens the link-bearing solution; the finalizer must refuse it.
+            (workspace, lease) = await new WorkspaceSessionLoader().CreateAndOpenAsync(
+                "finalizer-link-refusal",
+                copiedSolutionPath,
+                globalProperties: null,
+                new WorkspaceDiagnosticsSink(200),
+                NullLogger.Instance,
+                Bounded());
+            var detector = new StubRestoreStalenessDetector();
+
+            var thrown = Assert.ThrowsExactly<InvalidOperationException>(
+                () => new WorkspaceLoadFinalizer(detector).BuildLoadProjection(
+                    workspace, new ConcurrentQueue<DiagnosticDto>(), NullLogger.Instance));
+
+            StringAssert.Contains(thrown.Message, LinkComponentMessage);
+            Assert.AreEqual(0, detector.DetectCalls, "Validation must run before any projection work.");
+        }
+        finally
+        {
+            workspace?.Dispose();
+            lease?.Dispose();
             TestFixtureFileSystem.DeleteDirectoryIfExists(copiedRoot);
         }
     }
