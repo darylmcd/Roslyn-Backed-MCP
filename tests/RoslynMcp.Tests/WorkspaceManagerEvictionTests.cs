@@ -284,23 +284,21 @@ public sealed class WorkspaceManagerEvictionTests
             DateTimeOffset.UtcNow,
             previousRecycleReason: "graceful");
 
-        using var manager = CreateManager();
-        var path = TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath);
+        await LocalWorkspaceManagerFixture.RunAsync(
+            CreateManager,
+            () => TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath),
+            1,
+            async (manager, paths) =>
+            {
+                var path = paths[0];
+                var loaded = await manager.LoadAsync(path, CancellationToken.None);
+                Assert.AreNotEqual(string.Empty, loaded.WorkspaceId,
+                    "LoadAsync must return a non-empty id (sanity).");
 
-        try
-        {
-            var loaded = await manager.LoadAsync(path, CancellationToken.None);
-            Assert.AreNotEqual(string.Empty, loaded.WorkspaceId,
-                "LoadAsync must return a non-empty id (sanity).");
-
-            const string typoedId = "still-a-typo-because-there-is-a-live-session";
-            Assert.ThrowsExactly<WorkspaceNotFoundException>(() =>
-                manager.GetStatus(typoedId));
-        }
-        finally
-        {
-            TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path)!);
-        }
+                const string typoedId = "still-a-typo-because-there-is-a-live-session";
+                Assert.ThrowsExactly<WorkspaceNotFoundException>(() =>
+                    manager.GetStatus(typoedId));
+            });
     }
 
     /// <summary>

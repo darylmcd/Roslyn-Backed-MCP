@@ -79,31 +79,28 @@ public sealed class WorkspaceCapLruEvictionTests
     public async Task LruEviction_WhenCapReached_EvictsLeastRecentlyUsed_AndSucceeds()
     {
         // Use a cap of 1 so a single loaded workspace saturates the semaphore.
-        using var manager = CreateManager(maxConcurrentWorkspaces: 1);
-        var path1 = TestFixtureFileSystem.CreateSampleSolutionCopy(_repositoryRootPath, _sampleSolutionPath);
-        var path2 = TestFixtureFileSystem.CreateSampleSolutionCopy(_repositoryRootPath, _sampleSolutionPath);
+        await LocalWorkspaceManagerFixture.RunAsync(
+            () => CreateManager(maxConcurrentWorkspaces: 1),
+            () => TestFixtureFileSystem.CreateSampleSolutionCopy(_repositoryRootPath, _sampleSolutionPath),
+            2,
+            async (manager, paths) =>
+            {
+                var path1 = paths[0];
+                var path2 = paths[1];
+                // Load the first workspace — it now holds the single slot.
+                var status1 = await manager.LoadAsync(path1, CancellationToken.None);
+                Assert.IsTrue(manager.ContainsWorkspace(status1.WorkspaceId),
+                    "First workspace must be tracked after load.");
 
-        try
-        {
-            // Load the first workspace — it now holds the single slot.
-            var status1 = await manager.LoadAsync(path1, CancellationToken.None);
-            Assert.IsTrue(manager.ContainsWorkspace(status1.WorkspaceId),
-                "First workspace must be tracked after load.");
-
-            // LRU load: should evict the first workspace and load the second.
-            var status2 = await manager.LoadAsync(path2, EvictPolicy.Lru, CancellationToken.None);
-            Assert.IsTrue(manager.ContainsWorkspace(status2.WorkspaceId),
-                "Second workspace must be tracked after LRU load.");
-            Assert.IsFalse(manager.ContainsWorkspace(status1.WorkspaceId),
-                "First workspace must have been evicted by the LRU policy.");
-            Assert.AreNotEqual(status1.WorkspaceId, status2.WorkspaceId,
-                "Evicted and new workspaces must have distinct IDs.");
-        }
-        finally
-        {
-            TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path1)!);
-            TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path2)!);
-        }
+                // LRU load: should evict the first workspace and load the second.
+                var status2 = await manager.LoadAsync(path2, EvictPolicy.Lru, CancellationToken.None);
+                Assert.IsTrue(manager.ContainsWorkspace(status2.WorkspaceId),
+                    "Second workspace must be tracked after LRU load.");
+                Assert.IsFalse(manager.ContainsWorkspace(status1.WorkspaceId),
+                    "First workspace must have been evicted by the LRU policy.");
+                Assert.AreNotEqual(status1.WorkspaceId, status2.WorkspaceId,
+                    "Evicted and new workspaces must have distinct IDs.");
+            });
     }
 
     /// <summary>
@@ -114,57 +111,53 @@ public sealed class WorkspaceCapLruEvictionTests
     [TestMethod]
     public async Task LruEviction_RevokesRootExpansionGrantThroughWorkspaceClosed()
     {
-        using var manager = CreateManager(maxConcurrentWorkspaces: 1);
-        using var gate = new WorkspaceExecutionGate(new ExecutionGateOptions(), manager);
-        manager.WorkspaceClosed += RootExpansionGrantRegistry.Revoke;
-
-        var path1 = TestFixtureFileSystem.CreateSampleSolutionCopy(_repositoryRootPath, _sampleSolutionPath);
-        var path2 = TestFixtureFileSystem.CreateSampleSolutionCopy(_repositoryRootPath, _sampleSolutionPath);
         string? grantedWorkspaceId = null;
+        await LocalWorkspaceManagerFixture.RunAsync(
+            () => CreateManager(maxConcurrentWorkspaces: 1),
+            () => TestFixtureFileSystem.CreateSampleSolutionCopy(_repositoryRootPath, _sampleSolutionPath),
+            2,
+            async (manager, paths) =>
+            {
+                var path1 = paths[0];
+                var path2 = paths[1];
+                using var gate = new WorkspaceExecutionGate(new ExecutionGateOptions(), manager);
+                manager.WorkspaceClosed += RootExpansionGrantRegistry.Revoke;
+                await using var serverSession = await McpRootsTestServerFactory.CreateWithSanctionedRootsAsync(
+                    [Path.GetDirectoryName(path1)!, Path.GetDirectoryName(path2)!],
+                    CancellationToken.None,
+                    allowRootExpansion: true);
 
-        try
-        {
-            await using var serverSession = await McpRootsTestServerFactory.CreateWithSanctionedRootsAsync(
-                [Path.GetDirectoryName(path1)!, Path.GetDirectoryName(path2)!],
-                CancellationToken.None,
-                allowRootExpansion: true);
+                var firstLoadJson = await WorkspaceTools.LoadWorkspace(
+                    serverSession.Server,
+                    gate,
+                    manager,
+                    warmService: null!,
+                    commandExecutor: null!, validationOptions: new ValidationServiceOptions(),
+                    path1,
+                    prewarm: false,
+                    expandSanctionedRoots: true,
+                    ct: CancellationToken.None);
+                using var firstLoad = JsonDocument.Parse(firstLoadJson);
+                grantedWorkspaceId = firstLoad.RootElement.GetProperty("workspaceId").GetString();
+                Assert.IsFalse(string.IsNullOrWhiteSpace(grantedWorkspaceId));
+                Assert.IsTrue(RootExpansionGrantRegistry.IsGranted(grantedWorkspaceId),
+                    "workspace_load(expandSanctionedRoots:true) must record the session grant.");
 
-            var firstLoadJson = await WorkspaceTools.LoadWorkspace(
-                serverSession.Server,
-                gate,
-                manager,
-                warmService: null!,
-                commandExecutor: null!, validationOptions: new ValidationServiceOptions(),
-                path1,
-                prewarm: false,
-                expandSanctionedRoots: true,
-                ct: CancellationToken.None);
-            using var firstLoad = JsonDocument.Parse(firstLoadJson);
-            grantedWorkspaceId = firstLoad.RootElement.GetProperty("workspaceId").GetString();
-            Assert.IsFalse(string.IsNullOrWhiteSpace(grantedWorkspaceId));
-            Assert.IsTrue(RootExpansionGrantRegistry.IsGranted(grantedWorkspaceId),
-                "workspace_load(expandSanctionedRoots:true) must record the session grant.");
+                _ = await WorkspaceTools.LoadWorkspace(
+                    serverSession.Server,
+                    gate,
+                    manager,
+                    warmService: null!,
+                    commandExecutor: null!, validationOptions: new ValidationServiceOptions(),
+                    path2,
+                    prewarm: false,
+                    evictPolicy: EvictPolicy.Lru,
+                    ct: CancellationToken.None);
 
-            _ = await WorkspaceTools.LoadWorkspace(
-                serverSession.Server,
-                gate,
-                manager,
-                warmService: null!,
-                commandExecutor: null!, validationOptions: new ValidationServiceOptions(),
-                path2,
-                prewarm: false,
-                evictPolicy: EvictPolicy.Lru,
-                ct: CancellationToken.None);
-
-            Assert.IsFalse(RootExpansionGrantRegistry.IsGranted(grantedWorkspaceId),
-                "WorkspaceClosed must revoke the grant when LRU eviction ends the session.");
-        }
-        finally
-        {
-            RootExpansionGrantRegistry.Revoke(grantedWorkspaceId ?? string.Empty);
-            TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path1)!);
-            TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path2)!);
-        }
+                Assert.IsFalse(RootExpansionGrantRegistry.IsGranted(grantedWorkspaceId),
+                    "WorkspaceClosed must revoke the grant when LRU eviction ends the session.");
+            },
+            () => RootExpansionGrantRegistry.Revoke(grantedWorkspaceId ?? string.Empty));
     }
 
     /// <summary>
@@ -176,35 +169,32 @@ public sealed class WorkspaceCapLruEvictionTests
     public async Task StrictEviction_WhenCapReached_Throws_WithDiagnosticContext()
     {
         // Use a cap of 1 so a single loaded workspace saturates the semaphore.
-        using var manager = CreateManager(maxConcurrentWorkspaces: 1);
-        var path1 = TestFixtureFileSystem.CreateSampleSolutionCopy(_repositoryRootPath, _sampleSolutionPath);
-        var path2 = TestFixtureFileSystem.CreateSampleSolutionCopy(_repositoryRootPath, _sampleSolutionPath);
+        await LocalWorkspaceManagerFixture.RunAsync(
+            () => CreateManager(maxConcurrentWorkspaces: 1),
+            () => TestFixtureFileSystem.CreateSampleSolutionCopy(_repositoryRootPath, _sampleSolutionPath),
+            2,
+            async (manager, paths) =>
+            {
+                var path1 = paths[0];
+                var path2 = paths[1];
+                var status1 = await manager.LoadAsync(path1, CancellationToken.None);
+                Assert.IsTrue(manager.ContainsWorkspace(status1.WorkspaceId),
+                    "First workspace must be tracked (sanity).");
 
-        try
-        {
-            var status1 = await manager.LoadAsync(path1, CancellationToken.None);
-            Assert.IsTrue(manager.ContainsWorkspace(status1.WorkspaceId),
-                "First workspace must be tracked (sanity).");
+                // Strict load: must throw because the cap is full.
+                var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(
+                    () => manager.LoadAsync(path2, EvictPolicy.Strict, CancellationToken.None));
 
-            // Strict load: must throw because the cap is full.
-            var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(
-                () => manager.LoadAsync(path2, EvictPolicy.Strict, CancellationToken.None));
-
-            // Message must carry activeWorkspaces JSON and lruCandidate for self-recovery.
-            StringAssert.Contains(ex.Message, "activeWorkspaces",
-                "Strict-mode error must include 'activeWorkspaces' field for agent self-recovery.");
-            StringAssert.Contains(ex.Message, "lruCandidate",
-                "Strict-mode error must include 'lruCandidate' field for agent self-recovery.");
-            StringAssert.Contains(ex.Message, status1.WorkspaceId,
-                "The active workspace ID must appear in the error to identify the eviction candidate.");
-            Assert.IsFalse(ex.Message.Contains(path1, StringComparison.OrdinalIgnoreCase),
-                "The public cap refusal must not disclose an absolute workspace path.");
-        }
-        finally
-        {
-            TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path1)!);
-            TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path2)!);
-        }
+                // Message must carry activeWorkspaces JSON and lruCandidate for self-recovery.
+                StringAssert.Contains(ex.Message, "activeWorkspaces",
+                    "Strict-mode error must include 'activeWorkspaces' field for agent self-recovery.");
+                StringAssert.Contains(ex.Message, "lruCandidate",
+                    "Strict-mode error must include 'lruCandidate' field for agent self-recovery.");
+                StringAssert.Contains(ex.Message, status1.WorkspaceId,
+                    "The active workspace ID must appear in the error to identify the eviction candidate.");
+                Assert.IsFalse(ex.Message.Contains(path1, StringComparison.OrdinalIgnoreCase),
+                    "The public cap refusal must not disclose an absolute workspace path.");
+            });
     }
 
     /// <summary>
