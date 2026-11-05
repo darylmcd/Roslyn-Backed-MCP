@@ -299,7 +299,7 @@ public sealed class WorkspaceLoadRegistrationCompensationTests
 
             lease.Dispose();
             return (workspace, new AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease(
-                null, new AnalyzerReferenceIsolation.ShadowCopyAnalyzerAssemblyLoader[] { null! }, 0, null));
+                null, null, new AnalyzerReferenceIsolation.ShadowCopyAnalyzerAssemblyLoader[] { null! }, 0, null));
         }
     }
 

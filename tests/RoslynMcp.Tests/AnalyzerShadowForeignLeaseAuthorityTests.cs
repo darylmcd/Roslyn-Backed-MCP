@@ -223,6 +223,56 @@ public sealed class AnalyzerShadowForeignLeaseAuthorityTests
         }
     }
 
+    // A disposed lease whose tree could not be deleted must keep its (released) marker: that released
+    // marker is the only thing that lets a foreign sweeper, including a live peer's, reclaim the
+    // leftover. Deleting the marker anyway would make the tree markerless and preserved until the
+    // peer exits.
+    [TestMethod]
+    public async Task DisposedLease_WithUndeletableTree_KeepsItsReleasedMarker_SoALivePeerSweepReclaimsItOnceUnlocked()
+    {
+        if (!OperatingSystem.IsWindows())
+            Assert.Inconclusive("An undeletable tree needs Windows file-lock semantics and the owned cmd.exe peer.");
+
+        var shared = NewSharedParent();
+        using var peer = StartPeer(shared);
+        FileStream? locked = null;
+        try
+        {
+            await ReadReadyAsync(peer);
+            var workspace = Path.Combine(shared, $"workspace-{peer.Id}-{IdentityGuid}-dispose");
+            var lease = Path.Combine(workspace, "lease");
+            var marker = MarkerPath(lease);
+            Directory.CreateDirectory(lease);
+            locked = new FileStream(Path.Combine(lease, "locked.dll"), FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
+
+            var shadowLease = new AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease(
+                lease, AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease.AcquireOwnerMarker(lease), [], 1, NullLogger.Instance);
+            shadowLease.Dispose();
+
+            Assert.IsTrue(Directory.Exists(lease), "The locked tree cannot be deleted.");
+            Assert.IsTrue(File.Exists(marker), "The disposed lease must leave its released marker with the leftover tree.");
+            Assert.IsFalse(AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease.IsLiveRoot(lease));
+
+            Age(lease);
+            AnalyzerReferenceIsolation.SweepAbandonedRoots(shared, NullLogger.Instance);
+            Assert.IsTrue(Directory.Exists(lease), "Still locked: the sweep fails and keeps the tree.");
+            Assert.IsTrue(File.Exists(marker), "A failed reclaim must keep the released marker for the next sweep.");
+
+            locked.Dispose();
+            AnalyzerReferenceIsolation.SweepAbandonedRoots(shared, NullLogger.Instance);
+            Assert.IsFalse(Directory.Exists(lease), "The live peer's sweep reclaims a disposed lease through its released marker.");
+            Assert.IsFalse(File.Exists(marker));
+        }
+        finally
+        {
+            locked?.Dispose();
+            peer.StandardInput.Close();
+            if (!peer.HasExited) peer.Kill(entireProcessTree: true);
+            await peer.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            TestFixtureFileSystem.DeleteDirectoryIfExists(shared);
+        }
+    }
+
     // B4: acquiring the marker must precede binding any reference to a lease loader, so a failure to
     // create it cannot leave references bound to loaders no lease will ever dispose.
     [TestMethod]
@@ -323,10 +373,12 @@ public sealed class AnalyzerShadowForeignLeaseAuthorityTests
 
         public async Task StartAsync(string markerPath)
         {
+            // ping.exe by absolute path: a bare `ping` resolves through the inherited PATH, and a
+            // session without System32 on it ends the group at once, silently releasing the marker.
             File.WriteAllText(
                 _scriptPath,
                 "@echo off\r\n" +
-                "( (echo ready>\"%RMCP_HOLD_READY%\") & ping -n 120 127.0.0.1 >nul ) 9>>\"%RMCP_HOLD_FILE%\"\r\n");
+                "( (echo ready>\"%RMCP_HOLD_READY%\") & \"%SystemRoot%\\System32\\ping.exe\" -n 120 127.0.0.1 >nul ) 9>>\"%RMCP_HOLD_FILE%\"\r\n");
             var process = new Process
             {
                 StartInfo = new ProcessStartInfo

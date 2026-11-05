@@ -106,7 +106,7 @@ public sealed class AnalyzerShadowCreatorOwnershipTests
         try
         {
             using (var lease = new AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease(
-                stale, [], 1, NullLogger.Instance))
+                stale, AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease.AcquireOwnerMarker(stale), [], 1, NullLogger.Instance))
             {
                 Assert.IsTrue(AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease.IsLiveRoot(stale));
                 AnalyzerReferenceIsolation.SweepAbandonedRoots(shared, NullLogger.Instance);
