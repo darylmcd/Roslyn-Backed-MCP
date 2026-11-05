@@ -53,20 +53,26 @@ internal sealed class InterfaceMemberProjector
     private readonly SyntaxGenerator _generator;
     private readonly InterfaceNullableProjection _nullable;
     private readonly List<ITypeSymbol> _referencedTypes = [];
+    private readonly bool _receiverIsSourceAssembly;
 
-    private InterfaceMemberProjector(Compilation compilation, SyntaxGenerator generator, InterfaceNullableProjection nullable)
+    private InterfaceMemberProjector(Compilation compilation, SyntaxGenerator generator, InterfaceNullableProjection nullable, bool receiverIsSourceAssembly)
     {
         _compilation = compilation;
         _generator = generator;
         _nullable = nullable;
+        _receiverIsSourceAssembly = receiverIsSourceAssembly;
     }
 
+    /// <param name="receiverIsSourceAssembly">
+    /// True when the interface lands in the source type's own project, so source-assembly names stay
+    /// spellable; otherwise a constant default naming one is written as its value.
+    /// </param>
     internal static async Task<InterfaceMemberProjector> CreateAsync(
-        Document sourceDocument, InterfaceNullableProjection nullable, CancellationToken ct)
+        Document sourceDocument, InterfaceNullableProjection nullable, bool receiverIsSourceAssembly, CancellationToken ct)
     {
         var model = await sourceDocument.GetSemanticModelAsync(ct).ConfigureAwait(false)
             ?? throw InvalidOperationErrors.Internal("Semantic model for the interface source document is unavailable.");
-        return new InterfaceMemberProjector(model.Compilation, SyntaxGenerator.GetGenerator(sourceDocument), nullable);
+        return new InterfaceMemberProjector(model.Compilation, SyntaxGenerator.GetGenerator(sourceDocument), nullable, receiverIsSourceAssembly);
     }
 
     /// <summary>The members of a type that an extracted interface can carry.</summary>
@@ -80,12 +86,6 @@ internal sealed class InterfaceMemberProjector
     /// </summary>
     internal MemberDeclarationSyntax Project(ISymbol member)
     {
-        // C# rejects `__arglist` on an interface member (CS1669), and the source declaration would carry it
-        // through verbatim; refuse before any preview token exists rather than emit an uncompilable contract.
-        if (member is IMethodSymbol { IsVararg: true })
-            throw new PublicInvalidOperationException(
-                $"Method '{member.Name}' declares __arglist, which an interface member cannot declare, so the type cannot be extracted into an interface with it.");
-
         var source = DeclaringSyntax(member);
         var model = source is not null && _compilation.ContainsSyntaxTree(source.SyntaxTree)
             ? _compilation.GetSemanticModel(source.SyntaxTree)
@@ -93,7 +93,7 @@ internal sealed class InterfaceMemberProjector
         source ??= _generator.Declaration(member) as MemberDeclarationSyntax
             ?? throw InvalidOperationErrors.Internal("Interface member symbol has no projectable declaration.");
 
-        var qualifier = new ScopeQualifier(model, _generator, _referencedTypes);
+        var qualifier = new ScopeQualifier(model, _generator, _referencedTypes, _receiverIsSourceAssembly);
         var declaration = Strip(source, member, model, qualifier);
         if (declaration.DescendantNodes().Any(n => n is PointerTypeSyntax or FunctionPointerTypeSyntax))
         {
@@ -334,12 +334,12 @@ internal sealed class InterfaceMemberProjector
     /// the source assembly or a non-public member: the receiving project is usually another assembly) is
     /// written as its value instead: a compile-time constant is the same contract either way.
     /// </summary>
-    private sealed class ScopeQualifier(SemanticModel? model, SyntaxGenerator generator, List<ITypeSymbol> referencedTypes) : CSharpSyntaxRewriter
+    private sealed class ScopeQualifier(SemanticModel? model, SyntaxGenerator generator, List<ITypeSymbol> referencedTypes, bool receiverIsSourceAssembly) : CSharpSyntaxRewriter
     {
-        /// <summary>Public all the way up and declared outside the source assembly.</summary>
+        /// <summary>Public all the way up, and declared outside the source assembly unless the interface lands in it.</summary>
         private bool IsNameableFromInterface(ISymbol symbol)
         {
-            if (SymbolEqualityComparer.Default.Equals(symbol.ContainingAssembly, model!.Compilation.Assembly)) return false;
+            if (!receiverIsSourceAssembly && SymbolEqualityComparer.Default.Equals(symbol.ContainingAssembly, model!.Compilation.Assembly)) return false;
             for (var current = symbol; current is not null; current = current.ContainingType)
             {
                 if (current.DeclaredAccessibility != Accessibility.Public) return false;
@@ -352,13 +352,9 @@ internal sealed class InterfaceMemberProjector
         {
             foreach (var name in expression.DescendantNodesAndSelf().OfType<SimpleNameSyntax>())
             {
-                if (name is IdentifierNameSyntax { Identifier.ValueText: "nameof", Parent: InvocationExpressionSyntax call } &&
-                    call.Expression == name && model!.GetSymbolInfo(call).Symbol is null)
-                {
-                    return true;
-                }
-
                 var symbol = model!.GetSymbolInfo(name).Symbol;
+                // An instance field only appears under `nameof`, and an interface has no fields to name.
+                if (symbol is IFieldSymbol { IsStatic: false }) return true;
                 if (symbol is IFieldSymbol or INamedTypeSymbol && !IsNameableFromInterface(symbol)) return true;
             }
 
@@ -394,6 +390,19 @@ internal sealed class InterfaceMemberProjector
 
         public override SyntaxNode? VisitGenericName(GenericNameSyntax node) => Qualify(node) ?? base.VisitGenericName(node);
 
+        /// <summary>A default value, or the argument of an attribute the interface keeps (a dropped attribute's names are not emitted).</summary>
+        private bool InDefaultOrContractAttributeArgument(SyntaxNode node)
+        {
+            foreach (var ancestor in node.Ancestors())
+            {
+                if (ancestor is EqualsValueClauseSyntax) return true;
+                if (ancestor is AttributeArgumentSyntax { Parent.Parent: AttributeSyntax attribute })
+                    return IsContractAttribute(model!.GetSymbolInfo(attribute).Symbol?.ContainingType);
+            }
+
+            return false;
+        }
+
         private SyntaxNode? Qualify(SimpleNameSyntax node)
         {
             if (node.Parent is QualifiedNameSyntax qualified && qualified.Right == node ||
@@ -408,7 +417,7 @@ internal sealed class InterfaceMemberProjector
                 case INamedTypeSymbol { ContainingType: not null } nested:
                     referencedTypes.Add(nested);
                     return SyntaxFactory.ParseTypeName(nested.ToDisplayString(_containingTypeFormat)).WithTriviaFrom(node);
-                case INamedTypeSymbol type when node.Ancestors().OfType<EqualsValueClauseSyntax>().Any():
+                case INamedTypeSymbol type when InDefaultOrContractAttributeArgument(node):
                     // A default such as `Limits.Cap` keeps its type name, so the interface file must import the type's namespace.
                     referencedTypes.Add(type);
                     return null;

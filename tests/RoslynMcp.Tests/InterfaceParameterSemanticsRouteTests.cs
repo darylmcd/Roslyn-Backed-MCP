@@ -1,8 +1,5 @@
-using System.Security.Cryptography;
-using System.Xml.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
-using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Services;
 using static RoslynMcp.Tests.TestInfrastructure.InterfaceExtractionTestContext;
 
@@ -16,7 +13,7 @@ namespace RoslynMcp.Tests;
 /// that dependency ownership is a separate row.
 /// </summary>
 [TestClass]
-public sealed class InterfaceParameterSemanticsRouteTests : IsolatedWorkspaceTestBase
+public sealed class InterfaceParameterSemanticsRouteTests : InterfaceRouteTestBase
 {
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
@@ -87,6 +84,20 @@ public sealed class InterfaceParameterSemanticsRouteTests : IsolatedWorkspaceTes
 
     private const string NameofMembers = """
             public void Names(string a = nameof(_name), string b = nameof(Max), string c = nameof(Count), string d = nameof(Names)) { }
+            public void Referencing(string a, [CallerArgumentExpression(nameof(a))] string b = "") { }
+        """;
+
+    private const string SourceOwnedConstantMembers = """
+            public enum Mode { A = 1, B = 2 }
+            public void Own(int z = OwnMax, int e = (int)Mode.B) { }
+        """;
+
+    private const string ForeignAttributeMembers = """
+            public void ForeignAttribute([Optional, DefaultParameterValue(Limits.Cap)] int a) { }
+        """;
+
+    private const string DroppedAttributeMembers = """
+            public void Dropped([MarshalAs(UnmanagedType.I4)] int a) { }
         """;
 
     private const string UnnameableConstantMembers = """
@@ -227,105 +238,85 @@ public sealed class InterfaceParameterSemanticsRouteTests : IsolatedWorkspaceTes
     [DataRow("cross-project")]
     [DataRow("dependency-inversion")]
     [DataRow("extract-and-wire")]
-    public async Task Arglist_Method_Is_Refused_Before_Any_Preview_Token_Is_Published(string route)
-    {
-        await using var workspace = CreateIsolatedWorkspaceCopy();
-        var sourcePath = await PrepareFixtureAsync(workspace, ArglistMembers);
-        var diskBefore = SnapshotFiles(workspace.RootPath);
-
-        var refusal = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(async () =>
-            await PreviewRouteAsync(route, workspace.WorkspaceId, sourcePath, new CompositePreviewStore(), memberNames: null));
-
-        StringAssert.Contains(refusal.PublicMessage, "Write");
-        StringAssert.Contains(refusal.PublicMessage, "__arglist");
-        CollectionAssert.AreEqual(diskBefore.OrderBy(p => p.Key, StringComparer.Ordinal).ToArray(), SnapshotFiles(workspace.RootPath).OrderBy(p => p.Key, StringComparer.Ordinal).ToArray());
-    }
+    public async Task Contract_Attribute_Argument_Naming_A_Constant_Of_An_Otherwise_Unreferenced_Type_Imports_Its_Namespace(string route) =>
+        await AssertRouteAsync(route, ForeignAttributeMembers, (contract, text) =>
+            Assert.AreEqual(9, Method(contract, "ForeignAttribute").Parameters[0].ExplicitDefaultValue, text));
 
     [TestMethod]
-    public async Task Arglist_Method_Does_Not_Block_Extracting_Other_Named_Members_On_The_Standalone_Route()
-    {
-        await using var workspace = CreateIsolatedWorkspaceCopy();
-        var sourcePath = await PrepareFixtureAsync(workspace, ArglistMembers);
-
-        var preview = await PreviewRouteAsync("standalone", workspace.WorkspaceId, sourcePath, new CompositePreviewStore(), memberNames: ["Other"]);
-
-        var pending = await ReparseSerializedDocumentsAsync(PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution);
-        await AssertCompilesAsync(pending);
-        var contract = (await pending.Projects.Single(p => p.Name == "SampleLib").GetCompilationAsync())!.GetTypeByMetadataName("Contracts.IParamService")!;
-        CollectionAssert.AreEqual(new[] { "Other" }, contract.GetMembers().OfType<IMethodSymbol>().Select(m => m.Name).ToArray());
-    }
+    [DataRow("standalone")]
+    [DataRow("cross-project")]
+    [DataRow("dependency-inversion")]
+    [DataRow("extract-and-wire")]
+    public async Task Dropped_Attribute_Argument_Does_Not_Import_Its_Namespace(string route) =>
+        await AssertRouteAsync(route, DroppedAttributeMembers, (contract, text) =>
+        {
+            Assert.AreEqual(0, Method(contract, "Dropped").Parameters[0].GetAttributes().Length, text);
+            Assert.IsFalse(text.Contains("InteropServices", StringComparison.Ordinal), text);
+        });
 
     [TestMethod]
-    public void Compiler_Rejects_Arglist_On_An_Interface_Member()
-    {
-        // Pins the premise of the refusal above to the compiler this repo builds against: if a future language
-        // version allows __arglist on interface members, this test fails and the refusal must be revisited.
-        var tree = CSharpSyntaxTree.ParseText("interface I { void Write(int v, __arglist); }");
-        var compilation = CSharpCompilation.Create("ArglistProbe", [tree], [MetadataReference.CreateFromFile(typeof(object).Assembly.Location)]);
+    [DataRow("standalone")]
+    [DataRow("cross-project")]
+    [DataRow("dependency-inversion")]
+    [DataRow("extract-and-wire")]
+    public async Task Nameof_Of_A_Parameter_In_A_Contract_Attribute_Is_Left_As_Written(string route) =>
+        await AssertRouteAsync(route, NameofMembers, (contract, text) =>
+        {
+            var attribute = Method(contract, "Referencing").Parameters[1].GetAttributes().Single(a => a.AttributeClass?.Name == "CallerArgumentExpressionAttribute");
+            Assert.AreEqual("a", attribute.ConstructorArguments[0].Value, text);
+            StringAssert.Contains(text, "CallerArgumentExpression(nameof(a))");
+        });
 
-        var errors = compilation.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).ToArray();
-        Assert.IsTrue(errors.Length > 0, "An interface declaring __arglist compiled without errors.");
+    [TestMethod]
+    [DataRow("standalone")]
+    [DataRow("cross-project")]
+    [DataRow("dependency-inversion")]
+    [DataRow("extract-and-wire")]
+    public async Task Source_Assembly_Constants_Stay_Symbolic_Only_Where_The_Interface_Shares_The_Source_Assembly(string route) =>
+        await AssertRouteAsync(route, SourceOwnedConstantMembers, (contract, text) =>
+        {
+            CollectionAssert.AreEqual(new object[] { 4, 2 }, Method(contract, "Own").Parameters.Select(p => p.ExplicitDefaultValue).ToArray(), text);
+            // A different receiving assembly cannot name ParamService, so the value is written instead.
+            Assert.AreEqual(route == "standalone", text.Contains("ParamService.OwnMax", StringComparison.Ordinal), text);
+            Assert.AreEqual(route == "standalone", text.Contains("ParamService.Mode.B", StringComparison.Ordinal), text);
+        });
+
+    [TestMethod]
+    [DataRow("standalone")]
+    [DataRow("cross-project")]
+    [DataRow("dependency-inversion")]
+    [DataRow("extract-and-wire")]
+    public async Task Arglist_Method_Is_Extracted_Into_A_Compiling_Interface(string route) =>
+        await AssertRouteAsync(route, ArglistMembers, (contract, text) =>
+        {
+            Assert.IsTrue(Method(contract, "Write").IsVararg, text);
+            Assert.AreEqual(1, Method(contract, "Write").Parameters.Length, text);
+        });
+
+    [TestMethod]
+    public void Compiler_Accepts_Arglist_On_An_Interface_Member_And_Its_Implementation()
+    {
+        // The projector emits `__arglist` as written (no refusal): this pins that premise to the compiler this
+        // repo builds against, so a language change that rejects it fails here instead of in a user's extraction.
+        var tree = CSharpSyntaxTree.ParseText(
+            "interface I { void Write(int v, __arglist); } class C : I { public void Write(int v, __arglist) { } }");
+        var compilation = CSharpCompilation.Create(
+            "ArglistProbe", [tree], [MetadataReference.CreateFromFile(typeof(object).Assembly.Location)],
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+        var errors = compilation.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).Select(d => d.ToString()).ToArray();
+        Assert.AreEqual(0, errors.Length, string.Join(Environment.NewLine, errors));
+        Assert.IsTrue(compilation.GetTypeByMetadataName("I")!.GetMembers("Write").OfType<IMethodSymbol>().Single().IsVararg);
     }
 
     private static IMethodSymbol Method(INamedTypeSymbol contract, string name) => contract.GetMembers(name).OfType<IMethodSymbol>().Single();
 
-    private static async Task<string> PrepareFixtureAsync(IsolatedWorkspaceScope workspace, string members)
-    {
-        AddProjectToCopiedSolution(workspace.RootPath, "Contracts", "net10.0");
-        AddProjectToCopiedSolution(workspace.RootPath, "Consumer", "net10.0");
-        AddProjectToCopiedSolution(workspace.RootPath, "Shared", "net10.0");
-        var solution = XDocument.Load(workspace.SolutionPath);
-        var kept = new[] { "SampleLib/SampleLib.csproj", "Contracts/Contracts.csproj", "Consumer/Consumer.csproj", "Shared/Shared.csproj" };
-        foreach (var project in solution.Descendants("Project").Where(p => !kept.Contains(p.Attribute("Path")!.Value.Replace('\\', '/'))).ToArray())
-            project.Remove();
-        solution.Save(workspace.SolutionPath);
-
-        var libPath = workspace.GetPath("SampleLib", "SampleLib.csproj");
-        var lib = XDocument.Load(libPath);
-        lib.Root!.Add(new XElement("PropertyGroup", new XElement("EnableDefaultCompileItems", "false")),
-            new XElement("ItemGroup",
-                new XElement("Compile", new XAttribute("Include", "ParamService.cs")),
-                new XElement("ProjectReference", new XAttribute("Include", "../Shared/Shared.csproj"))));
-        lib.Save(libPath);
-        var contractsPath = workspace.GetPath("Contracts", "Contracts.csproj");
-        var contracts = XDocument.Load(contractsPath);
-        contracts.Root!.Add(new XElement("ItemGroup", new XElement("ProjectReference", new XAttribute("Include", "../Shared/Shared.csproj"))));
-        contracts.Save(contractsPath);
-        var consumerPath = workspace.GetPath("Consumer", "Consumer.csproj");
-        var consumer = XDocument.Load(consumerPath);
-        consumer.Root!.Add(new XElement("ItemGroup",
-            new XElement("ProjectReference", new XAttribute("Include", "../SampleLib/SampleLib.csproj")),
-            new XElement("ProjectReference", new XAttribute("Include", "../Contracts/Contracts.csproj"))));
-        consumer.Save(consumerPath);
-
-        var sourcePath = workspace.GetPath("SampleLib", "ParamService.cs");
-        await File.WriteAllTextAsync(sourcePath, ServiceSource(members));
-        await File.WriteAllTextAsync(workspace.GetPath("Shared", "SharedLib.cs"), SharedSource);
-        await File.WriteAllTextAsync(workspace.GetPath("Consumer", "ParamConsumer.cs"), ConsumerSource);
-        await workspace.LoadAsync();
-        await AssertCompilesAsync(WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
-        return sourcePath;
-    }
+    private static Task<string> PrepareFixtureAsync(IsolatedWorkspaceScope workspace, string members) =>
+        PrepareInterfaceRouteFixtureAsync(workspace, "ParamService.cs", ServiceSource(members), "ParamConsumer.cs", ConsumerSource, SharedSource);
 
     private static Task<RoslynMcp.Core.Models.RefactoringPreviewDto> PreviewRouteAsync(
-        string route, string workspaceId, string sourcePath, CompositePreviewStore stores, IReadOnlyList<string>? memberNames = null) => route switch
-        {
-            "standalone" => InterfaceExtractionService.PreviewExtractInterfaceAsync(
-                workspaceId, sourcePath, "ParamService", "IParamService", memberNames, false, CancellationToken.None),
-            "cross-project" => CrossProjectRefactoringService.PreviewExtractInterfaceAsync(
-                workspaceId, sourcePath, "ParamService", "IParamService", "Contracts", CancellationToken.None),
-            "dependency-inversion" => CrossProjectRefactoringService.PreviewDependencyInversionAsync(
-                workspaceId, sourcePath, "ParamService", "IParamService", "Contracts", CancellationToken.None),
-            "extract-and-wire" => new ExtractAndWireOrchestrator(WorkspaceManager, stores, PreviewStore, CrossProjectRefactoringService, DiRegistrationService)
-                .PreviewExtractAndWireInterfaceAsync(workspaceId, sourcePath, "ParamService", "IParamService", "Contracts", true, CancellationToken.None),
-            _ => throw new ArgumentOutOfRangeException(nameof(route)),
-        };
-
-    private static Dictionary<string, string> SnapshotFiles(string root) =>
-        Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories)
-            .Where(p => !p.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal) &&
-                        !p.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
-            .ToDictionary(p => p, p => Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(p))), StringComparer.Ordinal);
+        string route, string workspaceId, string sourcePath, CompositePreviewStore stores) =>
+        PreviewInterfaceRouteAsync(route, workspaceId, sourcePath, "ParamService", stores);
 
     private static async Task AssertRouteAsync(string route, string members, Action<INamedTypeSymbol, string> verify)
     {
