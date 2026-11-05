@@ -1,6 +1,6 @@
 # analyzer-shadow-sweep-live-child-authority — Preserve active foreign-host analyzer lease children
 
-**row:** `analyzer-shadow-sweep-live-child-authority` · **pri:** `High` · **size:** `S` · **deps:** `analyzer-shadow-lease-disposal-no-follow`
+**row:** `analyzer-shadow-sweep-live-child-authority` · **pri:** `High` · **size:** `M` · **deps:** `analyzer-shadow-lease-disposal-no-follow`
 
 ## Anchors
 
@@ -20,3 +20,7 @@
 - Fresh narrow semantic/BCL review at49e0b03a confirms ordinary leases have no age expiry and can load dependencies lazily after initial cataloging. A foreign sweep sees only its own live-root registry, checks age, then deletes recursively without the producer load gate.
 - A copy completed after the age snapshot can be removed before LoadFromAssemblyPath. The Windows recursive-delete implementation continues siblings after recording locked-file failures, so an old mapped sibling does not establish subtree-wide safety.
 - This is source-grounded, not runtime-reproduced or attributed to a current CI failure. The child loop was unchanged by1855; its parent-initialization correction remains correctly scoped. Existing analyzer-shadow-sweep-path-authority owns reparse traversal, and automatic-reload-analyzer-reader-lifetime owns reload reader ownership; neither covers this foreign-sweeper authority.
+
+## Notes
+
+Re-verified 2026-11-05: premise holds for workspace-* roots only (process-* roots are protected by the held .owner.lock); sweep at AnalyzerReferenceIsolation.cs:286-301 deletes stale children of a live peer workspace on age alone. Fix: per-lease sibling <leaseId>.owner.lock held by the lease, acquired by the sweeper. AnalyzerShadowCreatorOwnershipTests.cs:174 encodes the bug and must be split (preserved while the peer lives, swept after exit), not weakened. Honest size M.

@@ -33,3 +33,5 @@
 ## Notes
 
 2026-10-28 PR #1875 (projector merged): ref/out/in, params, scoped, defaults written as source literals, [Optional,DateTimeConstant] and parameter attributes are covered by InterfaceMemberProjectorTests on the standalone and cross-project routes. Remaining delta: __arglist untested; float/decimal/char/escaped-string/enum defaults and 'ref readonly' parameters not in the matrix; dependency-inversion and extract-and-wire routes not matrix-tested; no refusal-before-token for unrepresentable forms.
+
+Re-verified 2026-11-05 at f15e28e7: premise mostly stale. Since #1875 the projector copies ParameterSyntax as written, so ref/out/in/params/scoped and literal defaults survive; the anchors CPRS:516-521, IES:197-202, IES:419-428, CreateParameterList and GetDefaultValueText no longer exist. Real gaps: nameof(<private instance member>) defaults leak into the interface (CS0103), __arglist is unprobed, and the preview/apply/reload route matrix is missing. Overlaps interface-projector-matrix-gaps. Do not re-architect to IParameterSymbol.
