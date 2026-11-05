@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Xml.Linq;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -922,7 +923,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : InterfaceRouteTest
         var preview = await PreviewRefRouteAsync(route, workspace.WorkspaceId, sourcePath, stores);
 
         var applied = route == "extract-and-wire"
-            ? await new RoslynMcp.Roslyn.Services.CompositeApplyOrchestrator(WorkspaceManager, stores, undoService: UndoService).ApplyCompositeAsync(preview.PreviewToken, CancellationToken.None)
+            ? await new RoslynMcp.Roslyn.Services.CompositeApplyOrchestrator(WorkspaceManager, stores, undoService: UndoService).ApplyCompositeAsync(preview.PreviewToken, CompositeAdmission.AdmitAll, CancellationToken.None)
             : await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "ref_return_apply", CancellationToken.None);
         Assert.IsTrue(applied.Success, applied.Error);
         await workspace.ReloadAsync();

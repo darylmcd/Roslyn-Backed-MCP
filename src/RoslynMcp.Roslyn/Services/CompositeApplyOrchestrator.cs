@@ -33,7 +33,10 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
         _undoService = undoService;
     }
 
-    public async Task<ApplyResultDto> ApplyCompositeAsync(string previewToken, CancellationToken ct)
+    public async Task<ApplyResultDto> ApplyCompositeAsync(
+        string previewToken,
+        CompositeWriteSetAdmission admitWriteSet,
+        CancellationToken ct)
     {
         var entry = _compositePreviewStore.Retrieve(previewToken);
         if (entry is null)
@@ -42,6 +45,15 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
         }
 
         var (workspaceId, _, _, mutations) = entry.Value;
+        // composite-redemption-admission-boundary: a token bound to a session this host never
+        // admitted (a persisted record redeemed by a different host, or a closed session) is refused
+        // BEFORE undo capture or the first write. The reload in CompleteApplyAsync used to be the
+        // first place the missing session surfaced, after every file had already been written.
+        if (!_workspace.ContainsWorkspace(workspaceId))
+        {
+            throw _workspace.CreateWorkspaceNotFoundException(workspaceId);
+        }
+
         // Lifecycle invalidation, not unrelated workspace-version changes, governs token validity.
         if (mutations.Count == 0)
         {
@@ -50,6 +62,11 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
                 [],
                 "Preview token yielded no file mutations — the composite preview produced no file-level changes. Re-issue the preview with a different operation set.");
         }
+
+        // The caller's admission runs on the CLAIMED entry — the mutations about to be written — not on
+        // an earlier peek: a persisted record can be swapped between the two. A refusal throws here,
+        // before undo capture or any write, and propagates (it is not an I/O failure).
+        await admitWriteSet(workspaceId, mutations.Select(m => m.FilePath).ToArray(), ct).ConfigureAwait(false);
 
         var appliedFiles = new List<string>();
         try

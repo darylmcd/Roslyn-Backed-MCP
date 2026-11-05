@@ -7,6 +7,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -107,7 +108,7 @@ public sealed class SplitServiceReceivingNamespaceIntegrationTests : IsolatedWor
         CollectionAssert.AreEqual(projectBytes, await File.ReadAllBytesAsync(projectPath));
         CollectionAssert.AreEqual(unrelatedBytes, await File.ReadAllBytesAsync(unrelatedPath));
         Assert.IsFalse((await new CompositeApplyOrchestrator(WorkspaceManager, store)
-            .ApplyCompositeAsync(token, CancellationToken.None)).Success);
+            .ApplyCompositeAsync(token, CompositeAdmission.AdmitAll, CancellationToken.None)).Success);
     }
 
     private static async Task AssertContractsCompilesAsync(Solution solution)

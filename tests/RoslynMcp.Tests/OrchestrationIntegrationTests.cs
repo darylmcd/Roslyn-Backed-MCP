@@ -1,5 +1,6 @@
 using System.Xml.Linq;
 using RoslynMcp.Roslyn.Helpers;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -36,7 +37,7 @@ public sealed class OrchestrationIntegrationTests : IsolatedWorkspaceTestBase
             "2.5.0",
             CancellationToken.None);
 
-        var applyResult = await CompositeApplyOrchestrator.ApplyCompositeAsync(preview.PreviewToken, CancellationToken.None);
+        var applyResult = await CompositeApplyOrchestrator.ApplyCompositeAsync(preview.PreviewToken, CompositeAdmission.AdmitAll, CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
 
         var libXml = XDocument.Load(sampleLibProject);
@@ -83,7 +84,7 @@ public sealed class OrchestrationIntegrationTests : IsolatedWorkspaceTestBase
         Assert.IsFalse(warning.Contains(sampleLibProject, StringComparison.OrdinalIgnoreCase),
             $"A workspace project that was rewritten must not be reported as a consumer. Warning: {warning}");
 
-        var applyResult = await CompositeApplyOrchestrator.ApplyCompositeAsync(preview.PreviewToken, CancellationToken.None);
+        var applyResult = await CompositeApplyOrchestrator.ApplyCompositeAsync(preview.PreviewToken, CompositeAdmission.AdmitAll, CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
 
         var packagesXml = XDocument.Load(propsPath);
@@ -112,7 +113,7 @@ public sealed class OrchestrationIntegrationTests : IsolatedWorkspaceTestBase
             CancellationToken.None);
 
         Assert.IsNull(preview.Warnings);
-        var applyResult = await CompositeApplyOrchestrator.ApplyCompositeAsync(preview.PreviewToken, CancellationToken.None);
+        var applyResult = await CompositeApplyOrchestrator.ApplyCompositeAsync(preview.PreviewToken, CompositeAdmission.AdmitAll, CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
         Assert.IsFalse(XDocument.Load(propsPath).Descendants("PackageVersion").Any(element =>
             string.Equals((string?)element.Attribute("Include"), "Legacy.Package", StringComparison.OrdinalIgnoreCase)));
@@ -187,7 +188,7 @@ public sealed class OrchestrationIntegrationTests : IsolatedWorkspaceTestBase
             "2.5.0",
             CancellationToken.None);
 
-        var applyResult = await CompositeApplyOrchestrator.ApplyCompositeAsync(preview.PreviewToken, CancellationToken.None);
+        var applyResult = await CompositeApplyOrchestrator.ApplyCompositeAsync(preview.PreviewToken, CompositeAdmission.AdmitAll, CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
 
         var libXml = XDocument.Load(sampleLibProject);
@@ -301,7 +302,7 @@ public sealed class OrchestrationIntegrationTests : IsolatedWorkspaceTestBase
             $"FORMAT-BUG-003 regression: no orphan empty ItemGroup should remain in added lines. Diff:\n{projectDiff}");
 
         // Apply and re-inspect the actual csproj contents for layout.
-        var applyResult = await CompositeApplyOrchestrator.ApplyCompositeAsync(preview.PreviewToken, CancellationToken.None);
+        var applyResult = await CompositeApplyOrchestrator.ApplyCompositeAsync(preview.PreviewToken, CompositeAdmission.AdmitAll, CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
 
         var csprojText = await File.ReadAllTextAsync(sampleLibProject, CancellationToken.None);
@@ -341,7 +342,7 @@ public sealed class OrchestrationIntegrationTests : IsolatedWorkspaceTestBase
             "2.5.0",
             CancellationToken.None);
 
-        var applyResult = await CompositeApplyOrchestrator.ApplyCompositeAsync(preview.PreviewToken, CancellationToken.None);
+        var applyResult = await CompositeApplyOrchestrator.ApplyCompositeAsync(preview.PreviewToken, CompositeAdmission.AdmitAll, CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
 
         var csprojText = await File.ReadAllTextAsync(sampleLibProject, CancellationToken.None);
@@ -369,7 +370,7 @@ public sealed class OrchestrationIntegrationTests : IsolatedWorkspaceTestBase
             "Dog.Behavior.cs",
             CancellationToken.None);
 
-        var applyResult = await CompositeApplyOrchestrator.ApplyCompositeAsync(preview.PreviewToken, CancellationToken.None);
+        var applyResult = await CompositeApplyOrchestrator.ApplyCompositeAsync(preview.PreviewToken, CompositeAdmission.AdmitAll, CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
         Assert.IsTrue(File.Exists(newFilePath));
 
@@ -426,7 +427,7 @@ public sealed class OrchestrationIntegrationTests : IsolatedWorkspaceTestBase
             "Dog.Behavior.cs",
             CancellationToken.None);
 
-        var applyResult = await CompositeApplyOrchestrator.ApplyCompositeAsync(preview.PreviewToken, CancellationToken.None);
+        var applyResult = await CompositeApplyOrchestrator.ApplyCompositeAsync(preview.PreviewToken, CompositeAdmission.AdmitAll, CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
         Assert.IsTrue(File.Exists(newFilePath), "split_class_preview apply must have created the new partial file.");
 
@@ -520,7 +521,7 @@ public sealed class OrchestrationIntegrationTests : IsolatedWorkspaceTestBase
 
         // Apply the preview and re-inspect the persisted file: it must contain no whitespace-only
         // lines where the Fetch method used to be.
-        var applyResult = await CompositeApplyOrchestrator.ApplyCompositeAsync(preview.PreviewToken, CancellationToken.None);
+        var applyResult = await CompositeApplyOrchestrator.ApplyCompositeAsync(preview.PreviewToken, CompositeAdmission.AdmitAll, CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
 
         var originalContents = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
@@ -568,7 +569,7 @@ public sealed class OrchestrationIntegrationTests : IsolatedWorkspaceTestBase
             updateDiRegistrations: true,
             CancellationToken.None);
 
-        var applyResult = await CompositeApplyOrchestrator.ApplyCompositeAsync(preview.PreviewToken, CancellationToken.None);
+        var applyResult = await CompositeApplyOrchestrator.ApplyCompositeAsync(preview.PreviewToken, CompositeAdmission.AdmitAll, CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
         Assert.IsTrue(File.Exists(interfaceFilePath));
 

@@ -129,6 +129,69 @@ public sealed class PersistentCompositeStorage
     }
 
     /// <summary>
+    /// Reads the persisted entry for <paramref name="token"/> WITHOUT claiming it, so a caller can
+    /// inspect what <see cref="TryClaim"/> would hand out (for example to revalidate its write set)
+    /// while the one-time token stays redeemable. Returns <see langword="null"/> for every shape in
+    /// which a claim would not succeed: invalid, absent, expired, mid-claim (lock sibling present),
+    /// vanished underneath the read, or unreadable/incomplete JSON.
+    /// </summary>
+    public CompositePreviewStore.Entry? TryPeek(string token)
+    {
+        if (!IsValidToken(token))
+        {
+            return null;
+        }
+
+        var versionDirectories = TryEnumerateVersionDirectories("peeking token");
+        if (versionDirectories is null) return null;
+
+        foreach (var subdir in versionDirectories)
+        {
+            var path = Path.Combine(subdir, token + ".json");
+            if (!File.Exists(path))
+            {
+                continue;
+            }
+
+            return PeekEntry(path);
+        }
+
+        return null;
+    }
+
+    private CompositePreviewStore.Entry? PeekEntry(string path)
+    {
+        // A lock sibling means a claimant is mid-claim: the payload is about to be consumed.
+        if (File.Exists(path + ".lock"))
+        {
+            return null;
+        }
+
+        string json;
+        DateTime lastWriteUtc;
+        try
+        {
+            // FileShare.Delete is load-bearing: ClaimEntry renames this very file with File.Move, and
+            // a reader holding it open without Delete sharing makes the winning claimant's move throw
+            // a raw IOException on Windows. The timestamp is probed while the handle is still held so
+            // a concurrent claim (rename) is observed as an expired/absent entry, never a torn read.
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var reader = new StreamReader(stream);
+            json = reader.ReadToEnd();
+            lastWriteUtc = _getLastWriteTimeUtc(path);
+        }
+        catch (IOException ex)
+        {
+            // Claimed or removed between the existence probe and the open: indistinguishable from a
+            // cache miss, and a miss makes the caller refuse. Permission failures still propagate.
+            _logger?.LogDebug(ex, "PersistentCompositeStorage: token payload disappeared before peek.");
+            return null;
+        }
+
+        return DateTime.UtcNow - lastWriteUtc > _ttl ? null : ParseEntry(json);
+    }
+
+    /// <summary>
     /// Compatibility entry point for callers compiled against the original storage API.
     /// Reads now have the same one-time, fail-closed semantics as <see cref="TryClaim"/>.
     /// </summary>
@@ -206,21 +269,47 @@ public sealed class PersistentCompositeStorage
             return null;
         }
 
+        return ParseEntry(json);
+    }
+
+    /// <summary>
+    /// Parses a persisted record. The directory is shared and separately writable, so the payload is
+    /// untrusted input: a record missing the members every later stage dereferences (workspace id,
+    /// mutation list, a mutation's path) is unreadable, never a half-populated entry.
+    /// </summary>
+    private CompositePreviewStore.Entry? ParseEntry(string json)
+    {
         try
         {
             var dto = JsonSerializer.Deserialize<PersistedEntry>(json, JsonOpts);
-            return dto is null
-                ? null
-                : new CompositePreviewStore.Entry(
-                    dto.WorkspaceId,
-                    dto.WorkspaceVersion,
-                    dto.Description,
-                    dto.Mutations.Select(m => new CompositeFileMutation(m.FilePath, m.UpdatedContent, m.DeleteFile)).ToArray(),
-                    dto.CreatedAt);
+            if (dto is null || string.IsNullOrWhiteSpace(dto.WorkspaceId) || dto.Mutations is null)
+            {
+                _logger?.LogDebug("PersistentCompositeStorage: dropping persisted entry with missing required members.");
+                return null;
+            }
+
+            var mutations = new List<CompositeFileMutation>(dto.Mutations.Count);
+            foreach (var mutation in dto.Mutations)
+            {
+                if (mutation is null || string.IsNullOrWhiteSpace(mutation.FilePath))
+                {
+                    _logger?.LogDebug("PersistentCompositeStorage: dropping persisted entry with a pathless mutation.");
+                    return null;
+                }
+
+                mutations.Add(new CompositeFileMutation(mutation.FilePath, mutation.UpdatedContent, mutation.DeleteFile));
+            }
+
+            return new CompositePreviewStore.Entry(
+                dto.WorkspaceId,
+                dto.WorkspaceVersion,
+                dto.Description,
+                mutations,
+                dto.CreatedAt);
         }
         catch (Exception ex) when (ex is JsonException or NotSupportedException)
         {
-            _logger?.LogDebug(ex, "PersistentCompositeStorage: dropping unreadable claimed entry.");
+            _logger?.LogDebug(ex, "PersistentCompositeStorage: dropping unreadable persisted entry.");
             return null;
         }
     }
@@ -317,12 +406,14 @@ public sealed class PersistentCompositeStorage
         }
     }
 
+    // Members are nullable because the record is deserialized from a shared directory: JSON can omit
+    // or null any of them, and ParseEntry rejects such a record instead of dereferencing it.
     private sealed record PersistedEntry(
-        string WorkspaceId,
+        string? WorkspaceId,
         int WorkspaceVersion,
         string Description,
-        IReadOnlyList<PersistedMutation> Mutations,
+        IReadOnlyList<PersistedMutation?>? Mutations,
         DateTime CreatedAt);
 
-    private sealed record PersistedMutation(string FilePath, string? UpdatedContent, bool DeleteFile);
+    private sealed record PersistedMutation(string? FilePath, string? UpdatedContent, bool DeleteFile);
 }

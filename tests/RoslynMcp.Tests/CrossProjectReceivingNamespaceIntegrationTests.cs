@@ -5,6 +5,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 using static RoslynMcp.Tests.TestInfrastructure.InterfaceExtractionTestContext;
 
@@ -124,7 +125,7 @@ public sealed class CrossProjectReceivingNamespaceIntegrationTests : IsolatedWor
 
         var result = route == "extract-and-wire"
             ? await new CompositeApplyOrchestrator(WorkspaceManager, compositeStore, undoService: UndoService)
-                .ApplyCompositeAsync(preview.PreviewToken, CancellationToken.None)
+                .ApplyCompositeAsync(preview.PreviewToken, CompositeAdmission.AdmitAll, CancellationToken.None)
             : await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "namespace_test", CancellationToken.None);
         Assert.IsTrue(result.Success, result.Error);
         await workspace.ReloadAsync();

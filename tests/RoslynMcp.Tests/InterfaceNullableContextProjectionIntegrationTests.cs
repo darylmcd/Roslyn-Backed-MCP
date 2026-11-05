@@ -4,6 +4,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 using static RoslynMcp.Tests.TestInfrastructure.InterfaceExtractionTestContext;
 
 namespace RoslynMcp.Tests;
@@ -103,7 +104,7 @@ public sealed class InterfaceNullableContextProjectionIntegrationTests : Isolate
         var target = pending.Projects.Single(p => p.Name == receivingName).Documents.Single(d => d.Name == "INullableService.cs");
         Assert.IsFalse(File.Exists(target.FilePath));
         var applied = route == "extract-and-wire"
-            ? await new CompositeApplyOrchestrator(WorkspaceManager, stores, undoService: UndoService).ApplyCompositeAsync(preview.PreviewToken, CancellationToken.None)
+            ? await new CompositeApplyOrchestrator(WorkspaceManager, stores, undoService: UndoService).ApplyCompositeAsync(preview.PreviewToken, CompositeAdmission.AdmitAll, CancellationToken.None)
             : await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "nullable_context", CancellationToken.None);
         Assert.IsTrue(applied.Success, applied.Error);
         await workspace.ReloadAsync();

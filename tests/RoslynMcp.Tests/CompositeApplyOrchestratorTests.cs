@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.CodeAnalysis;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Diagnostics;
@@ -493,7 +494,7 @@ public sealed class CompositeApplyOrchestratorTests
         var workspace = new RecordingWorkspaceManager(reloadFailure);
         var orchestrator = new CompositeApplyOrchestrator(workspace, store);
 
-        var result = await orchestrator.ApplyCompositeAsync(token, CancellationToken.None);
+        var result = await orchestrator.ApplyCompositeAsync(token, CompositeAdmission.AdmitAll, CancellationToken.None);
 
         switch (scenario)
         {
@@ -569,7 +570,7 @@ public sealed class CompositeApplyOrchestratorTests
             exceptionReporter: reporter);
 
         // Act
-        var result = await orchestrator.ApplyCompositeAsync(token, CancellationToken.None);
+        var result = await orchestrator.ApplyCompositeAsync(token, CompositeAdmission.AdmitAll, CancellationToken.None);
 
         // Assert: failed, but the first write landed and is marked as a partial apply.
         Assert.IsFalse(result.Success, "A mid-loop failure must report success:false.");
@@ -619,7 +620,7 @@ public sealed class CompositeApplyOrchestratorTests
             store,
             exceptionReporter: new ServerObservabilityReporter(sink));
 
-        var result = await orchestrator.ApplyCompositeAsync(token, CancellationToken.None);
+        var result = await orchestrator.ApplyCompositeAsync(token, CompositeAdmission.AdmitAll, CancellationToken.None);
 
         Assert.IsFalse(result.Success);
         Assert.AreEqual(0, result.AppliedFiles.Count);
@@ -669,7 +670,7 @@ public sealed class CompositeApplyOrchestratorTests
             [new CompositeFileMutation(path, updatedContent, DeleteFile: false)]);
         var orchestrator = new CompositeApplyOrchestrator(new RecordingWorkspaceManager(), store);
 
-        var result = await orchestrator.ApplyCompositeAsync(token, CancellationToken.None);
+        var result = await orchestrator.ApplyCompositeAsync(token, CompositeAdmission.AdmitAll, CancellationToken.None);
         Assert.IsTrue(result.Success, result.Error);
 
         var afterBytes = await File.ReadAllBytesAsync(path, CancellationToken.None);
@@ -687,6 +688,81 @@ public sealed class CompositeApplyOrchestratorTests
             updatedContent,
             encoding.GetString(afterBytes, preamble.Length, afterBytes.Length - preamble.Length),
             "The mutation must be readable back through the original encoding.");
+    }
+
+    /// <summary>
+    /// composite-redemption-admission-boundary: a token bound to a session this host never admitted
+    /// must be refused before the first write, in BOTH orchestrator constructions. With the DI undo
+    /// service present, undo capture happens to fail first; without it (direct construction) the old
+    /// order wrote every file and only then failed in <c>ReloadAsync</c>, leaving bytes on disk for a
+    /// refused apply. The not-found exception is the refusal; the bytes and the reload are the proof.
+    /// </summary>
+    [TestMethod]
+    [DataRow(false, false, DisplayName = "memory store, no undo service")]
+    [DataRow(false, true, DisplayName = "memory store, DI undo service")]
+    [DataRow(true, false, DisplayName = "persistent store, no undo service")]
+    [DataRow(true, true, DisplayName = "persistent store, DI undo service")]
+    public async Task ApplyComposite_UnadmittedSession_RefusesBeforeAnyWrite(bool persistent, bool withUndoService)
+    {
+        var target = Path.Combine(_tempDir, "target.cs");
+        await File.WriteAllTextAsync(target, "original");
+        var ttl = TimeSpan.FromMinutes(5);
+        var store = persistent
+            ? new CompositePreviewStore(20, ttl, new PersistentCompositeStorage(Path.Combine(_tempDir, "persist"), ttl))
+            : new CompositePreviewStore();
+        var token = store.Store(
+            "ghost-session",
+            1,
+            "unadmitted session",
+            [new CompositeFileMutation(target, "replaced")]);
+        var workspace = new RecordingWorkspaceManager { AdmittedWorkspaceIds = ["admitted-session"] };
+        using var undoService = withUndoService ? new UndoService(NullLogger<UndoService>.Instance, workspace) : null;
+        var orchestrator = new CompositeApplyOrchestrator(workspace, store, undoService: undoService);
+
+        await Assert.ThrowsExactlyAsync<WorkspaceNotFoundException>(() =>
+            orchestrator.ApplyCompositeAsync(token, CompositeAdmission.AdmitAll, CancellationToken.None));
+
+        Assert.AreEqual("original", await File.ReadAllTextAsync(target),
+            "A refused apply must not have written any file.");
+        Assert.IsFalse(workspace.ReloadCalled, "The refusal must precede the post-write reload.");
+    }
+
+    /// <summary>
+    /// The caller's write-set admission sees the CLAIMED entry's workspace id and every mutation
+    /// path, and a refusal propagates before undo capture or any write.
+    /// </summary>
+    [TestMethod]
+    public async Task ApplyComposite_AdmissionRefusal_PropagatesBeforeAnyWrite()
+    {
+        var target = Path.Combine(_tempDir, "target.cs");
+        var second = Path.Combine(_tempDir, "second.cs");
+        await File.WriteAllTextAsync(target, "original");
+        var store = new CompositePreviewStore();
+        var token = store.Store(
+            "ws-1",
+            1,
+            "admission refusal",
+            [new CompositeFileMutation(target, "replaced"), new CompositeFileMutation(second, "created")]);
+        var workspace = new RecordingWorkspaceManager();
+        var orchestrator = new CompositeApplyOrchestrator(workspace, store);
+        string? admittedWorkspaceId = null;
+        IReadOnlyList<string>? admittedWriteSet = null;
+
+        await Assert.ThrowsExactlyAsync<ArgumentException>(() => orchestrator.ApplyCompositeAsync(
+            token,
+            (workspaceId, writeSet, _) =>
+            {
+                admittedWorkspaceId = workspaceId;
+                admittedWriteSet = writeSet;
+                throw new ArgumentException("refused by the host boundary");
+            },
+            CancellationToken.None));
+
+        Assert.AreEqual("ws-1", admittedWorkspaceId);
+        CollectionAssert.AreEqual(new[] { target, second }, admittedWriteSet!.ToArray());
+        Assert.AreEqual("original", await File.ReadAllTextAsync(target));
+        Assert.IsFalse(File.Exists(second));
+        Assert.IsFalse(workspace.ReloadCalled);
     }
 
     /// <summary>
@@ -708,7 +784,7 @@ public sealed class CompositeApplyOrchestratorTests
             [new CompositeFileMutation(path, "class New { }\n", DeleteFile: false)]);
         var orchestrator = new CompositeApplyOrchestrator(new RecordingWorkspaceManager(), store);
 
-        var result = await orchestrator.ApplyCompositeAsync(token, CancellationToken.None);
+        var result = await orchestrator.ApplyCompositeAsync(token, CompositeAdmission.AdmitAll, CancellationToken.None);
         Assert.IsTrue(result.Success, result.Error);
 
         var afterBytes = await File.ReadAllBytesAsync(path, CancellationToken.None);
@@ -773,7 +849,7 @@ public sealed class CompositeApplyOrchestratorTests
             changeTracker,
             undoService: undoService);
 
-        var result = await orchestrator.ApplyCompositeAsync(token, CancellationToken.None);
+        var result = await orchestrator.ApplyCompositeAsync(token, CompositeAdmission.AdmitAll, CancellationToken.None);
         Assert.IsTrue(result.Success, result.Error);
         Assert.IsTrue(File.Exists(createdPath));
         Assert.IsFalse(File.Exists(deletedPath));
@@ -826,7 +902,7 @@ public sealed class CompositeApplyOrchestratorTests
         var orchestrator = new CompositeApplyOrchestrator(
             workspace, store, changeTracker, undoService: undoService);
 
-        var result = await orchestrator.ApplyCompositeAsync(token, CancellationToken.None);
+        var result = await orchestrator.ApplyCompositeAsync(token, CompositeAdmission.AdmitAll, CancellationToken.None);
 
         Assert.IsTrue(result.Success, result.Error);
         var expectedFiles = OperatingSystem.IsWindows() ? 1 : 2;
@@ -860,7 +936,7 @@ public sealed class CompositeApplyOrchestratorTests
             ]);
         var orchestrator = new CompositeApplyOrchestrator(new RecordingWorkspaceManager(), store);
 
-        var result = await orchestrator.ApplyCompositeAsync(token, CancellationToken.None);
+        var result = await orchestrator.ApplyCompositeAsync(token, CompositeAdmission.AdmitAll, CancellationToken.None);
 
         Assert.IsFalse(result.Success);
         Assert.HasCount(OperatingSystem.IsWindows() ? 1 : 2, result.AppliedFiles);
@@ -929,51 +1005,5 @@ public sealed class CompositeApplyOrchestratorTests
             Exception? exception,
             Func<TState, Exception?, string> formatter)
             => Entries.Add((logLevel, formatter(state, exception), exception));
-    }
-
-    private sealed class RecordingWorkspaceManager(Exception? reloadFailure = null) : IWorkspaceManager
-    {
-        public bool ReloadCalled { get; private set; }
-
-        public event Action<string>? WorkspaceClosed { add { } remove { } }
-        public event Action<string>? WorkspaceReloaded { add { } remove { } }
-
-        public Task<WorkspaceStatusDto> LoadAsync(string path, EvictPolicy evictPolicy, CancellationToken ct) => throw new NotSupportedException();
-
-        public Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct)
-        {
-            ReloadCalled = true;
-            return reloadFailure is null
-                ? Task.FromResult(GetStatus(workspaceId))
-                : Task.FromException<WorkspaceStatusDto>(reloadFailure);
-        }
-
-        public bool ContainsWorkspace(string workspaceId) => !string.IsNullOrWhiteSpace(workspaceId);
-        public bool IsStale(string workspaceId) => false;
-        public bool Close(string workspaceId) => throw new NotSupportedException();
-        public IReadOnlyList<WorkspaceStatusDto> ListWorkspaces() => [];
-        public WorkspaceStatusDto GetStatus(string workspaceId) =>
-            new(
-                WorkspaceId: workspaceId,
-                LoadedPath: "C:\\repo\\Sample.slnx",
-                WorkspaceVersion: 1,
-                SnapshotToken: "snapshot",
-                LoadedAtUtc: DateTimeOffset.UtcNow,
-                ProjectCount: 0,
-                DocumentCount: 0,
-                Projects: [],
-                IsLoaded: true,
-                IsStale: false,
-                WorkspaceDiagnostics: []);
-        public Task<WorkspaceStatusDto> GetStatusAsync(string workspaceId, CancellationToken cancellationToken = default) =>
-            Task.FromResult(GetStatus(workspaceId));
-        public ProjectGraphDto GetProjectGraph(string workspaceId) => throw new NotSupportedException();
-        public Task<IReadOnlyList<GeneratedDocumentDto>> GetSourceGeneratedDocumentsAsync(string workspaceId, string? projectName, CancellationToken ct) => throw new NotSupportedException();
-        public Task<string?> GetSourceTextAsync(string workspaceId, string filePath, CancellationToken ct) => throw new NotSupportedException();
-        public int GetCurrentVersion(string workspaceId) => 1;
-        public void RestoreVersion(string workspaceId, int version) { }
-        public Solution GetCurrentSolution(string workspaceId) => throw new NotSupportedException();
-        public bool TryApplyChanges(string workspaceId, Solution newSolution) => throw new NotSupportedException();
-        public Project? GetProject(string workspaceId, string projectNameOrPath) => null;
     }
 }

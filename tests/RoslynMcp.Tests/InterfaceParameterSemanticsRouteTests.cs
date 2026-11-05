@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 using static RoslynMcp.Tests.TestInfrastructure.InterfaceExtractionTestContext;
 
 namespace RoslynMcp.Tests;
@@ -335,7 +336,7 @@ public sealed class InterfaceParameterSemanticsRouteTests : InterfaceRouteTestBa
         await VerifyAsync(pending, receiver, "preview", verify);
 
         var applied = route == "extract-and-wire"
-            ? await new CompositeApplyOrchestrator(WorkspaceManager, stores, undoService: UndoService).ApplyCompositeAsync(preview.PreviewToken, CancellationToken.None)
+            ? await new CompositeApplyOrchestrator(WorkspaceManager, stores, undoService: UndoService).ApplyCompositeAsync(preview.PreviewToken, CompositeAdmission.AdmitAll, CancellationToken.None)
             : await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "interface_parameter_semantics_apply", CancellationToken.None);
         Assert.IsTrue(applied.Success, applied.Error);
         await workspace.ReloadAsync();

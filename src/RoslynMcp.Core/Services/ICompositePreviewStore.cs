@@ -34,6 +34,20 @@ public interface ICompositePreviewStore
     /// or <see langword="null"/> if the token is expired or not found.
     /// </summary>
     string? PeekWorkspaceId(string token);
+
+    /// <summary>
+    /// Returns the file path of every mutation a redemption of <paramref name="token"/> would write,
+    /// without consuming the entry. A store that persists tokens reads the persisted record — the
+    /// same authority <see cref="Retrieve"/> claims — never the creator's in-memory copy.
+    /// </summary>
+    /// <returns>
+    /// The write set, or <see langword="null"/> when the token is expired, unknown, already claimed,
+    /// or its persisted record cannot be read. <see langword="null"/> means the write set is
+    /// <b>unknown</b>: the caller MUST refuse the redemption (fail closed). This deliberately differs
+    /// from the "null means skip" contract of <c>IPreviewStore.PeekChangedPaths</c>, which has no
+    /// persisted, separately writable record behind it.
+    /// </returns>
+    IReadOnlyList<string>? PeekChangedPaths(string token);
 }
 
 /// <summary>

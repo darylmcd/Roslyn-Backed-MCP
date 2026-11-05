@@ -113,6 +113,17 @@ public sealed class BoundedStoreEvictionTests
     }
 
     [TestMethod]
+    public void ProjectMutationPreviewStore_PeekChangedPaths_ReturnsProjectFile_WithoutConsuming_AndNullWhenUnknown()
+    {
+        var store = new ProjectMutationPreviewStore(3);
+        var token = store.Store("ws", "p1.csproj", "<Project/>", 1, "first");
+
+        CollectionAssert.AreEqual(new[] { "p1.csproj" }, store.PeekChangedPaths(token)!.ToArray());
+        Assert.IsNotNull(store.Retrieve(token), "The peek must not consume the entry.");
+        Assert.IsNull(store.PeekChangedPaths("nonexistent"));
+    }
+
+    [TestMethod]
     public void ProjectMutationPreviewStore_PeekWorkspaceId_Returns_Null_For_Unknown_Token()
     {
         var store = new ProjectMutationPreviewStore(3);

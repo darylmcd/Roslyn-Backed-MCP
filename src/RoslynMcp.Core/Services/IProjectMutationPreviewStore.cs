@@ -35,4 +35,11 @@ public interface IProjectMutationPreviewStore
     /// or <see langword="null"/> if the token is expired or not found.
     /// </summary>
     string? PeekWorkspaceId(string token);
+
+    /// <summary>
+    /// Returns the file path a redemption of <paramref name="token"/> would write (the project
+    /// file), without consuming the entry. <see langword="null"/> means the token is expired or
+    /// unknown: the write set is unknown and the caller MUST refuse the redemption (fail closed).
+    /// </summary>
+    IReadOnlyList<string>? PeekChangedPaths(string token);
 }

@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.DependencyInjection;
@@ -537,6 +538,366 @@ public sealed class PreviewApplyBoundaryRevalidationTests
 
             TestFixtureFileSystem.DeleteDirectoryIfExists(outside);
         }
+    }
+
+    // composite-redemption-admission-boundary: the delegate-peek ApplyByTokenAsync overload backs
+    // apply_composite and apply_project_mutation. It used to skip the redemption-time
+    // sanctioned-root revalidation the IPreviewStore overload performs, so a composite token whose
+    // persisted mutation path lay outside the boundary was claimed and written.
+
+    /// <summary>
+    /// The core defect: a composite token whose write set names a path outside the sanctioned
+    /// roots must be refused at redemption, before the orchestrator runs, and no bytes may land
+    /// outside the boundary.
+    /// </summary>
+    [TestMethod]
+    public async Task ApplyComposite_InMemoryToken_PathOutsideSanctionedRoot_RefusesBeforeWrite()
+    {
+        var testRoot = Path.Combine(TestTempRoot.Current, "rmcp-composite-mem-" + Guid.NewGuid().ToString("N"));
+        var sanctionedRoot = Path.Combine(testRoot, "sanctioned");
+        var outside = Path.Combine(testRoot, "outside");
+        Directory.CreateDirectory(sanctionedRoot);
+        Directory.CreateDirectory(outside);
+        var outsideFile = Path.Combine(outside, "Program.cs");
+        File.WriteAllText(outsideFile, OutsideOriginal);
+
+        var previousSnapshot = SecurityOptionsSnapshot.Value;
+        try
+        {
+            SecurityOptionsSnapshot.Value = new SecurityOptions { SanctionedRoots = [sanctionedRoot] };
+            var store = new CompositePreviewStore();
+            var token = store.Store(
+                WorkspaceId, 1, "out-of-root composite", [new CompositeFileMutation(outsideFile, "// OVERWRITTEN")]);
+            var orchestrator = new CompositeApplyOrchestrator(new RecordingWorkspaceManager(), store);
+
+            var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+                OrchestrationTools.ApplyComposite(new FakeGate(), orchestrator, store, token, CancellationToken.None));
+
+            StringAssert.Contains(ex.Message, "outside the configured sanctioned-root boundary");
+            Assert.IsFalse(ex.Message.Contains(outsideFile, StringComparison.OrdinalIgnoreCase),
+                "The refusal must not echo the offending path.");
+            Assert.AreEqual(OutsideOriginal, File.ReadAllText(outsideFile),
+                "No bytes may land outside the sanctioned root.");
+        }
+        finally
+        {
+            SecurityOptionsSnapshot.Value = previousSnapshot;
+            TestFixtureFileSystem.DeleteDirectoryIfExists(testRoot);
+        }
+    }
+
+    /// <summary>
+    /// The disk store's persisted record is the authority <c>Retrieve</c> claims, not the creator's
+    /// in-memory copy: a record edited (or forged) in a shared persist directory to name an
+    /// out-of-root path must be refused BEFORE the claim — the payload stays on disk — and before
+    /// any write.
+    /// </summary>
+    [TestMethod]
+    public async Task ApplyComposite_PersistedPayloadEditedOutsideSanctionedRoot_RefusesBeforeClaimAndWrite()
+    {
+        var testRoot = Path.Combine(TestTempRoot.Current, "rmcp-composite-disk-" + Guid.NewGuid().ToString("N"));
+        var sanctionedRoot = Path.Combine(testRoot, "sanctioned");
+        var outside = Path.Combine(testRoot, "outside");
+        var persistDirectory = Path.Combine(testRoot, "persist");
+        Directory.CreateDirectory(sanctionedRoot);
+        Directory.CreateDirectory(outside);
+        var insideFile = Path.Combine(sanctionedRoot, "Program.cs");
+        var outsideFile = Path.Combine(outside, "Program.cs");
+        File.WriteAllText(insideFile, "// inside original");
+        File.WriteAllText(outsideFile, OutsideOriginal);
+
+        var previousSnapshot = SecurityOptionsSnapshot.Value;
+        try
+        {
+            SecurityOptionsSnapshot.Value = new SecurityOptions { SanctionedRoots = [sanctionedRoot] };
+            var ttl = TimeSpan.FromMinutes(5);
+            var store = new CompositePreviewStore(20, ttl, new PersistentCompositeStorage(persistDirectory, ttl));
+            var token = store.Store(
+                WorkspaceId, 1, "tampered composite", [new CompositeFileMutation(insideFile, "// OVERWRITTEN")]);
+            var payloadPath = Directory.EnumerateFiles(persistDirectory, token + ".json", SearchOption.AllDirectories).Single();
+            RewritePersistedPayload(persistDirectory, token, payload => payload["Mutations"]![0]!["FilePath"] = outsideFile);
+            var orchestrator = new CompositeApplyOrchestrator(new RecordingWorkspaceManager(), store);
+
+            var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+                OrchestrationTools.ApplyComposite(new FakeGate(), orchestrator, store, token, CancellationToken.None));
+
+            StringAssert.Contains(ex.Message, "outside the configured sanctioned-root boundary");
+            Assert.AreEqual(OutsideOriginal, File.ReadAllText(outsideFile),
+                "No bytes may land outside the sanctioned root.");
+            Assert.AreEqual("// inside original", File.ReadAllText(insideFile));
+            Assert.IsTrue(File.Exists(payloadPath),
+                "A refused redemption must not claim (consume) the one-time persisted payload.");
+        }
+        finally
+        {
+            SecurityOptionsSnapshot.Value = previousSnapshot;
+            TestFixtureFileSystem.DeleteDirectoryIfExists(testRoot);
+        }
+    }
+
+    /// <summary>
+    /// The peek-then-claim race: the pre-claim revalidation sees an in-root record, the shared
+    /// persist directory is then swapped to an out-of-root record, and the claim hands THAT record
+    /// to the orchestrator. The write set the orchestrator is about to apply is the one that must be
+    /// validated, so the swapped record is refused before any write.
+    /// </summary>
+    [TestMethod]
+    public async Task ApplyComposite_RecordSwappedOutOfBoundaryBetweenPeekAndClaim_RefusesBeforeWrite()
+    {
+        var testRoot = Path.Combine(TestTempRoot.Current, "rmcp-composite-swap-" + Guid.NewGuid().ToString("N"));
+        var sanctionedRoot = Path.Combine(testRoot, "sanctioned");
+        var outside = Path.Combine(testRoot, "outside");
+        var persistDirectory = Path.Combine(testRoot, "persist");
+        Directory.CreateDirectory(sanctionedRoot);
+        Directory.CreateDirectory(outside);
+        var insideFile = Path.Combine(sanctionedRoot, "Program.cs");
+        var outsideFile = Path.Combine(outside, "Program.cs");
+        File.WriteAllText(insideFile, "// inside original");
+        File.WriteAllText(outsideFile, OutsideOriginal);
+
+        var previousSnapshot = SecurityOptionsSnapshot.Value;
+        try
+        {
+            SecurityOptionsSnapshot.Value = new SecurityOptions { SanctionedRoots = [sanctionedRoot] };
+            var ttl = TimeSpan.FromMinutes(5);
+            var inner = new CompositePreviewStore(20, ttl, new PersistentCompositeStorage(persistDirectory, ttl));
+            var token = inner.Store(
+                WorkspaceId, 1, "swapped composite", [new CompositeFileMutation(insideFile, "// OVERWRITTEN")]);
+            var store = new SwapAfterPeekStore(inner, () => RewritePersistedPayload(
+                persistDirectory, token, payload => payload["Mutations"]![0]!["FilePath"] = outsideFile));
+            var orchestrator = new CompositeApplyOrchestrator(new RecordingWorkspaceManager(), store);
+
+            var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+                OrchestrationTools.ApplyComposite(new FakeGate(), orchestrator, store, token, CancellationToken.None));
+
+            StringAssert.Contains(ex.Message, "outside the configured sanctioned-root boundary");
+            Assert.IsTrue(store.Swapped, "Premise: the swap ran between the peek and the claim.");
+            Assert.AreEqual(OutsideOriginal, File.ReadAllText(outsideFile),
+                "The claimed record's write set must be validated, not the one peeked earlier.");
+            Assert.AreEqual("// inside original", File.ReadAllText(insideFile));
+        }
+        finally
+        {
+            SecurityOptionsSnapshot.Value = previousSnapshot;
+            TestFixtureFileSystem.DeleteDirectoryIfExists(testRoot);
+        }
+    }
+
+    /// <summary>
+    /// The write gate is taken on the workspace the peek reported. A record swapped to name another
+    /// workspace between the peek and the claim must not be applied (and reloaded) under a gate that
+    /// protects a different session.
+    /// </summary>
+    [TestMethod]
+    public async Task ApplyComposite_RecordSwappedToAnotherWorkspaceBetweenPeekAndClaim_RefusesBeforeWrite()
+    {
+        var testRoot = Path.Combine(TestTempRoot.Current, "rmcp-composite-wsswap-" + Guid.NewGuid().ToString("N"));
+        var sanctionedRoot = Path.Combine(testRoot, "sanctioned");
+        var persistDirectory = Path.Combine(testRoot, "persist");
+        Directory.CreateDirectory(sanctionedRoot);
+        var insideFile = Path.Combine(sanctionedRoot, "Program.cs");
+        File.WriteAllText(insideFile, "// inside original");
+
+        var previousSnapshot = SecurityOptionsSnapshot.Value;
+        try
+        {
+            SecurityOptionsSnapshot.Value = new SecurityOptions { SanctionedRoots = [sanctionedRoot] };
+            var ttl = TimeSpan.FromMinutes(5);
+            var inner = new CompositePreviewStore(20, ttl, new PersistentCompositeStorage(persistDirectory, ttl));
+            var token = inner.Store(
+                WorkspaceId, 1, "workspace swap", [new CompositeFileMutation(insideFile, "// OVERWRITTEN")]);
+            var store = new SwapAfterPeekStore(inner, () => RewritePersistedPayload(
+                persistDirectory, token, payload => payload["WorkspaceId"] = "ws-other"));
+            var orchestrator = new CompositeApplyOrchestrator(new RecordingWorkspaceManager(), store);
+
+            await Assert.ThrowsExactlyAsync<PreviewTokenStaleException>(() =>
+                OrchestrationTools.ApplyComposite(new FakeGate(), orchestrator, store, token, CancellationToken.None));
+
+            Assert.IsTrue(store.Swapped, "Premise: the swap ran between the peek and the claim.");
+            Assert.AreEqual("// inside original", File.ReadAllText(insideFile));
+        }
+        finally
+        {
+            SecurityOptionsSnapshot.Value = previousSnapshot;
+            TestFixtureFileSystem.DeleteDirectoryIfExists(testRoot);
+        }
+    }
+
+    private static void RewritePersistedPayload(string persistDirectory, string token, Action<JsonNode> edit)
+    {
+        var payloadPath = Directory.EnumerateFiles(persistDirectory, token + ".json", SearchOption.AllDirectories).Single();
+        var payload = JsonNode.Parse(File.ReadAllText(payloadPath))!;
+        edit(payload);
+        File.WriteAllText(payloadPath, payload.ToJsonString());
+    }
+
+    /// <summary>
+    /// Delegating store that runs <c>swap</c> right after the write-set peek returns, modelling a
+    /// party with write access to the shared persist directory winning the peek-to-claim window.
+    /// </summary>
+    private sealed class SwapAfterPeekStore(CompositePreviewStore inner, Action swap) : ICompositePreviewStore
+    {
+        public bool Swapped { get; private set; }
+
+        public string Store(string workspaceId, int workspaceVersion, string description, IReadOnlyList<CompositeFileMutation> mutations) =>
+            inner.Store(workspaceId, workspaceVersion, description, mutations);
+
+        public (string WorkspaceId, int WorkspaceVersion, string Description, IReadOnlyList<CompositeFileMutation> Mutations)? Retrieve(string token) =>
+            inner.Retrieve(token);
+
+        public void Invalidate(string token) => inner.Invalidate(token);
+
+        public string? PeekWorkspaceId(string token) => inner.PeekWorkspaceId(token);
+
+        public IReadOnlyList<string>? PeekChangedPaths(string token)
+        {
+            var peeked = inner.PeekChangedPaths(token);
+            if (!Swapped)
+            {
+                swap();
+                Swapped = true;
+            }
+
+            return peeked;
+        }
+    }
+
+    /// <summary>
+    /// Fail-closed: when the persisted record cannot be read (claimed by another host, removed,
+    /// expired) the write set is unknown, and the redemption must be refused as a stale token
+    /// rather than treated like the IPreviewStore "null means unknown, skip" convention.
+    /// </summary>
+    [TestMethod]
+    public async Task ApplyComposite_PersistedPayloadUnavailable_RefusesAsStaleBeforeOrchestrator()
+    {
+        var testRoot = Path.Combine(TestTempRoot.Current, "rmcp-composite-gone-" + Guid.NewGuid().ToString("N"));
+        var sanctionedRoot = Path.Combine(testRoot, "sanctioned");
+        var persistDirectory = Path.Combine(testRoot, "persist");
+        Directory.CreateDirectory(sanctionedRoot);
+        var insideFile = Path.Combine(sanctionedRoot, "Program.cs");
+        File.WriteAllText(insideFile, "// inside original");
+
+        var previousSnapshot = SecurityOptionsSnapshot.Value;
+        try
+        {
+            SecurityOptionsSnapshot.Value = new SecurityOptions { SanctionedRoots = [sanctionedRoot] };
+            var ttl = TimeSpan.FromMinutes(5);
+            var store = new CompositePreviewStore(20, ttl, new PersistentCompositeStorage(persistDirectory, ttl));
+            var token = store.Store(
+                WorkspaceId, 1, "claimed elsewhere", [new CompositeFileMutation(insideFile, "// OVERWRITTEN")]);
+            File.Delete(Directory.EnumerateFiles(persistDirectory, token + ".json", SearchOption.AllDirectories).Single());
+            var orchestrator = new CompositeApplyOrchestrator(new RecordingWorkspaceManager(), store);
+
+            await Assert.ThrowsExactlyAsync<PreviewTokenStaleException>(() =>
+                OrchestrationTools.ApplyComposite(new FakeGate(), orchestrator, store, token, CancellationToken.None));
+
+            Assert.AreEqual("// inside original", File.ReadAllText(insideFile));
+        }
+        finally
+        {
+            SecurityOptionsSnapshot.Value = previousSnapshot;
+            TestFixtureFileSystem.DeleteDirectoryIfExists(testRoot);
+        }
+    }
+
+    /// <summary>
+    /// Happy path: a composite whose write set stays inside the boundary still redeems through the
+    /// disk store — revalidation must not become a false-positive gate or consume the token early.
+    /// </summary>
+    [TestMethod]
+    public async Task ApplyComposite_PersistedWriteSetInsideBoundary_StillApplies()
+    {
+        var testRoot = Path.Combine(TestTempRoot.Current, "rmcp-composite-ok-" + Guid.NewGuid().ToString("N"));
+        var sanctionedRoot = Path.Combine(testRoot, "sanctioned");
+        var persistDirectory = Path.Combine(testRoot, "persist");
+        Directory.CreateDirectory(sanctionedRoot);
+        var insideFile = Path.Combine(sanctionedRoot, "Program.cs");
+        File.WriteAllText(insideFile, "// inside original");
+
+        var previousSnapshot = SecurityOptionsSnapshot.Value;
+        try
+        {
+            SecurityOptionsSnapshot.Value = new SecurityOptions { SanctionedRoots = [sanctionedRoot] };
+            var ttl = TimeSpan.FromMinutes(5);
+            var store = new CompositePreviewStore(20, ttl, new PersistentCompositeStorage(persistDirectory, ttl));
+            var token = store.Store(
+                WorkspaceId, 1, "in-root composite", [new CompositeFileMutation(insideFile, "// updated")]);
+            var orchestrator = new CompositeApplyOrchestrator(new RecordingWorkspaceManager(), store);
+
+            var result = await OrchestrationTools.ApplyComposite(
+                new FakeGate(), orchestrator, store, token, CancellationToken.None);
+
+            StringAssert.Contains(result, "\"success\": true");
+            Assert.AreEqual("// updated", File.ReadAllText(insideFile));
+            Assert.IsEmpty(Directory.EnumerateFiles(persistDirectory, token + ".json*", SearchOption.AllDirectories),
+                "A successful redemption consumes the one-time persisted payload.");
+        }
+        finally
+        {
+            SecurityOptionsSnapshot.Value = previousSnapshot;
+            TestFixtureFileSystem.DeleteDirectoryIfExists(testRoot);
+        }
+    }
+
+    /// <summary>
+    /// Same mechanism, second caller of the delegate-peek overload: <c>apply_project_mutation</c>
+    /// writes <c>ProjectFilePath</c> with no redemption-time boundary check either.
+    /// </summary>
+    [TestMethod]
+    public async Task ApplyProjectMutation_ProjectFileOutsideSanctionedRoot_RefusesBeforeService()
+    {
+        var testRoot = Path.Combine(TestTempRoot.Current, "rmcp-projmut-" + Guid.NewGuid().ToString("N"));
+        var sanctionedRoot = Path.Combine(testRoot, "sanctioned");
+        var outside = Path.Combine(testRoot, "outside");
+        Directory.CreateDirectory(sanctionedRoot);
+        Directory.CreateDirectory(outside);
+        var outsideProject = Path.Combine(outside, "Outside.csproj");
+        File.WriteAllText(outsideProject, OutsideOriginal);
+
+        var previousSnapshot = SecurityOptionsSnapshot.Value;
+        try
+        {
+            SecurityOptionsSnapshot.Value = new SecurityOptions { SanctionedRoots = [sanctionedRoot] };
+            var store = new ProjectMutationPreviewStore();
+            var token = store.Store(WorkspaceId, outsideProject, "<Project />", 1, "out-of-root project mutation");
+            var service = new RecordingProjectMutationService();
+
+            var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+                ProjectMutationTools.ApplyProjectMutation(new FakeGate(), service, store, token, CancellationToken.None));
+
+            StringAssert.Contains(ex.Message, "outside the configured sanctioned-root boundary");
+            Assert.IsFalse(service.ApplyCalled, "Revalidation must refuse BEFORE the mutation service runs.");
+            Assert.AreEqual(OutsideOriginal, File.ReadAllText(outsideProject));
+        }
+        finally
+        {
+            SecurityOptionsSnapshot.Value = previousSnapshot;
+            TestFixtureFileSystem.DeleteDirectoryIfExists(testRoot);
+        }
+    }
+
+    private const string OutsideOriginal = "// outside target - must never be written";
+
+    private sealed class RecordingProjectMutationService : IProjectMutationService
+    {
+        public bool ApplyCalled { get; private set; }
+
+        public Task<ApplyResultDto> ApplyProjectMutationAsync(string previewToken, CancellationToken ct)
+        {
+            ApplyCalled = true;
+            return Task.FromResult(new ApplyResultDto(true, [], null));
+        }
+
+        public Task<RefactoringPreviewDto> PreviewAddPackageReferenceAsync(string workspaceId, AddPackageReferenceDto request, CancellationToken ct) => throw new NotSupportedException();
+        public Task<RefactoringPreviewDto> PreviewRemovePackageReferenceAsync(string workspaceId, RemovePackageReferenceDto request, CancellationToken ct) => throw new NotSupportedException();
+        public Task<RefactoringPreviewDto> PreviewAddProjectReferenceAsync(string workspaceId, AddProjectReferenceDto request, CancellationToken ct) => throw new NotSupportedException();
+        public Task<RefactoringPreviewDto> PreviewRemoveProjectReferenceAsync(string workspaceId, RemoveProjectReferenceDto request, CancellationToken ct) => throw new NotSupportedException();
+        public Task<RefactoringPreviewDto> PreviewSetProjectPropertyAsync(string workspaceId, SetProjectPropertyDto request, CancellationToken ct) => throw new NotSupportedException();
+        public Task<RefactoringPreviewDto> PreviewAddTargetFrameworkAsync(string workspaceId, AddTargetFrameworkDto request, CancellationToken ct) => throw new NotSupportedException();
+        public Task<RefactoringPreviewDto> PreviewRemoveTargetFrameworkAsync(string workspaceId, RemoveTargetFrameworkDto request, CancellationToken ct) => throw new NotSupportedException();
+        public Task<RefactoringPreviewDto> PreviewSetConditionalPropertyAsync(string workspaceId, SetConditionalPropertyDto request, CancellationToken ct) => throw new NotSupportedException();
+        public Task<RefactoringPreviewDto> PreviewAddCentralPackageVersionAsync(string workspaceId, AddCentralPackageVersionDto request, CancellationToken ct) => throw new NotSupportedException();
+        public Task<RefactoringPreviewDto> PreviewRemoveCentralPackageVersionAsync(string workspaceId, RemoveCentralPackageVersionDto request, CancellationToken ct) => throw new NotSupportedException();
     }
 
     /// <summary>
