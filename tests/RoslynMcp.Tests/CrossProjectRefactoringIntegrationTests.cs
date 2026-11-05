@@ -7,7 +7,7 @@ using RoslynMcp.Tests.Helpers;
 namespace RoslynMcp.Tests;
 
 [TestClass]
-public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceTestBase
+public sealed class CrossProjectRefactoringIntegrationTests : InterfaceRouteTestBase
 {
     [ClassInitialize]
     public static void ClassInit(TestContext _)
@@ -156,6 +156,70 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
         Assert.IsTrue(applyResult.Success, applyResult.Error);
         var movedText = await File.ReadAllTextAsync(targetFilePath, CancellationToken.None);
         StringAssert.Contains(movedText, "namespace SampleLib");
+    }
+
+    /// <summary>
+    /// Regression (relocation-source-delete-preserves-other-members, same mechanism): the
+    /// source-delete decision counted only the members of the namespace and compilation unit, so
+    /// an assembly attribute or <c>#if</c>-disabled declaration left behind in the source file was
+    /// deleted with it, while a sole type in the global namespace left an empty file behind. The
+    /// decision now shares <c>NamespaceMemberClassifier.HasRemainingContent</c> with the namespace
+    /// relocation.
+    /// </summary>
+    [TestMethod]
+    [DataRow("namespace Original;\n\npublic class Moved { }\n", true, null, DisplayName = "sole type: file removed")]
+    [DataRow("public class Moved { }\n", true, null, DisplayName = "sole type in the global namespace: file removed")]
+    [DataRow("namespace Original;\n\npublic class Moved { }\n\n#if NEVER\npublic enum Keep { A }\n#endif\n", false, null,
+        DisplayName = "disabled declaration after the moved type: file kept")]
+    [DataRow("[assembly: System.Reflection.AssemblyMetadata(\"keep\", \"1\")]\n\nnamespace Original;\n\npublic class Moved { }\n", false, null,
+        DisplayName = "assembly attribute: file kept")]
+    // Disabled text directly above the moved type is that type's leading trivia: it travels with
+    // the declaration (and is not lost), so nothing remains in the source file.
+    [DataRow("namespace Original;\n\n#if NEVER\npublic enum Keep { A }\n#endif\npublic class Moved { }\n", true, "enum Keep",
+        DisplayName = "disabled declaration before the moved type travels with it: file removed")]
+    public async Task Move_Type_To_Project_Preview_Removes_The_Source_File_Only_When_Nothing_Remains(
+        string source, bool expectedSourceRemoved, string? expectedTargetText)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        AddProjectToCopiedSolution(workspace.RootPath, "AnimalsShared", "net10.0");
+        var fixtureDir = Path.Combine(workspace.GetPath("SampleLib"), "MoveKeepFixture");
+        Directory.CreateDirectory(fixtureDir);
+        var sourceFilePath = Path.Combine(fixtureDir, "Source.cs");
+        await File.WriteAllTextAsync(sourceFilePath, source, CancellationToken.None);
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var preview = await CrossProjectRefactoringService.PreviewMoveTypeToProjectAsync(
+            workspace.WorkspaceId,
+            sourceFilePath,
+            "Moved",
+            "AnimalsShared",
+            null,
+            CancellationToken.None,
+            preserveNamespace: false);
+
+        var modified = PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution;
+        var sourceDocument = modified.Projects.SelectMany(p => p.Documents)
+            .SingleOrDefault(d => string.Equals(d.FilePath, sourceFilePath, StringComparison.OrdinalIgnoreCase));
+        if (expectedSourceRemoved)
+        {
+            Assert.IsNull(sourceDocument, "nothing but trivia remains, so the source file must be removed");
+        }
+        else
+        {
+            Assert.IsNotNull(sourceDocument, "the source file still holds content and must survive the move");
+            var text = (await sourceDocument.GetTextAsync(CancellationToken.None)).ToString();
+            Assert.IsFalse(text.Contains("Moved", StringComparison.Ordinal), $"The moved type must leave the source file:\n{text}");
+            Assert.IsTrue(
+                text.Contains("enum Keep", StringComparison.Ordinal) || text.Contains("AssemblyMetadata", StringComparison.Ordinal),
+                $"The retained content is gone:\n{text}");
+        }
+
+        if (expectedTargetText is not null)
+        {
+            var targetDocument = modified.Projects.Single(p => p.Name == "AnimalsShared").Documents.Single(d => d.Name == "Source.cs");
+            var targetText = (await targetDocument.GetTextAsync(CancellationToken.None)).ToString();
+            StringAssert.Contains(targetText, expectedTargetText, $"The leading disabled text must travel with the moved type:\n{targetText}");
+        }
     }
 
     [TestMethod]
@@ -799,49 +863,12 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
         }
         """;
 
-    private static async Task<string> PrepareRefFixtureAsync(IsolatedWorkspaceScope workspace)
-    {
-        AddProjectToCopiedSolution(workspace.RootPath, "Contracts", "net10.0");
-        AddProjectToCopiedSolution(workspace.RootPath, "Consumer", "net10.0");
-        var solution = XDocument.Load(workspace.SolutionPath);
-        var kept = new[] { "SampleLib/SampleLib.csproj", "Contracts/Contracts.csproj", "Consumer/Consumer.csproj" };
-        foreach (var project in solution.Descendants("Project").Where(p => !kept.Contains(p.Attribute("Path")!.Value.Replace('\\', '/'))).ToArray())
-            project.Remove();
-        solution.Save(workspace.SolutionPath);
-
-        var libPath = workspace.GetPath("SampleLib", "SampleLib.csproj");
-        var lib = XDocument.Load(libPath);
-        lib.Root!.Add(new XElement("PropertyGroup", new XElement("EnableDefaultCompileItems", "false")),
-            new XElement("ItemGroup", new XElement("Compile", new XAttribute("Include", "RefService.cs"))));
-        lib.Save(libPath);
-        var consumerPath = workspace.GetPath("Consumer", "Consumer.csproj");
-        var consumer = XDocument.Load(consumerPath);
-        consumer.Root!.Add(new XElement("ItemGroup",
-            new XElement("ProjectReference", new XAttribute("Include", "../SampleLib/SampleLib.csproj")),
-            new XElement("ProjectReference", new XAttribute("Include", "../Contracts/Contracts.csproj"))));
-        consumer.Save(consumerPath);
-
-        var sourcePath = workspace.GetPath("SampleLib", "RefService.cs");
-        await File.WriteAllTextAsync(sourcePath, RefServiceSource);
-        await File.WriteAllTextAsync(workspace.GetPath("Consumer", "RefConsumer.cs"), RefConsumerSource);
-        await workspace.LoadAsync();
-        await TestInfrastructure.InterfaceExtractionTestContext.AssertCompilesAsync(WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
-        return sourcePath;
-    }
+    private static Task<string> PrepareRefFixtureAsync(IsolatedWorkspaceScope workspace) =>
+        PrepareInterfaceRouteFixtureAsync(workspace, "RefService.cs", RefServiceSource, "RefConsumer.cs", RefConsumerSource);
 
     private static Task<RoslynMcp.Core.Models.RefactoringPreviewDto> PreviewRefRouteAsync(
-        string route, string workspaceId, string sourcePath, RoslynMcp.Roslyn.Services.CompositePreviewStore stores) => route switch
-        {
-            "standalone" => InterfaceExtractionService.PreviewExtractInterfaceAsync(
-                workspaceId, sourcePath, "RefService", "IRefService", null, false, CancellationToken.None),
-            "cross-project" => CrossProjectRefactoringService.PreviewExtractInterfaceAsync(
-                workspaceId, sourcePath, "RefService", "IRefService", "Contracts", CancellationToken.None),
-            "dependency-inversion" => CrossProjectRefactoringService.PreviewDependencyInversionAsync(
-                workspaceId, sourcePath, "RefService", "IRefService", "Contracts", CancellationToken.None),
-            "extract-and-wire" => new RoslynMcp.Roslyn.Services.ExtractAndWireOrchestrator(WorkspaceManager, stores, PreviewStore, CrossProjectRefactoringService, DiRegistrationService)
-                .PreviewExtractAndWireInterfaceAsync(workspaceId, sourcePath, "RefService", "IRefService", "Contracts", true, CancellationToken.None),
-            _ => throw new ArgumentOutOfRangeException(nameof(route)),
-        };
+        string route, string workspaceId, string sourcePath, RoslynMcp.Roslyn.Services.CompositePreviewStore stores) =>
+        PreviewInterfaceRouteAsync(route, workspaceId, sourcePath, "RefService", stores);
 
     private static async Task AssertRefContractAsync(Microsoft.CodeAnalysis.Solution solution, string receiverProject)
     {

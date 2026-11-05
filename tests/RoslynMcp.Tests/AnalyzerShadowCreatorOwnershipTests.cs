@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Roslyn.Helpers;
 using CreatorLiveness = RoslynMcp.Roslyn.Helpers.AnalyzerReferenceIsolation.CreatorLiveness;
@@ -106,7 +105,7 @@ public sealed class AnalyzerShadowCreatorOwnershipTests
         try
         {
             using (var lease = new AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease(
-                stale, [], 1, NullLogger.Instance))
+                stale, AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease.AcquireOwnerMarker(stale), [], 1, NullLogger.Instance))
             {
                 Assert.IsTrue(AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease.IsLiveRoot(stale));
                 AnalyzerReferenceIsolation.SweepAbandonedRoots(shared, NullLogger.Instance);
@@ -146,23 +145,10 @@ public sealed class AnalyzerShadowCreatorOwnershipTests
             Assert.Inconclusive("The owned cmd stdin barrier and retained Windows process handle are Windows-specific.");
 
         var shared = NewSharedParent();
-        var startInfo = new ProcessStartInfo("cmd.exe")
-        {
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            WorkingDirectory = shared
-        };
-        startInfo.ArgumentList.Add("/d");
-        startInfo.ArgumentList.Add("/c");
-        startInfo.ArgumentList.Add("echo ready & set /p RMCP_SHADOW_WAIT=");
-        using var peer = Process.Start(startInfo) ?? throw new InvalidOperationException("Could not start owned peer.");
+        using var peer = ForeignHostTestSupport.StartPeer(shared);
         try
         {
-            using var readyCancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            var ready = await peer.StandardOutput.ReadLineAsync(readyCancellation.Token);
-            Assert.AreEqual("ready", ready?.Trim());
+            await ForeignHostTestSupport.ReadReadyAsync(peer);
             var name = $"process-{peer.Id}-{IdentityGuid}";
             Assert.AreEqual(CreatorLiveness.Live, AnalyzerReferenceIsolation.ObserveCreator(name));
             var parent = Path.Combine(shared, name);
@@ -171,7 +157,12 @@ public sealed class AnalyzerShadowCreatorOwnershipTests
             var workspaceStale = CreateStaleChild(liveWorkspace);
             AnalyzerReferenceIsolation.SweepAbandonedRoots(shared, NullLogger.Instance);
             Assert.IsTrue(Directory.Exists(stale), "A live markerless creator protects its entire process root.");
-            Assert.IsFalse(Directory.Exists(workspaceStale));
+            // analyzer-shadow-sweep-live-child-authority: age is not liveness. A markerless child of
+            // another LIVE host (an older host that predates per-lease markers cannot prove its lease
+            // is gone) is preserved until that host exits; the swept-after-exit assertions below keep
+            // reclamation covered. Released-marker reclaim of a live peer's lease is pinned in
+            // AnalyzerShadowForeignLeaseAuthorityTests.
+            Assert.IsTrue(Directory.Exists(workspaceStale), "A live peer's markerless child must not be swept on age alone.");
             Assert.IsTrue(Directory.Exists(liveWorkspace));
 
             peer.StandardInput.Close();
@@ -189,6 +180,7 @@ public sealed class AnalyzerShadowCreatorOwnershipTests
             Assert.IsFalse(Directory.Exists(deadStale));
             Assert.IsFalse(Directory.Exists(deadWorkspace));
             Assert.IsFalse(Directory.Exists(parent));
+            Assert.IsFalse(Directory.Exists(workspaceStale), "Once the creator exits, its markerless stale child is reclaimed.");
             Assert.IsFalse(Directory.Exists(liveWorkspace));
         }
         finally

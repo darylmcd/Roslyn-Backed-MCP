@@ -53,20 +53,26 @@ internal sealed class InterfaceMemberProjector
     private readonly SyntaxGenerator _generator;
     private readonly InterfaceNullableProjection _nullable;
     private readonly List<ITypeSymbol> _referencedTypes = [];
+    private readonly bool _receiverIsSourceAssembly;
 
-    private InterfaceMemberProjector(Compilation compilation, SyntaxGenerator generator, InterfaceNullableProjection nullable)
+    private InterfaceMemberProjector(Compilation compilation, SyntaxGenerator generator, InterfaceNullableProjection nullable, bool receiverIsSourceAssembly)
     {
         _compilation = compilation;
         _generator = generator;
         _nullable = nullable;
+        _receiverIsSourceAssembly = receiverIsSourceAssembly;
     }
 
+    /// <param name="receiverIsSourceAssembly">
+    /// True when the interface lands in the source type's own project, so source-assembly names stay
+    /// spellable; otherwise a constant default naming one is written as its value.
+    /// </param>
     internal static async Task<InterfaceMemberProjector> CreateAsync(
-        Document sourceDocument, InterfaceNullableProjection nullable, CancellationToken ct)
+        Document sourceDocument, InterfaceNullableProjection nullable, bool receiverIsSourceAssembly, CancellationToken ct)
     {
         var model = await sourceDocument.GetSemanticModelAsync(ct).ConfigureAwait(false)
             ?? throw InvalidOperationErrors.Internal("Semantic model for the interface source document is unavailable.");
-        return new InterfaceMemberProjector(model.Compilation, SyntaxGenerator.GetGenerator(sourceDocument), nullable);
+        return new InterfaceMemberProjector(model.Compilation, SyntaxGenerator.GetGenerator(sourceDocument), nullable, receiverIsSourceAssembly);
     }
 
     /// <summary>The members of a type that an extracted interface can carry.</summary>
@@ -87,7 +93,7 @@ internal sealed class InterfaceMemberProjector
         source ??= _generator.Declaration(member) as MemberDeclarationSyntax
             ?? throw InvalidOperationErrors.Internal("Interface member symbol has no projectable declaration.");
 
-        var qualifier = new ScopeQualifier(model, _generator, _referencedTypes);
+        var qualifier = new ScopeQualifier(model, _generator, _referencedTypes, _receiverIsSourceAssembly);
         var declaration = Strip(source, member, model, qualifier);
         if (declaration.DescendantNodes().Any(n => n is PointerTypeSyntax or FunctionPointerTypeSyntax))
         {
@@ -143,7 +149,7 @@ internal sealed class InterfaceMemberProjector
                     explicitInterfaceSpecifier: null,
                     method.Identifier,
                     method.TypeParameterList,
-                    parameters.WithParameters(ContractParameters(parameters.Parameters, model)),
+                    parameters.WithParameters(ContractParameters(method.ParameterList.Parameters, parameters.Parameters, model)),
                     methodSymbol.IsOverride
                         ? InheritedConstraints(methodSymbol)
                         : SyntaxFactory.List(method.ConstraintClauses.Select(clause => Qualified(clause))),
@@ -169,7 +175,7 @@ internal sealed class InterfaceMemberProjector
                     Qualified(indexer.Type),
                     explicitInterfaceSpecifier: null,
                     indexer.ThisKeyword,
-                    bracketed.WithParameters(ContractParameters(bracketed.Parameters, model)),
+                    bracketed.WithParameters(ContractParameters(indexer.ParameterList.Parameters, bracketed.Parameters, model)),
                     Accessors(symbol, indexer.AccessorList, model),
                     expressionBody: null,
                     default);
@@ -232,25 +238,37 @@ internal sealed class InterfaceMemberProjector
         return SyntaxFactory.AccessorList(SyntaxFactory.List(accessors));
     }
 
-    private SeparatedSyntaxList<ParameterSyntax> ContractParameters(SeparatedSyntaxList<ParameterSyntax> parameters, SemanticModel? model) =>
-        SyntaxFactory.SeparatedList(parameters.Select(p => p
-            .WithAttributeLists(ContractAttributes(p.AttributeLists, model))
+    /// <summary>
+    /// <paramref name="source"/> is the declaration's own parameter list, which the semantic model can bind;
+    /// <paramref name="rewritten"/> is the same list after <see cref="ScopeQualifier"/> (same shape, but nodes
+    /// the model no longer knows), and supplies the text that is emitted.
+    /// </summary>
+    private SeparatedSyntaxList<ParameterSyntax> ContractParameters(
+        SeparatedSyntaxList<ParameterSyntax> source, SeparatedSyntaxList<ParameterSyntax> rewritten, SemanticModel? model) =>
+        SyntaxFactory.SeparatedList(rewritten.Select((p, i) => p
+            .WithAttributeLists(ContractAttributes(source[i].AttributeLists, p.AttributeLists, model))
             .WithModifiers(SyntaxFactory.TokenList(p.Modifiers.Where(m => !m.IsKind(SyntaxKind.ThisKeyword))))));
 
+    private static SyntaxList<AttributeListSyntax> ContractAttributes(SyntaxList<AttributeListSyntax> lists, SemanticModel? model) =>
+        ContractAttributes(lists, lists, model);
+
     /// <summary>
-    /// Keeps only contract attributes. Without a semantic model (generator-built declarations) the
-    /// attribute classes cannot be identified, so none are kept.
+    /// Keeps only contract attributes: decided on <paramref name="source"/> (bound by the model), emitted from
+    /// <paramref name="rewritten"/> (the same attribute lists after qualification). Without a semantic model
+    /// (generator-built declarations) the attribute classes cannot be identified, so none are kept.
     /// </summary>
-    private static SyntaxList<AttributeListSyntax> ContractAttributes(SyntaxList<AttributeListSyntax> lists, SemanticModel? model)
+    private static SyntaxList<AttributeListSyntax> ContractAttributes(
+        SyntaxList<AttributeListSyntax> source, SyntaxList<AttributeListSyntax> rewritten, SemanticModel? model)
     {
         if (model is null) return default;
         var kept = new List<AttributeListSyntax>();
-        foreach (var list in lists)
+        for (var i = 0; i < source.Count; i++)
         {
             // `field:` targets address a backing field the interface member does not have.
-            if (list.Target?.Identifier.IsKind(SyntaxKind.FieldKeyword) == true) continue;
-            var attributes = list.Attributes.Where(a => IsContractAttribute(model.GetSymbolInfo(a).Symbol?.ContainingType)).ToArray();
-            if (attributes.Length > 0) kept.Add(list.WithAttributes(SyntaxFactory.SeparatedList(attributes)));
+            if (source[i].Target?.Identifier.IsKind(SyntaxKind.FieldKeyword) == true) continue;
+            var attributes = rewritten[i].Attributes
+                .Where((_, j) => IsContractAttribute(model.GetSymbolInfo(source[i].Attributes[j]).Symbol?.ContainingType)).ToArray();
+            if (attributes.Length > 0) kept.Add(rewritten[i].WithAttributes(SyntaxFactory.SeparatedList(attributes)));
         }
 
         return SyntaxFactory.List(kept);
@@ -311,35 +329,79 @@ internal sealed class InterfaceMemberProjector
     /// <summary>
     /// Rewrites names that only mean something inside the declaring type (a nested type spelled by its
     /// simple name, a constant of the type or a base type used as a default) into names that bind from
-    /// the interface's own scope, and records the types it qualifies with.
+    /// the interface's own scope, and records the types it qualifies with. A constant default value or
+    /// attribute argument that names something the interface cannot spell (a <c>nameof</c>, or a member of
+    /// the source assembly or a non-public member: the receiving project is usually another assembly) is
+    /// written as its value instead: a compile-time constant is the same contract either way.
     /// </summary>
-    private sealed class ScopeQualifier(SemanticModel? model, SyntaxGenerator generator, List<ITypeSymbol> referencedTypes) : CSharpSyntaxRewriter
+    private sealed class ScopeQualifier(SemanticModel? model, SyntaxGenerator generator, List<ITypeSymbol> referencedTypes, bool receiverIsSourceAssembly) : CSharpSyntaxRewriter
     {
-        private static bool IsVisibleFromInterface(IFieldSymbol field)
+        /// <summary>Public all the way up, and declared outside the source assembly unless the interface lands in it.</summary>
+        private bool IsNameableFromInterface(ISymbol symbol)
         {
-            for (ISymbol? symbol = field; symbol is not null; symbol = symbol.ContainingType)
+            if (!receiverIsSourceAssembly && SymbolEqualityComparer.Default.Equals(symbol.ContainingAssembly, model!.Compilation.Assembly)) return false;
+            for (var current = symbol; current is not null; current = current.ContainingType)
             {
-                if (symbol.DeclaredAccessibility != Accessibility.Public) return false;
+                if (current.DeclaredAccessibility != Accessibility.Public) return false;
             }
 
             return true;
         }
 
-        /// <summary>A constant the interface cannot name (private/internal, or inside a non-public type) is inlined.</summary>
-        private ExpressionSyntax InlineConstant(IFieldSymbol constant)
+        private bool NamesUnnameableSymbol(ExpressionSyntax expression)
         {
-            if (constant.Type.TypeKind != TypeKind.Enum) return (ExpressionSyntax)generator.LiteralExpression(constant.ConstantValue);
-            referencedTypes.Add(constant.Type);
-            return SyntaxFactory.CastExpression(
-                SyntaxFactory.ParseTypeName(constant.Type.ToDisplayString(_containingTypeFormat)),
-                (ExpressionSyntax)generator.LiteralExpression(constant.ConstantValue));
+            foreach (var name in expression.DescendantNodesAndSelf().OfType<SimpleNameSyntax>())
+            {
+                var symbol = model!.GetSymbolInfo(name).Symbol;
+                // An instance field only appears under `nameof`, and an interface has no fields to name.
+                if (symbol is IFieldSymbol { IsStatic: false }) return true;
+                if (symbol is IFieldSymbol or INamedTypeSymbol && !IsNameableFromInterface(symbol)) return true;
+            }
+
+            return false;
         }
 
-        public override SyntaxNode? Visit(SyntaxNode? node) => model is null ? node : base.Visit(node);
+        private ExpressionSyntax? InlineUnnameableConstant(ExpressionSyntax expression)
+        {
+            if (expression is LiteralExpressionSyntax) return null;
+            var constant = model!.GetConstantValue(expression);
+            if (!constant.HasValue || constant.Value is null || !NamesUnnameableSymbol(expression)) return null;
+
+            var literal = (ExpressionSyntax)generator.LiteralExpression(constant.Value);
+            if (model.GetTypeInfo(expression).Type is not { TypeKind: TypeKind.Enum } enumType) return literal.WithTriviaFrom(expression);
+
+            referencedTypes.Add(enumType);
+            // `(E)-1` parses as a subtraction, so a negative value needs its own parentheses.
+            if (literal.ToString().StartsWith('-')) literal = SyntaxFactory.ParenthesizedExpression(literal);
+            return SyntaxFactory.CastExpression(SyntaxFactory.ParseTypeName(enumType.ToDisplayString(_containingTypeFormat)), literal)
+                .WithTriviaFrom(expression);
+        }
+
+        public override SyntaxNode? Visit(SyntaxNode? node)
+        {
+            if (model is null) return node;
+            return node is ExpressionSyntax { Parent: EqualsValueClauseSyntax or AttributeArgumentSyntax } expression &&
+                InlineUnnameableConstant(expression) is { } inlined
+                ? inlined
+                : base.Visit(node);
+        }
 
         public override SyntaxNode? VisitIdentifierName(IdentifierNameSyntax node) => Qualify(node) ?? base.VisitIdentifierName(node);
 
         public override SyntaxNode? VisitGenericName(GenericNameSyntax node) => Qualify(node) ?? base.VisitGenericName(node);
+
+        /// <summary>A default value, or the argument of an attribute the interface keeps (a dropped attribute's names are not emitted).</summary>
+        private bool InDefaultOrContractAttributeArgument(SyntaxNode node)
+        {
+            foreach (var ancestor in node.Ancestors())
+            {
+                if (ancestor is EqualsValueClauseSyntax) return true;
+                if (ancestor is AttributeArgumentSyntax { Parent.Parent: AttributeSyntax attribute })
+                    return IsContractAttribute(model!.GetSymbolInfo(attribute).Symbol?.ContainingType);
+            }
+
+            return false;
+        }
 
         private SyntaxNode? Qualify(SimpleNameSyntax node)
         {
@@ -352,11 +414,13 @@ internal sealed class InterfaceMemberProjector
 
             switch (model!.GetSymbolInfo(node).Symbol)
             {
-                case IFieldSymbol { IsConst: true, ConstantValue: not null } constant when !IsVisibleFromInterface(constant):
-                    return InlineConstant(constant).WithTriviaFrom(node);
                 case INamedTypeSymbol { ContainingType: not null } nested:
                     referencedTypes.Add(nested);
                     return SyntaxFactory.ParseTypeName(nested.ToDisplayString(_containingTypeFormat)).WithTriviaFrom(node);
+                case INamedTypeSymbol type when InDefaultOrContractAttributeArgument(node):
+                    // A default such as `Limits.Cap` keeps its type name, so the interface file must import the type's namespace.
+                    referencedTypes.Add(type);
+                    return null;
                 case IFieldSymbol { ContainingType: not null, IsStatic: true } or IPropertySymbol { ContainingType: not null, IsStatic: true }:
                     var member = model.GetSymbolInfo(node).Symbol!;
                     referencedTypes.Add(member.ContainingType);

@@ -22,9 +22,11 @@ internal sealed class InterfaceNullableProjection
         var roles = new List<(TypeSyntax Syntax, ITypeSymbol Type)>();
         void Parameters(SeparatedSyntaxList<ParameterSyntax> syntax, ImmutableArray<IParameterSymbol> parameters)
         {
-            if (syntax.Count != parameters.Length) throw InvalidOperationErrors.Internal("Generated interface parameter arity does not match its source roles.");
-            for (var i = 0; i < syntax.Count; i++)
-                roles.Add((syntax[i].Type ?? throw InvalidOperationErrors.Internal("Generated interface parameter type is missing."), parameters[i].Type));
+            // `__arglist` is a typeless ParameterSyntax with no IParameterSymbol: it carries no type slot.
+            var typed = syntax.Where(p => !p.Identifier.IsKind(SyntaxKind.ArgListKeyword)).ToArray();
+            if (typed.Length != parameters.Length) throw InvalidOperationErrors.Internal("Generated interface parameter arity does not match its source roles.");
+            for (var i = 0; i < typed.Length; i++)
+                roles.Add((typed[i].Type ?? throw InvalidOperationErrors.Internal("Generated interface parameter type is missing."), parameters[i].Type));
         }
         switch (declaration, symbol)
         {

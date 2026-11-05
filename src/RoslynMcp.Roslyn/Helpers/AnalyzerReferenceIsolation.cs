@@ -19,9 +19,19 @@ internal static class AnalyzerReferenceIsolation
     private const string ProcessOwnerFileName = ".owner.lock";
 
     /// <summary>
-    /// A shadow root older than this is eligible for sweeping. A live process-owned root is
-    /// excluded by its held ownership marker even if no assembly is currently mapped from it.
-    /// Other processes' live lease roots remain protected by their loaded shadow assemblies.
+    /// Suffix of a workspace-owned lease's ownership marker, a sibling FILE
+    /// <c>&lt;workspaceDirectory&gt;/&lt;leaseId&gt;.owner.lock</c> (never inside the lease directory,
+    /// which would block that directory's own deletion). The lease holds it with
+    /// <see cref="FileShare.None"/> from before any reference is bound until its tree is reclaimed.
+    /// </summary>
+    private const string LeaseOwnerMarkerSuffix = ".owner.lock";
+
+    /// <summary>
+    /// A shadow root older than this is eligible for sweeping. Age is not liveness: a live
+    /// process-owned root is excluded by its held ownership marker, and a live workspace-owned
+    /// lease by its held per-lease marker, even if no assembly is currently mapped from it and
+    /// the directory is older than this. A markerless child of a live peer host is preserved
+    /// until that host exits (an older host that predates markers cannot prove liveness).
     /// Mirrors the abandoned-run reaper discipline in <c>TestTempRoot</c>.
     /// </summary>
     private static readonly TimeSpan StaleLeaseAge = TimeSpan.FromDays(1);
@@ -93,71 +103,85 @@ internal static class AnalyzerReferenceIsolation
         var retargeted = 0;
         var externalReferences = 0;
 
-        foreach (var project in solution.Projects)
+        // Held from before the first workspace-owned reference is bound to a lease loader until the
+        // lease takes ownership. Acquired lazily (a solution with no workspace-owned analyzers
+        // creates nothing) and BEFORE any binding, so a marker failure cannot leave references
+        // bound to loaders that no lease will ever dispose.
+        FileStream? ownerMarker = null;
+        try
         {
-            foreach (var reference in project.AnalyzerReferences.OfType<AnalyzerFileReference>())
+            foreach (var project in solution.Projects)
             {
-                if (!TryGetExistingFullPath(reference.FullPath, out var analyzerPath))
+                foreach (var reference in project.AnalyzerReferences.OfType<AnalyzerFileReference>())
                 {
-                    continue;
-                }
+                    if (!TryGetExistingFullPath(reference.FullPath, out var analyzerPath))
+                    {
+                        continue;
+                    }
 
-                if (LazyAssemblyField?.GetValue(reference) is not null)
-                {
-                    logger.LogWarning(
-                        "Workspace {WorkspaceId}: an analyzer reference was already loaded before shadow-loader isolation could run.",
-                        workspaceId);
-                    continue;
-                }
+                    if (LazyAssemblyField?.GetValue(reference) is not null)
+                    {
+                        logger.LogWarning(
+                            "Workspace {WorkspaceId}: an analyzer reference was already loaded before shadow-loader isolation could run.",
+                            workspaceId);
+                        continue;
+                    }
 
-                // Process-wide Roslyn caches can retain external analyzer types across workspace
-                // closes. Their ALC must remain non-collectible, while its file mapping must be
-                // moved away from the package source path.
-                if (!IsUnderAnyRoot(analyzerPath, workspaceRoots))
-                {
-                    var directory = Path.GetDirectoryName(analyzerPath)!;
-                    var processLoader = s_externalLoaders.GetOrAdd(directory, path =>
-                        new Lazy<ShadowCopyAnalyzerAssemblyLoader>(() =>
-                        {
-                            // Hold the marker before creating any copy. The stale-root sweeper in
-                            // another host can then distinguish this live process from an exit.
-                            _ = s_processOwner.Value;
-                            return ShadowCopyAnalyzerAssemblyLoader.Create(
-                                analyzerPath, s_processShadowRoot, logger, isCollectible: false);
-                        },
-                            LazyThreadSafetyMode.ExecutionAndPublication)).Value;
-                    processLoader.AddDependencyLocation(analyzerPath);
-                    AssemblyLoaderField.SetValue(reference, processLoader);
-                    externalReferences++;
-                    continue;
-                }
+                    // Process-wide Roslyn caches can retain external analyzer types across workspace
+                    // closes. Their ALC must remain non-collectible, while its file mapping must be
+                    // moved away from the package source path.
+                    if (!IsUnderAnyRoot(analyzerPath, workspaceRoots))
+                    {
+                        var directory = Path.GetDirectoryName(analyzerPath)!;
+                        var processLoader = s_externalLoaders.GetOrAdd(directory, path =>
+                            new Lazy<ShadowCopyAnalyzerAssemblyLoader>(() =>
+                            {
+                                // Hold the marker before creating any copy. The stale-root sweeper in
+                                // another host can then distinguish this live process from an exit.
+                                _ = s_processOwner.Value;
+                                return ShadowCopyAnalyzerAssemblyLoader.Create(
+                                    analyzerPath, s_processShadowRoot, logger, isCollectible: false);
+                            },
+                                LazyThreadSafetyMode.ExecutionAndPublication)).Value;
+                        processLoader.AddDependencyLocation(analyzerPath);
+                        AssemblyLoaderField.SetValue(reference, processLoader);
+                        externalReferences++;
+                        continue;
+                    }
 
-                if (!loaders.TryGetValue(analyzerPath, out var loader))
-                {
-                    loader = ShadowCopyAnalyzerAssemblyLoader.Create(
-                        analyzerPath, shadowRoot, logger, isCollectible: true);
-                    loaders[analyzerPath] = loader;
-                }
+                    ownerMarker ??= AnalyzerShadowLoaderLease.AcquireOwnerMarker(shadowRoot);
+                    if (!loaders.TryGetValue(analyzerPath, out var loader))
+                    {
+                        loader = ShadowCopyAnalyzerAssemblyLoader.Create(
+                            analyzerPath, shadowRoot, logger, isCollectible: true);
+                        loaders[analyzerPath] = loader;
+                    }
 
-                AssemblyLoaderField.SetValue(reference, loader);
-                retargeted++;
+                    AssemblyLoaderField.SetValue(reference, loader);
+                    retargeted++;
+                }
             }
-        }
 
-        if (externalReferences > 0)
+            if (externalReferences > 0)
+            {
+                logger.LogDebug(
+                    "Workspace {WorkspaceId}: retargeted {Count} external analyzer reference(s) to the process shadow loader.",
+                    workspaceId,
+                    externalReferences);
+            }
+
+            // ownerMarker is non-null exactly when a workspace-owned reference was retargeted.
+            return ownerMarker is null
+                ? AnalyzerShadowLoaderLease.CreateEmpty()
+                : new AnalyzerShadowLoaderLease(shadowRoot, ownerMarker, [.. loaders.Values], retargeted, logger);
+        }
+        catch
         {
-            logger.LogDebug(
-                "Workspace {WorkspaceId}: retargeted {Count} external analyzer reference(s) to the process shadow loader.",
-                workspaceId,
-                externalReferences);
+            // The lease never took ownership: release the marker so no handle outlives the
+            // failed load with nobody left to close it.
+            AnalyzerShadowLoaderLease.AbandonUnownedMarker(ownerMarker, shadowRoot, logger);
+            throw;
         }
-
-        if (retargeted == 0)
-        {
-            return AnalyzerShadowLoaderLease.CreateEmpty();
-        }
-
-        return new AnalyzerShadowLoaderLease(shadowRoot, [.. loaders.Values], retargeted, logger);
     }
 
     internal static string GetWorkspaceShadowDirectory(string workspaceId) =>
@@ -219,9 +243,10 @@ internal static class AnalyzerReferenceIsolation
     /// Best-effort removal of shadow roots abandoned by earlier crashed or pre-fix hosts, so
     /// per-lease disposal does not leave historical leaks in place forever. Only lease
     /// directories older than <see cref="StaleLeaseAge"/> that are not owned by a live lease in
-    /// this process are candidates; a live lease in another process keeps its shadow assemblies
-    /// locked, so its deletion fails harmlessly. The shared parent and per-workspace parents of
-    /// live leases are never deleted.
+    /// this process are candidates. A workspace-owned lease in another process is excluded by its
+    /// held per-lease marker (see <see cref="SweepLease"/>), not by whichever of its files happen
+    /// to be mapped at the moment. The shared parent and per-workspace parents of live leases are
+    /// never deleted.
     /// </summary>
     internal static void SweepAbandonedRoots(ILogger logger) =>
         SweepAbandonedRoots(Path.Combine(Path.GetTempPath(), ShadowRootDirectoryName), logger);
@@ -248,9 +273,11 @@ internal static class AnalyzerReferenceIsolation
 
             var directoryName = Path.GetFileName(workspaceDirectory);
             var canPruneParent = false;
+            var isProcessRoot = directoryName.StartsWith("process-", StringComparison.OrdinalIgnoreCase);
+            var creatorIsLivePeer = false;
             var ownerPath = Path.Combine(workspaceDirectory, ProcessOwnerFileName);
             FileStream? ownerProbe = null;
-            if (directoryName.StartsWith("process-", StringComparison.OrdinalIgnoreCase))
+            if (isProcessRoot)
             {
                 try
                 {
@@ -274,9 +301,14 @@ internal static class AnalyzerReferenceIsolation
             }
             else
             {
-                // Creator liveness gates parent pruning only: stale workspace children still
-                // need sweeping throughout the creator's lifetime, including legacy layouts.
-                canPruneParent = CanPruneParent(directoryName, ObserveCreator(directoryName));
+                // Creator liveness gates parent pruning, and whether a MARKERLESS child may be
+                // swept (below). A held or released per-lease marker is the authority for a child
+                // whose creator is another live host; the creator being this process is covered by
+                // the in-process registry.
+                var creator = ObserveCreator(directoryName);
+                canPruneParent = CanPruneParent(directoryName, creator);
+                creatorIsLivePeer = creator == CreatorLiveness.Live &&
+                    GetCreatorProcessId(directoryName) != Environment.ProcessId;
             }
 
             try
@@ -289,19 +321,14 @@ internal static class AnalyzerReferenceIsolation
                         continue;
                     }
 
-                    // A live lease in another process holds its loaded files; a failed delete
-                    // leaves the root for the next sweep.
-                    try
-                    {
-                        NoFollowDirectoryDeleter.Delete(leaseDirectory, CancellationToken.None);
-                        logger.LogDebug("Swept one abandoned analyzer shadow lease.");
-                    }
-                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                    {
-                        logger.LogDebug(
-                            "Could not sweep an abandoned analyzer shadow lease; failure type {FailureType}.",
-                            ex.GetType().Name);
-                    }
+                    SweepLease(leaseDirectory, requireLeaseAuthority: !isProcessRoot, creatorIsLivePeer, logger);
+                }
+
+                // Before the prune check below: a released marker whose tree is already gone
+                // would otherwise keep the workspace directory non-empty forever.
+                if (!isProcessRoot)
+                {
+                    ReapOrphanLeaseMarkers(workspaceDirectory, logger);
                 }
             }
             finally
@@ -334,6 +361,145 @@ internal static class AnalyzerReferenceIsolation
                     "Could not remove an empty analyzer shadow workspace directory; failure type {FailureType}.",
                     ex.GetType().Name);
             }
+        }
+    }
+
+    private enum LeaseMarkerState { Missing, Held, Acquired }
+
+    internal static string GetLeaseOwnerMarkerPath(string leaseDirectory) =>
+        leaseDirectory + LeaseOwnerMarkerSuffix;
+
+    /// <summary>
+    /// Tries to take a lease's ownership marker from the sweeper side. <c>Held</c> means a live
+    /// lease owns it (or another sweeper does, or it is delete-pending): the lease is not ours to
+    /// touch. <c>Acquired</c> means the marker exists and is released, so its lease is disposed or
+    /// its host exited. The probe shares only <see cref="FileShare.Delete"/>, which lets the sweeper
+    /// delete the marker while it still holds it open (a file open with <see cref="FileShare.None"/>
+    /// cannot be deleted by its own holder on Windows). On Windows the probe's non-shared read/write
+    /// excludes the lease's <see cref="FileShare.None"/> handle AND a second sweeper. On Unix the
+    /// runtime maps the lease's <see cref="FileShare.None"/> to an exclusive advisory lock, which
+    /// rejects the probe's shared one, but two sweepers can both hold the shared lock: sweeper-vs-
+    /// sweeper exclusion is Windows-only. That is harmless because the deletes are idempotent and
+    /// Unix never creates leases or markers (the Windows-only isolation gate).
+    /// </summary>
+    private static LeaseMarkerState TryAcquireLeaseOwnerMarker(
+        string leaseDirectory, ILogger logger, out FileStream? probe)
+    {
+        probe = null;
+        try
+        {
+            probe = new FileStream(
+                GetLeaseOwnerMarkerPath(leaseDirectory), FileMode.Open, FileAccess.ReadWrite, FileShare.Delete);
+            return LeaseMarkerState.Acquired;
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+        {
+            return LeaseMarkerState.Missing;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            logger.LogDebug("An analyzer shadow lease is owned or unavailable; failure type {FailureType}.", ex.GetType().Name);
+            return LeaseMarkerState.Held;
+        }
+    }
+
+    /// <summary>
+    /// Sweeps one stale lease directory. Age alone is not liveness (a lease open for more than
+    /// <see cref="StaleLeaseAge"/> can still copy a late dependency before loading it, and a mapped
+    /// sibling protects neither earlier nor unmapped entries), so for workspace-owned leases the
+    /// authority is the per-lease marker: held => skip; released => sweep and reclaim the marker
+    /// only once the tree is gone; absent => a creator that is another live host keeps its child
+    /// (it may predate markers), any other creator falls back to the age rule.
+    /// </summary>
+    private static void SweepLease(
+        string leaseDirectory, bool requireLeaseAuthority, bool creatorIsLivePeer, ILogger logger)
+    {
+        FileStream? marker = null;
+        try
+        {
+            if (requireLeaseAuthority)
+            {
+                switch (TryAcquireLeaseOwnerMarker(leaseDirectory, logger, out marker))
+                {
+                    case LeaseMarkerState.Held:
+                        return;
+                    case LeaseMarkerState.Missing when creatorIsLivePeer:
+                        return;
+                }
+            }
+
+            // A failed delete (a still-mapped file) leaves the tree and its released marker for
+            // the next sweep.
+            try
+            {
+                NoFollowDirectoryDeleter.Delete(leaseDirectory, CancellationToken.None);
+                logger.LogDebug("Swept one abandoned analyzer shadow lease.");
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                logger.LogDebug(
+                    "Could not sweep an abandoned analyzer shadow lease; failure type {FailureType}.",
+                    ex.GetType().Name);
+                return;
+            }
+
+            if (marker is not null)
+            {
+                TryDeleteOwnerMarker(GetLeaseOwnerMarkerPath(leaseDirectory), logger);
+            }
+        }
+        finally
+        {
+            marker?.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Removes released lease markers whose lease directory no longer exists (a dispose that
+    /// removed the tree but could not delete the marker, or a host that died before its first
+    /// copy). A marker that cannot be acquired belongs to a live lease and is never touched.
+    /// </summary>
+    private static void ReapOrphanLeaseMarkers(string workspaceDirectory, ILogger logger)
+    {
+        IReadOnlyList<string> markers;
+        try
+        {
+            markers = Directory.EnumerateFiles(workspaceDirectory, "*" + LeaseOwnerMarkerSuffix).ToList();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or DirectoryNotFoundException)
+        {
+            logger.LogDebug(
+                "Could not enumerate analyzer shadow lease markers; failure type {FailureType}.",
+                ex.GetType().Name);
+            return;
+        }
+
+        foreach (var markerPath in markers)
+        {
+            if (!markerPath.EndsWith(LeaseOwnerMarkerSuffix, StringComparison.Ordinal)) continue;
+            var leaseDirectory = markerPath[..^LeaseOwnerMarkerSuffix.Length];
+            if (Path.GetFileName(leaseDirectory).Length == 0 || Directory.Exists(leaseDirectory)) continue;
+
+            if (TryAcquireLeaseOwnerMarker(leaseDirectory, logger, out var probe) != LeaseMarkerState.Acquired) continue;
+            using (probe)
+            {
+                TryDeleteOwnerMarker(markerPath, logger);
+            }
+        }
+    }
+
+    private static void TryDeleteOwnerMarker(string markerPath, ILogger? logger)
+    {
+        try
+        {
+            File.Delete(markerPath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Not fatal: a leftover released marker without a directory is reaped by the next sweep.
+            logger?.LogDebug(
+                "Could not delete an analyzer shadow lease marker; failure type {FailureType}.",
+                ex.GetType().Name);
         }
     }
 
@@ -500,14 +666,26 @@ internal static class AnalyzerReferenceIsolation
         private IReadOnlyList<ShadowCopyAnalyzerAssemblyLoader> _loaders;
         private readonly ILogger? _logger;
         private readonly object _disposeGate = new();
+        private FileStream? _ownerMarker;
         private bool _disposed;
 
+        /// <param name="ownerMarker">
+        /// The lease's held ownership marker from <see cref="AcquireOwnerMarker"/>, taken before any
+        /// reference was bound to this lease's loaders; the lease owns and releases it. Null exactly
+        /// when <paramref name="shadowRoot"/> is null (the no-op lease).
+        /// </param>
         internal AnalyzerShadowLoaderLease(
             string? shadowRoot,
+            FileStream? ownerMarker,
             IReadOnlyList<ShadowCopyAnalyzerAssemblyLoader> loaders,
             int retargetedReferenceCount,
             ILogger? logger)
         {
+            // A lease holds an ownership marker exactly when it owns a shadow root.
+            if (shadowRoot is not null) ArgumentNullException.ThrowIfNull(ownerMarker);
+            if (ownerMarker is not null) ArgumentNullException.ThrowIfNull(shadowRoot);
+
+            _ownerMarker = ownerMarker;
             ShadowRoot = shadowRoot;
             _loaders = loaders;
             RetargetedReferenceCount = retargetedReferenceCount;
@@ -526,11 +704,32 @@ internal static class AnalyzerReferenceIsolation
         public string? ShadowRoot { get; }
 
         /// <summary>No-op lease for the platforms/configurations where isolation cannot run.</summary>
-        public static AnalyzerShadowLoaderLease CreateEmpty() => new(null, [], 0, null);
+        public static AnalyzerShadowLoaderLease CreateEmpty() => new(null, null, [], 0, null);
 
         internal static bool IsLiveRoot(string directory) =>
             s_liveRoots.ContainsKey(directory) ||
             string.Equals(directory, s_processShadowRoot, StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// Creates and holds <paramref name="shadowRoot"/>'s sibling ownership marker, exclusively.
+        /// The lease directory itself does not exist until the first shadow copy, so a foreign
+        /// sweeper can never enumerate a child of this lease before the marker is held. A failure
+        /// propagates: a lease whose liveness cannot be proven must not exist.
+        /// </summary>
+        internal static FileStream AcquireOwnerMarker(string shadowRoot)
+        {
+            var markerPath = GetLeaseOwnerMarkerPath(shadowRoot);
+            Directory.CreateDirectory(Path.GetDirectoryName(markerPath)!);
+            return new FileStream(markerPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
+        }
+
+        /// <summary>Releases a marker no lease ever took ownership of (no tree exists to protect).</summary>
+        internal static void AbandonUnownedMarker(FileStream? marker, string shadowRoot, ILogger logger)
+        {
+            if (marker is null) return;
+            marker.Dispose();
+            TryDeleteOwnerMarker(GetLeaseOwnerMarkerPath(shadowRoot), logger);
+        }
 
         public void Dispose()
         {
@@ -554,8 +753,9 @@ internal static class AnalyzerReferenceIsolation
 
                 if (ShadowRoot is not null)
                 {
-                    TryDeleteShadowRoot();
+                    var removed = TryDeleteShadowRoot();
                     s_liveRoots.TryRemove(ShadowRoot, out _);
+                    ReleaseOwnerMarker(ShadowRoot, treeRemoved: removed);
                 }
 
                 // A failure in any cleanup step leaves the lease retryable. The lock also
@@ -564,7 +764,27 @@ internal static class AnalyzerReferenceIsolation
             }
         }
 
-        private void TryDeleteShadowRoot()
+        /// <summary>
+        /// Closes the ownership marker. Only when the tree is gone is the marker file deleted too;
+        /// a tree left behind keeps its now-released marker, which is exactly what authorizes a
+        /// foreign sweeper (including a live peer's) to reclaim it later. A loader failure thrown
+        /// before this point keeps the marker held, so the retryable lease stays protected.
+        /// </summary>
+        private void ReleaseOwnerMarker(string shadowRoot, bool treeRemoved)
+        {
+            var marker = _ownerMarker;
+            _ownerMarker = null;
+            if (marker is null) return;
+
+            marker.Dispose();
+            if (treeRemoved)
+            {
+                TryDeleteOwnerMarker(GetLeaseOwnerMarkerPath(shadowRoot), _logger);
+            }
+        }
+
+        /// <returns>True when the lease directory no longer exists.</returns>
+        private bool TryDeleteShadowRoot()
         {
             for (var attempt = 1; attempt <= MaxDeleteAttempts; attempt++)
             {
@@ -585,7 +805,7 @@ internal static class AnalyzerReferenceIsolation
                         NoFollowDirectoryDeleter.Delete(ShadowRoot, CancellationToken.None);
                     }
 
-                    return;
+                    return true;
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
@@ -597,6 +817,8 @@ internal static class AnalyzerReferenceIsolation
                     }
                 }
             }
+
+            return false;
         }
     }
 

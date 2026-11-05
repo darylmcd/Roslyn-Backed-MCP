@@ -97,6 +97,37 @@ public sealed class WorkspaceLoadCleanupGateReleaseTests
     }
 
     [TestMethod]
+    public async Task Reload_PostLoaderFailure_LeavesPriorSessionStateUnchanged()
+    {
+        var stripper = new ScriptedStripper { ThrowOnCall = 2, Failure = () => new InvalidOperationException("post-loader failure") };
+        using var manager = CreateManager(new ListLogger<WorkspaceManager>(), new ScriptedLoader(throwingLeaseCalls: []), stripper);
+        var loaded = await manager.LoadAsync(_sampleSolutionPath, Bounded());
+        var before = manager.GetStatus(loaded.WorkspaceId);
+        var solutionBefore = manager.GetCurrentSolution(loaded.WorkspaceId);
+        var indexedDocument = solutionBefore.Projects.SelectMany(p => p.Documents).First(d => d.FilePath is not null).FilePath!;
+
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+            () => manager.ReloadAsync(loaded.WorkspaceId, Bounded()));
+
+        var after = manager.GetStatus(loaded.WorkspaceId);
+        Assert.IsTrue(after.IsLoaded);
+        Assert.AreEqual(before.WorkspaceVersion, after.WorkspaceVersion);
+        Assert.AreEqual(before.LoadedPath, after.LoadedPath);
+        Assert.AreEqual(before.LoadedAtUtc, after.LoadedAtUtc, "A failed reload must not restamp the load time.");
+        Assert.AreEqual(before.ProjectCount, after.ProjectCount);
+        Assert.AreEqual(before.DocumentCount, after.DocumentCount);
+        CollectionAssert.AreEqual(before.Projects.ToArray(), after.Projects.ToArray());
+        Assert.AreEqual(before.RestoreRequired, after.RestoreRequired);
+        Assert.AreEqual(before.BuildRequired, after.BuildRequired);
+        Assert.AreSame(solutionBefore, manager.GetCurrentSolution(loaded.WorkspaceId),
+            "The prior workspace must remain the observable one.");
+        CollectionAssert.AreEqual(
+            new[] { loaded.WorkspaceId },
+            manager.FindWorkspaceIdsContainingFile(indexedDocument).ToArray(),
+            "The prior document-path index must remain published.");
+    }
+
+    [TestMethod]
     public async Task Reload_PostLoaderCancellation_NewLeaseDisposeThrows_PreservesOperationCanceled_AndReleasesLock()
     {
         var logger = new ListLogger<WorkspaceManager>();
@@ -147,7 +178,7 @@ public sealed class WorkspaceLoadCleanupGateReleaseTests
 
             lease.Dispose();
             return (workspace, new AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease(
-                null, new AnalyzerReferenceIsolation.ShadowCopyAnalyzerAssemblyLoader[] { null! }, 0, null));
+                null, null, new AnalyzerReferenceIsolation.ShadowCopyAnalyzerAssemblyLoader[] { null! }, 0, null));
         }
     }
 

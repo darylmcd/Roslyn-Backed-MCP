@@ -329,18 +329,21 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
         }
 
         // Relocating: write a new file for the relocated type and either remove the type from the
-        // old file (if siblings remain) or remove the old file entirely (if no siblings).
+        // old file (if anything else remains in it) or remove the old file entirely.
         var removedTypeRoot = MovedDeclarationFileWriter.RemoveDeclaration(sourceRoot, typeDecl);
         Solution newSolution;
-        if (siblingTypesInSameNs.Count == 0 && sourceRoot.DescendantNodes().OfType<TypeDeclarationSyntax>()
-            .Count(t => t.Parent is CompilationUnitSyntax or BaseNamespaceDeclarationSyntax) == 1)
+        if (!NamespaceMemberClassifier.HasRemainingContent(removedTypeRoot))
         {
-            // Old file had only this type; delete it.
+            // Nothing but namespace shells, usings and trivia is left; delete the file.
             newSolution = solution.RemoveDocument(sourceDocument.Id);
         }
         else
         {
-            newSolution = solution.WithDocumentSyntaxRoot(sourceDocument.Id, removedTypeRoot!);
+            newSolution = solution.WithDocumentSyntaxRoot(sourceDocument.Id, removedTypeRoot);
+            // The retained file's own declarations (enums and delegates included, in any block of
+            // fromNamespace) keep that namespace populated. The cross-document count above
+            // excludes this document, so fold them in or consumers lose a `using` they still need.
+            siblingTypesRemaining |= NamespaceMemberClassifier.DeclaresTypeLikeMemberIn(removedTypeRoot, fromNamespace);
         }
 
         // Build the new compilation unit for the moved type, wrapped in the destination namespace.

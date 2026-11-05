@@ -98,17 +98,10 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
 
         updatedSolution = EnsureProjectReference(updatedSolution, sourceDocument.Project.Id, targetProject.Id);
 
-        var sourceNamespace = typeDeclaration.FirstAncestorOrSelf<BaseNamespaceDeclarationSyntax>();
-        SyntaxNode updatedSourceRoot;
-        if (sourceNamespace is not null && sourceNamespace.Members.Count == 1 && sourceRoot.Members.Count == 1)
-        {
-            updatedSolution = updatedSolution.RemoveDocument(sourceDocument.Id);
-        }
-        else
-        {
-            updatedSourceRoot = MovedDeclarationFileWriter.RemoveDeclaration(sourceRoot, typeDeclaration);
-            updatedSolution = updatedSolution.WithDocumentSyntaxRoot(sourceDocument.Id, updatedSourceRoot);
-        }
+        var updatedSourceRoot = MovedDeclarationFileWriter.RemoveDeclaration(sourceRoot, typeDeclaration);
+        updatedSolution = NamespaceMemberClassifier.HasRemainingContent(updatedSourceRoot)
+            ? updatedSolution.WithDocumentSyntaxRoot(sourceDocument.Id, updatedSourceRoot)
+            : updatedSolution.RemoveDocument(sourceDocument.Id);
 
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, updatedSolution, ct).ConfigureAwait(false);
         var description = $"Move type '{typeName}' to project '{targetProject.Name}'";
@@ -169,7 +162,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         // interface file's using block is built from those symbols (plus applicable source
         // aliases/static/globals) instead of a text-grep that dropped source-project usings.
         var nullableProjection = new InterfaceNullableProjection();
-        var projector = await InterfaceMemberProjector.CreateAsync(sourceDocument, nullableProjection, ct).ConfigureAwait(false);
+        var projector = await InterfaceMemberProjector.CreateAsync(sourceDocument, nullableProjection, receiverIsSourceAssembly: !isCrossProject, ct).ConfigureAwait(false);
         var destinationGlobalPlainNamespaces = await UsingDirectiveSynthesizer
             .GetProjectGlobalPlainNamespacesAsync(targetProject, ct).ConfigureAwait(false);
         var interfaceRoot = CreateInterfaceCompilationUnit(sourceRoot, typeSymbol, resolvedInterfaceName, namespaceName, isCrossProject,
@@ -556,7 +549,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         // gh #765 — project members and collect required namespaces semantically (see
         // PreviewExtractInterfaceAsync). The DI-inversion path routes through here too.
         var nullableProjection = new InterfaceNullableProjection();
-        var projector = await InterfaceMemberProjector.CreateAsync(sourceDocument, nullableProjection, ct).ConfigureAwait(false);
+        var projector = await InterfaceMemberProjector.CreateAsync(sourceDocument, nullableProjection, receiverIsSourceAssembly: !isCrossProject, ct).ConfigureAwait(false);
         var destinationGlobalPlainNamespaces = await UsingDirectiveSynthesizer
             .GetProjectGlobalPlainNamespacesAsync(targetProject, ct).ConfigureAwait(false);
         var sourceSemanticModel = await sourceDocument.GetSemanticModelAsync(ct).ConfigureAwait(false)

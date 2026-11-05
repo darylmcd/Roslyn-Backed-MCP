@@ -16,17 +16,23 @@ public sealed class AnalyzerShadowLeaseDisposalTests
         File.WriteAllText(Path.Combine(shadowRoot, "copy.dll"), "fixture");
         var loaders = new List<AnalyzerReferenceIsolation.ShadowCopyAnalyzerAssemblyLoader> { null! };
         var lease = new AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease(
-            shadowRoot, loaders, 0, NullLogger.Instance);
+            shadowRoot, AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease.AcquireOwnerMarker(shadowRoot), loaders, 0, NullLogger.Instance);
 
         try
         {
             Assert.ThrowsExactly<NullReferenceException>(() => lease.Dispose());
             Assert.IsTrue(AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease.IsLiveRoot(shadowRoot));
+            // A failed dispose leaves a retryable LIVE lease, so its ownership marker stays held.
+            var markerPath = AnalyzerReferenceIsolation.GetLeaseOwnerMarkerPath(shadowRoot);
+            Assert.IsTrue(File.Exists(markerPath));
+            Assert.ThrowsExactly<IOException>(() =>
+                new FileStream(markerPath, FileMode.Open, FileAccess.ReadWrite, FileShare.Delete).Dispose());
 
             loaders.Clear();
             lease.Dispose();
 
             Assert.IsFalse(Directory.Exists(shadowRoot));
+            Assert.IsFalse(File.Exists(markerPath), "A fully reclaimed lease leaves no marker.");
             Assert.IsFalse(AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease.IsLiveRoot(shadowRoot));
             lease.Dispose();
         }

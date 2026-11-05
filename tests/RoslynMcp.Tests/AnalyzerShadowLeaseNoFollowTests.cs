@@ -29,7 +29,7 @@ public sealed class AnalyzerShadowLeaseNoFollowTests
             WindowsDirectoryJunction.Create(Path.Combine(shadowRoot, "nested", "link"), target);
 
             var lease = new AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease(
-                shadowRoot, [], 0, NullLogger.Instance);
+                shadowRoot, AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease.AcquireOwnerMarker(shadowRoot), [], 0, NullLogger.Instance);
             lease.Dispose();
 
             Assert.IsFalse(Directory.Exists(shadowRoot), "The owned shadow root must be removed, not leaked.");
@@ -161,7 +161,7 @@ public sealed class AnalyzerShadowLeaseNoFollowTests
             }
 
             var lease = new AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease(
-                shadowRoot, [], 0, NullLogger.Instance);
+                shadowRoot, AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease.AcquireOwnerMarker(shadowRoot), [], 0, NullLogger.Instance);
             lease.Dispose();
 
             Assert.IsFalse(Directory.Exists(shadowRoot));
@@ -313,7 +313,7 @@ public sealed class AnalyzerShadowLeaseNoFollowTests
             File.WriteAllText(Path.Combine(deep, "copy.dll"), "fixture");
 
             var lease = new AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease(
-                shadowRoot, [], 0, NullLogger.Instance);
+                shadowRoot, AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease.AcquireOwnerMarker(shadowRoot), [], 0, NullLogger.Instance);
             lease.Dispose();
 
             Assert.IsFalse(Directory.Exists(shadowRoot), "A path longer than MAX_PATH must still be removed.");
@@ -490,7 +490,7 @@ public sealed class AnalyzerShadowLeaseNoFollowTests
             File.SetAttributes(readOnly, FileAttributes.ReadOnly);
 
             var lease = new AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease(
-                shadowRoot, [], 0, NullLogger.Instance);
+                shadowRoot, AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease.AcquireOwnerMarker(shadowRoot), [], 0, NullLogger.Instance);
             lease.Dispose();
 
             Assert.IsFalse(Directory.Exists(shadowRoot));

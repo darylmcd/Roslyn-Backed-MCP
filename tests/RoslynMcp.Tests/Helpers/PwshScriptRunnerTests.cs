@@ -225,39 +225,37 @@ public sealed class PwshScriptRunnerTests
     [TestMethod]
     [TestCategory("Process")]
     public async Task RunWithInputAsync_BrokenPipeTerminatesAndDrainsBeforeReturningFailure()
+        => await AssertBrokenPipeIsReportedAsync(closeDelaySeconds: 0);
+
+    // The runner must honor a stdin close that arrives later but still inside its 10 s hang budget.
+    // This pins "runner correct, fixture latency was the defect": the close lands at ~2 s, so a runner that
+    // stopped surfacing a broken pipe would time out here deterministically instead of only under load.
+    [TestMethod]
+    [TestCategory("Process")]
+    public async Task RunWithInputAsync_BrokenPipeClosedMidBudgetStillReturnsIoFailureWithDrainedOutput()
+        => await AssertBrokenPipeIsReportedAsync(closeDelaySeconds: 2);
+
+    private static async Task AssertBrokenPipeIsReportedAsync(int closeDelaySeconds)
     {
         var root = CreateFixtureRoot();
         var pidPath = Path.Combine(root, "broken-stdin.pid");
         try
         {
+            // The child must break the pipe well inside the runner's 10 s hang budget on a loaded host.
+            // Windows: the precompiled probe. The former pwsh child compiled C# with Add-Type before closing stdin
+            // (6-9 s under CPU saturation, over 10 s cold). Unix: a single exec'd process. The former shell child
+            // left a separate sleep grandchild that survived the tree kill and held the output pipes open, so
+            // cleanup waited out its full 10 s drain budget in ~0.8% of loaded runs. The CoreCLR PAL duplicates
+            // fds 0-2 in every dotnet child, so the probe cannot close stdin on Unix.
             string executable;
             string[] arguments;
             if (OperatingSystem.IsWindows())
             {
-                var scriptPath = Path.Combine(root, "close-stdin.ps1");
-                await File.WriteAllTextAsync(scriptPath, """
-                param([string]$PidPath)
-                [IO.File]::WriteAllText($PidPath, [string]$PID)
-                [Console]::Out.WriteLine('broken-pipe-stdout')
-                [Console]::Error.WriteLine('broken-pipe-stderr')
-                Add-Type -TypeDefinition @'
-                using System;
-                using System.Runtime.InteropServices;
-                public static class CloseStdinProbe {
-                    [DllImport("kernel32.dll")] public static extern IntPtr GetStdHandle(int id);
-                    [DllImport("kernel32.dll")] public static extern bool CloseHandle(IntPtr handle);
-                    [DllImport("libc")] public static extern int close(int fd);
-                }
-                '@
-                if ($IsWindows) {
-                    [CloseStdinProbe]::CloseHandle([CloseStdinProbe]::GetStdHandle(-10)) | Out-Null
-                } else {
-                    [CloseStdinProbe]::close(0) | Out-Null
-                }
-                Start-Sleep -Seconds 30
-                """);
-                executable = "pwsh.exe";
-                arguments = ["-NoProfile", "-File", scriptPath, pidPath];
+                executable = "dotnet";
+                var probe = Path.Combine(AppContext.BaseDirectory, "ProcessProbes", "ProcessPipeWorkerProbe", "ProcessPipeWorkerProbe.dll");
+                arguments = closeDelaySeconds == 0
+                    ? [probe, "close-stdin", pidPath]
+                    : [probe, "close-stdin-after", (closeDelaySeconds * 1000).ToString(System.Globalization.CultureInfo.InvariantCulture), pidPath];
             }
             else
             {
@@ -266,11 +264,11 @@ public sealed class PwshScriptRunnerTests
                     printf '%s' "$$" > "$1"
                     printf '%s\n' 'broken-pipe-stdout'
                     printf '%s\n' 'broken-pipe-stderr' >&2
-                    exec 0<&-
-                    sleep 30
+                    if [ "$2" != 0 ]; then sleep "$2"; fi
+                    exec sleep 30 0<&-
                     """);
                 executable = "bash";
-                arguments = [scriptPath, pidPath];
+                arguments = [scriptPath, pidPath, closeDelaySeconds.ToString(System.Globalization.CultureInfo.InvariantCulture)];
             }
             var failure = await Assert.ThrowsAsync<IOException>(() =>
                 PwshScriptRunner.RunExecutableWithInputAsync(executable, arguments,

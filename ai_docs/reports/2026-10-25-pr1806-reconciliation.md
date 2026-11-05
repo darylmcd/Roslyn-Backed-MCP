@@ -75,7 +75,7 @@ Each current finding is source-supported or explicitly an investigation. Require
 | [central-package-query-evaluated-policy](../items/central-package-query-evaluated-policy.md) | Medium / M | — | Read central package versions from the active evaluated context |
 | [central-package-mutation-evaluated-owner](../items/central-package-mutation-evaluated-owner.md) | Medium / M | central-package-query-evaluated-policy | Bind central-package edits to their effective authored owner |
 | [restore-package-root-authoritative-read-fail-closed](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1924) | High / M | — | Keep unreadable assets distinct from an absent recorded root (closed by PR #1924) |
-| [cross-project-interface-parameter-semantics](../items/cross-project-interface-parameter-semantics.md) | High / M | — | Preserve emitted interface parameter semantics |
+| `cross-project-interface-parameter-semantics` (closed by PR 1995) | High / M | — | Preserve emitted interface parameter semantics |
 | [workspace-cache-coordinator-unexpected-failure-propagation](../items/workspace-cache-coordinator-unexpected-failure-propagation.md) | Medium / S | — | Do not hide cache-coordinator programming failures |
 | [mstest-formatter-enum-zero-comparison](../items/mstest-formatter-enum-zero-comparison.md) | Medium / M | — | Investigate enum-zero assertion formatter dependency behavior |
 | [process-environment-fixture-isolation](../items/process-environment-fixture-isolation.md) | Medium / M | — | Isolate shared process environment fixture actors |
