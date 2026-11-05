@@ -4,16 +4,21 @@ using System.Runtime.ExceptionServices;
 using System.Runtime.Loader;
 using System.Text;
 
-if (args[0] == "close-stdin")
+if (args[0] is "close-stdin" or "close-stdin-after")
 {
-    // Windows fixture: a live child that never reads stdin and closes its inherited stdin handle immediately,
-    // so the parent's pending stdin write sees a broken pipe without waiting on interpreter or compiler startup.
-    File.WriteAllText(args[1] + ".tmp", Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture));
-    File.Move(args[1] + ".tmp", args[1]);
+    // Windows fixture: a live child that never reads stdin and closes its inherited stdin handle (immediately for
+    // `close-stdin <pid>`, after <ms> for `close-stdin-after <ms> <pid>`), so the parent's pending stdin write sees
+    // a broken pipe without waiting on interpreter or compiler startup.
+    var closeDelayMs = args[0] == "close-stdin-after" ? int.Parse(args[1], System.Globalization.CultureInfo.InvariantCulture) : 0;
+    var closePidPath = args[0] == "close-stdin-after" ? args[2] : args[1];
+    File.WriteAllText(closePidPath + ".tmp", Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture));
+    File.Move(closePidPath + ".tmp", closePidPath);
     Console.Out.WriteLine("broken-pipe-stdout");
     Console.Error.WriteLine("broken-pipe-stderr");
     Console.Out.Flush();
     Console.Error.Flush();
+    if (closeDelayMs > 0)
+        Thread.Sleep(closeDelayMs);
     StdinCloser.Close();
     // Stay alive until the owning runner terminates this process.
     Thread.Sleep(TimeSpan.FromSeconds(60));

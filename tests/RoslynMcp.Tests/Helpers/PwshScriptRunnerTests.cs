@@ -225,6 +225,17 @@ public sealed class PwshScriptRunnerTests
     [TestMethod]
     [TestCategory("Process")]
     public async Task RunWithInputAsync_BrokenPipeTerminatesAndDrainsBeforeReturningFailure()
+        => await AssertBrokenPipeIsReportedAsync(closeDelaySeconds: 0);
+
+    // The runner must honor a stdin close that arrives later but still inside its 10 s hang budget.
+    // This pins "runner correct, fixture latency was the defect": the close lands at ~2 s, so a runner that
+    // stopped surfacing a broken pipe would time out here deterministically instead of only under load.
+    [TestMethod]
+    [TestCategory("Process")]
+    public async Task RunWithInputAsync_BrokenPipeClosedMidBudgetStillReturnsIoFailureWithDrainedOutput()
+        => await AssertBrokenPipeIsReportedAsync(closeDelaySeconds: 2);
+
+    private static async Task AssertBrokenPipeIsReportedAsync(int closeDelaySeconds)
     {
         var root = CreateFixtureRoot();
         var pidPath = Path.Combine(root, "broken-stdin.pid");
@@ -241,11 +252,10 @@ public sealed class PwshScriptRunnerTests
             if (OperatingSystem.IsWindows())
             {
                 executable = "dotnet";
-                arguments =
-                [
-                    Path.Combine(AppContext.BaseDirectory, "ProcessProbes", "ProcessPipeWorkerProbe", "ProcessPipeWorkerProbe.dll"),
-                    "close-stdin", pidPath
-                ];
+                var probe = Path.Combine(AppContext.BaseDirectory, "ProcessProbes", "ProcessPipeWorkerProbe", "ProcessPipeWorkerProbe.dll");
+                arguments = closeDelaySeconds == 0
+                    ? [probe, "close-stdin", pidPath]
+                    : [probe, "close-stdin-after", (closeDelaySeconds * 1000).ToString(System.Globalization.CultureInfo.InvariantCulture), pidPath];
             }
             else
             {
@@ -254,10 +264,11 @@ public sealed class PwshScriptRunnerTests
                     printf '%s' "$$" > "$1"
                     printf '%s\n' 'broken-pipe-stdout'
                     printf '%s\n' 'broken-pipe-stderr' >&2
+                    if [ "$2" != 0 ]; then sleep "$2"; fi
                     exec sleep 30 0<&-
                     """);
                 executable = "bash";
-                arguments = [scriptPath, pidPath];
+                arguments = [scriptPath, pidPath, closeDelaySeconds.ToString(System.Globalization.CultureInfo.InvariantCulture)];
             }
             var failure = await Assert.ThrowsAsync<IOException>(() =>
                 PwshScriptRunner.RunExecutableWithInputAsync(executable, arguments,
