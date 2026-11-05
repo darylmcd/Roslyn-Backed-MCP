@@ -406,7 +406,8 @@ public sealed class WorkspacePathMrtrWireTests
                 $"result={((TextContentBlock)result.Content![0]).Text}; wire=" +
                 string.Join(" | ", harness.RawServerMessages));
             var text = ((TextContentBlock)result.Content![0]).Text;
-            var payload = JsonDocument.Parse(text).RootElement;
+            using var payloadDocument = JsonDocument.Parse(text);
+            var payload = payloadDocument.RootElement;
             Assert.AreEqual(ToolErrorHandler.ErrorCategories.InvalidOperation.ToString(),
                 payload.GetProperty("category").GetString());
             Assert.AreEqual(_workspaceStatusToolName, payload.GetProperty("tool").GetString());
@@ -455,7 +456,8 @@ public sealed class WorkspacePathMrtrWireTests
                 "Malformed explicit input must produce one terminal envelope, not an MRTR exchange.");
             Assert.IsFalse(results[0].TryGetProperty("resultType", out var resultType) &&
                            resultType.GetString() == "input_required");
-            var payload = JsonDocument.Parse(((TextContentBlock)result.Content![0]).Text).RootElement;
+            using var payloadDocument = JsonDocument.Parse(((TextContentBlock)result.Content![0]).Text);
+            var payload = payloadDocument.RootElement;
             Assert.AreEqual(ToolErrorHandler.ErrorCategories.InvalidArgument.ToString(),
                 payload.GetProperty("category").GetString());
         }
@@ -640,8 +642,9 @@ public sealed class WorkspacePathMrtrWireTests
             Assert.AreEqual(0, SyntheticWorkspaceLoadTools.WorkspaceLoadDispatchCount);
             Assert.AreEqual(0, SyntheticWorkspaceLoadTools.WorkspaceStatusDispatchCount,
                 "A non-accepted path response must not fall back to request state or ambient state.");
-            var payload = JsonDocument.Parse(
-                result.GetProperty("content")[0].GetProperty("text").GetString()!).RootElement;
+            using var payloadDocument = JsonDocument.Parse(
+                result.GetProperty("content")[0].GetProperty("text").GetString()!);
+            var payload = payloadDocument.RootElement;
             Assert.AreEqual(ToolErrorHandler.ErrorCategories.InvalidArgument.ToString(),
                 payload.GetProperty("category").GetString());
         }
@@ -684,7 +687,8 @@ public sealed class WorkspacePathMrtrWireTests
                 concurrentWorkspaceId,
                 StringComparison.Ordinal),
                 "The retry must not rebind to ambient workspace state that changed mid-MRTR.");
-            var payload = JsonDocument.Parse(((TextContentBlock)result.Content[0]).Text).RootElement;
+            using var payloadDocument = JsonDocument.Parse(((TextContentBlock)result.Content[0]).Text);
+            var payload = payloadDocument.RootElement;
             Assert.AreEqual("request-state",
                 payload.GetProperty("_meta").GetProperty("autoResolution").GetString());
 
@@ -916,7 +920,8 @@ public sealed class WorkspacePathMrtrWireTests
             Assert.AreEqual(1, SyntheticWorkspaceLoadTools.WorkspaceStatusDispatchCount,
                 "The original tool must dispatch exactly once after its workspaceId is patched.");
 
-            var payload = JsonDocument.Parse(((TextContentBlock)result.Content![0]).Text).RootElement;
+            using var payloadDocument = JsonDocument.Parse(((TextContentBlock)result.Content![0]).Text);
+            var payload = payloadDocument.RootElement;
             Assert.AreEqual(_syntheticWorkspaceId, payload.GetProperty("workspaceId").GetString());
             var meta = payload.GetProperty("_meta");
             Assert.AreEqual("auto-loaded", meta.GetProperty("autoResolution").GetString());

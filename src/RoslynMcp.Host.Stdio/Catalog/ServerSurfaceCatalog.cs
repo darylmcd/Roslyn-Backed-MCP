@@ -262,29 +262,32 @@ public static partial class ServerSurfaceCatalog
     }
 
     /// <summary>
-    /// Return a paginated slice of an entry list. Offset clamps to [0, entries.Count]; limit
-    /// clamps to [1, 200]. Response carries the page window + totals + hasMore so callers
+    /// Return a paginated slice of an entry list. Offset must be nonnegative and limit
+    /// must be in [1, 200]. Response carries the requested page window + totals + hasMore so callers
     /// can iterate without guessing.
     /// </summary>
     public static ServerCatalogPagedEntriesDto PageEntries(
         IReadOnlyList<SurfaceEntry> entries, int offset, int limit, string resourceName)
     {
+        if (offset < 0)
+            throw new PublicArgumentException("Parameter 'offset' must be nonnegative.", nameof(offset));
+        if (limit is < 1 or > 200)
+            throw new PublicArgumentException("Parameter 'limit' must be between 1 and 200.", nameof(limit));
+
         var total = entries.Count;
-        var clampedOffset = Math.Clamp(offset, 0, total);
-        var clampedLimit = Math.Clamp(limit, 1, 200);
-        var remaining = total - clampedOffset;
-        var take = Math.Min(clampedLimit, remaining);
+        var remaining = Math.Max(0, total - offset);
+        var take = Math.Min(limit, remaining);
         var page = take <= 0
             ? Array.Empty<SurfaceEntry>()
-            : entries.Skip(clampedOffset).Take(take).ToArray();
+            : entries.Skip(offset).Take(take).ToArray();
 
         return new ServerCatalogPagedEntriesDto(
             ResourceName: resourceName,
-            Offset: clampedOffset,
-            Limit: clampedLimit,
+            Offset: offset,
+            Limit: limit,
             ReturnedCount: page.Length,
             TotalCount: total,
-            HasMore: clampedOffset + page.Length < total,
+            HasMore: offset + page.Length < total,
             Entries: page);
     }
 

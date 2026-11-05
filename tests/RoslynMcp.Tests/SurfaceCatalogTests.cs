@@ -96,7 +96,7 @@ public sealed class SurfaceCatalogTests
     }
 
     [TestMethod]
-    public void CatalogPagination_RefusalsPreserveCorrectionsAndClamping()
+    public void CatalogPagination_RefusalsPreserveCorrections()
     {
         foreach (var tools in new[] { true, false })
             foreach (var offsetBad in new[] { true, false })
@@ -113,12 +113,22 @@ public sealed class SurfaceCatalogTests
                     Assert.AreEqual($"Parameter '{parameter}' must be an integer.", doc.RootElement.GetProperty("message").GetString());
                     Assert.AreEqual(nameof(ArgumentException), doc.RootElement.GetProperty("exceptionType").GetString());
                 }
-        using var page = JsonDocument.Parse(ServerResources.GetServerCatalogToolsPage("-1", "0"));
-        Assert.AreEqual(0, page.RootElement.GetProperty("offset").GetInt32());
-        Assert.AreEqual(1, page.RootElement.GetProperty("limit").GetInt32());
-        using var end = JsonDocument.Parse(ServerResources.GetServerCatalogPromptsPage("2147483647", "2147483647"));
-        Assert.AreEqual(200, end.RootElement.GetProperty("limit").GetInt32());
-        Assert.AreEqual(0, end.RootElement.GetProperty("returnedCount").GetInt32());
+        foreach (var tools in new[] { true, false })
+            foreach (var (offset, limit, parameter) in new[]
+            {
+                ("-1", "5", "offset"),
+                ("0", "0", "limit"),
+                ("0", "201", "limit"),
+            })
+            {
+                var ex = Assert.Throws<ArgumentException>(() => tools
+                    ? ServerResources.GetServerCatalogToolsPage(offset, limit)
+                    : ServerResources.GetServerCatalogPromptsPage(offset, limit));
+                Assert.AreEqual(parameter, ex.ParamName);
+                using var error = JsonDocument.Parse(ToolErrorHandler.ClassifyAndFormat(ex, "resource"));
+                Assert.AreEqual("InvalidArgument", error.RootElement.GetProperty("category").GetString());
+                StringAssert.Contains(error.RootElement.GetProperty("message").GetString()!, parameter);
+            }
     }
 
     [TestMethod]
@@ -169,21 +179,22 @@ public sealed class SurfaceCatalogTests
     }
 
     [TestMethod]
-    public void PageEntries_ClampsOffsetPastTotal_EmptyPageNoHasMore()
+    public void PageEntries_OffsetPastTotal_EmptyPageNoHasMore()
     {
         var total = ServerSurfaceCatalog.Tools.Count;
         var page = ServerSurfaceCatalog.PageEntries(ServerSurfaceCatalog.Tools, offset: total + 100, limit: 10, resourceName: "test");
-        Assert.AreEqual(total, page.Offset, "Offset must clamp to total, not past it.");
+        Assert.AreEqual(total + 100, page.Offset, "The response must preserve the requested offset.");
         Assert.AreEqual(0, page.ReturnedCount);
         Assert.AreEqual(total, page.TotalCount);
         Assert.IsFalse(page.HasMore);
     }
 
     [TestMethod]
-    public void PageEntries_ClampsLimitToCeiling()
+    public void PageEntries_RejectsLimitAboveCeiling()
     {
-        var page = ServerSurfaceCatalog.PageEntries(ServerSurfaceCatalog.Tools, offset: 0, limit: 99999, resourceName: "test");
-        Assert.AreEqual(200, page.Limit, "Limit must clamp to the 200 ceiling.");
+        var ex = Assert.Throws<ArgumentException>(() =>
+            ServerSurfaceCatalog.PageEntries(ServerSurfaceCatalog.Tools, offset: 0, limit: 99999, resourceName: "test"));
+        Assert.AreEqual("limit", ex.ParamName);
     }
 
     [TestMethod]
