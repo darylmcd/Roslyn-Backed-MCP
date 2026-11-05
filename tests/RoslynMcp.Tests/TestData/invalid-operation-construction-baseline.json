@@ -1596,6 +1596,12 @@
     "Count": 1
   },
   {
+    "Path": "src/RoslynMcp.Roslyn/Services/TypeExtractionSameFileConsumerRewriter.cs",
+    "Member": "M:RoslynMcp.Roslyn.Services.TypeExtractionSameFileConsumerRewriter.CannotRewrite(Microsoft.CodeAnalysis.ISymbol,System.String)",
+    "Fingerprint": "11DFF1364C6742FBBFC22D08A49209DA006471AF0BB343A824CB5E5F215CEA2A",
+    "Count": 1
+  },
+  {
     "Path": "src/RoslynMcp.Roslyn/Services/TypeExtractionService.cs",
     "Member": "M:RoslynMcp.Roslyn.Services.TypeExtractionService.CollectExternalConsumerWarningsAsync(Microsoft.CodeAnalysis.Solution,Microsoft.CodeAnalysis.Document,Microsoft.CodeAnalysis.SemanticModel,System.Collections.Generic.IReadOnlyList{Microsoft.CodeAnalysis.SyntaxNode},System.Threading.CancellationToken)",
     "Fingerprint": "F30F7A90E3AE6402FB7C6421FCE5EAF31D9DC320935D0D975B5AACC06F9EB4C9",
@@ -1671,12 +1677,6 @@
     "Path": "src/RoslynMcp.Roslyn/Services/TypeExtractionService.cs",
     "Member": "M:RoslynMcp.Roslyn.Services.TypeExtractionService.PreviewExtractTypeAsync(System.String,System.String,System.String,System.Collections.Generic.IReadOnlyList{System.String},System.String,System.String,System.Threading.CancellationToken)",
     "Fingerprint": "AC2ECCFB3F491474F2DD460B9A1260FC48E3C2282F674C1CEECC3A78FF4B1DCC",
-    "Count": 1
-  },
-  {
-    "Path": "src/RoslynMcp.Roslyn/Services/TypeExtractionService.cs",
-    "Member": "M:RoslynMcp.Roslyn.Services.TypeExtractionService.SameFileConsumerRewriter.CannotRewrite(Microsoft.CodeAnalysis.ISymbol,System.String)",
-    "Fingerprint": "11DFF1364C6742FBBFC22D08A49209DA006471AF0BB343A824CB5E5F215CEA2A",
     "Count": 1
   },
   {
