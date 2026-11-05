@@ -1,9 +1,18 @@
 using System.Collections.Immutable;
+using System.Diagnostics;
+using System.Text.Json;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CodeActions;
 using Microsoft.CodeAnalysis.CodeFixes;
+using Microsoft.Extensions.Logging.Abstractions;
+using ModelContextProtocol.Client;
+using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Diagnostics;
+using RoslynMcp.Host.Stdio.Middleware;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -203,6 +212,7 @@ public class DiagnosticFixIntegrationTests : SharedWorkspaceTestBase
             "When no provider is registered, GuidanceMessage must be set — mirrors fix_all_preview.");
         Assert.Contains("No code fix provider is loaded", preview.GuidanceMessage!);
         Assert.Contains("CS8019", preview.GuidanceMessage!);
+        Assert.Contains("No code fix provider", preview.Description);
     }
 
     [TestMethod]
@@ -236,6 +246,123 @@ public class DiagnosticFixIntegrationTests : SharedWorkspaceTestBase
         {
             DeleteDirectoryIfExists(copiedRoot);
         }
+    }
+
+    [TestMethod]
+    public async Task CodeFixPreview_ProviderFailure_IsDistinctFromNoAction_AndProjectsSafeInternalError()
+    {
+        var (filePath, line, column) = await GetCs0414LocationAsync();
+        var providerFailure = new InvalidOperationException(SensitiveProviderFailure);
+        var service = CreateCodeFixService(new ThrowingCodeFixProvider(providerFailure));
+
+        var failure = await Assert.ThrowsExactlyAsync<CodeFixProviderRegistrationException>(() =>
+            service.PreviewCodeFixAsync(WorkspaceId, "CS0414", filePath, line, column, null, CancellationToken.None));
+        Assert.AreSame(providerFailure, failure.InnerException);
+        Assert.DoesNotContain(SensitiveProviderFailure, failure.Message, StringComparison.Ordinal);
+
+        var reporter = new RecordingUnexpectedExceptionReporter("codefix-correlation");
+        await using var harness = await InMemoryMcpClientServerHarness.CreateAsync(
+            transportName: "codefix-provider-failure",
+            clientCapabilities: new ClientCapabilities(),
+            clientHandlers: new McpClientHandlers(),
+            disposalFailureContext: "codefix-provider-failure",
+            cancellationToken: CancellationToken.None);
+        var context = new RequestContext<CallToolRequestParams>(
+            harness.Server,
+            new JsonRpcRequest { Method = RequestMethods.ToolsCall },
+            new CallToolRequestParams { Name = "code_fix_preview" });
+        async ValueTask<StructuredDispatchPipeline.DispatchOutcome> DispatchAsync()
+        {
+            await service.PreviewCodeFixAsync(WorkspaceId, "CS0414", filePath, line, column, null, CancellationToken.None);
+            return new(new CallToolResult { Content = [] }, IsEarlyTerminal: false);
+        }
+
+        using var correlation = RequestCorrelationContext.Begin();
+        var correlationId = RequestCorrelationContext.Current;
+        var result = await StructuredResultProjector.ExecuteAsync(
+            context, "code_fix_preview", null, reporter, Stopwatch.StartNew(), DispatchAsync);
+        Assert.IsTrue(result.IsError);
+        var text = ((TextContentBlock)result.Content[0]).Text;
+        using var envelope = JsonDocument.Parse(text);
+        Assert.AreEqual("InternalError", envelope.RootElement.GetProperty("category").GetString());
+        Assert.IsNotNull(correlationId);
+        Assert.Contains(correlationId, text);
+        Assert.DoesNotContain(SensitiveProviderFailure, text, StringComparison.Ordinal);
+        Assert.DoesNotContain(filePath, text, StringComparison.OrdinalIgnoreCase);
+        Assert.HasCount(1, reporter.Reports);
+        Assert.AreEqual(UnexpectedExceptionCategory.ToolCall, reporter.Reports[0].Category);
+        Assert.IsInstanceOfType<CodeFixProviderRegistrationException>(reporter.Reports[0].Exception);
+        Assert.AreSame(providerFailure, reporter.Reports[0].Exception.InnerException);
+    }
+
+    [TestMethod]
+    public async Task CodeFixPreview_NoActionProvider_RetainsGuidance()
+    {
+        var (filePath, line, column) = await GetCs0414LocationAsync();
+        var service = CreateCodeFixService(new NoActionCodeFixProvider());
+        var preview = await service.PreviewCodeFixAsync(
+            WorkspaceId, "CS0414", filePath, line, column, null, CancellationToken.None);
+        Assert.AreEqual(string.Empty, preview.PreviewToken);
+        Assert.IsEmpty(preview.Changes);
+        Assert.IsNotNull(preview.GuidanceMessage);
+        Assert.DoesNotContain("No code fix provider", preview.GuidanceMessage, StringComparison.Ordinal);
+        Assert.Contains("no source change to preview", preview.GuidanceMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("CS0414", preview.GuidanceMessage);
+        Assert.Contains("No source change to preview", preview.Description);
+    }
+
+    [TestMethod]
+    public async Task CodeFixPreview_ActionWithoutApplyChanges_RetainsAccurateGuidance()
+    {
+        var (filePath, line, column) = await GetCs0414LocationAsync();
+        var service = CreateCodeFixService(new NoApplyChangesCodeFixProvider());
+        var preview = await service.PreviewCodeFixAsync(
+            WorkspaceId, "CS0414", filePath, line, column, null, CancellationToken.None);
+        Assert.AreEqual(string.Empty, preview.PreviewToken);
+        Assert.IsEmpty(preview.Changes);
+        Assert.IsNotNull(preview.GuidanceMessage);
+        Assert.Contains("no source change to preview", preview.GuidanceMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("registered no applicable action", preview.GuidanceMessage, StringComparison.Ordinal);
+        Assert.DoesNotContain("No code fix provider", preview.GuidanceMessage, StringComparison.Ordinal);
+    }
+
+    [TestMethod]
+    public async Task CodeFixPreview_HealthyProvider_PrefersMatchingFixId()
+    {
+        var (filePath, line, column) = await GetCs0414LocationAsync();
+        var service = CreateCodeFixService(new TwoActionCodeFixProvider());
+        var preview = await service.PreviewCodeFixAsync(
+            WorkspaceId, "CS0414", filePath, line, column, "second-fix", CancellationToken.None);
+        Assert.Contains("second-fix", preview.Description);
+        Assert.IsNotEmpty(preview.PreviewToken);
+    }
+
+    [TestMethod]
+    public async Task CodeFixPreview_ProviderCancellation_Propagates()
+    {
+        var (filePath, line, column) = await GetCs0414LocationAsync();
+        var cancellation = new OperationCanceledException("provider cancellation");
+        var service = CreateCodeFixService(new ThrowingCodeFixProvider(cancellation));
+        var actual = await Assert.ThrowsExactlyAsync<OperationCanceledException>(() =>
+            service.PreviewCodeFixAsync(WorkspaceId, "CS0414", filePath, line, column, null, CancellationToken.None));
+        Assert.AreSame(cancellation, actual);
+    }
+
+    private static RefactoringService CreateCodeFixService(CodeFixProvider provider) =>
+        new(WorkspaceManager, PreviewStore, NullLogger<RefactoringService>.Instance,
+            codeFixRegistry: new StaticCodeFixProviderRegistry([provider]));
+
+    private static async Task<(string FilePath, int Line, int Column)> GetCs0414LocationAsync()
+    {
+        var solution = WorkspaceManager.GetCurrentSolution(WorkspaceId);
+        var document = solution.Projects.SelectMany(project => project.Documents)
+            .Single(candidate => candidate.Name == "DiagnosticsProbe.cs");
+        var compilation = await document.Project.GetCompilationAsync(CancellationToken.None);
+        Assert.IsNotNull(compilation);
+        var diagnostic = compilation.GetDiagnostics(CancellationToken.None)
+            .First(candidate => candidate.Id == "CS0414" && candidate.Location.SourceTree?.FilePath == document.FilePath);
+        var start = diagnostic.Location.GetLineSpan().StartLinePosition;
+        return (document.FilePath!, start.Line + 1, start.Character + 1);
     }
 
     [TestMethod]
@@ -436,6 +563,48 @@ public class DiagnosticFixIntegrationTests : SharedWorkspaceTestBase
 
         public override Task RegisterCodeFixesAsync(CodeFixContext context) =>
             Task.FromException(exception);
+    }
+
+    private sealed class NoActionCodeFixProvider : CodeFixProvider
+    {
+        public override ImmutableArray<string> FixableDiagnosticIds => ["CS0414"];
+        public override FixAllProvider? GetFixAllProvider() => null;
+        public override Task RegisterCodeFixesAsync(CodeFixContext context) => Task.CompletedTask;
+    }
+
+    private sealed class TwoActionCodeFixProvider : CodeFixProvider
+    {
+        public override ImmutableArray<string> FixableDiagnosticIds => ["CS0414"];
+        public override FixAllProvider? GetFixAllProvider() => null;
+        public override Task RegisterCodeFixesAsync(CodeFixContext context)
+        {
+            foreach (var id in new[] { "first-fix", "second-fix" })
+            {
+                context.RegisterCodeFix(CodeAction.Create(id,
+                    _ => Task.FromResult(context.Document), id),
+                    context.Diagnostics[0]);
+            }
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class NoApplyChangesCodeFixProvider : CodeFixProvider
+    {
+        public override ImmutableArray<string> FixableDiagnosticIds => ["CS0414"];
+        public override FixAllProvider? GetFixAllProvider() => null;
+        public override Task RegisterCodeFixesAsync(CodeFixContext context)
+        {
+            context.RegisterCodeFix(new NoApplyChangesCodeAction(), context.Diagnostics[0]);
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class NoApplyChangesCodeAction : CodeAction
+    {
+        public override string Title => "No source changes";
+        public override string EquivalenceKey => "no-source-changes";
+        protected override Task<IEnumerable<CodeActionOperation>> ComputeOperationsAsync(CancellationToken ct) =>
+            Task.FromResult<IEnumerable<CodeActionOperation>>([]);
     }
 
     private sealed class RecordingUnexpectedExceptionReporter(string correlationId)
