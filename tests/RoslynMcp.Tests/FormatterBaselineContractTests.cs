@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Runtime.Versioning;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -17,6 +18,74 @@ namespace RoslynMcp.Tests;
 public sealed class FormatterBaselineContractTests
 {
     private const int _expectedSchemaVersion = 1;
+
+    [TestMethod]
+    [TestCategory("Process")]
+    [SupportedOSPlatform("linux")]
+    public async Task Generator_LinuxCaseDistinctFilesProduceSeparateInventoryEntriesAsync()
+    {
+        if (!OperatingSystem.IsLinux())
+            Assert.Inconclusive("Case-distinct filesystem paths require Linux.");
+
+        var fixtureRoot = Path.Combine(TestTempRoot.Current, "format-case-identity", Guid.NewGuid().ToString("N"));
+        var outsideRoot = Path.Combine(TestTempRoot.Current, "FORMAT-CASE-IDENTITY", Path.GetFileName(fixtureRoot));
+        var eng = Path.Combine(fixtureRoot, "eng");
+        var bin = Path.Combine(fixtureRoot, "bin");
+        Directory.CreateDirectory(eng);
+        Directory.CreateDirectory(bin);
+        try
+        {
+            var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
+            foreach (var name in new[] { "generate-format-baseline.ps1", "format-diagnostic-contract.ps1" })
+                File.Copy(Path.Combine(repositoryRoot, "eng", name), Path.Combine(eng, name));
+            await File.WriteAllTextAsync(Path.Combine(fixtureRoot, "RoslynMcp.slnx"), "<Solution />\n");
+            var upper = Path.Combine(fixtureRoot, "Case.cs");
+            var lower = Path.Combine(fixtureRoot, "case.cs");
+            await File.WriteAllTextAsync(upper, "class Upper {}\n");
+            await File.WriteAllTextAsync(lower, "class Lower {}\n");
+
+            var fakeDotnet = Path.Combine(bin, "dotnet");
+            await File.WriteAllTextAsync(fakeDotnet,
+                "#!/bin/sh\n" +
+                $"printf '%s\\n' '{upper}(1,1): warning IDE1006: upper [Probe.csproj]' '{lower}(1,1): warning IDE1006: lower [Probe.csproj]'\n" +
+                "exit 2\n");
+            File.SetUnixFileMode(fakeDotnet, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+
+            var result = await Helpers.PwshScriptRunner.RunAsync(
+                ["-NoProfile", "-NonInteractive", "-File", Path.Combine(eng, "generate-format-baseline.ps1"), "-NoRestore"],
+                workingDirectory: fixtureRoot,
+                environment: new Dictionary<string, string?> { ["PATH"] = bin + Path.PathSeparator + Environment.GetEnvironmentVariable("PATH") },
+                description: "isolated formatter baseline case identity fixture");
+
+            Assert.AreEqual(0, result.ExitCode, result.AllOutput);
+            using var inventory = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(eng, "format-baseline.json")));
+            var files = inventory.RootElement.GetProperty("files").EnumerateArray().ToArray();
+            Assert.AreEqual(2, files.Length, result.AllOutput);
+            CollectionAssert.AreEqual(new[] { "Case.cs", "case.cs" },
+                files.Select(file => file.GetProperty("path").GetString()).ToArray());
+            Assert.AreEqual(2, inventory.RootElement.GetProperty("totals").GetProperty("findingCount").GetInt32());
+
+            Directory.CreateDirectory(outsideRoot);
+            var outsideFile = Path.Combine(outsideRoot, "Case.cs");
+            await File.WriteAllTextAsync(outsideFile, "class Outside {}\n");
+            await File.WriteAllTextAsync(fakeDotnet,
+                "#!/bin/sh\n" +
+                $"printf '%s\\n' '{outsideFile}(1,1): warning IDE1006: outside [Probe.csproj]'\n" +
+                "exit 2\n");
+            var outsideResult = await Helpers.PwshScriptRunner.RunAsync(
+                ["-NoProfile", "-NonInteractive", "-File", Path.Combine(eng, "generate-format-baseline.ps1"), "-NoRestore"],
+                workingDirectory: fixtureRoot,
+                environment: new Dictionary<string, string?> { ["PATH"] = bin + Path.PathSeparator + Environment.GetEnvironmentVariable("PATH") },
+                description: "isolated formatter baseline sibling-root fixture");
+            Assert.AreNotEqual(0, outsideResult.ExitCode, outsideResult.AllOutput);
+            StringAssert.Contains(outsideResult.StdErr, "outside the repository");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(outsideRoot);
+        }
+    }
 
     [TestMethod]
     [TestCategory("Process")]

@@ -153,6 +153,63 @@ public sealed class ChangedFormatGateScriptTests
     }
 
     [TestMethod]
+    [TestCategory("Process")]
+    public async Task Gate_LinuxCaseDistinctChangedFilesKeepIndependentDebtAndIgnoreUnchangedSiblingAsync()
+    {
+        if (!OperatingSystem.IsLinux())
+            Assert.Inconclusive("Case-distinct filesystem paths require Linux.");
+
+        var baseline = "{\"files\":[{\"path\":\"Case.cs\",\"countsByDiagnosticId\":{\"IDE1006\":1}}]}";
+        await SeedBaseCommitAsync(baseline,
+            ("Case.cs", CleanFile),
+            ("case.cs", CleanFile),
+            ("CASE.cs", CleanFile));
+        WriteRepositoryFile("Case.cs", CleanFile.Replace("=> 1", "=> 2", StringComparison.Ordinal));
+        WriteRepositoryFile("case.cs", CleanFile.Replace("=> 1", "=> 3", StringComparison.Ordinal));
+        await CommitAllAsync("edit case-distinct files");
+
+        var result = await RunGateWithFakeDotnetAsync(string.Join('\n',
+            $"{Path.Combine(_repositoryDirectory, "Case.cs")}(1,1): warning IDE1006: tracked [Probe.csproj]",
+            $"{Path.Combine(_repositoryDirectory, "case.cs")}(1,1): warning IDE1006: new [Probe.csproj]",
+            $"{Path.Combine(_repositoryDirectory, "CASE.cs")}(1,1): warning IDE1006: unchanged [Probe.csproj]"), 2);
+
+        Assert.AreEqual(1, result.ExitCode, Describe("Only the changed lowercase sibling has new debt", result));
+        StringAssert.Contains(result.StdOut, "verifying 2 changed C# file(s)");
+        StringAssert.Contains(result.StdOut, "tracked debt: Case.cs - IDE1006 x1");
+        StringAssert.Contains(result.StdErr, "NEW: case.cs - IDE1006 x1 (observed 1, baseline 0)");
+        Assert.IsFalse(result.StdErr.Contains("CASE.cs", StringComparison.Ordinal), Describe("Unchanged sibling must be excluded", result));
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
+    public async Task Gate_LinuxCaseVariantSiblingDirectoryIsOutsideRepositoryAsync()
+    {
+        if (!OperatingSystem.IsLinux())
+            Assert.Inconclusive("Case-distinct filesystem paths require Linux.");
+
+        await SeedBaseCommitAsync(EmptyBaseline, ("Clean.cs", CleanFile));
+        WriteRepositoryFile("Clean.cs", CleanFile.Replace("=> 1", "=> 2", StringComparison.Ordinal));
+        await CommitAllAsync("edit a clean file");
+
+        var outsideRoot = Path.Combine(TestTempRoot.Current, "changedformatgate", Path.GetFileName(_repositoryDirectory));
+        Directory.CreateDirectory(outsideRoot);
+        try
+        {
+            var outsideFile = Path.Combine(outsideRoot, "Clean.cs");
+            await File.WriteAllTextAsync(outsideFile, CleanFile);
+            var result = await RunGateWithFakeDotnetAsync(
+                $"{outsideFile}(1,1): warning IDE1006: outside repository [Probe.csproj]", 2);
+
+            Assert.AreEqual(0, result.ExitCode, Describe("Sibling directory differing only by case must be excluded", result));
+            StringAssert.Contains(result.StdOut, "0 new finding(s)");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(outsideRoot);
+        }
+    }
+
+    [TestMethod]
     public async Task Gate_ChangedFileIntroducesUnsortedUsings_FailsWithAnImportsFindingAsync()
     {
         await SeedBaseCommitAsync(EmptyBaseline, ("Clean.cs", CleanFile));
