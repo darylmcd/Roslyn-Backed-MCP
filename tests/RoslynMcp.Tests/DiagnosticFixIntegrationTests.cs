@@ -221,10 +221,12 @@ public class DiagnosticFixIntegrationTests : SharedWorkspaceTestBase
         var copiedSolutionPath = CreateSampleSolutionCopy();
         var copiedRoot = Path.GetDirectoryName(copiedSolutionPath)!;
         var serviceFilePath = Path.Combine(copiedRoot, "SampleLib", "AnimalService.cs");
+        string? ownedWorkspaceId = null;
 
-        try
+        await FixtureCleanupScope.RunAsync(async () =>
         {
             var copiedWorkspace = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+            ownedWorkspaceId = copiedWorkspace.WorkspaceId;
             var preview = await RefactoringService.PreviewCodeFixAsync(
                 copiedWorkspace.WorkspaceId,
                 diagnosticId: "CS8019",
@@ -241,11 +243,7 @@ public class DiagnosticFixIntegrationTests : SharedWorkspaceTestBase
             Assert.IsTrue(applyResult.Success, applyResult.Error);
             var contents = await File.ReadAllTextAsync(serviceFilePath, CancellationToken.None);
             Assert.DoesNotContain("using System.Threading;", contents);
-        }
-        finally
-        {
-            DeleteDirectoryIfExists(copiedRoot);
-        }
+        }, OwnedCopyCleanupSteps(() => ownedWorkspaceId, copiedRoot));
     }
 
     [TestMethod]

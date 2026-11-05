@@ -1,4 +1,5 @@
 using RoslynMcp.Core.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -27,8 +28,9 @@ public sealed class DeadCodeIntegrationTests : SharedWorkspaceTestBase
     {
         var copiedSolutionPath = CreateSampleSolutionCopy();
         var copiedRoot = Path.GetDirectoryName(copiedSolutionPath)!;
+        string? ownedWorkspaceId = null;
 
-        try
+        await FixtureCleanupScope.RunAsync(async () =>
         {
             var dogFilePath = Path.Combine(copiedRoot, "SampleLib", "Dog.cs");
             var originalContents = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
@@ -43,6 +45,7 @@ public sealed class DeadCodeIntegrationTests : SharedWorkspaceTestBase
 
             var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
             var workspaceId = status.WorkspaceId;
+            ownedWorkspaceId = workspaceId;
             var unusedSymbols = await UnusedCodeAnalyzer.FindUnusedSymbolsAsync(
                 workspaceId,
                 // Limit bumped from 50 to 500 — the prior cap was fragile because every new
@@ -71,11 +74,25 @@ public sealed class DeadCodeIntegrationTests : SharedWorkspaceTestBase
             Assert.IsTrue(applyResult.Success, applyResult.Error);
             var contents = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
             Assert.IsFalse(contents.Contains("UnusedTestOnlyMethod"));
-        }
-        finally
-        {
-            DeleteDirectoryIfExists(copiedRoot);
-        }
+        }, OwnedCopyCleanupSteps(() => ownedWorkspaceId, copiedRoot));
+    }
+
+    [TestMethod]
+    public async Task Missing_Copied_Solution_Load_Still_Deletes_Its_Root()
+    {
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var copiedRoot = Path.GetDirectoryName(copiedSolutionPath)!;
+        var missingSolutionPath = Path.Combine(copiedRoot, "missing.slnx");
+        string? ownedWorkspaceId = null;
+
+        await Assert.ThrowsExactlyAsync<FileNotFoundException>(() =>
+            FixtureCleanupScope.RunAsync(async () =>
+            {
+                ownedWorkspaceId = (await WorkspaceManager.LoadAsync(missingSolutionPath, CancellationToken.None)).WorkspaceId;
+            }, OwnedCopyCleanupSteps(() => ownedWorkspaceId, copiedRoot)));
+
+        Assert.IsFalse(Directory.Exists(copiedRoot),
+            "A load failure must still remove the copied root when no workspace ID was assigned.");
     }
 
     [TestMethod]
