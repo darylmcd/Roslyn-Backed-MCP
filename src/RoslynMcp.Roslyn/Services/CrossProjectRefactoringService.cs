@@ -98,17 +98,10 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
 
         updatedSolution = EnsureProjectReference(updatedSolution, sourceDocument.Project.Id, targetProject.Id);
 
-        var sourceNamespace = typeDeclaration.FirstAncestorOrSelf<BaseNamespaceDeclarationSyntax>();
-        SyntaxNode updatedSourceRoot;
-        if (sourceNamespace is not null && sourceNamespace.Members.Count == 1 && sourceRoot.Members.Count == 1)
-        {
-            updatedSolution = updatedSolution.RemoveDocument(sourceDocument.Id);
-        }
-        else
-        {
-            updatedSourceRoot = MovedDeclarationFileWriter.RemoveDeclaration(sourceRoot, typeDeclaration);
-            updatedSolution = updatedSolution.WithDocumentSyntaxRoot(sourceDocument.Id, updatedSourceRoot);
-        }
+        var updatedSourceRoot = MovedDeclarationFileWriter.RemoveDeclaration(sourceRoot, typeDeclaration);
+        updatedSolution = NamespaceMemberClassifier.HasRemainingContent(updatedSourceRoot)
+            ? updatedSolution.WithDocumentSyntaxRoot(sourceDocument.Id, updatedSourceRoot)
+            : updatedSolution.RemoveDocument(sourceDocument.Id);
 
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, updatedSolution, ct).ConfigureAwait(false);
         var description = $"Move type '{typeName}' to project '{targetProject.Name}'";
