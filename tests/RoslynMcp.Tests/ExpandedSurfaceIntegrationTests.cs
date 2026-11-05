@@ -82,6 +82,34 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task MissingDocumentLocationTools_ExplainWorkspaceMembershipWithoutEchoingPath()
+    {
+        var missingPath = Path.Combine(Path.GetDirectoryName(FindDocumentPath("AnimalService.cs"))!, "Missing.cs");
+        var server = await GetPathAuthorizedServerAsync();
+
+        var syntaxError = await Assert.ThrowsAsync<KeyNotFoundException>(async () =>
+            await SyntaxTools.GetSyntaxTree(
+                server, WorkspaceExecutionGate, SyntaxService, WorkspaceId, missingPath,
+                ct: CancellationToken.None));
+        var positionError = await Assert.ThrowsAsync<KeyNotFoundException>(async () =>
+            await SymbolTools.ProbePosition(
+                server, WorkspaceExecutionGate, SymbolNavigationService, WorkspaceId, missingPath,
+                line: 1, column: 1, ct: CancellationToken.None));
+
+        foreach (var (error, toolName) in new[]
+        {
+            (syntaxError, "get_syntax_tree"),
+            (positionError, "probe_position"),
+        })
+        {
+            using var document = JsonDocument.Parse(ToolErrorHandler.ClassifyAndFormat(error, toolName));
+            var message = document.RootElement.GetProperty("message").GetString();
+            StringAssert.Contains(message, "document in the loaded workspace");
+            Assert.IsFalse(message!.Contains(missingPath, StringComparison.Ordinal));
+        }
+    }
+
+    [TestMethod]
     public async Task AdvancedAnalysisTools_Return_Expected_Results()
     {
         var namespaceJson = await AdvancedAnalysisTools.GetNamespaceDependencies(
