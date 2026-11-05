@@ -1628,6 +1628,205 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
     }
 
     /// <summary>
+    /// type-extraction-same-file-rewriter-decomposition: the same-file rewriter skips extracted
+    /// declarations and rewrites only retained consumers. The skip is observable through the widening
+    /// set: an extracted member referenced ONLY by other extracted code must keep its original
+    /// accessibility, while a member a retained method names becomes reachable and is rebound.
+    /// </summary>
+    [TestMethod]
+    public async Task ExtractType_ExtractedDeclarationsKeepOriginalReferences_RetainedConsumersRewritten()
+    {
+        var fixture = await CreateExtractionFixtureAsync(
+            "SkipExtractedFixture.cs",
+            """
+            namespace SampleLib;
+
+            public class SkipExtractedFixture
+            {
+                private int _factor = 3;
+                private int Scale(int value) => value * _factor;
+                public int Keep() => Scale(2);
+            }
+            """);
+
+        try
+        {
+            var preview = await TypeExtractionService.PreviewExtractTypeAsync(
+                fixture.WorkspaceId,
+                fixture.FilePath,
+                "SkipExtractedFixture",
+                ["Scale", "_factor"],
+                "ScaleHolder",
+                null,
+                CancellationToken.None);
+
+            var newFilePath = Path.Combine(Path.GetDirectoryName(fixture.FilePath)!, "ScaleHolder.cs");
+            var newTypeSource = await GetModifiedDocumentTextAsync(preview.PreviewToken, newFilePath);
+            StringAssert.Contains(newTypeSource, "public int Scale(");
+            StringAssert.Contains(newTypeSource, "value * _factor");
+            StringAssert.Contains(newTypeSource, "private int _factor");
+            Assert.IsFalse(newTypeSource.Contains("public int _factor", StringComparison.Ordinal),
+                $"a member referenced only by extracted code must stay private. New type:\n{newTypeSource}");
+
+            var updatedSource = await GetModifiedDocumentTextAsync(preview.PreviewToken, fixture.FilePath);
+            StringAssert.Contains(updatedSource, "_scaleHolder.Scale(2)");
+            Assert.IsFalse(updatedSource.Contains("_scaleHolder._factor", StringComparison.Ordinal),
+                $"extracted declarations are not rewritten in the retained source. Source:\n{updatedSource}");
+            await AssertModifiedSolutionCompilesAsync(preview.PreviewToken);
+        }
+        finally
+        {
+            WorkspaceManager.Close(fixture.WorkspaceId);
+        }
+    }
+
+    /// <summary>
+    /// type-extraction-same-file-rewriter-decomposition: a retained <c>x?.Member</c> reference to an
+    /// extracted instance member cannot be rebound to the composition field and must refuse fail-closed
+    /// before any preview is stored.
+    /// </summary>
+    [TestMethod]
+    public async Task ExtractType_ConditionalAccessOnExtractedMember_RefusesFailClosed()
+    {
+        var fixture = await CreateExtractionFixtureAsync(
+            "ConditionalAccessFixture.cs",
+            """
+            namespace SampleLib;
+
+            public class ConditionalAccessFixture
+            {
+                public ConditionalAccessFixture Peer { get; set; } = null!;
+                public int Compute() => 7;
+                public int? Use() => Peer?.Compute();
+            }
+            """);
+
+        try
+        {
+            var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+                TypeExtractionService.PreviewExtractTypeAsync(
+                    fixture.WorkspaceId,
+                    fixture.FilePath,
+                    "ConditionalAccessFixture",
+                    ["Compute"],
+                    "ComputeHolder",
+                    null,
+                    CancellationToken.None));
+
+            StringAssert.Contains(exception.Message, "conditional-access receiver");
+            StringAssert.Contains(exception.Message, "extracted member 'Compute'");
+            FileOperationIntegrationTests.AssertNoStoredPreviews(PreviewStore, fixture.WorkspaceId);
+        }
+        finally
+        {
+            WorkspaceManager.Close(fixture.WorkspaceId);
+        }
+    }
+
+    /// <summary>
+    /// type-extraction-same-file-rewriter-decomposition: a retained constructor body that names an
+    /// extracted instance member is refused. The refusal is deliberately pinned at its current breadth
+    /// (it also covers constructor BODIES, which the injected field assignment now precedes); narrowing
+    /// it to initializer arguments must flip this test on purpose.
+    /// </summary>
+    [TestMethod]
+    public async Task ExtractType_RetainedConstructorReferencesInstanceMember_RefusesFailClosed()
+    {
+        var fixture = await CreateExtractionFixtureAsync(
+            "RetainedCtorReferenceFixture.cs",
+            """
+            namespace SampleLib;
+
+            public class RetainedCtorReferenceFixture
+            {
+                private readonly int _seed;
+                public RetainedCtorReferenceFixture() { _seed = Compute(); }
+                public int Seed => _seed;
+                private int Compute() => 7;
+            }
+            """);
+
+        try
+        {
+            var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+                TypeExtractionService.PreviewExtractTypeAsync(
+                    fixture.WorkspaceId,
+                    fixture.FilePath,
+                    "RetainedCtorReferenceFixture",
+                    ["Compute"],
+                    "ComputeHolder",
+                    null,
+                    CancellationToken.None));
+
+            StringAssert.Contains(exception.Message, "constructor body before the injected composition field");
+            StringAssert.Contains(exception.Message, "extracted member 'Compute'");
+            FileOperationIntegrationTests.AssertNoStoredPreviews(PreviewStore, fixture.WorkspaceId);
+        }
+        finally
+        {
+            WorkspaceManager.Close(fixture.WorkspaceId);
+        }
+    }
+
+    /// <summary>
+    /// type-extraction-same-file-rewriter-decomposition: references are rebound by symbol identity, so a
+    /// generic call, <c>this.</c> and other-instance receivers, and a static access through the type
+    /// name are redirected, while a same-named method on an unrelated type is left alone.
+    /// </summary>
+    [TestMethod]
+    public async Task ExtractType_GenericAndExplicitReceiverReferences_RewriteBySymbolIdentity()
+    {
+        var fixture = await CreateExtractionFixtureAsync(
+            "IdentityRewriteFixture.cs",
+            """
+            namespace SampleLib;
+
+            public class IdentityRewriteFixture
+            {
+                public int Pad<T>(int value) => value + 1;
+                public int Twice(int value) => value * 2;
+                public static int Stat() => 5;
+
+                public int Keep(IdentityRewriteFixture other, IdentityRewriteUnrelated unrelated) =>
+                    Pad<string>(1) + this.Twice(2) + other.Twice(3) + unrelated.Twice(4) + IdentityRewriteFixture.Stat();
+            }
+
+            public class IdentityRewriteUnrelated
+            {
+                public int Twice(int value) => value;
+            }
+            """);
+
+        try
+        {
+            var preview = await TypeExtractionService.PreviewExtractTypeAsync(
+                fixture.WorkspaceId,
+                fixture.FilePath,
+                "IdentityRewriteFixture",
+                ["Pad", "Twice", "Stat"],
+                "IdentityHolder",
+                null,
+                CancellationToken.None);
+
+            var updatedSource = await GetModifiedDocumentTextAsync(preview.PreviewToken, fixture.FilePath);
+            StringAssert.Contains(updatedSource, "_identityHolder.Pad<string>(1)");
+            StringAssert.Contains(updatedSource, "this._identityHolder.Twice(2)");
+            StringAssert.Contains(updatedSource, "other._identityHolder.Twice(3)");
+            StringAssert.Contains(updatedSource, "unrelated.Twice(4)");
+            Assert.IsFalse(updatedSource.Contains("unrelated._identityHolder", StringComparison.Ordinal),
+                $"a same-named method on an unrelated type must not be redirected. Source:\n{updatedSource}");
+            StringAssert.Contains(updatedSource, "IdentityHolder.Stat()");
+            Assert.IsFalse(updatedSource.Contains("IdentityRewriteFixture.Stat()", StringComparison.Ordinal),
+                $"a static access through the source type name must be rebound to the new type. Source:\n{updatedSource}");
+            await AssertModifiedSolutionCompilesAsync(preview.PreviewToken);
+        }
+        finally
+        {
+            WorkspaceManager.Close(fixture.WorkspaceId);
+        }
+    }
+
+    /// <summary>
     /// extract-type-preview-compile-delta-gate: a preview whose rewritten solution adds compiler errors
     /// must be refused before a token, workspace-version change or disk effect exists.
     /// </summary>
