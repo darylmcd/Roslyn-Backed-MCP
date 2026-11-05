@@ -484,6 +484,177 @@ public sealed class NamespaceRelocationTests : IsolatedWorkspaceTestBase
             $"Expected a kept-using warning naming `Shared`. Warnings:\n{string.Join("\n", preview.Warnings)}");
     }
 
+    private const string RelocationFixtureDirectory = "RelocationKeepFixture";
+
+    private async Task<(Microsoft.CodeAnalysis.Solution Modified, Microsoft.CodeAnalysis.Document? SourceDocument, string SourcePath, string DestinationPath, RoslynMcp.Core.Models.RefactoringPreviewDto Preview)>
+        PreviewRelocationAsync(IsolatedWorkspaceScope workspace, string source, string? consumerSource = null)
+    {
+        var fixtureDir = Path.Combine(workspace.GetPath("SampleLib"), RelocationFixtureDirectory);
+        Directory.CreateDirectory(fixtureDir);
+        var sourcePath = Path.Combine(fixtureDir, "Source.cs");
+        var destinationPath = Path.Combine(fixtureDir, "Moved.cs");
+        await File.WriteAllTextAsync(sourcePath, source, CancellationToken.None);
+        if (consumerSource is not null)
+            await File.WriteAllTextAsync(Path.Combine(fixtureDir, "Consumer.cs"), consumerSource, CancellationToken.None);
+
+        var wsId = await workspace.LoadAsync(CancellationToken.None);
+        var preview = await CreateService().PreviewChangeTypeNamespaceAsync(
+            wsId, "Selected", "Old", "New", destinationPath, CancellationToken.None);
+
+        var retrieved = PreviewStore.Retrieve(preview.PreviewToken);
+        Assert.IsNotNull(retrieved, "the preview token must be redeemable immediately after the preview");
+        var modified = retrieved.Value.ModifiedSolution;
+        var sourceDocument = modified.Projects.SelectMany(p => p.Documents)
+            .SingleOrDefault(d => string.Equals(d.FilePath, sourcePath, StringComparison.OrdinalIgnoreCase));
+        return (modified, sourceDocument, sourcePath, destinationPath, preview);
+    }
+
+    private static async Task<IReadOnlyList<string>> CompileErrorsInAsync(
+        Microsoft.CodeAnalysis.Solution solution, params string[] filePaths)
+    {
+        var errors = new List<string>();
+        foreach (var project in solution.Projects.Where(p => p.Name == "SampleLib"))
+        {
+            var compilation = await project.GetCompilationAsync(CancellationToken.None);
+            Assert.IsNotNull(compilation);
+            foreach (var diagnostic in compilation.GetDiagnostics(CancellationToken.None))
+            {
+                if (diagnostic.Severity != Microsoft.CodeAnalysis.DiagnosticSeverity.Error) continue;
+                var path = diagnostic.Location.SourceTree?.FilePath;
+                if (path is not null && filePaths.Any(f => string.Equals(f, path, StringComparison.OrdinalIgnoreCase)))
+                    errors.Add(diagnostic.ToString());
+            }
+        }
+        return errors;
+    }
+
+    /// <summary>
+    /// Regression (relocation-source-delete-preserves-other-members): the old delete predicate
+    /// counted only <c>TypeDeclarationSyntax</c> members, so an enum, a delegate, a declaration in
+    /// another or nested namespace block, a global-namespace type, an assembly attribute or
+    /// <c>#if</c>-disabled text left behind in the source file was deleted with it. Each shape keeps
+    /// exactly one extra declaration (<c>Keep</c>); <c>expectedMetadataName</c> is null where the
+    /// declaration is disabled text and therefore not part of the compilation.
+    /// </summary>
+    [TestMethod]
+    [DataRow("namespace Old\n{\n    public class Selected { }\n\n    public enum Keep { A }\n}\n", "Old.Keep", "enum Keep",
+        DisplayName = "block namespace + enum")]
+    [DataRow("namespace Old\n{\n    public class Selected { }\n\n    public delegate void Keep();\n}\n", "Old.Keep", "delegate void Keep",
+        DisplayName = "block namespace + delegate")]
+    [DataRow("namespace Old;\n\npublic class Selected { }\n\npublic enum Keep { A }\n", "Old.Keep", "enum Keep",
+        DisplayName = "file-scoped namespace + enum")]
+    [DataRow("namespace Old;\n\npublic class Selected { }\n\npublic delegate void Keep();\n", "Old.Keep", "delegate void Keep",
+        DisplayName = "file-scoped namespace + delegate")]
+    [DataRow("namespace Old\n{\n    public class Selected { }\n}\n\nnamespace Elsewhere\n{\n    public enum Keep { A }\n}\n", "Elsewhere.Keep", "enum Keep",
+        DisplayName = "enum in a sibling namespace block")]
+    [DataRow("namespace Old\n{\n    public class Selected { }\n\n    namespace Inner\n    {\n        public enum Keep { A }\n    }\n}\n", "Old.Inner.Keep", "enum Keep",
+        DisplayName = "enum in a nested namespace")]
+    [DataRow("namespace Old\n{\n    public class Selected { }\n}\n\npublic enum Keep { A }\n", "Keep", "enum Keep",
+        DisplayName = "enum in the global namespace")]
+    [DataRow("[assembly: System.Reflection.AssemblyMetadata(\"keep\", \"1\")]\n\nnamespace Old\n{\n    public class Selected { }\n}\n", null, "AssemblyMetadata",
+        DisplayName = "assembly attribute")]
+    [DataRow("namespace Old\n{\n    public class Selected { }\n\n#if NEVER\n    public enum Keep { A }\n#endif\n}\n", null, "enum Keep",
+        DisplayName = "disabled declaration after the selected type")]
+    public async Task Preview_Relocation_Keeps_Source_File_When_Other_Declarations_Remain(
+        string source, string? expectedMetadataName, string expectedText)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+
+        var (modified, sourceDocument, sourcePath, destinationPath, _) = await PreviewRelocationAsync(workspace, source);
+
+        Assert.IsNotNull(sourceDocument, "the source file still declares 'Keep' and must survive the relocation");
+        var text = (await sourceDocument.GetTextAsync(CancellationToken.None)).ToString();
+        StringAssert.Contains(text, expectedText, $"The retained source file lost its other declaration:\n{text}");
+        Assert.IsFalse(text.Contains("Selected", StringComparison.Ordinal), $"The relocated type must leave the source file:\n{text}");
+
+        var errors = await CompileErrorsInAsync(modified, sourcePath, destinationPath);
+        Assert.AreEqual(0, errors.Count, $"The previewed solution must compile. Errors:\n{string.Join("\n", errors)}\n{text}");
+
+        var compilation = await sourceDocument.Project.GetCompilationAsync(CancellationToken.None);
+        Assert.IsNotNull(compilation);
+        Assert.IsNotNull(compilation.GetTypeByMetadataName("New.Selected"), "Selected must arrive in New.");
+        Assert.IsNull(compilation.GetTypeByMetadataName("Old.Selected"), "Selected must leave Old.");
+        if (expectedMetadataName is not null)
+            Assert.IsNotNull(compilation.GetTypeByMetadataName(expectedMetadataName), $"'{expectedMetadataName}' must still exist:\n{text}");
+    }
+
+    /// <summary>
+    /// Controls for the keep test: when nothing but namespace shells, usings and trivia is left,
+    /// the source file is still removed. The second row guards against over-retention: a
+    /// <c>#if</c>-disabled region inside the removed type's own body leaves no content behind.
+    /// </summary>
+    [TestMethod]
+    [DataRow("namespace Old\n{\n    public class Selected { }\n}\n", DisplayName = "sole type, block namespace")]
+    [DataRow("using System;\n\nnamespace Old;\n\npublic class Selected { }\n", DisplayName = "sole type, file-scoped namespace with a using")]
+    [DataRow("namespace Old\n{\n    public class Selected\n    {\n#if NEVER\n        public int Hidden;\n#endif\n    }\n}\n", DisplayName = "sole type with a disabled region inside its body")]
+    public async Task Preview_Relocation_Deletes_Source_File_When_Nothing_Remains(string source)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+
+        var (modified, sourceDocument, _, destinationPath, _) = await PreviewRelocationAsync(workspace, source);
+
+        Assert.IsNull(sourceDocument, "the source file has no remaining declaration and must be removed");
+        var errors = await CompileErrorsInAsync(modified, destinationPath);
+        Assert.AreEqual(0, errors.Count, $"The previewed solution must compile. Errors:\n{string.Join("\n", errors)}");
+    }
+
+    /// <summary>
+    /// Disabled text directly above the selected type is that type's leading trivia, so it travels
+    /// with the declaration into the new file (nothing is lost) and nothing remains in the source
+    /// file. Pins the placement half of the disabled-declaration shape that the keep test covers
+    /// for text after the selected type.
+    /// </summary>
+    [TestMethod]
+    [DataRow("namespace Old\n{\n#if NEVER\n    public enum Keep { A }\n#endif\n    public class Selected { }\n}\n", DisplayName = "block namespace")]
+    [DataRow("namespace Old;\n\n#if NEVER\npublic enum Keep { A }\n#endif\npublic class Selected { }\n", DisplayName = "file-scoped namespace")]
+    public async Task Preview_Relocation_Moves_Disabled_Text_Above_The_Selected_Type_With_It(string source)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+
+        var (modified, sourceDocument, _, destinationPath, _) = await PreviewRelocationAsync(workspace, source);
+
+        Assert.IsNull(sourceDocument, "the disabled text left the source file with the selected type, so nothing remains");
+        var destination = modified.Projects.SelectMany(p => p.Documents)
+            .Single(d => string.Equals(d.FilePath, destinationPath, StringComparison.OrdinalIgnoreCase));
+        var destinationText = (await destination.GetTextAsync(CancellationToken.None)).ToString();
+        StringAssert.Contains(destinationText, "enum Keep", $"The disabled declaration must not be lost:\n{destinationText}");
+    }
+
+    /// <summary>
+    /// The retained source file and the consumer rewrite must agree: while <c>Keep</c> still lives in
+    /// <c>Old</c>, a consumer that imports <c>Old</c> keeps <c>using Old;</c> (with the kept-using
+    /// warning) so the previewed solution compiles. Counting declarations in OTHER documents and
+    /// projects stays with <c>relocation-consumer-using-counts-enum-delegate-members</c>.
+    /// </summary>
+    [TestMethod]
+    [DataRow("namespace Old\n{\n    public class Selected { }\n\n    public enum Keep { A }\n}\n", DisplayName = "enum in the same namespace block")]
+    [DataRow("namespace Old\n{\n    public class Selected { }\n}\n\nnamespace Old\n{\n    public delegate void Keep();\n}\n", DisplayName = "delegate in a second block of the same namespace")]
+    [DataRow("namespace Old\n{\n    public class Selected { }\n}\n\nnamespace Old\n{\n    public class Keep { }\n}\n", DisplayName = "class in a second block of the same namespace")]
+    public async Task Preview_Relocation_Keeps_Old_Using_In_Consumers_While_The_Source_File_Still_Declares_Old_Members(string source)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        const string consumer =
+            "using Old;\n\nnamespace Consumers;\n\npublic sealed class Consumer\n{\n    public Selected? Value { get; set; }\n\n    public Keep? Other { get; set; }\n}\n";
+
+        var (modified, sourceDocument, sourcePath, destinationPath, preview) =
+            await PreviewRelocationAsync(workspace, source, consumer);
+
+        Assert.IsNotNull(sourceDocument, "the source file still declares 'Keep' and must survive");
+        var consumerPath = Path.Combine(Path.GetDirectoryName(sourcePath)!, "Consumer.cs");
+        var consumerDocument = modified.Projects.SelectMany(p => p.Documents)
+            .Single(d => string.Equals(d.FilePath, consumerPath, StringComparison.OrdinalIgnoreCase));
+        var consumerText = (await consumerDocument.GetTextAsync(CancellationToken.None)).ToString();
+        StringAssert.Contains(consumerText, "using Old;", $"The consumer still needs `using Old;` for Keep:\n{consumerText}");
+        StringAssert.Contains(consumerText, "using New;", $"The consumer needs `using New;` for Selected:\n{consumerText}");
+        Assert.IsNotNull(preview.Warnings);
+        Assert.IsTrue(
+            preview.Warnings!.Any(w => w.Contains("Kept `using Old;`", StringComparison.Ordinal)),
+            $"Expected a kept-using warning naming `Old`. Warnings:\n{string.Join("\n", preview.Warnings)}");
+
+        var errors = await CompileErrorsInAsync(modified, sourcePath, destinationPath, consumerPath);
+        Assert.AreEqual(0, errors.Count, $"The previewed solution must compile. Errors:\n{string.Join("\n", errors)}");
+    }
+
     [TestMethod]
     public async Task ArgumentRefusals_NamespaceMalformedDestinationIsNamedAndRedacted()
     {
