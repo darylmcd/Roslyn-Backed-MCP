@@ -198,7 +198,7 @@ function ConvertTo-RepositoryRelativePath {
 
     $full = [System.IO.Path]::GetFullPath($Path)
     $prefix = $repositoryRoot.TrimEnd([System.IO.Path]::DirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
-    if (-not $full.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+    if ($full.Length -le $prefix.Length -or -not $formatPathComparer.Equals($full.Substring(0, $prefix.Length), $prefix)) {
         throw "Formatter reported a path outside the repository: $full"
     }
 
@@ -233,8 +233,8 @@ if ($truncated.Count -gt 0) {
     throw "dotnet format produced a truncated inventory (unrestored projects were skipped): $($truncated[0])"
 }
 
-$findingKeys = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
-$findingsByFile = @{}
+$findingKeys = [System.Collections.Generic.HashSet[string]]::new($formatPathComparer)
+$findingsByFile = [System.Collections.Generic.Dictionary[string, object]]::new($formatPathComparer)
 
 foreach ($line in $formatOutput) {
     $match = [regex]::Match($line, $formatDiagnosticPattern)

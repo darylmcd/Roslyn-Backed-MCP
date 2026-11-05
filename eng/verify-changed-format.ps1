@@ -119,7 +119,7 @@ function ConvertTo-RepositoryRelativePath {
 
     $full = [System.IO.Path]::GetFullPath($Path)
     $prefix = $Root.TrimEnd([System.IO.Path]::DirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
-    if (-not $full.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+    if ($full.Length -le $prefix.Length -or -not $formatPathComparer.Equals($full.Substring(0, $prefix.Length), $prefix)) {
         return $null
     }
 
@@ -140,7 +140,7 @@ if (-not [System.IO.File]::Exists($resolvedBaselinePath)) {
 # Baseline shape: { files: [ { path, countsByDiagnosticId: { <id>: <count> } } ] }.
 # Flattened to "<path>|<id>" -> count so a lookup miss is unambiguously "no tracked debt".
 $baselineDocument = Get-Content -LiteralPath $resolvedBaselinePath -Raw | ConvertFrom-Json
-$baselineCounts = @{}
+$baselineCounts = [System.Collections.Generic.Dictionary[string, int]]::new($formatPathComparer)
 foreach ($entry in @($baselineDocument.files)) {
     $entryPath = [string]$entry.path
     foreach ($property in $entry.countsByDiagnosticId.PSObject.Properties) {
@@ -174,13 +174,17 @@ try {
         throw "Unable to resolve untracked C# files.`n$($untrackedOutput -join [System.Environment]::NewLine)"
     }
 
-    $changedFiles = [string[]]@(
+    $changedFileSet = [System.Collections.Generic.HashSet[string]]::new($formatPathComparer)
+    foreach ($changedFile in @(
         @($committedDiffOutput; $stagedDiffOutput; $unstagedDiffOutput; $untrackedOutput) |
             Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
             ForEach-Object { $_.Trim().Replace("\", "/") } |
-            Where-Object { [System.IO.File]::Exists((Join-Path -Path $repositoryRoot -ChildPath $_)) } |
-            Sort-Object -Unique
-    )
+            Where-Object { [System.IO.File]::Exists((Join-Path -Path $repositoryRoot -ChildPath $_)) }
+    )) {
+        [void]$changedFileSet.Add($changedFile)
+    }
+    $changedFiles = [string[]]@($changedFileSet)
+    [System.Array]::Sort($changedFiles, $formatPathComparer)
 
     if ($changedFiles.Count -eq 0) {
         Write-Host "Changed-file formatter gate: no changed C# files against '$BaseRef'; nothing to verify."
@@ -233,10 +237,9 @@ if ($truncated.Count -gt 0) {
     throw "dotnet format produced a truncated report (unrestored projects were skipped), so the gate cannot prove the changed files are clean: $($truncated[0])"
 }
 
-$changedFileSet = [System.Collections.Generic.HashSet[string]]::new([string[]]$changedFiles, [System.StringComparer]::OrdinalIgnoreCase)
-$findingKeys = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
-$observedCounts = @{}
-$observedMessages = @{}
+$findingKeys = [System.Collections.Generic.HashSet[string]]::new($formatPathComparer)
+$observedCounts = [System.Collections.Generic.Dictionary[string, int]]::new($formatPathComparer)
+$observedMessages = [System.Collections.Generic.Dictionary[string, System.Collections.Generic.List[string]]]::new($formatPathComparer)
 
 foreach ($line in $formatOutput) {
     $match = [regex]::Match($line, $formatDiagnosticPattern)
