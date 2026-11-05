@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.CodeAnalysis;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Diagnostics;
@@ -687,6 +688,43 @@ public sealed class CompositeApplyOrchestratorTests
             updatedContent,
             encoding.GetString(afterBytes, preamble.Length, afterBytes.Length - preamble.Length),
             "The mutation must be readable back through the original encoding.");
+    }
+
+    /// <summary>
+    /// composite-redemption-admission-boundary: a token bound to a session this host never admitted
+    /// must be refused before the first write, in BOTH orchestrator constructions. With the DI undo
+    /// service present, undo capture happens to fail first; without it (direct construction) the old
+    /// order wrote every file and only then failed in <c>ReloadAsync</c>, leaving bytes on disk for a
+    /// refused apply. The not-found exception is the refusal; the bytes and the reload are the proof.
+    /// </summary>
+    [TestMethod]
+    [DataRow(false, false, DisplayName = "memory store, no undo service")]
+    [DataRow(false, true, DisplayName = "memory store, DI undo service")]
+    [DataRow(true, false, DisplayName = "persistent store, no undo service")]
+    [DataRow(true, true, DisplayName = "persistent store, DI undo service")]
+    public async Task ApplyComposite_UnadmittedSession_RefusesBeforeAnyWrite(bool persistent, bool withUndoService)
+    {
+        var target = Path.Combine(_tempDir, "target.cs");
+        await File.WriteAllTextAsync(target, "original");
+        var ttl = TimeSpan.FromMinutes(5);
+        var store = persistent
+            ? new CompositePreviewStore(20, ttl, new PersistentCompositeStorage(Path.Combine(_tempDir, "persist"), ttl))
+            : new CompositePreviewStore();
+        var token = store.Store(
+            "ghost-session",
+            1,
+            "unadmitted session",
+            [new CompositeFileMutation(target, "replaced")]);
+        var workspace = new RecordingWorkspaceManager { AdmittedWorkspaceIds = ["admitted-session"] };
+        using var undoService = withUndoService ? new UndoService(NullLogger<UndoService>.Instance, workspace) : null;
+        var orchestrator = new CompositeApplyOrchestrator(workspace, store, undoService: undoService);
+
+        await Assert.ThrowsExactlyAsync<WorkspaceNotFoundException>(() =>
+            orchestrator.ApplyCompositeAsync(token, CancellationToken.None));
+
+        Assert.AreEqual("original", await File.ReadAllTextAsync(target),
+            "A refused apply must not have written any file.");
+        Assert.IsFalse(workspace.ReloadCalled, "The refusal must precede the post-write reload.");
     }
 
     /// <summary>
