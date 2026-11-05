@@ -1,6 +1,7 @@
 using System.Reflection;
 using Microsoft.CodeAnalysis.Diagnostics;
 using RoslynMcp.Core.Models;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -186,14 +187,16 @@ public class ValidationIntegrationTests : SharedWorkspaceTestBase
         var copiedSolutionPath = CreateSampleSolutionCopy();
         var copiedRoot = Path.GetDirectoryName(copiedSolutionPath)!;
         var testFilePath = Path.Combine(copiedRoot, "SampleLib.Tests", "AnimalServiceTests.cs");
+        string? ownedWorkspaceId = null;
 
-        try
+        await FixtureCleanupScope.RunAsync(async () =>
         {
             var originalContents = await File.ReadAllTextAsync(testFilePath, CancellationToken.None);
             var failingContents = originalContents.Replace("Assert.AreEqual(2, count);", "Assert.AreEqual(3, count);");
             await File.WriteAllTextAsync(testFilePath, failingContents, CancellationToken.None);
 
             var copiedWorkspace = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+            ownedWorkspaceId = copiedWorkspace.WorkspaceId;
             var result = await TestRunnerService.RunTestsAsync(
                 copiedWorkspace.WorkspaceId,
                 projectName: "SampleLib.Tests",
@@ -209,11 +212,7 @@ public class ValidationIntegrationTests : SharedWorkspaceTestBase
             static bool IsCountAnimalsFailure(TestFailureDto failure) =>
                 string.Equals(failure.DisplayName, "CountAnimals_Returns_Total_Count", StringComparison.Ordinal)
                 || (failure.FullyQualifiedName?.Contains("CountAnimals_Returns_Total_Count", StringComparison.Ordinal) ?? false);
-        }
-        finally
-        {
-            DeleteDirectoryIfExists(copiedRoot);
-        }
+        }, OwnedCopyCleanupSteps(() => ownedWorkspaceId, copiedRoot));
     }
 
     private static object? GetAnalyzerAssemblyLoader(AnalyzerFileReference reference) =>

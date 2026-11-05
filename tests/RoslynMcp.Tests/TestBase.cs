@@ -2,6 +2,7 @@ using ModelContextProtocol.Server;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -230,5 +231,30 @@ public abstract class TestBase
     protected static void DeleteDirectoryIfExists(string path)
     {
         TestFixtureFileSystem.DeleteDirectoryIfExists(path);
+    }
+
+    /// <summary>Reads the owned ID after the test body, then closes, verifies, and deletes independently.</summary>
+    protected static Func<ValueTask>[] OwnedCopyCleanupSteps(Func<string?> getWorkspaceId, string copiedRoot)
+    {
+        ArgumentNullException.ThrowIfNull(getWorkspaceId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(copiedRoot);
+
+        return
+        [
+            CleanupFailureCollector.FromAction(() =>
+            {
+                var workspaceId = getWorkspaceId();
+                if (workspaceId is not null)
+                    WorkspaceManager.Close(workspaceId);
+            }),
+            CleanupFailureCollector.FromAction(() =>
+            {
+                var workspaceId = getWorkspaceId();
+                if (workspaceId is not null)
+                    Assert.IsFalse(WorkspaceManager.HasSession(workspaceId),
+                        "The copied workspace must be closed before its fixture root is deleted.");
+            }),
+            CleanupFailureCollector.FromAction(() => DeleteDirectoryIfExists(copiedRoot))
+        ];
     }
 }
