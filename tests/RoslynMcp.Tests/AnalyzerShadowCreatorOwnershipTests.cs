@@ -171,7 +171,12 @@ public sealed class AnalyzerShadowCreatorOwnershipTests
             var workspaceStale = CreateStaleChild(liveWorkspace);
             AnalyzerReferenceIsolation.SweepAbandonedRoots(shared, NullLogger.Instance);
             Assert.IsTrue(Directory.Exists(stale), "A live markerless creator protects its entire process root.");
-            Assert.IsFalse(Directory.Exists(workspaceStale));
+            // analyzer-shadow-sweep-live-child-authority: age is not liveness. A markerless child of
+            // another LIVE host (an older host that predates per-lease markers cannot prove its lease
+            // is gone) is preserved until that host exits; the swept-after-exit assertions below keep
+            // reclamation covered. Released-marker reclaim of a live peer's lease is pinned in
+            // AnalyzerShadowForeignLeaseAuthorityTests.
+            Assert.IsTrue(Directory.Exists(workspaceStale), "A live peer's markerless child must not be swept on age alone.");
             Assert.IsTrue(Directory.Exists(liveWorkspace));
 
             peer.StandardInput.Close();
@@ -189,6 +194,7 @@ public sealed class AnalyzerShadowCreatorOwnershipTests
             Assert.IsFalse(Directory.Exists(deadStale));
             Assert.IsFalse(Directory.Exists(deadWorkspace));
             Assert.IsFalse(Directory.Exists(parent));
+            Assert.IsFalse(Directory.Exists(workspaceStale), "Once the creator exits, its markerless stale child is reclaimed.");
             Assert.IsFalse(Directory.Exists(liveWorkspace));
         }
         finally
