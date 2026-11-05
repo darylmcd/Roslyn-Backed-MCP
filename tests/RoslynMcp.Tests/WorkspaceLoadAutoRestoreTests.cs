@@ -13,7 +13,8 @@ namespace RoslynMcp.Tests;
 /// load; <c>true</c> restores for any restoreRequired and fails the call; <c>false</c> never
 /// restores. A scripted <see cref="IGatedCommandExecutor"/> stands in for <c>dotnet restore</c>.
 /// </summary>
-[DoNotParallelize]
+// Each test loads a GUID-named solution copy into its own manager with a scripted restore
+// executor. The shared server is used only for path authorization under its lazy init lock.
 [TestClass]
 public sealed class WorkspaceLoadAutoRestoreTests : SharedWorkspaceTestBase
 {
