@@ -157,6 +157,70 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
         StringAssert.Contains(movedText, "namespace SampleLib");
     }
 
+    /// <summary>
+    /// Regression (relocation-source-delete-preserves-other-members, same mechanism): the
+    /// source-delete decision counted only the members of the namespace and compilation unit, so
+    /// an assembly attribute or <c>#if</c>-disabled declaration left behind in the source file was
+    /// deleted with it, while a sole type in the global namespace left an empty file behind. The
+    /// decision now shares <c>NamespaceMemberClassifier.HasRemainingContent</c> with the namespace
+    /// relocation.
+    /// </summary>
+    [TestMethod]
+    [DataRow("namespace Original;\n\npublic class Moved { }\n", true, null, DisplayName = "sole type: file removed")]
+    [DataRow("public class Moved { }\n", true, null, DisplayName = "sole type in the global namespace: file removed")]
+    [DataRow("namespace Original;\n\npublic class Moved { }\n\n#if NEVER\npublic enum Keep { A }\n#endif\n", false, null,
+        DisplayName = "disabled declaration after the moved type: file kept")]
+    [DataRow("[assembly: System.Reflection.AssemblyMetadata(\"keep\", \"1\")]\n\nnamespace Original;\n\npublic class Moved { }\n", false, null,
+        DisplayName = "assembly attribute: file kept")]
+    // Disabled text directly above the moved type is that type's leading trivia: it travels with
+    // the declaration (and is not lost), so nothing remains in the source file.
+    [DataRow("namespace Original;\n\n#if NEVER\npublic enum Keep { A }\n#endif\npublic class Moved { }\n", true, "enum Keep",
+        DisplayName = "disabled declaration before the moved type travels with it: file removed")]
+    public async Task Move_Type_To_Project_Preview_Removes_The_Source_File_Only_When_Nothing_Remains(
+        string source, bool expectedSourceRemoved, string? expectedTargetText)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        AddProjectToCopiedSolution(workspace.RootPath, "AnimalsShared", "net10.0");
+        var fixtureDir = Path.Combine(workspace.GetPath("SampleLib"), "MoveKeepFixture");
+        Directory.CreateDirectory(fixtureDir);
+        var sourceFilePath = Path.Combine(fixtureDir, "Source.cs");
+        await File.WriteAllTextAsync(sourceFilePath, source, CancellationToken.None);
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var preview = await CrossProjectRefactoringService.PreviewMoveTypeToProjectAsync(
+            workspace.WorkspaceId,
+            sourceFilePath,
+            "Moved",
+            "AnimalsShared",
+            null,
+            CancellationToken.None,
+            preserveNamespace: false);
+
+        var modified = PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution;
+        var sourceDocument = modified.Projects.SelectMany(p => p.Documents)
+            .SingleOrDefault(d => string.Equals(d.FilePath, sourceFilePath, StringComparison.OrdinalIgnoreCase));
+        if (expectedSourceRemoved)
+        {
+            Assert.IsNull(sourceDocument, "nothing but trivia remains, so the source file must be removed");
+        }
+        else
+        {
+            Assert.IsNotNull(sourceDocument, "the source file still holds content and must survive the move");
+            var text = (await sourceDocument.GetTextAsync(CancellationToken.None)).ToString();
+            Assert.IsFalse(text.Contains("Moved", StringComparison.Ordinal), $"The moved type must leave the source file:\n{text}");
+            Assert.IsTrue(
+                text.Contains("enum Keep", StringComparison.Ordinal) || text.Contains("AssemblyMetadata", StringComparison.Ordinal),
+                $"The retained content is gone:\n{text}");
+        }
+
+        if (expectedTargetText is not null)
+        {
+            var targetDocument = modified.Projects.Single(p => p.Name == "AnimalsShared").Documents.Single(d => d.Name == "Source.cs");
+            var targetText = (await targetDocument.GetTextAsync(CancellationToken.None)).ToString();
+            StringAssert.Contains(targetText, expectedTargetText, $"The leading disabled text must travel with the moved type:\n{targetText}");
+        }
+    }
+
     [TestMethod]
     public async Task Dependency_Inversion_Preview_And_Apply_Rewrites_Constructor_Parameters()
     {
