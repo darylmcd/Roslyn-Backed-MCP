@@ -11,8 +11,8 @@ using ModelContextProtocol.Server;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Diagnostics;
 using RoslynMcp.Host.Stdio.Middleware;
-using RoslynMcp.Tests.Helpers;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
