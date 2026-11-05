@@ -348,6 +348,87 @@ public class DiagnosticFixIntegrationTests : SharedWorkspaceTestBase
         Assert.AreSame(cancellation, actual);
     }
 
+    [TestMethod]
+    public async Task CodeFixPreview_NullFixId_SelectsFirstRegisteredAction()
+    {
+        var (filePath, line, column) = await GetCs0414LocationAsync();
+        var service = CreateCodeFixService(new TwoActionCodeFixProvider());
+        var preview = await service.PreviewCodeFixAsync(
+            WorkspaceId, "CS0414", filePath, line, column, fixId: null, CancellationToken.None);
+        Assert.IsNotEmpty(preview.PreviewToken);
+        Assert.Contains("'first-fix'", preview.Description);
+        Assert.DoesNotContain("second-fix", preview.Description, StringComparison.Ordinal);
+    }
+
+    [TestMethod]
+    public async Task CodeFixPreview_UnmatchedFixId_FallsBackToFirstRegisteredAction()
+    {
+        var (filePath, line, column) = await GetCs0414LocationAsync();
+        var service = CreateCodeFixService(new TwoActionCodeFixProvider());
+        var preview = await service.PreviewCodeFixAsync(
+            WorkspaceId, "CS0414", filePath, line, column, "no-such-fix", CancellationToken.None);
+        Assert.IsNotEmpty(preview.PreviewToken);
+        Assert.Contains("'first-fix'", preview.Description);
+        Assert.DoesNotContain("second-fix", preview.Description, StringComparison.Ordinal);
+    }
+
+    [TestMethod]
+    public async Task CodeFixPreview_MissingDiagnostic_ThrowsNotFoundRefusal()
+    {
+        // Subclass-tolerant on purpose: refactoring-service-plain-caller-refusals owns
+        // reclassifying this plain InvalidOperationException; the message contract is the pin here.
+        var (filePath, _, _) = await GetCs0414LocationAsync();
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            RefactoringService.PreviewCodeFixAsync(
+                WorkspaceId, "CS0414", filePath, 1, 1, null, CancellationToken.None));
+        Assert.Contains("'CS0414' was not found at", failure.Message);
+    }
+
+    [TestMethod]
+    public async Task CodeFixPreview_NullRegistry_NonCs8019_ReturnsNoProviderGuidance()
+    {
+        var (filePath, line, column) = await GetCs0414LocationAsync();
+        var service = new RefactoringService(WorkspaceManager, PreviewStore, NullLogger<RefactoringService>.Instance);
+        var preview = await service.PreviewCodeFixAsync(
+            WorkspaceId, "CS0414", filePath, line, column, null, CancellationToken.None);
+        Assert.AreEqual(string.Empty, preview.PreviewToken);
+        Assert.IsEmpty(preview.Changes);
+        Assert.Contains("No code fix provider", preview.Description);
+        Assert.IsNotNull(preview.GuidanceMessage);
+        Assert.Contains("No code fix provider is loaded", preview.GuidanceMessage);
+    }
+
+    [TestMethod]
+    [DataRow("remove_unused_using")]
+    [DataRow(null)]
+    [DataRow("  ")]
+    public async Task CodeFixPreview_NullRegistry_Cs8019_StillProducesRemoveUnusedUsingPreview(string? fixId)
+    {
+        var service = new RefactoringService(WorkspaceManager, PreviewStore, NullLogger<RefactoringService>.Instance);
+        var preview = await service.PreviewCodeFixAsync(
+            WorkspaceId, "CS8019", GetAnimalServiceFilePath(), 1, 1, fixId, CancellationToken.None);
+        Assert.IsNotEmpty(preview.PreviewToken);
+        Assert.IsNotEmpty(preview.Changes);
+        Assert.Contains("Apply code fix 'remove_unused_using' for CS8019", preview.Description);
+    }
+
+    [TestMethod]
+    [DataRow(null)]
+    [DataRow("  ")]
+    public async Task CodeFixPreview_Cs8019_BlankFixId_DefaultsToRemoveUnusedUsing(string? fixId)
+    {
+        var preview = await RefactoringService.PreviewCodeFixAsync(
+            WorkspaceId, "CS8019", GetAnimalServiceFilePath(), 1, 1, fixId, CancellationToken.None);
+        Assert.IsNotEmpty(preview.PreviewToken);
+        Assert.IsNotEmpty(preview.Changes);
+        Assert.Contains("Apply code fix 'remove_unused_using' for CS8019", preview.Description);
+    }
+
+    private static string GetAnimalServiceFilePath() =>
+        WorkspaceManager.GetCurrentSolution(WorkspaceId).Projects
+            .SelectMany(project => project.Documents)
+            .First(document => document.Name == "AnimalService.cs").FilePath!;
+
     private static RefactoringService CreateCodeFixService(CodeFixProvider provider) =>
         new(WorkspaceManager, PreviewStore, NullLogger<RefactoringService>.Instance,
             codeFixRegistry: new StaticCodeFixProviderRegistry([provider]));
