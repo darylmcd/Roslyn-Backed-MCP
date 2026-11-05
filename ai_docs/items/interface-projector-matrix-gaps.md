@@ -16,3 +16,7 @@
 ## Evidence
 
 - Cold review of PR #1875 FOLLOW-UP findings: untested constructs above; `RecordReferencedTypes` duplicates `TypeNamespaceWalker`/`Strip` knowledge and is call-order dependent.
+
+## Notes
+
+PR 1995 (cross-project-interface-parameter-semantics, merged 2026-11-05) covered part of bullet 1: __arglist, float/decimal/char defaults, ref readonly, DI/EAW routes, private-const default. Still open: generic-source-type, nested-type, partial-method and multi-declarator-event items. Also open: nameof(<instance property or method>) left symbolic when the member is excluded by a member subset (CS0103), typeof(SourceType)/third-assembly types in kept attribute arguments (see interface-projector-attribute-scope-and-inheritance), and the four-route preview switch still copied in CrossProjectInterfaceBindingIntegrationTests.cs:327, CrossProjectReceivingNamespaceIntegrationTests.cs:92, InterfaceBaseTypeInsertionIntegrationTests.cs:123, InterfaceNullableContextProjectionIntegrationTests.cs:177, DetachedFixtureNativeContextIntegrationTests.cs:45.
