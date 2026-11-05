@@ -668,9 +668,9 @@ public sealed class RefactoringService : IRefactoringService
         var syntaxTree = await document.GetSyntaxTreeAsync(ct).ConfigureAwait(false)
             ?? throw new InvalidOperationException($"Could not get syntax tree for '{filePath}'.");
 
-        // code-fix-providers-missing-ca: locate the diagnostic via the registry-aware path so we
-        // can match analyzer diagnostics (CA*/IDE*) too, not only compiler diagnostics. Falls
-        // back to compiler-only when no registry is wired (legacy callers / unit tests).
+        // code-fix-providers-missing-ca: the lookup matches compiler diagnostics first and then
+        // analyzer diagnostics (CA*/IDE*) from the project's analyzer references. It never
+        // consults the code fix provider registry.
         var diagnostic = await FindDiagnosticAtPositionAsync(
             document, syntaxTree, diagnosticId, line, column, ct).ConfigureAwait(false);
 
@@ -685,52 +685,116 @@ public sealed class RefactoringService : IRefactoringService
         var provider = _codeFixRegistry?.FirstProviderFor(diagnosticId, solution);
         if (provider is not null)
         {
-            var registeredAction = await CaptureFirstActionAsync(provider, document, diagnostic, fixId, ct)
+            var registeredPreview = await TryPreviewRegisteredFixAsync(
+                workspaceId, solution, document, diagnostic, diagnosticId, filePath, provider, fixId, ct)
                 .ConfigureAwait(false);
-            if (registeredAction is not null)
+            if (registeredPreview is not null)
             {
-                var operations = await registeredAction.GetOperationsAsync(ct).ConfigureAwait(false);
-                var applyOp = operations.OfType<ApplyChangesOperation>().FirstOrDefault();
-                if (applyOp is not null)
-                {
-                    var newSol = applyOp.ChangedSolution;
-                    var diff = await SolutionDiffHelper.ComputeChangesAsync(solution, newSol, ct).ConfigureAwait(false);
-                    var actionId = registeredAction.EquivalenceKey ?? registeredAction.Title ?? provider.GetType().Name;
-                    var desc = $"Apply code fix '{actionId}' for {diagnosticId} in '{Path.GetFileName(filePath)}'";
-                    var tk = _previewStore.Store(workspaceId, newSol, _workspace.GetCurrentVersion(workspaceId), desc, diff, PreviewKind.CodeFix);
-                    return new RefactoringPreviewDto(tk, desc, diff, null);
-                }
+                return registeredPreview;
             }
         }
 
-        // Fallback: the legacy CS8019 / remove_unused_using path stays for callers that do not
-        // wire a CodeFixProviderRegistry (notably some unit tests). Anything else now produces
-        // a clearer error than the historic "no supported curated code fix" message.
-        var normalizedFixId = string.IsNullOrWhiteSpace(fixId) ? GetDefaultFixId(diagnosticId) : fixId;
-        if (string.Equals(diagnosticId, "CS8019", StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(normalizedFixId, "remove_unused_using", StringComparison.OrdinalIgnoreCase))
+        // CS8019 / remove_unused_using is a live production path, not a legacy shim: the Roslyn
+        // CodeFixProvider pack ships no CS8019 provider (see
+        // DiagnosticFixIntegrationTests.Diagnostic_Details_For_CS8019_Honors_Docs_Match_Reality),
+        // and it also serves a RefactoringService constructed without a registry.
+        var fallbackFixId = ResolveRemoveUnusedUsingFallbackFixId(diagnosticId, fixId);
+        if (fallbackFixId is not null)
         {
             return await PreviewRemoveUnusedUsingFallbackAsync(
-                workspaceId, solution, document, syntaxTree, diagnostic, normalizedFixId, ct)
+                workspaceId, solution, document, syntaxTree, diagnostic, fallbackFixId, ct)
                 .ConfigureAwait(false);
         }
 
-        // A registered provider can offer no action or an action without an apply operation.
-        // Preserve the empty preview contract and describe the observed absence of a source change.
-        return new RefactoringPreviewDto(
+        return BuildNoCodeFixPreview(diagnosticId, providerFound: provider is not null);
+    }
+
+    /// <summary>
+    /// Previews the provider-registered fix for <paramref name="diagnostic"/>. Returns
+    /// <see langword="null"/> when the provider registers no action or the selected action has
+    /// no <see cref="ApplyChangesOperation"/>, so the caller can fall through to the CS8019 path
+    /// or the empty-preview contract. Provider failures propagate as
+    /// <see cref="CodeFixProviderRegistrationException"/> (see <see cref="SelectCodeFixActionAsync"/>).
+    /// </summary>
+    private async Task<RefactoringPreviewDto?> TryPreviewRegisteredFixAsync(
+        string workspaceId, Solution solution, Document document, Diagnostic diagnostic,
+        string diagnosticId, string filePath, CodeFixProvider provider, string? fixId, CancellationToken ct)
+    {
+        var action = await SelectCodeFixActionAsync(provider, document, diagnostic, fixId, ct).ConfigureAwait(false);
+        if (action is null)
+        {
+            return null;
+        }
+
+        var changedSolution = await TryGetChangedSolutionAsync(action, ct).ConfigureAwait(false);
+        if (changedSolution is null)
+        {
+            return null;
+        }
+
+        var actionId = action.EquivalenceKey ?? action.Title ?? provider.GetType().Name;
+        var description = $"Apply code fix '{actionId}' for {diagnosticId} in '{Path.GetFileName(filePath)}'";
+        return await StoreCodeFixPreviewAsync(workspaceId, solution, changedSolution, description, ct)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Returns the solution of the first <see cref="ApplyChangesOperation"/> of
+    /// <paramref name="action"/>, or <see langword="null"/> when the action has none.
+    /// </summary>
+    private static async Task<Solution?> TryGetChangedSolutionAsync(CodeAction action, CancellationToken ct)
+    {
+        var operations = await action.GetOperationsAsync(ct).ConfigureAwait(false);
+        return operations.OfType<ApplyChangesOperation>().FirstOrDefault()?.ChangedSolution;
+    }
+
+    /// <summary>
+    /// Diffs <paramref name="changedSolution"/> against <paramref name="originalSolution"/> and
+    /// stores it as a <see cref="PreviewKind.CodeFix"/> preview. The workspace version is read
+    /// after the diff so the token pins the version the diff was computed against.
+    /// </summary>
+    private async Task<RefactoringPreviewDto> StoreCodeFixPreviewAsync(
+        string workspaceId, Solution originalSolution, Solution changedSolution, string description, CancellationToken ct)
+    {
+        var changes = await SolutionDiffHelper.ComputeChangesAsync(originalSolution, changedSolution, ct).ConfigureAwait(false);
+        var token = _previewStore.Store(
+            workspaceId, changedSolution, _workspace.GetCurrentVersion(workspaceId), description, changes, PreviewKind.CodeFix);
+        return new RefactoringPreviewDto(token, description, changes, null);
+    }
+
+    /// <summary>
+    /// Returns the normalized fix id when the request is the CS8019 / <c>remove_unused_using</c>
+    /// fallback (a blank <paramref name="fixId"/> defaults per <see cref="GetDefaultFixId"/>);
+    /// otherwise <see langword="null"/>.
+    /// </summary>
+    private static string? ResolveRemoveUnusedUsingFallbackFixId(string diagnosticId, string? fixId)
+    {
+        var normalizedFixId = string.IsNullOrWhiteSpace(fixId) ? GetDefaultFixId(diagnosticId) : fixId;
+        return string.Equals(diagnosticId, "CS8019", StringComparison.OrdinalIgnoreCase) &&
+               string.Equals(normalizedFixId, "remove_unused_using", StringComparison.OrdinalIgnoreCase)
+            ? normalizedFixId
+            : null;
+    }
+
+    /// <summary>
+    /// The empty-preview contract for a diagnostic with no previewable fix. A registered provider
+    /// can offer no action or an action without an apply operation; that case describes the
+    /// observed absence of a source change instead of claiming no provider is loaded.
+    /// </summary>
+    private static RefactoringPreviewDto BuildNoCodeFixPreview(string diagnosticId, bool providerFound) =>
+        new(
             PreviewToken: string.Empty,
-            Description: provider is null
-                ? $"No code fix provider for '{diagnosticId}'."
-                : $"No source change to preview for '{diagnosticId}' at this location.",
+            Description: providerFound
+                ? $"No source change to preview for '{diagnosticId}' at this location."
+                : $"No code fix provider for '{diagnosticId}'.",
             Changes: Array.Empty<FileChangeDto>(),
             Warnings: null,
             CallsiteUpdates: null,
-            GuidanceMessage: provider is null
-                ? FixAllService.BuildNoProviderGuidance(diagnosticId)
-                : $"The loaded code fix provider offered no source change to preview for diagnostic '{diagnosticId}' " +
+            GuidanceMessage: providerFound
+                ? $"The loaded code fix provider offered no source change to preview for diagnostic '{diagnosticId}' " +
                   "at this location. Use diagnostic_details to inspect supported fixes or get_code_actions " +
-                  "for alternative actions.");
-    }
+                  "for alternative actions."
+                : FixAllService.BuildNoProviderGuidance(diagnosticId));
 
     private async Task<RefactoringPreviewDto> PreviewRemoveUnusedUsingFallbackAsync(
         string workspaceId, Solution solution, Document document, SyntaxTree syntaxTree,
@@ -749,11 +813,8 @@ public sealed class RefactoringService : IRefactoringService
         var newRoot = root.RemoveNode(usingDirective, SyntaxRemoveOptions.KeepExteriorTrivia)
             ?? throw new InvalidOperationException("Failed to remove the unused using directive.");
         var newSolution = document.WithSyntaxRoot(newRoot).Project.Solution;
-        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
         var description = $"Apply code fix '{normalizedFixId}' for CS8019 in '{Path.GetFileName(document.FilePath)}'";
-        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes, PreviewKind.CodeFix);
-
-        return new RefactoringPreviewDto(token, description, changes, null);
+        return await StoreCodeFixPreviewAsync(workspaceId, solution, newSolution, description, ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -795,10 +856,12 @@ public sealed class RefactoringService : IRefactoringService
 
     /// <summary>
     /// Invokes <paramref name="provider"/> for the given <paramref name="diagnostic"/> and
-    /// returns the first <see cref="CodeAction"/> registered. When <paramref name="fixId"/>
-    /// is supplied, prefers the action whose <see cref="CodeAction.EquivalenceKey"/> matches.
+    /// selects one registered <see cref="CodeAction"/>: the action whose
+    /// <see cref="CodeAction.EquivalenceKey"/> matches <paramref name="fixId"/> when supplied,
+    /// otherwise the first registered action. Returns <see langword="null"/> when the provider
+    /// registers nothing.
     /// </summary>
-    private static async Task<CodeAction?> CaptureFirstActionAsync(
+    private static async Task<CodeAction?> SelectCodeFixActionAsync(
         CodeFixProvider provider, Document document, Diagnostic diagnostic, string? fixId, CancellationToken ct)
     {
         CodeAction? first = null;
