@@ -17,3 +17,7 @@
 
 - Source audit at main `fc5bb88676214a942daa727c7ca88ac8dd34b61c`. Current extraction gathers namespaces and adds source-to-interface-project dependency; namespace imports alone do not give the target assembly the signature-type dependency. Retained item remains an unmerged finding.
 - Source: closed PR #1806 head `d333c2e9`, kept by GitHub as `refs/pull/1806/head` (archive branch and tag deleted 2026-10-27). No build/test ran in this content audit; historical receipts are not current runtime qualification.
+
+## Notes
+
+Cold plan review 2026-11-05 (not attempted in the 20261105 remediation run; needs decomposition before code): (F8) repo precedent ADRs 0016/0018/0028 means new refusals need an ADR (0032 is reserved by the composite identity row; use the next free number) and a Changed - BREAKING changelog category; (F9) blast radius is far larger than 3 tests: fixture AnimalService exposes source-owned IAnimal, at least 15 tests across 4 files break and 7 call sites use the tolerant AssertNoUnresolvedNamesAsync; (F10) a post-compile gate would spuriously refuse: unused source alias and using-static directives are copied unconditionally (UsingDirectiveSynthesizer.cs:108-112); add CS0122/CS0050/CS0051/CS0103 to the gate code list; (F11) do not compare assembly names for metadata owners (cross-TFM receivers would be wrongly refused); (F13) one PR must own the shared test harness first. Suggested split: type-closure walker + owner resolution, then reference auto-add, then post-compile gate + test migration.

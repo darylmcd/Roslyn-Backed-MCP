@@ -1,6 +1,6 @@
 # composite-token-portable-workspace-identity — Redeem persisted composite tokens in an independent host
 
-**row:** `composite-token-portable-workspace-identity` · **pri:** `High` · **size:** `M`
+**row:** `composite-token-portable-workspace-identity` · **pri:** `High` · **size:** `M` · **deps:** `composite-redemption-admission-boundary`
 
 ## Anchors
 
@@ -22,3 +22,7 @@
 ## Evidence
 
 - Verified at f15e28e7: `PeekWorkspaceId` is memory-only (`BoundedStore.cs:106-121`); `WorkspaceExecutionGate.cs:213-215`; orchestrator `CompositeApplyOrchestrator.cs:38/44/165`. Split from `persistent-composite-workspace-identity-not-portable`.
+
+## Notes
+
+Cold plan review 2026-11-05 amendments: refuse FormatVersion > 2 before claim; TryPeek must open with FileShare.ReadWrite|Delete and treat IO errors as claimed (File.ReadAllText at PersistentCompositeStorage.cs:203 lacks FileShare.Delete and would break the claimer File.Move at :173) plus a race test; use an admit-callback inside TryClaim instead of peek, claim, assert; Entry.WorkspaceIdentity nullable (v1 records); disk PeekChangedPaths fails closed; ambiguity test needs LoadAsync with global properties; ADR 0032 README row above 0031; changelog fragment is exactly one - **Fixed:** line. Bad code to file: false retry-with-the-same-token message in disk mode, TryRead consuming shim.
