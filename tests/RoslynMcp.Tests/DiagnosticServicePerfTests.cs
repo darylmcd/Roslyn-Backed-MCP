@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using RoslynMcp.Core.Models;
+using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -39,18 +41,182 @@ public sealed class DiagnosticServicePerfTests : TestBase
     public static async Task ClassInit(TestContext _)
     {
         InitializeServices();
-        var copiedSolutionPath = CreateSampleSolutionCopy();
-        _copiedSolutionRoot = Path.GetDirectoryName(copiedSolutionPath)!;
-        var copied = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
-        _workspaceId = copied.WorkspaceId;
+        (_copiedSolutionRoot, _workspaceId) = await InitializeFixtureAsync(
+            CreateSampleSolutionCopy,
+            async path => (await WorkspaceManager.LoadAsync(path, CancellationToken.None)).WorkspaceId);
     }
 
     [ClassCleanup]
-    public static void ClassCleanup()
+    public static async Task ClassCleanup()
     {
-        try { DeleteDirectoryIfExists(_copiedSolutionRoot); }
-        finally { DisposeServices(); }
+        await CleanupFailureCollector.RunAsync(
+            "Diagnostic performance fixture cleanup failed.",
+            async () =>
+            {
+                if (_workspaceId is not null && _copiedSolutionRoot is not null)
+                    await CleanupFixtureAsync(WorkspaceManager, _workspaceId, _copiedSolutionRoot, DeleteDirectoryIfExists);
+            },
+            CleanupFailureCollector.FromAction(DisposeServices));
+
+        if (_workspaceId is not null && _copiedSolutionRoot is not null)
+        {
+            Assert.IsFalse(WorkspaceManager.HasSession(_workspaceId),
+                "Class cleanup must close its private workspace session.");
+            Assert.IsFalse(Directory.Exists(_copiedSolutionRoot),
+                "Class cleanup must remove its copied solution root.");
+        }
     }
+
+    internal static async Task<(string Root, string WorkspaceId)> InitializeFixtureAsync(
+        Func<string> createCopy, Func<string, Task<string>> load)
+    {
+        ArgumentNullException.ThrowIfNull(createCopy);
+        ArgumentNullException.ThrowIfNull(load);
+
+        var path = createCopy();
+        var root = Path.GetDirectoryName(path)
+            ?? throw new InvalidOperationException("Could not resolve copied solution root.");
+        try
+        {
+            return (root, await load(path));
+        }
+        catch (Exception failure)
+        {
+            await CleanupFailureCollector.RunAfterFailureAsync(
+                "Diagnostic performance fixture initialization cleanup failed.", failure,
+                CleanupFailureCollector.FromAction(() => DeleteDirectoryIfExists(root)));
+            throw;
+        }
+    }
+
+    internal static ValueTask CleanupFixtureAsync(
+        WorkspaceManager manager, string workspaceId, string root, Action<string> deleteRoot)
+    {
+        ArgumentNullException.ThrowIfNull(manager);
+        ArgumentException.ThrowIfNullOrWhiteSpace(workspaceId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(root);
+        ArgumentNullException.ThrowIfNull(deleteRoot);
+
+        return CleanupFailureCollector.RunAsync(
+            "Diagnostic performance fixture cleanup failed.",
+            CleanupFailureCollector.FromAction(() => manager.Close(workspaceId)),
+            CleanupFailureCollector.FromAction(() => deleteRoot(root)));
+    }
+
+    [TestMethod]
+    public async Task CleanupFixture_ClosesOwnedSessionBeforeDeletingRoot()
+    {
+        var path = CreateSampleSolutionCopy();
+        var root = Path.GetDirectoryName(path)!;
+        string? workspaceId = null;
+        Exception? failure = null;
+        try
+        {
+            workspaceId = (await WorkspaceManager.LoadAsync(path, CancellationToken.None)).WorkspaceId;
+            await CleanupFixtureAsync(WorkspaceManager, workspaceId, root, _ => { });
+            Assert.IsFalse(WorkspaceManager.HasSession(workspaceId),
+                "The class fixture must release its own session before deleting its copied files.");
+        }
+        catch (Exception exception)
+        {
+            failure = exception;
+            throw;
+        }
+        finally
+        {
+            await CleanupRegressionFixtureAsync(workspaceId, root, failure);
+        }
+    }
+
+    [TestMethod]
+    public async Task InitializeFixture_LoadFailureDeletesOwnedCopyAndPreservesFailure()
+    {
+        string? root = null;
+        var loadFailure = new InvalidOperationException("Injected load failure.");
+        try
+        {
+            var thrown = await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () =>
+                await InitializeFixtureAsync(
+                    () =>
+                    {
+                        var path = CreateSampleSolutionCopy();
+                        root = Path.GetDirectoryName(path)!;
+                        return path;
+                    },
+                    _ => Task.FromException<string>(loadFailure)));
+
+            Assert.AreSame(loadFailure, thrown);
+            Assert.IsNotNull(root);
+            Assert.IsFalse(Directory.Exists(root), "The copied solution must be removed if load fails.");
+        }
+        finally
+        {
+            if (root is not null)
+                DeleteDirectoryIfExists(root);
+        }
+    }
+
+    [TestMethod]
+    public async Task CleanupFixture_RemovesOwnedSessionAndRoot()
+    {
+        var path = CreateSampleSolutionCopy();
+        var root = Path.GetDirectoryName(path)!;
+        string? workspaceId = null;
+        Exception? failure = null;
+        try
+        {
+            workspaceId = (await WorkspaceManager.LoadAsync(path, CancellationToken.None)).WorkspaceId;
+            await CleanupFixtureAsync(WorkspaceManager, workspaceId, root, DeleteDirectoryIfExists);
+            Assert.IsFalse(WorkspaceManager.HasSession(workspaceId));
+            Assert.IsFalse(Directory.Exists(root));
+        }
+        catch (Exception exception)
+        {
+            failure = exception;
+            throw;
+        }
+        finally
+        {
+            await CleanupRegressionFixtureAsync(workspaceId, root, failure);
+        }
+    }
+
+    [TestMethod]
+    public async Task CleanupFixture_DeleteFailureStillClosesOwnedSession()
+    {
+        var path = CreateSampleSolutionCopy();
+        var root = Path.GetDirectoryName(path)!;
+        string? workspaceId = null;
+        Exception? failure = null;
+        var deleteFailure = new IOException("Injected delete failure.");
+        try
+        {
+            workspaceId = (await WorkspaceManager.LoadAsync(path, CancellationToken.None)).WorkspaceId;
+            var thrown = await Assert.ThrowsExactlyAsync<AggregateException>(async () =>
+                await CleanupFixtureAsync(WorkspaceManager, workspaceId, root, _ => throw deleteFailure));
+            Assert.AreSame(deleteFailure, thrown.InnerExceptions.Single());
+            Assert.IsFalse(WorkspaceManager.HasSession(workspaceId));
+        }
+        catch (Exception exception)
+        {
+            failure = exception;
+            throw;
+        }
+        finally
+        {
+            await CleanupRegressionFixtureAsync(workspaceId, root, failure);
+        }
+    }
+
+    private static ValueTask CleanupRegressionFixtureAsync(string? workspaceId, string root, Exception? failure) =>
+        CleanupFailureCollector.RunAfterFailureAsync(
+            "Diagnostic performance cleanup regression fixture cleanup failed.", failure,
+            CleanupFailureCollector.FromAction(() =>
+            {
+                if (workspaceId is not null)
+                    WorkspaceManager.Close(workspaceId);
+            }),
+            CleanupFailureCollector.FromAction(() => DeleteDirectoryIfExists(root)));
 
     [TestMethod]
     public async Task GetDiagnosticDetailsAsync_ColdPath_StaysUnderPerfBudget()
