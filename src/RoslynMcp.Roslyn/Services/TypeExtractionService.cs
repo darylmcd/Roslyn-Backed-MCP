@@ -95,8 +95,9 @@ public sealed class TypeExtractionService : ITypeExtractionService
         // dr-9-1-does-not-update-external-consumer-call-sites (SampleSolution audit §9.1):
         // If any extracted member is referenced from a file OUTSIDE the source file, applying
         // the extraction silently breaks those callers — the methods move to the new type but
-        // the new type is constructor-injected as a private field on the source, so external
-        // code calling `source.ExtractedMember()` no longer compiles. Refuse the preview so the
+        // the source reaches the new type through a constructor-injected private field (instance
+        // members) or by type name (static members), so external code calling
+        // `source.ExtractedMember()` / `Source.ExtractedMember()` no longer compiles. Refuse the preview so the
         // caller knows to either pull the affected callers into the extraction redesign, or to
         // first refactor those callers to interact with the new type directly via DI / factory.
         var externalConsumerWarnings = await CollectExternalConsumerWarningsAsync(
@@ -104,10 +105,11 @@ public sealed class TypeExtractionService : ITypeExtractionService
         if (externalConsumerWarnings.Count > 0)
         {
             var summary = string.Join("; ", externalConsumerWarnings);
-            throw new InvalidOperationException(
+            throw new PublicInvalidOperationException(
                 $"Refusing to extract type '{newTypeName}' from '{sourceTypeName}': the selected member(s) are " +
                 $"referenced by external consumer files. Applying the extraction would move the members to the new " +
-                $"type (constructor-injected as a private field on the source), breaking every external call site. " +
+                $"type (reached from the source through a constructor-injected private field, or by the new type's " +
+                $"name for static members), breaking every external call site. " +
                 $"Either include the calling code in the extraction redesign, or first refactor consumers to interact " +
                 $"with the new type directly via DI / a public factory. Details: {summary}");
         }
@@ -141,10 +143,14 @@ public sealed class TypeExtractionService : ITypeExtractionService
         var newFileRoot = BuildNewFileRoot(
             sourceRoot, typeDecl, membersToExtract, newTypeName, referencedExtractedNames);
 
-        // Remove extracted members from source type and inject field + ctor parameter
-        var updatedTypeDecl = InjectFieldAndCtorParameter(
-            rewrittenTypeDecl.WithMembers(SyntaxFactory.List(rewrittenMembersToKeep)),
-            typeDecl, semanticModel, newTypeName, fieldName, sourceTypeName, ct);
+        // Remove extracted members from the source type. The composition field and constructor parameter
+        // are injected only when an instance member moves: an all-static move is reached through the
+        // new type's name (the consumer rewriter's static branch), so the source needs no instance of it.
+        var sourceWithoutExtracted = rewrittenTypeDecl.WithMembers(SyntaxFactory.List(rewrittenMembersToKeep));
+        var updatedTypeDecl = MovesInstanceMember(ExtractedDeclaredSymbols(analysisNodes, semanticModel, ct))
+            ? InjectFieldAndCtorParameter(
+                sourceWithoutExtracted, typeDecl, semanticModel, newTypeName, fieldName, sourceTypeName, ct)
+            : sourceWithoutExtracted;
 
         // extract-type-preserve-untouched-trivia: only the synthesized field, constructor, parameter,
         // argument and assignment carry Formatter.Annotation, so every other byte of the source file,
@@ -181,6 +187,22 @@ public sealed class TypeExtractionService : ITypeExtractionService
             Warnings: null);
     }
 
+    private static List<ISymbol> ExtractedDeclaredSymbols(
+        IReadOnlyList<SyntaxNode> analysisNodes, SemanticModel semanticModel, CancellationToken ct)
+    {
+        var symbols = new List<ISymbol>();
+        foreach (var node in analysisNodes.Where(TypeExtractionSameFileConsumerRewriter.IsDeclarationNode))
+        {
+            if (semanticModel.GetDeclaredSymbol(node, ct) is { } symbol)
+                symbols.Add(symbol);
+        }
+
+        return symbols;
+    }
+
+    private static bool MovesInstanceMember(IEnumerable<ISymbol> extractedSymbols)
+        => extractedSymbols.Any(symbol => !symbol.IsStatic);
+
     private static List<BlockingDependencyDto> CollectBaseConstructorDispatchBlockers(
         SemanticModel semanticModel, INamedTypeSymbol typeSymbol, TypeDeclarationSyntax typeDecl,
         IReadOnlyList<SyntaxNode> analysisNodes, CancellationToken ct)
@@ -190,12 +212,11 @@ public sealed class TypeExtractionService : ITypeExtractionService
             return result;
 
         var compilation = semanticModel.Compilation;
-        var extracted = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
-        foreach (var node in analysisNodes.Where(TypeExtractionSameFileConsumerRewriter.IsDeclarationNode))
-        {
-            if (semanticModel.GetDeclaredSymbol(node, ct) is { IsStatic: false } symbol)
-                extracted.Add(symbol.OriginalDefinition);
-        }
+        var extracted = new HashSet<ISymbol>(
+            ExtractedDeclaredSymbols(analysisNodes, semanticModel, ct)
+                .Where(symbol => !symbol.IsStatic)
+                .Select(symbol => symbol.OriginalDefinition),
+            SymbolEqualityComparer.Default);
 
         if (extracted.Count == 0)
             return result;

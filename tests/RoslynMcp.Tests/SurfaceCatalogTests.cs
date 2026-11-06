@@ -284,9 +284,12 @@ public sealed class SurfaceCatalogTests
         // workspace-status-family tools below changed outputSchema because
         // restore-required-vs-build-conflation added `buildRequired` to
         // WorkspaceStatusSummaryDto, which every workspace-status tool serializes.
+        // extract_type_preview changed summary: extract-type-static-source-composition made the
+        // composition field and constructor parameter conditional on an instance member moving.
         CollectionAssert.AreEquivalent(
             new[]
             {
+                "extract_type_preview",
                 "get_completions",
                 "bulk_replace_type_apply",
                 "replace_invocation_preview",
@@ -333,7 +336,7 @@ public sealed class SurfaceCatalogTests
             "The four 5.0.0 alias removals are the only removed tools since 2.3.1.");
         Assert.AreEqual(4, diff.Summary.Removed);
         Assert.AreEqual(0, diff.Summary.Promoted);
-        Assert.AreEqual(9, diff.Summary.Changed);
+        Assert.AreEqual(10, diff.Summary.Changed);
     }
 
     [TestMethod]
@@ -351,6 +354,7 @@ public sealed class SurfaceCatalogTests
         CollectionAssert.AreEquivalent(
             new[]
             {
+                "extract_type_preview",
                 "get_completions",
                 "bulk_replace_type_apply",
                 "replace_invocation_preview",

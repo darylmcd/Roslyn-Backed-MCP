@@ -333,7 +333,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
 
         try
         {
-            var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+            var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
                 TypeExtractionService.PreviewExtractTypeAsync(
                     wsId, sourcePath, "ExternalConsumerFixture", ["Compute"], "ComputeHelper", null, CancellationToken.None));
 
@@ -1831,34 +1831,20 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
     /// must be refused before a token, workspace-version change or disk effect exists.
     /// </summary>
     [TestMethod]
-    [DataRow("StaticHostFixture", "StaticHostFixture", "Compute", "CS0708")]
     [DataRow("PartialHostFixture", "PartialHostFixture", "Hook", "CS0751")]
     public async Task ExtractType_PreviewThatAddsCompilerErrors_IsRefusedWithoutToken(
         string fixtureName, string typeName, string member, string expectedId)
     {
-        var source = fixtureName switch
-        {
-            "StaticHostFixture" => """
-                namespace SampleLib;
+        const string source = """
+            namespace SampleLib;
 
-                public static class StaticHostFixture
-                {
-                    public static int Keep() => 1;
-                    public static int Compute(int value) => value * 2;
-                }
-                """,
-            "PartialHostFixture" => """
-                namespace SampleLib;
-
-                public partial class PartialHostFixture
-                {
-                    partial void Hook();
-                    partial void Hook() { }
-                    public int Keep() => 1;
-                }
-                """,
-            _ => throw new ArgumentOutOfRangeException(nameof(fixtureName), fixtureName, null),
-        };
+            public partial class PartialHostFixture
+            {
+                partial void Hook();
+                partial void Hook() { }
+                public int Keep() => 1;
+            }
+            """;
         var fixture = await CreateExtractionFixtureAsync(fixtureName + ".cs", source);
         try
         {
@@ -1876,6 +1862,149 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         {
             WorkspaceManager.Close(fixture.WorkspaceId);
         }
+    }
+
+    /// <summary>
+    /// extract-type-static-source-composition: previews an extraction of <paramref name="members"/> into
+    /// <c>ExtractedHelper</c>, asserts the whole modified solution compiles, and returns both rewritten texts.
+    /// </summary>
+    private async Task<(string Source, string NewType)> PreviewExtractionAndAssertCompilesAsync(
+        string fileName, string source, string typeName, string[] members)
+    {
+        var fixture = await CreateExtractionFixtureAsync(fileName, source);
+        try
+        {
+            var preview = await TypeExtractionService.PreviewExtractTypeAsync(
+                fixture.WorkspaceId, fixture.FilePath, typeName, members, "ExtractedHelper", null, CancellationToken.None);
+            Assert.IsFalse(string.IsNullOrEmpty(preview.PreviewToken));
+            var newFilePath = Path.Combine(Path.GetDirectoryName(fixture.FilePath)!, "ExtractedHelper.cs");
+            var newType = await GetModifiedDocumentTextAsync(preview.PreviewToken, newFilePath);
+            var updated = await GetModifiedDocumentTextAsync(preview.PreviewToken, fixture.FilePath);
+            await AssertModifiedSolutionCompilesAsync(preview.PreviewToken);
+            return (updated, newType);
+        }
+        finally
+        {
+            WorkspaceManager.Close(fixture.WorkspaceId);
+        }
+    }
+
+    [TestMethod]
+    public async Task ExtractType_AllStaticMoveFromStaticClass_LeavesSourceUntouchedAndCompiles()
+    {
+        var (updated, newType) = await PreviewExtractionAndAssertCompilesAsync(
+            "StaticOnlyStaticHost.cs",
+            """
+            namespace SampleLib;
+
+            public static class S1
+            {
+                static int Compute() => 7;
+                public static int Use() => Compute();
+            }
+            """,
+            "S1", ["Compute"]);
+
+        StringAssert.Contains(updated, "ExtractedHelper.Compute()");
+        Assert.IsFalse(updated.Contains("readonly", StringComparison.Ordinal), $"no composition field. Source:\n{updated}");
+        Assert.IsFalse(updated.Contains("S1(", StringComparison.Ordinal), $"no constructor. Source:\n{updated}");
+        Assert.IsFalse(updated.Contains("_extractedHelper", StringComparison.Ordinal), $"Source:\n{updated}");
+        StringAssert.Contains(newType, "Compute()");
+    }
+
+    [TestMethod]
+    public async Task ExtractType_AllStaticMoveFromInstanceClass_AddsNoConstructorParameter()
+    {
+        var (updated, newType) = await PreviewExtractionAndAssertCompilesAsync(
+            "StaticOnlyInstanceHost.cs",
+            """
+            namespace SampleLib;
+
+            public class StaticMoveHost
+            {
+                private readonly int _seed;
+                public StaticMoveHost(int seed) { _seed = seed; }
+                private static int s_scale = 3;
+                private static int Twice(int value) => value * s_scale;
+                public int Get() => Twice(_seed);
+            }
+            """,
+            "StaticMoveHost", ["Twice", "s_scale"]);
+
+        StringAssert.Contains(updated, "public StaticMoveHost(int seed) { _seed = seed; }");
+        Assert.IsFalse(updated.Contains("ExtractedHelper _", StringComparison.Ordinal), $"no composition field. Source:\n{updated}");
+        Assert.IsFalse(updated.Contains("ExtractedHelper extractedHelper", StringComparison.Ordinal), $"no ctor parameter. Source:\n{updated}");
+        StringAssert.Contains(updated, "ExtractedHelper.Twice(_seed)");
+        StringAssert.Contains(newType, "Twice(");
+    }
+
+    [TestMethod]
+    public async Task ExtractType_ConstFieldOnlyMove_AddsNoComposition()
+    {
+        var (updated, newType) = await PreviewExtractionAndAssertCompilesAsync(
+            "ConstOnlyHost.cs",
+            """
+            namespace SampleLib;
+
+            public class ConstHost
+            {
+                private const int Limit = 5;
+                public int Cap(int value) => value > Limit ? Limit : value;
+            }
+            """,
+            "ConstHost", ["Limit"]);
+
+        Assert.IsFalse(updated.Contains("ConstHost(", StringComparison.Ordinal), $"no constructor. Source:\n{updated}");
+        Assert.IsFalse(updated.Contains("readonly", StringComparison.Ordinal), $"no composition field. Source:\n{updated}");
+        StringAssert.Contains(updated, "ExtractedHelper.Limit");
+        StringAssert.Contains(newType, "Limit");
+    }
+
+    [TestMethod]
+    public async Task ExtractType_StaticOnlyMoveFromPrimaryConstructorClass_CompilesAndLeavesTypeUntouched()
+    {
+        var (updated, _) = await PreviewExtractionAndAssertCompilesAsync(
+            "StaticOnlyPrimaryHost.cs",
+            """
+            namespace SampleLib;
+
+            public class PrimaryHost(int x)
+            {
+                private static int Compute() => 7;
+                public int Use() => Compute() + x;
+            }
+            """,
+            "PrimaryHost", ["Compute"]);
+
+        StringAssert.Contains(updated, "public class PrimaryHost(int x)");
+        StringAssert.Contains(updated, "ExtractedHelper.Compute() + x");
+        Assert.IsFalse(updated.Contains("readonly", StringComparison.Ordinal), $"Source:\n{updated}");
+    }
+
+    /// <summary>
+    /// Regression guard (passes on the pre-fix code too): a move that includes an instance member keeps
+    /// the injected composition field and constructor parameter.
+    /// </summary>
+    [TestMethod]
+    public async Task ExtractType_MixedStaticAndInstanceMove_StillInjectsComposition()
+    {
+        var (updated, _) = await PreviewExtractionAndAssertCompilesAsync(
+            "MixedMoveHost.cs",
+            """
+            namespace SampleLib;
+
+            public class MixedHost
+            {
+                private int _count;
+                private static int Twice(int value) => value * 2;
+                private int Bump() => _count = Twice(_count + 1);
+                public int Run() => Bump();
+            }
+            """,
+            "MixedHost", ["_count", "Twice", "Bump"]);
+
+        StringAssert.Contains(updated, "private readonly ExtractedHelper _extractedHelper");
+        StringAssert.Contains(updated, "_extractedHelper.Bump()");
     }
 
     private async Task<(string WorkspaceId, string FilePath, string SolutionDirectory)> CreateExtractionFixtureAsync(
