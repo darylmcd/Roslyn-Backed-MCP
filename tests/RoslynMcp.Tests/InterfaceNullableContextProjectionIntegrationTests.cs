@@ -205,13 +205,6 @@ public sealed class InterfaceNullableContextProjectionIntegrationTests : Isolate
             "namespace Contracts { public class NativeConsumer { public NativeConsumer(NullableService service) { _ = service.GetType(); } } }");
     }
 
-    private static int StoreCount(object store)
-    {
-        var type = store.GetType().BaseType!;
-        var entries = (System.Collections.IDictionary)type.GetField("_entries", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(store)!;
-        return entries.Count;
-    }
-
     private static void SetPolicy(string path, bool enabled, string language)
     {
         var xml = XDocument.Load(path);
@@ -240,16 +233,6 @@ public sealed class InterfaceNullableContextProjectionIntegrationTests : Isolate
                 CollectionAssert.AreEquivalent(new[] { "Contracts", "SampleLib" }, project.ProjectReferences.Select(r => project.Solution.GetProject(r.ProjectId)!.Name).ToArray());
             }
         }
-    }
-
-    private static Dictionary<string, byte[]> Snapshot(string root) => Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories)
-        .Where(p => p.EndsWith(".cs", StringComparison.Ordinal) || p.EndsWith(".csproj", StringComparison.Ordinal))
-        .Where(p => !p.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar, StringComparison.Ordinal))
-        .ToDictionary(p => p, File.ReadAllBytes);
-
-    private static void AssertSnapshot(Dictionary<string, byte[]> files)
-    {
-        foreach (var (file, bytes) in files) CollectionAssert.AreEqual(bytes, File.ReadAllBytes(file), file);
     }
 
     private static async Task AssertGraphsAsync(Solution source, Solution target, string receiver)

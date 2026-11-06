@@ -8,6 +8,24 @@ namespace RoslynMcp.Tests.TestInfrastructure;
 
 internal static class InterfaceExtractionTestContext
 {
+    /// <summary>Number of previews held by a composite preview store (the store exposes no count).</summary>
+    internal static int StoreCount(object store)
+    {
+        var type = store.GetType().BaseType!;
+        var entries = (System.Collections.IDictionary)type.GetField("_entries", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(store)!;
+        return entries.Count;
+    }
+
+    internal static Dictionary<string, byte[]> Snapshot(string root) => Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories)
+        .Where(p => p.EndsWith(".cs", StringComparison.Ordinal) || p.EndsWith(".csproj", StringComparison.Ordinal))
+        .Where(p => !p.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar, StringComparison.Ordinal))
+        .ToDictionary(p => p, File.ReadAllBytes);
+
+    internal static void AssertSnapshot(Dictionary<string, byte[]> files)
+    {
+        foreach (var (file, bytes) in files) CollectionAssert.AreEqual(bytes, File.ReadAllBytes(file), file);
+    }
+
     internal static Solution SerializedCompositePreview(Solution solution, IReadOnlyList<CompositeFileMutation> mutations)
     {
         foreach (var mutation in mutations)

@@ -47,7 +47,7 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
 
         var candidateMembers = SelectCandidateMembers(typeSymbol, memberNames, typeName);
         var nullableProjection = new InterfaceNullableProjection();
-        var projector = await InterfaceMemberProjector.CreateAsync(sourceDocument, nullableProjection, receiverIsSourceAssembly: true, ct).ConfigureAwait(false);
+        var projector = await InterfaceMemberProjector.CreateAsync(sourceDocument, nullableProjection, sourceDocument.Project, ct).ConfigureAwait(false);
         var interfaceMembers = candidateMembers.Select(projector.Project).ToList();
         // Item #3 — severity-high-fail-produces-code-that-does-not-compi.
         // Text-grepping the synthesized interface for namespace names dropped usings whose last

@@ -16,10 +16,12 @@ public abstract class InterfaceRouteTestBase : IsolatedWorkspaceTestBase
     /// Builds the SampleLib/Contracts/Consumer solution around <paramref name="sourceText"/> (the only compiled
     /// SampleLib file) and loads it. When <paramref name="sharedSource"/> is given, a <c>Shared</c> project holds it and
     /// both SampleLib and Contracts reference it, so signature types the receiver must name have an owner it can see.
+    /// <paramref name="projectProperties"/> maps a project name to MSBuild properties added to that project (for example
+    /// <c>AllowUnsafeBlocks</c>); it is applied before the first load.
     /// </summary>
     protected static async Task<string> PrepareInterfaceRouteFixtureAsync(
         IsolatedWorkspaceScope workspace, string sourceFileName, string sourceText, string consumerFileName, string consumerText,
-        string? sharedSource = null)
+        string? sharedSource = null, IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>? projectProperties = null)
     {
         AddProjectToCopiedSolution(workspace.RootPath, "Contracts", "net10.0");
         AddProjectToCopiedSolution(workspace.RootPath, "Consumer", "net10.0");
@@ -60,6 +62,14 @@ public abstract class InterfaceRouteTestBase : IsolatedWorkspaceTestBase
         AddItems("Consumer", Reference("../SampleLib/SampleLib.csproj"), Reference("../Contracts/Contracts.csproj"));
 
         var sourcePath = workspace.GetPath("SampleLib", sourceFileName);
+        foreach (var (projectName, properties) in projectProperties ?? new Dictionary<string, IReadOnlyDictionary<string, string>>())
+        {
+            var path = workspace.GetPath(projectName, projectName + ".csproj");
+            var xml = XDocument.Load(path);
+            xml.Root!.Add(new XElement("PropertyGroup", properties.Select(p => new XElement(p.Key, p.Value))));
+            xml.Save(path);
+        }
+
         await File.WriteAllTextAsync(sourcePath, sourceText);
         await File.WriteAllTextAsync(workspace.GetPath("Consumer", consumerFileName), consumerText);
         if (sharedSource is not null) await File.WriteAllTextAsync(workspace.GetPath("Shared", "SharedLib.cs"), sharedSource);
