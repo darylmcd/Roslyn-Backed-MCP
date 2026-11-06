@@ -360,9 +360,11 @@ public sealed class PersistentCompositeStorage
             string? identity = null;
             if (dto.FormatVersion >= 2)
             {
-                if (string.IsNullOrWhiteSpace(dto.WorkspaceIdentity))
+                // A relative identity would be resolved against this process's working directory by
+                // GetFullPath and could match an unrelated session: it is unusable, not normalizable.
+                if (string.IsNullOrWhiteSpace(dto.WorkspaceIdentity) || !Path.IsPathFullyQualified(dto.WorkspaceIdentity))
                 {
-                    _logger?.LogDebug("PersistentCompositeStorage: dropping format-2 entry without a workspace identity.");
+                    _logger?.LogDebug("PersistentCompositeStorage: dropping format-2 entry without a fully qualified workspace identity.");
                     return ParseOutcome.Unreadable;
                 }
 

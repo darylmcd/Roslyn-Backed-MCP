@@ -141,6 +141,23 @@ public sealed class PersistentCompositeStorageTests
     }
 
     [TestMethod]
+    [DataRow("relative/Sample.slnx")]
+    [DataRow("Sample.slnx")]
+    [DataRow("../Sample.slnx")]
+    public void FormatTwoWithRelativeIdentity_IsUnreadable_ForPeekAndClaim(string identity)
+    {
+        var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
+        var token = WriteRaw(
+            "{\"FormatVersion\":2,\"WorkspaceId\":\"ws\",\"WorkspaceIdentity\":\"" + identity
+            + "\",\"Mutations\":[{\"FilePath\":\"C:/x.cs\"}]}");
+        var admitted = false;
+
+        Assert.IsNull(store.TryPeek(token), "A relative identity would resolve against the process cwd.");
+        Assert.IsNull(store.TryClaim(token, entry => { admitted = true; return entry.WorkspaceId; }));
+        Assert.IsFalse(admitted, "An unusable identity must never reach session matching.");
+    }
+
+    [TestMethod]
     public void TryClaim_FormatVersionAbove2_RefusesAndKeepsPayload()
     {
         var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
@@ -554,7 +571,8 @@ public sealed class PersistentCompositeStorageTests
         Assert.IsNull(peeker.TryPeek(token), "Once claimed, the token is gone.");
     }
 
-    private const string Identity = "C:/proj/Sample.slnx";
+    // Rooted on every platform: a format-2 identity must be fully qualified.
+    private static readonly string Identity = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "proj", "Sample.slnx"));
 
     private static string Admit(CompositePreviewStore.Entry entry) => entry.WorkspaceId;
 

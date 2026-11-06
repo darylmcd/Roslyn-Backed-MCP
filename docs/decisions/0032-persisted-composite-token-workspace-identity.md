@@ -51,6 +51,12 @@ unchanged.
   creator had when it previewed. Identity does not prove content equality, so a composite can apply
   to files that drifted. Detecting that is owned by the sibling backlog row
   `composite-preview-source-fingerprint-refusal`.
+- Residual risk (threat note): path identity replaces an unguessable per-process session GUID.
+  Anyone with write access to the persist directory can author or edit a record naming any solution
+  path, and a host with that solution loaded will accept it. Admission checks the claimed write set
+  against the sanctioned roots only (PR #1997); it does not check that the claimed paths lie inside
+  the receiving solution's root. Follow-up: solution-root containment of the claimed write set. The
+  persist directory therefore stays a trusted location.
 - The same solution loaded twice on the receiving host (for example with different MSBuild global
   properties) refuses as ambiguous. The operator closes the extra sessions. The creating host is
   exempt for its own records.
