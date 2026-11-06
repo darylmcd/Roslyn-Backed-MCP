@@ -18,7 +18,7 @@ public static class TypeExtractionTools
     [McpServerTool(Name = "extract_type_preview", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("refactoring", "stable", true, false,
         "Preview extracting selected members from a type into a new type. Adds a private field and constructor parameter for composition when an instance member moves; an all-static move leaves the source type unchanged. Use get_cohesion_metrics and find_shared_members to plan the extraction."),
-     Description("Preview extracting selected members from a type into a new type. The source type gets a private field for the new type and the extracted members are moved. Use this for SRP refactoring.")]
+     Description("Preview extracting selected members from a type into a new type. The source type gets a private field for the new type when an instance member moves. Use this for SRP refactoring.")]
     public static Task<string> PreviewExtractType(
         McpServer server,
         IWorkspaceExecutionGate gate,
