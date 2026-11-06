@@ -295,9 +295,10 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
             .Where(t => !ReferenceEquals(t, typeDecl))
             .ToList();
 
-        // Tally sibling types in fromNamespace across ANY document in the solution — used for
-        // consumer using-rewrite decisions (only drop `using Old;` if no sibling types remain
-        // anywhere in Old).
+        // Tally sibling types (enums and delegates included) in fromNamespace across ANY other
+        // document in the solution — used for consumer using-rewrite decisions (only drop
+        // `using Old;` if nothing remains anywhere in Old). The source document's own remaining
+        // declarations are folded in below, per path, from its updated root.
         var siblingTypesAnywhereInFromNs = await CountSiblingTypesInNamespaceAsync(
             solution, fromNamespace, excludeDocumentId: sourceDocument.Id, ct).ConfigureAwait(false);
         // Plus remaining siblings inside the source file itself.
@@ -308,6 +309,9 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
         {
             // Simple case: rewrite the namespace declaration in place; no siblings to worry about.
             var rewritten = RewriteNamespaceName(sourceRoot, containingNs, toNamespace);
+            // Another `namespace fromNamespace` block of this file keeps the namespace populated;
+            // the cross-document count above excludes this document.
+            siblingTypesRemaining |= NamespaceMemberClassifier.DeclaresTypeLikeMemberIn(rewritten, fromNamespace);
             return (solution.WithDocumentSyntaxRoot(sourceDocument.Id, rewritten), siblingTypesRemaining);
         }
 
@@ -325,6 +329,7 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
                 Formatter.Annotation,
                 options: null,
                 cancellationToken: ct).ConfigureAwait(false);
+            siblingTypesRemaining |= NamespaceMemberClassifier.DeclaresTypeLikeMemberIn(updatedRoot, fromNamespace);
             return (formattedDocument.Project.Solution, siblingTypesRemaining);
         }
 
@@ -456,9 +461,10 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
     }
 
     /// <summary>
-    /// Count type declarations that live in <paramref name="ns"/> anywhere in the solution,
-    /// optionally excluding a specific document (typically the document we just mutated, whose
-    /// updated sibling count is tracked separately).
+    /// Count source type declarations (classes, structs, interfaces, records, enums and delegates)
+    /// that live in <paramref name="ns"/> anywhere in the solution, optionally excluding a specific
+    /// document (typically the document we just mutated, whose remaining declarations are checked
+    /// separately against its updated root).
     /// </summary>
     private static async Task<int> CountSiblingTypesInNamespaceAsync(
         Solution solution, string ns, DocumentId? excludeDocumentId, CancellationToken ct)
@@ -486,7 +492,6 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
                     // metadata types (which have no declaring syntax references).
                     if (document.Project.Id != project.Id) continue;
                     if (excludeDocumentId is not null && document.Id == excludeDocumentId) continue;
-                    if (await syntaxRef.GetSyntaxAsync(ct).ConfigureAwait(false) is not TypeDeclarationSyntax) continue;
                     count++;
                 }
             }
