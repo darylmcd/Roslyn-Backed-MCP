@@ -239,6 +239,8 @@
 | `type-extraction-method-type-parameter-flagged-as-dangling` | Medium | — | **Stop flagging a moved generic method's own type parameter as a dangling dependency** — CollectExtractTypeBlockingDependencies refuses Echo<T>(T v) as referencing T that stays on the original type. [type: bug] [source: PR 1990 implementer] | S | items/type-extraction-method-type-parameter-flagged-as-dangling.md |
 | `crossproject-nested-type-move-deletion-behavior` | Medium | — | **Pin and decide the nested-type move behavior in CrossProjectRefactoringService** — FindTypeDeclaration can return a nested type; the source-delete predicate now keeps the outer type's file. [type: bug] [source: PR 1992 review] | S | items/crossproject-nested-type-move-deletion-behavior.md |
 | `analyzer-shadow-deleter-aborts-on-locked-entry` | Medium | — | **Make NoFollowDirectoryDeleter continue past a locked entry and report it** — the first sharing violation aborts the whole delete after earlier files are already gone. [type: bug] [source: PR 1996 review] | S | items/analyzer-shadow-deleter-aborts-on-locked-entry.md |
+| `test-early-return-silently-passes` | Medium | — | **Replace silent early returns in test methods** — make unsupported platforms and collection shapes report explicit inconclusive or fail, and preserve assertions. [type: test correctness] [source: 2026-11-05 C# audit probe] | S | items/test-early-return-silently-passes.md |
+| `roslyn-mcp-transport-closes-during-audit` | Medium | — | **Diagnose Roslyn MCP transport closure** — reproduce the stdio shutdown during sustained semantic reads and report a recoverable error or retain service availability. [type: bug] [source: 2026-11-05 live audit] | S | items/roslyn-mcp-transport-closes-during-audit.md |
 
 ## Low
 
