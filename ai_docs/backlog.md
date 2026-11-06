@@ -240,6 +240,8 @@
 | `analyzer-shadow-deleter-aborts-on-locked-entry` | Medium | — | **Make NoFollowDirectoryDeleter continue past a locked entry and report it** — the first sharing violation aborts the whole delete after earlier files are already gone. [type: bug] [source: PR 1996 review] | S | items/analyzer-shadow-deleter-aborts-on-locked-entry.md |
 | `preview-persist-dir-unvalidated` | Medium | — | **Validate the preview persist directory at startup** — Program.cs accepts a PersistDirectory inside a workspace or outside sanctioned locations. [type: bug] [source: PR 1997 implementer] | S | items/preview-persist-dir-unvalidated.md |
 | `pwsh-script-runner-drain-waits-full-budget` | Medium | — | **Bound the drain wait when a descendant outlives Kill(entireProcessTree)** — a surviving child makes cleanup wait the full 10 s drain. [type: bug] [source: PR 1999 implementer] | S | items/pwsh-script-runner-drain-waits-full-budget.md |
+| `test-early-return-silently-passes` | Medium | — | **Replace silent early returns in test methods** — make unsupported platforms and collection shapes report explicit inconclusive or fail, and preserve assertions. [type: test correctness] [source: 2026-11-05 C# audit probe] | S | items/test-early-return-silently-passes.md |
+| `roslyn-mcp-transport-closes-during-audit` | Medium | — | **Diagnose Roslyn MCP transport closure** — reproduce the stdio shutdown during sustained semantic reads and report a recoverable error or retain service availability. [type: bug] [source: 2026-11-05 live audit] | S | items/roslyn-mcp-transport-closes-during-audit.md |
 
 ## Low
 
