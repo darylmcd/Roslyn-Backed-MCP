@@ -130,7 +130,7 @@ public sealed class InterfaceBaseTypeInsertionIntegrationTests : IsolatedWorkspa
         };
 
         var pending = route == "extract-and-wire"
-            ? SerializedCompositePreview(before, compositeStore.Retrieve(preview.PreviewToken)!.Value.Mutations)
+            ? SerializedCompositePreview(before, compositeStore.Retrieve(preview.PreviewToken, null)!.Value.Mutations)
             : PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution;
         pending = await ReparseSerializedDocumentsAsync(pending);
         await AssertCompilesAsync(pending);

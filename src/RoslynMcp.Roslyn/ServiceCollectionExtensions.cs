@@ -68,15 +68,20 @@ public static class ServiceCollectionExtensions
             var (maxEntries, ttl) = ResolvePreviewStoreConfiguration(sp);
             var opts = sp.GetService<PreviewStoreOptions>() ?? new PreviewStoreOptions();
             // Item 6: opt-in disk persistence for cross-process token redemption.
-            PersistentCompositeStorage? disk = null;
-            if (!string.IsNullOrWhiteSpace(opts.PersistDirectory))
+            if (string.IsNullOrWhiteSpace(opts.PersistDirectory))
             {
-                disk = new PersistentCompositeStorage(
-                    opts.PersistDirectory!,
-                    ttl,
-                    sp.GetService<ILogger<PersistentCompositeStorage>>());
+                return new CompositePreviewStore(maxEntries, ttl);
             }
-            return new CompositePreviewStore(maxEntries, ttl, disk);
+
+            var disk = new PersistentCompositeStorage(
+                opts.PersistDirectory!,
+                ttl,
+                sp.GetService<ILogger<PersistentCompositeStorage>>());
+            return new CompositePreviewStore(
+                maxEntries,
+                ttl,
+                disk,
+                new CompositeWorkspaceIdentityResolver(sp.GetRequiredService<IWorkspaceManager>()));
         });
         services.AddSingleton<ISymbolNavigationService, SymbolNavigationService>();
         services.AddSingleton<ISymbolSearchService, SymbolSearchService>();

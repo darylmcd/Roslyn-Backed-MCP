@@ -11,5 +11,6 @@ internal static class CompositeAdmission
     /// Admits every write set. For tests about orchestrator behaviour that is not the host's
     /// sanctioned-root boundary (the boundary itself is covered through <c>OrchestrationTools</c>).
     /// </summary>
-    public static readonly CompositeWriteSetAdmission AdmitAll = static (_, _, _) => Task.CompletedTask;
+    public static readonly CompositeRedemptionAdmission AdmitAll =
+        new(null, static (_, _, _) => Task.CompletedTask);
 }

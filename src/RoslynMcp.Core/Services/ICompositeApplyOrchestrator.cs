@@ -19,19 +19,33 @@ public delegate Task CompositeWriteSetAdmission(
     CancellationToken ct);
 
 /// <summary>
+/// What a composite redemption must satisfy before it may write: the session its caller gated on and
+/// the admission of the claimed write set.
+/// </summary>
+/// <param name="GatedWorkspaceId">
+/// The local workspace session the caller took its write gate on, or <see langword="null"/> when no
+/// gate was taken. A persisted store refuses, before consuming the token, when the record no longer
+/// resolves to this session.
+/// </param>
+/// <param name="AdmitWriteSet">The admission run on the claimed entry (see <see cref="CompositeWriteSetAdmission"/>).</param>
+public sealed record CompositeRedemptionAdmission(
+    string? GatedWorkspaceId,
+    CompositeWriteSetAdmission AdmitWriteSet);
+
+/// <summary>
 /// Applies a composite orchestration preview to disk.
 /// </summary>
 public interface ICompositeApplyOrchestrator
 {
     /// <param name="previewToken">The token returned by the paired preview call.</param>
-    /// <param name="admitWriteSet">
-    /// Required: the caller's admission of the claimed write set (see
-    /// <see cref="CompositeWriteSetAdmission"/>). There is deliberately no overload without it, so no
+    /// <param name="admission">
+    /// Required: the caller's gated session and admission of the claimed write set (see
+    /// <see cref="CompositeRedemptionAdmission"/>). There is deliberately no overload without it, so no
     /// redemption path can skip the check.
     /// </param>
     /// <param name="ct">Cancellation token.</param>
     Task<ApplyResultDto> ApplyCompositeAsync(
         string previewToken,
-        CompositeWriteSetAdmission admitWriteSet,
+        CompositeRedemptionAdmission admission,
         CancellationToken ct);
 }

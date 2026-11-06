@@ -35,10 +35,10 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
 
     public async Task<ApplyResultDto> ApplyCompositeAsync(
         string previewToken,
-        CompositeWriteSetAdmission admitWriteSet,
+        CompositeRedemptionAdmission admission,
         CancellationToken ct)
     {
-        var entry = _compositePreviewStore.Retrieve(previewToken);
+        var entry = _compositePreviewStore.Retrieve(previewToken, admission.GatedWorkspaceId);
         if (entry is null)
         {
             return new ApplyResultDto(false, [], "Preview token is invalid, expired, or stale because the workspace changed since the preview was generated. Please create a new preview.");
@@ -66,7 +66,7 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
         // The caller's admission runs on the CLAIMED entry — the mutations about to be written — not on
         // an earlier peek: a persisted record can be swapped between the two. A refusal throws here,
         // before undo capture or any write, and propagates (it is not an I/O failure).
-        await admitWriteSet(workspaceId, mutations.Select(m => m.FilePath).ToArray(), ct).ConfigureAwait(false);
+        await admission.AdmitWriteSet(workspaceId, mutations.Select(m => m.FilePath).ToArray(), ct).ConfigureAwait(false);
 
         var appliedFiles = new List<string>();
         try

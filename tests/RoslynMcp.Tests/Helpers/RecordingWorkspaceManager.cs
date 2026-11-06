@@ -19,6 +19,15 @@ internal sealed class RecordingWorkspaceManager(Exception? reloadFailure = null)
     /// </summary>
     public IReadOnlyCollection<string>? AdmittedWorkspaceIds { get; init; }
 
+    /// <summary>
+    /// The solution path every admitted session reports. Two doubles with equal paths model two hosts
+    /// that loaded the same solution.
+    /// </summary>
+    public string LoadedPath { get; init; } = "C:\\repo\\Sample.slnx";
+
+    /// <summary>Per-session path overrides; a session absent from the map reports <see cref="LoadedPath"/>.</summary>
+    public IReadOnlyDictionary<string, string>? LoadedPathById { get; init; }
+
     public bool ReloadCalled { get; private set; }
 
     public event Action<string>? WorkspaceClosed { add { } remove { } }
@@ -46,13 +55,14 @@ internal sealed class RecordingWorkspaceManager(Exception? reloadFailure = null)
 
     public bool IsStale(string workspaceId) => false;
     public bool Close(string workspaceId) => throw new NotSupportedException();
-    public IReadOnlyList<WorkspaceStatusDto> ListWorkspaces() => [];
+    public IReadOnlyList<WorkspaceStatusDto> ListWorkspaces() =>
+        (AdmittedWorkspaceIds ?? []).Select(GetStatus).ToList();
 
     public WorkspaceStatusDto GetStatus(string workspaceId) =>
         ContainsWorkspace(workspaceId)
             ? new(
                 WorkspaceId: workspaceId,
-                LoadedPath: "C:\\repo\\Sample.slnx",
+                LoadedPath: LoadedPathById is not null && LoadedPathById.TryGetValue(workspaceId, out var path) ? path : LoadedPath,
                 WorkspaceVersion: 1,
                 SnapshotToken: "snapshot",
                 LoadedAtUtc: DateTimeOffset.UtcNow,

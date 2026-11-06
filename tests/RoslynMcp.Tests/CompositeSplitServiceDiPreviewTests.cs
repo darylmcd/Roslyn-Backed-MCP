@@ -676,7 +676,7 @@ public sealed class CompositeSplitServiceDiPreviewTests : IsolatedWorkspaceTestB
 
     private static async Task ApplyMutationsAsync(CompositePreviewStore store, string token, CancellationToken ct)
     {
-        var entry = store.Retrieve(token)
+        var entry = store.Retrieve(token, null)
             ?? throw new AssertFailedException($"Composite preview token '{token}' not found.");
         var (_, _, _, mutations) = entry;
         foreach (var mutation in mutations)

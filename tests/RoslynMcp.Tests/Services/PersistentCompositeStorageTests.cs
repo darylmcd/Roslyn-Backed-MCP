@@ -35,7 +35,7 @@ public sealed class PersistentCompositeStorageTests
     {
         const string sentinel = "PRIVATE-PERSISTENT-TOKEN";
         var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
-        var entry = new CompositePreviewStore.Entry("PRIVATE-WORKSPACE", 1, "test", [], DateTime.UtcNow);
+        var entry = new CompositePreviewStore.Entry("PRIVATE-WORKSPACE", 1, "test", [], DateTime.UtcNow, Identity);
         var exception = Assert.Throws<ArgumentException>(() => store.Write(sentinel, entry));
         Assert.IsInstanceOfType<IPublicMessageException>(exception);
         using var envelope = System.Text.Json.JsonDocument.Parse(
@@ -54,11 +54,11 @@ public sealed class PersistentCompositeStorageTests
         var entry = new CompositePreviewStore.Entry(
             "ws-1", 3, "sample composite",
             new[] { new CompositeFileMutation(@"C:\proj\File.cs", "// updated", false) },
-            DateTime.UtcNow);
+            DateTime.UtcNow, Identity);
 
         var token = Guid.NewGuid().ToString("N");
         store.Write(token, entry);
-        var read = store.TryClaim(token);
+        var read = store.TryClaim(token, Admit);
 
         Assert.IsNotNull(read, "A freshly-written, unexpired entry must round-trip through TryClaim.");
         Assert.AreEqual("ws-1", read!.WorkspaceId);
@@ -67,27 +67,156 @@ public sealed class PersistentCompositeStorageTests
         Assert.AreEqual(1, read.Mutations.Count);
         Assert.AreEqual(@"C:\proj\File.cs", read.Mutations[0].FilePath);
         Assert.AreEqual("// updated", read.Mutations[0].UpdatedContent);
-        Assert.IsNull(store.TryClaim(token), "A claimed persistent token must not be redeemable twice.");
+        Assert.IsNull(store.TryClaim(token, Admit), "A claimed persistent token must not be redeemable twice.");
     }
 
     [TestMethod]
     public void TryClaim_MissingToken_ReturnsNull()
     {
         var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
-        Assert.IsNull(store.TryClaim("no-such-token"));
+        Assert.IsNull(store.TryClaim("no-such-token", Admit));
     }
 
     [TestMethod]
-    public void TryRead_CompatibilityEntryPoint_UsesOneTimeClaimSemantics()
+    public void TryClaim_SecondClaimAfterSuccess_IsAMiss()
     {
         var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
         var token = Guid.NewGuid().ToString("N");
         store.Write(
             token,
-            new CompositePreviewStore.Entry("ws-compat", 1, "compatibility", [], DateTime.UtcNow));
+            new CompositePreviewStore.Entry("ws-compat", 1, "compatibility", [], DateTime.UtcNow, Identity));
 
-        Assert.IsNotNull(store.TryRead(token));
-        Assert.IsNull(store.TryRead(token));
+        Assert.IsNotNull(store.TryClaim(token, Admit));
+        Assert.IsNull(store.TryClaim(token, Admit));
+    }
+
+    [TestMethod]
+    public void Write_PersistsFormat2WithPortableIdentity()
+    {
+        var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
+        var token = Guid.NewGuid().ToString("N");
+        store.Write(token, new CompositePreviewStore.Entry("ws-fmt", 5, "format", [], DateTime.UtcNow, Identity));
+
+        using var json = System.Text.Json.JsonDocument.Parse(File.ReadAllText(PayloadPath(token)));
+        Assert.AreEqual(2, json.RootElement.GetProperty("FormatVersion").GetInt32());
+        Assert.AreEqual(Identity, json.RootElement.GetProperty("WorkspaceIdentity").GetString());
+        Assert.AreEqual("ws-fmt", json.RootElement.GetProperty("WorkspaceId").GetString(), "Kept for diagnostics.");
+        Assert.AreEqual(5, json.RootElement.GetProperty("WorkspaceVersion").GetInt32(), "Kept for diagnostics.");
+    }
+
+    [TestMethod]
+    public void Write_WithoutIdentity_IsRefusedBeforeAnyFileIsCreated()
+    {
+        var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
+
+        Assert.ThrowsExactly<PublicArgumentException>(() => store.Write(
+            Guid.NewGuid().ToString("N"),
+            new CompositePreviewStore.Entry("ws-none", 1, "no identity", [], DateTime.UtcNow, null)));
+        Assert.IsEmpty(Directory.EnumerateFiles(_root, "*", SearchOption.AllDirectories));
+    }
+
+    [TestMethod]
+    public void TryClaim_FormatOneRecord_ReadsWithNullIdentity()
+    {
+        var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
+        var token = WriteRaw(
+            """{"WorkspaceId":"ws-v1","WorkspaceVersion":2,"Description":"legacy","Mutations":[{"FilePath":"C:/x.cs","UpdatedContent":"// x","DeleteFile":false}],"CreatedAt":"2026-11-06T00:00:00Z"}""");
+
+        var claimed = store.TryClaim(token, Admit);
+
+        Assert.IsNotNull(claimed, "A record without FormatVersion is format 1 and must still read.");
+        Assert.AreEqual("ws-v1", claimed.WorkspaceId);
+        Assert.IsNull(claimed.WorkspaceIdentity, "Format 1 carried only the creator's session id.");
+    }
+
+    [TestMethod]
+    public void TryClaim_FormatTwoWithoutIdentity_IsUnreadable()
+    {
+        var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
+        var token = WriteRaw(
+            """{"FormatVersion":2,"WorkspaceId":"ws","Mutations":[{"FilePath":"C:/x.cs"}]}""");
+
+        Assert.IsNull(store.TryPeek(token));
+        Assert.IsNull(store.TryClaim(token, Admit));
+    }
+
+    [TestMethod]
+    [DataRow("relative/Sample.slnx")]
+    [DataRow("Sample.slnx")]
+    [DataRow("../Sample.slnx")]
+    public void FormatTwoWithRelativeIdentity_IsUnreadable_ForPeekAndClaim(string identity)
+    {
+        var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
+        var token = WriteRaw(
+            "{\"FormatVersion\":2,\"WorkspaceId\":\"ws\",\"WorkspaceIdentity\":\"" + identity
+            + "\",\"Mutations\":[{\"FilePath\":\"C:/x.cs\"}]}");
+        var admitted = false;
+
+        Assert.IsNull(store.TryPeek(token), "A relative identity would resolve against the process cwd.");
+        Assert.IsNull(store.TryClaim(token, entry => { admitted = true; return entry.WorkspaceId; }));
+        Assert.IsFalse(admitted, "An unusable identity must never reach session matching.");
+    }
+
+    [TestMethod]
+    public void TryClaim_FormatVersionAbove2_RefusesAndKeepsPayload()
+    {
+        var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
+        var token = WriteRaw(
+            """{"FormatVersion":3,"WorkspaceId":"ws","WorkspaceIdentity":"C:/a.slnx","Mutations":[{"FilePath":"C:/x.cs"}]}""");
+        var admitted = false;
+
+        var claimed = store.TryClaim(token, entry => { admitted = true; return entry.WorkspaceId; });
+
+        Assert.IsNull(claimed, "A record written by a newer server must be refused.");
+        Assert.IsFalse(admitted, "The admit callback must never see a record this reader cannot interpret.");
+        Assert.IsTrue(File.Exists(PayloadPath(token)), "The refused payload must stay for a newer reader.");
+        Assert.IsEmpty(ClaimArtifacts(),
+            "No claim or lock artifact may be left behind.");
+    }
+
+    [TestMethod]
+    public void TryPeek_FormatVersionAbove2_ReturnsNull()
+    {
+        var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
+        var token = WriteRaw(
+            """{"FormatVersion":3,"WorkspaceId":"ws","WorkspaceIdentity":"C:/a.slnx","Mutations":[{"FilePath":"C:/x.cs"}]}""");
+
+        Assert.IsNull(store.TryPeek(token), "An uninterpretable write set is unknown, so the peek fails closed.");
+    }
+
+    [TestMethod]
+    public void TryClaim_AdmitThrows_KeepsPayloadAndReleasesLock()
+    {
+        var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
+        var token = Guid.NewGuid().ToString("N");
+        store.Write(token, new CompositePreviewStore.Entry("ws-refuse", 1, "refusal", [], DateTime.UtcNow, Identity));
+        var payloadSeenByAdmit = false;
+
+        Assert.ThrowsExactly<InvalidOperationException>(() => store.TryClaim(token, _ =>
+        {
+            payloadSeenByAdmit = File.Exists(PayloadPath(token));
+            throw new InvalidOperationException("no matching session");
+        }));
+
+        Assert.IsTrue(payloadSeenByAdmit, "Admission must run before the payload is moved.");
+        Assert.IsTrue(File.Exists(PayloadPath(token)), "A refused admission must not consume the token.");
+        Assert.IsEmpty(ClaimArtifacts(),
+            "The claim lock must be released on refusal.");
+        var second = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
+        Assert.IsNotNull(second.TryClaim(token, Admit), "A later claimer must still win the token.");
+    }
+
+    [TestMethod]
+    public void TryClaim_AdmitResult_ReplacesWorkspaceIdWithLocalSession()
+    {
+        var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
+        var token = Guid.NewGuid().ToString("N");
+        store.Write(token, new CompositePreviewStore.Entry("creator-session", 1, "remap", [], DateTime.UtcNow, Identity));
+
+        var claimed = store.TryClaim(token, _ => "local-session");
+
+        Assert.AreEqual("local-session", claimed!.WorkspaceId);
+        Assert.AreEqual(Path.GetFullPath(Identity), claimed.WorkspaceIdentity);
     }
 
     [TestMethod]
@@ -98,7 +227,7 @@ public sealed class PersistentCompositeStorageTests
             File.GetLastWriteTimeUtc);
 
         Assert.IsNull(
-            store.TryClaim(Guid.NewGuid().ToString("N")),
+            store.TryClaim(Guid.NewGuid().ToString("N"), Admit),
             "A directory removed during lazy enumeration must be treated as a cache miss.");
     }
 
@@ -118,7 +247,7 @@ public sealed class PersistentCompositeStorageTests
                 throw new IOException("Injected last-write-time race.");
             });
 
-        Assert.ThrowsExactly<IOException>(() => store.TryClaim(token));
+        Assert.ThrowsExactly<IOException>(() => store.TryClaim(token, Admit));
         Assert.IsTrue(timestampRead, "The test must reach the timestamp operation before asserting the race policy.");
     }
 
@@ -130,7 +259,7 @@ public sealed class PersistentCompositeStorageTests
             File.GetLastWriteTimeUtc);
 
         Assert.ThrowsExactly<UnauthorizedAccessException>(() =>
-            store.TryClaim(Guid.NewGuid().ToString("N")));
+            store.TryClaim(Guid.NewGuid().ToString("N"), Admit));
     }
 
     [TestMethod]
@@ -149,7 +278,7 @@ public sealed class PersistentCompositeStorageTests
         {
             var traversalToken = $"../../{Path.GetFileNameWithoutExtension(outsidePath)}";
 
-            Assert.IsNull(store.TryClaim(traversalToken));
+            Assert.IsNull(store.TryClaim(traversalToken, Admit));
             store.Delete(traversalToken);
 
             Assert.IsTrue(
@@ -171,7 +300,7 @@ public sealed class PersistentCompositeStorageTests
             7,
             "invalid token",
             [],
-            DateTime.UtcNow);
+            DateTime.UtcNow, Identity);
 
         Assert.ThrowsExactly<PublicArgumentException>(() => store.Write("../escape", entry));
         Assert.IsFalse(Directory.Exists(Path.Combine(_root, "7")));
@@ -190,7 +319,7 @@ public sealed class PersistentCompositeStorageTests
             7,
             "failed atomic move",
             [],
-            DateTime.UtcNow);
+            DateTime.UtcNow, Identity);
 
         Exception? writeFailure = null;
         try
@@ -222,15 +351,15 @@ public sealed class PersistentCompositeStorageTests
                 11,
                 "atomic claim",
                 [new CompositeFileMutation(@"C:\proj\Claim.cs", "// claimed")],
-                DateTime.UtcNow));
+                DateTime.UtcNow, Identity));
 
         var first = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
         var second = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
         using var start = new ManualResetEventSlim();
         var claims = new[]
         {
-            Task.Run(() => { start.Wait(); return first.TryClaim(token); }),
-            Task.Run(() => { start.Wait(); return second.TryClaim(token); }),
+            Task.Run(() => { start.Wait(); return first.TryClaim(token, Admit); }),
+            Task.Run(() => { start.Wait(); return second.TryClaim(token, Admit); }),
         };
 
         start.Set();
@@ -248,7 +377,7 @@ public sealed class PersistentCompositeStorageTests
         var writer = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
         writer.Write(
             token,
-            new CompositePreviewStore.Entry("ws-race", 11, "atomic claim", [], DateTime.UtcNow));
+            new CompositePreviewStore.Entry("ws-race", 11, "atomic claim", [], DateTime.UtcNow, Identity));
         var store = CreateStore(
             Directory.EnumerateDirectories,
             File.GetLastWriteTimeUtc,
@@ -259,7 +388,7 @@ public sealed class PersistentCompositeStorageTests
             });
 
         Assert.IsNull(
-            store.TryClaim(token),
+            store.TryClaim(token, Admit),
             "A loser must remain a cache miss after the winner removes the lock before exception filtering.");
     }
 
@@ -270,13 +399,13 @@ public sealed class PersistentCompositeStorageTests
         var writer = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
         writer.Write(
             token,
-            new CompositePreviewStore.Entry("ws-io", 11, "I/O failure", [], DateTime.UtcNow));
+            new CompositePreviewStore.Entry("ws-io", 11, "I/O failure", [], DateTime.UtcNow, Identity));
         var store = CreateStore(
             Directory.EnumerateDirectories,
             File.GetLastWriteTimeUtc,
             createClaimLock: _ => throw new IOException("Injected storage fault."));
 
-        Assert.ThrowsExactly<IOException>(() => store.TryClaim(token));
+        Assert.ThrowsExactly<IOException>(() => store.TryClaim(token, Admit));
     }
 
     [TestMethod]
@@ -307,13 +436,13 @@ public sealed class PersistentCompositeStorageTests
         var writer = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
         writer.Write(
             token,
-            new CompositePreviewStore.Entry("ws-delete", 1, "delete failure", [], DateTime.UtcNow));
+            new CompositePreviewStore.Entry("ws-delete", 1, "delete failure", [], DateTime.UtcNow, Identity));
         var store = CreateStore(
             Directory.EnumerateDirectories,
             File.GetLastWriteTimeUtc,
             _ => throw new UnauthorizedAccessException("Injected claim cleanup denial."));
 
-        Assert.ThrowsExactly<UnauthorizedAccessException>(() => store.TryClaim(token));
+        Assert.ThrowsExactly<UnauthorizedAccessException>(() => store.TryClaim(token, Admit));
     }
 
     [TestMethod]
@@ -342,7 +471,7 @@ public sealed class PersistentCompositeStorageTests
         store.Write(
             token,
             new CompositePreviewStore.Entry(
-                "ws-peek", 4, "peek", [new CompositeFileMutation(@"C:\proj\Peek.cs", "// peeked")], DateTime.UtcNow));
+                "ws-peek", 4, "peek", [new CompositeFileMutation(@"C:\proj\Peek.cs", "// peeked")], DateTime.UtcNow, Identity));
 
         var first = store.TryPeek(token);
         var second = store.TryPeek(token);
@@ -351,7 +480,7 @@ public sealed class PersistentCompositeStorageTests
         Assert.IsNotNull(second);
         Assert.AreEqual("ws-peek", first.WorkspaceId);
         Assert.AreEqual(@"C:\proj\Peek.cs", first.Mutations.Single().FilePath);
-        Assert.IsNotNull(store.TryClaim(token), "A peek must leave the one-time token claimable.");
+        Assert.IsNotNull(store.TryClaim(token, Admit), "A peek must leave the one-time token claimable.");
         Assert.IsNull(store.TryPeek(token), "A claimed token is no longer peekable.");
     }
 
@@ -360,7 +489,7 @@ public sealed class PersistentCompositeStorageTests
     {
         var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
         var expired = Guid.NewGuid().ToString("N");
-        store.Write(expired, new CompositePreviewStore.Entry("ws-old", 1, "old", [], DateTime.UtcNow));
+        store.Write(expired, new CompositePreviewStore.Entry("ws-old", 1, "old", [], DateTime.UtcNow, Identity));
         File.SetLastWriteTimeUtc(
             Directory.EnumerateFiles(_root, expired + ".json", SearchOption.AllDirectories).Single(),
             DateTime.UtcNow - TimeSpan.FromMinutes(10));
@@ -375,7 +504,7 @@ public sealed class PersistentCompositeStorageTests
     {
         var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
         var token = Guid.NewGuid().ToString("N");
-        store.Write(token, new CompositePreviewStore.Entry("ws-locked", 1, "locked", [], DateTime.UtcNow));
+        store.Write(token, new CompositePreviewStore.Entry("ws-locked", 1, "locked", [], DateTime.UtcNow, Identity));
         var payload = Directory.EnumerateFiles(_root, token + ".json", SearchOption.AllDirectories).Single();
         File.WriteAllText(payload + ".lock", string.Empty);
 
@@ -398,7 +527,7 @@ public sealed class PersistentCompositeStorageTests
         File.WriteAllText(Path.Combine(versionDirectory, token + ".json"), json);
 
         Assert.IsNull(store.TryPeek(token), "A payload missing a required member must never reach a caller.");
-        Assert.IsNull(store.TryClaim(token), "The claim path shares the parser, so it must reject the same payloads.");
+        Assert.IsNull(store.TryClaim(token, Admit), "The claim path shares the parser, so it must reject the same payloads.");
     }
 
     /// <summary>
@@ -414,7 +543,7 @@ public sealed class PersistentCompositeStorageTests
         new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5)).Write(
             token,
             new CompositePreviewStore.Entry(
-                "ws-race", 1, "peek vs claim", [new CompositeFileMutation(@"C:\proj\Race.cs", "// race")], DateTime.UtcNow));
+                "ws-race", 1, "peek vs claim", [new CompositeFileMutation(@"C:\proj\Race.cs", "// race")], DateTime.UtcNow, Identity));
         var claimer = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
         CompositePreviewStore.Entry? claimed = null;
         Exception? claimFailure = null;
@@ -424,7 +553,7 @@ public sealed class PersistentCompositeStorageTests
             {
                 try
                 {
-                    claimed = claimer.TryClaim(token);
+                    claimed = claimer.TryClaim(token, Admit);
                 }
                 catch (Exception ex)
                 {
@@ -440,6 +569,29 @@ public sealed class PersistentCompositeStorageTests
         Assert.IsNotNull(claimed, "The claimant must win the one-time token.");
         Assert.IsNotNull(peeked, "The peek read the payload before the claim consumed it.");
         Assert.IsNull(peeker.TryPeek(token), "Once claimed, the token is gone.");
+    }
+
+    // Rooted on every platform: a format-2 identity must be fully qualified.
+    private static readonly string Identity = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "proj", "Sample.slnx"));
+
+    private static string Admit(CompositePreviewStore.Entry entry) => entry.WorkspaceId;
+
+    private string PayloadPath(string token) =>
+        Directory.EnumerateFiles(_root, token + ".json", SearchOption.AllDirectories).Single();
+
+    // Not a "<token>.json.*" glob: on Windows that pattern also matches "<token>.json" itself.
+    private string[] ClaimArtifacts() =>
+        Directory.EnumerateFiles(_root, "*", SearchOption.AllDirectories)
+            .Where(path => path.EndsWith(".lock", StringComparison.Ordinal) || path.EndsWith(".claim", StringComparison.Ordinal))
+            .ToArray();
+
+    private string WriteRaw(string json)
+    {
+        var token = Guid.NewGuid().ToString("N");
+        var versionDirectory = Path.Combine(_root, "1");
+        Directory.CreateDirectory(versionDirectory);
+        File.WriteAllText(Path.Combine(versionDirectory, token + ".json"), json);
+        return token;
     }
 
     private PersistentCompositeStorage CreateStore(

@@ -86,7 +86,7 @@ public sealed class SymbolRefactorPreviewTests : IsolatedWorkspaceTestBase
         // Preview must still return a usable composite token.
         Assert.IsFalse(string.IsNullOrEmpty(preview.PreviewToken),
             "A successful preview must return a non-empty composite token.");
-        var retrieved = compositeStore.Retrieve(preview.PreviewToken);
+        var retrieved = compositeStore.Retrieve(preview.PreviewToken, null);
         Assert.IsNotNull(retrieved,
             "The returned token must be retrievable from the composite-preview store, not the legacy IPreviewStore.");
         Assert.IsTrue(retrieved.Value.Mutations.Count > 0,
@@ -157,7 +157,7 @@ public sealed class SymbolRefactorPreviewTests : IsolatedWorkspaceTestBase
 
         Assert.IsFalse(string.IsNullOrEmpty(preview.PreviewToken),
             "Chained preview must return a non-empty composite token.");
-        var retrieved = compositeStore.Retrieve(preview.PreviewToken);
+        var retrieved = compositeStore.Retrieve(preview.PreviewToken, null);
         Assert.IsNotNull(retrieved, "Chained composite token must be retrievable.");
 
         // Stored mutation for Dog.cs must include BOTH the rename and the literal edit.
@@ -331,7 +331,7 @@ public sealed class SymbolRefactorPreviewTests : IsolatedWorkspaceTestBase
             $"Error string must reference the no-mutations cause; got '{applyResult.Error}'.");
 
         // Token must remain valid for caller inspection (Invalidate is skipped on this path).
-        Assert.IsNotNull(compositeStore.Retrieve(emptyToken),
+        Assert.IsNotNull(compositeStore.Retrieve(emptyToken, null),
             "The empty-mutations guard must NOT invalidate the token; callers should still be able to inspect it.");
     }
 

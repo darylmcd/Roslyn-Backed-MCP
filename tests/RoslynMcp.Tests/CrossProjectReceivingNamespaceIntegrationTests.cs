@@ -100,7 +100,7 @@ public sealed class CrossProjectReceivingNamespaceIntegrationTests : IsolatedWor
             _ => throw new ArgumentOutOfRangeException(nameof(route)),
         };
         var pending = route == "extract-and-wire"
-            ? SerializedCompositePreview(before, compositeStore.Retrieve(preview.PreviewToken)!.Value.Mutations)
+            ? SerializedCompositePreview(before, compositeStore.Retrieve(preview.PreviewToken, null)!.Value.Mutations)
             : PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution;
         pending = await ReparseSerializedDocumentsAsync(pending);
         // This is the causal regression oracle: compile the actual published text with the receiving options.

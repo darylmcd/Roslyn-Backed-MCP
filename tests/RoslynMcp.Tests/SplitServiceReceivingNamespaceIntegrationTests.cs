@@ -65,7 +65,7 @@ public sealed class SplitServiceReceivingNamespaceIntegrationTests : IsolatedWor
             [new SplitServicePartition("CalculatorPart", ["Add"])], null, CancellationToken.None);
         using var preview = JsonDocument.Parse(previewJson);
         var token = preview.RootElement.GetProperty("previewToken").GetString()!;
-        var entry = store.Retrieve(token);
+        var entry = store.Retrieve(token, null);
         Assert.IsNotNull(entry);
         Assert.AreEqual(workspace.WorkspaceId, entry.Value.WorkspaceId);
         Assert.AreEqual(originalVersion, entry.Value.WorkspaceVersion);
