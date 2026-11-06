@@ -54,25 +54,33 @@ internal sealed class InterfaceMemberProjector
     private readonly InterfaceNullableProjection _nullable;
     private readonly List<ITypeSymbol> _referencedTypes = [];
     private readonly bool _receiverIsSourceAssembly;
+    private readonly bool _receiverAllowsUnsafe;
 
-    private InterfaceMemberProjector(Compilation compilation, SyntaxGenerator generator, InterfaceNullableProjection nullable, bool receiverIsSourceAssembly)
+    private InterfaceMemberProjector(
+        Compilation compilation, SyntaxGenerator generator, InterfaceNullableProjection nullable, bool receiverIsSourceAssembly, bool receiverAllowsUnsafe)
     {
         _compilation = compilation;
         _generator = generator;
         _nullable = nullable;
         _receiverIsSourceAssembly = receiverIsSourceAssembly;
+        _receiverAllowsUnsafe = receiverAllowsUnsafe;
     }
 
-    /// <param name="receiverIsSourceAssembly">
-    /// True when the interface lands in the source type's own project, so source-assembly names stay
-    /// spellable; otherwise a constant default naming one is written as its value.
+    /// <param name="receivingProject">
+    /// The project the interface lands in. When it is the source type's own project, source-assembly names stay
+    /// spellable; otherwise a constant default naming one is written as its value. Its compilation options decide
+    /// whether a pointer or function-pointer signature can be emitted (<c>AllowUnsafeBlocks</c>).
     /// </param>
     internal static async Task<InterfaceMemberProjector> CreateAsync(
-        Document sourceDocument, InterfaceNullableProjection nullable, bool receiverIsSourceAssembly, CancellationToken ct)
+        Document sourceDocument, InterfaceNullableProjection nullable, Project receivingProject, CancellationToken ct)
     {
         var model = await sourceDocument.GetSemanticModelAsync(ct).ConfigureAwait(false)
             ?? throw InvalidOperationErrors.Internal("Semantic model for the interface source document is unavailable.");
-        return new InterfaceMemberProjector(model.Compilation, SyntaxGenerator.GetGenerator(sourceDocument), nullable, receiverIsSourceAssembly);
+        var options = receivingProject.CompilationOptions as CSharpCompilationOptions
+            ?? throw InvalidOperationErrors.Internal("The receiving project must have C# compilation options.");
+        return new InterfaceMemberProjector(
+            model.Compilation, SyntaxGenerator.GetGenerator(sourceDocument), nullable,
+            receivingProject.Id == sourceDocument.Project.Id, options.AllowUnsafe);
     }
 
     /// <summary>The members of a type that an extracted interface can carry.</summary>
@@ -97,6 +105,15 @@ internal sealed class InterfaceMemberProjector
         var declaration = Strip(source, member, model, qualifier);
         if (declaration.DescendantNodes().Any(n => n is PointerTypeSyntax or FunctionPointerTypeSyntax))
         {
+            // CS0227: a pointer signature compiles only where unsafe code is allowed. Refuse here, before any caller
+            // stores a preview or adds a document; the receiving project's policy is never changed implicitly.
+            if (!_receiverAllowsUnsafe)
+            {
+                throw new PublicInvalidOperationException(
+                    $"Interface member '{member.Name}' requires unsafe signatures; receiving project does not enable AllowUnsafeBlocks. " +
+                    "Enable AllowUnsafeBlocks in the receiving project.");
+            }
+
             declaration = declaration.WithModifiers(SyntaxFactory.TokenList(SyntaxFactory.Token(SyntaxKind.UnsafeKeyword)));
         }
 
