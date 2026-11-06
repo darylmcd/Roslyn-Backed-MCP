@@ -333,7 +333,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
 
         try
         {
-            var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+            var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
                 TypeExtractionService.PreviewExtractTypeAsync(
                     wsId, sourcePath, "ExternalConsumerFixture", ["Compute"], "ComputeHelper", null, CancellationToken.None));
 

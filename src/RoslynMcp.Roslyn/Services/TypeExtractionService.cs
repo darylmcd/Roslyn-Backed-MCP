@@ -105,7 +105,7 @@ public sealed class TypeExtractionService : ITypeExtractionService
         if (externalConsumerWarnings.Count > 0)
         {
             var summary = string.Join("; ", externalConsumerWarnings);
-            throw new InvalidOperationException(
+            throw new PublicInvalidOperationException(
                 $"Refusing to extract type '{newTypeName}' from '{sourceTypeName}': the selected member(s) are " +
                 $"referenced by external consumer files. Applying the extraction would move the members to the new " +
                 $"type (reached from the source through a constructor-injected private field, or by the new type's " +
