@@ -487,7 +487,13 @@ public sealed class NamespaceRelocationTests : IsolatedWorkspaceTestBase
     private const string RelocationFixtureDirectory = "RelocationKeepFixture";
 
     private async Task<(Microsoft.CodeAnalysis.Solution Modified, Microsoft.CodeAnalysis.Document? SourceDocument, string SourcePath, string DestinationPath, RoslynMcp.Core.Models.RefactoringPreviewDto Preview)>
-        PreviewRelocationAsync(IsolatedWorkspaceScope workspace, string source, string? consumerSource = null)
+        PreviewRelocationAsync(
+            IsolatedWorkspaceScope workspace,
+            string source,
+            string? consumerSource = null,
+            string consumerProject = "SampleLib",
+            (string Project, string Source)? otherFile = null,
+            bool relocate = true)
     {
         var fixtureDir = Path.Combine(workspace.GetPath("SampleLib"), RelocationFixtureDirectory);
         Directory.CreateDirectory(fixtureDir);
@@ -495,11 +501,13 @@ public sealed class NamespaceRelocationTests : IsolatedWorkspaceTestBase
         var destinationPath = Path.Combine(fixtureDir, "Moved.cs");
         await File.WriteAllTextAsync(sourcePath, source, CancellationToken.None);
         if (consumerSource is not null)
-            await File.WriteAllTextAsync(Path.Combine(fixtureDir, "Consumer.cs"), consumerSource, CancellationToken.None);
+            await WriteFixtureFileAsync(workspace, consumerProject, "Consumer.cs", consumerSource);
+        if (otherFile is { } other)
+            await WriteFixtureFileAsync(workspace, other.Project, "OtherDeclaration.cs", other.Source);
 
         var wsId = await workspace.LoadAsync(CancellationToken.None);
         var preview = await CreateService().PreviewChangeTypeNamespaceAsync(
-            wsId, "Selected", "Old", "New", destinationPath, CancellationToken.None);
+            wsId, "Selected", "Old", "New", relocate ? destinationPath : null, CancellationToken.None);
 
         var retrieved = PreviewStore.Retrieve(preview.PreviewToken);
         Assert.IsNotNull(retrieved, "the preview token must be redeemable immediately after the preview");
@@ -509,11 +517,19 @@ public sealed class NamespaceRelocationTests : IsolatedWorkspaceTestBase
         return (modified, sourceDocument, sourcePath, destinationPath, preview);
     }
 
+    private static async Task WriteFixtureFileAsync(
+        IsolatedWorkspaceScope workspace, string project, string fileName, string content)
+    {
+        var dir = Path.Combine(workspace.GetPath(project), RelocationFixtureDirectory);
+        Directory.CreateDirectory(dir);
+        await File.WriteAllTextAsync(Path.Combine(dir, fileName), content, CancellationToken.None);
+    }
+
     private static async Task<IReadOnlyList<string>> CompileErrorsInAsync(
         Microsoft.CodeAnalysis.Solution solution, params string[] filePaths)
     {
         var errors = new List<string>();
-        foreach (var project in solution.Projects.Where(p => p.Name == "SampleLib"))
+        foreach (var project in solution.Projects.Where(p => p.Name is "SampleLib" or "SampleApp"))
         {
             var compilation = await project.GetCompilationAsync(CancellationToken.None);
             Assert.IsNotNull(compilation);
@@ -653,6 +669,78 @@ public sealed class NamespaceRelocationTests : IsolatedWorkspaceTestBase
 
         var errors = await CompileErrorsInAsync(modified, sourcePath, destinationPath, consumerPath);
         Assert.AreEqual(0, errors.Count, $"The previewed solution must compile. Errors:\n{string.Join("\n", errors)}");
+    }
+
+    /// <summary>
+    /// Regression (relocation-consumer-using-counts-enum-delegate-members): the cross-document count
+    /// only recognized <c>TypeDeclarationSyntax</c>, so an enum or delegate left in <c>Old</c> by
+    /// ANOTHER file or project was invisible and consumers lost the <c>using Old;</c> they still
+    /// need. The source file is deleted by the relocation, so only the cross-document count can see
+    /// <c>Keep</c>.
+    /// </summary>
+    [TestMethod]
+    [DataRow("SampleLib", "public enum Keep { A }", DisplayName = "enum in another file of the same project")]
+    [DataRow("SampleLib", "public delegate void Keep();", DisplayName = "delegate in another file of the same project")]
+    [DataRow("SampleApp", "public enum Keep { A }", DisplayName = "enum in another project")]
+    [DataRow("SampleApp", "public delegate void Keep();", DisplayName = "delegate in another project")]
+    public async Task Preview_Relocation_Keeps_Old_Using_When_Enum_Or_Delegate_Remains_In_Another_Document(
+        string otherProject, string keepDeclaration)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        const string source = "namespace Old\n{\n    public class Selected { }\n}\n";
+        var other = $"namespace Old\n{{\n    {keepDeclaration}\n}}\n";
+        // SampleApp references SampleLib, so a consumer there sees both projects' declarations.
+        const string consumer =
+            "using Old;\n\nnamespace Consumers;\n\npublic sealed class Consumer\n{\n    public Selected? Value { get; set; }\n\n    public Keep? Other { get; set; }\n}\n";
+        var consumerProject = otherProject == "SampleApp" ? "SampleApp" : "SampleLib";
+
+        var (modified, _, sourcePath, destinationPath, preview) = await PreviewRelocationAsync(
+            workspace, source, consumer, consumerProject, (otherProject, other));
+
+        var consumerPath = Path.Combine(workspace.GetPath(consumerProject), RelocationFixtureDirectory, "Consumer.cs");
+        await AssertConsumerKeepsOldAndGainsNewAsync(modified, consumerPath, preview);
+        var errors = await CompileErrorsInAsync(modified, sourcePath, destinationPath, consumerPath);
+        Assert.AreEqual(0, errors.Count, $"The previewed solution must compile. Errors:\n{string.Join("\n", errors)}");
+    }
+
+    /// <summary>
+    /// Non-relocating change (no <c>newFilePath</c>): another <c>namespace Old</c> block of the
+    /// SOURCE file keeps <c>Old</c> populated, but the source document is excluded from the
+    /// cross-document count and only the containing block was inspected, so the consumer lost
+    /// <c>using Old;</c>.
+    /// </summary>
+    [TestMethod]
+    [DataRow("public class Keep { }", DisplayName = "class in a second block")]
+    [DataRow("public enum Keep { A }", DisplayName = "enum in a second block")]
+    [DataRow("public delegate void Keep();", DisplayName = "delegate in a second block")]
+    public async Task Preview_InPlace_Namespace_Change_Keeps_Old_Using_When_A_Second_Block_Remains(string keepDeclaration)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var source = $"namespace Old\n{{\n    public class Selected {{ }}\n}}\n\nnamespace Old\n{{\n    {keepDeclaration}\n}}\n";
+        const string consumer =
+            "using Old;\n\nnamespace Consumers;\n\npublic sealed class Consumer\n{\n    public Selected? Value { get; set; }\n\n    public Keep? Other { get; set; }\n}\n";
+
+        var (modified, _, sourcePath, _, preview) = await PreviewRelocationAsync(
+            workspace, source, consumer, relocate: false);
+
+        var consumerPath = Path.Combine(workspace.GetPath("SampleLib"), RelocationFixtureDirectory, "Consumer.cs");
+        await AssertConsumerKeepsOldAndGainsNewAsync(modified, consumerPath, preview);
+        var errors = await CompileErrorsInAsync(modified, sourcePath, consumerPath);
+        Assert.AreEqual(0, errors.Count, $"The previewed solution must compile. Errors:\n{string.Join("\n", errors)}");
+    }
+
+    private static async Task AssertConsumerKeepsOldAndGainsNewAsync(
+        Microsoft.CodeAnalysis.Solution modified, string consumerPath, RoslynMcp.Core.Models.RefactoringPreviewDto preview)
+    {
+        var consumerDocument = modified.Projects.SelectMany(p => p.Documents)
+            .Single(d => string.Equals(d.FilePath, consumerPath, StringComparison.OrdinalIgnoreCase));
+        var consumerText = (await consumerDocument.GetTextAsync(CancellationToken.None)).ToString();
+        StringAssert.Contains(consumerText, "using Old;", $"The consumer still needs `using Old;` for Keep:\n{consumerText}");
+        StringAssert.Contains(consumerText, "using New;", $"The consumer needs `using New;` for Selected:\n{consumerText}");
+        Assert.IsNotNull(preview.Warnings);
+        Assert.IsTrue(
+            preview.Warnings!.Any(w => w.Contains("Kept `using Old;`", StringComparison.Ordinal)),
+            $"Expected a kept-using warning naming `Old`. Warnings:\n{string.Join("\n", preview.Warnings)}");
     }
 
     [TestMethod]
