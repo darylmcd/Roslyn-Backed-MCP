@@ -897,7 +897,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : InterfaceRouteTest
 
         // Ref kinds on the emitted interface prove the route reached InterfaceMemberProjector: no other emitter exists.
         var pending = route == "extract-and-wire"
-            ? TestInfrastructure.InterfaceExtractionTestContext.SerializedCompositePreview(before, stores.Retrieve(preview.PreviewToken)!.Value.Mutations)
+            ? TestInfrastructure.InterfaceExtractionTestContext.SerializedCompositePreview(before, stores.Retrieve(preview.PreviewToken, null)!.Value.Mutations)
             : PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution;
         pending = await TestInfrastructure.InterfaceExtractionTestContext.ReparseSerializedDocumentsAsync(pending);
         await AssertRefContractAsync(pending, "Contracts");

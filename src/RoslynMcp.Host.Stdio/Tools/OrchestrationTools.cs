@@ -108,8 +108,10 @@ public static class OrchestrationTools
             previewToken,
             (gatedWorkspaceId, c) => compositeApplyOrchestrator.ApplyCompositeAsync(
                 previewToken,
-                (claimedWorkspaceId, writeSet, admitCt) => ToolDispatch.AdmitClaimedWriteSetAsync(
-                    previewToken, gatedWorkspaceId, claimedWorkspaceId, writeSet, admitCt),
+                new CompositeRedemptionAdmission(
+                    gatedWorkspaceId,
+                    (claimedWorkspaceId, writeSet, admitCt) => ToolDispatch.AdmitClaimedWriteSetAsync(
+                        previewToken, gatedWorkspaceId, claimedWorkspaceId, writeSet, admitCt)),
                 c),
             ct);
 }

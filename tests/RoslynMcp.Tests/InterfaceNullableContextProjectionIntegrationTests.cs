@@ -83,7 +83,7 @@ public sealed class InterfaceNullableContextProjectionIntegrationTests : Isolate
         var stores = new CompositePreviewStore();
         var preview = await PreviewAsync(route, workspace.WorkspaceId, path, stores);
         var pending = route == "extract-and-wire"
-            ? SerializedCompositePreview(before, stores.Retrieve(preview.PreviewToken)!.Value.Mutations)
+            ? SerializedCompositePreview(before, stores.Retrieve(preview.PreviewToken, null)!.Value.Mutations)
             : PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution;
         pending = await ReparseSerializedDocumentsAsync(pending);
         await AssertGraphsAsync(before, pending, receivingName);
@@ -150,7 +150,7 @@ public sealed class InterfaceNullableContextProjectionIntegrationTests : Isolate
         if (oblivious)
         {
             var preview = await PreviewAsync(route, workspace.WorkspaceId, path, stores);
-            var pending = route == "extract-and-wire" ? SerializedCompositePreview(before, stores.Retrieve(preview.PreviewToken)!.Value.Mutations)
+            var pending = route == "extract-and-wire" ? SerializedCompositePreview(before, stores.Retrieve(preview.PreviewToken, null)!.Value.Mutations)
                 : PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution;
             await AssertCompilesAsync(await ReparseSerializedDocumentsAsync(pending));
             var text = (await pending.Projects.Single(p => p.Name == "Contracts").Documents.Single(d => d.Name == "INullableService.cs").GetTextAsync()).ToString();

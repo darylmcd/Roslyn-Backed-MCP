@@ -24,6 +24,13 @@ public sealed class PersistentCompositeStorage
         PropertyNameCaseInsensitive = true,
     };
 
+    /// <summary>
+    /// Record format written by this server. 1 (no <c>FormatVersion</c> member) bound a record to the
+    /// creating session id; 2 adds <c>WorkspaceIdentity</c>, the normalized solution/project path.
+    /// Older readers ignore the new members, so the change is additive. A reader refuses a newer format.
+    /// </summary>
+    private const int CurrentFormatVersion = 2;
+
     private readonly string _rootDirectory;
     private readonly TimeSpan _ttl;
     private readonly ILogger<PersistentCompositeStorage>? _logger;
@@ -78,12 +85,21 @@ public sealed class PersistentCompositeStorage
         var path = Path.Combine(dir, token + ".json");
         var tmp = path + ".tmp";
 
+        // WorkspaceId and WorkspaceVersion are diagnostics only from format 2 on: the id names a
+        // session of the creating process and the version counts that session's reloads, so neither
+        // identifies anything on another host. WorkspaceIdentity is the portable key.
+        var identity = !string.IsNullOrWhiteSpace(entry.WorkspaceIdentity)
+            ? entry.WorkspaceIdentity
+            : throw new PublicArgumentException(
+                "A persisted composite entry requires a workspace identity.", nameof(entry));
         var dto = new PersistedEntry(
             entry.WorkspaceId,
             entry.WorkspaceVersion,
             entry.Description,
             entry.Mutations.Select(m => new PersistedMutation(m.FilePath, m.UpdatedContent, m.DeleteFile)).ToArray(),
-            entry.CreatedAt);
+            entry.CreatedAt,
+            CurrentFormatVersion,
+            identity);
 
         try
         {
@@ -102,8 +118,18 @@ public sealed class PersistentCompositeStorage
         }
     }
 
-    public CompositePreviewStore.Entry? TryClaim(string token)
+    /// <summary>
+    /// Claims the one-time record for <paramref name="token"/>. <paramref name="admit"/> runs on the
+    /// parsed record while this process holds the claim lock and BEFORE the payload is moved: it maps
+    /// the record onto a workspace session of this host and returns that session's id (which replaces
+    /// the record's <c>WorkspaceId</c> in the result). If it throws, the payload stays on disk, the lock
+    /// is released and the exception propagates, so a refusal never consumes the token. A record from a
+    /// newer format is refused the same way (<see langword="null"/>, payload kept). A corrupt or
+    /// expired record is consumed and dropped.
+    /// </summary>
+    public CompositePreviewStore.Entry? TryClaim(string token, Func<CompositePreviewStore.Entry, string> admit)
     {
+        ArgumentNullException.ThrowIfNull(admit);
         if (!IsValidToken(token))
         {
             return null;
@@ -122,7 +148,7 @@ public sealed class PersistentCompositeStorage
                 continue;
             }
 
-            return ClaimEntry(path);
+            return ClaimEntry(path, admit);
         }
 
         return null;
@@ -171,14 +197,7 @@ public sealed class PersistentCompositeStorage
         DateTime lastWriteUtc;
         try
         {
-            // FileShare.Delete is load-bearing: ClaimEntry renames this very file with File.Move, and
-            // a reader holding it open without Delete sharing makes the winning claimant's move throw
-            // a raw IOException on Windows. The timestamp is probed while the handle is still held so
-            // a concurrent claim (rename) is observed as an expired/absent entry, never a torn read.
-            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-            using var reader = new StreamReader(stream);
-            json = reader.ReadToEnd();
-            lastWriteUtc = _getLastWriteTimeUtc(path);
+            (json, lastWriteUtc) = ReadPayload(path);
         }
         catch (IOException ex)
         {
@@ -188,14 +207,27 @@ public sealed class PersistentCompositeStorage
             return null;
         }
 
-        return DateTime.UtcNow - lastWriteUtc > _ttl ? null : ParseEntry(json);
+        // A record from a newer format cannot be interpreted safely (its identity rules are unknown),
+        // so its write set is "unknown" and the caller fails closed.
+        return DateTime.UtcNow - lastWriteUtc > _ttl
+            ? null
+            : ParseEntry(json, out var entry) == ParseOutcome.Parsed ? entry : null;
     }
 
     /// <summary>
-    /// Compatibility entry point for callers compiled against the original storage API.
-    /// Reads now have the same one-time, fail-closed semantics as <see cref="TryClaim"/>.
+    /// Reads the payload and its timestamp. FileShare.Delete is load-bearing: <see cref="ClaimEntry"/>
+    /// renames this very file with File.Move, and a reader holding it open without Delete sharing makes
+    /// the winning claimant's move throw a raw IOException on Windows. The timestamp is probed while the
+    /// handle is still held so a concurrent claim (rename) is observed as an expired/absent entry, never
+    /// a torn read. The handle is closed before the caller acts on the content.
     /// </summary>
-    public CompositePreviewStore.Entry? TryRead(string token) => TryClaim(token);
+    private (string Json, DateTime LastWriteUtc) ReadPayload(string path)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using var reader = new StreamReader(stream);
+        var json = reader.ReadToEnd();
+        return (json, _getLastWriteTimeUtc(path));
+    }
 
     public void Delete(string token)
     {
@@ -214,7 +246,7 @@ public sealed class PersistentCompositeStorage
         }
     }
 
-    private CompositePreviewStore.Entry? ClaimEntry(string path)
+    private CompositePreviewStore.Entry? ClaimEntry(string path, Func<CompositePreviewStore.Entry, string> admit)
     {
         var lockPath = path + ".lock";
         FileStream claimLock;
@@ -230,6 +262,36 @@ public sealed class PersistentCompositeStorage
 
         try
         {
+            // Read, parse and admit BEFORE the payload is moved. A refusal (newer format, or admit
+            // throwing because this host has no matching session) leaves the one-time payload on disk
+            // for a correctly prepared host; the lock is released by the finally below.
+            string json;
+            DateTime lastWriteUtc;
+            try
+            {
+                (json, lastWriteUtc) = ReadPayload(path);
+            }
+            catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+            {
+                _logger?.LogDebug(ex, "PersistentCompositeStorage: token payload disappeared before claim.");
+                return null;
+            }
+
+            CompositePreviewStore.Entry? admitted = null;
+            if (DateTime.UtcNow - lastWriteUtc <= _ttl)
+            {
+                switch (ParseEntry(json, out var parsed))
+                {
+                    case ParseOutcome.NewerFormat:
+                        return null;
+                    case ParseOutcome.Parsed:
+                        // Exceptions propagate on purpose: they are the refusal, and the payload is untouched.
+                        admitted = parsed! with { WorkspaceId = admit(parsed!) };
+                        break;
+                }
+            }
+
+            // Expired and unreadable records are consumed and dropped, as before.
             var claimPath = path + ".claim";
             try
             {
@@ -241,16 +303,11 @@ public sealed class PersistentCompositeStorage
                 return null;
             }
 
-            try
-            {
-                return ReadClaimedEntry(claimPath);
-            }
-            finally
-            {
-                // Delete before returning the payload. A deletion failure is visible and prevents
-                // mutation from starting with a token whose one-time record still exists.
-                DeleteClaimArtifact(claimPath);
-            }
+            // Delete before returning the record. A deletion failure is visible and prevents
+            // mutation from starting with a token whose one-time record still exists. The returned
+            // record is the one that was admitted, never a re-read of a file that may have been swapped.
+            DeleteClaimArtifact(claimPath);
+            return admitted;
         }
         finally
         {
@@ -259,33 +316,57 @@ public sealed class PersistentCompositeStorage
         }
     }
 
-    private CompositePreviewStore.Entry? ReadClaimedEntry(string claimPath)
+    private enum ParseOutcome
     {
-        // Read first so another process cannot slip a deletion between a path-based timestamp
-        // probe and opening the claim. Claim-file I/O remains fail-closed and visible.
-        var json = File.ReadAllText(claimPath);
-        if (DateTime.UtcNow - _getLastWriteTimeUtc(claimPath) > _ttl)
-        {
-            return null;
-        }
-
-        return ParseEntry(json);
+        Parsed,
+        Unreadable,
+        NewerFormat,
     }
 
     /// <summary>
     /// Parses a persisted record. The directory is shared and separately writable, so the payload is
     /// untrusted input: a record missing the members every later stage dereferences (workspace id,
-    /// mutation list, a mutation's path) is unreadable, never a half-populated entry.
+    /// mutation list, a mutation's path, and for format 2 the workspace identity) is unreadable,
+    /// never a half-populated entry. A record without a <c>FormatVersion</c> is format 1; one above
+    /// <see cref="CurrentFormatVersion"/> is reported separately because its payload must be kept.
     /// </summary>
-    private CompositePreviewStore.Entry? ParseEntry(string json)
+    private ParseOutcome ParseEntry(string json, out CompositePreviewStore.Entry? entry)
     {
+        entry = null;
         try
         {
             var dto = JsonSerializer.Deserialize<PersistedEntry>(json, JsonOpts);
-            if (dto is null || string.IsNullOrWhiteSpace(dto.WorkspaceId) || dto.Mutations is null)
+            if (dto is null)
             {
                 _logger?.LogDebug("PersistentCompositeStorage: dropping persisted entry with missing required members.");
-                return null;
+                return ParseOutcome.Unreadable;
+            }
+
+            if (dto.FormatVersion > CurrentFormatVersion)
+            {
+                _logger?.LogDebug(
+                    "PersistentCompositeStorage: persisted entry has format {FormatVersion}, newer than supported {Supported}; keeping it.",
+                    dto.FormatVersion,
+                    CurrentFormatVersion);
+                return ParseOutcome.NewerFormat;
+            }
+
+            if (string.IsNullOrWhiteSpace(dto.WorkspaceId) || dto.Mutations is null)
+            {
+                _logger?.LogDebug("PersistentCompositeStorage: dropping persisted entry with missing required members.");
+                return ParseOutcome.Unreadable;
+            }
+
+            string? identity = null;
+            if (dto.FormatVersion >= 2)
+            {
+                if (string.IsNullOrWhiteSpace(dto.WorkspaceIdentity))
+                {
+                    _logger?.LogDebug("PersistentCompositeStorage: dropping format-2 entry without a workspace identity.");
+                    return ParseOutcome.Unreadable;
+                }
+
+                identity = Path.GetFullPath(dto.WorkspaceIdentity);
             }
 
             var mutations = new List<CompositeFileMutation>(dto.Mutations.Count);
@@ -294,23 +375,25 @@ public sealed class PersistentCompositeStorage
                 if (mutation is null || string.IsNullOrWhiteSpace(mutation.FilePath))
                 {
                     _logger?.LogDebug("PersistentCompositeStorage: dropping persisted entry with a pathless mutation.");
-                    return null;
+                    return ParseOutcome.Unreadable;
                 }
 
                 mutations.Add(new CompositeFileMutation(mutation.FilePath, mutation.UpdatedContent, mutation.DeleteFile));
             }
 
-            return new CompositePreviewStore.Entry(
+            entry = new CompositePreviewStore.Entry(
                 dto.WorkspaceId,
                 dto.WorkspaceVersion,
                 dto.Description,
                 mutations,
-                dto.CreatedAt);
+                dto.CreatedAt,
+                identity);
+            return ParseOutcome.Parsed;
         }
-        catch (Exception ex) when (ex is JsonException or NotSupportedException)
+        catch (Exception ex) when (ex is JsonException or NotSupportedException or ArgumentException)
         {
             _logger?.LogDebug(ex, "PersistentCompositeStorage: dropping unreadable persisted entry.");
-            return null;
+            return ParseOutcome.Unreadable;
         }
     }
 
@@ -408,12 +491,16 @@ public sealed class PersistentCompositeStorage
 
     // Members are nullable because the record is deserialized from a shared directory: JSON can omit
     // or null any of them, and ParseEntry rejects such a record instead of dereferencing it.
+    // FormatVersion is absent (0) in format-1 records. From format 2, WorkspaceId and WorkspaceVersion
+    // are diagnostics only; WorkspaceIdentity is the portable key (ADR 0032).
     private sealed record PersistedEntry(
         string? WorkspaceId,
         int WorkspaceVersion,
         string Description,
         IReadOnlyList<PersistedMutation?>? Mutations,
-        DateTime CreatedAt);
+        DateTime CreatedAt,
+        int FormatVersion,
+        string? WorkspaceIdentity);
 
     private sealed record PersistedMutation(string? FilePath, string? UpdatedContent, bool DeleteFile);
 }

@@ -109,7 +109,7 @@ public sealed class RecordFieldAddSatelliteTests : IsolatedWorkspaceTestBase
             var offset = originalText.Lines[edit.Line - 1].Start + edit.Column - 1;
             expectedContent = expectedContent.Insert(offset, edit.NewText);
         }
-        Assert.AreEqual(expectedContent, store.Retrieve(preview.PreviewToken!)!.Value.Mutations.Single().UpdatedContent,
+        Assert.AreEqual(expectedContent, store.Retrieve(preview.PreviewToken!, null)!.Value.Mutations.Single().UpdatedContent,
             "ProposedEdits must reproduce the exact composite mutation using original offsets.");
 
         var applied = await new CompositeApplyOrchestrator(WorkspaceManager, store)
@@ -431,7 +431,7 @@ public sealed class RecordFieldAddSatelliteTests : IsolatedWorkspaceTestBase
         // Preview-token round-trip: the composite store must return the recorded mutation set.
         Assert.IsFalse(string.IsNullOrEmpty(result.PreviewToken),
             "A non-empty pattern must yield a non-null preview token.");
-        var retrieved = compositeStore.Retrieve(result.PreviewToken!);
+        var retrieved = compositeStore.Retrieve(result.PreviewToken!, null);
         Assert.IsNotNull(retrieved, "Preview token must be retrievable from the composite store.");
         Assert.AreEqual(1, retrieved.Value.Mutations.Count,
             "All edits should land in the single declaring file for this fixture.");

@@ -37,6 +37,15 @@ public sealed class PreviewApplyBoundaryRevalidationTests
     /// <summary>Workspace id every staged preview in this class is stored under.</summary>
     private const string WorkspaceId = "ws-toctou";
 
+    /// <summary>The host session for the staged previews; its path is the persisted identity.</summary>
+    private readonly RecordingWorkspaceManager _workspace = new()
+    {
+        AdmittedWorkspaceIds = [WorkspaceId, "ws-other"],
+        LoadedPathById = new Dictionary<string, string> { [WorkspaceId] = "C:\\repo\\A.slnx", ["ws-other"] = OtherSolutionPath },
+    };
+
+    private const string OtherSolutionPath = "C:\\repo\\B.slnx";
+
     private sealed record FakeResultDto(string Message);
 
     /// <summary>
@@ -568,7 +577,7 @@ public sealed class PreviewApplyBoundaryRevalidationTests
             var store = new CompositePreviewStore();
             var token = store.Store(
                 WorkspaceId, 1, "out-of-root composite", [new CompositeFileMutation(outsideFile, "// OVERWRITTEN")]);
-            var orchestrator = new CompositeApplyOrchestrator(new RecordingWorkspaceManager(), store);
+            var orchestrator = new CompositeApplyOrchestrator(_workspace, store);
 
             var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
                 OrchestrationTools.ApplyComposite(new FakeGate(), orchestrator, store, token, CancellationToken.None));
@@ -611,12 +620,12 @@ public sealed class PreviewApplyBoundaryRevalidationTests
         {
             SecurityOptionsSnapshot.Value = new SecurityOptions { SanctionedRoots = [sanctionedRoot] };
             var ttl = TimeSpan.FromMinutes(5);
-            var store = new CompositePreviewStore(20, ttl, new PersistentCompositeStorage(persistDirectory, ttl));
+            var store = new CompositePreviewStore(20, ttl, new PersistentCompositeStorage(persistDirectory, ttl), new CompositeWorkspaceIdentityResolver(_workspace));
             var token = store.Store(
                 WorkspaceId, 1, "tampered composite", [new CompositeFileMutation(insideFile, "// OVERWRITTEN")]);
             var payloadPath = Directory.EnumerateFiles(persistDirectory, token + ".json", SearchOption.AllDirectories).Single();
             RewritePersistedPayload(persistDirectory, token, payload => payload["Mutations"]![0]!["FilePath"] = outsideFile);
-            var orchestrator = new CompositeApplyOrchestrator(new RecordingWorkspaceManager(), store);
+            var orchestrator = new CompositeApplyOrchestrator(_workspace, store);
 
             var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
                 OrchestrationTools.ApplyComposite(new FakeGate(), orchestrator, store, token, CancellationToken.None));
@@ -660,12 +669,12 @@ public sealed class PreviewApplyBoundaryRevalidationTests
         {
             SecurityOptionsSnapshot.Value = new SecurityOptions { SanctionedRoots = [sanctionedRoot] };
             var ttl = TimeSpan.FromMinutes(5);
-            var inner = new CompositePreviewStore(20, ttl, new PersistentCompositeStorage(persistDirectory, ttl));
+            var inner = new CompositePreviewStore(20, ttl, new PersistentCompositeStorage(persistDirectory, ttl), new CompositeWorkspaceIdentityResolver(_workspace));
             var token = inner.Store(
                 WorkspaceId, 1, "swapped composite", [new CompositeFileMutation(insideFile, "// OVERWRITTEN")]);
             var store = new SwapAfterPeekStore(inner, () => RewritePersistedPayload(
                 persistDirectory, token, payload => payload["Mutations"]![0]!["FilePath"] = outsideFile));
-            var orchestrator = new CompositeApplyOrchestrator(new RecordingWorkspaceManager(), store);
+            var orchestrator = new CompositeApplyOrchestrator(_workspace, store);
 
             var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
                 OrchestrationTools.ApplyComposite(new FakeGate(), orchestrator, store, token, CancellationToken.None));
@@ -684,9 +693,9 @@ public sealed class PreviewApplyBoundaryRevalidationTests
     }
 
     /// <summary>
-    /// The write gate is taken on the workspace the peek reported. A record swapped to name another
-    /// workspace between the peek and the claim must not be applied (and reloaded) under a gate that
-    /// protects a different session.
+    /// The write gate is taken on the session the peek resolved. A record swapped to another solution
+    /// identity between the peek and the claim resolves to a different session and must not be applied
+    /// (and reloaded) under a gate that protects the first one. It is refused BEFORE the claim.
     /// </summary>
     [TestMethod]
     public async Task ApplyComposite_RecordSwappedToAnotherWorkspaceBetweenPeekAndClaim_RefusesBeforeWrite()
@@ -703,18 +712,20 @@ public sealed class PreviewApplyBoundaryRevalidationTests
         {
             SecurityOptionsSnapshot.Value = new SecurityOptions { SanctionedRoots = [sanctionedRoot] };
             var ttl = TimeSpan.FromMinutes(5);
-            var inner = new CompositePreviewStore(20, ttl, new PersistentCompositeStorage(persistDirectory, ttl));
+            var inner = new CompositePreviewStore(20, ttl, new PersistentCompositeStorage(persistDirectory, ttl), new CompositeWorkspaceIdentityResolver(_workspace));
             var token = inner.Store(
                 WorkspaceId, 1, "workspace swap", [new CompositeFileMutation(insideFile, "// OVERWRITTEN")]);
             var store = new SwapAfterPeekStore(inner, () => RewritePersistedPayload(
-                persistDirectory, token, payload => payload["WorkspaceId"] = "ws-other"));
-            var orchestrator = new CompositeApplyOrchestrator(new RecordingWorkspaceManager(), store);
+                persistDirectory, token, payload => payload["WorkspaceIdentity"] = Path.GetFullPath(OtherSolutionPath)));
+            var orchestrator = new CompositeApplyOrchestrator(_workspace, store);
 
             await Assert.ThrowsExactlyAsync<PreviewTokenStaleException>(() =>
                 OrchestrationTools.ApplyComposite(new FakeGate(), orchestrator, store, token, CancellationToken.None));
 
             Assert.IsTrue(store.Swapped, "Premise: the swap ran between the peek and the claim.");
             Assert.AreEqual("// inside original", File.ReadAllText(insideFile));
+            Assert.IsNotEmpty(Directory.EnumerateFiles(persistDirectory, token + ".json", SearchOption.AllDirectories),
+                "A refusal before the claim must leave the one-time payload on disk.");
         }
         finally
         {
@@ -742,8 +753,8 @@ public sealed class PreviewApplyBoundaryRevalidationTests
         public string Store(string workspaceId, int workspaceVersion, string description, IReadOnlyList<CompositeFileMutation> mutations) =>
             inner.Store(workspaceId, workspaceVersion, description, mutations);
 
-        public (string WorkspaceId, int WorkspaceVersion, string Description, IReadOnlyList<CompositeFileMutation> Mutations)? Retrieve(string token) =>
-            inner.Retrieve(token);
+        public (string WorkspaceId, int WorkspaceVersion, string Description, IReadOnlyList<CompositeFileMutation> Mutations)? Retrieve(string token, string? gatedWorkspaceId) =>
+            inner.Retrieve(token, gatedWorkspaceId);
 
         public void Invalidate(string token) => inner.Invalidate(token);
 
@@ -782,11 +793,11 @@ public sealed class PreviewApplyBoundaryRevalidationTests
         {
             SecurityOptionsSnapshot.Value = new SecurityOptions { SanctionedRoots = [sanctionedRoot] };
             var ttl = TimeSpan.FromMinutes(5);
-            var store = new CompositePreviewStore(20, ttl, new PersistentCompositeStorage(persistDirectory, ttl));
+            var store = new CompositePreviewStore(20, ttl, new PersistentCompositeStorage(persistDirectory, ttl), new CompositeWorkspaceIdentityResolver(_workspace));
             var token = store.Store(
                 WorkspaceId, 1, "claimed elsewhere", [new CompositeFileMutation(insideFile, "// OVERWRITTEN")]);
             File.Delete(Directory.EnumerateFiles(persistDirectory, token + ".json", SearchOption.AllDirectories).Single());
-            var orchestrator = new CompositeApplyOrchestrator(new RecordingWorkspaceManager(), store);
+            var orchestrator = new CompositeApplyOrchestrator(_workspace, store);
 
             await Assert.ThrowsExactlyAsync<PreviewTokenStaleException>(() =>
                 OrchestrationTools.ApplyComposite(new FakeGate(), orchestrator, store, token, CancellationToken.None));
@@ -819,10 +830,10 @@ public sealed class PreviewApplyBoundaryRevalidationTests
         {
             SecurityOptionsSnapshot.Value = new SecurityOptions { SanctionedRoots = [sanctionedRoot] };
             var ttl = TimeSpan.FromMinutes(5);
-            var store = new CompositePreviewStore(20, ttl, new PersistentCompositeStorage(persistDirectory, ttl));
+            var store = new CompositePreviewStore(20, ttl, new PersistentCompositeStorage(persistDirectory, ttl), new CompositeWorkspaceIdentityResolver(_workspace));
             var token = store.Store(
                 WorkspaceId, 1, "in-root composite", [new CompositeFileMutation(insideFile, "// updated")]);
-            var orchestrator = new CompositeApplyOrchestrator(new RecordingWorkspaceManager(), store);
+            var orchestrator = new CompositeApplyOrchestrator(_workspace, store);
 
             var result = await OrchestrationTools.ApplyComposite(
                 new FakeGate(), orchestrator, store, token, CancellationToken.None);

@@ -4,6 +4,7 @@ Architecture decision records (ADRs) for breaking, compatibility, and security d
 
 | File | Purpose | Status |
 |------|---------|--------|
+| [0032-persisted-composite-token-workspace-identity.md](0032-persisted-composite-token-workspace-identity.md) | Bind persisted composite tokens to the loaded solution path so an independent host with that solution loaded can redeem them; format 2, refusals before the claim | Accepted 2026-11-06 |
 | [0031-modelcontextprotocol-2-3-servicing.md](0031-modelcontextprotocol-2-3-servicing.md) | ModelContextProtocol 2.2.0→2.3.0 servicing, stdio-only scope, non-breaking disposition, and ADR 0007 Tasks-pair amendment | Accepted 2026-10-26 |
 | [0030-retained-fork-storage-and-lifetime.md](0030-retained-fork-storage-and-lifetime.md) | Authorized sibling storage, Windows native working-directory preflight and physical ancestor lifetime ownership for retained experimental forks | Accepted 2026-10-24 |
 | [0029-fork-source-session-lifecycle.md](0029-fork-source-session-lifecycle.md) | Retain fork source sessions, refuse busy close and drain owned fork operations before asynchronous provider teardown | Accepted for next major release 2026-10-24 |

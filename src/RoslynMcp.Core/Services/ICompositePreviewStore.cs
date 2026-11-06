@@ -20,9 +20,22 @@ public interface ICompositePreviewStore
     string Store(string workspaceId, int workspaceVersion, string description, IReadOnlyList<CompositeFileMutation> mutations);
 
     /// <summary>
-    /// Retrieves the stored mutation set for the given token, or <see langword="null"/> if the token is expired or not found.
+    /// Retrieves (and, for a persisted store, claims) the stored mutation set for the given token, or
+    /// <see langword="null"/> if the token is expired or not found.
     /// </summary>
-    (string WorkspaceId, int WorkspaceVersion, string Description, IReadOnlyList<CompositeFileMutation> Mutations)? Retrieve(string token);
+    /// <param name="token">The preview token.</param>
+    /// <param name="gatedWorkspaceId">
+    /// The local workspace session the caller took its write gate on, or <see langword="null"/> when
+    /// no gate was taken. A persisted store re-resolves the record's session under its claim lock and,
+    /// when the result differs, refuses with <c>PreviewTokenStaleException</c> BEFORE consuming the
+    /// token, so a session change between the pre-claim peek and the claim cannot burn it.
+    /// </param>
+    /// <returns>
+    /// The entry, whose <c>WorkspaceId</c> is the LOCAL session id even when a persisted record was
+    /// created by another host. A persisted store throws <c>PublicInvalidOperationException</c>, without
+    /// consuming the token, when this host has no (or more than one) matching session.
+    /// </returns>
+    (string WorkspaceId, int WorkspaceVersion, string Description, IReadOnlyList<CompositeFileMutation> Mutations)? Retrieve(string token, string? gatedWorkspaceId);
 
     /// <summary>
     /// Removes the entry for the given token.

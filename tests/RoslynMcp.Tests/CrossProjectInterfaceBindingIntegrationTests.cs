@@ -332,7 +332,7 @@ public sealed class CrossProjectInterfaceBindingIntegrationTests : IsolatedWorks
             _ => throw new ArgumentOutOfRangeException(nameof(route)),
         };
         var pending = route == "extract-and-wire"
-            ? SerializedCompositePreview(before, compositeStore.Retrieve(preview.PreviewToken)!.Value.Mutations)
+            ? SerializedCompositePreview(before, compositeStore.Retrieve(preview.PreviewToken, null)!.Value.Mutations)
             : PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution;
         return await ReparseSerializedDocumentsAsync(pending);
     }

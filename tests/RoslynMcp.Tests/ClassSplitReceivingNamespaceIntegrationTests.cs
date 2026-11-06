@@ -62,7 +62,7 @@ public sealed class ClassSplitReceivingNamespaceIntegrationTests : IsolatedWorks
         Assert.IsFalse(string.IsNullOrWhiteSpace(preview.PreviewToken), previewJson);
         Assert.AreEqual(2, preview.Changes.Count);
         Assert.AreEqual(originalVersion, WorkspaceManager.GetCurrentVersion(workspace.WorkspaceId));
-        var entry = store.Retrieve(preview.PreviewToken)!.Value;
+        var entry = store.Retrieve(preview.PreviewToken, null)!.Value;
         Assert.AreEqual(workspace.WorkspaceId, entry.WorkspaceId);
         Assert.AreEqual(originalVersion, entry.WorkspaceVersion);
         Assert.AreEqual(workspace.WorkspaceId, store.PeekWorkspaceId(preview.PreviewToken));

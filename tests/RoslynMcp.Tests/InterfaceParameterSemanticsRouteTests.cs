@@ -330,7 +330,7 @@ public sealed class InterfaceParameterSemanticsRouteTests : InterfaceRouteTestBa
         var preview = await PreviewRouteAsync(route, workspace.WorkspaceId, sourcePath, stores);
 
         var pending = route == "extract-and-wire"
-            ? SerializedCompositePreview(before, stores.Retrieve(preview.PreviewToken)!.Value.Mutations)
+            ? SerializedCompositePreview(before, stores.Retrieve(preview.PreviewToken, null)!.Value.Mutations)
             : PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution;
         pending = await ReparseSerializedDocumentsAsync(pending);
         await VerifyAsync(pending, receiver, "preview", verify);

@@ -519,11 +519,11 @@ public sealed class CompositeApplyOrchestratorTests
             case "reload-failure":
                 Assert.IsFalse(result.Success);
                 CollectionAssert.AreEqual(new[] { primaryPath }, result.AppliedFiles.ToArray());
-                Assert.IsNotNull(store.Retrieve(token));
+                Assert.IsNotNull(store.Retrieve(token, null));
                 break;
             case "successful-invalidation":
                 Assert.IsTrue(result.Success, result.Error);
-                Assert.IsNull(store.Retrieve(token));
+                Assert.IsNull(store.Retrieve(token, null));
                 break;
         }
 
@@ -595,7 +595,7 @@ public sealed class CompositeApplyOrchestratorTests
 
         // The in-memory-only store preserves its existing retry contract. Persistent stores claim
         // before mutation and therefore fail closed instead of making a partial operation replayable.
-        Assert.IsNotNull(store.Retrieve(token), "The preview token must remain valid after a partial failure.");
+        Assert.IsNotNull(store.Retrieve(token, null), "The preview token must remain valid after a partial failure.");
 
         Assert.HasCount(1, sink.Events);
         Assert.AreEqual("CompositeApply", sink.Events.Single().Category);
@@ -707,20 +707,41 @@ public sealed class CompositeApplyOrchestratorTests
         var target = Path.Combine(_tempDir, "target.cs");
         await File.WriteAllTextAsync(target, "original");
         var ttl = TimeSpan.FromMinutes(5);
+        var workspace = new RecordingWorkspaceManager { AdmittedWorkspaceIds = ["admitted-session"] };
+        // A persisted token is portable: a session this host never admitted is refused by identity
+        // (ADR 0032) before the claim, so the creator is a separate host that owns "ghost-session".
+        var creatorWorkspace = new RecordingWorkspaceManager
+        {
+            AdmittedWorkspaceIds = ["ghost-session"],
+            LoadedPath = "C:\\repo\\Other.slnx",
+        };
+        var persistDirectory = Path.Combine(_tempDir, "persist");
         var store = persistent
-            ? new CompositePreviewStore(20, ttl, new PersistentCompositeStorage(Path.Combine(_tempDir, "persist"), ttl))
+            ? new CompositePreviewStore(20, ttl, new PersistentCompositeStorage(persistDirectory, ttl), new CompositeWorkspaceIdentityResolver(workspace))
             : new CompositePreviewStore();
-        var token = store.Store(
+        var creatorStore = persistent
+            ? new CompositePreviewStore(20, ttl, new PersistentCompositeStorage(persistDirectory, ttl), new CompositeWorkspaceIdentityResolver(creatorWorkspace))
+            : store;
+        var token = creatorStore.Store(
             "ghost-session",
             1,
             "unadmitted session",
             [new CompositeFileMutation(target, "replaced")]);
-        var workspace = new RecordingWorkspaceManager { AdmittedWorkspaceIds = ["admitted-session"] };
         using var undoService = withUndoService ? new UndoService(NullLogger<UndoService>.Instance, workspace) : null;
         var orchestrator = new CompositeApplyOrchestrator(workspace, store, undoService: undoService);
 
-        await Assert.ThrowsExactlyAsync<WorkspaceNotFoundException>(() =>
-            orchestrator.ApplyCompositeAsync(token, CompositeAdmission.AdmitAll, CancellationToken.None));
+        if (persistent)
+        {
+            await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
+                orchestrator.ApplyCompositeAsync(token, CompositeAdmission.AdmitAll, CancellationToken.None));
+            Assert.IsNotEmpty(Directory.EnumerateFiles(persistDirectory, token + ".json", SearchOption.AllDirectories),
+                "A host that cannot resolve the record must leave the one-time payload for a correctly loaded host.");
+        }
+        else
+        {
+            await Assert.ThrowsExactlyAsync<WorkspaceNotFoundException>(() =>
+                orchestrator.ApplyCompositeAsync(token, CompositeAdmission.AdmitAll, CancellationToken.None));
+        }
 
         Assert.AreEqual("original", await File.ReadAllTextAsync(target),
             "A refused apply must not have written any file.");
@@ -750,12 +771,12 @@ public sealed class CompositeApplyOrchestratorTests
 
         await Assert.ThrowsExactlyAsync<ArgumentException>(() => orchestrator.ApplyCompositeAsync(
             token,
-            (workspaceId, writeSet, _) =>
+            new CompositeRedemptionAdmission(null, (workspaceId, writeSet, _) =>
             {
                 admittedWorkspaceId = workspaceId;
                 admittedWriteSet = writeSet;
                 throw new ArgumentException("refused by the host boundary");
-            },
+            }),
             CancellationToken.None));
 
         Assert.AreEqual("ws-1", admittedWorkspaceId);
