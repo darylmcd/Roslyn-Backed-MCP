@@ -1126,6 +1126,80 @@ public sealed class CompositeApplyOrchestratorTests
         Assert.IsFalse(message.Contains(_tempDir, StringComparison.OrdinalIgnoreCase), "Only the file name may be echoed.");
     }
 
+    [TestMethod]
+    [DataRow(false, DisplayName = "memory store")]
+    [DataRow(true, DisplayName = "persistent store")]
+    public async Task ApplyComposite_TargetBecomesUnreadable_RefusesAsDriftAndKeepsTheToken(bool persistent)
+    {
+        var target = Path.Combine(_tempDir, "Unreadable.cs");
+        await File.WriteAllTextAsync(target, "original");
+        var (workspace, store, persistDirectory) = CreateDriftStore(persistent);
+        var token = store.Store("ws-1", 1, "unreadable", [new CompositeFileMutation(target, "// preview")]);
+        var orchestrator = new CompositeApplyOrchestrator(workspace, store);
+        File.Delete(target);
+        Directory.CreateDirectory(target);
+
+        await Assert.ThrowsAsync<PreviewSourceChangedException>(() =>
+            orchestrator.ApplyCompositeAsync(token, CompositeAdmission.AdmitAll, CancellationToken.None));
+        if (persistent)
+        {
+            Assert.IsNotEmpty(Directory.EnumerateFiles(persistDirectory!, token + ".json", SearchOption.AllDirectories),
+                "An unreadable target is a refusal, not a claim.");
+        }
+
+        Directory.Delete(target);
+        await File.WriteAllTextAsync(target, "original");
+        var result = await orchestrator.ApplyCompositeAsync(token, CompositeAdmission.AdmitAll, CancellationToken.None);
+        Assert.IsTrue(result.Success, result.Error);
+    }
+
+    [TestMethod]
+    [DataRow(false, DisplayName = "memory store")]
+    [DataRow(true, DisplayName = "persistent store")]
+    public void Store_UnreadableTarget_FailsWithoutLeavingAToken(bool persistent)
+    {
+        var target = Path.Combine(_tempDir, "Unreadable.cs");
+        Directory.CreateDirectory(target);
+        var (_, store, persistDirectory) = CreateDriftStore(persistent);
+
+        Assert.ThrowsExactly<PublicInvalidOperationException>(() =>
+            store.Store("ws-1", 1, "unreadable", [new CompositeFileMutation(target, "// preview")]));
+
+        if (persistent)
+        {
+            Assert.IsEmpty(Directory.EnumerateFiles(persistDirectory!, "*.json", SearchOption.AllDirectories));
+        }
+    }
+
+    /// <summary>
+    /// The reason the already-in-the-new-state exemption exists: a memory token survives a partial
+    /// apply, and the retry must not mistake the files the first attempt wrote for someone else's edits.
+    /// </summary>
+    [TestMethod]
+    public async Task ApplyComposite_RetryAfterPartialApply_IsNotRefusedAsDrift()
+    {
+        var blocker = Path.Combine(_tempDir, "blocker");
+        await File.WriteAllTextAsync(blocker, "i am a file, not a directory");
+        var first = Path.Combine(_tempDir, "first.cs");
+        await File.WriteAllTextAsync(first, "// original");
+        var second = Path.Combine(blocker, "second.cs");
+        var store = new CompositePreviewStore();
+        var token = store.Store(
+            "ws-1", 1, "partial then retry",
+            [new CompositeFileMutation(first, "// first"), new CompositeFileMutation(second, "// second")]);
+        var orchestrator = new CompositeApplyOrchestrator(new RecordingWorkspaceManager(), store);
+
+        var partial = await orchestrator.ApplyCompositeAsync(token, CompositeAdmission.AdmitAll, CancellationToken.None);
+        Assert.IsFalse(partial.Success);
+        Assert.AreEqual("// first", await File.ReadAllTextAsync(first), "Premise: the first attempt wrote the first file.");
+
+        File.Delete(blocker);
+        var retry = await orchestrator.ApplyCompositeAsync(token, CompositeAdmission.AdmitAll, CancellationToken.None);
+
+        Assert.IsTrue(retry.Success, retry.Error);
+        Assert.AreEqual("// second", await File.ReadAllTextAsync(second));
+    }
+
     private (RecordingWorkspaceManager Workspace, CompositePreviewStore Store, string? PersistDirectory) CreateDriftStore(bool persistent)
     {
         var workspace = new RecordingWorkspaceManager { AdmittedWorkspaceIds = ["ws-1"] };

@@ -90,4 +90,66 @@ public sealed class CompositeSourceFingerprintTests
         File.WriteAllText(written, "after plus a hand edit");
         Assert.AreEqual("written.cs", CompositeSourceFingerprint.FindDrift(fingerprints, mutations));
     }
+
+    /// <summary>A directory where the file should be cannot be opened for reading: an unreadable target.</summary>
+    [TestMethod]
+    public void Capture_UnreadableTarget_FailsWithAnAuthoredMessageNamingOnlyTheFile()
+    {
+        var unreadable = Path.Combine(_dir, "Unreadable.cs");
+        Directory.CreateDirectory(unreadable);
+
+        var failure = Assert.ThrowsExactly<PublicInvalidOperationException>(() =>
+            CompositeSourceFingerprint.Capture([new CompositeFileMutation(unreadable, "x")]));
+
+        StringAssert.Contains(failure.PublicMessage, "Unreadable.cs");
+        Assert.IsFalse(failure.PublicMessage.Contains(_dir, StringComparison.OrdinalIgnoreCase), "No absolute path in a public message.");
+    }
+
+    [TestMethod]
+    public void FindDrift_TargetBecameUnreadable_IsDrift()
+    {
+        var path = Path.Combine(_dir, "Flipped.cs");
+        File.WriteAllText(path, "before");
+        var mutations = new[] { new CompositeFileMutation(path, "after") };
+        var fingerprints = CompositeSourceFingerprint.Capture(mutations);
+        File.Delete(path);
+        Directory.CreateDirectory(path);
+
+        Assert.AreEqual("Flipped.cs", CompositeSourceFingerprint.FindDrift(fingerprints, mutations));
+    }
+
+    [TestMethod]
+    public void FindDrift_CreatedTargetAlreadyHoldingTheNewText_IsIdempotentNotDrift()
+    {
+        var path = Path.Combine(_dir, "Created.cs");
+        var mutations = new[] { new CompositeFileMutation(path, "class C { }\n") };
+        var fingerprints = CompositeSourceFingerprint.Capture(mutations);
+
+        File.WriteAllText(path, "class C { }\n", new UTF8Encoding(true));
+
+        Assert.IsNull(CompositeSourceFingerprint.FindDrift(fingerprints, mutations));
+    }
+
+    [TestMethod]
+    public void FindDrift_DeleteTargetRecreatedAfterPreview_IsDrift()
+    {
+        var existed = Path.Combine(_dir, "Existed.cs");
+        var absent = Path.Combine(_dir, "Absent.cs");
+        File.WriteAllText(existed, "before");
+        var mutations = new[]
+        {
+            new CompositeFileMutation(existed, null, DeleteFile: true),
+            new CompositeFileMutation(absent, null, DeleteFile: true),
+        };
+        var fingerprints = CompositeSourceFingerprint.Capture(mutations);
+
+        File.Delete(existed);
+        File.WriteAllText(existed, "recreated with other content");
+        Assert.AreEqual("Existed.cs", CompositeSourceFingerprint.FindDrift(fingerprints, mutations));
+
+        File.Delete(existed);
+        File.WriteAllText(absent, "appeared after the preview");
+        Assert.AreEqual("Absent.cs", CompositeSourceFingerprint.FindDrift(fingerprints, mutations),
+            "A delete target absent at preview that now exists is someone else's file.");
+    }
 }

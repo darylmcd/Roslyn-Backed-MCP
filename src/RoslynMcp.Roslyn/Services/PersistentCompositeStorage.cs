@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -400,6 +401,15 @@ public sealed class PersistentCompositeStorage
                     return ParseOutcome.Unreadable;
                 }
 
+                // The redeeming host reads, hashes and reports on every fingerprint path, so a path that
+                // no mutation writes (an arbitrary file chosen by whoever can write this directory) is
+                // refused: fingerprints are a subset of the write set.
+                var writeSet = new HashSet<string>(FileSystemPath.Comparer);
+                foreach (var mutation in mutations)
+                {
+                    writeSet.Add(Path.GetFullPath(mutation.FilePath));
+                }
+
                 fingerprints = new List<CompositeSourceFingerprint>(dto.SourceFingerprints.Count);
                 foreach (var fingerprint in dto.SourceFingerprints)
                 {
@@ -408,6 +418,12 @@ public sealed class PersistentCompositeStorage
                         || (fingerprint.Exists && string.IsNullOrWhiteSpace(fingerprint.Sha256)))
                     {
                         _logger?.LogDebug("PersistentCompositeStorage: dropping persisted entry with a malformed source fingerprint.");
+                        return ParseOutcome.Unreadable;
+                    }
+
+                    if (!writeSet.Contains(Path.GetFullPath(fingerprint.FilePath)))
+                    {
+                        _logger?.LogDebug("PersistentCompositeStorage: dropping persisted entry with a source fingerprint outside its write set.");
                         return ParseOutcome.Unreadable;
                     }
 

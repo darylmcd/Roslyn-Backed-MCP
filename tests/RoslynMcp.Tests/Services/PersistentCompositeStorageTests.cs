@@ -135,13 +135,40 @@ public sealed class PersistentCompositeStorageTests
         var absent = new CompositeSourceFingerprint(@"C:\proj\Created.cs", false, null);
         store.Write(
             token,
-            new CompositePreviewStore.Entry("ws-fp", 1, "fingerprints", [], DateTime.UtcNow, Identity, [existing, absent]));
+            new CompositePreviewStore.Entry(
+                "ws-fp", 1, "fingerprints",
+                [new CompositeFileMutation(existing.FilePath, "// a"), new CompositeFileMutation(absent.FilePath, "// b")],
+                DateTime.UtcNow, Identity, [existing, absent]));
 
         var peeked = store.TryPeek(token);
         var claimed = store.TryClaim(token, Admit);
 
         CollectionAssert.AreEqual(new[] { existing, absent }, peeked!.SourceFingerprints!.ToArray());
         CollectionAssert.AreEqual(new[] { existing, absent }, claimed!.SourceFingerprints!.ToArray());
+    }
+
+    /// <summary>
+    /// The shared directory is untrusted: a fingerprint for a path no mutation writes would make the
+    /// redeeming host read (and hash, and report on) an arbitrary file, so such a record is unreadable.
+    /// </summary>
+    [TestMethod]
+    public void Format3_FingerprintForAPathNoMutationWrites_IsUnreadable_ForPeekAndClaim()
+    {
+        var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
+        var token = Guid.NewGuid().ToString("N");
+        store.Write(
+            token,
+            new CompositePreviewStore.Entry(
+                "ws-tamper", 1, "tamper",
+                [new CompositeFileMutation(@"C:\proj\Written.cs", "// a")],
+                DateTime.UtcNow, Identity,
+                [new CompositeSourceFingerprint(@"C:\proj\Written.cs", false, null),
+                 new CompositeSourceFingerprint(@"C:\secrets\Other.txt", false, null)]));
+        var admitted = false;
+
+        Assert.IsNull(store.TryPeek(token));
+        Assert.IsNull(store.TryClaim(token, entry => { admitted = true; return entry.WorkspaceId; }));
+        Assert.IsFalse(admitted, "A tampered record must never reach session matching.");
     }
 
     [TestMethod]

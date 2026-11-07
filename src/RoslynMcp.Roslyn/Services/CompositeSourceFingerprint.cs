@@ -36,7 +36,17 @@ public sealed record CompositeSourceFingerprint(string FilePath, bool Exists, st
             var path = Path.GetFullPath(mutation.FilePath);
             if (seen.Add(path))
             {
-                fingerprints.Add(Of(path, ReadBytesOrNull(path)));
+                // A target that exists but cannot be read cannot be fingerprinted, so the preview cannot
+                // promise to detect its drift: refuse it now, with a message that names the file only.
+                if (!TryRead(path, out var bytes))
+                {
+                    throw new PublicInvalidOperationException(
+                        $"The composite preview could not be stored: '{Path.GetFileName(path)}' exists but cannot be read " +
+                        "(it is not a file, or access is denied), so a later change to it could not be detected. " +
+                        "Fix its permissions or remove the conflicting entry, then re-issue the preview.");
+                }
+
+                fingerprints.Add(Of(path, bytes));
             }
         }
 
@@ -56,7 +66,13 @@ public sealed record CompositeSourceFingerprint(string FilePath, bool Exists, st
     {
         foreach (var fingerprint in fingerprints)
         {
-            var current = ReadBytesOrNull(fingerprint.FilePath);
+            // A target that can no longer be read is a change nobody can vouch for: drift, refused with
+            // the token and payload untouched (this runs under the claim lock, so nothing may escape raw).
+            if (!TryRead(fingerprint.FilePath, out var current))
+            {
+                return Path.GetFileName(fingerprint.FilePath);
+            }
+
             if (Of(fingerprint.FilePath, current) == fingerprint || IsAlreadyApplied(fingerprint.FilePath, current, mutations))
             {
                 continue;
@@ -102,7 +118,12 @@ public sealed record CompositeSourceFingerprint(string FilePath, bool Exists, st
         return reader.ReadToEnd();
     }
 
-    private static byte[]? ReadBytesOrNull(string path)
+    /// <summary>
+    /// Reads the file. <paramref name="bytes"/> is <see langword="null"/> when it does not exist (a
+    /// readable answer). Returns <see langword="false"/> when it exists but cannot be read: a
+    /// directory in its place, access denied, or a sharing violation.
+    /// </summary>
+    private static bool TryRead(string path, out byte[]? bytes)
     {
         try
         {
@@ -110,11 +131,18 @@ public sealed record CompositeSourceFingerprint(string FilePath, bool Exists, st
             using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
             using var buffer = new MemoryStream();
             stream.CopyTo(buffer);
-            return buffer.ToArray();
+            bytes = buffer.ToArray();
+            return true;
         }
         catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
         {
-            return null;
+            bytes = null;
+            return true;
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+        {
+            bytes = null;
+            return false;
         }
     }
 }
