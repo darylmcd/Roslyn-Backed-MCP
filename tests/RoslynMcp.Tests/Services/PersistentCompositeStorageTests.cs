@@ -201,6 +201,37 @@ public sealed class PersistentCompositeStorageTests
         Assert.IsNull(store.TryClaim(token, Admit));
     }
 
+    /// <summary>
+    /// <c>Path.GetFullPath</c> throws <see cref="PathTooLongException"/> (an <see cref="IOException"/>) for an
+    /// overlong path. The record is untrusted input, so that is an unreadable record, never an exception.
+    /// </summary>
+    [TestMethod]
+    [DataRow("identity", DisplayName = "overlong workspace identity")]
+    [DataRow("fingerprint", DisplayName = "overlong fingerprint path")]
+    [DataRow("mutation", DisplayName = "overlong mutation path with a fingerprint")]
+    public void Format3_OverlongPath_IsUnreadable_ForPeekAndClaim(string where)
+    {
+        var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
+        var overlong = @"C:\" + new string('a', 40_000);
+        var identity = where == "identity" ? overlong : Identity;
+        var mutationPath = where == "mutation" ? overlong : @"C:\x.cs";
+        var fingerprintPath = where == "fingerprint" ? overlong : mutationPath;
+        var token = WriteRaw(
+            System.Text.Json.JsonSerializer.Serialize(new
+            {
+                FormatVersion = 3,
+                WorkspaceId = "ws",
+                WorkspaceIdentity = identity,
+                Mutations = new[] { new { FilePath = mutationPath } },
+                SourceFingerprints = new[] { new { FilePath = fingerprintPath, Exists = false } },
+            }));
+        var admitted = false;
+
+        Assert.IsNull(store.TryPeek(token));
+        Assert.IsNull(store.TryClaim(token, entry => { admitted = true; return entry.WorkspaceId; }));
+        Assert.IsFalse(admitted);
+    }
+
     [TestMethod]
     public void TryClaim_FormatOneRecord_ReadsWithNullIdentity()
     {

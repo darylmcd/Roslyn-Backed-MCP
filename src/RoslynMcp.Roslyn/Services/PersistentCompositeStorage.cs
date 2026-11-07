@@ -444,7 +444,9 @@ public sealed class PersistentCompositeStorage
                 fingerprints);
             return ParseOutcome.Parsed;
         }
-        catch (Exception ex) when (ex is JsonException or NotSupportedException or ArgumentException)
+        // IOException: Path.GetFullPath on an untrusted overlong path throws PathTooLongException.
+        // Nothing else in this body performs I/O, so the record is simply unreadable.
+        catch (Exception ex) when (ex is JsonException or NotSupportedException or ArgumentException or IOException)
         {
             _logger?.LogDebug(ex, "PersistentCompositeStorage: dropping unreadable persisted entry.");
             return ParseOutcome.Unreadable;
