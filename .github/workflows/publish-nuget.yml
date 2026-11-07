@@ -18,6 +18,11 @@ on:
         required: false
         default: false
         type: boolean
+      publish_registry:
+        description: 'Also publish server.json to the MCP Registry (ignored on a dry run). Version comes from Directory.Build.props.'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   publish:
@@ -144,15 +149,16 @@ jobs:
   # Publishes .claude-plugin/server.json to the official MCP Registry
   # (registry.modelcontextprotocol.io) after the NuGet package is live. Uses
   # GitHub OIDC to prove ownership of the io.github.darylmcd/* namespace — no PAT
-  # or secret required. Runs only on a real tag/release publish, never on a
-  # workflow_dispatch dry run. See https://modelcontextprotocol.io/registry/github-actions
+  # or secret required. Runs on a real tag/release publish, or on a workflow_dispatch
+  # with publish_registry set and dry_run unset (the recovery path when a tag-triggered
+  # run could not publish). See https://modelcontextprotocol.io/registry/github-actions
   publish-registry:
     needs: publish
     runs-on: ubuntu-latest
     # The NuGet-README poll alone can legitimately take 20 min (80 × 15s); 30 gives
     # headroom without leaving the 6-hour default in place.
     timeout-minutes: 30
-    if: ${{ github.event_name == 'push' || github.event_name == 'release' }}
+    if: ${{ github.event_name == 'push' || github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.publish_registry && !inputs.dry_run) }}
     permissions:
       id-token: write   # required for `mcp-publisher login github-oidc`
       contents: read
@@ -174,6 +180,10 @@ jobs:
         run: |
           if [ "$PUBLISH_EVENT_NAME" = "release" ]; then
             v="$PUBLISH_RELEASE_TAG"
+          elif [ "$PUBLISH_EVENT_NAME" = "workflow_dispatch" ]; then
+            # No tag on a manual dispatch: the canonical version is Directory.Build.props
+            # <Version> (the publish job built and pushed exactly that version).
+            v="$(sed -n 's:.*<Version>\([^<]*\)</Version>.*:\1:p' Directory.Build.props | head -n 1)"
           else
             v="${GITHUB_REF_NAME}"
           fi
