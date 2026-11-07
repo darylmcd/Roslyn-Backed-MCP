@@ -173,7 +173,7 @@ public sealed class TypeExtractionService : ITypeExtractionService
         // new type's name (the consumer rewriter's static branch), so the source needs no instance of it.
         var sourceWithoutExtracted = rewrittenTypeDecl.WithMembers(SyntaxFactory.List(rewrittenMembersToKeep));
         var updatedTypeDecl = instanceSymbols.Count > 0
-            ?InjectFieldAndCtorParameter(
+            ? InjectFieldAndCtorParameter(
                 sourceWithoutExtracted, typeDecl, semanticModel, newTypeName, fieldName, sourceTypeName, ct)
             : sourceWithoutExtracted;
 
