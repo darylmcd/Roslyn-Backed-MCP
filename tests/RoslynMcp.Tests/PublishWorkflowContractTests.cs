@@ -36,6 +36,43 @@ public sealed class PublishWorkflowContractTests
         }
     }
 
+    [TestMethod]
+    public void PublishWorkflow_RegistryJobRunsOnTagReleaseOrOptedInDispatch()
+    {
+        var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
+        var workflow = File.ReadAllText(Path.Combine(repositoryRoot, ".github", "workflows", "publish-nuget.yml"))
+            .Replace("\r\n", "\n", StringComparison.Ordinal);
+
+        StringAssert.Contains(workflow, "      publish_registry:\n");
+        StringAssert.Contains(workflow, "default: false\n        type: boolean\n\njobs:");
+
+        var jobStart = workflow.IndexOf("  publish-registry:\n", StringComparison.Ordinal);
+        Assert.IsTrue(jobStart >= 0, "publish-registry job was not found.");
+        var condition = workflow[jobStart..]
+            .Split('\n')
+            .Select(line => line.Trim())
+            .First(line => line.StartsWith("if: ", StringComparison.Ordinal))[4..];
+        Assert.AreEqual(
+            "${{ github.event_name == 'push' || github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.publish_registry && !inputs.dry_run) }}",
+            condition);
+
+        foreach (var (eventName, dryRun, publishRegistry, expected) in new[]
+        {
+            ("push", false, false, true),
+            ("release", false, false, true),
+            ("workflow_dispatch", false, false, false),
+            ("workflow_dispatch", false, true, true),
+            ("workflow_dispatch", true, true, false),
+        })
+        {
+            var runs = eventName is "push" or "release"
+                || (eventName == "workflow_dispatch" && publishRegistry && !dryRun);
+            Assert.AreEqual(expected, runs, $"{eventName} dry_run={dryRun} publish_registry={publishRegistry}");
+        }
+
+        StringAssert.Contains(workflow, "elif [ \"$PUBLISH_EVENT_NAME\" = \"workflow_dispatch\" ]; then");
+    }
+
     private static string GetStepCondition(string workflow, string stepName)
     {
         var stepMarker = $"      - name: {stepName}\n";
