@@ -1297,7 +1297,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
             {
                 "namespace SampleLib;",
                 "",
-                "public record PrimaryCtorFixture(int Seed)",
+                "public class PrimaryCtorFixture(int Seed)",
                 "{",
                 "    public int InternalUser() => Compute(42);",
                 "    private int Compute(int x) => x * 2;",
@@ -1323,6 +1323,104 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally
         {
             WorkspaceManager.Close(wsId);
+        }
+    }
+
+    [TestMethod]
+    [DataRow("public record RecInst { public int A { get; init; } public int Twice() => 2; }", "RecInst", "record", "Twice")]
+    [DataRow("public record struct RecStructInst { public int A { get; set; } public int Twice() => 2; }", "RecStructInst", "record struct", "Twice")]
+    [DataRow("public struct StructInst { public int A; public int Twice(int x) => x * 2; }", "StructInst", "struct", "Twice")]
+    [DataRow("public record RecPrimary(int Seed) { public int Twice() => 2; }", "RecPrimary", "record", "Twice")]
+    public async Task ExtractType_InstanceMoveFromRecordOrStruct_RefusesBeforeToken(
+        string declaration, string typeName, string kindWord, string memberName)
+    {
+        var original = "namespace SampleLib;\n\n" + declaration + "\n";
+        var fixture = await CreateExtractionFixtureAsync(typeName + ".cs", original);
+        try
+        {
+            var ex = await Assert.ThrowsExactlyAsync<ExtractTypeBlockingDependencyException>(() =>
+                TypeExtractionService.PreviewExtractTypeAsync(
+                    fixture.WorkspaceId, fixture.FilePath, typeName, [memberName], "ExtractedHelper", null,
+                    CancellationToken.None));
+
+            StringAssert.Contains(ex.Message, "Refusing to extract type");
+            StringAssert.Contains(ex.Message, kindWord);
+            StringAssert.Contains(ex.Message, "static members only",
+                "the refusal must name the remedy: move static members only");
+            Assert.AreEqual(1, ex.BlockingDependencies.Count);
+            Assert.AreEqual(memberName, ex.BlockingDependencies[0].Member);
+            Assert.AreEqual(original, await File.ReadAllTextAsync(fixture.FilePath),
+                "a refused preview must leave the source file untouched");
+        }
+        finally
+        {
+            WorkspaceManager.Close(fixture.WorkspaceId);
+        }
+    }
+
+    [TestMethod]
+    [DataRow("public record RecMixed { public int A { get; init; } public static int Seed() => 7; public int Twice() => 2; }", "RecMixed", "record")]
+    [DataRow("public struct StructMixed { public int A; public static int Seed() => 7; public int Twice() => 2; }", "StructMixed", "struct")]
+    public async Task ExtractType_MixedStaticAndInstanceMoveFromRecordOrStruct_RefusesNamingOnlyInstanceMember(
+        string declaration, string typeName, string kindWord)
+    {
+        var fixture = await CreateExtractionFixtureAsync(typeName + ".cs", "namespace SampleLib;\n\n" + declaration + "\n");
+        try
+        {
+            var ex = await Assert.ThrowsExactlyAsync<ExtractTypeBlockingDependencyException>(() =>
+                TypeExtractionService.PreviewExtractTypeAsync(
+                    fixture.WorkspaceId, fixture.FilePath, typeName, ["Seed", "Twice"], "ExtractedHelper", null,
+                    CancellationToken.None));
+
+            StringAssert.Contains(ex.Message, kindWord);
+            Assert.AreEqual(1, ex.BlockingDependencies.Count, "only the instance member blocks the move");
+            Assert.AreEqual("Twice", ex.BlockingDependencies[0].Member);
+        }
+        finally
+        {
+            WorkspaceManager.Close(fixture.WorkspaceId);
+        }
+    }
+
+    [TestMethod]
+    [DataRow("RecStatic", "public record RecStatic { public int A { get; init; } public static int Seed() => 7; public int Use() => Seed(); }")]
+    [DataRow("RecStructStatic", "public record struct RecStructStatic { public int A { get; set; } public static int Seed() => 7; public int Use() => Seed(); }")]
+    [DataRow("StructStatic", "public struct StructStatic { public int A; public static int Seed() => 7; public int Use() => Seed(); }")]
+    public async Task ExtractType_StaticOnlyMoveFromRecordOrStruct_InjectsNoField(string typeName, string declaration)
+    {
+        var (source, newType) = await PreviewExtractionAndAssertCompilesAsync(
+            typeName + ".cs", "namespace SampleLib;\n\n" + declaration + "\n", typeName, ["Seed"]);
+
+        StringAssert.Contains(source, "ExtractedHelper.Seed()");
+        Assert.IsFalse(source.Contains("readonly", StringComparison.Ordinal), $"no composition field may be injected:\n{source}");
+        Assert.IsFalse(source.Contains("_extractedHelper", StringComparison.Ordinal), $"no composition field may be injected:\n{source}");
+        StringAssert.Contains(newType, "static int Seed()");
+    }
+
+    [TestMethod]
+    [DataRow("RecNested", "public record RecNested { public int A { get; init; } public class Inner { public int Twice() => 2; } }")]
+    [DataRow("StructNested", "public struct StructNested { public int A; public class Inner { public int Twice() => 2; } }")]
+    public async Task ExtractType_NestedTypeSelectionFromRecordOrStruct_IsNotSelectableAndNotCountedAsInstanceMember(
+        string typeName, string declaration)
+    {
+        // Nested types are never extractable members (PartitionMembers only selects fields, methods,
+        // properties and events), so the instance-helper refusal can never fire on one: the request
+        // fails as an unmatched member name instead of being mis-refused as an instance move.
+        var fixture = await CreateExtractionFixtureAsync(
+            typeName + ".cs", "namespace SampleLib;\n\n" + declaration + "\n");
+        try
+        {
+            var ex = await Assert.ThrowsExactlyAsync<ExtractTypeBlockingDependencyException>(() =>
+                TypeExtractionService.PreviewExtractTypeAsync(
+                    fixture.WorkspaceId, fixture.FilePath, typeName, ["Inner"], "ExtractedHelper", null,
+                    CancellationToken.None));
+
+            StringAssert.Contains(ex.Message, "Members not found");
+            Assert.AreEqual("Inner", ex.BlockingDependencies.Single().Member);
+        }
+        finally
+        {
+            WorkspaceManager.Close(fixture.WorkspaceId);
         }
     }
 

@@ -58,6 +58,31 @@ public sealed class TypeExtractionService : ITypeExtractionService
 
         var (membersToExtract, _, analysisNodes) = PartitionMembers(typeDecl, memberNames, sourceTypeName);
 
+        // extract-type-value-type-and-record-composition: an instance move injects a private readonly
+        // composition field. In a record that field enters the compiler-synthesized equality, GetHashCode
+        // and `with` copies; in a struct, default(T) leaves it null. Both are proven semantic loss, so
+        // refuse before any token. Static-only moves inject nothing and stay allowed.
+        var extractedSymbols = ExtractedDeclaredSymbols(analysisNodes, semanticModel, ct);
+        var instanceSymbols = extractedSymbols.Where(symbol => !symbol.IsStatic).ToList();
+        if (instanceSymbols.Count > 0 && (typeSymbol.IsRecord || typeSymbol.IsValueType))
+        {
+            var kind = typeSymbol.IsRecord
+                ? (typeSymbol.IsValueType ? "record struct" : "record")
+                : "struct";
+            var reason = kind == "struct"
+                ? "an instance member needs an injected composition field, and `default(" + sourceTypeName +
+                  ")` would leave that field null"
+                : "an instance member needs an injected composition field, and the compiler-synthesized equality, " +
+                  "GetHashCode and `with` copies of the " + kind + " would include it";
+            throw new ExtractTypeBlockingDependencyException(
+                $"Refusing to extract type '{newTypeName}' from '{sourceTypeName}': the source is a {kind} and " +
+                $"extracting instance members would change its semantics ({reason}). " +
+                "Extract static members only, or restructure the type first.",
+                instanceSymbols
+                    .Select(symbol => new BlockingDependencyDto(symbol.Name, reason))
+                    .ToList());
+        }
+
         var blockingDependencies = CollectExtractTypeBlockingDependencies(semanticModel, typeSymbol, analysisNodes, ct);
         blockingDependencies.AddRange(await CollectMemberContractBlockersAsync(
             solution, semanticModel, typeSymbol, analysisNodes, ct).ConfigureAwait(false));
@@ -147,8 +172,8 @@ public sealed class TypeExtractionService : ITypeExtractionService
         // are injected only when an instance member moves: an all-static move is reached through the
         // new type's name (the consumer rewriter's static branch), so the source needs no instance of it.
         var sourceWithoutExtracted = rewrittenTypeDecl.WithMembers(SyntaxFactory.List(rewrittenMembersToKeep));
-        var updatedTypeDecl = MovesInstanceMember(ExtractedDeclaredSymbols(analysisNodes, semanticModel, ct))
-            ? InjectFieldAndCtorParameter(
+        var updatedTypeDecl = instanceSymbols.Count > 0
+            ?InjectFieldAndCtorParameter(
                 sourceWithoutExtracted, typeDecl, semanticModel, newTypeName, fieldName, sourceTypeName, ct)
             : sourceWithoutExtracted;
 
@@ -199,9 +224,6 @@ public sealed class TypeExtractionService : ITypeExtractionService
 
         return symbols;
     }
-
-    private static bool MovesInstanceMember(IEnumerable<ISymbol> extractedSymbols)
-        => extractedSymbols.Any(symbol => !symbol.IsStatic);
 
     private static List<BlockingDependencyDto> CollectBaseConstructorDispatchBlockers(
         SemanticModel semanticModel, INamedTypeSymbol typeSymbol, TypeDeclarationSyntax typeDecl,
