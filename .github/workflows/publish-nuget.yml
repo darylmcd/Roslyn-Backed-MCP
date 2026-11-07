@@ -1,7 +1,10 @@
 name: publish-nuget
 
 # Triggered on version tag push, GitHub Release creation, or manual dispatch.
-# Requires the NUGET_API_KEY repository secret (Push scope, from nuget.org/account/apikeys).
+# Authenticates to nuget.org with GitHub OIDC trusted publishing (NuGet/login exchanges the job's
+# OIDC token for a short-lived API key). Requires a nuget.org trusted-publishing policy for this
+# repo + workflow file (publish-nuget.yml, no environment) covering the Darylmcd.RoslynMcp package.
+# No long-lived API-key secret exists.
 on:
   push:
     tags:
@@ -26,6 +29,7 @@ jobs:
     timeout-minutes: 90
     permissions:
       contents: read
+      id-token: write   # required for NuGet/login trusted publishing (OIDC token exchange)
 
     steps:
       - name: Check out repository
@@ -51,7 +55,7 @@ jobs:
         # interpolated into the run: body. github.event.release.tag_name is
         # attacker-controlled (anyone who can cut a release names the tag); substituted
         # into the command text it would close the quote and execute arbitrary code in a
-        # job that holds NUGET_API_KEY.
+        # job that can mint a NuGet push key (id-token: write).
         env:
           PUBLISH_EVENT_NAME: ${{ github.event_name }}
           PUBLISH_REF_NAME: ${{ github.ref_name }}
@@ -105,14 +109,21 @@ jobs:
             $zip.Dispose()
           }
 
+      - name: Log in to NuGet (trusted publishing)
+        id: nuget-login
+        if: ${{ github.event_name == 'release' || github.event_name == 'push' || !inputs.dry_run }}
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
+        with:
+          user: darylmcd
+
       - name: Push to NuGet
         if: ${{ github.event_name == 'release' || github.event_name == 'push' || !inputs.dry_run }}
         shell: pwsh
         env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+          NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
         run: |
           if ([string]::IsNullOrWhiteSpace($env:NUGET_API_KEY)) {
-            throw "NUGET_API_KEY secret is not set. Add it in Settings > Secrets and variables > Actions."
+            throw "NuGet trusted-publishing login returned no API key. Check the nuget.org trusted-publishing policy (owner/repo/workflow file) for Darylmcd.RoslynMcp."
           }
           $nupkg = Get-ChildItem -Path nupkg -Filter "*.nupkg" | Select-Object -First 1
           dotnet nuget push $nupkg.FullName `
