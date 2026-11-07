@@ -34,7 +34,11 @@ public sealed class CompositePreviewStore : BoundedStore<CompositePreviewStore.E
         // Resolve the portable identity before anything is stored: a session that cannot be
         // identified must not leave a half-persisted token behind.
         var identity = _identityResolver?.IdentityOf(workspaceId);
-        var entry = new Entry(workspaceId, workspaceVersion, description, mutations, DateTime.UtcNow, identity);
+        // ADR 0033: fingerprint the targets as they are NOW, so a redemption can tell a file edited in
+        // between from one it is about to write. Captured before StoreEntry for the same reason as the
+        // identity: a preview whose targets cannot be read must not leave a token behind.
+        var fingerprints = CompositeSourceFingerprint.Capture(mutations);
+        var entry = new Entry(workspaceId, workspaceVersion, description, mutations, DateTime.UtcNow, identity, fingerprints);
         var token = StoreEntry(entry);
         // Write-through to disk so a separate process can redeem this token immediately.
         _diskBackend?.Write(token, entry);
@@ -46,7 +50,10 @@ public sealed class CompositePreviewStore : BoundedStore<CompositePreviewStore.E
     /// With a disk backend the record is claimed only after the redeeming host's session has been
     /// resolved and, when <paramref name="gatedWorkspaceId"/> is given, found to still be the session
     /// the caller took its write gate on. Either refusal happens before the payload is moved, so the
-    /// one-time token survives. The returned workspace id is the LOCAL session id.
+    /// one-time token survives. The returned workspace id is the LOCAL session id. A target file that
+    /// changed on disk since <see cref="Store"/> (ADR 0033) is refused with
+    /// <see cref="PreviewSourceChangedException"/> the same way: before the payload is moved on the
+    /// persisted path, and before the entry is returned on the in-memory path.
     /// </remarks>
     public (string WorkspaceId, int WorkspaceVersion, string Description, IReadOnlyList<CompositeFileMutation> Mutations)? Retrieve(
         string token,
@@ -65,7 +72,13 @@ public sealed class CompositePreviewStore : BoundedStore<CompositePreviewStore.E
         }
         else
         {
+            // RetrieveEntry does not consume: the orchestrator invalidates after a successful apply, so
+            // a drift refusal here leaves the token redeemable once the file matches the preview again.
             entry = RetrieveEntry(token);
+            if (entry is not null)
+            {
+                ThrowIfSourceChanged(token, entry);
+            }
         }
 
         if (entry is null) return null;
@@ -84,7 +97,25 @@ public sealed class CompositePreviewStore : BoundedStore<CompositePreviewStore.E
                 $"Preview token '{token}' was not consumed: the workspace sessions on this host changed between validation and redemption. Retry apply_composite.");
         }
 
+        ThrowIfSourceChanged(token, record);
         return local;
+    }
+
+    /// <summary>
+    /// A record without fingerprints (format 1 or 2, written before ADR 0033) is redeemed unchecked.
+    /// </summary>
+    private static void ThrowIfSourceChanged(string token, Entry entry)
+    {
+        if (entry.SourceFingerprints is null)
+        {
+            return;
+        }
+
+        var changed = CompositeSourceFingerprint.FindDrift(entry.SourceFingerprints, entry.Mutations);
+        if (changed is not null)
+        {
+            throw new PreviewSourceChangedException(token, changed);
+        }
     }
 
     /// <summary>
@@ -124,11 +155,16 @@ public sealed class CompositePreviewStore : BoundedStore<CompositePreviewStore.E
     /// redeeming host matches against its own sessions. <see langword="null"/> for in-memory entries
     /// and for format-1 records, which carried only the creator's session id.
     /// </param>
+    /// <param name="SourceFingerprints">
+    /// The state of every target file when the preview was stored (ADR 0033), checked at redemption.
+    /// <see langword="null"/> only for format 1 and 2 records, which predate it and redeem unchecked.
+    /// </param>
     public sealed record Entry(
         string WorkspaceId,
         int WorkspaceVersion,
         string Description,
         IReadOnlyList<CompositeFileMutation> Mutations,
         DateTime CreatedAt,
-        string? WorkspaceIdentity) : IBoundedStoreEntry;
+        string? WorkspaceIdentity,
+        IReadOnlyList<CompositeSourceFingerprint>? SourceFingerprints) : IBoundedStoreEntry;
 }

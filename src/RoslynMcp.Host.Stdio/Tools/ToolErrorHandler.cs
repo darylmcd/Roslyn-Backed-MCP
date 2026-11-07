@@ -131,11 +131,15 @@ internal static class ToolErrorHandler
         // expiry surfaces as PreviewTokenStaleException instead of the legacy bare
         // KeyNotFoundException. PreviewTokenStaleException derives from
         // InvalidOperationException; hierarchy lookup preserves the specific recovery hint.
+        // A drift refusal (ADR 0033) is the one stale-token cause that is not a reload or expiry:
+        // it carries its own authored message, which names the changed file and nothing else.
         [typeof(PreviewTokenStaleException)] = (ex, _) =>
         {
             return new(ErrorCategories.PreviewTokenStale,
-                "The preview token has expired because the workspace was reloaded after the preview was created. " +
-                "Re-issue the paired *_preview call.");
+                ex is PreviewSourceChangedException sourceChanged
+                    ? sourceChanged.PublicMessage
+                    : "The preview token has expired because the workspace was reloaded after the preview was created. " +
+                      "Re-issue the paired *_preview call.");
         },
         // compile-check-not-connected-raw-transport-error-envelope: a disconnected stdio
         // pipe surfaces as InvalidOperationException("Not connected") from PipeStream when

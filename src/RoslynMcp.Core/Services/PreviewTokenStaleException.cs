@@ -79,7 +79,7 @@ namespace RoslynMcp.Core.Services;
 /// issued).
 /// </para>
 /// </remarks>
-public sealed class PreviewTokenStaleException : System.InvalidOperationException
+public class PreviewTokenStaleException : System.InvalidOperationException
 {
     /// <summary>
     /// The opaque preview token that was rejected. Carried separately from

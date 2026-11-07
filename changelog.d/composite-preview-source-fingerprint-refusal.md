@@ -1,0 +1,5 @@
+---
+category: Fixed
+---
+
+- **Fixed:** `apply_composite` now refuses, without writing or consuming the token, when a target file changed on disk after its preview was stored (same host, or another host sharing `ROSLYNMCP_PREVIEW_PERSIST_DIR`); a created file must still be absent and a deleted file unchanged, and the `PreviewTokenStale` envelope names the changed file instead of claiming the workspace was reloaded. The fingerprint is taken when the preview is stored, so a file edited on disk before the preview but not yet reloaded by the workspace is not detected, and an edit in the milliseconds before the write is not either. Persisted records move to format 3 (`SourceFingerprints`); format 1 and 2 records still redeem, unchecked. Migration: re-issue the preview after editing a target; hosts of the previous release cannot redeem format 3 records, so during a rolling upgrade of hosts sharing one persist directory a token created by an upgraded host is not redeemable by a host still on the previous release (tokens expire after 5 minutes). See ADR 0033. Closes `composite-preview-source-fingerprint-refusal`.

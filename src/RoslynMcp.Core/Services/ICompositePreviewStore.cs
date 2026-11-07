@@ -33,7 +33,9 @@ public interface ICompositePreviewStore
     /// <returns>
     /// The entry, whose <c>WorkspaceId</c> is the LOCAL session id even when a persisted record was
     /// created by another host. A persisted store throws <c>PublicInvalidOperationException</c>, without
-    /// consuming the token, when this host has no (or more than one) matching session.
+    /// consuming the token, when this host has no (or more than one) matching session, and throws
+    /// <see cref="PreviewSourceChangedException"/>, also without consuming it, when a target file
+    /// changed on disk since <see cref="Store"/> (ADR 0033).
     /// </returns>
     (string WorkspaceId, int WorkspaceVersion, string Description, IReadOnlyList<CompositeFileMutation> Mutations)? Retrieve(string token, string? gatedWorkspaceId);
 

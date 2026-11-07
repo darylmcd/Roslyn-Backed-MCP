@@ -26,10 +26,12 @@ public sealed class PersistentCompositeStorage
 
     /// <summary>
     /// Record format written by this server. 1 (no <c>FormatVersion</c> member) bound a record to the
-    /// creating session id; 2 adds <c>WorkspaceIdentity</c>, the normalized solution/project path.
-    /// Older readers ignore the new members, so the change is additive. A reader refuses a newer format.
+    /// creating session id; 2 adds <c>WorkspaceIdentity</c>, the normalized solution/project path;
+    /// 3 adds <c>SourceFingerprints</c> (ADR 0033). Format 1 and 2 records still read, with no
+    /// fingerprints, and are redeemed unchecked. A reader refuses a newer format, so a reader at
+    /// format 2 refuses a format 3 record: the change is additive only for readers at 3 or later.
     /// </summary>
-    private const int CurrentFormatVersion = 2;
+    private const int CurrentFormatVersion = 3;
 
     private readonly string _rootDirectory;
     private readonly TimeSpan _ttl;
@@ -92,6 +94,9 @@ public sealed class PersistentCompositeStorage
             ? entry.WorkspaceIdentity
             : throw new PublicArgumentException(
                 "A persisted composite entry requires a workspace identity.", nameof(entry));
+        var fingerprints = entry.SourceFingerprints
+            ?? throw new PublicArgumentException(
+                "A persisted composite entry requires source fingerprints.", nameof(entry));
         var dto = new PersistedEntry(
             entry.WorkspaceId,
             entry.WorkspaceVersion,
@@ -99,7 +104,8 @@ public sealed class PersistentCompositeStorage
             entry.Mutations.Select(m => new PersistedMutation(m.FilePath, m.UpdatedContent, m.DeleteFile)).ToArray(),
             entry.CreatedAt,
             CurrentFormatVersion,
-            identity);
+            identity,
+            fingerprints.Select(f => new PersistedFingerprint(f.FilePath, f.Exists, f.Sha256)).ToArray());
 
         try
         {
@@ -326,7 +332,7 @@ public sealed class PersistentCompositeStorage
     /// <summary>
     /// Parses a persisted record. The directory is shared and separately writable, so the payload is
     /// untrusted input: a record missing the members every later stage dereferences (workspace id,
-    /// mutation list, a mutation's path, and for format 2 the workspace identity) is unreadable,
+    /// mutation list, a mutation's path, for format 2 the workspace identity, for format 3 the fingerprint list) is unreadable,
     /// never a half-populated entry. A record without a <c>FormatVersion</c> is format 1; one above
     /// <see cref="CurrentFormatVersion"/> is reported separately because its payload must be kept.
     /// </summary>
@@ -383,13 +389,43 @@ public sealed class PersistentCompositeStorage
                 mutations.Add(new CompositeFileMutation(mutation.FilePath, mutation.UpdatedContent, mutation.DeleteFile));
             }
 
+            // Format 1 and 2 records predate fingerprints: null means "redeem unchecked". From format 3 the
+            // list is required, so deleting it from a record cannot silently turn the check off.
+            List<CompositeSourceFingerprint>? fingerprints = null;
+            if (dto.FormatVersion >= 3)
+            {
+                if (dto.SourceFingerprints is null)
+                {
+                    _logger?.LogDebug("PersistentCompositeStorage: dropping format-3 entry without source fingerprints.");
+                    return ParseOutcome.Unreadable;
+                }
+
+                fingerprints = new List<CompositeSourceFingerprint>(dto.SourceFingerprints.Count);
+                foreach (var fingerprint in dto.SourceFingerprints)
+                {
+                    if (fingerprint is null
+                        || string.IsNullOrWhiteSpace(fingerprint.FilePath)
+                        || (fingerprint.Exists && string.IsNullOrWhiteSpace(fingerprint.Sha256)))
+                    {
+                        _logger?.LogDebug("PersistentCompositeStorage: dropping persisted entry with a malformed source fingerprint.");
+                        return ParseOutcome.Unreadable;
+                    }
+
+                    fingerprints.Add(new CompositeSourceFingerprint(
+                        fingerprint.FilePath,
+                        fingerprint.Exists,
+                        fingerprint.Exists ? fingerprint.Sha256 : null));
+                }
+            }
+
             entry = new CompositePreviewStore.Entry(
                 dto.WorkspaceId,
                 dto.WorkspaceVersion,
                 dto.Description,
                 mutations,
                 dto.CreatedAt,
-                identity);
+                identity,
+                fingerprints);
             return ParseOutcome.Parsed;
         }
         catch (Exception ex) when (ex is JsonException or NotSupportedException or ArgumentException)
@@ -494,7 +530,8 @@ public sealed class PersistentCompositeStorage
     // Members are nullable because the record is deserialized from a shared directory: JSON can omit
     // or null any of them, and ParseEntry rejects such a record instead of dereferencing it.
     // FormatVersion is absent (0) in format-1 records. From format 2, WorkspaceId and WorkspaceVersion
-    // are diagnostics only; WorkspaceIdentity is the portable key (ADR 0032).
+    // are diagnostics only; WorkspaceIdentity is the portable key (ADR 0032). SourceFingerprints is
+    // absent before format 3 (ADR 0033).
     private sealed record PersistedEntry(
         string? WorkspaceId,
         int WorkspaceVersion,
@@ -502,7 +539,10 @@ public sealed class PersistentCompositeStorage
         IReadOnlyList<PersistedMutation?>? Mutations,
         DateTime CreatedAt,
         int FormatVersion,
-        string? WorkspaceIdentity);
+        string? WorkspaceIdentity,
+        IReadOnlyList<PersistedFingerprint?>? SourceFingerprints);
 
     private sealed record PersistedMutation(string? FilePath, string? UpdatedContent, bool DeleteFile);
+
+    private sealed record PersistedFingerprint(string? FilePath, bool Exists, string? Sha256);
 }

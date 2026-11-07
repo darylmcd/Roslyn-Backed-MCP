@@ -1011,6 +1011,137 @@ public sealed class CompositeApplyOrchestratorTests
         }
     }
 
+    /// <summary>
+    /// composite-preview-source-fingerprint-refusal: an edit to a target file between the preview
+    /// and the apply must refuse BEFORE any write, without consuming the one-time token, on both
+    /// store backends. Before the fix the apply overwrote the edit.
+    /// </summary>
+    [TestMethod]
+    [DataRow(false, DisplayName = "memory store")]
+    [DataRow(true, DisplayName = "persistent store")]
+    public async Task ApplyComposite_TargetEditedAfterPreview_RefusesWithoutWritesOrClaimLoss(bool persistent)
+    {
+        var edited = Path.Combine(_tempDir, "edited.cs");
+        var sibling = Path.Combine(_tempDir, "sibling.cs");
+        await File.WriteAllTextAsync(edited, "// original");
+        var (workspace, store, persistDirectory) = CreateDriftStore(persistent);
+        var token = store.Store(
+            "ws-1",
+            1,
+            "drift",
+            [new CompositeFileMutation(edited, "// from preview"), new CompositeFileMutation(sibling, "// sibling")]);
+        var orchestrator = new CompositeApplyOrchestrator(workspace, store);
+        await File.WriteAllTextAsync(edited, "// hand edit after the preview");
+
+        await Assert.ThrowsAsync<PreviewTokenStaleException>(() =>
+            orchestrator.ApplyCompositeAsync(token, CompositeAdmission.AdmitAll, CancellationToken.None));
+
+        Assert.AreEqual("// hand edit after the preview", await File.ReadAllTextAsync(edited), "The edit must survive a refused apply.");
+        Assert.IsFalse(File.Exists(sibling), "A refused apply must not write the sibling mutation.");
+        Assert.IsFalse(workspace.ReloadCalled, "A refused apply must not reload the workspace.");
+        if (persistent)
+        {
+            Assert.IsNotEmpty(Directory.EnumerateFiles(persistDirectory!, token + ".json", SearchOption.AllDirectories),
+                "A drift refusal must leave the one-time payload on disk.");
+        }
+
+        await File.WriteAllTextAsync(edited, "// original");
+        var result = await orchestrator.ApplyCompositeAsync(token, CompositeAdmission.AdmitAll, CancellationToken.None);
+        Assert.IsTrue(result.Success, result.Error);
+        Assert.AreEqual("// from preview", await File.ReadAllTextAsync(edited), "The token must stay redeemable once the file matches the preview again.");
+        Assert.AreEqual("// sibling", await File.ReadAllTextAsync(sibling));
+    }
+
+    [TestMethod]
+    [DataRow(false, DisplayName = "memory store")]
+    [DataRow(true, DisplayName = "persistent store")]
+    public async Task ApplyComposite_CreatedFileAppearsAfterPreview_Refuses_AndAbsentStaysApplicable(bool persistent)
+    {
+        var created = Path.Combine(_tempDir, "created-later.cs");
+        var (workspace, store, _) = CreateDriftStore(persistent);
+        var token = store.Store("ws-1", 1, "create", [new CompositeFileMutation(created, "// preview")]);
+        var orchestrator = new CompositeApplyOrchestrator(workspace, store);
+        await File.WriteAllTextAsync(created, "// someone else created this");
+
+        await Assert.ThrowsAsync<PreviewTokenStaleException>(() =>
+            orchestrator.ApplyCompositeAsync(token, CompositeAdmission.AdmitAll, CancellationToken.None));
+        Assert.AreEqual("// someone else created this", await File.ReadAllTextAsync(created));
+
+        File.Delete(created);
+        var result = await orchestrator.ApplyCompositeAsync(token, CompositeAdmission.AdmitAll, CancellationToken.None);
+        Assert.IsTrue(result.Success, result.Error);
+        Assert.AreEqual("// preview", await File.ReadAllTextAsync(created));
+    }
+
+    [TestMethod]
+    [DataRow(false, DisplayName = "memory store")]
+    [DataRow(true, DisplayName = "persistent store")]
+    public async Task ApplyComposite_DeletedFileEditedAfterPreview_Refuses_AndUnchangedDeletes(bool persistent)
+    {
+        var doomed = Path.Combine(_tempDir, "doomed.cs");
+        await File.WriteAllTextAsync(doomed, "// original");
+        var (workspace, store, _) = CreateDriftStore(persistent);
+        var token = store.Store("ws-1", 1, "delete", [new CompositeFileMutation(doomed, null, DeleteFile: true)]);
+        var orchestrator = new CompositeApplyOrchestrator(workspace, store);
+        await File.WriteAllTextAsync(doomed, "// edited after the preview");
+
+        await Assert.ThrowsAsync<PreviewTokenStaleException>(() =>
+            orchestrator.ApplyCompositeAsync(token, CompositeAdmission.AdmitAll, CancellationToken.None));
+        Assert.AreEqual("// edited after the preview", await File.ReadAllTextAsync(doomed), "A refused delete must not remove the edited file.");
+
+        await File.WriteAllTextAsync(doomed, "// original");
+        var result = await orchestrator.ApplyCompositeAsync(token, CompositeAdmission.AdmitAll, CancellationToken.None);
+        Assert.IsTrue(result.Success, result.Error);
+        Assert.IsFalse(File.Exists(doomed));
+    }
+
+    /// <summary>
+    /// The envelope a client sees for a drift refusal must name the real cause (the file changed
+    /// on disk), not the workspace-reload text every other stale-token refusal carries, and must
+    /// leak neither the token nor the absolute path.
+    /// </summary>
+    [TestMethod]
+    public async Task ApplyComposite_DriftRefusal_EnvelopeNamesTheChangedFile_NotAWorkspaceReload()
+    {
+        var edited = Path.Combine(_tempDir, "EnvelopeTarget.cs");
+        await File.WriteAllTextAsync(edited, "// original");
+        var (workspace, store, _) = CreateDriftStore(persistent: false);
+        var token = store.Store("ws-1", 1, "envelope", [new CompositeFileMutation(edited, "// preview")]);
+        var orchestrator = new CompositeApplyOrchestrator(workspace, store);
+        await File.WriteAllTextAsync(edited, "// hand edit");
+
+        var exception = await Assert.ThrowsAsync<PreviewTokenStaleException>(() =>
+            orchestrator.ApplyCompositeAsync(token, CompositeAdmission.AdmitAll, CancellationToken.None));
+
+        using var envelope = JsonDocument.Parse(
+            RoslynMcp.Host.Stdio.Tools.ToolErrorHandler.ClassifyAndFormat(exception, "apply_composite"));
+        Assert.AreEqual("PreviewTokenStale", envelope.RootElement.GetProperty("category").GetString());
+        var message = envelope.RootElement.GetProperty("message").GetString()!;
+        StringAssert.Contains(message, "EnvelopeTarget.cs");
+        StringAssert.Contains(message, "changed on disk after the preview");
+        StringAssert.Contains(message, "re-issue the paired *_preview call");
+        Assert.IsFalse(message.Contains("workspace was reloaded", StringComparison.Ordinal),
+            "The drift refusal must not claim the workspace was reloaded.");
+        Assert.IsFalse(message.Contains(token, StringComparison.Ordinal));
+        Assert.IsFalse(message.Contains(_tempDir, StringComparison.OrdinalIgnoreCase), "Only the file name may be echoed.");
+    }
+
+    private (RecordingWorkspaceManager Workspace, CompositePreviewStore Store, string? PersistDirectory) CreateDriftStore(bool persistent)
+    {
+        var workspace = new RecordingWorkspaceManager { AdmittedWorkspaceIds = ["ws-1"] };
+        if (!persistent)
+        {
+            return (workspace, new CompositePreviewStore(), null);
+        }
+
+        var ttl = TimeSpan.FromMinutes(5);
+        var persistDirectory = Path.Combine(_tempDir, "persist");
+        return (
+            workspace,
+            new CompositePreviewStore(20, ttl, new PersistentCompositeStorage(persistDirectory, ttl), new CompositeWorkspaceIdentityResolver(workspace)),
+            persistDirectory);
+    }
+
     private sealed class RecordingLogger<T> : ILogger<T>
     {
         public List<(LogLevel Level, string Message, Exception? Exception)> Entries { get; } = [];
