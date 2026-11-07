@@ -116,9 +116,10 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
         var warnings = new List<string>();
 
         // Rewrite the type's nearest containing namespace, including when it is nested:
-        //   (a) without file relocation or sibling types, rename that declaration in place;
-        //   (b) without file relocation but with siblings, move only the selected type into a
-        //       new namespace declaration in the same file;
+        //   (a) without file relocation or other members in that declaration, rename it in place;
+        //   (b) without file relocation but with other members (types, enums, delegates, nested
+        //       namespaces), move only the selected type into a new namespace declaration in the
+        //       same file;
         //   (c) with file relocation, write the selected type to the destination file and
         //       remove its declaration from the source file.
         var (updatedSolution, siblingTypesRemaining) = await ApplyNamespaceRewriteAsync(
@@ -271,9 +272,11 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
 
     /// <summary>
     /// Apply the namespace rewrite to the source file. Returns the updated solution and a flag
-    /// describing whether sibling types in <paramref name="fromNamespace"/> remain in the
-    /// solution after the move (used later to decide whether stale <c>using</c> directives are
-    /// safe to drop).
+    /// describing whether sibling types (enums and delegates included) in
+    /// <paramref name="fromNamespace"/> remain in the solution after the move (used later to
+    /// decide whether stale <c>using</c> directives are safe to drop). Without file relocation, any
+    /// other member of the containing namespace declaration (type, enum, delegate, nested
+    /// namespace) stays in the source namespace; only the selected type moves.
     /// </summary>
     private static async Task<(Solution Solution, bool SiblingTypesRemaining)> ApplyNamespaceRewriteAsync(
         Solution solution,
@@ -289,11 +292,10 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
         var containingNs = typeDecl.Ancestors().OfType<BaseNamespaceDeclarationSyntax>().FirstOrDefault()
             ?? throw new InvalidOperationException("Cannot change namespace of a type with no enclosing namespace declaration.");
 
-        // Count other types in the same file that live inside the same fromNamespace
-        // declaration (sibling types).
-        var siblingTypesInSameNs = containingNs.Members.OfType<TypeDeclarationSyntax>()
-            .Where(t => !ReferenceEquals(t, typeDecl))
-            .ToList();
+        // Any other member of the same declaration (class, struct, interface, record, enum,
+        // delegate, nested namespace) would be dragged along by renaming the whole declaration.
+        // Namespace-level usings and externs are not members, so they never force extraction.
+        var hasOtherMembersInSameNs = containingNs.Members.Any(m => !ReferenceEquals(m, typeDecl));
 
         // Tally sibling types (enums and delegates included) in fromNamespace across ANY other
         // document in the solution — used for consumer using-rewrite decisions (only drop
@@ -301,13 +303,11 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
         // declarations are folded in below, per path, from its updated root.
         var siblingTypesAnywhereInFromNs = await CountSiblingTypesInNamespaceAsync(
             solution, fromNamespace, excludeDocumentId: sourceDocument.Id, ct).ConfigureAwait(false);
-        // Plus remaining siblings inside the source file itself.
-        var totalSiblingsAfterMove = siblingTypesAnywhereInFromNs + siblingTypesInSameNs.Count;
-        var siblingTypesRemaining = totalSiblingsAfterMove > 0;
+        var siblingTypesRemaining = siblingTypesAnywhereInFromNs > 0;
 
-        if (!isRelocating && siblingTypesInSameNs.Count == 0)
+        if (!isRelocating && !hasOtherMembersInSameNs)
         {
-            // Simple case: rewrite the namespace declaration in place; no siblings to worry about.
+            // Simple case: rewrite the namespace declaration in place; the type is its only member.
             var rewritten = RewriteNamespaceName(sourceRoot, containingNs, toNamespace);
             // Another `namespace fromNamespace` block of this file keeps the namespace populated;
             // the cross-document count above excludes this document.
@@ -315,9 +315,9 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
             return (solution.WithDocumentSyntaxRoot(sourceDocument.Id, rewritten), siblingTypesRemaining);
         }
 
-        if (!isRelocating && siblingTypesInSameNs.Count > 0)
+        if (!isRelocating && hasOtherMembersInSameNs)
         {
-            // No relocation but sibling types remain in the same declaration. We must extract the
+            // No relocation but other members remain in the same declaration. We must extract the
             // type into its own namespace declaration within the same file.
             var updatedRoot = MoveTypeIntoNewNamespaceInSameFile(sourceRoot, containingNs, typeDecl, toNamespace);
 

@@ -729,6 +729,131 @@ public sealed class NamespaceRelocationTests : IsolatedWorkspaceTestBase
         Assert.AreEqual(0, errors.Count, $"The previewed solution must compile. Errors:\n{string.Join("\n", errors)}");
     }
 
+    /// <summary>
+    /// Regression (relocation-same-file-rewrite-preserves-other-members): the in-place decision
+    /// counted only <c>TypeDeclarationSyntax</c> siblings, so a same-block enum, delegate or nested
+    /// namespace was renamed along with the whole containing declaration and moved to <c>New</c>.
+    /// Only <c>Selected</c> may move; the sibling stays in <c>Old</c> (nested: <c>Old.Inner</c>).
+    /// </summary>
+    [TestMethod]
+    [DataRow("namespace Old\n{\n    public class Selected { }\n\n    public enum Keep { A }\n}\n", "Old.Keep", "enum Keep",
+        DisplayName = "block namespace + enum")]
+    [DataRow("namespace Old\n{\n    public class Selected { }\n\n    public delegate void Keep();\n}\n", "Old.Keep", "delegate void Keep",
+        DisplayName = "block namespace + delegate")]
+    [DataRow("namespace Old;\n\npublic class Selected { }\n\npublic enum Keep { A }\n", "Old.Keep", "enum Keep",
+        DisplayName = "file-scoped namespace + enum")]
+    [DataRow("namespace Old;\n\npublic class Selected { }\n\npublic delegate void Keep();\n", "Old.Keep", "delegate void Keep",
+        DisplayName = "file-scoped namespace + delegate")]
+    [DataRow("namespace Old\n{\n    public class Selected { }\n\n    namespace Inner\n    {\n        public enum Keep { A }\n    }\n}\n", "Old.Inner.Keep", "enum Keep",
+        DisplayName = "block namespace + nested namespace with an enum")]
+    [DataRow("namespace Old\n{\n    using System;\n\n    public class Selected { }\n\n    public enum Keep { A }\n}\n", "Old.Keep", "enum Keep",
+        DisplayName = "block namespace with a using + enum")]
+    public async Task Preview_InPlace_Namespace_Change_Keeps_NonClass_Members_In_Old(
+        string source, string keepMetadataName, string expectedText)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+
+        var (modified, sourceDocument, sourcePath, _, _) = await PreviewRelocationAsync(workspace, source, relocate: false);
+
+        Assert.IsNotNull(sourceDocument, "an in-place namespace change keeps the source file");
+        var text = (await sourceDocument.GetTextAsync(CancellationToken.None)).ToString();
+        StringAssert.Contains(text, expectedText, $"The sibling declaration was lost:\n{text}");
+
+        var compilation = await sourceDocument.Project.GetCompilationAsync(CancellationToken.None);
+        Assert.IsNotNull(compilation);
+        Assert.IsNotNull(compilation.GetTypeByMetadataName("New.Selected"), $"Selected must arrive in New:\n{text}");
+        Assert.IsNull(compilation.GetTypeByMetadataName("Old.Selected"), $"Selected must leave Old:\n{text}");
+        Assert.IsNotNull(compilation.GetTypeByMetadataName(keepMetadataName),
+            $"'{keepMetadataName}' must stay in Old (it was dragged along with the namespace rename):\n{text}");
+        Assert.IsNull(compilation.GetTypeByMetadataName(keepMetadataName.Replace("Old", "New", StringComparison.Ordinal)),
+            $"The sibling must not appear in New:\n{text}");
+
+        if (source.Contains("using System;", StringComparison.Ordinal))
+        {
+            // The using sits inside the namespace block, which stays behind with the sibling.
+            var namespaceIndex = text.IndexOf("namespace Old", StringComparison.Ordinal);
+            var usingIndex = text.IndexOf("using System;", StringComparison.Ordinal);
+            var keepIndex = text.IndexOf("enum Keep", StringComparison.Ordinal);
+            Assert.IsTrue(namespaceIndex >= 0 && namespaceIndex < usingIndex && usingIndex < keepIndex,
+                $"The block-level using must stay with the retained block:\n{text}");
+        }
+
+        var errors = await CompileErrorsInAsync(modified, sourcePath);
+        Assert.AreEqual(0, errors.Count, $"The previewed solution must compile. Errors:\n{string.Join("\n", errors)}\n{text}");
+    }
+
+    /// <summary>
+    /// Controls for the keep test: a sole type still renames its declaration in place, including a
+    /// block-level <c>using</c> (namespace usings are not members, so they never force extraction).
+    /// </summary>
+    [TestMethod]
+    [DataRow("namespace Old\n{\n    public class Selected { }\n}\n", DisplayName = "sole type, block namespace")]
+    [DataRow("namespace Old;\n\npublic class Selected { }\n", DisplayName = "sole type, file-scoped namespace")]
+    [DataRow("namespace Old\n{\n    using System;\n\n    public class Selected { }\n}\n", DisplayName = "sole type, block namespace with a using")]
+    public async Task Preview_InPlace_Namespace_Change_Renames_Declaration_When_Type_Is_Sole_Member(string source)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+
+        var (modified, sourceDocument, sourcePath, _, _) = await PreviewRelocationAsync(workspace, source, relocate: false);
+
+        Assert.IsNotNull(sourceDocument);
+        var text = (await sourceDocument.GetTextAsync(CancellationToken.None)).ToString();
+        Assert.IsFalse(text.Contains("namespace Old", StringComparison.Ordinal), $"The declaration must be renamed in place:\n{text}");
+        Assert.AreEqual(1, System.Text.RegularExpressions.Regex.Matches(text, "namespace ").Count,
+            $"Exactly one namespace declaration must remain:\n{text}");
+        var compilation = await sourceDocument.Project.GetCompilationAsync(CancellationToken.None);
+        Assert.IsNotNull(compilation);
+        Assert.IsNotNull(compilation.GetTypeByMetadataName("New.Selected"));
+        Assert.IsNull(compilation.GetTypeByMetadataName("Old.Selected"));
+        var errors = await CompileErrorsInAsync(modified, sourcePath);
+        Assert.AreEqual(0, errors.Count, $"The previewed solution must compile. Errors:\n{string.Join("\n", errors)}");
+    }
+
+    /// <summary>
+    /// A consumer that references only the kept enum must keep compiling: the enum stays in
+    /// <c>Old</c>, so the consumer is untouched (it does not reference <c>Selected</c>).
+    /// </summary>
+    [TestMethod]
+    [DataRow("namespace Old\n{\n    public class Selected { }\n\n    public enum Keep { A }\n}\n", DisplayName = "block namespace + enum")]
+    [DataRow("namespace Old;\n\npublic class Selected { }\n\npublic enum Keep { A }\n", DisplayName = "file-scoped namespace + enum")]
+    public async Task Preview_InPlace_Namespace_Change_Consumer_Referencing_Only_The_Kept_Enum_Still_Compiles(string source)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        const string consumer =
+            "using Old;\n\nnamespace Consumers;\n\npublic sealed class Consumer\n{\n    public Keep? Value { get; set; }\n}\n";
+
+        var (modified, _, sourcePath, _, _) = await PreviewRelocationAsync(workspace, source, consumer, relocate: false);
+
+        var consumerPath = Path.Combine(workspace.GetPath("SampleLib"), RelocationFixtureDirectory, "Consumer.cs");
+        var consumerDocument = modified.Projects.SelectMany(p => p.Documents)
+            .Single(d => string.Equals(d.FilePath, consumerPath, StringComparison.OrdinalIgnoreCase));
+        var consumerText = (await consumerDocument.GetTextAsync(CancellationToken.None)).ToString();
+        Assert.IsFalse(consumerText.Contains("using New;", StringComparison.Ordinal),
+            $"A consumer that does not reference Selected must not gain `using New;`:\n{consumerText}");
+        var errors = await CompileErrorsInAsync(modified, sourcePath, consumerPath);
+        Assert.AreEqual(0, errors.Count, $"The previewed solution must compile. Errors:\n{string.Join("\n", errors)}");
+    }
+
+    /// <summary>
+    /// A consumer that references both the moved type and the kept enum needs both usings.
+    /// </summary>
+    [TestMethod]
+    [DataRow("namespace Old\n{\n    public class Selected { }\n\n    public enum Keep { A }\n}\n", DisplayName = "block namespace + enum")]
+    [DataRow("namespace Old;\n\npublic class Selected { }\n\npublic delegate void Keep();\n", DisplayName = "file-scoped namespace + delegate")]
+    public async Task Preview_InPlace_Namespace_Change_Consumer_Referencing_Both_Keeps_Old_And_Gains_New(string source)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        const string consumer =
+            "using Old;\n\nnamespace Consumers;\n\npublic sealed class Consumer\n{\n    public Selected? Value { get; set; }\n\n    public Keep? Other { get; set; }\n}\n";
+
+        var (modified, _, sourcePath, _, preview) = await PreviewRelocationAsync(workspace, source, consumer, relocate: false);
+
+        var consumerPath = Path.Combine(workspace.GetPath("SampleLib"), RelocationFixtureDirectory, "Consumer.cs");
+        await AssertConsumerKeepsOldAndGainsNewAsync(modified, consumerPath, preview);
+        var errors = await CompileErrorsInAsync(modified, sourcePath, consumerPath);
+        Assert.AreEqual(0, errors.Count, $"The previewed solution must compile. Errors:\n{string.Join("\n", errors)}");
+    }
+
     private static async Task AssertConsumerKeepsOldAndGainsNewAsync(
         Microsoft.CodeAnalysis.Solution modified, string consumerPath, RoslynMcp.Core.Models.RefactoringPreviewDto preview)
     {
