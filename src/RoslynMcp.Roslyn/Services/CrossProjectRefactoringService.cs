@@ -197,7 +197,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
 
         updatedSolution = await ApplyGeneratedInterfaceAsync(
             updatedSolution, nullableProjection, interfaceDocumentId, interfaceRoot, sourceDocument, typeDeclaration, ct).ConfigureAwait(false);
-        var changes =await SolutionDiffHelper.ComputeChangesAsync(solution, updatedSolution, ct).ConfigureAwait(false);
+        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, updatedSolution, ct).ConfigureAwait(false);
         var description = $"Extract interface '{resolvedInterfaceName}' from '{typeName}'";
         var token = _previewStore.Store(workspaceId, updatedSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
         return new RefactoringPreviewDto(token, description, changes, null);
