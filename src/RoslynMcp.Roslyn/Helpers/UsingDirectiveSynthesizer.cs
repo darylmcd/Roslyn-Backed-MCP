@@ -20,7 +20,7 @@ namespace RoslynMcp.Roslyn.Helpers;
 internal static class UsingDirectiveSynthesizer
 {
     public static SyntaxList<UsingDirectiveSyntax> BuildUsingDirectives(
-        SyntaxList<UsingDirectiveSyntax> sourceUsings,
+        IEnumerable<UsingDirectiveSyntax> sourceUsings,
         IReadOnlyCollection<string> requiredNamespaces,
         bool preserveGlobalUsings,
         IReadOnlyCollection<string> destinationGlobalPlainNamespaces,
@@ -43,7 +43,7 @@ internal static class UsingDirectiveSynthesizer
     }
 
     /// <summary>Lift only aliases needed by projected signatures from the source type's visible namespace scopes.</summary>
-    public static (SyntaxList<UsingDirectiveSyntax> SourceUsings, SyntaxList<UsingDirectiveSyntax> QualifiedNamespaceUsings)
+    public static (IReadOnlyList<UsingDirectiveSyntax> SourceUsings, IReadOnlyList<UsingDirectiveSyntax> QualifiedNamespaceUsings)
         SelectVisibleAliasUsings(CompilationUnitSyntax sourceRoot, TypeDeclarationSyntax typeDeclaration,
             IReadOnlyCollection<string> referencedAliasNames, IReadOnlyCollection<ITypeSymbol> referencedUnqualifiedTypes,
             SemanticModel sourceSemanticModel, CancellationToken ct)
@@ -56,9 +56,9 @@ internal static class UsingDirectiveSynthesizer
             .ToArray();
         var shadowedRootAliases = selectedAliases.Select(directive => directive.Alias!.Name.Identifier.ValueText)
             .ToHashSet(StringComparer.Ordinal);
-        var sourceUsings = SyntaxFactory.List(sourceRoot.Usings
+        var sourceUsings = sourceRoot.Usings
             .Where(directive => directive.Alias is not { } alias || !shadowedRootAliases.Contains(alias.Name.Identifier.ValueText))
-            .Concat(selectedAliases));
+            .Concat(selectedAliases).ToArray();
 
         var qualifiedNamespaceUsings = namespaceUsings.Concat(sourceRoot.Usings)
             .Where(directive => directive.Alias is null && directive.Name is { } name
@@ -71,7 +71,7 @@ internal static class UsingDirectiveSynthesizer
                     : sourceSemanticModel.GetSymbolInfo(name, ct).Symbol is INamespaceSymbol importedNamespace
                         && referencedUnqualifiedTypes.Any(type => SymbolEqualityComparer.Default.Equals(type.ContainingNamespace, importedNamespace))))
             .DistinctBy(directive => (directive.StaticKeyword.RawKind, Name: directive.Name!.ToString()));
-        return (sourceUsings, SyntaxFactory.List(qualifiedNamespaceUsings));
+        return (sourceUsings, qualifiedNamespaceUsings.ToArray());
     }
 
     /// <summary>Copy the nearest visible extern declaration for each alias required by emitted syntax.</summary>
@@ -127,7 +127,7 @@ internal static class UsingDirectiveSynthesizer
     }
 
     private static void PreserveSpecialAndRequiredSourceUsings(
-        SyntaxList<UsingDirectiveSyntax> sourceUsings,
+        IEnumerable<UsingDirectiveSyntax> sourceUsings,
         IReadOnlyCollection<string> requiredNamespaces,
         bool preserveGlobalUsings,
         SemanticModel? sourceSemanticModel,

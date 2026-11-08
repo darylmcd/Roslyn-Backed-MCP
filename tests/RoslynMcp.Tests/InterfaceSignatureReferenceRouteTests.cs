@@ -184,6 +184,9 @@ public sealed class InterfaceSignatureReferenceRouteTests : InterfaceRouteTestBa
     [DataRow("cross-project", "static-using-root")]
     [DataRow("cross-project", "contract-argument")]
     [DataRow("cross-project", "parameter-contract-argument")]
+    [DataRow("cross-project", "global-using")]
+    [DataRow("dependency-inversion", "global-using")]
+    [DataRow("extract-and-wire", "global-using")]
     public async Task Namespace_Scoped_Extern_Alias_Is_Preserved_Through_Interface_Routes(string route, string scope)
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
@@ -216,6 +219,7 @@ public sealed class InterfaceSignatureReferenceRouteTests : InterfaceRouteTestBa
             "static-using-root" => "extern alias ext; extern alias unused; using static ext::Shared.Utility; namespace SampleLib; public sealed class RefService { public Nested Get() => new(); }",
             "contract-argument" => "namespace SampleLib { extern alias ext; extern alias unused; using Patterns = ext::Shared.Patterns; public sealed class RefService { [return: System.Diagnostics.CodeAnalysis.NotNullIfNotNull(Patterns.Name)] public string? Get(string? value) => value; } }",
             "parameter-contract-argument" => "namespace SampleLib { extern alias ext; extern alias unused; using Patterns = ext::Shared.Patterns; public sealed class RefService { public string Get([System.Diagnostics.CodeAnalysis.StringSyntax(Patterns.Name)] string value) => value; } }",
+            "global-using" => "global using System.Globalization; namespace SampleLib { extern alias ext; extern alias unused; using Payload = ext::Shared.Shape; public sealed class RefService { public Payload Get() => new(); } }",
             _ => throw new ArgumentOutOfRangeException(nameof(scope)),
         };
         await File.WriteAllTextAsync(sourcePath, source);
@@ -233,6 +237,7 @@ public sealed class InterfaceSignatureReferenceRouteTests : InterfaceRouteTestBa
             var generated = mutations.Single(m => m.FilePath == workspace.GetPath("Contracts", "IRefService.cs")).UpdatedContent;
             StringAssert.Contains(generated, "extern alias ext;");
             if (scope == "using") StringAssert.Contains(generated, "using Payload = ext::Shared.Shape;");
+            if (scope == "global-using") StringAssert.Contains(generated, "global using System.Globalization;");
             if (scope == "qualified-using") StringAssert.Contains(generated, "using ext::Shared;");
             if (scope == "unused-qualified-using") Assert.IsFalse(generated.Contains("using ext::Shared;", StringComparison.Ordinal));
             if (scope == "contract-attribute") StringAssert.Contains(generated, "using Contract = ext::System.Diagnostics.CodeAnalysis.NotNullAttribute;");
@@ -251,6 +256,7 @@ public sealed class InterfaceSignatureReferenceRouteTests : InterfaceRouteTestBa
                 .Single(d => d.Name == "IRefService.cs").GetTextAsync()).ToString();
             StringAssert.Contains(generated, "extern alias ext;");
             if (scope == "using") StringAssert.Contains(generated, "using Payload = ext::Shared.Shape;");
+            if (scope == "global-using") StringAssert.Contains(generated, "global using System.Globalization;");
             if (scope == "qualified-using") StringAssert.Contains(generated, "using ext::Shared;");
             if (scope == "unused-qualified-using") Assert.IsFalse(generated.Contains("using ext::Shared;", StringComparison.Ordinal));
             if (scope == "contract-attribute") StringAssert.Contains(generated, "using Contract = ext::System.Diagnostics.CodeAnalysis.NotNullAttribute;");
