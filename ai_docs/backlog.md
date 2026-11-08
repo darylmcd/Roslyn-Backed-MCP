@@ -57,6 +57,7 @@
 | `cross-project-interface-signature-refusal-compile` | High | cross-project-interface-signature-reference-closure | **Refuse cyclic interface signatures** — reject source-owned and other cyclic closure before token storage. [type: bug] [source: signature-dependencies split] | M | items/cross-project-interface-signature-refusal-compile.md |
 | `cross-project-interface-signature-compile-gate` | High | cross-project-interface-signature-refusal-compile | **Validate generated interface compilation** — refuse new target or affected-project errors before token storage. [type: bug] [source: signature-dependencies split] | M | items/cross-project-interface-signature-compile-gate.md |
 | `interface-extraction-standalone-extern-alias` | High | cross-project-interface-signature-reference-closure | **Preserve standalone extern aliases** — emit required extern alias directives in generated interfaces with aliased signature types. [type: bug] [source: signature-reference slice review] | M | items/interface-extraction-standalone-extern-alias.md |
+| `interface-extraction-nested-namespace-identity` | High | — | **Preserve standalone nested namespace identity** — emit the full outer-to-inner namespace for extracted interfaces. [type: bug] [source: standalone alias route review] | S | items/interface-extraction-nested-namespace-identity.md |
 
 ## Medium
 
@@ -244,6 +245,8 @@
 | `apply-project-mutation-last-apply-wins-decision` | Medium | — | BLOCKED: operator decision — **apply_project_mutation last-apply-wins** — decide whether it (and solution-store apply routes) refuse a project file edited after preview, as composite apply now does. [type: decision] | M | items/apply-project-mutation-last-apply-wins-decision.md |
 | `interface-extraction-receiving-language-reference-view` | Medium | interface-extraction-receiving-language-compatibility | **Language parity check over union references** — build R and B over receiving plus source refs and the source compilation so feature errors are not masked by unresolved types; alias and internal tests. [type: fix] | M | items/interface-extraction-receiving-language-reference-view.md |
 | `move-type-to-project-receiving-language-gate` | Medium |  | **Receiving-language gate for move_type_to_project** — refuse before the token store when the target project's LangVersion cannot compile the moved type; reuse the interface differential helper. [type: bug] | M | items/move-type-to-project-receiving-language-gate.md |
+| `extract-interface-same-name-unrelated-contract-noop` | Medium | — | **Verify same-name implemented contract before no-op** — generate the requested interface when it adds members while preserving the original sibling-interface binding. [type: bug] [source: handler-binding review] | M | items/extract-interface-same-name-unrelated-contract-noop.md |
+| `parameter-object-physical-diff-reconciliation` | Medium | cross-project-interface-signature-compile-gate | **Reconcile parameter-object previews by physical file** — refuse divergent linked or case-variant edits before storing a token. | S | items/parameter-object-physical-diff-reconciliation.md |
 
 ## Low
 

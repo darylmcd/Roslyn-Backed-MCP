@@ -176,7 +176,7 @@ public sealed class InterfaceNullableContextProjectionIntegrationTests : Isolate
         "standalone" => InterfaceExtractionService.PreviewExtractInterfaceAsync(id, path, "NullableService", "INullableService", null, false, CancellationToken.None),
         "cross-project" => CrossProjectRefactoringService.PreviewExtractInterfaceAsync(id, path, "NullableService", "INullableService", "Contracts", CancellationToken.None),
         "dependency-inversion" => CrossProjectRefactoringService.PreviewDependencyInversionAsync(id, path, "NullableService", "INullableService", "Contracts", CancellationToken.None),
-        "extract-and-wire" => new ExtractAndWireOrchestrator(WorkspaceManager, stores, PreviewStore, CrossProjectRefactoringService, DiRegistrationService)
+        "extract-and-wire" => new ExtractAndWireOrchestrator(WorkspaceManager, stores, CrossProjectRefactoringService, DiRegistrationService)
             .PreviewExtractAndWireInterfaceAsync(id, path, "NullableService", "INullableService", "Contracts", true, CancellationToken.None),
         _ => throw new ArgumentOutOfRangeException(nameof(route)),
     };

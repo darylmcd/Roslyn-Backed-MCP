@@ -118,13 +118,29 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
+        var updatedSolution = await BuildExtractInterfaceSolutionAsync(workspaceId, solution, filePath, typeName,
+            interfaceName, targetProjectName, ct).ConfigureAwait(false);
+        var resolvedInterfaceName = string.IsNullOrWhiteSpace(interfaceName) ? $"I{typeName}" : interfaceName;
+        updatedSolution = await InterfaceLinkedDocumentReconciler.ReconcileAsync(solution, updatedSolution,
+            InterfaceLinkedDocumentReconciler.ResolveGeneratedInterfaceProjectId(solution, updatedSolution, resolvedInterfaceName), ct).ConfigureAwait(false);
+        await InterfacePreviewCompilationGate.ValidateAsync(solution, updatedSolution, ct).ConfigureAwait(false);
+        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, updatedSolution, ct).ConfigureAwait(false);
+        var description = $"Extract interface '{resolvedInterfaceName}' from '{typeName}'";
+        var token = _previewStore.Store(workspaceId, updatedSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
+        return new RefactoringPreviewDto(token, description, changes, null);
+    }
+
+    internal async Task<Solution> BuildExtractInterfaceSolutionAsync(
+        string workspaceId, Solution solution, string filePath, string typeName,
+        string? interfaceName, string? targetProjectName, CancellationToken ct)
+    {
         var sourceDocument = SymbolResolver.FindDocument(solution, filePath)
-            ?? throw new InvalidOperationException($"Document not found: {filePath}");
+            ?? throw new PublicInvalidOperationException($"Document not found: {filePath}");
         var sourceRoot = await sourceDocument.GetSyntaxRootAsync(ct).ConfigureAwait(false) as CompilationUnitSyntax
-            ?? throw new InvalidOperationException("Source document must be a C# compilation unit.");
+            ?? throw new PublicInvalidOperationException("Source document must be a C# compilation unit.");
         var typeDeclaration = FindTypeDeclaration(sourceRoot, typeName);
         var semanticModel = await sourceDocument.GetSemanticModelAsync(ct).ConfigureAwait(false)
-            ?? throw new InvalidOperationException("Semantic model could not be created for the source document.");
+            ?? throw InvalidOperationErrors.Internal("Semantic model could not be created for the source document.");
         var typeSymbol = semanticModel.GetDeclaredSymbol(typeDeclaration, ct) as INamedTypeSymbol
             ?? throw new PublicInvalidOperationException($"Type '{typeName}' could not be resolved.");
 
@@ -138,7 +154,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             ? sourceDocument.Project
             : ResolveProject(solution, targetProjectName);
         var targetProjectDirectory = Path.GetDirectoryName(targetProject.FilePath)
-            ?? throw new InvalidOperationException("Target project must have a file path on disk.");
+            ?? throw new PublicInvalidOperationException("Target project must have a file path on disk.");
 
         var isCrossProject = targetProject.Id != sourceDocument.Project.Id;
 
@@ -199,10 +215,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
 
         updatedSolution = await ApplyGeneratedInterfaceAsync(
             updatedSolution, nullableProjection, interfaceDocumentId, interfaceRoot, sourceDocument, typeDeclaration, ct).ConfigureAwait(false);
-        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, updatedSolution, ct).ConfigureAwait(false);
-        var description = $"Extract interface '{resolvedInterfaceName}' from '{typeName}'";
-        var token = _previewStore.Store(workspaceId, updatedSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
-        return new RefactoringPreviewDto(token, description, changes, null);
+        return updatedSolution;
     }
 
     public async Task<RefactoringPreviewDto> PreviewDependencyInversionAsync(
@@ -319,6 +332,8 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             updatedSolution = updatedSolution.WithDocumentSyntaxRoot(document.Id, updatedRoot);
         }
 
+        updatedSolution = await InterfaceLinkedDocumentReconciler.ReconcileAsync(solution, updatedSolution, interfaceProjectId, ct).ConfigureAwait(false);
+        await InterfacePreviewCompilationGate.ValidateAsync(solution, updatedSolution, ct).ConfigureAwait(false);
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, updatedSolution, ct).ConfigureAwait(false);
         var description = $"Extract interface '{resolvedInterfaceName}' from '{typeName}' and update constructor dependencies";
         var token = _previewStore.Store(workspaceId, updatedSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
@@ -560,7 +575,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         return solution;
     }
 
-    private static Solution EnsureProjectReference(Solution solution, ProjectId sourceProjectId, ProjectId targetProjectId) =>
+    internal static Solution EnsureProjectReference(Solution solution, ProjectId sourceProjectId, ProjectId targetProjectId) =>
         EnsureProjectReference(solution, sourceProjectId, new ProjectReference(targetProjectId));
 
     private static Solution EnsureProjectReference(Solution solution, ProjectId sourceProjectId, ProjectReference requiredReference)

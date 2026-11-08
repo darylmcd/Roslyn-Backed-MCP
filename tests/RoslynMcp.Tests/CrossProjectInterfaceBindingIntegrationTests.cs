@@ -326,7 +326,7 @@ public sealed class CrossProjectInterfaceBindingIntegrationTests : IsolatedWorks
                 workspace.WorkspaceId, sourcePath, "EchoService", "IEchoService", "Contracts", CancellationToken.None),
             "dependency-inversion" => await CrossProjectRefactoringService.PreviewDependencyInversionAsync(
                 workspace.WorkspaceId, sourcePath, "EchoService", "IEchoService", "Contracts", CancellationToken.None),
-            "extract-and-wire" => await new ExtractAndWireOrchestrator(WorkspaceManager, compositeStore, PreviewStore,
+            "extract-and-wire" => await new ExtractAndWireOrchestrator(WorkspaceManager, compositeStore,
                 CrossProjectRefactoringService, DiRegistrationService).PreviewExtractAndWireInterfaceAsync(
                     workspace.WorkspaceId, sourcePath, "EchoService", "IEchoService", "Contracts", false, CancellationToken.None),
             _ => throw new ArgumentOutOfRangeException(nameof(route)),

@@ -526,4 +526,73 @@ public class SolutionDiffHelperTests
         var last = changes[changes.Count - 1];
         Assert.AreEqual("<truncated>", last.FilePath);
     }
+
+    [TestMethod]
+    public async Task LinkedDocumentDiff_ChargesPhysicalFileOnlyOnceBeforeCap()
+    {
+        using var workspace = new AdhocWorkspace();
+        var first = ProjectId.CreateNewId();
+        var second = ProjectId.CreateNewId();
+        var path = Path.Combine(Path.GetTempPath(), "LinkedDiff.cs");
+        var original = workspace.CurrentSolution
+            .AddProject(first, "First", "First", LanguageNames.CSharp)
+            .AddProject(second, "Second", "Second", LanguageNames.CSharp);
+        var firstDocument = DocumentId.CreateNewId(first);
+        var secondDocument = DocumentId.CreateNewId(second);
+        original = original.AddDocument(firstDocument, "LinkedDiff.cs", SourceText.From("// original"), filePath: path)
+            .AddDocument(secondDocument, "LinkedDiff.cs", SourceText.From("// original"), filePath: path);
+        var updated = SourceText.From("// " + new string('x', 40 * 1024));
+        var pending = original.WithDocumentText(firstDocument, updated).WithDocumentText(secondDocument, updated);
+
+        var changes = await SolutionDiffHelper.ComputeChangesAsync(original, pending, CancellationToken.None);
+
+        Assert.AreEqual(1, changes.Count);
+        Assert.AreEqual(path, changes[0].FilePath);
+        Assert.IsFalse(changes.Any(change => change.FilePath == SolutionDiffHelper.TruncatedSentinelFilePath));
+    }
+
+    [TestMethod]
+    public async Task LinkedDocumentDiff_Refuses_Divergent_Physical_File_Edits()
+    {
+        using var workspace = new AdhocWorkspace();
+        var first = ProjectId.CreateNewId();
+        var second = ProjectId.CreateNewId();
+        var path = Path.Combine(Path.GetTempPath(), "DivergentLinkedDiff.cs");
+        var original = workspace.CurrentSolution
+            .AddProject(first, "First", "First", LanguageNames.CSharp)
+            .AddProject(second, "Second", "Second", LanguageNames.CSharp);
+        var firstDocument = DocumentId.CreateNewId(first);
+        var secondDocument = DocumentId.CreateNewId(second);
+        original = original.AddDocument(firstDocument, "DivergentLinkedDiff.cs", SourceText.From("// original"), filePath: path)
+            .AddDocument(secondDocument, "DivergentLinkedDiff.cs", SourceText.From("// original"), filePath: path);
+        var pending = original.WithDocumentText(firstDocument, SourceText.From("// first"))
+            .WithDocumentText(secondDocument, SourceText.From("// second"));
+
+        var error = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
+            SolutionDiffHelper.ComputeChangesAsync(original, pending, CancellationToken.None));
+        StringAssert.Contains(error.Message, "divergent");
+    }
+
+    [TestMethod]
+    public async Task LinkedDocumentDiff_UsesPhysicalPathComparerBeforeGeneratingHeaders()
+    {
+        using var workspace = new AdhocWorkspace();
+        var first = ProjectId.CreateNewId();
+        var second = ProjectId.CreateNewId();
+        var path = Path.Combine(Path.GetTempPath(), "CaseLinkedDiff.cs");
+        var alternatePath = path.ToUpperInvariant();
+        var original = workspace.CurrentSolution
+            .AddProject(first, "First", "First", LanguageNames.CSharp)
+            .AddProject(second, "Second", "Second", LanguageNames.CSharp);
+        var firstDocument = DocumentId.CreateNewId(first);
+        var secondDocument = DocumentId.CreateNewId(second);
+        original = original.AddDocument(firstDocument, "CaseLinkedDiff.cs", SourceText.From("// original"), filePath: path)
+            .AddDocument(secondDocument, "CaseLinkedDiff.cs", SourceText.From("// original"), filePath: alternatePath);
+        var updated = SourceText.From("// updated");
+        var pending = original.WithDocumentText(firstDocument, updated).WithDocumentText(secondDocument, updated);
+
+        var changes = await SolutionDiffHelper.ComputeChangesAsync(original, pending, CancellationToken.None);
+
+        Assert.AreEqual(OperatingSystem.IsWindows() ? 1 : 2, changes.Count);
+    }
 }

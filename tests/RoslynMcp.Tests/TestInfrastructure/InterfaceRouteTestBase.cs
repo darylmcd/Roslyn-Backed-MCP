@@ -19,7 +19,7 @@ public abstract class InterfaceRouteTestBase : IsolatedWorkspaceTestBase
 
             public class AnimalService
             {
-                public List<string> GetAllAnimals() => [];
+                public List<string> GetAllAnimals() => ["Dog", "Cat"];
                 public void MakeThemSpeak(IEnumerable<string> animals)
                 {
                     foreach (var animal in animals) Console.WriteLine(animal);
@@ -28,6 +28,26 @@ public abstract class InterfaceRouteTestBase : IsolatedWorkspaceTestBase
                 public int CountAnimals(IEnumerable<string> animals) => animals.Count();
             }
             """);
+        File.WriteAllText(workspace.GetPath("SampleApp", "Program.cs"), """
+            using SampleLib;
+            var service = new AnimalService();
+            var animals = service.GetAllAnimals();
+            service.MakeThemSpeak(animals);
+            _ = service.CountAnimals(animals);
+            """);
+        var serviceTestsPath = workspace.GetPath("SampleLib.Tests", "AnimalServiceTests.cs");
+        File.WriteAllText(serviceTestsPath,
+            File.ReadAllText(serviceTestsPath).Replace("animals.Select(a => a.Name).ToList()", "animals", StringComparison.Ordinal));
+        UseIndependentAnimalFormatterTests(workspace);
+    }
+
+    internal static void UseIndependentAnimalFormatterTests(IsolatedWorkspaceScope workspace)
+    {
+        var formatterTestsPath = workspace.GetPath("SampleLib.Tests", "AnimalFormatterTests.cs");
+        File.WriteAllText(formatterTestsPath,
+            File.ReadAllText(formatterTestsPath).Replace(
+                "var service = new AnimalService();\n        var animals = service.GetAllAnimals();",
+                "IAnimal[] animals = [new Dog(), new Cat()];", StringComparison.Ordinal));
     }
 
     /// <summary>
@@ -106,7 +126,7 @@ public abstract class InterfaceRouteTestBase : IsolatedWorkspaceTestBase
                 workspaceId, sourcePath, typeName, "I" + typeName, "Contracts", CancellationToken.None),
             "dependency-inversion" => CrossProjectRefactoringService.PreviewDependencyInversionAsync(
                 workspaceId, sourcePath, typeName, "I" + typeName, "Contracts", CancellationToken.None),
-            "extract-and-wire" => new ExtractAndWireOrchestrator(WorkspaceManager, stores, PreviewStore, CrossProjectRefactoringService, DiRegistrationService)
+            "extract-and-wire" => new ExtractAndWireOrchestrator(WorkspaceManager, stores, CrossProjectRefactoringService, DiRegistrationService)
                 .PreviewExtractAndWireInterfaceAsync(workspaceId, sourcePath, typeName, "I" + typeName, "Contracts", true, CancellationToken.None),
             _ => throw new ArgumentOutOfRangeException(nameof(route)),
         };
