@@ -118,7 +118,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IEditService>(sp => sp.GetRequiredService<EditService>());
         services.AddSingleton<IFileOperationService, FileOperationService>();
         services.AddSingleton<IProjectMutationService, ProjectMutationService>();
-        services.AddSingleton<ICrossProjectRefactoringService, CrossProjectRefactoringService>();
+        services.AddSingleton<CrossProjectRefactoringService>();
+        services.AddSingleton<ICrossProjectRefactoringService>(sp => sp.GetRequiredService<CrossProjectRefactoringService>());
         services.AddSingleton<IPackageMigrationOrchestrator, PackageMigrationOrchestrator>();
         services.AddSingleton<IClassSplitOrchestrator, ClassSplitOrchestrator>();
         services.AddSingleton<IExtractAndWireOrchestrator, ExtractAndWireOrchestrator>();

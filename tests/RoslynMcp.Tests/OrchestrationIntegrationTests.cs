@@ -551,6 +551,7 @@ public sealed class OrchestrationIntegrationTests : IsolatedWorkspaceTestBase
         AddProjectToCopiedSolution(workspace.RootPath, "Contracts", "net10.0");
         var appProjectFile = workspace.GetPath("SampleApp", "SampleApp.csproj");
         InjectProjectReference(appProjectFile, "..\\SampleLib\\SampleLib.csproj");
+        InjectProjectReference(appProjectFile, "..\\Contracts\\Contracts.csproj");
         var registrationsFile = workspace.GetPath("SampleApp", "ServiceRegistration.cs");
         File.WriteAllText(
             registrationsFile,
@@ -575,7 +576,7 @@ public sealed class OrchestrationIntegrationTests : IsolatedWorkspaceTestBase
         Assert.IsTrue(File.Exists(interfaceFilePath));
 
         var registrationsContents = await File.ReadAllTextAsync(registrationsFile, CancellationToken.None);
-        Assert.IsTrue(registrationsContents.Contains("AddSingleton<IAnimalService, AnimalService>()", StringComparison.Ordinal));
+        Assert.IsTrue(registrationsContents.Contains("AddSingleton<global::Contracts.IAnimalService, AnimalService>()", StringComparison.Ordinal));
     }
 
     [TestMethod]

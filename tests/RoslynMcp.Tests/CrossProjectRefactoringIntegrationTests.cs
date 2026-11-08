@@ -40,7 +40,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : InterfaceRouteTest
             "Contracts",
             CancellationToken.None);
 
-        await TestInfrastructure.InterfaceExtractionTestContext.AssertNoUnresolvedNamesAsync(PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution, "SampleLib");
+        await TestInfrastructure.InterfaceExtractionTestContext.AssertCompilesAsync(PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution);
         var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
         Assert.IsTrue(File.Exists(interfaceFilePath));
@@ -247,7 +247,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : InterfaceRouteTest
             "Contracts",
             CancellationToken.None);
 
-        await TestInfrastructure.InterfaceExtractionTestContext.AssertNoUnresolvedNamesAsync(PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution, "SampleLib", "SampleApp");
+        await TestInfrastructure.InterfaceExtractionTestContext.AssertCompilesAsync(PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution);
         var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
         Assert.IsTrue(File.Exists(interfaceFilePath));
@@ -297,7 +297,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : InterfaceRouteTest
             "Contracts",
             CancellationToken.None);
 
-        await TestInfrastructure.InterfaceExtractionTestContext.AssertNoUnresolvedNamesAsync(PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution, "SampleLib");
+        await TestInfrastructure.InterfaceExtractionTestContext.AssertCompilesAsync(PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution);
         var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
 
@@ -439,7 +439,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : InterfaceRouteTest
             "Contracts",
             CancellationToken.None);
 
-        await TestInfrastructure.InterfaceExtractionTestContext.AssertNoUnresolvedNamesAsync(PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution, "SampleLib", "SampleApp");
+        await TestInfrastructure.InterfaceExtractionTestContext.AssertCompilesAsync(PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution);
         var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
 
@@ -558,7 +558,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : InterfaceRouteTest
             "Contracts",
             CancellationToken.None);
 
-        await TestInfrastructure.InterfaceExtractionTestContext.AssertNoUnresolvedNamesAsync(PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution, "SampleLib");
+        await TestInfrastructure.InterfaceExtractionTestContext.AssertCompilesAsync(PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution);
         var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
         Assert.IsTrue(File.Exists(interfaceFilePath));
@@ -638,7 +638,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : InterfaceRouteTest
             "Contracts",
             CancellationToken.None);
 
-        await TestInfrastructure.InterfaceExtractionTestContext.AssertNoUnresolvedNamesAsync(PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution, "SampleLib");
+        await TestInfrastructure.InterfaceExtractionTestContext.AssertCompilesAsync(PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution);
         var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
 
@@ -803,7 +803,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : InterfaceRouteTest
             "Contracts",
             CancellationToken.None);
 
-        await TestInfrastructure.InterfaceExtractionTestContext.AssertNoUnresolvedNamesAsync(PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution, "SampleLib", "SampleApp", "MidLib", "Downstream");
+        await TestInfrastructure.InterfaceExtractionTestContext.AssertCompilesAsync(PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution);
         var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
         Assert.IsTrue(File.Exists(interfaceFilePath));
@@ -817,6 +817,22 @@ public sealed class CrossProjectRefactoringIntegrationTests : InterfaceRouteTest
 
     private static void AddGeometrySignatureOwner(IsolatedWorkspaceScope workspace)
     {
+        File.WriteAllText(workspace.GetPath("SampleApp", "Program.cs"),
+            "var service = new SampleLib.AnimalService();\n");
+        File.WriteAllText(workspace.GetPath("SampleLib.Tests", "AnimalServiceTests.cs"), """
+            using Microsoft.VisualStudio.TestTools.UnitTesting;
+            using SampleLib;
+
+            namespace SampleLib.Tests;
+
+            [TestClass]
+            public class AnimalServiceTests
+            {
+                [TestMethod]
+                public void CanConstructAnimalService() => Assert.IsNotNull(new AnimalService());
+            }
+            """);
+        UseIndependentAnimalFormatterTests(workspace);
         AddProjectToCopiedSolution(workspace.RootPath, "Geometry", "net10.0");
         File.WriteAllText(workspace.GetPath("Geometry", "Shape.cs"), """
             namespace Geometry;

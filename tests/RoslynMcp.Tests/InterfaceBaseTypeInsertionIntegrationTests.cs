@@ -123,7 +123,7 @@ public sealed class InterfaceBaseTypeInsertionIntegrationTests : IsolatedWorkspa
                 sourcePath, "EchoService", "IEchoService", "Contracts", CancellationToken.None),
             "dependency-inversion" => await CrossProjectRefactoringService.PreviewDependencyInversionAsync(workspace.WorkspaceId,
                 sourcePath, "EchoService", "IEchoService", "Contracts", CancellationToken.None),
-            "extract-and-wire" => await new ExtractAndWireOrchestrator(WorkspaceManager, compositeStore, PreviewStore,
+            "extract-and-wire" => await new ExtractAndWireOrchestrator(WorkspaceManager, compositeStore,
                 CrossProjectRefactoringService, DiRegistrationService).PreviewExtractAndWireInterfaceAsync(workspace.WorkspaceId,
                     sourcePath, "EchoService", "IEchoService", "Contracts", true, CancellationToken.None),
             _ => throw new ArgumentOutOfRangeException(nameof(route)),
