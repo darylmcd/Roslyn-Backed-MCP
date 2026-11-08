@@ -38,20 +38,7 @@ if ($launch -ceq '1') {
     Get-Module -ListAvailable | Out-Null
     $converted = ConvertTo-Json @{ module = 'autoload' } | ConvertFrom-Json
     if ($converted.module -cne 'autoload') { throw 'Module autoload failed.' }
-    $deadline = [DateTime]::UtcNow.AddSeconds(30)
-    do {
-        $moduleFiles = @(Get-ChildItem -LiteralPath $cache -Filter 'ModuleAnalysisCache*' -File | Where-Object Length -GT 16)
-        if ($moduleFiles.Count -gt 0) { break }
-        Start-Sleep -Milliseconds 100
-    } while ([DateTime]::UtcNow -lt $deadline)
-    if ($moduleFiles.Count -eq 0) { throw 'Native module analysis serialization exceeded fixed 30-second budget.' }
-    # Native AnalysisCache serialization begins with the PSModuleCache signature.
-    foreach ($file in $moduleFiles) {
-        $bytes = [IO.File]::ReadAllBytes($file.FullName)
-        $signature = [Text.Encoding]::ASCII.GetString($bytes, 0, 13)
-        if ($signature -cne 'PSMODULECACHE') { throw 'Unexpected native module-cache signature.' }
-    }
-    "MODULE_CACHE_PASS=$($moduleFiles.Count)"
+    & (Join-Path $repo 'tests/RoslynMcp.Tests/Fixtures/pwsh-startup-cache-verify.ps1') -Cache $cache -BudgetSeconds 30
 }
 [System.Runtime.ProfileOptimization]::StartProfile($null)
 $profile = Get-Item -LiteralPath (Join-Path $cache 'StartupProfileData-NonInteractive')
