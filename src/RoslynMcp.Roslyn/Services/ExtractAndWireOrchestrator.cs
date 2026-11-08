@@ -10,20 +10,17 @@ public sealed class ExtractAndWireOrchestrator : IExtractAndWireOrchestrator
 {
     private readonly IWorkspaceManager _workspace;
     private readonly ICompositePreviewStore _compositePreviewStore;
-    private readonly IPreviewStore _previewStore;
-    private readonly ICrossProjectRefactoringService _crossProjectRefactoringService;
+    private readonly CrossProjectRefactoringService _crossProjectRefactoringService;
     private readonly IDiRegistrationService _diRegistrationService;
 
     public ExtractAndWireOrchestrator(
         IWorkspaceManager workspace,
         ICompositePreviewStore compositePreviewStore,
-        IPreviewStore previewStore,
-        ICrossProjectRefactoringService crossProjectRefactoringService,
+        CrossProjectRefactoringService crossProjectRefactoringService,
         IDiRegistrationService diRegistrationService)
     {
         _workspace = workspace;
         _compositePreviewStore = compositePreviewStore;
-        _previewStore = previewStore;
         _crossProjectRefactoringService = crossProjectRefactoringService;
         _diRegistrationService = diRegistrationService;
     }
@@ -43,27 +40,15 @@ public sealed class ExtractAndWireOrchestrator : IExtractAndWireOrchestrator
 
         await DetectDuplicateInterfaceAsync(currentSolution, filePath, typeName, resolvedInterfaceName, ct).ConfigureAwait(false);
 
-        var extractionPreview = await _crossProjectRefactoringService.PreviewExtractInterfaceAsync(
-            workspaceId,
-            filePath,
-            typeName,
-            resolvedInterfaceName,
-            targetProjectName,
-            ct).ConfigureAwait(false);
-
-        var extractionEntry = _previewStore.Retrieve(extractionPreview.PreviewToken)
-            ?? throw new InvalidOperationException("The intermediate extract-interface preview token could not be resolved.");
-        var modifiedSolution = extractionEntry.ModifiedSolution;
-        _previewStore.Invalidate(extractionPreview.PreviewToken);
-
-        var mutations = await BuildMutationsFromSolutionAsync(currentSolution, modifiedSolution, ct).ConfigureAwait(false);
-        var changes = (await SolutionDiffHelper.ComputeChangesAsync(currentSolution, modifiedSolution, ct).ConfigureAwait(false)).ToList();
-        var warnings = extractionPreview.Warnings?.ToList() ?? [];
+        var modifiedSolution = await _crossProjectRefactoringService.BuildExtractInterfaceSolutionAsync(
+            workspaceId, currentSolution, filePath, typeName, resolvedInterfaceName, targetProjectName, ct).ConfigureAwait(false);
+        var generatedInterface = await ResolveGeneratedInterfaceAsync(currentSolution, modifiedSolution, resolvedInterfaceName, ct).ConfigureAwait(false);
+        modifiedSolution = await InterfaceLinkedDocumentReconciler.ReconcileAsync(currentSolution, modifiedSolution, generatedInterface.ProjectId, ct).ConfigureAwait(false);
 
         if (updateDiRegistrations)
         {
             var registrations = await _diRegistrationService.GetDiRegistrationsAsync(workspaceId, null, ct).ConfigureAwait(false);
-            var candidateFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var candidateFiles = new HashSet<string>(FileSystemPath.Comparer);
             foreach (var registration in registrations.Where(registration =>
                          string.Equals(ShortTypeName(registration.ImplementationType), typeName, StringComparison.Ordinal) ||
                          string.Equals(ShortTypeName(registration.ServiceType), typeName, StringComparison.Ordinal)))
@@ -82,23 +67,34 @@ public sealed class ExtractAndWireOrchestrator : IExtractAndWireOrchestrator
 
             foreach (var candidateFile in candidateFiles)
             {
-                if (!File.Exists(candidateFile))
+                var linkedIds = modifiedSolution.GetDocumentIdsWithFilePath(candidateFile).ToArray();
+                if (linkedIds.Length == 0)
                 {
+                    if (File.Exists(candidateFile))
+                    {
+                        var diskContent = await File.ReadAllTextAsync(candidateFile, ct).ConfigureAwait(false);
+                        if (RewriteDiRegistration(diskContent, typeName, generatedInterface.QualifiedName) != diskContent)
+                            throw new PublicInvalidOperationException($"DI registration file '{candidateFile}' is not mapped to a C# document in the workspace.");
+                    }
                     continue;
                 }
 
-                var originalContent = await File.ReadAllTextAsync(candidateFile, ct).ConfigureAwait(false);
-                var updatedContent = RewriteDiRegistration(originalContent, typeName, resolvedInterfaceName);
-                if (string.Equals(originalContent, updatedContent, StringComparison.Ordinal))
-                {
-                    continue;
-                }
-
-                UpsertMutation(mutations, candidateFile, updatedContent);
-                changes.RemoveAll(change => string.Equals(change.FilePath, candidateFile, StringComparison.OrdinalIgnoreCase));
-                changes.Add(new FileChangeDto(candidateFile, DiffGenerator.GenerateUnifiedDiff(originalContent, updatedContent, candidateFile)));
+                var documents = linkedIds.Select(id => modifiedSolution.GetDocument(id)!).ToArray();
+                var texts = await Task.WhenAll(documents.Select(document => document.GetTextAsync(ct))).ConfigureAwait(false);
+                var content = texts[0].ToString();
+                if (texts.Skip(1).Any(text => text.ToString() != content))
+                    throw new PublicInvalidOperationException($"Linked C# documents at '{candidateFile}' have divergent content.");
+                var updatedContent = RewriteDiRegistration(content, typeName, generatedInterface.QualifiedName);
+                if (updatedContent == content) continue;
+                foreach (var document in documents)
+                    modifiedSolution = modifiedSolution.WithDocumentText(document.Id, Microsoft.CodeAnalysis.Text.SourceText.From(updatedContent, texts[0].Encoding));
             }
         }
+
+        modifiedSolution = await InterfaceLinkedDocumentReconciler.ReconcileAsync(currentSolution, modifiedSolution, generatedInterface.ProjectId, ct).ConfigureAwait(false);
+        await InterfacePreviewCompilationGate.ValidateAsync(currentSolution, modifiedSolution, ct).ConfigureAwait(false);
+        var mutations = await BuildMutationsFromSolutionAsync(currentSolution, modifiedSolution, ct).ConfigureAwait(false);
+        var changes = await SolutionDiffHelper.ComputeChangesAsync(currentSolution, modifiedSolution, ct).ConfigureAwait(false);
 
         if (mutations.Count == 0)
         {
@@ -107,7 +103,7 @@ public sealed class ExtractAndWireOrchestrator : IExtractAndWireOrchestrator
 
         var description = $"Extract interface '{resolvedInterfaceName}' from '{typeName}' and wire consumers";
         var token = _compositePreviewStore.Store(workspaceId, workspaceVersion, description, mutations);
-        return new RefactoringPreviewDto(token, description, changes, warnings.Count == 0 ? null : warnings);
+        return new RefactoringPreviewDto(token, description, changes, null);
     }
 
     /// <summary>
@@ -174,9 +170,11 @@ public sealed class ExtractAndWireOrchestrator : IExtractAndWireOrchestrator
 
     private static void UpsertMutation(List<CompositeFileMutation> mutations, string filePath, string updatedContent)
     {
-        var existingIndex = mutations.FindIndex(mutation => string.Equals(mutation.FilePath, filePath, StringComparison.OrdinalIgnoreCase));
+        var existingIndex = mutations.FindIndex(mutation => FileSystemPath.Comparer.Equals(mutation.FilePath, filePath));
         if (existingIndex >= 0)
         {
+            if (mutations[existingIndex].UpdatedContent != updatedContent || mutations[existingIndex].DeleteFile)
+                throw new PublicInvalidOperationException($"Linked C# documents at '{filePath}' have divergent mutations.");
             mutations[existingIndex] = new CompositeFileMutation(filePath, updatedContent);
             return;
         }
@@ -190,6 +188,28 @@ public sealed class ExtractAndWireOrchestrator : IExtractAndWireOrchestrator
             .Replace($"AddSingleton<{typeName}>", $"AddSingleton<{interfaceName}, {typeName}>", StringComparison.Ordinal)
             .Replace($"AddScoped<{typeName}>", $"AddScoped<{interfaceName}, {typeName}>", StringComparison.Ordinal)
             .Replace($"AddTransient<{typeName}>", $"AddTransient<{interfaceName}, {typeName}>", StringComparison.Ordinal);
+    }
+
+    private static async Task<(string QualifiedName, ProjectId ProjectId)> ResolveGeneratedInterfaceAsync(
+        Solution baseline, Solution pending, string interfaceName, CancellationToken ct)
+    {
+        foreach (var projectChange in pending.GetChanges(baseline).GetProjectChanges())
+        {
+            foreach (var documentId in projectChange.GetAddedDocuments())
+            {
+                var document = pending.GetDocument(documentId)!;
+                var root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false);
+                var declaration = root?.DescendantNodes().OfType<InterfaceDeclarationSyntax>()
+                    .SingleOrDefault(candidate => candidate.Identifier.ValueText == interfaceName);
+                if (declaration is null) continue;
+                var model = await document.GetSemanticModelAsync(ct).ConfigureAwait(false);
+                var symbol = model?.GetDeclaredSymbol(declaration, ct);
+                if (symbol is not null)
+                    return (symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), document.Project.Id);
+            }
+        }
+
+        throw InvalidOperationErrors.Internal($"Generated interface '{interfaceName}' could not be resolved for DI registration rewriting.");
     }
 
     private static string ShortTypeName(string typeName)
@@ -213,36 +233,31 @@ public sealed class ExtractAndWireOrchestrator : IExtractAndWireOrchestrator
             foreach (var documentId in projectChange.GetAddedDocuments())
             {
                 var document = modifiedSolution.GetDocument(documentId);
-                if (document?.FilePath is null)
-                {
-                    continue;
-                }
+                if (document is null) throw InvalidOperationErrors.Internal("Added C# document could not be resolved.");
+                var path = RequirePhysicalPath(document);
 
                 var text = await document.GetTextAsync(ct).ConfigureAwait(false);
-                mutations.Add(new CompositeFileMutation(document.FilePath, text.ToString()));
+                UpsertMutation(mutations, path, text.ToString());
             }
 
             foreach (var documentId in projectChange.GetChangedDocuments())
             {
                 var document = modifiedSolution.GetDocument(documentId);
-                if (document?.FilePath is null)
-                {
-                    continue;
-                }
+                if (document is null) throw InvalidOperationErrors.Internal("Changed C# document could not be resolved.");
+                var path = RequirePhysicalPath(document);
 
                 var text = await document.GetTextAsync(ct).ConfigureAwait(false);
-                mutations.Add(new CompositeFileMutation(document.FilePath, text.ToString()));
+                UpsertMutation(mutations, path, text.ToString());
             }
 
             foreach (var documentId in projectChange.GetRemovedDocuments())
             {
                 var document = currentSolution.GetDocument(documentId);
-                if (document?.FilePath is null)
-                {
-                    continue;
-                }
+                if (document is null) throw InvalidOperationErrors.Internal("Removed C# document could not be resolved.");
+                var path = RequirePhysicalPath(document);
 
-                mutations.Add(new CompositeFileMutation(document.FilePath, null, DeleteFile: true));
+                if (!modifiedSolution.GetDocumentIdsWithFilePath(path).Any())
+                    mutations.Add(new CompositeFileMutation(path, null, DeleteFile: true));
             }
 
         }
@@ -255,5 +270,10 @@ public sealed class ExtractAndWireOrchestrator : IExtractAndWireOrchestrator
 
         return mutations;
     }
+
+    private static string RequirePhysicalPath(Document document) =>
+        !string.IsNullOrWhiteSpace(document.FilePath)
+            ? document.FilePath
+            : throw new PublicInvalidOperationException($"Changed C# document '{document.Name}' is not mapped to a physical file.");
 
 }

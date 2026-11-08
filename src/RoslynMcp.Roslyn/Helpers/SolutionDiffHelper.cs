@@ -1,5 +1,6 @@
 using Microsoft.CodeAnalysis;
 using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Roslyn.Helpers;
@@ -27,7 +28,8 @@ internal static class SolutionDiffHelper
     public const int DefaultMaxTotalChars = 64 * 1024;
 
     /// <summary>
-    /// Returns a <see cref="FileChangeDto"/> for each document that differs between
+    /// Returns one <see cref="FileChangeDto"/> per changed physical path (or per DocumentId
+    /// when no path is mapped) between
     /// <paramref name="oldSolution"/> and <paramref name="newSolution"/>,
     /// including added and removed documents.
     /// </summary>
@@ -39,31 +41,11 @@ internal static class SolutionDiffHelper
         Solution newSolution,
         CancellationToken ct)
     {
-        var changes = new List<FileChangeDto>();
+        var candidates = new List<(string FilePath, string Identity, string Before, string After)>();
         var solutionChanges = newSolution.GetChanges(oldSolution);
-        var totalChars = 0;
-        var truncatedFiles = new List<string>();
 
-        bool TryAdd(FileChangeDto change)
-        {
-            // format-document-preview-empty-diff-instead-of-noop (gh #739): belt-and-suspenders
-            // guard — if DiffGenerator returned string.Empty (no net changes after a no-op
-            // formatter pass, despite distinct SourceText instances that bypassed the
-            // oldText == newText guard above), skip the entry so callers see an empty
-            // changes[] rather than a header-only diff with no hunks.
-            if (string.IsNullOrEmpty(change.UnifiedDiff))
-            {
-                return false;
-            }
-            if (totalChars + change.UnifiedDiff.Length > DefaultMaxTotalChars)
-            {
-                truncatedFiles.Add(change.FilePath);
-                return false;
-            }
-            changes.Add(change);
-            totalChars += change.UnifiedDiff.Length;
-            return true;
-        }
+        void AddCandidate(string filePath, string identity, string before, string after) =>
+            candidates.Add((filePath, identity, before, after));
 
         foreach (var projectChange in solutionChanges.GetProjectChanges())
         {
@@ -84,7 +66,7 @@ internal static class SolutionDiffHelper
                 }
 
                 var filePath = oldDoc.FilePath ?? newDoc.FilePath ?? oldDoc.Name;
-                TryAdd(new FileChangeDto(filePath, DiffGenerator.GenerateUnifiedDiff(oldText, newText, filePath)));
+                AddCandidate(filePath, oldDoc.FilePath ?? newDoc.FilePath ?? "\0document:" + docId, oldText, newText);
             }
 
             foreach (var docId in projectChange.GetAddedDocuments())
@@ -97,7 +79,7 @@ internal static class SolutionDiffHelper
 
                 var newText = (await newDoc.GetTextAsync(ct).ConfigureAwait(false)).ToString();
                 var filePath = newDoc.FilePath ?? newDoc.Name;
-                TryAdd(new FileChangeDto(filePath, DiffGenerator.GenerateUnifiedDiff(string.Empty, newText, filePath)));
+                AddCandidate(filePath, newDoc.FilePath ?? "\0document:" + docId, string.Empty, newText);
             }
 
             foreach (var docId in projectChange.GetRemovedDocuments())
@@ -110,7 +92,7 @@ internal static class SolutionDiffHelper
 
                 var oldText = (await oldDoc.GetTextAsync(ct).ConfigureAwait(false)).ToString();
                 var filePath = oldDoc.FilePath ?? oldDoc.Name;
-                TryAdd(new FileChangeDto(filePath, DiffGenerator.GenerateUnifiedDiff(oldText, string.Empty, filePath)));
+                AddCandidate(filePath, oldDoc.FilePath ?? "\0document:" + docId, oldText, string.Empty);
             }
         }
 
@@ -118,7 +100,33 @@ internal static class SolutionDiffHelper
         {
             var before = CsprojSemanticEquality.CreateSnapshot(mutation.Original).Content;
             var after = CsprojSemanticEquality.CreateSnapshot(mutation.Modified).Content;
-            TryAdd(new FileChangeDto(mutation.Path, DiffGenerator.GenerateUnifiedDiff(before, after, mutation.Path)));
+            AddCandidate(mutation.Path, mutation.Path, before, after);
+        }
+
+        // A linked physical file may have several DocumentIds. Reconcile its diffs before charging the
+        // output budget, or duplicate views can manufacture a truncated preview and a force-only apply.
+        var changes = new List<FileChangeDto>();
+        var totalChars = 0;
+        var truncatedFiles = new List<string>();
+        foreach (var group in candidates.GroupBy(candidate => candidate.Identity, FileSystemPath.Comparer))
+        {
+            var distinctEdits = group.Select(candidate => (candidate.Before, candidate.After))
+                .Distinct().Take(2).ToArray();
+            if (distinctEdits.Length > 1)
+                throw new PublicInvalidOperationException($"Linked C# documents at '{Path.GetFileName(group.First().FilePath)}' have divergent preview diffs.");
+            var candidate = group.First();
+            var diff = DiffGenerator.GenerateUnifiedDiff(candidate.Before, candidate.After, candidate.FilePath);
+            // format-document-preview-empty-diff-instead-of-noop (gh #739): a formatter can hand
+            // us distinct SourceText instances whose final strings are equal.
+            if (string.IsNullOrEmpty(diff)) continue;
+            var change = new FileChangeDto(candidate.FilePath, diff);
+            if (totalChars + change.UnifiedDiff.Length > DefaultMaxTotalChars)
+            {
+                truncatedFiles.Add(change.FilePath);
+                continue;
+            }
+            changes.Add(change);
+            totalChars += change.UnifiedDiff.Length;
         }
 
         if (truncatedFiles.Count > 0)

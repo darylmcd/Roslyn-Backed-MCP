@@ -20,15 +20,25 @@ public sealed class CaseDistinctCallsitePreviewTests
     private const string WorkspaceId = "case-distinct-callsites";
 
     [TestMethod]
-    public async Task ReplaceInvocation_CaseDistinctCallerDocuments_ProduceSeparateCallsiteUpdates()
+    public async Task ReplaceInvocation_CaseDistinctCallerDocuments_RespectPhysicalIdentity()
     {
         var (solution, upperPath, lowerPath) = BuildSolution(
             "public static class Target { public static int Old(int value) => value; public static int New(int value) => value; }");
         var service = new BulkRefactoringService(CreateWorkspace(solution), new PreviewStore(), new PassThroughCompilationCache());
 
+        if (OperatingSystem.IsWindows())
+        {
+            // These in-memory documents cannot both be written: their paths name one physical file,
+            // but their distinct source text produces incompatible edits.
+            var refusal = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
+                service.PreviewReplaceInvocationAsync(
+                    WorkspaceId, "Target.Old(int)", "Target.New(int)", null, CancellationToken.None));
+            StringAssert.Contains(refusal.Message, "divergent preview diffs");
+            return;
+        }
+
         var preview = await service.PreviewReplaceInvocationAsync(
             WorkspaceId, "Target.Old(int)", "Target.New(int)", null, CancellationToken.None);
-
         AssertSeparateEntries(preview, upperPath, lowerPath);
     }
 
