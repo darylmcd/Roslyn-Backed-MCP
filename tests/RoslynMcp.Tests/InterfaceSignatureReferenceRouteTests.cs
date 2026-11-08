@@ -173,6 +173,101 @@ public sealed class InterfaceSignatureReferenceRouteTests : InterfaceRouteTestBa
     }
 
     [TestMethod]
+    [DataRow("cross-project", "block")]
+    [DataRow("dependency-inversion", "outer")]
+    [DataRow("extract-and-wire", "inner")]
+    [DataRow("cross-project", "using")]
+    [DataRow("cross-project", "qualified-using")]
+    [DataRow("cross-project", "unused-qualified-using")]
+    [DataRow("cross-project", "contract-attribute")]
+    [DataRow("cross-project", "static-using")]
+    [DataRow("cross-project", "static-using-root")]
+    [DataRow("cross-project", "contract-argument")]
+    [DataRow("cross-project", "parameter-contract-argument")]
+    public async Task Namespace_Scoped_Extern_Alias_Is_Preserved_Through_Interface_Routes(string route, string scope)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var sharedSource = scope switch
+        {
+            "contract-attribute" => SharedSource.Replace("namespace Shared;", "namespace Shared {", StringComparison.Ordinal)
+                + "}\nnamespace System.Diagnostics.CodeAnalysis { [System.AttributeUsage(System.AttributeTargets.ReturnValue)] public sealed class NotNullAttribute : System.Attribute { } }",
+            "static-using" or "static-using-root" => SharedSource + "\npublic static class Utility { public sealed class Nested { } }",
+            "contract-argument" or "parameter-contract-argument" => SharedSource + "\npublic static class Patterns { public const string Name = \"value\"; }",
+            _ => SharedSource,
+        };
+        var sourcePath = await PrepareInterfaceRouteFixtureAsync(workspace, "RefService.cs", Source,
+            "RefConsumer.cs", Consumer, sharedSource);
+        var sourceProjectFile = workspace.GetPath("SampleLib", "SampleLib.csproj");
+        var sourceProjectXml = XDocument.Load(sourceProjectFile);
+        sourceProjectXml.Descendants("ProjectReference").Single(element =>
+            ((string?)element.Attribute("Include"))?.Contains("Shared.csproj", StringComparison.Ordinal) == true)
+            .Add(new XElement("Aliases", "ext,unused"));
+        sourceProjectXml.Save(sourceProjectFile);
+        var source = scope switch
+        {
+            "block" => "namespace SampleLib { extern alias ext; extern alias unused; public sealed class RefService { public ext::Shared.Shape Get() => new(); } }",
+            "outer" => "namespace SampleLib { extern alias ext; extern alias unused; namespace Nested { public sealed class RefService { public ext::Shared.Shape Get() => new(); } } }",
+            "inner" => "namespace SampleLib { namespace Nested { extern alias ext; extern alias unused; public sealed class RefService { public ext::Shared.Shape Get() => new(); } } }",
+            "using" => "namespace SampleLib { extern alias ext; extern alias unused; using Payload = ext::Shared.Shape; public sealed class RefService { public Payload Get() => new(); } }",
+            "qualified-using" => "namespace SampleLib { extern alias ext; extern alias unused; using ext::Shared; using System.Text; public sealed class RefService { public Shape Get() => new(); } }",
+            "unused-qualified-using" => "namespace SampleLib { extern alias ext; extern alias unused; using ext::Shared; public sealed class RefService { public ext::Shared.Shape Get() => new(); } }",
+            "contract-attribute" => "namespace SampleLib { extern alias ext; extern alias unused; using Contract = ext::System.Diagnostics.CodeAnalysis.NotNullAttribute; public sealed class RefService { [return: Contract] public string Get() => string.Empty; } }",
+            "static-using" => "namespace SampleLib { extern alias ext; extern alias unused; using static ext::Shared.Utility; public sealed class RefService { public Nested Get() => new(); } }",
+            "static-using-root" => "extern alias ext; extern alias unused; using static ext::Shared.Utility; namespace SampleLib; public sealed class RefService { public Nested Get() => new(); }",
+            "contract-argument" => "namespace SampleLib { extern alias ext; extern alias unused; using Patterns = ext::Shared.Patterns; public sealed class RefService { [return: System.Diagnostics.CodeAnalysis.NotNullIfNotNull(Patterns.Name)] public string? Get(string? value) => value; } }",
+            "parameter-contract-argument" => "namespace SampleLib { extern alias ext; extern alias unused; using Patterns = ext::Shared.Patterns; public sealed class RefService { public string Get([System.Diagnostics.CodeAnalysis.StringSyntax(Patterns.Name)] string value) => value; } }",
+            _ => throw new ArgumentOutOfRangeException(nameof(scope)),
+        };
+        await File.WriteAllTextAsync(sourcePath, source);
+        if (scope is "outer" or "inner")
+            await File.WriteAllTextAsync(workspace.GetPath("Consumer", "RefConsumer.cs"),
+                Consumer.Replace("SampleLib.RefService", "SampleLib.Nested.RefService", StringComparison.Ordinal));
+        await workspace.ReloadAsync();
+        await AssertCompilesAsync(WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
+
+        var stores = new CompositePreviewStore();
+        var preview = await PreviewInterfaceRouteAsync(route, workspace.WorkspaceId, sourcePath, "RefService", stores);
+        if (route == "extract-and-wire")
+        {
+            var mutations = stores.Retrieve(preview.PreviewToken, null)!.Value.Mutations;
+            var generated = mutations.Single(m => m.FilePath == workspace.GetPath("Contracts", "IRefService.cs")).UpdatedContent;
+            StringAssert.Contains(generated, "extern alias ext;");
+            if (scope == "using") StringAssert.Contains(generated, "using Payload = ext::Shared.Shape;");
+            if (scope == "qualified-using") StringAssert.Contains(generated, "using ext::Shared;");
+            if (scope == "unused-qualified-using") Assert.IsFalse(generated.Contains("using ext::Shared;", StringComparison.Ordinal));
+            if (scope == "contract-attribute") StringAssert.Contains(generated, "using Contract = ext::System.Diagnostics.CodeAnalysis.NotNullAttribute;");
+            if (scope.EndsWith("contract-argument", StringComparison.Ordinal)) StringAssert.Contains(generated, "using Patterns = ext::Shared.Patterns;");
+            Assert.IsFalse(generated.Contains("using System.Text;", StringComparison.Ordinal));
+            if (scope.StartsWith("static-using", StringComparison.Ordinal)) Assert.IsFalse(generated.Contains("using Shared;", StringComparison.Ordinal));
+            Assert.IsFalse(generated.Contains("extern alias unused;", StringComparison.Ordinal));
+            var applied = await new CompositeApplyOrchestrator(WorkspaceManager, stores, undoService: UndoService)
+                .ApplyCompositeAsync(preview.PreviewToken, CompositeAdmission.AdmitAll, CancellationToken.None);
+            Assert.IsTrue(applied.Success, applied.Error);
+        }
+        else
+        {
+            var pending = PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution;
+            var generated = (await pending.Projects.Single(p => p.Name == "Contracts").Documents
+                .Single(d => d.Name == "IRefService.cs").GetTextAsync()).ToString();
+            StringAssert.Contains(generated, "extern alias ext;");
+            if (scope == "using") StringAssert.Contains(generated, "using Payload = ext::Shared.Shape;");
+            if (scope == "qualified-using") StringAssert.Contains(generated, "using ext::Shared;");
+            if (scope == "unused-qualified-using") Assert.IsFalse(generated.Contains("using ext::Shared;", StringComparison.Ordinal));
+            if (scope == "contract-attribute") StringAssert.Contains(generated, "using Contract = ext::System.Diagnostics.CodeAnalysis.NotNullAttribute;");
+            if (scope.EndsWith("contract-argument", StringComparison.Ordinal)) StringAssert.Contains(generated, "using Patterns = ext::Shared.Patterns;");
+            Assert.IsFalse(generated.Contains("using System.Text;", StringComparison.Ordinal));
+            if (scope.StartsWith("static-using", StringComparison.Ordinal)) Assert.IsFalse(generated.Contains("using Shared;", StringComparison.Ordinal));
+            Assert.IsFalse(generated.Contains("extern alias unused;", StringComparison.Ordinal));
+            await AssertCompilesAsync(pending);
+            var applied = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
+            Assert.IsTrue(applied.Success, applied.Error);
+        }
+
+        await workspace.ReloadAsync();
+        await AssertCompilesAsync(WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId));
+    }
+
+    [TestMethod]
     public async Task Equal_Simple_Assembly_Names_Do_Not_Confuse_Signature_Owner()
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();

@@ -165,7 +165,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         var projector = await InterfaceMemberProjector.CreateAsync(sourceDocument, nullableProjection, targetProject, ct).ConfigureAwait(false);
         var destinationGlobalPlainNamespaces = await UsingDirectiveSynthesizer
             .GetProjectGlobalPlainNamespacesAsync(targetProject, ct).ConfigureAwait(false);
-        var interfaceRoot = CreateInterfaceCompilationUnit(sourceRoot, typeSymbol, resolvedInterfaceName, namespaceName, isCrossProject,
+        var interfaceRoot = CreateInterfaceCompilationUnit(sourceRoot, typeDeclaration, typeSymbol, resolvedInterfaceName, namespaceName, isCrossProject,
             ReceivingNamespaceFactory.RequireCSharpOptions(targetProject.ParseOptions), projector,
             destinationGlobalPlainNamespaces, semanticModel, ct);
         var interfaceFilePath = Path.Combine(interfaceDirectory, resolvedInterfaceName + ".cs");
@@ -443,6 +443,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
 
     private static CompilationUnitSyntax CreateInterfaceCompilationUnit(
         CompilationUnitSyntax sourceRoot,
+        TypeDeclarationSyntax typeDeclaration,
         INamedTypeSymbol typeSymbol,
         string interfaceName,
         string namespaceName,
@@ -473,19 +474,17 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             .AddModifiers(accessibilityToken)
             .WithMembers(SyntaxFactory.List(interfaceMembers));
 
+        var (sourceUsings, qualifiedNamespaceUsings) = UsingDirectiveSynthesizer.SelectVisibleAliasUsings(
+            sourceRoot, typeDeclaration, projector.ReferencedUsingAliases, projector.ReferencedUnqualifiedTypes,
+            sourceSemanticModel, ct);
         var usings = UsingDirectiveSynthesizer.BuildUsingDirectives(
-            sourceRoot.Usings, projector.RequiredNamespaces(string.IsNullOrWhiteSpace(namespaceName) ? null : namespaceName),
+            sourceUsings, projector.RequiredNamespaces(string.IsNullOrWhiteSpace(namespaceName) ? null : namespaceName),
             preserveGlobalUsings: isCrossProject,
             destinationGlobalPlainNamespaces: destinationGlobalPlainNamespaces,
             sourceSemanticModel: sourceSemanticModel, ct: ct);
-        var cleanUsings = SyntaxFactory.List(usings.Select(u => u.WithoutTrivia()));
-        var requiredAliases = interfaceMembers.SelectMany(member => member.DescendantNodesAndSelf().OfType<AliasQualifiedNameSyntax>())
-            .Concat(cleanUsings.SelectMany(usingDirective => usingDirective.DescendantNodesAndSelf().OfType<AliasQualifiedNameSyntax>()))
-            .Select(name => name.Alias.Identifier.ValueText)
-            .ToHashSet(StringComparer.Ordinal);
-        var externs = SyntaxFactory.List(sourceRoot.Externs
-            .Where(directive => requiredAliases.Contains(directive.Identifier.ValueText))
-            .Select(directive => directive.WithoutTrivia()));
+        var cleanUsings = SyntaxFactory.List(usings.Concat(qualifiedNamespaceUsings).Select(u => u.WithoutTrivia()));
+        var externs = UsingDirectiveSynthesizer.BuildRequiredExternAliases(
+            sourceRoot, typeDeclaration, interfaceMembers, cleanUsings);
         var destinationNamespace = ReceivingNamespaceFactory.Create(namespaceName, receivingOptions);
         MemberDeclarationSyntax wrappedMember = destinationNamespace is null
             ? interfaceDeclaration
@@ -566,7 +565,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
     private static Solution EnsureProjectReference(Solution solution, ProjectId sourceProjectId, ProjectReference requiredReference)
     {
         var sourceProject = solution.GetProject(sourceProjectId)
-            ?? throw new InvalidOperationException("Source project was not found in the updated solution.");
+            ?? throw InvalidOperationErrors.Internal("Source project was not found in the updated solution.");
         var targetProjectId = requiredReference.ProjectId;
 
         var existingReference = sourceProject.ProjectReferences.FirstOrDefault(reference => reference.ProjectId == targetProjectId);
@@ -590,7 +589,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         }
 
         var targetProject = solution.GetProject(targetProjectId)
-            ?? throw new InvalidOperationException("Target project was not found in the updated solution.");
+            ?? throw InvalidOperationErrors.Internal("Target project was not found in the updated solution.");
 
         if (ProjectGraphHelpers.WouldCreateProjectReferenceCycle(sourceProject, targetProject))
         {
@@ -632,7 +631,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             .GetProjectGlobalPlainNamespacesAsync(targetProject, ct).ConfigureAwait(false);
         var sourceSemanticModel = await sourceDocument.GetSemanticModelAsync(ct).ConfigureAwait(false)
             ?? throw InvalidOperationErrors.Internal("Source semantic model is unavailable.");
-        var interfaceRoot = CreateInterfaceCompilationUnit(sourceRoot, typeSymbol, interfaceName, namespaceName, isCrossProject,
+        var interfaceRoot = CreateInterfaceCompilationUnit(sourceRoot, typeDeclaration, typeSymbol, interfaceName, namespaceName, isCrossProject,
             ReceivingNamespaceFactory.RequireCSharpOptions(targetProject.ParseOptions), projector,
             destinationGlobalPlainNamespaces, sourceSemanticModel, ct);
         var interfaceFileDirectory = isCrossProject
