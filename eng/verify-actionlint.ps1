@@ -268,6 +268,7 @@ else {
     New-Item -ItemType Directory -Path $toolRoot -Force | Out-Null
     $archivePath = Join-Path $toolRoot $pin.Asset
     $apiAssetUrl = "https://api.github.com/repos/rhysd/actionlint/releases/assets/$($pin.AssetId)"
+    $archiveSourceUrl = $downloadUrl
     try {
         if ($FailPrimaryDownloadForTest) { throw 'simulated release URL failure' }
         Invoke-WebRequest -Uri $downloadUrl -OutFile $archivePath -UseBasicParsing
@@ -276,6 +277,7 @@ else {
         $primaryError = $_.Exception.Message
         try {
             Invoke-WebRequest -Uri $apiAssetUrl -Headers @{ Accept = 'application/octet-stream' } -OutFile $archivePath -UseBasicParsing
+            $archiveSourceUrl = $apiAssetUrl
         }
         catch {
             throw "verify-actionlint: no cached actionlint binary at '$binaryPath'; pinned archive download failed from '$downloadUrl' ($primaryError) and '$apiAssetUrl' ($($_.Exception.Message)); expected SHA-256 $($pin.ArchiveSha256)."
@@ -284,7 +286,7 @@ else {
     $archiveHash = Get-FileSha256 -Path $archivePath
     if ($archiveHash -ne $pin.ArchiveSha256) {
         Remove-Item -LiteralPath $archivePath -Force
-        throw "verify-actionlint: downloaded archive '$downloadUrl' hash mismatch (expected $($pin.ArchiveSha256), got $archiveHash) -- refusing to extract an unverified archive."
+        throw "verify-actionlint: downloaded archive '$archiveSourceUrl' hash mismatch (expected $($pin.ArchiveSha256), got $archiveHash) -- refusing to extract an unverified archive."
     }
     Expand-ActionlintArchive -Rid $rid -ArchivePath $archivePath -DestinationPath $toolRoot
     Remove-Item -LiteralPath $archivePath -Force
