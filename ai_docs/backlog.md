@@ -246,6 +246,7 @@
 | `interface-extraction-receiving-language-reference-view` | Medium | interface-extraction-receiving-language-compatibility | **Language parity check over union references** — build R and B over receiving plus source refs and the source compilation so feature errors are not masked by unresolved types; alias and internal tests. [type: fix] | M | items/interface-extraction-receiving-language-reference-view.md |
 | `move-type-to-project-receiving-language-gate` | Medium |  | **Receiving-language gate for move_type_to_project** — refuse before the token store when the target project's LangVersion cannot compile the moved type; reuse the interface differential helper. [type: bug] | M | items/move-type-to-project-receiving-language-gate.md |
 | `extract-interface-same-name-unrelated-contract-noop` | Medium | — | **Verify same-name implemented contract before no-op** — generate the requested interface when it adds members while preserving the original sibling-interface binding. [type: bug] [source: handler-binding review] | M | items/extract-interface-same-name-unrelated-contract-noop.md |
+| `parameter-object-physical-diff-reconciliation` | Medium | cross-project-interface-signature-compile-gate | **Reconcile parameter-object previews by physical file** — refuse divergent linked or case-variant edits before storing a token. | S | items/parameter-object-physical-diff-reconciliation.md |
 
 ## Low
 
