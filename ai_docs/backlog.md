@@ -56,6 +56,7 @@
 | `cross-project-interface-signature-reference-closure` | High | — | **Resolve interface signature references** — add valid acyclic target-to-owner edges by symbol identity, preserving aliases and metadata. [type: bug] [source: signature-dependencies split] | M | items/cross-project-interface-signature-reference-closure.md |
 | `cross-project-interface-signature-refusal-compile` | High | cross-project-interface-signature-reference-closure | **Refuse cyclic interface signatures** — reject source-owned and other cyclic closure before token storage. [type: bug] [source: signature-dependencies split] | M | items/cross-project-interface-signature-refusal-compile.md |
 | `cross-project-interface-signature-compile-gate` | High | cross-project-interface-signature-refusal-compile | **Validate generated interface compilation** — refuse new target or affected-project errors before token storage. [type: bug] [source: signature-dependencies split] | M | items/cross-project-interface-signature-compile-gate.md |
+| `interface-extraction-standalone-extern-alias` | High | cross-project-interface-signature-reference-closure | **Preserve standalone extern aliases** — emit required extern alias directives in generated interfaces with aliased signature types. [type: bug] [source: signature-reference slice review] | M | items/interface-extraction-standalone-extern-alias.md |
 
 ## Medium
 
