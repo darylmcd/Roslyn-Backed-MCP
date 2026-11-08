@@ -382,6 +382,33 @@ public sealed class ActionlintGateContractTests
         }
     }
 
+    [TestMethod]
+    [TestCategory("Process")]
+    public async Task VerifyActionlint_BothPinnedEndpointsFail_RefusesToRun()
+    {
+        var fixtureRoot = CreateFixtureRoot();
+        try
+        {
+            var result = await RunGateAsync(
+                fixtureRoot,
+                failPrimaryDownloadForTest: true,
+                failApiDownloadForTest: true,
+                platformForTest: "windows",
+                architectureForTest: "x64");
+
+            Assert.AreNotEqual(0, result.ExitCode, result.AllOutput);
+            StringAssert.Contains(result.AllOutput, "simulated release URL failure");
+            StringAssert.Contains(result.AllOutput, "simulated API asset failure");
+            StringAssert.Contains(result.AllOutput, "github.com/rhysd/actionlint/releases/download/");
+            StringAssert.Contains(result.AllOutput, "api.github.com/repos/rhysd/actionlint/releases/assets/");
+            Assert.IsFalse(result.AllOutput.Contains("running pinned actionlint", StringComparison.Ordinal));
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
     private static string ResolveScriptPath() => Path.Combine(
         TestFixtureFileSystem.FindRepositoryRoot(),
         "eng",
@@ -439,6 +466,7 @@ public sealed class ActionlintGateContractTests
         bool useArchiveFixtureForTest = false,
         bool failDownloadForTest = false,
         bool failPrimaryDownloadForTest = false,
+        bool failApiDownloadForTest = false,
         string? platformForTest = null,
         string? architectureForTest = null)
     {
@@ -469,6 +497,10 @@ public sealed class ActionlintGateContractTests
         if (failPrimaryDownloadForTest)
         {
             arguments.Add("-FailPrimaryDownloadForTest");
+        }
+        if (failApiDownloadForTest)
+        {
+            arguments.Add("-FailApiDownloadForTest");
         }
         if (platformForTest is not null)
         {

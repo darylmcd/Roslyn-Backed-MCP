@@ -38,7 +38,9 @@ param(
     [Parameter(DontShow)]
     [switch]$FailDownloadForTest,
     [Parameter(DontShow)]
-    [switch]$FailPrimaryDownloadForTest
+    [switch]$FailPrimaryDownloadForTest,
+    [Parameter(DontShow)]
+    [switch]$FailApiDownloadForTest
 )
 
 Set-StrictMode -Version Latest
@@ -276,6 +278,7 @@ else {
     catch {
         $primaryError = $_.Exception.Message
         try {
+            if ($FailApiDownloadForTest) { throw 'simulated API asset failure' }
             Invoke-WebRequest -Uri $apiAssetUrl -Headers @{ Accept = 'application/octet-stream' } -OutFile $archivePath -UseBasicParsing
             $archiveSourceUrl = $apiAssetUrl
         }
