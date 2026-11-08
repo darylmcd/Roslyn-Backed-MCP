@@ -1,6 +1,6 @@
 # interface-extraction-nullability-context-fidelity — Preserve generated nullable contracts
 
-**row:** `interface-extraction-nullability-context-fidelity` · **pri:** `High` · **size:** `M` · **deps:** `cross-project-interface-parameter-semantics,interface-extraction-ref-return-contracts,interface-extraction-unsafe-signature-context`
+**row:** `interface-extraction-nullability-context-fidelity` · **pri:** `High` · **size:** `M` · **deps:** `interface-extraction-receiving-language-compatibility`
 
 ## Anchors
 
@@ -10,11 +10,8 @@
 
 ## Acceptance
 
-- [ ] Preserve semantic None, NotAnnotated and Annotated reference-type states across all currently emitted declaration type positions, including recursive generic, array, tuple and function-pointer types where supported.
-- [ ] Preserve source-local nullable directives under different receiving defaults without changing project options or enabling all oblivious contracts.
-- [ ] Prove valid-before source-local nullable-enabled members in nullable-disabled warnings-as-errors projects fail before repair; compile and compare actual serialized preview and applied/reloaded interface symbols and calls through public routes.
-- [ ] Keep generic declaration features, cross-project event omission and assembly dependency closure in their separate owners.
 - [ ] Post-condition: pair each emitted member with its source symbol by explicit mapping (not overload index within a Kind/MetadataName group) and compare a recursive shape string `NullableAnnotation[children]` (array → element; pointer → pointed-at; function pointer → return and parameters; named type → type arguments then containing type) over return, parameter and event types; refuse on mismatch.
+- [ ] Unit tests mutate a decorated tree to prove the refusal fires (no natural defect exists to make it red).
 
 ## Evidence
 

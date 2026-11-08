@@ -1,6 +1,6 @@
 # interface-extraction-receiving-language-compatibility — Validate receiving language requirements
 
-**row:** `interface-extraction-receiving-language-compatibility` · **pri:** `High` · **size:** `M` · **deps:** `cross-project-interface-parameter-semantics,interface-extraction-ref-return-contracts,interface-extraction-unsafe-signature-context`
+**row:** `interface-extraction-receiving-language-compatibility` · **pri:** `High` · **size:** `M`
 
 ## Anchors
 
@@ -10,14 +10,13 @@
 
 ## Acceptance
 
-- [ ] Use compiler-backed checks of actual generated declarations under receiving language options before any ordinary/composite preview token storage.
+- [ ] Use compiler-backed checks of the final generated declarations under receiving language options before any ordinary/composite preview token storage (one choke point: `InterfaceNullableProjection.ApplyAsync`).
 - [ ] Preserve representable ordinary and modern declarations; refuse demonstrated unsupported language forms without modifying LangVersion or other project policy.
-- [ ] Cover collection params, scoped/ref-readonly and other emitted feature boundaries with valid-before controls, compatible receiving versions and ordinary-array controls through public producers.
-- [ ] Refusals preserve token counts, solution/version, complete disk bytes and project options; publish authored guidance and diagnostic IDs without source/compiler message echoes.
+- [ ] Cover collection params, scoped/ref-readonly and function-pointer feature boundaries with valid-before controls, compatible receiving versions and ordinary-array controls through public producers.
+- [ ] Refusals preserve token counts, solution/version, complete disk bytes and project options; publish authored guidance and every distinct diagnostic id (no `Take(5)`) without source/compiler message echoes.
 - [ ] Do not substitute broad dependency refusal or hand-written feature-version tables for compiler checks; keep assembly/reference closure in its existing row.
-- [ ] Parse the generated interface text twice: R under the receiving parse options and B under the source options. Cross-project: compile R against receiving references plus source references (union preserving alias/property views) plus the source compilation as a metadata reference, keeping the receiving project's own trees. Refuse when R has parse errors or when R's error multiset differs from B's; identity = id, severity, warning level, suppressed flag, invariant message, location kind/path/span/line span, additional locations and sorted properties.
-- [ ] One compiler pass merged with the `InterfaceNullableProjection` legality check (`:183-186`), not a second validator; list every distinct id (remove `Take(5)` there too); never synthesize an id such as CS8632 — the compiler's own diagnostic under the project's real warnaserror policy decides.
-- [ ] Matrix: refuse params collections at C# 12 (CS9202), `ref readonly` parameters at 11, `scoped` at 10, function pointers at 8 (unsafe on); accept params at 13, array params at 9 and 7.3, ref readonly at 12, scoped at 11, function pointers at 9; plus a project-reference alias and same-assembly internal accessibility.
+- [ ] Compare diagnostics for the same generated tree under receiving parse options (R) and source parse options (B); refuse when R has errors B does not; never synthesize an id (the compiler's own diagnostic under the project's real warnaserror policy decides).
+- [ ] Matrix: refuse params collections at C# 12 (CS9202), `ref readonly` parameters at 11, `scoped` at 10, function pointers at 8 (unsafe on); accept params at 13, array params at 9 and 7.3, ref readonly at 12, scoped at 11, function pointers at 9. Pin the exact id set per refusal row.
 
 ## Evidence
 
