@@ -538,8 +538,9 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             var ownerProject = solution.GetProject(declaringDocument.Project.Id)!;
             if (ProjectGraphHelpers.WouldCreateProjectReferenceCycle(receivingProject, ownerProject))
             {
-                // The dependent refusal slice owns source-owned and other cyclic signatures.
-                continue;
+                throw new PublicInvalidOperationException(
+                    $"Extracted signature type '{type.ToDisplayString()}' is owned by project '{ownerProject.Name}'; " +
+                    $"project '{receivingProject.Name}' cannot reference it without a circular dependency.");
             }
 
             var sourceReference = sourceProject.ProjectReferences.FirstOrDefault(reference => reference.ProjectId == ownerProject.Id);

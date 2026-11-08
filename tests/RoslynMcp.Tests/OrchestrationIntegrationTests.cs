@@ -558,6 +558,7 @@ public sealed class OrchestrationIntegrationTests : IsolatedWorkspaceTestBase
 
         var sourceFilePath = workspace.GetPath("SampleLib", "AnimalService.cs");
         var interfaceFilePath = workspace.GetPath("Contracts", "IAnimalService.cs");
+        InterfaceRouteTestBase.UseAcyclicAnimalServiceSignature(workspace);
         await workspace.LoadAsync(CancellationToken.None);
 
         var preview = await ExtractAndWireOrchestrator.PreviewExtractAndWireInterfaceAsync(

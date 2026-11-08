@@ -29,6 +29,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : InterfaceRouteTest
         var sourceFilePath = workspace.GetPath("SampleLib", "AnimalService.cs");
         var sourceProjectFilePath = workspace.GetPath("SampleLib", "SampleLib.csproj");
         var interfaceFilePath = workspace.GetPath("Contracts", "IAnimalService.cs");
+        UseAcyclicAnimalServiceSignature(workspace);
         await workspace.LoadAsync(CancellationToken.None);
 
         var preview = await CrossProjectRefactoringService.PreviewExtractInterfaceAsync(
@@ -67,6 +68,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : InterfaceRouteTest
         AddProjectToCopiedSolution(workspace.RootPath, "Contracts", "net10.0");
         var sourceFilePath = workspace.GetPath("SampleLib", "AnimalService.cs");
         var sourceProjectFilePath = workspace.GetPath("SampleLib", "SampleLib.csproj");
+        UseAcyclicAnimalServiceSignature(workspace);
         await workspace.LoadAsync(CancellationToken.None);
 
         var preview = await CrossProjectRefactoringService.PreviewExtractInterfaceAsync(
@@ -234,6 +236,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : InterfaceRouteTest
 
         var sourceFilePath = workspace.GetPath("SampleLib", "AnimalService.cs");
         var interfaceFilePath = workspace.GetPath("Contracts", "IAnimalService.cs");
+        UseAcyclicAnimalServiceSignature(workspace);
         await workspace.LoadAsync(CancellationToken.None);
 
         var preview = await CrossProjectRefactoringService.PreviewDependencyInversionAsync(
@@ -271,16 +274,14 @@ public sealed class CrossProjectRefactoringIntegrationTests : InterfaceRouteTest
             """
             namespace SampleLib;
 
-            public sealed record JobRequest(string Name);
-
             public interface IJobQueue<T>
             {
                 void Enqueue(T request);
             }
 
-            public class JobQueue : IJobQueue<JobRequest>
+            public class JobQueue : IJobQueue<string>
             {
-                public void Enqueue(JobRequest request)
+                public void Enqueue(string request)
                 {
                 }
             }
@@ -304,11 +305,11 @@ public sealed class CrossProjectRefactoringIntegrationTests : InterfaceRouteTest
         var normalized = sourceContents.Replace("\r\n", "\n", StringComparison.Ordinal);
 
         Assert.IsFalse(
-            normalized.Contains("IJobQueue<JobRequest>\n, Contracts.IJobQueueInverted", StringComparison.Ordinal),
+            normalized.Contains("IJobQueue<string>\n, Contracts.IJobQueueInverted", StringComparison.Ordinal),
             $"Existing base-list append must not put the comma at the start of the new line.\nFile contents:\n{sourceContents}");
         StringAssert.Contains(
             normalized,
-            "public class JobQueue : IJobQueue<JobRequest>,\n    Contracts.IJobQueueInverted",
+            "public class JobQueue : IJobQueue<string>,\n    Contracts.IJobQueueInverted",
             $"Interface list should use comma-trailing formatting.\nFile contents:\n{sourceContents}");
     }
 
@@ -325,6 +326,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : InterfaceRouteTest
         AddProjectToCopiedSolution(workspace.RootPath, "Contracts", "net10.0");
         var sourceFilePath = workspace.GetPath("SampleLib", "AnimalService.cs");
         var interfaceFilePath = workspace.GetPath("Contracts", "IAnimalService.cs");
+        UseAcyclicAnimalServiceSignature(workspace);
         await workspace.LoadAsync(CancellationToken.None);
 
         var preview = await CrossProjectRefactoringService.PreviewExtractInterfaceAsync(
@@ -364,7 +366,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : InterfaceRouteTest
 
         // (4) Parameter lists and method signatures must have whitespace preserved.
         Assert.IsFalse(
-            interfaceText.Contains("IEnumerable<IAnimal>animals", StringComparison.Ordinal),
+            interfaceText.Contains("IEnumerable<string>animals", StringComparison.Ordinal),
             $"Interface file has glued-together parameter type and name (FORMAT-BUG-001 regression).\nFile contents:\n{interfaceText}");
 
         // --- Source file base-list assertions ---
@@ -399,8 +401,9 @@ public sealed class CrossProjectRefactoringIntegrationTests : InterfaceRouteTest
             consumerFilePath,
             "using SampleLib;\n\npublic class AnimalCoordinator\n{\n    public AnimalCoordinator(AnimalService service)\n    {\n    }\n}\n");
 
+        AddGeometrySignatureOwner(workspace);
         const string distinctiveSource = """
-            using System.Threading;
+            using Geometry;
 
             namespace SampleLib;
 
@@ -408,7 +411,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : InterfaceRouteTest
             {
 
 
-                public    void    MakeThemSpeak(   IEnumerable<IAnimal>     animals   )
+                public    void    MakeThemSpeak(   IEnumerable<Shape>     animals   )
                 {
                     foreach (var animal in animals)
                     {
@@ -417,7 +420,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : InterfaceRouteTest
                     }
                 }
 
-                public int CountAnimals(List<IAnimal> animals)
+                public int CountAnimals(List<Shape> animals)
                 {
                     return animals.Count;
                 }
@@ -445,7 +448,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : InterfaceRouteTest
         // (1) Distinctive parameter-list spacing survives the preview+apply round-trip.
         StringAssert.Contains(
             sourceContents,
-            "MakeThemSpeak(   IEnumerable<IAnimal>     animals   )",
+            "MakeThemSpeak(   IEnumerable<Shape>     animals   )",
             $"Source parameter-list whitespace was collapsed (FORMAT-BUG-002 regression).\nFile contents:\n{sourceContents}");
 
         // (2) Distinctive spacing inside the signature (between modifier, return type, and name)
@@ -484,7 +487,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : InterfaceRouteTest
 
         // (6) gh #765 — the DI-inversion path routes through CreateInterfaceExtractionSolutionAsync
         // which calls CreateInterfaceCompilationUnit just like PreviewExtractInterfaceAsync. The
-        // generated interface in Contracts references IAnimal (lives in SampleLib) via the
+        // generated interface in Contracts references Shape (lives in Geometry) via the
         // MakeThemSpeak / CountAnimals signatures; the using MUST be emitted or the apply round-trip
         // produces a CS0246 in the Contracts project. Guards against silent regression of the
         // semantic-walker pair on this path.
@@ -493,25 +496,24 @@ public sealed class CrossProjectRefactoringIntegrationTests : InterfaceRouteTest
         var interfaceContents = await File.ReadAllTextAsync(interfaceFilePath, CancellationToken.None);
         StringAssert.Contains(
             interfaceContents,
-            "using SampleLib;",
-            $"DI-inversion interface MUST emit `using SampleLib;` — IAnimal is referenced by " +
-            $"the synthesized interface signatures and lives in the source project's namespace (gh #765).\nFile contents:\n{interfaceContents}");
+            "using Geometry;",
+            $"DI-inversion interface MUST emit `using Geometry;` — Shape is referenced by " +
+            $"the synthesized interface signatures and lives in the independent project's namespace (gh #765).\nFile contents:\n{interfaceContents}");
     }
 
     [TestMethod]
-    public async Task Extract_Interface_Cross_Project_Emits_Using_For_Source_Project_Types()
+    public async Task Extract_Interface_Cross_Project_Emits_Using_For_Independent_Project_Types()
     {
         // Regression for gh #765 (extract-interface-cross-project-uncompilable). Before the fix:
         // CrossProjectRefactoringService.CreateInterfaceCompilationUnit routed usings through
         // FilterUsingsForMember — a text-grep over the synthesized interface body that compared
         // each source-file using's last namespace segment against MinimallyQualifiedFormat short
-        // names emitted into the interface text. When the source method's signature referenced a
-        // type from a sibling namespace inside the SAME source project (e.g. `Shape` from
-        // `SampleLib.Hierarchy`), the using's last segment (`Hierarchy`) never matched the
-        // short name (`Shape`), so the using was dropped. The cross-project fallback at the
+        // names emitted into the interface text. The original regression used `Shape` from
+        // `SampleLib.Hierarchy`; the using's last segment (`Hierarchy`) did not match the
+        // short type name (`Shape`), so the using was dropped. The cross-project fallback at the
         // end of FilterUsingsForMember refused the full-source fallback, leaving an EMPTY
         // using list — producing a generated interface file whose method signature referenced
-        // `Shape` without a `using SampleLib.Hierarchy;`, yielding CS0246 at compile time.
+        // `Shape` without its namespace using, yielding CS0246 at compile time.
         //
         // After the fix: CollectReferencedNamespaces walks the type's public-instance member
         // symbols and collects every referenced type's containing namespace. The generated
@@ -521,11 +523,12 @@ public sealed class CrossProjectRefactoringIntegrationTests : InterfaceRouteTest
         AddProjectToCopiedSolution(workspace.RootPath, "Contracts", "net10.0");
 
         // Replace SampleLib/AnimalService.cs with a fixture whose method signature pulls in a
-        // type from a sibling namespace (SampleLib.Hierarchy.Shape). The interface file must
-        // emit `using SampleLib.Hierarchy;` or the apply round-trip produces uncompilable code.
+        // type from an independent project. The interface file must emit `using Geometry;`
+        // or the apply round-trip produces uncompilable code.
+        AddGeometrySignatureOwner(workspace);
         var sourceFilePath = workspace.GetPath("SampleLib", "AnimalService.cs");
-        const string sourceWithSiblingNamespaceDependency = """
-            using SampleLib.Hierarchy;
+        const string sourceWithIndependentNamespaceDependency = """
+            using Geometry;
 
             namespace SampleLib;
 
@@ -542,7 +545,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : InterfaceRouteTest
                 }
             }
             """;
-        File.WriteAllText(sourceFilePath, sourceWithSiblingNamespaceDependency);
+        File.WriteAllText(sourceFilePath, sourceWithIndependentNamespaceDependency);
 
         var interfaceFilePath = workspace.GetPath("Contracts", "IAnimalService.cs");
         await workspace.LoadAsync(CancellationToken.None);
@@ -562,13 +565,13 @@ public sealed class CrossProjectRefactoringIntegrationTests : InterfaceRouteTest
 
         var interfaceText = await File.ReadAllTextAsync(interfaceFilePath, CancellationToken.None);
 
-        // (1) The required using for the source-project sibling namespace MUST be emitted.
+        // (1) The required using for the independent project namespace MUST be emitted.
         // Without this the generated interface references `Shape` with no `using`, producing
         // CS0246 in the consumer project at compile time.
         StringAssert.Contains(
             interfaceText,
-            "using SampleLib.Hierarchy;",
-            $"Generated interface MUST emit `using SampleLib.Hierarchy;` — the source type's " +
+            "using Geometry;",
+            $"Generated interface MUST emit `using Geometry;` — the source type's " +
             $"method signature references Shape from that namespace (gh #765).\nFile contents:\n{interfaceText}");
 
         // (2) The synthesized interface signature itself must reference the short name
@@ -596,20 +599,21 @@ public sealed class CrossProjectRefactoringIntegrationTests : InterfaceRouteTest
     }
 
     [TestMethod]
-    public async Task Extract_Interface_Cross_Project_Recurses_Into_Generic_Arguments_For_Source_Project_Types()
+    public async Task Extract_Interface_Cross_Project_Recurses_Into_Generic_Arguments_For_Independent_Project_Types()
     {
-        // Companion to Extract_Interface_Cross_Project_Emits_Using_For_Source_Project_Types.
-        // Covers the recursive case: `Task<SourceProjectType>` must contribute both
-        // `System.Threading.Tasks` AND the source-project namespace (the inner generic
+        // Companion to Extract_Interface_Cross_Project_Emits_Using_For_Independent_Project_Types.
+        // Covers the recursive case: `Task<Geometry.Shape>` must contribute both
+        // `System.Threading.Tasks` AND the independent project's namespace (the inner generic
         // argument). Mirrors `ExtractInterface_Recurses_Into_Generic_Arguments` in the
         // same-project semantic-using tests.
         await using var workspace = CreateIsolatedWorkspaceCopy();
         AddProjectToCopiedSolution(workspace.RootPath, "Contracts", "net10.0");
+        AddGeometrySignatureOwner(workspace);
 
         var sourceFilePath = workspace.GetPath("SampleLib", "AnimalService.cs");
         const string sourceWithGenericArg = """
             using System.Threading.Tasks;
-            using SampleLib.Hierarchy;
+            using Geometry;
 
             namespace SampleLib;
 
@@ -643,8 +647,8 @@ public sealed class CrossProjectRefactoringIntegrationTests : InterfaceRouteTest
             $"Destination project implicit global using already supplies Task.\nFile contents:\n{interfaceText}");
         StringAssert.Contains(
             interfaceText,
-            "using SampleLib.Hierarchy;",
-            $"Generated interface MUST emit `using SampleLib.Hierarchy;` — the inner generic " +
+            "using Geometry;",
+            $"Generated interface MUST emit `using Geometry;` — the inner generic " +
             $"argument Shape lives there. Recursion through TypeArguments is the gh #765 fix.\nFile contents:\n{interfaceText}");
     }
 
@@ -787,6 +791,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : InterfaceRouteTest
         // Restore so MSBuild's transitive project-reference flow makes SampleLib (and
         // AnimalService) visible to Downstream through MidLib — without it the transitive hop is
         // inactive and AnimalService would not resolve in Downstream at all.
+        UseAcyclicAnimalServiceSignature(workspace);
         await RestoreWorkspaceAsync(workspace, CancellationToken.None);
         await workspace.LoadAsync(CancellationToken.None);
 
@@ -808,6 +813,24 @@ public sealed class CrossProjectRefactoringIntegrationTests : InterfaceRouteTest
             consumerContents.Contains("(AnimalService service", StringComparison.Ordinal),
             $"Transitively-referencing consumer still declares the concrete type — FindReferencesAsync missed it.\nConsumer contents:\n{consumerContents}");
         StringAssert.Contains(consumerContents, "IAnimalService service");
+    }
+
+    private static void AddGeometrySignatureOwner(IsolatedWorkspaceScope workspace)
+    {
+        AddProjectToCopiedSolution(workspace.RootPath, "Geometry", "net10.0");
+        File.WriteAllText(workspace.GetPath("Geometry", "Shape.cs"), """
+            namespace Geometry;
+            public class Shape
+            {
+                public string Name => "shape";
+                public string Speak() => Name;
+            }
+            """);
+        var sourceProjectPath = workspace.GetPath("SampleLib", "SampleLib.csproj");
+        var sourceProjectXml = XDocument.Load(sourceProjectPath);
+        sourceProjectXml.Root!.Add(new XElement("ItemGroup", new XElement("ProjectReference",
+            new XAttribute("Include", "../Geometry/Geometry.csproj"))));
+        sourceProjectXml.Save(sourceProjectPath);
     }
 
     private static void AddProjectWithReferenceToCopiedSolution(
