@@ -20,7 +20,7 @@ namespace RoslynMcp.Roslyn.Helpers;
 internal static class UsingDirectiveSynthesizer
 {
     public static SyntaxList<UsingDirectiveSyntax> BuildUsingDirectives(
-        SyntaxList<UsingDirectiveSyntax> sourceUsings,
+        IEnumerable<UsingDirectiveSyntax> sourceUsings,
         IReadOnlyCollection<string> requiredNamespaces,
         bool preserveGlobalUsings,
         IReadOnlyCollection<string> destinationGlobalPlainNamespaces,
@@ -40,6 +40,56 @@ internal static class UsingDirectiveSynthesizer
             alreadyAddedPlainNamespaces);
         AddMissingRequiredUsingDirectives(requiredNamespaces, alreadyAddedPlainNamespaces, result);
         return SortUsingDirectives(result);
+    }
+
+    /// <summary>Lift only aliases needed by projected signatures from the source type's visible namespace scopes.</summary>
+    public static (IReadOnlyList<UsingDirectiveSyntax> SourceUsings, IReadOnlyList<UsingDirectiveSyntax> QualifiedNamespaceUsings)
+        SelectVisibleAliasUsings(CompilationUnitSyntax sourceRoot, TypeDeclarationSyntax typeDeclaration,
+            IReadOnlyCollection<string> referencedAliasNames, IReadOnlyCollection<ITypeSymbol> referencedUnqualifiedTypes,
+            SemanticModel sourceSemanticModel, CancellationToken ct)
+    {
+        var namespaceUsings = typeDeclaration.Ancestors().OfType<BaseNamespaceDeclarationSyntax>()
+            .SelectMany(scope => scope.Usings).ToArray(); // Nearest scope first.
+        var selectedAliases = namespaceUsings
+            .Where(directive => directive.Alias is { } alias && referencedAliasNames.Contains(alias.Name.Identifier.ValueText))
+            .DistinctBy(directive => directive.Alias!.Name.Identifier.ValueText, StringComparer.Ordinal)
+            .ToArray();
+        var shadowedRootAliases = selectedAliases.Select(directive => directive.Alias!.Name.Identifier.ValueText)
+            .ToHashSet(StringComparer.Ordinal);
+        var sourceUsings = sourceRoot.Usings
+            .Where(directive => directive.Alias is not { } alias || !shadowedRootAliases.Contains(alias.Name.Identifier.ValueText))
+            .Concat(selectedAliases).ToArray();
+
+        var qualifiedNamespaceUsings = namespaceUsings.Concat(sourceRoot.Usings)
+            .Where(directive => directive.Alias is null && directive.Name is { } name
+                && name.DescendantNodesAndSelf().OfType<AliasQualifiedNameSyntax>().Any()
+                && (directive.StaticKeyword.IsKind(SyntaxKind.StaticKeyword)
+                    ? directive.Parent is BaseNamespaceDeclarationSyntax
+                        && sourceSemanticModel.GetSymbolInfo(name, ct).Symbol is INamedTypeSymbol importedType
+                        && referencedUnqualifiedTypes.OfType<INamedTypeSymbol>()
+                            .Any(type => SymbolEqualityComparer.Default.Equals(type.ContainingType, importedType))
+                    : sourceSemanticModel.GetSymbolInfo(name, ct).Symbol is INamespaceSymbol importedNamespace
+                        && referencedUnqualifiedTypes.Any(type => SymbolEqualityComparer.Default.Equals(type.ContainingNamespace, importedNamespace))))
+            .DistinctBy(directive => (directive.StaticKeyword.RawKind, Name: directive.Name!.ToString()));
+        return (sourceUsings, qualifiedNamespaceUsings.ToArray());
+    }
+
+    /// <summary>Copy the nearest visible extern declaration for each alias required by emitted syntax.</summary>
+    public static SyntaxList<ExternAliasDirectiveSyntax> BuildRequiredExternAliases(
+        CompilationUnitSyntax sourceRoot, TypeDeclarationSyntax typeDeclaration,
+        IEnumerable<MemberDeclarationSyntax> emittedMembers, IEnumerable<UsingDirectiveSyntax> emittedUsings)
+    {
+        var required = emittedMembers.SelectMany(member => member.DescendantNodesAndSelf().OfType<AliasQualifiedNameSyntax>())
+            .Concat(emittedUsings.SelectMany(directive => directive.DescendantNodesAndSelf().OfType<AliasQualifiedNameSyntax>()))
+            .Select(name => name.Alias.Identifier.ValueText)
+            .Where(name => name != "global")
+            .Distinct(StringComparer.Ordinal);
+        var visible = typeDeclaration.Ancestors().OfType<BaseNamespaceDeclarationSyntax>()
+            .SelectMany(scope => scope.Externs).Concat(sourceRoot.Externs).ToArray(); // Nearest scope first.
+        return SyntaxFactory.List(required
+            .Select(name => visible.FirstOrDefault(directive => directive.Identifier.ValueText == name))
+            .Where(directive => directive is not null)
+            .Select(directive => directive!.WithoutTrivia()));
     }
 
     public static async Task<IReadOnlyCollection<string>> GetProjectGlobalPlainNamespacesAsync(
@@ -77,7 +127,7 @@ internal static class UsingDirectiveSynthesizer
     }
 
     private static void PreserveSpecialAndRequiredSourceUsings(
-        SyntaxList<UsingDirectiveSyntax> sourceUsings,
+        IEnumerable<UsingDirectiveSyntax> sourceUsings,
         IReadOnlyCollection<string> requiredNamespaces,
         bool preserveGlobalUsings,
         SemanticModel? sourceSemanticModel,

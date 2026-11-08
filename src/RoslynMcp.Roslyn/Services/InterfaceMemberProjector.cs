@@ -53,6 +53,8 @@ internal sealed class InterfaceMemberProjector
     private readonly SyntaxGenerator _generator;
     private readonly InterfaceNullableProjection _nullable;
     private readonly List<ITypeSymbol> _referencedTypes = [];
+    private readonly HashSet<string> _referencedUsingAliases = new(StringComparer.Ordinal);
+    private readonly HashSet<ITypeSymbol> _referencedUnqualifiedTypes = new(SymbolEqualityComparer.Default);
     private readonly bool _receiverIsSourceAssembly;
     private readonly bool _receiverAllowsUnsafe;
 
@@ -101,7 +103,8 @@ internal sealed class InterfaceMemberProjector
         source ??= _generator.Declaration(member) as MemberDeclarationSyntax
             ?? throw InvalidOperationErrors.Internal("Interface member symbol has no projectable declaration.");
 
-        var qualifier = new ScopeQualifier(model, _generator, _referencedTypes, _receiverIsSourceAssembly);
+        var qualifier = new ScopeQualifier(model, _generator, _referencedTypes, _referencedUsingAliases,
+            _referencedUnqualifiedTypes, _receiverIsSourceAssembly);
         var declaration = Strip(source, member, model, qualifier);
         if (declaration.DescendantNodes().Any(n => n is PointerTypeSyntax or FunctionPointerTypeSyntax))
         {
@@ -130,8 +133,39 @@ internal sealed class InterfaceMemberProjector
     {
         var namespaces = new HashSet<string>(StringComparer.Ordinal);
         foreach (var type in _referencedTypes) TypeNamespaceWalker.Collect(namespaces, type, ownNamespace);
+        // A namespace reachable only through an extern alias cannot be imported as a plain
+        // `using Namespace;` in the receiving project. Keep imports needed by a global reference.
+        var aliasOnly = new HashSet<string>(StringComparer.Ordinal);
+        var globallyAvailable = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var type in ReferencedTypes)
+        {
+            if (type.ContainingNamespace is not { IsGlobalNamespace: false } typeNamespace) continue;
+            var name = typeNamespace.ToDisplayString();
+            (HasGlobalReference(type) ? globallyAvailable : aliasOnly).Add(name);
+        }
+
+        aliasOnly.ExceptWith(globallyAvailable);
+        namespaces.ExceptWith(aliasOnly);
         namespaces.Remove(ownNamespace ?? string.Empty);
         return namespaces;
+    }
+
+    internal IReadOnlyCollection<ITypeSymbol> ReferencedTypes => _referencedTypes
+        .SelectMany(TypeNamespaceWalker.Enumerate)
+        .Distinct<ITypeSymbol>(SymbolEqualityComparer.Default)
+        .ToArray();
+
+    internal IReadOnlyCollection<string> ReferencedUsingAliases => _referencedUsingAliases;
+
+    internal IReadOnlyCollection<ITypeSymbol> ReferencedUnqualifiedTypes => _referencedUnqualifiedTypes;
+
+    private bool HasGlobalReference(ITypeSymbol type)
+    {
+        if (SymbolEqualityComparer.Default.Equals(type.ContainingAssembly, _compilation.Assembly)) return true;
+        var references = _compilation.References.Where(reference =>
+            SymbolEqualityComparer.Default.Equals(_compilation.GetAssemblyOrModuleSymbol(reference), type.ContainingAssembly));
+        return !references.Any() || references.Any(reference => reference.Properties.Aliases.IsDefaultOrEmpty
+            || reference.Properties.Aliases.Contains("global"));
     }
 
     private static MemberDeclarationSyntax? DeclaringSyntax(ISymbol member)
@@ -266,7 +300,7 @@ internal sealed class InterfaceMemberProjector
             .WithAttributeLists(ContractAttributes(source[i].AttributeLists, p.AttributeLists, model))
             .WithModifiers(SyntaxFactory.TokenList(p.Modifiers.Where(m => !m.IsKind(SyntaxKind.ThisKeyword))))));
 
-    private static SyntaxList<AttributeListSyntax> ContractAttributes(SyntaxList<AttributeListSyntax> lists, SemanticModel? model) =>
+    private SyntaxList<AttributeListSyntax> ContractAttributes(SyntaxList<AttributeListSyntax> lists, SemanticModel? model) =>
         ContractAttributes(lists, lists, model);
 
     /// <summary>
@@ -274,7 +308,7 @@ internal sealed class InterfaceMemberProjector
     /// <paramref name="rewritten"/> (the same attribute lists after qualification). Without a semantic model
     /// (generator-built declarations) the attribute classes cannot be identified, so none are kept.
     /// </summary>
-    private static SyntaxList<AttributeListSyntax> ContractAttributes(
+    private SyntaxList<AttributeListSyntax> ContractAttributes(
         SyntaxList<AttributeListSyntax> source, SyntaxList<AttributeListSyntax> rewritten, SemanticModel? model)
     {
         if (model is null) return default;
@@ -283,9 +317,31 @@ internal sealed class InterfaceMemberProjector
         {
             // `field:` targets address a backing field the interface member does not have.
             if (source[i].Target?.Identifier.IsKind(SyntaxKind.FieldKeyword) == true) continue;
-            var attributes = rewritten[i].Attributes
-                .Where((_, j) => IsContractAttribute(model.GetSymbolInfo(source[i].Attributes[j]).Symbol?.ContainingType)).ToArray();
-            if (attributes.Length > 0) kept.Add(rewritten[i].WithAttributes(SyntaxFactory.SeparatedList(attributes)));
+            var attributes = new List<AttributeSyntax>();
+            for (var j = 0; j < source[i].Attributes.Count; j++)
+            {
+                var original = source[i].Attributes[j];
+                if (!IsContractAttribute(model.GetSymbolInfo(original).Symbol?.ContainingType)) continue;
+                foreach (var name in original.DescendantNodesAndSelf().OfType<SimpleNameSyntax>())
+                    if (model.GetAliasInfo(name) is { } alias) _referencedUsingAliases.Add(alias.Name);
+                if (original.ArgumentList is { } arguments)
+                {
+                    foreach (var name in arguments.DescendantNodesAndSelf().OfType<SimpleNameSyntax>())
+                    {
+                        switch (model.GetSymbolInfo(name).Symbol)
+                        {
+                            case ITypeSymbol type:
+                                _referencedTypes.Add(type);
+                                break;
+                            case ISymbol { ContainingType: not null } symbol:
+                                _referencedTypes.Add(symbol.ContainingType);
+                                break;
+                        }
+                    }
+                }
+                attributes.Add(rewritten[i].Attributes[j]);
+            }
+            if (attributes.Count > 0) kept.Add(rewritten[i].WithAttributes(SyntaxFactory.SeparatedList(attributes)));
         }
 
         return SyntaxFactory.List(kept);
@@ -351,7 +407,9 @@ internal sealed class InterfaceMemberProjector
     /// the source assembly or a non-public member: the receiving project is usually another assembly) is
     /// written as its value instead: a compile-time constant is the same contract either way.
     /// </summary>
-    private sealed class ScopeQualifier(SemanticModel? model, SyntaxGenerator generator, List<ITypeSymbol> referencedTypes, bool receiverIsSourceAssembly) : CSharpSyntaxRewriter
+    private sealed class ScopeQualifier(SemanticModel? model, SyntaxGenerator generator, List<ITypeSymbol> referencedTypes,
+        ISet<string> referencedUsingAliases, ISet<ITypeSymbol> referencedUnqualifiedTypes,
+        bool receiverIsSourceAssembly) : CSharpSyntaxRewriter
     {
         /// <summary>Public all the way up, and declared outside the source assembly unless the interface lands in it.</summary>
         private bool IsNameableFromInterface(ISymbol symbol)
@@ -432,11 +490,18 @@ internal sealed class InterfaceMemberProjector
             switch (model!.GetSymbolInfo(node).Symbol)
             {
                 case INamedTypeSymbol { ContainingType: not null } nested:
+                    if (HasAliasQualifiedStaticImport(node, nested.ContainingType))
+                    {
+                        referencedUnqualifiedTypes.Add(nested);
+                        return null;
+                    }
                     referencedTypes.Add(nested);
                     return SyntaxFactory.ParseTypeName(nested.ToDisplayString(_containingTypeFormat)).WithTriviaFrom(node);
                 case INamedTypeSymbol type when InDefaultOrContractAttributeArgument(node):
                     // A default such as `Limits.Cap` keeps its type name, so the interface file must import the type's namespace.
                     referencedTypes.Add(type);
+                    if (model!.GetAliasInfo(node) is { } typeAlias) referencedUsingAliases.Add(typeAlias.Name);
+                    else referencedUnqualifiedTypes.Add(type);
                     return null;
                 case IFieldSymbol { ContainingType: not null, IsStatic: true } or IPropertySymbol { ContainingType: not null, IsStatic: true }:
                     var member = model.GetSymbolInfo(node).Symbol!;
@@ -446,8 +511,22 @@ internal sealed class InterfaceMemberProjector
                         SyntaxFactory.ParseName(member.ContainingType.ToDisplayString(_containingTypeFormat)),
                         SyntaxFactory.IdentifierName(SyntaxFacts.GetKeywordKind(member.Name) == SyntaxKind.None ? member.Name : "@" + member.Name)).WithTriviaFrom(node);
                 default:
+                    if (model!.GetAliasInfo(node) is { } emittedAlias) referencedUsingAliases.Add(emittedAlias.Name);
+                    else if (model.GetSymbolInfo(node).Symbol is INamedTypeSymbol type) referencedUnqualifiedTypes.Add(type);
                     return null;
             }
+        }
+
+        private bool HasAliasQualifiedStaticImport(SimpleNameSyntax node, INamedTypeSymbol containingType)
+        {
+            var root = node.SyntaxTree.GetRoot() as CompilationUnitSyntax;
+            if (root is null) return false;
+            return node.Ancestors().OfType<BaseNamespaceDeclarationSyntax>().SelectMany(scope => scope.Usings)
+                .Concat(root.Usings)
+                .Any(directive => directive.StaticKeyword.IsKind(SyntaxKind.StaticKeyword)
+                    && directive.Name is { } name
+                    && name.DescendantNodesAndSelf().OfType<AliasQualifiedNameSyntax>().Any()
+                    && SymbolEqualityComparer.Default.Equals(model!.GetSymbolInfo(name).Symbol, containingType));
         }
     }
 }
