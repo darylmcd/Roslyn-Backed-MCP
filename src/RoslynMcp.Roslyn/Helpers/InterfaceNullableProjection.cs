@@ -128,7 +128,12 @@ internal sealed class InterfaceNullableProjection
         }
     }
 
-    internal async Task<Solution> ApplyAsync(Document receivingDocument, CompilationUnitSyntax constructedRoot, CancellationToken ct)
+    /// <summary>
+    /// Decorates the generated interface with the nullable directives its receiver needs, then proves the final document is
+    /// legal under the receiving project's language version. <paramref name="sourceParseOptions"/> are the options the members
+    /// were authored under: any error the generated tree gains from the receiving options alone is a language the receiver cannot parse.
+    /// </summary>
+    internal async Task<Solution> ApplyAsync(Document receivingDocument, CompilationUnitSyntax constructedRoot, CSharpParseOptions sourceParseOptions, CancellationToken ct)
     {
         // Validate identities on the constructed, normalized tree, before any parser recovery.
         var declaration = constructedRoot.DescendantNodes().OfType<InterfaceDeclarationSyntax>().SingleOrDefault();
@@ -149,7 +154,11 @@ internal sealed class InterfaceNullableProjection
         var solution = receivingDocument.Project.Solution;
         var baseline = receivingDocument;
         var model = await baseline.GetSemanticModelAsync(ct).ConfigureAwait(false) ?? throw InvalidOperationErrors.Internal("Generated interface semantic context is unavailable.");
-        if (slots.All(s => Enabled(model, s.Token.SpanStart) == s.Enabled)) return solution;
+        if (slots.All(s => Enabled(model, s.Token.SpanStart) == s.Enabled))
+        {
+            await EnsureReceivingLanguageAsync(baseline, sourceParseOptions, ct).ConfigureAwait(false);
+            return solution;
+        }
 
         foreach (var group in slots.GroupBy(s => s.Token.Span))
             if (group.Select(s => s.Enabled).Distinct().Count() != 1)
@@ -184,10 +193,47 @@ internal sealed class InterfaceNullableProjection
         var added = AddedErrors(SignatureDiagnostics(baselineCompilation, ct), SignatureDiagnostics(decoratedCompilation, ct), LocationKey);
         if (added.Length > 0)
             throw new PublicInvalidOperationException("The nullable contract cannot be preserved under the receiving compiler policy (" +
-                string.Join(", ", added.Select(d => d.Id).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).Take(5)) +
-                "). Use a compatible receiving compiler policy.");
+                FormatIds(added) + "). Use a compatible receiving compiler policy.");
+        await EnsureReceivingLanguageAsync(decorated, sourceParseOptions, ct).ConfigureAwait(false);
         return decoratedSolution;
     }
+
+    /// <summary>
+    /// Binds the final generated tree twice over the same references and compilation options, differing only in parse options:
+    /// once as the receiving project parses it and once as the source project would. Errors only the receiving parse gains are language features the
+    /// receiver cannot compile (the compiler's own ids decide; nothing is synthesized). Errors both parses share (unbound types,
+    /// other policy) are not a language delta and pass through. Only default-severity errors are compared, so an editorconfig
+    /// severity attached to one tree cannot manufacture a difference.
+    /// </summary>
+    private static async Task EnsureReceivingLanguageAsync(Document finalDocument, CSharpParseOptions sourceParseOptions, CancellationToken ct)
+    {
+        if (finalDocument.Project.ParseOptions?.Equals(sourceParseOptions) == true) return;
+        var compilation = await finalDocument.Project.GetCompilationAsync(ct).ConfigureAwait(false) ?? throw InvalidOperationErrors.Internal("Generated interface compilation is unavailable.");
+        var receivingTree = await finalDocument.GetSyntaxTreeAsync(ct).ConfigureAwait(false) ?? throw InvalidOperationErrors.Internal("Generated interface syntax tree is unavailable.");
+        // A compilation requires one language version across its trees, so the source-options view re-parses every tree (same text and
+        // paths, same references and compilation options): the generated interface then binds against the same sibling types in both.
+        var receivingTrees = compilation.SyntaxTrees.ToArray();
+        var index = Array.IndexOf(receivingTrees, receivingTree);
+        if (index < 0) throw InvalidOperationErrors.Internal("Generated interface syntax tree is not part of its compilation.");
+        var sourceTrees = receivingTrees.Select(tree => CSharpSyntaxTree.ParseText(tree.GetText(ct), sourceParseOptions, tree.FilePath, ct)).ToArray();
+        var sourceTree = sourceTrees[index];
+        var receiving = compilation.GetSemanticModel(receivingTree).GetDiagnostics(cancellationToken: ct);
+        var source = compilation.RemoveAllSyntaxTrees().AddSyntaxTrees(sourceTrees).GetSemanticModel(sourceTree).GetDiagnostics(cancellationToken: ct);
+        var added = AddedErrors(source.Where(d => d.DefaultSeverity == DiagnosticSeverity.Error), receiving.Where(d => d.DefaultSeverity == DiagnosticSeverity.Error),
+            (location, _) => TreeIndependentLocationKey(location));
+        if (added.Length > 0)
+            throw new PublicInvalidOperationException("The generated interface uses language features the receiving project's C# language version does not support (" +
+                FormatIds(added) + "). Raise the receiving project's LangVersion or extract into a project with a newer language version.");
+    }
+
+    /// <summary>Location identity by document path and span: the same text parsed twice yields different tree objects.</summary>
+    internal static string TreeIndependentLocationKey(Location location) => location.IsInSource
+        ? JsonSerializer.Serialize(new { Path = location.SourceTree!.FilePath, Start = location.SourceSpan.Start, End = location.SourceSpan.End })
+        : JsonSerializer.Serialize(new { location.Kind, Line = location.GetLineSpan().ToString() });
+
+    /// <summary>Every distinct diagnostic id, ordered; a refusal names all of them, never a prefix.</summary>
+    internal static string FormatIds(IEnumerable<Diagnostic> diagnostics) =>
+        string.Join(", ", diagnostics.Select(d => d.Id).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal));
 
     private static IEnumerable<Diagnostic> SignatureDiagnostics(Compilation compilation, CancellationToken ct) =>
         compilation.GetParseDiagnostics(ct).Concat(compilation.GetDeclarationDiagnostics(ct));

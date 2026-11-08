@@ -103,7 +103,8 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
             var targetProject = newSolution.GetProject(sourceDocument.Project.Id)!;
             var folders = ProjectMetadataParser.ComputeDocumentFolders(targetProject.FilePath, interfaceFilePath);
             var interfaceDoc = targetProject.AddDocument($"{interfaceName}.cs", interfaceFileRoot.ToFullString(), folders: folders, filePath: interfaceFilePath);
-            newSolution = await nullableProjection.ApplyAsync(interfaceDoc, interfaceFileRoot, ct).ConfigureAwait(false);
+            newSolution = await nullableProjection.ApplyAsync(
+                interfaceDoc, interfaceFileRoot, ReceivingNamespaceFactory.RequireCSharpOptions(sourceDocument.Project.ParseOptions), ct).ConfigureAwait(false);
 
             // BUG-004: Do NOT call NormalizeWhitespace() here — that re-flows the entire file and
             // produces unrelated formatting churn. The base list is a targeted node replacement,
