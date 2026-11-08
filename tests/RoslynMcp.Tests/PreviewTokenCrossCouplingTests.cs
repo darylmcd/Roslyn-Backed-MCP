@@ -146,6 +146,7 @@ public sealed class PreviewTokenCrossCouplingTests : IsolatedWorkspaceTestBase
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
         AddProjectToCopiedSolution(workspace.RootPath, "Contracts", "net10.0");
+        InterfaceRouteTestBase.UseAcyclicAnimalServiceSignature(workspace);
         await workspace.LoadAsync(CancellationToken.None);
 
         var sourceFilePath = workspace.GetPath("SampleLib", "AnimalService.cs");

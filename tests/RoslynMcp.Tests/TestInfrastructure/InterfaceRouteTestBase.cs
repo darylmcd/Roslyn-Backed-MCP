@@ -12,6 +12,24 @@ namespace RoslynMcp.Tests;
 /// </summary>
 public abstract class InterfaceRouteTestBase : IsolatedWorkspaceTestBase
 {
+    internal static void UseAcyclicAnimalServiceSignature(IsolatedWorkspaceScope workspace)
+    {
+        File.WriteAllText(workspace.GetPath("SampleLib", "AnimalService.cs"), """
+            namespace SampleLib;
+
+            public class AnimalService
+            {
+                public List<string> GetAllAnimals() => [];
+                public void MakeThemSpeak(IEnumerable<string> animals)
+                {
+                    foreach (var animal in animals) Console.WriteLine(animal);
+                }
+                public int CountAnimals(List<string> animals) => animals.Count;
+                public int CountAnimals(IEnumerable<string> animals) => animals.Count();
+            }
+            """);
+    }
+
     /// <summary>
     /// Builds the SampleLib/Contracts/Consumer solution around <paramref name="sourceText"/> (the only compiled
     /// SampleLib file) and loads it. When <paramref name="sharedSource"/> is given, a <c>Shared</c> project holds it and

@@ -4,6 +4,7 @@ Architecture decision records (ADRs) for breaking, compatibility, and security d
 
 | File | Purpose | Status |
 |------|---------|--------|
+| [0036-cyclic-interface-signature-refusal.md](0036-cyclic-interface-signature-refusal.md) | Refuse emitted interface signature dependencies that would create a project-reference cycle before storing a preview token | Accepted 2026-11-08 |
 | [0035-interface-signature-reference-closure.md](0035-interface-signature-reference-closure.md) | Add valid acyclic references for emitted interface signature owners, preserve aliases and interop metadata, and refuse incompatible existing metadata | Accepted 2026-11-07 |
 | [0033-composite-preview-source-fingerprints.md](0033-composite-preview-source-fingerprints.md) | Refuse composite apply when a target file changed since the preview was stored; format 3 `SourceFingerprints`, check point, mixed-version and residual-window notes | Accepted 2026-11-07 |
 | [0032-persisted-composite-token-workspace-identity.md](0032-persisted-composite-token-workspace-identity.md) | Bind persisted composite tokens to the loaded solution path so an independent host with that solution loaded can redeem them; format 2, refusals before the claim | Accepted 2026-11-06 |
