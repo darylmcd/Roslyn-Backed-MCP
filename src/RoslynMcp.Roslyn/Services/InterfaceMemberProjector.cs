@@ -322,20 +322,25 @@ internal sealed class InterfaceMemberProjector
             {
                 var original = source[i].Attributes[j];
                 if (!IsContractAttribute(model.GetSymbolInfo(original).Symbol?.ContainingType)) continue;
-                foreach (var name in original.DescendantNodesAndSelf().OfType<SimpleNameSyntax>())
-                    if (model.GetAliasInfo(name) is { } alias) _referencedUsingAliases.Add(alias.Name);
-                if (original.ArgumentList is { } arguments)
+                // The qualifier may replace an unnameable constant expression with its value.
+                // Only references still present in the emitted attribute need a receiving-project reference.
+                if (original.IsEquivalentTo(rewritten[i].Attributes[j]))
                 {
-                    foreach (var name in arguments.DescendantNodesAndSelf().OfType<SimpleNameSyntax>())
+                    foreach (var name in original.DescendantNodesAndSelf().OfType<SimpleNameSyntax>())
+                        if (model.GetAliasInfo(name) is { } alias) _referencedUsingAliases.Add(alias.Name);
+                    if (original.ArgumentList is { } arguments)
                     {
-                        switch (model.GetSymbolInfo(name).Symbol)
+                        foreach (var name in arguments.DescendantNodesAndSelf().OfType<SimpleNameSyntax>())
                         {
-                            case ITypeSymbol type:
-                                _referencedTypes.Add(type);
-                                break;
-                            case ISymbol { ContainingType: not null } symbol:
-                                _referencedTypes.Add(symbol.ContainingType);
-                                break;
+                            switch (model.GetSymbolInfo(name).Symbol)
+                            {
+                                case ITypeSymbol type:
+                                    _referencedTypes.Add(type);
+                                    break;
+                                case ISymbol { ContainingType: not null } symbol when symbol is IFieldSymbol or IPropertySymbol or IMethodSymbol:
+                                    _referencedTypes.Add(symbol.ContainingType);
+                                    break;
+                            }
                         }
                     }
                 }
