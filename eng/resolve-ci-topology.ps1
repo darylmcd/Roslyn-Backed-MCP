@@ -81,14 +81,16 @@ $codePullRequest = @(
     New-CiTopologyLeg -Name 'windows-hosted-2-of-4' -RunsOn 'windows-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 1 -TestShardCount 4
     New-CiTopologyLeg -Name 'windows-hosted-3-of-4' -RunsOn 'windows-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 2 -TestShardCount 4
     New-CiTopologyLeg -Name 'windows-hosted-4-of-4' -RunsOn 'windows-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 3 -TestShardCount 4
-    New-CiTopologyLeg -Name 'linux-1-of-3' -RunsOn 'ubuntu-latest' -ArtifactOwner $false -TimeoutMinutes 30 -TestShardIndex 0 -TestShardCount 3
-    New-CiTopologyLeg -Name 'linux-2-of-3' -RunsOn 'ubuntu-latest' -ArtifactOwner $false -TimeoutMinutes 30 -TestShardIndex 1 -TestShardCount 3
-    New-CiTopologyLeg -Name 'linux-3-of-3' -RunsOn 'ubuntu-latest' -ArtifactOwner $true -TimeoutMinutes 30 -TestShardIndex 2 -TestShardCount 3
+    New-CiTopologyLeg -Name 'linux-1-of-4' -RunsOn 'ubuntu-latest' -ArtifactOwner $false -TimeoutMinutes 30 -TestShardIndex 0 -TestShardCount 4
+    New-CiTopologyLeg -Name 'linux-2-of-4' -RunsOn 'ubuntu-latest' -ArtifactOwner $false -TimeoutMinutes 30 -TestShardIndex 1 -TestShardCount 4
+    New-CiTopologyLeg -Name 'linux-3-of-4' -RunsOn 'ubuntu-latest' -ArtifactOwner $false -TimeoutMinutes 30 -TestShardIndex 2 -TestShardCount 4
+    New-CiTopologyLeg -Name 'linux-4-of-4' -RunsOn 'ubuntu-latest' -ArtifactOwner $true -TimeoutMinutes 30 -TestShardIndex 3 -TestShardCount 4
 )
 $docsOnlyPullRequest = @(
-    New-CiTopologyLeg -Name 'docs-linux-1-of-3' -RunsOn 'ubuntu-latest' -ArtifactOwner $false -TimeoutMinutes 30 -TestShardIndex 0 -TestShardCount 3
-    New-CiTopologyLeg -Name 'docs-linux-2-of-3' -RunsOn 'ubuntu-latest' -ArtifactOwner $false -TimeoutMinutes 30 -TestShardIndex 1 -TestShardCount 3
-    New-CiTopologyLeg -Name 'docs-linux-3-of-3' -RunsOn 'ubuntu-latest' -ArtifactOwner $true -TimeoutMinutes 30 -TestShardIndex 2 -TestShardCount 3
+    New-CiTopologyLeg -Name 'docs-linux-1-of-4' -RunsOn 'ubuntu-latest' -ArtifactOwner $false -TimeoutMinutes 30 -TestShardIndex 0 -TestShardCount 4
+    New-CiTopologyLeg -Name 'docs-linux-2-of-4' -RunsOn 'ubuntu-latest' -ArtifactOwner $false -TimeoutMinutes 30 -TestShardIndex 1 -TestShardCount 4
+    New-CiTopologyLeg -Name 'docs-linux-3-of-4' -RunsOn 'ubuntu-latest' -ArtifactOwner $false -TimeoutMinutes 30 -TestShardIndex 2 -TestShardCount 4
+    New-CiTopologyLeg -Name 'docs-linux-4-of-4' -RunsOn 'ubuntu-latest' -ArtifactOwner $true -TimeoutMinutes 30 -TestShardIndex 3 -TestShardCount 4
 )
 $scheduledValidation = @(
     New-CiTopologyLeg -Name 'linux-full' -RunsOn 'ubuntu-latest' -ArtifactOwner $true -TimeoutMinutes 90 -TestShardIndex 0 -TestShardCount 1
@@ -260,7 +262,7 @@ function Resolve-CiTopologyDecision {
             docs_only     = $true
             evidence_only = $false
             runner_matrix = @($docsOnlyPullRequest)
-            reason        = 'Policy-only docs PR: three hosted Linux test shards.'
+            reason        = 'Policy-only docs PR: four hosted Linux test shards.'
         }
     }
 
@@ -268,7 +270,7 @@ function Resolve-CiTopologyDecision {
         docs_only     = $false
         evidence_only = $false
         runner_matrix = @($codePullRequest)
-        reason        = 'Code PR: four hosted Windows and three hosted Linux shards.'
+        reason        = 'Code PR: four hosted Windows and four hosted Linux shards.'
     }
 }
 

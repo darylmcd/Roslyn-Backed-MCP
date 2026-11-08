@@ -58,6 +58,7 @@
 | `cross-project-interface-signature-compile-gate` | High | cross-project-interface-signature-refusal-compile | **Validate generated interface compilation** — refuse new target or affected-project errors before token storage. [type: bug] [source: signature-dependencies split] | M | items/cross-project-interface-signature-compile-gate.md |
 | `interface-extraction-standalone-extern-alias` | High | cross-project-interface-signature-reference-closure | **Preserve standalone extern aliases** — emit required extern alias directives in generated interfaces with aliased signature types. [type: bug] [source: signature-reference slice review] | M | items/interface-extraction-standalone-extern-alias.md |
 | `interface-extraction-nested-namespace-identity` | High | — | **Preserve standalone nested namespace identity** — emit the full outer-to-inner namespace for extracted interfaces. [type: bug] [source: standalone alias route review] | S | items/interface-extraction-nested-namespace-identity.md |
+| `hosted-linux-shard-timeout-capacity` | High | — | **Restore Linux shard deadline margin** — split code and policy-doc Linux class coverage into four complete legs under the existing 30-minute job cap. [type: test-infrastructure] [source: PR #2032 hosted timeout] | S | items/hosted-linux-shard-timeout-capacity.md |
 
 ## Medium
 

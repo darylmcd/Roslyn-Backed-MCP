@@ -7,8 +7,8 @@ This document is the canonical validation and merge-gating contract.
 | Event / trust state | Validation topology | Coverage / network |
 |---|---|---|
 | Evidence-only pull request (`ai_docs/audits/**`, `ai_docs/reports/**`, `ai_docs/items/**`, `audit-reports/**`, minus the exclusions below) | One pwsh `evidence-lint` job (changelog contract + `verify-ai-docs.ps1`); no .NET setup, build, or test legs; exact-floor probe and quality job skipped | Not applicable |
-| Policy-only documentation pull request (Markdown / `ai_docs/**/*.json` / the tracked promotion scorecard, excluding behavior-bearing paths) | Three hosted Linux class shards plus the version-drift and breaking-version gates; exact-floor probe and quality job skipped | Coverage and `Network` tests skipped; publish/audit skipped |
-| Any code-bearing pull request | Four hosted Windows shards + three hosted Linux shards + one concurrent exact-SDK-floor build/workspace probe + one concurrent quality job | Coverage and `Network` tests skipped |
+| Policy-only documentation pull request (Markdown / `ai_docs/**/*.json` / the tracked promotion scorecard, excluding behavior-bearing paths) | Four hosted Linux class shards plus the version-drift and breaking-version gates; exact-floor probe and quality job skipped | Coverage and `Network` tests skipped; publish/audit skipped |
+| Any code-bearing pull request | Four hosted Windows shards + four hosted Linux shards + one concurrent exact-SDK-floor build/workspace probe + one concurrent quality job | Coverage and `Network` tests skipped |
 | Merge-queue group (`merge_group`) | Always the full code-bearing topology (no trusted changed-file set, so no docs-only/evidence-only route) | Coverage and `Network` tests skipped |
 | Manual dispatch / weekly schedule (Mon 05:45 UTC) | One unsharded hosted Linux suite + one concurrent exact-SDK-floor build/workspace probe + one concurrent quality job | Coverage and live `Network` tests enabled |
 
@@ -46,9 +46,9 @@ The router emits typed leg fields. Keep their concerns separate:
 
 ## Pull-Request Test Partition
 
-- Windows runs four concurrent class shards; Linux runs three (see § Linux Shard Count Decision).
-- All seven code pull-request shards run on separate GitHub-hosted runners.
-- Policy-only documentation PRs run the same complete class partition as three Linux shards. Do not restore a zero-test docs route: repository tests consume Markdown contracts, and future consumers must be covered automatically. The evidence route is the one zero-test route; it is safe only for paths `CiEvidenceTierConsumerContractTests` proves no test reads.
+- Windows and Linux each run four concurrent class shards (see § Linux Shard Count Decision).
+- All eight code pull-request shards run on separate GitHub-hosted runners.
+- Policy-only documentation PRs run the same complete class partition as four Linux shards. Do not restore a zero-test docs route: repository tests consume Markdown contracts, and future consumers must be covered automatically. The evidence route is the one zero-test route; it is safe only for paths `CiEvidenceTierConsumerContractTests` proves no test reads.
 - `eng/get-test-shard-plan.ps1` reads compiled MSTest metadata. It must fail on an invalid index/count, missing assembly, unreadable metadata, unsafe class name, zero discovered classes, empty shard, overlap, or incomplete assignment.
 - Shards use exact MSTest `ClassName` predicates. Do not use `FullyQualifiedName~` prefix matching.
 - `eng/ci.runsettings` enables `TreatNoTestsAsError`; an accidentally empty filter is a failure.
@@ -179,6 +179,8 @@ Out-of-sample check: PR #1942 run `41474916090` is excluded from profile generat
 The four Windows legs of that same run move from 5,051 / 3,007 / 6,320 / 3,738 to 4,176 / 4,881 / 4,202 / 4,857 cumulative case seconds under the profile, with the same wall-time limitation.
 
 ## Linux Shard Count Decision
+
+The 2026-11-08 recheck supersedes the three-Linux-shard topology below. PR #2032 run `42490458875` cancelled docs shard 2 at the 30-minute cap after its 2,297 tests passed in 28m18s; the release step could not finish. PR #2027 run `42487026249` completed code shard 2 in 29m25s, leaving only 35 seconds of margin. Code and policy-doc routes now partition the same complete class set over four Linux legs, retaining the 30-minute cap and one artifact owner. The exact matrix and disjoint-union contract are tested by `CiTopologyDecisionContractTests`. Re-measure the new hosted legs after the change lands; these two runs establish exhaustion of the old margin, not the achieved duration of the new topology.
 
 Operator decision 2026-10-26 supersedes the two-Linux-shard topology for code and policy-only documentation PRs. Both routes now run three `ubuntu-latest` class shards; the last shard stays the sole artifact owner, and the 30-minute leg limit is unchanged.
 
