@@ -22,3 +22,7 @@
 
 - A 30-second module-analysis cache poll exists in launch 1, so its timeout is a hypothesis from elapsed time, not an established cause.
 - The separate `linux-pwsh-startup-profile-invalid-assembly-identity` row tracks a malformed native assembly identity; no evidence yet connects it to this cohort failure.
+
+## Notes
+
+2026-11-08: PR #2023 fixed a demonstrated module-cache file-sharing/readiness race in the native startup verifier and added bounded writer playback tests. The PR #1971 functional cohort's failing child was not logged, so that occurrence remains unattributed; retain this row until its exact parent/error and causal witness are established.
