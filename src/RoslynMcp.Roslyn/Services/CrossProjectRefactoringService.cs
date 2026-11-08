@@ -193,6 +193,8 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         if (isCrossProject)
         {
             updatedSolution = EnsureProjectReference(updatedSolution, sourceDocument.Project.Id, targetProject.Id);
+            updatedSolution = await EnsureSignatureReferencesAsync(
+                updatedSolution, sourceDocument.Project.Id, targetProject.Id, projector.ReferencedTypes, ct).ConfigureAwait(false);
         }
 
         updatedSolution = await ApplyGeneratedInterfaceAsync(
@@ -282,15 +284,14 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
                 continue;
             }
 
-            // The consumer must be able to see the interface's assembly. A compilation that already
-            // references it needs no new edge. Otherwise add one: a cycle is impossible here (the
-            // consumer sees the concrete type, so the interface project would have to reach the source
-            // project, which EnsureProjectReference already refused), and it refuses one anyway.
+            // Require the exact interface project, not an assembly with the same simple name.
+            // EnsureProjectReference preserves an existing edge and makes an alias-only edge
+            // globally visible for the generated interface spelling.
             var consumerProject = document.Project;
-            var interfaceProject = updatedSolution.GetProject(interfaceProjectId)!;
-            if (!await ProjectGraphHelpers.CompilationReferencesProjectAsync(consumerProject, interfaceProject, ct).ConfigureAwait(false))
+            var withReference = EnsureProjectReference(updatedSolution, consumerProject.Id, interfaceProjectId);
+            if (!ReferenceEquals(withReference, updatedSolution))
             {
-                updatedSolution = EnsureProjectReference(updatedSolution, consumerProject.Id, interfaceProjectId);
+                updatedSolution = withReference;
                 document = updatedSolution.GetDocument(documentId)!;
                 root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false);
                 model = await document.GetSemanticModelAsync(ct).ConfigureAwait(false);
@@ -478,12 +479,19 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             destinationGlobalPlainNamespaces: destinationGlobalPlainNamespaces,
             sourceSemanticModel: sourceSemanticModel, ct: ct);
         var cleanUsings = SyntaxFactory.List(usings.Select(u => u.WithoutTrivia()));
+        var requiredAliases = interfaceMembers.SelectMany(member => member.DescendantNodesAndSelf().OfType<AliasQualifiedNameSyntax>())
+            .Concat(cleanUsings.SelectMany(usingDirective => usingDirective.DescendantNodesAndSelf().OfType<AliasQualifiedNameSyntax>()))
+            .Select(name => name.Alias.Identifier.ValueText)
+            .ToHashSet(StringComparer.Ordinal);
+        var externs = SyntaxFactory.List(sourceRoot.Externs
+            .Where(directive => requiredAliases.Contains(directive.Identifier.ValueText))
+            .Select(directive => directive.WithoutTrivia()));
         var destinationNamespace = ReceivingNamespaceFactory.Create(namespaceName, receivingOptions);
         MemberDeclarationSyntax wrappedMember = destinationNamespace is null
             ? interfaceDeclaration
             : destinationNamespace.WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(interfaceDeclaration));
         // Synthesized declarations have no original body layout to preserve.
-        return SyntaxFactory.CompilationUnit().WithUsings(cleanUsings)
+        return SyntaxFactory.CompilationUnit().WithExterns(externs).WithUsings(cleanUsings)
             .WithMembers(SyntaxFactory.SingletonList(wrappedMember)).NormalizeWhitespace();
     }
 
@@ -499,14 +507,86 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         _ => SyntaxFactory.Token(SyntaxKind.PublicKeyword),
     };
 
-    private static Solution EnsureProjectReference(Solution solution, ProjectId sourceProjectId, ProjectId targetProjectId)
+    private static async Task<Solution> EnsureSignatureReferencesAsync(
+        Solution solution, ProjectId sourceProjectId, ProjectId receivingProjectId,
+        IReadOnlyCollection<ITypeSymbol> signatureTypes, CancellationToken ct)
+    {
+        var sourceProject = solution.GetProject(sourceProjectId)
+            ?? throw InvalidOperationErrors.Internal("Interface source project is unavailable.");
+        foreach (var type in signatureTypes.OfType<INamedTypeSymbol>())
+        {
+            var definition = type.OriginalDefinition;
+            var declaringDocument = definition.DeclaringSyntaxReferences
+                .Select(reference => solution.GetDocument(reference.SyntaxTree))
+                .FirstOrDefault(document => document is not null);
+            if (declaringDocument is null)
+            {
+                var sourceDefinition = await SymbolFinder.FindSourceDefinitionAsync(definition, solution, ct).ConfigureAwait(false);
+                declaringDocument = sourceDefinition?.DeclaringSyntaxReferences
+                    .Select(reference => solution.GetDocument(reference.SyntaxTree))
+                    .FirstOrDefault(document => document is not null);
+            }
+
+            if (declaringDocument is null || declaringDocument.Project.Id == receivingProjectId)
+            {
+                // Metadata references have no project owner to add; the dependent compile-gate
+                // slice diagnoses missing external metadata. A receiver already owns its types.
+                continue;
+            }
+
+            var receivingProject = solution.GetProject(receivingProjectId)
+                ?? throw InvalidOperationErrors.Internal("Interface receiving project is unavailable.");
+            var ownerProject = solution.GetProject(declaringDocument.Project.Id)!;
+            if (ProjectGraphHelpers.WouldCreateProjectReferenceCycle(receivingProject, ownerProject))
+            {
+                // The dependent refusal slice owns source-owned and other cyclic signatures.
+                continue;
+            }
+
+            var sourceReference = sourceProject.ProjectReferences.FirstOrDefault(reference => reference.ProjectId == ownerProject.Id);
+            var required = sourceReference is null
+                ? new ProjectReference(ownerProject.Id)
+                : new ProjectReference(ownerProject.Id, sourceReference.Aliases, sourceReference.EmbedInteropTypes);
+            var existing = receivingProject.ProjectReferences.FirstOrDefault(reference => reference.ProjectId == ownerProject.Id);
+            if (sourceReference is not null && existing is not null && existing.EmbedInteropTypes != sourceReference.EmbedInteropTypes)
+            {
+                throw new PublicInvalidOperationException(
+                    $"Project reference from '{receivingProject.Name}' to '{ownerProject.Name}' has incompatible embedded interop metadata.");
+            }
+
+            solution = EnsureProjectReference(solution, receivingProjectId, required);
+        }
+
+        return solution;
+    }
+
+    private static Solution EnsureProjectReference(Solution solution, ProjectId sourceProjectId, ProjectId targetProjectId) =>
+        EnsureProjectReference(solution, sourceProjectId, new ProjectReference(targetProjectId));
+
+    private static Solution EnsureProjectReference(Solution solution, ProjectId sourceProjectId, ProjectReference requiredReference)
     {
         var sourceProject = solution.GetProject(sourceProjectId)
             ?? throw new InvalidOperationException("Source project was not found in the updated solution.");
+        var targetProjectId = requiredReference.ProjectId;
 
-        if (sourceProject.ProjectReferences.Any(reference => reference.ProjectId == targetProjectId))
+        var existingReference = sourceProject.ProjectReferences.FirstOrDefault(reference => reference.ProjectId == targetProjectId);
+        if (existingReference is not null)
         {
-            return solution;
+            if (existingReference.Aliases.IsDefaultOrEmpty && requiredReference.Aliases.IsDefaultOrEmpty)
+            {
+                return solution;
+            }
+
+            var aliases = existingReference.Aliases.IsDefaultOrEmpty
+                ? ["global"]
+                : existingReference.Aliases.ToArray();
+            var requiredAliases = requiredReference.Aliases.IsDefaultOrEmpty
+                ? ["global"]
+                : requiredReference.Aliases.ToArray();
+            var combined = aliases.Concat(requiredAliases).Distinct(StringComparer.Ordinal).ToImmutableArray();
+            if (existingReference.Aliases.SequenceEqual(combined)) return solution;
+            return solution.RemoveProjectReference(sourceProjectId, existingReference)
+                .AddProjectReference(sourceProjectId, new ProjectReference(targetProjectId, combined, existingReference.EmbedInteropTypes));
         }
 
         var targetProject = solution.GetProject(targetProjectId)
@@ -518,7 +598,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
                 $"Adding project reference from '{sourceProject.Name}' to '{targetProject.Name}' would create a circular dependency.");
         }
 
-        return solution.AddProjectReference(sourceProjectId, new ProjectReference(targetProjectId));
+        return solution.AddProjectReference(sourceProjectId, requiredReference);
     }
 
     private static async Task<(Solution Solution, DocumentId InterfaceDocumentId)> CreateInterfaceExtractionSolutionAsync(
@@ -584,6 +664,8 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         if (isCrossProject)
         {
             updatedSolution = EnsureProjectReference(updatedSolution, sourceDocument.Project.Id, targetProject.Id);
+            updatedSolution = await EnsureSignatureReferencesAsync(
+                updatedSolution, sourceDocument.Project.Id, targetProject.Id, projector.ReferencedTypes, ct).ConfigureAwait(false);
         }
 
         updatedSolution = await ApplyGeneratedInterfaceAsync(

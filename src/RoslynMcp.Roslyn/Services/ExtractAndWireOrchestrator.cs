@@ -1,4 +1,3 @@
-using System.Xml.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using RoslynMcp.Core.Models;
@@ -246,91 +245,15 @@ public sealed class ExtractAndWireOrchestrator : IExtractAndWireOrchestrator
                 mutations.Add(new CompositeFileMutation(document.FilePath, null, DeleteFile: true));
             }
 
-            AppendProjectReferenceMutation(currentSolution, modifiedSolution, projectChange, mutations);
+        }
+
+        foreach (var mutation in await ProjectReferenceMutationRenderer.PlanAsync(currentSolution, modifiedSolution, ct).ConfigureAwait(false))
+        {
+            var content = CsprojSemanticEquality.CreateSnapshot(mutation.Modified).Content;
+            UpsertMutation(mutations, mutation.Path, content);
         }
 
         return mutations;
     }
 
-    private static void AppendProjectReferenceMutation(
-        Solution currentSolution,
-        Solution modifiedSolution,
-        ProjectChanges projectChange,
-        List<CompositeFileMutation> mutations)
-    {
-        var modifiedProject = modifiedSolution.GetProject(projectChange.ProjectId);
-        if (modifiedProject?.FilePath is null || !File.Exists(modifiedProject.FilePath))
-        {
-            return;
-        }
-
-        var addedProjectReferences = projectChange.GetAddedProjectReferences().ToArray();
-        var removedProjectReferences = projectChange.GetRemovedProjectReferences().ToArray();
-        if (addedProjectReferences.Length == 0 && removedProjectReferences.Length == 0)
-        {
-            return;
-        }
-
-        var document = XDocument.Parse(File.ReadAllText(modifiedProject.FilePath), LoadOptions.PreserveWhitespace);
-        var projectDirectory = Path.GetDirectoryName(modifiedProject.FilePath)
-            ?? throw new InvalidOperationException("Project file path must have a parent directory.");
-        var changed = false;
-
-        foreach (var projectReference in addedProjectReferences)
-        {
-            var referencedProject = modifiedSolution.GetProject(projectReference.ProjectId);
-            if (referencedProject?.FilePath is null)
-            {
-                continue;
-            }
-
-            var relativePath = Path.GetRelativePath(projectDirectory, referencedProject.FilePath);
-            if (document.Descendants("ProjectReference").Any(element =>
-                    string.Equals(NormalizeInclude((string?)element.Attribute("Include")), NormalizeInclude(relativePath), StringComparison.OrdinalIgnoreCase)))
-            {
-                continue;
-            }
-
-            OrchestrationMsBuildXml.GetOrCreateItemGroup(document, "ProjectReference")
-                .Add(new XElement("ProjectReference", new XAttribute("Include", relativePath)));
-            changed = true;
-        }
-
-        foreach (var projectReference in removedProjectReferences)
-        {
-            var referencedProject = currentSolution.GetProject(projectReference.ProjectId) ?? modifiedSolution.GetProject(projectReference.ProjectId);
-            var targetFileName = Path.GetFileName(referencedProject?.FilePath);
-            if (string.IsNullOrWhiteSpace(targetFileName))
-            {
-                continue;
-            }
-
-            var element = document.Descendants("ProjectReference").FirstOrDefault(candidate =>
-            {
-                var include = (string?)candidate.Attribute("Include");
-                return !string.IsNullOrWhiteSpace(include) &&
-                       string.Equals(Path.GetFileName(include), targetFileName, StringComparison.OrdinalIgnoreCase);
-            });
-
-            if (element is null)
-            {
-                continue;
-            }
-
-            element.Remove();
-            changed = true;
-        }
-
-        if (!changed)
-        {
-            return;
-        }
-
-        UpsertMutation(mutations, modifiedProject.FilePath, document.ToString(SaveOptions.DisableFormatting));
-    }
-
-    private static string NormalizeInclude(string? include)
-    {
-        return (include ?? string.Empty).Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
-    }
 }

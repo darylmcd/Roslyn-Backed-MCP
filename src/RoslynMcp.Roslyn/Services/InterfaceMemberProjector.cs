@@ -130,8 +130,35 @@ internal sealed class InterfaceMemberProjector
     {
         var namespaces = new HashSet<string>(StringComparer.Ordinal);
         foreach (var type in _referencedTypes) TypeNamespaceWalker.Collect(namespaces, type, ownNamespace);
+        // A namespace reachable only through an extern alias cannot be imported as a plain
+        // `using Namespace;` in the receiving project. Keep imports needed by a global reference.
+        var aliasOnly = new HashSet<string>(StringComparer.Ordinal);
+        var globallyAvailable = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var type in ReferencedTypes)
+        {
+            if (type.ContainingNamespace is not { IsGlobalNamespace: false } typeNamespace) continue;
+            var name = typeNamespace.ToDisplayString();
+            (HasGlobalReference(type) ? globallyAvailable : aliasOnly).Add(name);
+        }
+
+        aliasOnly.ExceptWith(globallyAvailable);
+        namespaces.ExceptWith(aliasOnly);
         namespaces.Remove(ownNamespace ?? string.Empty);
         return namespaces;
+    }
+
+    internal IReadOnlyCollection<ITypeSymbol> ReferencedTypes => _referencedTypes
+        .SelectMany(TypeNamespaceWalker.Enumerate)
+        .Distinct<ITypeSymbol>(SymbolEqualityComparer.Default)
+        .ToArray();
+
+    private bool HasGlobalReference(ITypeSymbol type)
+    {
+        if (SymbolEqualityComparer.Default.Equals(type.ContainingAssembly, _compilation.Assembly)) return true;
+        var references = _compilation.References.Where(reference =>
+            SymbolEqualityComparer.Default.Equals(_compilation.GetAssemblyOrModuleSymbol(reference), type.ContainingAssembly));
+        return !references.Any() || references.Any(reference => reference.Properties.Aliases.IsDefaultOrEmpty
+            || reference.Properties.Aliases.Contains("global"));
     }
 
     private static MemberDeclarationSyntax? DeclaringSyntax(ISymbol member)
