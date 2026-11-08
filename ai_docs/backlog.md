@@ -58,6 +58,7 @@
 | `cross-project-interface-signature-compile-gate` | High | cross-project-interface-signature-refusal-compile | **Validate generated interface compilation** — refuse new target or affected-project errors before token storage. [type: bug] [source: signature-dependencies split] | M | items/cross-project-interface-signature-compile-gate.md |
 | `interface-extraction-standalone-extern-alias` | High | cross-project-interface-signature-reference-closure | **Preserve standalone extern aliases** — emit required extern alias directives in generated interfaces with aliased signature types. [type: bug] [source: signature-reference slice review] | M | items/interface-extraction-standalone-extern-alias.md |
 | `interface-extraction-nested-namespace-identity` | High | — | **Preserve standalone nested namespace identity** — emit the full outer-to-inner namespace for extracted interfaces. [type: bug] [source: standalone alias route review] | S | items/interface-extraction-nested-namespace-identity.md |
+| `actionlint-release-download-api-fallback` | High | — | **Use the pinned GitHub API asset after a release URL failure** — keep checksum-verified actionlint validation available on ephemeral hosted runners. | S | items/actionlint-release-download-api-fallback.md |
 
 ## Medium
 
