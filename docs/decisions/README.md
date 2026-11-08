@@ -4,6 +4,7 @@ Architecture decision records (ADRs) for breaking, compatibility, and security d
 
 | File | Purpose | Status |
 |------|---------|--------|
+| [0037-interpolated-handler-contract-projection.md](0037-interpolated-handler-contract-projection.md) | Preserve handler argument attributes only when compiler-bound source and contract calls select the same constructors | Accepted 2026-11-08 |
 | [0036-cyclic-interface-signature-refusal.md](0036-cyclic-interface-signature-refusal.md) | Refuse emitted interface signature dependencies that would create a project-reference cycle before storing a preview token | Accepted 2026-11-08 |
 | [0035-interface-signature-reference-closure.md](0035-interface-signature-reference-closure.md) | Add valid acyclic references for emitted interface signature owners, preserve aliases and interop metadata, and refuse incompatible existing metadata | Accepted 2026-11-07 |
 | [0033-composite-preview-source-fingerprints.md](0033-composite-preview-source-fingerprints.md) | Refuse composite apply when a target file changed since the preview was stored; format 3 `SourceFingerprints`, check point, mixed-version and residual-window notes | Accepted 2026-11-07 |

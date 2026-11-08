@@ -22,14 +22,14 @@ namespace RoslynMcp.Roslyn.Services;
 internal sealed class InterfaceMemberProjector
 {
     // Attributes that change how a caller binds or flows nullability through the member. Everything
-    // else (implementation markers, ParamArray/ScopedRef the modifiers already carry, handler arguments
-    // that need a binding probe) stays out of the contract.
+    // else (implementation markers, ParamArray/ScopedRef the modifiers already carry) stays out of the contract.
     private static readonly HashSet<string> _contractAttributes = new(StringComparer.Ordinal)
     {
         "System.Runtime.CompilerServices.CallerMemberNameAttribute",
         "System.Runtime.CompilerServices.CallerLineNumberAttribute",
         "System.Runtime.CompilerServices.CallerFilePathAttribute",
         "System.Runtime.CompilerServices.CallerArgumentExpressionAttribute",
+        "System.Runtime.CompilerServices.InterpolatedStringHandlerArgumentAttribute",
         "System.Runtime.CompilerServices.DateTimeConstantAttribute",
         "System.Runtime.CompilerServices.DecimalConstantAttribute",
         "System.Runtime.InteropServices.OptionalAttribute",
@@ -76,6 +76,7 @@ internal sealed class InterfaceMemberProjector
     internal static async Task<InterfaceMemberProjector> CreateAsync(
         Document sourceDocument, InterfaceNullableProjection nullable, Project receivingProject, CancellationToken ct)
     {
+        nullable.SetSourceDocument(sourceDocument.Id);
         var model = await sourceDocument.GetSemanticModelAsync(ct).ConfigureAwait(false)
             ?? throw InvalidOperationErrors.Internal("Semantic model for the interface source document is unavailable.");
         var options = receivingProject.CompilationOptions as CSharpCompilationOptions
