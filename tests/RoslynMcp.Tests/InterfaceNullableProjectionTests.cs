@@ -139,7 +139,7 @@ public sealed class InterfaceNullableProjectionTests
         var undecorated = (await document.Project.GetCompilationAsync())!.GetTypeByMetadataName("I")!;
         Assert.IsTrue(original.GetMembers().Where(m => m is IMethodSymbol { MethodKind: MethodKind.Ordinary } or IPropertySymbol or IEventSymbol)
             .Any(m => !Types(m).Select(Graph).SequenceEqual(Types(undecorated.GetMembers(m.Name).Single(x => x.Kind == m.Kind)).Select(Graph))), "No-decoration negative control must fail the graph oracle.");
-        var solution = await projection.ApplyAsync(document, root, CancellationToken.None);
+        var solution = await projection.ApplyAsync(document, root, _parse, CancellationToken.None);
         var result = solution.GetDocument(document.Id)!;
         solution = solution.WithDocumentText(document.Id, SourceText.From((await result.GetTextAsync()).ToString()));
         var actual = (await solution.GetProject(document.Project.Id)!.GetCompilationAsync())!;
@@ -211,7 +211,7 @@ public sealed class InterfaceNullableProjectionTests
         var root = SyntaxFactory.ParseCompilationUnit("interface I { string M(string value); }");
         using var workspace = new AdhocWorkspace();
         var document = Receiver(workspace, Options(false), _parse).AddDocument("I.cs", root.ToFullString());
-        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => projection.ApplyAsync(document, root, CancellationToken.None));
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => projection.ApplyAsync(document, root, _parse, CancellationToken.None));
     }
 
     [TestMethod]
@@ -234,7 +234,7 @@ public sealed class InterfaceNullableProjectionTests
             .AddMembers(members.ToArray())).NormalizeWhitespace();
         using var workspace = new AdhocWorkspace();
         var document = Receiver(workspace, Options(false), _parse).AddDocument("I.cs", root.ToFullString());
-        var result = (await projection.ApplyAsync(document, root, CancellationToken.None)).GetDocument(document.Id)!;
+        var result = (await projection.ApplyAsync(document, root, _parse, CancellationToken.None)).GetDocument(document.Id)!;
         Assert.AreEqual(string.Join("\r\n",
             "public interface I",
             "{",
@@ -274,7 +274,7 @@ public sealed class InterfaceNullableProjectionTests
         var member = root.DescendantNodes().OfType<InterfaceDeclarationSyntax>().Single().Members.Single();
         var projection = new InterfaceNullableProjection();
         root = root.ReplaceNode(member, projection.Capture(member, symbol));
-        var solution = await projection.ApplyAsync(document, root, CancellationToken.None);
+        var solution = await projection.ApplyAsync(document, root, _parse, CancellationToken.None);
         return solution.GetDocument(document.Id)!;
     }
 
@@ -302,7 +302,7 @@ public sealed class InterfaceNullableProjectionTests
         var document = Receiver(workspace, Options(false), _parse).AddDocument("I.cs", root.ToFullString());
         var before = (await document.Project.GetCompilationAsync())!.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).ToArray();
         Assert.IsTrue(before.Length > 0, specimen);
-        var solution = await projection.ApplyAsync(document, root, CancellationToken.None);
+        var solution = await projection.ApplyAsync(document, root, _parse, CancellationToken.None);
         var result = solution.GetDocument(document.Id)!;
         Assert.AreNotEqual(root.ToFullString(), (await result.GetTextAsync()).ToString());
         var after = (await result.Project.GetCompilationAsync())!.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).ToArray();
@@ -320,6 +320,62 @@ public sealed class InterfaceNullableProjectionTests
         Assert.IsTrue((await document.Project.GetCompilationAsync())!.GetDiagnostics().Any(d => d.Id == "CS8370"));
         var error = await Assert.ThrowsExactlyAsync<RoslynMcp.Core.Services.PublicInvalidOperationException>(() => ProjectSingleAsync(document, member));
         StringAssert.Contains(error.Message, "CS8370");
+    }
+
+    private static async Task<Solution> ApplyLanguageAsync(string memberText, CSharpParseOptions source, CSharpParseOptions receiver)
+    {
+        var sourceCompilation = CSharpCompilation.Create("Source", [CSharpSyntaxTree.ParseText("public interface S { " + memberText + " }", _parse)], _references, Options(false));
+        var symbol = sourceCompilation.GetTypeByMetadataName("S")!.GetMembers("M").Single();
+        var projection = new InterfaceNullableProjection();
+        var root = SyntaxFactory.CompilationUnit().AddMembers(SyntaxFactory.InterfaceDeclaration("I")
+            .AddMembers(projection.Capture(SyntaxFactory.ParseMemberDeclaration(memberText)!, symbol))).NormalizeWhitespace();
+        using var workspace = new AdhocWorkspace();
+        var document = Receiver(workspace, Options(false), receiver).AddDocument("I.cs", root.ToFullString());
+        return await projection.ApplyAsync(document, root, source, CancellationToken.None);
+    }
+
+    [TestMethod]
+    public async Task Receiving_Language_Older_Than_Source_Is_Refused_With_The_Compilers_Own_Ids()
+    {
+        var error = await Assert.ThrowsExactlyAsync<RoslynMcp.Core.Services.PublicInvalidOperationException>(
+            () => ApplyLanguageAsync("void M(ref readonly int value);", _parse, new CSharpParseOptions(LanguageVersion.CSharp11)));
+        StringAssert.Contains(error.Message, "CS9058");
+        Assert.IsFalse(error.Message.Contains("is not available", StringComparison.Ordinal), error.Message);
+    }
+
+    [TestMethod]
+    public async Task Errors_Both_Parses_Share_Are_Not_A_Language_Delta()
+    {
+        // An unbound type fails identically under the receiving and the source options: another row's concern, not a refusal.
+        await ApplyLanguageAsync("void M(Missing value);", _parse, new CSharpParseOptions(LanguageVersion.CSharp7_3));
+    }
+
+    [TestMethod]
+    public async Task Parse_Options_Differing_Only_In_Preprocessor_Symbols_Do_Not_Refuse()
+    {
+        await ApplyLanguageAsync("void M(ref readonly int value);", new CSharpParseOptions(LanguageVersion.CSharp14, preprocessorSymbols: ["SOURCE_ONLY"]), _parse);
+    }
+
+    [TestMethod]
+    public void Location_Key_Ignores_Tree_Identity_And_Distinguishes_Spans_And_Paths()
+    {
+        const string text = "interface I { void M(); }";
+        var first = CSharpSyntaxTree.ParseText(text, new CSharpParseOptions(LanguageVersion.CSharp14), "I.cs");
+        var second = CSharpSyntaxTree.ParseText(text, new CSharpParseOptions(LanguageVersion.CSharp7_3), "I.cs");
+        Assert.AreNotSame(first, second);
+        var key = InterfaceNullableProjection.TreeIndependentLocationKey(Location.Create(first, new TextSpan(14, 4)));
+        Assert.AreEqual(key, InterfaceNullableProjection.TreeIndependentLocationKey(Location.Create(second, new TextSpan(14, 4))));
+        Assert.AreNotEqual(key, InterfaceNullableProjection.TreeIndependentLocationKey(Location.Create(second, new TextSpan(14, 5))));
+        Assert.AreNotEqual(key, InterfaceNullableProjection.TreeIndependentLocationKey(
+            Location.Create(CSharpSyntaxTree.ParseText(text, path: "Other.cs"), new TextSpan(14, 4))));
+    }
+
+    [TestMethod]
+    public void Refusal_Lists_Every_Distinct_Id_In_Order()
+    {
+        var descriptors = Enumerable.Range(1, 7).Reverse().Select(i => new DiagnosticDescriptor("TEST00" + i, "t", "m", "c", DiagnosticSeverity.Error, true)).ToArray();
+        var diagnostics = descriptors.Concat(descriptors).Select(d => Diagnostic.Create(d, Location.None)).ToArray();
+        Assert.AreEqual("TEST001, TEST002, TEST003, TEST004, TEST005, TEST006, TEST007", InterfaceNullableProjection.FormatIds(diagnostics));
     }
 
     private static CSharpCompilationOptions Options(bool enabled) => new(OutputKind.DynamicallyLinkedLibrary,

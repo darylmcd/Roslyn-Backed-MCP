@@ -195,11 +195,9 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             updatedSolution = EnsureProjectReference(updatedSolution, sourceDocument.Project.Id, targetProject.Id);
         }
 
-        updatedSolution = await nullableProjection.ApplyAsync(updatedSolution.GetDocument(interfaceDocumentId)
-            ?? throw InvalidOperationErrors.Internal("Generated interface document is unavailable."), interfaceRoot, ct).ConfigureAwait(false);
-        updatedSolution = await GeneratedInterfaceReference.AddToBaseListAsync(
-            updatedSolution, sourceDocument.Id, typeDeclaration.Span, interfaceDocumentId, multilineContinuation: true, ct).ConfigureAwait(false);
-        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, updatedSolution, ct).ConfigureAwait(false);
+        updatedSolution = await ApplyGeneratedInterfaceAsync(
+            updatedSolution, nullableProjection, interfaceDocumentId, interfaceRoot, sourceDocument, typeDeclaration, ct).ConfigureAwait(false);
+        var changes =await SolutionDiffHelper.ComputeChangesAsync(solution, updatedSolution, ct).ConfigureAwait(false);
         var description = $"Extract interface '{resolvedInterfaceName}' from '{typeName}'";
         var token = _previewStore.Store(workspaceId, updatedSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
         return new RefactoringPreviewDto(token, description, changes, null);
@@ -588,11 +586,24 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             updatedSolution = EnsureProjectReference(updatedSolution, sourceDocument.Project.Id, targetProject.Id);
         }
 
-        updatedSolution = await nullableProjection.ApplyAsync(updatedSolution.GetDocument(interfaceDocumentId)
-            ?? throw InvalidOperationErrors.Internal("Generated interface document is unavailable."), interfaceRoot, ct).ConfigureAwait(false);
-        updatedSolution = await GeneratedInterfaceReference.AddToBaseListAsync(
-            updatedSolution, sourceDocument.Id, typeDeclaration.Span, interfaceDocumentId, multilineContinuation: true, ct).ConfigureAwait(false);
+        updatedSolution = await ApplyGeneratedInterfaceAsync(
+            updatedSolution, nullableProjection, interfaceDocumentId, interfaceRoot, sourceDocument, typeDeclaration, ct).ConfigureAwait(false);
         return (updatedSolution, interfaceDocumentId);
+    }
+
+    /// <summary>
+    /// The one finishing step both cross-project producers share: decorate and language-check the generated interface document
+    /// against the receiving project (before any token is stored), then spell the source type's base list against it.
+    /// </summary>
+    private static async Task<Solution> ApplyGeneratedInterfaceAsync(
+        Solution solution, InterfaceNullableProjection nullableProjection, DocumentId interfaceDocumentId,
+        CompilationUnitSyntax interfaceRoot, Document sourceDocument, TypeDeclarationSyntax typeDeclaration, CancellationToken ct)
+    {
+        solution = await nullableProjection.ApplyAsync(solution.GetDocument(interfaceDocumentId)
+            ?? throw InvalidOperationErrors.Internal("Generated interface document is unavailable."), interfaceRoot,
+            ReceivingNamespaceFactory.RequireCSharpOptions(sourceDocument.Project.ParseOptions), ct).ConfigureAwait(false);
+        return await GeneratedInterfaceReference.AddToBaseListAsync(
+            solution, sourceDocument.Id, typeDeclaration.Span, interfaceDocumentId, multilineContinuation: true, ct).ConfigureAwait(false);
     }
 
 }
