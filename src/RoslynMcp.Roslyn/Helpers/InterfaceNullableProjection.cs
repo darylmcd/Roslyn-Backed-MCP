@@ -17,6 +17,9 @@ internal sealed class InterfaceNullableProjection
     private sealed record Member(SyntaxAnnotation Annotation, ISymbol Source);
     private readonly List<Slot> _slots = [];
     private readonly List<Member> _members = [];
+    private DocumentId? _sourceDocumentId;
+
+    internal void SetSourceDocument(DocumentId id) => _sourceDocumentId = id;
 
     internal MemberDeclarationSyntax Capture(MemberDeclarationSyntax declaration, ISymbol symbol)
     {
@@ -158,7 +161,8 @@ internal sealed class InterfaceNullableProjection
         if (slots.All(s => Enabled(model, s.Token.SpanStart) == s.Enabled))
         {
             await EnsureReceivingLanguageAsync(baseline, sourceParseOptions, ct).ConfigureAwait(false);
-            ValidateMemberShapes(constructedRoot, model, position => position);
+            var members = ValidateMemberShapes(constructedRoot, model, position => position);
+            await InterfaceHandlerBindingValidator.ValidateAsync(baseline, _sourceDocumentId, members, ct).ConfigureAwait(false);
             return solution;
         }
 
@@ -197,12 +201,15 @@ internal sealed class InterfaceNullableProjection
             throw new PublicInvalidOperationException("The nullable contract cannot be preserved under the receiving compiler policy (" +
                 FormatIds(added) + "). Use a compatible receiving compiler policy.");
         await EnsureReceivingLanguageAsync(decorated, sourceParseOptions, ct).ConfigureAwait(false);
-        ValidateMemberShapes(constructedRoot, decoratedModel, projection.Forward);
+        var decoratedMembers = ValidateMemberShapes(constructedRoot, decoratedModel, projection.Forward);
+        await InterfaceHandlerBindingValidator.ValidateAsync(decorated, _sourceDocumentId, decoratedMembers, ct).ConfigureAwait(false);
         return decoratedSolution;
     }
 
-    private void ValidateMemberShapes(CompilationUnitSyntax constructedRoot, SemanticModel finalModel, Func<int, int> forward)
+    private IReadOnlyList<(ISymbol Source, ISymbol Projected, MemberDeclarationSyntax Declaration)> ValidateMemberShapes(
+        CompilationUnitSyntax constructedRoot, SemanticModel finalModel, Func<int, int> forward)
     {
+        var mapped = new List<(ISymbol Source, ISymbol Projected, MemberDeclarationSyntax Declaration)>();
         var finalRoot = finalModel.SyntaxTree.GetRoot();
         var finalInterface = finalRoot.DescendantNodes().OfType<InterfaceDeclarationSyntax>().SingleOrDefault();
         if (finalInterface is null)
@@ -219,7 +226,9 @@ internal sealed class InterfaceNullableProjection
             var projected = finalModel.GetDeclaredSymbol(declaration);
             if (projected is null || !SameMemberShape(role.Source, projected))
                 throw new PublicInvalidOperationException("The generated interface nullable contract does not match its source member.");
+            mapped.Add((role.Source, projected, matches[0]));
         }
+        return mapped;
     }
 
     private static bool SameMemberShape(ISymbol source, ISymbol projected)
