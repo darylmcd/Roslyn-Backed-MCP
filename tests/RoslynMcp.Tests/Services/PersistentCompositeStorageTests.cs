@@ -203,7 +203,8 @@ public sealed class PersistentCompositeStorageTests
 
     /// <summary>
     /// <c>Path.GetFullPath</c> throws <see cref="PathTooLongException"/> (an <see cref="IOException"/>) for an
-    /// overlong path. The record is untrusted input, so that is an unreadable record, never an exception.
+    /// overlong path on Windows only: Linux and macOS accept it, so the record parses normally there.
+    /// The record is untrusted input, so on Windows that is an unreadable record, never an exception.
     /// </summary>
     [TestMethod]
     [DataRow("identity", DisplayName = "overlong workspace identity")]
@@ -211,11 +212,32 @@ public sealed class PersistentCompositeStorageTests
     [DataRow("mutation", DisplayName = "overlong mutation path with a fingerprint")]
     public void Format3_OverlongPath_IsUnreadable_ForPeekAndClaim(string where)
     {
-        var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("Only Windows rejects an overlong path in Path.GetFullPath; the NUL-character test covers the same tamper shape on every OS.");
+        }
+
         var overlong = @"C:\" + new string('a', 40_000);
-        var identity = where == "identity" ? overlong : Identity;
-        var mutationPath = where == "mutation" ? overlong : @"C:\x.cs";
-        var fingerprintPath = where == "fingerprint" ? overlong : mutationPath;
+        AssertTamperedPathIsUnreadable(where, overlong, overlong);
+    }
+
+    /// <summary>
+    /// A NUL character is rejected by <c>Path.GetFullPath</c> (<see cref="ArgumentException"/>) on every OS,
+    /// so a tampered identity, fingerprint or mutation path is an unreadable record on Windows, Linux and macOS.
+    /// </summary>
+    [TestMethod]
+    [DataRow("identity", DisplayName = "NUL in workspace identity")]
+    [DataRow("fingerprint", DisplayName = "NUL in fingerprint path")]
+    [DataRow("mutation", DisplayName = "NUL in mutation path with a fingerprint")]
+    public void Format3_PathWithNulCharacter_IsUnreadable_ForPeekAndClaim(string where) =>
+        AssertTamperedPathIsUnreadable(where, @"C:\proj\bad" + '\0' + ".cs", Identity + '\0');
+
+    private void AssertTamperedPathIsUnreadable(string where, string tampered, string tamperedIdentity)
+    {
+        var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
+        var identity = where == "identity" ? tamperedIdentity : Identity;
+        var mutationPath = where == "mutation" ? tampered : @"C:\x.cs";
+        var fingerprintPath = where == "fingerprint" ? tampered : mutationPath;
         var token = WriteRaw(
             System.Text.Json.JsonSerializer.Serialize(new
             {
