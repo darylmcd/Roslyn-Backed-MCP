@@ -17,8 +17,9 @@ Resolution order:
   2. A cached binary under artifacts/tools/actionlint/<version>/ -- re-verified against the
      pinned BINARY hash on every run (a corrupted or tampered cache entry fails closed
      instead of running silently). Pure local hashing: never touches the network.
-  3. Download the pinned archive, hash it BEFORE extracting, fail closed on mismatch or on
-     any network failure -- never falls back to an unpinned download.
+  3. Download the pinned archive from the release URL, then the pinned GitHub API asset
+     endpoint if that URL fails. Hash BEFORE extracting; fail closed on mismatch or if
+     both endpoints fail. Neither endpoint permits an unpinned binary.
 #>
 param(
     [string]$RepoRoot = (Split-Path -Parent $PSScriptRoot),
@@ -35,7 +36,9 @@ param(
     [Parameter(DontShow)]
     [switch]$UseArchiveFixtureForTest,
     [Parameter(DontShow)]
-    [switch]$FailDownloadForTest
+    [switch]$FailDownloadForTest,
+    [Parameter(DontShow)]
+    [switch]$FailPrimaryDownloadForTest
 )
 
 Set-StrictMode -Version Latest
@@ -47,24 +50,28 @@ $UnsupportedPlatformDiagnostic =
 $PinnedArchiveHashes = [ordered]@{
     'win-x64'     = [ordered]@{
         Asset         = "actionlint_${PinnedVersion}_windows_amd64.zip"
+        AssetId       = 384924919
         ArchiveSha256 = '6e7241b51e6817ea6a047693d8e6fed13b31819c9a0dd6c5a726e1592d22f6e9'
         BinarySha256  = '54ca21be3de4c7cfa26914aa8b61bd76bf573ef3caac5f80d110558cdf241718'
         BinaryName    = 'actionlint.exe'
     }
     'linux-x64'   = [ordered]@{
         Asset         = "actionlint_${PinnedVersion}_linux_amd64.tar.gz"
+        AssetId       = 384924896
         ArchiveSha256 = '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8'
         BinarySha256  = 'c872d6db8c6bf83a8eaa704fc93999f027d55dffbc63b8a6abdccb47df5f4cd4'
         BinaryName    = 'actionlint'
     }
     'linux-arm64' = [ordered]@{
         Asset         = "actionlint_${PinnedVersion}_linux_arm64.tar.gz"
+        AssetId       = 384924897
         ArchiveSha256 = '325e971b6ba9bfa504672e29be93c24981eeb1c07576d730e9f7c8805afff0c6'
         BinarySha256  = 'ac0323433c2853ec3fb978c611430c5b3dc5d43c58d1a1ec031b00ab572beb60'
         BinaryName    = 'actionlint'
     }
     'osx-arm64'   = [ordered]@{
         Asset         = "actionlint_${PinnedVersion}_darwin_arm64.tar.gz"
+        AssetId       = 384924893
         ArchiveSha256 = 'aba9ced2dee8d27fecca3dc7feb1a7f9a52caefa1eb46f3271ea66b6e0e6953f'
         BinarySha256  = '8db11704dc296f096216db4db65d86cd7f0ebfdf4c38453a1da276b137b88388'
         BinaryName    = 'actionlint'
@@ -260,11 +267,19 @@ else {
     }
     New-Item -ItemType Directory -Path $toolRoot -Force | Out-Null
     $archivePath = Join-Path $toolRoot $pin.Asset
+    $apiAssetUrl = "https://api.github.com/repos/rhysd/actionlint/releases/assets/$($pin.AssetId)"
     try {
+        if ($FailPrimaryDownloadForTest) { throw 'simulated release URL failure' }
         Invoke-WebRequest -Uri $downloadUrl -OutFile $archivePath -UseBasicParsing
     }
     catch {
-        throw "verify-actionlint: no cached actionlint binary at '$binaryPath' and the pinned archive could not be downloaded from '$downloadUrl' (expected SHA-256 $($pin.ArchiveSha256)): $($_.Exception.Message)"
+        $primaryError = $_.Exception.Message
+        try {
+            Invoke-WebRequest -Uri $apiAssetUrl -Headers @{ Accept = 'application/octet-stream' } -OutFile $archivePath -UseBasicParsing
+        }
+        catch {
+            throw "verify-actionlint: no cached actionlint binary at '$binaryPath'; pinned archive download failed from '$downloadUrl' ($primaryError) and '$apiAssetUrl' ($($_.Exception.Message)); expected SHA-256 $($pin.ArchiveSha256)."
+        }
     }
     $archiveHash = Get-FileSha256 -Path $archivePath
     if ($archiveHash -ne $pin.ArchiveSha256) {

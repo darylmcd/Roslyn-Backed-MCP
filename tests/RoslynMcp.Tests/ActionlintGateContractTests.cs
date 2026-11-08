@@ -337,6 +337,27 @@ public sealed class ActionlintGateContractTests
     }
 
     [TestMethod]
+    [TestCategory("Network")]
+    public async Task VerifyActionlint_ReleaseUrlFailure_UsesPinnedApiAsset()
+    {
+        var fixtureRoot = CreateFixtureRoot();
+        try
+        {
+            var result = await RunGateAsync(
+                fixtureRoot,
+                timeout: TimeSpan.FromMinutes(2),
+                failPrimaryDownloadForTest: true);
+
+            Assert.AreEqual(0, result.ExitCode, result.AllOutput);
+            StringAssert.Contains(result.AllOutput, "no issues found");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
+    [TestMethod]
     [TestCategory("Process")]
     public async Task VerifyActionlint_ForcedDownloadFailure_TripsBeforeNetworkAccess()
     {
@@ -417,6 +438,7 @@ public sealed class ActionlintGateContractTests
         bool failTarExtractionForTest = false,
         bool useArchiveFixtureForTest = false,
         bool failDownloadForTest = false,
+        bool failPrimaryDownloadForTest = false,
         string? platformForTest = null,
         string? architectureForTest = null)
     {
@@ -443,6 +465,10 @@ public sealed class ActionlintGateContractTests
         if (failDownloadForTest)
         {
             arguments.Add("-FailDownloadForTest");
+        }
+        if (failPrimaryDownloadForTest)
+        {
+            arguments.Add("-FailPrimaryDownloadForTest");
         }
         if (platformForTest is not null)
         {
