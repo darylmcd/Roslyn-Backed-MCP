@@ -50,10 +50,10 @@ Each current finding is source-supported or explicitly an investigation. Require
 | [mtp-resolved-engine-version-selection](../items/mtp-resolved-engine-version-selection.md) | Medium / M | — | Gate MTP filters on every applicable resolved engine |
 | [test-run-global-json-fail-closed-authority](../items/test-run-global-json-fail-closed-authority.md) | Medium / M | — | Distinguish invalid runner configuration from no configuration |
 | [composite-batch-final-diff-composition](../items/composite-batch-final-diff-composition.md) | Medium / M | — | Review the complete initial-to-final composite delta |
-| [extract-and-wire-same-file-composition](../items/extract-and-wire-same-file-composition.md) | Medium / M | — | Compose DI edits on the extracted snapshot |
+| [extract-and-wire-same-file-composition](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/2030) (shipped, PR #2030) | Medium / M | — | Compose DI edits on the extracted snapshot |
 | `cross-project-interface-reference-binding` (shipped, #1910) | High / M | — | Bind generated interface uses to the generated symbol |
 | [cross-project-interface-generic-type-parameters](../items/cross-project-interface-generic-type-parameters.md) | Medium / M | — | Preserve generic parameters in extracted interfaces |
-| [cross-project-interface-signature-dependencies](../items/cross-project-interface-signature-dependencies.md) | High / M | — | Validate emitted interface signature dependencies |
+| [cross-project-interface-signature-dependencies](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/2030) (shipped, PR #2030) | High / M | — | Validate emitted interface signature dependencies |
 | [extract-and-wire-semantic-registration-rewrite](../items/extract-and-wire-semantic-registration-rewrite.md) | Medium / M | — | Rewrite bound DI registrations semantically |
 | `file-move-namespace-text-encoding` (shipped, PR 1862) | High / S | — | Preserve encoding during moved namespace rewrites |
 | `refactoring-rebase-source-kind-preservation` (shipped, #1908) | High / M | — | Preserve reviewed document source kind during replay |
