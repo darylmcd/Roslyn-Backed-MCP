@@ -1,6 +1,6 @@
 # cross-project-interface-signature-dependencies — Validate emitted interface signature dependencies
 
-**row:** `cross-project-interface-signature-dependencies` · **pri:** `High` · **size:** `M` · **deps:** `cross-project-interface-reference-binding`
+**row:** `cross-project-interface-signature-dependencies` · **pri:** `High` · **size:** `M` · **deps:** `cross-project-interface-signature-compile-gate`
 
 ## Anchors
 
@@ -20,4 +20,6 @@
 
 ## Notes
 
-Cold plan review 2026-11-05 (not attempted in the 20261105 remediation run; needs decomposition before code): (F8) repo precedent ADRs 0016/0018/0028 means new refusals need an ADR (0032 is reserved by the composite identity row; use the next free number) and a Changed - BREAKING changelog category; (F9) blast radius is far larger than 3 tests: fixture AnimalService exposes source-owned IAnimal, at least 15 tests across 4 files break and 7 call sites use the tolerant AssertNoUnresolvedNamesAsync; (F10) a post-compile gate would spuriously refuse: unused source alias and using-static directives are copied unconditionally (UsingDirectiveSynthesizer.cs:108-112); add CS0122/CS0050/CS0051/CS0103 to the gate code list; (F11) do not compare assembly names for metadata owners (cross-TFM receivers would be wrongly refused); (F13) one PR must own the shared test harness first. Suggested split: type-closure walker + owner resolution, then reference auto-add, then post-compile gate + test migration.
+Cold plan review 2026-11-05: (F8) new refusals require an ADR and Changed - BREAKING changelog category; (F9) source-owned IAnimal and the tolerant AssertNoUnresolvedNamesAsync affect at least 15 tests across four files; (F10) unconditional unused alias and using-static copies in UsingDirectiveSynthesizer.cs:108-112 can create new compiler errors, so the compile gate must compare baseline with pending diagnostics and test these cases; (F11) resolve metadata owners by symbol identity, never simple assembly name.
+
+Cold re-review 2026-11-07: harness-first and an unused walker-first split were rejected. Delivery order is valid acyclic reference closure (`cross-project-interface-signature-reference-closure`), cyclic-refusal behavior (`cross-project-interface-signature-refusal-compile`), then compilation gate and strict test migration (`cross-project-interface-signature-compile-gate`). Keep source-owned fixture semantics until refusal ships. The parent closes only after all three slices merge and meet its acceptance.
