@@ -72,6 +72,79 @@ public sealed class InterfaceNullableProjectionTests
     }
 
     [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task Projection_Refuses_Nested_Nullable_Shape_Mismatch_With_And_Without_Decoration(bool receiverEnabled)
+    {
+        var source = CSharpCompilation.Create("Source", [CSharpSyntaxTree.ParseText(
+            "using System.Collections.Generic; public class C { public List<string?> M() => throw new System.Exception(); }", _parse)],
+            _references, Options(true));
+        AssertNoErrors(source);
+        var member = source.GetTypeByMetadataName("C")!.GetMembers("M").OfType<IMethodSymbol>().Single();
+        using var workspace = new AdhocWorkspace();
+        var document = Receiver(workspace, Options(receiverEnabled), _parse).AddDocument("I.cs",
+            "using System.Collections.Generic; public interface I { List<string> M(); }");
+
+        var error = await Assert.ThrowsExactlyAsync<RoslynMcp.Core.Services.PublicInvalidOperationException>(
+            () => ProjectSingleAsync(document, member));
+        StringAssert.Contains(error.Message, "nullable contract");
+    }
+
+    [TestMethod]
+    [DataRow("void M(List<string?> value);", "void M(List<string> value);")]
+    [DataRow("List<string?> P { get; }", "List<string> P { get; }")]
+    [DataRow("List<string?> this[int key] { get; }", "List<string> this[int key] { get; }")]
+    [DataRow("event Action<string?> Changed;", "event Action<string> Changed;")]
+    [DataRow("Outer<string?>.Inner<object> Q();", "Outer<string>.Inner<object> Q();")]
+    [DataRow("List<string?>[] A();", "List<string>[] A();")]
+    [DataRow("delegate*<string?, string> F();", "delegate*<string, string> F();")]
+    public async Task Projection_Refuses_Mismatched_Nullable_Roles(string sourceMember, string emittedMember)
+    {
+        var sourceTree = CSharpSyntaxTree.ParseText("#nullable enable annotations\nusing System; using System.Collections.Generic; " +
+            _definitions + " public unsafe interface S { " + sourceMember + " }", _parse);
+        var source = CSharpCompilation.Create("Source", [sourceTree], _references, Options(true).WithAllowUnsafe(true));
+        AssertNoErrors(source);
+        var sourceSyntax = sourceTree.GetRoot().DescendantNodes().OfType<InterfaceDeclarationSyntax>().Single().Members.Single();
+        var sourceModel = source.GetSemanticModel(sourceTree);
+        var symbol = sourceSyntax is EventFieldDeclarationSyntax field
+            ? sourceModel.GetDeclaredSymbol(field.Declaration.Variables.Single())!
+            : sourceModel.GetDeclaredSymbol(sourceSyntax)!;
+        var projection = new InterfaceNullableProjection();
+        var root = SyntaxFactory.ParseCompilationUnit("using System; using System.Collections.Generic; " + _definitions +
+            " public unsafe interface I { " + emittedMember + " }");
+        var interfaceSyntax = root.DescendantNodes().OfType<InterfaceDeclarationSyntax>().Single();
+        root = root.ReplaceNode(interfaceSyntax.Members.Single(), projection.Capture(interfaceSyntax.Members.Single(), symbol));
+        using var workspace = new AdhocWorkspace();
+        var document = Receiver(workspace, Options(false).WithAllowUnsafe(true), _parse).AddDocument("I.cs", root.ToFullString());
+
+        var error = await Assert.ThrowsExactlyAsync<RoslynMcp.Core.Services.PublicInvalidOperationException>(
+            () => projection.ApplyAsync(document, root, _parse, CancellationToken.None));
+        StringAssert.Contains(error.Message, "nullable contract");
+    }
+
+    [TestMethod]
+    public async Task Projection_Maps_Reordered_Overloads_By_Captured_Member_Identity()
+    {
+        var source = CSharpCompilation.Create("Source", [CSharpSyntaxTree.ParseText(
+            "public interface S { string? M(int value); string M(string value); }", _parse)], _references, Options(true));
+        AssertNoErrors(source);
+        var methods = source.GetTypeByMetadataName("S")!.GetMembers("M").OfType<IMethodSymbol>().ToArray();
+        var projection = new InterfaceNullableProjection();
+        var emitted = new[]
+        {
+            projection.Capture(SyntaxFactory.ParseMemberDeclaration("string M(string value);")!, methods.Single(m => m.Parameters[0].Type.SpecialType == SpecialType.System_String)),
+            projection.Capture(SyntaxFactory.ParseMemberDeclaration("string? M(int value);")!, methods.Single(m => m.Parameters[0].Type.SpecialType == SpecialType.System_Int32)),
+        };
+        var root = SyntaxFactory.CompilationUnit().AddMembers(SyntaxFactory.InterfaceDeclaration("I").AddMembers(emitted)).NormalizeWhitespace();
+        using var workspace = new AdhocWorkspace();
+        var document = Receiver(workspace, Options(true), _parse).AddDocument("I.cs", root.ToFullString());
+
+        var projected = (await projection.ApplyAsync(document, root, _parse, CancellationToken.None)).GetDocument(document.Id)!;
+        Assert.AreEqual(root.ToFullString(), (await projected.GetTextAsync()).ToString());
+        AssertNoErrors((await projected.Project.GetCompilationAsync())!);
+    }
+
+    [TestMethod]
     [DataRow("enable", "enable", "", false, "actual/IContract.cs", false)]
     [DataRow("disable", "disable", "", false, "actual/IContract.cs", false)]
     [DataRow("enable", "enable", "// <auto-generated/>\n", false, "actual/IContract.cs", true)]
@@ -281,14 +354,13 @@ public sealed class InterfaceNullableProjectionTests
     [TestMethod]
     [DataRow("unbound")]
     [DataRow("unsafe")]
-    [DataRow("keyword")]
     public async Task Decoration_Preserves_Actual_Legacy_Error_Payloads(string specimen)
     {
         var sourceText = specimen switch
         {
             "unbound" => "public class C { public string M(Missing value) => throw new System.Exception(); }",
             "unsafe" => "public unsafe class C { public string M(int* value) => throw new System.Exception(); }",
-            _ => "public class C { public string @event() => throw new System.Exception(); }",
+            _ => throw new ArgumentOutOfRangeException(nameof(specimen)),
         };
         var source = CSharpCompilation.Create("Source", [CSharpSyntaxTree.ParseText(sourceText, _parse)], _references, Options(true).WithAllowUnsafe(true));
         var member = source.GetTypeByMetadataName("C")!.GetMembers().OfType<IMethodSymbol>().Single(m => m.MethodKind == MethodKind.Ordinary);
@@ -307,6 +379,25 @@ public sealed class InterfaceNullableProjectionTests
         Assert.AreNotEqual(root.ToFullString(), (await result.GetTextAsync()).ToString());
         var after = (await result.Project.GetCompilationAsync())!.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).ToArray();
         CollectionAssert.AreEqual(before.Select(d => (d.Id, d.GetMessage())).OrderBy(d => d.Id).ToArray(), after.Select(d => (d.Id, d.GetMessage())).OrderBy(d => d.Id).ToArray());
+    }
+
+    [TestMethod]
+    public async Task Decoration_Refuses_A_Member_Reparsed_As_Another_Declaration()
+    {
+        var source = CSharpCompilation.Create("Source", [CSharpSyntaxTree.ParseText(
+            "public class C { public string @event() => throw new System.Exception(); }", _parse)], _references, Options(true));
+        var member = source.GetTypeByMetadataName("C")!.GetMembers().OfType<IMethodSymbol>().Single(m => m.MethodKind == MethodKind.Ordinary);
+        var syntax = SyntaxFactory.MethodDeclaration(SyntaxFactory.PredefinedType(SyntaxFactory.Token(SyntaxKind.StringKeyword)), member.Name)
+            .WithParameterList(SyntaxFactory.ParameterList())
+            .WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken));
+        var projection = new InterfaceNullableProjection();
+        var root = SyntaxFactory.CompilationUnit().AddMembers(SyntaxFactory.InterfaceDeclaration("I").AddMembers(projection.Capture(syntax, member))).NormalizeWhitespace();
+        using var workspace = new AdhocWorkspace();
+        var document = Receiver(workspace, Options(false), _parse).AddDocument("I.cs", root.ToFullString());
+
+        var error = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+            () => projection.ApplyAsync(document, root, _parse, CancellationToken.None));
+        StringAssert.Contains(error.Message, "member mapping is incomplete");
     }
 
     [TestMethod]

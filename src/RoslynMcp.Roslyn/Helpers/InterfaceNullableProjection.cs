@@ -14,8 +14,9 @@ namespace RoslynMcp.Roslyn.Helpers;
 internal sealed class InterfaceNullableProjection
 {
     private sealed record Slot(SyntaxAnnotation Annotation, ITypeSymbol Type);
+    private sealed record Member(SyntaxAnnotation Annotation, ISymbol Source);
     private readonly List<Slot> _slots = [];
-    private readonly List<SyntaxAnnotation> _members = [];
+    private readonly List<Member> _members = [];
 
     internal MemberDeclarationSyntax Capture(MemberDeclarationSyntax declaration, ISymbol symbol)
     {
@@ -59,7 +60,7 @@ internal sealed class InterfaceNullableProjection
             });
         }
         var member = new SyntaxAnnotation("interface-nullable-member", Guid.NewGuid().ToString("N"));
-        _members.Add(member);
+        _members.Add(new Member(member, symbol));
         return declaration.ReplaceTokens(tokens.Keys, (original, rewritten) => rewritten.WithAdditionalAnnotations(tokens[original].ToArray()))
             .WithAdditionalAnnotations(member);
     }
@@ -138,8 +139,8 @@ internal sealed class InterfaceNullableProjection
         // Validate identities on the constructed, normalized tree, before any parser recovery.
         var declaration = constructedRoot.DescendantNodes().OfType<InterfaceDeclarationSyntax>().SingleOrDefault();
         if (declaration is null || declaration.Members.Count != _members.Count ||
-            declaration.Members.Any(m => !_members.Any(m.HasAnnotation)) ||
-            _members.Any(a => constructedRoot.GetAnnotatedNodes(a).Count() != 1))
+            declaration.Members.Any(m => !_members.Any(role => m.HasAnnotation(role.Annotation))) ||
+            _members.Any(role => constructedRoot.GetAnnotatedNodes(role.Annotation).Count() != 1))
             throw InvalidOperationErrors.Internal("Generated interface member mapping is incomplete.");
         var baselineText = constructedRoot.ToFullString();
         if ((await receivingDocument.GetTextAsync(ct).ConfigureAwait(false)).ToString() != baselineText)
@@ -157,6 +158,7 @@ internal sealed class InterfaceNullableProjection
         if (slots.All(s => Enabled(model, s.Token.SpanStart) == s.Enabled))
         {
             await EnsureReceivingLanguageAsync(baseline, sourceParseOptions, ct).ConfigureAwait(false);
+            ValidateMemberShapes(constructedRoot, model, position => position);
             return solution;
         }
 
@@ -195,7 +197,55 @@ internal sealed class InterfaceNullableProjection
             throw new PublicInvalidOperationException("The nullable contract cannot be preserved under the receiving compiler policy (" +
                 FormatIds(added) + "). Use a compatible receiving compiler policy.");
         await EnsureReceivingLanguageAsync(decorated, sourceParseOptions, ct).ConfigureAwait(false);
+        ValidateMemberShapes(constructedRoot, decoratedModel, projection.Forward);
         return decoratedSolution;
+    }
+
+    private void ValidateMemberShapes(CompilationUnitSyntax constructedRoot, SemanticModel finalModel, Func<int, int> forward)
+    {
+        var finalRoot = finalModel.SyntaxTree.GetRoot();
+        var finalInterface = finalRoot.DescendantNodes().OfType<InterfaceDeclarationSyntax>().SingleOrDefault();
+        if (finalInterface is null)
+            throw InvalidOperationErrors.Internal("Generated interface member mapping is incomplete.");
+        foreach (var role in _members)
+        {
+            var original = constructedRoot.GetAnnotatedNodes(role.Annotation).OfType<MemberDeclarationSyntax>().Single();
+            var matches = finalInterface.Members.Where(member => member.RawKind == original.RawKind && member.SpanStart == forward(original.SpanStart)).ToArray();
+            if (matches.Length != 1)
+                throw InvalidOperationErrors.Internal("Generated interface member mapping is incomplete.");
+            SyntaxNode declaration = matches[0] is EventFieldDeclarationSyntax field && field.Declaration.Variables.Count == 1
+                ? field.Declaration.Variables[0]
+                : matches[0];
+            var projected = finalModel.GetDeclaredSymbol(declaration);
+            if (projected is null || !SameMemberShape(role.Source, projected))
+                throw new PublicInvalidOperationException("The generated interface nullable contract does not match its source member.");
+        }
+    }
+
+    private static bool SameMemberShape(ISymbol source, ISymbol projected)
+    {
+        static bool Parameters(ImmutableArray<IParameterSymbol> left, ImmutableArray<IParameterSymbol> right) =>
+            left.Length == right.Length && left.Zip(right).All(pair => NullableShape(pair.First.Type) == NullableShape(pair.Second.Type));
+        return (source, projected) switch
+        {
+            (IMethodSymbol left, IMethodSymbol right) => NullableShape(left.ReturnType) == NullableShape(right.ReturnType) && Parameters(left.Parameters, right.Parameters),
+            (IPropertySymbol left, IPropertySymbol right) => NullableShape(left.Type) == NullableShape(right.Type) && Parameters(left.Parameters, right.Parameters),
+            (IEventSymbol left, IEventSymbol right) => NullableShape(left.Type) == NullableShape(right.Type),
+            _ => false,
+        };
+    }
+
+    private static string NullableShape(ITypeSymbol type)
+    {
+        var children = type switch
+        {
+            IArrayTypeSymbol array => [array.ElementType],
+            IPointerTypeSymbol pointer => [pointer.PointedAtType],
+            IFunctionPointerTypeSymbol function => function.Signature.Parameters.Select(p => p.Type).Prepend(function.Signature.ReturnType).ToArray(),
+            INamedTypeSymbol named => named.TypeArguments.Concat(named.ContainingType is null ? [] : [named.ContainingType]).ToArray(),
+            _ => Array.Empty<ITypeSymbol>(),
+        };
+        return type.NullableAnnotation + "[" + string.Join(",", children.Select(NullableShape)) + "]";
     }
 
     /// <summary>
