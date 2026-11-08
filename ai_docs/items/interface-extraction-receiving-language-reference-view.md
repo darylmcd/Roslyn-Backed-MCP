@@ -17,3 +17,7 @@
 ## Evidence
 
 - Split from `interface-extraction-receiving-language-compatibility` (bullet 6). The first slice diffs over identical references, which cancels unresolved-symbol errors but can miss a feature error masked by an unresolved type.
+
+## Notes
+
+PR 2018 review: B is built by re-parsing sibling trees under the SOURCE project's preprocessor symbols; a sibling declared only under a receiver-side or source-side #if symbol can skew R vs B (possible false refusal). Cover this and the unresolved-type masking case here; also the mixed-feature route row pins a single id because the compiler keys the id on version.
