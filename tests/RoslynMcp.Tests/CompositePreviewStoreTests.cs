@@ -46,6 +46,9 @@ public sealed class CompositePreviewStoreTests
         var payloadPath = PayloadPath(token);
         var payload = JsonNode.Parse(File.ReadAllText(payloadPath))!;
         payload["Mutations"]![0]!["FilePath"] = @"C:\elsewhere\Tampered.cs";
+        // A consistent forgery: the fingerprint follows the mutation (the target does not exist), or the
+        // record would be unreadable because a fingerprint may only name a path the record writes.
+        payload["SourceFingerprints"]![0]!["FilePath"] = @"C:\elsewhere\Tampered.cs";
         File.WriteAllText(payloadPath, payload.ToJsonString());
 
         CollectionAssert.AreEqual(new[] { @"C:\elsewhere\Tampered.cs" }, store.PeekChangedPaths(token)!.ToArray());

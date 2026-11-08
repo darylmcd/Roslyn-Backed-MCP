@@ -189,7 +189,7 @@ public sealed class CompositeTokenCrossHostRedemptionTests
     {
         var hostA = NewHost();
         var token = hostA.Preview(await hostA.LoadAsync(_projectPath), 1, "// future");
-        RewritePayload(token, payload => payload["FormatVersion"] = 3);
+        RewritePayload(token, payload => payload["FormatVersion"] = 4);
         var hostB = NewHost();
         await hostB.LoadAsync(_projectPath);
 
@@ -222,6 +222,33 @@ public sealed class CompositeTokenCrossHostRedemptionTests
         Assert.IsTrue(racing.Raced, "Premise: the session changed between the peek and the claim.");
         AssertRefusedWithoutConsuming(token);
         StringAssert.Contains(await hostB.ApplyAsync(token), "\"success\": true");
+    }
+
+    /// <summary>
+    /// composite-preview-source-fingerprint-refusal: host A previews against the file as it is, the
+    /// file is edited, and host B (whose workspace version means nothing to host A) redeems. The
+    /// version no longer protects the edit, so the persisted fingerprint must.
+    /// </summary>
+    [TestMethod]
+    public async Task HostB_TargetEditedBetweenPreviewAndApply_Refuses_ThenRedeemsOnceTheEditIsReverted()
+    {
+        var hostA = NewHost();
+        var hostB = NewHost();
+        var sessionA = await hostA.LoadAsync(_projectPath);
+        await hostB.LoadAsync(_projectPath);
+        File.WriteAllText(_targetFile, "// original");
+        var token = hostA.Preview(sessionA, 1, "// from host A");
+        File.WriteAllText(_targetFile, "// edited after the preview");
+
+        var refusal = await Assert.ThrowsAsync<PreviewTokenStaleException>(() => hostB.ApplyAsync(token));
+
+        StringAssert.Contains(refusal.Message, "CrossHostTarget.cs");
+        Assert.AreEqual("// edited after the preview", File.ReadAllText(_targetFile), "The edit must survive the refusal.");
+        Assert.AreEqual(1, PayloadFiles(token).Length, "A drift refusal leaves exactly the untouched payload: no claim, no lock.");
+
+        File.WriteAllText(_targetFile, "// original");
+        StringAssert.Contains(await hostB.ApplyAsync(token), "\"success\": true");
+        Assert.AreEqual("// from host A", File.ReadAllText(_targetFile));
     }
 
     private Host NewHost()

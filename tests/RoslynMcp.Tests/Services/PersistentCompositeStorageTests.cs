@@ -35,7 +35,7 @@ public sealed class PersistentCompositeStorageTests
     {
         const string sentinel = "PRIVATE-PERSISTENT-TOKEN";
         var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
-        var entry = new CompositePreviewStore.Entry("PRIVATE-WORKSPACE", 1, "test", [], DateTime.UtcNow, Identity);
+        var entry = new CompositePreviewStore.Entry("PRIVATE-WORKSPACE", 1, "test", [], DateTime.UtcNow, Identity, []);
         var exception = Assert.Throws<ArgumentException>(() => store.Write(sentinel, entry));
         Assert.IsInstanceOfType<IPublicMessageException>(exception);
         using var envelope = System.Text.Json.JsonDocument.Parse(
@@ -54,7 +54,7 @@ public sealed class PersistentCompositeStorageTests
         var entry = new CompositePreviewStore.Entry(
             "ws-1", 3, "sample composite",
             new[] { new CompositeFileMutation(@"C:\proj\File.cs", "// updated", false) },
-            DateTime.UtcNow, Identity);
+            DateTime.UtcNow, Identity, []);
 
         var token = Guid.NewGuid().ToString("N");
         store.Write(token, entry);
@@ -84,21 +84,21 @@ public sealed class PersistentCompositeStorageTests
         var token = Guid.NewGuid().ToString("N");
         store.Write(
             token,
-            new CompositePreviewStore.Entry("ws-compat", 1, "compatibility", [], DateTime.UtcNow, Identity));
+            new CompositePreviewStore.Entry("ws-compat", 1, "compatibility", [], DateTime.UtcNow, Identity, []));
 
         Assert.IsNotNull(store.TryClaim(token, Admit));
         Assert.IsNull(store.TryClaim(token, Admit));
     }
 
     [TestMethod]
-    public void Write_PersistsFormat2WithPortableIdentity()
+    public void Write_PersistsFormat3WithPortableIdentity()
     {
         var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
         var token = Guid.NewGuid().ToString("N");
-        store.Write(token, new CompositePreviewStore.Entry("ws-fmt", 5, "format", [], DateTime.UtcNow, Identity));
+        store.Write(token, new CompositePreviewStore.Entry("ws-fmt", 5, "format", [], DateTime.UtcNow, Identity, []));
 
         using var json = System.Text.Json.JsonDocument.Parse(File.ReadAllText(PayloadPath(token)));
-        Assert.AreEqual(2, json.RootElement.GetProperty("FormatVersion").GetInt32());
+        Assert.AreEqual(3, json.RootElement.GetProperty("FormatVersion").GetInt32());
         Assert.AreEqual(Identity, json.RootElement.GetProperty("WorkspaceIdentity").GetString());
         Assert.AreEqual("ws-fmt", json.RootElement.GetProperty("WorkspaceId").GetString(), "Kept for diagnostics.");
         Assert.AreEqual(5, json.RootElement.GetProperty("WorkspaceVersion").GetInt32(), "Kept for diagnostics.");
@@ -111,8 +111,147 @@ public sealed class PersistentCompositeStorageTests
 
         Assert.ThrowsExactly<PublicArgumentException>(() => store.Write(
             Guid.NewGuid().ToString("N"),
-            new CompositePreviewStore.Entry("ws-none", 1, "no identity", [], DateTime.UtcNow, null)));
+            new CompositePreviewStore.Entry("ws-none", 1, "no identity", [], DateTime.UtcNow, null, [])));
         Assert.IsEmpty(Directory.EnumerateFiles(_root, "*", SearchOption.AllDirectories));
+    }
+
+    [TestMethod]
+    public void Write_WithoutSourceFingerprints_IsRefusedBeforeAnyFileIsCreated()
+    {
+        var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
+
+        Assert.ThrowsExactly<PublicArgumentException>(() => store.Write(
+            Guid.NewGuid().ToString("N"),
+            new CompositePreviewStore.Entry("ws-none", 1, "no fingerprints", [], DateTime.UtcNow, Identity, null)));
+        Assert.IsEmpty(Directory.EnumerateFiles(_root, "*", SearchOption.AllDirectories));
+    }
+
+    [TestMethod]
+    public void Format3_RoundTripsSourceFingerprints_ThroughPeekAndClaim()
+    {
+        var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
+        var token = Guid.NewGuid().ToString("N");
+        var existing = new CompositeSourceFingerprint(@"C:\proj\Existing.cs", true, new string('a', 64));
+        var absent = new CompositeSourceFingerprint(@"C:\proj\Created.cs", false, null);
+        store.Write(
+            token,
+            new CompositePreviewStore.Entry(
+                "ws-fp", 1, "fingerprints",
+                [new CompositeFileMutation(existing.FilePath, "// a"), new CompositeFileMutation(absent.FilePath, "// b")],
+                DateTime.UtcNow, Identity, [existing, absent]));
+
+        var peeked = store.TryPeek(token);
+        var claimed = store.TryClaim(token, Admit);
+
+        CollectionAssert.AreEqual(new[] { existing, absent }, peeked!.SourceFingerprints!.ToArray());
+        CollectionAssert.AreEqual(new[] { existing, absent }, claimed!.SourceFingerprints!.ToArray());
+    }
+
+    /// <summary>
+    /// The shared directory is untrusted: a fingerprint for a path no mutation writes would make the
+    /// redeeming host read (and hash, and report on) an arbitrary file, so such a record is unreadable.
+    /// </summary>
+    [TestMethod]
+    public void Format3_FingerprintForAPathNoMutationWrites_IsUnreadable_ForPeekAndClaim()
+    {
+        var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
+        var token = Guid.NewGuid().ToString("N");
+        store.Write(
+            token,
+            new CompositePreviewStore.Entry(
+                "ws-tamper", 1, "tamper",
+                [new CompositeFileMutation(@"C:\proj\Written.cs", "// a")],
+                DateTime.UtcNow, Identity,
+                [new CompositeSourceFingerprint(@"C:\proj\Written.cs", false, null),
+                 new CompositeSourceFingerprint(@"C:\secrets\Other.txt", false, null)]));
+        var admitted = false;
+
+        Assert.IsNull(store.TryPeek(token));
+        Assert.IsNull(store.TryClaim(token, entry => { admitted = true; return entry.WorkspaceId; }));
+        Assert.IsFalse(admitted, "A tampered record must never reach session matching.");
+    }
+
+    [TestMethod]
+    public void Format2Record_StillReads_WithNullFingerprints()
+    {
+        var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
+        var token = WriteRaw(
+            "{\"FormatVersion\":2,\"WorkspaceId\":\"ws-v2\",\"WorkspaceIdentity\":" + System.Text.Json.JsonSerializer.Serialize(Identity)
+            + ",\"Mutations\":[{\"FilePath\":\"C:/x.cs\",\"UpdatedContent\":\"// x\"}]}");
+
+        var claimed = store.TryClaim(token, Admit);
+
+        Assert.IsNotNull(claimed, "A format 2 record must still read.");
+        Assert.IsNull(claimed.SourceFingerprints, "Format 2 predates fingerprints: it is redeemed unchecked.");
+    }
+
+    [TestMethod]
+    [DataRow("null", DisplayName = "format 3 without a fingerprint list")]
+    [DataRow("[null]", DisplayName = "null fingerprint")]
+    [DataRow("""[{"FilePath":" ","Exists":false}]""", DisplayName = "blank fingerprint path")]
+    [DataRow("""[{"FilePath":"C:/x.cs","Exists":true}]""", DisplayName = "existing file without a hash")]
+    public void Format3_MalformedFingerprints_AreUnreadable_ForPeekAndClaim(string fingerprints)
+    {
+        var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
+        var token = WriteRaw(
+            "{\"FormatVersion\":3,\"WorkspaceId\":\"ws\",\"WorkspaceIdentity\":" + System.Text.Json.JsonSerializer.Serialize(Identity)
+            + ",\"Mutations\":[{\"FilePath\":\"C:/x.cs\"}],\"SourceFingerprints\":" + fingerprints + "}");
+
+        Assert.IsNull(store.TryPeek(token), "A malformed fingerprint list must never reach a caller.");
+        Assert.IsNull(store.TryClaim(token, Admit));
+    }
+
+    /// <summary>
+    /// <c>Path.GetFullPath</c> throws <see cref="PathTooLongException"/> (an <see cref="IOException"/>) for an
+    /// overlong path on Windows only: Linux and macOS accept it, so the record parses normally there.
+    /// The record is untrusted input, so on Windows that is an unreadable record, never an exception.
+    /// </summary>
+    [TestMethod]
+    [DataRow("identity", DisplayName = "overlong workspace identity")]
+    [DataRow("fingerprint", DisplayName = "overlong fingerprint path")]
+    [DataRow("mutation", DisplayName = "overlong mutation path with a fingerprint")]
+    public void Format3_OverlongPath_IsUnreadable_ForPeekAndClaim(string where)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("Only Windows rejects an overlong path in Path.GetFullPath; the NUL-character test covers the same tamper shape on every OS.");
+        }
+
+        var overlong = @"C:\" + new string('a', 40_000);
+        AssertTamperedPathIsUnreadable(where, overlong, overlong);
+    }
+
+    /// <summary>
+    /// A NUL character is rejected by <c>Path.GetFullPath</c> (<see cref="ArgumentException"/>) on every OS,
+    /// so a tampered identity, fingerprint or mutation path is an unreadable record on Windows, Linux and macOS.
+    /// </summary>
+    [TestMethod]
+    [DataRow("identity", DisplayName = "NUL in workspace identity")]
+    [DataRow("fingerprint", DisplayName = "NUL in fingerprint path")]
+    [DataRow("mutation", DisplayName = "NUL in mutation path with a fingerprint")]
+    public void Format3_PathWithNulCharacter_IsUnreadable_ForPeekAndClaim(string where) =>
+        AssertTamperedPathIsUnreadable(where, @"C:\proj\bad" + '\0' + ".cs", Identity + '\0');
+
+    private void AssertTamperedPathIsUnreadable(string where, string tampered, string tamperedIdentity)
+    {
+        var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
+        var identity = where == "identity" ? tamperedIdentity : Identity;
+        var mutationPath = where == "mutation" ? tampered : @"C:\x.cs";
+        var fingerprintPath = where == "fingerprint" ? tampered : mutationPath;
+        var token = WriteRaw(
+            System.Text.Json.JsonSerializer.Serialize(new
+            {
+                FormatVersion = 3,
+                WorkspaceId = "ws",
+                WorkspaceIdentity = identity,
+                Mutations = new[] { new { FilePath = mutationPath } },
+                SourceFingerprints = new[] { new { FilePath = fingerprintPath, Exists = false } },
+            }));
+        var admitted = false;
+
+        Assert.IsNull(store.TryPeek(token));
+        Assert.IsNull(store.TryClaim(token, entry => { admitted = true; return entry.WorkspaceId; }));
+        Assert.IsFalse(admitted);
     }
 
     [TestMethod]
@@ -158,11 +297,11 @@ public sealed class PersistentCompositeStorageTests
     }
 
     [TestMethod]
-    public void TryClaim_FormatVersionAbove2_RefusesAndKeepsPayload()
+    public void TryClaim_FormatVersionAbove3_RefusesAndKeepsPayload()
     {
         var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
         var token = WriteRaw(
-            """{"FormatVersion":3,"WorkspaceId":"ws","WorkspaceIdentity":"C:/a.slnx","Mutations":[{"FilePath":"C:/x.cs"}]}""");
+            """{"FormatVersion":4,"WorkspaceId":"ws","WorkspaceIdentity":"C:/a.slnx","Mutations":[{"FilePath":"C:/x.cs"}]}""");
         var admitted = false;
 
         var claimed = store.TryClaim(token, entry => { admitted = true; return entry.WorkspaceId; });
@@ -175,11 +314,11 @@ public sealed class PersistentCompositeStorageTests
     }
 
     [TestMethod]
-    public void TryPeek_FormatVersionAbove2_ReturnsNull()
+    public void TryPeek_FormatVersionAbove3_ReturnsNull()
     {
         var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
         var token = WriteRaw(
-            """{"FormatVersion":3,"WorkspaceId":"ws","WorkspaceIdentity":"C:/a.slnx","Mutations":[{"FilePath":"C:/x.cs"}]}""");
+            """{"FormatVersion":4,"WorkspaceId":"ws","WorkspaceIdentity":"C:/a.slnx","Mutations":[{"FilePath":"C:/x.cs"}]}""");
 
         Assert.IsNull(store.TryPeek(token), "An uninterpretable write set is unknown, so the peek fails closed.");
     }
@@ -189,7 +328,7 @@ public sealed class PersistentCompositeStorageTests
     {
         var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
         var token = Guid.NewGuid().ToString("N");
-        store.Write(token, new CompositePreviewStore.Entry("ws-refuse", 1, "refusal", [], DateTime.UtcNow, Identity));
+        store.Write(token, new CompositePreviewStore.Entry("ws-refuse", 1, "refusal", [], DateTime.UtcNow, Identity, []));
         var payloadSeenByAdmit = false;
 
         Assert.ThrowsExactly<InvalidOperationException>(() => store.TryClaim(token, _ =>
@@ -211,7 +350,7 @@ public sealed class PersistentCompositeStorageTests
     {
         var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
         var token = Guid.NewGuid().ToString("N");
-        store.Write(token, new CompositePreviewStore.Entry("creator-session", 1, "remap", [], DateTime.UtcNow, Identity));
+        store.Write(token, new CompositePreviewStore.Entry("creator-session", 1, "remap", [], DateTime.UtcNow, Identity, []));
 
         var claimed = store.TryClaim(token, _ => "local-session");
 
@@ -300,7 +439,7 @@ public sealed class PersistentCompositeStorageTests
             7,
             "invalid token",
             [],
-            DateTime.UtcNow, Identity);
+            DateTime.UtcNow, Identity, []);
 
         Assert.ThrowsExactly<PublicArgumentException>(() => store.Write("../escape", entry));
         Assert.IsFalse(Directory.Exists(Path.Combine(_root, "7")));
@@ -319,7 +458,7 @@ public sealed class PersistentCompositeStorageTests
             7,
             "failed atomic move",
             [],
-            DateTime.UtcNow, Identity);
+            DateTime.UtcNow, Identity, []);
 
         Exception? writeFailure = null;
         try
@@ -351,7 +490,7 @@ public sealed class PersistentCompositeStorageTests
                 11,
                 "atomic claim",
                 [new CompositeFileMutation(@"C:\proj\Claim.cs", "// claimed")],
-                DateTime.UtcNow, Identity));
+                DateTime.UtcNow, Identity, []));
 
         var first = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
         var second = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
@@ -377,7 +516,7 @@ public sealed class PersistentCompositeStorageTests
         var writer = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
         writer.Write(
             token,
-            new CompositePreviewStore.Entry("ws-race", 11, "atomic claim", [], DateTime.UtcNow, Identity));
+            new CompositePreviewStore.Entry("ws-race", 11, "atomic claim", [], DateTime.UtcNow, Identity, []));
         var store = CreateStore(
             Directory.EnumerateDirectories,
             File.GetLastWriteTimeUtc,
@@ -399,7 +538,7 @@ public sealed class PersistentCompositeStorageTests
         var writer = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
         writer.Write(
             token,
-            new CompositePreviewStore.Entry("ws-io", 11, "I/O failure", [], DateTime.UtcNow, Identity));
+            new CompositePreviewStore.Entry("ws-io", 11, "I/O failure", [], DateTime.UtcNow, Identity, []));
         var store = CreateStore(
             Directory.EnumerateDirectories,
             File.GetLastWriteTimeUtc,
@@ -436,7 +575,7 @@ public sealed class PersistentCompositeStorageTests
         var writer = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
         writer.Write(
             token,
-            new CompositePreviewStore.Entry("ws-delete", 1, "delete failure", [], DateTime.UtcNow, Identity));
+            new CompositePreviewStore.Entry("ws-delete", 1, "delete failure", [], DateTime.UtcNow, Identity, []));
         var store = CreateStore(
             Directory.EnumerateDirectories,
             File.GetLastWriteTimeUtc,
@@ -471,7 +610,7 @@ public sealed class PersistentCompositeStorageTests
         store.Write(
             token,
             new CompositePreviewStore.Entry(
-                "ws-peek", 4, "peek", [new CompositeFileMutation(@"C:\proj\Peek.cs", "// peeked")], DateTime.UtcNow, Identity));
+                "ws-peek", 4, "peek", [new CompositeFileMutation(@"C:\proj\Peek.cs", "// peeked")], DateTime.UtcNow, Identity, []));
 
         var first = store.TryPeek(token);
         var second = store.TryPeek(token);
@@ -489,7 +628,7 @@ public sealed class PersistentCompositeStorageTests
     {
         var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
         var expired = Guid.NewGuid().ToString("N");
-        store.Write(expired, new CompositePreviewStore.Entry("ws-old", 1, "old", [], DateTime.UtcNow, Identity));
+        store.Write(expired, new CompositePreviewStore.Entry("ws-old", 1, "old", [], DateTime.UtcNow, Identity, []));
         File.SetLastWriteTimeUtc(
             Directory.EnumerateFiles(_root, expired + ".json", SearchOption.AllDirectories).Single(),
             DateTime.UtcNow - TimeSpan.FromMinutes(10));
@@ -504,7 +643,7 @@ public sealed class PersistentCompositeStorageTests
     {
         var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
         var token = Guid.NewGuid().ToString("N");
-        store.Write(token, new CompositePreviewStore.Entry("ws-locked", 1, "locked", [], DateTime.UtcNow, Identity));
+        store.Write(token, new CompositePreviewStore.Entry("ws-locked", 1, "locked", [], DateTime.UtcNow, Identity, []));
         var payload = Directory.EnumerateFiles(_root, token + ".json", SearchOption.AllDirectories).Single();
         File.WriteAllText(payload + ".lock", string.Empty);
 
@@ -543,7 +682,7 @@ public sealed class PersistentCompositeStorageTests
         new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5)).Write(
             token,
             new CompositePreviewStore.Entry(
-                "ws-race", 1, "peek vs claim", [new CompositeFileMutation(@"C:\proj\Race.cs", "// race")], DateTime.UtcNow, Identity));
+                "ws-race", 1, "peek vs claim", [new CompositeFileMutation(@"C:\proj\Race.cs", "// race")], DateTime.UtcNow, Identity, []));
         var claimer = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
         CompositePreviewStore.Entry? claimed = null;
         Exception? claimFailure = null;

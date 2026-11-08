@@ -49,8 +49,10 @@ unchanged.
 - A host redeems a token only for a solution it has loaded. Path equality is the only equivalence.
 - Residual risk: the receiving host may have different on-disk content for the same path than the
   creator had when it previewed. Identity does not prove content equality, so a composite can apply
-  to files that drifted. Detecting that is owned by the sibling backlog row
-  `composite-preview-source-fingerprint-refusal`.
+  to files that drifted. Detecting that is owned by
+  [ADR 0033](0033-composite-preview-source-fingerprints.md) (format 3 records carry source
+  fingerprints; a format 2 reader still refuses them, so the "additive" claim above holds for format 1
+  readers and for readers at format 3 or later, not for a host still running this ADR's release).
 - Residual risk (threat note): path identity replaces an unguessable per-process session GUID.
   Anyone with write access to the persist directory can author or edit a record naming any solution
   path, and a host with that solution loaded will accept it. Admission checks the claimed write set

@@ -624,7 +624,7 @@ public sealed class PreviewApplyBoundaryRevalidationTests
             var token = store.Store(
                 WorkspaceId, 1, "tampered composite", [new CompositeFileMutation(insideFile, "// OVERWRITTEN")]);
             var payloadPath = Directory.EnumerateFiles(persistDirectory, token + ".json", SearchOption.AllDirectories).Single();
-            RewritePersistedPayload(persistDirectory, token, payload => payload["Mutations"]![0]!["FilePath"] = outsideFile);
+            RewritePersistedPayload(persistDirectory, token, payload => RetargetMutation(payload, outsideFile));
             var orchestrator = new CompositeApplyOrchestrator(_workspace, store);
 
             var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
@@ -673,7 +673,7 @@ public sealed class PreviewApplyBoundaryRevalidationTests
             var token = inner.Store(
                 WorkspaceId, 1, "swapped composite", [new CompositeFileMutation(insideFile, "// OVERWRITTEN")]);
             var store = new SwapAfterPeekStore(inner, () => RewritePersistedPayload(
-                persistDirectory, token, payload => payload["Mutations"]![0]!["FilePath"] = outsideFile));
+                persistDirectory, token, payload => RetargetMutation(payload, outsideFile)));
             var orchestrator = new CompositeApplyOrchestrator(_workspace, store);
 
             var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
@@ -732,6 +732,22 @@ public sealed class PreviewApplyBoundaryRevalidationTests
             SecurityOptionsSnapshot.Value = previousSnapshot;
             TestFixtureFileSystem.DeleteDirectoryIfExists(testRoot);
         }
+    }
+
+    /// <summary>
+    /// Models a party that forges the record consistently: the mutation is retargeted AND its
+    /// fingerprint is rewritten to describe the new target as it is on disk, so the record still
+    /// reaches the sanctioned-root admission these tests exercise (a record that only retargets the
+    /// mutation is unreadable, because its fingerprint names a path outside the write set).
+    /// </summary>
+    private static void RetargetMutation(JsonNode payload, string target)
+    {
+        payload["Mutations"]![0]!["FilePath"] = target;
+        var fingerprint = payload["SourceFingerprints"]![0]!;
+        fingerprint["FilePath"] = target;
+        fingerprint["Exists"] = true;
+        fingerprint["Sha256"] = Convert.ToHexStringLower(
+            System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(target)));
     }
 
     private static void RewritePersistedPayload(string persistDirectory, string token, Action<JsonNode> edit)
