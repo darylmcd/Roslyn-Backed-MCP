@@ -88,7 +88,8 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
         var sourceSemanticModel = await sourceDocument.GetSemanticModelAsync(ct).ConfigureAwait(false)
             ?? throw InvalidOperationErrors.Internal("Source semantic model is unavailable.");
         var interfaceFileRoot = BuildInterfaceFile(
-            interfaceDecl, typeDecl, sourceRoot, requiredNamespaces, destinationGlobalPlainNamespaces,
+            interfaceDecl, typeDecl, sourceRoot, requiredNamespaces,
+            projector.ReferencedUsingAliases, projector.ReferencedUnqualifiedTypes, destinationGlobalPlainNamespaces,
             sourceSemanticModel, ct);
 
         var newSolution = solution;
@@ -191,39 +192,37 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
         TypeDeclarationSyntax typeDecl,
         CompilationUnitSyntax sourceRoot,
         IReadOnlyCollection<string> requiredNamespaces,
+        IReadOnlyCollection<string> referencedUsingAliases,
+        IReadOnlyCollection<ITypeSymbol> referencedUnqualifiedTypes,
         IReadOnlyCollection<string> destinationGlobalPlainNamespaces,
         SemanticModel sourceSemanticModel,
         CancellationToken ct)
     {
-        var namespaceDecl = typeDecl.Ancestors().OfType<BaseNamespaceDeclarationSyntax>().FirstOrDefault();
+        var namespaceScopes = typeDecl.Ancestors().OfType<BaseNamespaceDeclarationSyntax>().Reverse().ToArray();
+        var (sourceUsings, qualifiedNamespaceUsings) = UsingDirectiveSynthesizer.SelectVisibleAliasUsings(
+            sourceRoot, typeDecl, referencedUsingAliases, referencedUnqualifiedTypes, sourceSemanticModel, ct);
         var usings = UsingDirectiveSynthesizer.BuildUsingDirectives(
-            sourceRoot.Usings, requiredNamespaces, preserveGlobalUsings: false,
+            sourceUsings, requiredNamespaces, preserveGlobalUsings: false,
             destinationGlobalPlainNamespaces: destinationGlobalPlainNamespaces,
             sourceSemanticModel: sourceSemanticModel, ct: ct);
+        var emittedUsings = SyntaxFactory.List(usings.Concat(qualifiedNamespaceUsings));
+        var externs = UsingDirectiveSynthesizer.BuildRequiredExternAliases(
+            sourceRoot, typeDecl, interfaceDecl.Members, emittedUsings);
+        var root = SyntaxFactory.CompilationUnit().WithExterns(externs).WithUsings(emittedUsings);
 
-        if (namespaceDecl is FileScopedNamespaceDeclarationSyntax fileScopedNs)
+        if (namespaceScopes.Length == 0)
         {
-            var newNs = SyntaxFactory.FileScopedNamespaceDeclaration(fileScopedNs.Name)
-                .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(interfaceDecl));
-            return SyntaxFactory.CompilationUnit()
-                .WithUsings(usings)
-                .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(newNs))
+            return root.WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(interfaceDecl))
                 .NormalizeWhitespace();
         }
 
-        if (namespaceDecl is NamespaceDeclarationSyntax blockNs)
-        {
-            var newNs = SyntaxFactory.NamespaceDeclaration(blockNs.Name)
-                .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(interfaceDecl));
-            return SyntaxFactory.CompilationUnit()
-                .WithUsings(usings)
-                .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(newNs))
-                .NormalizeWhitespace();
-        }
-
-        return SyntaxFactory.CompilationUnit()
-            .WithUsings(usings)
-            .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(interfaceDecl))
+        var namespaceName = SyntaxFactory.ParseName(string.Join(".", namespaceScopes.Select(scope => scope.Name.WithoutTrivia().ToString())));
+        MemberDeclarationSyntax namespaceDecl = namespaceScopes[0] is FileScopedNamespaceDeclarationSyntax
+            ? SyntaxFactory.FileScopedNamespaceDeclaration(namespaceName)
+            : SyntaxFactory.NamespaceDeclaration(namespaceName);
+        namespaceDecl = ((BaseNamespaceDeclarationSyntax)namespaceDecl)
+            .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(interfaceDecl));
+        return root.WithMembers(SyntaxFactory.SingletonList(namespaceDecl))
             .NormalizeWhitespace();
     }
 
