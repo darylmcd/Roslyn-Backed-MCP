@@ -1,7 +1,10 @@
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.MSBuild;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Contracts;
 using RoslynMcp.Roslyn.Helpers;
 using RoslynMcp.Roslyn.Services;
 using RoslynMcp.Tests.Helpers;
@@ -264,6 +267,89 @@ public sealed class WorkspaceLoadRegistrationCompensationTests
             CancellationToken.None);
         Assert.IsTrue(third.IsLoaded);
         Assert.AreEqual(2, manager.ListWorkspaces().Count);
+    }
+
+    [TestMethod]
+    public async Task ReloadAsync_PreviewInvalidationThrows_DisposesRetiredNotLiveWorkspace()
+    {
+        using var watcher = new ScriptedWatcher();
+        var previews = new ThrowingInvalidationPreviewStore(new PreviewStore());
+        using var manager = new WorkspaceManager(
+            NullLogger<WorkspaceManager>.Instance,
+            previews,
+            watcher,
+            new WorkspaceManagerOptions { MaxConcurrentWorkspaces = 1 },
+            cacheStore: null,
+            sessionLoader: null,
+            ownsFileWatcher: false);
+        var reloaded = new List<string>();
+        manager.WorkspaceReloaded += reloaded.Add;
+
+        var status = await manager.LoadAsync(_sampleSolutionPath, CancellationToken.None);
+        var id = status.WorkspaceId;
+        var oldWorkspace = manager.GetCurrentSolution(id).Workspace;
+        Assert.IsTrue(oldWorkspace.CurrentSolution.Projects.Any(), "Precondition: the loaded workspace is populated.");
+        // The reload must go through ClearStale only on success; mark stale so the assertion below can see it survive.
+        watcher.MarkStale(id, StaleReasons.ExternalEdit);
+
+        previews.ThrowOnInvalidate = true;
+        var thrown = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+            () => manager.ReloadAsync(id, CancellationToken.None));
+        StringAssert.Contains(thrown.Message, ThrowingInvalidationPreviewStore.FailureMessage);
+
+        // The swap committed: the session serves the NEW workspace and it is not disposed.
+        var live = manager.GetCurrentSolution(id);
+        Assert.AreNotSame(oldWorkspace, live.Workspace, "Session must point at the new workspace.");
+        Assert.IsTrue(live.Projects.Any(), "The live workspace must not have been disposed by the failure path.");
+        // The retired workspace was disposed (a disposed MSBuildWorkspace drops its solution).
+        Assert.IsFalse(oldWorkspace.CurrentSolution.Projects.Any(), "The retired workspace must be disposed.");
+        // Pinned decision: the committed swap still announces the reload so event-driven caches drop the old solution.
+        CollectionAssert.AreEqual(new[] { id }, reloaded);
+        // Pinned decision: ClearStale is skipped on failure, so the workspace stays stale and the next gated call reloads.
+        Assert.IsTrue(watcher.IsStale(id), "A failed reload must not clear the stale flag.");
+
+        previews.ThrowOnInvalidate = false;
+        var recovered = await manager.ReloadAsync(id, CancellationToken.None);
+        Assert.IsTrue(recovered.IsLoaded);
+        Assert.IsFalse(watcher.IsStale(id));
+        Assert.IsTrue(manager.GetCurrentSolution(id).Projects.Any());
+        CollectionAssert.AreEqual(new[] { id, id }, reloaded);
+    }
+
+    /// <summary>Delegates to a real store; throws from InvalidateOnVersionBump on demand.</summary>
+    private sealed class ThrowingInvalidationPreviewStore(IPreviewStore inner) : IPreviewStore
+    {
+        public const string FailureMessage = "Simulated preview invalidation failure";
+
+        public bool ThrowOnInvalidate { get; set; }
+
+        public void InvalidateOnVersionBump(string workspaceId, int newWorkspaceVersion)
+        {
+            if (ThrowOnInvalidate) throw new InvalidOperationException(FailureMessage);
+            inner.InvalidateOnVersionBump(workspaceId, newWorkspaceVersion);
+        }
+
+        public string Store(string workspaceId, Solution modifiedSolution, int workspaceVersion, string description) =>
+            inner.Store(workspaceId, modifiedSolution, workspaceVersion, description);
+
+        public string Store(string workspaceId, Solution modifiedSolution, int workspaceVersion, string description, bool diffTruncated) =>
+            inner.Store(workspaceId, modifiedSolution, workspaceVersion, description, diffTruncated);
+
+        public string Store(string workspaceId, Solution modifiedSolution, int workspaceVersion, string description, bool diffTruncated, PreviewKind kind) =>
+            inner.Store(workspaceId, modifiedSolution, workspaceVersion, description, diffTruncated, kind);
+
+        public string Store(string workspaceId, Solution modifiedSolution, int workspaceVersion, string description, IReadOnlyList<FileChangeDto> changes) =>
+            inner.Store(workspaceId, modifiedSolution, workspaceVersion, description, changes);
+
+        public string Store(string workspaceId, Solution modifiedSolution, int workspaceVersion, string description, IReadOnlyList<FileChangeDto> changes, PreviewKind kind) =>
+            inner.Store(workspaceId, modifiedSolution, workspaceVersion, description, changes, kind);
+
+        public (string WorkspaceId, Solution OriginalSolution, Solution ModifiedSolution, int WorkspaceVersion, string Description, bool DiffTruncated)? Retrieve(string token) => inner.Retrieve(token);
+        public void Invalidate(string token) => inner.Invalidate(token);
+        public void InvalidateAll(string? workspaceId = null) => inner.InvalidateAll(workspaceId);
+        public string? PeekWorkspaceId(string token) => inner.PeekWorkspaceId(token);
+        public IReadOnlyList<string>? PeekChangedPaths(string token) => inner.PeekChangedPaths(token);
+        public PreviewKind PeekKind(string token) => inner.PeekKind(token);
     }
 
     /// <summary>

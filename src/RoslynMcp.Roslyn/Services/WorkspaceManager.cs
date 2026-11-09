@@ -650,9 +650,29 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
     public async Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct)
     {
         var session = GetRequiredSession(workspaceId);
-        await LoadIntoSessionAsync(session, session.LoadedPath ?? throw new InvalidOperationException(
-            $"Workspace '{workspaceId}' is not loaded."),
-            ct).ConfigureAwait(false);
+        var versionBeforeLoad = session.Version;
+        try
+        {
+            await LoadIntoSessionAsync(session, session.LoadedPath ?? throw new InvalidOperationException(
+                $"Workspace '{workspaceId}' is not loaded."),
+                ct).ConfigureAwait(false);
+        }
+        catch
+        {
+            // workspace-reload-swap-version-failure-ownership: a version bump proves the swap
+            // committed before the failure (post-swap preview invalidation threw). The session now
+            // serves the NEW workspace, so event-driven caches holding the retired solution must
+            // still be dropped. The exception still propagates and ClearStale is skipped, so a
+            // stale workspace stays stale and the next gated call reloads again. A pre-swap failure
+            // leaves the version untouched and the prior workspace live: nothing to announce.
+            if (session.Version != versionBeforeLoad)
+            {
+                RaiseWorkspaceReloaded(workspaceId);
+            }
+
+            throw;
+        }
+
         _fileWatcher.ClearStale(workspaceId);
         // Item #7: explicit reload signal for per-workspace caches. The version bump inside
         // LoadIntoSessionAsync is enough for caches that version-check on every read, but
@@ -1485,6 +1505,10 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
                 StampCacheHitMetric(result);
             }
 
+            // Virtual clock read hoisted above the swap: a throwing TimeProvider must fail before
+            // any live session state is replaced, never between the assignments below.
+            var loadedAtUtc = _timeProvider.GetUtcNow();
+
             // autoreload-cascade-stdio-host-crash: atomic swap. Assign all session state AFTER
             // the new workspace is fully loaded so concurrent readers never observe a mid-reload
             // session (disposed workspace, empty project list, or mismatched LoadedPath).
@@ -1496,8 +1520,11 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
             session.LoadedPath = path;
             session.RestoreRequired = projection.RestoreRequired;
             session.BuildRequired = projection.BuildRequired;
-            session.LoadedAtUtc = _timeProvider.GetUtcNow();
+            session.LoadedAtUtc = loadedAtUtc;
             session.IncrementVersion();
+            // Ownership flips here: the session owns newWorkspace/newLease, the finally must
+            // dispose the RETIRED pair. Everything fallible (invalidation, logging) stays below.
+            swapped = true;
             // format-range-apply-preview-token-lifetime: drop only the tokens whose pinned
             // workspace-version range has been exceeded by this reload bump (default span = 1,
             // so a preview → single-reload → apply sequence inside the TTL window still
@@ -1507,9 +1534,10 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
             // remain readable after the prior `MSBuildWorkspace` is disposed below — the apply
             // path's `RebaseModifiedSolutionOntoCurrentAsync` matches documents by file path,
             // so the post-reload `ProjectId`/`DocumentId` lineage divergence is handled.
+            // A throw here propagates (not swallowed), but the swap is committed: the finally
+            // disposes the retired pair exactly once and ReloadAsync still raises WorkspaceReloaded.
             _previewStore.InvalidateOnVersionBump(session.WorkspaceId, session.Version);
 
-            swapped = true;
             LogWorkspaceLoaded(_logger, session.WorkspaceId, path, session.Version, null);
         }
         finally
@@ -1520,7 +1548,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
             // above the try, so this finally only runs when this frame owns it. Cleanup failures
             // are logged, never thrown: on the failure branch a primary exception or cancellation
             // is propagating and must not be replaced; on the swap branch the reload is already
-            // committed (state swapped, version bumped, previews invalidated) and must not be
+            // committed (state swapped, version bumped; preview invalidation may have failed) and must not be
             // reported as failed.
             var cleanupFailures = new List<Exception>();
             try
