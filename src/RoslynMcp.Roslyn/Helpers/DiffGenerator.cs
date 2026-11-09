@@ -1,6 +1,7 @@
 using DiffPlex;
 using DiffPlex.DiffBuilder;
 using DiffPlex.DiffBuilder.Model;
+using RoslynMcp.Core.Services;
 
 namespace RoslynMcp.Roslyn.Helpers;
 
@@ -180,7 +181,7 @@ public static class DiffGenerator
                 hunk.AppendLine("\\ No newline at end of file");
                 break;
             default:
-                throw new InvalidOperationException("Diff line is missing its terminator marker.");
+                throw InvalidOperationErrors.Internal("Diff line is missing its terminator marker.");
         }
     }
 
