@@ -1199,7 +1199,31 @@ public sealed class WorkspaceCloseDrainTests
         Directory.CreateDirectory(targetDirectory);
         var copyName = Path.GetFileName(SystemLauncherPath);
         var copiedPath = Path.Combine(targetDirectory, copyName);
-        File.Copy(SystemLauncherPath, copiedPath, overwrite: true);
+        if (OperatingSystem.IsLinux())
+        {
+            // Keep the writer in a separate process. A concurrent fork can otherwise inherit
+            // this test process's write descriptor and make the immediate exec fail with ETXTBSY.
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = "/bin/cp",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            startInfo.ArgumentList.Add(SystemLauncherPath);
+            startInfo.ArgumentList.Add(copiedPath);
+            using var copy = Process.Start(startInfo)
+                ?? throw new InvalidOperationException($"Failed to start launcher copy process for {copiedPath}.");
+            copy.WaitForExit();
+            if (copy.ExitCode != 0)
+            {
+                throw new InvalidOperationException($"Launcher copy process exited with code {copy.ExitCode} for {copiedPath}.");
+            }
+        }
+        else
+        {
+            File.Copy(SystemLauncherPath, copiedPath, overwrite: true);
+        }
+
         if (!OperatingSystem.IsWindows())
         {
             // Preserve the executable bit on the copy.
