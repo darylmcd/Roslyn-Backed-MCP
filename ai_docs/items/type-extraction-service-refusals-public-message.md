@@ -1,6 +1,6 @@
 # type-extraction-service-refusals-public-message — Preserve safe extraction correction guidance
 
-**row:** `type-extraction-service-refusals-public-message` · **pri:** `Medium` · **size:** `S`
+**row:** `type-extraction-service-refusals-public-message` · **pri:** `Defer` · **size:** `S`
 
 ## Anchors
 
@@ -26,3 +26,7 @@
 
 - One service-owned error-envelope regression shape. Follow all sibling constructions; widen complete scope for any forced companions.
 - Separate from extract-type-preserve-untouched-trivia; if that implementation changes refusal semantics or construction identity, fix its introduced/exposed defect in the same PR.
+
+## Notes
+
+Operator decision 2026-11-09: defer the stable extract_type_preview public-message change to the next major release. Do not implement this row in 5.x. Preserve blockingDependencies member names as intentional structured caller data; they do not justify a major bump on their own. At the major release, provide ADR, migration note and raw-wire coverage for the public message change. Read the complete-envelope sentinel acceptance as excluding intentional blockingDependencies names; check that raw paths, names and exception details do not leak through the public message or other unintended envelope fields.
