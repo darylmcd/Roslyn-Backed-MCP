@@ -112,6 +112,7 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
     {
         var queueStopwatch = Stopwatch.StartNew();
         EnforceRateLimit();
+        var timeoutStarted = _timeProvider.GetTimestamp();
 
         // Provider-backed timeout source so the deadline (and the post-auto-reload reset via
         // CancelAfter below) is armed on _timeProvider's clock — TimeProvider.System in
@@ -149,11 +150,8 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
             // timeoutCts/linkedCts construction and was therefore exposed to the same gap.
             // The caught OCE is carried as InnerException so cancellation provenance (which token
             // fired, original stack trace) survives the reclassification for logs/diagnostics.
-            throw new TimeoutException(
-                $"The gated load operation did not complete within the request timeout of " +
-                $"{_requestTimeout.TotalSeconds:F0}s. Increase ROSLYNMCP_REQUEST_TIMEOUT_SECONDS if this " +
-                "operation is expected to run longer.",
-                oce);
+            throw new OperationTimeoutException(OperationTimeoutTimer.Request, _requestTimeout,
+                _timeProvider.GetElapsedTime(timeoutStarted), oce);
         }
     }
 
@@ -215,6 +213,8 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
             throw _workspaceManager.CreateWorkspaceNotFoundException(workspaceId);
         }
 
+        var timeoutStarted = _timeProvider.GetTimestamp();
+
         // Provider-backed timeout source so the deadline (and the post-auto-reload reset via
         // CancelAfter below) is armed on _timeProvider's clock — TimeProvider.System in
         // production, a fake clock under test. CreateLinkedTokenSource has no TimeProvider
@@ -270,6 +270,7 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
                 {
                     timeoutCts.CancelAfter(_requestTimeout);
                     deadlineScope.Reset(_requestTimeout);
+                    timeoutStarted = _timeProvider.GetTimestamp();
                 }
             }
 
@@ -345,11 +346,8 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
             // of letting it slip past every structured-envelope layer in the server. The caught OCE
             // is carried as InnerException so cancellation provenance (which token fired, original
             // stack trace) survives the reclassification for logs/diagnostics.
-            throw new TimeoutException(
-                $"The gated operation on workspace '{workspaceId}' did not complete within the request " +
-                $"timeout of {_requestTimeout.TotalSeconds:F0}s. Increase ROSLYNMCP_REQUEST_TIMEOUT_SECONDS " +
-                "if this operation is expected to run longer.",
-                oce);
+            throw new OperationTimeoutException(OperationTimeoutTimer.Request, _requestTimeout,
+                _timeProvider.GetElapsedTime(timeoutStarted), oce);
         }
     }
 

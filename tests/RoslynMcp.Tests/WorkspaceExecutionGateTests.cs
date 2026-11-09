@@ -358,17 +358,17 @@ public class WorkspaceExecutionGateTests
             },
             new FakeGateWorkspaceManager());
 
-        var ex = await Assert.ThrowsExactlyAsync<TimeoutException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<OperationTimeoutException>(() =>
             gate.RunReadAsync(WorkspaceA, async ct =>
             {
                 await Task.Delay(TimeSpan.FromSeconds(5), ct);
                 return 0;
             }, CancellationToken.None));
 
-        StringAssert.Contains(ex.Message, WorkspaceA,
-            "The timeout message should identify which workspace's gated operation timed out.");
-        StringAssert.Contains(ex.Message, "ROSLYNMCP_REQUEST_TIMEOUT_SECONDS",
-            "The message should point the caller at the env var that controls this timeout.");
+        Assert.AreEqual(OperationTimeoutTimer.Request, ex.Timer);
+        Assert.AreEqual("ROSLYNMCP_REQUEST_TIMEOUT_SECONDS", ex.EnvironmentKnob);
+        Assert.AreEqual(TimeSpan.FromMilliseconds(150), ex.ConfiguredDuration);
+        Assert.IsGreaterThanOrEqualTo(TimeSpan.Zero, ex.ElapsedDuration);
 
         // gate-timeout-exception-drops-inner-oce: the reclassification must carry the original
         // OperationCanceledException so cancellation provenance (which token fired, original stack
@@ -417,14 +417,15 @@ public class WorkspaceExecutionGateTests
             },
             new FakeGateWorkspaceManager());
 
-        var ex = await Assert.ThrowsExactlyAsync<TimeoutException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<OperationTimeoutException>(() =>
             gate.RunLoadGateAsync(async ct =>
             {
                 await Task.Delay(TimeSpan.FromSeconds(5), ct);
                 return 0;
             }, CancellationToken.None));
 
-        StringAssert.Contains(ex.Message, "ROSLYNMCP_REQUEST_TIMEOUT_SECONDS");
+        Assert.AreEqual(OperationTimeoutTimer.Request, ex.Timer);
+        Assert.AreEqual("ROSLYNMCP_REQUEST_TIMEOUT_SECONDS", ex.EnvironmentKnob);
 
         // gate-timeout-exception-drops-inner-oce: same provenance guarantee on the load-gate leg.
         Assert.IsInstanceOfType<OperationCanceledException>(ex.InnerException,
@@ -588,11 +589,10 @@ public class WorkspaceExecutionGateTests
             },
             manager);
 
-        var ex = await Assert.ThrowsExactlyAsync<TimeoutException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<OperationTimeoutException>(() =>
             gate.RunReadAsync(WorkspaceA, _ => Task.FromResult(0), CancellationToken.None));
 
-        StringAssert.Contains(ex.Message, WorkspaceA,
-            "The timeout message should identify which workspace's gated operation timed out.");
+        Assert.AreEqual(OperationTimeoutTimer.Request, ex.Timer);
         Assert.AreEqual(1, manager.ReloadCount, "The reload attempt should have started before the timeout fired.");
     }
 
@@ -928,6 +928,31 @@ public class WorkspaceExecutionGateTests
         Assert.IsNull(AmbientGateMetrics.Current);
     }
 
+    [TestMethod]
+    public async Task AutoReload_ActionTimeout_ElapsedDurationStartsAtFreshBudget()
+    {
+        var clock = new FakeTimeProvider();
+        var manager = new FakeGateWorkspaceManager(reloadClock: clock, reloadAdvanceMs: 1500);
+        manager.MarkStale(WorkspaceA);
+        using var gate = new WorkspaceExecutionGate(
+            new ExecutionGateOptions { RequestTimeout = TimeSpan.FromSeconds(2), OnStale = StalenessPolicy.AutoReload },
+            manager,
+            clock);
+
+        var exception = await Assert.ThrowsExactlyAsync<OperationTimeoutException>(() =>
+            gate.RunReadAsync(WorkspaceA, ct =>
+            {
+                clock.Advance(TimeSpan.FromMilliseconds(2100));
+                ct.ThrowIfCancellationRequested();
+                return Task.FromResult(0);
+            }, CancellationToken.None));
+
+        Assert.AreEqual(1, manager.ReloadCount);
+        Assert.AreEqual(TimeSpan.FromSeconds(2), exception.ConfiguredDuration);
+        Assert.AreEqual(TimeSpan.FromMilliseconds(2100), exception.ElapsedDuration,
+            "The reported elapsed time must measure the action's fresh budget, excluding the completed reload.");
+    }
+
     /// <summary>
     /// parallel-fanout-auto-reload-timeout-floor: three concurrent reads against the same
     /// stale workspace all succeed — none time out while the reload is in flight. This is the
@@ -1204,7 +1229,7 @@ public class WorkspaceExecutionGateTests
         var stale = gate.RunReadAsync(WorkspaceA, _ => Task.FromResult(0), CancellationToken.None);
         clock.Advance(TimeSpan.FromSeconds(31));
 
-        await Assert.ThrowsExactlyAsync<TimeoutException>(() => stale);
+        await Assert.ThrowsExactlyAsync<OperationTimeoutException>(() => stale);
         Assert.AreEqual(0, manager.ReloadCount);
 
         // The timed-out waiter released its throttle slot and queue position.
