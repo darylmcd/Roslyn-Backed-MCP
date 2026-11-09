@@ -857,3 +857,110 @@ public sealed class FileWatcherClearStaleAwaiterTests
         Assert.IsInstanceOfType<AggregateException>(failure.InnerExceptions.Single());
     }
 }
+
+/// <summary>
+/// Direct (no real OS file events) unit coverage of the external-edit epoch and
+/// <see cref="IFileWatcherService.ClearStaleIfNoExternalEditSince"/>
+/// (<c>reload-clearstale-swallows-midreload-watcher-event</c>): a reload must not wipe an
+/// ExternalEdit mark that landed after the reload read the epoch.
+/// </summary>
+[TestClass]
+public sealed class FileWatcherExternalEditEpochTests
+{
+    private const string WorkspaceId = "ws-epoch";
+
+    private static void WithWatchedWorkspace(Action<FileWatcherService> body)
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"rmcp-fw-epoch-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            using var watcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance);
+            watcher.Watch(WorkspaceId, Path.Combine(tempDir, "Sentinel.slnx"));
+            body(watcher);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public void ConditionalClear_ExternalEditAfterEpochRead_KeepsFlagReasonAndSignal()
+    {
+        WithWatchedWorkspace(watcher =>
+        {
+            watcher.MarkStale(WorkspaceId, StaleReasons.ExternalEdit);
+            var epoch = watcher.GetExternalEditEpoch(WorkspaceId);
+            watcher.MarkStale(WorkspaceId, StaleReasons.ExternalEdit);
+
+            Assert.IsFalse(watcher.ClearStaleIfNoExternalEditSince(WorkspaceId, epoch));
+
+            Assert.IsTrue(watcher.IsStale(WorkspaceId));
+            Assert.AreEqual(StaleReasons.ExternalEdit, watcher.GetStaleReason(WorkspaceId));
+            // A skipped clear must not cancel (or strand) the stale signal: still completed successfully.
+            Assert.IsTrue(watcher.WaitForStaleAsync(WorkspaceId, CancellationToken.None).IsCompletedSuccessfully);
+        });
+    }
+
+    [TestMethod]
+    public void ConditionalClear_SkippedThenNextClear_RearmsSignalForNewWaiters()
+    {
+        WithWatchedWorkspace(watcher =>
+        {
+            var epoch = watcher.GetExternalEditEpoch(WorkspaceId);
+            watcher.MarkStale(WorkspaceId, StaleReasons.ExternalEdit);
+            Assert.IsFalse(watcher.ClearStaleIfNoExternalEditSince(WorkspaceId, epoch));
+
+            var settledEpoch = watcher.GetExternalEditEpoch(WorkspaceId);
+            Assert.IsTrue(watcher.ClearStaleIfNoExternalEditSince(WorkspaceId, settledEpoch));
+            Assert.IsFalse(watcher.IsStale(WorkspaceId));
+            Assert.IsNull(watcher.GetStaleReason(WorkspaceId));
+
+            var parked = watcher.WaitForStaleAsync(WorkspaceId, CancellationToken.None);
+            Assert.IsFalse(parked.IsCompleted, "A cleared entry must park new waiters on a fresh signal.");
+            watcher.MarkStale(WorkspaceId, StaleReasons.ExternalEdit);
+            Assert.IsTrue(parked.IsCompletedSuccessfully, "The fresh signal must fire on the next stale mark.");
+        });
+    }
+
+    [TestMethod]
+    [DataRow(StaleReasons.Apply)]
+    [DataRow(StaleReasons.Restore)]
+    public void ConditionalClear_ServerAttributedMarkAfterEpochRead_Clears(string reason)
+    {
+        WithWatchedWorkspace(watcher =>
+        {
+            var epoch = watcher.GetExternalEditEpoch(WorkspaceId);
+            watcher.MarkStale(WorkspaceId, reason);
+            Assert.AreEqual(epoch, watcher.GetExternalEditEpoch(WorkspaceId), "Only ExternalEdit advances the epoch.");
+
+            Assert.IsTrue(watcher.ClearStaleIfNoExternalEditSince(WorkspaceId, epoch));
+
+            Assert.IsFalse(watcher.IsStale(WorkspaceId));
+            Assert.IsNull(watcher.GetStaleReason(WorkspaceId));
+        });
+    }
+
+    [TestMethod]
+    public void ConditionalClear_ExternalEditBeforeEpochRead_Clears()
+    {
+        WithWatchedWorkspace(watcher =>
+        {
+            watcher.MarkStale(WorkspaceId, StaleReasons.ExternalEdit);
+            var epoch = watcher.GetExternalEditEpoch(WorkspaceId);
+
+            Assert.IsTrue(watcher.ClearStaleIfNoExternalEditSince(WorkspaceId, epoch));
+            Assert.IsFalse(watcher.IsStale(WorkspaceId));
+        });
+    }
+
+    [TestMethod]
+    public void UnknownWorkspace_EpochIsZero_AndConditionalClearReportsNotCleared()
+    {
+        using var watcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance);
+
+        Assert.AreEqual(0L, watcher.GetExternalEditEpoch("missing"));
+        Assert.IsFalse(watcher.ClearStaleIfNoExternalEditSince("missing", 0));
+    }
+}

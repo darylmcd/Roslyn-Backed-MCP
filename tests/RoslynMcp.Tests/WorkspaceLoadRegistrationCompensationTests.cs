@@ -316,6 +316,105 @@ public sealed class WorkspaceLoadRegistrationCompensationTests
         CollectionAssert.AreEqual(new[] { id, id }, reloaded);
     }
 
+    /// <summary>
+    /// reload-clearstale-swallows-midreload-watcher-event: the watcher flips ExternalEdit while the
+    /// reload's load is reading disk. The load may have read the file before the edit, so the
+    /// post-load clear must NOT wipe the mark.
+    /// </summary>
+    [TestMethod]
+    public async Task ReloadAsync_ExternalEditDuringLoad_StaysStaleUntilNextReload()
+    {
+        using var watcher = new ScriptedWatcher();
+        var loader = new MidLoadHookLoader();
+        using var manager = CreateManager(watcher, cap: 1, loader: loader);
+        var id = (await manager.LoadAsync(_sampleSolutionPath, CancellationToken.None)).WorkspaceId;
+
+        loader.OnLoaded = () => watcher.MarkStale(id, StaleReasons.ExternalEdit);
+        var status = await manager.ReloadAsync(id, CancellationToken.None);
+
+        Assert.AreEqual(1, loader.HookRuns, "The mid-load mark must have fired inside the reload's load.");
+        Assert.IsTrue(watcher.IsStale(id), "An ExternalEdit observed during the load must survive the post-load clear.");
+        Assert.AreEqual(StaleReasons.ExternalEdit, watcher.GetStaleReason(id));
+        Assert.IsTrue(status.IsStale, "workspace_status must report the surviving staleness.");
+        Assert.AreEqual(StaleReasons.ExternalEdit, status.StaleReason);
+
+        // Convergence: nothing re-marks, so the very next reload settles the workspace (no loop).
+        loader.OnLoaded = null;
+        var settled = await manager.ReloadAsync(id, CancellationToken.None);
+        Assert.IsFalse(watcher.IsStale(id));
+        Assert.IsFalse(settled.IsStale);
+        Assert.IsNull(watcher.GetStaleReason(id));
+    }
+
+    /// <summary>
+    /// A mid-load mark attributed to the server's own write (Apply / Restore) is covered by the load
+    /// (the bytes were on disk before it started), so the post-load clear still wipes it.
+    /// </summary>
+    [TestMethod]
+    [DataRow(StaleReasons.Apply)]
+    [DataRow(StaleReasons.Restore)]
+    public async Task ReloadAsync_ServerAttributedMarkDuringLoad_IsCleared(string reason)
+    {
+        using var watcher = new ScriptedWatcher();
+        var loader = new MidLoadHookLoader();
+        using var manager = CreateManager(watcher, cap: 1, loader: loader);
+        var id = (await manager.LoadAsync(_sampleSolutionPath, CancellationToken.None)).WorkspaceId;
+
+        loader.OnLoaded = () => watcher.MarkStale(id, reason);
+        var status = await manager.ReloadAsync(id, CancellationToken.None);
+
+        Assert.AreEqual(1, loader.HookRuns);
+        Assert.IsFalse(watcher.IsStale(id), "A server-attributed mark must not outlive the reload that covers it.");
+        Assert.IsFalse(status.IsStale);
+        Assert.IsNull(watcher.GetStaleReason(id));
+    }
+
+    /// <summary>
+    /// The epoch is read BEFORE the load: an ExternalEdit that was already pending when the reload
+    /// began is covered by that reload and is cleared (otherwise every explicit reload of an
+    /// externally-edited workspace would stay stale forever).
+    /// </summary>
+    [TestMethod]
+    public async Task ReloadAsync_ExternalEditBeforeReload_IsClearedByTheReload()
+    {
+        using var watcher = new ScriptedWatcher();
+        var loader = new MidLoadHookLoader();
+        using var manager = CreateManager(watcher, cap: 1, loader: loader);
+        var id = (await manager.LoadAsync(_sampleSolutionPath, CancellationToken.None)).WorkspaceId;
+        watcher.MarkStale(id, StaleReasons.ExternalEdit);
+        Assert.IsTrue(watcher.IsStale(id), "Precondition: stale before the reload starts.");
+
+        var status = await manager.ReloadAsync(id, CancellationToken.None);
+
+        Assert.IsFalse(watcher.IsStale(id));
+        Assert.IsFalse(status.IsStale);
+        Assert.IsNull(watcher.GetStaleReason(id));
+    }
+
+    /// <summary>Real load, then runs a test-supplied hook while the reload is still inside the loader.</summary>
+    private sealed class MidLoadHookLoader : WorkspaceSessionLoader
+    {
+        private int _hookRuns;
+
+        public Action? OnLoaded { get; set; }
+        public int HookRuns => Volatile.Read(ref _hookRuns);
+
+        public override async Task<(MSBuildWorkspace Workspace, AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease Lease)> CreateAndOpenAsync(
+            string workspaceId, string path, IDictionary<string, string>? globalProperties,
+            WorkspaceDiagnosticsSink diagnostics, ILogger logger, CancellationToken ct)
+        {
+            var loaded = await base.CreateAndOpenAsync(workspaceId, path, globalProperties, diagnostics, logger, ct).ConfigureAwait(false);
+            var hook = OnLoaded;
+            if (hook is not null)
+            {
+                Interlocked.Increment(ref _hookRuns);
+                hook();
+            }
+
+            return loaded;
+        }
+    }
+
     /// <summary>Delegates to a real store; throws from InvalidateOnVersionBump on demand.</summary>
     private sealed class ThrowingInvalidationPreviewStore(IPreviewStore inner) : IPreviewStore
     {
@@ -443,6 +542,9 @@ public sealed class WorkspaceLoadRegistrationCompensationTests
         public string? GetStaleReason(string workspaceId) => _inner.GetStaleReason(workspaceId);
         public void MarkStale(string workspaceId, string reason) => _inner.MarkStale(workspaceId, reason);
         public void ClearStale(string workspaceId) => _inner.ClearStale(workspaceId);
+        public long GetExternalEditEpoch(string workspaceId) => _inner.GetExternalEditEpoch(workspaceId);
+        public bool ClearStaleIfNoExternalEditSince(string workspaceId, long observedEpoch) =>
+            _inner.ClearStaleIfNoExternalEditSince(workspaceId, observedEpoch);
         public void Dispose() => _inner.Dispose();
     }
 }

@@ -63,8 +63,29 @@ public interface IFileWatcherService : IDisposable
     /// </summary>
     void MarkStale(string workspaceId, string reason);
 
-    /// <summary>Clear the stale flag (called after reload).</summary>
+    /// <summary>Clear the stale flag unconditionally.</summary>
     void ClearStale(string workspaceId);
+
+    /// <summary>
+    /// Returns the count of <see cref="StaleReasons.ExternalEdit"/> marks recorded for the
+    /// workspace since it was watched (0 for an unknown workspace). The counter only grows; a
+    /// reload reads it BEFORE it starts reading disk and hands it to
+    /// <see cref="ClearStaleIfNoExternalEditSince"/> afterwards.
+    /// </summary>
+    long GetExternalEditEpoch(string workspaceId);
+
+    /// <summary>
+    /// Clears the stale flag only when no <see cref="StaleReasons.ExternalEdit"/> mark landed
+    /// after <paramref name="observedEpoch"/> was read. A reload calls this once its load
+    /// finished: an external edit observed while the load was reading disk may postdate the
+    /// bytes the load saw, so the workspace must stay stale. <see cref="StaleReasons.Apply"/> and
+    /// <see cref="StaleReasons.Restore"/> marks never advance the epoch: the server's own writes
+    /// are on disk before a reload starts, so the load already covers them. Returns
+    /// <see langword="true"/> when the flag was cleared; <see langword="false"/> when an external
+    /// edit intervened (nothing is changed: flag, reason and pending
+    /// <see cref="WaitForStaleAsync"/> waiters are left exactly as they were) or the workspace is unknown.
+    /// </summary>
+    bool ClearStaleIfNoExternalEditSince(string workspaceId, long observedEpoch);
 }
 
 /// <summary>

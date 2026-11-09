@@ -295,6 +295,16 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
         }
     }
 
+    public long GetExternalEditEpoch(string workspaceId)
+    {
+        return _watchers.TryGetValue(workspaceId, out var entry) ? entry.ExternalEditEpoch : 0;
+    }
+
+    public bool ClearStaleIfNoExternalEditSince(string workspaceId, long observedEpoch)
+    {
+        return _watchers.TryGetValue(workspaceId, out var entry) && entry.ClearStaleIfNoExternalEditSince(observedEpoch);
+    }
+
     public void Dispose()
     {
         foreach (var kvp in _watchers)
@@ -386,6 +396,9 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
     {
         private volatile bool _isStale;
         private string? _staleReason;
+        // Count of ExternalEdit marks; only grows, written under _reasonLock. Lets a reload detect
+        // an external edit that landed while its load was reading disk (see ClearStaleIfNoExternalEditSince).
+        private long _externalEditEpoch;
         private readonly object _reasonLock = new();
         private readonly Dictionary<string, byte[]?> _ownedConfigBytes = new(FileSystemPath.Comparer);
         // Intentionally unguarded: AddWatcher is called only from FileWatcherService.Watch() on a
@@ -406,6 +419,17 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
         public string RootDirectory { get; } = rootDirectory;
 
         public bool IsStale => _isStale;
+
+        public long ExternalEditEpoch
+        {
+            get
+            {
+                lock (_reasonLock)
+                {
+                    return _externalEditEpoch;
+                }
+            }
+        }
 
         public string? StaleReason
         {
@@ -635,9 +659,33 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
             {
                 _staleReason = reason;
                 _isStale = true;
+                if (reason == StaleReasons.ExternalEdit)
+                {
+                    _externalEditEpoch++;
+                }
                 // Release any awaiters parked on WaitForStaleAsync. TrySetResult is a no-op when
                 // the signal already fired earlier in this (not-yet-cleared) stale window.
                 _staleSignal.TrySetResult();
+            }
+        }
+
+        /// <summary>
+        /// Clears the slate unless an ExternalEdit mark advanced the epoch past
+        /// <paramref name="observedEpoch"/>. The check and the clear share one <c>_reasonLock</c>
+        /// section, so a mark cannot slip between them. A skipped clear touches nothing: the
+        /// signal stays completed (the entry is still stale), so no waiter is cancelled or leaked.
+        /// </summary>
+        public bool ClearStaleIfNoExternalEditSince(long observedEpoch)
+        {
+            lock (_reasonLock)
+            {
+                if (_externalEditEpoch != observedEpoch)
+                {
+                    return false;
+                }
+
+                ClearStale();
+                return true;
             }
         }
 

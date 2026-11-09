@@ -833,6 +833,19 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
             inner.ClearStale(workspaceId);
         }
 
+        public long GetExternalEditEpoch(string workspaceId) => inner.GetExternalEditEpoch(workspaceId);
+
+        public bool ClearStaleIfNoExternalEditSince(string workspaceId, long observedEpoch)
+        {
+            var cleared = inner.ClearStaleIfNoExternalEditSince(workspaceId, observedEpoch);
+            if (cleared)
+            {
+                Volatile.Write(ref _forcedStale, 0);
+            }
+
+            return cleared;
+        }
+
         public void Dispose() => inner.Dispose();
     }
 
