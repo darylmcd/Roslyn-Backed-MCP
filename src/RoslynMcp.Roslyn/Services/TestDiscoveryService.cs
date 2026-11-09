@@ -94,24 +94,20 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
         var solution = _workspaceManager.GetCurrentSolution(workspaceId);
         var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
 
-        IReadOnlyList<TestCaseDto> rawMatches = symbol is null
+        IReadOnlyList<(string Project, TestCaseDto Test)> rawMatches = symbol is null
             ? []
             : await CollectRelatedTestsAsync(discovery, solution, symbol, ct).ConfigureAwait(false);
 
-        // Project lookup so we can populate ProjectName on the envelope element type
-        // (RelatedTestCaseDto), matching test_related_files's shape.
-        var projectLookup = discovery.TestProjects
-            .SelectMany(p => p.Tests.Select(t => (t.FullyQualifiedName, p.ProjectName)))
-            .GroupBy(x => x.FullyQualifiedName, StringComparer.Ordinal)
-            .ToDictionary(g => g.Key, g => g.First().ProjectName, StringComparer.Ordinal);
-
+        // Each match carries its owning project (a test's identity is project + FQN), which
+        // populates ProjectName on the envelope element type (RelatedTestCaseDto), matching
+        // test_related_files's shape.
         var enriched = rawMatches
-            .Select(t => new RelatedTestCaseDto(
-                DisplayName: t.DisplayName,
-                FullyQualifiedName: t.FullyQualifiedName,
-                ProjectName: projectLookup.TryGetValue(t.FullyQualifiedName, out var p) ? p : string.Empty,
-                FilePath: t.FilePath,
-                Line: t.Line,
+            .Select(m => new RelatedTestCaseDto(
+                DisplayName: m.Test.DisplayName,
+                FullyQualifiedName: m.Test.FullyQualifiedName,
+                ProjectName: m.Project,
+                FilePath: m.Test.FilePath,
+                Line: m.Test.Line,
                 // Symbol-mode has no source file trigger — the trigger is the symbol itself.
                 TriggeredByFiles: []))
             .ToList();
@@ -176,7 +172,7 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
         return searchTerms;
     }
 
-    private async Task<IReadOnlyList<TestCaseDto>> CollectRelatedTestsAsync(
+    private async Task<IReadOnlyList<(string Project, TestCaseDto Test)>> CollectRelatedTestsAsync(
         TestDiscoveryDto discovery,
         Solution solution,
         ISymbol symbol,
@@ -195,25 +191,33 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
         return collected.Values.ToList();
     }
 
-    private static List<TestCaseDto> FlattenDiscoveredTests(TestDiscoveryDto discovery)
+    private static List<(string Project, TestCaseDto Test)> FlattenDiscoveredTests(TestDiscoveryDto discovery)
     {
-        return discovery.TestProjects.SelectMany(project => project.Tests).ToList();
+        return discovery.TestProjects
+            .SelectMany(project => project.Tests.Select(test => (project.ProjectName, test)))
+            .ToList();
     }
 
-    private static Dictionary<string, TestCaseDto> CollectHeuristicRelatedTests(
-        IReadOnlyList<TestCaseDto> discoveredTests,
+    /// <summary>
+    /// A discovered test's identity: owning project plus fully-qualified name. Two test
+    /// projects may declare the same namespace/type/method, so the FQN alone is not unique.
+    /// </summary>
+    private readonly record struct TestIdentity(string ProjectName, string FullyQualifiedName);
+
+    private static Dictionary<TestIdentity, (string Project, TestCaseDto Test)> CollectHeuristicRelatedTests(
+        IReadOnlyList<(string Project, TestCaseDto Test)> discoveredTests,
         IReadOnlySet<string> searchTerms)
     {
         // test-related-empty-for-valid-symbol: name heuristic misses tests that dispatch
         // through an interface (test method references `IService.Method()` but this symbol
         // is the concrete `MyService.Method`). Keep the heuristic as a fast path, then augment
         // it with the reference sweep below for interface-dispatched cases.
-        var collected = new Dictionary<string, TestCaseDto>(StringComparer.Ordinal);
-        foreach (var test in discoveredTests)
+        var collected = new Dictionary<TestIdentity, (string Project, TestCaseDto Test)>();
+        foreach (var (project, test) in discoveredTests)
         {
             if (searchTerms.Any(term => MatchesRelatedTestTerm(test, term)))
             {
-                collected[test.FullyQualifiedName] = test;
+                collected[new TestIdentity(project, test.FullyQualifiedName)] = (project, test);
             }
         }
 
@@ -230,8 +234,8 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
     private async Task TryAugmentRelatedTestsFromReferencesAsync(
         ISymbol symbol,
         Solution solution,
-        IReadOnlyList<TestCaseDto> discoveredTests,
-        Dictionary<string, TestCaseDto> collected,
+        IReadOnlyList<(string Project, TestCaseDto Test)> discoveredTests,
+        Dictionary<TestIdentity, (string Project, TestCaseDto Test)> collected,
         CancellationToken ct)
     {
         // Reference-based augmentation: collect files that contain a reference to `symbol`
@@ -245,7 +249,7 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
                 return;
             }
 
-            foreach (var test in discoveredTests)
+            foreach (var (project, test) in discoveredTests)
             {
                 if (string.IsNullOrWhiteSpace(test.FilePath))
                 {
@@ -254,7 +258,7 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
 
                 if (referencedFilePaths.Contains(Path.GetFullPath(test.FilePath)))
                 {
-                    collected.TryAdd(test.FullyQualifiedName, test);
+                    collected.TryAdd(new TestIdentity(project, test.FullyQualifiedName), (project, test));
                 }
             }
         }
@@ -474,12 +478,12 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
                 ct.ThrowIfCancellationRequested();
                 var referencedTestFiles = await CollectReferencedTestFilesAsync(symbol, solution, testFilePaths, ct)
                     .ConfigureAwait(false);
-                foreach (var (_, test) in allTests)
+                foreach (var (project, test) in allTests)
                 {
                     if (!string.IsNullOrWhiteSpace(test.FilePath) &&
                         referencedTestFiles.Contains(Path.GetFullPath(test.FilePath)))
                     {
-                        AddTrigger(state, test.FullyQualifiedName, filePath, RelatedTestMatchRank.DirectReference);
+                        AddTrigger(state, new TestIdentity(project, test.FullyQualifiedName), filePath, RelatedTestMatchRank.DirectReference);
                     }
                 }
             }
@@ -562,14 +566,14 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
         IReadOnlyList<(string Project, TestCaseDto Test)> allTests)
     {
         var perFileMatchCount = 0;
-        foreach (var (_, test) in allTests)
+        foreach (var (project, test) in allTests)
         {
             if (!TestMatchesAnyTerm(test, searchTerms))
             {
                 continue;
             }
 
-            AddTrigger(state, test.FullyQualifiedName, filePath, RelatedTestMatchRank.NameAffinity);
+            AddTrigger(state, new TestIdentity(project, test.FullyQualifiedName), filePath, RelatedTestMatchRank.NameAffinity);
             perFileMatchCount++;
         }
         return perFileMatchCount;
@@ -599,13 +603,13 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
 
         state.FallbackHeuristicsAttempted.AddRange(fallbackHeuristics);
 
-        foreach (var (filePath, test) in referenceMatches)
+        foreach (var (filePath, project, test) in referenceMatches)
         {
-            AddTrigger(state, test.FullyQualifiedName, filePath, RelatedTestMatchRank.InboundReference);
+            AddTrigger(state, new TestIdentity(project, test.FullyQualifiedName), filePath, RelatedTestMatchRank.InboundReference);
         }
-        foreach (var (filePath, test) in neighborMatches)
+        foreach (var (filePath, project, test) in neighborMatches)
         {
-            AddTrigger(state, test.FullyQualifiedName, filePath, RelatedTestMatchRank.NamespaceNeighbor);
+            AddTrigger(state, new TestIdentity(project, test.FullyQualifiedName), filePath, RelatedTestMatchRank.NamespaceNeighbor);
         }
 
         if (state.Matches.Count > 0)
@@ -623,13 +627,17 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
         RelatedFileMatchState state,
         int maxResults)
     {
-        var projectLookup = discovery.TestProjects
-            .SelectMany(p => p.Tests.Select(t => (t.FullyQualifiedName, p.ProjectName)))
-            .ToDictionary(x => x.FullyQualifiedName, x => x.ProjectName, StringComparer.Ordinal);
-
-        var testCaseLookup = discovery.TestProjects
-            .SelectMany(p => p.Tests)
-            .ToDictionary(t => t.FullyQualifiedName, StringComparer.Ordinal);
+        // Keyed by (project, FQN): equal FQNs in separate test projects are distinct tests.
+        // TryAdd: overloads or partial declarations inside ONE project can legitimately share
+        // an FQN; they collapse to one identity (first declaration supplies file/line).
+        var testCaseLookup = new Dictionary<TestIdentity, TestCaseDto>();
+        foreach (var project in discovery.TestProjects)
+        {
+            foreach (var test in project.Tests)
+            {
+                testCaseLookup.TryAdd(new TestIdentity(project.ProjectName, test.FullyQualifiedName), test);
+            }
+        }
 
         var total = state.Matches.Count;
         var results = state.Matches
@@ -639,11 +647,10 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
             .Select(kv =>
             {
                 var test = testCaseLookup.TryGetValue(kv.Key, out var t) ? t : null;
-                var projectName = projectLookup.TryGetValue(kv.Key, out var pn) ? pn : string.Empty;
                 return new RelatedTestCaseDto(
-                    DisplayName: test?.DisplayName ?? kv.Key,
-                    FullyQualifiedName: kv.Key,
-                    ProjectName: projectName,
+                    DisplayName: test?.DisplayName ?? kv.Key.FullyQualifiedName,
+                    FullyQualifiedName: kv.Key.FullyQualifiedName,
+                    ProjectName: kv.Key.ProjectName,
                     FilePath: test?.FilePath,
                     Line: test?.Line,
                     TriggeredByFiles: kv.Value.TriggeredByFiles.Distinct().ToList());
@@ -675,7 +682,7 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
 
     private sealed class RelatedFileMatchState
     {
-        public Dictionary<string, RelatedFileTestMatch> Matches { get; } = new(StringComparer.Ordinal);
+        public Dictionary<TestIdentity, RelatedFileTestMatch> Matches { get; } = new();
         public List<string> MissReasons { get; } = [];
         public bool AnyDocumentResolved { get; set; }
         public bool DirectReferenceAttempted { get; set; }
@@ -707,14 +714,14 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
 
     private static void AddTrigger(
         RelatedFileMatchState state,
-        string fqn,
+        TestIdentity identity,
         string filePath,
         RelatedTestMatchRank rank)
     {
-        if (!state.Matches.TryGetValue(fqn, out var match))
+        if (!state.Matches.TryGetValue(identity, out var match))
         {
             match = new RelatedFileTestMatch(rank, state.NextSequence++);
-            state.Matches[fqn] = match;
+            state.Matches[identity] = match;
         }
         else if (rank < match.Rank)
         {
@@ -762,8 +769,8 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
     /// Results from both expansions are de-duplicated by the caller via <c>AddTrigger</c>.
     /// </summary>
     private async Task<(
-        List<(string FilePath, TestCaseDto Test)> ReferenceMatches,
-        List<(string FilePath, TestCaseDto Test)> NeighborMatches,
+        List<(string FilePath, string Project, TestCaseDto Test)> ReferenceMatches,
+        List<(string FilePath, string Project, TestCaseDto Test)> NeighborMatches,
         List<string> Heuristics)> CollectFallbackMatchesAsync(
             IReadOnlyList<(string FilePath, Document Document, SyntaxNode Root)> resolvedDocuments,
             Solution solution,
@@ -771,8 +778,8 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
             HashSet<string> testFilePaths,
             CancellationToken ct)
     {
-        var referenceMatches = new List<(string FilePath, TestCaseDto Test)>();
-        var neighborMatches = new List<(string FilePath, TestCaseDto Test)>();
+        var referenceMatches = new List<(string FilePath, string Project, TestCaseDto Test)>();
+        var neighborMatches = new List<(string FilePath, string Project, TestCaseDto Test)>();
         var heuristics = new List<string>();
 
         var referenceAttempted = false;
@@ -861,7 +868,7 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
         Solution solution,
         IReadOnlyList<(string Project, TestCaseDto Test)> allTests,
         HashSet<string> testFilePaths,
-        List<(string FilePath, TestCaseDto Test)> referenceMatches,
+        List<(string FilePath, string Project, TestCaseDto Test)> referenceMatches,
         CancellationToken ct)
     {
         try
@@ -916,14 +923,14 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
         string filePath,
         IReadOnlyList<(string Project, TestCaseDto Test)> allTests,
         HashSet<string> referencedTestFiles,
-        List<(string FilePath, TestCaseDto Test)> referenceMatches)
+        List<(string FilePath, string Project, TestCaseDto Test)> referenceMatches)
     {
-        foreach (var (_, test) in allTests)
+        foreach (var (project, test) in allTests)
         {
             if (!string.IsNullOrWhiteSpace(test.FilePath) &&
                 referencedTestFiles.Contains(Path.GetFullPath(test.FilePath)))
             {
-                referenceMatches.Add((filePath, test));
+                referenceMatches.Add((filePath, project, test));
             }
         }
     }
@@ -933,16 +940,16 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
         IReadOnlyList<INamedTypeSymbol> declaredTypeSymbols,
         Project project,
         IReadOnlyList<(string Project, TestCaseDto Test)> allTests,
-        List<(string FilePath, TestCaseDto Test)> neighborMatches)
+        List<(string FilePath, string Project, TestCaseDto Test)> neighborMatches)
     {
         try
         {
             var neighborTerms = CollectNamespaceNeighborTerms(declaredTypeSymbols, project);
-            foreach (var (_, test) in allTests)
+            foreach (var (testProject, test) in allTests)
             {
                 if (TestMatchesAnyTerm(test, neighborTerms))
                 {
-                    neighborMatches.Add((filePath, test));
+                    neighborMatches.Add((filePath, testProject, test));
                 }
             }
         }
