@@ -1,6 +1,6 @@
 # cross-project-public-refusals-echo-input — Remove caller detail from public cross-project refusals
 
-**row:** `cross-project-public-refusals-echo-input` · **pri:** `Medium` · **size:** `S`
+**row:** `cross-project-public-refusals-echo-input` · **pri:** `Defer` · **size:** `S`
 
 ## Anchors
 
