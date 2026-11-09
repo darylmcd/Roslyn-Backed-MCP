@@ -123,9 +123,12 @@ internal static class ToolErrorHandler
                 BuildSafeArgumentMessage(argument),
                 ParamName: argument.ParamName);
         },
-        [typeof(TimeoutException)] = (_, _) => new(ErrorCategories.Timeout,
-            "The operation timed out. For build/test operations, increase ROSLYNMCP_BUILD_TIMEOUT_SECONDS or " +
-            "ROSLYNMCP_TEST_TIMEOUT_SECONDS. For other operations, increase ROSLYNMCP_REQUEST_TIMEOUT_SECONDS."),
+        [typeof(TimeoutException)] = (ex, _) => new(ErrorCategories.Timeout,
+            ex is OperationTimeoutException timed
+                ? $"The {timed.Timer} timer expired after {timed.ElapsedDuration.TotalSeconds:F1}s " +
+                  $"(configured for {timed.ConfiguredDuration.TotalSeconds:F1}s). " +
+                  $"Increase {timed.EnvironmentKnob} if this operation needs more time."
+                : "The operation timed out."),
         // preview-token-stale-across-auto-reload: a *_apply call whose paired preview was
         // invalidated by an auto-reload version bump (InvalidateOnVersionBump) or TTL
         // expiry surfaces as PreviewTokenStaleException instead of the legacy bare
@@ -617,9 +620,7 @@ internal static class ToolErrorHandler
             ["message"] = info.Message,
             // Public arguments preserve their trusted released identity; other public-message
             // exceptions report their BCL base name.
-            ["exceptionType"] = ex is PublicArgumentException publicArgument
-                ? publicArgument.WireExceptionType
-                : ex is IPublicMessageException ? ex.GetType().BaseType!.Name : ex.GetType().Name,
+            ["exceptionType"] = WireExceptionType(ex),
         };
 
         if (extraFieldName is not null)
@@ -629,6 +630,14 @@ internal static class ToolErrorHandler
 
         return envelope.ToJsonString(JsonDefaults.Indented);
     }
+
+    private static string WireExceptionType(Exception ex) => ex switch
+    {
+        OperationTimeoutException => nameof(TimeoutException),
+        PublicArgumentException publicArgument => publicArgument.WireExceptionType,
+        IPublicMessageException => ex.GetType().BaseType!.Name,
+        _ => ex.GetType().Name,
+    };
 
     internal static string FormatErrorResponse(ErrorInfo info, string toolName, Exception ex)
     {

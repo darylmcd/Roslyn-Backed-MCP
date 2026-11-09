@@ -93,6 +93,37 @@ public sealed class ToolErrorHandlerSpecificityTests
     }
 
     [TestMethod]
+    public void PlainTimeout_HasGenericKnobFreeEnvelope()
+    {
+        using var json = JsonDocument.Parse(ToolErrorHandler.ClassifyAndFormat(
+            new TimeoutException("private path and caller filter"), "test_run"));
+        var envelope = json.RootElement;
+        Assert.AreEqual("Timeout", envelope.GetProperty("category").GetString());
+        Assert.AreEqual("TimeoutException", envelope.GetProperty("exceptionType").GetString());
+        var message = envelope.GetProperty("message").GetString()!;
+        StringAssert.Contains(message, "timed out");
+        Assert.IsFalse(message.Contains("ROSLYNMCP_", StringComparison.Ordinal));
+        Assert.IsFalse(message.Contains("private", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void RequestTimeout_RendersOnlySafeTimerFields()
+    {
+        var timeout = new OperationTimeoutException(OperationTimeoutTimer.Request,
+            TimeSpan.FromMinutes(2), TimeSpan.FromMinutes(2),
+            new OperationCanceledException("private path and caller filter"));
+        using var json = JsonDocument.Parse(ToolErrorHandler.ClassifyAndFormat(timeout, "test_run"));
+        var envelope = json.RootElement;
+        Assert.AreEqual("Timeout", envelope.GetProperty("category").GetString());
+        Assert.AreEqual("TimeoutException", envelope.GetProperty("exceptionType").GetString());
+        var message = envelope.GetProperty("message").GetString()!;
+        StringAssert.Contains(message, "ROSLYNMCP_REQUEST_TIMEOUT_SECONDS");
+        Assert.IsFalse(message.Contains("ROSLYNMCP_BUILD_TIMEOUT_SECONDS", StringComparison.Ordinal));
+        Assert.IsFalse(message.Contains("ROSLYNMCP_TEST_TIMEOUT_SECONDS", StringComparison.Ordinal));
+        Assert.IsFalse(message.Contains("private", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
     public async Task UnknownWorkspaceId_AfterAutoReload_ReportsWorkspaceNotFoundEnvelope()
     {
         // 4.x classified a workspace miss that raced an in-call auto-reload as

@@ -62,6 +62,9 @@ public sealed class TestRunTimeoutWireTests : SharedWorkspaceTestBase
         Assert.AreEqual("test_run", envelope["tool"]?.GetValue<string>());
         Assert.IsNotNull(envelope["_meta"]);
         StringAssert.Contains(envelope["message"]?.GetValue<string>(), "ROSLYNMCP_REQUEST_TIMEOUT_SECONDS");
+        Assert.IsFalse(envelope["message"]!.GetValue<string>().Contains("ROSLYNMCP_BUILD_TIMEOUT_SECONDS", StringComparison.Ordinal));
+        Assert.IsFalse(envelope["message"]!.GetValue<string>().Contains("ROSLYNMCP_TEST_TIMEOUT_SECONDS", StringComparison.Ordinal));
+        Assert.AreEqual("TimeoutException", envelope["exceptionType"]?.GetValue<string>());
         Assert.AreEqual(protocol is null ? "complete" : null, wireResult["resultType"]?.GetValue<string>());
 
         var retry = await harness.Client.CallToolAsync("test_run",
