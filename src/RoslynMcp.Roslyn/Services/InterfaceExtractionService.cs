@@ -244,27 +244,22 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
 
         foreach (var project in solution.Projects)
         {
+            Compilation compilation;
             try
             {
-                var comp = await _compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
-                if (comp?.GetTypeByMetadataName(fullyQualifiedInterfaceName) is not null)
-                {
-                    throw new InvalidOperationException(
-                        $"Type '{interfaceName}' already exists in project '{project.Name}' " +
-                        $"(namespace '{namespaceName}'). Choose a different interface name to avoid conflicts.");
-                }
+                compilation = await InterfaceConflictCompilation.RequireAsync(
+                    workspaceId, _compilationCache, project, ct).ConfigureAwait(false);
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            catch (PublicInvalidOperationException)
             {
-                // GetCompilationAsync ultimately re-reads source documents from disk; a file
-                // deleted/locked out from under the live solution snapshot between the caller's
-                // GetCurrentSolution() and this read is the realistic failure mode here (matches
-                // the IOException/UnauthorizedAccessException narrowing used elsewhere in this
-                // codebase for compile/file-retrieval catches, e.g. NuGetDependencyService,
-                // RestoreStalenessDetector). Warn — not Debug — because this project's conflict
-                // check is silently skipped, which is a real degradation of the guarantee this
-                // method exists to provide.
-                _logger.LogWarning(ex, "Skipping conflict check in project '{ProjectName}': compilation could not be retrieved", project.Name);
+                _logger.LogWarning("Interface conflict check could not obtain compilation for project '{ProjectName}'", project.Name);
+                throw;
+            }
+            if (compilation.GetTypeByMetadataName(fullyQualifiedInterfaceName) is not null)
+            {
+                throw new InvalidOperationException(
+                    $"Type '{interfaceName}' already exists in project '{project.Name}' " +
+                    $"(namespace '{namespaceName}'). Choose a different interface name to avoid conflicts.");
             }
         }
     }

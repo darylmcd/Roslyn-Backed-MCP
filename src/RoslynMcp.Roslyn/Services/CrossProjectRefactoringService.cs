@@ -446,8 +446,9 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
 
         foreach (var project in solution.Projects)
         {
-            var compilation = await compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
-            if (compilation?.GetTypeByMetadataName(fullyQualifiedName) is not null)
+            var compilation = await InterfaceConflictCompilation.RequireAsync(
+                workspaceId, compilationCache, project, ct).ConfigureAwait(false);
+            if (compilation.GetTypeByMetadataName(fullyQualifiedName) is not null)
             {
                 throw new PublicInvalidOperationException(
                     $"Type '{typeName}' already exists in project '{project.Name}' " +

@@ -499,10 +499,10 @@ public sealed class ExtractInterfaceSemanticUsingsTests : TestBase
     {
         // Backlog: interface-extraction-conflict-check-hardening (PR #1179 code-quality
         // review). Proves the ICompilationCache-routed conflict check in
-        // ValidateNoConflictsAsync (InterfaceExtractionService.cs ~393-421) still detects a
+        // ValidateNoConflictsAsync still detects a
         // same-name collision: pre-create an UNRELATED type with the exact name the extraction
         // would produce, in the target type's namespace. The target type does not implement
-        // that type, so the "already implements" no-op short-circuit (line ~69-78) is not
+        // that type, so the "already implements" no-op short-circuit is not
         // taken and the conflict check must run and throw.
         var copiedSolutionPath = CreateSampleSolutionCopy();
         var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
