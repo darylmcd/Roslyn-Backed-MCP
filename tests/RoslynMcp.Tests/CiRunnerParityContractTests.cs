@@ -414,7 +414,7 @@ public sealed class CiRunnerParityContractTests
         Assert.IsFalse(header.Contains("sdk_floor", StringComparison.Ordinal));
         StringAssert.Contains(GetNamedStepBlock(quality, "Check out repository"), "fetch-depth: 0");
         var setup = GetNamedStepBlock(quality, "Set up .NET");
-        StringAssert.Contains(setup, "actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68");
+        StringAssert.Contains(setup, "actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73");
         StringAssert.Contains(setup, "dotnet-version: 10.0.x");
 
         const string auditCall = "./eng/verify-nuget-audit.ps1 -SolutionPath RoslynMcp.slnx";
