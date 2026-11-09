@@ -6,12 +6,12 @@ namespace RoslynMcp.Tests;
 public class DiffGeneratorTests
 {
     [TestMethod]
-    public void Identical_Texts_Returns_Header_Only()
+    public void Identical_Texts_Returns_Empty_String()
     {
         // format-document-preview-empty-diff-instead-of-noop (gh #739): identical inputs now
         // produce string.Empty rather than a header-only string. This aligns the impl with the
         // <returns> docstring ("or an empty string if there are no differences") and prevents
-        // callers (e.g. SolutionDiffHelper.TryAdd) from misreading no-op formatter passes as
+        // callers (e.g. SolutionDiffHelper.ComputeChangesAsync) from misreading no-op formatter passes as
         // pending changes. Pre-fix this test asserted the broken header-only behavior.
         var result = DiffGenerator.GenerateUnifiedDiff("hello\n", "hello\n", "test.cs");
         Assert.AreEqual(string.Empty, result);
@@ -30,13 +30,9 @@ public class DiffGeneratorTests
     public void GenerateUnifiedDiff_NoOpFormat_ProducesNoChangesEntry()
     {
         // format-document-preview-empty-diff-instead-of-noop (gh #739) repro: a Roslyn-formatted
-        // pass where the formatted text is identical to the input still produces distinct
-        // SourceText instances; SolutionDiffHelper.ComputeChangesAsync extracts strings and
-        // calls DiffGenerator. Even if the upstream `oldText == newText` guard misses (e.g.
-        // due to SourceText-level identity differences that materialize as identical strings
-        // here), DiffGenerator now returns string.Empty so the resulting FileChangeDto never
-        // makes it past SolutionDiffHelper.TryAdd's IsNullOrEmpty guard. Callers see
-        // `changes: []` for no-op format passes.
+        // pass with identical text must not create a header-only diff. The solution helper
+        // also compares full strings before invoking the generator; this pins the shared
+        // generator's no-op contract for callers that use it directly.
         const string text = "namespace N { class C { void M() { } } }\n";
         var result = DiffGenerator.GenerateUnifiedDiff(text, text, "C.cs");
         Assert.AreEqual(string.Empty, result);
@@ -51,6 +47,65 @@ public class DiffGeneratorTests
         StringAssert.Contains(result, "@@");
         StringAssert.Contains(result, "-old line");
         StringAssert.Contains(result, "+new line");
+    }
+
+    [TestMethod]
+    [DataRow("class C { }\n", " class C { }\n")]
+    [DataRow("class C { }\n", "class C { } \n")]
+    [DataRow("class C { }\n", " class D { } \n")]
+    public void Whitespace_Changes_Produce_Visible_Hunks(string before, string after)
+    {
+        var result = DiffGenerator.GenerateUnifiedDiff(before, after, "C.cs");
+        StringAssert.Contains(result, "@@");
+        StringAssert.Contains(result, $"-{before.Split('\n')[0]}");
+        StringAssert.Contains(result, $"+{after.Split('\n')[0]}");
+    }
+
+    [TestMethod]
+    public void Whitespace_Only_Line_Produces_Visible_Hunk()
+    {
+        var result = DiffGenerator.GenerateUnifiedDiff("a\n\n", "a\n  \n", "C.cs");
+        StringAssert.Contains(result, "@@");
+        StringAssert.Contains(result, "-\n");
+        StringAssert.Contains(result, "+  \n");
+    }
+
+    [TestMethod]
+    public void Line_Ending_Only_Change_Produces_Visible_Hunk()
+    {
+        var result = DiffGenerator.GenerateUnifiedDiff("a\r\nb\r\n", "a\nb\n", "C.cs");
+        StringAssert.Contains(result, "@@");
+        StringAssert.Contains(result, "-a\r\n");
+        StringAssert.Contains(result, "+a\n");
+    }
+
+    [TestMethod]
+    public void Cr_Only_Line_Ending_Change_Uses_Separated_Diff_Records()
+    {
+        var result = DiffGenerator.GenerateUnifiedDiff("a\rb\r", "a\nb\n", "C.cs");
+        StringAssert.Contains(result, "-a\n\\ Line ending: CR\n");
+        StringAssert.Contains(result, "+a\n");
+        StringAssert.Contains(result, "-b\n\\ Line ending: CR\n");
+        Assert.IsFalse(result.Contains("-a\r-b"), "Carriage returns must not join two diff records.");
+    }
+
+    [TestMethod]
+    public void Mixed_Line_Endings_Preserve_Unchanged_Context()
+    {
+        var result = DiffGenerator.GenerateUnifiedDiff("a\rb\nc\r", "a\nb\nc\n", "C.cs");
+        StringAssert.Contains(result, "-a\n\\ Line ending: CR\n");
+        StringAssert.Contains(result, " b\n");
+        StringAssert.Contains(result, "-c\n\\ Line ending: CR\n");
+    }
+
+    [TestMethod]
+    [DataRow("a", "a\n")]
+    [DataRow("a\n", "a")]
+    public void Final_Newline_Only_Change_Produces_Visible_Hunk(string before, string after)
+    {
+        var result = DiffGenerator.GenerateUnifiedDiff(before, after, "C.cs");
+        StringAssert.Contains(result, "@@");
+        StringAssert.Contains(result, "\\ No newline at end of file");
     }
 
     [TestMethod]
@@ -114,8 +169,7 @@ public class DiffGeneratorTests
     [TestMethod]
     public void CrlfLineEndings_RoundTripCleanly()
     {
-        // Mixed LF/CRLF inputs: diff should still produce a coherent hunk with the right
-        // before/after lines. (DiffPlex normalizes line endings internally; verify no leak.)
+        // Content edits in CRLF text retain coherent before/after lines.
         var result = DiffGenerator.GenerateUnifiedDiff("alpha\r\nbeta\r\n", "alpha\r\nBETA\r\n", "crlf.cs");
         StringAssert.Contains(result, "-beta");
         StringAssert.Contains(result, "+BETA");

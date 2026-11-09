@@ -116,8 +116,7 @@ internal static class SolutionDiffHelper
                 throw new PublicInvalidOperationException($"Linked C# documents at '{Path.GetFileName(group.First().FilePath)}' have divergent preview diffs.");
             var candidate = group.First();
             var diff = DiffGenerator.GenerateUnifiedDiff(candidate.Before, candidate.After, candidate.FilePath);
-            // format-document-preview-empty-diff-instead-of-noop (gh #739): a formatter can hand
-            // us distinct SourceText instances whose final strings are equal.
+            // Keep empty diffs out of solution previews (including a no-op formatter pass).
             if (string.IsNullOrEmpty(diff)) continue;
             var change = new FileChangeDto(candidate.FilePath, diff);
             if (totalChars + change.UnifiedDiff.Length > DefaultMaxTotalChars)

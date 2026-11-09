@@ -1,6 +1,7 @@
 using DiffPlex;
 using DiffPlex.DiffBuilder;
 using DiffPlex.DiffBuilder.Model;
+using RoslynMcp.Core.Services;
 
 namespace RoslynMcp.Roslyn.Helpers;
 
@@ -9,6 +10,11 @@ namespace RoslynMcp.Roslyn.Helpers;
 /// </summary>
 public static class DiffGenerator
 {
+    private const char LfMarker = '\uE000';
+    private const char CrLfMarker = '\uE001';
+    private const char CrMarker = '\uE002';
+    private const char NoNewlineMarker = '\uE003';
+
     /// <summary>
     /// FLAG-6A: hard cap on per-file diff size in characters. If a generated diff would
     /// exceed this, the remainder is truncated with a marker. Caller-facing protection
@@ -32,14 +38,24 @@ public static class DiffGenerator
     /// <returns>A string containing the unified diff, or an empty string if there are no differences.</returns>
     public static string GenerateUnifiedDiff(string oldText, string newText, string filePath, int maxChars = DefaultMaxDiffChars)
     {
+        if (oldText == newText)
+        {
+            return string.Empty;
+        }
+
         var diffBuilder = new InlineDiffBuilder(new Differ());
-        var diff = diffBuilder.BuildDiffModel(oldText, newText);
+        // DiffPlex's default ignores whitespace and its line splitter discards terminators.
+        // Keep each line's terminator in its comparison token so every stored text change
+        // (including CRLF/LF and the final newline) is represented by a changed line.
+        var diff = diffBuilder.BuildDiffModel(EncodeLines(oldText), EncodeLines(newText), ignoreWhitespace: false);
 
         var sb = new System.Text.StringBuilder();
         sb.AppendLine($"--- a/{filePath}");
         sb.AppendLine($"+++ b/{filePath}");
 
-        var lines = diff.Lines;
+        // DiffPlex represents an empty input with an empty pseudo-line. Encoded real lines
+        // always carry a terminator marker, so omit only that pseudo-line.
+        var lines = diff.Lines.Where(line => line.Text.Length > 0).ToList();
         int i = 0;
         var truncated = false;
         var hunksWritten = 0;
@@ -77,7 +93,7 @@ public static class DiffGenerator
                     ChangeType.Deleted => "-",
                     _ => " "
                 };
-                hunk.AppendLine($"{prefix}{lines[j].Text}");
+                AppendSourceLine(hunk, prefix, lines[j].Text);
             }
 
             if (maxChars > 0 && sb.Length + hunk.Length > maxChars)
@@ -100,17 +116,73 @@ public static class DiffGenerator
             sb.AppendLine($"# Re-read the full file with the Read tool or rerun with a smaller scope.");
         }
 
-        // format-document-preview-empty-diff-instead-of-noop (gh #739): when both texts are
-        // identical (or yielded only Unchanged lines), return string.Empty rather than the
-        // header-only string. This honors the docstring contract ("or an empty string if
-        // there are no differences") and lets callers — including SolutionDiffHelper.TryAdd
-        // and downstream `changes.length` checks — treat no-op formatter passes as no-ops.
+        // Retain the no-change contract even if a diff builder yields only unchanged lines.
         if (hunksWritten == 0 && !truncated)
         {
             return string.Empty;
         }
 
         return sb.ToString();
+    }
+
+    private static string EncodeLines(string text)
+    {
+        if (text.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        var lines = new List<string>();
+        var start = 0;
+        for (var i = 0; i < text.Length; i++)
+        {
+            if (text[i] != '\r' && text[i] != '\n')
+            {
+                continue;
+            }
+
+            var ending = text[i] == '\r'
+                ? i + 1 < text.Length && text[i + 1] == '\n' ? CrLfMarker : CrMarker
+                : LfMarker;
+            lines.Add(text[start..i] + ending);
+            if (ending == CrLfMarker)
+            {
+                i++;
+            }
+            start = i + 1;
+        }
+
+        if (start < text.Length)
+        {
+            lines.Add(text[start..] + NoNewlineMarker);
+        }
+
+        return string.Join('\n', lines);
+    }
+
+    private static void AppendSourceLine(System.Text.StringBuilder hunk, string prefix, string encodedLine)
+    {
+        hunk.Append(prefix).Append(encodedLine.AsSpan(0, encodedLine.Length - 1));
+        switch (encodedLine[^1])
+        {
+            case LfMarker:
+                hunk.Append('\n');
+                break;
+            case CrLfMarker:
+                hunk.Append("\r\n");
+                break;
+            case CrMarker:
+                // A bare CR cannot delimit unified-diff records. Use LF for the record
+                // boundary and state the original terminator explicitly.
+                hunk.Append("\n\\ Line ending: CR\n");
+                break;
+            case NoNewlineMarker:
+                hunk.AppendLine();
+                hunk.AppendLine("\\ No newline at end of file");
+                break;
+            default:
+                throw InvalidOperationErrors.Internal("Diff line is missing its terminator marker.");
+        }
     }
 
     /// <summary>

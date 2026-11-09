@@ -142,6 +142,30 @@ public sealed class PreviewMultiFileEditSyntaxRegressionTests : IsolatedWorkspac
         Assert.AreEqual(viaSolution.Description, viaWorkspace.Description);
     }
 
+    [TestMethod]
+    public async Task WhitespaceOnlyEdit_PreviewHasHunk_AndApplyWritesExactText()
+    {
+        var edit = NewEditService();
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var filePath = workspace.GetPath("SampleLib", "Dog.cs");
+        var before = await File.ReadAllTextAsync(filePath, CancellationToken.None);
+        var edits = new[]
+        {
+            new FileEditsDto(filePath, new[] { new TextEditDto(1, 1, 1, 1, " ") }),
+        };
+
+        var preview = await edit.PreviewMultiFileTextEditsAsync(workspace.WorkspaceId, edits, CancellationToken.None);
+        var diff = preview.Changes.Single().UnifiedDiff;
+        StringAssert.Contains(diff, "@@");
+        StringAssert.Contains(diff, $"-{before.Split('\n')[0].TrimEnd('\r')}");
+        StringAssert.Contains(diff, $"+ {before.Split('\n')[0].TrimEnd('\r')}");
+
+        var applied = await edit.ApplyMultiFileTextEditsAsync(
+            workspace.WorkspaceId, edits, "apply_multi_file_edit", CancellationToken.None);
+        Assert.IsTrue(applied.Success);
+        Assert.AreEqual(" " + before, await File.ReadAllTextAsync(filePath, CancellationToken.None));
+    }
+
     private static EditService NewEditService() => new(
         WorkspaceManager,
         NullLogger<EditService>.Instance,
