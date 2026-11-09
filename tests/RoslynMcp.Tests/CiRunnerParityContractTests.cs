@@ -124,22 +124,24 @@ public sealed class CiRunnerParityContractTests
     /// <summary>
     /// The router's docs-only/rename/count-mismatch classification behavior itself is table-tested
     /// in <see cref="CiTopologyDecisionContractTests"/>. This is the surviving integration sentinel:
-    /// it proves the `validate` job's steps actually gate on the `route` job's <c>docs_only</c>
-    /// output rather than silently ignoring it.
+    /// it proves the `validate` job consumes the `route` job's <c>docs_only</c> output to pick the
+    /// docs-route cache writer, and never to thin the release verifier or the test class set.
     /// </summary>
     [TestMethod]
     public void ValidateJob_GatesStepsOnTheRoutedDocsOnlyOutput()
     {
         var validate = GetJobBlock(LoadCiWorkflow(), "validate");
         var releaseStep = GetNamedStepBlock(validate, "Verify release build (pull request)");
+        var cacheWriter = GetNamedStepBlock(validate, "Prepare NuGet cache for persistence");
 
         StringAssert.Contains(validate, "if: matrix.leg.artifact_owner == true");
         StringAssert.Contains(validate, "if: github.event_name == 'pull_request'");
-        StringAssert.Contains(validate, "DOCS_ONLY: ${{ needs.route.outputs.docs_only }}");
-        StringAssert.Contains(validate, "$env:DOCS_ONLY -eq 'true'");
+        StringAssert.Contains(
+            cacheWriter,
+            "(needs.route.outputs.docs_only == 'true' && matrix.leg.artifact_owner == true)");
         Assert.IsFalse(
-            releaseStep.Contains("if: needs.route.outputs.docs_only != 'true'", StringComparison.Ordinal),
-            "Policy-only documentation must still execute the complete test class set.");
+            releaseStep.Contains("docs_only", StringComparison.OrdinalIgnoreCase),
+            "The pull-request release step must not vary with the docs route: the artifact owner runs every release gate and every route runs the complete test class set.");
     }
 
     [TestMethod]
@@ -156,11 +158,9 @@ public sealed class CiRunnerParityContractTests
         StringAssert.Contains(releaseStep, "TEST_SHARD_INDEX: ${{ matrix.leg.test_shard_index }}");
         StringAssert.Contains(releaseStep, "TEST_SHARD_COUNT: ${{ matrix.leg.test_shard_count }}");
         StringAssert.Contains(releaseStep, "ARTIFACT_OWNER: ${{ matrix.leg.artifact_owner }}");
-        StringAssert.Contains(releaseStep, "DOCS_ONLY: ${{ needs.route.outputs.docs_only }}");
         StringAssert.Contains(releaseStep, "TestShardIndex = [int]$env:TEST_SHARD_INDEX");
         StringAssert.Contains(releaseStep, "TestShardCount = [int]$env:TEST_SHARD_COUNT");
-        StringAssert.Contains(releaseStep, "if ($env:ARTIFACT_OWNER -ne 'true' -or");
-        StringAssert.Contains(releaseStep, "$env:DOCS_ONLY -eq 'true')");
+        StringAssert.Contains(releaseStep, "if ($env:ARTIFACT_OWNER -ne 'true') {");
         StringAssert.Contains(releaseStep, "$parameters.TestShardOnly = $true");
         StringAssert.Contains(releaseStep, "./eng/verify-release.ps1 @parameters");
         Assert.IsFalse(releaseStep.Contains("--filter", StringComparison.Ordinal));
@@ -290,17 +290,45 @@ public sealed class CiRunnerParityContractTests
         StringAssert.Contains(gate, "$sdkFloorResult -ne 'skipped'");
     }
 
+    /// <summary>
+    /// Docs-tier files feed release gates: THIRD-PARTY-NOTICES.md (restored-license verification),
+    /// src/RoslynMcp.Host.Stdio/README.md (registry ownership marker), CHANGELOG.md (version drift,
+    /// breaking-version bump) and allowlisted plugin files (package allowlist). The docs route's
+    /// artifact owner therefore runs the complete release verifier, exactly as the code route and
+    /// local `just ci` do, rather than a hand-picked subset of its gates.
+    /// </summary>
     [TestMethod]
-    public void DocsRoute_RunsTheReleaseVersionGatesThatGuardChangelog()
+    public void DocsRoute_ArtifactOwnerRunsTheCompleteReleaseVerifier()
     {
         var validate = GetJobBlock(LoadCiWorkflow(), "validate");
-        var gates = GetNamedStepBlock(validate, "Verify release version gates");
+        var releaseStep = GetNamedStepBlock(validate, "Verify release build (pull request)");
 
-        StringAssert.Contains(
-            gates,
-            "if: matrix.leg.artifact_owner == true && needs.route.outputs.docs_only == 'true'");
-        StringAssert.Contains(gates, "./eng/verify-version-drift.ps1");
-        StringAssert.Contains(gates, "./eng/verify-breaking-version-bump.ps1");
+        Assert.IsFalse(
+            validate.Contains("- name: Verify release version gates", StringComparison.Ordinal),
+            "The full release verifier owns the version gates; a docs-only subset step would duplicate it.");
+        Assert.IsFalse(
+            validate.Contains("- name: Verify changelog contract", StringComparison.Ordinal),
+            "The full release verifier owns the changelog contract on the validate matrix.");
+        StringAssert.Contains(releaseStep, "if ($env:ARTIFACT_OWNER -ne 'true') {");
+        Assert.IsFalse(releaseStep.Contains("docs_only", StringComparison.OrdinalIgnoreCase));
+
+        var release = LoadRepositoryFile("eng/verify-release.ps1");
+        var policyBlock = release.IndexOf("if (-not $TestShardOnly) {", StringComparison.Ordinal);
+        Assert.IsTrue(policyBlock >= 0, "verify-release.ps1 must keep its owner-only policy block.");
+        foreach (var gate in new[]
+        {
+            "verify-version-drift.ps1",
+            "verify-breaking-version-bump.ps1",
+            "verify-changelog-fragments.ps1",
+            "verify-registry-readiness.ps1",
+            "verify-plugin-package-files.ps1",
+            "update-third-party-notices.ps1",
+        })
+        {
+            Assert.IsTrue(
+                release.IndexOf(gate, policyBlock, StringComparison.Ordinal) > policyBlock,
+                $"verify-release.ps1 must run {gate} for the artifact owner.");
+        }
     }
 
     [TestMethod]

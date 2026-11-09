@@ -21,20 +21,18 @@ public sealed class ChangelogFragmentRequirementTests
     public void CiWorkflow_FetchesBaseHistoryAndRunsGateOnPolicyDocsShards()
     {
         var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
-        var workflow = File.ReadAllText(Path.Combine(repositoryRoot, ".github", "workflows", "ci.yml"));
-        var checkoutIndex = workflow.IndexOf("- name: Check out repository", StringComparison.Ordinal);
-        var historyIndex = workflow.IndexOf("fetch-depth: 0", checkoutIndex, StringComparison.Ordinal);
-        var changelogStepIndex = workflow.IndexOf(
-            "- name: Verify changelog contract",
-            historyIndex,
+        var workflow = File.ReadAllText(Path.Combine(repositoryRoot, ".github", "workflows", "ci.yml"))
+            .Replace("\r\n", "\n", StringComparison.Ordinal);
+        var validateIndex = workflow.IndexOf("\n  validate:\n", StringComparison.Ordinal);
+        var checkoutIndex = workflow.IndexOf("- name: Check out repository", validateIndex + 1, StringComparison.Ordinal);
+        var historyIndex = workflow.IndexOf("fetch-depth: 0", checkoutIndex + 1, StringComparison.Ordinal);
+        var releaseStepIndex = workflow.IndexOf(
+            "- name: Verify release build (pull request)",
+            historyIndex + 1,
             StringComparison.Ordinal);
-        var changelogOwnerConditionIndex = workflow.IndexOf(
-            "if: matrix.leg.artifact_owner == true",
-            changelogStepIndex,
-            StringComparison.Ordinal);
-        var changelogIndex = workflow.IndexOf(
-            "run: ./eng/verify-changelog-fragments.ps1",
-            changelogOwnerConditionIndex,
+        var ownerConditionIndex = workflow.IndexOf(
+            "if ($env:ARTIFACT_OWNER -ne 'true') {",
+            releaseStepIndex + 1,
             StringComparison.Ordinal);
         var docsOnlyOutputIndex = workflow.IndexOf(
             "docs_only: ${{ steps.decide.outputs.docs_only }}",
@@ -42,20 +40,27 @@ public sealed class ChangelogFragmentRequirementTests
         // Leg construction now lives in eng/resolve-ci-topology.ps1 (a pure function, table-tested
         // by CiTopologyDecisionContractTests) rather than inlined in this workflow file.
         var topologyScript = File.ReadAllText(Path.Combine(repositoryRoot, "eng", "resolve-ci-topology.ps1"));
-        var docsLegIndex = topologyScript.IndexOf(
-            "New-CiTopologyLeg -Name 'docs-linux-1-of-4'",
+        var docsOwnerLegIndex = topologyScript.IndexOf(
+            "New-CiTopologyLeg -Name 'docs-linux-4-of-4' -RunsOn 'ubuntu-latest' -ArtifactOwner $true",
             StringComparison.Ordinal);
+        // The changelog verifier is a child of the full release verifier, which the artifact owner
+        // runs on every route; TestShardOnly is reserved for non-owner legs.
+        var release = File.ReadAllText(Path.Combine(repositoryRoot, "eng", "verify-release.ps1"));
+        var policyBlockIndex = release.IndexOf("if (-not $TestShardOnly) {", StringComparison.Ordinal);
+        var changelogIndex = policyBlockIndex < 0
+            ? -1
+            : release.IndexOf("verify-changelog-fragments.ps1", policyBlockIndex, StringComparison.Ordinal);
 
-        Assert.IsTrue(checkoutIndex >= 0, "CI must check out the repository.");
+        Assert.IsTrue(validateIndex >= 0, "CI must declare the validate matrix job.");
+        Assert.IsTrue(checkoutIndex > validateIndex, "The validate job must check out the repository.");
         Assert.IsTrue(historyIndex > checkoutIndex, "Changelog comparison requires full base history.");
-        Assert.IsTrue(changelogStepIndex > historyIndex, "CI must declare the changelog verifier after checkout.");
-        Assert.IsTrue(changelogOwnerConditionIndex > changelogStepIndex);
-        Assert.IsTrue(changelogIndex > historyIndex, "CI must run the changelog verifier after checkout.");
+        Assert.IsTrue(releaseStepIndex > historyIndex, "CI must run the release verifier after the full-history checkout.");
+        Assert.IsTrue(ownerConditionIndex > releaseStepIndex, "Only non-owner legs may skip the release policy gates.");
         Assert.IsTrue(docsOnlyOutputIndex >= 0, "The route job must expose docs-only state as a step output.");
-        Assert.IsTrue(docsLegIndex >= 0, "The topology decision must emit a dedicated hosted docs leg.");
+        Assert.IsTrue(docsOwnerLegIndex >= 0, "The topology decision must emit a hosted docs artifact-owner leg.");
         Assert.IsTrue(
-            changelogOwnerConditionIndex < changelogIndex,
-            "The changelog verifier must run on the sole artifact-owning leg, including docs-only PRs.");
+            changelogIndex > policyBlockIndex,
+            "The changelog verifier must run in the release verifier's owner-only policy block, including docs-only PRs.");
 
         var publishWorkflow = File.ReadAllText(
             Path.Combine(repositoryRoot, ".github", "workflows", "publish-nuget.yml"));

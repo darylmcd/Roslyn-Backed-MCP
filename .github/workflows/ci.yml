@@ -127,20 +127,6 @@ jobs:
 
       # Platform-neutral policy and release-artifact work executes on the sole
       # hosted Linux artifact owner. Other PR legs restore/build/test only.
-      - name: Verify changelog contract
-        if: matrix.leg.artifact_owner == true && needs.route.outputs.docs_only == 'true'
-        shell: pwsh
-        run: ./eng/verify-changelog-fragments.ps1
-
-      # The docs route passes -TestShardOnly to verify-release.ps1, which skips its release gates.
-      # CHANGELOG.md is docs tier, so run the two gates that guard it here.
-      - name: Verify release version gates
-        if: matrix.leg.artifact_owner == true && needs.route.outputs.docs_only == 'true'
-        shell: pwsh
-        run: |
-          ./eng/verify-version-drift.ps1
-          ./eng/verify-breaking-version-bump.ps1
-
       - name: Validate AI docs
         if: matrix.leg.artifact_owner == true
         shell: pwsh
@@ -189,7 +175,6 @@ jobs:
           TEST_SHARD_INDEX: ${{ matrix.leg.test_shard_index }}
           TEST_SHARD_COUNT: ${{ matrix.leg.test_shard_count }}
           ARTIFACT_OWNER: ${{ matrix.leg.artifact_owner }}
-          DOCS_ONLY: ${{ needs.route.outputs.docs_only }}
         run: |
           $parameters = @{
             Configuration = 'Release'
@@ -199,8 +184,10 @@ jobs:
             TestShardCount = [int]$env:TEST_SHARD_COUNT
             HostedImage = $env:HOSTED_IMAGE
           }
-          if ($env:ARTIFACT_OWNER -ne 'true' -or
-              $env:DOCS_ONLY -eq 'true') {
+          # The artifact owner runs every release gate on every route. Docs-tier files
+          # (THIRD-PARTY-NOTICES.md, the packed README, CHANGELOG.md, allowlisted plugin
+          # files) feed those gates, so a docs PR must not downgrade the owner to a shard.
+          if ($env:ARTIFACT_OWNER -ne 'true') {
             $parameters.TestShardOnly = $true
           }
           ./eng/verify-release.ps1 @parameters
