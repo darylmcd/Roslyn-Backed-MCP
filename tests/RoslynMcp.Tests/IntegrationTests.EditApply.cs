@@ -1,3 +1,4 @@
+using Microsoft.CodeAnalysis.Formatting;
 using RoslynMcp.Core.Models;
 
 namespace RoslynMcp.Tests;
@@ -89,10 +90,21 @@ public class IntegrationTests_EditApply : IsolatedWorkspaceTestBase
         using var workspace = await CreateIsolatedWorkspaceAsync();
         var serviceFilePath = workspace.GetPath("SampleLib", "AnimalService.cs");
 
+        var original = await File.ReadAllTextAsync(serviceFilePath, CancellationToken.None);
+        var document = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId).Projects
+            .SelectMany(project => project.Documents)
+            .Single(doc => string.Equals(doc.FilePath, serviceFilePath, StringComparison.OrdinalIgnoreCase));
+        var expected = (await (await Formatter.FormatAsync(document, cancellationToken: CancellationToken.None))
+            .GetTextAsync(CancellationToken.None)).ToString();
+        Assert.AreNotEqual(expected, original);
+
         var preview = await RefactoringService.PreviewFormatDocumentAsync(
             workspace.WorkspaceId,
             serviceFilePath,
             CancellationToken.None);
+        var diff = preview.Changes.Single(change => change.FilePath == serviceFilePath).UnifiedDiff;
+        StringAssert.Contains(diff, "@@");
+        StringAssert.Contains(diff, "+");
         var applyResult = await RefactoringService.ApplyRefactoringAsync(
             preview.PreviewToken,
             "test_apply",
@@ -100,6 +112,11 @@ public class IntegrationTests_EditApply : IsolatedWorkspaceTestBase
 
         Assert.IsTrue(applyResult.Success, applyResult.Error);
         var serviceContents = await File.ReadAllTextAsync(serviceFilePath, CancellationToken.None);
+        Assert.AreEqual(expected, serviceContents);
         Assert.IsFalse(serviceContents.Contains("MakeThemSpeak(    IEnumerable<IAnimal>     animals   )"));
+
+        var unchanged = await RefactoringService.PreviewFormatDocumentAsync(
+            workspace.WorkspaceId, serviceFilePath, CancellationToken.None);
+        Assert.AreEqual(0, unchanged.Changes.Count);
     }
 }

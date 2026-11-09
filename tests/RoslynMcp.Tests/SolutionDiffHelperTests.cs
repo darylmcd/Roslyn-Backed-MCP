@@ -441,6 +441,22 @@ public class SolutionDiffHelperTests
     }
 
     [TestMethod]
+    public async Task WhitespaceOnlyChangedDocument_ReturnsVisibleHunk()
+    {
+        var (solution, projectId) = CreateEmptySolution();
+        var docId = DocumentId.CreateNewId(projectId);
+        var original = solution.AddDocument(docId, "Test.cs", SourceText.From("class C { }\n"));
+        var modified = original.WithDocumentText(docId, SourceText.From(" class C { }\n"));
+
+        var changes = await SolutionDiffHelper.ComputeChangesAsync(original, modified, CancellationToken.None);
+
+        Assert.AreEqual(1, changes.Count);
+        StringAssert.Contains(changes[0].UnifiedDiff, "@@");
+        StringAssert.Contains(changes[0].UnifiedDiff, "-class C { }");
+        StringAssert.Contains(changes[0].UnifiedDiff, "+ class C { }");
+    }
+
+    [TestMethod]
     public async Task AddedDocument_ReturnsChange()
     {
         var (solution, projectId) = CreateEmptySolution();
