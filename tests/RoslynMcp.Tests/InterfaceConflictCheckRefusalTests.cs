@@ -104,16 +104,16 @@ public sealed class InterfaceConflictCheckRefusalTests : InterfaceRouteTestBase
     private static Task<RefactoringPreviewDto> Preview(
         string route, string workspaceId, string sourcePath, InterfaceExtractionService standalone,
         CrossProjectRefactoringService crossProject, CompositePreviewStore composite) => route switch
-    {
-        "standalone" => standalone.PreviewExtractInterfaceAsync(workspaceId, sourcePath,
-            "RefService", "IRefService", null, false, CancellationToken.None),
-        "cross-project" => crossProject.PreviewExtractInterfaceAsync(workspaceId, sourcePath,
-            "RefService", "IRefService", "Contracts", CancellationToken.None),
-        "extract-and-wire" => new ExtractAndWireOrchestrator(WorkspaceManager, composite,
-            crossProject, DiRegistrationService).PreviewExtractAndWireInterfaceAsync(workspaceId,
-                sourcePath, "RefService", "IRefService", "Contracts", false, CancellationToken.None),
-        _ => throw new ArgumentOutOfRangeException(nameof(route)),
-    };
+        {
+            "standalone" => standalone.PreviewExtractInterfaceAsync(workspaceId, sourcePath,
+                "RefService", "IRefService", null, false, CancellationToken.None),
+            "cross-project" => crossProject.PreviewExtractInterfaceAsync(workspaceId, sourcePath,
+                "RefService", "IRefService", "Contracts", CancellationToken.None),
+            "extract-and-wire" => new ExtractAndWireOrchestrator(WorkspaceManager, composite,
+                crossProject, DiRegistrationService).PreviewExtractAndWireInterfaceAsync(workspaceId,
+                    sourcePath, "RefService", "IRefService", "Contracts", false, CancellationToken.None),
+            _ => throw new ArgumentOutOfRangeException(nameof(route)),
+        };
 
     private sealed class FailingCompilationCache(string failure, string projectName) : ICompilationCache
     {
