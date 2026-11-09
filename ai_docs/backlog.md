@@ -239,6 +239,7 @@
 | `extract-interface-same-name-unrelated-contract-noop` | Medium | — | **Verify same-name implemented contract before no-op** — generate the requested interface when it adds members while preserving the original sibling-interface binding. [type: bug] [source: handler-binding review] | M | items/extract-interface-same-name-unrelated-contract-noop.md |
 | `parameter-object-physical-diff-reconciliation` | Medium | cross-project-interface-signature-compile-gate | **Reconcile parameter-object previews by physical file** — refuse divergent linked or case-variant edits before storing a token. | S | items/parameter-object-physical-diff-reconciliation.md |
 | `timeout-command-restore-timer-identity` | Medium | timeout-request-timer-envelope | **Identify command and restore timeout budgets** — propagate explicit timer identity through command and restore owners. [type: bug] [source: timeout-error-names-fired-timer split] | L | items/timeout-command-restore-timer-identity.md |
+| `interface-preview-compiler-project-detail` | Medium | cross-project-public-refusals-echo-input | **Remove project names from public compiler refusals** — preserve diagnostic IDs and guidance; supersede ADR 0038 and cover both wire eras. [type: bug] [source: cross-project refusal review 2026-11-08] | S | items/interface-preview-compiler-project-detail.md |
 
 ## Low
 
