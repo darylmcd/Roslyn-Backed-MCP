@@ -110,8 +110,8 @@ $evidenceExclusions = @(
     'audit-reports/_latest-promotion-scorecard.json'
 )
 # Docs tier: documentation-shaped paths (plus the tracked promotion scorecard and the evidence
-# exclusions above) whose contracts the docs-only test class allowlist covers. CHANGELOG.md is docs
-# tier: the docs route runs the version-drift and breaking-version gates that guard it.
+# exclusions above) whose contracts the complete test class partition covers. CHANGELOG.md is docs
+# tier: the docs route's artifact owner runs the complete release verifier, including the version-drift and breaking-version gates that guard it.
 $documentationPattern = '^(.*\.md|ai_docs/.*\.json|audit-reports/_latest-promotion-scorecard\.json)$'
 # Behavior-bearing Markdown (executable prompts/skills/agents) always forces full validation even
 # though its extension matches the documentation pattern.

@@ -7,7 +7,7 @@ This document is the canonical validation and merge-gating contract.
 | Event / trust state | Validation topology | Coverage / network |
 |---|---|---|
 | Evidence-only pull request (`ai_docs/audits/**`, `ai_docs/reports/**`, `ai_docs/items/**`, `audit-reports/**`, minus the exclusions below) | One pwsh `evidence-lint` job (changelog contract + `verify-ai-docs.ps1`); no .NET setup, build, or test legs; exact-floor probe and quality job skipped | Not applicable |
-| Policy-only documentation pull request (Markdown / `ai_docs/**/*.json` / the tracked promotion scorecard, excluding behavior-bearing paths) | Four hosted Linux class shards plus the version-drift and breaking-version gates; exact-floor probe and quality job skipped | Coverage and `Network` tests skipped; publish/audit skipped |
+| Policy-only documentation pull request (Markdown / `ai_docs/**/*.json` / the tracked promotion scorecard, excluding behavior-bearing paths) | Four hosted Linux class shards; the artifact owner runs the complete release verifier (every release policy gate plus publish/hash); exact-floor probe and quality job skipped | Coverage and `Network` tests skipped; audit skipped |
 | Any code-bearing pull request | Four hosted Windows shards + four hosted Linux shards + one concurrent exact-SDK-floor build/workspace probe + one concurrent quality job | Coverage and `Network` tests skipped |
 | Merge-queue group (`merge_group`) | Always the full code-bearing topology (no trusted changed-file set, so no docs-only/evidence-only route) | Coverage and `Network` tests skipped |
 | Manual dispatch / weekly schedule (Mon 05:45 UTC) | One unsharded hosted Linux suite + one concurrent exact-SDK-floor build/workspace probe + one concurrent quality job | Coverage and live `Network` tests enabled |
@@ -21,13 +21,13 @@ Rules:
 - Classify both `filename` and `previous_filename` from the pull-request files API. A source-to-doc rename is code-bearing because its removed source path still requires full validation.
 - Require the files API record count to equal `pull_request.changed_files` and remain below the endpoint's 3,000-file cap before selecting the docs-only route. A capped or incomplete enumeration is code-bearing and receives full validation.
 - Treat behavior-bearing Markdown under `skills/`, `.claude/skills/`, `agents/`, `.claude/agents/`, and `.github/prompts/` as code-bearing. Those paths receive the full Windows/Linux matrix.
-- Root `CHANGELOG.md` is docs tier. The docs route's artifact owner runs `verify-version-drift.ps1` and `verify-breaking-version-bump.ps1`, the gates `verify-release.ps1 -TestShardOnly` skips, so release version checks cannot be bypassed.
+- Docs-tier files feed release gates: `CHANGELOG.md` (version drift, breaking-version bump), `THIRD-PARTY-NOTICES.md` (restored-license verification), `src/RoslynMcp.Host.Stdio/README.md` (registry ownership marker), allowlisted plugin files (package allowlist). The docs route's artifact owner therefore runs the complete `verify-release.ps1`, never `-TestShardOnly`, so no release gate can be bypassed by a docs-tier change.
 - A pull request takes the highest tier any of its paths (including rename origins) needs: code > docs > evidence.
 - The evidence tier is limited to paths no test or `eng/` script reads. Files inside evidence roots that CI does read stay docs tier through `$evidenceExclusions` in `eng/resolve-ci-topology.ps1` (currently `ai_docs/items/backlog-d-fragment-schema.md` and `audit-reports/_latest-promotion-scorecard.json`). `CiEvidenceTierConsumerContractTests` fails on any new reference to an evidence root until it is classified.
 - Never use workflow-level `paths`/`paths-ignore` to skip validation. The required `validate` check would never report and the pull request would stay blocked; skips must happen inside the workflow with `validate-gate` still reporting.
 - On the evidence route `validate-gate` passes only when `evidence-lint` succeeded and the build/test matrix, SDK-floor probe, and quality job were skipped, never failed or cancelled.
 - Keep the pull-request `validate-gate` check named `validate`. Dispatch/schedule runs must emit `validate-informational` so an informational one-leg run cannot satisfy the pull-request ruleset context.
-- Merge-queue groups (`merge_group`) also report `validate`: the ruleset's merge queue waits on that context. The group is tested on the queued base plus every group ahead of it, which is the current-`main` integration check; do not duplicate it with a local full gate before enqueueing. The changed-file format gate diffs against `github.event.merge_group.base_sha`.
+- Merge-queue groups (`merge_group`) also report `validate`, so a merge queue can wait on that context if one is enabled. The current default-branch ruleset has no merge-queue rule (verified 2026-11-09 via `gh api repos/darylmcd/Roslyn-Backed-MCP/rulesets/14515474`); the trigger is dormant until one is. The changed-file format gate diffs against `github.event.merge_group.base_sha`.
 
 The routing decision itself -- leg construction, docs-only classification, and the fail-closed
 count-mismatch/cap guard -- is a pure function in `eng/resolve-ci-topology.ps1`. The `route` job's
@@ -60,19 +60,19 @@ The router emits typed leg fields. Keep their concerns separate:
 
 | Concern | Owner / condition |
 |---|---|
-| Release policy checks (version, skills, package allowlist, changelog, breaking version, registry readiness) | Artifact-owning code leg through the full release verifier |
-| Changelog-fragment validation | Explicit artifact-owning policy-doc leg; otherwise included in the full release verifier |
+| Release policy checks (version, skills, package allowlist, changelog, breaking version, registry readiness, restored licenses) | Artifact-owning leg of code and policy-doc routes, through the full release verifier |
+| Changelog-fragment validation | Full release verifier on the artifact-owning leg of code and policy-doc routes; `evidence-lint` on the evidence route |
 | AI-doc and shipped-skill validation | Artifact-owning leg; includes policy-doc PRs |
 | Restore, Release build, test | Every pull-request/test leg |
 | Exact declared SDK floor | Concurrent `sdk-floor` job on code PRs, dispatch, and schedule; exact version assertion + restore/build + representative MSBuildWorkspace load + native fork admission late-child metadata/copy cases |
-| Publish/hash | Artifact-owning non-doc leg |
+| Publish/hash | Artifact-owning leg of code and policy-doc routes (uploaded from code routes only) |
 | Fail-closed NuGet vulnerability audit | Concurrent route-dependent Linux quality job on code PRs, merge groups, dispatch, and schedule; independent of test shards and SDK floor |
 | Changed-file formatter gate | Quality job on code PRs and merge groups, after audit restore and a checked Debug build of the repository analyzer; new FINALNEWLINE, IDE1006, IMPORTS, and WHITESPACE findings on touched files fail, tracked baseline debt is reported not suppressed |
 | `host-stdio-publish`, `release-manifests` | Artifact-owning non-doc leg; 14 days |
 | Per-leg timing summary + TRX (`test-results-<leg>`) | Every pull-request/test leg, generated/uploaded with `always()`; 14 days |
 | Cobertura + HTML `code-coverage` | Dispatch/schedule artifact owner; 30 days |
 
-`eng/verify-release.ps1` remains a standalone release gate. It calls `eng/prepare-validation-dependencies.ps1` for checked main restore plus canonical all-sample preparation, verifies restored root-solution licenses on non-test-only legs, builds Release, runs tests in a private per-invocation `TEMP`/`TMP`/`TMPDIR`, disables reusable MSBuild and compiler servers within the invocation, removes the exact temp root, publishes the stdio host, and writes the hash manifest. The aggregate preparation script composes `eng/prepare-test-fixtures.ps1`, the sole sample-discovery owner also used by direct tests and `just test`. Restored-license verification retains the root solution and active package-root filters; sample assets do not replace root metadata. Preparation or license failure prevents build, tests, and publication. Test and cleanup failures are aggregated rather than hidden. CI passes `-TestShardOnly` on non-owner code legs and both policy-doc legs, so platform-neutral policy and publish/hash work execute once where required; the default remains the complete standalone gate.
+`eng/verify-release.ps1` remains a standalone release gate. It calls `eng/prepare-validation-dependencies.ps1` for checked main restore plus canonical all-sample preparation, verifies restored root-solution licenses on non-test-only legs, builds Release, runs tests in a private per-invocation `TEMP`/`TMP`/`TMPDIR`, disables reusable MSBuild and compiler servers within the invocation, removes the exact temp root, publishes the stdio host, and writes the hash manifest. The aggregate preparation script composes `eng/prepare-test-fixtures.ps1`, the sole sample-discovery owner also used by direct tests and `just test`. Restored-license verification retains the root solution and active package-root filters; sample assets do not replace root metadata. Preparation or license failure prevents build, tests, and publication. Test and cleanup failures are aggregated rather than hidden. CI passes `-TestShardOnly` only on non-owner legs, so platform-neutral policy and publish/hash work execute exactly once per code or policy-doc route, on the artifact owner; the default remains the complete standalone gate.
 
 The quality job has a 30-minute cap, full-history checkout, and latest-`10.0.x` SDK. It runs the mandatory audit first to restore its own solution assets. On an exact cache miss it also prepares all canonical samples and explicitly saves packages before remaining quality work. Code PRs and merge groups then build `analyzers/ServerSurfaceCatalogAnalyzer/ServerSurfaceCatalogAnalyzer.csproj` in Debug with checked native exit before changed-file formatting with `-NoRestore`; restore alone does not produce the project analyzer binary. Dispatch/schedule retain the mandatory audit and conditional sample preparation/cache save. Policy-doc and evidence routes skip the job.
 
@@ -229,6 +229,24 @@ Combine filters with `&` (AND) or `|` (OR) per `dotnet test` syntax.
 | One release shard | `pwsh -NoProfile -File ./eng/verify-release.ps1 -NoCoverage -ExcludeNetworkTests -TestShardIndex <zero-based> -TestShardCount <count>` |
 
 `just ci` composes docs, shipped skills, the changed-file formatter gate, the checksum-pinned actionlint gate, unsharded PR-equivalent release validation, and the vulnerability audit. The same actionlint script also runs on the hosted artifact-owner PR leg. Local validation remains unsharded so one command proves the complete suite.
+
+## Merge Proof
+
+Required check: `validate`, the `validate-gate` job of `.github/workflows/ci.yml` on `pull_request` (ruleset `Default Branch Ruleset`, context `validate`). A green `validate` on the PR head commit is the merge proof: the ship helper accepts it with `--ci-proof=validate`; a local `just ci` run is optional.
+
+Basis: every `just ci` step runs inside `validate`, or provably cannot change outcome on that route.
+
+| `just ci` step | Code route | Policy-doc route | Evidence route |
+|---|---|---|---|
+| `verify-docs` (`eng/verify-ai-docs.ps1`) | artifact owner | artifact owner | `evidence-lint` |
+| `verify-changed-format` | `quality` | not run: the gate diffs `*.cs` only; a docs-tier PR changes none | not run: same |
+| `verify-actionlint` | artifact owner | artifact owner | not run: `.github/**` is code tier |
+| `verify-release-pr` release gates + publish/hash | artifact owner (full verifier) | artifact owner (full verifier) | `evidence-lint` runs the changelog contract; other gates read no evidence path |
+| `verify-release-pr` tests (`TestCategory!=Benchmark&TestCategory!=Network`, Release) | complete class partition, Windows x4 + Linux x4 | complete class partition, Linux x4 | not run: no test reads an evidence path (`CiEvidenceTierConsumerContractTests`) |
+| `vuln-audit` (`eng/verify-nuget-audit.ps1`) | `quality` | not run: package inputs (`Directory.Packages.props`, `*.csproj`, `global.json`) are code tier | not run: same |
+| (extra, not in `just ci`) exact SDK floor | `sdk-floor` | skipped | skipped |
+
+Residual difference: a skipped step is change-independent, so it reports what it reported on the base. The weekly schedule and every code PR re-run the audit against fresh advisories. Re-classify any path a skipped step starts to read, or the merge-proof claim lapses.
 
 ## Merge Gating Expectations
 
