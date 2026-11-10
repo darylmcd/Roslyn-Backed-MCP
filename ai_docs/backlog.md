@@ -238,6 +238,7 @@
 | `interface-preview-compiler-project-detail` | Medium | cross-project-public-refusals-echo-input | **Remove project names from public compiler refusals** — preserve diagnostic IDs and guidance; supersede ADR 0038 and cover both wire eras. [type: bug] [source: cross-project refusal review 2026-11-08] | S | items/interface-preview-compiler-project-detail.md |
 | `preview-multi-file-edit-duplicate-target-overwrite` | Medium | — | **Preserve repeated target edits in multi-file previews** — choose cumulative edits or prewrite duplicate refusal; prove preview/apply fidelity. [type: bug] [source: preview diff remediation 2026-11-08] | S | items/preview-multi-file-edit-duplicate-target-overwrite.md |
 | `interface-extraction-replacement-symbol-refusal` | Medium | — | **Refuse incomplete usage replacement** — fail interface-extraction preview when a requested replacement lacks compilation or rebound type symbol. | S | items/interface-extraction-replacement-symbol-refusal.md |
+| `watcher-own-cs-write-echo-attribution` | Medium | — | **Attribute the server's own .cs/.csproj apply writes at the watcher** so their echo is not ExternalEdit; make ExternalEdit sticky within a stale window. [type: bug] [source: PR review] | M | items/watcher-own-cs-write-echo-attribution.md |
 
 ## Low
 
