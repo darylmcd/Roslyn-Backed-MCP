@@ -19,6 +19,7 @@ public sealed class LogEventCatalogTests
         (3, "ChangesApplyFailed", "workspace"),
         (4, "WorkspaceClosed", "workspace"),
         (5, "SessionNotFound", "workspace"),
+        (6, "WorkspaceLoadCompleted", "workspace"),
         (1001, "UnexpectedFailure", "host"),
         (1002, "LogTransportDisconnected", "host"),
         (2101, "ToolCompleted", "tool"),
@@ -27,6 +28,8 @@ public sealed class LogEventCatalogTests
         (2104, "ToolFailed", "tool"),
         (3001, "LogCommandExecuted", "process"),
         (3002, "LogProcessTreeKillFailed", "process"),
+        (3003, "CommandProcessCompleted", "process"),
+        (3004, "CommandGateCompleted", "process"),
         (4001, "LogProviderExecutionFailed", "provider"),
         (4002, "LogProviderEnumerationFailed", "provider"),
     ];

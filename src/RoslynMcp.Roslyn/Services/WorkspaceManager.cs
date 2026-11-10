@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
+using System.Diagnostics;
 using System.Runtime.ExceptionServices;
 using System.Text.Json;
 using System.Threading;
@@ -48,6 +49,11 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
         LoggerMessage.Define<string, int, string>(
             LogLevel.Warning, new EventId(LogEvents.SessionNotFound, LogEvents.SessionNotFoundName),
             "Workspace '{WorkspaceId}' not found. Active sessions ({Count}): [{ActiveIds}]");
+
+    private static readonly Action<ILogger, string, bool, int?, long, Exception?> LogWorkspaceLoadCompleted =
+        LoggerMessage.Define<string, bool, int?, long>(
+            LogLevel.Information, new EventId(LogEvents.WorkspaceLoadCompleted, LogEvents.WorkspaceLoadCompletedName),
+            "workspace_load boundary: outcome={Outcome} reused={Reused} projectCount={ProjectCount} durationMs={DurationMs}");
 
     private readonly ILogger<WorkspaceManager> _logger;
     private readonly IPreviewStore _previewStore;
@@ -384,12 +390,29 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
             if (_activeLoadCount++ == 0)
                 _loadsDrained = new(TaskCreationOptions.RunContinuationsAsynchronously);
         }
+        // One boundary record per call (LoadAsync is the workspace_load entry; reload uses LoadIntoSessionAsync
+        // directly). It carries no path: only outcome, whether an existing session was returned, project count
+        // and duration, emitted from finally so failures and cancellation report too.
+        var stopwatch = Stopwatch.StartNew();
+        var outcome = "failed";
+        var reused = false;
+        int? projectCount = null;
         try
         {
-            return await LoadCoreAsync(path, evictPolicy, globalProperties, ct).ConfigureAwait(false);
+            var loaded = await LoadCoreAsync(path, evictPolicy, globalProperties, ct).ConfigureAwait(false);
+            reused = loaded.Reused;
+            projectCount = loaded.Status.ProjectCount;
+            outcome = "succeeded";
+            return loaded.Status;
+        }
+        catch (OperationCanceledException)
+        {
+            outcome = "cancelled";
+            throw;
         }
         finally
         {
+            LogWorkspaceLoadCompleted(_logger, outcome, reused, projectCount, stopwatch.ElapsedMilliseconds, null);
             lock (_lifecycleSync)
             {
                 if (--_activeLoadCount == 0) _loadsDrained!.TrySetResult();
@@ -397,7 +420,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
         }
     }
 
-    private async Task<WorkspaceStatusDto> LoadCoreAsync(
+    private async Task<(WorkspaceStatusDto Status, bool Reused)> LoadCoreAsync(
         string path,
         EvictPolicy evictPolicy,
         IDictionary<string, string>? globalProperties,
@@ -428,7 +451,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
                     "workspace_load: returning existing workspace '{WorkspaceId}' for path '{Path}' (idempotent)",
                     existing.WorkspaceId,
                     fullPath);
-                return BuildStatus(existing);
+                return (BuildStatus(existing), true);
             }
         }
 
@@ -512,7 +535,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
 
                     slotTransferred = true;
                     _fileWatcher.Watch(workspaceId, session.LoadedPath!);
-                    return BuildStatus(session);
+                    return (BuildStatus(session), false);
                 }
             }
 
@@ -525,7 +548,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
             if (loserFailures.Count > 0)
                 _logger.LogError(new AggregateException(loserFailures),
                     "Disposing race-losing workspace '{WorkspaceId}' failed", workspaceId);
-            return winnerStatus;
+            return (winnerStatus, true);
         }
         catch (Exception ex)
         {

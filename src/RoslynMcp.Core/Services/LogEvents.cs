@@ -37,6 +37,8 @@ public static class LogEvents
     public const string WorkspaceClosedName = "WorkspaceClosed";
     public const int SessionNotFound = 5;
     public const string SessionNotFoundName = "SessionNotFound";
+    public const int WorkspaceLoadCompleted = 6;
+    public const string WorkspaceLoadCompletedName = "WorkspaceLoadCompleted";
 
     // Host lifecycle and observability: 1000-1999.
     public const int UnexpectedFailure = 1001;
@@ -59,6 +61,10 @@ public static class LogEvents
     public const string CommandExecutedName = "LogCommandExecuted";
     public const int ProcessTreeKillFailed = 3002;
     public const string ProcessTreeKillFailedName = "LogProcessTreeKillFailed";
+    public const int CommandProcessCompleted = 3003;
+    public const string CommandProcessCompletedName = "CommandProcessCompleted";
+    public const int CommandGateCompleted = 3004;
+    public const string CommandGateCompletedName = "CommandGateCompleted";
 
     // Roslyn providers: 4000-4999.
     public const int ProviderExecutionFailed = 4001;

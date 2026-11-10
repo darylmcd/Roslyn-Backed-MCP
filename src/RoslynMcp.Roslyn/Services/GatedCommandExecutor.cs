@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
@@ -17,6 +18,15 @@ public sealed class GatedCommandExecutor : IGatedCommandExecutor
         LoggerMessage.Define<string, string, int>(
             LogLevel.Information, new EventId(LogEvents.CommandExecuted, LogEvents.CommandExecutedName),
             "Executed dotnet command for {TargetPath}: {Arguments} (ExitCode={ExitCode})");
+
+    // Gate-level boundary: the runner cannot see queue wait or the timeout-vs-cancel distinction (the
+    // total budget includes queue wait and is converted to TimeoutException here), and queue-wait timeouts
+    // never reach the runner. The runner owns the separate process-lifetime record.
+    private static readonly Action<ILogger, string, string, string, long, long, int?, Exception?> LogCommandGateCompleted =
+        LoggerMessage.Define<string, string, string, long, long, int?>(
+            LogLevel.Information,
+            new EventId(LogEvents.CommandGateCompleted, LogEvents.CommandGateCompletedName),
+            "dotnet gate boundary: verb={Verb} targetKind={TargetKind} outcome={Outcome} queueWaitMs={QueueWaitMs} durationMs={DurationMs} exitCode={ExitCode}");
 
     private readonly SemaphoreSlim _globalCommandGate;
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _workspaceCommandGates = new(StringComparer.Ordinal);
@@ -77,6 +87,10 @@ public sealed class GatedCommandExecutor : IGatedCommandExecutor
         timeoutCts.CancelAfter(timeout);
         var globalGateAcquired = false;
         var workspaceGateAcquired = false;
+        var gateTimer = Stopwatch.StartNew();
+        long? queueWaitMs = null;
+        var outcome = "failed";
+        int? exitCode = null;
 
         try
         {
@@ -84,6 +98,7 @@ public sealed class GatedCommandExecutor : IGatedCommandExecutor
             globalGateAcquired = true;
             await workspaceGate.WaitAsync(timeoutCts.Token).ConfigureAwait(false);
             workspaceGateAcquired = true;
+            queueWaitMs = gateTimer.ElapsedMilliseconds;
 
             var workingDirectory = GetWorkingDirectory(targetPath);
             var config = ForkAdmissionMaterial.Find(targetPath);
@@ -113,15 +128,23 @@ public sealed class GatedCommandExecutor : IGatedCommandExecutor
 
             LogCommandExecuted(_logger, targetPath, string.Join(" ", arguments), execution.ExitCode, null);
 
+            outcome = "completed";
+            exitCode = execution.ExitCode;
             return execution;
         }
         catch (OperationCanceledException oce) when (!ct.IsCancellationRequested && timeoutCts.IsCancellationRequested)
         {
+            outcome = "timeout";
             // The caught OCE is carried as InnerException so cancellation provenance (which token
             // fired, original stack trace) survives the reclassification for logs/diagnostics.
             throw new TimeoutException(
                 $"The command 'dotnet {string.Join(" ", arguments)}' did not complete within the total timeout budget of {timeout.TotalMinutes:F1} minute(s), including queue wait.",
                 oce);
+        }
+        catch (OperationCanceledException)
+        {
+            outcome = "cancelled";
+            throw;
         }
         finally
         {
@@ -134,6 +157,17 @@ public sealed class GatedCommandExecutor : IGatedCommandExecutor
             {
                 _globalCommandGate.Release();
             }
+
+            gateTimer.Stop();
+            LogCommandGateCompleted(
+                _logger,
+                CommandBoundaryTelemetry.Verb(arguments),
+                CommandBoundaryTelemetry.TargetKind(targetPath),
+                outcome,
+                queueWaitMs ?? gateTimer.ElapsedMilliseconds,
+                gateTimer.ElapsedMilliseconds,
+                exitCode,
+                null);
         }
     }
 
