@@ -233,9 +233,7 @@ public sealed class MissingWorkspaceRootRetirementTests : SharedWorkspaceTestBas
 
         public void ClearStale(string workspaceId) { }
 
-        public long GetExternalEditEpoch(string workspaceId) => 0;
-
-        public bool ClearStaleIfNoExternalEditSince(string workspaceId, long observedEpoch) => false;
+        public bool ClearStaleIfNoExternalEditSince(string workspaceId, DateTime sinceUtc) => false;
 
         public void Dispose() => Disposed = true;
     }

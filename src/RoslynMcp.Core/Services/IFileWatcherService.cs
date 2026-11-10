@@ -67,25 +67,25 @@ public interface IFileWatcherService : IDisposable
     void ClearStale(string workspaceId);
 
     /// <summary>
-    /// Returns the count of <see cref="StaleReasons.ExternalEdit"/> marks recorded for the
-    /// workspace since it was watched (0 for an unknown workspace). The counter only grows; a
-    /// reload reads it BEFORE it starts reading disk and hands it to
-    /// <see cref="ClearStaleIfNoExternalEditSince"/> afterwards.
+    /// Clears the stale flag unless a <see cref="StaleReasons.ExternalEdit"/> mark records a change
+    /// observed at or after <paramref name="sinceUtc"/>. A reload passes the UTC instant it captured
+    /// BEFORE it started reading disk: an edit made at or after that instant may postdate the bytes
+    /// the load read, so the workspace must stay stale. A change whose write finished earlier (the
+    /// edit the reload was invoked to absorb, a duplicate watcher event for it, or the delayed echo
+    /// of the server's own write) is already covered by the load and is cleared.
     /// </summary>
-    long GetExternalEditEpoch(string workspaceId);
-
-    /// <summary>
-    /// Clears the stale flag only when no <see cref="StaleReasons.ExternalEdit"/> mark landed
-    /// after <paramref name="observedEpoch"/> was read. A reload calls this once its load
-    /// finished: an external edit observed while the load was reading disk may postdate the
-    /// bytes the load saw, so the workspace must stay stale. <see cref="StaleReasons.Apply"/> and
-    /// <see cref="StaleReasons.Restore"/> marks never advance the epoch: the server's own writes
-    /// are on disk before a reload starts, so the load already covers them. Returns
-    /// <see langword="true"/> when the flag was cleared; <see langword="false"/> when an external
-    /// edit intervened (nothing is changed: flag, reason and pending
-    /// <see cref="WaitForStaleAsync"/> waiters are left exactly as they were) or the workspace is unknown.
-    /// </summary>
-    bool ClearStaleIfNoExternalEditSince(string workspaceId, long observedEpoch);
+    /// <remarks>
+    /// The "observed" instant of a content event (changed/created) is the file's last-write time;
+    /// of a delete or rename, or of an explicit <see cref="MarkStale"/>, the instant the mark was
+    /// recorded. Ties survive (<c>&gt;=</c>), and a file whose time cannot be read counts as newly
+    /// observed, so every ambiguity resolves to "stay stale". <see cref="StaleReasons.Apply"/> and
+    /// <see cref="StaleReasons.Restore"/> marks never keep the workspace stale here: the server's
+    /// own writes are on disk before a reload starts. Returns <see langword="true"/> when the flag
+    /// was cleared; <see langword="false"/> when a newer external edit intervened (nothing changes:
+    /// flag, reason and pending <see cref="WaitForStaleAsync"/> waiters are left exactly as they were)
+    /// or the workspace is unknown.
+    /// </remarks>
+    bool ClearStaleIfNoExternalEditSince(string workspaceId, DateTime sinceUtc);
 }
 
 /// <summary>

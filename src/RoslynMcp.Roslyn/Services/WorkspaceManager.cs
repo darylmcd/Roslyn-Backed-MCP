@@ -651,9 +651,10 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
     {
         var session = GetRequiredSession(workspaceId);
         var versionBeforeLoad = session.Version;
-        // Read BEFORE the load touches disk: an ExternalEdit mark after this point may postdate
-        // the bytes the load reads, so it must outlive the post-load clear.
-        var externalEditEpoch = _fileWatcher.GetExternalEditEpoch(workspaceId);
+        // Captured BEFORE the load touches disk: an external edit made at or after this instant may
+        // postdate the bytes the load reads, so it must outlive the post-load clear. Edits finished
+        // earlier (including duplicate watcher events for them) are covered by the load.
+        var loadStartUtc = DateTime.UtcNow;
         try
         {
             await LoadIntoSessionAsync(session, session.LoadedPath ?? throw new InvalidOperationException(
@@ -678,11 +679,10 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
 
         // reload-clearstale-swallows-midreload-watcher-event: clear only when no ExternalEdit
         // landed during the load. Apply/Restore marks are the server's own writes, already on disk
-        // before the load began, so they are cleared as before; a watcher echo of such a write that
-        // arrives mid-load is indistinguishable from an external edit (the watcher attributes every
-        // tracked-file event ExternalEdit) and conservatively keeps the workspace stale until the
-        // next reload.
-        _fileWatcher.ClearStaleIfNoExternalEditSince(workspaceId, externalEditEpoch);
+        // before the load began, so they are cleared as before; a delayed or duplicate watcher event
+        // for a write that finished before the load started carries that older write time and is
+        // cleared too.
+        _fileWatcher.ClearStaleIfNoExternalEditSince(workspaceId, loadStartUtc);
         // Item #7: explicit reload signal for per-workspace caches. The version bump inside
         // LoadIntoSessionAsync is enough for caches that version-check on every read, but
         // firing the event synchronously here (a) makes the invalidation contract explicit,

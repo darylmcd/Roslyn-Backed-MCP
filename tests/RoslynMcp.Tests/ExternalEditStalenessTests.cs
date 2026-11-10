@@ -859,25 +859,37 @@ public sealed class FileWatcherClearStaleAwaiterTests
 }
 
 /// <summary>
-/// Direct (no real OS file events) unit coverage of the external-edit epoch and
+/// Direct (no real OS file events) unit coverage of
 /// <see cref="IFileWatcherService.ClearStaleIfNoExternalEditSince"/>
 /// (<c>reload-clearstale-swallows-midreload-watcher-event</c>): a reload must not wipe an
-/// ExternalEdit mark that landed after the reload read the epoch.
+/// ExternalEdit observed at or after the instant it started loading, but must clear one that
+/// finished earlier. File events are replayed through <c>RecordFileChange</c> with files whose
+/// last-write time the test controls.
 /// </summary>
 [TestClass]
-public sealed class FileWatcherExternalEditEpochTests
+public sealed class FileWatcherExternalEditSinceTests
 {
-    private const string WorkspaceId = "ws-epoch";
+    private const string WorkspaceId = "ws-since";
 
-    private static void WithWatchedWorkspace(Action<FileWatcherService> body)
+    private static void WithWatchedWorkspace(Action<FileWatcherService, string> body)
     {
-        var tempDir = Path.Combine(Path.GetTempPath(), $"rmcp-fw-epoch-{Guid.NewGuid():N}");
+        var tempDir = Path.Combine(Path.GetTempPath(), $"rmcp-fw-since-{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempDir);
         try
         {
             using var watcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance);
             watcher.Watch(WorkspaceId, Path.Combine(tempDir, "Sentinel.slnx"));
-            body(watcher);
+            // The probe file lives outside the watched root so the real OS watcher never sees it.
+            var probe = Path.Combine(Path.GetTempPath(), $"rmcp-fw-probe-{Guid.NewGuid():N}.cs");
+            File.WriteAllText(probe, "// probe");
+            try
+            {
+                body(watcher, probe);
+            }
+            finally
+            {
+                File.Delete(probe);
+            }
         }
         finally
         {
@@ -886,15 +898,32 @@ public sealed class FileWatcherExternalEditEpochTests
     }
 
     [TestMethod]
-    public void ConditionalClear_ExternalEditAfterEpochRead_KeepsFlagReasonAndSignal()
+    public void ContentEventWrittenBeforeSince_Clears()
     {
-        WithWatchedWorkspace(watcher =>
+        WithWatchedWorkspace((watcher, probe) =>
         {
-            watcher.MarkStale(WorkspaceId, StaleReasons.ExternalEdit);
-            var epoch = watcher.GetExternalEditEpoch(WorkspaceId);
-            watcher.MarkStale(WorkspaceId, StaleReasons.ExternalEdit);
+            var written = DateTime.UtcNow.AddMinutes(-5);
+            File.SetLastWriteTimeUtc(probe, written);
+            watcher.RecordFileChange(WorkspaceId, probe, contentEvent: true);
 
-            Assert.IsFalse(watcher.ClearStaleIfNoExternalEditSince(WorkspaceId, epoch));
+            Assert.IsTrue(watcher.ClearStaleIfNoExternalEditSince(WorkspaceId, written.AddSeconds(1)));
+            Assert.IsFalse(watcher.IsStale(WorkspaceId));
+            Assert.IsNull(watcher.GetStaleReason(WorkspaceId));
+        });
+    }
+
+    [TestMethod]
+    public void ContentEventWrittenAtOrAfterSince_KeepsFlagReasonAndSignal()
+    {
+        WithWatchedWorkspace((watcher, probe) =>
+        {
+            var written = DateTime.UtcNow.AddMinutes(-5);
+            File.SetLastWriteTimeUtc(probe, written);
+            watcher.RecordFileChange(WorkspaceId, probe, contentEvent: true);
+
+            // Ties survive (coarse filesystem timestamps), as does anything newer.
+            Assert.IsFalse(watcher.ClearStaleIfNoExternalEditSince(WorkspaceId, written));
+            Assert.IsFalse(watcher.ClearStaleIfNoExternalEditSince(WorkspaceId, written.AddSeconds(-1)));
 
             Assert.IsTrue(watcher.IsStale(WorkspaceId));
             Assert.AreEqual(StaleReasons.ExternalEdit, watcher.GetStaleReason(WorkspaceId));
@@ -904,18 +933,32 @@ public sealed class FileWatcherExternalEditEpochTests
     }
 
     [TestMethod]
-    public void ConditionalClear_SkippedThenNextClear_RearmsSignalForNewWaiters()
+    public void OlderDuplicateEvent_DoesNotLowerTheNewestObservedEdit()
     {
-        WithWatchedWorkspace(watcher =>
+        WithWatchedWorkspace((watcher, probe) =>
         {
-            var epoch = watcher.GetExternalEditEpoch(WorkspaceId);
-            watcher.MarkStale(WorkspaceId, StaleReasons.ExternalEdit);
-            Assert.IsFalse(watcher.ClearStaleIfNoExternalEditSince(WorkspaceId, epoch));
+            var newer = DateTime.UtcNow.AddMinutes(-1);
+            File.SetLastWriteTimeUtc(probe, newer);
+            watcher.RecordFileChange(WorkspaceId, probe, contentEvent: true);
+            File.SetLastWriteTimeUtc(probe, DateTime.UtcNow.AddHours(-1));
+            watcher.RecordFileChange(WorkspaceId, probe, contentEvent: true);
 
-            var settledEpoch = watcher.GetExternalEditEpoch(WorkspaceId);
-            Assert.IsTrue(watcher.ClearStaleIfNoExternalEditSince(WorkspaceId, settledEpoch));
+            Assert.IsFalse(watcher.ClearStaleIfNoExternalEditSince(WorkspaceId, newer.AddSeconds(-1)));
+            Assert.IsTrue(watcher.ClearStaleIfNoExternalEditSince(WorkspaceId, newer.AddSeconds(1)));
+        });
+    }
+
+    [TestMethod]
+    public void SkippedClearThenSettledClear_RearmsSignalForNewWaiters()
+    {
+        WithWatchedWorkspace((watcher, probe) =>
+        {
+            var since = DateTime.UtcNow.AddSeconds(-1);
+            watcher.MarkStale(WorkspaceId, StaleReasons.ExternalEdit);
+            Assert.IsFalse(watcher.ClearStaleIfNoExternalEditSince(WorkspaceId, since));
+
+            Assert.IsTrue(watcher.ClearStaleIfNoExternalEditSince(WorkspaceId, DateTime.UtcNow.AddMinutes(1)));
             Assert.IsFalse(watcher.IsStale(WorkspaceId));
-            Assert.IsNull(watcher.GetStaleReason(WorkspaceId));
 
             var parked = watcher.WaitForStaleAsync(WorkspaceId, CancellationToken.None);
             Assert.IsFalse(parked.IsCompleted, "A cleared entry must park new waiters on a fresh signal.");
@@ -925,42 +968,67 @@ public sealed class FileWatcherExternalEditEpochTests
     }
 
     [TestMethod]
+    public void ClearResetsNewestObservedEdit_SoItDoesNotLeakIntoTheNextWindow()
+    {
+        WithWatchedWorkspace((watcher, probe) =>
+        {
+            watcher.MarkStale(WorkspaceId, StaleReasons.ExternalEdit);
+            Assert.IsTrue(watcher.ClearStaleIfNoExternalEditSince(WorkspaceId, DateTime.UtcNow.AddMinutes(1)));
+
+            watcher.MarkStale(WorkspaceId, StaleReasons.Apply);
+            Assert.IsTrue(watcher.ClearStaleIfNoExternalEditSince(WorkspaceId, DateTime.UtcNow.AddMinutes(-1)),
+                "An Apply-only window must clear even against a far-past start: no external edit remains recorded.");
+        });
+    }
+
+    [TestMethod]
     [DataRow(StaleReasons.Apply)]
     [DataRow(StaleReasons.Restore)]
-    public void ConditionalClear_ServerAttributedMarkAfterEpochRead_Clears(string reason)
+    public void ServerAttributedMark_NeverBlocksTheClear(string reason)
     {
-        WithWatchedWorkspace(watcher =>
+        WithWatchedWorkspace((watcher, probe) =>
         {
-            var epoch = watcher.GetExternalEditEpoch(WorkspaceId);
+            var since = DateTime.UtcNow.AddSeconds(-1);
             watcher.MarkStale(WorkspaceId, reason);
-            Assert.AreEqual(epoch, watcher.GetExternalEditEpoch(WorkspaceId), "Only ExternalEdit advances the epoch.");
 
-            Assert.IsTrue(watcher.ClearStaleIfNoExternalEditSince(WorkspaceId, epoch));
-
+            Assert.IsTrue(watcher.ClearStaleIfNoExternalEditSince(WorkspaceId, since));
             Assert.IsFalse(watcher.IsStale(WorkspaceId));
             Assert.IsNull(watcher.GetStaleReason(WorkspaceId));
         });
     }
 
     [TestMethod]
-    public void ConditionalClear_ExternalEditBeforeEpochRead_Clears()
+    public void DeleteOrRenameEvent_IsTimedByArrivalNotByTheFilesOldWriteTime()
     {
-        WithWatchedWorkspace(watcher =>
+        WithWatchedWorkspace((watcher, probe) =>
         {
-            watcher.MarkStale(WorkspaceId, StaleReasons.ExternalEdit);
-            var epoch = watcher.GetExternalEditEpoch(WorkspaceId);
+            File.SetLastWriteTimeUtc(probe, DateTime.UtcNow.AddDays(-1));
+            var since = DateTime.UtcNow.AddSeconds(-1);
+            watcher.RecordFileChange(WorkspaceId, probe, contentEvent: false);
 
-            Assert.IsTrue(watcher.ClearStaleIfNoExternalEditSince(WorkspaceId, epoch));
-            Assert.IsFalse(watcher.IsStale(WorkspaceId));
+            Assert.IsFalse(watcher.ClearStaleIfNoExternalEditSince(WorkspaceId, since),
+                "A rename keeps the old write time, so a delete/rename arriving after the load began must survive.");
         });
     }
 
     [TestMethod]
-    public void UnknownWorkspace_EpochIsZero_AndConditionalClearReportsNotCleared()
+    public void ContentEventForMissingFile_IsTimedByArrival()
+    {
+        WithWatchedWorkspace((watcher, probe) =>
+        {
+            File.Delete(probe);
+            var since = DateTime.UtcNow.AddSeconds(-1);
+            watcher.RecordFileChange(WorkspaceId, probe, contentEvent: true);
+
+            Assert.IsFalse(watcher.ClearStaleIfNoExternalEditSince(WorkspaceId, since));
+        });
+    }
+
+    [TestMethod]
+    public void UnknownWorkspace_ConditionalClearReportsNotCleared()
     {
         using var watcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance);
 
-        Assert.AreEqual(0L, watcher.GetExternalEditEpoch("missing"));
-        Assert.IsFalse(watcher.ClearStaleIfNoExternalEditSince("missing", 0));
+        Assert.IsFalse(watcher.ClearStaleIfNoExternalEditSince("missing", DateTime.UtcNow));
     }
 }
