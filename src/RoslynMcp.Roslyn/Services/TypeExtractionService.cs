@@ -906,35 +906,57 @@ public sealed class TypeExtractionService : ITypeExtractionService
 
     /// <summary>
     /// extract-type-preview-compile-delta-gate: refuses a preview whose rewritten source project has compiler
-    /// errors the original did not. Errors are diffed per document by id and message with multiplicity
-    /// (<see cref="InterfaceNullableProjection.AddedErrors"/>); positions are excluded because extraction
-    /// shifts every span. Runs before the preview token is stored, so a refusal leaves no token, version
-    /// change or disk effect. This is a safety net, not proof of behavioural preservation.
+    /// errors the original did not, in the source project AND in every project that transitively depends on it
+    /// (<see cref="PreviewCompilationDelta"/>). Errors are diffed per document by id and message with
+    /// multiplicity (<see cref="InterfaceNullableProjection.AddedErrors"/>); positions are excluded because
+    /// extraction shifts every span. Source-project errors take precedence: the refusal then names only their ids,
+    /// byte-identical to the pre-dependent-gate message, even when dependents also fail. A pre-existing error
+    /// inside an extracted member moves to the new document (different id and path), so it cannot be keyed
+    /// stably and counts as introduced: that is a source-project error and stays on the source-message path.
+    /// Runs before the preview token is stored, so a refusal leaves no token, version change or disk effect.
+    /// This is a safety net, not proof of behavioural preservation.
     /// </summary>
     private static async Task RefuseAddedCompilerErrorsAsync(Solution before, Solution after, ProjectId projectId, CancellationToken ct)
     {
-        var beforeCompilation = await before.GetProject(projectId)!.GetCompilationAsync(ct).ConfigureAwait(false);
-        var afterCompilation = await after.GetProject(projectId)!.GetCompilationAsync(ct).ConfigureAwait(false);
-        if (beforeCompilation is null || afterCompilation is null)
-        {
-            throw InvalidOperationErrors.Internal("The source project compilation is unavailable, so the extraction could not be verified.");
-        }
-
-        string DocumentKey(Location location, bool afterEdit) =>
-            location.SourceTree is { } tree && (afterEdit ? after : before).GetDocumentId(tree) is { } id
+        static string DocumentKey(Solution solution, Location location) =>
+            location.SourceTree is { } tree && solution.GetDocumentId(tree) is { } id
                 ? id.ToString()
                 : location.Kind.ToString();
 
-        var added = InterfaceNullableProjection.AddedErrors(
-            beforeCompilation.GetDiagnostics(ct), afterCompilation.GetDiagnostics(ct), DocumentKey);
-        if (added.Length == 0)
+        var introduced = await PreviewCompilationDelta.IntroducedErrorsAsync(before, after, [projectId], DocumentKey, ct)
+            .ConfigureAwait(false);
+        if (introduced.Count == 0)
         {
             return;
         }
 
-        var ids = string.Join(", ", added.Select(d => d.Id).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal));
+        var sourceErrors = introduced.Where(error => error.ProjectId == projectId).ToArray();
+        if (sourceErrors.Length > 0)
+        {
+            var ids = InterfaceNullableProjection.FormatIds(sourceErrors.Select(error => error.Diagnostic));
+            throw new PublicInvalidOperationException(
+                $"Extracting these members would introduce compiler errors ({ids}). Choose members whose extraction compiles, or restructure the type first.");
+        }
+
+        const int maxListed = 20;
+        var entries = introduced
+            .Select(error =>
+            {
+                var span = error.Diagnostic.Location.GetLineSpan();
+                var file = span.Path is { Length: > 0 } path ? $" at {Path.GetFileName(path)}:{span.StartLinePosition.Line + 1}" : string.Empty;
+                return (error.ProjectName, error.Diagnostic.Id, File: file, Line: span.StartLinePosition.Line, Path: span.Path ?? string.Empty);
+            })
+            .DistinctBy(entry => (entry.ProjectName, entry.Id, entry.Path, entry.Line))
+            .OrderBy(entry => entry.ProjectName, StringComparer.Ordinal)
+            .ThenBy(entry => entry.Path, StringComparer.Ordinal)
+            .ThenBy(entry => entry.Line)
+            .ThenBy(entry => entry.Id, StringComparer.Ordinal)
+            .ToArray();
+        var capped = entries.Length > maxListed ? $", showing first {maxListed}" : string.Empty;
+        var listed = string.Join("; ", entries.Take(maxListed).Select(entry => $"{entry.ProjectName}: {entry.Id}{entry.File}"));
         throw new PublicInvalidOperationException(
-            $"Extracting these members would introduce compiler errors ({ids}). Choose members whose extraction compiles, or restructure the type first.");
+            $"Extracting these members would introduce compiler errors in dependent projects ({entries.Length} total{capped}): {listed}. " +
+            "Choose members whose extraction compiles, or restructure the type first.");
     }
 
     /// <summary>
@@ -1507,9 +1529,10 @@ public sealed class TypeExtractionService : ITypeExtractionService
             var memberSymbol = semanticModel.GetDeclaredSymbol(node, ct);
             if (memberSymbol is null) continue;
 
-            // Only public / internal members can be referenced from outside the source type
-            // (private/protected references are confined to the source file or its derivatives,
-            // which the existing dangling-reference check already handles).
+            // Only public / internal members are collected as external-consumer warnings. Private and
+            // protected members can still be referenced by derived classes in other files or projects;
+            // those breaks are caught by the compile-delta gate (RefuseAddedCompilerErrorsAsync), which
+            // compiles the source project and every project that depends on it.
             if (memberSymbol.DeclaredAccessibility is not (Accessibility.Public or Accessibility.Internal or Accessibility.ProtectedOrInternal))
                 continue;
 
