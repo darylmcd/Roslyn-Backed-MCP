@@ -1,6 +1,6 @@
 # logging-event-ids-remaining-call-sites — Assign catalog EventIds to the remaining zero-id log call sites
 
-**row:** `logging-event-ids-remaining-call-sites` · **pri:** `Low` · **size:** `L` · **deps:** `logging-event-id-collisions-no-catalog`
+**row:** `logging-event-ids-remaining-call-sites` · **pri:** `Low` · **size:** `L`
 
 ## Anchors
 
