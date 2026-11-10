@@ -1171,21 +1171,28 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
     }
 
     /// <summary>
-    /// solution-project-index-by-name: names and raw paths cached per workspace/version.
+    /// solution-project-index-by-name: names and raw paths cached on the owning session.
     /// Physical paths are indexed only for fallback lookup.
-    /// A different observed workspace version rebuilds the entry.
+    /// The entry is valid only for the exact <see cref="Solution"/> instance it was built from,
+    /// so a reload or applied change between a reader's solution read and its publish can never
+    /// serve stale Projects for a newer solution. The session releases the entry on disposal.
     /// </summary>
-    private readonly ConcurrentDictionary<string, ProjectIndexEntry> _projectIndex = new(StringComparer.Ordinal);
-
     internal sealed record ProjectIndexHit(int Order, Project Project);
 
     internal sealed class ProjectIndexEntry(
-        int version,
+        Solution? solution,
         IReadOnlyDictionary<string, ProjectIndexHit> byName,
         IReadOnlyDictionary<string, ProjectIndexHit> byLexicalPath,
         IReadOnlyList<(string Path, Project Project)> physicalCandidates)
     {
-        public int Version { get; } = version;
+        /// <summary>Terminal marker a disposed session holds so no late reader can republish.</summary>
+        public static ProjectIndexEntry Closed { get; } = new(
+            null,
+            new Dictionary<string, ProjectIndexHit>(),
+            new Dictionary<string, ProjectIndexHit>(),
+            []);
+
+        public Solution? Solution { get; } = solution;
         private readonly IReadOnlyDictionary<string, ProjectIndexHit> _byName = byName;
         private readonly IReadOnlyDictionary<string, ProjectIndexHit> _byLexicalPath = byLexicalPath;
         private readonly IReadOnlyList<(string Path, Project Project)> _physicalCandidates = physicalCandidates;
@@ -1229,16 +1236,36 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
         var solution = session.Workspace?.CurrentSolution;
         if (solution is null) return null;
 
-        var version = session.Version;
-        var entry = _projectIndex.AddOrUpdate(
-            workspaceId,
-            _ => BuildProjectIndex(version, solution),
-            (_, existing) => existing.Version == version ? existing : BuildProjectIndex(version, solution));
+        AfterProjectIndexSolutionReadForTesting?.Invoke();
 
-        return entry.Find(projectNameOrPath);
+        var observed = session.ProjectIndex;
+        if (observed is null || !ReferenceEquals(observed.Solution, solution))
+        {
+            Interlocked.Increment(ref _projectIndexBuildCount);
+            observed = session.PublishProjectIndex(observed, BuildProjectIndex(solution), BeforeProjectIndexPublishForTesting);
+        }
+
+        return observed.Find(projectNameOrPath);
     }
 
-    internal static ProjectIndexEntry BuildProjectIndex(int version, Solution solution)
+    // Test seams for project-index lifetime coverage.
+    internal Action? AfterProjectIndexSolutionReadForTesting { get; set; }
+    internal Action? BeforeProjectIndexPublishForTesting { get; set; }
+    internal int ProjectIndexBuildCountForTesting => Volatile.Read(ref _projectIndexBuildCount);
+    internal int ProjectIndexCountForTesting => _sessions.Values.Count(session => session.ProjectIndex?.Solution is not null);
+    private int _projectIndexBuildCount;
+
+    /// <summary>
+    /// Captures the registered session's index slot so a test can observe it after the session
+    /// leaves the registry (the registry-based count cannot see a closed session).
+    /// </summary>
+    internal Func<ProjectIndexEntry?> CaptureProjectIndexSlotForTesting(string workspaceId)
+    {
+        var session = GetRequiredSession(workspaceId);
+        return () => session.ProjectIndex;
+    }
+
+    internal static ProjectIndexEntry BuildProjectIndex(Solution solution)
     {
         var names = new Dictionary<string, ProjectIndexHit>(StringComparer.OrdinalIgnoreCase);
         var lexicalPaths = new Dictionary<string, ProjectIndexHit>(FileSystemPath.Comparer);
@@ -1254,7 +1281,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
         }
         var physicalCandidates = lexicalPaths.OrderBy(pair => pair.Value.Order)
             .Select(pair => (pair.Key, pair.Value.Project)).ToArray();
-        return new ProjectIndexEntry(version, names, lexicalPaths, physicalCandidates);
+        return new ProjectIndexEntry(solution, names, lexicalPaths, physicalCandidates);
     }
 
     public bool TryApplyChanges(string workspaceId, Solution newSolution)
@@ -1848,6 +1875,27 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
 
         public void TouchAccess(DateTimeOffset now) => LastAccessedUtc = now;
 
+        private ProjectIndexEntry? _projectIndex;
+
+        /// <summary>Session-owned project lookup index; <see cref="ProjectIndexEntry.Closed"/> after disposal.</summary>
+        public ProjectIndexEntry? ProjectIndex => Volatile.Read(ref _projectIndex);
+
+        /// <summary>
+        /// Publishes <paramref name="built"/> only if the slot still holds <paramref name="observed"/>.
+        /// A disposed session holds <see cref="ProjectIndexEntry.Closed"/>, so a reader that overlaps
+        /// close never retains Project/Solution snapshots on the closed session. The caller's own
+        /// <paramref name="built"/> entry still answers that single read.
+        /// </summary>
+        public ProjectIndexEntry PublishProjectIndex(ProjectIndexEntry? observed, ProjectIndexEntry built, Action? beforePublish)
+        {
+            if (ReferenceEquals(observed, ProjectIndexEntry.Closed)) return built;
+            beforePublish?.Invoke();
+            var previous = Interlocked.CompareExchange(ref _projectIndex, built, observed);
+            if (ReferenceEquals(previous, observed)) return built;
+            // Lost to a concurrent publisher or to disposal; reuse the winner when it matches.
+            return previous is not null && ReferenceEquals(previous.Solution, built.Solution) ? previous : built;
+        }
+
         public void Dispose()
         {
             // Lease after workspace so Roslyn has released the analyzer references before the
@@ -1856,6 +1904,8 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
             // (and through it the loaded analyzer assemblies) rooted while the lease's
             // GC-assisted delete retries run. Lease disposal is idempotent, so the
             // eviction/close/host-shutdown paths can all reach here safely.
+            // Release the Project/Solution snapshots first and make the slot terminal (cannot throw).
+            Interlocked.Exchange(ref _projectIndex, ProjectIndexEntry.Closed);
             var failures = WorkspaceResourceDisposer.DisposeOrdered(
                 () =>
                 {
