@@ -37,6 +37,9 @@ public sealed class DiagnosticService : IDiagnosticService
         _workspace.WorkspaceReloaded += _queryService.InvalidateWorkspaceCaches;
     }
 
+    /// <summary>Test seam: distinct workspaces holding any cached diagnostics. Production code must not read it.</summary>
+    internal int CachedWorkspaceCount => _queryService.CachedWorkspaceCount;
+
     public bool TryGetCachedWorkspaceDiagnostics(
         string workspaceId,
         out DiagnosticsResultDto? diagnostics) =>

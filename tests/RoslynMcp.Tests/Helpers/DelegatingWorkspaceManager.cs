@@ -46,7 +46,7 @@ internal abstract class DelegatingWorkspaceManager(IWorkspaceManager inner) : IW
 
     public WorkspaceStatusDto GetStatus(string workspaceId) => inner.GetStatus(workspaceId);
 
-    public Task<WorkspaceStatusDto> GetStatusAsync(
+    public virtual Task<WorkspaceStatusDto> GetStatusAsync(
         string workspaceId,
         CancellationToken cancellationToken = default) => inner.GetStatusAsync(workspaceId, cancellationToken);
 
@@ -60,7 +60,7 @@ internal abstract class DelegatingWorkspaceManager(IWorkspaceManager inner) : IW
     public Task<string?> GetSourceTextAsync(string workspaceId, string filePath, CancellationToken ct) =>
         inner.GetSourceTextAsync(workspaceId, filePath, ct);
 
-    public int GetCurrentVersion(string workspaceId) => inner.GetCurrentVersion(workspaceId);
+    public virtual int GetCurrentVersion(string workspaceId) => inner.GetCurrentVersion(workspaceId);
 
     public Project? GetProject(string workspaceId, string projectNameOrPath) =>
         inner.GetProject(workspaceId, projectNameOrPath);

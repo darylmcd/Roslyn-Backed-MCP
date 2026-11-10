@@ -124,6 +124,7 @@ public sealed class TestDiscoveryFileIdentityTests
         {
             GetCurrentSolutionHandler = _ => _workspace.CurrentSolution,
             GetCurrentVersionHandler = _ => 1,
+            ContainsWorkspaceHandler = _ => true,
             GetStatusAsyncHandler = workspaceId => new(workspaceId, null, 1, "fixture:1", DateTimeOffset.UtcNow, 1,
                 _workspace.CurrentSolution.Projects.Single().DocumentIds.Count,
                 [new("Verification", "", _workspace.CurrentSolution.Projects.Single().DocumentIds.Count, [], [], true, "Verification", "Library")], true, false, [])

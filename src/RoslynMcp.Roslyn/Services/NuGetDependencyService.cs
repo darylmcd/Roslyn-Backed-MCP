@@ -37,11 +37,17 @@ public sealed class NuGetDependencyService : INuGetDependencyService
     /// </summary>
     private readonly ConcurrentDictionary<string, VulnCacheEntry> _vulnCache = new(StringComparer.Ordinal);
 
+    // Guards bucket creation against close/reload eviction (see PrepareVulnerabilityScanAsync).
+    private readonly object _vulnCacheSync = new();
+
     private sealed record VulnCacheEntry(int Version, ConcurrentDictionary<VulnCacheKey, NuGetVulnerabilityScanResultDto> ByKey);
 
     private sealed record VulnCacheKey(string ProjectFilter, bool IncludeTransitive, string LockfileHash);
 
     private const int MaxVulnCacheEntriesPerWorkspace = 4;
+
+    /// <summary>Test seam: number of workspaces with a vulnerability-cache bucket. Production code must not read it.</summary>
+    internal int CachedWorkspaceCount => _vulnCache.Count;
 
     public NuGetDependencyService(
         IWorkspaceManager workspace,
@@ -57,10 +63,18 @@ public sealed class NuGetDependencyService : INuGetDependencyService
         _logger = logger;
         _exceptionReporter = exceptionReporter;
         _options = options ?? new ValidationServiceOptions();
-        _workspace.WorkspaceClosed += workspaceId => _vulnCache.TryRemove(workspaceId, out _);
+        _workspace.WorkspaceClosed += EvictWorkspace;
         // Item #7: reload typically coincides with a `dotnet restore`, which is exactly when
         // the vulnerability scan needs to run again — drop cached results on reload.
-        _workspace.WorkspaceReloaded += workspaceId => _vulnCache.TryRemove(workspaceId, out _);
+        _workspace.WorkspaceReloaded += EvictWorkspace;
+    }
+
+    private void EvictWorkspace(string workspaceId)
+    {
+        lock (_vulnCacheSync)
+        {
+            _vulnCache.TryRemove(workspaceId, out _);
+        }
     }
 
     public async Task<NuGetDependencyResultDto> GetNuGetDependenciesAsync(
@@ -239,12 +253,22 @@ public sealed class NuGetDependencyService : INuGetDependencyService
         var projectFilterKey = projectFilter ?? "<all>";
         var cacheKey = new VulnCacheKey(projectFilterKey, includeTransitive, lockfileHash);
 
-        var entry = _vulnCache.AddOrUpdate(
-            workspaceId,
-            _ => new VulnCacheEntry(version, new ConcurrentDictionary<VulnCacheKey, NuGetVulnerabilityScanResultDto>()),
-            (_, existing) => existing.Version == version
-                ? existing
-                : new VulnCacheEntry(version, new ConcurrentDictionary<VulnCacheKey, NuGetVulnerabilityScanResultDto>()));
+        // Publish the bucket only while the workspace is still open. The manager removes the session
+        // before it raises WorkspaceClosed and the eviction handler takes the same lock, so a close that
+        // lands after the version read above can never be followed by a bucket for the closed session.
+        // A workspace that is already gone gets a transient bucket that is never cached.
+        VulnCacheEntry entry;
+        lock (_vulnCacheSync)
+        {
+            entry = _workspace.ContainsWorkspace(workspaceId)
+                ? _vulnCache.AddOrUpdate(
+                    workspaceId,
+                    _ => new VulnCacheEntry(version, new ConcurrentDictionary<VulnCacheKey, NuGetVulnerabilityScanResultDto>()),
+                    (_, existing) => existing.Version == version
+                        ? existing
+                        : new VulnCacheEntry(version, new ConcurrentDictionary<VulnCacheKey, NuGetVulnerabilityScanResultDto>()))
+                : new VulnCacheEntry(version, new ConcurrentDictionary<VulnCacheKey, NuGetVulnerabilityScanResultDto>());
+        }
 
         entry.ByKey.TryGetValue(cacheKey, out var cached);
 

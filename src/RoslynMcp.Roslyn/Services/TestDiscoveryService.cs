@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -10,12 +9,18 @@ using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Roslyn.Services;
 
-public sealed class TestDiscoveryService : ITestDiscoveryService
+public sealed class TestDiscoveryService : ITestDiscoveryService, IDisposable
 {
     private readonly IWorkspaceManager _workspaceManager;
     private readonly ILogger<TestDiscoveryService> _logger;
     private readonly ValidationServiceOptions _options;
-    private readonly ConcurrentDictionary<string, (int Version, TestDiscoveryDto Result)> _cache = new();
+
+    // Per-workspace discovery cache. Every access goes through _cacheSync so the publish-time liveness
+    // check (see PublishIfWorkspaceLive) and the WorkspaceClosed/WorkspaceReloaded eviction are atomic
+    // with each other: a close that lands while discovery is in flight can never be followed by a
+    // republish of that closed session.
+    private readonly object _cacheSync = new();
+    private readonly Dictionary<string, (int Version, TestDiscoveryDto Result)> _cache = new(StringComparer.Ordinal);
 
     /// <summary>
     /// Test seam for the semantic reference sweep. Every sweep site (symbol mode, direct-reference,
@@ -23,6 +28,18 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
     /// </summary>
     internal Func<ISymbol, Solution, CancellationToken, Task<IEnumerable<ReferencedSymbol>>> FindReferencesAsync { get; set; }
         = static (symbol, solution, ct) => SymbolFinder.FindReferencesAsync(symbol, solution, ct);
+
+    /// <summary>Test seam: number of workspaces with a cached discovery entry. Production code must not read it.</summary>
+    internal int CachedWorkspaceCount
+    {
+        get
+        {
+            lock (_cacheSync)
+            {
+                return _cache.Count;
+            }
+        }
+    }
 
     public TestDiscoveryService(
         IWorkspaceManager workspaceManager,
@@ -32,13 +49,63 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
         _workspaceManager = workspaceManager;
         _logger = logger;
         _options = options ?? new ValidationServiceOptions();
+        _workspaceManager.WorkspaceClosed += EvictWorkspace;
+        // A reload bumps the workspace version, so its entries could never hit again; drop them now.
+        _workspaceManager.WorkspaceReloaded += EvictWorkspace;
+    }
+
+    public void Dispose()
+    {
+        _workspaceManager.WorkspaceClosed -= EvictWorkspace;
+        _workspaceManager.WorkspaceReloaded -= EvictWorkspace;
+    }
+
+    private void EvictWorkspace(string workspaceId)
+    {
+        lock (_cacheSync)
+        {
+            _cache.Remove(workspaceId);
+        }
+    }
+
+    private bool TryGetCached(string workspaceId, int version, out TestDiscoveryDto result)
+    {
+        lock (_cacheSync)
+        {
+            if (_cache.TryGetValue(workspaceId, out var cached) && cached.Version == version)
+            {
+                result = cached.Result;
+                return true;
+            }
+        }
+
+        result = null!;
+        return false;
+    }
+
+    /// <summary>
+    /// Publishes only while the workspace is still open. The workspace manager removes the session
+    /// before it raises WorkspaceClosed, and the eviction handler takes the same lock, so either the
+    /// handler runs after this publish and removes it, or this check already sees the session gone and
+    /// drops it. Only <see cref="IWorkspaceManager.ContainsWorkspace"/> (a lock-free lookup) runs under
+    /// the lock.
+    /// </summary>
+    private void PublishIfWorkspaceLive(string workspaceId, int version, TestDiscoveryDto result)
+    {
+        lock (_cacheSync)
+        {
+            if (_workspaceManager.ContainsWorkspace(workspaceId))
+            {
+                _cache[workspaceId] = (version, result);
+            }
+        }
     }
 
     public async Task<TestDiscoveryDto> DiscoverTestsAsync(string workspaceId, CancellationToken ct)
     {
         var currentVersion = _workspaceManager.GetCurrentVersion(workspaceId);
-        if (_cache.TryGetValue(workspaceId, out var cached) && cached.Version == currentVersion)
-            return cached.Result;
+        if (TryGetCached(workspaceId, currentVersion, out var cachedResult))
+            return cachedResult;
 
         var solution = _workspaceManager.GetCurrentSolution(workspaceId);
         var testProjectNames = (await _workspaceManager.GetStatusAsync(workspaceId, ct).ConfigureAwait(false)).Projects
@@ -90,7 +157,7 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
         }
 
         var result = new TestDiscoveryDto(discoveredProjects);
-        _cache[workspaceId] = (currentVersion, result);
+        PublishIfWorkspaceLive(workspaceId, currentVersion, result);
         return result;
     }
 

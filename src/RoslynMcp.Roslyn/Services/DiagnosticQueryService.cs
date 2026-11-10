@@ -19,6 +19,11 @@ internal sealed class DiagnosticQueryService
     private readonly ConcurrentDictionary<string, DiagnosticCacheEntry> _diagnosticCache = new();
     private readonly ConcurrentDictionary<string, ResultCacheEntry> _resultCache = new();
 
+    // Writers and the close/reload eviction share this lock so the publish-time liveness check is
+    // atomic with eviction: a workspace closed while a query was in flight is never republished.
+    // Readers stay lock-free over the concurrent dictionaries.
+    private readonly object _cacheSync = new();
+
     private sealed record DiagnosticCacheEntry(int Version, IReadOnlyList<Diagnostic> Diagnostics);
 
     private sealed record ResultCacheEntry(
@@ -34,10 +39,17 @@ internal sealed class DiagnosticQueryService
         _projectAnalyzer = new DiagnosticProjectAnalyzer(compilationCache, exceptionReporter);
     }
 
+    /// <summary>Test seam: distinct workspaces holding any cached entry. Production code must not read it.</summary>
+    internal int CachedWorkspaceCount =>
+        _resultCache.Keys.Union(_diagnosticCache.Keys, StringComparer.Ordinal).Count();
+
     public void InvalidateWorkspaceCaches(string workspaceId)
     {
-        _resultCache.TryRemove(workspaceId, out _);
-        _diagnosticCache.TryRemove(workspaceId, out _);
+        lock (_cacheSync)
+        {
+            _resultCache.TryRemove(workspaceId, out _);
+            _diagnosticCache.TryRemove(workspaceId, out _);
+        }
     }
 
     public bool TryGetCachedWorkspaceDiagnostics(
@@ -105,10 +117,18 @@ internal sealed class DiagnosticQueryService
         IReadOnlyList<Diagnostic> diagnostics)
     {
         var candidate = new DiagnosticCacheEntry(version, diagnostics);
-        _diagnosticCache.AddOrUpdate(
-            workspaceId,
-            candidate,
-            (_, existing) => existing.Version > version ? existing : candidate);
+        lock (_cacheSync)
+        {
+            if (!_workspace.ContainsWorkspace(workspaceId))
+            {
+                return;
+            }
+
+            _diagnosticCache.AddOrUpdate(
+                workspaceId,
+                candidate,
+                (_, existing) => existing.Version > version ? existing : candidate);
+        }
     }
 
     public async Task<DiagnosticsResultDto> GetDiagnosticsAsync(
@@ -247,10 +267,18 @@ internal sealed class DiagnosticQueryService
         DiagnosticQueryFilters filters,
         DiagnosticsResultDto result)
     {
-        _resultCache.AddOrUpdate(
-            workspaceId,
-            _ => CreateResultCacheEntry(version, filters, result),
-            (_, existing) => MergeResultCacheEntry(existing, version, filters, result));
+        lock (_cacheSync)
+        {
+            if (!_workspace.ContainsWorkspace(workspaceId))
+            {
+                return;
+            }
+
+            _resultCache.AddOrUpdate(
+                workspaceId,
+                _ => CreateResultCacheEntry(version, filters, result),
+                (_, existing) => MergeResultCacheEntry(existing, version, filters, result));
+        }
     }
 
     private static ResultCacheEntry CreateResultCacheEntry(
