@@ -107,8 +107,6 @@ internal sealed class FileServerObservabilitySink : IServerObservabilitySink
 /// </summary>
 internal sealed class ServerObservabilityReporter : IUnexpectedExceptionReporter
 {
-    private const int UnexpectedFailureEventId = 1001;
-    private const string UnexpectedFailureEventName = "UnexpectedFailure";
     private readonly IServerObservabilitySink _sink;
     private readonly Action<string> _writeFallback;
 
@@ -149,8 +147,8 @@ internal sealed class ServerObservabilityReporter : IUnexpectedExceptionReporter
                     DateTimeOffset.UtcNow,
                     LogLevel.Error,
                     categoryName,
-                    UnexpectedFailureEventId,
-                    UnexpectedFailureEventName,
+                    LogEvents.UnexpectedFailure,
+                    LogEvents.UnexpectedFailureName,
                     details.Server));
         }
         catch

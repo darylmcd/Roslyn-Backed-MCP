@@ -4,6 +4,7 @@ using System.Text;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -43,8 +44,14 @@ public sealed class DotnetCommandRunner : IDotnetCommandRunner
     private static readonly Action<ILogger, int, string, string, Exception?> LogProcessTreeKillFailed =
         LoggerMessage.Define<int, string, string>(
             LogLevel.Warning,
-            new EventId(1, nameof(LogProcessTreeKillFailed)),
+            new EventId(LogEvents.ProcessTreeKillFailed, LogEvents.ProcessTreeKillFailedName),
             "Failed to kill dotnet process tree for process {ProcessId} after {KillReason}; exceptionType={ExceptionType}.");
+
+    private static readonly Action<ILogger, string, string, string, int?, long, Exception?> LogCommandProcessCompleted =
+        LoggerMessage.Define<string, string, string, int?, long>(
+            LogLevel.Information,
+            new EventId(LogEvents.CommandProcessCompleted, LogEvents.CommandProcessCompletedName),
+            "dotnet process boundary: verb={Verb} targetKind={TargetKind} outcome={Outcome} exitCode={ExitCode} durationMs={DurationMs}");
 
     private readonly int _outputLimit;
     private readonly ILogger<DotnetCommandRunner>? _logger;
@@ -107,49 +114,79 @@ public sealed class DotnetCommandRunner : IDotnetCommandRunner
         string executablePath,
         CancellationToken ct)
     {
-        var startInfo = CreateStartInfo(workingDirectory, arguments, executablePath);
-
-        using var process = new Process { StartInfo = startInfo };
+        // One boundary record per command, emitted from finally so cancellation, start failure and
+        // unexpected throws still report an outcome. Callers: gated build/test, fork-apply, workspace_load drain.
         var stopwatch = Stopwatch.StartNew();
-        process.Start();
-        // Commands run non-interactively. Closing a dedicated stdin pipe prevents the child
-        // process tree from inheriting the stdio host's long-lived MCP protocol input stream.
-        process.StandardInput.Close();
-
-        using var cancellationRegistration = ct.Register(static state =>
+        var outcome = "error";
+        int? exitCode = null;
+        try
         {
-            var kill = (ProcessKillState)state!;
-            kill.Runner.TryKillProcessTree(kill.Process, "cancellation");
-        }, new ProcessKillState(this, process));
+            var startInfo = CreateStartInfo(workingDirectory, arguments, executablePath);
 
-        // Item 4: share a single early-kill coordinator across both stream readers so either
-        // stdout or stderr can terminate the process on first match.
-        var earlyKill = earlyKillPatterns is { Count: > 0 }
-            ? new EarlyKillCoordinator(this, process, earlyKillPatterns)
-            : null;
+            using var process = new Process { StartInfo = startInfo };
+            process.Start();
+            // Commands run non-interactively. Closing a dedicated stdin pipe prevents the child
+            // process tree from inheriting the stdio host's long-lived MCP protocol input stream.
+            process.StandardInput.Close();
 
-        using var drainCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        var stdOutTask = ReadBoundedAsync(process.StandardOutput, _outputLimit, earlyKill, drainCts.Token, ct);
-        var stdErrTask = ReadBoundedAsync(process.StandardError, _outputLimit, earlyKill, drainCts.Token, ct);
+            using var cancellationRegistration = ct.Register(static state =>
+            {
+                var kill = (ProcessKillState)state!;
+                kill.Runner.TryKillProcessTree(kill.Process, "cancellation");
+            }, new ProcessKillState(this, process));
 
-        await process.WaitForExitAsync(ct).ConfigureAwait(false);
-        // The child has exited; only handle-inheriting descendants can still hold the pipe open.
-        drainCts.CancelAfter(PostExitDrainGracePeriod);
-        var stdOut = await stdOutTask.ConfigureAwait(false);
-        var stdErr = await stdErrTask.ConfigureAwait(false);
-        stopwatch.Stop();
+            // Item 4: share a single early-kill coordinator across both stream readers so either
+            // stdout or stderr can terminate the process on first match.
+            var earlyKill = earlyKillPatterns is { Count: > 0 }
+                ? new EarlyKillCoordinator(this, process, earlyKillPatterns)
+                : null;
 
-        return new CommandExecutionDto(
-            Command: executablePath,
-            Arguments: arguments,
-            WorkingDirectory: workingDirectory,
-            TargetPath: targetPath,
-            ExitCode: process.ExitCode,
-            Succeeded: process.ExitCode == 0 && earlyKill?.KillReason is null,
-            DurationMs: stopwatch.ElapsedMilliseconds,
-            StdOut: stdOut,
-            StdErr: stdErr,
-            EarlyKillReason: earlyKill?.KillReason);
+            using var drainCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            var stdOutTask = ReadBoundedAsync(process.StandardOutput, _outputLimit, earlyKill, drainCts.Token, ct);
+            var stdErrTask = ReadBoundedAsync(process.StandardError, _outputLimit, earlyKill, drainCts.Token, ct);
+
+            await process.WaitForExitAsync(ct).ConfigureAwait(false);
+            // The child has exited; only handle-inheriting descendants can still hold the pipe open.
+            drainCts.CancelAfter(PostExitDrainGracePeriod);
+            var stdOut = await stdOutTask.ConfigureAwait(false);
+            var stdErr = await stdErrTask.ConfigureAwait(false);
+            stopwatch.Stop();
+
+            exitCode = process.ExitCode;
+            var succeeded = process.ExitCode == 0 && earlyKill?.KillReason is null;
+            outcome = succeeded ? "succeeded" : "failed";
+            return new CommandExecutionDto(
+                Command: executablePath,
+                Arguments: arguments,
+                WorkingDirectory: workingDirectory,
+                TargetPath: targetPath,
+                ExitCode: process.ExitCode,
+                Succeeded: succeeded,
+                DurationMs: stopwatch.ElapsedMilliseconds,
+                StdOut: stdOut,
+                StdErr: stdErr,
+                EarlyKillReason: earlyKill?.KillReason);
+        }
+        catch (OperationCanceledException)
+        {
+            outcome = "cancelled";
+            throw;
+        }
+        finally
+        {
+            stopwatch.Stop();
+            if (_logger is not null)
+            {
+                LogCommandProcessCompleted(
+                    _logger,
+                    CommandBoundaryTelemetry.Verb(arguments),
+                    CommandBoundaryTelemetry.TargetKind(targetPath),
+                    outcome,
+                    exitCode,
+                    stopwatch.ElapsedMilliseconds,
+                    null);
+            }
+        }
     }
 
     internal static ProcessStartInfo CreateStartInfo(

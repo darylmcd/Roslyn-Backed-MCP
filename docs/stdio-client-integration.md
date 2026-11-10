@@ -101,6 +101,54 @@ Tool-call completion and failure records carry an outcome and elapsed millisecon
 correlation identifier appears in public unexpected-error envelopes, so an operator can join a
 client-visible failure to local records without exposing exception messages or stack text.
 
+### Event id catalog
+
+Every `eventId` is unique and owned by one catalog (`LogEvents` in `RoslynMcp.Core`); a drift test compares
+this table to it. Ranges per subsystem: 1-99 workspace, 1000-1999 host lifecycle and observability,
+2000-2999 tool-call lifecycle, 3000-3999 process and command execution, 4000-4999 Roslyn providers.
+Published ids are never renumbered; select on `eventName`, which is stable per event.
+
+| eventId | eventName | subsystem |
+|---|---|---|
+| 1 | WorkspaceLoaded | workspace |
+| 2 | ChangesApplied | workspace |
+| 3 | ChangesApplyFailed | workspace |
+| 4 | WorkspaceClosed | workspace |
+| 5 | SessionNotFound | workspace |
+| 6 | WorkspaceLoadCompleted | workspace |
+| 1001 | UnexpectedFailure | host |
+| 1002 | LogTransportDisconnected | host |
+| 2101 | ToolCompleted | tool |
+| 2102 | ToolCancelled | tool |
+| 2103 | ToolInputRequired | tool |
+| 2104 | ToolFailed | tool |
+| 3001 | LogCommandExecuted | process |
+| 3002 | LogProcessTreeKillFailed | process |
+| 3003 | CommandProcessCompleted | process |
+| 3004 | CommandGateCompleted | process |
+| 4001 | LogProviderExecutionFailed | provider |
+| 4002 | LogProviderEnumerationFailed | provider |
+
+### Dependency-boundary records
+
+Each subprocess and workspace load emits an `Information` record that joins the tool record by
+`correlationId`. Fields are an allowlist: no command arguments, filter text or paths ever appear in them.
+
+| eventName | Emitted by | `fields` |
+|---|---|---|
+| `CommandProcessCompleted` | every `dotnet` command, once, when the process ends or fails to run | `verb` (first argument when it is a bare verb or option name, else `other`), `targetKind` (`solution`, `project`, `directory`, `other`), `outcome` (`succeeded`, `failed`, `cancelled`, `error`), `exitCode` (null unless the process exited), `durationMs` |
+| `CommandGateCompleted` | gated build, test and scan commands, once | `verb`, `targetKind`, `outcome` (`completed`, `timeout`, `cancelled`, `failed`), `queueWaitMs` (time before both gates were held; the whole wait when it never ran), `durationMs` (total including queue wait), `exitCode` |
+| `WorkspaceLoadCompleted` | every `LoadAsync` call, once: `workspace_load`, the automatic reload of a stale workspace in tool dispatch, and the fork reload after a fork apply | `outcome` (`succeeded`, `failed`, `cancelled`), `reused` (an existing session for the same path was returned), `projectCount` (null on failure), `durationMs` |
+
+`CommandProcessCompleted.durationMs` is process time; `CommandGateCompleted.durationMs - queueWaitMs`
+is the gated work and `queueWaitMs` the time spent waiting for the global and per-workspace gates. A
+`timeout` outcome means the total budget (queue wait included) elapsed; the process record for the same
+call reports `cancelled` because the runner only sees its token fire.
+
+```sh
+jq 'select(.eventName == "CommandGateCompleted" or .eventName == "WorkspaceLoadCompleted") | {event: .eventName, correlationId, fields}' roslyn-mcp-1234.jsonl
+```
+
 Use `server_heartbeat` for a cheap connection-state probe and `server_info` for connection state,
 version, capabilities, and surface counts. Neither requires a loaded workspace.
 

@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
+using System.Diagnostics;
 using System.Runtime.ExceptionServices;
 using System.Text.Json;
 using System.Threading;
@@ -26,28 +27,33 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
 
     private static readonly Action<ILogger, string, string, int, Exception?> LogWorkspaceLoaded =
         LoggerMessage.Define<string, string, int>(
-            LogLevel.Information, new EventId(1, nameof(LogWorkspaceLoaded)),
+            LogLevel.Information, new EventId(LogEvents.WorkspaceLoaded, LogEvents.WorkspaceLoadedName),
             "Loaded workspace {WorkspaceId} from {Path}, version {Version}");
 
     private static readonly Action<ILogger, string, int, Exception?> LogChangesApplied =
         LoggerMessage.Define<string, int>(
-            LogLevel.Information, new EventId(2, nameof(LogChangesApplied)),
+            LogLevel.Information, new EventId(LogEvents.ChangesApplied, LogEvents.ChangesAppliedName),
             "Applied workspace changes to {WorkspaceId}, new version {Version}");
 
     private static readonly Action<ILogger, string, Exception?> LogChangesApplyFailed =
         LoggerMessage.Define<string>(
-            LogLevel.Warning, new EventId(3, nameof(LogChangesApplyFailed)),
+            LogLevel.Warning, new EventId(LogEvents.ChangesApplyFailed, LogEvents.ChangesApplyFailedName),
             "Failed to apply workspace changes for {WorkspaceId}");
 
     private static readonly Action<ILogger, string, Exception?> LogWorkspaceClosed =
         LoggerMessage.Define<string>(
-            LogLevel.Information, new EventId(4, nameof(LogWorkspaceClosed)),
+            LogLevel.Information, new EventId(LogEvents.WorkspaceClosed, LogEvents.WorkspaceClosedName),
             "Closed workspace {WorkspaceId}");
 
     private static readonly Action<ILogger, string, int, string, Exception?> LogSessionNotFound =
         LoggerMessage.Define<string, int, string>(
-            LogLevel.Warning, new EventId(5, nameof(LogSessionNotFound)),
+            LogLevel.Warning, new EventId(LogEvents.SessionNotFound, LogEvents.SessionNotFoundName),
             "Workspace '{WorkspaceId}' not found. Active sessions ({Count}): [{ActiveIds}]");
+
+    private static readonly Action<ILogger, string, bool, int?, long, Exception?> LogWorkspaceLoadCompleted =
+        LoggerMessage.Define<string, bool, int?, long>(
+            LogLevel.Information, new EventId(LogEvents.WorkspaceLoadCompleted, LogEvents.WorkspaceLoadCompletedName),
+            "workspace_load boundary: outcome={Outcome} reused={Reused} projectCount={ProjectCount} durationMs={DurationMs}");
 
     private readonly ILogger<WorkspaceManager> _logger;
     private readonly IPreviewStore _previewStore;
@@ -384,12 +390,29 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
             if (_activeLoadCount++ == 0)
                 _loadsDrained = new(TaskCreationOptions.RunContinuationsAsynchronously);
         }
+        // One boundary record per call (LoadAsync is the workspace_load entry; reload uses LoadIntoSessionAsync
+        // directly). It carries no path: only outcome, whether an existing session was returned, project count
+        // and duration, emitted from finally so failures and cancellation report too.
+        var stopwatch = Stopwatch.StartNew();
+        var outcome = "failed";
+        var reused = false;
+        int? projectCount = null;
         try
         {
-            return await LoadCoreAsync(path, evictPolicy, globalProperties, ct).ConfigureAwait(false);
+            var loaded = await LoadCoreAsync(path, evictPolicy, globalProperties, ct).ConfigureAwait(false);
+            reused = loaded.Reused;
+            projectCount = loaded.Status.ProjectCount;
+            outcome = "succeeded";
+            return loaded.Status;
+        }
+        catch (OperationCanceledException)
+        {
+            outcome = "cancelled";
+            throw;
         }
         finally
         {
+            LogWorkspaceLoadCompleted(_logger, outcome, reused, projectCount, stopwatch.ElapsedMilliseconds, null);
             lock (_lifecycleSync)
             {
                 if (--_activeLoadCount == 0) _loadsDrained!.TrySetResult();
@@ -397,7 +420,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
         }
     }
 
-    private async Task<WorkspaceStatusDto> LoadCoreAsync(
+    private async Task<(WorkspaceStatusDto Status, bool Reused)> LoadCoreAsync(
         string path,
         EvictPolicy evictPolicy,
         IDictionary<string, string>? globalProperties,
@@ -428,7 +451,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
                     "workspace_load: returning existing workspace '{WorkspaceId}' for path '{Path}' (idempotent)",
                     existing.WorkspaceId,
                     fullPath);
-                return BuildStatus(existing);
+                return (BuildStatus(existing), true);
             }
         }
 
@@ -512,7 +535,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
 
                     slotTransferred = true;
                     _fileWatcher.Watch(workspaceId, session.LoadedPath!);
-                    return BuildStatus(session);
+                    return (BuildStatus(session), false);
                 }
             }
 
@@ -525,7 +548,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
             if (loserFailures.Count > 0)
                 _logger.LogError(new AggregateException(loserFailures),
                     "Disposing race-losing workspace '{WorkspaceId}' failed", workspaceId);
-            return winnerStatus;
+            return (winnerStatus, true);
         }
         catch (Exception ex)
         {

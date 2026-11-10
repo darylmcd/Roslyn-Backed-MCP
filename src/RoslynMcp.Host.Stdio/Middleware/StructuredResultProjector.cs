@@ -24,10 +24,10 @@ internal static class StructuredResultProjector
 
     private static readonly AsyncLocal<DispatchAttempt?> CurrentDispatchAttempt = new();
 
-    private static readonly EventId ToolCompletedEvent = new(2101, "ToolCompleted");
-    private static readonly EventId ToolCancelledEvent = new(2102, "ToolCancelled");
-    private static readonly EventId ToolInputRequiredEvent = new(2103, "ToolInputRequired");
-    private static readonly EventId ToolFailedEvent = new(2104, "ToolFailed");
+    private static readonly EventId ToolCompletedEvent = new(LogEvents.ToolCompleted, LogEvents.ToolCompletedName);
+    private static readonly EventId ToolCancelledEvent = new(LogEvents.ToolCancelled, LogEvents.ToolCancelledName);
+    private static readonly EventId ToolInputRequiredEvent = new(LogEvents.ToolInputRequired, LogEvents.ToolInputRequiredName);
+    private static readonly EventId ToolFailedEvent = new(LogEvents.ToolFailed, LogEvents.ToolFailedName);
 
     internal static async ValueTask<CallToolResult> ExecuteAsync(
         RequestContext<CallToolRequestParams> context,
