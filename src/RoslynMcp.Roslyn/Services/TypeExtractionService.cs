@@ -1590,7 +1590,16 @@ public sealed class TypeExtractionService : ITypeExtractionService
                 if (sym is ILocalSymbol or IParameterSymbol or ILabelSymbol)
                     continue;
 
-                if (extractedDeclared.Contains(sym))
+                // A constructed generic call (Echo<int>(1)) binds to a constructed symbol; identity of the
+                // moved member is its original definition.
+                var original = sym.OriginalDefinition;
+                if (extractedDeclared.Contains(original))
+                    continue;
+
+                // Method / local-function type parameters, local functions, lambdas and range variables
+                // report the source type as ContainingType but are declared inside the moved member, so
+                // they travel with it. Class-level type parameters are declared outside the analysis nodes.
+                if (IsDeclaredWithinAnalysisNodes(original, analysisNodes))
                     continue;
 
                 if (!IsDeclaredInOrUnderType(sym, typeSymbol))
@@ -1733,6 +1742,20 @@ public sealed class TypeExtractionService : ITypeExtractionService
         }
 
         return null;
+    }
+
+    private static bool IsDeclaredWithinAnalysisNodes(ISymbol sym, IReadOnlyList<SyntaxNode> analysisNodes)
+    {
+        foreach (var reference in sym.DeclaringSyntaxReferences)
+        {
+            foreach (var node in analysisNodes)
+            {
+                if (reference.SyntaxTree == node.SyntaxTree && node.Span.Contains(reference.Span))
+                    return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool IsDeclaredInOrUnderType(ISymbol sym, INamedTypeSymbol typeSymbol)
