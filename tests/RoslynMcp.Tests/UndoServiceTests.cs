@@ -3,6 +3,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Contracts;
 using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
@@ -721,6 +722,55 @@ public sealed class UndoServiceTests : IsolatedWorkspaceTestBase
             await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None),
             $"revert_last_apply's solution-snapshot path must restore the exact pre-apply {encodingKind} bytes, " +
             "including the byte-order mark, instead of rewriting the file as UTF-8-no-BOM.");
+    }
+
+    /// <summary>
+    /// undo-restore-source-kind: the solution-diff restore must carry the pre-apply
+    /// <see cref="SourceCodeKind"/> back, not only the text. The observable effect is the solution
+    /// handed to <c>TryApplyChanges</c> (the workspace is reloaded from MSBuild afterwards, which
+    /// re-derives kinds from the project files). Kinds are altered synthetically through the Solution API.
+    /// </summary>
+    [TestMethod]
+    public async Task RevertAsync_SolutionSnapshot_RestoresPreApplySourceCodeKind()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+        var preApply = WorkspaceManager.GetCurrentSolution(workspaceId);
+        var preApplyDoc = preApply.GetDocumentIdsWithFilePath(dogFilePath).Select(preApply.GetDocument).Single()!;
+        Assert.AreEqual(SourceCodeKind.Regular, preApplyDoc.SourceCodeKind, "Precondition: pre-apply kind.");
+        await preApplyDoc.GetTextAsync(CancellationToken.None);
+
+        var applied = preApply
+            .WithDocumentSourceCodeKind(preApplyDoc.Id, SourceCodeKind.Script)
+            .WithDocumentText(preApplyDoc.Id, Microsoft.CodeAnalysis.Text.SourceText.From("// applied\n"));
+        var manager = new CapturingWorkspaceManager(WorkspaceManager, applied);
+        using var undo = new UndoService(NullLogger<UndoService>.Instance, manager);
+        undo.CaptureBeforeApply(workspaceId, "kind change", preApply, fileSnapshots: null);
+
+        Assert.IsTrue(await undo.RevertAsync(workspaceId, CancellationToken.None));
+
+        Assert.IsNotNull(manager.AppliedSolution, "The revert must hand a target solution to TryApplyChanges.");
+        var restored = manager.AppliedSolution.GetDocument(preApplyDoc.Id)!;
+        Assert.AreEqual(SourceCodeKind.Regular, restored.SourceCodeKind,
+            "Undo must restore the pre-apply SourceCodeKind, not leave the applied Script kind.");
+        Assert.AreEqual(
+            (await preApplyDoc.GetTextAsync(CancellationToken.None)).ToString(),
+            (await restored.GetTextAsync(CancellationToken.None)).ToString());
+    }
+
+    private sealed class CapturingWorkspaceManager(IWorkspaceManager inner, Solution current)
+        : Helpers.DelegatingWorkspaceManager(inner)
+    {
+        public Solution? AppliedSolution { get; private set; }
+
+        public override Solution GetCurrentSolution(string workspaceId) => current;
+
+        public override bool TryApplyChanges(string workspaceId, Solution newSolution)
+        {
+            AppliedSolution = newSolution;
+            return true;
+        }
     }
 
     /// <summary>

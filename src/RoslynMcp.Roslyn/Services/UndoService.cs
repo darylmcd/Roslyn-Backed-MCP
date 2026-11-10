@@ -504,10 +504,18 @@ public sealed class UndoService : IUndoService, IDisposable
                 if (oldDoc is null) continue;
 
                 var oldText = await oldDoc.GetTextAsync(cancellationToken).ConfigureAwait(false);
+                var currentDoc = currentSolution.GetDocument(docId);
+
+                // undo-restore-source-kind: the reviewed pre-apply SourceCodeKind is part of what an
+                // apply may have changed; restore it with the text (mirrors RefactoringService rebase).
+                if (currentDoc is not null && currentDoc.SourceCodeKind != oldDoc.SourceCodeKind)
+                {
+                    targetSolution = targetSolution.WithDocumentSourceCodeKind(docId, oldDoc.SourceCodeKind);
+                }
+
                 targetSolution = targetSolution.WithDocumentText(docId, oldText);
                 changedDocumentCount++;
 
-                var currentDoc = currentSolution.GetDocument(docId);
                 var path = currentDoc?.FilePath ?? oldDoc.FilePath;
                 if (!string.IsNullOrWhiteSpace(path))
                 {
