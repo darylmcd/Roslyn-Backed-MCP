@@ -138,7 +138,7 @@ Each subprocess and workspace load emits an `Information` record that joins the 
 |---|---|---|
 | `CommandProcessCompleted` | every `dotnet` command, once, when the process ends or fails to run | `verb` (first argument when it is a bare verb or option name, else `other`), `targetKind` (`solution`, `project`, `directory`, `other`), `outcome` (`succeeded`, `failed`, `cancelled`, `error`), `exitCode` (null unless the process exited), `durationMs` |
 | `CommandGateCompleted` | gated build, test and scan commands, once | `verb`, `targetKind`, `outcome` (`completed`, `timeout`, `cancelled`, `failed`), `queueWaitMs` (time before both gates were held; the whole wait when it never ran), `durationMs` (total including queue wait), `exitCode` |
-| `WorkspaceLoadCompleted` | `workspace_load`, once per call | `outcome` (`succeeded`, `failed`, `cancelled`), `reused` (an existing session for the same path was returned), `projectCount` (null on failure), `durationMs` |
+| `WorkspaceLoadCompleted` | every `LoadAsync` call, once: `workspace_load`, the automatic reload of a stale workspace in tool dispatch, and the fork reload after a fork apply | `outcome` (`succeeded`, `failed`, `cancelled`), `reused` (an existing session for the same path was returned), `projectCount` (null on failure), `durationMs` |
 
 `CommandProcessCompleted.durationMs` is process time; `CommandGateCompleted.durationMs - queueWaitMs`
 is the gated work and `queueWaitMs` the time spent waiting for the global and per-workspace gates. A

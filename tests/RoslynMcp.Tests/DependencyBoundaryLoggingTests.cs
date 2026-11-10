@@ -53,7 +53,7 @@ public sealed class DependencyBoundaryLoggingTests
         public List<JsonElement> Records(string eventName)
         {
             var result = new List<JsonElement>();
-            // The provider creates its file on the first record; no file means no records.
+        // The provider creates its file on the first record; no file means no records.
         foreach (var line in File.Exists(_provider.FilePath) ? File.ReadAllLines(_provider.FilePath) : [])
             {
                 using var document = JsonDocument.Parse(line);

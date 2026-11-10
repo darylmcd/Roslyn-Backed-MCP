@@ -9,7 +9,7 @@ namespace RoslynMcp.Roslyn.Helpers;
 /// </summary>
 internal static partial class CommandBoundaryTelemetry
 {
-    [GeneratedRegex("^-{0,2}[a-z][a-z0-9-]{0,31}$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex("^-{0,2}[a-z][a-z0-9-]{0,31}\\z", RegexOptions.CultureInvariant)]
     private static partial Regex VerbShape();
 
     /// <summary>The first argument when it is a bare dotnet verb or option name; never a path, value or caller text.</summary>
@@ -20,12 +20,17 @@ internal static partial class CommandBoundaryTelemetry
             return "none";
         }
 
-        return VerbShape().IsMatch(arguments[0]) ? arguments[0] : "other";
+        return arguments[0] is { } first && VerbShape().IsMatch(first) ? first : "other";
     }
 
     /// <summary>Classifies the command target as solution, project, directory or other without naming it.</summary>
     public static string TargetKind(string targetPath)
     {
+        if (string.IsNullOrEmpty(targetPath))
+        {
+            return "other";
+        }
+
         var extension = Path.GetExtension(targetPath);
         if (extension.Equals(".sln", StringComparison.OrdinalIgnoreCase)
             || extension.Equals(".slnx", StringComparison.OrdinalIgnoreCase))
