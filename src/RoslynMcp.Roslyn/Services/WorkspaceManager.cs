@@ -1255,6 +1255,16 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
     internal int ProjectIndexCountForTesting => _sessions.Values.Count(session => session.ProjectIndex?.Solution is not null);
     private int _projectIndexBuildCount;
 
+    /// <summary>
+    /// Captures the registered session's index slot so a test can observe it after the session
+    /// leaves the registry (the registry-based count cannot see a closed session).
+    /// </summary>
+    internal Func<ProjectIndexEntry?> CaptureProjectIndexSlotForTesting(string workspaceId)
+    {
+        var session = GetRequiredSession(workspaceId);
+        return () => session.ProjectIndex;
+    }
+
     internal static ProjectIndexEntry BuildProjectIndex(Solution solution)
     {
         var names = new Dictionary<string, ProjectIndexHit>(StringComparer.OrdinalIgnoreCase);

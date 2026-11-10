@@ -15,11 +15,14 @@ public sealed class WorkspaceProjectIndexLifetimeTests
     {
         await using var fixture = await Fixture.CreateAsync();
         Assert.IsNotNull(fixture.Manager.GetProject(fixture.WorkspaceId, ProjectName));
-        Assert.AreEqual(1, fixture.Manager.ProjectIndexCountForTesting, "A live lookup publishes one index.");
+        var slot = fixture.Manager.CaptureProjectIndexSlotForTesting(fixture.WorkspaceId);
+        Assert.IsNotNull(slot()?.Solution, "A live lookup publishes one index on the session.");
+        Assert.AreEqual(1, fixture.Manager.ProjectIndexCountForTesting);
 
         Assert.IsTrue(fixture.Manager.Close(fixture.WorkspaceId));
 
-        Assert.AreEqual(0, fixture.Manager.ProjectIndexCountForTesting, "Close must release the session's index.");
+        AssertSlotClosed(slot, "Close must release the closed session's own index.");
+        Assert.AreEqual(0, fixture.Manager.ProjectIndexCountForTesting);
     }
 
     [TestMethod]
@@ -28,15 +31,20 @@ public sealed class WorkspaceProjectIndexLifetimeTests
         await using var fixture = await Fixture.CreateAsync();
         Assert.IsNotNull(fixture.Manager.GetProject(fixture.WorkspaceId, ProjectName));
 
+        var slot = fixture.Manager.CaptureProjectIndexSlotForTesting(fixture.WorkspaceId);
+        Assert.IsNotNull(slot()?.Solution);
+
         await fixture.Manager.DisposeAsync();
 
-        Assert.AreEqual(0, fixture.Manager.ProjectIndexCountForTesting, "Manager disposal must release every index.");
+        AssertSlotClosed(slot, "Manager disposal must release every session's own index.");
+        Assert.AreEqual(0, fixture.Manager.ProjectIndexCountForTesting);
     }
 
     [TestMethod]
     public async Task CloseBetweenLookupAndPublish_DoesNotRepublishClosedSessionIndex()
     {
         await using var fixture = await Fixture.CreateAsync();
+        var slot = fixture.Manager.CaptureProjectIndexSlotForTesting(fixture.WorkspaceId);
         fixture.Manager.BeforeProjectIndexPublishForTesting = () =>
         {
             fixture.Manager.BeforeProjectIndexPublishForTesting = null;
@@ -46,7 +54,32 @@ public sealed class WorkspaceProjectIndexLifetimeTests
         // The reader started before the close, so it may still answer from its own snapshot.
         fixture.Manager.GetProject(fixture.WorkspaceId, ProjectName);
 
-        Assert.AreEqual(0, fixture.Manager.ProjectIndexCountForTesting, "A reader overlapping close must not publish.");
+        AssertSlotClosed(slot, "A reader whose publish overlaps close must not write into the closed session.");
+    }
+
+    [TestMethod]
+    public async Task CloseBetweenSolutionReadAndPublish_DoesNotPublishIntoClosedSession()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var slot = fixture.Manager.CaptureProjectIndexSlotForTesting(fixture.WorkspaceId);
+        fixture.Manager.AfterProjectIndexSolutionReadForTesting = () =>
+        {
+            fixture.Manager.AfterProjectIndexSolutionReadForTesting = null;
+            Assert.IsTrue(fixture.Manager.Close(fixture.WorkspaceId));
+        };
+
+        // The reader observes the already-closed slot after its solution read.
+        fixture.Manager.GetProject(fixture.WorkspaceId, ProjectName);
+
+        AssertSlotClosed(slot, "A reader that observes a closed session must not publish.");
+    }
+
+    private static void AssertSlotClosed(Func<WorkspaceManager.ProjectIndexEntry?> slot, string message)
+    {
+        var entry = slot();
+        Assert.IsNotNull(entry, message + " Slot is empty instead of terminal.");
+        Assert.IsNull(entry.Solution, message + " Slot still holds a Solution snapshot.");
+        Assert.AreSame(WorkspaceManager.ProjectIndexEntry.Closed, entry, message);
     }
 
     [TestMethod]
@@ -126,7 +159,9 @@ public sealed class WorkspaceProjectIndexLifetimeTests
         await using var fixture = await Fixture.CreateAsync();
         var first = fixture.Manager.GetProject(fixture.WorkspaceId, ProjectName);
         Assert.IsNotNull(first);
+        var firstSlot = fixture.Manager.CaptureProjectIndexSlotForTesting(fixture.WorkspaceId);
         Assert.IsTrue(fixture.Manager.Close(fixture.WorkspaceId));
+        AssertSlotClosed(firstSlot, "The closed lifetime must release its snapshots.");
 
         var reopened = await fixture.Manager.LoadAsync(fixture.ProjectPath, fixture.Token);
         var second = fixture.Manager.GetProject(reopened.WorkspaceId, ProjectName);
