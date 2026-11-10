@@ -289,7 +289,7 @@ public sealed class WorkspaceLoadRegistrationCompensationTests
         var id = status.WorkspaceId;
         var oldWorkspace = manager.GetCurrentSolution(id).Workspace;
         Assert.IsTrue(oldWorkspace.CurrentSolution.Projects.Any(), "Precondition: the loaded workspace is populated.");
-        // The reload must go through ClearStale only on success; mark stale so the assertion below can see it survive.
+        // The reload must clear staleness only on success; mark stale so the assertion below can see it survive.
         watcher.MarkStale(id, StaleReasons.ExternalEdit);
 
         previews.ThrowOnInvalidate = true;
@@ -305,7 +305,7 @@ public sealed class WorkspaceLoadRegistrationCompensationTests
         Assert.IsFalse(oldWorkspace.CurrentSolution.Projects.Any(), "The retired workspace must be disposed.");
         // Pinned decision: the committed swap still announces the reload so event-driven caches drop the old solution.
         CollectionAssert.AreEqual(new[] { id }, reloaded);
-        // Pinned decision: ClearStale is skipped on failure, so the workspace stays stale and the next gated call reloads.
+        // Pinned decision: the clear is skipped on failure, so the workspace stays stale and the next gated call reloads.
         Assert.IsTrue(watcher.IsStale(id), "A failed reload must not clear the stale flag.");
 
         previews.ThrowOnInvalidate = false;
@@ -439,8 +439,8 @@ public sealed class WorkspaceLoadRegistrationCompensationTests
     }
 
     /// <summary>
-    /// The epoch is read BEFORE the load: an ExternalEdit that was already pending when the reload
-    /// began is covered by that reload and is cleared (otherwise every explicit reload of an
+    /// The load-start instant is captured BEFORE the load: an ExternalEdit that was already pending when
+    /// the reload began is covered by that reload and is cleared (otherwise every explicit reload of an
     /// externally-edited workspace would stay stale forever).
     /// </summary>
     [TestMethod]
@@ -610,7 +610,6 @@ public sealed class WorkspaceLoadRegistrationCompensationTests
         public Task WaitForStaleAsync(string workspaceId, CancellationToken ct) => _inner.WaitForStaleAsync(workspaceId, ct);
         public string? GetStaleReason(string workspaceId) => _inner.GetStaleReason(workspaceId);
         public void MarkStale(string workspaceId, string reason) => _inner.MarkStale(workspaceId, reason);
-        public void ClearStale(string workspaceId) => _inner.ClearStale(workspaceId);
         public bool ClearStaleIfNoExternalEditSince(string workspaceId, DateTime sinceUtc) =>
             _inner.ClearStaleIfNoExternalEditSince(workspaceId, sinceUtc);
         public void RecordFileChange(string workspaceId, string path, bool contentEvent) =>

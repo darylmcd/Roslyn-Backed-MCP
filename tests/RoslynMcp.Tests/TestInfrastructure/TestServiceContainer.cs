@@ -322,8 +322,6 @@ public sealed class TestServiceContainerTests
 
         public void MarkStale(string workspaceId, string reason) { }
 
-        public void ClearStale(string workspaceId) { }
-
         public bool ClearStaleIfNoExternalEditSince(string workspaceId, DateTime sinceUtc) => false;
 
         public void Dispose() => Interlocked.Increment(ref _disposeCount);

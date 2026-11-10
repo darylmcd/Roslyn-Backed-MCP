@@ -678,7 +678,7 @@ public sealed class ExternalEditStalenessTests : IsolatedWorkspaceTestBase
 
 /// <summary>
 /// Direct (no real OS file events) unit coverage of the
-/// <see cref="IFileWatcherService.WaitForStaleAsync"/> ↔ <see cref="IFileWatcherService.ClearStale"/>
+/// <see cref="IFileWatcherService.WaitForStaleAsync"/> ↔ <see cref="FileWatcherService.ClearStale"/>
 /// concurrency seam in <see cref="FileWatcherService"/>. A caller parks on
 /// <c>WaitForStaleAsync</c> waiting for a not-yet-stale workspace to flip; a concurrent
 /// <c>ClearStale</c> (e.g. a reload settling) re-arms the internal signal. The parked awaiter

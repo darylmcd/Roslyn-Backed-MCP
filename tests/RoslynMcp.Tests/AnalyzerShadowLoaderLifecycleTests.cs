@@ -827,12 +827,6 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
         public string? GetStaleReason(string workspaceId) => inner.GetStaleReason(workspaceId);
         public void MarkStale(string workspaceId, string reason) => inner.MarkStale(workspaceId, reason);
 
-        public void ClearStale(string workspaceId)
-        {
-            Volatile.Write(ref _forcedStale, 0);
-            inner.ClearStale(workspaceId);
-        }
-
         public bool ClearStaleIfNoExternalEditSince(string workspaceId, DateTime sinceUtc)
         {
             var cleared = inner.ClearStaleIfNoExternalEditSince(workspaceId, sinceUtc);

@@ -287,7 +287,9 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
         return entry.RunOwnedWrite(path, write);
     }
 
-    public void ClearStale(string workspaceId)
+    // Test-only unconditional clear (FileWatcherClearStaleAwaiterTests); production clears through
+    // ClearStaleIfNoExternalEditSince, so this is not part of IFileWatcherService.
+    internal void ClearStale(string workspaceId)
     {
         if (_watchers.TryGetValue(workspaceId, out var entry))
         {
@@ -297,7 +299,20 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
 
     public bool ClearStaleIfNoExternalEditSince(string workspaceId, DateTime sinceUtc)
     {
-        return _watchers.TryGetValue(workspaceId, out var entry) && entry.ClearStaleIfNoExternalEditSince(sinceUtc);
+        if (!_watchers.TryGetValue(workspaceId, out var entry))
+        {
+            return false;
+        }
+
+        if (entry.ClearStaleIfNoExternalEditSince(sinceUtc, out var latestExternalEditUtc))
+        {
+            return true;
+        }
+
+        logger.LogInformation(
+            "Kept workspace {WorkspaceId} stale after reload: external edit observed at {LatestExternalEditUtc:O} is not before the load start {SinceUtc:O}",
+            workspaceId, latestExternalEditUtc, sinceUtc);
+        return false;
     }
 
     /// <summary>
@@ -602,7 +617,7 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
             }
         }
 
-                /// <summary>
+        /// <summary>
         /// The instant a change counts as made: the file's last-write time for a content event (so a
         /// duplicate event for an older write keeps the older time), otherwise now. An unreadable or
         /// missing file, or a write time in the future, falls back to now (stay-stale side).
@@ -705,10 +720,11 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
         /// section, so a mark cannot slip between them. A skipped clear touches nothing: the
         /// signal stays completed (the entry is still stale), so no waiter is cancelled or leaked.
         /// </summary>
-        public bool ClearStaleIfNoExternalEditSince(DateTime sinceUtc)
+        public bool ClearStaleIfNoExternalEditSince(DateTime sinceUtc, out DateTime latestExternalEditUtc)
         {
             lock (_reasonLock)
             {
+                latestExternalEditUtc = _latestExternalEditUtc;
                 if (_latestExternalEditUtc >= sinceUtc)
                 {
                     return false;

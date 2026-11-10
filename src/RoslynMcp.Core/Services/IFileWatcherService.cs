@@ -59,12 +59,9 @@ public interface IFileWatcherService : IDisposable
     /// Programmatically marks the workspace as stale with the given reason. Used by the server
     /// to distinguish its own apply/restore writes from genuinely external edits. Semantics
     /// are <em>last-writer-wins</em> within a single stale window: each call overwrites the
-    /// prior reason until <see cref="ClearStale"/> resets the slate.
+    /// prior reason until <see cref="ClearStaleIfNoExternalEditSince"/> resets the slate.
     /// </summary>
     void MarkStale(string workspaceId, string reason);
-
-    /// <summary>Clear the stale flag unconditionally.</summary>
-    void ClearStale(string workspaceId);
 
     /// <summary>
     /// Clears the stale flag unless a <see cref="StaleReasons.ExternalEdit"/> mark records a change

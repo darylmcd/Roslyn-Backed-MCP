@@ -666,7 +666,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
             // workspace-reload-swap-version-failure-ownership: a version bump proves the swap
             // committed before the failure (post-swap preview invalidation threw). The session now
             // serves the NEW workspace, so event-driven caches holding the retired solution must
-            // still be dropped. The exception still propagates and ClearStale is skipped, so a
+            // still be dropped. The exception still propagates and the stale clear is skipped, so a
             // stale workspace stays stale and the next gated call reloads again. A pre-swap failure
             // leaves the version untouched and the prior workspace live: nothing to announce.
             if (session.Version != versionBeforeLoad)

@@ -231,8 +231,6 @@ public sealed class MissingWorkspaceRootRetirementTests : SharedWorkspaceTestBas
 
         public void MarkStale(string workspaceId, string reason) { }
 
-        public void ClearStale(string workspaceId) { }
-
         public bool ClearStaleIfNoExternalEditSince(string workspaceId, DateTime sinceUtc) => false;
 
         public void Dispose() => Disposed = true;
