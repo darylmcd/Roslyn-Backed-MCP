@@ -24,3 +24,7 @@
 ## Context
 
 - Independent nonblocking follow-up; no dependency from restore-callers-missing-packages-path.
+
+## Notes
+
+Remediation run 2026-11-10: premise live (cache key (Version, FilePath) MsBuildEvaluationService.cs:29; GetOrLoadProject :146-174 builds a bare ProjectCollection). Complete fix needs workspace globals (MsBuildMetadataHelper.GetWorkspaceGlobalProperties, Helpers/MsBuildMetadataHelper.cs:20) AND the per-Roslyn-project target framework; no source for the latter exists (no ProjectFileInfo/TFM capture in src/RoslynMcp.Roslyn). Needs an operator decision on a capture seam from MSBuildWorkspace loading; must not infer from names or output paths. Observable effect: evaluate_msbuild_property/items and get_msbuild_properties values change for Release or custom-global workspaces and multi-target projects (value correction, not shape). Blocks evaluated-test-project-classification and restore-drift-inactive-package-reference-conditions.
