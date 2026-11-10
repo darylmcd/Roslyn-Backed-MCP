@@ -125,7 +125,7 @@ public sealed class TestDiscoveryProjectIdentityTests
         Assert.AreEqual(1, symbol.Pagination.Total);
     }
 
-    private sealed class MultiProjectFixture : IDisposable
+    internal sealed class MultiProjectFixture : IDisposable
     {
         private const string AttributeSource = "class TestMethodAttribute : System.Attribute { }";
 
@@ -146,7 +146,9 @@ public sealed class TestDiscoveryProjectIdentityTests
 
         public string Source { get; }
 
-        public TestDiscoveryService Service => new(new FailClosedWorkspaceManagerStub
+        public TestDiscoveryService Service => CreateService();
+
+        public TestDiscoveryService CreateService(Microsoft.Extensions.Logging.ILogger<TestDiscoveryService>? logger = null) => new(new FailClosedWorkspaceManagerStub
         {
             GetCurrentSolutionHandler = _ => _workspace.CurrentSolution,
             GetCurrentVersionHandler = _ => 1,
@@ -156,7 +158,7 @@ public sealed class TestDiscoveryProjectIdentityTests
                     .Select(p => new ProjectStatusDto(p.Name, "", p.DocumentIds.Count, [], [], p.Name != "Product", p.Name, "Library"))
                     .ToList(),
                 true, false, [])
-        }, NullLogger<TestDiscoveryService>.Instance);
+        }, logger ?? NullLogger<TestDiscoveryService>.Instance);
 
         public string AddTestFile(string projectName, string source)
         {

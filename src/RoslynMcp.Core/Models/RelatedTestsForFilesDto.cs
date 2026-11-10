@@ -34,9 +34,11 @@ public sealed record PaginationInfo(
 /// test projects — empty results are then expected.
 /// </param>
 /// <param name="HeuristicsAttempted">
-/// Names of name-matching heuristics that were applied (e.g. <c>"type-name"</c>,
-/// <c>"file-name"</c>). Empty when no input file resolved to a document and therefore no
-/// heuristic ran.
+/// Names of heuristics that were applied (e.g. <c>"type-name"</c>, <c>"file-name"</c>).
+/// Semantic-sweep heuristics (<c>"direct-reference"</c>, <c>"inbound-reference"</c>,
+/// <c>"namespace-neighbor"</c>, <c>"reference-sweep"</c>) are listed only when their sweep
+/// completed; a sweep that failed is omitted and reported through <paramref name="MissReasons"/>.
+/// Empty when no input file resolved to a document and therefore no heuristic ran.
 /// </param>
 /// <param name="MissReasons">
 /// Per-input-file reasons explaining why no related tests were attributed to that file.
@@ -44,6 +46,12 @@ public sealed record PaginationInfo(
 /// <c>"path 'Foo.cs' did not resolve to a workspace document"</c> or
 /// <c>"no test method name/path matched any of [Foo, Bar]"</c>. Empty when every input
 /// file produced at least one match.
+/// In addition, at most ONE call-level entry is added when a semantic reference sweep did not
+/// complete, regardless of whether any file matched (<c>"related-test discovery sweep did not
+/// complete for N input file(s); ..."</c> for file routes, <c>"reference sweep did not
+/// complete for the resolved symbol; ..."</c> for the symbol route). It carries counts only: no
+/// paths and no exception text; the exception is logged server-side. Results are then
+/// partial: matches found by the remaining heuristics are still returned.
 /// </param>
 public sealed record RelatedTestsDiagnosticsDto(
     int ScannedTestProjects,

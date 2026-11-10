@@ -17,6 +17,13 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
     private readonly ValidationServiceOptions _options;
     private readonly ConcurrentDictionary<string, (int Version, TestDiscoveryDto Result)> _cache = new();
 
+    /// <summary>
+    /// Test seam for the semantic reference sweep. Every sweep site (symbol mode, direct-reference,
+    /// inbound-reference) goes through this delegate so a test can inject a failing sweep.
+    /// </summary>
+    internal Func<ISymbol, Solution, CancellationToken, Task<IEnumerable<ReferencedSymbol>>> FindReferencesAsync { get; set; }
+        = static (symbol, solution, ct) => SymbolFinder.FindReferencesAsync(symbol, solution, ct);
+
     public TestDiscoveryService(
         IWorkspaceManager workspaceManager,
         ILogger<TestDiscoveryService> logger,
@@ -94,9 +101,13 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
         var solution = _workspaceManager.GetCurrentSolution(workspaceId);
         var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
 
-        IReadOnlyList<(string Project, TestCaseDto Test)> rawMatches = symbol is null
-            ? []
-            : await CollectRelatedTestsAsync(discovery, solution, symbol, ct).ConfigureAwait(false);
+        IReadOnlyList<(string Project, TestCaseDto Test)> rawMatches = [];
+        var referenceSweepCompleted = true;
+        if (symbol is not null)
+        {
+            (rawMatches, referenceSweepCompleted) =
+                await CollectRelatedTestsAsync(discovery, solution, symbol, ct).ConfigureAwait(false);
+        }
 
         // Each match carries its owning project (a test's identity is project + FQN), which
         // populates ProjectName on the envelope element type (RelatedTestCaseDto), matching
@@ -132,9 +143,21 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
                     ? "symbol resolved but the workspace contains no discovered tests"
                     : $"symbol resolved but no discovered test name/path matched terms [{searchTerms}] and the reference sweep produced no test-file overlaps");
         }
-        var heuristicsAttempted = symbol is null
-            ? (IReadOnlyList<string>)[]
-            : ["symbol-name", "container-name", "reference-sweep"];
+        // Payload-safe: no paths or exception text. The exception itself goes to the logger.
+        if (symbol is not null && !referenceSweepCompleted)
+        {
+            missReasons.Add("reference sweep did not complete for the resolved symbol; results are heuristic-only");
+        }
+        var heuristicsAttempted = new List<string>();
+        if (symbol is not null)
+        {
+            heuristicsAttempted.Add("symbol-name");
+            heuristicsAttempted.Add("container-name");
+            if (referenceSweepCompleted)
+            {
+                heuristicsAttempted.Add("reference-sweep");
+            }
+        }
         var diagnostics = new RelatedTestsDiagnosticsDto(
             ScannedTestProjects: discovery.TestProjects.Count,
             HeuristicsAttempted: heuristicsAttempted,
@@ -172,7 +195,7 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
         return searchTerms;
     }
 
-    private async Task<IReadOnlyList<(string Project, TestCaseDto Test)>> CollectRelatedTestsAsync(
+    private async Task<(IReadOnlyList<(string Project, TestCaseDto Test)> Matches, bool ReferenceSweepCompleted)> CollectRelatedTestsAsync(
         TestDiscoveryDto discovery,
         Solution solution,
         ISymbol symbol,
@@ -181,14 +204,14 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
         var discoveredTests = FlattenDiscoveredTests(discovery);
         var collected = CollectHeuristicRelatedTests(discoveredTests, BuildRelatedTestSearchTerms(symbol));
 
-        await TryAugmentRelatedTestsFromReferencesAsync(
+        var sweepCompleted = await TryAugmentRelatedTestsFromReferencesAsync(
             symbol,
             solution,
             discoveredTests,
             collected,
             ct).ConfigureAwait(false);
 
-        return collected.Values.ToList();
+        return (collected.Values.ToList(), sweepCompleted);
     }
 
     private static List<(string Project, TestCaseDto Test)> FlattenDiscoveredTests(TestDiscoveryDto discovery)
@@ -231,7 +254,7 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
                (test.FilePath?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false);
     }
 
-    private async Task TryAugmentRelatedTestsFromReferencesAsync(
+    private async Task<bool> TryAugmentRelatedTestsFromReferencesAsync(
         ISymbol symbol,
         Solution solution,
         IReadOnlyList<(string Project, TestCaseDto Test)> discoveredTests,
@@ -246,7 +269,7 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
             var referencedFilePaths = await CollectReferencedFilePathsAsync(symbol, solution, ct).ConfigureAwait(false);
             if (referencedFilePaths.Count == 0)
             {
-                return;
+                return true;
             }
 
             foreach (var (project, test) in discoveredTests)
@@ -261,6 +284,8 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
                     collected.TryAdd(new TestIdentity(project, test.FullyQualifiedName), (project, test));
                 }
             }
+
+            return true;
         }
         catch (OperationCanceledException)
         {
@@ -270,10 +295,11 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
         {
             // Reference-sweep is best-effort augmentation — never let it break the heuristic path.
             _logger.LogWarning(ex, "FindRelatedTests reference-sweep augmentation failed; returning heuristic results only.");
+            return false;
         }
     }
 
-    private static async Task<HashSet<string>> CollectReferencedFilePathsAsync(
+    private async Task<HashSet<string>> CollectReferencedFilePathsAsync(
         ISymbol symbol,
         Solution solution,
         CancellationToken ct)
@@ -284,7 +310,7 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
         foreach (var candidate in symbolsToWalk)
         {
             ct.ThrowIfCancellationRequested();
-            var references = await SymbolFinder.FindReferencesAsync(candidate, solution, ct).ConfigureAwait(false);
+            var references = await FindReferencesAsync(candidate, solution, ct).ConfigureAwait(false);
             foreach (var refSet in references)
             {
                 foreach (var location in refSet.Locations)
@@ -377,10 +403,17 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
         // sweep recovers them by following actual call sites.
         await ApplyFallbackMatchesAsync(matchState, solution, allTests, ct).ConfigureAwait(false);
 
+        // Payload-safe, once per call: a count only, never paths or exception text.
+        if (matchState.IncompleteSweepFiles.Count > 0)
+        {
+            matchState.MissReasons.Add(
+                $"related-test discovery sweep did not complete for {matchState.IncompleteSweepFiles.Count} input file(s); results for those files are partial");
+        }
+
         return BuildRelatedTestsForFilesResult(discovery, matchState, maxResults);
     }
 
-    private static async Task<RelatedFileMatchState> CollectPrimaryFileMatchesAsync(
+    private async Task<RelatedFileMatchState> CollectPrimaryFileMatchesAsync(
         IReadOnlyList<string> filePaths,
         Solution solution,
         IReadOnlyList<(string Project, TestCaseDto Test)> allTests,
@@ -448,7 +481,7 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
                 FileSystemPath.Comparer.Equals(PhysicalPathResolver.Resolve(d.FilePath), fullFilePath));
     }
 
-    private static async Task AddDirectReferenceMatchesAsync(
+    private async Task AddDirectReferenceMatchesAsync(
         RelatedFileMatchState state,
         string filePath,
         Document document,
@@ -472,7 +505,6 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
                 return;
             }
 
-            state.DirectReferenceAttempted = true;
             foreach (var symbol in declaredSymbols)
             {
                 ct.ThrowIfCancellationRequested();
@@ -487,15 +519,21 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
                     }
                 }
             }
+
+            // Recorded only once the whole sweep for this file finished.
+            state.DirectReferenceCompletedFiles++;
         }
         catch (OperationCanceledException)
         {
             throw;
         }
-        catch
+        catch (Exception ex)
         {
-            // Direct-reference ranking is best-effort. Preserve the older name/fallback
-            // behavior if a semantic reference sweep cannot complete for this file.
+            // Direct-reference ranking is best-effort: keep the name/fallback results, but make
+            // the incompleteness visible (log with the exception; payload-safe MissReasons entry).
+            _logger.LogWarning(ex, "FindRelatedTestsForFiles direct-reference sweep failed for '{FilePath}'; continuing with name-affinity and fallback matching.", filePath);
+            state.DirectReferenceFailed = true;
+            state.IncompleteSweepFiles.Add(filePath);
         }
     }
 
@@ -597,11 +635,12 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
         }
 
         var testFilePaths = BuildTestFilePathSet(allTests);
-        var (referenceMatches, neighborMatches, fallbackHeuristics) =
+        var (referenceMatches, neighborMatches, fallbackHeuristics, incompleteFiles) =
             await CollectFallbackMatchesAsync(state.ResolvedDocuments, solution, allTests, testFilePaths, ct)
                 .ConfigureAwait(false);
 
         state.FallbackHeuristicsAttempted.AddRange(fallbackHeuristics);
+        state.IncompleteSweepFiles.UnionWith(incompleteFiles);
 
         foreach (var (filePath, project, test) in referenceMatches)
         {
@@ -659,7 +698,7 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
 
         var dotnetFilter = SynthesizeDotnetTestFilter(results.Select(t => t.FullyQualifiedName));
         var heuristicsAttempted = new List<string>();
-        if (state.DirectReferenceAttempted)
+        if (state.DirectReferenceCompletedFiles > 0 && !state.DirectReferenceFailed)
         {
             heuristicsAttempted.Add("direct-reference");
         }
@@ -685,7 +724,10 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
         public Dictionary<TestIdentity, RelatedFileTestMatch> Matches { get; } = new();
         public List<string> MissReasons { get; } = [];
         public bool AnyDocumentResolved { get; set; }
-        public bool DirectReferenceAttempted { get; set; }
+        public int DirectReferenceCompletedFiles { get; set; }
+        public bool DirectReferenceFailed { get; set; }
+        /// <summary>Input files whose semantic reference sweep (any stage) did not complete. Only the count is surfaced.</summary>
+        public HashSet<string> IncompleteSweepFiles { get; } = new(StringComparer.Ordinal);
         public int NextSequence { get; set; }
         public List<(string FilePath, Document Document, SyntaxNode Root)> ResolvedDocuments { get; } = [];
         public List<string> FallbackHeuristicsAttempted { get; } = [];
@@ -771,7 +813,8 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
     private async Task<(
         List<(string FilePath, string Project, TestCaseDto Test)> ReferenceMatches,
         List<(string FilePath, string Project, TestCaseDto Test)> NeighborMatches,
-        List<string> Heuristics)> CollectFallbackMatchesAsync(
+        List<string> Heuristics,
+        HashSet<string> IncompleteFiles)> CollectFallbackMatchesAsync(
             IReadOnlyList<(string FilePath, Document Document, SyntaxNode Root)> resolvedDocuments,
             Solution solution,
             IReadOnlyList<(string Project, TestCaseDto Test)> allTests,
@@ -782,14 +825,25 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
         var neighborMatches = new List<(string FilePath, string Project, TestCaseDto Test)>();
         var heuristics = new List<string>();
 
-        var referenceAttempted = false;
-        var neighborAttempted = false;
+        var referenceCompleted = false;
+        var neighborCompleted = false;
+        var referenceFailed = false;
+        var neighborFailed = false;
+        var incompleteFiles = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var (filePath, document, root) in resolvedDocuments)
         {
             ct.ThrowIfCancellationRequested();
 
-            var semanticModel = await TryGetSemanticModelAsync(document, filePath, ct).ConfigureAwait(false);
+            var (semanticModel, modelFailed) = await TryGetSemanticModelAsync(document, filePath, ct).ConfigureAwait(false);
+            if (modelFailed)
+            {
+                // Neither fallback stage could run for this file.
+                referenceFailed = true;
+                neighborFailed = true;
+                incompleteFiles.Add(filePath);
+                continue;
+            }
             if (semanticModel is null)
             {
                 continue;
@@ -802,38 +856,53 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
             }
 
             // ── inbound-reference expansion ────────────────────────────────────────────
-            referenceAttempted = true;
-            await AddInboundReferenceMatchesAsync(
+            if (await AddInboundReferenceMatchesAsync(
                 filePath,
                 declaredTypeSymbols,
                 solution,
                 allTests,
                 testFilePaths,
                 referenceMatches,
-                ct).ConfigureAwait(false);
+                ct).ConfigureAwait(false))
+            {
+                referenceCompleted = true;
+            }
+            else
+            {
+                referenceFailed = true;
+                incompleteFiles.Add(filePath);
+            }
 
             // ── namespace-neighbor expansion (1 hop) ───────────────────────────────────
-            neighborAttempted = true;
-            AddNamespaceNeighborMatches(filePath, declaredTypeSymbols, document.Project, allTests, neighborMatches);
+            if (AddNamespaceNeighborMatches(filePath, declaredTypeSymbols, document.Project, allTests, neighborMatches))
+            {
+                neighborCompleted = true;
+            }
+            else
+            {
+                neighborFailed = true;
+                incompleteFiles.Add(filePath);
+            }
         }
 
-        if (referenceAttempted)
+        // A heuristic is listed only when it completed for every file it was attempted on.
+        if (referenceCompleted && !referenceFailed)
         {
             heuristics.Add("inbound-reference");
         }
-        if (neighborAttempted)
+        if (neighborCompleted && !neighborFailed)
         {
             heuristics.Add("namespace-neighbor");
         }
 
-        return (referenceMatches, neighborMatches, heuristics);
+        return (referenceMatches, neighborMatches, heuristics, incompleteFiles);
     }
 
-    private async Task<SemanticModel?> TryGetSemanticModelAsync(Document document, string filePath, CancellationToken ct)
+    private async Task<(SemanticModel? Model, bool Failed)> TryGetSemanticModelAsync(Document document, string filePath, CancellationToken ct)
     {
         try
         {
-            return await document.GetSemanticModelAsync(ct).ConfigureAwait(false);
+            return (await document.GetSemanticModelAsync(ct).ConfigureAwait(false), false);
         }
         catch (OperationCanceledException)
         {
@@ -841,8 +910,8 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "FindRelatedTestsForFiles fallback: failed to obtain semantic model for '{FilePath}', skipping symbolic broadening for this file.", filePath);
-            return null;
+            _logger.LogWarning(ex, "FindRelatedTestsForFiles fallback: failed to obtain semantic model for '{FilePath}', skipping symbolic broadening for this file.", filePath);
+            return (null, true);
         }
     }
 
@@ -862,7 +931,7 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
         return declaredTypeSymbols;
     }
 
-    private async Task AddInboundReferenceMatchesAsync(
+    private async Task<bool> AddInboundReferenceMatchesAsync(
         string filePath,
         IReadOnlyList<INamedTypeSymbol> declaredTypeSymbols,
         Solution solution,
@@ -880,6 +949,8 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
                     .ConfigureAwait(false);
                 AddTestsFromReferencedFiles(filePath, allTests, referencedTestFiles, referenceMatches);
             }
+
+            return true;
         }
         catch (OperationCanceledException)
         {
@@ -889,17 +960,18 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
         {
             // Reference sweep is best-effort. Never let it break the heuristic path.
             _logger.LogWarning(ex, "FindRelatedTestsForFiles fallback inbound-reference sweep failed for '{FilePath}'; continuing with namespace-neighbor expansion.", filePath);
+            return false;
         }
     }
 
-    private static async Task<HashSet<string>> CollectReferencedTestFilesAsync(
+    private async Task<HashSet<string>> CollectReferencedTestFilesAsync(
         ISymbol symbol,
         Solution solution,
         HashSet<string> testFilePaths,
         CancellationToken ct)
     {
         var referencedTestFiles = new HashSet<string>(FileSystemPath.Comparer);
-        var references = await SymbolFinder.FindReferencesAsync(symbol, solution, ct).ConfigureAwait(false);
+        var references = await FindReferencesAsync(symbol, solution, ct).ConfigureAwait(false);
         foreach (var refSet in references)
         {
             foreach (var location in refSet.Locations)
@@ -935,7 +1007,7 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
         }
     }
 
-    private void AddNamespaceNeighborMatches(
+    private bool AddNamespaceNeighborMatches(
         string filePath,
         IReadOnlyList<INamedTypeSymbol> declaredTypeSymbols,
         Project project,
@@ -952,6 +1024,8 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
                     neighborMatches.Add((filePath, testProject, test));
                 }
             }
+
+            return true;
         }
         catch (OperationCanceledException)
         {
@@ -960,6 +1034,7 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "FindRelatedTestsForFiles fallback namespace-neighbor expansion failed for '{FilePath}'; continuing.", filePath);
+            return false;
         }
     }
 
