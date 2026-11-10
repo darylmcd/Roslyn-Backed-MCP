@@ -1568,8 +1568,9 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
             // "Preview token not found or expired" on every `*_apply` racing a watcher-driven
             // auto-reload. The captured Roslyn `Solution` snapshots are immutable graphs and
             // remain readable after the prior `MSBuildWorkspace` is disposed below — the apply
-            // path's `RebaseModifiedSolutionOntoCurrentAsync` matches documents by file path,
-            // so the post-reload `ProjectId`/`DocumentId` lineage divergence is handled.
+            // path's `RebaseModifiedSolutionOntoCurrentAsync` matches documents by DocumentId, then by file
+            // path inside the reviewed project only, so the post-reload `ProjectId`/`DocumentId`
+            // lineage divergence is handled without crossing into a linked sibling project.
             // A throw here propagates (not swallowed), but the swap is committed: the finally
             // disposes the retired pair exactly once and ReloadAsync still raises WorkspaceReloaded.
             _previewStore.InvalidateOnVersionBump(session.WorkspaceId, session.Version);
