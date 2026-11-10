@@ -1,3 +1,4 @@
+using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
@@ -74,7 +75,7 @@ public sealed class TestDiscoveryCacheLifetimeTests
         });
 
     [TestMethod]
-    public Task CloseCompletingBetweenVersionReadAndPublish_LeavesNoEntry() =>
+    public Task CloseInsideDiscoveryContinuation_LeavesNoEntry() =>
         RealWorkspaceLifecycleFixture.RunAsync(1, async (manager, paths) =>
         {
             var id = (await manager.LoadAsync(paths[0], EvictPolicy.Strict, CancellationToken.None)).WorkspaceId;
@@ -146,5 +147,84 @@ public sealed class TestDiscoveryCacheLifetimeTests
                 service.DiscoverTestsAsync(firstId, CancellationToken.None));
             var secondResult = await service.DiscoverTestsAsync(secondId, CancellationToken.None);
             Assert.AreNotSame(firstResult, secondResult);
+        });
+
+    private static async Task BumpVersionAsync(WorkspaceManager manager, string id)
+    {
+        var before = manager.GetCurrentVersion(id);
+        var solution = manager.GetCurrentSolution(id);
+        var document = solution.Projects.SelectMany(p => p.Documents).First(d => d.FilePath?.EndsWith(".cs") == true);
+        var text = await document.GetTextAsync();
+        var changed = solution.WithDocumentText(document.Id, SourceText.From(text + "\n// bump"));
+        Assert.IsTrue(manager.TryApplyChanges(id, changed));
+        Assert.IsTrue(manager.GetCurrentVersion(id) > before, "Fixture precondition: the apply must bump the version.");
+    }
+
+    // CONTROL (non-red): passes on the pre-fix code too; pins that eviction/liveness checks keep versioned hits.
+    [TestMethod]
+    public Task Control_VersionBumpMissesThenRecachesAndHitsAtTheNewVersion() =>
+        RealWorkspaceLifecycleFixture.RunAsync(1, async (manager, paths) =>
+        {
+            var id = (await manager.LoadAsync(paths[0], EvictPolicy.Strict, CancellationToken.None)).WorkspaceId;
+            var service = CreateService(manager);
+            var atV1 = await service.DiscoverTestsAsync(id, CancellationToken.None);
+
+            await BumpVersionAsync(manager, id);
+            var atV2 = await service.DiscoverTestsAsync(id, CancellationToken.None);
+            Assert.AreNotSame(atV1, atV2, "A version bump must miss.");
+            Assert.AreSame(atV2, await service.DiscoverTestsAsync(id, CancellationToken.None));
+
+            await manager.ReloadAsync(id, CancellationToken.None);
+            var afterReload = await service.DiscoverTestsAsync(id, CancellationToken.None);
+            Assert.AreNotSame(atV2, afterReload, "A reload must miss.");
+            Assert.AreSame(afterReload, await service.DiscoverTestsAsync(id, CancellationToken.None));
+            Assert.AreEqual(1, service.CachedWorkspaceCount);
+        });
+
+    [TestMethod]
+    public Task SlowerOlderVersionDiscovery_DoesNotOverwriteNewerEntry() =>
+        RealWorkspaceLifecycleFixture.RunAsync(1, async (manager, paths) =>
+        {
+            var id = (await manager.LoadAsync(paths[0], EvictPolicy.Strict, CancellationToken.None)).WorkspaceId;
+            var hooks = new LifecycleHookWorkspaceManager(manager);
+            var service = CreateService(hooks);
+            var reached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var first = true;
+            hooks.AfterGetStatusAsync = async _ =>
+            {
+                if (!first) return;
+                first = false;
+                reached.TrySetResult();
+                await release.Task;
+            };
+
+            var slowOld = service.DiscoverTestsAsync(id, CancellationToken.None);
+            await reached.Task.WaitAsync(GateTimeout);
+            await BumpVersionAsync(manager, id);
+            var newer = await service.DiscoverTestsAsync(id, CancellationToken.None);
+            release.SetResult();
+            await slowOld.WaitAsync(GateTimeout);
+
+            Assert.AreSame(newer, await service.DiscoverTestsAsync(id, CancellationToken.None),
+                "The older-version publish must not replace the newer entry.");
+        });
+
+    [TestMethod]
+    public Task Dispose_DetachesBothHandlersAndIsIdempotent() =>
+        RealWorkspaceLifecycleFixture.RunAsync(1, async (manager, paths) =>
+        {
+            var id = (await manager.LoadAsync(paths[0], EvictPolicy.Strict, CancellationToken.None)).WorkspaceId;
+            var service = CreateService(manager);
+            await service.DiscoverTestsAsync(id, CancellationToken.None);
+            Assert.AreEqual(1, service.CachedWorkspaceCount);
+
+            service.Dispose();
+            service.Dispose();
+
+            await manager.ReloadAsync(id, CancellationToken.None);
+            Assert.AreEqual(1, service.CachedWorkspaceCount, "A detached service must ignore WorkspaceReloaded.");
+            Assert.IsTrue(manager.Close(id));
+            Assert.AreEqual(1, service.CachedWorkspaceCount, "A detached service must ignore WorkspaceClosed.");
         });
 }
