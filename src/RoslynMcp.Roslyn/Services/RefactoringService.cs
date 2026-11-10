@@ -915,7 +915,6 @@ public sealed class RefactoringService : IRefactoringService
 
         var previewChanges = modifiedSolution.GetChanges(originalSolution);
         var rebased = currentSolution;
-        var currentDocumentsByPath = BuildCurrentDocumentPathIndex(currentSolution);
 
         foreach (var projectChange in previewChanges.GetProjectChanges())
         {
@@ -923,7 +922,6 @@ public sealed class RefactoringService : IRefactoringService
                 rebased,
                 modifiedSolution,
                 projectChange,
-                currentDocumentsByPath,
                 ct).ConfigureAwait(false);
             rebased = await RebaseAddedDocumentsAsync(
                 rebased,
@@ -941,26 +939,36 @@ public sealed class RefactoringService : IRefactoringService
         return rebased;
     }
 
-    private static IReadOnlyDictionary<string, DocumentId> BuildCurrentDocumentPathIndex(
-        Solution solution)
+    /// <summary>
+    /// A preview's document identity is (project, document), never the physical path alone: a linked
+    /// file is a distinct document in each project that includes it. Prefers the reviewed
+    /// <see cref="DocumentId"/> inside <paramref name="targetProject"/>, then a path match INSIDE that
+    /// project only, so a sibling project's linked copy is never rebased in its place.
+    /// </summary>
+    private static Document? FindRebaseTargetDocument(
+        Project targetProject,
+        DocumentId documentId,
+        string? filePath)
     {
-        var documentsByPath = new Dictionary<string, DocumentId>(FileSystemPath.Comparer);
-        foreach (var document in solution.Projects.SelectMany(project => project.Documents))
+        var byId = targetProject.GetDocument(documentId);
+        if (byId is not null)
         {
-            if (!string.IsNullOrWhiteSpace(document.FilePath))
-            {
-                documentsByPath.TryAdd(document.FilePath, document.Id);
-            }
+            return byId;
         }
 
-        return documentsByPath;
+        if (string.IsNullOrWhiteSpace(filePath))
+        {
+            return null;
+        }
+
+        return targetProject.Documents.FirstOrDefault(candidate =>
+            string.Equals(candidate.FilePath, filePath, FileSystemPath.Comparison));
     }
 
     private static async Task<Solution> RebaseChangedDocumentsAsync(
         Solution rebased,
         Solution modifiedSolution,
         ProjectChanges projectChange,
-        IReadOnlyDictionary<string, DocumentId> currentDocumentsByPath,
         CancellationToken ct)
     {
         foreach (var documentId in projectChange.GetChangedDocuments())
@@ -971,13 +979,10 @@ public sealed class RefactoringService : IRefactoringService
                 continue;
             }
 
-            var currentDocument = rebased.GetDocument(documentId);
-            if (currentDocument is null
-                && !string.IsNullOrWhiteSpace(modifiedDocument.FilePath)
-                && currentDocumentsByPath.TryGetValue(modifiedDocument.FilePath, out var matchedDocumentId))
-            {
-                currentDocument = rebased.GetDocument(matchedDocumentId);
-            }
+            var targetProject = ResolveRebaseTargetProject(rebased, projectChange.ProjectId, modifiedDocument.Project);
+            var currentDocument = targetProject is null
+                ? null
+                : FindRebaseTargetDocument(targetProject, documentId, modifiedDocument.FilePath);
 
             if (currentDocument is not null)
             {
@@ -1062,10 +1067,10 @@ public sealed class RefactoringService : IRefactoringService
                 continue;
             }
 
-            var target = rebased.Projects
-                .SelectMany(project => project.Documents)
-                .FirstOrDefault(candidate =>
-                    string.Equals(candidate.FilePath, filePath, FileSystemPath.Comparison));
+            var targetProject = ResolveRebaseTargetProject(rebased, projectChange.ProjectId, projectChange.OldProject);
+            var target = targetProject is null
+                ? null
+                : FindRebaseTargetDocument(targetProject, documentId, filePath);
             if (target is not null)
             {
                 rebased = rebased.RemoveDocument(target.Id);
