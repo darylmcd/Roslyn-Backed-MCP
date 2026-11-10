@@ -39,6 +39,9 @@ public sealed class UndoService : IUndoService, IDisposable
     private readonly IWorkspaceManager _workspaceManager;
     private readonly IChangeTracker? _changeTracker;
 
+    /// <summary>Test seam: runs immediately before <see cref="RevertBySequenceAsync"/> enters the critical section that resolves, dependency-checks and claims the target.</summary>
+    internal Action? BeforeSequenceClaim { get; set; }
+
     public UndoService(
         ILogger<UndoService> logger,
         IWorkspaceManager workspaceManager,
@@ -162,74 +165,69 @@ public sealed class UndoService : IUndoService, IDisposable
                 BlockingSequences: null);
         }
 
-        UndoSnapshot? target;
-        List<UndoSnapshot> laterApplies;
-        lock (historyList)
-        {
-            target = historyList.FirstOrDefault(s => s.SequenceNumber == sequenceNumber);
-            laterApplies = target is null
-                ? new List<UndoSnapshot>()
-                : historyList
-                    .Where(s => s.SequenceNumber > sequenceNumber)
-                    .ToList();
-        }
-
-        if (target is null)
-        {
-            return new RevertBySequenceResult(
-                Reverted: false,
-                RevertedOperation: null,
-                AffectedFiles: Array.Empty<string>(),
-                Reason: "unknown-sequence",
-                BlockingSequences: null);
-        }
-
-        // Conservative dependency check: if any later apply touches a file that the target
-        // apply also touched, reverting the target would silently roll back part of those
-        // later applies. Block the revert and surface the offending sequence numbers so the
-        // caller can revert them first if desired.
-        var targetFiles = new HashSet<string>(target.AffectedFiles, FileSystemPath.Comparer);
-        var blocking = new List<int>();
-        foreach (var later in laterApplies)
-        {
-            foreach (var file in later.AffectedFiles)
-            {
-                if (targetFiles.Contains(file))
-                {
-                    blocking.Add(later.SequenceNumber);
-                    break;
-                }
-            }
-        }
-
-        if (blocking.Count > 0)
-        {
-            return new RevertBySequenceResult(
-                Reverted: false,
-                RevertedOperation: target.Description,
-                AffectedFiles: target.AffectedFiles,
-                Reason: "dependency-blocked",
-                BlockingSequences: blocking);
-        }
-
-        // Claim the revert BEFORE running it so concurrent callers can't double-revert: remove
-        // the target history entry (recording its ordinal position so a failed/cancelled restore
-        // can reinsert it at the same spot) and, if it is also the pending LIFO snapshot, remove
-        // that too. Unlike the previous unconditional drop-first, a failed restore now UNDOES this
-        // claim (below) instead of permanently destroying the retry target and its dependency ordering.
+        // Resolve the target, run the conservative dependency check and claim the revert inside ONE
+        // critical section. Any split between the check and the claim leaves a window in which a
+        // later overlapping apply (invalidating the check) or a competing claimant (taking the same
+        // entry) lands in between. Everything here is in-memory and cheap, so the lock is not held
+        // across the restore. Claiming removes the target history entry (recording its ordinal
+        // position so a failed/cancelled restore can reinsert it at the same spot); a failed restore
+        // UNDOES this claim (below) instead of destroying the retry target and its dependency ordering.
+        BeforeSequenceClaim?.Invoke();
+        UndoSnapshot target;
         int claimedIndex;
         lock (historyList)
         {
             claimedIndex = historyList.FindIndex(s => s.SequenceNumber == sequenceNumber);
-            if (claimedIndex >= 0)
+            if (claimedIndex < 0)
             {
-                historyList.RemoveAt(claimedIndex);
+                // Unknown, or a competing claimant already took it: refuse without restoring.
+                return new RevertBySequenceResult(
+                    Reverted: false,
+                    RevertedOperation: null,
+                    AffectedFiles: Array.Empty<string>(),
+                    Reason: "unknown-sequence",
+                    BlockingSequences: null);
             }
+
+            target = historyList[claimedIndex];
+
+            // Conservative dependency check: if any later apply touches a file that the target
+            // apply also touched, reverting the target would silently roll back part of those
+            // later applies. Block the revert and surface the offending sequence numbers so the
+            // caller can revert them first if desired.
+            var targetFiles = new HashSet<string>(target.AffectedFiles, FileSystemPath.Comparer);
+            var blocking = new List<int>();
+            foreach (var later in historyList)
+            {
+                if (later.SequenceNumber <= sequenceNumber)
+                    continue;
+
+                foreach (var file in later.AffectedFiles)
+                {
+                    if (targetFiles.Contains(file))
+                    {
+                        blocking.Add(later.SequenceNumber);
+                        break;
+                    }
+                }
+            }
+
+            if (blocking.Count > 0)
+            {
+                return new RevertBySequenceResult(
+                    Reverted: false,
+                    RevertedOperation: target.Description,
+                    AffectedFiles: target.AffectedFiles,
+                    Reason: "dependency-blocked",
+                    BlockingSequences: blocking);
+            }
+
+            historyList.RemoveAt(claimedIndex);
         }
 
-        // If this is also the pending LIFO snapshot, drop it from _snapshots too — keeps
-        // GetLastOperation / RevertAsync consistent. Use the compare-and-remove overload so a
-        // newer capture that raced in is not clobbered.
+        // Only the winning claimant reaches here. If this is also the pending LIFO snapshot, drop it
+        // from _snapshots too — keeps GetLastOperation / RevertAsync consistent. Use the
+        // compare-and-remove overload so a newer capture that raced in is not clobbered.
         if (_snapshots.TryGetValue(workspaceId, out var pending) && pending.SequenceNumber == sequenceNumber)
         {
             _snapshots.TryRemove(new KeyValuePair<string, UndoSnapshot>(workspaceId, pending));
@@ -276,8 +274,7 @@ public sealed class UndoService : IUndoService, IDisposable
     /// entry at (or as close as bounds allow to) its original ordinal position so the
     /// dependency-ordered overlap check stays correct, and best-effort restores it as the pending
     /// LIFO snapshot (<see cref="ConcurrentDictionary{TKey,TValue}.TryAdd"/> won't overwrite a
-    /// newer capture that raced in during the restore). No-op when nothing was claimed
-    /// (<paramref name="claimedIndex"/> &lt; 0, e.g. a concurrent caller already claimed the entry).
+    /// newer capture that raced in during the restore). Callers pass only a claim they won.
     /// </summary>
     private void RestoreSequenceClaim(
         string workspaceId,
@@ -285,9 +282,6 @@ public sealed class UndoService : IUndoService, IDisposable
         int claimedIndex,
         UndoSnapshot target)
     {
-        if (claimedIndex < 0)
-            return;
-
         lock (historyList)
         {
             // Re-derive the insert position with a bounds check — concurrent CommitPendingCapture
@@ -510,10 +504,18 @@ public sealed class UndoService : IUndoService, IDisposable
                 if (oldDoc is null) continue;
 
                 var oldText = await oldDoc.GetTextAsync(cancellationToken).ConfigureAwait(false);
+                var currentDoc = currentSolution.GetDocument(docId);
+
+                // undo-restore-source-kind: the reviewed pre-apply SourceCodeKind is part of what an
+                // apply may have changed; restore it with the text (mirrors RefactoringService rebase).
+                if (currentDoc is not null && currentDoc.SourceCodeKind != oldDoc.SourceCodeKind)
+                {
+                    targetSolution = targetSolution.WithDocumentSourceCodeKind(docId, oldDoc.SourceCodeKind);
+                }
+
                 targetSolution = targetSolution.WithDocumentText(docId, oldText);
                 changedDocumentCount++;
 
-                var currentDoc = currentSolution.GetDocument(docId);
                 var path = currentDoc?.FilePath ?? oldDoc.FilePath;
                 if (!string.IsNullOrWhiteSpace(path))
                 {

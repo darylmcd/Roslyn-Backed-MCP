@@ -1,7 +1,10 @@
 using System.Text;
 using Microsoft.CodeAnalysis;
+using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Contracts;
+using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
 
@@ -346,6 +349,60 @@ public sealed class UndoServiceTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task RevertBySequence_ConcurrentClaimants_OnlyWinnerRestores()
+    {
+        // undo-sequence-claim-exclusivity: two callers undo the SAME sequence at the claim point
+        // (both parked on a barrier, then released together). Exactly one may claim and restore;
+        // the loser must refuse with unknown-sequence instead of restoring the same effects again.
+        // Limit: the seam forces both callers to the claim together (race-forcing) but cannot force
+        // the old two-lock interleaving, because the fixed code has no window to hook between check
+        // and claim; the old-code red was observed with the seam placed between the old two locks.
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+        var originalBytes = await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None);
+        using var undo = new UndoService(NullLogger<UndoService>.Instance, WorkspaceManager);
+        undo.CaptureBeforeApply(
+            workspaceId, "race", preApplySolution: null,
+            fileSnapshots: [FileSnapshotDto.FromExistingBytes(dogFilePath, originalBytes)]);
+        undo.CommitPendingCapture(workspaceId, sequenceNumber: 1, affectedFiles: [dogFilePath]);
+        await File.WriteAllTextAsync(dogFilePath, "// post-apply\n", CancellationToken.None);
+
+        // A newer, non-overlapping operation is the pending LIFO snapshot while the race runs; a
+        // lost claim must leave it (and its history entry) alone.
+        var catFilePath = workspace.GetPath("SampleLib", "Cat.cs");
+        undo.CaptureBeforeApply(
+            workspaceId, "newer", preApplySolution: null,
+            fileSnapshots: [FileSnapshotDto.FromExistingBytes(catFilePath, await File.ReadAllBytesAsync(catFilePath, CancellationToken.None))]);
+        undo.CommitPendingCapture(workspaceId, sequenceNumber: 2, affectedFiles: [catFilePath]);
+
+        using var barrier = new Barrier(2);
+        undo.BeforeSequenceClaim = () =>
+        {
+            if (!barrier.SignalAndWait(TimeSpan.FromSeconds(30)))
+                throw new TimeoutException("Second claimant never reached the claim barrier.");
+        };
+
+        var results = await Task.WhenAll(
+            Task.Run(() => undo.RevertBySequenceAsync(workspaceId, 1, CancellationToken.None)),
+            Task.Run(() => undo.RevertBySequenceAsync(workspaceId, 1, CancellationToken.None)));
+
+        Assert.AreEqual(1, results.Count(r => r.Reverted),
+            $"Exactly one claimant may restore; got reasons [{string.Join(", ", results.Select(r => r.Reason ?? "reverted"))}].");
+        var loser = results.Single(r => !r.Reverted);
+        Assert.AreEqual("unknown-sequence", loser.Reason);
+        Assert.IsNull(loser.RevertedOperation);
+        Assert.AreEqual(0, loser.AffectedFiles.Count);
+        Assert.IsNull(loser.BlockingSequences);
+        CollectionAssert.AreEqual(originalBytes, await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None));
+        Assert.AreEqual("newer", undo.GetLastOperation(workspaceId)?.Description,
+            "Neither claimant may drop another operation's pending snapshot.");
+        undo.BeforeSequenceClaim = null;
+        Assert.IsTrue((await undo.RevertBySequenceAsync(workspaceId, 2, CancellationToken.None)).Reverted,
+            "The newer operation's history entry must survive the race.");
+    }
+
+    [TestMethod]
     public void CaptureBeforeApply_NonSolutionObject_ThrowsInvalidOperationException()
     {
         // The object-typed parameter is an internal wiring contract, not a caller-supplied
@@ -641,6 +698,55 @@ public sealed class UndoServiceTests : IsolatedWorkspaceTestBase
             await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None),
             $"revert_last_apply's solution-snapshot path must restore the exact pre-apply {encodingKind} bytes, " +
             "including the byte-order mark, instead of rewriting the file as UTF-8-no-BOM.");
+    }
+
+    /// <summary>
+    /// undo-restore-source-kind: the solution-diff restore must carry the pre-apply
+    /// <see cref="SourceCodeKind"/> back, not only the text. The observable effect is the solution
+    /// handed to <c>TryApplyChanges</c> (the workspace is reloaded from MSBuild afterwards, which
+    /// re-derives kinds from the project files). Kinds are altered synthetically through the Solution API.
+    /// </summary>
+    [TestMethod]
+    public async Task RevertAsync_SolutionSnapshot_RestoresPreApplySourceCodeKind()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+        var preApply = WorkspaceManager.GetCurrentSolution(workspaceId);
+        var preApplyDoc = preApply.GetDocumentIdsWithFilePath(dogFilePath).Select(preApply.GetDocument).Single()!;
+        Assert.AreEqual(SourceCodeKind.Regular, preApplyDoc.SourceCodeKind, "Precondition: pre-apply kind.");
+        await preApplyDoc.GetTextAsync(CancellationToken.None);
+
+        var applied = preApply
+            .WithDocumentSourceCodeKind(preApplyDoc.Id, SourceCodeKind.Script)
+            .WithDocumentText(preApplyDoc.Id, Microsoft.CodeAnalysis.Text.SourceText.From("// applied\n"));
+        var manager = new CapturingWorkspaceManager(WorkspaceManager, applied);
+        using var undo = new UndoService(NullLogger<UndoService>.Instance, manager);
+        undo.CaptureBeforeApply(workspaceId, "kind change", preApply, fileSnapshots: null);
+
+        Assert.IsTrue(await undo.RevertAsync(workspaceId, CancellationToken.None));
+
+        Assert.IsNotNull(manager.AppliedSolution, "The revert must hand a target solution to TryApplyChanges.");
+        var restored = manager.AppliedSolution.GetDocument(preApplyDoc.Id)!;
+        Assert.AreEqual(SourceCodeKind.Regular, restored.SourceCodeKind,
+            "Undo must restore the pre-apply SourceCodeKind, not leave the applied Script kind.");
+        Assert.AreEqual(
+            (await preApplyDoc.GetTextAsync(CancellationToken.None)).ToString(),
+            (await restored.GetTextAsync(CancellationToken.None)).ToString());
+    }
+
+    private sealed class CapturingWorkspaceManager(IWorkspaceManager inner, Solution current)
+        : Helpers.DelegatingWorkspaceManager(inner)
+    {
+        public Solution? AppliedSolution { get; private set; }
+
+        public override Solution GetCurrentSolution(string workspaceId) => current;
+
+        public override bool TryApplyChanges(string workspaceId, Solution newSolution)
+        {
+            AppliedSolution = newSolution;
+            return true;
+        }
     }
 
     /// <summary>
