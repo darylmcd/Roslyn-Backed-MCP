@@ -145,6 +145,10 @@ public sealed class LinuxPowerShellStartupCacheOwnershipTests
         try
         {
             using var writer = new FileStream(file, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+            // The script's budget starts at its own startup, before it can observe the candidate, so the
+            // elapsed time is measured from a reference taken before launch: that precedes the script's
+            // deadline start regardless of pwsh startup latency or when this poll loop sees the marker.
+            var launchedAt = Stopwatch.GetTimestamp();
             var run = PwshScriptRunner.RunAsync(
                 ["-NoProfile", "-NonInteractive", "-File",
                     Path.Combine(root, "tests/RoslynMcp.Tests/Fixtures/pwsh-startup-cache-verify.ps1"),
@@ -157,10 +161,12 @@ public sealed class LinuxPowerShellStartupCacheOwnershipTests
                 await Task.Delay(25);
             }
             var candidateWasObserved = File.Exists(marker);
-            var observedAt = Stopwatch.GetTimestamp();
             var result = await run;
+            var elapsedSinceLaunch = Stopwatch.GetElapsedTime(launchedAt);
             Assert.IsTrue(candidateWasObserved, result.AllOutput);
-            Assert.IsTrue(Stopwatch.GetElapsedTime(observedAt) >= TimeSpan.FromMilliseconds(600), result.AllOutput);
+            Assert.IsTrue(
+                elapsedSinceLaunch >= TimeSpan.FromSeconds(1),
+                $"Verifier reported failure after {elapsedSinceLaunch.TotalMilliseconds:F0} ms, before its 1-second budget elapsed.{Environment.NewLine}{result.AllOutput}");
             Assert.AreNotEqual(0, result.ExitCode, result.AllOutput);
             StringAssert.Contains(result.AllOutput, "fixed 1-second budget");
             StringAssert.Contains(result.AllOutput, "last sharing violation");
