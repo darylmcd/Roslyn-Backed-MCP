@@ -651,6 +651,10 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
     {
         var session = GetRequiredSession(workspaceId);
         var versionBeforeLoad = session.Version;
+        // Captured BEFORE the load touches disk: an external edit made at or after this instant may
+        // postdate the bytes the load reads, so it must outlive the post-load clear. Edits finished
+        // earlier (including duplicate watcher events for them) are covered by the load.
+        var loadStartUtc = DateTime.UtcNow;
         try
         {
             await LoadIntoSessionAsync(session, session.LoadedPath ?? throw new InvalidOperationException(
@@ -662,7 +666,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
             // workspace-reload-swap-version-failure-ownership: a version bump proves the swap
             // committed before the failure (post-swap preview invalidation threw). The session now
             // serves the NEW workspace, so event-driven caches holding the retired solution must
-            // still be dropped. The exception still propagates and ClearStale is skipped, so a
+            // still be dropped. The exception still propagates and the stale clear is skipped, so a
             // stale workspace stays stale and the next gated call reloads again. A pre-swap failure
             // leaves the version untouched and the prior workspace live: nothing to announce.
             if (session.Version != versionBeforeLoad)
@@ -673,7 +677,12 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
             throw;
         }
 
-        _fileWatcher.ClearStale(workspaceId);
+        // reload-clearstale-swallows-midreload-watcher-event: clear only when no ExternalEdit
+        // landed during the load. Apply/Restore marks are the server's own writes, already on disk
+        // before the load began, so they are cleared as before; a delayed or duplicate watcher event
+        // for a write that finished before the load started carries that older write time and is
+        // cleared too.
+        _fileWatcher.ClearStaleIfNoExternalEditSince(workspaceId, loadStartUtc);
         // Item #7: explicit reload signal for per-workspace caches. The version bump inside
         // LoadIntoSessionAsync is enough for caches that version-check on every read, but
         // firing the event synchronously here (a) makes the invalidation contract explicit,

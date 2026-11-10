@@ -287,11 +287,43 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
         return entry.RunOwnedWrite(path, write);
     }
 
-    public void ClearStale(string workspaceId)
+    // Test-only unconditional clear (FileWatcherClearStaleAwaiterTests); production clears through
+    // ClearStaleIfNoExternalEditSince, so this is not part of IFileWatcherService.
+    internal void ClearStale(string workspaceId)
     {
         if (_watchers.TryGetValue(workspaceId, out var entry))
         {
             entry.ClearStale();
+        }
+    }
+
+    public bool ClearStaleIfNoExternalEditSince(string workspaceId, DateTime sinceUtc)
+    {
+        if (!_watchers.TryGetValue(workspaceId, out var entry))
+        {
+            return false;
+        }
+
+        if (entry.ClearStaleIfNoExternalEditSince(sinceUtc, out var latestExternalEditUtc))
+        {
+            return true;
+        }
+
+        logger.LogInformation(
+            "Kept workspace {WorkspaceId} stale after reload: external edit observed at {LatestExternalEditUtc:O} is not before the load start {SinceUtc:O}",
+            workspaceId, latestExternalEditUtc, sinceUtc);
+        return false;
+    }
+
+    /// <summary>
+    /// Feeds one file-system event through the same ingress the OS watcher callbacks use, so tests
+    /// can replay a duplicate or delayed event deterministically.
+    /// </summary>
+    internal void RecordFileChange(string workspaceId, string fullPath, bool contentEvent)
+    {
+        if (_watchers.TryGetValue(workspaceId, out var entry))
+        {
+            MarkStaleIfRelevant(entry, fullPath, checkExcludedPaths: true, contentEvent);
         }
     }
 
@@ -315,10 +347,12 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
             EnableRaisingEvents = true
         };
 
-        watcher.Changed += (_, args) => MarkStaleIfRelevant(entry, args.FullPath, recursive);
-        watcher.Created += (_, args) => MarkStaleIfRelevant(entry, args.FullPath, recursive);
-        watcher.Deleted += (_, args) => MarkStaleIfRelevant(entry, args.FullPath, recursive);
-        watcher.Renamed += (_, args) => MarkStaleIfRelevant(entry, args.FullPath, recursive);
+        // Changed/Created carry the file's own write time; Deleted/Renamed do not (a rename keeps
+        // the old times), so those are timed by arrival.
+        watcher.Changed += (_, args) => MarkStaleIfRelevant(entry, args.FullPath, recursive, contentEvent: true);
+        watcher.Created += (_, args) => MarkStaleIfRelevant(entry, args.FullPath, recursive, contentEvent: true);
+        watcher.Deleted += (_, args) => MarkStaleIfRelevant(entry, args.FullPath, recursive, contentEvent: false);
+        watcher.Renamed += (_, args) => MarkStaleIfRelevant(entry, args.FullPath, recursive, contentEvent: false);
 
         return watcher;
     }
@@ -347,7 +381,7 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
         }
     }
 
-    private static void MarkStaleIfRelevant(WatcherEntry entry, string fullPath, bool checkExcludedPaths)
+    private static void MarkStaleIfRelevant(WatcherEntry entry, string fullPath, bool checkExcludedPaths, bool contentEvent)
     {
         if (checkExcludedPaths && ShouldIgnorePath(fullPath, entry.RootDirectory))
         {
@@ -356,7 +390,7 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
 
         // Compare config bytes with the committed owned write under the same state lock.
         // Delayed events for those bytes preserve Apply; different bytes are ExternalEdit.
-        entry.MarkFileChange(fullPath);
+        entry.MarkFileChange(fullPath, contentEvent);
     }
 
     private static bool ShouldIgnorePath(string fullPath, string rootDirectory)
@@ -386,6 +420,9 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
     {
         private volatile bool _isStale;
         private string? _staleReason;
+        // Newest observed instant (UTC) among ExternalEdit marks since the last clear, written under
+        // _reasonLock. Lets a reload tell an edit made after its load began from one it already absorbed.
+        private DateTime _latestExternalEditUtc = DateTime.MinValue;
         private readonly object _reasonLock = new();
         private readonly Dictionary<string, byte[]?> _ownedConfigBytes = new(FileSystemPath.Comparer);
         // Intentionally unguarded: AddWatcher is called only from FileWatcherService.Watch() on a
@@ -550,8 +587,9 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
             }
         }
 
-        public void MarkFileChange(string path)
+        public void MarkFileChange(string path, bool contentEvent)
         {
+            var observedUtc = ObservedChangeUtc(path, contentEvent);
             lock (_reasonLock)
             {
                 if (Path.GetFileName(path).Equals(".editorconfig", StringComparison.OrdinalIgnoreCase))
@@ -563,7 +601,7 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
                     }
                     catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
                     {
-                        MarkStaleWithReason(StaleReasons.ExternalEdit);
+                        MarkStaleWithReason(StaleReasons.ExternalEdit, observedUtc);
                         return;
                     }
                     var readable = TryReadBytesOrNull(physicalPath, out var current);
@@ -575,7 +613,32 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
                     _ownedConfigBytes.Remove(physicalPath);
                 }
 
-                MarkStaleWithReason(StaleReasons.ExternalEdit);
+                MarkStaleWithReason(StaleReasons.ExternalEdit, observedUtc);
+            }
+        }
+
+        /// <summary>
+        /// The instant a change counts as made: the file's last-write time for a content event (so a
+        /// duplicate event for an older write keeps the older time), otherwise now. An unreadable or
+        /// missing file, or a write time in the future, falls back to now (stay-stale side).
+        /// </summary>
+        private static DateTime ObservedChangeUtc(string path, bool contentEvent)
+        {
+            var now = DateTime.UtcNow;
+            if (!contentEvent)
+            {
+                return now;
+            }
+
+            try
+            {
+                var written = File.GetLastWriteTimeUtc(PhysicalPathResolver.Resolve(path));
+                // GetLastWriteTimeUtc returns 1601-01-01 for a missing file.
+                return written.Year <= 1601 || written > now ? now : written;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+            {
+                return now;
             }
         }
 
@@ -629,15 +692,46 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
         /// inside a single stale window: each call overwrites the prior reason until
         /// <see cref="ClearStale"/> resets the slate.
         /// </summary>
-        public void MarkStaleWithReason(string reason)
+        public void MarkStaleWithReason(string reason) => MarkStaleWithReason(reason, DateTime.UtcNow);
+
+        /// <summary>
+        /// As <see cref="MarkStaleWithReason(string)"/>, for a change observed at
+        /// <paramref name="observedUtc"/> (only an ExternalEdit's instant is retained).
+        /// </summary>
+        public void MarkStaleWithReason(string reason, DateTime observedUtc)
         {
             lock (_reasonLock)
             {
                 _staleReason = reason;
                 _isStale = true;
+                if (reason == StaleReasons.ExternalEdit && observedUtc > _latestExternalEditUtc)
+                {
+                    _latestExternalEditUtc = observedUtc;
+                }
                 // Release any awaiters parked on WaitForStaleAsync. TrySetResult is a no-op when
                 // the signal already fired earlier in this (not-yet-cleared) stale window.
                 _staleSignal.TrySetResult();
+            }
+        }
+
+        /// <summary>
+        /// Clears the slate unless an ExternalEdit was observed at or after
+        /// <paramref name="sinceUtc"/>. The check and the clear share one <c>_reasonLock</c>
+        /// section, so a mark cannot slip between them. A skipped clear touches nothing: the
+        /// signal stays completed (the entry is still stale), so no waiter is cancelled or leaked.
+        /// </summary>
+        public bool ClearStaleIfNoExternalEditSince(DateTime sinceUtc, out DateTime latestExternalEditUtc)
+        {
+            lock (_reasonLock)
+            {
+                latestExternalEditUtc = _latestExternalEditUtc;
+                if (_latestExternalEditUtc >= sinceUtc)
+                {
+                    return false;
+                }
+
+                ClearStale();
+                return true;
             }
         }
 
@@ -647,6 +741,7 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
             {
                 _isStale = false;
                 _staleReason = null;
+                _latestExternalEditUtc = DateTime.MinValue;
                 // Cancel the outgoing signal BEFORE replacing it. An awaiter parked on
                 // WaitForStaleAsync holds a reference to this exact TCS's Task; swapping in a fresh
                 // one without resolving the old leaves that awaiter stranded until ITS OWN

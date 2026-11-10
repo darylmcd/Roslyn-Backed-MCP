@@ -59,12 +59,30 @@ public interface IFileWatcherService : IDisposable
     /// Programmatically marks the workspace as stale with the given reason. Used by the server
     /// to distinguish its own apply/restore writes from genuinely external edits. Semantics
     /// are <em>last-writer-wins</em> within a single stale window: each call overwrites the
-    /// prior reason until <see cref="ClearStale"/> resets the slate.
+    /// prior reason until <see cref="ClearStaleIfNoExternalEditSince"/> resets the slate.
     /// </summary>
     void MarkStale(string workspaceId, string reason);
 
-    /// <summary>Clear the stale flag (called after reload).</summary>
-    void ClearStale(string workspaceId);
+    /// <summary>
+    /// Clears the stale flag unless a <see cref="StaleReasons.ExternalEdit"/> mark records a change
+    /// observed at or after <paramref name="sinceUtc"/>. A reload passes the UTC instant it captured
+    /// BEFORE it started reading disk: an edit made at or after that instant may postdate the bytes
+    /// the load read, so the workspace must stay stale. A change whose write finished earlier (the
+    /// edit the reload was invoked to absorb, a duplicate watcher event for it, or the delayed echo
+    /// of the server's own write) is already covered by the load and is cleared.
+    /// </summary>
+    /// <remarks>
+    /// The "observed" instant of a content event (changed/created) is the file's last-write time;
+    /// of a delete or rename, or of an explicit <see cref="MarkStale"/>, the instant the mark was
+    /// recorded. Ties survive (<c>&gt;=</c>), and a file whose time cannot be read counts as newly
+    /// observed, so every ambiguity resolves to "stay stale". <see cref="StaleReasons.Apply"/> and
+    /// <see cref="StaleReasons.Restore"/> marks never keep the workspace stale here: the server's
+    /// own writes are on disk before a reload starts. Returns <see langword="true"/> when the flag
+    /// was cleared; <see langword="false"/> when a newer external edit intervened (nothing changes:
+    /// flag, reason and pending <see cref="WaitForStaleAsync"/> waiters are left exactly as they were)
+    /// or the workspace is unknown.
+    /// </remarks>
+    bool ClearStaleIfNoExternalEditSince(string workspaceId, DateTime sinceUtc);
 }
 
 /// <summary>

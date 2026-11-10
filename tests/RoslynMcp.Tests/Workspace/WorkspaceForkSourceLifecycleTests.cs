@@ -531,7 +531,7 @@ public sealed class WorkspaceForkSourceLifecycleTests
         public Task WaitForStaleAsync(string id, CancellationToken ct) => _inner.WaitForStaleAsync(id, ct);
         public string? GetStaleReason(string id) => _inner.GetStaleReason(id);
         public void MarkStale(string id, string reason) => _inner.MarkStale(id, reason);
-        public void ClearStale(string id) => _inner.ClearStale(id);
+        public bool ClearStaleIfNoExternalEditSince(string id, DateTime sinceUtc) => _inner.ClearStaleIfNoExternalEditSince(id, sinceUtc);
         public void Dispose() { Interlocked.Increment(ref DisposeCount); _inner.Dispose(); }
     }
 

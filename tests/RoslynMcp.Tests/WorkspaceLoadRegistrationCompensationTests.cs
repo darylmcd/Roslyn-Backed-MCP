@@ -289,7 +289,7 @@ public sealed class WorkspaceLoadRegistrationCompensationTests
         var id = status.WorkspaceId;
         var oldWorkspace = manager.GetCurrentSolution(id).Workspace;
         Assert.IsTrue(oldWorkspace.CurrentSolution.Projects.Any(), "Precondition: the loaded workspace is populated.");
-        // The reload must go through ClearStale only on success; mark stale so the assertion below can see it survive.
+        // The reload must clear staleness only on success; mark stale so the assertion below can see it survive.
         watcher.MarkStale(id, StaleReasons.ExternalEdit);
 
         previews.ThrowOnInvalidate = true;
@@ -305,7 +305,7 @@ public sealed class WorkspaceLoadRegistrationCompensationTests
         Assert.IsFalse(oldWorkspace.CurrentSolution.Projects.Any(), "The retired workspace must be disposed.");
         // Pinned decision: the committed swap still announces the reload so event-driven caches drop the old solution.
         CollectionAssert.AreEqual(new[] { id }, reloaded);
-        // Pinned decision: ClearStale is skipped on failure, so the workspace stays stale and the next gated call reloads.
+        // Pinned decision: the clear is skipped on failure, so the workspace stays stale and the next gated call reloads.
         Assert.IsTrue(watcher.IsStale(id), "A failed reload must not clear the stale flag.");
 
         previews.ThrowOnInvalidate = false;
@@ -314,6 +314,174 @@ public sealed class WorkspaceLoadRegistrationCompensationTests
         Assert.IsFalse(watcher.IsStale(id));
         Assert.IsTrue(manager.GetCurrentSolution(id).Projects.Any());
         CollectionAssert.AreEqual(new[] { id, id }, reloaded);
+    }
+
+    /// <summary>
+    /// reload-clearstale-swallows-midreload-watcher-event: the watcher flips ExternalEdit while the
+    /// reload's load is reading disk. The load may have read the file before the edit, so the
+    /// post-load clear must NOT wipe the mark.
+    /// </summary>
+    [TestMethod]
+    public async Task ReloadAsync_ExternalEditDuringLoad_StaysStaleUntilNextReload()
+    {
+        using var watcher = new ScriptedWatcher();
+        var loader = new MidLoadHookLoader();
+        using var manager = CreateManager(watcher, cap: 1, loader: loader);
+        var id = (await manager.LoadAsync(_sampleSolutionPath, CancellationToken.None)).WorkspaceId;
+
+        loader.OnLoaded = () => watcher.MarkStale(id, StaleReasons.ExternalEdit);
+        var status = await manager.ReloadAsync(id, CancellationToken.None);
+
+        Assert.AreEqual(1, loader.HookRuns, "The mid-load mark must have fired inside the reload's load.");
+        Assert.IsTrue(watcher.IsStale(id), "An ExternalEdit observed during the load must survive the post-load clear.");
+        Assert.AreEqual(StaleReasons.ExternalEdit, watcher.GetStaleReason(id));
+        Assert.IsTrue(status.IsStale, "workspace_status must report the surviving staleness.");
+        Assert.AreEqual(StaleReasons.ExternalEdit, status.StaleReason);
+
+        // Convergence: nothing re-marks, so the very next reload settles the workspace (no loop).
+        loader.OnLoaded = null;
+        var settled = await manager.ReloadAsync(id, CancellationToken.None);
+        Assert.IsFalse(watcher.IsStale(id));
+        Assert.IsFalse(settled.IsStale);
+        Assert.IsNull(watcher.GetStaleReason(id));
+    }
+
+    /// <summary>
+    /// The write the reload was invoked to absorb finished BEFORE the load started, but the OS delivers
+    /// a second event for it (truncate + write, or the echo of the server's own apply) while the load
+    /// runs. That event carries the older write time, so the load already covers it and the reload
+    /// must leave the workspace fresh (the documented workspace_reload recovery path).
+    /// </summary>
+    [TestMethod]
+    public async Task ReloadAsync_DuplicateEventForPreLoadWriteDuringLoad_IsCleared()
+    {
+        using var watcher = new ScriptedWatcher();
+        var loader = new MidLoadHookLoader();
+        using var manager = CreateManager(watcher, cap: 1, loader: loader);
+        var id = (await manager.LoadAsync(_sampleSolutionPath, CancellationToken.None)).WorkspaceId;
+        var changed = CreateOutOfRootFile(DateTime.UtcNow.AddSeconds(-30));
+        try
+        {
+            watcher.RecordFileChange(id, changed, contentEvent: true);
+            Assert.IsTrue(watcher.IsStale(id), "Precondition: the first event made the workspace stale.");
+
+            loader.OnLoaded = () => watcher.RecordFileChange(id, changed, contentEvent: true);
+            var status = await manager.ReloadAsync(id, CancellationToken.None);
+
+            Assert.AreEqual(1, loader.HookRuns);
+            Assert.IsFalse(watcher.IsStale(id), "A duplicate event for a write that preceded the load must not keep the workspace stale.");
+            Assert.IsFalse(status.IsStale);
+            Assert.IsNull(watcher.GetStaleReason(id));
+        }
+        finally
+        {
+            File.Delete(changed);
+        }
+    }
+
+    /// <summary>A write made after the load began (write time at or after the captured start) survives.</summary>
+    [TestMethod]
+    public async Task ReloadAsync_FileWrittenDuringLoad_StaysStale()
+    {
+        using var watcher = new ScriptedWatcher();
+        var loader = new MidLoadHookLoader();
+        using var manager = CreateManager(watcher, cap: 1, loader: loader);
+        var id = (await manager.LoadAsync(_sampleSolutionPath, CancellationToken.None)).WorkspaceId;
+        var changed = CreateOutOfRootFile(DateTime.UtcNow.AddSeconds(-30));
+        try
+        {
+            loader.OnLoaded = () =>
+            {
+                File.SetLastWriteTimeUtc(changed, DateTime.UtcNow);
+                watcher.RecordFileChange(id, changed, contentEvent: true);
+            };
+            var status = await manager.ReloadAsync(id, CancellationToken.None);
+
+            Assert.IsTrue(watcher.IsStale(id), "A write made while the load was reading disk must survive the clear.");
+            Assert.IsTrue(status.IsStale);
+            Assert.AreEqual(StaleReasons.ExternalEdit, status.StaleReason);
+        }
+        finally
+        {
+            File.Delete(changed);
+        }
+    }
+
+    private static string CreateOutOfRootFile(DateTime lastWriteUtc)
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"rmcp-reload-{Guid.NewGuid():N}.cs");
+        File.WriteAllText(path, "// probe");
+        File.SetLastWriteTimeUtc(path, lastWriteUtc);
+        return path;
+    }
+
+    /// <summary>
+    /// A mid-load mark attributed to the server's own write (Apply / Restore) is covered by the load
+    /// (the bytes were on disk before it started), so the post-load clear still wipes it.
+    /// </summary>
+    [TestMethod]
+    [DataRow(StaleReasons.Apply)]
+    [DataRow(StaleReasons.Restore)]
+    public async Task ReloadAsync_ServerAttributedMarkDuringLoad_IsCleared(string reason)
+    {
+        using var watcher = new ScriptedWatcher();
+        var loader = new MidLoadHookLoader();
+        using var manager = CreateManager(watcher, cap: 1, loader: loader);
+        var id = (await manager.LoadAsync(_sampleSolutionPath, CancellationToken.None)).WorkspaceId;
+
+        loader.OnLoaded = () => watcher.MarkStale(id, reason);
+        var status = await manager.ReloadAsync(id, CancellationToken.None);
+
+        Assert.AreEqual(1, loader.HookRuns);
+        Assert.IsFalse(watcher.IsStale(id), "A server-attributed mark must not outlive the reload that covers it.");
+        Assert.IsFalse(status.IsStale);
+        Assert.IsNull(watcher.GetStaleReason(id));
+    }
+
+    /// <summary>
+    /// The load-start instant is captured BEFORE the load: an ExternalEdit that was already pending when
+    /// the reload began is covered by that reload and is cleared (otherwise every explicit reload of an
+    /// externally-edited workspace would stay stale forever).
+    /// </summary>
+    [TestMethod]
+    public async Task ReloadAsync_ExternalEditBeforeReload_IsClearedByTheReload()
+    {
+        using var watcher = new ScriptedWatcher();
+        var loader = new MidLoadHookLoader();
+        using var manager = CreateManager(watcher, cap: 1, loader: loader);
+        var id = (await manager.LoadAsync(_sampleSolutionPath, CancellationToken.None)).WorkspaceId;
+        watcher.MarkStale(id, StaleReasons.ExternalEdit);
+        Assert.IsTrue(watcher.IsStale(id), "Precondition: stale before the reload starts.");
+
+        var status = await manager.ReloadAsync(id, CancellationToken.None);
+
+        Assert.IsFalse(watcher.IsStale(id));
+        Assert.IsFalse(status.IsStale);
+        Assert.IsNull(watcher.GetStaleReason(id));
+    }
+
+    /// <summary>Real load, then runs a test-supplied hook while the reload is still inside the loader.</summary>
+    private sealed class MidLoadHookLoader : WorkspaceSessionLoader
+    {
+        private int _hookRuns;
+
+        public Action? OnLoaded { get; set; }
+        public int HookRuns => Volatile.Read(ref _hookRuns);
+
+        public override async Task<(MSBuildWorkspace Workspace, AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease Lease)> CreateAndOpenAsync(
+            string workspaceId, string path, IDictionary<string, string>? globalProperties,
+            WorkspaceDiagnosticsSink diagnostics, ILogger logger, CancellationToken ct)
+        {
+            var loaded = await base.CreateAndOpenAsync(workspaceId, path, globalProperties, diagnostics, logger, ct).ConfigureAwait(false);
+            var hook = OnLoaded;
+            if (hook is not null)
+            {
+                Interlocked.Increment(ref _hookRuns);
+                hook();
+            }
+
+            return loaded;
+        }
     }
 
     /// <summary>Delegates to a real store; throws from InvalidateOnVersionBump on demand.</summary>
@@ -442,7 +610,10 @@ public sealed class WorkspaceLoadRegistrationCompensationTests
         public Task WaitForStaleAsync(string workspaceId, CancellationToken ct) => _inner.WaitForStaleAsync(workspaceId, ct);
         public string? GetStaleReason(string workspaceId) => _inner.GetStaleReason(workspaceId);
         public void MarkStale(string workspaceId, string reason) => _inner.MarkStale(workspaceId, reason);
-        public void ClearStale(string workspaceId) => _inner.ClearStale(workspaceId);
+        public bool ClearStaleIfNoExternalEditSince(string workspaceId, DateTime sinceUtc) =>
+            _inner.ClearStaleIfNoExternalEditSince(workspaceId, sinceUtc);
+        public void RecordFileChange(string workspaceId, string path, bool contentEvent) =>
+            _inner.RecordFileChange(workspaceId, path, contentEvent);
         public void Dispose() => _inner.Dispose();
     }
 }
