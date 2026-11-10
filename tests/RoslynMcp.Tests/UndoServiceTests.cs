@@ -563,6 +563,78 @@ public sealed class UndoServiceTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task CommitPromotion_NewerCaptureLandingBeforeSwap_SurvivesWithItsOwnUndo()
+    {
+        // CaptureBeforeApply takes no lock, so a newer capture B can replace the slot between
+        // CommitPendingCapture's read of A's pending slot and its swap. The swap must not overwrite B.
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+        var catFilePath = workspace.GetPath("SampleLib", "Cat.cs");
+        var catBytes = await File.ReadAllBytesAsync(catFilePath, CancellationToken.None);
+        using var undo = new UndoService(NullLogger<UndoService>.Instance, WorkspaceManager);
+        var captureA = undo.CaptureBeforeApply(
+            workspaceId, "op A", preApplySolution: null,
+            fileSnapshots: [FileSnapshotDto.FromExistingBytes(dogFilePath, await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None))]);
+        UndoCaptureId captureB = default;
+        undo.BeforeCommitSwap = () =>
+        {
+            undo.BeforeCommitSwap = null;
+            captureB = undo.CaptureBeforeApply(
+                workspaceId, "op B", preApplySolution: null,
+                fileSnapshots: [FileSnapshotDto.FromExistingBytes(catFilePath, catBytes)]);
+        };
+        await File.WriteAllTextAsync(catFilePath, "// op B in flight\n", CancellationToken.None);
+
+        undo.CommitPendingCapture(workspaceId, sequenceNumber: 1, affectedFiles: [dogFilePath], captureA);
+
+        Assert.IsFalse(captureB.IsNone, "The seam must have run the newer capture.");
+        Assert.AreEqual("op B", undo.GetLastOperation(workspaceId)?.Description,
+            "A's promotion must not overwrite the newer capture in the slot.");
+        Assert.IsTrue(await undo.RevertAsync(workspaceId, CancellationToken.None),
+            "The newer capture must keep its own undo.");
+        CollectionAssert.AreEqual(catBytes, await File.ReadAllBytesAsync(catFilePath, CancellationToken.None));
+    }
+
+    [TestMethod]
+    public async Task PersistFailure_LeavesPendingCapture_AuditDoesNotAdoptIt_RevertAsyncRestores()
+    {
+        // Real consumer: EditService captures, then the workspace write throws (read-only target).
+        // No record is made, so the capture stays pending; a later
+        // capture-free audit must not adopt it and RevertAsync must still restore.
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+        var originalBytes = await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None);
+        File.SetAttributes(dogFilePath, File.GetAttributes(dogFilePath) | FileAttributes.ReadOnly);
+        try
+        {
+            // MSBuildWorkspace.TryApplyChanges writes the document itself and throws on the read-only
+            // file, after EditService took its capture and before it records.
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() => EditService.ApplyTextEditsAsync(
+                workspaceId, dogFilePath, new[] { new TextEditDto(1, 1, 1, 1, "// never lands\n") },
+                "apply_text_edit", CancellationToken.None));
+            Assert.AreEqual(0, ChangeTracker.GetChanges(workspaceId).Count, "A failed apply records nothing.");
+            Assert.AreEqual("Apply text edit to Dog.cs", UndoService.GetLastOperation(workspaceId)?.Description,
+                "The failed apply's capture stays pending.");
+
+            RecordCaptureFreeAudit(workspaceId, "audit after persist failure");
+            var sequenceAudit = ChangeTracker.GetChanges(workspaceId).Single().SequenceNumber;
+            Assert.AreEqual("unknown-sequence",
+                (await UndoService.RevertBySequenceAsync(workspaceId, sequenceAudit, CancellationToken.None)).Reason,
+                "The audit must not adopt the failed apply's pending capture.");
+        }
+        finally
+        {
+            File.SetAttributes(dogFilePath, File.GetAttributes(dogFilePath) & ~FileAttributes.ReadOnly);
+        }
+
+        Assert.IsTrue(await UndoService.RevertAsync(workspaceId, CancellationToken.None),
+            "The failed apply's pending capture must remain the retryable LIFO target.");
+        CollectionAssert.AreEqual(originalBytes, await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None));
+    }
+
+    [TestMethod]
     public async Task SequentialCaptures_RecordedInCaptureOrder_EachPromotesUnderOwnSequence()
     {
         // Deterministic ordering of the interleaving "capture A, capture B, record A, record B":

@@ -45,6 +45,9 @@ public sealed class UndoService : IUndoService, IDisposable
     /// <summary>Test seam: runs immediately before <see cref="RevertBySequenceAsync"/> enters the critical section that resolves, dependency-checks and claims the target.</summary>
     internal Action? BeforeSequenceClaim { get; set; }
 
+    /// <summary>Test seam: runs inside <see cref="CommitPendingCapture"/> after it read the matching pending slot and before it swaps the promoted snapshot in, i.e. the window a newer <see cref="CaptureBeforeApply"/> (which takes no lock) can land in.</summary>
+    internal Action? BeforeCommitSwap { get; set; }
+
     public UndoService(
         ILogger<UndoService> logger,
         IWorkspaceManager workspaceManager,
@@ -328,7 +331,16 @@ public sealed class UndoService : IUndoService, IDisposable
             }
 
             var promoted = pending with { SequenceNumber = sequenceNumber, AffectedFiles = affectedFiles };
-            _snapshots[workspaceId] = promoted;
+            BeforeCommitSwap?.Invoke();
+
+            // CaptureBeforeApply writes the slot without this lock, so a newer capture can land after
+            // the read above. Compare-and-swap against the exact snapshot we validated: a lost race
+            // leaves the newer capture in the slot with its own undo and adds no history for this one.
+            if (!_snapshots.TryUpdate(workspaceId, promoted, pending))
+            {
+                return;
+            }
+
             historyList.Add(promoted);
         }
     }
