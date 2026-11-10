@@ -26,27 +26,27 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
 
     private static readonly Action<ILogger, string, string, int, Exception?> LogWorkspaceLoaded =
         LoggerMessage.Define<string, string, int>(
-            LogLevel.Information, new EventId(1, nameof(LogWorkspaceLoaded)),
+            LogLevel.Information, new EventId(LogEvents.WorkspaceLoaded, LogEvents.WorkspaceLoadedName),
             "Loaded workspace {WorkspaceId} from {Path}, version {Version}");
 
     private static readonly Action<ILogger, string, int, Exception?> LogChangesApplied =
         LoggerMessage.Define<string, int>(
-            LogLevel.Information, new EventId(2, nameof(LogChangesApplied)),
+            LogLevel.Information, new EventId(LogEvents.ChangesApplied, LogEvents.ChangesAppliedName),
             "Applied workspace changes to {WorkspaceId}, new version {Version}");
 
     private static readonly Action<ILogger, string, Exception?> LogChangesApplyFailed =
         LoggerMessage.Define<string>(
-            LogLevel.Warning, new EventId(3, nameof(LogChangesApplyFailed)),
+            LogLevel.Warning, new EventId(LogEvents.ChangesApplyFailed, LogEvents.ChangesApplyFailedName),
             "Failed to apply workspace changes for {WorkspaceId}");
 
     private static readonly Action<ILogger, string, Exception?> LogWorkspaceClosed =
         LoggerMessage.Define<string>(
-            LogLevel.Information, new EventId(4, nameof(LogWorkspaceClosed)),
+            LogLevel.Information, new EventId(LogEvents.WorkspaceClosed, LogEvents.WorkspaceClosedName),
             "Closed workspace {WorkspaceId}");
 
     private static readonly Action<ILogger, string, int, string, Exception?> LogSessionNotFound =
         LoggerMessage.Define<string, int, string>(
-            LogLevel.Warning, new EventId(5, nameof(LogSessionNotFound)),
+            LogLevel.Warning, new EventId(LogEvents.SessionNotFound, LogEvents.SessionNotFoundName),
             "Workspace '{WorkspaceId}' not found. Active sessions ({Count}): [{ActiveIds}]");
 
     private readonly ILogger<WorkspaceManager> _logger;

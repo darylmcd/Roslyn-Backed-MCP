@@ -16,7 +16,7 @@ internal sealed class SupportedFixEnumerationService
     private static readonly Action<ILogger, string, string, string, string, Exception?> LogProviderEnumerationFailed =
         LoggerMessage.Define<string, string, string, string>(
             LogLevel.Debug,
-            new EventId(1, nameof(LogProviderEnumerationFailed)),
+            new EventId(LogEvents.ProviderEnumerationFailed, LogEvents.ProviderEnumerationFailedName),
             "Code fix provider {Provider} failed during diagnostic enumeration with {ExceptionType}; category={Category}; correlationId={CorrelationId}");
 
     private readonly ICodeFixProviderRegistry _codeFixRegistry;

@@ -43,7 +43,7 @@ public sealed class DotnetCommandRunner : IDotnetCommandRunner
     private static readonly Action<ILogger, int, string, string, Exception?> LogProcessTreeKillFailed =
         LoggerMessage.Define<int, string, string>(
             LogLevel.Warning,
-            new EventId(1, nameof(LogProcessTreeKillFailed)),
+            new EventId(LogEvents.ProcessTreeKillFailed, LogEvents.ProcessTreeKillFailedName),
             "Failed to kill dotnet process tree for process {ProcessId} after {KillReason}; exceptionType={ExceptionType}.");
 
     private readonly int _outputLimit;

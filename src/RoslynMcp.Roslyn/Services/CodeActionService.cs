@@ -16,7 +16,7 @@ public sealed class CodeActionService : ICodeActionService
     private static readonly Action<ILogger, string, string, string, string, string, Exception?> LogProviderExecutionFailed =
         LoggerMessage.Define<string, string, string, string, string>(
             LogLevel.Debug,
-            new EventId(1, nameof(LogProviderExecutionFailed)),
+            new EventId(LogEvents.ProviderExecutionFailed, LogEvents.ProviderExecutionFailedName),
             "{ProviderKind} provider {Provider} failed with {ExceptionType}; category={Category}; correlationId={CorrelationId}");
 
     private readonly IWorkspaceManager _workspace;

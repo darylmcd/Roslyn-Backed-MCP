@@ -15,7 +15,7 @@ public sealed class GatedCommandExecutor : IGatedCommandExecutor
 {
     private static readonly Action<ILogger, string, string, int, Exception?> LogCommandExecuted =
         LoggerMessage.Define<string, string, int>(
-            LogLevel.Information, new EventId(1, nameof(LogCommandExecuted)),
+            LogLevel.Information, new EventId(LogEvents.CommandExecuted, LogEvents.CommandExecutedName),
             "Executed dotnet command for {TargetPath}: {Arguments} (ExitCode={ExitCode})");
 
     private readonly SemaphoreSlim _globalCommandGate;

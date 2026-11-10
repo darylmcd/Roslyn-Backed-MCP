@@ -101,6 +101,31 @@ Tool-call completion and failure records carry an outcome and elapsed millisecon
 correlation identifier appears in public unexpected-error envelopes, so an operator can join a
 client-visible failure to local records without exposing exception messages or stack text.
 
+### Event id catalog
+
+Every `eventId` is unique and owned by one catalog (`LogEvents` in `RoslynMcp.Core`); a drift test compares
+this table to it. Ranges per subsystem: 1-99 workspace, 1000-1999 host lifecycle and observability,
+2000-2999 tool-call lifecycle, 3000-3999 process and command execution, 4000-4999 Roslyn providers.
+Published ids are never renumbered; select on `eventName`, which is stable per event.
+
+| eventId | eventName | subsystem |
+|---|---|---|
+| 1 | WorkspaceLoaded | workspace |
+| 2 | ChangesApplied | workspace |
+| 3 | ChangesApplyFailed | workspace |
+| 4 | WorkspaceClosed | workspace |
+| 5 | SessionNotFound | workspace |
+| 1001 | UnexpectedFailure | host |
+| 1002 | LogTransportDisconnected | host |
+| 2101 | ToolCompleted | tool |
+| 2102 | ToolCancelled | tool |
+| 2103 | ToolInputRequired | tool |
+| 2104 | ToolFailed | tool |
+| 3001 | LogCommandExecuted | process |
+| 3002 | LogProcessTreeKillFailed | process |
+| 4001 | LogProviderExecutionFailed | provider |
+| 4002 | LogProviderEnumerationFailed | provider |
+
 Use `server_heartbeat` for a cheap connection-state probe and `server_info` for connection state,
 version, capabilities, and surface counts. Neither requires a loaded workspace.
 
