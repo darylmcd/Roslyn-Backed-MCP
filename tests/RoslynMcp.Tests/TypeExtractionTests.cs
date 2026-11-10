@@ -1881,12 +1881,12 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
 
             public class IdentityRewriteFixture
             {
-                public int Pad<T>(int value) => value + 1;
+                public T Echo<T>(T value) => value;
                 public int Twice(int value) => value * 2;
                 public static int Stat() => 5;
 
                 public int Keep(IdentityRewriteFixture other, IdentityRewriteUnrelated unrelated) =>
-                    Pad<string>(1) + this.Twice(2) + other.Twice(3) + unrelated.Twice(4) + IdentityRewriteFixture.Stat();
+                    Echo<string>("a").Length + this.Twice(2) + other.Twice(3) + unrelated.Twice(4) + IdentityRewriteFixture.Stat();
             }
 
             public class IdentityRewriteUnrelated
@@ -1901,13 +1901,13 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
                 fixture.WorkspaceId,
                 fixture.FilePath,
                 "IdentityRewriteFixture",
-                ["Pad", "Twice", "Stat"],
+                ["Echo", "Twice", "Stat"],
                 "IdentityHolder",
                 null,
                 CancellationToken.None);
 
             var updatedSource = await GetModifiedDocumentTextAsync(preview.PreviewToken, fixture.FilePath);
-            StringAssert.Contains(updatedSource, "_identityHolder.Pad<string>(1)");
+            StringAssert.Contains(updatedSource, "_identityHolder.Echo<string>(\"a\")");
             StringAssert.Contains(updatedSource, "this._identityHolder.Twice(2)");
             StringAssert.Contains(updatedSource, "other._identityHolder.Twice(3)");
             StringAssert.Contains(updatedSource, "unrelated.Twice(4)");
@@ -1985,6 +1985,81 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         {
             WorkspaceManager.Close(fixture.WorkspaceId);
         }
+    }
+
+    /// <summary>
+    /// type-extraction-method-type-parameter-flagged-as-dangling: symbols declared INSIDE the extracted member
+    /// (its own type parameters, local functions, lambdas, range variables) report the source type as their
+    /// <c>ContainingType</c> but travel with the member, so they must not be refused as dangling dependencies.
+    /// </summary>
+    [TestMethod]
+    [DataRow("GenericMethodHost", "Echo", "Echo<T>",
+        "using System;\nnamespace SampleLib;\npublic class GenericMethodHost\n{\n    public T Echo<T>(T v) => v;\n    public int Keep() => 1;\n}\n")]
+    [DataRow("LocalFunctionHost", "Sum", "Twice",
+        "namespace SampleLib;\npublic class LocalFunctionHost\n{\n    public int Sum() { int Twice(int a) => a * 2; return Twice(3); }\n    public int Keep() => 1;\n}\n")]
+    [DataRow("RangeVariableHost", "Count", "from i in xs",
+        "using System.Linq;\nnamespace SampleLib;\npublic class RangeVariableHost\n{\n    public int Count(int[] xs) => (from i in xs where i > 0 select i).Count();\n    public int Keep() => 1;\n}\n")]
+    [DataRow("GenericLocalFunctionHost", "G", "Id<T>",
+        "namespace SampleLib;\npublic class GenericLocalFunctionHost\n{\n    public int G() { T Id<T>(T x) => x; return Id(1); }\n    public int Keep() => 1;\n}\n")]
+    [DataRow("LambdaHost", "Lam", "delegate",
+        "using System;\nnamespace SampleLib;\npublic class LambdaHost\n{\n    public int Lam(int n)\n    {\n        Func<int, int> f = x => x + n;\n        Func<int, int> g = delegate (int y) { return y * n; };\n        return f(1) + g(2);\n    }\n    public int Keep() => 1;\n}\n")]
+    [DataRow("NestedGenericHost", "Outer", "Pick<U>",
+        "using System;\nnamespace SampleLib;\npublic class NestedGenericHost\n{\n    public T Outer<T>(T seed)\n    {\n        T Pick<U>(U u, T t) { Func<T, T> f = x => t; return f(seed); }\n        return Pick(1, seed);\n    }\n    public int Keep() => 1;\n}\n")]
+    [DataRow("MutualGenericHost", "Echo,Wrap", "Echo<int>(1)",
+        "namespace SampleLib;\npublic class MutualGenericHost\n{\n    public T Echo<T>(T v) => v;\n    public int Wrap() { return Echo<int>(1); }\n    public int Keep() => 1;\n}\n")]
+    public async Task ExtractType_MemberDeclaringItsOwnSymbols_ExtractsAndCompiles(
+        string typeName, string members, string expectedInNewType, string source)
+    {
+        var (_, newType) = await PreviewExtractionAndAssertCompilesAsync(
+            typeName + ".cs", source, typeName, members.Split(','));
+
+        StringAssert.Contains(newType, expectedInNewType);
+    }
+
+    /// <summary>
+    /// Counterpart of the test above: a type parameter declared on the SOURCE type stays behind with it, so a
+    /// moved member that uses it is still refused (and names it).
+    /// </summary>
+    [TestMethod]
+    public async Task ExtractType_MemberUsingClassLevelTypeParameter_StillRefused()
+    {
+        var ex = await PreviewRefusedFixtureAsync(
+            "ClassTypeParamHost",
+            [
+                "public class ClassTypeParamHost<T>",
+                "{",
+                "    public T Id(T x) => x;",
+                "    public int Keep() => 1;",
+                "}",
+            ],
+            "Id");
+
+        Assert.IsTrue(ex.BlockingDependencies.Any(d => d.Reason.Contains("'T'", StringComparison.Ordinal)),
+            $"the class-level T must be named. Actual: {string.Join(" | ", ex.BlockingDependencies.Select(d => d.Reason))}");
+    }
+
+    /// <summary>
+    /// A generic method that calls a retained helper is refused for the helper only: its own type parameter
+    /// must not be reported.
+    /// </summary>
+    [TestMethod]
+    public async Task ExtractType_GenericMethodCallingRetainedHelper_RefusesHelperButNotTypeParameter()
+    {
+        var ex = await PreviewRefusedFixtureAsync(
+            "GenericRetainedHelperHost",
+            [
+                "public class GenericRetainedHelperHost",
+                "{",
+                "    private int Helper(object x) => 1;",
+                "    public int Echo<T>(T x) => Helper(x);",
+                "}",
+            ],
+            "Echo");
+
+        Assert.IsTrue(ex.BlockingDependencies.Any(d => d.Reason.Contains("Helper", StringComparison.Ordinal)),
+            $"Actual: {string.Join(" | ", ex.BlockingDependencies.Select(d => d.Reason))}");
+        Assert.IsFalse(ex.BlockingDependencies.Any(d => d.Reason.Contains("'T'", StringComparison.Ordinal)),
+            $"the method's own T must not be reported. Actual: {string.Join(" | ", ex.BlockingDependencies.Select(d => d.Reason))}");
     }
 
     [TestMethod]
