@@ -122,4 +122,89 @@ public sealed class RebaseDocumentIdentityTests : IsolatedWorkspaceTestBase
             (await rebased.GetDocument(fixture.LinkedCopy.Id)!.GetTextAsync()).ToString(),
             "The other project's linked copy must not receive the edit.");
     }
+
+    /// <summary>
+    /// End to end through <c>ApplyRefactoringAsync</c> with a real MSBuild linked item: the earlier
+    /// project links a file physically owned by the later project. A removal previewed for the later
+    /// project, redeemed after a sibling apply moved the workspace, must remove the later project's
+    /// document and keep the earlier project's linked document; undo restores the removed document.
+    /// Both documents share one physical file, and removal deletes that file on disk, so the
+    /// assertions are on workspace solution state (plus the restored file after undo).
+    /// </summary>
+    [TestMethod]
+    public async Task Linked_Document_Removal_Apply_After_Sibling_Apply_Keeps_Other_Project_Copy_And_Undo_Restores()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var initial = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        var projects = initial.Projects.ToList();
+        var earlier = projects[0];
+        var later = projects[1];
+        var sharedPath = later.Documents.First(d =>
+            d.FilePath is not null
+            && d.FilePath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)
+            && !d.FilePath.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase)).FilePath!;
+
+        // Real MSBuild linked item: the earlier project includes the later project's physical file.
+        var csprojPath = earlier.FilePath!;
+        var csproj = System.Xml.Linq.XDocument.Load(csprojPath);
+        var relative = Path.GetRelativePath(Path.GetDirectoryName(csprojPath)!, sharedPath);
+        csproj.Root!.Add(new System.Xml.Linq.XElement("ItemGroup",
+            new System.Xml.Linq.XElement("Compile",
+                new System.Xml.Linq.XAttribute("Include", relative),
+                new System.Xml.Linq.XAttribute("Link", "Linked/" + Path.GetFileName(sharedPath)))));
+        csproj.Save(csprojPath);
+        await workspace.ReloadAsync(CancellationToken.None);
+
+        var original = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        var earlierProject = original.Projects.Single(p => p.Name == earlier.Name);
+        var laterProject = original.Projects.Single(p => p.Name == later.Name);
+        var laterDocument = laterProject.Documents.Single(d => FileSystemPath.Comparer.Equals(d.FilePath, sharedPath));
+        Assert.IsTrue(earlierProject.Documents.Any(d => FileSystemPath.Comparer.Equals(d.FilePath, sharedPath)),
+            "Fixture precondition: the earlier project must hold the linked document.");
+        Assert.IsTrue(original.Projects.TakeWhile(p => p.Id != laterProject.Id).Any(p => p.Id == earlierProject.Id),
+            "Fixture precondition: the linked copy's project precedes the reviewed project.");
+
+        ChangeTracker.Clear(workspace.WorkspaceId);
+        var removalToken = PreviewStore.Store(
+            workspace.WorkspaceId,
+            original.RemoveDocument(laterDocument.Id),
+            WorkspaceManager.GetCurrentVersion(workspace.WorkspaceId),
+            "Remove linked document from the later project");
+
+        var siblingPath = Path.Combine(Path.GetDirectoryName(earlierProject.FilePath)!, "Generated", "RebaseSibling.cs");
+        var siblingPreview = await FileOperationService.PreviewCreateFileAsync(
+            workspace.WorkspaceId,
+            new CreateFileDto(earlierProject.Name, siblingPath, "namespace Generated;\n\npublic sealed class RebaseSibling\n{\n}\n"),
+            CancellationToken.None);
+        var sibling = await RefactoringService.ApplyRefactoringAsync(siblingPreview.PreviewToken, "test_apply", CancellationToken.None);
+        Assert.IsTrue(sibling.Success, sibling.Error);
+
+        var removal = await RefactoringService.ApplyRefactoringAsync(removalToken, "test_apply", CancellationToken.None);
+        Assert.IsTrue(removal.Success, removal.Error);
+
+        var afterRemoval = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        Assert.IsFalse(
+            afterRemoval.Projects.Single(p => p.Name == later.Name).Documents
+                .Any(d => FileSystemPath.Comparer.Equals(d.FilePath, sharedPath)),
+            "The reviewed (later) project's document must be removed.");
+        Assert.IsTrue(
+            afterRemoval.Projects.Single(p => p.Name == earlier.Name).Documents
+                .Any(d => FileSystemPath.Comparer.Equals(d.FilePath, sharedPath)),
+            "The earlier project's linked document must remain in the workspace.");
+        Assert.IsNotNull(SymbolResolver.FindDocument(afterRemoval, siblingPath),
+            "The sibling apply must survive the replay.");
+
+        var changes = ChangeTracker.GetChanges(workspace.WorkspaceId);
+        var removalChange = changes[^1];
+        var undo = await UndoService.RevertBySequenceAsync(
+            workspace.WorkspaceId, removalChange.SequenceNumber, CancellationToken.None);
+        Assert.IsTrue(undo.Reverted, undo.Reason);
+
+        var afterUndo = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        Assert.IsTrue(
+            afterUndo.Projects.Single(p => p.Name == later.Name).Documents
+                .Any(d => FileSystemPath.Comparer.Equals(d.FilePath, sharedPath)),
+            "Undo must restore the removed document in the reviewed project.");
+        Assert.IsTrue(File.Exists(sharedPath), "Undo must restore the shared physical file.");
+    }
 }
