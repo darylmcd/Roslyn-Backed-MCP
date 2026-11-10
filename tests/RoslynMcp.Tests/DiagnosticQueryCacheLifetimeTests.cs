@@ -30,11 +30,17 @@ public sealed class DiagnosticQueryCacheLifetimeTests
                 manager,
                 closing,
                 new CodeFixProviderRegistry(NullLogger<CodeFixProviderRegistry>.Instance));
-            closing.AfterAnalyzerCompilation = workspaceId => closing.Closed |= manager.Close(workspaceId);
+            // Projects are analyzed concurrently and each reads the live workspace through the real cache,
+            // so the close must land only after EVERY project's analyzer call has returned: then the call
+            // completes and the sole behavior under test is whether the entry is republished.
+            closing.ExpectedAnalyzerCalls = projectFilter is null
+                ? manager.GetCurrentSolution(id).Projects.Count()
+                : 1;
+            closing.AfterLastAnalyzerCompilation = workspaceId => closing.Closed = manager.Close(workspaceId);
 
             await service.GetDiagnosticsAsync(id, projectFilter, null, null, null, CancellationToken.None);
 
-            Assert.IsTrue(closing.Closed, "The close must land while the analysis is in flight.");
+            Assert.IsTrue(closing.Closed, "The close must land after the last analysis step and before the publish.");
             Assert.AreEqual(0, service.CachedWorkspaceCount);
         });
 
@@ -58,7 +64,10 @@ public sealed class DiagnosticQueryCacheLifetimeTests
 
     private sealed class ClosingCompilationCache(ICompilationCache inner) : ICompilationCache
     {
-        public Action<string>? AfterAnalyzerCompilation { get; set; }
+        private int _completedAnalyzerCalls;
+
+        public Action<string>? AfterLastAnalyzerCompilation { get; set; }
+        public int ExpectedAnalyzerCalls { get; set; }
         public bool Closed { get; set; }
 
         public Task<Compilation?> GetCompilationAsync(string workspaceId, Project project, CancellationToken ct) =>
@@ -75,7 +84,11 @@ public sealed class DiagnosticQueryCacheLifetimeTests
             CancellationToken ct)
         {
             var result = await inner.GetCompilationWithAnalyzersAsync(workspaceId, project, ct).ConfigureAwait(false);
-            AfterAnalyzerCompilation?.Invoke(workspaceId);
+            if (Interlocked.Increment(ref _completedAnalyzerCalls) == ExpectedAnalyzerCalls)
+            {
+                AfterLastAnalyzerCompilation?.Invoke(workspaceId);
+            }
+
             return result;
         }
 
