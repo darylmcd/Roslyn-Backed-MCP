@@ -1,6 +1,6 @@
 # undo-reload-failure-reports-success — Retain retryable undo when workspace synchronization fails
 
-**row:** `undo-reload-failure-reports-success` · **pri:** `Medium` · **size:** `S` · **deps:** `undo-sequence-claim-exclusivity`
+**row:** `undo-reload-failure-reports-success` · **pri:** `Medium` · **size:** `S`
 
 ## Anchors
 
@@ -27,3 +27,13 @@
 ## Context
 
 - Independent finding from UTF-16 qualification review; not a prerequisite of PR1811, PR1814 or the restore row.
+
+## Notes
+
+### Excluded 2026-11-10 (remediation run, current-major-only)
+
+Release impact UNCERTAIN. The complete fix turns `reverted:true` / success into `reverted:false` (revert_last_apply) or reason `revert-failed` (revert_apply_by_sequence) when workspace reload or version restoration throws. That is a stable-tool observable result change (docs/release-policy.md Compatibility Policy: a client could depend on the old success). Existing failure shapes are reused, so a minor "Fixed" is arguable but not established.
+
+Complete scope (planner): UndoService.cs reload/RestoreVersion catches (file path and solution path), reload even when the created file is already absent, a sync marker on UndoSnapshot so a retry reloads before consuming, claim restore on any exception in RevertBySequenceAsync (currently restored only on cancellation or !reverted), tests via a virtual ReloadAsync/RestoreVersion decorator (DelegatingWorkspaceManager methods are non-virtual).
+
+Trigger to unblock: operator/release-owner decision that an error-path success->failure correction is minor-safe (record ADR + CHANGELOG note), or the next major release. Dep undo-sequence-claim-exclusivity merged (PR #2056); edge cleared.
