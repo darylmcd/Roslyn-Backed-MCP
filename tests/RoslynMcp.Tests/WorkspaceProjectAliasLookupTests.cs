@@ -229,7 +229,7 @@ public sealed class WorkspaceProjectAliasLookupTests : IsolatedWorkspaceTestBase
             foreach (var project in projects)
                 solution = solution.AddProject(ProjectInfo.Create(ProjectId.CreateNewId(), VersionStamp.Create(),
                     project.Name, project.Name, LanguageNames.CSharp, filePath: project.Path));
-            _index = WorkspaceManagerType.BuildProjectIndex(1, solution);
+            _index = WorkspaceManagerType.BuildProjectIndex(solution);
         }
 
         public Project? Find(string selector) => _index.Find(selector);
