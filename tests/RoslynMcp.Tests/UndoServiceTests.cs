@@ -1,7 +1,9 @@
 using System.Text;
 using Microsoft.CodeAnalysis;
+using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
 
@@ -343,6 +345,84 @@ public sealed class UndoServiceTests : IsolatedWorkspaceTestBase
         StringAssert.Contains(catAfterRetry, "// apply B",
             "Cat.cs should retain apply B's edit — only apply A was reverted.");
         Assert.AreNotEqual(catOriginal, catAfterRetry, "Cat.cs should still be at its post-apply-B state.");
+    }
+
+    [TestMethod]
+    public async Task RevertBySequence_ConcurrentClaimants_OnlyWinnerRestores()
+    {
+        // undo-sequence-claim-exclusivity: two callers undo the SAME sequence at the claim point
+        // (both parked on a barrier, then released together). Exactly one may claim and restore;
+        // the loser must refuse with unknown-sequence instead of restoring the same effects again.
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+        var originalBytes = await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None);
+        using var undo = new UndoService(NullLogger<UndoService>.Instance, WorkspaceManager);
+        undo.CaptureBeforeApply(
+            workspaceId, "race", preApplySolution: null,
+            fileSnapshots: [FileSnapshotDto.FromExistingBytes(dogFilePath, originalBytes)]);
+        undo.CommitPendingCapture(workspaceId, sequenceNumber: 1, affectedFiles: [dogFilePath]);
+        await File.WriteAllTextAsync(dogFilePath, "// post-apply\n", CancellationToken.None);
+
+        using var barrier = new Barrier(2);
+        undo.BeforeSequenceClaim = () =>
+        {
+            if (!barrier.SignalAndWait(TimeSpan.FromSeconds(30)))
+                throw new TimeoutException("Second claimant never reached the claim barrier.");
+        };
+
+        var results = await Task.WhenAll(
+            Task.Run(() => undo.RevertBySequenceAsync(workspaceId, 1, CancellationToken.None)),
+            Task.Run(() => undo.RevertBySequenceAsync(workspaceId, 1, CancellationToken.None)));
+
+        Assert.AreEqual(1, results.Count(r => r.Reverted),
+            $"Exactly one claimant may restore; got reasons [{string.Join(", ", results.Select(r => r.Reason ?? "reverted"))}].");
+        var loser = results.Single(r => !r.Reverted);
+        Assert.AreEqual("unknown-sequence", loser.Reason);
+        Assert.IsNull(loser.RevertedOperation);
+        Assert.AreEqual(0, loser.AffectedFiles.Count);
+        Assert.IsNull(loser.BlockingSequences);
+        CollectionAssert.AreEqual(originalBytes, await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None));
+        Assert.IsNull(undo.GetLastOperation(workspaceId), "The winner consumes the pending snapshot.");
+    }
+
+    [TestMethod]
+    public async Task RevertBySequence_LaterApplyLandsAtClaimPoint_StillDependencyBlocked()
+    {
+        // A later overlapping apply is recorded at the claim point (after the caller started but
+        // before it could claim). The dependency check and the claim share one critical section,
+        // so the revert must be refused instead of rolling back part of the later apply.
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+        var originalBytes = await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None);
+        using var undo = new UndoService(NullLogger<UndoService>.Instance, WorkspaceManager);
+        undo.CaptureBeforeApply(
+            workspaceId, "first", preApplySolution: null,
+            fileSnapshots: [FileSnapshotDto.FromExistingBytes(dogFilePath, originalBytes)]);
+        undo.CommitPendingCapture(workspaceId, sequenceNumber: 1, affectedFiles: [dogFilePath]);
+        await File.WriteAllTextAsync(dogFilePath, "// post-apply\n", CancellationToken.None);
+
+        var fired = false;
+        undo.BeforeSequenceClaim = () =>
+        {
+            if (fired) return;
+            fired = true;
+            undo.CaptureBeforeApply(
+                workspaceId, "later", preApplySolution: null,
+                fileSnapshots: [FileSnapshotDto.FromExistingBytes(dogFilePath, originalBytes)]);
+            undo.CommitPendingCapture(workspaceId, sequenceNumber: 2, affectedFiles: [dogFilePath]);
+        };
+
+        var result = await undo.RevertBySequenceAsync(workspaceId, 1, CancellationToken.None);
+
+        Assert.IsTrue(fired);
+        Assert.IsFalse(result.Reverted);
+        Assert.AreEqual("dependency-blocked", result.Reason);
+        CollectionAssert.AreEqual(new[] { 2 }, result.BlockingSequences!.ToArray());
+        Assert.AreEqual("// post-apply\n", await File.ReadAllTextAsync(dogFilePath, CancellationToken.None),
+            "A blocked revert must not touch disk.");
+        Assert.IsNotNull(undo.GetLastOperation(workspaceId), "The later apply stays the pending snapshot.");
     }
 
     [TestMethod]
