@@ -1,6 +1,6 @@
 # watcher-own-cs-write-echo-attribution — Attribute the server's own .cs/.csproj apply writes so their watcher echo is not ExternalEdit
 
-**row:** `watcher-own-cs-write-echo-attribution` · **pri:** `Medium` · **size:** `M` · **verified:** `c6c1265b67971daa51ebbc606f5a69a7f692fbb2`
+**row:** `watcher-own-cs-write-echo-attribution` · **pri:** `Medium` · **size:** `M`
 
 ## Anchors
 
@@ -10,10 +10,10 @@
 
 ## Acceptance
 
-- [ ] A delayed OS echo of the server's own `.cs`/`.csproj` write (TryApplyChanges) is attributed Apply, not ExternalEdit, by committed-bytes ownership like the existing `.editorconfig` `_ownedConfigBytes` path; a genuine external edit to the same path with different bytes stays ExternalEdit.
-- [ ] Regression: an echo landing mid-reload (after the epoch read in ReloadAsync) leaves the workspace non-stale after the reload; a real external edit mid-reload still survives (test from PR for reload-clearstale-swallows-midreload-watcher-event stays green).
-- [ ] ExternalEdit is sticky within a stale window: a later Apply mark never overwrites an earlier ExternalEdit reason (MarkStaleWithReason is last-writer-wins today; EnsureFreshForWritePreview can read "apply" while an external edit is pending).
-- [ ] FileWatcherService.cs class remarks and the ReloadAsync comment that documents the limitation cite this row or are removed.
+- [ ] A delayed OS echo of the server's own `.cs`/`.csproj` write outside a reload is attributed Apply, not ExternalEdit, by committed-bytes ownership like the existing `.editorconfig` `_ownedConfigBytes` path; a genuine external edit to the same path with different bytes stays ExternalEdit.
+- [ ] ExternalEdit is sticky within a stale window: a later Apply mark never overwrites an earlier ExternalEdit reason (MarkStaleWithReason is last-writer-wins; EnsureFreshForWritePreview can read "apply" while an external edit is pending).
+- [ ] FileWatcherService.cs class remarks describe the `.cs` attribution rule.
+- Out of scope (done): the mid-reload echo window is closed by PR 2050 (time-based ClearStaleIfNoExternalEditSince; an echo carries the older write time and clears).
 
 ## Evidence
 
