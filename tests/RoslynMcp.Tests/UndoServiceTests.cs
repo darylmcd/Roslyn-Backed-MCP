@@ -398,7 +398,7 @@ public sealed class UndoServiceTests : IsolatedWorkspaceTestBase
         Assert.AreEqual("newer", undo.GetLastOperation(workspaceId)?.Description,
             "Neither claimant may drop another operation's pending snapshot.");
         undo.BeforeSequenceClaim = null;
-        Assert.IsTrue((await undo.RevertBySequenceAsync(workspaceId, 2,CancellationToken.None)).Reverted,
+        Assert.IsTrue((await undo.RevertBySequenceAsync(workspaceId, 2, CancellationToken.None)).Reverted,
             "The newer operation's history entry must survive the race.");
     }
 
