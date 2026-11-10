@@ -24,16 +24,17 @@ internal sealed class FakeUndo : IUndoService
         return Task.FromResult(RevertReturns);
     }
 
-    public void CaptureBeforeApply(string workspaceId, string description, object? preApplySolution,
-        IReadOnlyList<FileSnapshotDto>? fileSnapshots = null)
-    { }
+    public UndoCaptureId CaptureBeforeApply(string workspaceId, string description, object? preApplySolution,
+        IReadOnlyList<FileSnapshotDto>? fileSnapshots) => UndoCaptureId.None;
 
     public UndoEntry? GetLastOperation(string workspaceId) => null;
 
     public Task<RevertBySequenceResult> RevertBySequenceAsync(string workspaceId, int sequenceNumber,
         CancellationToken cancellationToken = default) => Task.FromResult(SequenceResult);
 
-    public void CommitPendingCapture(string workspaceId, int sequenceNumber, IReadOnlyList<string> affectedFiles) { }
+    public void CommitPendingCapture(string workspaceId, int sequenceNumber, IReadOnlyList<string> affectedFiles,
+        UndoCaptureId capture)
+    { }
 
     public void Clear(string workspaceId) { }
 }

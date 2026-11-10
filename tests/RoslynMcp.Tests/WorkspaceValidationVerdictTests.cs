@@ -36,7 +36,7 @@ public sealed class WorkspaceValidationVerdictTests : IsolatedWorkspaceTestBase
         }
         using var tracker = new ChangeTracker(WorkspaceManager);
         tracker.RecordChange(workspace.WorkspaceId, "old edit",
-            [workspace.GetPath("SampleLib", "AnimalService.cs")], "test");
+            [workspace.GetPath("SampleLib", "AnimalService.cs")], "test", UndoCaptureId.None);
         var counted = new CountingTracker(tracker);
         var service = CreateService(Compile(), tracker: counted);
 
@@ -56,8 +56,8 @@ public sealed class WorkspaceValidationVerdictTests : IsolatedWorkspaceTestBase
             add => inner.ChangeRecorded += value;
             remove => inner.ChangeRecorded -= value;
         }
-        public void RecordChange(string workspaceId, string description, IReadOnlyList<string> files, string toolName) =>
-            inner.RecordChange(workspaceId, description, files, toolName);
+        public void RecordChange(string workspaceId, string description, IReadOnlyList<string> files, string toolName, UndoCaptureId capture) =>
+            inner.RecordChange(workspaceId, description, files, toolName, capture);
         public IReadOnlyList<WorkspaceChangeDto> GetChanges(string workspaceId)
         {
             ReadCount++;
@@ -350,7 +350,7 @@ public sealed class WorkspaceValidationVerdictTests : IsolatedWorkspaceTestBase
         }
 
         using var tracker = new ChangeTracker(WorkspaceManager);
-        tracker.RecordChange(workspace.WorkspaceId, "tracked edit", reconcile ? [path, reverted] : [path], "test");
+        tracker.RecordChange(workspace.WorkspaceId, "tracked edit", reconcile ? [path, reverted] : [path], "test", UndoCaptureId.None);
         var compile = new BlockingCompile();
         var service = CreateService(Compile(), tracker: tracker, compileService: compile,
             phaseTimeout: TimeSpan.FromMilliseconds(50));

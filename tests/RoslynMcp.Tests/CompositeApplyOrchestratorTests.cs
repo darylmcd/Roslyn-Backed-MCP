@@ -836,13 +836,13 @@ public sealed class CompositeApplyOrchestratorTests
         // A previous, independently revertable apply on an unrelated file.
         var priorPath = Path.Combine(_tempDir, "prior.cs");
         await File.WriteAllTextAsync(priorPath, "prior-original");
-        undoService.CaptureBeforeApply(
+        var priorCapture = undoService.CaptureBeforeApply(
             workspaceId,
             "prior apply",
             preApplySolution: null,
             [FileSnapshotDto.FromExistingBytes(priorPath, await File.ReadAllBytesAsync(priorPath))]);
         await File.WriteAllTextAsync(priorPath, "prior-applied");
-        changeTracker.RecordChange(workspaceId, "prior apply", [priorPath], "apply_text_edit");
+        changeTracker.RecordChange(workspaceId, "prior apply", [priorPath], "apply_text_edit", priorCapture);
 
         // Composite: modify an existing file, create a new one, delete an existing one.
         var modifiedPath = Path.Combine(_tempDir, "modified.cs");
@@ -976,21 +976,21 @@ public sealed class CompositeApplyOrchestratorTests
         var upperPath = Path.Combine(_tempDir, "Feature.cs");
         var lowerPath = Path.Combine(_tempDir, "feature.cs");
         await File.WriteAllTextAsync(upperPath, "original");
-        undoService.CaptureBeforeApply(
+        var captureA = undoService.CaptureBeforeApply(
             workspaceId, "apply A", preApplySolution: null,
             [FileSnapshotDto.FromExistingBytes(upperPath, await File.ReadAllBytesAsync(upperPath))]);
         await File.WriteAllTextAsync(upperPath, "applied-a");
-        changeTracker.RecordChange(workspaceId, "apply A", [upperPath], "apply_text_edit");
+        changeTracker.RecordChange(workspaceId, "apply A", [upperPath], "apply_text_edit", captureA);
         if (!OperatingSystem.IsWindows())
         {
             await File.WriteAllTextAsync(lowerPath, "lower-original");
         }
 
-        undoService.CaptureBeforeApply(
+        var captureB = undoService.CaptureBeforeApply(
             workspaceId, "apply B", preApplySolution: null,
             [FileSnapshotDto.FromExistingBytes(lowerPath, await File.ReadAllBytesAsync(lowerPath))]);
         await File.WriteAllTextAsync(lowerPath, "applied-b");
-        changeTracker.RecordChange(workspaceId, "apply B", [lowerPath], "apply_text_edit");
+        changeTracker.RecordChange(workspaceId, "apply B", [lowerPath], "apply_text_edit", captureB);
         var changes = changeTracker.GetChanges(workspaceId);
 
         var revert = await undoService.RevertBySequenceAsync(

@@ -25,7 +25,7 @@ namespace RoslynMcp.Roslyn.Services;
 /// The current implementation adds an authoritative fast path: callers that know
 /// which files they are about to modify (<c>EditService</c>, <c>EditorConfigService</c>)
 /// pass an explicit <see cref="FileSnapshotDto"/> list to
-/// <see cref="CaptureBeforeApply"/>, and <see cref="RevertAsync"/> restores those files
+/// <see cref="CaptureBeforeApply"/> (required, never defaulted), and <see cref="RevertAsync"/> restores those files
 /// directly from disk — no <c>GetChanges</c> dependency. <c>RefactoringService</c>
 /// captures physical source and project before-images for document or reference changes.
 /// Callers without file snapshots use a snapshot-wide document walk so
@@ -33,6 +33,9 @@ namespace RoslynMcp.Roslyn.Services;
 /// </summary>
 public sealed class UndoService : IUndoService, IDisposable
 {
+    // Process-wide so an id never aliases across workspaces or service instances; 0 is UndoCaptureId.None.
+    private static long _captureCounter;
+
     private readonly ConcurrentDictionary<string, UndoSnapshot> _snapshots = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, List<UndoSnapshot>> _history = new(StringComparer.Ordinal);
     private readonly ILogger<UndoService> _logger;
@@ -41,6 +44,9 @@ public sealed class UndoService : IUndoService, IDisposable
 
     /// <summary>Test seam: runs immediately before <see cref="RevertBySequenceAsync"/> enters the critical section that resolves, dependency-checks and claims the target.</summary>
     internal Action? BeforeSequenceClaim { get; set; }
+
+    /// <summary>Test seam: runs inside <see cref="CommitPendingCapture"/> after it read the matching pending slot and before it swaps the promoted snapshot in, i.e. the window a newer <see cref="CaptureBeforeApply"/> (which takes no lock) can land in.</summary>
+    internal Action? BeforeCommitSwap { get; set; }
 
     public UndoService(
         ILogger<UndoService> logger,
@@ -66,11 +72,11 @@ public sealed class UndoService : IUndoService, IDisposable
         }
     }
 
-    public void CaptureBeforeApply(
+    public UndoCaptureId CaptureBeforeApply(
         string workspaceId,
         string description,
         object? preApplySolution,
-        IReadOnlyList<FileSnapshotDto>? fileSnapshots = null)
+        IReadOnlyList<FileSnapshotDto>? fileSnapshots)
     {
         Solution? solution = null;
         if (preApplySolution is not null)
@@ -81,6 +87,7 @@ public sealed class UndoService : IUndoService, IDisposable
         }
 
         var preApplyVersion = _workspaceManager.GetCurrentVersion(workspaceId);
+        var capture = new UndoCaptureId(Interlocked.Increment(ref _captureCounter));
         _snapshots[workspaceId] = new UndoSnapshot(
             workspaceId,
             description,
@@ -89,7 +96,9 @@ public sealed class UndoService : IUndoService, IDisposable
             preApplyVersion,
             DateTime.UtcNow,
             SequenceNumber: 0,
-            AffectedFiles: Array.Empty<string>());
+            AffectedFiles: Array.Empty<string>(),
+            capture);
+        return capture;
     }
 
     public UndoEntry? GetLastOperation(string workspaceId)
@@ -293,28 +302,52 @@ public sealed class UndoService : IUndoService, IDisposable
         _snapshots.TryAdd(workspaceId, target);
     }
 
-    public void CommitPendingCapture(string workspaceId, int sequenceNumber, IReadOnlyList<string> affectedFiles)
+    public void CommitPendingCapture(
+        string workspaceId,
+        int sequenceNumber,
+        IReadOnlyList<string> affectedFiles,
+        UndoCaptureId capture)
     {
-        if (!_snapshots.TryGetValue(workspaceId, out var pending))
+        if (capture.IsNone)
         {
-            // No pending snapshot — apply path skipped CaptureBeforeApply (e.g., a no-op tool
-            // that records a change without producing a revertable diff). Nothing to commit.
+            // The record owns no capture (a successful no-effect audit). Never adopt whatever the
+            // slot holds: it belongs to an earlier completed operation or to a failed/cancelled apply.
             return;
         }
 
-        var promoted = pending with { SequenceNumber = sequenceNumber, AffectedFiles = affectedFiles };
-        _snapshots[workspaceId] = promoted;
-
+        // Same per-workspace lock RevertBySequenceAsync claims under, so the ownership check, the
+        // promotion and the history append are one step relative to claims and other commits.
         var historyList = _history.GetOrAdd(workspaceId, _ => new List<UndoSnapshot>());
         lock (historyList)
         {
+            // Promote only the pending (uncommitted) snapshot this operation captured. A mismatch means
+            // a newer capture replaced it (stale id: the newer slot must survive), the slot was already
+            // promoted, consumed by an undo, or cleared.
+            if (!_snapshots.TryGetValue(workspaceId, out var pending)
+                || pending.CaptureId != capture
+                || pending.SequenceNumber != 0)
+            {
+                return;
+            }
+
+            var promoted = pending with { SequenceNumber = sequenceNumber, AffectedFiles = affectedFiles };
+            BeforeCommitSwap?.Invoke();
+
+            // CaptureBeforeApply writes the slot without this lock, so a newer capture can land after
+            // the read above. Compare-and-swap against the exact snapshot we validated: a lost race
+            // leaves the newer capture in the slot with its own undo and adds no history for this one.
+            if (!_snapshots.TryUpdate(workspaceId, promoted, pending))
+            {
+                return;
+            }
+
             historyList.Add(promoted);
         }
     }
 
     private void OnChangeRecorded(ChangeRecordedEventArgs e)
     {
-        CommitPendingCapture(e.WorkspaceId, e.SequenceNumber, e.AffectedFiles);
+        CommitPendingCapture(e.WorkspaceId, e.SequenceNumber, e.AffectedFiles, e.Capture);
     }
 
     private Task<bool> RevertSnapshotAsync(
@@ -659,5 +692,6 @@ public sealed class UndoService : IUndoService, IDisposable
         int PreApplyWorkspaceVersion,
         DateTime AppliedAtUtc,
         int SequenceNumber,
-        IReadOnlyList<string> AffectedFiles);
+        IReadOnlyList<string> AffectedFiles,
+        UndoCaptureId CaptureId);
 }

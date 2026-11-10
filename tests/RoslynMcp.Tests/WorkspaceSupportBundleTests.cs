@@ -351,7 +351,7 @@ public sealed class WorkspaceSupportBundleTests
     {
         public event Action<ChangeRecordedEventArgs>? ChangeRecorded { add { } remove { } }
 
-        public void RecordChange(string workspaceId, string description, IReadOnlyList<string> affectedFiles, string toolName) =>
+        public void RecordChange(string workspaceId, string description, IReadOnlyList<string> affectedFiles, string toolName, UndoCaptureId capture) =>
             throw new NotSupportedException();
 
         public IReadOnlyList<WorkspaceChangeDto> GetChanges(string workspaceId) => changes;

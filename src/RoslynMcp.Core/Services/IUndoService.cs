@@ -38,18 +38,23 @@ public interface IUndoService
     /// paths that mutate files outside the Roslyn workspace model (e.g., .editorconfig writes).
     /// </param>
     /// <param name="fileSnapshots">
-    /// Optional explicit list of <c>(filePath, originalText)</c> pairs captured before the
+    /// Explicit list of <c>(filePath, originalText)</c> pairs captured before the
     /// mutation. When populated, <see cref="RevertAsync"/> uses this authoritative list to
     /// restore disk content directly — bypassing the fragile "did the Roslyn <c>Solution</c>
     /// diff detect a change?" path that fails when <c>MSBuildWorkspace.TryApplyChanges</c>
     /// silently no-ops (FLAG-9A). Direct-file callers such as <c>EditService</c> and
     /// <c>EditorConfigService</c> should always populate this.
     /// </param>
-    void CaptureBeforeApply(
+    /// <returns>
+    /// The identity of this capture. The apply operation passes it to
+    /// <see cref="IChangeTracker.RecordChange"/> when it records the same logical operation, so
+    /// only that record can promote this snapshot into the revert history.
+    /// </returns>
+    UndoCaptureId CaptureBeforeApply(
         string workspaceId,
         string description,
         object? preApplySolution,
-        IReadOnlyList<FileSnapshotDto>? fileSnapshots = null);
+        IReadOnlyList<FileSnapshotDto>? fileSnapshots);
 
     /// <summary>
     /// Returns metadata about the last undoable operation for the given workspace,
@@ -83,21 +88,39 @@ public interface IUndoService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Commits the most recently captured pending snapshot to the workspace's revert history,
-    /// associating it with the sequence number assigned by <see cref="IChangeTracker"/>. The
-    /// caller is <see cref="IChangeTracker"/> itself via the <see cref="IChangeTracker.ChangeRecorded"/>
-    /// event — services that apply edits do not call this directly. Idempotent when called with
-    /// no pending snapshot (e.g., when the apply path skipped <see cref="CaptureBeforeApply"/>).
+    /// Commits the pending snapshot identified by <paramref name="capture"/> to the workspace's
+    /// revert history, associating it with the sequence number assigned by <see cref="IChangeTracker"/>.
+    /// The caller is <see cref="IChangeTracker"/> itself via the <see cref="IChangeTracker.ChangeRecorded"/>
+    /// event — services that apply edits do not call this directly. Promotes only when the workspace's
+    /// pending snapshot is exactly <paramref name="capture"/> and has not been committed yet; a
+    /// <see cref="UndoCaptureId.None"/>, stale, already-committed or foreign id is a no-op (a record
+    /// without its own capture, such as a successful no-effect audit, adds no history).
     /// </summary>
     /// <param name="workspaceId">The workspace identifier.</param>
     /// <param name="sequenceNumber">The sequence number assigned by <see cref="IChangeTracker"/>.</param>
     /// <param name="affectedFiles">The file set recorded by <see cref="IChangeTracker"/>.</param>
-    void CommitPendingCapture(string workspaceId, int sequenceNumber, IReadOnlyList<string> affectedFiles);
+    /// <param name="capture">The capture the recording operation obtained from <see cref="CaptureBeforeApply"/>.</param>
+    void CommitPendingCapture(string workspaceId, int sequenceNumber, IReadOnlyList<string> affectedFiles, UndoCaptureId capture);
 
     /// <summary>
     /// Clears undo history for a workspace (e.g., on workspace close).
     /// </summary>
     void Clear(string workspaceId);
+}
+
+/// <summary>
+/// Identity of one <see cref="IUndoService.CaptureBeforeApply"/> call. Binds a recorded change to the
+/// capture its own operation took, so a record that owns no capture can never promote another
+/// operation's snapshot.
+/// </summary>
+/// <param name="Value">Process-wide capture counter value; <c>0</c> is reserved for <see cref="None"/>.</param>
+public readonly record struct UndoCaptureId(long Value)
+{
+    /// <summary>Gets the id of "no capture": a record carrying it promotes nothing.</summary>
+    public static UndoCaptureId None => default;
+
+    /// <summary>Gets a value indicating whether this id denotes no capture.</summary>
+    public bool IsNone => Value == 0;
 }
 
 /// <summary>

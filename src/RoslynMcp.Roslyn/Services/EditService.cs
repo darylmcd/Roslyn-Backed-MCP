@@ -100,13 +100,13 @@ public sealed class EditService : IEditService
                 () => sourceText.ToString(),
                 ct).ConfigureAwait(false),
         };
-        _undoService?.CaptureBeforeApply(
+        var capture = _undoService?.CaptureBeforeApply(
             workspaceId,
             $"Apply text edit to {Path.GetFileName(filePath)}",
             solution,
-            fileSnapshots);
+            fileSnapshots) ?? UndoCaptureId.None;
 
-        var coreResult = await ApplyTextEditsCoreAsync(workspaceId, filePath, edits, solution, document, sourceText, newSourceText, toolName, ct, canonicalWritePath: pinnedWritePath).ConfigureAwait(false);
+        var coreResult = await ApplyTextEditsCoreAsync(workspaceId, filePath, edits, solution, document, sourceText, newSourceText, toolName, capture, ct, canonicalWritePath: pinnedWritePath).ConfigureAwait(false);
 
         // Only wire up verify when the core apply actually wrote the edit. When the
         // core path returns Success=false (e.g. MSBuildWorkspace.TryApplyChanges
@@ -161,11 +161,11 @@ public sealed class EditService : IEditService
                 () => t.SourceText.ToString(),
                 ct).ConfigureAwait(false));
         }
-        _undoService?.CaptureBeforeApply(
+        var batchCapture = _undoService?.CaptureBeforeApply(
             workspaceId,
             $"Apply edits to {fileEdits.Count} file(s)",
             initialSolution,
-            fileSnapshots);
+            fileSnapshots) ?? UndoCaptureId.None;
 
         var results = await ApplyBatchFilesAsync(
             workspaceId,
@@ -185,7 +185,8 @@ public sealed class EditService : IEditService
         _changeTracker?.RecordChange(workspaceId,
             $"Apply text edits to {fileEdits.Count} file(s)",
             batchAffectedFiles,
-            toolName);
+            toolName,
+            batchCapture);
 
         VerifyOutcomeDto? verification = null;
         if (verify)
@@ -264,6 +265,7 @@ public sealed class EditService : IEditService
                 sourceText,
                 merged,
                 toolName,
+                UndoCaptureId.None,
                 ct,
                 suppressChangeTrackerRecord: true).ConfigureAwait(false);
             var diff = result.Changes.Count > 0
@@ -672,6 +674,11 @@ public sealed class EditService : IEditService
     /// responsible for snapshotting before invoking this method (single-file path
     /// snapshots once; multi-file path snapshots once at the batch boundary).
     /// </summary>
+    /// <param name="capture">
+    /// The undo capture the caller took for this logical operation; recorded with the ledger entry.
+    /// <see cref="UndoCaptureId.None"/> when <paramref name="suppressChangeTrackerRecord"/> is true,
+    /// because the batch caller records the entry under its own batch capture.
+    /// </param>
     /// <param name="suppressChangeTrackerRecord">
     /// When true, skip the per-file <c>_changeTracker.RecordChange(...)</c> call so the
     /// caller can emit a single batch-level entry covering all affected files. Used by
@@ -694,6 +701,7 @@ public sealed class EditService : IEditService
         SourceText sourceText,
         SourceText newSourceText,
         string toolName,
+        UndoCaptureId capture,
         CancellationToken ct,
         bool suppressChangeTrackerRecord = false,
         string? canonicalWritePath = null)
@@ -728,7 +736,7 @@ public sealed class EditService : IEditService
         {
             _changeTracker?.RecordChange(workspaceId,
                 $"Apply text edit to {Path.GetFileName(filePath)}",
-                [filePath], toolName);
+                [filePath], toolName, capture);
         }
 
         return new TextEditResultDto(true, filePath, edits.Count, [fileChange], null);
