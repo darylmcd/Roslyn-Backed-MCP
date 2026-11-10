@@ -31,7 +31,7 @@ public sealed class ChangeTracker : IChangeTracker, IDisposable
     }
 
     public void RecordChange(string workspaceId, string description,
-        IReadOnlyList<string> affectedFiles, string toolName)
+        IReadOnlyList<string> affectedFiles, string toolName, UndoCaptureId capture)
     {
         var seq = Interlocked.Increment(ref _globalSequence);
         var entry = new WorkspaceChangeDto(seq, description, affectedFiles, toolName, DateTime.UtcNow);
@@ -41,12 +41,12 @@ public sealed class ChangeTracker : IChangeTracker, IDisposable
             _ => [entry],
             (_, list) => { lock (list) { list.Add(entry); } return list; });
 
-        // revert-apply-by-sequence-number: fire ChangeRecorded so IUndoService can commit its
-        // pending pre-apply snapshot under the same sequence number we just assigned. Handler
+        // revert-apply-by-sequence-number: fire ChangeRecorded so IUndoService can commit the pending
+        // pre-apply snapshot owned by the supplied capture id under the sequence number we just assigned. Handler
         // exceptions are swallowed — a misbehaving subscriber must not break the apply path.
         var handler = ChangeRecorded;
         if (handler is null) return;
-        var notification = new ChangeRecordedEventArgs(workspaceId, seq, description, affectedFiles, toolName);
+        var notification = new ChangeRecordedEventArgs(workspaceId, seq, description, affectedFiles, toolName, capture);
         foreach (Action<ChangeRecordedEventArgs> subscriber in handler.GetInvocationList())
         {
             try

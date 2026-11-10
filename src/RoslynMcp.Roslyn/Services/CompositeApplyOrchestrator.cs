@@ -78,12 +78,13 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
                 WorkspaceManager.EnsurePhysicalPath(mutation.FilePath);
             }
 
-            await CaptureUndoSnapshotAsync(workspaceId, mutations, ct).ConfigureAwait(false);
+            var capture = await CaptureUndoSnapshotAsync(workspaceId, mutations, ct).ConfigureAwait(false);
             await ApplyMutationsAsync(mutations, appliedFiles, ct).ConfigureAwait(false);
             return await CompleteApplyAsync(
                 previewToken,
                 workspaceId,
                 appliedFiles,
+                capture,
                 ct).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
@@ -99,14 +100,14 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
     /// <see cref="CompleteApplyAsync"/> records the change. Files the composite creates snapshot
     /// as absent (revert deletes them); files it deletes snapshot their bytes (revert recreates them).
     /// </summary>
-    private async Task CaptureUndoSnapshotAsync(
+    private async Task<UndoCaptureId> CaptureUndoSnapshotAsync(
         string workspaceId,
         IReadOnlyList<CompositeFileMutation> mutations,
         CancellationToken ct)
     {
         if (_undoService is null)
         {
-            return;
+            return UndoCaptureId.None;
         }
 
         var seen = new HashSet<string>(FileSystemPath.Comparer);
@@ -123,7 +124,7 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
             }
         }
 
-        _undoService.CaptureBeforeApply(
+        return _undoService.CaptureBeforeApply(
             workspaceId,
             $"Composite operation ({fileSnapshots.Count} files)",
             preApplySolution: null,
@@ -177,6 +178,7 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
         string previewToken,
         string workspaceId,
         IReadOnlyCollection<string> appliedFiles,
+        UndoCaptureId capture,
         CancellationToken ct)
     {
         await _workspace.ReloadAsync(workspaceId, ct).ConfigureAwait(false);
@@ -186,7 +188,8 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
             workspaceId,
             $"Composite operation ({distinctFiles.Count} files)",
             distinctFiles,
-            "apply_composite");
+            "apply_composite",
+            capture);
         return new ApplyResultDto(true, distinctFiles, null);
     }
 

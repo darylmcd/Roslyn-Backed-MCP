@@ -4,6 +4,7 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Diagnostics;
 using RoslynMcp.Host.Stdio.Middleware;
 using RoslynMcp.Roslyn.Helpers;
@@ -253,7 +254,7 @@ public sealed class ValidateWorkspaceChangeTrackerReconcileTests : IsolatedWorks
     {
         await using var workspace = await CreateIsolatedWorkspaceAsync();
         var path = workspace.GetPath("SampleLib", "Dog.cs");
-        ChangeTracker.RecordChange(workspace.WorkspaceId, "scope probe", [path], "test");
+        ChangeTracker.RecordChange(workspace.WorkspaceId, "scope probe", [path], "test", UndoCaptureId.None);
         const string sentinel = "private-scope-failure-sentinel";
         using var cancellation = new CancellationTokenSource();
         Exception failure = failureKind switch
@@ -323,7 +324,7 @@ public sealed class ValidateWorkspaceChangeTrackerReconcileTests : IsolatedWorks
     {
         await using var workspace = await CreateIsolatedWorkspaceAsync();
         var path = workspace.GetPath("SampleLib", "Dog.cs");
-        ChangeTracker.RecordChange(workspace.WorkspaceId, "scope probe", [path], "test");
+        ChangeTracker.RecordChange(workspace.WorkspaceId, "scope probe", [path], "test", UndoCaptureId.None);
         var status = WorkspaceManager.GetStatus(workspace.WorkspaceId);
         var manager = new FailClosedWorkspaceManagerStub
         {

@@ -362,19 +362,19 @@ public sealed class UndoServiceTests : IsolatedWorkspaceTestBase
         var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
         var originalBytes = await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None);
         using var undo = new UndoService(NullLogger<UndoService>.Instance, WorkspaceManager);
-        undo.CaptureBeforeApply(
+        var captureRace = undo.CaptureBeforeApply(
             workspaceId, "race", preApplySolution: null,
             fileSnapshots: [FileSnapshotDto.FromExistingBytes(dogFilePath, originalBytes)]);
-        undo.CommitPendingCapture(workspaceId, sequenceNumber: 1, affectedFiles: [dogFilePath]);
+        undo.CommitPendingCapture(workspaceId, sequenceNumber: 1, affectedFiles: [dogFilePath], captureRace);
         await File.WriteAllTextAsync(dogFilePath, "// post-apply\n", CancellationToken.None);
 
         // A newer, non-overlapping operation is the pending LIFO snapshot while the race runs; a
         // lost claim must leave it (and its history entry) alone.
         var catFilePath = workspace.GetPath("SampleLib", "Cat.cs");
-        undo.CaptureBeforeApply(
+        var captureNewer = undo.CaptureBeforeApply(
             workspaceId, "newer", preApplySolution: null,
             fileSnapshots: [FileSnapshotDto.FromExistingBytes(catFilePath, await File.ReadAllBytesAsync(catFilePath, CancellationToken.None))]);
-        undo.CommitPendingCapture(workspaceId, sequenceNumber: 2, affectedFiles: [catFilePath]);
+        undo.CommitPendingCapture(workspaceId, sequenceNumber: 2, affectedFiles: [catFilePath], captureNewer);
 
         using var barrier = new Barrier(2);
         undo.BeforeSequenceClaim = () =>
@@ -400,6 +400,222 @@ public sealed class UndoServiceTests : IsolatedWorkspaceTestBase
         undo.BeforeSequenceClaim = null;
         Assert.IsTrue((await undo.RevertBySequenceAsync(workspaceId, 2, CancellationToken.None)).Reverted,
             "The newer operation's history entry must survive the race.");
+    }
+
+    // undo-audit-commit-reuses-completed-capture: an audit record that owns no capture must never
+    // promote whatever snapshot the per-workspace slot still holds (an earlier completed operation's,
+    // or a failed/cancelled apply's uncommitted one).
+    private void RecordCaptureFreeAudit(string workspaceId, string description) =>
+        ChangeTracker.RecordChange(workspaceId, description, [], "audit_test", UndoCaptureId.None);
+
+    [TestMethod]
+    public async Task CompletedCapture_ThenCaptureFreeAudit_DoesNotPromoteEarlierSnapshot()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+        var original = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
+        var applyA = await EditService.ApplyTextEditsAsync(
+            workspaceId, dogFilePath, new[] { new TextEditDto(1, 1, 1, 1, "// apply A\n") },
+            "apply_text_edit", CancellationToken.None);
+        Assert.IsTrue(applyA.Success);
+        var sequenceA = ChangeTracker.GetChanges(workspaceId).Single().SequenceNumber;
+
+        RecordCaptureFreeAudit(workspaceId, "audit B");
+        var sequenceB = ChangeTracker.GetChanges(workspaceId).Last().SequenceNumber;
+
+        var revertB = await UndoService.RevertBySequenceAsync(workspaceId, sequenceB, CancellationToken.None);
+        Assert.IsFalse(revertB.Reverted, "A capture-free audit owns no undo snapshot.");
+        Assert.AreEqual("unknown-sequence", revertB.Reason);
+        Assert.AreEqual("// apply A\n" + original, await File.ReadAllTextAsync(dogFilePath, CancellationToken.None),
+            "Undo-by-audit must not erase the earlier real apply.");
+
+        Assert.AreEqual("Apply text edit to Dog.cs", UndoService.GetLastOperation(workspaceId)?.Description);
+        Assert.IsTrue(await UndoService.RevertAsync(workspaceId, CancellationToken.None),
+            "Apply A must stay undoable by the latest-operation path.");
+        Assert.AreEqual(original, await File.ReadAllTextAsync(dogFilePath, CancellationToken.None));
+        Assert.IsFalse((await UndoService.RevertBySequenceAsync(workspaceId, sequenceA, CancellationToken.None)).Reverted,
+            "A consumed by RevertAsync leaves no second by-sequence entry.");
+    }
+
+    [TestMethod]
+    public async Task CompletedCapture_ThenCaptureFreeAudit_LeavesApplyUndoableBySequence()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+        var original = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
+        var applyA = await EditService.ApplyTextEditsAsync(
+            workspaceId, dogFilePath, new[] { new TextEditDto(1, 1, 1, 1, "// apply A\n") },
+            "apply_text_edit", CancellationToken.None);
+        Assert.IsTrue(applyA.Success);
+        var sequenceA = ChangeTracker.GetChanges(workspaceId).Single().SequenceNumber;
+
+        RecordCaptureFreeAudit(workspaceId, "audit B");
+
+        var revertA = await UndoService.RevertBySequenceAsync(workspaceId, sequenceA, CancellationToken.None);
+        Assert.IsTrue(revertA.Reverted,
+            $"The audit must not make apply A depend on a bogus later entry; reason={revertA.Reason}.");
+        Assert.AreEqual(original, await File.ReadAllTextAsync(dogFilePath, CancellationToken.None));
+    }
+
+    [TestMethod]
+    public async Task CaptureFreeAudit_AfterCompletedCapture_AddsNoHistory_ButStaysInLedger()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+        var applyA = await EditService.ApplyTextEditsAsync(
+            workspaceId, dogFilePath, new[] { new TextEditDto(1, 1, 1, 1, "// apply A\n") },
+            "apply_text_edit", CancellationToken.None);
+        Assert.IsTrue(applyA.Success);
+
+        RecordCaptureFreeAudit(workspaceId, "audit B");
+
+        var changes = ChangeTracker.GetChanges(workspaceId);
+        Assert.AreEqual(2, changes.Count, "A successful no-op audit still shows in the workspace changes ledger.");
+        Assert.AreEqual("audit B", changes[1].Description);
+        Assert.AreEqual("Apply text edit to Dog.cs", UndoService.GetLastOperation(workspaceId)?.Description,
+            "The audit must not replace or re-describe the earlier snapshot.");
+        var staleB = await UndoService.RevertBySequenceAsync(workspaceId, changes[1].SequenceNumber, CancellationToken.None);
+        Assert.AreEqual("unknown-sequence", staleB.Reason, "The audit adds no revert-history entry.");
+    }
+
+    [TestMethod]
+    public async Task FailedApply_LeavesPendingCaptureUndoable_AndAuditDoesNotPromoteIt()
+    {
+        // A capture whose apply failed is never recorded. It stays the LIFO RevertAsync target
+        // (so a compensating rollback still works) but a later capture-free audit must not adopt it.
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+        var originalBytes = await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None);
+        UndoService.CaptureBeforeApply(
+            workspaceId, "failed apply", preApplySolution: null,
+            fileSnapshots: [FileSnapshotDto.FromExistingBytes(dogFilePath, originalBytes)]);
+        await File.WriteAllTextAsync(dogFilePath, "// partial write of the failed apply\n", CancellationToken.None);
+
+        RecordCaptureFreeAudit(workspaceId, "audit after failure");
+        var sequenceAudit = ChangeTracker.GetChanges(workspaceId).Single().SequenceNumber;
+
+        var byAudit = await UndoService.RevertBySequenceAsync(workspaceId, sequenceAudit, CancellationToken.None);
+        Assert.IsFalse(byAudit.Reverted, "The audit must not adopt the failed apply's pending capture.");
+        Assert.AreEqual("unknown-sequence", byAudit.Reason);
+        CollectionAssert.AreNotEqual(originalBytes, await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None));
+
+        Assert.IsTrue(await UndoService.RevertAsync(workspaceId, CancellationToken.None),
+            "The failed apply's pending capture must remain the retryable LIFO target.");
+        CollectionAssert.AreEqual(originalBytes, await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None));
+    }
+
+    [TestMethod]
+    public async Task CancelledApply_LeavesPendingCaptureUndoable_AndAuditDoesNotPromoteIt()
+    {
+        // Cancelled mid-apply: the capture exists, the record never happens, and the first undo
+        // attempt itself is cancelled. Neither leg may let a later audit adopt or lose the capture.
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+        var originalBytes = await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None);
+        UndoService.CaptureBeforeApply(
+            workspaceId, "cancelled apply", preApplySolution: null,
+            fileSnapshots: [FileSnapshotDto.FromExistingBytes(dogFilePath, originalBytes)]);
+        await File.WriteAllTextAsync(dogFilePath, "// cancelled mid-write\n", CancellationToken.None);
+
+        using var cancelled = new CancellationTokenSource();
+        await cancelled.CancelAsync();
+        await Assert.ThrowsAsync<OperationCanceledException>(
+            () => UndoService.RevertAsync(workspaceId, cancelled.Token));
+
+        RecordCaptureFreeAudit(workspaceId, "audit after cancellation");
+        var sequenceAudit = ChangeTracker.GetChanges(workspaceId).Single().SequenceNumber;
+        var byAudit = await UndoService.RevertBySequenceAsync(workspaceId, sequenceAudit, CancellationToken.None);
+        Assert.IsFalse(byAudit.Reverted, "The audit must not adopt the cancelled apply's pending capture.");
+
+        Assert.IsTrue(await UndoService.RevertAsync(workspaceId, CancellationToken.None));
+        CollectionAssert.AreEqual(originalBytes, await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None));
+    }
+
+    [TestMethod]
+    public async Task StaleCaptureId_Recorded_AfterNewerCapture_DoesNotPromoteNewer()
+    {
+        // Capture A is superseded by capture B before A's record lands (A's operation lost the
+        // slot). Recording A must be refused and must not promote or hijack B's pending snapshot.
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+        var catFilePath = workspace.GetPath("SampleLib", "Cat.cs");
+        var captureA = UndoService.CaptureBeforeApply(
+            workspaceId, "stale A", preApplySolution: null,
+            fileSnapshots: [FileSnapshotDto.FromExistingBytes(dogFilePath, await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None))]);
+        UndoService.CaptureBeforeApply(
+            workspaceId, "newer B", preApplySolution: null,
+            fileSnapshots: [FileSnapshotDto.FromExistingBytes(catFilePath, await File.ReadAllBytesAsync(catFilePath, CancellationToken.None))]);
+
+        ChangeTracker.RecordChange(workspaceId, "stale A", [dogFilePath], "stale_test", captureA);
+        var sequenceA = ChangeTracker.GetChanges(workspaceId).Single().SequenceNumber;
+
+        Assert.AreEqual("unknown-sequence",
+            (await UndoService.RevertBySequenceAsync(workspaceId, sequenceA, CancellationToken.None)).Reason,
+            "A stale capture id must not enter the revert history.");
+        Assert.AreEqual("newer B", UndoService.GetLastOperation(workspaceId)?.Description,
+            "The newer pending capture must survive the refused stale record.");
+    }
+
+    [TestMethod]
+    public async Task SequentialCaptures_RecordedInCaptureOrder_EachPromotesUnderOwnSequence()
+    {
+        // Deterministic ordering of the interleaving "capture A, capture B, record A, record B":
+        // A's record is refused (B owns the slot, B intact); B's record promotes under its own
+        // sequence and stays undoable by sequence and by latest-operation.
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+        var catFilePath = workspace.GetPath("SampleLib", "Cat.cs");
+        var dogBytes = await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None);
+        var catBytes = await File.ReadAllBytesAsync(catFilePath, CancellationToken.None);
+        var captureA = UndoService.CaptureBeforeApply(
+            workspaceId, "op A", preApplySolution: null,
+            fileSnapshots: [FileSnapshotDto.FromExistingBytes(dogFilePath, dogBytes)]);
+        var captureB = UndoService.CaptureBeforeApply(
+            workspaceId, "op B", preApplySolution: null,
+            fileSnapshots: [FileSnapshotDto.FromExistingBytes(catFilePath, catBytes)]);
+        Assert.AreNotEqual(captureA, captureB);
+        Assert.IsFalse(captureA.IsNone);
+        Assert.IsFalse(captureB.IsNone);
+        await File.WriteAllTextAsync(catFilePath, "// op B\n", CancellationToken.None);
+
+        ChangeTracker.RecordChange(workspaceId, "op A", [dogFilePath], "order_test", captureA);
+        var sequenceA = ChangeTracker.GetChanges(workspaceId).Single().SequenceNumber;
+        Assert.AreEqual("unknown-sequence",
+            (await UndoService.RevertBySequenceAsync(workspaceId, sequenceA, CancellationToken.None)).Reason);
+        Assert.AreEqual("op B", UndoService.GetLastOperation(workspaceId)?.Description);
+
+        ChangeTracker.RecordChange(workspaceId, "op B", [catFilePath], "order_test", captureB);
+        var sequenceB = ChangeTracker.GetChanges(workspaceId).Last().SequenceNumber;
+        Assert.IsTrue(sequenceB > sequenceA);
+
+        // Re-recording an already-promoted capture must not add a second history entry.
+        ChangeTracker.RecordChange(workspaceId, "op B again", [catFilePath], "order_test", captureB);
+        var sequenceRepeat = ChangeTracker.GetChanges(workspaceId).Last().SequenceNumber;
+        Assert.AreEqual("unknown-sequence",
+            (await UndoService.RevertBySequenceAsync(workspaceId, sequenceRepeat, CancellationToken.None)).Reason);
+
+        var revertB = await UndoService.RevertBySequenceAsync(workspaceId, sequenceB, CancellationToken.None);
+        Assert.IsTrue(revertB.Reverted, $"B must be undoable under its own sequence; reason={revertB.Reason}.");
+        CollectionAssert.AreEqual(catBytes, await File.ReadAllBytesAsync(catFilePath, CancellationToken.None));
+    }
+
+    [TestMethod]
+    public async Task CaptureIds_AreDistinctAndNeverNone()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var ids = Enumerable.Range(0, 3)
+            .Select(_ => UndoService.CaptureBeforeApply(workspace.WorkspaceId, "id probe", preApplySolution: null, fileSnapshots: []))
+            .ToArray();
+        Assert.IsTrue(UndoCaptureId.None.IsNone);
+        Assert.IsTrue(ids.All(id => !id.IsNone));
+        Assert.HasCount(3, ids.Distinct());
     }
 
     [TestMethod]
@@ -428,8 +644,8 @@ public sealed class UndoServiceTests : IsolatedWorkspaceTestBase
         var postApplyVersion = WorkspaceManager.GetCurrentVersion(workspaceId);
         await AssertDocumentTextAsync(postApplySolution, dogFilePath, "// apply A\n" + original);
 
-        UndoService.CaptureBeforeApply(workspaceId, "empty B", preApplySolution: null, fileSnapshots: []);
-        ChangeTracker.RecordChange(workspaceId, "empty B", [], "empty_capture_test");
+        var captureEmptyB = UndoService.CaptureBeforeApply(workspaceId, "empty B", preApplySolution: null, fileSnapshots: []);
+        ChangeTracker.RecordChange(workspaceId, "empty B", [], "empty_capture_test", captureEmptyB);
         var sequenceB = ChangeTracker.GetChanges(workspaceId).Last().SequenceNumber;
 
         Assert.IsTrue(await UndoService.RevertAsync(workspaceId, CancellationToken.None),
@@ -466,8 +682,8 @@ public sealed class UndoServiceTests : IsolatedWorkspaceTestBase
         Assert.IsTrue(applyA.Success);
         var sequenceA = ChangeTracker.GetChanges(workspaceId).Single().SequenceNumber;
 
-        UndoService.CaptureBeforeApply(workspaceId, "empty B", preApplySolution: null, fileSnapshots: []);
-        ChangeTracker.RecordChange(workspaceId, "empty B", [], "empty_capture_test");
+        var captureEmptyB = UndoService.CaptureBeforeApply(workspaceId, "empty B", preApplySolution: null, fileSnapshots: []);
+        ChangeTracker.RecordChange(workspaceId, "empty B", [], "empty_capture_test", captureEmptyB);
         var sequenceB = ChangeTracker.GetChanges(workspaceId).Last().SequenceNumber;
         var applyC = await EditService.ApplyTextEditsAsync(
             workspaceId, catFilePath, new[] { new TextEditDto(1, 1, 1, 1, "// apply C\n") },
@@ -523,8 +739,8 @@ public sealed class UndoServiceTests : IsolatedWorkspaceTestBase
         var workspaceId = workspace.WorkspaceId;
         var originalSolution = WorkspaceManager.GetCurrentSolution(workspaceId);
         var originalVersion = WorkspaceManager.GetCurrentVersion(workspaceId);
-        UndoService.CaptureBeforeApply(workspaceId, "empty B", preApplySolution: null, fileSnapshots: []);
-        ChangeTracker.RecordChange(workspaceId, "empty B", [], "empty_capture_test");
+        var captureEmptyB = UndoService.CaptureBeforeApply(workspaceId, "empty B", preApplySolution: null, fileSnapshots: []);
+        ChangeTracker.RecordChange(workspaceId, "empty B", [], "empty_capture_test", captureEmptyB);
         var sequenceB = ChangeTracker.GetChanges(workspaceId).Single().SequenceNumber;
         var pendingB = UndoService.GetLastOperation(workspaceId);
         Assert.IsNotNull(pendingB);
@@ -567,10 +783,10 @@ public sealed class UndoServiceTests : IsolatedWorkspaceTestBase
         var workspaceId = workspace.WorkspaceId;
         var originalSolution = WorkspaceManager.GetCurrentSolution(workspaceId);
         var originalVersion = WorkspaceManager.GetCurrentVersion(workspaceId);
-        UndoService.CaptureBeforeApply(workspaceId, "invalid capture", preApplySolution: null,
+        var invalidCapture = UndoService.CaptureBeforeApply(workspaceId, "invalid capture", preApplySolution: null,
             fileSnapshots: contradictoryEmptyCapture ? [] : null);
         ChangeTracker.RecordChange(workspaceId, "invalid capture",
-            contradictoryEmptyCapture ? [workspace.GetPath("SampleLib", "Dog.cs")] : [], "invalid_capture_test");
+            contradictoryEmptyCapture ? [workspace.GetPath("SampleLib", "Dog.cs")] : [], "invalid_capture_test", invalidCapture);
         var sequence = ChangeTracker.GetChanges(workspaceId).Single().SequenceNumber;
 
         if (bySequence)
@@ -611,8 +827,8 @@ public sealed class UndoServiceTests : IsolatedWorkspaceTestBase
         Assert.AreNotEqual(originalText, await File.ReadAllTextAsync(dogFilePath, CancellationToken.None));
         var captureVersion = WorkspaceManager.GetCurrentVersion(workspaceId);
         UndoService.Clear(workspaceId);
-        UndoService.CaptureBeforeApply(workspaceId, "solution fallback", originalSolution, fileSnapshots: []);
-        ChangeTracker.RecordChange(workspaceId, "solution fallback", new[] { dogFilePath }, "solution_capture_test");
+        var fallbackCapture = UndoService.CaptureBeforeApply(workspaceId, "solution fallback", originalSolution, fileSnapshots: []);
+        ChangeTracker.RecordChange(workspaceId, "solution fallback", new[] { dogFilePath }, "solution_capture_test", fallbackCapture);
         var sequence = ChangeTracker.GetChanges(workspaceId).Last().SequenceNumber;
 
         if (bySequence)

@@ -422,23 +422,24 @@ public sealed class EditorConfigService : IEditorConfigService
             var failedSnapshot = preApplySnapshot
                 ?? throw new InvalidOperationException("An unrecovered .editorconfig write has no prewrite snapshot.");
             var description = $"Failed .editorconfig write of '{key.Trim()}' in {Path.GetFileName(editorconfigPath)}";
-            _undoService?.CaptureBeforeApply(workspaceId, description, preApplySolution: null,
-                fileSnapshots: [failedSnapshot]);
-            _changeTracker?.RecordChange(workspaceId, description, [editorconfigPath], toolName);
+            var failedCapture = _undoService?.CaptureBeforeApply(workspaceId, description, preApplySolution: null,
+                fileSnapshots: [failedSnapshot]) ?? UndoCaptureId.None;
+            _changeTracker?.RecordChange(workspaceId, description, [editorconfigPath], toolName, failedCapture);
             throw;
         }
         // Keep the previous undo target until the coordinator has verified that the
         // bytes it wrote are still at the path. A failed write must not replace it.
-        _undoService?.CaptureBeforeApply(
+        var capture = _undoService?.CaptureBeforeApply(
             workspaceId,
             $"Set .editorconfig option '{key.Trim()}' in {Path.GetFileName(editorconfigPath)}",
             preApplySolution: null,
-            fileSnapshots: [applied.Snapshot]);
+            fileSnapshots: [applied.Snapshot]) ?? UndoCaptureId.None;
         _changeTracker?.RecordChange(
             workspaceId,
             $"Set .editorconfig option '{key.Trim()}' in {Path.GetFileName(editorconfigPath)}",
             [editorconfigPath],
-            toolName);
+            toolName,
+            capture);
         return Task.FromResult(applied.Result);
     }
 

@@ -14,8 +14,16 @@ public interface IChangeTracker
     /// </summary>
     event Action<ChangeRecordedEventArgs>? ChangeRecorded;
 
+    /// <summary>
+    /// Appends a change entry to the workspace ledger and raises <see cref="ChangeRecorded"/>.
+    /// </summary>
+    /// <param name="capture">
+    /// The <see cref="IUndoService.CaptureBeforeApply"/> id taken by the SAME logical operation, or
+    /// <see cref="UndoCaptureId.None"/> when the record owns no capture (a successful no-effect audit).
+    /// Only a matching id promotes the pending snapshot into the revert history.
+    /// </param>
     void RecordChange(string workspaceId, string description,
-        IReadOnlyList<string> affectedFiles, string toolName);
+        IReadOnlyList<string> affectedFiles, string toolName, UndoCaptureId capture);
 
     IReadOnlyList<WorkspaceChangeDto> GetChanges(string workspaceId);
 
@@ -32,9 +40,11 @@ public interface IChangeTracker
 /// <param name="Description">Human-readable description of the apply.</param>
 /// <param name="AffectedFiles">The file set the apply touched.</param>
 /// <param name="ToolName">The originating MCP tool name (e.g., <c>rename_apply</c>).</param>
+/// <param name="Capture">The undo capture owned by the recording operation, or <see cref="UndoCaptureId.None"/>.</param>
 public sealed record ChangeRecordedEventArgs(
     string WorkspaceId,
     int SequenceNumber,
     string Description,
     IReadOnlyList<string> AffectedFiles,
-    string ToolName);
+    string ToolName,
+    UndoCaptureId Capture);

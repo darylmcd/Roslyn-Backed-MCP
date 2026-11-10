@@ -155,7 +155,7 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
 
         var wrongCase = workspace.GetPath(caseDistinct ? "CASEPROBE.cs" : "MissingProbe.cs");
         ChangeTracker.RecordChange(workspace.WorkspaceId, "case-distinct edits",
-            [upper, lower], "test");
+            [upper, lower], "test", UndoCaptureId.None);
         var result = source switch
         {
             "git" => await _validationService.ValidateRecentGitChangesAsync(

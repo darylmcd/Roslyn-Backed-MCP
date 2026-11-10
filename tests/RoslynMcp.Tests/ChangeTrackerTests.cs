@@ -1,4 +1,5 @@
 using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
@@ -36,7 +37,7 @@ public sealed class ChangeTrackerTests : IsolatedWorkspaceTestBase
         };
         tracker.ChangeRecorded += _ => { calls.Add(3); throw new OperationCanceledException(); };
         tracker.ChangeRecorded += _ => calls.Add(4);
-        tracker.RecordChange("ws", "recorded", ["file.cs"], "test");
+        tracker.RecordChange("ws", "recorded", ["file.cs"], "test", UndoCaptureId.None);
         CollectionAssert.AreEqual(new[] { 1, 2, 3, 4 }, calls);
         Assert.HasCount(1, tracker.GetChanges("ws"));
         Assert.HasCount(2, logger.Entries);
@@ -297,7 +298,7 @@ public sealed class ChangeTrackerTests : IsolatedWorkspaceTestBase
         await using var workspace = await CreateIsolatedWorkspaceAsync();
         var wsId = workspace.WorkspaceId;
 
-        ChangeTracker.RecordChange(wsId, "test", ["file.cs"], "test_tool");
+        ChangeTracker.RecordChange(wsId, "test", ["file.cs"], "test_tool", UndoCaptureId.None);
         Assert.AreEqual(1, ChangeTracker.GetChanges(wsId).Count);
 
         ChangeTracker.Clear(wsId);

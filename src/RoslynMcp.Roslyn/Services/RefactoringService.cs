@@ -347,11 +347,11 @@ public sealed class RefactoringService : IRefactoringService
             currentSolution,
             ct).ConfigureAwait(false);
         var alreadySatisfied = ReferenceEquals(preparation.ModifiedSolution, currentSolution);
-        _undoService?.CaptureBeforeApply(
+        var capture = _undoService?.CaptureBeforeApply(
             workspaceId,
             description,
             alreadySatisfied ? null : currentSolution,
-            alreadySatisfied ? [] : preparation.FileSnapshots);
+            alreadySatisfied ? [] : preparation.FileSnapshots) ?? UndoCaptureId.None;
 
         // An already-applied intent owns no effects: its explicitly empty undo capture
         // preserves other applies while the common audit and token lifecycle completes.
@@ -375,7 +375,7 @@ public sealed class RefactoringService : IRefactoringService
             return new ApplyResultDto(false, [], "Failed to apply changes to the workspace.");
         }
 
-        _changeTracker?.RecordChange(workspaceId, description, appliedFiles, toolName);
+        _changeTracker?.RecordChange(workspaceId, description, appliedFiles, toolName, capture);
         _logger.LogInformation("Applied refactoring '{Description}' to {Count} file(s)", description, appliedFiles.Count);
 
         var mutatedSymbol = await ResolvePostApplySymbolAsync(

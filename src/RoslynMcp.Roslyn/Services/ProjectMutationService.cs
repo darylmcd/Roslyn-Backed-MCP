@@ -570,11 +570,11 @@ public sealed class ProjectMutationService : IProjectMutationService
                 normalizedProjectFilePath,
                 preApplyBytes,
                 fallbackText: null);
-            _undoService?.CaptureBeforeApply(
+            var capture = _undoService?.CaptureBeforeApply(
                 workspaceId,
                 $"Project mutation: {Path.GetFileName(projectFilePath)}",
                 preApplySolution: null,
-                fileSnapshots: new[] { preApplySnapshot });
+                fileSnapshots: new[] { preApplySnapshot }) ?? UndoCaptureId.None;
 
             await AtomicFileWriter.WriteAllTextAsync(
                 projectFilePath,
@@ -584,7 +584,7 @@ public sealed class ProjectMutationService : IProjectMutationService
                 encoding: SourceFileEncoding.FromBytes(preApplyBytes)).ConfigureAwait(false);
             await _workspace.ReloadAsync(workspaceId, ct).ConfigureAwait(false);
             _previewStore.Invalidate(previewToken);
-            _changeTracker?.RecordChange(workspaceId, $"Project mutation: {Path.GetFileName(projectFilePath)}", [projectFilePath], "apply_project_mutation");
+            _changeTracker?.RecordChange(workspaceId, $"Project mutation: {Path.GetFileName(projectFilePath)}", [projectFilePath], "apply_project_mutation", capture);
             return new ApplyResultDto(true, [projectFilePath], null);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
