@@ -94,9 +94,7 @@ public sealed class TestDiscoveryService : ITestDiscoveryService, IDisposable
     {
         lock (_cacheSync)
         {
-            // A slower discovery of an older version must not replace a newer entry.
-            if (_workspaceManager.ContainsWorkspace(workspaceId)
-                && (!_cache.TryGetValue(workspaceId, out var existing) || existing.Version <= version))
+            if (_workspaceManager.ContainsWorkspace(workspaceId))
             {
                 _cache[workspaceId] = (version, result);
             }

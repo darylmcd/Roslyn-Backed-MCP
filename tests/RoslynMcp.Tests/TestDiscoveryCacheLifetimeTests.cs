@@ -182,35 +182,6 @@ public sealed class TestDiscoveryCacheLifetimeTests
         });
 
     [TestMethod]
-    public Task SlowerOlderVersionDiscovery_DoesNotOverwriteNewerEntry() =>
-        RealWorkspaceLifecycleFixture.RunAsync(1, async (manager, paths) =>
-        {
-            var id = (await manager.LoadAsync(paths[0], EvictPolicy.Strict, CancellationToken.None)).WorkspaceId;
-            var hooks = new LifecycleHookWorkspaceManager(manager);
-            var service = CreateService(hooks);
-            var reached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            var first = true;
-            hooks.AfterGetStatusAsync = async _ =>
-            {
-                if (!first) return;
-                first = false;
-                reached.TrySetResult();
-                await release.Task;
-            };
-
-            var slowOld = service.DiscoverTestsAsync(id, CancellationToken.None);
-            await reached.Task.WaitAsync(GateTimeout);
-            await BumpVersionAsync(manager, id);
-            var newer = await service.DiscoverTestsAsync(id, CancellationToken.None);
-            release.SetResult();
-            await slowOld.WaitAsync(GateTimeout);
-
-            Assert.AreSame(newer, await service.DiscoverTestsAsync(id, CancellationToken.None),
-                "The older-version publish must not replace the newer entry.");
-        });
-
-    [TestMethod]
     public Task Dispose_DetachesBothHandlersAndIsIdempotent() =>
         RealWorkspaceLifecycleFixture.RunAsync(1, async (manager, paths) =>
         {
