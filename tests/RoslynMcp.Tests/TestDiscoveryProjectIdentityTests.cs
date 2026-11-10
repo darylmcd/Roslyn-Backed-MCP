@@ -152,6 +152,7 @@ public sealed class TestDiscoveryProjectIdentityTests
         {
             GetCurrentSolutionHandler = _ => _workspace.CurrentSolution,
             GetCurrentVersionHandler = _ => 1,
+            ContainsWorkspaceHandler = _ => true,
             GetStatusAsyncHandler = workspaceId => new(workspaceId, null, 1, "fixture:1", DateTimeOffset.UtcNow, 1,
                 _workspace.CurrentSolution.Projects.Sum(p => p.DocumentIds.Count),
                 _workspace.CurrentSolution.Projects
