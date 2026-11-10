@@ -2358,14 +2358,27 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public async Task ExtractType_SourceAndDependentErrors_RefusalMessageIsSourceProjectOnly()
     {
-        var fixture = await CreateExtractionFixtureAsync("DepCtorHost.cs", DepCtorHostSource, [
-            ("DepCtorSameProject.cs", "namespace SampleLib;\n\npublic class DepCtorSameProject\n{\n    public object Make() => new DepCtorHost();\n}\n"),
-            ("../SampleApp/DepCtorSite.cs", "namespace DepSite;\n\npublic class DepCtorSite\n{\n    public object Make() => new SampleLib.DepCtorHost();\n}\n")]);
+        // Source break: CS7036 from a SampleLib construction site after the instance move. Dependent break: CS0103 from a
+        // SampleApp derived class using the moved protected static. The message must name only the source id.
+        var fixture = await CreateExtractionFixtureAsync("DepMixedHost.cs", """
+            namespace SampleLib;
+
+            public class DepMixedHost
+            {
+                private int _n;
+                public int Next() => ++_n;
+                protected static int Helper(int x) => x * 2;
+                public int Keep() => 1;
+            }
+            """, [
+            ("DepMixedSameProject.cs", "namespace SampleLib;\n\npublic class DepMixedSameProject\n{\n    public object Make() => new DepMixedHost();\n}\n"),
+            ("../SampleApp/DepMixedChild.cs", "namespace DepSite;\n\npublic class DepMixedChild : SampleLib.DepMixedHost\n{\n    public int Run() => Helper(2);\n}\n")]);
         try
         {
-            var error = await PreviewRefusedWithoutEffectAsync(fixture, "DepCtorHost", ["_n", "Next"]);
+            var error = await PreviewRefusedWithoutEffectAsync(fixture, "DepMixedHost", ["_n", "Next", "Helper"]);
 
             Assert.AreEqual(string.Format(SourceProjectRefusalMessage, "CS7036"), error.Message);
+            Assert.IsFalse(error.Message.Contains("CS0103", StringComparison.Ordinal), error.Message);
         }
         finally
         {
