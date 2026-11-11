@@ -87,6 +87,63 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         }
     }
 
+    private static MemberDeclarationSyntax ApplyModifierRewrite(string operation, string declaration)
+    {
+        var methodName = operation == "widen" ? "EnsurePublicAccessibility" : "StripInheritanceOnlyModifiers";
+        var rewrite = typeof(RoslynMcp.Roslyn.Services.TypeExtractionService).GetMethod(methodName,
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+        var source = CSharpSyntaxTree.ParseText($"class C {{\n    {declaration}\n}}");
+        var member = source.GetRoot().DescendantNodes().OfType<ClassDeclarationSyntax>().First().Members.Single();
+        return Assert.IsInstanceOfType<MemberDeclarationSyntax>(rewrite.Invoke(null, [member]));
+    }
+
+    /// <summary>
+    /// extract-type-modifier-trivia-loss: whitespace-only modifier lists rewrite to the same bytes before and
+    /// after comment preservation (comments are the only trivia carried; whitespace is never doubled).
+    /// </summary>
+    [TestMethod]
+    [DataRow("strip", "static new int F;", "    static int F;\n")]
+    [DataRow("strip", "new static int F;", "    static int F;\n")]
+    [DataRow("strip", "public new virtual void M() {}", "    public void M() {}\n")]
+    [DataRow("widen", "static private int G;", "    public static int G;\n")]
+    [DataRow("widen", "private protected int H;", "    public int H;\n")]
+    [DataRow("widen", "protected internal int H;", "    public int H;\n")]
+    [DataRow("widen", "int Plain;", "public     int Plain;\n")]
+    public void ModifierRewrites_WhitespaceOnlyInputs_AreByteStable(string operation, string declaration, string expected)
+    {
+        Assert.AreEqual(expected, ApplyModifierRewrite(operation, declaration).ToFullString());
+    }
+
+    /// <summary>
+    /// extract-type-modifier-trivia-loss: a comment attached to a removed or replaced modifier token survives
+    /// exactly once, in its original relative order, and the member still parses.
+    /// </summary>
+    [TestMethod]
+    [DataRow("strip", "new /* between */ static int F;", "/* between */")]
+    [DataRow("strip", "static new /* after */ int F;", "/* after */")]
+    [DataRow("strip", "new // note\n    static int F;", "// note")]
+    [DataRow("strip", "/* before */ new int F;", "/* before */")]
+    [DataRow("strip", "new /* a */ virtual /* b */ int F;", "/* a */|/* b */")]
+    [DataRow("widen", "static /* x */ private int F;", "/* x */")]
+    [DataRow("widen", "private /* a */ protected /* b */ int F;", "/* a */|/* b */")]
+    [DataRow("widen", "private /* a */ static /* b */ protected /* c */ int F;", "/* a */|/* b */|/* c */")]
+    public void ModifierRewrites_PreserveEveryRemovedModifierComment(string operation, string declaration, string commentsInOrder)
+    {
+        var rewritten = ApplyModifierRewrite(operation, declaration);
+        var text = rewritten.ToFullString();
+        var previousIndex = -1;
+        foreach (var comment in commentsInOrder.Split('|'))
+        {
+            Assert.AreEqual(1, text.Split(comment, StringSplitOptions.None).Length - 1, $"'{comment}' must survive exactly once in: {text}");
+            var index = text.IndexOf(comment, StringComparison.Ordinal);
+            Assert.IsGreaterThan(previousIndex, index, $"'{comment}' is out of original order in: {text}");
+            previousIndex = index;
+        }
+
+        var reparsed = CSharpSyntaxTree.ParseText($"class C {{\n{text}\n}}");
+        Assert.AreEqual(0, reparsed.GetDiagnostics().Count(d => d.Severity == DiagnosticSeverity.Error), text);
+    }
+
     [TestCleanup]
     public async Task TestCleanup() =>
         await CleanupFailureCollector.DeleteDirectoriesAsync(
@@ -774,6 +831,49 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally
         {
             WorkspaceManager.Close(wsId);
+        }
+    }
+
+    /// <summary>
+    /// extract-type-modifier-trivia-loss: comments on a stripped <c>new</c> and on a replaced access modifier
+    /// reach the emitted new-type file exactly once.
+    /// </summary>
+    [TestMethod]
+    public async Task ExtractType_ModifierComments_SurviveInNewTypeFile()
+    {
+        var fixture = await CreateExtractionFixtureAsync(
+            "ModifierCommentFixture.cs",
+            """
+            namespace SampleLib;
+
+            public class ModifierCommentBase
+            {
+                public int Count => 1;
+            }
+
+            public class ModifierCommentFixture : ModifierCommentBase
+            {
+                public /* hides base */ new int Count => 2;
+                /* soleNew */ new int Total => 3;
+            }
+            """);
+
+        try
+        {
+            var preview = await TypeExtractionService.PreviewExtractTypeAsync(
+                fixture.WorkspaceId, fixture.FilePath, "ModifierCommentFixture", ["Count", "Total"], "CountHelper", null, CancellationToken.None);
+            var newFile = preview.Changes.Single(c => c.FilePath.EndsWith("CountHelper.cs", StringComparison.OrdinalIgnoreCase)).UnifiedDiff;
+
+            foreach (var comment in new[] { "/* hides base */", "/* soleNew */" })
+            {
+                Assert.AreEqual(1, newFile.Split(comment, StringSplitOptions.None).Length - 1, $"'{comment}' must reach the new type once. Diff:\n{newFile}");
+            }
+
+            await AssertModifiedSolutionCompilesAsync(preview.PreviewToken);
+        }
+        finally
+        {
+            WorkspaceManager.Close(fixture.WorkspaceId);
         }
     }
 
