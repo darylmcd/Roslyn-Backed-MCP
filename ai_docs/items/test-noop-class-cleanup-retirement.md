@@ -6,7 +6,7 @@
 
 - `tests/RoslynMcp.Tests/TestBase.cs:180`
 - `tests/RoslynMcp.Tests/AssemblyCleanup.cs:8`
-- `tests/RoslynMcp.Tests/AliasToolsTests.cs`
+- `tests/RoslynMcp.Tests/AliasRemovalTests.cs:39-40`
 - `ai_docs/reports/20261017-test-efficiency/file-inventory.csv`
 
 ## Acceptance

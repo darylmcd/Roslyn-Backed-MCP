@@ -2,8 +2,6 @@
 
 **row:** `addenda-self-edit-caveat-contradicts-runtime` · **pri:** `Low` · **size:** `S`
 
-# addenda-self-edit-caveat-contradicts-runtime — Align selfEditCaveat with runtime.md
-
 ## Anchors
 
 - `ai_docs/prompts/backlog-sweep-addenda.md`

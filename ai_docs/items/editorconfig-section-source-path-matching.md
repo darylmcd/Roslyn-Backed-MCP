@@ -111,7 +111,7 @@ Earlier claims that the original three policy answers were pending are historica
 
 All current operator policy questions are answered. Earlier global-placement pending statements are historical and superseded.
 
-# Final approved editorconfig proposal — preadmission record
+## Final approved editorconfig proposal — preadmission record
 
 | Field | Recorded disposition |
 |---|---|

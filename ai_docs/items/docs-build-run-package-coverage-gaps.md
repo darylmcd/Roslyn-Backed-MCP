@@ -2,7 +2,6 @@
 
 **row:** `docs-build-run-package-coverage-gaps` · **pri:** `Low` · **size:** `S`
 
-# docs-build-run-package-coverage-gaps — Close docs coverage gaps
 
 ## Anchors
 

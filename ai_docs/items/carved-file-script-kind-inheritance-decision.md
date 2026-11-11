@@ -1,13 +1,13 @@
 # carved-file-script-kind-inheritance-decision — Decide Script-kind inheritance for carved files
 
-**row:** `carved-file-script-kind-inheritance-decision` · **pri:** `Defer` · **size:** `S`
+**row:** `carved-file-script-kind-inheritance-decision` · **pri:** `Defer` · **size:** `M`
 
 ## Anchors
 
-- `src/RoslynMcp.Roslyn/Services/TypeMoveService.cs:123`
-- `src/RoslynMcp.Roslyn/Services/TypeExtractionService.cs:151`
-- `src/RoslynMcp.Roslyn/Services/NamespaceRelocationService.cs:355`
-- `src/RoslynMcp.Roslyn/Services/InterfaceExtractionService.cs:108`
+- `src/RoslynMcp.Roslyn/Services/TypeMoveService.cs:116`
+- `src/RoslynMcp.Roslyn/Services/TypeExtractionService.cs:194`
+- `src/RoslynMcp.Roslyn/Services/NamespaceRelocationService.cs:362`
+- `src/RoslynMcp.Roslyn/Services/InterfaceExtractionService.cs:106`
 
 ## Acceptance
 

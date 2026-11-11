@@ -1,11 +1,11 @@
 # release-environment-precheck-contract-tests — Test the release-environment precheck
 
-**row:** `release-environment-precheck-contract-tests` · **pri:** `Low` · **size:** `S` · **deps:** `—`
+**row:** `release-environment-precheck-contract-tests` · **pri:** `Low` · **size:** `S`
 
 ## Anchors
 
 - `eng/verify-release-environment.ps1`
-- New `tests/RoslynMcp.Tests/ReleaseEnvironmentPrecheckContractTests.cs`
+- (new) `tests/RoslynMcp.Tests/ReleaseEnvironmentPrecheckContractTests.cs`
 
 ## Acceptance
 

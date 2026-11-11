@@ -2,7 +2,6 @@
 
 **row:** `audit-21-analyzer-plan-defer-or-retire` · **pri:** `Defer` · **size:** `—`
 
-# audit-21-analyzer-plan-defer-or-retire — Decide the parked AUDIT-21 analyzer plan
 
 ## Anchors
 

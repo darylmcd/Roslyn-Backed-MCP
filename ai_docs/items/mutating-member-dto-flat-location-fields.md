@@ -4,7 +4,7 @@
 
 ## Anchors
 
-- `src/RoslynMcp.Core/Models/` (`MutatingMemberDto`)
+- `src/RoslynMcp.Core/Models/TypeMutationDto.cs:14-19` (`MutatingMemberDto`)
 - `docs/decisions/0011-v5-major-release-contract.md`
 
 ## Acceptance

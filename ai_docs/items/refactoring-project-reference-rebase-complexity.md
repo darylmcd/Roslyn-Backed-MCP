@@ -1,6 +1,6 @@
 # refactoring-project-reference-rebase-complexity — Decompose project-reference rebasing
 
-**row:** `refactoring-project-reference-rebase-complexity` · **pri:** `Low` · **size:** `S` · **deps:** `—`
+**row:** `refactoring-project-reference-rebase-complexity` · **pri:** `Low` · **size:** `S`
 
 ## Anchors
 

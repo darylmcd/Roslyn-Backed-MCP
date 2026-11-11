@@ -1,12 +1,13 @@
 # cancellation-invariant-regression-locks — the audit's "no gap" conclusions rest on untested invariants
 
-**row:** `cancellation-invariant-regression-locks` · **pri:** `Low` · **size:** `M`
+**row:** `cancellation-invariant-regression-locks` · **pri:** `Low` · **size:** `L`
 
 ## Anchors
 
 - `src/RoslynMcp.Roslyn/Services/ScriptExecutionSupervisor.cs`
 - `src/RoslynMcp.Roslyn/Services/ScriptingService.cs`
-- `tests/RoslynMcp.Tests/WorkspaceForkApplyServiceTests.cs`
+- `src/RoslynMcp.Roslyn/Services/WorkspaceForkApplyService.cs:772-819`
+- `tests/RoslynMcp.Tests/Workspace/WorkspaceForkApplyTests.cs:317`
 
 ## Acceptance
 
@@ -27,3 +28,5 @@ An audit that ships no code leaves no regression behind; this row is what keeps 
 
 Prescribed by the initiative's own plan stanza (Risk 2 + handoff notes: "file Risk (2)'s regression-test row via `backlog.mjs add`") and missed at closeout. Surfaced by the sweep's cold self-review.
 2026-08-24 partial hardening only: `ScriptExecutionSupervisor` now catches unexpected worker callback exceptions and converts cancellation tied to its timeout token into a `TimedOut` outcome; a direct runtime-exception boundary regression was added. Keep this row open: it still requires the explicit internal-budget invariant and `WorkspaceForkApplyService` timeout regression in its acceptance.
+
+- Split before implementation. Script-owned timeout returns a value, and fork-owned restore timeout reclassifies cancellation. The two regression shapes have distinct process owners and can land independently.

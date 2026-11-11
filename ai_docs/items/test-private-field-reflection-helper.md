@@ -1,6 +1,6 @@
 # test-private-field-reflection-helper — Consolidate private-field test assertions
 
-**row:** `test-private-field-reflection-helper` · **pri:** `Low` · **size:** `S` · **deps:** `—`
+**row:** `test-private-field-reflection-helper` · **pri:** `Low` · **size:** `S`
 
 ## Anchors
 

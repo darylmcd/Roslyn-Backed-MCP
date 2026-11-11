@@ -5,7 +5,7 @@
 ## Anchors
 
 - `src/RoslynMcp.Roslyn/Services/SuppressionService.cs`
-- New `src/RoslynMcp.Roslyn/Services/PragmaSuppressionService.cs`
+- (new) `src/RoslynMcp.Roslyn/Services/PragmaSuppressionService.cs`
 - `tests/RoslynMcp.Tests/SuppressionServiceTests.cs`
 - `tests/RoslynMcp.Tests/PragmaScopeManipulationTests.cs`
 

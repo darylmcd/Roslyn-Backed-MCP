@@ -1,6 +1,6 @@
 # unused-code-analyzer-convention-complexity — Isolate convention filtering
 
-**row:** `unused-code-analyzer-convention-complexity` · **pri:** `Low` · **size:** `S` · **deps:** `—`
+**row:** `unused-code-analyzer-convention-complexity` · **pri:** `Low` · **size:** `S`
 
 ## Anchors
 
