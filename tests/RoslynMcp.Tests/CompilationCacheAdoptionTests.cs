@@ -1150,6 +1150,7 @@ public sealed class CompilationCacheAdoptionTests : IsolatedWorkspaceTestBase
             string targetPath,
             IReadOnlyList<string> arguments,
             TimeSpan timeout,
+            IReadOnlyList<EarlyKillPattern>? earlyKillPatterns,
             CancellationToken ct) =>
             Task.FromResult(new CommandExecutionDto(
                 Command: "dotnet",

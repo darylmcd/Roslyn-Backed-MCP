@@ -312,10 +312,11 @@ public sealed class WorkspaceLoadAutoRestoreTests : SharedWorkspaceTestBase
         public List<bool> InsideWriterAtRestore { get; } = [];
 
         public Task<CommandExecutionDto> ExecuteAsync(
-            string workspaceId, string targetPath, IReadOnlyList<string> arguments, TimeSpan timeout, CancellationToken ct)
+            string workspaceId, string targetPath, IReadOnlyList<string> arguments, TimeSpan timeout,
+            IReadOnlyList<EarlyKillPattern>? earlyKillPatterns, CancellationToken ct)
         {
             InsideWriterAtRestore.Add(gate.InsideWriter);
-            return inner.ExecuteAsync(workspaceId, targetPath, arguments, timeout, ct);
+            return inner.ExecuteAsync(workspaceId, targetPath, arguments, timeout, earlyKillPatterns, ct);
         }
 
         public ProjectStatusDto ResolveProject(string workspaceId, string projectName) => inner.ResolveProject(workspaceId, projectName);
@@ -393,6 +394,7 @@ public sealed class WorkspaceLoadAutoRestoreTests : SharedWorkspaceTestBase
             string targetPath,
             IReadOnlyList<string> arguments,
             TimeSpan timeout,
+            IReadOnlyList<EarlyKillPattern>? earlyKillPatterns,
             CancellationToken ct)
         {
             ct.ThrowIfCancellationRequested();

@@ -184,6 +184,7 @@ public sealed class IsolatedWorkspaceTestBaseTests
             string workingDirectory,
             string targetPath,
             IReadOnlyList<string> arguments,
+            IReadOnlyList<EarlyKillPattern>? earlyKillPatterns,
             CancellationToken ct)
         {
             ct.ThrowIfCancellationRequested();

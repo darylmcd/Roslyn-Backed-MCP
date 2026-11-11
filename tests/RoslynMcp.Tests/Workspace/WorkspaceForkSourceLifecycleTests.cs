@@ -573,7 +573,8 @@ public sealed class WorkspaceForkSourceLifecycleTests
         public void Dispose() => Interlocked.Increment(ref DisposeCount);
 
         public async Task<CommandExecutionDto> RunAsync(string workingDirectory, string targetPath,
-            IReadOnlyList<string> arguments, CancellationToken ct)
+            IReadOnlyList<string> arguments,
+            IReadOnlyList<EarlyKillPattern>? earlyKillPatterns, CancellationToken ct)
         {
             var registration = ct.Register(() => { Cancelled.TrySetResult(); OnCancellation?.Invoke(); });
             try

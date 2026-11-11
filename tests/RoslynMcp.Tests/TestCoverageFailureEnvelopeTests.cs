@@ -278,6 +278,7 @@ public sealed class TestCoverageFailureEnvelopeTests
             string workingDirectory,
             string targetPath,
             IReadOnlyList<string> arguments,
+            IReadOnlyList<EarlyKillPattern>? earlyKillPatterns,
             CancellationToken ct)
         {
             for (var i = 0; i < arguments.Count - 1; i++)
@@ -418,6 +419,7 @@ public sealed class TestCoverageFailureEnvelopeTests
             string workingDirectory,
             string targetPath,
             IReadOnlyList<string> arguments,
+            IReadOnlyList<EarlyKillPattern>? earlyKillPatterns,
             CancellationToken ct) =>
             throw _toThrow;
     }
@@ -440,6 +442,7 @@ public sealed class TestCoverageFailureEnvelopeTests
             string workingDirectory,
             string targetPath,
             IReadOnlyList<string> arguments,
+            IReadOnlyList<EarlyKillPattern>? earlyKillPatterns,
             CancellationToken ct) =>
             Task.FromResult(_result);
     }

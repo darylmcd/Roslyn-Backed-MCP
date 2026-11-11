@@ -17,13 +17,12 @@ public interface IGatedCommandExecutor : IDisposable
         string targetPath,
         IReadOnlyList<string> arguments,
         TimeSpan timeout,
-        CancellationToken ct);
+        CancellationToken ct) =>
+        ExecuteAsync(workspaceId, targetPath, arguments, timeout, earlyKillPatterns: null, ct);
 
     /// <summary>
-    /// Item 4: streaming variant that kills the spawned process early when any of
-    /// <paramref name="earlyKillPatterns"/> matches stdout or stderr. Default implementation
-    /// ignores the patterns and delegates to <see cref="ExecuteAsync(string, string, IReadOnlyList{string}, TimeSpan, CancellationToken)"/>
-    /// so unit tests and legacy executors keep compiling.
+    /// Runs a gated command and terminates the process early when a supplied pattern
+    /// matches stdout or stderr. A null or empty pattern list disables early termination.
     /// </summary>
     Task<CommandExecutionDto> ExecuteAsync(
         string workspaceId,
@@ -31,8 +30,7 @@ public interface IGatedCommandExecutor : IDisposable
         IReadOnlyList<string> arguments,
         TimeSpan timeout,
         IReadOnlyList<EarlyKillPattern>? earlyKillPatterns,
-        CancellationToken ct) =>
-        ExecuteAsync(workspaceId, targetPath, arguments, timeout, ct);
+        CancellationToken ct);
 
     /// <summary>
     /// Resolves a project by name or path within a workspace.

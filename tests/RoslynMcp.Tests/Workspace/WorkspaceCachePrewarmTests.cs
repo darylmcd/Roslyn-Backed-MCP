@@ -284,6 +284,7 @@ public sealed class WorkspaceCachePrewarmTests : IsolatedWorkspaceTestBase
             string targetPath,
             IReadOnlyList<string> arguments,
             TimeSpan timeout,
+            IReadOnlyList<EarlyKillPattern>? earlyKillPatterns,
             CancellationToken ct) =>
             throw new NotSupportedException("These tests disable autoRestore; dotnet should not be invoked.");
 

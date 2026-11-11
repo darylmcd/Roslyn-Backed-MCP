@@ -123,6 +123,7 @@ public sealed class TestCoverageErrorWireTests
             string workingDirectory,
             string targetPath,
             IReadOnlyList<string> arguments,
+            IReadOnlyList<EarlyKillPattern>? earlyKillPatterns,
             CancellationToken ct) =>
             throw new UnclassifiedRunnerException(Sentinel, new IOException(Sentinel));
     }

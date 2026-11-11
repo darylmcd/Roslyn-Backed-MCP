@@ -127,6 +127,7 @@ public sealed class TestCoveragePartialCoverletTests
             string targetPath,
             IReadOnlyList<string> arguments,
             TimeSpan timeout,
+            IReadOnlyList<EarlyKillPattern>? earlyKillPatterns,
             CancellationToken ct)
         {
             Budgets.Add(timeout);
@@ -423,6 +424,7 @@ public sealed class TestCoveragePartialCoverletTests
             string workingDirectory,
             string targetPath,
             IReadOnlyList<string> arguments,
+            IReadOnlyList<EarlyKillPattern>? earlyKillPatterns,
             CancellationToken ct)
         {
             // Locate the --results-directory argument so we know where to drop the fake
@@ -502,6 +504,7 @@ public sealed class TestCoveragePartialCoverletTests
             string workingDirectory,
             string targetPath,
             IReadOnlyList<string> arguments,
+            IReadOnlyList<EarlyKillPattern>? earlyKillPatterns,
             CancellationToken ct) =>
             throw _toThrow;
     }

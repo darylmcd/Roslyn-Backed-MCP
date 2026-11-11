@@ -61,6 +61,7 @@ public sealed class NuGetDependencyCacheLifetimeTests
             string targetPath,
             IReadOnlyList<string> arguments,
             TimeSpan timeout,
+            IReadOnlyList<EarlyKillPattern>? earlyKillPatterns,
             CancellationToken ct) =>
             throw new NotSupportedException("The scan is only prepared, never executed.");
 

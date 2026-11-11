@@ -484,6 +484,7 @@ public sealed class GateOperationDeadlineTests
             string workingDirectory,
             string targetPath,
             IReadOnlyList<string> arguments,
+            IReadOnlyList<EarlyKillPattern>? earlyKillPatterns,
             CancellationToken ct)
         {
             Interlocked.Increment(ref _callCount);

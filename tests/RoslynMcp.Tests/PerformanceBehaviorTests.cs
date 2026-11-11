@@ -226,6 +226,7 @@ public class PerformanceBehaviorTests : SharedWorkspaceTestBase
             string workingDirectory,
             string targetPath,
             IReadOnlyList<string> arguments,
+            IReadOnlyList<EarlyKillPattern>? earlyKillPatterns,
             CancellationToken ct)
         {
             var concurrentCalls = Interlocked.Increment(ref _currentCalls);

@@ -443,7 +443,8 @@ public sealed class WorkspaceForkGraphReplayTests : IsolatedWorkspaceTestBase
         internal string? ParentDestination { get; private set; }
 
         public async Task<CommandExecutionDto> RunAsync(string workingDirectory, string targetPath,
-            IReadOnlyList<string> arguments, CancellationToken ct)
+            IReadOnlyList<string> arguments,
+            IReadOnlyList<EarlyKillPattern>? earlyKillPatterns, CancellationToken ct)
         {
             Calls++;
             using var collection = new ProjectCollection();
@@ -463,7 +464,7 @@ public sealed class WorkspaceForkGraphReplayTests : IsolatedWorkspaceTestBase
             Assert.IsFalse(FileSystemPath.IsStrictDescendant(workingDirectory, parentDestination));
             Assert.IsTrue(FileSystemPath.IsStrictDescendant(sourceRoot, parentDestination));
             ParentDestination = parentDestination;
-            var result = await inner.RunAsync(workingDirectory, targetPath, arguments, ct);
+            var result = await inner.RunAsync(workingDirectory, targetPath, arguments, earlyKillPatterns, ct);
             Assert.AreEqual("restore", arguments[0]);
             RestoreSucceeded = result.Succeeded;
             return result;
@@ -476,7 +477,8 @@ public sealed class WorkspaceForkGraphReplayTests : IsolatedWorkspaceTestBase
 
         [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
         public Task<CommandExecutionDto> RunAsync(string workingDirectory, string targetPath,
-            IReadOnlyList<string> arguments, CancellationToken ct)
+            IReadOnlyList<string> arguments,
+            IReadOnlyList<EarlyKillPattern>? earlyKillPatterns, CancellationToken ct)
         {
             Calls++;
             using var collection = new ProjectCollection();
@@ -492,7 +494,8 @@ public sealed class WorkspaceForkGraphReplayTests : IsolatedWorkspaceTestBase
 
         [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
         public Task<CommandExecutionDto> RunAsync(string workingDirectory, string targetPath,
-            IReadOnlyList<string> arguments, CancellationToken ct)
+            IReadOnlyList<string> arguments,
+            IReadOnlyList<EarlyKillPattern>? earlyKillPatterns, CancellationToken ct)
         {
             Calls++;
             using var collection = new ProjectCollection();
@@ -511,7 +514,8 @@ public sealed class WorkspaceForkGraphReplayTests : IsolatedWorkspaceTestBase
 
         [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
         public Task<CommandExecutionDto> RunAsync(string workingDirectory, string targetPath,
-            IReadOnlyList<string> arguments, CancellationToken ct)
+            IReadOnlyList<string> arguments,
+            IReadOnlyList<EarlyKillPattern>? earlyKillPatterns, CancellationToken ct)
         {
             Calls++;
             using var collection = new ProjectCollection();
@@ -528,7 +532,8 @@ public sealed class WorkspaceForkGraphReplayTests : IsolatedWorkspaceTestBase
 
         [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
         public Task<CommandExecutionDto> RunAsync(string workingDirectory, string targetPath,
-            IReadOnlyList<string> arguments, CancellationToken ct)
+            IReadOnlyList<string> arguments,
+            IReadOnlyList<EarlyKillPattern>? earlyKillPatterns, CancellationToken ct)
         {
             Calls++;
             using var collection = new ProjectCollection();
