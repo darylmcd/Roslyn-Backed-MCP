@@ -98,7 +98,7 @@ public interface IEditService
     /// <param name="workspaceId">The workspace session identifier.</param>
     /// <param name="fileEdits">The per-file edit batches to preview, in order.</param>
     /// <param name="ct">Cancellation token.</param>
-    /// <param name="skipSyntaxCheck">When <c>false</c> (default), each <c>.cs</c> file is parsed after edits; parser errors surface as a syntax-error warning on the preview and the preview token is not issued.</param>
+    /// <param name="skipSyntaxCheck">When <c>false</c> (default), each <c>.cs</c> file is parsed after edits. Syntax failures refuse the preview before a token is issued.</param>
     Task<RefactoringPreviewDto> PreviewMultiFileTextEditsAsync(
         string workspaceId, IReadOnlyList<FileEditsDto> fileEdits, CancellationToken ct, bool skipSyntaxCheck = false);
 }

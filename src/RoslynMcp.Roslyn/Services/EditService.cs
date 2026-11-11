@@ -354,9 +354,9 @@ public sealed class EditService : IEditService
                 var syntaxErrors = GetCSharpSyntaxErrors(merged, filePath);
                 if (syntaxErrors.Count > 0)
                 {
-                    throw new InvalidOperationException(
-                        $"preview_multi_file_edit: simulated edits for '{filePath}' produce {syntaxErrors.Count} syntax error(s). " +
-                        "Pass skipSyntaxCheck=true if the intermediate state is intentional.");
+                    throw new PublicInvalidOperationException(
+                        $"Simulated edits produce {syntaxErrors.Count} C# syntax error(s). " +
+                        "Correct the C# syntax and reissue the preview.");
                 }
             }
 
@@ -771,7 +771,10 @@ public sealed class EditService : IEditService
             list.Add(new TextEditSyntaxErrorDto(lineSpan.Line + 1, lineSpan.Character + 1, d.GetMessage()));
         }
 
-        if (list.Count == 0 && root.ContainsSkippedText)
+        // ContainsSkippedText also covers legal directive messages (e.g. a #region
+        // label). Only actual recovered tokens trigger this diagnostic-free fallback.
+        if (list.Count == 0 && root.ContainsSkippedText &&
+            root.DescendantTrivia(descendIntoTrivia: true).Any(trivia => trivia.IsKind(SyntaxKind.SkippedTokensTrivia)))
         {
             list.Add(new TextEditSyntaxErrorDto(
                 1,

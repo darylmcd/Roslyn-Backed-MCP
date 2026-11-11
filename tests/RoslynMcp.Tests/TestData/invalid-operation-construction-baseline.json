@@ -648,12 +648,6 @@
     "Count": 1
   },
   {
-    "Path": "src/RoslynMcp.Roslyn/Services/EditService.cs",
-    "Member": "M:RoslynMcp.Roslyn.Services.EditService.SimulatePreviewAsync(Microsoft.CodeAnalysis.Solution,System.Collections.Generic.IReadOnlyList{RoslynMcp.Core.Models.FileEditsDto},System.Threading.CancellationToken,System.Boolean)",
-    "Fingerprint": "D6AB8CC29A12B246B51517FC16F0A9BADFB9D7AC576AD016D5FDE7703B66E0F4",
-    "Count": 1
-  },
-  {
     "Path": "src/RoslynMcp.Roslyn/Services/EditorConfigService.cs",
     "Member": "M:RoslynMcp.Roslyn.Services.EditorConfigService.GetOptionsAsync(System.String,System.String,System.Threading.CancellationToken)",
     "Fingerprint": "B572FB067F2BCE500882A83D8BC5E002C85BBB96D2E0E97553C47AC12C0B7B40",
