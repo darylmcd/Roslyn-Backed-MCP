@@ -1,6 +1,6 @@
 # preview-stores-without-compile-delta-audit — Audit preview producers that store tokens with no compile-error delta check
 
-**row:** `preview-stores-without-compile-delta-audit` · **pri:** `Low` · **size:** `L` · **deps:** `extract-type-compile-gate-dependent-projects`
+**row:** `preview-stores-without-compile-delta-audit` · **pri:** `Low` · **size:** `L`
 
 ## Anchors
 
@@ -15,7 +15,7 @@
 ## Acceptance
 
 - [ ] Per producer: record whether another gate already refuses added compiler errors, with the test that proves it.
-- [ ] For each producer with no gate, file a `deps`-chained row (the shared helper from `extract-type-compile-gate-dependent-projects` first) rather than fixing here.
+- [ ] For each producer with no gate, file a row that reuses the shared `PreviewCompilationDelta.IntroducedErrorsAsync` (src/RoslynMcp.Roslyn/Helpers/PreviewCompilationDelta.cs, shipped in PR #2064) rather than fixing here.
 
 ## Evidence
 

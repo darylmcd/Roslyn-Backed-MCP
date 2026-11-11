@@ -1,6 +1,6 @@
 # document-and-type-not-found-report-invalid-operation — Document/Type "not found" refusals still report InvalidOperation
 
-**row:** `document-and-type-not-found-report-invalid-operation` · **pri:** `Low` · **size:** `M`
+**row:** `document-and-type-not-found-report-invalid-operation` · **pri:** `Low` · **size:** `M` · **deps:** `type-extraction-service-refusals-public-message`
 
 ## Anchors
 
@@ -18,3 +18,7 @@
 ## Evidence
 
 - Found while shipping `project-name-not-found-category-next-major`, which fixed only unknown project names and unresolvable rename targets. The gate retry matches the "Document not found" / "not found in workspace" message text on InvalidOperationException, so a blind category change would break the retry.
+
+## Notes
+
+2026-11-11 remediation: excluded, major. Changes the error category InvalidOperation to NotFound at about 25 sites (existing public wire behavior); same bucket as type-extraction-service-refusals-public-message. Next-major trigger: ships with type-extraction-service-refusals-public-message (ADR + migration note per docs/release-policy.md Compatibility Policy), or an operator decision that replacing one refusal with another is not breaking.
