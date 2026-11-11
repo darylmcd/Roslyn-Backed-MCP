@@ -87,7 +87,7 @@ internal static class InterfaceHandlerBindingValidator
                 diagnostic.Location.SourceTree == tree).ToArray();
             if (errors.Length > 0)
                 throw new PublicInvalidOperationException("The extracted interface cannot preserve interpolated string handler binding: " +
-                    FormatIds(errors) +
+                    InterfaceNullableProjection.FormatIds(errors) +
                     ". Keep the handler receiver and forwarded arguments compatible with the extracted interface.");
 
             var model = checkedCompilation.GetSemanticModel(tree);
@@ -107,9 +107,6 @@ internal static class InterfaceHandlerBindingValidator
                     "The projected receiver cannot preserve the original constructor selection.");
         }
     }
-
-    internal static string FormatIds(IEnumerable<Diagnostic> errors) =>
-        string.Join(", ", errors.Select(error => error.Id).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal));
 
     private static ClassDeclarationSyntax WithContainingTypeContext(ClassDeclarationSyntax probe, INamedTypeSymbol concrete,
         SyntaxGenerator generator)
