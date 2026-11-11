@@ -6,7 +6,7 @@
 
 - `tests/RoslynMcp.Tests/SymbolTraversalTests.cs:216`
 - `tests/RoslynMcp.Tests/TypeNamespaceWalkerTests.cs:86`
-- `tests/RoslynMcp.Tests/Helpers/SymbolCompilationFixture.cs (new)`
+- (new) `tests/RoslynMcp.Tests/Helpers/SymbolCompilationFixture.cs`
 
 ## Acceptance
 

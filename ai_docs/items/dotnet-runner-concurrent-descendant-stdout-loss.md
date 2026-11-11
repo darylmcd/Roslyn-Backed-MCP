@@ -5,7 +5,7 @@
 ## Anchors
 
 - `tests/RoslynMcp.Tests/DotnetCommandRunnerPipeLifetimeTests.cs:117` — `RunAsync_ConcurrentOwnedDescendants_HoldPipesWithoutDisruptingEachOtherAsync`; assertion at `:189` (`StdOut` contains `parent-output`).
-- `DotnetCommandRunner.RunAsync` / `ReadBoundedAsync` and `PostExitDrainGracePeriod` — post-exit bounded drain of stdout/stderr while a descendant keeps the pipe handles open.
+- `src/RoslynMcp.Roslyn/Helpers/DotnetCommandRunner.cs:145-153` — `RunAsync`, `ReadBoundedAsync`, and `PostExitDrainGracePeriod` — post-exit bounded drain of stdout/stderr while a descendant keeps the pipe handles open.
 
 ## Acceptance
 

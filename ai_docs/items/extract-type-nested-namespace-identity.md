@@ -1,6 +1,6 @@
 # extract-type-nested-namespace-identity — Preserve the full extracted type namespace
 
-**row:** `extract-type-nested-namespace-identity` · **pri:** `Medium` · **size:** `S` · **verified:** `34a87d9c712c19c0af78caca46be5d50af6ab384` · **deps:** `class-split-nested-namespace-identity,split-service-nested-namespace-identity`
+**row:** `extract-type-nested-namespace-identity` · **pri:** `Medium` · **size:** `S` · **verified:** `34a87d9c712c19c0af78caca46be5d50af6ab384`
 
 ## Anchors
 

@@ -1,6 +1,6 @@
 # unused-code-analyzer-dead-local-complexity — Decompose dead-local analysis
 
-**row:** `unused-code-analyzer-dead-local-complexity` · **pri:** `Low` · **size:** `S` · **deps:** `—`
+**row:** `unused-code-analyzer-dead-local-complexity` · **pri:** `Low` · **size:** `S`
 
 ## Anchors
 

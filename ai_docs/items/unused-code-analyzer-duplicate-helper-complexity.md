@@ -1,6 +1,6 @@
 # unused-code-analyzer-duplicate-helper-complexity — Decompose duplicate-helper analysis
 
-**row:** `unused-code-analyzer-duplicate-helper-complexity` · **pri:** `Low` · **size:** `S` · **deps:** `—`
+**row:** `unused-code-analyzer-duplicate-helper-complexity` · **pri:** `Low` · **size:** `S`
 
 ## Anchors
 

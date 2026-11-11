@@ -6,8 +6,7 @@
 
 - `src/RoslynMcp.Roslyn/Services/SingleTestScaffolder.cs`
 - `src/RoslynMcp.Roslyn/Services/BatchTestScaffolder.cs`
-- `tests/RoslynMcp.Tests/ScaffoldingIntegrationTests.cs`
-- `tests/RoslynMcp.Tests/BatchScaffoldingTests.cs`
+- `tests/RoslynMcp.Tests/ScaffoldingIntegrationTests.cs:1213`
 
 ## Acceptance
 
@@ -20,4 +19,4 @@
 Cancel during an injected sibling read and assert `OperationCanceledException` propagates without a preview token, partial disk output, or a redacted-warning downgrade.
 
 
-> Test-anchor correction (2026-09-04): `tests/RoslynMcp.Tests/BatchScaffoldingTests.cs` does not exist. Use existing batch coverage in `tests/RoslynMcp.Tests/ScaffoldingIntegrationTests.cs`; no new test file is intended.
+> The existing `tests/RoslynMcp.Tests/ScaffoldingIntegrationTests.cs` suite owns the batch preview regressions. Extend that suite.

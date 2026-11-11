@@ -6,7 +6,7 @@
 
 - `tests/RoslynMcp.Tests/TestBase.cs`
 - `tests/RoslynMcp.Tests/AnalysisToolsTests.cs`
-- `tests/RoslynMcp.Tests/AliasToolsTests.cs`
+- `tests/RoslynMcp.Tests/AliasRemovalTests.cs:42-47`
 
 ## Acceptance
 

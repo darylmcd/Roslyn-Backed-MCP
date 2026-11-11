@@ -5,7 +5,8 @@
 ## Anchors
 
 - `src/RoslynMcp.Host.Stdio/Tools/ToolErrorHandler.cs:134-136`
-- `src/RoslynMcp.Host.Stdio/Tools/ToolErrorHandler.cs:670`
+- `src/RoslynMcp.Host.Stdio/Tools/ToolErrorHandler.cs:623`
+- `src/RoslynMcp.Host.Stdio/Tools/ToolErrorHandler.cs:634-639`
 - `src/RoslynMcp.Roslyn/Services/WorkspaceExecutionGate.cs:138-310`
 - `src/RoslynMcp.Roslyn/Services/GatedCommandExecutor.cs:57-102`
 - `src/RoslynMcp.Core/Services/IGatedCommandExecutor.cs`
@@ -13,42 +14,34 @@
 - `src/RoslynMcp.Roslyn/Services/TestRunnerService.cs:140-320`
 - `src/RoslynMcp.Roslyn/Services/NuGetDependencyService.cs:245-260`
 - `src/RoslynMcp.Roslyn/Services/WorkspaceForkApplyService.cs:777-816`
-- (new) `src/RoslynMcp.Core/Services/OperationTimeoutException.cs`
+- `src/RoslynMcp.Core/Services/OperationTimeoutException.cs`
 - `tests/RoslynMcp.Tests/TestRunTimeoutWireTests.cs`
 - (new) `tests/RoslynMcp.Tests/TimeoutEnvelopeKnobTests.cs`
 
 ## Acceptance
 
-- [ ] A Core typed timeout exception carries which timer fired, its env knob, and the configured and elapsed time. Each source maps to one knob:
-  - The gate's request timeouts (`WorkspaceExecutionGate.cs:146`, `:305`) → `ROSLYNMCP_REQUEST_TIMEOUT_SECONDS`.
-  - `build_workspace` / `build_project` commands (`BuildService.cs:36`, `:57`), and `test_run`'s TUnit OR-filter restore, which runs under `BuildTimeout` (`TestRunnerService.cs:314-319`) → `ROSLYNMCP_BUILD_TIMEOUT_SECONDS`.
-  - `test_run` commands (`TestRunnerService.cs:148-153`) → `ROSLYNMCP_TEST_TIMEOUT_SECONDS`.
-  - `nuget_vulnerability_scan` commands (`NuGetDependencyService.cs:250-255`) → `ROSLYNMCP_VULN_SCAN_TIMEOUT_SECONDS`.
-  - The `workspace_fork_apply` restore (`WorkspaceForkApplyService.cs:533`) → `ROSLYNMCP_FORK_RESTORE_TIMEOUT_MINUTES` (`:355-359`).
-- [ ] Each caller of `GatedCommandExecutor.ExecuteAsync` passes the timer identity along with its budget, and the executor never infers it from the budget value or the arguments. The identity must be required at every command call site, and all test doubles must implement or explicitly preserve it; no default overload may silently discard the identity.
-- [ ] `ToolErrorHandler` renders the timer, its knob and the configured time. A `TimeoutException` without timer identity gets a generic timeout message that names no knob; the script worker IPC and cleanup bounds (`ScriptWorkerProcess.cs:59`, `:93`, `:243`) are fixed constants with no knob. The handler never guesses a "build/test" hint.
-- [ ] The envelope's `exceptionType` stays `TimeoutException` for the typed exception. `BuildErrorEnvelope` writes `ex.GetType().Name` (`ToolErrorHandler.cs:670`), which would surface `OperationTimeoutException`. Route that field through one wire-name mapping that renders `OperationTimeoutException` as `nameof(TimeoutException)`. `public-argument-exception-core-move`'s marker normalization (its Acceptance bullet 3) belongs in the same mapping, so whichever of the two rows lands second extends it instead of adding a second rule. The timer identity travels on the typed exception, not in `Exception.Data` on a plain `TimeoutException`.
-- [ ] `test_run`'s own timeout envelope (`TestRunnerService.cs:175-177`, "raise the configured test timeout") names `ROSLYNMCP_TEST_TIMEOUT_SECONDS`.
-- [ ] Rendered messages stay path-free and never echo caller text. The command-budget message at `GatedCommandExecutor.cs:122` embeds the full dotnet argument list, including a caller's test filter, so it is never rendered verbatim.
-- [ ] Red-first wire tests. A gate request timeout during `test_run` names `ROSLYNMCP_REQUEST_TIMEOUT_SECONDS`; today the envelope leads with the build/test knobs. A `nuget_vulnerability_scan` command timeout names `ROSLYNMCP_VULN_SCAN_TIMEOUT_SECONDS`; today it gets the same build/test/request text, which never mentions that knob. Every `TimeoutEnvelopeKnobTests` case, the no-identity fallback included, also asserts `exceptionType == "TimeoutException"`, so the typed exception cannot leak its own type name.
-- [ ] Compatibility class: reassess against the current 5.x release policy before implementation; preserve the released timeout category, `isError`, and wire exception type. Every timeout keeps category `Timeout` and today's `isError` value; only the message text changes. The typed exception derives from `TimeoutException`, so the existing `catch (TimeoutException)` sites (`TestRunnerService.cs:156`, `ScriptWorkerProcess.cs:57`) and the handler's nearest-base lookup (`ToolErrorHandler.cs:134-136`) keep working. The envelope's `exceptionType` stays `TimeoutException` through the wire-name mapping above. `public-argument-exception-core-move` does not provide it: that row normalizes only `IPublicMessageException` markers, and this row does not depend on it. Any structured timer or knob field is additive.
+- [ ] Through the public envelopes, verify each timeout identifies the timer that fired, its configured budget and the applicable knob. Cover build, test, vulnerability scan, TUnit filter restore and fork restore. The dependency row owns timer propagation through those command and restore paths.
+- [ ] Preserve the existing request-timeout envelope and its `ROSLYNMCP_REQUEST_TIMEOUT_SECONDS` hint. Untyped timeouts keep the generic fallback without a knob.
+- [ ] Verify `test_run`'s result envelope identifies `ROSLYNMCP_TEST_TIMEOUT_SECONDS` when the test command budget fires. Keep literal caller text, paths and command arguments out of public timeout messages.
+- [ ] Preserve category `Timeout`, the released `isError` behavior and `exceptionType: TimeoutException` for typed and untyped failures. Timer identity travels on the typed exception.
+- [ ] Observe the command/restore wire regressions on the unchanged implementation, then pass them with the dependency's changes. Retain the existing request and generic fallback controls.
 
 ## Evidence
 
-- `WorkspaceExecutionGate.cs:146-150` and `:305-309` throw `TimeoutException("... request timeout of 120s. Increase ROSLYNMCP_REQUEST_TIMEOUT_SECONDS ...")`. `ToolErrorHandler.cs:134-136` maps every `TimeoutException` to "The operation timed out. For build/test operations, increase ROSLYNMCP_BUILD_TIMEOUT_SECONDS or ROSLYNMCP_TEST_TIMEOUT_SECONDS. For other operations, increase ROSLYNMCP_REQUEST_TIMEOUT_SECONDS.", which discards the specific message. Retro 2026-09-27 envelope: `{"category":"Timeout","tool":"test_run","message":"The operation timed out. For build/test operations, increase ...","heldMs":120101}`.
+- Before PR #2035, `WorkspaceExecutionGate.cs:146-150` and `:305-309` threw `TimeoutException("... request timeout of 120s. Increase ROSLYNMCP_REQUEST_TIMEOUT_SECONDS ...")`. `ToolErrorHandler.cs:134-136` mapped every `TimeoutException` to "The operation timed out. For build/test operations, increase ROSLYNMCP_BUILD_TIMEOUT_SECONDS or ROSLYNMCP_TEST_TIMEOUT_SECONDS. For other operations, increase ROSLYNMCP_REQUEST_TIMEOUT_SECONDS.", which discarded the specific message. Retro 2026-09-27 envelope: `{"category":"Timeout","tool":"test_run","message":"The operation timed out. For build/test operations, increase ...","heldMs":120101}`.
 - `GatedCommandExecutor.cs:122` has three callers at `19ccd61b`, and it throws the same untyped `TimeoutException` for all of them:
   - `BuildService` (`BuildTimeout`) lets it propagate.
   - `TestRunnerService` turns its `TestTimeout` run into a result envelope (`:156-190`) and lets its `BuildTimeout` restore (`:314`) propagate.
   - `NuGetDependencyService.cs:250-255` (`VulnerabilityScanTimeout`, knob bound at `Program.cs:245`, `:255-256`) lets it propagate.
 - Other sources: `WorkspaceForkApplyService.cs:533` (fork restore, knob `ROSLYNMCP_FORK_RESTORE_TIMEOUT_MINUTES`) and `ScriptWorkerProcess.cs:59`, `:93`, `:243` (constant bounds).
 
+- PR #2035 (`89626676`) delivered the typed request-gate timeout and generic no-knob fallback. Retain those behaviors when wiring command and fork timeouts.
+
 ## Context
 
-- Independent of `gated-build-test-operation-deadline`: after that lands, a real request timeout on any gated tool still gets the wrong hint.
-- Medium: this is message quality. The retro's wrong-knob envelopes came from `test_run` request timeouts (within the 20 occurrences of that retro issue), which `gated-build-test-operation-deadline` (High) removes; this row keeps every remaining timeout honest.
+- Remaining scope is command and fork timers. Request timers, the existing wire type mapping and the generic fallback are preservation checks.
+- Split by command and fork budget owner before implementing. Keep this umbrella dependent on the concrete wiring work.
 
 ## Notes
-
-- Size L (9 production files). Split seam: (1) the typed exception, the `ToolErrorHandler` rendering, the gate's request timeouts and the generic no-knob fallback (the new Core file, `ToolErrorHandler.cs`, `WorkspaceExecutionGate.cs`) clear the retro symptom on their own; (2) the command budgets and the fork restore name their knobs (`GatedCommandExecutor.cs`, `IGatedCommandExecutor.cs`, `BuildService.cs`, `TestRunnerService.cs`, `NuGetDependencyService.cs`, `WorkspaceForkApplyService.cs`).
 
 2026-10-15 live witness: Roslyn MCP test_run of change-signature/catalog related classes returned category Timeout, heldMs120050, with generic build/test/request-knob text and no result counts. Bounded12-case runtime probes succeeded before this broader call. Keep using MCP for bounded probes; the mandatory full unsharded just ci owns complete suite proof. No timeout increase or passing broad-call claim.

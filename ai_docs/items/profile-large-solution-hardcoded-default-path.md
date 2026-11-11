@@ -2,7 +2,6 @@
 
 **row:** `profile-large-solution-hardcoded-default-path` · **pri:** `Low` · **size:** `S`
 
-# profile-large-solution-hardcoded-default-path — Remove the hardcoded maintainer default path
 
 ## Anchors
 
@@ -21,4 +20,3 @@
 
 - eng/profile-large-solution.ps1:2 defaults -SolutionPath to C:/Code-Repo/OrchardCore/OrchardCore.slnx; copilot-instructions.md forbids hardcoded environment-specific values. (doc-audit 2026-09-23)
 - Operator 2026-09-24: the local OrchardCore checkout was only for initial large-repo testing. It is no longer required or present under C:/Code-Repo, so the default path, docs/large-solution-profiling-baseline.md:37 ("default target"), and the runbook's local-checkout assumption are all stale.
-

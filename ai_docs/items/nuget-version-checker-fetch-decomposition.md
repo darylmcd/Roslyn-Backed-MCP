@@ -1,6 +1,6 @@
 # nuget-version-checker-fetch-decomposition — Decompose latest-version fetch orchestration
 
-**row:** `nuget-version-checker-fetch-decomposition` · **pri:** `Low` · **size:** `S` · **deps:** `—`
+**row:** `nuget-version-checker-fetch-decomposition` · **pri:** `Low` · **size:** `S`
 
 ## Anchors
 

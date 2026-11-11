@@ -5,7 +5,7 @@
 ## Anchors
 
 - `src/RoslynMcp.Host.Stdio/Tools/AdvancedAnalysisTools.cs` — `GetDiRegistrations`, `GetNamespaceDependencies`, `GetNuGetDependencies`.
-- New `src/RoslynMcp.Host.Stdio/Tools/DependencyAnalysisTools.cs`.
+- (new) `src/RoslynMcp.Host.Stdio/Tools/DependencyAnalysisTools.cs`.
 - `tests/RoslynMcp.Tests/DiLifetimeOverrideTests.cs`
 - `tests/RoslynMcp.Tests/ExpandedSurfaceIntegrationTests.cs`
 - `tests/RoslynMcp.Tests/ServerDiscoveryWireTests.cs`

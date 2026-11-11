@@ -1,6 +1,6 @@
 # refactoring-changed-document-summary-complexity — Decompose changed-document summaries
 
-**row:** `refactoring-changed-document-summary-complexity` · **pri:** `Low` · **size:** `S` · **deps:** `—`
+**row:** `refactoring-changed-document-summary-complexity` · **pri:** `Low` · **size:** `S`
 
 ## Anchors
 

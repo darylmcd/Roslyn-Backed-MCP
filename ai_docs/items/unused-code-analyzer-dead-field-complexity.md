@@ -1,6 +1,6 @@
 # unused-code-analyzer-dead-field-complexity — Decompose dead-field analysis
 
-**row:** `unused-code-analyzer-dead-field-complexity` · **pri:** `Low` · **size:** `S` · **deps:** `—`
+**row:** `unused-code-analyzer-dead-field-complexity` · **pri:** `Low` · **size:** `S`
 
 ## Anchors
 

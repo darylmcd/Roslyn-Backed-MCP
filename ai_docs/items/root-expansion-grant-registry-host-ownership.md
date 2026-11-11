@@ -6,7 +6,7 @@
 
 - `src/RoslynMcp.Host.Stdio/Program.cs:166`
 - `src/RoslynMcp.Host.Stdio/Security/RootExpansionGrantRegistry.cs:26-57`
-- `src/RoslynMcp.Host.Stdio/Security/ApplyPathBoundary.cs` (added by `static-singleton-di-bypass-core-services` child 1; use the name that child lands)
+- `ai_docs/items/static-singleton-di-bypass-core-services.md:32-33` — prerequisite that introduces the boundary service (planned as ApplyPathBoundary).
 - `src/RoslynMcp.Host.Stdio/Tools/WorkspaceTools.cs:38-98`
 - `src/RoslynMcp.Host.Stdio/Tools/ToolDispatch.cs:333`
 - `tests/RoslynMcp.Tests/WorkspaceCapLruEvictionTests.cs:117-162`

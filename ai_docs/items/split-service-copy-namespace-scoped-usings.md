@@ -1,17 +1,19 @@
 # split-service-copy-namespace-scoped-usings — Copy namespace-scoped usings into split_service_with_di partition files
 
-**row:** `split-service-copy-namespace-scoped-usings` · **pri:** `Medium` · **size:** `S` · **deps:** `split-service-forward-ref-out-in-arguments`
+**row:** `split-service-copy-namespace-scoped-usings` · **pri:** `Medium` · **size:** `M` · **deps:** `split-service-forward-ref-out-in-arguments`
 
 ## Anchors
 
 - `src/RoslynMcp.Roslyn/Services/SymbolRefactorService.cs:417`
 - `src/RoslynMcp.Roslyn/Services/SymbolRefactorService.cs:768`
+- `src/RoslynMcp.Roslyn/Services/ClassSplitOrchestrator.cs:125-140`
 - `tests/RoslynMcp.Tests/CompositeSplitServiceDiPreviewTests.cs`
+- `tests/RoslynMcp.Tests/ClassSplitReceivingNamespaceIntegrationTests.cs`
 
 ## Acceptance
 
-- [ ] Partition files carry the usings declared inside the source namespace block as well as the file-level usings (`context.Usings` currently captures file-level only, `:417`), or the split is refused with a specific reason.
-- [ ] Regression test: a moved method that depends on a namespace-scoped using yields a preview with zero new `compile_check` errors.
+- [ ] Generated service partitions and class partials retain the namespace-scoped usings needed to preserve moved member binding. Preserve scope and ordering of aliases and ordinary imports.
+- [ ] Public preview, apply and reload retain the original binding for a moved member using a namespace-scoped alias or import in each split route.
 
 ## Evidence
 

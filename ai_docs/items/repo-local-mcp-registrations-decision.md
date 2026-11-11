@@ -2,7 +2,6 @@
 
 **row:** `repo-local-mcp-registrations-decision` · **pri:** `Low` · **size:** `M`
 
-# repo-local-mcp-registrations-decision — Decide the tracked repo-local MCP registrations
 
 ## Anchors
 

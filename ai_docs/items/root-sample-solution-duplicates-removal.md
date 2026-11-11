@@ -2,7 +2,6 @@
 
 **row:** `root-sample-solution-duplicates-removal` · **pri:** `Low` · **size:** `L`
 
-# root-sample-solution-duplicates-removal — Delete the stale root sample duplicates
 
 ## Anchors
 

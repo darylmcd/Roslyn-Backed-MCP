@@ -5,8 +5,8 @@
 ## Anchors
 
 - `tests/RoslynMcp.Tests/TestRunFailureEnvelopeTests.cs`
-- `tests/RoslynMcp.Tests/TestRunFailureClassificationTests.cs` — add focused classification coverage.
-- `tests/RoslynMcp.Tests/TestRunPagingContractTests.cs` — add focused paging coverage.
+- (new) `tests/RoslynMcp.Tests/TestRunFailureClassificationTests.cs` — add focused classification coverage.
+- (new) `tests/RoslynMcp.Tests/TestRunPagingContractTests.cs` — add focused paging coverage.
 
 ## Acceptance
 

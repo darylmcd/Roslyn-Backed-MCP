@@ -2,7 +2,6 @@
 
 **row:** `markdown-link-destination-parser` · **pri:** `Low` · **size:** `S`
 
-# markdown-link-destination-parser
 
 ## Anchors
 

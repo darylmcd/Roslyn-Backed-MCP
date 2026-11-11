@@ -2,7 +2,6 @@
 
 **row:** `adr-0008-names-other-repos-privacy-review` · **pri:** `Low` · **size:** `S`
 
-# adr-0008-names-other-repos-privacy-review — Privacy-review ADR 0008
 
 ## Anchors
 

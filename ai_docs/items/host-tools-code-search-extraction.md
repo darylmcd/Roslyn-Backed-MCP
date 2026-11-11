@@ -5,9 +5,9 @@
 ## Anchors
 
 - `src/RoslynMcp.Host.Stdio/Tools/AdvancedAnalysisTools.cs` — `FindReflectionUsages`, `SemanticSearch`.
-- New `src/RoslynMcp.Host.Stdio/Tools/CodeSearchTools.cs`.
+- (new) `src/RoslynMcp.Host.Stdio/Tools/CodeSearchTools.cs`.
 - `tests/RoslynMcp.Tests/FindReflectionUsagesPaginationTests.cs`
-- New `tests/RoslynMcp.Tests/CodeSearchToolsTests.cs`.
+- (new) `tests/RoslynMcp.Tests/CodeSearchToolsTests.cs`.
 
 ## Acceptance
 

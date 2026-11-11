@@ -1,11 +1,11 @@
 # loadasync-watch-registered-after-initial-load — Register the file watcher before the initial load reads disk
 
-**row:** `loadasync-watch-registered-after-initial-load` · **pri:** `Medium` · **size:** `S` · **verified:** `a2a51ec4de033bfd3aa36ba9d238b73e849b0f9a`
+**row:** `loadasync-watch-registered-after-initial-load` · **pri:** `Medium` · **size:** `M`
 
 ## Anchors
 
-- `src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs`
-- `src/RoslynMcp.Roslyn/Services/FileWatcherService.cs`
+- `src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs:512-537`
+- `src/RoslynMcp.Roslyn/Services/FileWatcherService.cs:165`
 
 ## Acceptance
 

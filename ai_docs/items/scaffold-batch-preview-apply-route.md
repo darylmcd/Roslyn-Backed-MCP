@@ -5,8 +5,9 @@
 ## Anchors
 
 - `src/RoslynMcp.Roslyn/Services/BatchTestScaffolder.cs:236`
-- `src/RoslynMcp.Host.Stdio/Tools/OrchestrationTools.cs:124-129`
+- `src/RoslynMcp.Host.Stdio/Tools/OrchestrationTools.cs:94-114`
 - `src/RoslynMcp.Host.Stdio/Tools/ScaffoldingTools.cs:62-67`
+- `src/RoslynMcp.Host.Stdio/Tools/ScaffoldingTools.cs:314-336`
 - `tests/RoslynMcp.Tests/ToolDispatchTests.cs`
 
 ## Acceptance
@@ -19,7 +20,9 @@
 
 ## Evidence
 
-- Parent `preview-token-store-mismatch-false-stale`: BatchTestScaffolder stores in `IPreviewStore` while `apply_composite_preview` looks in `ICompositePreviewStore`.
+- Parent `preview-token-store-mismatch-false-stale`: BatchTestScaffolder stores in `IPreviewStore` while `apply_composite` looks in `ICompositePreviewStore`.
+
+- The previous `apply_composite_preview` spelling belongs to the [pre-v5 binding](https://github.com/darylmcd/Roslyn-Backed-MCP/blob/8073746cd9ca2e92d95d62bc848371da1a217094/src/RoslynMcp.Host.Stdio/Tools/OrchestrationTools.cs). ADR 0011 documents its replacement.
 
 ## Context
 

@@ -2,7 +2,6 @@
 
 **row:** `retro-report-oversized-evidence-split` · **pri:** `Low` · **size:** `S`
 
-# retro-report-oversized-evidence-split — Split the 360 KB retro report and budget the prompt
 
 ## Anchors
 

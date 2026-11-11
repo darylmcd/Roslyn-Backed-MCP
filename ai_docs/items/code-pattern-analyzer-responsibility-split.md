@@ -5,10 +5,10 @@
 ## Anchors
 
 - `src/RoslynMcp.Roslyn/Services/CodePatternAnalyzer.cs`
-- `src/RoslynMcp.Roslyn/Services/ReflectionUsageAnalyzer.cs`
+- (new) `src/RoslynMcp.Roslyn/Services/ReflectionUsageAnalyzer.cs`
 - `src/RoslynMcp.Core/Services/ICodePatternAnalyzer.cs`
 - `tests/RoslynMcp.Tests/FindReflectionUsagesPaginationTests.cs`
-- `tests/RoslynMcp.Tests/CodePatternAnalyzerTests.cs`
+- `tests/RoslynMcp.Tests/SemanticSearchFallbackTests.cs`
 
 ## Acceptance
 

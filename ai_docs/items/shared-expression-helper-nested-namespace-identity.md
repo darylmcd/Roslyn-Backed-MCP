@@ -1,6 +1,6 @@
 # shared-expression-helper-nested-namespace-identity — Preserve the full shared-expression helper namespace
 
-**row:** `shared-expression-helper-nested-namespace-identity` · **pri:** `Medium` · **size:** `S` · **verified:** `34a87d9c712c19c0af78caca46be5d50af6ab384` · **deps:** `class-split-nested-namespace-identity,split-service-nested-namespace-identity`
+**row:** `shared-expression-helper-nested-namespace-identity` · **pri:** `Medium` · **size:** `S` · **verified:** `34a87d9c712c19c0af78caca46be5d50af6ab384`
 
 ## Anchors
 

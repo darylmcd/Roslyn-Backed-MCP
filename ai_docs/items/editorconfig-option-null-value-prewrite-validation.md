@@ -1,14 +1,14 @@
 # editorconfig-option-null-value-prewrite-validation — Investigate null option values before transaction
 
-**row:** `editorconfig-option-null-value-prewrite-validation` · **pri:** `Medium` · **size:** `M` · **deps:** `—`
+**row:** `editorconfig-option-null-value-prewrite-validation` · **pri:** `Medium` · **size:** `M`
 
 ## Anchors
 
-- `src/RoslynMcp.Roslyn/Services/EditorConfigService.cs:345`
-- `src/RoslynMcp.Roslyn/Services/EditorConfigService.cs:391`
-- `src/RoslynMcp.Host.Stdio/Tools/EditorConfigTools.cs:43`
+- `src/RoslynMcp.Roslyn/Helpers/EditorConfigAssignmentValidator.cs:34-46` — earliest null dereference.
+- `src/RoslynMcp.Roslyn/Services/EditorConfigService.cs:345-416` — pre-document validation and later write coordinator.
+- `src/RoslynMcp.Host.Stdio/Tools/EditorConfigTools.cs:43-51` — stable tool dispatch.
 - `tests/RoslynMcp.Tests/EditorConfigServiceTests.cs`
-- `tests/RoslynMcp.Tests/Helpers/ProductionParityMcpHarness.cs`
+- `tests/RoslynMcp.Tests/EditorConfigArgumentRefusalWireTests.cs`
 
 ## Acceptance
 
@@ -19,8 +19,11 @@
 
 ## Evidence
 
-- Source re-vet at `c43e8fa6995151b22be6feb2c4a1020263b88ce5`; no runtime reproduction claimed.
-- `SetOptionAsync` accepts nonnullable `string value` at line346; only key is validated at lines350-353.
-- Local transaction `Write` calls `UpsertKeyAcrossCSharpSections(lines, csharpSection, key.Trim(), value.Trim());` at line391 after path/coordinator resolution and original snapshot capture.
-- Direct null input dereferences `value` at that construct; actual Host null binding, mutation and rollback outcomes require reproduction before asserting them.
-- Existing section-matching and parallel-section rows address different mechanisms. Original count=15 remediation selection remains unchanged.
+### Explicit null on the 5.x wire
+
+- Base: `34a87d9c712c19c0af78caca46be5d50af6ab384`.
+- Raw `tools/call` with explicit JSON `"value": null` reached the shared validator in protocol `2025-11-25` and `2026-07-28`. Both returned `isError: true`, category `InternalError` and a correlation ID, with no public exception type or schema hint. The production sink correlated each response to `NullReferenceException`.
+- Direct service test observed `NullReferenceException` at `EditorConfigAssignmentValidator.Validate` before any coordinator entry. Both protocol probes preserved file bytes, solution/version, watcher state, undo target and change history. Two wire probes passed. The direct regression failed at the expected exception mismatch.
+- The typed argument refusal changes the stable wire category. Resume on the next operator-approved major with an ADR, migration note and red-first tests. Use the existing validator before resolving the document or opening the write transaction.
+- Machine-gated `dotnet test tests/RoslynMcp.Tests/RoslynMcp.Tests.csproj` selected `SetOptionAsync_NullValue_RefusesBeforeEnteringWriteTransaction` and `SetEditorConfigOption_ExplicitNullValue_RecordsBaseWireAndState`. The base production code yielded the expected direct failure and two wire passes. The enhanced wire-only assertions passed in both protocol eras.
+- The earlier line-391 transaction premise was superseded by the pre-transaction assignment validator. Keep blank, reset and arbitrary option values valid.

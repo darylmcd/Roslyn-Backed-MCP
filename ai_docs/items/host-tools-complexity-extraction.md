@@ -5,7 +5,7 @@
 ## Anchors
 
 - `src/RoslynMcp.Host.Stdio/Tools/AdvancedAnalysisTools.cs` — remaining `GetComplexityMetrics` endpoint and obsolete type.
-- New `src/RoslynMcp.Host.Stdio/Tools/ComplexityTools.cs`.
+- (new) `src/RoslynMcp.Host.Stdio/Tools/ComplexityTools.cs`.
 - `tests/RoslynMcp.Tests/ExpandedSurfaceIntegrationTests.cs`
 - `tests/RoslynMcp.Tests/Top10V3RegressionTests.cs`
 

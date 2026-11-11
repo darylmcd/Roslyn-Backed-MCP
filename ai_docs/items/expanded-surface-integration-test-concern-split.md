@@ -5,8 +5,8 @@
 ## Anchors
 
 - `tests/RoslynMcp.Tests/ExpandedSurfaceIntegrationTests.cs`
-- `tests/RoslynMcp.Tests/ExpandedAnalysisSurfaceIntegrationTests.cs` — add focused analysis/tool coverage.
-- `tests/RoslynMcp.Tests/ExpandedEditSurfaceIntegrationTests.cs` — add focused edit/path-boundary coverage.
+- (new) `tests/RoslynMcp.Tests/ExpandedAnalysisSurfaceIntegrationTests.cs` — add focused analysis/tool coverage.
+- (new) `tests/RoslynMcp.Tests/ExpandedEditSurfaceIntegrationTests.cs` — add focused edit/path-boundary coverage.
 
 ## Acceptance
 

@@ -1,8 +1,7 @@
-# docs-decision-index-completeness — docs-decision-index-completeness
+# docs-decision-index-completeness — Keep shipped decisions discoverable
 
 **row:** `docs-decision-index-completeness` · **pri:** `Low` · **size:** `S`
 
-# docs-decision-index-completeness — Keep shipped decisions discoverable
 
 ## Anchors
 

@@ -5,7 +5,7 @@
 ## Anchors
 
 - `tests/RoslynMcp.Tests/IsolatedWorkspaceTestBase.cs:31`
-- `src/RoslynMcp.Roslyn/Services/DotnetCommandRunner.cs`
+- `src/RoslynMcp.Roslyn/Helpers/DotnetCommandRunner.cs:109-166`
 
 ## Acceptance
 
