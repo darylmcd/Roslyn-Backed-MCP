@@ -19,3 +19,7 @@
 ## Context
 
 - Operator policy (2026-10-15 decision, `ai_docs/plans/20261007T211247Z_backlog-remediate/operator-decisions-20261015.md`; refined 2026-10-16 in the deleted extraction archive): refuse before any token, workspace or disk effect when supported semantic analysis proves loss, or cannot verify preservation, using a typed public `InvalidOperationException` subtype (the archive named it `ExtractionPreservationUnverifiedException`) distinct from proven-loss refusals. Keep the existing namespace; no blanket keyword bans; no automatic relocation. Adding that public refusal type is breaking under contract-care: record it in ADR 0032 (0029 is taken) plus a `Changed — BREAKING` migration note.
+
+## Notes
+
+2026-11-11 remediation: left unselected. Row Context mandates a new public typed refusal subtype (ExtractionPreservationUnverifiedException; breaking under contract-care: ADR 0032 plus a Changed — BREAKING migration note). Release impact is uncertain: the existing ExtractTypeBlockingDependencyException might suffice, but the row operator policy says otherwise. Operator decision needed: reuse the existing exception (minor) vs new public subtype (next major).
