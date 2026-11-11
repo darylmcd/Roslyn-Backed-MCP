@@ -101,14 +101,11 @@ public sealed class CompositePreviewStore : BoundedStore<CompositePreviewStore.E
         return local;
     }
 
-    /// <summary>
-    /// A record without fingerprints (format 1 or 2, written before ADR 0033) is redeemed unchecked.
-    /// </summary>
     private static void ThrowIfSourceChanged(string token, Entry entry)
     {
         if (entry.SourceFingerprints is null)
         {
-            return;
+            throw new PublicInvalidOperationException("This composite preview lacks source fingerprints. Re-issue the preview.");
         }
 
         var changed = CompositeSourceFingerprint.FindDrift(entry.SourceFingerprints, entry.Mutations);
@@ -152,12 +149,11 @@ public sealed class CompositePreviewStore : BoundedStore<CompositePreviewStore.E
 
     /// <param name="WorkspaceIdentity">
     /// The normalized solution/project path of the creating session (ADR 0032); the portable key a
-    /// redeeming host matches against its own sessions. <see langword="null"/> for in-memory entries
-    /// and for format-1 records, which carried only the creator's session id.
+    /// redeeming host matches against its own sessions. <see langword="null"/> for in-memory entries.
     /// </param>
     /// <param name="SourceFingerprints">
     /// The state of every target file when the preview was stored (ADR 0033), checked at redemption.
-    /// <see langword="null"/> only for format 1 and 2 records, which predate it and redeem unchecked.
+    /// Every stored preview requires a complete set.
     /// </param>
     public sealed record Entry(
         string WorkspaceId,

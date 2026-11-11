@@ -5,7 +5,7 @@ namespace RoslynMcp.Core.Services;
 /// without requiring a Roslyn <c>Solution</c> snapshot.
 /// </summary>
 /// <remarks>
-/// Tokens expire after a fixed TTL and become invalid if the workspace version advances.
+/// Tokens expire after a fixed TTL. Workspace lifecycle and target-file drift can also invalidate redemption.
 /// </remarks>
 public interface ICompositePreviewStore
 {
@@ -66,12 +66,19 @@ public interface ICompositePreviewStore
 }
 
 /// <summary>
-/// Describes a single file mutation within a composite preview: either an in-place content update or a deletion.
+/// Describes a single file mutation within a composite preview.
 /// </summary>
 /// <param name="FilePath">The absolute path to the file being mutated.</param>
 /// <param name="UpdatedContent">The new file content, or <see langword="null"/> if the file is being deleted.</param>
-/// <param name="DeleteFile">When <see langword="true"/>, the file will be deleted; <paramref name="UpdatedContent"/> is ignored.</param>
+/// <param name="Mode">The producer's intended operation, independent of what is on disk.</param>
 public sealed record CompositeFileMutation(
     string FilePath,
     string? UpdatedContent,
-    bool DeleteFile = false);
+    CompositeFileMutationMode Mode);
+
+public enum CompositeFileMutationMode
+{
+    Edit = 1,
+    Create = 2,
+    Delete = 3,
+}

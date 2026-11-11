@@ -16,6 +16,7 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
     private readonly ILogger<CompositeApplyOrchestrator>? _logger;
     private readonly IUnexpectedExceptionReporter? _exceptionReporter;
     private readonly IUndoService? _undoService;
+    private readonly Func<string, CancellationToken, Task>? _beforeCreatePublish;
 
     public CompositeApplyOrchestrator(
         IWorkspaceManager workspace,
@@ -31,6 +32,16 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
         _logger = logger;
         _exceptionReporter = exceptionReporter;
         _undoService = undoService;
+    }
+
+    internal CompositeApplyOrchestrator(
+        IWorkspaceManager workspace,
+        ICompositePreviewStore compositePreviewStore,
+        IUndoService undoService,
+        Func<string, CancellationToken, Task> beforeCreatePublish)
+        : this(workspace, compositePreviewStore, undoService: undoService)
+    {
+        _beforeCreatePublish = beforeCreatePublish;
     }
 
     public async Task<ApplyResultDto> ApplyCompositeAsync(
@@ -69,17 +80,42 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
         await admission.AdmitWriteSet(workspaceId, mutations.Select(m => m.FilePath).ToArray(), ct).ConfigureAwait(false);
 
         var appliedFiles = new List<string>();
+        var publishingCreates = false;
         try
         {
             // Validate the complete set before capturing undo or writing any file. Imported
             // documents may be readable through an alias but must not become write targets.
             foreach (var mutation in mutations)
             {
-                WorkspaceManager.EnsurePhysicalPath(mutation.FilePath);
+                if (mutation.Mode == CompositeFileMutationMode.Create)
+                {
+                    if (!CompositeCreateDestination.IsAvailable(mutation.FilePath))
+                        throw new CompositeCreateConflictException();
+                }
+                else
+                {
+                    WorkspaceManager.EnsurePhysicalPath(mutation.FilePath);
+                }
             }
 
-            var capture = await CaptureUndoSnapshotAsync(workspaceId, mutations, ct).ConfigureAwait(false);
-            await ApplyMutationsAsync(mutations, appliedFiles, ct).ConfigureAwait(false);
+            var snapshots = await BuildUndoSnapshotsAsync(mutations, ct).ConfigureAwait(false);
+            // Register undo after every Create has been published. An incomplete create phase
+            // leaves any outputs for explicit inspection and preserves the previous undo target.
+            publishingCreates = true;
+            foreach (var mutation in mutations.Where(mutation => mutation.Mode == CompositeFileMutationMode.Create))
+            {
+                await ApplyMutationAsync(mutation, ct).ConfigureAwait(false);
+                appliedFiles.Add(mutation.FilePath);
+            }
+
+            publishingCreates = false;
+            var capture = CaptureUndoSnapshot(workspaceId, snapshots);
+            foreach (var mutation in mutations.Where(mutation => mutation.Mode != CompositeFileMutationMode.Create))
+            {
+                await ApplyMutationAsync(mutation, ct).ConfigureAwait(false);
+                appliedFiles.Add(mutation.FilePath);
+            }
+
             return await CompleteApplyAsync(
                 previewToken,
                 workspaceId,
@@ -89,25 +125,21 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
         {
-            return ProjectFailure(ex, appliedFiles, mutations.Count);
+            return ProjectFailure(ex, appliedFiles, mutations.Count, publishingCreates);
         }
     }
 
     /// <summary>
-    /// apply-composite-no-undo-capture: registers ONE pre-apply snapshot covering every file the
-    /// composite touches, before the first write, so <c>revert_last_apply</c> restores this
-    /// composite instead of the previous apply. The snapshot is committed to revert history when
-    /// <see cref="CompleteApplyAsync"/> records the change. Files the composite creates snapshot
-    /// as absent (revert deletes them); files it deletes snapshot their bytes (revert recreates them).
+    /// Prepares preimages before the first write. Create preimages are always absent; deleted
+    /// and edited files keep their original bytes. Register the preimages after create publication.
     /// </summary>
-    private async Task<UndoCaptureId> CaptureUndoSnapshotAsync(
-        string workspaceId,
+    private async Task<IReadOnlyList<FileSnapshotDto>> BuildUndoSnapshotsAsync(
         IReadOnlyList<CompositeFileMutation> mutations,
         CancellationToken ct)
     {
         if (_undoService is null)
         {
-            return UndoCaptureId.None;
+            return [];
         }
 
         var seen = new HashSet<string>(FileSystemPath.Comparer);
@@ -119,33 +151,26 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
             var normalizedPath = Path.GetFullPath(mutation.FilePath);
             if (seen.Add(normalizedPath))
             {
-                fileSnapshots.Add(await FileSnapshotCapture.CaptureAsync(normalizedPath, fallbackTextFactory: null, ct)
-                    .ConfigureAwait(false));
+                fileSnapshots.Add(mutation.Mode == CompositeFileMutationMode.Create
+                    ? FileSnapshotCapture.FromBytesOrFallback(normalizedPath, bytes: null, fallbackText: null)
+                    : await FileSnapshotCapture.CaptureAsync(normalizedPath, fallbackTextFactory: null, ct)
+                        .ConfigureAwait(false));
             }
         }
 
-        return _undoService.CaptureBeforeApply(
+        return fileSnapshots;
+    }
+
+    private UndoCaptureId CaptureUndoSnapshot(string workspaceId, IReadOnlyList<FileSnapshotDto> fileSnapshots) =>
+        _undoService?.CaptureBeforeApply(
             workspaceId,
             $"Composite operation ({fileSnapshots.Count} files)",
             preApplySolution: null,
-            fileSnapshots);
-    }
-
-    private async Task ApplyMutationsAsync(
-        IReadOnlyList<CompositeFileMutation> mutations,
-        ICollection<string> appliedFiles,
-        CancellationToken ct)
-    {
-        foreach (var mutation in mutations)
-        {
-            await ApplyMutationAsync(mutation, ct).ConfigureAwait(false);
-            appliedFiles.Add(mutation.FilePath);
-        }
-    }
+            fileSnapshots) ?? UndoCaptureId.None;
 
     private async Task ApplyMutationAsync(CompositeFileMutation mutation, CancellationToken ct)
     {
-        if (mutation.DeleteFile)
+        if (mutation.Mode == CompositeFileMutationMode.Delete)
         {
             if (File.Exists(mutation.FilePath))
             {
@@ -161,7 +186,15 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
             Directory.CreateDirectory(directory);
         }
 
-        // Existing source files retain their on-disk encoding; new files remain UTF-8 without BOM.
+        if (mutation.Mode == CompositeFileMutationMode.Create)
+        {
+            await AtomicFileWriter.CreateAllTextAsync(
+                mutation.FilePath, mutation.UpdatedContent ?? string.Empty, ct, _logger, _exceptionReporter, _beforeCreatePublish)
+                .ConfigureAwait(false);
+            return;
+        }
+
+        // Existing source files retain their on-disk encoding.
         var preApplyBytes = File.Exists(mutation.FilePath)
             ? await File.ReadAllBytesAsync(mutation.FilePath, ct).ConfigureAwait(false)
             : null;
@@ -196,7 +229,8 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
     private ApplyResultDto ProjectFailure(
         Exception failure,
         IReadOnlyCollection<string> appliedFiles,
-        int mutationCount)
+        int mutationCount,
+        bool publishingCreates)
     {
         // Completed mutations are not rolled back; the token remains valid for inspection/re-preview.
         var applied = appliedFiles.Distinct(FileSystemPath.Comparer).ToList();
@@ -212,6 +246,21 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
             mutationCount,
             failingTarget,
             detail.CorrelationId);
+        if (failure is CompositeCreateConflictException)
+        {
+            var prefix = appliedFiles.Count > 0
+                ? $"Partial composite apply: {applied.Count} file(s) were written before a new-file destination became unavailable. Inspect appliedFiles. "
+                : "Composite apply stopped before any files were written because a new-file destination became unavailable. ";
+            return new ApplyResultDto(false, applied,
+                prefix + $"Choose an unused physical destination and re-preview. correlationId={detail.CorrelationId}");
+        }
+
+        if (publishingCreates && applied.Count == 0)
+        {
+            return new ApplyResultDto(false, applied,
+                $"Composite apply failed before any new file was published. Resolve the filesystem failure and re-preview. correlationId={detail.CorrelationId}");
+        }
+
         var message = appliedFiles.Count > 0
             ? $"Partial composite apply: {applied.Count} file(s) were written before the failure at {failingTarget}. " +
               $"Inspect appliedFiles, resolve the filesystem failure, and re-preview. correlationId={detail.CorrelationId}"
@@ -222,7 +271,7 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
 }
 
 /// <summary>
-/// Writes through a same-directory temporary sibling before atomically replacing the target.
+/// Writes through a same-directory temporary sibling before atomically publishing the target.
 /// Cleanup failures are secret-safe warnings and never mask the primary write failure.
 /// </summary>
 internal static class AtomicFileWriter
@@ -245,14 +294,30 @@ internal static class AtomicFileWriter
         IUnexpectedExceptionReporter? exceptionReporter = null)
         => await WriteAtomicAsync(
             path,
-            async (_, stream) =>
-            {
-                await using var writer = new StreamWriter(stream, encoding ?? new UTF8Encoding(false), leaveOpen: true);
-                await writer.WriteAsync(content.AsMemory(), ct).ConfigureAwait(false);
-            },
+            (_, stream) => WriteTextAsync(stream, content, encoding, ct),
             ct,
             logger,
             exceptionReporter).ConfigureAwait(false);
+
+    public static Task CreateAllTextAsync(
+        string path,
+        string content,
+        CancellationToken ct,
+        ILogger? logger,
+        IUnexpectedExceptionReporter? exceptionReporter,
+        Func<string, CancellationToken, Task>? beforePublish) =>
+        CreateAtomicAsync(path, async (_, stream) =>
+        {
+            await WriteTextAsync(stream, content, encoding: null, ct).ConfigureAwait(false);
+            if (beforePublish is not null)
+                await beforePublish(path, ct).ConfigureAwait(false);
+        }, ct, logger, exceptionReporter);
+
+    private static async Task WriteTextAsync(FileStream stream, string content, Encoding? encoding, CancellationToken ct)
+    {
+        await using var writer = new StreamWriter(stream, encoding ?? new UTF8Encoding(false), leaveOpen: true);
+        await writer.WriteAsync(content.AsMemory(), ct).ConfigureAwait(false);
+    }
 
     public static async Task WriteAllBytesAsync(
         string path,
@@ -278,6 +343,20 @@ internal static class AtomicFileWriter
         var (tmp, stream) = ReserveUniqueTempPath(path);
         return WriteAtomicAtTempPathAsync(
             path, tmp, stream, writeTempAsync, Task.Delay, ct, logger, exceptionReporter);
+    }
+
+    internal static Task CreateAtomicAsync(
+        string path,
+        Func<string, FileStream, Task> writeTempAsync,
+        CancellationToken ct,
+        ILogger? logger,
+        IUnexpectedExceptionReporter? exceptionReporter)
+    {
+        ct.ThrowIfCancellationRequested();
+        var (tmp, stream) = ReserveUniqueTempPath(path);
+        return WriteAndPublishAsync(path, tmp, stream, writeTempAsync,
+            () => PublishCreateAsync(tmp, path, stream, ct, logger, exceptionReporter),
+            ct, logger, exceptionReporter);
     }
 
     private static (string Path, FileStream Stream) ReserveUniqueTempPath(string path)
@@ -310,6 +389,19 @@ internal static class AtomicFileWriter
         Func<int, CancellationToken, Task> delayAsync,
         CancellationToken ct,
         ILogger? logger,
+        IUnexpectedExceptionReporter? exceptionReporter) =>
+        await WriteAndPublishAsync(path, tmp, stream, writeTempAsync,
+            () => ReplaceAfterTransientReaderAsync(tmp, path, stream, delayAsync, ct),
+            ct, logger, exceptionReporter).ConfigureAwait(false);
+
+    private static async Task WriteAndPublishAsync(
+        string path,
+        string tmp,
+        FileStream stream,
+        Func<string, FileStream, Task> writeTempAsync,
+        Func<Task> publishAsync,
+        CancellationToken ct,
+        ILogger? logger,
         IUnexpectedExceptionReporter? exceptionReporter)
     {
         using (stream)
@@ -318,7 +410,7 @@ internal static class AtomicFileWriter
             {
                 await writeTempAsync(tmp, stream).ConfigureAwait(false);
                 await stream.FlushAsync(ct).ConfigureAwait(false);
-                await ReplaceAfterTransientReaderAsync(tmp, path, stream, delayAsync, ct).ConfigureAwait(false);
+                await publishAsync().ConfigureAwait(false);
             }
             catch
             {
@@ -327,6 +419,79 @@ internal static class AtomicFileWriter
             }
         }
     }
+
+    private static Task PublishCreateAsync(
+        string tmp,
+        string path,
+        FileStream stream,
+        CancellationToken ct,
+        ILogger? logger,
+        IUnexpectedExceptionReporter? exceptionReporter)
+    {
+        ct.ThrowIfCancellationRequested();
+        if (!CompositeCreateDestination.IsPhysicalPath(path))
+            throw new CompositeCreateConflictException();
+        if (!TempHandleStillNamesPath(tmp, stream))
+            throw new IOException("Atomic-write temporary file ownership changed before publication.");
+
+        if (OperatingSystem.IsWindows())
+        {
+            try
+            {
+                File.Move(tmp, path, overwrite: false);
+            }
+            catch (Exception ex) when (IsWindowsCreateConflict(ex, path))
+            {
+                throw new CompositeCreateConflictException();
+            }
+
+            if (!TempHandleStillNamesPath(path, stream))
+                throw new IOException("Atomic-write destination ownership changed after publication.");
+            return Task.CompletedTask;
+        }
+
+        if (OperatingSystem.IsLinux())
+        {
+            // Link the held inode by descriptor. Linking the temp pathname would let a
+            // concurrent rename substitute someone else's file after our ownership check.
+            const int currentDirectory = -100; // AT_FDCWD
+            const int followSymlink = 0x400; // AT_SYMLINK_FOLLOW
+            CheckUnixCreateResult(LinkFileAt(currentDirectory, LinuxDescriptorPath(stream.SafeFileHandle),
+                currentDirectory, path, followSymlink));
+
+            // The destination is published once link succeeds. Removing the temporary name is
+            // cleanup only; path-based handle verification cannot compare the two hardlink names.
+            TryDeleteTemp(tmp, path, stream, logger, exceptionReporter);
+            return Task.CompletedTask;
+        }
+
+        if (OperatingSystem.IsMacOS())
+        {
+            // The standard Unix File.Move may use a check followed by a replacing rename.
+            const int currentDirectory = -2; // AT_FDCWD
+            const uint exclusive = 0x4; // RENAME_EXCL
+            CheckUnixCreateResult(RenameFileAtExclusive(currentDirectory, tmp, currentDirectory, path, exclusive));
+            if (!TempHandleStillNamesPath(path, stream))
+                throw new IOException("Atomic-write destination ownership changed after publication.");
+            return Task.CompletedTask;
+        }
+
+        throw new IOException("Atomic new-file publication is unavailable on this platform.");
+    }
+
+    private static void CheckUnixCreateResult(int result)
+    {
+        if (result == 0)
+            return;
+        const int entryExists = 17; // EEXIST on Linux and macOS.
+        if (Marshal.GetLastPInvokeError() == entryExists)
+            throw new CompositeCreateConflictException();
+        throw new IOException("The filesystem could not atomically publish a new file.");
+    }
+
+    private static bool IsWindowsCreateConflict(Exception exception, string path) =>
+        exception is IOException { HResult: unchecked((int)0x80070050) or unchecked((int)0x800700B7) } ||
+        exception is IOException or UnauthorizedAccessException && CompositeCreateDestination.EntryExists(path);
 
     private static async Task ReplaceAfterTransientReaderAsync(
         string tmp,
@@ -396,8 +561,7 @@ internal static class AtomicFileWriter
     {
         if (OperatingSystem.IsLinux())
         {
-            var fdPath = "/proc/self/fd/" + handle.DangerousGetHandle().ToInt32();
-            return Path.GetFullPath(new FileInfo(fdPath).LinkTarget
+            return Path.GetFullPath(new FileInfo(LinuxDescriptorPath(handle)).LinkTarget
                 ?? throw new IOException("Could not resolve atomic-write handle."));
         }
 
@@ -423,6 +587,9 @@ internal static class AtomicFileWriter
         throw new NotSupportedException("Atomic-write handle identity is unavailable on this platform.");
     }
 
+    private static string LinuxDescriptorPath(SafeFileHandle handle) =>
+        "/proc/self/fd/" + handle.DangerousGetHandle().ToInt32();
+
     internal static string NormalizeWindowsHandlePath(string value)
     {
         if (value.StartsWith(@"\\?\UNC\", StringComparison.OrdinalIgnoreCase))
@@ -438,6 +605,22 @@ internal static class AtomicFileWriter
 
     [DllImport("libc", EntryPoint = "fcntl", SetLastError = true, ExactSpelling = true)]
     private static extern int FcntlGetPath(int fd, int command, byte[] path);
+
+    [DllImport("libc", EntryPoint = "linkat", SetLastError = true, ExactSpelling = true)]
+    private static extern int LinkFileAt(
+        int existingDirectory,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string existingPath,
+        int newDirectory,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string newPath,
+        int flags);
+
+    [DllImport("libc", EntryPoint = "renameatx_np", SetLastError = true, ExactSpelling = true)]
+    private static extern int RenameFileAtExclusive(
+        int existingDirectory,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string existingPath,
+        int newDirectory,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string newPath,
+        uint flags);
 
     private static void TryDeleteTemp(
         string tmp,
@@ -455,9 +638,8 @@ internal static class AtomicFileWriter
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            // Best-effort cleanup — a stray temp is non-fatal and must not mask the original failure.
-            // The primary write exception is still re-thrown by the caller; this only records that the
-            // orphaned temp artifact could not be removed so it is not left on disk silently.
+            // Cleanup diagnostics preserve the outcome of publication. Report a stray temp
+            // after a failed write or a successful Unix hard-link publication.
             // The caught exception and the absolute temp/target paths are deliberately NOT logged
             // (atomic-file-cleanup-error-detail-redaction): only the stable cleanup category, the
             // target's file name, and the shared secret-safe projection reach the sinks.
@@ -468,7 +650,7 @@ internal static class AtomicFileWriter
                     ex,
                     UnexpectedExceptionCategory.CompositeApply).Server;
                 logger.LogWarning(
-                    "{CleanupCategory}: temporary artifact cleanup for {TargetFile} was incomplete after a failed write; an artifact may remain on disk. correlationId={CorrelationId} exceptionTypes={ExceptionTypes} stackFrameCount={StackFrameCount}",
+                    "{CleanupCategory}: temporary artifact cleanup for {TargetFile} was incomplete; an artifact may remain on disk. correlationId={CorrelationId} exceptionTypes={ExceptionTypes} stackFrameCount={StackFrameCount}",
                     TempCleanupCategory,
                     Path.GetFileName(path),
                     diagnostic.CorrelationId,

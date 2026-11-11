@@ -29,12 +29,28 @@ public sealed record CompositeSourceFingerprint(string FilePath, bool Exists, st
     /// </summary>
     public static IReadOnlyList<CompositeSourceFingerprint> Capture(IReadOnlyList<CompositeFileMutation> mutations)
     {
-        var seen = new HashSet<string>(FileSystemPath.Comparer);
+        var seen = new Dictionary<string, CompositeFileMutationMode>(FileSystemPath.Comparer);
         var fingerprints = new List<CompositeSourceFingerprint>(mutations.Count);
         foreach (var mutation in mutations)
         {
+            if (mutation.Mode == CompositeFileMutationMode.Create)
+                CompositeCreateDestination.RequireAvailableForPreview(mutation.FilePath);
+
             var path = Path.GetFullPath(mutation.FilePath);
-            if (seen.Add(path))
+            if (!seen.TryAdd(path, mutation.Mode))
+            {
+                if (mutation.Mode == CompositeFileMutationMode.Create || seen[path] == CompositeFileMutationMode.Create)
+                    throw new PublicInvalidOperationException(
+                        "A new file in the composite preview shares a destination with another mutation. Choose a different destination and re-issue the preview.");
+                continue;
+            }
+
+            if (mutation.Mode == CompositeFileMutationMode.Create)
+            {
+                // Create intent is always absence. A concurrent creator cannot become our baseline.
+                fingerprints.Add(Of(path, bytes: null));
+            }
+            else
             {
                 // A target that exists but cannot be read cannot be fingerprinted, so the preview cannot
                 // promise to detect its drift: refuse it now, with a message that names the file only.
@@ -56,16 +72,24 @@ public sealed record CompositeSourceFingerprint(string FilePath, bool Exists, st
     /// <summary>
     /// Returns the file NAME (never the absolute path: public messages must not carry one) of the
     /// first target that no longer matches its fingerprint, or <see langword="null"/> when none drifted.
-    /// A target already in the state its mutation would produce (a written file whose text equals the
-    /// new content, a deleted file that is gone) is not drift: overwriting it destroys nothing, and it
-    /// keeps an in-memory retry after a partial apply working.
+    /// An Edit or Delete already in its final state is accepted for in-memory partial apply retries.
+    /// A Create requires an unused physical path even if an existing entry has identical bytes.
     /// </summary>
     public static string? FindDrift(
         IReadOnlyList<CompositeSourceFingerprint> fingerprints,
         IReadOnlyList<CompositeFileMutation> mutations)
     {
+        var creations = mutations.Where(mutation => mutation.Mode == CompositeFileMutationMode.Create)
+            .ToDictionary(mutation => Path.GetFullPath(mutation.FilePath), mutation => mutation.FilePath, FileSystemPath.Comparer);
         foreach (var fingerprint in fingerprints)
         {
+            if (creations.TryGetValue(Path.GetFullPath(fingerprint.FilePath), out var createPath))
+            {
+                if (!CompositeCreateDestination.IsAvailable(createPath))
+                    return Path.GetFileName(fingerprint.FilePath);
+                continue;
+            }
+
             // A target that can no longer be read is a change nobody can vouch for: drift, refused with
             // the token and payload untouched (this runs under the claim lock, so nothing may escape raw).
             if (!TryRead(fingerprint.FilePath, out var current))
@@ -101,7 +125,7 @@ public sealed record CompositeSourceFingerprint(string FilePath, bool Exists, st
             return false;
         }
 
-        if (final.DeleteFile)
+        if (final.Mode == CompositeFileMutationMode.Delete)
         {
             return current is null;
         }

@@ -84,8 +84,8 @@ public sealed class ClassSplitOrchestrator : IClassSplitOrchestrator
         var updatedOriginalContent = updatedRoot.ToFullString();
         var mutations = new List<CompositeFileMutation>
         {
-            new(filePath, updatedOriginalContent),
-            new(newFilePath, newFileContent)
+            new(filePath, updatedOriginalContent, CompositeFileMutationMode.Edit),
+            new(newFilePath, newFileContent, CompositeFileMutationMode.Create)
         };
         var changes = new List<FileChangeDto>
         {

@@ -7,7 +7,9 @@ using Microsoft.CodeAnalysis.Text;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
+using RoslynMcp.Roslyn.Contracts;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 using static RoslynMcp.Tests.TestInfrastructure.InterfaceExtractionTestContext;
 
 namespace RoslynMcp.Tests;
@@ -20,6 +22,66 @@ public sealed class ClassSplitReceivingNamespaceIntegrationTests : IsolatedWorks
 
     [ClassCleanup]
     public static void ClassCleanup() => DisposeServices();
+
+    [TestMethod]
+    [DataRow("Worker.Move.cs")]
+    [DataRow("./Worker.cs")]
+    [DataRow("alias/Worker.cs")]
+    public async Task Split_RefusesOccupiedDestinationBeforeStoringPreview(string newFileName)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var directory = workspace.GetPath("SampleLib");
+        var sourcePath = Path.Combine(directory, "Worker.cs");
+        var existingPath = Path.Combine(directory, "Worker.Move.cs");
+        const string source = "public class Worker { public int Move() => 7; }";
+        const string existing = "// unrelated existing file";
+        await File.WriteAllTextAsync(sourcePath, source);
+        await File.WriteAllTextAsync(existingPath, existing);
+        await workspace.LoadAsync();
+        if (newFileName.StartsWith("alias/", StringComparison.Ordinal))
+        {
+            var alias = Path.Combine(directory, "alias");
+            if (OperatingSystem.IsWindows())
+                WindowsDirectoryJunction.Create(alias, directory);
+            else
+                Directory.CreateSymbolicLink(alias, directory);
+        }
+
+        var store = new CompositePreviewStore();
+        var split = new ClassSplitOrchestrator(WorkspaceManager, store);
+        await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
+            OrchestrationTools.PreviewSplitClass(WorkspaceExecutionGate, split, workspace.WorkspaceId,
+                sourcePath, "Worker", ["Move"], newFileName, CancellationToken.None));
+
+        Assert.AreEqual(source, await File.ReadAllTextAsync(sourcePath));
+        Assert.AreEqual(existing, await File.ReadAllTextAsync(existingPath));
+    }
+
+    [TestMethod]
+    public async Task Split_DestinationCreatedAfterDriftCheckPreservesBothFiles()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var sourcePath = workspace.GetPath("SampleLib", "Worker.cs");
+        var destination = workspace.GetPath("SampleLib", "Worker.Move.cs");
+        const string source = "public class Worker { public int Move() => 7; }";
+        const string concurrent = "// unrelated file created after drift validation";
+        await File.WriteAllTextAsync(sourcePath, source);
+        await workspace.LoadAsync();
+        var store = new CompositePreviewStore();
+        var split = new ClassSplitOrchestrator(WorkspaceManager, store);
+        var preview = await split.PreviewSplitClassAsync(workspace.WorkspaceId, sourcePath, "Worker",
+            ["Move"], Path.GetFileName(destination), CancellationToken.None);
+        Assert.IsFalse(File.Exists(destination));
+        var admission = new CompositeRedemptionAdmission(workspace.WorkspaceId,
+            (_, _, ct) => File.WriteAllTextAsync(destination, concurrent, ct));
+        var result = await new CompositeApplyOrchestrator(WorkspaceManager, store)
+            .ApplyCompositeAsync(preview.PreviewToken, admission, CancellationToken.None);
+
+        Assert.IsFalse(result.Success, "A concurrent creator owns the destination.");
+        Assert.IsEmpty(result.AppliedFiles);
+        Assert.AreEqual(source, await File.ReadAllTextAsync(sourcePath));
+        Assert.AreEqual(concurrent, await File.ReadAllTextAsync(destination));
+    }
 
     [TestMethod]
     [DataRow("7.3", false, false, null, null)]

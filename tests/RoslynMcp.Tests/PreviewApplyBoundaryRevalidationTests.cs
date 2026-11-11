@@ -576,7 +576,7 @@ public sealed class PreviewApplyBoundaryRevalidationTests
             SecurityOptionsSnapshot.Value = new SecurityOptions { SanctionedRoots = [sanctionedRoot] };
             var store = new CompositePreviewStore();
             var token = store.Store(
-                WorkspaceId, 1, "out-of-root composite", [new CompositeFileMutation(outsideFile, "// OVERWRITTEN")]);
+                WorkspaceId, 1, "out-of-root composite", [new CompositeFileMutation(outsideFile, "// OVERWRITTEN", CompositeFileMutationMode.Edit)]);
             var orchestrator = new CompositeApplyOrchestrator(_workspace, store);
 
             var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
@@ -622,7 +622,7 @@ public sealed class PreviewApplyBoundaryRevalidationTests
             var ttl = TimeSpan.FromMinutes(5);
             var store = new CompositePreviewStore(20, ttl, new PersistentCompositeStorage(persistDirectory, ttl), new CompositeWorkspaceIdentityResolver(_workspace));
             var token = store.Store(
-                WorkspaceId, 1, "tampered composite", [new CompositeFileMutation(insideFile, "// OVERWRITTEN")]);
+                WorkspaceId, 1, "tampered composite", [new CompositeFileMutation(insideFile, "// OVERWRITTEN", CompositeFileMutationMode.Edit)]);
             var payloadPath = Directory.EnumerateFiles(persistDirectory, token + ".json", SearchOption.AllDirectories).Single();
             RewritePersistedPayload(persistDirectory, token, payload => RetargetMutation(payload, outsideFile));
             var orchestrator = new CompositeApplyOrchestrator(_workspace, store);
@@ -671,7 +671,7 @@ public sealed class PreviewApplyBoundaryRevalidationTests
             var ttl = TimeSpan.FromMinutes(5);
             var inner = new CompositePreviewStore(20, ttl, new PersistentCompositeStorage(persistDirectory, ttl), new CompositeWorkspaceIdentityResolver(_workspace));
             var token = inner.Store(
-                WorkspaceId, 1, "swapped composite", [new CompositeFileMutation(insideFile, "// OVERWRITTEN")]);
+                WorkspaceId, 1, "swapped composite", [new CompositeFileMutation(insideFile, "// OVERWRITTEN", CompositeFileMutationMode.Edit)]);
             var store = new SwapAfterPeekStore(inner, () => RewritePersistedPayload(
                 persistDirectory, token, payload => RetargetMutation(payload, outsideFile)));
             var orchestrator = new CompositeApplyOrchestrator(_workspace, store);
@@ -714,7 +714,7 @@ public sealed class PreviewApplyBoundaryRevalidationTests
             var ttl = TimeSpan.FromMinutes(5);
             var inner = new CompositePreviewStore(20, ttl, new PersistentCompositeStorage(persistDirectory, ttl), new CompositeWorkspaceIdentityResolver(_workspace));
             var token = inner.Store(
-                WorkspaceId, 1, "workspace swap", [new CompositeFileMutation(insideFile, "// OVERWRITTEN")]);
+                WorkspaceId, 1, "workspace swap", [new CompositeFileMutation(insideFile, "// OVERWRITTEN", CompositeFileMutationMode.Edit)]);
             var store = new SwapAfterPeekStore(inner, () => RewritePersistedPayload(
                 persistDirectory, token, payload => payload["WorkspaceIdentity"] = Path.GetFullPath(OtherSolutionPath)));
             var orchestrator = new CompositeApplyOrchestrator(_workspace, store);
@@ -811,7 +811,7 @@ public sealed class PreviewApplyBoundaryRevalidationTests
             var ttl = TimeSpan.FromMinutes(5);
             var store = new CompositePreviewStore(20, ttl, new PersistentCompositeStorage(persistDirectory, ttl), new CompositeWorkspaceIdentityResolver(_workspace));
             var token = store.Store(
-                WorkspaceId, 1, "claimed elsewhere", [new CompositeFileMutation(insideFile, "// OVERWRITTEN")]);
+                WorkspaceId, 1, "claimed elsewhere", [new CompositeFileMutation(insideFile, "// OVERWRITTEN", CompositeFileMutationMode.Edit)]);
             File.Delete(Directory.EnumerateFiles(persistDirectory, token + ".json", SearchOption.AllDirectories).Single());
             var orchestrator = new CompositeApplyOrchestrator(_workspace, store);
 
@@ -848,7 +848,7 @@ public sealed class PreviewApplyBoundaryRevalidationTests
             var ttl = TimeSpan.FromMinutes(5);
             var store = new CompositePreviewStore(20, ttl, new PersistentCompositeStorage(persistDirectory, ttl), new CompositeWorkspaceIdentityResolver(_workspace));
             var token = store.Store(
-                WorkspaceId, 1, "in-root composite", [new CompositeFileMutation(insideFile, "// updated")]);
+                WorkspaceId, 1, "in-root composite", [new CompositeFileMutation(insideFile, "// updated", CompositeFileMutationMode.Edit)]);
             var orchestrator = new CompositeApplyOrchestrator(_workspace, store);
 
             var result = await OrchestrationTools.ApplyComposite(

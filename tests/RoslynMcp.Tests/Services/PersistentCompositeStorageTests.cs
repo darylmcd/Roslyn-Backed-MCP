@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Services;
 
@@ -53,8 +54,8 @@ public sealed class PersistentCompositeStorageTests
         var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
         var entry = new CompositePreviewStore.Entry(
             "ws-1", 3, "sample composite",
-            new[] { new CompositeFileMutation(@"C:\proj\File.cs", "// updated", false) },
-            DateTime.UtcNow, Identity, []);
+            new[] { new CompositeFileMutation(TestPath("File.cs"), "// updated", CompositeFileMutationMode.Edit) },
+            DateTime.UtcNow, Identity, [AbsentFingerprint("File.cs")]);
 
         var token = Guid.NewGuid().ToString("N");
         store.Write(token, entry);
@@ -65,8 +66,9 @@ public sealed class PersistentCompositeStorageTests
         Assert.AreEqual(3, read.WorkspaceVersion);
         Assert.AreEqual("sample composite", read.Description);
         Assert.AreEqual(1, read.Mutations.Count);
-        Assert.AreEqual(@"C:\proj\File.cs", read.Mutations[0].FilePath);
+        Assert.AreEqual(TestPath("File.cs"), read.Mutations[0].FilePath);
         Assert.AreEqual("// updated", read.Mutations[0].UpdatedContent);
+        Assert.AreEqual(CompositeFileMutationMode.Edit, read.Mutations[0].Mode);
         Assert.IsNull(store.TryClaim(token, Admit), "A claimed persistent token must not be redeemable twice.");
     }
 
@@ -91,14 +93,14 @@ public sealed class PersistentCompositeStorageTests
     }
 
     [TestMethod]
-    public void Write_PersistsFormat3WithPortableIdentity()
+    public void Write_PersistsFormat4WithPortableIdentity()
     {
         var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
         var token = Guid.NewGuid().ToString("N");
         store.Write(token, new CompositePreviewStore.Entry("ws-fmt", 5, "format", [], DateTime.UtcNow, Identity, []));
 
         using var json = System.Text.Json.JsonDocument.Parse(File.ReadAllText(PayloadPath(token)));
-        Assert.AreEqual(3, json.RootElement.GetProperty("FormatVersion").GetInt32());
+        Assert.AreEqual(4, json.RootElement.GetProperty("FormatVersion").GetInt32());
         Assert.AreEqual(Identity, json.RootElement.GetProperty("WorkspaceIdentity").GetString());
         Assert.AreEqual("ws-fmt", json.RootElement.GetProperty("WorkspaceId").GetString(), "Kept for diagnostics.");
         Assert.AreEqual(5, json.RootElement.GetProperty("WorkspaceVersion").GetInt32(), "Kept for diagnostics.");
@@ -127,17 +129,17 @@ public sealed class PersistentCompositeStorageTests
     }
 
     [TestMethod]
-    public void Format3_RoundTripsSourceFingerprints_ThroughPeekAndClaim()
+    public void Format4_RoundTripsSourceFingerprints_ThroughPeekAndClaim()
     {
         var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
         var token = Guid.NewGuid().ToString("N");
-        var existing = new CompositeSourceFingerprint(@"C:\proj\Existing.cs", true, new string('a', 64));
-        var absent = new CompositeSourceFingerprint(@"C:\proj\Created.cs", false, null);
+        var existing = new CompositeSourceFingerprint(TestPath("Existing.cs"), true, new string('a', 64));
+        var absent = new CompositeSourceFingerprint(TestPath("Created.cs"), false, null);
         store.Write(
             token,
             new CompositePreviewStore.Entry(
                 "ws-fp", 1, "fingerprints",
-                [new CompositeFileMutation(existing.FilePath, "// a"), new CompositeFileMutation(absent.FilePath, "// b")],
+                [new CompositeFileMutation(existing.FilePath, "// a", CompositeFileMutationMode.Edit), new CompositeFileMutation(absent.FilePath, "// b", CompositeFileMutationMode.Create)],
                 DateTime.UtcNow, Identity, [existing, absent]));
 
         var peeked = store.TryPeek(token);
@@ -145,72 +147,100 @@ public sealed class PersistentCompositeStorageTests
 
         CollectionAssert.AreEqual(new[] { existing, absent }, peeked!.SourceFingerprints!.ToArray());
         CollectionAssert.AreEqual(new[] { existing, absent }, claimed!.SourceFingerprints!.ToArray());
+        CollectionAssert.AreEqual(new[] { CompositeFileMutationMode.Edit, CompositeFileMutationMode.Create },
+            claimed.Mutations.Select(mutation => mutation.Mode).ToArray());
     }
 
-    /// <summary>
-    /// The shared directory is untrusted: a fingerprint for a path no mutation writes would make the
-    /// redeeming host read (and hash, and report on) an arbitrary file, so such a record is unreadable.
-    /// </summary>
     [TestMethod]
-    public void Format3_FingerprintForAPathNoMutationWrites_IsUnreadable_ForPeekAndClaim()
+    [DataRow("extra", DisplayName = "fingerprint outside the write set")]
+    [DataRow("missing", DisplayName = "write target without a fingerprint")]
+    [DataRow("duplicate", DisplayName = "duplicate fingerprint path")]
+    [DataRow("null", DisplayName = "missing fingerprint list")]
+    [DataRow("null entry", DisplayName = "null fingerprint")]
+    [DataRow("blank path", DisplayName = "blank fingerprint path")]
+    [DataRow("missing exists", DisplayName = "missing existence")]
+    [DataRow("missing hash", DisplayName = "existing file without a hash")]
+    [DataRow("invalid hash", DisplayName = "hash has wrong format")]
+    [DataRow("absent with hash", DisplayName = "absent file with a hash")]
+    [DataRow("create with hash", DisplayName = "create mutation with existing fingerprint")]
+    [DataRow("missing mode", DisplayName = "mutation without explicit mode")]
+    [DataRow("unknown mode", DisplayName = "mutation with unknown mode")]
+    public void Format4_UnsafeMutationAndFingerprintSetsAreUnreadable(string scenario)
     {
+        var path = TestPath("Written.cs");
+        var hash = new string('a', 64);
+        var current = new JsonObject { ["FilePath"] = path, ["Exists"] = false };
+        var mutation = new JsonObject
+        {
+            ["FilePath"] = path, ["UpdatedContent"] = "// a", ["Mode"] = (int)CompositeFileMutationMode.Edit,
+        };
+        var fingerprints = new JsonArray(current);
+        switch (scenario)
+        {
+            case "extra":
+                fingerprints.Add(new JsonObject { ["FilePath"] = TestPath("Other.txt"), ["Exists"] = false });
+                break;
+            case "missing":
+                fingerprints.Clear();
+                break;
+            case "duplicate":
+                fingerprints.Add(current.DeepClone());
+                break;
+            case "null entry":
+                fingerprints[0] = null;
+                break;
+            case "blank path":
+                current["FilePath"] = " ";
+                break;
+            case "missing exists":
+                current.Remove("Exists");
+                break;
+            case "missing hash":
+                current["Exists"] = true;
+                break;
+            case "invalid hash":
+                current["Exists"] = true;
+                current["Sha256"] = "invalid";
+                break;
+            case "absent with hash":
+                current["Sha256"] = hash;
+                break;
+            case "create with hash":
+                current["Exists"] = true;
+                current["Sha256"] = hash;
+                mutation["Mode"] = (int)CompositeFileMutationMode.Create;
+                break;
+            case "missing mode":
+                mutation.Remove("Mode");
+                break;
+            case "unknown mode":
+                mutation["Mode"] = 100;
+                break;
+        }
+
         var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
-        var token = Guid.NewGuid().ToString("N");
-        store.Write(
-            token,
-            new CompositePreviewStore.Entry(
-                "ws-tamper", 1, "tamper",
-                [new CompositeFileMutation(@"C:\proj\Written.cs", "// a")],
-                DateTime.UtcNow, Identity,
-                [new CompositeSourceFingerprint(@"C:\proj\Written.cs", false, null),
-                 new CompositeSourceFingerprint(@"C:\secrets\Other.txt", false, null)]));
-        var admitted = false;
+        var token = WriteRaw(new JsonObject
+        {
+            ["FormatVersion"] = 4,
+            ["WorkspaceId"] = "ws",
+            ["WorkspaceIdentity"] = Identity,
+            ["Mutations"] = new JsonArray(mutation),
+            ["SourceFingerprints"] = scenario == "null" ? null : fingerprints,
+        }.ToJsonString());
 
         Assert.IsNull(store.TryPeek(token));
-        Assert.IsNull(store.TryClaim(token, entry => { admitted = true; return entry.WorkspaceId; }));
-        Assert.IsFalse(admitted, "A tampered record must never reach session matching.");
-    }
-
-    [TestMethod]
-    public void Format2Record_StillReads_WithNullFingerprints()
-    {
-        var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
-        var token = WriteRaw(
-            "{\"FormatVersion\":2,\"WorkspaceId\":\"ws-v2\",\"WorkspaceIdentity\":" + System.Text.Json.JsonSerializer.Serialize(Identity)
-            + ",\"Mutations\":[{\"FilePath\":\"C:/x.cs\",\"UpdatedContent\":\"// x\"}]}");
-
-        var claimed = store.TryClaim(token, Admit);
-
-        Assert.IsNotNull(claimed, "A format 2 record must still read.");
-        Assert.IsNull(claimed.SourceFingerprints, "Format 2 predates fingerprints: it is redeemed unchecked.");
-    }
-
-    [TestMethod]
-    [DataRow("null", DisplayName = "format 3 without a fingerprint list")]
-    [DataRow("[null]", DisplayName = "null fingerprint")]
-    [DataRow("""[{"FilePath":" ","Exists":false}]""", DisplayName = "blank fingerprint path")]
-    [DataRow("""[{"FilePath":"C:/x.cs","Exists":true}]""", DisplayName = "existing file without a hash")]
-    public void Format3_MalformedFingerprints_AreUnreadable_ForPeekAndClaim(string fingerprints)
-    {
-        var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
-        var token = WriteRaw(
-            "{\"FormatVersion\":3,\"WorkspaceId\":\"ws\",\"WorkspaceIdentity\":" + System.Text.Json.JsonSerializer.Serialize(Identity)
-            + ",\"Mutations\":[{\"FilePath\":\"C:/x.cs\"}],\"SourceFingerprints\":" + fingerprints + "}");
-
-        Assert.IsNull(store.TryPeek(token), "A malformed fingerprint list must never reach a caller.");
-        Assert.IsNull(store.TryClaim(token, Admit));
+        Assert.IsNull(store.TryClaim(token, _ => throw new AssertFailedException("The invalid record reached admission.")));
     }
 
     /// <summary>
-    /// <c>Path.GetFullPath</c> throws <see cref="PathTooLongException"/> (an <see cref="IOException"/>) for an
-    /// overlong path on Windows only: Linux and macOS accept it, so the record parses normally there.
-    /// The record is untrusted input, so on Windows that is an unreadable record, never an exception.
+    /// On Windows <c>Path.GetFullPath</c> rejects an overlong path with <see cref="IOException"/>.
+    /// A tampered record must produce an unreadable result.
     /// </summary>
     [TestMethod]
     [DataRow("identity", DisplayName = "overlong workspace identity")]
     [DataRow("fingerprint", DisplayName = "overlong fingerprint path")]
     [DataRow("mutation", DisplayName = "overlong mutation path with a fingerprint")]
-    public void Format3_OverlongPath_IsUnreadable_ForPeekAndClaim(string where)
+    public void Format4_OverlongPath_IsUnreadable_ForPeekAndClaim(string where)
     {
         if (!OperatingSystem.IsWindows())
         {
@@ -229,22 +259,22 @@ public sealed class PersistentCompositeStorageTests
     [DataRow("identity", DisplayName = "NUL in workspace identity")]
     [DataRow("fingerprint", DisplayName = "NUL in fingerprint path")]
     [DataRow("mutation", DisplayName = "NUL in mutation path with a fingerprint")]
-    public void Format3_PathWithNulCharacter_IsUnreadable_ForPeekAndClaim(string where) =>
-        AssertTamperedPathIsUnreadable(where, @"C:\proj\bad" + '\0' + ".cs", Identity + '\0');
+    public void Format4_PathWithNulCharacter_IsUnreadable_ForPeekAndClaim(string where) =>
+        AssertTamperedPathIsUnreadable(where, TestPath("x.cs") + '\0', Identity + '\0');
 
     private void AssertTamperedPathIsUnreadable(string where, string tampered, string tamperedIdentity)
     {
         var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
         var identity = where == "identity" ? tamperedIdentity : Identity;
-        var mutationPath = where == "mutation" ? tampered : @"C:\x.cs";
+        var mutationPath = where == "mutation" ? tampered : TestPath("x.cs");
         var fingerprintPath = where == "fingerprint" ? tampered : mutationPath;
         var token = WriteRaw(
             System.Text.Json.JsonSerializer.Serialize(new
             {
-                FormatVersion = 3,
+                FormatVersion = 4,
                 WorkspaceId = "ws",
                 WorkspaceIdentity = identity,
-                Mutations = new[] { new { FilePath = mutationPath } },
+                Mutations = new[] { new { FilePath = mutationPath, UpdatedContent = "// x", Mode = CompositeFileMutationMode.Edit } },
                 SourceFingerprints = new[] { new { FilePath = fingerprintPath, Exists = false } },
             }));
         var admitted = false;
@@ -255,53 +285,47 @@ public sealed class PersistentCompositeStorageTests
     }
 
     [TestMethod]
-    public void TryClaim_FormatOneRecord_ReadsWithNullIdentity()
+    [DataRow("", DisplayName = "format 1 with implicit format version")]
+    [DataRow("\"FormatVersion\":2,", DisplayName = "format 2")]
+    [DataRow("\"FormatVersion\":3,", DisplayName = "format 3")]
+    public void TryClaim_LegacyFormat_RefusesAndKeepsPayload(string formatProperty)
     {
         var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
-        var token = WriteRaw(
-            """{"WorkspaceId":"ws-v1","WorkspaceVersion":2,"Description":"legacy","Mutations":[{"FilePath":"C:/x.cs","UpdatedContent":"// x","DeleteFile":false}],"CreatedAt":"2026-11-06T00:00:00Z"}""");
-
-        var claimed = store.TryClaim(token, Admit);
-
-        Assert.IsNotNull(claimed, "A record without FormatVersion is format 1 and must still read.");
-        Assert.AreEqual("ws-v1", claimed.WorkspaceId);
-        Assert.IsNull(claimed.WorkspaceIdentity, "Format 1 carried only the creator's session id.");
-    }
-
-    [TestMethod]
-    public void TryClaim_FormatTwoWithoutIdentity_IsUnreadable()
-    {
-        var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
-        var token = WriteRaw(
-            """{"FormatVersion":2,"WorkspaceId":"ws","Mutations":[{"FilePath":"C:/x.cs"}]}""");
+        var token = WriteRaw("{" + formatProperty + "\"WorkspaceId\":\"legacy\",\"Mutations\":[]}");
 
         Assert.IsNull(store.TryPeek(token));
-        Assert.IsNull(store.TryClaim(token, Admit));
+        Assert.IsNull(store.TryClaim(token, _ => throw new AssertFailedException("A legacy record reached admission.")));
+        Assert.IsTrue(File.Exists(PayloadPath(token)));
+        Assert.IsEmpty(ClaimArtifacts());
     }
 
     [TestMethod]
+    [DataRow(null)]
     [DataRow("relative/Sample.slnx")]
     [DataRow("Sample.slnx")]
     [DataRow("../Sample.slnx")]
-    public void FormatTwoWithRelativeIdentity_IsUnreadable_ForPeekAndClaim(string identity)
+    public void Format4_WithMissingOrRelativeIdentity_IsUnreadable(string? identity)
     {
         var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
-        var token = WriteRaw(
-            "{\"FormatVersion\":2,\"WorkspaceId\":\"ws\",\"WorkspaceIdentity\":\"" + identity
-            + "\",\"Mutations\":[{\"FilePath\":\"C:/x.cs\"}]}");
-        var admitted = false;
+        var token = WriteRaw(System.Text.Json.JsonSerializer.Serialize(new
+        {
+            FormatVersion = 4,
+            WorkspaceId = "ws",
+            WorkspaceIdentity = identity,
+            Mutations = Array.Empty<object>(),
+            SourceFingerprints = Array.Empty<object>(),
+        }));
 
         Assert.IsNull(store.TryPeek(token), "A relative identity would resolve against the process cwd.");
-        Assert.IsNull(store.TryClaim(token, entry => { admitted = true; return entry.WorkspaceId; }));
-        Assert.IsFalse(admitted, "An unusable identity must never reach session matching.");
+        Assert.IsNull(store.TryClaim(token, _ => throw new AssertFailedException("An invalid identity reached admission.")));
     }
 
     [TestMethod]
-    public void TryClaim_FormatVersionAbove3_RefusesAndKeepsPayload()
+    public void TryClaim_FormatVersionAbove4_RefusesAndKeepsPayload()
     {
         var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
         var token = WriteRaw(
-            """{"FormatVersion":4,"WorkspaceId":"ws","WorkspaceIdentity":"C:/a.slnx","Mutations":[{"FilePath":"C:/x.cs"}]}""");
+            """{"FormatVersion":5,"WorkspaceId":"ws","Mutations":{"FutureMode":"future shape"}}""");
         var admitted = false;
 
         var claimed = store.TryClaim(token, entry => { admitted = true; return entry.WorkspaceId; });
@@ -314,11 +338,11 @@ public sealed class PersistentCompositeStorageTests
     }
 
     [TestMethod]
-    public void TryPeek_FormatVersionAbove3_ReturnsNull()
+    public void TryPeek_FormatVersionAbove4_ReturnsNull()
     {
         var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
         var token = WriteRaw(
-            """{"FormatVersion":4,"WorkspaceId":"ws","WorkspaceIdentity":"C:/a.slnx","Mutations":[{"FilePath":"C:/x.cs"}]}""");
+            """{"FormatVersion":5,"WorkspaceId":"ws","Mutations":{"FutureMode":"future shape"}}""");
 
         Assert.IsNull(store.TryPeek(token), "An uninterpretable write set is unknown, so the peek fails closed.");
     }
@@ -489,8 +513,8 @@ public sealed class PersistentCompositeStorageTests
                 "ws-race",
                 11,
                 "atomic claim",
-                [new CompositeFileMutation(@"C:\proj\Claim.cs", "// claimed")],
-                DateTime.UtcNow, Identity, []));
+                [new CompositeFileMutation(TestPath("Claim.cs"), "// claimed", CompositeFileMutationMode.Edit)],
+                DateTime.UtcNow, Identity, [AbsentFingerprint("Claim.cs")]));
 
         var first = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
         var second = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
@@ -610,7 +634,7 @@ public sealed class PersistentCompositeStorageTests
         store.Write(
             token,
             new CompositePreviewStore.Entry(
-                "ws-peek", 4, "peek", [new CompositeFileMutation(@"C:\proj\Peek.cs", "// peeked")], DateTime.UtcNow, Identity, []));
+                "ws-peek", 4, "peek", [new CompositeFileMutation(TestPath("Peek.cs"), "// peeked", CompositeFileMutationMode.Edit)], DateTime.UtcNow, Identity, [AbsentFingerprint("Peek.cs")]));
 
         var first = store.TryPeek(token);
         var second = store.TryPeek(token);
@@ -618,7 +642,7 @@ public sealed class PersistentCompositeStorageTests
         Assert.IsNotNull(first);
         Assert.IsNotNull(second);
         Assert.AreEqual("ws-peek", first.WorkspaceId);
-        Assert.AreEqual(@"C:\proj\Peek.cs", first.Mutations.Single().FilePath);
+        Assert.AreEqual(TestPath("Peek.cs"), first.Mutations.Single().FilePath);
         Assert.IsNotNull(store.TryClaim(token, Admit), "A peek must leave the one-time token claimable.");
         Assert.IsNull(store.TryPeek(token), "A claimed token is no longer peekable.");
     }
@@ -651,12 +675,12 @@ public sealed class PersistentCompositeStorageTests
     }
 
     [TestMethod]
-    [DataRow("{}")]
+    [DataRow("""{"FormatVersion":4}""")]
     [DataRow("not json")]
-    [DataRow("""{"WorkspaceId":"ws","Mutations":null}""")]
-    [DataRow("""{"WorkspaceId":"ws","Mutations":[null]}""")]
-    [DataRow("""{"WorkspaceId":"ws","Mutations":[{"FilePath":" "}]}""")]
-    [DataRow("""{"WorkspaceId":null,"Mutations":[{"FilePath":"C:\\x.cs"}]}""")]
+    [DataRow("""{"FormatVersion":4,"WorkspaceId":"ws","Mutations":null}""")]
+    [DataRow("""{"FormatVersion":4,"WorkspaceId":"ws","Mutations":[null]}""")]
+    [DataRow("""{"FormatVersion":4,"WorkspaceId":"ws","Mutations":[{"FilePath":" "}]}""")]
+    [DataRow("""{"FormatVersion":4,"WorkspaceId":null,"Mutations":[{"FilePath":"C:\\x.cs"}]}""")]
     public void IncompletePersistedPayload_IsUnreadable_ForPeekAndClaim(string json)
     {
         var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
@@ -682,7 +706,7 @@ public sealed class PersistentCompositeStorageTests
         new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5)).Write(
             token,
             new CompositePreviewStore.Entry(
-                "ws-race", 1, "peek vs claim", [new CompositeFileMutation(@"C:\proj\Race.cs", "// race")], DateTime.UtcNow, Identity, []));
+                "ws-race", 1, "peek vs claim", [new CompositeFileMutation(TestPath("Race.cs"), "// race", CompositeFileMutationMode.Edit)], DateTime.UtcNow, Identity, [AbsentFingerprint("Race.cs")]));
         var claimer = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
         CompositePreviewStore.Entry? claimed = null;
         Exception? claimFailure = null;
@@ -710,8 +734,12 @@ public sealed class PersistentCompositeStorageTests
         Assert.IsNull(peeker.TryPeek(token), "Once claimed, the token is gone.");
     }
 
-    // Rooted on every platform: a format-2 identity must be fully qualified.
+    // Rooted on every platform: a persisted identity must be fully qualified.
     private static readonly string Identity = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "proj", "Sample.slnx"));
+
+    private string TestPath(string name) => Path.Combine(_root, name);
+
+    private CompositeSourceFingerprint AbsentFingerprint(string name) => new(TestPath(name), false, null);
 
     private static string Admit(CompositePreviewStore.Entry entry) => entry.WorkspaceId;
 
