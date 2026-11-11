@@ -51,12 +51,8 @@ public sealed class CompositeWorkspaceIdentityResolver
     {
         if (entry.WorkspaceIdentity is null)
         {
-            // Format 1 carried only the creator's session id. That id is meaningful only on the
-            // host that created it, so the record redeems there and nowhere else.
-            return _workspaces.ContainsWorkspace(entry.WorkspaceId)
-                ? entry.WorkspaceId
-                : throw new PublicInvalidOperationException(
-                    "This persisted composite preview was written by an older server version that bound it to its creating session, and that session is not live on this host. Redeem it on the creating host, or re-issue the paired *_preview call.");
+            throw new PublicInvalidOperationException(
+                "This persisted composite preview lacks a portable workspace identity. Re-issue the preview.");
         }
 
         var matches = _workspaces.ListWorkspaces()

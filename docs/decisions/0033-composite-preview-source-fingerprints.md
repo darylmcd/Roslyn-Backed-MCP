@@ -6,6 +6,27 @@
 - **Supersedes:** nothing. Closes the "content drift" residual risk recorded in [ADR 0032](0032-persisted-composite-token-workspace-identity.md).
 - **Superseded by:** nothing
 
+## Amendment (2026-11-11) — Exclusive creation and format 4
+
+The rules below govern the current implementation. The original decision records the behavior of format 3.
+
+| Item | Current rule |
+|---|---|
+| Intent | Every composite mutation declares Edit, Create, or Delete. Solution-based previews treat another link to identical content at a baseline path as a project-only change. Multiple new links with identical content generate one Create. Divergent writes at one path are refused. |
+| Preview and drift checks | A Create requires an unused physical path. A directory, a filesystem alias, a dangling link, or an existing file blocks the preview. The Create fingerprint always records absence. Any destination that appears later triggers drift, including one with the expected bytes. |
+| Commit | Stage the complete file in a same-directory temporary file. Publish with a no-replace move on Windows, an exclusive hard link from the held descriptor on Linux, or an exclusive rename on macOS. On Linux, remove the temporary name after publication. A filesystem that cannot perform the publication fails the operation. |
+| Failure and undo | Publish Creates before editing or deleting existing files. A late collision leaves those existing files intact. If publication stops partway, inspect the reported outputs and recover them explicitly. The preceding undo target survives a failed create phase. |
+| Persisted record | Format 4 carries explicit intent and requires one fingerprint for every distinct target, including an absence fingerprint for every Create. Format 3 cannot distinguish a generated destination that was occupied at preview time from an intended edit. The format-4 reader refuses formats 1 through 3 and future formats before claiming them. |
+
+Hosts sharing a preview directory must run matching server versions. During a rolling upgrade or
+rollback, re-issue pending composite previews on the host version that will apply them. An older
+host refuses format 4. Earlier hosts can still redeem older tokens according to their own rules,
+so drain or discard older pending composite work during rollout. Preview payloads still expire by TTL.
+
+The published route remains experimental. This is a safety correction within 5.x. Edit and Delete
+still have the fingerprint-to-commit window described below. The shared writer's temporary-path
+validation has a separate race tracked under `atomic-file-writer-external-temp-path-swap`.
+
 ## Context
 
 A composite preview stores the post-state of every file it will write (`CompositeFileMutation`) and

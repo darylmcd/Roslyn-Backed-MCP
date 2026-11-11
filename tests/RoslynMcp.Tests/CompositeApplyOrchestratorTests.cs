@@ -66,6 +66,23 @@ public sealed class CompositeApplyOrchestratorTests
     }
 
     [TestMethod]
+    public async Task AtomicFileWriter_ExclusiveCreatePreservesDestinationThatAppearsDuringTempWrite()
+    {
+        var path = Path.Combine(_tempDir, "target.cs");
+        const string competitor = "// concurrent creator";
+
+        await Assert.ThrowsExactlyAsync<CompositeCreateConflictException>(() =>
+            AtomicFileWriter.CreateAtomicAsync(path, async (_, stream) =>
+            {
+                await stream.WriteAsync("generated"u8.ToArray());
+                await File.WriteAllTextAsync(path, competitor);
+            }, CancellationToken.None, logger: null, exceptionReporter: null));
+
+        Assert.AreEqual(competitor, await File.ReadAllTextAsync(path));
+        AssertNoTempArtifacts(path);
+    }
+
+    [TestMethod]
     public async Task AtomicFileWriter_OverlappingWritesKeepSeparateTempFiles()
     {
         var path = Path.Combine(_tempDir, "target.cs");
@@ -462,27 +479,27 @@ public sealed class CompositeApplyOrchestratorTests
         {
             case "delete":
                 await File.WriteAllTextAsync(primaryPath, "delete me");
-                mutations.Add(new CompositeFileMutation(primaryPath, null, DeleteFile: true));
+                mutations.Add(new CompositeFileMutation(primaryPath, null, CompositeFileMutationMode.Delete));
                 break;
             case "encoded-write":
                 await File.WriteAllBytesAsync(
                     primaryPath,
                     Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes("old")).ToArray());
-                mutations.Add(new CompositeFileMutation(primaryPath, "new", DeleteFile: false));
+                mutations.Add(new CompositeFileMutation(primaryPath, "new", CompositeFileMutationMode.Edit));
                 break;
             case "pre-write-failure":
-                mutations.Add(new CompositeFileMutation(CreateBlockedChildPath(), "never", DeleteFile: false));
+                mutations.Add(new CompositeFileMutation(CreateBlockedChildPath(), "never", CompositeFileMutationMode.Edit));
                 break;
             case "partial-apply":
-                mutations.Add(new CompositeFileMutation(primaryPath, "applied", DeleteFile: false));
-                mutations.Add(new CompositeFileMutation(CreateBlockedChildPath(), "never", DeleteFile: false));
+                mutations.Add(new CompositeFileMutation(primaryPath, "applied", CompositeFileMutationMode.Edit));
+                mutations.Add(new CompositeFileMutation(CreateBlockedChildPath(), "never", CompositeFileMutationMode.Edit));
                 break;
             case "reload-failure":
-                mutations.Add(new CompositeFileMutation(primaryPath, "applied", DeleteFile: false));
+                mutations.Add(new CompositeFileMutation(primaryPath, "applied", CompositeFileMutationMode.Edit));
                 reloadFailure = new InvalidOperationException("reload failed");
                 break;
             case "successful-invalidation":
-                mutations.Add(new CompositeFileMutation(primaryPath, "applied", DeleteFile: false));
+                mutations.Add(new CompositeFileMutation(primaryPath, "applied", CompositeFileMutationMode.Edit));
                 break;
             default:
                 Assert.Fail($"Unknown scenario '{scenario}'.");
@@ -551,8 +568,8 @@ public sealed class CompositeApplyOrchestratorTests
 
         var mutations = new List<CompositeFileMutation>
         {
-            new(goodPath, "// good content", DeleteFile: false),
-            new(doomedPath, "// never written", DeleteFile: false),
+            new(goodPath, "// good content", CompositeFileMutationMode.Edit),
+            new(doomedPath, "// never written", CompositeFileMutationMode.Edit),
         };
 
         var store = new CompositePreviewStore();
@@ -611,7 +628,7 @@ public sealed class CompositeApplyOrchestratorTests
         await File.WriteAllTextAsync(blocker, "i am a file");
         var doomedPath = Path.Combine(blocker, "nested.cs");
 
-        var mutations = new List<CompositeFileMutation> { new(doomedPath, "// never written", DeleteFile: false) };
+        var mutations = new List<CompositeFileMutation> { new(doomedPath, "// never written", CompositeFileMutationMode.Edit) };
         var store = new CompositePreviewStore();
         var token = store.Store("ws-1", 1, "test composite", mutations);
         var sink = new CapturingServerObservabilitySink();
@@ -667,7 +684,7 @@ public sealed class CompositeApplyOrchestratorTests
             "ws-1",
             1,
             "encoding round-trip",
-            [new CompositeFileMutation(path, updatedContent, DeleteFile: false)]);
+            [new CompositeFileMutation(path, updatedContent, CompositeFileMutationMode.Edit)]);
         var orchestrator = new CompositeApplyOrchestrator(new RecordingWorkspaceManager(), store);
 
         var result = await orchestrator.ApplyCompositeAsync(token, CompositeAdmission.AdmitAll, CancellationToken.None);
@@ -726,7 +743,7 @@ public sealed class CompositeApplyOrchestratorTests
             "ghost-session",
             1,
             "unadmitted session",
-            [new CompositeFileMutation(target, "replaced")]);
+            [new CompositeFileMutation(target, "replaced", CompositeFileMutationMode.Edit)]);
         using var undoService = withUndoService ? new UndoService(NullLogger<UndoService>.Instance, workspace) : null;
         var orchestrator = new CompositeApplyOrchestrator(workspace, store, undoService: undoService);
 
@@ -763,7 +780,7 @@ public sealed class CompositeApplyOrchestratorTests
             "ws-1",
             1,
             "admission refusal",
-            [new CompositeFileMutation(target, "replaced"), new CompositeFileMutation(second, "created")]);
+            [new CompositeFileMutation(target, "replaced", CompositeFileMutationMode.Edit), new CompositeFileMutation(second, "created", CompositeFileMutationMode.Create)]);
         var workspace = new RecordingWorkspaceManager();
         var orchestrator = new CompositeApplyOrchestrator(workspace, store);
         string? admittedWorkspaceId = null;
@@ -802,7 +819,7 @@ public sealed class CompositeApplyOrchestratorTests
             "ws-1",
             1,
             "new file",
-            [new CompositeFileMutation(path, "class New { }\n", DeleteFile: false)]);
+            [new CompositeFileMutation(path, "class New { }\n", CompositeFileMutationMode.Create)]);
         var orchestrator = new CompositeApplyOrchestrator(new RecordingWorkspaceManager(), store);
 
         var result = await orchestrator.ApplyCompositeAsync(token, CompositeAdmission.AdmitAll, CancellationToken.None);
@@ -860,9 +877,9 @@ public sealed class CompositeApplyOrchestratorTests
             1,
             "composite",
             [
-                new CompositeFileMutation(modifiedPath, "class Modified { int X; }\n", DeleteFile: false),
-                new CompositeFileMutation(createdPath, "class Created { }\n", DeleteFile: false),
-                new CompositeFileMutation(deletedPath, null, DeleteFile: true),
+                new CompositeFileMutation(modifiedPath, "class Modified { int X; }\n", CompositeFileMutationMode.Edit),
+                new CompositeFileMutation(createdPath, "class Created { }\n", CompositeFileMutationMode.Create),
+                new CompositeFileMutation(deletedPath, null, CompositeFileMutationMode.Delete),
             ]);
         var orchestrator = new CompositeApplyOrchestrator(
             workspace,
@@ -894,6 +911,78 @@ public sealed class CompositeApplyOrchestratorTests
     }
 
     [TestMethod]
+    public async Task ApplyComposite_FirstCreateCollisionLeavesPreviousUndoIntact()
+    {
+        const string workspaceId = "ws-1";
+        var workspace = new RecordingWorkspaceManager();
+        using var undoService = new UndoService(NullLogger<UndoService>.Instance, workspace);
+        var priorPath = Path.Combine(_tempDir, "prior.cs");
+        await File.WriteAllTextAsync(priorPath, "prior-applied");
+        undoService.CaptureBeforeApply(workspaceId, "prior apply", preApplySolution: null,
+            [new FileSnapshotDto(priorPath, "prior-original")]);
+
+        var source = Path.Combine(_tempDir, "source.cs");
+        var destination = Path.Combine(_tempDir, "created.cs");
+        await File.WriteAllTextAsync(source, "original");
+        var store = new CompositePreviewStore();
+        var token = store.Store(workspaceId, 1, "create and edit",
+            [new(source, "modified", CompositeFileMutationMode.Edit),
+             new(destination, "generated", CompositeFileMutationMode.Create)]);
+        var admission = new CompositeRedemptionAdmission(workspaceId,
+            (_, _, ct) => File.WriteAllTextAsync(destination, "competitor", ct));
+        var orchestrator = new CompositeApplyOrchestrator(workspace, store, undoService: undoService);
+
+        var result = await orchestrator.ApplyCompositeAsync(token, admission, CancellationToken.None);
+
+        Assert.IsFalse(result.Success);
+        Assert.IsEmpty(result.AppliedFiles);
+        StringAssert.Contains(result.Error, "re-preview");
+        Assert.IsTrue(await undoService.RevertAsync(workspaceId));
+        Assert.AreEqual("prior-original", await File.ReadAllTextAsync(priorPath));
+        Assert.AreEqual("original", await File.ReadAllTextAsync(source));
+        Assert.AreEqual("competitor", await File.ReadAllTextAsync(destination));
+    }
+
+    [TestMethod]
+    public async Task ApplyComposite_CollisionAtSecondPublicationReportsOnlyFirstOutputAndPreservesPreviousUndo()
+    {
+        const string workspaceId = "ws-1";
+        var workspace = new RecordingWorkspaceManager();
+        using var undoService = new UndoService(NullLogger<UndoService>.Instance, workspace);
+        var priorPath = Path.Combine(_tempDir, "prior.cs");
+        await File.WriteAllTextAsync(priorPath, "prior-applied");
+        undoService.CaptureBeforeApply(workspaceId, "prior apply", preApplySolution: null,
+            [new FileSnapshotDto(priorPath, "prior-original")]);
+        var source = Path.Combine(_tempDir, "source.cs");
+        var firstCreate = Path.Combine(_tempDir, "first.cs");
+        var blocked = Path.Combine(_tempDir, "second.cs");
+        await File.WriteAllTextAsync(source, "original");
+        var store = new CompositePreviewStore();
+        var token = store.Store(workspaceId, 1, "two creates",
+            [new(source, "modified", CompositeFileMutationMode.Edit),
+             new(firstCreate, "generated", CompositeFileMutationMode.Create),
+             new(blocked, "unpublished", CompositeFileMutationMode.Create)]);
+        var orchestrator = new CompositeApplyOrchestrator(workspace, store, undoService,
+            (path, ct) => path == blocked
+                ? File.WriteAllTextAsync(blocked, "competitor", ct)
+                : Task.CompletedTask);
+
+        var result = await orchestrator.ApplyCompositeAsync(token, CompositeAdmission.AdmitAll, CancellationToken.None);
+
+        Assert.IsFalse(result.Success);
+        CollectionAssert.AreEqual(new[] { firstCreate }, result.AppliedFiles.ToArray());
+        Assert.AreEqual("generated", await File.ReadAllTextAsync(firstCreate));
+        Assert.AreEqual("competitor", await File.ReadAllTextAsync(blocked));
+        Assert.AreEqual("original", await File.ReadAllTextAsync(source));
+        File.Delete(firstCreate);
+        await File.WriteAllTextAsync(firstCreate, "independent replacement");
+        Assert.IsTrue(await undoService.RevertAsync(workspaceId));
+        Assert.AreEqual("prior-original", await File.ReadAllTextAsync(priorPath));
+        Assert.AreEqual("independent replacement", await File.ReadAllTextAsync(firstCreate));
+        Assert.AreEqual("competitor", await File.ReadAllTextAsync(blocked));
+    }
+
+    [TestMethod]
     public async Task ApplyComposite_CaseDistinctPaths_UsePlatformPathIdentity()
     {
         const string workspaceId = "ws-1";
@@ -917,8 +1006,8 @@ public sealed class CompositeApplyOrchestratorTests
             1,
             "composite",
             [
-                new CompositeFileMutation(upperPath, "upper-applied", DeleteFile: false),
-                new CompositeFileMutation(lowerPath, "lower-applied", DeleteFile: false),
+                new CompositeFileMutation(upperPath, "upper-applied", CompositeFileMutationMode.Edit),
+                new CompositeFileMutation(lowerPath, "lower-applied", CompositeFileMutationMode.Edit),
             ]);
         var orchestrator = new CompositeApplyOrchestrator(
             workspace, store, changeTracker, undoService: undoService);
@@ -951,9 +1040,9 @@ public sealed class CompositeApplyOrchestratorTests
             1,
             "composite",
             [
-                new CompositeFileMutation(upperPath, "upper", DeleteFile: false),
-                new CompositeFileMutation(lowerPath, "lower", DeleteFile: false),
-                new CompositeFileMutation(Path.Combine(blocker, "child.cs"), "never", DeleteFile: false),
+                new CompositeFileMutation(upperPath, "upper", CompositeFileMutationMode.Edit),
+                new CompositeFileMutation(lowerPath, "lower", CompositeFileMutationMode.Edit),
+                new CompositeFileMutation(Path.Combine(blocker, "child.cs"), "never", CompositeFileMutationMode.Edit),
             ]);
         var orchestrator = new CompositeApplyOrchestrator(new RecordingWorkspaceManager(), store);
 
@@ -1029,7 +1118,7 @@ public sealed class CompositeApplyOrchestratorTests
             "ws-1",
             1,
             "drift",
-            [new CompositeFileMutation(edited, "// from preview"), new CompositeFileMutation(sibling, "// sibling")]);
+            [new CompositeFileMutation(edited, "// from preview", CompositeFileMutationMode.Edit), new CompositeFileMutation(sibling, "// sibling", CompositeFileMutationMode.Edit)]);
         var orchestrator = new CompositeApplyOrchestrator(workspace, store);
         await File.WriteAllTextAsync(edited, "// hand edit after the preview");
 
@@ -1053,19 +1142,21 @@ public sealed class CompositeApplyOrchestratorTests
     }
 
     [TestMethod]
-    [DataRow(false, DisplayName = "memory store")]
-    [DataRow(true, DisplayName = "persistent store")]
-    public async Task ApplyComposite_CreatedFileAppearsAfterPreview_Refuses_AndAbsentStaysApplicable(bool persistent)
+    [DataRow(false, "// someone else created this", DisplayName = "memory store, different bytes")]
+    [DataRow(true, "// someone else created this", DisplayName = "persistent store, different bytes")]
+    [DataRow(false, "// preview", DisplayName = "memory store, identical bytes")]
+    [DataRow(true, "// preview", DisplayName = "persistent store, identical bytes")]
+    public async Task ApplyComposite_CreatedFileAppearsAfterPreview_Refuses_AndAbsentStaysApplicable(bool persistent, string competitor)
     {
         var created = Path.Combine(_tempDir, "created-later.cs");
         var (workspace, store, _) = CreateDriftStore(persistent);
-        var token = store.Store("ws-1", 1, "create", [new CompositeFileMutation(created, "// preview")]);
+        var token = store.Store("ws-1", 1, "create", [new CompositeFileMutation(created, "// preview", CompositeFileMutationMode.Create)]);
         var orchestrator = new CompositeApplyOrchestrator(workspace, store);
-        await File.WriteAllTextAsync(created, "// someone else created this");
+        await File.WriteAllTextAsync(created, competitor);
 
         await Assert.ThrowsAsync<PreviewTokenStaleException>(() =>
             orchestrator.ApplyCompositeAsync(token, CompositeAdmission.AdmitAll, CancellationToken.None));
-        Assert.AreEqual("// someone else created this", await File.ReadAllTextAsync(created));
+        Assert.AreEqual(competitor, await File.ReadAllTextAsync(created));
 
         File.Delete(created);
         var result = await orchestrator.ApplyCompositeAsync(token, CompositeAdmission.AdmitAll, CancellationToken.None);
@@ -1081,7 +1172,7 @@ public sealed class CompositeApplyOrchestratorTests
         var doomed = Path.Combine(_tempDir, "doomed.cs");
         await File.WriteAllTextAsync(doomed, "// original");
         var (workspace, store, _) = CreateDriftStore(persistent);
-        var token = store.Store("ws-1", 1, "delete", [new CompositeFileMutation(doomed, null, DeleteFile: true)]);
+        var token = store.Store("ws-1", 1, "delete", [new CompositeFileMutation(doomed, null, CompositeFileMutationMode.Delete)]);
         var orchestrator = new CompositeApplyOrchestrator(workspace, store);
         await File.WriteAllTextAsync(doomed, "// edited after the preview");
 
@@ -1106,7 +1197,7 @@ public sealed class CompositeApplyOrchestratorTests
         var edited = Path.Combine(_tempDir, "EnvelopeTarget.cs");
         await File.WriteAllTextAsync(edited, "// original");
         var (workspace, store, _) = CreateDriftStore(persistent: false);
-        var token = store.Store("ws-1", 1, "envelope", [new CompositeFileMutation(edited, "// preview")]);
+        var token = store.Store("ws-1", 1, "envelope", [new CompositeFileMutation(edited, "// preview", CompositeFileMutationMode.Edit)]);
         var orchestrator = new CompositeApplyOrchestrator(workspace, store);
         await File.WriteAllTextAsync(edited, "// hand edit");
 
@@ -1134,7 +1225,7 @@ public sealed class CompositeApplyOrchestratorTests
         var target = Path.Combine(_tempDir, "Unreadable.cs");
         await File.WriteAllTextAsync(target, "original");
         var (workspace, store, persistDirectory) = CreateDriftStore(persistent);
-        var token = store.Store("ws-1", 1, "unreadable", [new CompositeFileMutation(target, "// preview")]);
+        var token = store.Store("ws-1", 1, "unreadable", [new CompositeFileMutation(target, "// preview", CompositeFileMutationMode.Edit)]);
         var orchestrator = new CompositeApplyOrchestrator(workspace, store);
         File.Delete(target);
         Directory.CreateDirectory(target);
@@ -1163,7 +1254,7 @@ public sealed class CompositeApplyOrchestratorTests
         var (_, store, persistDirectory) = CreateDriftStore(persistent);
 
         Assert.ThrowsExactly<PublicInvalidOperationException>(() =>
-            store.Store("ws-1", 1, "unreadable", [new CompositeFileMutation(target, "// preview")]));
+            store.Store("ws-1", 1, "unreadable", [new CompositeFileMutation(target, "// preview", CompositeFileMutationMode.Edit)]));
 
         if (persistent)
         {
@@ -1186,7 +1277,7 @@ public sealed class CompositeApplyOrchestratorTests
         var store = new CompositePreviewStore();
         var token = store.Store(
             "ws-1", 1, "partial then retry",
-            [new CompositeFileMutation(first, "// first"), new CompositeFileMutation(second, "// second")]);
+            [new CompositeFileMutation(first, "// first", CompositeFileMutationMode.Edit), new CompositeFileMutation(second, "// second", CompositeFileMutationMode.Edit)]);
         var orchestrator = new CompositeApplyOrchestrator(new RecordingWorkspaceManager(), store);
 
         var partial = await orchestrator.ApplyCompositeAsync(token, CompositeAdmission.AdmitAll, CancellationToken.None);

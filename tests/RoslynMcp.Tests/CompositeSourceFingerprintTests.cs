@@ -29,7 +29,7 @@ public sealed class CompositeSourceFingerprintTests
         File.WriteAllBytes(existing, [1, 2, 3]);
 
         var captured = CompositeSourceFingerprint.Capture(
-            [new CompositeFileMutation(existing, "x"), new CompositeFileMutation(missing, "y")]);
+            [new CompositeFileMutation(existing, "x", CompositeFileMutationMode.Edit), new CompositeFileMutation(missing, "y", CompositeFileMutationMode.Create)]);
 
         Assert.AreEqual(2, captured.Count);
         Assert.IsTrue(captured[0].Exists);
@@ -46,7 +46,7 @@ public sealed class CompositeSourceFingerprintTests
         var viaDotSegment = Path.Combine(_dir, ".", "Feature.cs");
 
         var captured = CompositeSourceFingerprint.Capture(
-            [new CompositeFileMutation(upper, "1"), new CompositeFileMutation(lower, "2"), new CompositeFileMutation(viaDotSegment, "3")]);
+            [new CompositeFileMutation(upper, "1", CompositeFileMutationMode.Edit), new CompositeFileMutation(lower, "2", CompositeFileMutationMode.Edit), new CompositeFileMutation(viaDotSegment, "3", CompositeFileMutationMode.Edit)]);
 
         Assert.AreEqual(OperatingSystem.IsWindows() ? 1 : 2, captured.Count);
     }
@@ -56,7 +56,7 @@ public sealed class CompositeSourceFingerprintTests
     {
         var path = Path.Combine(_dir, "Encoded.cs");
         File.WriteAllText(path, "same text", new UTF8Encoding(false));
-        var mutations = new[] { new CompositeFileMutation(path, "new text") };
+        var mutations = new[] { new CompositeFileMutation(path, "new text", CompositeFileMutationMode.Edit) };
         var fingerprints = CompositeSourceFingerprint.Capture(mutations);
 
         Assert.IsNull(CompositeSourceFingerprint.FindDrift(fingerprints, mutations));
@@ -76,8 +76,8 @@ public sealed class CompositeSourceFingerprintTests
         File.WriteAllText(removed, "before");
         var mutations = new[]
         {
-            new CompositeFileMutation(written, "after"),
-            new CompositeFileMutation(removed, null, DeleteFile: true),
+            new CompositeFileMutation(written, "after", CompositeFileMutationMode.Edit),
+            new CompositeFileMutation(removed, null, CompositeFileMutationMode.Delete),
         };
         var fingerprints = CompositeSourceFingerprint.Capture(mutations);
 
@@ -99,7 +99,7 @@ public sealed class CompositeSourceFingerprintTests
         Directory.CreateDirectory(unreadable);
 
         var failure = Assert.ThrowsExactly<PublicInvalidOperationException>(() =>
-            CompositeSourceFingerprint.Capture([new CompositeFileMutation(unreadable, "x")]));
+            CompositeSourceFingerprint.Capture([new CompositeFileMutation(unreadable, "x", CompositeFileMutationMode.Edit)]));
 
         StringAssert.Contains(failure.PublicMessage, "Unreadable.cs");
         Assert.IsFalse(failure.PublicMessage.Contains(_dir, StringComparison.OrdinalIgnoreCase), "No absolute path in a public message.");
@@ -110,7 +110,7 @@ public sealed class CompositeSourceFingerprintTests
     {
         var path = Path.Combine(_dir, "Flipped.cs");
         File.WriteAllText(path, "before");
-        var mutations = new[] { new CompositeFileMutation(path, "after") };
+        var mutations = new[] { new CompositeFileMutation(path, "after", CompositeFileMutationMode.Edit) };
         var fingerprints = CompositeSourceFingerprint.Capture(mutations);
         File.Delete(path);
         Directory.CreateDirectory(path);
@@ -122,7 +122,7 @@ public sealed class CompositeSourceFingerprintTests
     public void FindDrift_CreatedTargetAlreadyHoldingTheNewText_IsIdempotentNotDrift()
     {
         var path = Path.Combine(_dir, "Created.cs");
-        var mutations = new[] { new CompositeFileMutation(path, "class C { }\n") };
+        var mutations = new[] { new CompositeFileMutation(path, "class C { }\n", CompositeFileMutationMode.Edit) };
         var fingerprints = CompositeSourceFingerprint.Capture(mutations);
 
         File.WriteAllText(path, "class C { }\n", new UTF8Encoding(true));
@@ -138,8 +138,8 @@ public sealed class CompositeSourceFingerprintTests
         File.WriteAllText(existed, "before");
         var mutations = new[]
         {
-            new CompositeFileMutation(existed, null, DeleteFile: true),
-            new CompositeFileMutation(absent, null, DeleteFile: true),
+            new CompositeFileMutation(existed, null, CompositeFileMutationMode.Delete),
+            new CompositeFileMutation(absent, null, CompositeFileMutationMode.Delete),
         };
         var fingerprints = CompositeSourceFingerprint.Capture(mutations);
 

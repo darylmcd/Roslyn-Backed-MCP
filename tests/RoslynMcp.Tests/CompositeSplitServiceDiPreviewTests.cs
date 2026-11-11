@@ -681,7 +681,7 @@ public sealed class CompositeSplitServiceDiPreviewTests : IsolatedWorkspaceTestB
         var (_, _, _, mutations) = entry;
         foreach (var mutation in mutations)
         {
-            if (mutation.DeleteFile)
+            if (mutation.Mode == CompositeFileMutationMode.Delete)
             {
                 if (File.Exists(mutation.FilePath))
                 {
