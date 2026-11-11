@@ -26,13 +26,10 @@ public sealed class PersistentCompositeStorage
     };
 
     /// <summary>
-    /// Record format written by this server. 1 (no <c>FormatVersion</c> member) bound a record to the
-    /// creating session id; 2 adds <c>WorkspaceIdentity</c>, the normalized solution/project path;
-    /// 3 adds <c>SourceFingerprints</c> (ADR 0033). Format 1 and 2 records still read, with no
-    /// fingerprints, and are redeemed unchecked. A reader refuses a newer format, so a reader at
-    /// format 2 refuses a format 3 record: the change is additive only for readers at 3 or later.
+    /// Format 4 is the first format with explicit mutation intent. Earlier records cannot safely
+    /// distinguish edits from generated files, so they are refused before the claim.
     /// </summary>
-    private const int CurrentFormatVersion = 3;
+    private const int CurrentFormatVersion = 4;
 
     private readonly string _rootDirectory;
     private readonly TimeSpan _ttl;
@@ -83,11 +80,6 @@ public sealed class PersistentCompositeStorage
     {
         ValidateToken(token);
 
-        var dir = Path.Combine(_rootDirectory, entry.WorkspaceVersion.ToString());
-        Directory.CreateDirectory(dir);
-        var path = Path.Combine(dir, token + ".json");
-        var tmp = path + ".tmp";
-
         // WorkspaceId and WorkspaceVersion are diagnostics only from format 2 on: the id names a
         // session of the creating process and the version counts that session's reloads, so neither
         // identifies anything on another host. WorkspaceIdentity is the portable key.
@@ -98,16 +90,23 @@ public sealed class PersistentCompositeStorage
         var fingerprints = entry.SourceFingerprints
             ?? throw new PublicArgumentException(
                 "A persisted composite entry requires source fingerprints.", nameof(entry));
+        if (!Path.IsPathFullyQualified(identity) || !HasCompleteFingerprintSet(entry.Mutations, fingerprints))
+            throw new PublicArgumentException("The composite preview has an invalid mutation or fingerprint set.", nameof(entry));
+
         var dto = new PersistedEntry(
             entry.WorkspaceId,
             entry.WorkspaceVersion,
             entry.Description,
-            entry.Mutations.Select(m => new PersistedMutation(m.FilePath, m.UpdatedContent, m.DeleteFile)).ToArray(),
+            entry.Mutations.Select(m => new PersistedMutation(m.FilePath, m.UpdatedContent, m.Mode)).ToArray(),
             entry.CreatedAt,
             CurrentFormatVersion,
             identity,
             fingerprints.Select(f => new PersistedFingerprint(f.FilePath, f.Exists, f.Sha256)).ToArray());
 
+        var dir = Path.Combine(_rootDirectory, entry.WorkspaceVersion.ToString());
+        Directory.CreateDirectory(dir);
+        var path = Path.Combine(dir, token + ".json");
+        var tmp = path + ".tmp";
         try
         {
             File.WriteAllText(tmp, JsonSerializer.Serialize(dto, JsonOpts));
@@ -131,7 +130,7 @@ public sealed class PersistentCompositeStorage
     /// the record onto a workspace session of this host and returns that session's id (which replaces
     /// the record's <c>WorkspaceId</c> in the result). If it throws, the payload stays on disk, the lock
     /// is released and the exception propagates, so a refusal never consumes the token. A record from a
-    /// newer format is refused the same way (<see langword="null"/>, payload kept). A corrupt or
+    /// different format is refused the same way (<see langword="null"/>, payload kept). A corrupt or
     /// expired record is consumed and dropped.
     /// </summary>
     public CompositePreviewStore.Entry? TryClaim(string token, Func<CompositePreviewStore.Entry, string> admit)
@@ -214,7 +213,7 @@ public sealed class PersistentCompositeStorage
             return null;
         }
 
-        // A record from a newer format cannot be interpreted safely (its identity rules are unknown),
+        // A record from a different format cannot be interpreted safely,
         // so its write set is "unknown" and the caller fails closed.
         return DateTime.UtcNow - lastWriteUtc > _ttl
             ? null
@@ -269,7 +268,7 @@ public sealed class PersistentCompositeStorage
 
         try
         {
-            // Read, parse and admit BEFORE the payload is moved. A refusal (newer format, or admit
+            // Read, parse and admit BEFORE the payload is moved. A refusal (different format, or admit
             // throwing because this host has no matching session) leaves the one-time payload on disk
             // for a correctly prepared host; the lock is released by the finally below.
             string json;
@@ -289,7 +288,7 @@ public sealed class PersistentCompositeStorage
             {
                 switch (ParseEntry(json, out var parsed))
                 {
-                    case ParseOutcome.NewerFormat:
+                    case ParseOutcome.UnsupportedFormat:
                         return null;
                     case ParseOutcome.Parsed:
                         // Exceptions propagate on purpose: they are the refusal, and the payload is untouched.
@@ -327,111 +326,65 @@ public sealed class PersistentCompositeStorage
     {
         Parsed,
         Unreadable,
-        NewerFormat,
+        UnsupportedFormat,
     }
 
-    /// <summary>
-    /// Parses a persisted record. The directory is shared and separately writable, so the payload is
-    /// untrusted input: a record missing the members every later stage dereferences (workspace id,
-    /// mutation list, a mutation's path, for format 2 the workspace identity, for format 3 the fingerprint list) is unreadable,
-    /// never a half-populated entry. A record without a <c>FormatVersion</c> is format 1; one above
-    /// <see cref="CurrentFormatVersion"/> is reported separately because its payload must be kept.
-    /// </summary>
+    // Probe the format before deserializing the body, so fields with a new shape cannot make a
+    // different-version record look corrupt and get it consumed by this reader.
     private ParseOutcome ParseEntry(string json, out CompositePreviewStore.Entry? entry)
     {
         entry = null;
         try
         {
-            var dto = JsonSerializer.Deserialize<PersistedEntry>(json, JsonOpts);
-            if (dto is null)
-            {
-                _logger?.LogDebug("PersistentCompositeStorage: dropping persisted entry with missing required members.");
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object)
                 return ParseOutcome.Unreadable;
+
+            var formatVersion = 1;
+            foreach (var property in root.EnumerateObject())
+            {
+                if (property.Name.Equals(nameof(PersistedEntry.FormatVersion), StringComparison.OrdinalIgnoreCase))
+                    formatVersion = property.Value.GetInt32();
             }
 
-            if (dto.FormatVersion > CurrentFormatVersion)
+            if (formatVersion != CurrentFormatVersion)
             {
                 _logger?.LogDebug(
-                    "PersistentCompositeStorage: persisted entry has format {FormatVersion}, newer than supported {Supported}; keeping it.",
-                    dto.FormatVersion,
+                    "PersistentCompositeStorage: persisted entry has format {FormatVersion}, expected {Supported}; keeping it.",
+                    formatVersion,
                     CurrentFormatVersion);
-                return ParseOutcome.NewerFormat;
+                return ParseOutcome.UnsupportedFormat;
             }
 
-            if (string.IsNullOrWhiteSpace(dto.WorkspaceId) || dto.Mutations is null)
+            var dto = root.Deserialize<PersistedEntry>(JsonOpts);
+            if (dto is null || string.IsNullOrWhiteSpace(dto.WorkspaceId) ||
+                string.IsNullOrWhiteSpace(dto.WorkspaceIdentity) || !Path.IsPathFullyQualified(dto.WorkspaceIdentity) ||
+                dto.Mutations is null || dto.SourceFingerprints is null)
             {
-                _logger?.LogDebug("PersistentCompositeStorage: dropping persisted entry with missing required members.");
                 return ParseOutcome.Unreadable;
-            }
-
-            string? identity = null;
-            if (dto.FormatVersion >= 2)
-            {
-                // A relative identity would be resolved against this process's working directory by
-                // GetFullPath and could match an unrelated session: it is unusable, not normalizable.
-                if (string.IsNullOrWhiteSpace(dto.WorkspaceIdentity) || !Path.IsPathFullyQualified(dto.WorkspaceIdentity))
-                {
-                    _logger?.LogDebug("PersistentCompositeStorage: dropping format-2 entry without a fully qualified workspace identity.");
-                    return ParseOutcome.Unreadable;
-                }
-
-                identity = Path.GetFullPath(dto.WorkspaceIdentity);
             }
 
             var mutations = new List<CompositeFileMutation>(dto.Mutations.Count);
             foreach (var mutation in dto.Mutations)
             {
-                if (mutation is null || string.IsNullOrWhiteSpace(mutation.FilePath))
-                {
-                    _logger?.LogDebug("PersistentCompositeStorage: dropping persisted entry with a pathless mutation.");
+                if (mutation is null || string.IsNullOrWhiteSpace(mutation.FilePath) || mutation.Mode is not { } mode)
                     return ParseOutcome.Unreadable;
-                }
-
-                mutations.Add(new CompositeFileMutation(mutation.FilePath, mutation.UpdatedContent, mutation.DeleteFile));
+                mutations.Add(new CompositeFileMutation(mutation.FilePath, mutation.UpdatedContent, mode));
             }
 
-            // Format 1 and 2 records predate fingerprints: null means "redeem unchecked". From format 3 the
-            // list is required, so deleting it from a record cannot silently turn the check off.
-            List<CompositeSourceFingerprint>? fingerprints = null;
-            if (dto.FormatVersion >= 3)
+            var fingerprints = new List<CompositeSourceFingerprint>(dto.SourceFingerprints.Count);
+            foreach (var fingerprint in dto.SourceFingerprints)
             {
-                if (dto.SourceFingerprints is null)
-                {
-                    _logger?.LogDebug("PersistentCompositeStorage: dropping format-3 entry without source fingerprints.");
+                if (fingerprint is null || string.IsNullOrWhiteSpace(fingerprint.FilePath) || fingerprint.Exists is not { } exists)
                     return ParseOutcome.Unreadable;
-                }
+                fingerprints.Add(new CompositeSourceFingerprint(fingerprint.FilePath, exists, fingerprint.Sha256));
+            }
 
-                // The redeeming host reads, hashes and reports on every fingerprint path, so a path that
-                // no mutation writes (an arbitrary file chosen by whoever can write this directory) is
-                // refused: fingerprints are a subset of the write set.
-                var writeSet = new HashSet<string>(FileSystemPath.Comparer);
-                foreach (var mutation in mutations)
-                {
-                    writeSet.Add(Path.GetFullPath(mutation.FilePath));
-                }
-
-                fingerprints = new List<CompositeSourceFingerprint>(dto.SourceFingerprints.Count);
-                foreach (var fingerprint in dto.SourceFingerprints)
-                {
-                    if (fingerprint is null
-                        || string.IsNullOrWhiteSpace(fingerprint.FilePath)
-                        || (fingerprint.Exists && string.IsNullOrWhiteSpace(fingerprint.Sha256)))
-                    {
-                        _logger?.LogDebug("PersistentCompositeStorage: dropping persisted entry with a malformed source fingerprint.");
-                        return ParseOutcome.Unreadable;
-                    }
-
-                    if (!writeSet.Contains(Path.GetFullPath(fingerprint.FilePath)))
-                    {
-                        _logger?.LogDebug("PersistentCompositeStorage: dropping persisted entry with a source fingerprint outside its write set.");
-                        return ParseOutcome.Unreadable;
-                    }
-
-                    fingerprints.Add(new CompositeSourceFingerprint(
-                        fingerprint.FilePath,
-                        fingerprint.Exists,
-                        fingerprint.Exists ? fingerprint.Sha256 : null));
-                }
+            if (!HasCompleteFingerprintSet(mutations, fingerprints))
+            {
+                _logger?.LogDebug("PersistentCompositeStorage: dropping persisted entry with an invalid mutation or fingerprint set.");
+                return ParseOutcome.Unreadable;
             }
 
             entry = new CompositePreviewStore.Entry(
@@ -440,18 +393,64 @@ public sealed class PersistentCompositeStorage
                 dto.Description,
                 mutations,
                 dto.CreatedAt,
-                identity,
+                Path.GetFullPath(dto.WorkspaceIdentity),
                 fingerprints);
             return ParseOutcome.Parsed;
         }
-        // IOException: Path.GetFullPath on an untrusted overlong path throws PathTooLongException.
-        // Nothing else in this body performs I/O, so the record is simply unreadable.
-        catch (Exception ex) when (ex is JsonException or NotSupportedException or ArgumentException or IOException)
+        // Path.GetFullPath on an untrusted overlong path can throw PathTooLongException.
+        catch (Exception ex) when (ex is JsonException or NotSupportedException or ArgumentException
+                                   or IOException or InvalidOperationException or FormatException)
         {
-            _logger?.LogDebug(ex, "PersistentCompositeStorage: dropping unreadable persisted entry.");
+            _logger?.LogDebug("PersistentCompositeStorage: dropping unreadable persisted entry.");
             return ParseOutcome.Unreadable;
         }
     }
+
+    private static bool HasCompleteFingerprintSet(
+        IReadOnlyList<CompositeFileMutation> mutations,
+        IReadOnlyList<CompositeSourceFingerprint> fingerprints)
+    {
+        var paths = new Dictionary<string, CompositeFileMutationMode>(FileSystemPath.Comparer);
+        foreach (var mutation in mutations)
+        {
+            if (!Path.IsPathFullyQualified(mutation.FilePath) || !IsValidMutation(mutation))
+                return false;
+            var path = Path.GetFullPath(mutation.FilePath);
+            if (!paths.TryAdd(path, mutation.Mode) &&
+                (mutation.Mode == CompositeFileMutationMode.Create || paths[path] == CompositeFileMutationMode.Create))
+            {
+                return false;
+            }
+        }
+
+        // Every distinct target must have exactly one fingerprint. Checking only that fingerprint
+        // paths are members of the write set would let a tampered payload omit a drift check.
+        foreach (var fingerprint in fingerprints)
+        {
+            if (!Path.IsPathFullyQualified(fingerprint.FilePath) ||
+                !paths.Remove(Path.GetFullPath(fingerprint.FilePath), out var mode) ||
+                (mode == CompositeFileMutationMode.Create && fingerprint.Exists) ||
+                !HasValidDigest(fingerprint))
+            {
+                return false;
+            }
+        }
+
+        return paths.Count == 0;
+    }
+
+    private static bool IsValidMutation(CompositeFileMutation mutation) => mutation.Mode switch
+    {
+        CompositeFileMutationMode.Edit or CompositeFileMutationMode.Create => mutation.UpdatedContent is not null,
+        CompositeFileMutationMode.Delete => mutation.UpdatedContent is null,
+        _ => false,
+    };
+
+    private static bool HasValidDigest(CompositeSourceFingerprint fingerprint) =>
+        fingerprint.Exists
+            ? fingerprint.Sha256 is { Length: 64 } sha &&
+              sha.All(character => character is >= '0' and <= '9' or >= 'a' and <= 'f')
+            : fingerprint.Sha256 is null;
 
     private string[]? TryEnumerateVersionDirectories(string operation)
     {
@@ -560,7 +559,7 @@ public sealed class PersistentCompositeStorage
         string? WorkspaceIdentity,
         IReadOnlyList<PersistedFingerprint?>? SourceFingerprints);
 
-    private sealed record PersistedMutation(string? FilePath, string? UpdatedContent, bool DeleteFile);
+    private sealed record PersistedMutation(string? FilePath, string? UpdatedContent, CompositeFileMutationMode? Mode);
 
-    private sealed record PersistedFingerprint(string? FilePath, bool Exists, string? Sha256);
+    private sealed record PersistedFingerprint(string? FilePath, bool? Exists, string? Sha256);
 }

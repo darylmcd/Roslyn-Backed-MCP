@@ -1,5 +1,10 @@
+using System.Text.Json;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
@@ -18,6 +23,88 @@ public sealed class PreviewMultiFileEditSyntaxRegressionTests : IsolatedWorkspac
 
     [ClassCleanup]
     public static void ClassCleanup() => DisposeServices();
+
+    [TestMethod]
+    [DataRow("preview")]
+    [DataRow("direct")]
+    public async Task LegalDirectiveMessages_DoNotBlockValidInsertions(string route)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var target = workspace.GetPath("SampleLib", "RegionEditTarget.cs");
+        var other = workspace.GetPath("SampleLib", "OtherEditTarget.cs");
+        const string source = "#region Public members\n#warning intentional fixture warning\npublic class RegionEditTarget\n{\n}\n#endregion Public members\n";
+        const string otherSource = "public class OtherEditTarget {}\n";
+        const string property = "    public int Count { get; init; }\n";
+        const string comment = "// insertion\n";
+        await File.WriteAllTextAsync(target, source);
+        await File.WriteAllTextAsync(other, otherSource);
+        await workspace.LoadAsync();
+        var server = await GetPathAuthorizedServerAsync();
+        TextEditDto[] edits = [new(1, 1, 1, 1, comment), new(5, 1, 5, 1, property)];
+        if (route == "preview")
+        {
+            var previewJson = await MultiFileEditTools.PreviewMultiFileEdit(server, WorkspaceExecutionGate, EditService,
+                workspace.WorkspaceId, [new(target, edits), new(other, [new(1, 1, 1, 1, comment)])]);
+            using var preview = JsonDocument.Parse(previewJson);
+            var token = preview.RootElement.GetProperty("previewToken").GetString();
+            Assert.IsFalse(string.IsNullOrWhiteSpace(token));
+            var changes = preview.RootElement.GetProperty("changes").EnumerateArray().ToArray();
+            Assert.HasCount(2, changes);
+            var targetDiff = changes.Single(change => change.GetProperty("filePath").GetString() == target)
+                .GetProperty("unifiedDiff").GetString()!;
+            StringAssert.Contains(targetDiff, "+" + comment.TrimEnd());
+            StringAssert.Contains(targetDiff, "+" + property.TrimEnd());
+            Assert.AreEqual(source, await File.ReadAllTextAsync(target));
+            Assert.AreEqual(otherSource, await File.ReadAllTextAsync(other));
+
+            var applyJson = await MultiFileEditTools.ApplyMultiFilePreview(WorkspaceExecutionGate, RefactoringService,
+                PreviewStore, token!);
+            using var apply = JsonDocument.Parse(applyJson);
+            Assert.IsTrue(apply.RootElement.GetProperty("success").GetBoolean(), applyJson);
+            Assert.AreEqual(comment + otherSource, await File.ReadAllTextAsync(other));
+        }
+        else
+        {
+            var applyJson = await EditTools.ApplyTextEdit(server, WorkspaceExecutionGate, EditService,
+                workspace.WorkspaceId, target, edits);
+            using var apply = JsonDocument.Parse(applyJson);
+            Assert.IsTrue(apply.RootElement.GetProperty("success").GetBoolean(), applyJson);
+            Assert.AreEqual(otherSource, await File.ReadAllTextAsync(other));
+        }
+
+        Assert.AreEqual(comment + source.Replace("\n}\n", "\n" + property + "}\n", StringComparison.Ordinal),
+            await File.ReadAllTextAsync(target));
+    }
+
+    [TestMethod]
+    public async Task PreviewMultiFile_RejectsDiagnosticFreeSkippedTokensInsideStructuredTrivia()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync();
+        var first = workspace.GetPath("SampleLib", "Dog.cs");
+        var second = workspace.GetPath("SampleLib", "Cat.cs");
+        var firstBefore = await File.ReadAllTextAsync(first);
+        var secondBefore = await File.ReadAllTextAsync(second);
+        const string skippedTokens = "#if false\n#pragma warning banana junk\n#endif\n";
+        var parsed = CSharpSyntaxTree.ParseText(skippedTokens + secondBefore);
+        Assert.IsEmpty(parsed.GetDiagnostics(), "The fixture must reach the skipped-token fallback.");
+        Assert.IsTrue(parsed.GetRoot().DescendantTrivia(descendIntoTrivia: true)
+            .Any(trivia => trivia.IsKind(SyntaxKind.SkippedTokensTrivia)));
+        var server = await GetPathAuthorizedServerAsync();
+        var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
+            MultiFileEditTools.PreviewMultiFileEdit(server, WorkspaceExecutionGate, EditService, workspace.WorkspaceId,
+                [new(first, [new(1, 1, 1, 1, "// valid edit\n")]), new(second, [new(1, 1, 1, 1, skippedTokens)])]));
+        StringAssert.Contains(ex.Message, "produce 1 C# syntax error(s)");
+        const string tool = "preview_multi_file_edit";
+        var envelopeJson = ToolErrorHandler.FormatErrorResponse(ToolErrorHandler.ClassifyError(ex, tool), tool, ex);
+        using var envelope = JsonDocument.Parse(envelopeJson);
+        Assert.AreEqual("InvalidOperation", envelope.RootElement.GetProperty("category").GetString());
+        Assert.AreEqual("InvalidOperationException", envelope.RootElement.GetProperty("exceptionType").GetString());
+        StringAssert.Contains(envelope.RootElement.GetProperty("message").GetString()!, "Correct the C# syntax");
+        Assert.IsFalse(envelopeJson.Contains("Cat.cs", StringComparison.Ordinal));
+        Assert.IsFalse(envelopeJson.Contains("banana", StringComparison.Ordinal));
+        Assert.AreEqual(firstBefore, await File.ReadAllTextAsync(first));
+        Assert.AreEqual(secondBefore, await File.ReadAllTextAsync(second));
+    }
 
     [TestMethod]
     public async Task PreviewMultiFile_F17NamespaceCommentBrace_ThrowsWhenSyntaxCheckEnabled()
@@ -43,12 +130,11 @@ public sealed class PreviewMultiFileEditSyntaxRegressionTests : IsolatedWorkspac
                 new[] { new TextEditDto(1, colAfterLine1, 1, colAfterLine1, "\n// F17\n{\n") }),
         };
 
-        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () =>
+        var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(async () =>
         {
             await edit.PreviewMultiFileTextEditsAsync(
                 workspaceId, fileEdits, CancellationToken.None, skipSyntaxCheck: false);
         });
-        StringAssert.Contains(ex.Message, "preview_multi_file_edit", StringComparison.Ordinal);
         StringAssert.Contains(ex.Message, "syntax", StringComparison.OrdinalIgnoreCase);
     }
 
@@ -99,13 +185,13 @@ public sealed class PreviewMultiFileEditSyntaxRegressionTests : IsolatedWorkspac
         var fileEdits = new[] { new FileEditsDto(dogFilePath, new[] { await F17EditAsync(dogFilePath) }) };
         var solution = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
 
-        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () =>
+        var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(async () =>
         {
             await edit.PreviewMultiFileTextEditsOnSolutionAsync(
                 solution, fileEdits, CancellationToken.None, skipSyntaxCheck: false);
         });
-        StringAssert.Contains(ex.Message, "preview_multi_file_edit", StringComparison.Ordinal);
-        StringAssert.Contains(ex.Message, "syntax", StringComparison.OrdinalIgnoreCase);
+        StringAssert.Contains(ex.Message, "Correct the C# syntax and reissue the preview.");
+        Assert.IsFalse(ex.Message.Contains("skipSyntaxCheck", StringComparison.Ordinal));
     }
 
     [TestMethod]

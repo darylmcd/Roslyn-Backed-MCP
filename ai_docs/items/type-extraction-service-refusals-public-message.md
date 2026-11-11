@@ -30,3 +30,5 @@
 ## Notes
 
 Operator decision 2026-11-09: defer the stable extract_type_preview public-message change to the next major release. Do not implement this row in 5.x. Preserve blockingDependencies member names as intentional structured caller data; they do not justify a major bump on their own. At the major release, provide ADR, migration note and raw-wire coverage for the public message change. Read the complete-envelope sentinel acceptance as excluding intentional blockingDependencies names; check that raw paths, names and exception details do not leak through the public message or other unintended envelope fields.
+
+2026-11-11 5.x screen at 52f2c418: the live catalog marks extract_type_preview stable. ToolErrorHandler.cs:667 still passes BlockingDependencies as structured caller data. Keep member names in blockingDependencies; the next approved major trigger is the public-message migration, with ADR, release note and both raw protocol eras.
