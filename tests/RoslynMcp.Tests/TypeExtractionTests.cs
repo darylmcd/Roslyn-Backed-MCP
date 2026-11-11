@@ -1822,13 +1822,53 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
     }
 
     /// <summary>
-    /// type-extraction-same-file-rewriter-decomposition: a retained constructor body that names an
-    /// extracted instance member is refused. The refusal is deliberately pinned at its current breadth
-    /// (it also covers constructor BODIES, which the injected field assignment now precedes); narrowing
-    /// it to initializer arguments must flip this test on purpose.
+    /// type-extraction-ctor-body-refusal-overbroad: a retained constructor BODY (block, expression, or
+    /// chained <c>this(...)</c>) that names an extracted instance member is rebound, because the injected
+    /// composition field is assigned before the body runs. The previewed solution is emitted and run:
+    /// <c>Seed</c> must be 7. (This deliberately flips the former fail-closed pin on constructor bodies.)
     /// </summary>
     [TestMethod]
-    public async Task ExtractType_RetainedConstructorReferencesInstanceMember_RefusesFailClosed()
+    [DataRow("CtorBlockBodyFixture", "public CtorBlockBodyFixture() { _seed = Compute(); }")]
+    [DataRow("CtorExpressionBodyFixture", "public CtorExpressionBodyFixture() => _seed = Compute();")]
+    [DataRow("CtorChainedBodyFixture", "public CtorChainedBodyFixture() : this(1) { _seed = Compute(); } public CtorChainedBodyFixture(int unused) { }")]
+    public async Task ExtractType_RetainedConstructorBodyReferencesInstanceMember_PreviewsAndRuns(string typeName, string constructors)
+    {
+        var fixture = await CreateExtractionFixtureAsync(
+            typeName + ".cs",
+            $$"""
+            namespace SampleLib;
+
+            public class {{typeName}}
+            {
+                private int _seed;
+                {{constructors}}
+                public int Seed => _seed;
+                private int Compute() => 7;
+            }
+            """);
+
+        try
+        {
+            var preview = await TypeExtractionService.PreviewExtractTypeAsync(
+                fixture.WorkspaceId, fixture.FilePath, typeName, ["Compute"], "ComputeHolder", null, CancellationToken.None);
+            await AssertModifiedSolutionCompilesAsync(preview.PreviewToken);
+
+            Assert.AreEqual(7, await EmitAndReadHostPropertyAsync(preview.PreviewToken, typeName, "ComputeHolder", "Seed"),
+                "constructor body code must observe an assigned composition field");
+        }
+        finally
+        {
+            WorkspaceManager.Close(fixture.WorkspaceId);
+        }
+    }
+
+    /// <summary>
+    /// type-extraction-ctor-body-refusal-overbroad: the retained half of the refusal. A <c>this(...)</c>
+    /// initializer argument runs before the injected composition field is assigned, so an extracted instance
+    /// member named there still cannot be rebound and the extraction fails closed.
+    /// </summary>
+    [TestMethod]
+    public async Task ExtractType_RetainedConstructorInitializerReferencesInstanceMember_RefusesFailClosed()
     {
         var fixture = await CreateExtractionFixtureAsync(
             "RetainedCtorReferenceFixture.cs",
@@ -1838,7 +1878,8 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
             public class RetainedCtorReferenceFixture
             {
                 private readonly int _seed;
-                public RetainedCtorReferenceFixture() { _seed = Compute(); }
+                public RetainedCtorReferenceFixture(RetainedCtorReferenceFixture other) : this(other.Compute()) { }
+                public RetainedCtorReferenceFixture(int seed) { _seed = seed; }
                 public int Seed => _seed;
                 private int Compute() => 7;
             }
@@ -1856,7 +1897,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
                     null,
                     CancellationToken.None));
 
-            StringAssert.Contains(exception.Message, "constructor body before the injected composition field");
+            StringAssert.Contains(exception.Message, "constructor initializer argument");
             StringAssert.Contains(exception.Message, "extracted member 'Compute'");
             FileOperationIntegrationTests.AssertNoStoredPreviews(PreviewStore, fixture.WorkspaceId);
         }
@@ -2524,30 +2565,41 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
                 fixture.WorkspaceId, fixture.FilePath, typeName, ["Compute"], "ComputeHelper", null, CancellationToken.None);
             await AssertModifiedSolutionCompilesAsync(preview.PreviewToken);
 
-            var project = PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution.Projects.Single(p => p.Name == "SampleLib");
-            var compilation = (await project.GetCompilationAsync(CancellationToken.None))!;
-            using var image = new MemoryStream();
-            var emit = compilation.Emit(image);
-            Assert.IsTrue(emit.Success, string.Join(Environment.NewLine, emit.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)));
-
-            var context = new System.Runtime.Loader.AssemblyLoadContext(typeName, isCollectible: true);
-            try
-            {
-                image.Position = 0;
-                var assembly = context.LoadFromStream(image);
-                var helper = Activator.CreateInstance(assembly.GetType("SampleLib.ComputeHelper")!);
-                var host = Activator.CreateInstance(assembly.GetType("SampleLib." + typeName)!, helper)!;
-                Assert.AreEqual(7, (int)host.GetType().GetProperty("V")!.GetValue(host)!,
-                    "constructor code must observe an assigned composition field");
-            }
-            finally
-            {
-                context.Unload();
-            }
+            Assert.AreEqual(7, await EmitAndReadHostPropertyAsync(preview.PreviewToken, typeName, "ComputeHelper", "V"),
+                "constructor code must observe an assigned composition field");
         }
         finally
         {
             WorkspaceManager.Close(fixture.WorkspaceId);
+        }
+    }
+
+    /// <summary>
+    /// Emits the previewed <c>SampleLib</c> project, builds the extracted helper, passes it to the host type's
+    /// composition constructor, and returns the host's int property.
+    /// </summary>
+    private static async Task<int> EmitAndReadHostPropertyAsync(
+        string previewToken, string hostTypeName, string helperTypeName, string propertyName)
+    {
+        var project = PreviewStore.Retrieve(previewToken)!.Value.ModifiedSolution.Projects.Single(p => p.Name == "SampleLib");
+        var compilation = (await project.GetCompilationAsync(CancellationToken.None))!;
+        using var image = new MemoryStream();
+        var emit = compilation.Emit(image);
+        Assert.IsTrue(emit.Success, string.Join(Environment.NewLine, emit.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)));
+
+        var context = new System.Runtime.Loader.AssemblyLoadContext(hostTypeName, isCollectible: true);
+        try
+        {
+            image.Position = 0;
+            var assembly = context.LoadFromStream(image);
+            var helper = Activator.CreateInstance(assembly.GetType("SampleLib." + helperTypeName)!);
+            var hostType = assembly.GetType("SampleLib." + hostTypeName)!;
+            var host = Activator.CreateInstance(hostType, helper)!;
+            return (int)hostType.GetProperty(propertyName)!.GetValue(host)!;
+        }
+        finally
+        {
+            context.Unload();
         }
     }
 

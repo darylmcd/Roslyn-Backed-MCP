@@ -186,9 +186,9 @@ internal sealed class TypeExtractionSameFileConsumerRewriter : CSharpSyntaxRewri
             return;
         }
 
-        if (node.AncestorsAndSelf().OfType<ConstructorDeclarationSyntax>().Any())
+        if (node.AncestorsAndSelf().OfType<ConstructorInitializerSyntax>().Any())
         {
-            throw CannotRewrite(symbol, "constructor body before the injected composition field is assigned");
+            throw CannotRewrite(symbol, "constructor initializer argument, which runs before the injected composition field is assigned");
         }
     }
 
