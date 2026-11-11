@@ -34,19 +34,31 @@ internal static class NamespaceMemberClassifier
     };
 
     /// <summary>
-    /// Fully-qualified name of the namespace that directly contains <paramref name="node"/>
-    /// (nested declarations joined with <c>.</c>), or the empty string for the global namespace.
+    /// Fully-qualified source spelling of the namespace containing <paramref name="node"/>,
+    /// or the empty string for the global namespace. Active tokens preserve identifier escapes
+    /// without copying trivia such as conditional directives into the generated namespace.
     /// </summary>
     internal static string GetContainingNamespaceName(SyntaxNode node) =>
-        string.Join(".", node.Ancestors().OfType<BaseNamespaceDeclarationSyntax>().Reverse().Select(n => n.Name.ToString()));
+        GetContainingNamespaceName(node, static token => token.Text);
 
     /// <summary>
     /// True when <paramref name="root"/> still declares a type-like member directly inside the
     /// namespace named <paramref name="namespaceName"/>, in any namespace block of the file.
+    /// Compares identifier values so source spelling differences do not hide a sibling type.
     /// </summary>
-    internal static bool DeclaresTypeLikeMemberIn(SyntaxNode root, string namespaceName) =>
-        root.DescendantNodes().Any(n => IsDirectNamespaceMember(n) &&
-            string.Equals(GetContainingNamespaceName(n), namespaceName, StringComparison.Ordinal));
+    internal static bool DeclaresTypeLikeMemberIn(SyntaxNode root, string namespaceName)
+    {
+        var namespaceValue = GetNameText(SyntaxFactory.ParseName(namespaceName), static token => token.ValueText);
+        return root.DescendantNodes().Any(n => IsDirectNamespaceMember(n) &&
+            string.Equals(GetContainingNamespaceName(n, static token => token.ValueText), namespaceValue, StringComparison.Ordinal));
+    }
+
+    private static string GetContainingNamespaceName(SyntaxNode node, Func<SyntaxToken, string> getTokenText) =>
+        string.Join(".", node.Ancestors().OfType<BaseNamespaceDeclarationSyntax>().Reverse()
+            .Select(n => GetNameText(n.Name, getTokenText)));
+
+    private static string GetNameText(NameSyntax name, Func<SyntaxToken, string> getTokenText) =>
+        string.Concat(name.DescendantTokens().Select(getTokenText));
 
     /// <summary>
     /// True when a source file whose declaration was just removed must still be kept, i.e. it holds

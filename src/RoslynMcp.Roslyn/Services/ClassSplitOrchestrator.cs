@@ -73,7 +73,7 @@ public sealed class ClassSplitOrchestrator : IClassSplitOrchestrator
             .WithAttributeLists(SyntaxFactory.List<AttributeListSyntax>())
             .WithMembers(SyntaxFactory.List(selectedMembers))
             .WithLeadingTrivia(SyntaxFactory.TriviaList(SyntaxFactory.ElasticCarriageReturnLineFeed)));
-        var namespaceName = GetNamespaceName(typeDeclaration);
+        var namespaceName = NamespaceMemberClassifier.GetContainingNamespaceName(typeDeclaration);
         var receivingOptions = ReceivingNamespaceFactory.RequireCSharpOptions(document.Project.ParseOptions);
         var partialCompilationUnit = CreateCompilationUnit(root, partialNewType, namespaceName, receivingOptions);
         var newFilePath = Path.Combine(Path.GetDirectoryName(filePath)!, newFileName);
@@ -117,11 +117,6 @@ public sealed class ClassSplitOrchestrator : IClassSplitOrchestrator
 
         var partialToken = SyntaxFactory.Token(SyntaxKind.PartialKeyword).WithTrailingTrivia(SyntaxFactory.ElasticSpace);
         return declaration.WithModifiers(declaration.Modifiers.Add(partialToken));
-    }
-
-    private static string GetNamespaceName(TypeDeclarationSyntax declaration)
-    {
-        return declaration.FirstAncestorOrSelf<BaseNamespaceDeclarationSyntax>()?.Name.ToString() ?? string.Empty;
     }
 
     private static CompilationUnitSyntax CreateCompilationUnit(CompilationUnitSyntax sourceRoot, TypeDeclarationSyntax declaration,
