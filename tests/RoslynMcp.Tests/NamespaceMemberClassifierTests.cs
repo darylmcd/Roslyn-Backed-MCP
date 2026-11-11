@@ -73,6 +73,9 @@ public sealed class NamespaceMemberClassifierTests
 
     [TestMethod]
     [DataRow("namespace Old { enum Keep { A } }", "Old", true)]
+    [DataRow("namespace @Old { enum Keep { A } }", "Old", true)]
+    [DataRow("namespace \\u004Fld { enum Keep { A } }", "Old", true)]
+    [DataRow("namespace @class /* gap */ . Inner { enum Keep { A } }", "@class.Inner", true)]
     [DataRow("namespace Old { delegate void Keep(); }", "Old", true)]
     [DataRow("namespace Old;\nclass Keep { }", "Old", true)]
     [DataRow("namespace Old { }\nnamespace Old { enum Keep { A } }", "Old", true)]

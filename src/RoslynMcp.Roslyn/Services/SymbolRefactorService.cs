@@ -424,7 +424,7 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
             fieldDeclarations,
             memberToPartition,
             constructorInjections,
-            GetNamespaceName(typeDeclaration),
+            NamespaceMemberClassifier.GetContainingNamespaceName(typeDeclaration),
             sourceDirectory,
             StripLeadingTriviaFromFirstUsing(root.Usings));
     }
@@ -1321,11 +1321,6 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
         var first = usings[0];
         var stripped = first.WithLeadingTrivia(SyntaxFactory.TriviaList());
         return usings.Replace(first, stripped);
-    }
-
-    private static string GetNamespaceName(TypeDeclarationSyntax declaration)
-    {
-        return declaration.FirstAncestorOrSelf<BaseNamespaceDeclarationSyntax>()?.Name.ToString() ?? string.Empty;
     }
 
     private static string LowerFirst(string value)
