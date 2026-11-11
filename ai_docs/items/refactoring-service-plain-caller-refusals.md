@@ -1,6 +1,6 @@
 # refactoring-service-plain-caller-refusals — Classify RefactoringService plain InvalidOperationException refusals as public caller corrections or Internal
 
-**row:** `refactoring-service-plain-caller-refusals` · **pri:** `Medium` · **size:** `M`
+**row:** `refactoring-service-plain-caller-refusals` · **pri:** `Defer` · **size:** `M`
 
 ## Anchors
 
@@ -16,3 +16,7 @@
 ## Evidence
 
 - Found while reviewing the change-signature and format-range refusal PR. :671 interpolates filePath:line:column into a plain exception; redaction relies on the host fallback.
+
+## Notes
+
+5.x remediation screen (2026-11-11, base 52f2c418): RefactoringService.cs:64 and :150 share the metadata/built-in rename refusal. The former serves stable rename_preview; ToolErrorHandler currently replaces its plain exception message with generic InvalidOperation guidance. The complete acceptance would publish a different message for the same stable input, even if category and exceptionType stayed unchanged. Preserve the current message throughout 5.x. Resume at the next operator-approved major with an ADR, migration note and both protocol eras on the raw wire; then re-check all remaining refusal sites and the construction ratchet.
