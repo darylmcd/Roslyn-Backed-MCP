@@ -18,10 +18,42 @@ public sealed class WorkspaceReloadGlobalPropertiesTests
     public TestContext TestContext { get; set; } = null!;
 
     [TestMethod]
+    public async Task LoadWithGlobalProperties_LogsOnlyOverrideCount()
+    {
+        const string propertyName = "CustomBuildLabel";
+        const string propertyValue = "synthetic-workspace-property-marker";
+        using var fixture = new ReloadFixture();
+        var logger = new ListLogger<WorkspaceManager>();
+        using var manager = CreateManager(new WorkspaceSessionLoader(), logger);
+
+        var status = await manager.LoadAsync(
+            fixture.ProjectPath,
+            new Dictionary<string, string> { [propertyName] = propertyValue },
+            TestContext.CancellationToken);
+        var solution = manager.GetCurrentSolution(status.WorkspaceId);
+        Assert.HasCount(1, solution.Projects);
+        Assert.AreEqual(propertyValue, ((MSBuildWorkspace)solution.Workspace).Properties[propertyName]);
+
+        var overrideLog = logger.Entries.Single(entry =>
+            entry.Level == LogLevel.Information &&
+            entry.Message.Contains("global property override", StringComparison.Ordinal));
+        Assert.AreEqual(status.WorkspaceId, overrideLog.State.Single(pair => pair.Key == "WorkspaceId").Value);
+        Assert.AreEqual(1, overrideLog.State.Single(pair => pair.Key == "Count").Value);
+        Assert.IsFalse(logger.Entries.Any(entry => entry.Message.Contains(propertyValue, StringComparison.Ordinal)),
+            "Rendered workspace logs contain a caller-supplied property value.");
+        Assert.IsFalse(logger.Entries.SelectMany(entry => entry.State).Any(pair =>
+            pair.Value?.ToString()?.Contains(propertyValue, StringComparison.Ordinal) == true),
+            "Structured workspace logs contain a caller-supplied property value.");
+        CollectionAssert.AreEquivalent(
+            new[] { "WorkspaceId", "Count", "{OriginalFormat}" },
+            overrideLog.State.Select(pair => pair.Key).ToArray());
+    }
+
+    [TestMethod]
     public async Task ConfiguredReload_PreservesCompilerOptionsAndConditionalMember()
     {
         using var fixture = new ReloadFixture();
-        using var manager = CreateManager(new WorkspaceSessionLoader());
+        using var manager = CreateManager(new WorkspaceSessionLoader(), NullLogger<WorkspaceManager>.Instance);
         var status = await manager.LoadAsync(fixture.ProjectPath, ConfiguredGlobals(), TestContext.CancellationToken);
         await AssertCompilerStateAsync(manager.GetCurrentSolution(status.WorkspaceId), configured: true);
 
@@ -34,7 +66,7 @@ public sealed class WorkspaceReloadGlobalPropertiesTests
     public async Task DefaultReload_PreservesDefaultCompilerOptionsAndConditionalMember()
     {
         using var fixture = new ReloadFixture();
-        using var manager = CreateManager(new WorkspaceSessionLoader());
+        using var manager = CreateManager(new WorkspaceSessionLoader(), NullLogger<WorkspaceManager>.Instance);
         var status = await manager.LoadAsync(fixture.ProjectPath, TestContext.CancellationToken);
         await AssertCompilerStateAsync(manager.GetCurrentSolution(status.WorkspaceId), configured: false);
 
@@ -49,7 +81,7 @@ public sealed class WorkspaceReloadGlobalPropertiesTests
     {
         using var fixture = new ReloadFixture();
         var loader = new CancelReloadLoader();
-        using var manager = CreateManager(loader);
+        using var manager = CreateManager(loader, NullLogger<WorkspaceManager>.Instance);
         var status = await manager.LoadAsync(fixture.ProjectPath, ConfiguredGlobals(), TestContext.CancellationToken);
         var before = manager.GetCurrentSolution(status.WorkspaceId);
         var version = manager.GetCurrentVersion(status.WorkspaceId);
@@ -73,7 +105,7 @@ public sealed class WorkspaceReloadGlobalPropertiesTests
     {
         using var fixture = new ReloadFixture();
         await PrepareConfiguredMetadataAsync(fixture, releaseStale);
-        using var manager = CreateManager(new WorkspaceSessionLoader());
+        using var manager = CreateManager(new WorkspaceSessionLoader(), NullLogger<WorkspaceManager>.Instance);
         var status = await manager.LoadAsync(fixture.ProjectPath, ConfiguredGlobals(), TestContext.CancellationToken);
         var solution = manager.GetCurrentSolution(status.WorkspaceId);
         await AssertCompilerStateAsync(solution, configured: true);
@@ -90,7 +122,7 @@ public sealed class WorkspaceReloadGlobalPropertiesTests
     {
         using var fixture = new ReloadFixture();
         await PrepareConfiguredMetadataAsync(fixture, releaseStale: false);
-        using var manager = CreateManager(new WorkspaceSessionLoader());
+        using var manager = CreateManager(new WorkspaceSessionLoader(), NullLogger<WorkspaceManager>.Instance);
         var status = await manager.LoadAsync(fixture.ProjectPath, ConfiguredGlobals(), TestContext.CancellationToken);
         await AssertCompilerStateAsync(manager.GetCurrentSolution(status.WorkspaceId), configured: true);
 
@@ -102,7 +134,7 @@ public sealed class WorkspaceReloadGlobalPropertiesTests
     {
         using var fixture = new ReloadFixture();
         await PrepareConfiguredMetadataAsync(fixture, releaseStale: false);
-        using var manager = CreateManager(new WorkspaceSessionLoader());
+        using var manager = CreateManager(new WorkspaceSessionLoader(), NullLogger<WorkspaceManager>.Instance);
         var status = await manager.LoadAsync(fixture.ProjectPath, ConfiguredGlobals(), TestContext.CancellationToken);
         var solution = manager.GetCurrentSolution(status.WorkspaceId);
         await AssertCompilerStateAsync(solution, configured: true);
@@ -167,8 +199,8 @@ public sealed class WorkspaceReloadGlobalPropertiesTests
         ["DefineConstants"] = "RELOAD_CUSTOM",
     };
 
-    private static WorkspaceManager CreateManager(WorkspaceSessionLoader loader) => new(
-        NullLogger<WorkspaceManager>.Instance,
+    private static WorkspaceManager CreateManager(WorkspaceSessionLoader loader, ILogger<WorkspaceManager> logger) => new(
+        logger,
         new PreviewStore(),
         new FileWatcherService(NullLogger<FileWatcherService>.Instance),
         new WorkspaceManagerOptions { MaxConcurrentWorkspaces = 1 },
