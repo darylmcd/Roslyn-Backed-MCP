@@ -2180,14 +2180,285 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         StringAssert.Contains(updated, "_extractedHelper.Bump()");
     }
 
+    private const string DepCtorHostSource = """
+        namespace SampleLib;
+
+        public class DepCtorHost
+        {
+            private int _n;
+            public int Next() => ++_n;
+            public int Keep() => 1;
+        }
+        """;
+
+    private const string DepProtHostSource = """
+        namespace SampleLib;
+
+        public class DepProtHost
+        {
+            protected static int Helper(int x) => x * 2;
+            public int Keep() => 1;
+        }
+        """;
+
+    private const string SourceProjectRefusalMessage =
+        "Extracting these members would introduce compiler errors ({0}). Choose members whose extraction compiles, or restructure the type first.";
+
+    /// <summary>
+    /// extract-type-compile-gate-dependent-projects: runs the preview, asserts it is refused with the public refusal,
+    /// and asserts the refusal left no stored token, no version change and no extracted file on disk.
+    /// </summary>
+    private async Task<PublicInvalidOperationException> PreviewRefusedWithoutEffectAsync(
+        (string WorkspaceId, string FilePath, string SolutionDirectory) fixture,
+        string typeName,
+        string[] members)
+    {
+        var version = WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId);
+        var error = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
+            TypeExtractionService.PreviewExtractTypeAsync(
+                fixture.WorkspaceId, fixture.FilePath, typeName, members, "ExtractedHelper", null, CancellationToken.None));
+        FileOperationIntegrationTests.AssertNoStoredPreviews(PreviewStore, fixture.WorkspaceId);
+        Assert.AreEqual(version, WorkspaceManager.GetCurrentVersion(fixture.WorkspaceId));
+        Assert.IsFalse(File.Exists(Path.Combine(Path.GetDirectoryName(fixture.FilePath)!, "ExtractedHelper.cs")));
+        return error;
+    }
+
+    private static async Task<string[]> ModifiedSolutionErrorsAsync(string previewToken)
+    {
+        var retrieved = PreviewStore.Retrieve(previewToken);
+        Assert.IsNotNull(retrieved, "the preview token must be redeemable immediately after the preview");
+        var errors = new List<string>();
+        foreach (var project in retrieved.Value.ModifiedSolution.Projects)
+        {
+            var compilation = await project.GetCompilationAsync(CancellationToken.None);
+            Assert.IsNotNull(compilation);
+            errors.AddRange(compilation.GetDiagnostics()
+                .Where(d => d.Severity == DiagnosticSeverity.Error)
+                .Select(d => $"{project.Name}:{d.Id}"));
+        }
+        return errors.ToArray();
+    }
+
+    /// <summary>
+    /// extract-type-compile-gate-dependent-projects: an instance move injects a constructor parameter, so a
+    /// construction site in a project that references the source project stops compiling. The compile-delta gate
+    /// must see it and refuse with the public refusal naming project, diagnostic id and file:line.
+    /// </summary>
+    [TestMethod]
+    [DataRow("SampleApp")]
+    [DataRow("SampleLib.Tests")]
+    public async Task ExtractType_InstanceMove_ConstructionSiteInDependentProject_IsRefused(string dependentProject)
+    {
+        var fixture = await CreateExtractionFixtureAsync("DepCtorHost.cs", DepCtorHostSource, [
+            ($"../{dependentProject}/DepCtorSite.cs", "namespace DepSite;\n\npublic class DepCtorSite\n{\n    public object Make() => new SampleLib.DepCtorHost();\n}\n")]);
+        try
+        {
+            var error = await PreviewRefusedWithoutEffectAsync(fixture, "DepCtorHost", ["_n", "Next"]);
+
+            StringAssert.Contains(error.Message, "dependent projects");
+            StringAssert.Contains(error.Message, dependentProject);
+            StringAssert.Contains(error.Message, "CS7036 at DepCtorSite.cs:5");
+        }
+        finally
+        {
+            WorkspaceManager.Close(fixture.WorkspaceId);
+        }
+    }
+
+    [TestMethod]
+    [DataRow("SampleApp")]
+    [DataRow("SampleLib.Tests")]
+    public async Task ExtractType_ProtectedStaticUsedByDerivedClassInDependentProject_IsRefused(string dependentProject)
+    {
+        var fixture = await CreateExtractionFixtureAsync("DepProtHost.cs", DepProtHostSource, [
+            ($"../{dependentProject}/DepProtChild.cs", "namespace DepSite;\n\npublic class DepProtChild : SampleLib.DepProtHost\n{\n    public int Run() => Helper(2);\n}\n")]);
+        try
+        {
+            var error = await PreviewRefusedWithoutEffectAsync(fixture, "DepProtHost", ["Helper"]);
+
+            StringAssert.Contains(error.Message, "dependent projects");
+            StringAssert.Contains(error.Message, dependentProject);
+            StringAssert.Contains(error.Message, "CS0103 at DepProtChild.cs:5");
+        }
+        finally
+        {
+            WorkspaceManager.Close(fixture.WorkspaceId);
+        }
+    }
+
+    [TestMethod]
+    public async Task ExtractType_StaticOnlyMove_NewHostInDependentProject_StillPreviews()
+    {
+        var fixture = await CreateExtractionFixtureAsync("DepStaticHost.cs", """
+            namespace SampleLib;
+
+            public class DepStaticHost
+            {
+                private static int s_k = 3;
+                public static int Twice(int v) => v * s_k;
+                public int Keep() => 1;
+            }
+            """, [("../SampleApp/DepStaticSite.cs", "namespace DepSite;\n\npublic class DepStaticSite\n{\n    public object Make() => new SampleLib.DepStaticHost();\n}\n")]);
+        try
+        {
+            var preview = await TypeExtractionService.PreviewExtractTypeAsync(
+                fixture.WorkspaceId, fixture.FilePath, "DepStaticHost", ["Twice", "s_k"], "ExtractedHelper", null, CancellationToken.None);
+
+            Assert.IsFalse(string.IsNullOrEmpty(preview.PreviewToken));
+            CollectionAssert.AreEqual(Array.Empty<string>(), await ModifiedSolutionErrorsAsync(preview.PreviewToken));
+        }
+        finally
+        {
+            WorkspaceManager.Close(fixture.WorkspaceId);
+        }
+    }
+
+    [TestMethod]
+    public async Task ExtractType_InstanceMove_DependentUsesOnlyRetainedMembers_StillPreviews()
+    {
+        var fixture = await CreateExtractionFixtureAsync("DepCtorHost.cs", DepCtorHostSource, [
+            ("../SampleApp/DepRetainedUse.cs", "namespace DepSite;\n\npublic class DepRetainedUse\n{\n    public int Use(SampleLib.DepCtorHost host) => host.Keep();\n}\n")]);
+        try
+        {
+            var preview = await TypeExtractionService.PreviewExtractTypeAsync(
+                fixture.WorkspaceId, fixture.FilePath, "DepCtorHost", ["_n", "Next"], "ExtractedHelper", null, CancellationToken.None);
+
+            Assert.IsFalse(string.IsNullOrEmpty(preview.PreviewToken));
+            CollectionAssert.AreEqual(Array.Empty<string>(), await ModifiedSolutionErrorsAsync(preview.PreviewToken));
+        }
+        finally
+        {
+            WorkspaceManager.Close(fixture.WorkspaceId);
+        }
+    }
+
+    [TestMethod]
+    public async Task ExtractType_DependentProjectWithPreexistingError_IsNotBlamed()
+    {
+        var fixture = await CreateExtractionFixtureAsync("DepCtorHost.cs", DepCtorHostSource, [
+            ("../SampleApp/DepPreexisting.cs", "namespace DepSite;\n\npublic class DepPreexisting\n{\n    public int X = \"s\";\n}\n")]);
+        try
+        {
+            var preview = await TypeExtractionService.PreviewExtractTypeAsync(
+                fixture.WorkspaceId, fixture.FilePath, "DepCtorHost", ["_n", "Next"], "ExtractedHelper", null, CancellationToken.None);
+
+            Assert.IsFalse(string.IsNullOrEmpty(preview.PreviewToken));
+            CollectionAssert.AreEqual(new[] { "SampleApp:CS0029" }, await ModifiedSolutionErrorsAsync(preview.PreviewToken));
+        }
+        finally
+        {
+            WorkspaceManager.Close(fixture.WorkspaceId);
+        }
+    }
+
+    /// <summary>
+    /// Pin: when the source project itself gets errors, the refusal names only the source-project ids and is
+    /// byte-identical to the pre-existing message, even if a dependent project also breaks.
+    /// </summary>
+    [TestMethod]
+    public async Task ExtractType_SourceAndDependentErrors_RefusalMessageIsSourceProjectOnly()
+    {
+        // Source break: CS7036 from a SampleLib construction site after the instance move. Dependent break: CS0103 from a
+        // SampleApp derived class using the moved protected static. The message must name only the source id.
+        var fixture = await CreateExtractionFixtureAsync("DepMixedHost.cs", """
+            namespace SampleLib;
+
+            public class DepMixedHost
+            {
+                private int _n;
+                public int Next() => ++_n;
+                protected static int Helper(int x) => x * 2;
+                public int Keep() => 1;
+            }
+            """, [
+            ("DepMixedSameProject.cs", "namespace SampleLib;\n\npublic class DepMixedSameProject\n{\n    public object Make() => new DepMixedHost();\n}\n"),
+            ("../SampleApp/DepMixedChild.cs", "namespace DepSite;\n\npublic class DepMixedChild : SampleLib.DepMixedHost\n{\n    public int Run() => Helper(2);\n}\n")]);
+        try
+        {
+            var error = await PreviewRefusedWithoutEffectAsync(fixture, "DepMixedHost", ["_n", "Next", "Helper"]);
+
+            Assert.AreEqual(string.Format(SourceProjectRefusalMessage, "CS7036"), error.Message);
+            Assert.IsFalse(error.Message.Contains("CS0103", StringComparison.Ordinal), error.Message);
+        }
+        finally
+        {
+            WorkspaceManager.Close(fixture.WorkspaceId);
+        }
+    }
+
+    /// <summary>
+    /// Pin: dependent-project refusals are deduped by (project, id, file, line), sorted by file and line, and capped
+    /// at 20 entries with the total stated, because one broken constructor can cascade into thousands of sites.
+    /// </summary>
+    [TestMethod]
+    public async Task ExtractType_ManyDependentErrors_AreDedupedSortedAndCapped()
+    {
+        var site = new System.Text.StringBuilder("namespace DepSite;\n\npublic class DepCtorMany\n{\n");
+        site.Append("    public object M0() => (new SampleLib.DepCtorHost(), new SampleLib.DepCtorHost());\n");
+        for (var i = 1; i < 25; i++)
+            site.Append($"    public object M{i}() => new SampleLib.DepCtorHost();\n");
+        site.Append("}\n");
+        var fixture = await CreateExtractionFixtureAsync("DepCtorHost.cs", DepCtorHostSource, [("../SampleApp/DepCtorMany.cs", site.ToString())]);
+        try
+        {
+            var error = await PreviewRefusedWithoutEffectAsync(fixture, "DepCtorHost", ["_n", "Next"]);
+
+            StringAssert.Contains(error.Message, "(25 total, showing first 20)");
+            var lines = System.Text.RegularExpressions.Regex.Matches(error.Message, @"DepCtorMany\.cs:(\d+)")
+                .Select(m => int.Parse(m.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture)).ToArray();
+            CollectionAssert.AreEqual(Enumerable.Range(5, 20).ToArray(), lines);
+        }
+        finally
+        {
+            WorkspaceManager.Close(fixture.WorkspaceId);
+        }
+    }
+
+    /// <summary>
+    /// Pin (moved-error edge): a pre-existing error inside an extracted member lands in the NEW document, whose
+    /// id and path differ from the original, so it cannot be keyed stably and counts as introduced. It is a
+    /// source-project error and therefore stays on the source-project refusal path.
+    /// </summary>
+    [TestMethod]
+    public async Task ExtractType_PreexistingErrorInsideExtractedMember_IsRefusedAsSourceProjectError()
+    {
+        var fixture = await CreateExtractionFixtureAsync("BrokenMovedHost.cs", """
+            namespace SampleLib;
+
+            public class BrokenMovedHost
+            {
+                public int Broken() => "s";
+                public int Keep() => 1;
+            }
+            """);
+        try
+        {
+            var error = await PreviewRefusedWithoutEffectAsync(fixture, "BrokenMovedHost", ["Broken"]);
+
+            Assert.AreEqual(string.Format(SourceProjectRefusalMessage, "CS0029"), error.Message);
+        }
+        finally
+        {
+            WorkspaceManager.Close(fixture.WorkspaceId);
+        }
+    }
+
+    private Task<(string WorkspaceId, string FilePath, string SolutionDirectory)> CreateExtractionFixtureAsync(
+        string fileName,
+        string source) => CreateExtractionFixtureAsync(fileName, source, []);
+
+    /// <param name="extraFiles">Additional fixture files, relative to the SampleLib directory (so <c>../SampleApp/X.cs</c> targets a dependent project).</param>
     private async Task<(string WorkspaceId, string FilePath, string SolutionDirectory)> CreateExtractionFixtureAsync(
         string fileName,
-        string source)
+        string source,
+        IReadOnlyList<(string RelativePath, string Text)> extraFiles)
     {
         var copiedSolutionPath = CreateQueuedSampleSolutionCopy();
         var solutionDirectory = Path.GetDirectoryName(copiedSolutionPath)!;
         var filePath = Path.Combine(solutionDirectory, "SampleLib", fileName);
         await File.WriteAllTextAsync(filePath, source);
+        foreach (var (relativePath, text) in extraFiles)
+            await File.WriteAllTextAsync(Path.GetFullPath(Path.Combine(solutionDirectory, "SampleLib", relativePath)), text);
         var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
         return (loadResult.WorkspaceId, filePath, solutionDirectory);
     }
