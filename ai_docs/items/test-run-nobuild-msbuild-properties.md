@@ -11,7 +11,7 @@
 
 ## Acceptance
 
-- [ ] Opt-in `test_run msbuildProperties` applies exactly one property assignment per permitted key across VSTest and native MTP, including any explicit planning restore. Refuse disallowed names or values before invocation; prevent MSBuild assignment injection as well as shell injection. Configure the documented allowlist, keep property values out of public diagnostics and logs, and preserve omitted-option behavior. Prove literal propagation and refusal through the public route and both real runner shapes.
+- [ ] Opt-in `test_run msbuildProperties` applies exactly one property assignment per permitted key across VSTest and native MTP, including any explicit planning restore. Refuse disallowed names or values before invocation; prevent MSBuild assignment injection as well as shell injection. A disallowed name returns an authored InvalidArgument with safe allowed-name guidance. Document the allowlist default and environment override, keep property values out of public diagnostics and logs, and preserve omitted-option behavior. Prove literal propagation and refusal through the public route and both real runner shapes.
 
 ## Evidence
 
@@ -19,4 +19,4 @@
 
 ## Context
 
-- Additive 5.x request option if its complete trust boundary can be implemented without changing existing output fields. Evaluate resulting MSBuild property and restoration context, including native MTP engine checks; preserve existing no-option behavior. Do not retain an interface default solely to avoid updating callers.
+- Additive 5.x request option if its complete trust boundary can be implemented without changing existing output fields. Evaluate resulting MSBuild property and restoration context, including native MTP engine checks; preserve existing no-option behavior. Do not retain an interface default solely to avoid updating callers. Sequence after test-run-no-build because both change the same runner planning seam; the options have independently testable behavior.

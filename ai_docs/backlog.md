@@ -242,7 +242,7 @@
 | `relocation-using-semantic-identity` | Medium | — | **Match relocation imports by namespace identity** — Recognize escaped and trivia-separated namespace names before removing or adding imports. [type: bug] | S | items/relocation-using-semantic-identity.md |
 | `shared-expression-helper-nested-namespace-identity` | Medium | — | **Preserve the full shared-expression helper namespace** — qualify cross-file calls with the complete namespace chain. [type: bug] | S | items/shared-expression-helper-nested-namespace-identity.md |
 | `extract-type-nested-namespace-identity` | Medium | — | **Preserve the full extracted type namespace** — emit the extracted type under the original nested namespace chain. [type: bug] | S | items/extract-type-nested-namespace-identity.md |
-| `test-run-no-build` | Medium | — | **Run previously built tests** — add opt-in noBuild to stable test_run for VSTest and native MTP with safe built-artifact filtering and no restore. [type: feature] [source: retro-20260927] | M | items/test-run-no-build.md |
+| `test-run-no-build` | Medium | — | BLOCKED: native MTP built-test identity is unverified. **Run previously built tests** — add opt-in noBuild to stable test_run for both runner modes without restore. [type: feature] [source: retro-20260927] | M | items/test-run-no-build.md |
 
 ## Low
 
