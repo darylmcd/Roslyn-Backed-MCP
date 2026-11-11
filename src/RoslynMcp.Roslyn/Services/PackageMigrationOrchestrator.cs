@@ -160,7 +160,7 @@ public sealed class PackageMigrationOrchestrator : IPackageMigrationOrchestrator
         var updatedContent = OrchestrationMsBuildXml.FormatProjectXml(document, originalContent);
         if (!string.Equals(originalContent, updatedContent, StringComparison.Ordinal))
         {
-            mutations.Add(new CompositeFileMutation(projectFilePath, updatedContent));
+            mutations.Add(new CompositeFileMutation(projectFilePath, updatedContent, CompositeFileMutationMode.Edit));
             changes.Add(new FileChangeDto(projectFilePath, DiffGenerator.GenerateUnifiedDiff(originalContent, updatedContent, projectFilePath)));
         }
     }
@@ -190,7 +190,7 @@ public sealed class PackageMigrationOrchestrator : IPackageMigrationOrchestrator
         var updatedPropsContent = OrchestrationMsBuildXml.FormatProjectXml(propsDocument, originalPropsContent);
         if (!string.Equals(originalPropsContent, updatedPropsContent, StringComparison.Ordinal))
         {
-            mutations.Add(new CompositeFileMutation(packagesPropsPath, updatedPropsContent));
+            mutations.Add(new CompositeFileMutation(packagesPropsPath, updatedPropsContent, CompositeFileMutationMode.Edit));
             changes.Add(new FileChangeDto(packagesPropsPath, DiffGenerator.GenerateUnifiedDiff(originalPropsContent, updatedPropsContent, packagesPropsPath)));
         }
     }

@@ -566,8 +566,8 @@ public class ClientRootPathValidatorTests
             var previewStore = new CompositePreviewStore();
             var token = previewStore.Store(workspaceId, manager.GetCurrentVersion(workspaceId), "alias rejection",
             [
-                new CompositeFileMutation(programPath, "public class ChangedProgram { }"),
-                new CompositeFileMutation(linkedExternalSource, "public class ChangedExternal { }")
+                new CompositeFileMutation(programPath, "public class ChangedProgram { }", CompositeFileMutationMode.Edit),
+                new CompositeFileMutation(linkedExternalSource, "public class ChangedExternal { }", CompositeFileMutationMode.Edit)
             ]);
             var composite = new CompositeApplyOrchestrator(manager, previewStore);
             var compositeResult = await composite.ApplyCompositeAsync(token, CompositeAdmission.AdmitAll, CancellationToken.None);

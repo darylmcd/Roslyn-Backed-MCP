@@ -164,24 +164,37 @@ public sealed class CompositeTokenCrossHostRedemptionTests
     }
 
     [TestMethod]
-    public async Task LegacyFormat1Record_WithANonLiveCreator_Refuses_AndWithALiveCreatorRedeems()
+    [DataRow(1)]
+    [DataRow(2)]
+    [DataRow(3)]
+    public async Task LegacyRecords_RefuseEvenOnTheCreatingHost(int format)
     {
         var hostA = NewHost();
         var sessionA = await hostA.LoadAsync(_projectPath);
-        var nonLive = hostA.Preview(sessionA, 1, "// legacy foreign");
-        MakeFormat1(nonLive);
+        var token = hostA.Preview(sessionA, 1, "// legacy");
+        RewritePayload(token, payload =>
+        {
+            var root = payload.AsObject();
+            if (format == 1)
+            {
+                root.Remove("FormatVersion");
+                root.Remove("WorkspaceIdentity");
+            }
+            else
+            {
+                root["FormatVersion"] = format;
+            }
+
+            if (format < 3)
+                root.Remove("SourceFingerprints");
+            root["Mutations"]![0]!.AsObject().Remove("Mode");
+        });
         var hostB = NewHost();
         await hostB.LoadAsync(_projectPath);
 
-        var refusal = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() => hostB.ApplyAsync(nonLive));
-
-        StringAssert.Contains(refusal.Message, "older server");
-        AssertRefusedWithoutConsuming(nonLive);
-
-        var live = hostA.Preview(sessionA, 1, "// legacy creator");
-        MakeFormat1(live);
-        StringAssert.Contains(await hostA.ApplyAsync(live), "\"success\": true");
-        Assert.AreEqual("// legacy creator", File.ReadAllText(_targetFile));
+        await Assert.ThrowsExactlyAsync<PreviewTokenStaleException>(() => hostB.ApplyAsync(token));
+        await Assert.ThrowsExactlyAsync<PreviewTokenStaleException>(() => hostA.ApplyAsync(token));
+        AssertRefusedWithoutConsuming(token);
     }
 
     [TestMethod]
@@ -189,7 +202,7 @@ public sealed class CompositeTokenCrossHostRedemptionTests
     {
         var hostA = NewHost();
         var token = hostA.Preview(await hostA.LoadAsync(_projectPath), 1, "// future");
-        RewritePayload(token, payload => payload["FormatVersion"] = 4);
+        RewritePayload(token, payload => payload["FormatVersion"] = 5);
         var hostB = NewHost();
         await hostB.LoadAsync(_projectPath);
 
@@ -278,13 +291,6 @@ public sealed class CompositeTokenCrossHostRedemptionTests
         File.WriteAllText(path, payload.ToJsonString());
     }
 
-    private void MakeFormat1(string token) => RewritePayload(token, payload =>
-    {
-        var root = payload.AsObject();
-        root.Remove("FormatVersion");
-        root.Remove("WorkspaceIdentity");
-    });
-
     /// <summary>One independent server: its own DI graph, workspace sessions and stores.</summary>
     private sealed class Host : IDisposable
     {
@@ -327,7 +333,7 @@ public sealed class CompositeTokenCrossHostRedemptionTests
 
         /// <summary>Stores what a composite preview of the target file stores, as the preview tools do.</summary>
         public string Preview(string workspaceId, int workspaceVersion, string content) =>
-            Store.Store(workspaceId, workspaceVersion, "cross-host preview", [new CompositeFileMutation(_targetFile, content)]);
+            Store.Store(workspaceId, workspaceVersion, "cross-host preview", [new CompositeFileMutation(_targetFile, content, CompositeFileMutationMode.Edit)]);
 
         public Task<string> ApplyAsync(string token) =>
             OrchestrationTools.ApplyComposite(

@@ -120,11 +120,8 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
             }
         }
 
-        // Build a CompositeFileMutation list from the accumulated Solution diff. The redeem
-        // path (apply_composite / CompositeApplyOrchestrator) iterates this list and
-        // performs a plain File.WriteAllText per entry, so we materialize per-file text snapshots
-        // here from the post-final-op Solution.
-        var mutations = await BuildCompositeMutationsAsync(initialSolution, accumulator, ct).ConfigureAwait(false);
+        // Materialize the accumulated solution delta as file intents for apply_composite.
+        var mutations = await CompositeSolutionMutationPlanner.BuildAsync(initialSolution, accumulator, [], ct).ConfigureAwait(false);
 
         var description = "Composite refactor:\n  " + string.Join("\n  ", descriptions);
         var token = _compositePreviewStore.Store(
@@ -181,56 +178,6 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
         return _restructureServiceConcrete.PreviewRestructureOnSolutionAsync(
             inputSolution, op.Pattern, op.Goal,
             new RestructureScope(op.ScopeFilePath, op.ScopeProjectName), ct);
-    }
-
-    /// <summary>
-    /// Walks the Solution diff between <paramref name="initialSolution"/> and
-    /// <paramref name="finalSolution"/> and materializes a
-    /// <see cref="CompositeFileMutation"/> per changed / added / removed document. The
-    /// composite-apply redeem path (<c>CompositeApplyOrchestrator.ApplyCompositeAsync</c>)
-    /// iterates the list and writes per-entry via <see cref="File.WriteAllTextAsync(string, string?, CancellationToken)"/>
-    /// — no Solution snapshot is consulted at apply time, so the snapshot's lineage to the
-    /// post-apply workspace is irrelevant here.
-    /// </summary>
-    private static async Task<IReadOnlyList<CompositeFileMutation>> BuildCompositeMutationsAsync(
-        Solution initialSolution, Solution finalSolution, CancellationToken ct)
-    {
-        var mutations = new List<CompositeFileMutation>();
-        var solutionChanges = finalSolution.GetChanges(initialSolution);
-
-        foreach (var projectChange in solutionChanges.GetProjectChanges())
-        {
-            foreach (var docId in projectChange.GetChangedDocuments())
-            {
-                ct.ThrowIfCancellationRequested();
-                var newDoc = finalSolution.GetDocument(docId);
-                if (newDoc is null) continue;
-                var newText = (await newDoc.GetTextAsync(ct).ConfigureAwait(false)).ToString();
-                var filePath = newDoc.FilePath ?? newDoc.Name;
-                mutations.Add(new CompositeFileMutation(filePath, newText));
-            }
-
-            foreach (var docId in projectChange.GetAddedDocuments())
-            {
-                ct.ThrowIfCancellationRequested();
-                var newDoc = finalSolution.GetDocument(docId);
-                if (newDoc is null) continue;
-                var newText = (await newDoc.GetTextAsync(ct).ConfigureAwait(false)).ToString();
-                var filePath = newDoc.FilePath ?? newDoc.Name;
-                mutations.Add(new CompositeFileMutation(filePath, newText));
-            }
-
-            foreach (var docId in projectChange.GetRemovedDocuments())
-            {
-                ct.ThrowIfCancellationRequested();
-                var oldDoc = initialSolution.GetDocument(docId);
-                if (oldDoc is null) continue;
-                var filePath = oldDoc.FilePath ?? oldDoc.Name;
-                mutations.Add(new CompositeFileMutation(filePath, UpdatedContent: null, DeleteFile: true));
-            }
-        }
-
-        return mutations;
     }
 
     /// <summary>
@@ -465,7 +412,7 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
             var partitionContent = BuildPartitionFile(
                 context.NamespaceName, partition.TypeName, referencedFields, partitionInjections, partitionMethods, context.Usings,
                 receivingOptions);
-            mutations.Add(new CompositeFileMutation(partitionFilePath, partitionContent));
+            mutations.Add(new CompositeFileMutation(partitionFilePath, partitionContent, CompositeFileMutationMode.Create));
             changes.Add(new FileChangeDto(partitionFilePath, DiffGenerator.GenerateUnifiedDiff(string.Empty, partitionContent, partitionFilePath)));
         }
     }
@@ -534,7 +481,7 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
         var formattedDocument = await AnnotatedFormatting.FormatAsync(
             context.Document.WithSyntaxRoot(facadeRoot), originalContent, ct).ConfigureAwait(false);
         var facadeContent = (await formattedDocument.GetTextAsync(ct).ConfigureAwait(false)).ToString();
-        mutations.Add(new CompositeFileMutation(sourceFilePath, facadeContent));
+        mutations.Add(new CompositeFileMutation(sourceFilePath, facadeContent, CompositeFileMutationMode.Edit));
         changes.Add(new FileChangeDto(sourceFilePath, DiffGenerator.GenerateUnifiedDiff(originalContent, facadeContent, sourceFilePath)));
     }
 
@@ -571,7 +518,7 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
             return true;
         }
 
-        mutations.Add(new CompositeFileMutation(registrationFilePath, rewrittenRegistration));
+        mutations.Add(new CompositeFileMutation(registrationFilePath, rewrittenRegistration, CompositeFileMutationMode.Edit));
         changes.Add(new FileChangeDto(registrationFilePath, DiffGenerator.GenerateUnifiedDiff(registrationContent, rewrittenRegistration, registrationFilePath)));
         return true;
     }
@@ -1490,7 +1437,7 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
         }
 
         var mutations = mutationsByFile
-            .Select(kvp => new CompositeFileMutation(kvp.Key, kvp.Value))
+            .Select(kvp => new CompositeFileMutation(kvp.Key, kvp.Value, CompositeFileMutationMode.Edit))
             .ToList();
 
         var description = $"Add '{newField.Name}' ({newField.Type}) satellite edits: {edits.Count} site(s) across {mutations.Count} file(s).";

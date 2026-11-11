@@ -27,13 +27,16 @@ public sealed class CompositePreviewStoreTests
     public void PeekChangedPaths_InMemory_ReturnsEveryMutationPathWithoutConsuming()
     {
         var store = new CompositePreviewStore();
+        var first = Path.Combine(_root, "A.cs");
+        var second = Path.Combine(_root, "B.cs");
         var token = store.Store(
             "ws-1",
             1,
             "two files",
-            [new CompositeFileMutation(@"C:\proj\A.cs", "// a"), new CompositeFileMutation(@"C:\proj\B.cs", null, DeleteFile: true)]);
+            [new CompositeFileMutation(first, "// a", CompositeFileMutationMode.Edit),
+             new CompositeFileMutation(second, null, CompositeFileMutationMode.Delete)]);
 
-        CollectionAssert.AreEqual(new[] { @"C:\proj\A.cs", @"C:\proj\B.cs" }, store.PeekChangedPaths(token)!.ToArray());
+        CollectionAssert.AreEqual(new[] { first, second }, store.PeekChangedPaths(token)!.ToArray());
         Assert.IsNotNull(store.Retrieve(token, null), "The peek must not consume the entry.");
         Assert.IsNull(store.PeekChangedPaths(Guid.NewGuid().ToString("N")));
     }
@@ -42,18 +45,19 @@ public sealed class CompositePreviewStoreTests
     public void PeekChangedPaths_Persistent_ReadsThePersistedRecordNotTheCreatorsMemory()
     {
         var store = CreatePersistentStore();
-        var token = store.Store("ws-1", 1, "tampered", [new CompositeFileMutation(@"C:\proj\Original.cs", "// a")]);
+        var original = Path.Combine(_root, "Original.cs");
+        var tampered = Path.Combine(_root, "Tampered.cs");
+        var token = store.Store("ws-1", 1, "tampered", [new CompositeFileMutation(original, "// a", CompositeFileMutationMode.Edit)]);
         var payloadPath = PayloadPath(token);
         var payload = JsonNode.Parse(File.ReadAllText(payloadPath))!;
-        payload["Mutations"]![0]!["FilePath"] = @"C:\elsewhere\Tampered.cs";
-        // A consistent forgery: the fingerprint follows the mutation (the target does not exist), or the
-        // record would be unreadable because a fingerprint may only name a path the record writes.
-        payload["SourceFingerprints"]![0]!["FilePath"] = @"C:\elsewhere\Tampered.cs";
+        payload["Mutations"]![0]!["FilePath"] = tampered;
+        // A consistent forgery also updates the required fingerprint for the target.
+        payload["SourceFingerprints"]![0]!["FilePath"] = tampered;
         File.WriteAllText(payloadPath, payload.ToJsonString());
 
-        CollectionAssert.AreEqual(new[] { @"C:\elsewhere\Tampered.cs" }, store.PeekChangedPaths(token)!.ToArray());
+        CollectionAssert.AreEqual(new[] { tampered }, store.PeekChangedPaths(token)!.ToArray());
         Assert.AreEqual(
-            @"C:\elsewhere\Tampered.cs",
+            tampered,
             store.Retrieve(token, null)!.Value.Mutations.Single().FilePath,
             "Retrieve claims the persisted record, so the peek must agree with it.");
     }
@@ -62,9 +66,9 @@ public sealed class CompositePreviewStoreTests
     public void PeekChangedPaths_Persistent_UnknownWhenRecordIsGoneEvenIfMemoryStillHoldsTheEntry()
     {
         var store = CreatePersistentStore();
-        var removed = store.Store("ws-1", 1, "removed", [new CompositeFileMutation(@"C:\proj\A.cs", "// a")]);
+        var removed = store.Store("ws-1", 1, "removed", [new CompositeFileMutation(Path.Combine(_root, "A.cs"), "// a", CompositeFileMutationMode.Edit)]);
         File.Delete(PayloadPath(removed));
-        var claimed = store.Store("ws-1", 1, "claimed", [new CompositeFileMutation(@"C:\proj\B.cs", "// b")]);
+        var claimed = store.Store("ws-1", 1, "claimed", [new CompositeFileMutation(Path.Combine(_root, "B.cs"), "// b", CompositeFileMutationMode.Edit)]);
         Assert.IsNotNull(store.Retrieve(claimed, null));
 
         Assert.IsNull(store.PeekWorkspaceId(removed), "The workspace peek is as disk-authoritative as the write-set peek.");

@@ -43,7 +43,7 @@ public sealed class ExtractAndWireOrchestrator : IExtractAndWireOrchestrator
         var modifiedSolution = await _crossProjectRefactoringService.BuildExtractInterfaceSolutionAsync(
             workspaceId, currentSolution, filePath, typeName, resolvedInterfaceName, targetProjectName, ct).ConfigureAwait(false);
         var generatedInterface = await ResolveGeneratedInterfaceAsync(currentSolution, modifiedSolution, resolvedInterfaceName, ct).ConfigureAwait(false);
-        modifiedSolution = await InterfaceLinkedDocumentReconciler.ReconcileAsync(currentSolution, modifiedSolution, generatedInterface.ProjectId, ct).ConfigureAwait(false);
+        modifiedSolution = await InterfaceLinkedDocumentReconciler.ReconcileAsync(currentSolution, modifiedSolution, generatedInterface.DocumentId.ProjectId, ct).ConfigureAwait(false);
 
         if (updateDiRegistrations)
         {
@@ -91,9 +91,9 @@ public sealed class ExtractAndWireOrchestrator : IExtractAndWireOrchestrator
             }
         }
 
-        modifiedSolution = await InterfaceLinkedDocumentReconciler.ReconcileAsync(currentSolution, modifiedSolution, generatedInterface.ProjectId, ct).ConfigureAwait(false);
+        modifiedSolution = await InterfaceLinkedDocumentReconciler.ReconcileAsync(currentSolution, modifiedSolution, generatedInterface.DocumentId.ProjectId, ct).ConfigureAwait(false);
         await InterfacePreviewCompilationGate.ValidateAsync(currentSolution, modifiedSolution, ct).ConfigureAwait(false);
-        var mutations = await BuildMutationsFromSolutionAsync(currentSolution, modifiedSolution, ct).ConfigureAwait(false);
+        var mutations = await BuildMutationsFromSolutionAsync(currentSolution, modifiedSolution, generatedInterface.DocumentId, ct).ConfigureAwait(false);
         var changes = await SolutionDiffHelper.ComputeChangesAsync(currentSolution, modifiedSolution, ct).ConfigureAwait(false);
 
         if (mutations.Count == 0)
@@ -168,20 +168,6 @@ public sealed class ExtractAndWireOrchestrator : IExtractAndWireOrchestrator
         }
     }
 
-    private static void UpsertMutation(List<CompositeFileMutation> mutations, string filePath, string updatedContent)
-    {
-        var existingIndex = mutations.FindIndex(mutation => FileSystemPath.Comparer.Equals(mutation.FilePath, filePath));
-        if (existingIndex >= 0)
-        {
-            if (mutations[existingIndex].UpdatedContent != updatedContent || mutations[existingIndex].DeleteFile)
-                throw new PublicInvalidOperationException($"Linked C# documents at '{filePath}' have divergent mutations.");
-            mutations[existingIndex] = new CompositeFileMutation(filePath, updatedContent);
-            return;
-        }
-
-        mutations.Add(new CompositeFileMutation(filePath, updatedContent));
-    }
-
     private static string RewriteDiRegistration(string originalContent, string typeName, string interfaceName)
     {
         return originalContent
@@ -190,7 +176,7 @@ public sealed class ExtractAndWireOrchestrator : IExtractAndWireOrchestrator
             .Replace($"AddTransient<{typeName}>", $"AddTransient<{interfaceName}, {typeName}>", StringComparison.Ordinal);
     }
 
-    private static async Task<(string QualifiedName, ProjectId ProjectId)> ResolveGeneratedInterfaceAsync(
+    private static async Task<(string QualifiedName, DocumentId DocumentId)> ResolveGeneratedInterfaceAsync(
         Solution baseline, Solution pending, string interfaceName, CancellationToken ct)
     {
         foreach (var projectChange in pending.GetChanges(baseline).GetProjectChanges())
@@ -205,7 +191,7 @@ public sealed class ExtractAndWireOrchestrator : IExtractAndWireOrchestrator
                 var model = await document.GetSemanticModelAsync(ct).ConfigureAwait(false);
                 var symbol = model?.GetDeclaredSymbol(declaration, ct);
                 if (symbol is not null)
-                    return (symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), document.Project.Id);
+                    return (symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), document.Id);
             }
         }
 
@@ -223,57 +209,26 @@ public sealed class ExtractAndWireOrchestrator : IExtractAndWireOrchestrator
     private static async Task<List<CompositeFileMutation>> BuildMutationsFromSolutionAsync(
         Solution currentSolution,
         Solution modifiedSolution,
+        DocumentId generatedInterface,
         CancellationToken ct)
     {
-        var mutations = new List<CompositeFileMutation>();
-        var solutionChanges = modifiedSolution.GetChanges(currentSolution);
-
-        foreach (var projectChange in solutionChanges.GetProjectChanges())
-        {
-            foreach (var documentId in projectChange.GetAddedDocuments())
-            {
-                var document = modifiedSolution.GetDocument(documentId);
-                if (document is null) throw InvalidOperationErrors.Internal("Added C# document could not be resolved.");
-                var path = RequirePhysicalPath(document);
-
-                var text = await document.GetTextAsync(ct).ConfigureAwait(false);
-                UpsertMutation(mutations, path, text.ToString());
-            }
-
-            foreach (var documentId in projectChange.GetChangedDocuments())
-            {
-                var document = modifiedSolution.GetDocument(documentId);
-                if (document is null) throw InvalidOperationErrors.Internal("Changed C# document could not be resolved.");
-                var path = RequirePhysicalPath(document);
-
-                var text = await document.GetTextAsync(ct).ConfigureAwait(false);
-                UpsertMutation(mutations, path, text.ToString());
-            }
-
-            foreach (var documentId in projectChange.GetRemovedDocuments())
-            {
-                var document = currentSolution.GetDocument(documentId);
-                if (document is null) throw InvalidOperationErrors.Internal("Removed C# document could not be resolved.");
-                var path = RequirePhysicalPath(document);
-
-                if (!modifiedSolution.GetDocumentIdsWithFilePath(path).Any())
-                    mutations.Add(new CompositeFileMutation(path, null, DeleteFile: true));
-            }
-
-        }
-
+        var mutations = await CompositeSolutionMutationPlanner.BuildAsync(currentSolution, modifiedSolution, [generatedInterface], ct).ConfigureAwait(false);
         foreach (var mutation in await ProjectReferenceMutationRenderer.PlanAsync(currentSolution, modifiedSolution, ct).ConfigureAwait(false))
         {
             var content = CsprojSemanticEquality.CreateSnapshot(mutation.Modified).Content;
-            UpsertMutation(mutations, mutation.Path, content);
+            var path = Path.GetFullPath(mutation.Path);
+            var existing = mutations.Find(candidate =>
+                FileSystemPath.Comparer.Equals(Path.GetFullPath(candidate.FilePath), path));
+            if (existing is null)
+            {
+                mutations.Add(new CompositeFileMutation(mutation.Path, content, CompositeFileMutationMode.Edit));
+            }
+            else if (existing.Mode != CompositeFileMutationMode.Edit || existing.UpdatedContent != content)
+            {
+                throw new PublicInvalidOperationException("The composite preview has divergent mutations for a project file.");
+            }
         }
 
         return mutations;
     }
-
-    private static string RequirePhysicalPath(Document document) =>
-        !string.IsNullOrWhiteSpace(document.FilePath)
-            ? document.FilePath
-            : throw new PublicInvalidOperationException($"Changed C# document '{document.Name}' is not mapped to a physical file.");
-
 }
