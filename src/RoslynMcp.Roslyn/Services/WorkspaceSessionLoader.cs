@@ -94,10 +94,9 @@ internal class WorkspaceSessionLoader
             if (globalProperties is { Count: > 0 })
             {
                 logger.LogInformation(
-                    "Workspace {WorkspaceId}: created MSBuildWorkspace with {Count} global property override(s): {Properties}",
+                    "Workspace {WorkspaceId}: created MSBuildWorkspace with {Count} global property override(s)",
                     workspaceId,
-                    globalProperties.Count,
-                    string.Join(", ", globalProperties.Select(kv => $"{kv.Key}={kv.Value}")));
+                    globalProperties.Count);
             }
 
             diagnostics.AttachTo(workspace, workspaceId, logger);
