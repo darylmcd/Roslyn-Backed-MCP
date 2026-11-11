@@ -87,6 +87,63 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         }
     }
 
+    private static MemberDeclarationSyntax ApplyModifierRewrite(string operation, string declaration)
+    {
+        var methodName = operation == "widen" ? "EnsurePublicAccessibility" : "StripInheritanceOnlyModifiers";
+        var rewrite = typeof(RoslynMcp.Roslyn.Services.TypeExtractionService).GetMethod(methodName,
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+        var source = CSharpSyntaxTree.ParseText($"class C {{\n    {declaration}\n}}");
+        var member = source.GetRoot().DescendantNodes().OfType<ClassDeclarationSyntax>().First().Members.Single();
+        return Assert.IsInstanceOfType<MemberDeclarationSyntax>(rewrite.Invoke(null, [member]));
+    }
+
+    /// <summary>
+    /// extract-type-modifier-trivia-loss: whitespace-only modifier lists rewrite to the same bytes before and
+    /// after comment preservation (comments are the only trivia carried; whitespace is never doubled).
+    /// </summary>
+    [TestMethod]
+    [DataRow("strip", "static new int F;", "    static int F;\n")]
+    [DataRow("strip", "new static int F;", "    static int F;\n")]
+    [DataRow("strip", "public new virtual void M() {}", "    public void M() {}\n")]
+    [DataRow("widen", "static private int G;", "    public static int G;\n")]
+    [DataRow("widen", "private protected int H;", "    public int H;\n")]
+    [DataRow("widen", "protected internal int H;", "    public int H;\n")]
+    [DataRow("widen", "int Plain;", "public     int Plain;\n")]
+    public void ModifierRewrites_WhitespaceOnlyInputs_AreByteStable(string operation, string declaration, string expected)
+    {
+        Assert.AreEqual(expected, ApplyModifierRewrite(operation, declaration).ToFullString());
+    }
+
+    /// <summary>
+    /// extract-type-modifier-trivia-loss: a comment attached to a removed or replaced modifier token survives
+    /// exactly once, in its original relative order, and the member still parses.
+    /// </summary>
+    [TestMethod]
+    [DataRow("strip", "new /* between */ static int F;", "/* between */")]
+    [DataRow("strip", "static new /* after */ int F;", "/* after */")]
+    [DataRow("strip", "new // note\n    static int F;", "// note")]
+    [DataRow("strip", "/* before */ new int F;", "/* before */")]
+    [DataRow("strip", "new /* a */ virtual /* b */ int F;", "/* a */|/* b */")]
+    [DataRow("widen", "static /* x */ private int F;", "/* x */")]
+    [DataRow("widen", "private /* a */ protected /* b */ int F;", "/* a */|/* b */")]
+    [DataRow("widen", "private /* a */ static /* b */ protected /* c */ int F;", "/* a */|/* b */|/* c */")]
+    public void ModifierRewrites_PreserveEveryRemovedModifierComment(string operation, string declaration, string commentsInOrder)
+    {
+        var rewritten = ApplyModifierRewrite(operation, declaration);
+        var text = rewritten.ToFullString();
+        var previousIndex = -1;
+        foreach (var comment in commentsInOrder.Split('|'))
+        {
+            Assert.AreEqual(1, text.Split(comment, StringSplitOptions.None).Length - 1, $"'{comment}' must survive exactly once in: {text}");
+            var index = text.IndexOf(comment, StringComparison.Ordinal);
+            Assert.IsGreaterThan(previousIndex, index, $"'{comment}' is out of original order in: {text}");
+            previousIndex = index;
+        }
+
+        var reparsed = CSharpSyntaxTree.ParseText($"class C {{\n{text}\n}}");
+        Assert.AreEqual(0, reparsed.GetDiagnostics().Count(d => d.Severity == DiagnosticSeverity.Error), text);
+    }
+
     [TestCleanup]
     public async Task TestCleanup() =>
         await CleanupFailureCollector.DeleteDirectoriesAsync(
@@ -774,6 +831,49 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally
         {
             WorkspaceManager.Close(wsId);
+        }
+    }
+
+    /// <summary>
+    /// extract-type-modifier-trivia-loss: comments on a stripped <c>new</c> and on a replaced access modifier
+    /// reach the emitted new-type file exactly once.
+    /// </summary>
+    [TestMethod]
+    public async Task ExtractType_ModifierComments_SurviveInNewTypeFile()
+    {
+        var fixture = await CreateExtractionFixtureAsync(
+            "ModifierCommentFixture.cs",
+            """
+            namespace SampleLib;
+
+            public class ModifierCommentBase
+            {
+                public int Count => 1;
+            }
+
+            public class ModifierCommentFixture : ModifierCommentBase
+            {
+                public /* hides base */ new int Count => 2;
+                /* soleNew */ new int Total => 3;
+            }
+            """);
+
+        try
+        {
+            var preview = await TypeExtractionService.PreviewExtractTypeAsync(
+                fixture.WorkspaceId, fixture.FilePath, "ModifierCommentFixture", ["Count", "Total"], "CountHelper", null, CancellationToken.None);
+            var newFile = preview.Changes.Single(c => c.FilePath.EndsWith("CountHelper.cs", StringComparison.OrdinalIgnoreCase)).UnifiedDiff;
+
+            foreach (var comment in new[] { "/* hides base */", "/* soleNew */" })
+            {
+                Assert.AreEqual(1, newFile.Split(comment, StringSplitOptions.None).Length - 1, $"'{comment}' must reach the new type once. Diff:\n{newFile}");
+            }
+
+            await AssertModifiedSolutionCompilesAsync(preview.PreviewToken);
+        }
+        finally
+        {
+            WorkspaceManager.Close(fixture.WorkspaceId);
         }
     }
 
@@ -1822,13 +1922,53 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
     }
 
     /// <summary>
-    /// type-extraction-same-file-rewriter-decomposition: a retained constructor body that names an
-    /// extracted instance member is refused. The refusal is deliberately pinned at its current breadth
-    /// (it also covers constructor BODIES, which the injected field assignment now precedes); narrowing
-    /// it to initializer arguments must flip this test on purpose.
+    /// type-extraction-ctor-body-refusal-overbroad: a retained constructor BODY (block, expression, or
+    /// chained <c>this(...)</c>) that names an extracted instance member is rebound, because the injected
+    /// composition field is assigned before the body runs. The previewed solution is emitted and run:
+    /// <c>Seed</c> must be 7. (This deliberately flips the former fail-closed pin on constructor bodies.)
     /// </summary>
     [TestMethod]
-    public async Task ExtractType_RetainedConstructorReferencesInstanceMember_RefusesFailClosed()
+    [DataRow("CtorBlockBodyFixture", "public CtorBlockBodyFixture() { _seed = Compute(); }")]
+    [DataRow("CtorExpressionBodyFixture", "public CtorExpressionBodyFixture() => _seed = Compute();")]
+    [DataRow("CtorChainedBodyFixture", "public CtorChainedBodyFixture() : this(1) { _seed = Compute(); } public CtorChainedBodyFixture(int unused) { }")]
+    public async Task ExtractType_RetainedConstructorBodyReferencesInstanceMember_PreviewsAndRuns(string typeName, string constructors)
+    {
+        var fixture = await CreateExtractionFixtureAsync(
+            typeName + ".cs",
+            $$"""
+            namespace SampleLib;
+
+            public class {{typeName}}
+            {
+                private int _seed;
+                {{constructors}}
+                public int Seed => _seed;
+                private int Compute() => 7;
+            }
+            """);
+
+        try
+        {
+            var preview = await TypeExtractionService.PreviewExtractTypeAsync(
+                fixture.WorkspaceId, fixture.FilePath, typeName, ["Compute"], "ComputeHolder", null, CancellationToken.None);
+            await AssertModifiedSolutionCompilesAsync(preview.PreviewToken);
+
+            Assert.AreEqual(7, await EmitAndReadHostPropertyAsync(preview.PreviewToken, typeName, "ComputeHolder", "Seed"),
+                "constructor body code must observe an assigned composition field");
+        }
+        finally
+        {
+            WorkspaceManager.Close(fixture.WorkspaceId);
+        }
+    }
+
+    /// <summary>
+    /// type-extraction-ctor-body-refusal-overbroad: the retained half of the refusal. A <c>this(...)</c>
+    /// initializer argument runs before the injected composition field is assigned, so an extracted instance
+    /// member named there still cannot be rebound and the extraction fails closed.
+    /// </summary>
+    [TestMethod]
+    public async Task ExtractType_RetainedConstructorInitializerReferencesInstanceMember_RefusesFailClosed()
     {
         var fixture = await CreateExtractionFixtureAsync(
             "RetainedCtorReferenceFixture.cs",
@@ -1838,7 +1978,8 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
             public class RetainedCtorReferenceFixture
             {
                 private readonly int _seed;
-                public RetainedCtorReferenceFixture() { _seed = Compute(); }
+                public RetainedCtorReferenceFixture(RetainedCtorReferenceFixture other) : this(other.Compute()) { }
+                public RetainedCtorReferenceFixture(int seed) { _seed = seed; }
                 public int Seed => _seed;
                 private int Compute() => 7;
             }
@@ -1856,9 +1997,45 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
                     null,
                     CancellationToken.None));
 
-            StringAssert.Contains(exception.Message, "constructor body before the injected composition field");
+            StringAssert.Contains(exception.Message, "constructor initializer argument");
             StringAssert.Contains(exception.Message, "extracted member 'Compute'");
             FileOperationIntegrationTests.AssertNoStoredPreviews(PreviewStore, fixture.WorkspaceId);
+        }
+        finally
+        {
+            WorkspaceManager.Close(fixture.WorkspaceId);
+        }
+    }
+
+    /// <summary>
+    /// type-extraction-extracted-symbol-set-duplication: the extracted-symbol set is matched by
+    /// <c>OriginalDefinition</c>, so a retained call to an extracted member of a generic host (whose use site
+    /// binds to a constructed symbol) is still recognized, rebound, and compiles.
+    /// </summary>
+    [TestMethod]
+    public async Task ExtractType_GenericHostType_InstanceMemberReferencedByRetainedCode_Rewrites()
+    {
+        var fixture = await CreateExtractionFixtureAsync(
+            "GenericBoxFixture.cs",
+            """
+            namespace SampleLib;
+
+            public class GenericBoxFixture<T>
+            {
+                public int Run() => Compute();
+                private int Compute() => 7;
+            }
+            """);
+
+        try
+        {
+            var preview = await TypeExtractionService.PreviewExtractTypeAsync(
+                fixture.WorkspaceId, fixture.FilePath, "GenericBoxFixture", ["Compute"], "ComputeHolder", null, CancellationToken.None);
+            await AssertModifiedSolutionCompilesAsync(preview.PreviewToken);
+
+            var updatedSource = await GetModifiedDocumentTextAsync(preview.PreviewToken, fixture.FilePath);
+            StringAssert.Contains(updatedSource, ".Compute()");
+            Assert.IsFalse(updatedSource.Contains("int Compute()"), "the extracted member must leave the host");
         }
         finally
         {
@@ -2524,30 +2701,41 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
                 fixture.WorkspaceId, fixture.FilePath, typeName, ["Compute"], "ComputeHelper", null, CancellationToken.None);
             await AssertModifiedSolutionCompilesAsync(preview.PreviewToken);
 
-            var project = PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution.Projects.Single(p => p.Name == "SampleLib");
-            var compilation = (await project.GetCompilationAsync(CancellationToken.None))!;
-            using var image = new MemoryStream();
-            var emit = compilation.Emit(image);
-            Assert.IsTrue(emit.Success, string.Join(Environment.NewLine, emit.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)));
-
-            var context = new System.Runtime.Loader.AssemblyLoadContext(typeName, isCollectible: true);
-            try
-            {
-                image.Position = 0;
-                var assembly = context.LoadFromStream(image);
-                var helper = Activator.CreateInstance(assembly.GetType("SampleLib.ComputeHelper")!);
-                var host = Activator.CreateInstance(assembly.GetType("SampleLib." + typeName)!, helper)!;
-                Assert.AreEqual(7, (int)host.GetType().GetProperty("V")!.GetValue(host)!,
-                    "constructor code must observe an assigned composition field");
-            }
-            finally
-            {
-                context.Unload();
-            }
+            Assert.AreEqual(7, await EmitAndReadHostPropertyAsync(preview.PreviewToken, typeName, "ComputeHelper", "V"),
+                "constructor code must observe an assigned composition field");
         }
         finally
         {
             WorkspaceManager.Close(fixture.WorkspaceId);
+        }
+    }
+
+    /// <summary>
+    /// Emits the previewed <c>SampleLib</c> project, builds the extracted helper, passes it to the host type's
+    /// composition constructor, and returns the host's int property.
+    /// </summary>
+    private static async Task<int> EmitAndReadHostPropertyAsync(
+        string previewToken, string hostTypeName, string helperTypeName, string propertyName)
+    {
+        var project = PreviewStore.Retrieve(previewToken)!.Value.ModifiedSolution.Projects.Single(p => p.Name == "SampleLib");
+        var compilation = (await project.GetCompilationAsync(CancellationToken.None))!;
+        using var image = new MemoryStream();
+        var emit = compilation.Emit(image);
+        Assert.IsTrue(emit.Success, string.Join(Environment.NewLine, emit.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)));
+
+        var context = new System.Runtime.Loader.AssemblyLoadContext(hostTypeName, isCollectible: true);
+        try
+        {
+            image.Position = 0;
+            var assembly = context.LoadFromStream(image);
+            var helper = Activator.CreateInstance(assembly.GetType("SampleLib." + helperTypeName)!);
+            var hostType = assembly.GetType("SampleLib." + hostTypeName)!;
+            var host = Activator.CreateInstance(hostType, helper)!;
+            return (int)hostType.GetProperty(propertyName)!.GetValue(host)!;
+        }
+        finally
+        {
+            context.Unload();
         }
     }
 

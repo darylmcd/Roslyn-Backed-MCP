@@ -272,6 +272,6 @@ public sealed class InterfaceHandlerBindingTests : InterfaceRouteTestBase
                 DiagnosticSeverity.Error, isEnabledByDefault: true), Location.None))
             .ToArray();
         Assert.AreEqual("TEST001, TEST002, TEST003, TEST004, TEST005, TEST006, TEST007, TEST008",
-            InterfaceHandlerBindingValidator.FormatIds(diagnostics.Concat(diagnostics)));
+            InterfaceNullableProjection.FormatIds(diagnostics.Concat(diagnostics)));
     }
 }

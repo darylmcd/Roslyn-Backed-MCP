@@ -51,17 +51,7 @@ internal sealed class TypeExtractionSameFileConsumerRewriter : CSharpSyntaxRewri
         string sourceTypeName,
         CancellationToken ct)
     {
-        var extractedSymbols = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
-        foreach (var node in analysisNodes)
-        {
-            if (!IsDeclarationNode(node)) continue;
-
-            var symbol = semanticModel.GetDeclaredSymbol(node, ct);
-            if (symbol is not null)
-            {
-                extractedSymbols.Add(symbol.OriginalDefinition);
-            }
-        }
+        var extractedSymbols = ToOriginalDefinitionSet(DeclaredSymbols(analysisNodes, semanticModel, ct));
 
         var rewriter = new TypeExtractionSameFileConsumerRewriter(
             semanticModel,
@@ -84,6 +74,28 @@ internal sealed class TypeExtractionSameFileConsumerRewriter : CSharpSyntaxRewri
     {
         return node is MemberDeclarationSyntax or VariableDeclaratorSyntax;
     }
+
+    /// <summary>
+    /// The declared symbols of the declaration nodes in <paramref name="analysisNodes"/>, in node order
+    /// (non-declaration context nodes and nodes with no declared symbol are skipped). The single place the
+    /// extracted-symbol set is derived; callers apply their own static filter or identity projection.
+    /// </summary>
+    internal static List<ISymbol> DeclaredSymbols(
+        IReadOnlyList<SyntaxNode> analysisNodes, SemanticModel semanticModel, CancellationToken ct)
+    {
+        var symbols = new List<ISymbol>();
+        foreach (var node in analysisNodes)
+        {
+            if (IsDeclarationNode(node) && semanticModel.GetDeclaredSymbol(node, ct) is { } symbol)
+                symbols.Add(symbol);
+        }
+
+        return symbols;
+    }
+
+    /// <summary>The <see cref="ISymbol.OriginalDefinition"/> identity set the extracted-member checks match against.</summary>
+    internal static HashSet<ISymbol> ToOriginalDefinitionSet(IEnumerable<ISymbol> symbols)
+        => new(symbols.Select(symbol => symbol.OriginalDefinition), SymbolEqualityComparer.Default);
 
     public override SyntaxNode? Visit(SyntaxNode? node)
     {
@@ -186,9 +198,9 @@ internal sealed class TypeExtractionSameFileConsumerRewriter : CSharpSyntaxRewri
             return;
         }
 
-        if (node.AncestorsAndSelf().OfType<ConstructorDeclarationSyntax>().Any())
+        if (node.AncestorsAndSelf().OfType<ConstructorInitializerSyntax>().Any())
         {
-            throw CannotRewrite(symbol, "constructor body before the injected composition field is assigned");
+            throw CannotRewrite(symbol, "constructor initializer argument, which runs before the injected composition field is assigned");
         }
     }
 

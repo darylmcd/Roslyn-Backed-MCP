@@ -62,7 +62,7 @@ public sealed class TypeExtractionService : ITypeExtractionService
         // composition field. In a record that field enters the compiler-synthesized equality, GetHashCode
         // and `with` copies; in a struct, default(T) leaves it null. Both are proven semantic loss, so
         // refuse before any token. Static-only moves inject nothing and stay allowed.
-        var extractedSymbols = ExtractedDeclaredSymbols(analysisNodes, semanticModel, ct);
+        var extractedSymbols = TypeExtractionSameFileConsumerRewriter.DeclaredSymbols(analysisNodes, semanticModel, ct);
         var instanceSymbols = extractedSymbols.Where(symbol => !symbol.IsStatic).ToList();
         if (instanceSymbols.Count > 0 && (typeSymbol.IsRecord || typeSymbol.IsValueType))
         {
@@ -212,19 +212,6 @@ public sealed class TypeExtractionService : ITypeExtractionService
             Warnings: null);
     }
 
-    private static List<ISymbol> ExtractedDeclaredSymbols(
-        IReadOnlyList<SyntaxNode> analysisNodes, SemanticModel semanticModel, CancellationToken ct)
-    {
-        var symbols = new List<ISymbol>();
-        foreach (var node in analysisNodes.Where(TypeExtractionSameFileConsumerRewriter.IsDeclarationNode))
-        {
-            if (semanticModel.GetDeclaredSymbol(node, ct) is { } symbol)
-                symbols.Add(symbol);
-        }
-
-        return symbols;
-    }
-
     private static List<BlockingDependencyDto> CollectBaseConstructorDispatchBlockers(
         SemanticModel semanticModel, INamedTypeSymbol typeSymbol, TypeDeclarationSyntax typeDecl,
         IReadOnlyList<SyntaxNode> analysisNodes, CancellationToken ct)
@@ -235,7 +222,7 @@ public sealed class TypeExtractionService : ITypeExtractionService
 
         var compilation = semanticModel.Compilation;
         var extracted = new HashSet<ISymbol>(
-            ExtractedDeclaredSymbols(analysisNodes, semanticModel, ct)
+            TypeExtractionSameFileConsumerRewriter.DeclaredSymbols(analysisNodes, semanticModel, ct)
                 .Where(symbol => !symbol.IsStatic)
                 .Select(symbol => symbol.OriginalDefinition),
             SymbolEqualityComparer.Default);
@@ -1583,15 +1570,8 @@ public sealed class TypeExtractionService : ITypeExtractionService
         IReadOnlyList<SyntaxNode> analysisNodes,
         CancellationToken ct)
     {
-        var extractedDeclared = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
-        foreach (var m in analysisNodes)
-        {
-            if (!TypeExtractionSameFileConsumerRewriter.IsDeclarationNode(m)) continue;
-
-            var sym = semanticModel.GetDeclaredSymbol(m, ct);
-            if (sym is not null)
-                extractedDeclared.Add(sym);
-        }
+        var extractedDeclared = TypeExtractionSameFileConsumerRewriter.ToOriginalDefinitionSet(
+            TypeExtractionSameFileConsumerRewriter.DeclaredSymbols(analysisNodes, semanticModel, ct));
 
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var blockingDependencies = new List<BlockingDependencyDto>();
@@ -1852,15 +1832,9 @@ public sealed class TypeExtractionService : ITypeExtractionService
     private static MemberDeclarationSyntax EnsurePublicAccessibility(MemberDeclarationSyntax member)
     {
         // Remove existing access modifiers and add public
-        var accessModifiers = new[]
-        {
-            SyntaxKind.PublicKeyword, SyntaxKind.PrivateKeyword, SyntaxKind.ProtectedKeyword,
-            SyntaxKind.InternalKeyword
-        };
-
         return RewriteMemberModifiers(member, currentModifiers =>
         {
-            var kept = currentModifiers.Where(m => !accessModifiers.Contains(m.Kind())).ToArray();
+            var kept = currentModifiers.Where(m => !IsAccessModifier(m)).ToArray();
             var publicToken = SyntaxFactory.Token(SyntaxKind.PublicKeyword);
             if (currentModifiers.Count > 0)
             {
@@ -1881,9 +1855,13 @@ public sealed class TypeExtractionService : ITypeExtractionService
                 publicToken = publicToken.WithTrailingTrivia(SyntaxFactory.Space);
             }
 
-            return SyntaxFactory.TokenList(kept.Prepend(publicToken));
+            return PreserveRemovedModifierComments(
+                currentModifiers, SyntaxFactory.TokenList(kept.Prepend(publicToken)), IsAccessModifier, hasInsertedFirstToken: true);
         });
     }
+
+    private static bool IsAccessModifier(SyntaxToken token) =>
+        token.Kind() is SyntaxKind.PublicKeyword or SyntaxKind.PrivateKeyword or SyntaxKind.ProtectedKeyword or SyntaxKind.InternalKeyword;
 
     /// <summary>
     /// Strips <c>virtual</c> (only ever a never-overridden one, see
@@ -1913,7 +1891,80 @@ public sealed class TypeExtractionService : ITypeExtractionService
             kept[0] = kept[0].WithLeadingTrivia(currentModifiers[0].LeadingTrivia);
         }
 
-        return SyntaxFactory.TokenList(kept);
+        return PreserveRemovedModifierComments(
+            currentModifiers, SyntaxFactory.TokenList(kept), IsInheritanceOnlyModifier, hasInsertedFirstToken: false);
+    }
+
+    /// <summary>
+    /// Re-attaches the comments (and directives) that sat on removed modifier tokens, or that a rewrite dropped
+    /// from kept ones, so a modifier rewrite never deletes source comments. Whitespace and end-of-line trivia are
+    /// never carried, so comment-free input rewrites to the same bytes as before. A comment missing from
+    /// <paramref name="rewritten"/> goes to the trailing trivia of the nearest preceding result token, else the
+    /// leading trivia of the first result token; a kept token's own missing trivia returns to that token. Original
+    /// order is preserved. An empty result is handled by <see cref="RewriteModifiers"/>, which owns the member.
+    /// </summary>
+    private static SyntaxTokenList PreserveRemovedModifierComments(
+        SyntaxTokenList original, SyntaxTokenList rewritten, Func<SyntaxToken, bool> isRemoved, bool hasInsertedFirstToken)
+    {
+        if (rewritten.Count == 0)
+            return rewritten;
+
+        var result = rewritten.ToList();
+        var offset = hasInsertedFirstToken ? 1 : 0;
+        var keptIndexes = Enumerable.Range(0, original.Count).Where(i => !isRemoved(original[i])).ToList();
+        var present = result.SelectMany(token => CarriedTrivia(token.LeadingTrivia).Concat(CarriedTrivia(token.TrailingTrivia)))
+            .Select(carried => carried.Key).ToList();
+
+        for (var index = 0; index < original.Count; index++)
+        {
+            var keptSlot = keptIndexes.IndexOf(index);
+            foreach (var (trivia, isLeading) in CarriedTrivia(original[index].LeadingTrivia).Select(c => (c, true))
+                         .Concat(CarriedTrivia(original[index].TrailingTrivia).Select(c => (c, false))))
+            {
+                if (present.Remove(trivia.Key))
+                    continue;
+
+                // A removed token's comments follow the last result token that precedes it in source order.
+                var target = keptSlot >= 0
+                    ? offset + keptSlot
+                    : offset + keptIndexes.Count(kept => kept < index) - 1;
+                if (keptSlot < 0 && target < 0)
+                {
+                    result[0] = result[0].WithLeadingTrivia(result[0].LeadingTrivia.AddRange(trivia.Carried));
+                }
+                else if (isLeading && keptSlot >= 0)
+                {
+                    result[target] = result[target].WithLeadingTrivia(result[target].LeadingTrivia.AddRange(trivia.Carried));
+                }
+                else
+                {
+                    result[target] = result[target].WithTrailingTrivia(result[target].TrailingTrivia.AddRange(trivia.Carried));
+                }
+            }
+        }
+
+        return SyntaxFactory.TokenList(result);
+    }
+
+    /// <summary>The non-whitespace trivia of <paramref name="list"/>, each with the trivia that must follow it when moved.</summary>
+    private static IEnumerable<(string Key, SyntaxTrivia[] Carried)> CarriedTrivia(SyntaxTriviaList list)
+    {
+        for (var i = 0; i < list.Count; i++)
+        {
+            var trivia = list[i];
+            if (trivia.IsKind(SyntaxKind.WhitespaceTrivia) || trivia.IsKind(SyntaxKind.EndOfLineTrivia))
+                continue;
+
+            SyntaxTrivia[] carried = trivia.Kind() switch
+            {
+                SyntaxKind.SingleLineCommentTrivia => [trivia, i + 1 < list.Count && list[i + 1].IsKind(SyntaxKind.EndOfLineTrivia)
+                    ? list[i + 1]
+                    : SyntaxFactory.EndOfLine("\n")],
+                SyntaxKind.MultiLineCommentTrivia => [trivia, SyntaxFactory.Space],
+                _ => [trivia],
+            };
+            yield return (trivia.ToFullString(), carried);
+        }
     }
 
     private static MemberDeclarationSyntax RewriteMemberModifiers(
@@ -1938,9 +1989,23 @@ public sealed class TypeExtractionService : ITypeExtractionService
         where TMember : MemberDeclarationSyntax
     {
         var rewrittenModifiers = rewrite(currentModifiers);
-        return currentModifiers.SequenceEqual(rewrittenModifiers)
-            ? member
-            : withModifiers(member, rewrittenModifiers);
+        if (currentModifiers.SequenceEqual(rewrittenModifiers))
+            return member;
+
+        if (rewrittenModifiers.Count == 0 && currentModifiers.Count > 0)
+        {
+            // Every modifier was removed: the member's leading trivia and any modifier comments move onto the
+            // token that now starts the declaration (the type, or `event`).
+            var next = currentModifiers[^1].GetNextToken();
+            var orphaned = currentModifiers[0].LeadingTrivia.AddRange(currentModifiers
+                .SelectMany((token, i) => i == 0
+                    ? CarriedTrivia(token.TrailingTrivia)
+                    : CarriedTrivia(token.LeadingTrivia).Concat(CarriedTrivia(token.TrailingTrivia)))
+                .SelectMany(carried => carried.Carried));
+            member = member.ReplaceToken(next, next.WithLeadingTrivia(orphaned.AddRange(next.LeadingTrivia)));
+        }
+
+        return withModifiers(member, rewrittenModifiers);
     }
 
     private static InvalidOperationException UnsupportedModifierMember(MemberDeclarationSyntax member) =>
