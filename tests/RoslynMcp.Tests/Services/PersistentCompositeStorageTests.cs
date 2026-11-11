@@ -172,7 +172,9 @@ public sealed class PersistentCompositeStorageTests
         var current = new JsonObject { ["FilePath"] = path, ["Exists"] = false };
         var mutation = new JsonObject
         {
-            ["FilePath"] = path, ["UpdatedContent"] = "// a", ["Mode"] = (int)CompositeFileMutationMode.Edit,
+            ["FilePath"] = path,
+            ["UpdatedContent"] = "// a",
+            ["Mode"] = (int)CompositeFileMutationMode.Edit,
         };
         var fingerprints = new JsonArray(current);
         switch (scenario)
