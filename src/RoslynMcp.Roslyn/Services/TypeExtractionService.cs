@@ -62,7 +62,7 @@ public sealed class TypeExtractionService : ITypeExtractionService
         // composition field. In a record that field enters the compiler-synthesized equality, GetHashCode
         // and `with` copies; in a struct, default(T) leaves it null. Both are proven semantic loss, so
         // refuse before any token. Static-only moves inject nothing and stay allowed.
-        var extractedSymbols = ExtractedDeclaredSymbols(analysisNodes, semanticModel, ct);
+        var extractedSymbols = TypeExtractionSameFileConsumerRewriter.DeclaredSymbols(analysisNodes, semanticModel, ct);
         var instanceSymbols = extractedSymbols.Where(symbol => !symbol.IsStatic).ToList();
         if (instanceSymbols.Count > 0 && (typeSymbol.IsRecord || typeSymbol.IsValueType))
         {
@@ -212,19 +212,6 @@ public sealed class TypeExtractionService : ITypeExtractionService
             Warnings: null);
     }
 
-    private static List<ISymbol> ExtractedDeclaredSymbols(
-        IReadOnlyList<SyntaxNode> analysisNodes, SemanticModel semanticModel, CancellationToken ct)
-    {
-        var symbols = new List<ISymbol>();
-        foreach (var node in analysisNodes.Where(TypeExtractionSameFileConsumerRewriter.IsDeclarationNode))
-        {
-            if (semanticModel.GetDeclaredSymbol(node, ct) is { } symbol)
-                symbols.Add(symbol);
-        }
-
-        return symbols;
-    }
-
     private static List<BlockingDependencyDto> CollectBaseConstructorDispatchBlockers(
         SemanticModel semanticModel, INamedTypeSymbol typeSymbol, TypeDeclarationSyntax typeDecl,
         IReadOnlyList<SyntaxNode> analysisNodes, CancellationToken ct)
@@ -235,7 +222,7 @@ public sealed class TypeExtractionService : ITypeExtractionService
 
         var compilation = semanticModel.Compilation;
         var extracted = new HashSet<ISymbol>(
-            ExtractedDeclaredSymbols(analysisNodes, semanticModel, ct)
+            TypeExtractionSameFileConsumerRewriter.DeclaredSymbols(analysisNodes, semanticModel, ct)
                 .Where(symbol => !symbol.IsStatic)
                 .Select(symbol => symbol.OriginalDefinition),
             SymbolEqualityComparer.Default);
@@ -1583,15 +1570,8 @@ public sealed class TypeExtractionService : ITypeExtractionService
         IReadOnlyList<SyntaxNode> analysisNodes,
         CancellationToken ct)
     {
-        var extractedDeclared = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
-        foreach (var m in analysisNodes)
-        {
-            if (!TypeExtractionSameFileConsumerRewriter.IsDeclarationNode(m)) continue;
-
-            var sym = semanticModel.GetDeclaredSymbol(m, ct);
-            if (sym is not null)
-                extractedDeclared.Add(sym);
-        }
+        var extractedDeclared = TypeExtractionSameFileConsumerRewriter.ToOriginalDefinitionSet(
+            TypeExtractionSameFileConsumerRewriter.DeclaredSymbols(analysisNodes, semanticModel, ct));
 
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var blockingDependencies = new List<BlockingDependencyDto>();

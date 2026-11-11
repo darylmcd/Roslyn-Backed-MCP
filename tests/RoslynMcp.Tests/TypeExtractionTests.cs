@@ -1908,6 +1908,42 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
     }
 
     /// <summary>
+    /// type-extraction-extracted-symbol-set-duplication: the extracted-symbol set is matched by
+    /// <c>OriginalDefinition</c>, so a retained call to an extracted member of a generic host (whose use site
+    /// binds to a constructed symbol) is still recognized, rebound, and compiles.
+    /// </summary>
+    [TestMethod]
+    public async Task ExtractType_GenericHostType_InstanceMemberReferencedByRetainedCode_Rewrites()
+    {
+        var fixture = await CreateExtractionFixtureAsync(
+            "GenericBoxFixture.cs",
+            """
+            namespace SampleLib;
+
+            public class GenericBoxFixture<T>
+            {
+                public int Run() => Compute();
+                private int Compute() => 7;
+            }
+            """);
+
+        try
+        {
+            var preview = await TypeExtractionService.PreviewExtractTypeAsync(
+                fixture.WorkspaceId, fixture.FilePath, "GenericBoxFixture", ["Compute"], "ComputeHolder", null, CancellationToken.None);
+            await AssertModifiedSolutionCompilesAsync(preview.PreviewToken);
+
+            var updatedSource = await GetModifiedDocumentTextAsync(preview.PreviewToken, fixture.FilePath);
+            StringAssert.Contains(updatedSource, ".Compute()");
+            Assert.IsFalse(updatedSource.Contains("int Compute()"), "the extracted member must leave the host");
+        }
+        finally
+        {
+            WorkspaceManager.Close(fixture.WorkspaceId);
+        }
+    }
+
+    /// <summary>
     /// type-extraction-same-file-rewriter-decomposition: references are rebound by symbol identity, so a
     /// generic call, <c>this.</c> and other-instance receivers, and a static access through the type
     /// name are redirected, while a same-named method on an unrelated type is left alone.
