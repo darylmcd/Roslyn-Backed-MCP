@@ -243,6 +243,10 @@
 | `shared-expression-helper-nested-namespace-identity` | Medium | — | **Preserve the full shared-expression helper namespace** — qualify cross-file calls with the complete namespace chain. [type: bug] | S | items/shared-expression-helper-nested-namespace-identity.md |
 | `extract-type-nested-namespace-identity` | Medium | — | **Preserve the full extracted type namespace** — emit the extracted type under the original nested namespace chain. [type: bug] | S | items/extract-type-nested-namespace-identity.md |
 | `test-run-no-build` | Medium | — | BLOCKED: native MTP built-test identity is unverified. **Run previously built tests** — add opt-in noBuild to stable test_run for both runner modes without restore. [type: feature] [source: retro-20260927] | M | items/test-run-no-build.md |
+| `edit-syntax-check-project-parse-options` | Medium | — | **Use loaded C# parse options for edit validation** — account for per-project symbols and linked documents before accepting edits. [type: bug] | S | items/edit-syntax-check-project-parse-options.md |
+| `early-kill-matches-cross-read-boundaries` | Medium | gated-executor-default-drops-early-kill | **Detect early-kill patterns split across reads** — preserve bounded per-stream matching without joining streams. [type: bug] | M | items/early-kill-matches-cross-read-boundaries.md |
+| `early-kill-reason-unconfirmed` | Medium | gated-executor-default-drops-early-kill | BLOCKED: stable test_run release impact unresolved. **Report only confirmed early termination** — distinguish process exit and kill failure from successful termination. [type: bug] | M | items/early-kill-reason-unconfirmed.md |
+| `composite-apply-partial-cancellation-receipt` | Medium | class-split-generated-file-no-clobber | **Report outputs published before composite cancellation** — define safe recovery when cancellation interrupts a partial apply. [type: bug] | M | items/composite-apply-partial-cancellation-receipt.md |
 
 ## Low
 
@@ -533,6 +537,7 @@
 | `cross-project-public-refusals-echo-input` | Defer | — | **Remove caller detail from public cross-project refusals** — parked until the next operator-approved major release; removing public input/path detail breaks the 5.x response contract. [type: bug] [source: operator 2026-11-09] | S | items/cross-project-public-refusals-echo-input.md |
 | `type-extraction-service-refusals-public-message` | Defer | — | **Defer type-extraction public refusal changes** — wait for the next major release; keep structured blockingDependencies member names in the current contract. [type: bug] [source: operator 2026-11-09] | S | items/type-extraction-service-refusals-public-message.md |
 | `refactoring-service-plain-caller-refusals` | Defer | — | **Defer refactoring refusal publication** — next major: changing the stable rename_preview refusal message requires an ADR, migration note and raw-wire tests. [type: bug] | M | items/refactoring-service-plain-caller-refusals.md |
+| `native-test-filter-public-projection` | Defer | — | **Defer native test filter redaction** — wait for the next major; the stable test_run response exposes native MTP filter text. [type: bug] | M | items/native-test-filter-public-projection.md |
 
 ## Refs
 
