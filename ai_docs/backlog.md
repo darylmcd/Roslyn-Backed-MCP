@@ -234,6 +234,8 @@
 | `undo-solution-snapshot-restore-incomplete` | Medium | — | **Restore or refuse added/removed documents and ParseOptions in solution-snapshot undo** — only changed-document text and SourceCodeKind are restored. | S | items/undo-solution-snapshot-restore-incomplete.md |
 | `executed-log-line-leaks-filter-and-paths` | Medium | — | **Stop the gated Executed log line logging caller filter text and absolute paths** (retire or reduce to the boundary allowlist). [type: bug] [source: PR 2060 review] | M | items/executed-log-line-leaks-filter-and-paths.md |
 | `undo-restore-version-lowering-version-keyed-caches` | Medium | — | **Verify version-keyed workspace caches cannot serve stale content after undo lowers the version** (RestoreVersion). [type: bug] [source: PR 2059 review] | M | items/undo-restore-version-lowering-version-keyed-caches.md |
+| `shared-expression-helper-nested-namespace-identity` | Medium | class-split-nested-namespace-identity,split-service-nested-namespace-identity | **Preserve the full shared-expression helper namespace** — qualify cross-file calls with the complete namespace chain. [type: bug] | S | items/shared-expression-helper-nested-namespace-identity.md |
+| `extract-type-nested-namespace-identity` | Medium | class-split-nested-namespace-identity,split-service-nested-namespace-identity | **Preserve the full extracted type namespace** — emit the extracted type under the original nested namespace chain. [type: bug] | S | items/extract-type-nested-namespace-identity.md |
 
 ## Low
 
