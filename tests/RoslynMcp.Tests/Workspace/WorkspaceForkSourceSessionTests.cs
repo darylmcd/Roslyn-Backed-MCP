@@ -224,9 +224,10 @@ public sealed class WorkspaceForkSourceSessionTests
         internal TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public async Task<CommandExecutionDto> RunAsync(string workingDirectory, string targetPath,
-            IReadOnlyList<string> arguments, CancellationToken ct)
+            IReadOnlyList<string> arguments,
+            IReadOnlyList<EarlyKillPattern>? earlyKillPatterns, CancellationToken ct)
         {
-            var result = await _inner.RunAsync(workingDirectory, targetPath, arguments, ct);
+            var result = await _inner.RunAsync(workingDirectory, targetPath, arguments, earlyKillPatterns, ct);
             if (arguments[0] == "restore")
             {
                 Assert.IsTrue(result.Succeeded, $"Native fork restore failed: {result.StdOut} {result.StdErr}");

@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Reflection;
+using System.Text.RegularExpressions;
 using Microsoft.CodeAnalysis;
 using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
@@ -129,6 +130,49 @@ public sealed class GatedCommandExecutorTests
         }
     }
 
+    [TestMethod]
+    public async Task ExecuteAsync_WithoutPatterns_ForwardsNull()
+    {
+        var runner = new StubCommandRunner();
+        using IGatedCommandExecutor executor = new GatedCommandExecutor(
+            new FakeWorkspaceManager(), runner, NullLogger<GatedCommandExecutor>.Instance);
+        var target = Path.Combine(TestFixtureFileSystem.FindRepositoryRoot(), "RoslynMcp.slnx");
+
+        await executor.ExecuteAsync("workspace", target, ["build"], TimeSpan.FromSeconds(10), CancellationToken.None);
+
+        Assert.HasCount(1, runner.PatternCalls);
+        Assert.IsNull(runner.PatternCalls[0]);
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
+    [Timeout(30_000)]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task ExecuteAsync_ForwardsPatternsToStreamingProcess(bool stderr)
+    {
+        using IGatedCommandExecutor executor = new GatedCommandExecutor(
+            new FakeWorkspaceManager(), new PowerShellRunner(), NullLogger<GatedCommandExecutor>.Instance);
+        var target = Path.Combine(TestFixtureFileSystem.FindRepositoryRoot(), "RoslynMcp.slnx");
+        const string sentinel = "gated-executor-early-kill";
+        const string reason = "test process emitted the sentinel";
+        var stream = stderr ? "Error" : "Out";
+        string[] arguments =
+        [
+            "-NoProfile", "-NonInteractive", "-Command",
+            $"[Console]::{stream}.WriteLine('{sentinel}'); [Threading.Thread]::Sleep(25000)"
+        ];
+        EarlyKillPattern[] patterns = [new(new Regex(sentinel), reason)];
+
+        var execution = await executor.ExecuteAsync(
+            "workspace", target, arguments, TimeSpan.FromSeconds(20), patterns, CancellationToken.None);
+
+        Assert.IsFalse(execution.Succeeded);
+        Assert.AreEqual(reason, execution.EarlyKillReason);
+        StringAssert.Contains(stderr ? execution.StdErr : execution.StdOut, sentinel);
+        CollectionAssert.AreEqual(arguments, execution.Arguments.ToArray());
+    }
+
     private static int GetGateCount(GatedCommandExecutor executor)
         => ((ICollection)GetGateDictionary(executor)).Count;
 
@@ -160,10 +204,27 @@ public sealed class GatedCommandExecutorTests
     /// </summary>
     private sealed class StubCommandRunner : IDotnetCommandRunner
     {
+        public List<IReadOnlyList<EarlyKillPattern>?> PatternCalls { get; } = [];
+
         public Task<CommandExecutionDto> RunAsync(
-            string workingDirectory, string targetPath, IReadOnlyList<string> arguments, CancellationToken ct)
-            => Task.FromResult(new CommandExecutionDto(
+            string workingDirectory, string targetPath, IReadOnlyList<string> arguments,
+            IReadOnlyList<EarlyKillPattern>? earlyKillPatterns, CancellationToken ct)
+        {
+            PatternCalls.Add(earlyKillPatterns);
+            return Task.FromResult(new CommandExecutionDto(
                 "dotnet", arguments, workingDirectory, targetPath, 0, true, 1, string.Empty, string.Empty));
+        }
+    }
+
+    private sealed class PowerShellRunner : IDotnetCommandRunner
+    {
+        private readonly IDotnetCommandRunner _runner = new DotnetCommandRunner();
+
+        public Task<CommandExecutionDto> RunAsync(
+            string workingDirectory, string targetPath, IReadOnlyList<string> arguments,
+            IReadOnlyList<EarlyKillPattern>? earlyKillPatterns, CancellationToken ct) =>
+            _runner.RunAsync(workingDirectory, targetPath, arguments, earlyKillPatterns,
+                OperatingSystem.IsWindows() ? "pwsh.exe" : "pwsh", ct);
     }
 
     /// <summary>

@@ -417,6 +417,7 @@ public sealed class WorkspaceLoadRestoreRaceTests : SharedWorkspaceTestBase
             string workingDirectory,
             string targetPath,
             IReadOnlyList<string> arguments,
+            IReadOnlyList<EarlyKillPattern>? earlyKillPatterns,
             CancellationToken ct)
         {
             if (arguments[0] == "build")

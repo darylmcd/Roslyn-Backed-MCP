@@ -985,6 +985,7 @@ public sealed class TestRunFailureEnvelopeTests
             string targetPath,
             IReadOnlyList<string> arguments,
             TimeSpan timeout,
+            IReadOnlyList<EarlyKillPattern>? earlyKillPatterns,
             CancellationToken ct)
         {
             onExecute();
@@ -1086,6 +1087,7 @@ public sealed class TestRunFailureEnvelopeTests
             string targetPath,
             IReadOnlyList<string> arguments,
             TimeSpan timeout,
+            IReadOnlyList<EarlyKillPattern>? earlyKillPatterns,
             CancellationToken ct) => throw exception;
 
         public ProjectStatusDto ResolveProject(string workspaceId, string projectName) =>
@@ -1103,6 +1105,7 @@ public sealed class TestRunFailureEnvelopeTests
             string targetPath,
             IReadOnlyList<string> arguments,
             TimeSpan timeout,
+            IReadOnlyList<EarlyKillPattern>? earlyKillPatterns,
             CancellationToken ct) => Task.FromResult(execution);
 
         public ProjectStatusDto ResolveProject(string workspaceId, string projectName) =>

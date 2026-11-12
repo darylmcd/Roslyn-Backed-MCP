@@ -30,28 +30,26 @@ public interface IDotnetCommandRunner
         string workingDirectory,
         string targetPath,
         IReadOnlyList<string> arguments,
-        CancellationToken ct);
+        CancellationToken ct) =>
+        RunAsync(workingDirectory, targetPath, arguments, earlyKillPatterns: null, ct);
 
     /// <summary>
     /// Item 4: streaming variant with an optional set of <see cref="EarlyKillPattern"/> entries.
     /// When any pattern matches a line of stdout or stderr while the process is still running,
     /// the runner kills the process tree and stamps
     /// <see cref="CommandExecutionDto.EarlyKillReason"/> with the pattern's reason string.
-    /// Implementations should fall back to the base <see cref="RunAsync(string, string, IReadOnlyList{string}, CancellationToken)"/>
-    /// semantics when <paramref name="earlyKillPatterns"/> is <see langword="null"/> or empty.
+    /// A null or empty <paramref name="earlyKillPatterns"/> list disables early termination.
     /// </summary>
     Task<CommandExecutionDto> RunAsync(
         string workingDirectory,
         string targetPath,
         IReadOnlyList<string> arguments,
         IReadOnlyList<EarlyKillPattern>? earlyKillPatterns,
-        CancellationToken ct) =>
-        RunAsync(workingDirectory, targetPath, arguments, ct);
+        CancellationToken ct);
 
     /// <summary>
-    /// Runs a dotnet-compatible executable selected by the caller. The default implementation
-    /// preserves compatibility for external runners that only support the standard
-    /// <c>dotnet</c> executable.
+    /// Runs a dotnet-compatible executable selected by the caller. A runner that only
+    /// supports standard <c>dotnet</c> refuses other executable paths before starting a command.
     /// </summary>
     Task<CommandExecutionDto> RunAsync(
         string workingDirectory,

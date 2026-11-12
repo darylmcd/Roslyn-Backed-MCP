@@ -136,6 +136,7 @@ public sealed class WorkspaceLoadRestoreFailureWireTests : SharedWorkspaceTestBa
             string workingDirectory,
             string targetPath,
             IReadOnlyList<string> arguments,
+            IReadOnlyList<EarlyKillPattern>? earlyKillPatterns,
             CancellationToken ct) =>
             Task.FromResult(new CommandExecutionDto(
                 "dotnet",
@@ -160,6 +161,7 @@ public sealed class WorkspaceLoadRestoreFailureWireTests : SharedWorkspaceTestBa
             string workingDirectory,
             string targetPath,
             IReadOnlyList<string> arguments,
+            IReadOnlyList<EarlyKillPattern>? earlyKillPatterns,
             CancellationToken ct)
         {
             if (arguments[0] == "build")

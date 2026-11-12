@@ -90,7 +90,8 @@ public sealed class WorkspaceExplicitReloadTests
     private sealed class RejectingExecutor : IGatedCommandExecutor
     {
         public Task<CommandExecutionDto> ExecuteAsync(string workspaceId, string targetPath,
-            IReadOnlyList<string> arguments, TimeSpan timeout, CancellationToken ct)
+            IReadOnlyList<string> arguments, TimeSpan timeout,
+            IReadOnlyList<EarlyKillPattern>? earlyKillPatterns, CancellationToken ct)
             => throw new AssertFailedException("autoRestore:false must never execute a restore.");
 
         public ProjectStatusDto ResolveProject(string workspaceId, string projectName)

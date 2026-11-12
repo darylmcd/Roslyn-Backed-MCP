@@ -379,6 +379,7 @@ public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
             string workingDirectory,
             string targetPath,
             IReadOnlyList<string> arguments,
+            IReadOnlyList<EarlyKillPattern>? earlyKillPatterns,
             CancellationToken ct) =>
             Task.FromResult(new CommandExecutionDto(
                 Command: "dotnet",
@@ -398,6 +399,7 @@ public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
             string workingDirectory,
             string targetPath,
             IReadOnlyList<string> arguments,
+            IReadOnlyList<EarlyKillPattern>? earlyKillPatterns,
             CancellationToken ct) =>
             Task.FromException<CommandExecutionDto>(exception);
     }

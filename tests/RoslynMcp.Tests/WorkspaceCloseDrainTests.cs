@@ -1307,6 +1307,7 @@ public sealed class WorkspaceCloseDrainTests
             string workingDirectory,
             string targetPath,
             IReadOnlyList<string> arguments,
+            IReadOnlyList<EarlyKillPattern>? earlyKillPatterns,
             CancellationToken ct)
         {
             CallCount++;

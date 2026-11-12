@@ -202,6 +202,7 @@ public sealed class WorkspaceLoadRestoreBudgetTests : SharedWorkspaceTestBase
             string targetPath,
             IReadOnlyList<string> arguments,
             TimeSpan timeout,
+            IReadOnlyList<EarlyKillPattern>? earlyKillPatterns,
             CancellationToken ct)
         {
             ct.ThrowIfCancellationRequested();

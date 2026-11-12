@@ -339,7 +339,8 @@ public sealed class DependencyBoundaryLoggingTests
         public void Release() => _release.TrySetResult();
 
         public async Task<CommandExecutionDto> RunAsync(
-            string workingDirectory, string targetPath, IReadOnlyList<string> arguments, CancellationToken ct)
+            string workingDirectory, string targetPath, IReadOnlyList<string> arguments,
+            IReadOnlyList<EarlyKillPattern>? earlyKillPatterns, CancellationToken ct)
         {
             Started.TrySetResult();
             await _release.Task.WaitAsync(ct);

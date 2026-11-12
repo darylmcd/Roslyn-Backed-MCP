@@ -98,7 +98,8 @@ public sealed class TestRunnerPublicRefusalsTests : SharedWorkspaceTestBase
     {
         public ProjectStatusDto ResolveProject(string workspaceId, string projectName) => project;
         public Task<CommandExecutionDto> ExecuteAsync(string workspaceId, string targetPath,
-            IReadOnlyList<string> arguments, TimeSpan timeout, CancellationToken ct) =>
+            IReadOnlyList<string> arguments, TimeSpan timeout,
+            IReadOnlyList<EarlyKillPattern>? earlyKillPatterns, CancellationToken ct) =>
             throw new AssertFailedException("A refused request must not execute a process.");
         public void Dispose() { }
     }

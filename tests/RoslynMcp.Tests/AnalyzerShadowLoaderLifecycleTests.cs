@@ -333,7 +333,8 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
         public int CallCount { get; private set; }
 
         public Task<CommandExecutionDto> RunAsync(
-            string workingDirectory, string targetPath, IReadOnlyList<string> arguments, CancellationToken ct)
+            string workingDirectory, string targetPath, IReadOnlyList<string> arguments,
+            IReadOnlyList<EarlyKillPattern>? earlyKillPatterns, CancellationToken ct)
         {
             CallCount++;
             return Task.FromResult(new CommandExecutionDto(

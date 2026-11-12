@@ -139,6 +139,7 @@ public sealed class HardeningBehaviorTests : SharedWorkspaceTestBase
             string workingDirectory,
             string targetPath,
             IReadOnlyList<string> arguments,
+            IReadOnlyList<EarlyKillPattern>? earlyKillPatterns,
             CancellationToken ct)
         {
             await Task.Delay(Timeout.InfiniteTimeSpan, ct);
