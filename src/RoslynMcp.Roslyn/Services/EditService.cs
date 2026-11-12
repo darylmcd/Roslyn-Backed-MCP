@@ -106,7 +106,7 @@ public sealed class EditService : IEditService
             solution,
             fileSnapshots) ?? UndoCaptureId.None;
 
-        var coreResult = await ApplyTextEditsCoreAsync(workspaceId, filePath, edits, solution, document, sourceText, newSourceText, toolName, capture, ct, canonicalWritePath: pinnedWritePath).ConfigureAwait(false);
+        var coreResult = await ApplyTextEditsCoreAsync(workspaceId, filePath, edits, document, sourceText, newSourceText, toolName, capture, ct, canonicalWritePath: pinnedWritePath).ConfigureAwait(false);
 
         // Only wire up verify when the core apply actually wrote the edit. When the
         // core path returns Success=false (e.g. MSBuildWorkspace.TryApplyChanges
@@ -154,11 +154,14 @@ public sealed class EditService : IEditService
         // Single snapshot at the top so revert_last_apply rolls back the ENTIRE batch atomically
         // (from an undo perspective; individual disk writes still happen sequentially).
         var fileSnapshots = new List<FileSnapshotDto>(perFileSnapshots.Count);
-        foreach (var t in perFileSnapshots)
+        foreach (var (document, sourceText, _) in perFileSnapshots)
         {
+            var targetPath = Path.GetFullPath(document.FilePath!);
+            // Verification can run between target resolution and undo capture.
+            WorkspaceManager.EnsurePhysicalPath(targetPath);
             fileSnapshots.Add(await FileSnapshotCapture.CaptureAsync(
-                t.NormalizedPath,
-                () => t.SourceText.ToString(),
+                targetPath,
+                () => sourceText.ToString(),
                 ct).ConfigureAwait(false));
         }
         var batchCapture = _undoService?.CaptureBeforeApply(
@@ -169,7 +172,7 @@ public sealed class EditService : IEditService
 
         var results = await ApplyBatchFilesAsync(
             workspaceId,
-            fileEdits,
+            perFileSnapshots,
             toolName,
             skipSyntaxCheck,
             ct).ConfigureAwait(false);
@@ -202,27 +205,34 @@ public sealed class EditService : IEditService
         return new MultiFileEditResultDto(true, results.Count, results, verification);
     }
 
-    private async Task<List<(Document Document, SourceText SourceText, string NormalizedPath)>> ResolveBatchSnapshotsAsync(
+    private static async Task<List<(Document Document, SourceText SourceText, FileEditsDto FileEdit)>> ResolveBatchSnapshotsAsync(
         Solution initialSolution,
         IReadOnlyList<FileEditsDto> fileEdits,
         CancellationToken ct)
     {
-        var snapshots = new List<(Document, SourceText, string)>();
+        var snapshots = new List<(Document, SourceText, FileEditsDto)>();
+        var targets = new HashSet<DocumentId>();
         foreach (var fileEdit in fileEdits)
         {
             var (document, sourceText) = await ResolveDocumentAndTextAsync(
                 initialSolution,
                 fileEdit.FilePath,
                 ct).ConfigureAwait(false);
+            // Document resolution maps alternate spellings and directory links to the same target.
+            if (!targets.Add(document.Id))
+            {
+                throw new PublicArgumentException("Combine edits for each file into one fileEdits entry.", nameof(fileEdits));
+            }
+
             ValidateEdits(fileEdit.Edits, sourceText);
-            snapshots.Add((document, sourceText, Path.GetFullPath(fileEdit.FilePath)));
+            snapshots.Add((document, sourceText, fileEdit));
         }
 
         return snapshots;
     }
 
     private static string? ResolveSingleProjectFilter(
-        IEnumerable<(Document Document, SourceText SourceText, string NormalizedPath)> snapshots)
+        IEnumerable<(Document Document, SourceText SourceText, FileEditsDto FileEdit)> snapshots)
     {
         var ownerProjects = snapshots
             .Select(snapshot => snapshot.Document.Project.Name)
@@ -234,19 +244,17 @@ public sealed class EditService : IEditService
 
     private async Task<List<FileEditSummaryDto>> ApplyBatchFilesAsync(
         string workspaceId,
-        IReadOnlyList<FileEditsDto> fileEdits,
+        IReadOnlyList<(Document Document, SourceText SourceText, FileEditsDto FileEdit)> snapshots,
         string toolName,
         bool skipSyntaxCheck,
         CancellationToken ct)
     {
         var results = new List<FileEditSummaryDto>();
-        foreach (var fileEdit in fileEdits)
+        foreach (var (resolvedDocument, sourceText, fileEdit) in snapshots)
         {
-            var current = _workspace.GetCurrentSolution(workspaceId);
-            var (document, sourceText) = await ResolveDocumentAndTextAsync(
-                current,
-                fileEdit.FilePath,
-                ct).ConfigureAwait(false);
+            // Apply each delta to the latest solution without resolving the requested path again.
+            var document = _workspace.GetCurrentSolution(workspaceId).GetDocument(resolvedDocument.Id)
+                ?? throw new PublicNotFoundException("An edit target is no longer in the workspace. Reload the workspace and retry.");
             var merged = BuildPatchedSourceText(sourceText, fileEdit.Edits);
             if (!skipSyntaxCheck
                 && string.Equals(Path.GetExtension(fileEdit.FilePath), ".cs", StringComparison.OrdinalIgnoreCase)
@@ -260,14 +268,14 @@ public sealed class EditService : IEditService
                 workspaceId,
                 fileEdit.FilePath,
                 fileEdit.Edits,
-                current,
                 document,
                 sourceText,
                 merged,
                 toolName,
                 UndoCaptureId.None,
                 ct,
-                suppressChangeTrackerRecord: true).ConfigureAwait(false);
+                suppressChangeTrackerRecord: true,
+                canonicalWritePath: Path.GetFullPath(resolvedDocument.FilePath!)).ConfigureAwait(false);
             var diff = result.Changes.Count > 0
                 ? string.Join("\n", result.Changes.Select(change => change.UnifiedDiff))
                 : null;
@@ -297,7 +305,7 @@ public sealed class EditService : IEditService
         }
 
         var initialSolution = _workspace.GetCurrentSolution(workspaceId);
-        var (accumulator, changes, warnings) =
+        var (accumulator, changes) =
             await SimulatePreviewAsync(initialSolution, fileEdits, ct, skipSyntaxCheck).ConfigureAwait(false);
 
         var description = $"Preview multi-file edit across {changes.Count} file(s)";
@@ -311,15 +319,15 @@ public sealed class EditService : IEditService
             description,
             diffTruncated: false,
             kind: PreviewKind.MultiFileEdit);
-        return new RefactoringPreviewDto(token, description, changes, warnings.Count > 0 ? warnings : null);
+        return new RefactoringPreviewDto(token, description, changes, Warnings: null);
     }
 
     /// <summary>
     /// Shared preview-orchestration body behind <see cref="PreviewMultiFileTextEditsAsync"/> and
     /// <see cref="PreviewMultiFileTextEditsOnSolutionAsync"/>, which previously carried
     /// line-for-line duplicates of it (<c>edit-preview-validation-decomposition</c>). Pre-validates
-    /// every file's edits, then simulates them against a progressively accumulated
-    /// <see cref="Solution"/> so each file's diff sees its predecessors' rewrites. Touches neither
+    /// one edit group per resolved document against the input <see cref="Solution"/>, then
+    /// accumulates each distinct file's result and computes its diff from the input text. Touches neither
     /// the workspace, the disk, nor <see cref="Contracts.IPreviewStore"/> — the two callers differ
     /// only in how they package this result.
     /// </summary>
@@ -327,27 +335,20 @@ public sealed class EditService : IEditService
     /// Pre-validation runs to completion BEFORE any simulation so a malformed edit aborts the whole
     /// preview and the token-issuing caller never leaves a dangling token behind.
     /// </remarks>
-    private static async Task<(Solution Accumulator, List<FileChangeDto> Changes, List<string> Warnings)> SimulatePreviewAsync(
+    private static async Task<(Solution Accumulator, List<FileChangeDto> Changes)> SimulatePreviewAsync(
         Solution inputSolution,
         IReadOnlyList<FileEditsDto> fileEdits,
         CancellationToken ct,
         bool skipSyntaxCheck)
     {
-        var perFile = new List<(Document Document, SourceText SourceText, string FilePath, IReadOnlyList<TextEditDto> Edits)>();
-        foreach (var fileEdit in fileEdits)
-        {
-            var (document, sourceText) = await ResolveDocumentAndTextAsync(inputSolution, fileEdit.FilePath, ct).ConfigureAwait(false);
-            ValidateEdits(fileEdit.Edits, sourceText);
-            perFile.Add((document, sourceText, fileEdit.FilePath, fileEdit.Edits));
-        }
+        var perFile = await ResolveBatchSnapshotsAsync(inputSolution, fileEdits, ct).ConfigureAwait(false);
 
         var accumulator = inputSolution;
         var changes = new List<FileChangeDto>();
-        var warnings = new List<string>();
-
-        foreach (var (document, sourceText, filePath, edits) in perFile)
+        foreach (var (document, sourceText, fileEdit) in perFile)
         {
-            var merged = BuildPatchedSourceText(sourceText, edits);
+            var filePath = fileEdit.FilePath;
+            var merged = BuildPatchedSourceText(sourceText, fileEdit.Edits);
             if (!skipSyntaxCheck
                 && string.Equals(Path.GetExtension(filePath), ".cs", StringComparison.OrdinalIgnoreCase))
             {
@@ -360,27 +361,13 @@ public sealed class EditService : IEditService
                 }
             }
 
-            // Find the document in the accumulating solution so its updated text flows into the
-            // next file's diff comparison.
-            var docInAccum = accumulator.GetDocument(document.Id);
-            if (docInAccum is null)
-            {
-                // Document was removed by a prior edit in the batch — skip with a warning.
-                warnings.Add($"Skipped '{filePath}': document no longer present in the working solution.");
-                continue;
-            }
-            accumulator = accumulator.WithDocumentText(docInAccum.Id, merged);
+            accumulator = accumulator.WithDocumentText(document.Id, merged);
 
             var unified = DiffGenerator.GenerateUnifiedDiff(sourceText.ToString(), merged.ToString(), filePath);
             changes.Add(new FileChangeDto(filePath, unified));
         }
 
-        if (changes.Count == 0)
-        {
-            throw new InvalidOperationException("preview_multi_file_edit produced no diffs. See Warnings for per-file reasons.");
-        }
-
-        return (accumulator, changes, warnings);
+        return (accumulator, changes);
     }
 
     /// <summary>
@@ -394,7 +381,7 @@ public sealed class EditService : IEditService
     /// auto-apply-each-step disk write that fired before the agent ever called
     /// <c>preview_multi_file_edit_apply</c>.
     /// </summary>
-    internal async Task<(Solution NewSolution, IReadOnlyList<FileChangeDto> Changes, string Description, IReadOnlyList<string>? Warnings)>
+    internal async Task<(Solution NewSolution, IReadOnlyList<FileChangeDto> Changes, string Description)>
         PreviewMultiFileTextEditsOnSolutionAsync(
             Solution inputSolution,
             IReadOnlyList<FileEditsDto> fileEdits,
@@ -406,11 +393,11 @@ public sealed class EditService : IEditService
             throw new InvalidOperationException("preview_multi_file_edit requires at least one file edit.");
         }
 
-        var (accumulator, changes, warnings) =
+        var (accumulator, changes) =
             await SimulatePreviewAsync(inputSolution, fileEdits, ct, skipSyntaxCheck).ConfigureAwait(false);
 
         var description = $"Preview multi-file edit across {changes.Count} file(s)";
-        return (accumulator, changes, description, warnings.Count > 0 ? warnings : null);
+        return (accumulator, changes, description);
     }
 
     /// <summary>
@@ -422,11 +409,10 @@ public sealed class EditService : IEditService
     /// <c>organize-usings-preview-document-not-found-after-apply</c>.
     /// </summary>
     /// <remarks>
-    /// Callers that own a progressively mutated accumulator solution (multi-file apply / preview)
-    /// pass their accumulator in directly — re-reading from the workspace manager at this layer
-    /// would drop the in-progress edits. Entry-point callers that simply want the freshest
-    /// solution should acquire it via <c>_workspace.GetCurrentSolution(...)</c> on the turn the
-    /// resolve runs, so staleness-gate auto-reload results are reflected here.
+    /// Batch callers resolve all targets against their input snapshot. A chained preview may pass
+    /// the result of an earlier operation as that snapshot. Entry points that read the live
+    /// workspace obtain its current solution before calling this helper, so they see any
+    /// staleness-gate auto-reload.
     /// </remarks>
     private static async Task<(Document Document, SourceText SourceText)> ResolveDocumentAndTextAsync(
         Solution solution,
@@ -696,7 +682,6 @@ public sealed class EditService : IEditService
         string workspaceId,
         string filePath,
         IReadOnlyList<TextEditDto> edits,
-        Solution solution,
         Document document,
         SourceText sourceText,
         SourceText newSourceText,
@@ -706,7 +691,6 @@ public sealed class EditService : IEditService
         bool suppressChangeTrackerRecord = false,
         string? canonicalWritePath = null)
     {
-        var normalizedPath = Path.GetFullPath(filePath);
         var originalText = sourceText.ToString();
 
         var newDocument = document.WithText(newSourceText);
@@ -719,7 +703,7 @@ public sealed class EditService : IEditService
         }
 
         // BUG-N1: Mirror RefactoringService — MSBuildWorkspace may not flush text edits to disk.
-        var persisted = await PersistDocumentTextToDiskAsync(workspaceId, normalizedPath, ct, canonicalWritePath).ConfigureAwait(false);
+        var persisted = await PersistDocumentTextToDiskAsync(workspaceId, document.Id, ct, canonicalWritePath).ConfigureAwait(false);
         if (!persisted)
         {
             return new TextEditResultDto(false, filePath, 0, [], null);
@@ -790,19 +774,18 @@ public sealed class EditService : IEditService
     /// </summary>
     /// <param name="canonicalWritePath">
     /// When non-null, the boundary-canonicalized target the caller's path validation already pinned;
-    /// the write lands there instead of on <c>document.FilePath</c>. Document lookup resolves both the
-    /// logical request and Roslyn's physically pinned identity through <see cref="SymbolResolver"/>;
-    /// encoding still comes from the document's own SourceText
+    /// the write lands there instead of on <c>document.FilePath</c>
     /// (<c>workspace-load-path-canonicalization</c>, <c>path-boundary-link-swap-toctou</c>).
+    /// The already-resolved document supplies the updated text and its encoding.
     /// </param>
     private async Task<bool> PersistDocumentTextToDiskAsync(
         string workspaceId,
-        string normalizedPath,
+        DocumentId documentId,
         CancellationToken ct,
         string? canonicalWritePath = null)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
-        var document = SymbolResolver.FindDocument(solution, normalizedPath);
+        var document = solution.GetDocument(documentId);
 
         if (document?.FilePath is null)
             return false;

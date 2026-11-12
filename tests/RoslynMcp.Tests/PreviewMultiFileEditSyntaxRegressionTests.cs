@@ -229,6 +229,122 @@ public sealed class PreviewMultiFileEditSyntaxRegressionTests : IsolatedWorkspac
     }
 
     [TestMethod]
+    [DataRow("preview", "exact")]
+    [DataRow("preview", "alternate")]
+    [DataRow("preview", "link")]
+    [DataRow("solution", "alternate")]
+    [DataRow("solution", "link")]
+    [DataRow("direct", "alternate")]
+    [DataRow("direct", "link")]
+    public async Task MultiFileEdit_RejectsRepeatedResolvedTargetBeforePublishing(string route, string aliasKind)
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync();
+        var workspaceId = workspace.WorkspaceId;
+        var target = workspace.GetPath("SampleLib", "Dog.cs");
+        var other = workspace.GetPath("SampleLib", "Cat.cs");
+        var targetBefore = await File.ReadAllTextAsync(target);
+        var otherBefore = await File.ReadAllTextAsync(other);
+        var alias = aliasKind == "exact" ? target : workspace.GetPath("SampleLib", ".", "Dog.cs");
+        if (aliasKind == "link")
+        {
+            var link = workspace.GetPath("LinkedSampleLib");
+            Assert.IsTrue(TestFixtureFileSystem.TryCreateDirectoryLink(link, workspace.GetPath("SampleLib")));
+            alias = Path.Combine(link, "Dog.cs");
+        }
+
+        var solution = WorkspaceManager.GetCurrentSolution(workspaceId);
+        var store = new PreviewStore(maxEntries: 1);
+        var existingToken = store.Store(workspaceId, solution, WorkspaceManager.GetCurrentVersion(workspaceId), "Prior preview");
+        var edit = new EditService(WorkspaceManager, NullLogger<EditService>.Instance,
+            UndoService, ChangeTracker, store, CompileCheckService);
+        UndoService.CaptureBeforeApply(workspaceId, "Prior operation", solution, fileSnapshots: null);
+        var priorUndo = UndoService.GetLastOperation(workspaceId);
+        Assert.IsNotNull(priorUndo);
+        var server = await GetPathAuthorizedServerAsync();
+        FileEditsDto[] fileEdits =
+        [
+            new(other, [new(1, 1, 1, 1, "// earlier target\n")]),
+            new(target, [new(1, 1, 1, 1, "// first edit\n")]),
+            new(alias, [new(2, 1, 2, 1, "// second edit\n")]),
+        ];
+
+        var exception = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() => route switch
+        {
+            "preview" => MultiFileEditTools.PreviewMultiFileEdit(server, WorkspaceExecutionGate, edit, workspaceId, fileEdits),
+            "solution" => edit.PreviewMultiFileTextEditsOnSolutionAsync(solution, fileEdits, CancellationToken.None),
+            "direct" => MultiFileEditTools.ApplyMultiFileEdit(server, WorkspaceExecutionGate, edit, workspaceId, fileEdits),
+            _ => throw new ArgumentOutOfRangeException(nameof(route)),
+        });
+
+        var tool = route == "direct" ? "apply_multi_file_edit" : "preview_multi_file_edit";
+        var envelopeJson = ToolErrorHandler.FormatErrorResponse(ToolErrorHandler.ClassifyError(exception, tool), tool, exception);
+        using var envelope = JsonDocument.Parse(envelopeJson);
+        Assert.AreEqual("InvalidArgument", envelope.RootElement.GetProperty("category").GetString());
+        StringAssert.Contains(envelope.RootElement.GetProperty("message").GetString()!, "Combine edits for each file");
+        Assert.IsFalse(envelope.RootElement.TryGetProperty("previewToken", out _));
+        Assert.AreEqual(workspaceId, store.PeekWorkspaceId(existingToken), "Refusal must not mint a token that evicts the prior one.");
+        Assert.AreEqual(priorUndo, UndoService.GetLastOperation(workspaceId), "Refusal must preserve the prior undo target.");
+        Assert.AreEqual(targetBefore, await File.ReadAllTextAsync(target));
+        Assert.AreEqual(otherBefore, await File.ReadAllTextAsync(other));
+    }
+
+    [TestMethod]
+    public async Task DirectMultiFileEdit_RejectsTargetRedirectedAfterPreflight()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var one = workspace.GetPath("SampleLib", "One", "Target.cs");
+        var two = workspace.GetPath("SampleLib", "Two", "Target.cs");
+        Directory.CreateDirectory(Path.GetDirectoryName(one)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(two)!);
+        await File.WriteAllTextAsync(one, "public class FirstTarget {}\n");
+        await File.WriteAllTextAsync(two, "public class SecondTarget {}\n");
+        await workspace.LoadAsync();
+
+        var workspaceId = workspace.WorkspaceId;
+        var solution = WorkspaceManager.GetCurrentSolution(workspaceId);
+        var paths = solution.Projects.SelectMany(project => project.Documents)
+            .Select(document => document.FilePath)
+            .Where(path => path == one || path == two)
+            .ToArray();
+        Assert.HasCount(2, paths);
+        var first = paths[0]!;
+        var second = paths[1]!;
+        var firstBefore = await File.ReadAllTextAsync(first);
+        var secondBefore = await File.ReadAllTextAsync(second);
+        var secondDirectory = Path.GetDirectoryName(second)!;
+        var displacedDirectory = workspace.GetPath("DisplacedTarget");
+        var compileCheck = new AfterCompileCheck(CompileCheckService, () =>
+        {
+            if (Directory.Exists(displacedDirectory)) return;
+            Directory.Move(secondDirectory, displacedDirectory);
+            Assert.IsTrue(TestFixtureFileSystem.TryCreateDirectoryLink(secondDirectory, Path.GetDirectoryName(first)!));
+        });
+        var edit = new EditService(WorkspaceManager, NullLogger<EditService>.Instance,
+            UndoService, ChangeTracker, PreviewStore, compileCheck);
+        UndoService.CaptureBeforeApply(workspaceId, "Prior operation", solution, fileSnapshots: null);
+        var priorUndo = UndoService.GetLastOperation(workspaceId);
+        var server = await GetPathAuthorizedServerAsync();
+
+        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+            MultiFileEditTools.ApplyMultiFileEdit(server, WorkspaceExecutionGate, edit, workspaceId,
+                [new(first, [new(1, 1, 1, 1, "// first\n")]), new(second, [new(1, 1, 1, 1, "// second\n")])], verify: true));
+        StringAssert.Contains(exception.Message, "filesystem-link component");
+        Assert.AreEqual(firstBefore, await File.ReadAllTextAsync(first));
+        Assert.AreEqual(secondBefore, await File.ReadAllTextAsync(Path.Combine(displacedDirectory, "Target.cs")));
+        Assert.AreEqual(priorUndo, UndoService.GetLastOperation(workspaceId));
+    }
+
+    private sealed class AfterCompileCheck(ICompileCheckService inner, Action afterCheck) : ICompileCheckService
+    {
+        public async Task<CompileCheckDto> CheckAsync(string workspaceId, CompileCheckOptions options, CancellationToken ct)
+        {
+            var result = await inner.CheckAsync(workspaceId, options, ct);
+            afterCheck();
+            return result;
+        }
+    }
+
+    [TestMethod]
     public async Task WhitespaceOnlyEdit_PreviewHasHunk_AndApplyWritesExactText()
     {
         var edit = NewEditService();
