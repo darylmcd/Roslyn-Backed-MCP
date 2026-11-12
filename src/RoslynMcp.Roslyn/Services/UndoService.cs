@@ -53,6 +53,9 @@ public sealed class UndoService : IUndoService, IDisposable
     /// <summary>Test seam: runs in <see cref="RevertAsync"/> after the pending slot is claimed and before the restore starts, i.e. the window a concurrent by-sequence revert of the same operation can land in.</summary>
     internal Func<Task>? AfterLifoClaim { get; set; }
 
+    /// <summary>Test seam: number of workspaces that own a history list. Production code must not read it.</summary>
+    internal int TrackedHistoryWorkspaceCount => _history.Count;
+
     public UndoService(
         ILogger<UndoService> logger,
         IWorkspaceManager workspaceManager,
@@ -610,6 +613,15 @@ public sealed class UndoService : IUndoService, IDisposable
             ? null
             : new HashSet<string>(snapshot.AffectedFiles, FileSystemPath.Comparer);
         bool InScope(string? path) => scope is null || (path is not null && scope.Contains(path));
+
+        // Projects sharing one identity key (e.g. in-memory projects with the same name and no file) cannot
+        // be matched across the two solutions: refuse instead of guessing.
+        foreach (var solution in new[] { preApplySolution, currentSolution })
+        {
+            var duplicate = solution.Projects.GroupBy(ProjectKey).FirstOrDefault(g => g.Count() > 1);
+            if (duplicate is not null)
+                return $"project '{duplicate.First().Name}' has an ambiguous identity (duplicate name and path)";
+        }
 
         var before = preApplySolution.Projects.ToDictionary(ProjectKey);
         var after = currentSolution.Projects.ToDictionary(ProjectKey);

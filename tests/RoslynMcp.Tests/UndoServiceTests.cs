@@ -1291,9 +1291,26 @@ public sealed class UndoServiceTests : IsolatedWorkspaceTestBase
     {
         using var undo = new UndoService(NullLogger<UndoService>.Instance, WorkspaceManager);
         Assert.IsFalse(await undo.RevertAsync("no-such-workspace", CancellationToken.None));
-        var history = typeof(UndoService).GetField("_history", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
-            .GetValue(undo) as System.Collections.IDictionary;
-        Assert.AreEqual(0, history!.Count, "A revert for an unknown workspace must not allocate a history list.");
+        Assert.AreEqual(0, undo.TrackedHistoryWorkspaceCount, "A revert for an unknown workspace must not allocate a history list.");
+    }
+
+    [TestMethod]
+    public async Task Revert_SolutionSnapshot_DuplicateProjectIdentity_FailsClosedWithoutThrowing()
+    {
+        // Two in-memory projects with the same name and no project file share one identity key; the
+        // refusal check must refuse deterministically rather than throw on the duplicate.
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var preApply = WorkspaceManager.GetCurrentSolution(workspaceId)
+            .AddProject("Dup", "Dup", LanguageNames.CSharp).Solution
+            .AddProject("Dup", "Dup", LanguageNames.CSharp).Solution;
+        var manager = new CapturingWorkspaceManager(WorkspaceManager, preApply);
+        using var undo = new UndoService(NullLogger<UndoService>.Instance, manager);
+        undo.CaptureBeforeApply(workspaceId, "duplicate identity", preApply, fileSnapshots: null);
+
+        Assert.IsFalse(await undo.RevertAsync(workspaceId, CancellationToken.None));
+        Assert.IsNull(manager.AppliedSolution);
+        Assert.IsNotNull(undo.GetLastOperation(workspaceId));
     }
 
     [TestMethod]
