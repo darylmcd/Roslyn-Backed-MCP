@@ -48,6 +48,9 @@ public sealed class UndoService : IUndoService, IDisposable
     /// <summary>Test seam: runs inside <see cref="CommitPendingCapture"/> after it read the matching pending slot and before it swaps the promoted snapshot in, i.e. the window a newer <see cref="CaptureBeforeApply"/> (which takes no lock) can land in.</summary>
     internal Action? BeforeCommitSwap { get; set; }
 
+    /// <summary>Test seam: runs in <see cref="RevertAsync"/> after the pending slot is claimed and before the restore starts, i.e. the window a concurrent by-sequence revert of the same operation can land in.</summary>
+    internal Func<Task>? AfterLifoClaim { get; set; }
+
     public UndoService(
         ILogger<UndoService> logger,
         IWorkspaceManager workspaceManager,
@@ -111,49 +114,36 @@ public sealed class UndoService : IUndoService, IDisposable
 
     public async Task<bool> RevertAsync(string workspaceId, CancellationToken cancellationToken = default)
     {
-        // Peek — do NOT consume the snapshot until the restore confirms success. A failed
-        // (disk I/O) or cancelled restore must leave the snapshot and its history entry in
-        // place so the SAME call is retryable once the obstruction clears; consuming up front
-        // permanently destroys the retry target that the compensating callers depend on
-        // (ApplyWithVerifyTool's rollback and cancellation-recovery legs).
-        if (!_snapshots.TryGetValue(workspaceId, out var snapshot))
+        // Claim the pending slot (and its history entry) atomically under the per-workspace lock,
+        // exactly as RevertBySequenceAsync claims its target, so a concurrent by-sequence revert of
+        // the same operation is refused instead of restoring it a second time. A failed (disk I/O)
+        // or cancelled restore UNDOES the claim so the SAME call stays retryable once the
+        // obstruction clears (ApplyWithVerifyTool's rollback and cancellation-recovery legs).
+        if (!TryClaimPending(workspaceId, out var claim))
             return false;
 
-        // Fast path: the caller provided an explicit file-snapshot list. Restore those
-        // files directly — authoritative, independent of the workspace solution state.
-        // Legacy (else) path: solution-based restore with a snapshot-wide walk so
-        // empty-GetChanges no longer silently wins. A thrown OperationCanceledException
-        // propagates out of here without reaching the consume block below, so cancellation
-        // also leaves _snapshots/_history untouched (retryable) by construction.
-        var reverted = await RevertSnapshotAsync(workspaceId, snapshot, cancellationToken).ConfigureAwait(false);
+        bool reverted;
+        try
+        {
+            if (AfterLifoClaim is not null)
+                await AfterLifoClaim().ConfigureAwait(false);
+
+            // Fast path: the caller provided an explicit file-snapshot list. Restore those
+            // files directly — authoritative, independent of the workspace solution state.
+            // Legacy (else) path: solution-based restore with a snapshot-wide walk so
+            // empty-GetChanges no longer silently wins.
+            reverted = await RevertSnapshotAsync(workspaceId, claim.Target, cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            UnclaimRevert(workspaceId, claim);
+            throw;
+        }
 
         if (!reverted)
-            return false;
-
-        // Restore succeeded — consume the snapshot exactly once. Use the atomic
-        // compare-and-remove overload so a newer CaptureBeforeApply that landed while the
-        // restore was in flight is not clobbered (only the exact snapshot we restored is removed).
-        _snapshots.TryRemove(new KeyValuePair<string, UndoSnapshot>(workspaceId, snapshot));
-
-        // Also drop the matching history entry so the LIFO and by-sequence pathways agree
-        // on what's been reverted. The pending snapshot is identified by sequence number
-        // (assigned when ChangeTracker recorded the apply); look up the history entry by
-        // that key. When CommitPendingCapture has not yet run (apply succeeded but
-        // ChangeRecorded handler has not fired), the history list is empty for this id —
-        // skip silently.
-        if (snapshot.SequenceNumber > 0 && _history.TryGetValue(workspaceId, out var historyList))
         {
-            lock (historyList)
-            {
-                for (var i = historyList.Count - 1; i >= 0; i--)
-                {
-                    if (historyList[i].SequenceNumber == snapshot.SequenceNumber)
-                    {
-                        historyList.RemoveAt(i);
-                        break;
-                    }
-                }
-            }
+            UnclaimRevert(workspaceId, claim);
+            return false;
         }
 
         return true;
@@ -184,6 +174,7 @@ public sealed class UndoService : IUndoService, IDisposable
         BeforeSequenceClaim?.Invoke();
         UndoSnapshot target;
         int claimedIndex;
+        bool wasPending;
         lock (historyList)
         {
             claimedIndex = historyList.FindIndex(s => s.SequenceNumber == sequenceNumber);
@@ -231,28 +222,24 @@ public sealed class UndoService : IUndoService, IDisposable
                     BlockingSequences: blocking);
             }
 
-            historyList.RemoveAt(claimedIndex);
+            // Claim the history entry and, when the target is also the pending LIFO snapshot, the slot
+            // too (compare-and-remove: a newer capture that raced in is not clobbered) — all under
+            // this lock, so RevertAsync's claim cannot interleave.
+            wasPending = ClaimUnderLock(workspaceId, historyList, claimedIndex, target);
         }
 
-        // Only the winning claimant reaches here. If this is also the pending LIFO snapshot, drop it
-        // from _snapshots too — keeps GetLastOperation / RevertAsync consistent. Use the
-        // compare-and-remove overload so a newer capture that raced in is not clobbered.
-        if (_snapshots.TryGetValue(workspaceId, out var pending) && pending.SequenceNumber == sequenceNumber)
-        {
-            _snapshots.TryRemove(new KeyValuePair<string, UndoSnapshot>(workspaceId, pending));
-        }
-
+        var claim = new RevertClaim(target, historyList, claimedIndex, wasPending);
         bool reverted;
         try
         {
             reverted = await RevertSnapshotAsync(workspaceId, target, cancellationToken).ConfigureAwait(false);
         }
-        catch (OperationCanceledException)
+        catch
         {
-            // A cancelled restore must not destroy the retry target: undo the claim so the same
-            // sequence stays retryable with its ordering preserved, then rethrow so cancellation
+            // A cancelled or faulted restore must not destroy the retry target: undo the claim so the
+            // same sequence stays retryable with its ordering preserved, then rethrow so the failure
             // still surfaces to the caller.
-            RestoreSequenceClaim(workspaceId, historyList, claimedIndex, target);
+            UnclaimRevert(workspaceId, claim);
             throw;
         }
 
@@ -261,7 +248,7 @@ public sealed class UndoService : IUndoService, IDisposable
             // Restore failed (disk I/O). Undo the claim so the target sequence remains retryable
             // and keeps its ordinal position in the dependency-ordered history for future overlap
             // checks, then surface the failure.
-            RestoreSequenceClaim(workspaceId, historyList, claimedIndex, target);
+            UnclaimRevert(workspaceId, claim);
             return new RevertBySequenceResult(
                 Reverted: false,
                 RevertedOperation: target.Description,
@@ -278,28 +265,77 @@ public sealed class UndoService : IUndoService, IDisposable
             BlockingSequences: null);
     }
 
+    /// <summary>A won claim on one undo snapshot: the history position it left (-1: none) and whether it was also the pending LIFO slot.</summary>
+    private sealed record RevertClaim(UndoSnapshot Target, List<UndoSnapshot> HistoryList, int HistoryIndex, bool WasPending);
+
     /// <summary>
-    /// Undoes a claimed-but-failed (or cancelled) sequence revert: reinserts the target history
-    /// entry at (or as close as bounds allow to) its original ordinal position so the
-    /// dependency-ordered overlap check stays correct, and best-effort restores it as the pending
-    /// LIFO snapshot (<see cref="ConcurrentDictionary{TKey,TValue}.TryAdd"/> won't overwrite a
-    /// newer capture that raced in during the restore). Callers pass only a claim they won.
+    /// Claims the pending LIFO snapshot for <see cref="RevertAsync"/> under the per-workspace lock
+    /// (the one <see cref="RevertBySequenceAsync"/> and <see cref="CommitPendingCapture"/> use). A
+    /// committed slot (sequence &gt; 0) also gives up its history entry; a sequence-0 slot has none,
+    /// so its claim is the compare-and-remove alone.
     /// </summary>
-    private void RestoreSequenceClaim(
-        string workspaceId,
-        List<UndoSnapshot> historyList,
-        int claimedIndex,
-        UndoSnapshot target)
+    private bool TryClaimPending(string workspaceId, out RevertClaim claim)
     {
+        claim = null!;
+        var historyList = _history.GetOrAdd(workspaceId, _ => new List<UndoSnapshot>());
         lock (historyList)
         {
-            // Re-derive the insert position with a bounds check — concurrent CommitPendingCapture
-            // calls may have grown the list while the restore was in flight.
-            var insertIndex = Math.Min(claimedIndex, historyList.Count);
-            historyList.Insert(insertIndex, target);
-        }
+            if (!_snapshots.TryGetValue(workspaceId, out var pending))
+                return false;
 
-        _snapshots.TryAdd(workspaceId, target);
+            var index = -1;
+            if (pending.SequenceNumber > 0)
+            {
+                index = historyList.FindIndex(s => s.SequenceNumber == pending.SequenceNumber);
+                if (index < 0)
+                    return false; // A by-sequence revert already claimed it.
+            }
+
+            // CaptureBeforeApply writes the slot without this lock: a lost compare-and-remove means a
+            // newer capture replaced the slot, which must survive untouched.
+            if (!_snapshots.TryRemove(new KeyValuePair<string, UndoSnapshot>(workspaceId, pending)))
+                return false;
+
+            if (index >= 0)
+                historyList.RemoveAt(index);
+
+            claim = new RevertClaim(pending, historyList, index, WasPending: true);
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// Caller holds the <paramref name="historyList"/> lock. Drops the by-sequence target's history
+    /// entry and compare-removes it from the pending slot. Returns whether the target was the pending
+    /// slot, so <see cref="UnclaimRevert"/> restores exactly what was taken.
+    /// </summary>
+    private bool ClaimUnderLock(string workspaceId, List<UndoSnapshot> historyList, int historyIndex, UndoSnapshot target)
+    {
+        historyList.RemoveAt(historyIndex);
+        return _snapshots.TryRemove(new KeyValuePair<string, UndoSnapshot>(workspaceId, target));
+    }
+
+    /// <summary>
+    /// Undoes a claimed-but-failed (or cancelled) revert: reinserts the history entry at (or as close
+    /// as bounds allow to) its original ordinal position so the dependency-ordered overlap check stays
+    /// correct, and re-installs the target as the pending LIFO snapshot ONLY when it was the pending
+    /// slot when claimed (<see cref="ConcurrentDictionary{TKey,TValue}.TryAdd"/> won't overwrite a
+    /// newer capture that raced in during the restore). Callers pass only a claim they won.
+    /// </summary>
+    private void UnclaimRevert(string workspaceId, RevertClaim claim)
+    {
+        lock (claim.HistoryList)
+        {
+            if (claim.HistoryIndex >= 0)
+            {
+                // Re-derive the insert position with a bounds check — concurrent CommitPendingCapture
+                // calls may have grown the list while the restore was in flight.
+                claim.HistoryList.Insert(Math.Min(claim.HistoryIndex, claim.HistoryList.Count), claim.Target);
+            }
+
+            if (claim.WasPending)
+                _snapshots.TryAdd(workspaceId, claim.Target);
+        }
     }
 
     public void CommitPendingCapture(
