@@ -13,7 +13,7 @@
 - [ ] Reproduce the valid existing-member replacement batch below with a self-contained C# fixture; establish the actual throwing mechanism before changing guards.
 - [ ] Return a complete diff/token and apply the intended valid edit through the documented route; preserve source on refusal, coordinate/syntax validation, exact workspace identity and stale-token rejection.
 - [ ] Observe the runtime regression red before repair and green afterward; cover the reduced batch and whole-document equivalent without weakening malformed-source refusals.
-- [ ] Compare the demonstrated mechanism with preview-existing-document-insertion-refused; consolidate only if the same mechanism is established.
+- [ ] Compare the demonstrated mechanism with merged PR #2073 (3c1b7352), which fixed the labelled-directive skipped-text false positive. If the mechanism is the same, verify the original replacement batch against that fix before closing this row.
 
 ## Evidence
 
