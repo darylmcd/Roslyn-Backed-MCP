@@ -28,8 +28,10 @@ namespace RoslynMcp.Roslyn.Services;
 /// <see cref="CaptureBeforeApply"/> (required, never defaulted), and <see cref="RevertAsync"/> restores those files
 /// directly from disk — no <c>GetChanges</c> dependency. <c>RefactoringService</c>
 /// captures physical source and project before-images for document or reference changes.
-/// Callers without file snapshots use a snapshot-wide document walk so
-/// empty-<c>GetChanges</c> no longer silently wins.
+/// Callers without file snapshots use a text-only solution-snapshot restore: it rewrites changed
+/// document text (with a disk walk of the pre-apply documents when <c>GetChanges</c> is empty, so
+/// an empty diff no longer silently wins) and FAILS CLOSED, retaining the snapshot, when the apply
+/// also added/removed documents or projects or changed references or options, which it cannot undo.
 /// </summary>
 public sealed class UndoService : IUndoService, IDisposable
 {
@@ -515,6 +517,22 @@ public sealed class UndoService : IUndoService, IDisposable
         }
 
         var currentSolution = workspace.GetCurrentSolution(workspaceId);
+
+        // The restore below rewrites document text only. Fail closed (snapshot retained by the
+        // caller) rather than report success while added/removed documents or projects, reference
+        // changes or option changes stay applied.
+        var unrestorable = FindUnrestorableChange(snapshot, snapshot.PreApplySolution, currentSolution);
+        if (unrestorable is not null)
+        {
+            _logger.LogWarning(
+                "UndoService.RevertAsync: refusing the solution-snapshot revert for '{WorkspaceId}' (description: '{Description}'): {Change}. " +
+                "Only document text can be restored from a solution snapshot; the snapshot is retained.",
+                workspaceId,
+                snapshot.Description,
+                unrestorable);
+            return false;
+        }
+
         // composite-apply-undo-encoding-still-lossy: the queued restores carry the pre-apply
         // `SourceText.Encoding` alongside the text so `PersistRevertChangesAsync` can rewrite each
         // file with its original BOM/encoding instead of collapsing everything to UTF-8-no-BOM.
@@ -548,6 +566,73 @@ public sealed class UndoService : IUndoService, IDisposable
         // Phase 3: persist the revert to workspace state + disk, reload, and restore version.
         return await PersistRevertChangesAsync(
             workspaceId, workspace, snapshot, targetSolution, diskRestores, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Returns a description of the first change between <paramref name="preApplySolution"/> and
+    /// <paramref name="currentSolution"/> that a text-only solution-snapshot restore cannot undo (added
+    /// or removed documents including additional/analyzer-config ones, added or removed projects,
+    /// project/metadata/analyzer reference changes, parse/compilation option changes), or null.
+    /// <c>GetChanges</c> diffs the WHOLE current solution, so a committed snapshot only answers for
+    /// changes that involve its own <see cref="UndoSnapshot.AffectedFiles"/>: a document by its path, a
+    /// project by its project file or any of its documents' paths for add/remove, and by its project
+    /// file for reference/option changes (those apply through the project file). A later file-disjoint
+    /// sibling apply therefore never blocks an earlier revert. An uncommitted (sequence 0) snapshot has
+    /// no recorded files and is the latest apply by construction, so the whole diff is its own.
+    /// </summary>
+    private static string? FindUnrestorableChange(UndoSnapshot snapshot, Solution preApplySolution, Solution currentSolution)
+    {
+        var scope = snapshot.SequenceNumber == 0
+            ? null
+            : new HashSet<string>(snapshot.AffectedFiles, FileSystemPath.Comparer);
+        bool InScope(string? path) => scope is null || (path is not null && scope.Contains(path));
+        bool ProjectInScope(Project project) =>
+            scope is null || InScope(project.FilePath) || project.Documents.Any(d => InScope(d.FilePath));
+
+        var changes = preApplySolution.GetChanges(currentSolution);
+        foreach (var project in changes.GetRemovedProjects())
+        {
+            if (ProjectInScope(project))
+                return $"project '{project.Name}' was removed";
+        }
+
+        foreach (var project in changes.GetAddedProjects())
+        {
+            if (ProjectInScope(project))
+                return $"project '{project.Name}' was added";
+        }
+
+        foreach (var change in changes.GetProjectChanges())
+        {
+            var name = change.NewProject.Name;
+            var added = change.GetAddedDocuments().Select(id => change.NewProject.GetDocument(id)?.FilePath)
+                .Concat(change.GetAddedAdditionalDocuments().Select(id => change.NewProject.GetAdditionalDocument(id)?.FilePath))
+                .Concat(change.GetAddedAnalyzerConfigDocuments().Select(id => change.NewProject.GetAnalyzerConfigDocument(id)?.FilePath));
+            if (added.Any(InScope))
+                return $"a document was added to project '{name}'";
+
+            var removed = change.GetRemovedDocuments().Select(id => change.OldProject.GetDocument(id)?.FilePath)
+                .Concat(change.GetRemovedAdditionalDocuments().Select(id => change.OldProject.GetAdditionalDocument(id)?.FilePath))
+                .Concat(change.GetRemovedAnalyzerConfigDocuments().Select(id => change.OldProject.GetAnalyzerConfigDocument(id)?.FilePath));
+            if (removed.Any(InScope))
+                return $"a document was removed from project '{name}'";
+
+            if (!InScope(change.NewProject.FilePath) && !InScope(change.OldProject.FilePath))
+                continue;
+
+            if (change.GetAddedProjectReferences().Any() || change.GetRemovedProjectReferences().Any())
+                return $"project references changed in '{name}'";
+            if (change.GetAddedMetadataReferences().Any() || change.GetRemovedMetadataReferences().Any())
+                return $"metadata references changed in '{name}'";
+            if (change.GetAddedAnalyzerReferences().Any() || change.GetRemovedAnalyzerReferences().Any())
+                return $"analyzer references changed in '{name}'";
+            if (!Equals(change.OldProject.ParseOptions, change.NewProject.ParseOptions))
+                return $"parse options changed in '{name}'";
+            if (!Equals(change.OldProject.CompilationOptions, change.NewProject.CompilationOptions))
+                return $"compilation options changed in '{name}'";
+        }
+
+        return null;
     }
 
     /// <summary>

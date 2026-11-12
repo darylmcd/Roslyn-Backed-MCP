@@ -1135,6 +1135,111 @@ public sealed class UndoServiceTests : IsolatedWorkspaceTestBase
             (await restored.GetTextAsync(CancellationToken.None)).ToString());
     }
 
+    /// <summary>
+    /// undo-solution-snapshot-restore-incomplete: the solution-snapshot restore only rewrites document
+    /// text, so an apply that also added a document must fail closed (snapshot retained, nothing
+    /// partially restored) instead of "succeeding" with the added file left behind.
+    /// </summary>
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task Revert_SolutionSnapshot_AddedDocument_FailsClosed(bool bySequence)
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+        var extraFilePath = Path.Combine(Path.GetDirectoryName(dogFilePath)!, "Extra.cs");
+        var preApply = WorkspaceManager.GetCurrentSolution(workspaceId);
+        await MaterializeDocumentTextAsync(preApply, dogFilePath);
+        var dogId = preApply.GetDocumentIdsWithFilePath(dogFilePath).Single();
+        var applied = preApply
+            .WithDocumentText(dogId, Microsoft.CodeAnalysis.Text.SourceText.From("// applied\n"))
+            .GetDocument(dogId)!.Project
+            .AddDocument("Extra.cs", "class Extra { }\n", filePath: extraFilePath).Project.Solution;
+        Assert.IsTrue(WorkspaceManager.TryApplyChanges(workspaceId, applied), "Precondition: the synthetic apply lands.");
+        var dogBytesAfterApply = await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None);
+
+        using var undo = new UndoService(NullLogger<UndoService>.Instance, WorkspaceManager);
+        var capture = undo.CaptureBeforeApply(workspaceId, "add document", preApply, fileSnapshots: null);
+        if (bySequence)
+            undo.CommitPendingCapture(workspaceId, 1, [dogFilePath, extraFilePath], capture);
+
+        if (bySequence)
+        {
+            var result = await undo.RevertBySequenceAsync(workspaceId, 1, CancellationToken.None);
+            Assert.IsFalse(result.Reverted);
+            Assert.AreEqual("revert-failed", result.Reason);
+        }
+        else
+        {
+            Assert.IsFalse(await undo.RevertAsync(workspaceId, CancellationToken.None));
+        }
+
+        Assert.IsNotNull(undo.GetLastOperation(workspaceId), "A refused revert must retain the snapshot.");
+        CollectionAssert.AreEqual(dogBytesAfterApply, await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None),
+            "A refused revert must not partially restore text.");
+        Assert.IsTrue(File.Exists(extraFilePath));
+    }
+
+    [TestMethod]
+    public async Task Revert_SolutionSnapshot_ParseOptionsDiffer_FailsClosed()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+        var preApply = WorkspaceManager.GetCurrentSolution(workspaceId);
+        await MaterializeDocumentTextAsync(preApply, dogFilePath);
+        var dogId = preApply.GetDocumentIdsWithFilePath(dogFilePath).Single();
+        var project = preApply.GetDocument(dogId)!.Project;
+        var applied = preApply
+            .WithProjectParseOptions(project.Id, project.ParseOptions!.WithFeatures([new KeyValuePair<string, string>("undo-test", "1")]))
+            .WithDocumentText(dogId, Microsoft.CodeAnalysis.Text.SourceText.From("// applied\n"));
+        var manager = new CapturingWorkspaceManager(WorkspaceManager, applied);
+        using var undo = new UndoService(NullLogger<UndoService>.Instance, manager);
+        undo.CaptureBeforeApply(workspaceId, "options change", preApply, fileSnapshots: null);
+        var diskBefore = await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None);
+
+        Assert.IsFalse(await undo.RevertAsync(workspaceId, CancellationToken.None));
+
+        Assert.IsNull(manager.AppliedSolution, "A refused revert must not touch the workspace.");
+        Assert.IsNotNull(undo.GetLastOperation(workspaceId));
+        CollectionAssert.AreEqual(diskBefore, await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None));
+    }
+
+    [TestMethod]
+    public async Task RevertBySequence_SolutionSnapshot_FileDisjointSiblingAddedDocument_StillReverts()
+    {
+        // The whole-solution diff also contains a LATER, file-disjoint sibling apply's added document;
+        // the refusal is scoped to this snapshot's affected files, so the earlier revert still lands.
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+        var catFilePath = workspace.GetPath("SampleLib", "Cat.cs");
+        var extraFilePath = Path.Combine(Path.GetDirectoryName(dogFilePath)!, "Extra.cs");
+        var originalBytes = await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None);
+        var preApply = WorkspaceManager.GetCurrentSolution(workspaceId);
+        await MaterializeDocumentTextAsync(preApply, dogFilePath);
+        var dogId = preApply.GetDocumentIdsWithFilePath(dogFilePath).Single();
+        var withSibling = preApply
+            .WithDocumentText(dogId, Microsoft.CodeAnalysis.Text.SourceText.From("// applied\n"))
+            .GetDocument(dogId)!.Project
+            .AddDocument("Extra.cs", "class Extra { }\n", filePath: extraFilePath).Project.Solution;
+        var manager = new CapturingWorkspaceManager(WorkspaceManager, withSibling);
+        using var undo = new UndoService(NullLogger<UndoService>.Instance, manager);
+        var first = undo.CaptureBeforeApply(workspaceId, "edit dog", preApply, fileSnapshots: null);
+        undo.CommitPendingCapture(workspaceId, 1, [dogFilePath], first);
+        var second = undo.CaptureBeforeApply(
+            workspaceId, "add extra", preApplySolution: null,
+            fileSnapshots: [FileSnapshotDto.FromExistingBytes(catFilePath, await File.ReadAllBytesAsync(catFilePath, CancellationToken.None))]);
+        undo.CommitPendingCapture(workspaceId, 2, [extraFilePath], second);
+        await File.WriteAllTextAsync(dogFilePath, "// applied\n", CancellationToken.None);
+
+        var result = await undo.RevertBySequenceAsync(workspaceId, 1, CancellationToken.None);
+
+        Assert.IsTrue(result.Reverted, $"A file-disjoint sibling apply must not block the earlier revert; got reason={result.Reason}.");
+        CollectionAssert.AreEqual(originalBytes, await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None));
+    }
+
     private sealed class CapturingWorkspaceManager(IWorkspaceManager inner, Solution current)
         : Helpers.DelegatingWorkspaceManager(inner)
     {
