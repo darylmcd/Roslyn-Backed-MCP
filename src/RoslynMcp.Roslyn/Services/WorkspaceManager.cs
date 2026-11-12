@@ -552,22 +552,13 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
         }
         catch (Exception ex)
         {
-            if (ex is not OperationCanceledException)
+            if (ex is not OperationCanceledException && session.WorkspaceDiagnostics.Count is var diagnosticCount and > 0)
             {
-                // Capture any workspace diagnostics collected before the failure
-                var diagnostics = session.WorkspaceDiagnostics.ToArray();
-                if (diagnostics.Length > 0)
-                {
-                    _logger.LogError(
-                        ex,
-                        "Workspace load failed for {Path} with {DiagnosticCount} diagnostics captured",
-                        fullPath,
-                        diagnostics.Length);
-                    foreach (var diag in diagnostics.Take(10))
-                    {
-                        _logger.LogError("  [{Severity}] {Message}", diag.Severity, diag.Message);
-                    }
-                }
+                _logger.LogError(
+                    "Workspace {WorkspaceId} load failed ({ExceptionType}) with {DiagnosticCount} diagnostics captured",
+                    workspaceId,
+                    ex.GetType().Name,
+                    diagnosticCount);
             }
 
             // Compensate without replacing the primary failure or cancellation: cleanup failures are logged.
