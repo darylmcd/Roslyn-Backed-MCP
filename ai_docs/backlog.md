@@ -50,6 +50,7 @@
 | `render-finding-linux-pwsh-exit-139` | High | — | BLOCKED: no witness — one hosted occurrence (run 40359428470, 2026-10-26), none in 219 runs since PR 1849; likely upstream dotnet/runtime#121977. Reopen on a recurrence with retained evidence. **Identify and repair the PowerShell child exit 139** [type: bug] [source: hosted-ci] | S | items/render-finding-linux-pwsh-exit-139.md |
 | `linux-pwsh-startup-profile-invalid-assembly-identity` | High | — | BLOCKED: no witness, upstream-blocked — one hosted hit (run 40373606428, pre-PR 1849), none in 219 runs since; dotnet/runtime#121977 and PowerShell#26528 open. **Diagnose native startup assembly-identity corruption** [type: bug] | S | items/linux-pwsh-startup-profile-invalid-assembly-identity.md |
 | `linux-pwsh-startup-cache-functional-cohort-failure` | High | — | BLOCKED: no witness — one hosted occurrence (run 41911201587); per-parent failure output landed in PR 1971 (c538b50b) and has not fired in 15 runs since. Reopen on the next recurrence. **Identify the failing native cache child** [type: test-infrastructure] [source: PR 1971 hosted Linux3] | S | items/linux-pwsh-startup-cache-functional-cohort-failure.md |
+| `linux-2604-fixture-child-silent-exit-1` | High | — | **Root-cause silent exit-1 of fixture restore/msbuild children on ubuntu-26.04** — reproduce or prove cause from captured data; fix by isolation or product change; N green hosted runs | M | items/linux-2604-fixture-child-silent-exit-1.md |
 
 ## Medium
 
