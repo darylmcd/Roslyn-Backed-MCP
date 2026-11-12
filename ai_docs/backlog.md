@@ -246,6 +246,8 @@
 | `hardlinked-source-write-through` | Medium | — | **Qualify hardlinked source write-through** across direct edit, preview apply and undo. [type: bug] [source: repeated-target plan review] | L | items/hardlinked-source-write-through.md |
 | `direct-multi-file-edit-aggregate-outcome` | Medium | — | **Report actual direct multi-file edit outcomes** in the result and change ledger when some or all targets are refused. [type: bug] [source: repeated-target cold review] | S | items/direct-multi-file-edit-aggregate-outcome.md |
 | `edit-path-guard-ancestor-swap` | Medium | — | **Bind the checked ancestor through source writes**; qualify the physical guard to native and fallback write race. [type: bug] [source: repeated-target re-review] | M | items/edit-path-guard-ancestor-swap.md |
+| `undo-plan-token-version-equality-survives-undo` | Medium | undo-restore-version-lowering-version-keyed-caches | **Invalidate plan tokens after undo lowers version** — reject version-equality plan tokens and post-apply preview entries; red-first test; operator flag if semantics change | M | items/undo-plan-token-version-equality-survives-undo.md |
+| `undo-solution-diff-reverts-sibling-document-edits` | Medium | undo-solution-snapshot-restore-incomplete | **Limit solution-snapshot undo to this apply's documents** — a file-disjoint sibling apply's edits must survive; red-first test | S | items/undo-solution-diff-reverts-sibling-document-edits.md |
 
 ## Low
 
@@ -521,6 +523,7 @@
 | `editorconfig-arbitrary-assignment-revert-byte-assertions` | Low | — | **Verify byte-exact EditorConfig revert** — Assert captured original contents after reverting arbitrary, blank, and unset assignments. [type: test-infrastructure] | S | items/editorconfig-arbitrary-assignment-revert-byte-assertions.md |
 | `type-consumer-debug-log-caller-input` | Low | — | **Keep raw type queries out of operational logs** while preserving workspace and limit context. [type: bug] [source: 5.x release screen] | S | items/type-consumer-debug-log-caller-input.md |
 | `not-found-metadata-only-message-classification` | Low | — | BLOCKED: stable refusal-message impact uncertain — **Classify metadata-only misses from typed evidence** instead of scanning caller-influenced text. [type: bug] [source: live 5.0.1 screen] | M | items/not-found-metadata-only-message-classification.md |
+| `version-keyed-cache-straddling-publish-after-restore` | Low | undo-restore-version-lowering-version-keyed-caches | **Reject stale cache publishes after restore** — epoch key on async version-keyed cache publishes; red-first test | S | items/version-keyed-cache-straddling-publish-after-restore.md |
 
 ## Defer
 
