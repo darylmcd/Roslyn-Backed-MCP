@@ -50,6 +50,63 @@ public sealed class WorkspaceReloadGlobalPropertiesTests
     }
 
     [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task NativeDiagnostic_PreservesWorkspaceDetailsWithoutLoggingPayload(bool failPublication)
+    {
+        const string propertyName = "CustomBuildLabel";
+        const string propertyValue = "synthetic-native-diagnostic-marker";
+        using var fixture = new ReloadFixture();
+        var project = XDocument.Load(fixture.ProjectPath);
+        project.Root!.Add(new XElement("Target",
+            new XAttribute("Name", "EmitSyntheticWorkspaceDiagnostic"),
+            new XAttribute("BeforeTargets", "PrepareForBuild"),
+            new XElement("Error", new XAttribute("Text", "$(CustomBuildLabel)"))));
+        project.Save(fixture.ProjectPath);
+
+        var logger = new ListLogger<WorkspaceManager>();
+        using var manager = CreateManager(new WorkspaceSessionLoader(), logger);
+        var globals = new Dictionary<string, string> { [propertyName] = propertyValue };
+        if (failPublication)
+        {
+            var failure = new IOException(propertyValue);
+            manager.BeforeLoadPublicationForTesting = () => throw failure;
+            var actual = await Assert.ThrowsExactlyAsync<IOException>(() =>
+                manager.LoadAsync(fixture.ProjectPath, globals, TestContext.CancellationToken));
+            Assert.AreSame(failure, actual);
+            Assert.IsTrue(logger.Entries.Any(entry => entry.Level == LogLevel.Error),
+                "The completed native load must have entered the failure logging path.");
+            AssertLogsOmitPayload(logger, LogLevel.Error, propertyValue);
+        }
+        else
+        {
+            var status = await manager.LoadAsync(fixture.ProjectPath, globals, TestContext.CancellationToken);
+            var diagnostic = status.WorkspaceDiagnostics.Single(entry =>
+                entry.Message.Contains(propertyValue, StringComparison.Ordinal));
+            Assert.AreEqual("WORKSPACE_FAILURE", diagnostic.Id);
+        }
+
+        AssertLogsOmitPayload(logger, LogLevel.Warning, propertyValue);
+        Assert.IsTrue(logger.Entries.Any(entry =>
+            entry.Level == LogLevel.Warning &&
+            entry.State.Any(pair => pair.Key == "DiagnosticId" && Equals(pair.Value, "WORKSPACE_FAILURE")) &&
+            entry.State.Any(pair => pair.Key == "Severity" && Equals(pair.Value, "Error"))),
+            "Operational logs must retain the native diagnostic identity and severity.");
+    }
+
+    private static void AssertLogsOmitPayload(ListLogger<WorkspaceManager> logger, LogLevel level, string payload)
+    {
+        var entries = logger.Entries.Where(entry => entry.Level == level).ToArray();
+        Assert.IsFalse(entries.Any(entry => entry.Message.Contains(payload, StringComparison.Ordinal)),
+            "Rendered logs contain the native diagnostic payload.");
+        Assert.IsFalse(entries.SelectMany(entry => entry.State).Any(pair =>
+            pair.Value?.ToString()?.Contains(payload, StringComparison.Ordinal) == true),
+            "Structured logs contain the native diagnostic payload.");
+        Assert.IsFalse(entries.Any(entry => entry.Exception?.ToString().Contains(payload, StringComparison.Ordinal) == true),
+            "Logged exceptions contain the native diagnostic payload.");
+    }
+
+    [TestMethod]
     public async Task ConfiguredReload_PreservesCompilerOptionsAndConditionalMember()
     {
         using var fixture = new ReloadFixture();

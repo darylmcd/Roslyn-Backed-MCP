@@ -48,9 +48,10 @@ internal sealed class WorkspaceDiagnosticsSink
             }
 
             logger.LogWarning(
-                "Workspace {WorkspaceId} diagnostic: {Message}",
+                "Workspace {WorkspaceId} diagnostic {DiagnosticId} ({Severity})",
                 workspaceId,
-                args.Diagnostic.Message);
+                dto.Id,
+                dto.Severity);
         });
     }
 }
