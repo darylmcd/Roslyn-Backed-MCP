@@ -1,6 +1,6 @@
 # early-kill-reason-unconfirmed — Report early termination only after it occurs
 
-**row:** `early-kill-reason-unconfirmed` · **pri:** `Medium` · **size:** `M` · **verified:** `52f2c418cf5ba982b2a1c0914dd3977655d93eb4` · **deps:** `gated-executor-default-drops-early-kill`
+**row:** `early-kill-reason-unconfirmed` · **pri:** `Medium` · **size:** `M` · **verified:** `52f2c418cf5ba982b2a1c0914dd3977655d93eb4`
 
 ## Anchors
 

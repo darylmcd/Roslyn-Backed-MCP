@@ -1,6 +1,6 @@
 # early-kill-matches-cross-read-boundaries — Recognize patterns across output reads
 
-**row:** `early-kill-matches-cross-read-boundaries` · **pri:** `Medium` · **size:** `M` · **verified:** `52f2c418cf5ba982b2a1c0914dd3977655d93eb4` · **deps:** `gated-executor-default-drops-early-kill`
+**row:** `early-kill-matches-cross-read-boundaries` · **pri:** `Medium` · **size:** `M` · **verified:** `52f2c418cf5ba982b2a1c0914dd3977655d93eb4`
 
 ## Anchors
 

@@ -1,6 +1,6 @@
 # composite-apply-partial-cancellation-receipt — Account for outputs published before cancellation
 
-**row:** `composite-apply-partial-cancellation-receipt` · **pri:** `Medium` · **size:** `M` · **verified:** `52f2c418cf5ba982b2a1c0914dd3977655d93eb4` · **deps:** `class-split-generated-file-no-clobber`
+**row:** `composite-apply-partial-cancellation-receipt` · **pri:** `Medium` · **size:** `M` · **verified:** `52f2c418cf5ba982b2a1c0914dd3977655d93eb4`
 
 ## Anchors
 
