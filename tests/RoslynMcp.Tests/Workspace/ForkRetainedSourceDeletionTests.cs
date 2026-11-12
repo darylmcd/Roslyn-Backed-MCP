@@ -429,7 +429,7 @@ public sealed class ForkRetainedSourceDeletionTests
         {
             var result = await Provider.GetRequiredService<IDotnetCommandRunner>().RunAsync(Path.GetDirectoryName(project)!, project,
                 ["restore", project, "--nologo", "-nr:false"], Token);
-            Assert.IsTrue(result.Succeeded, result.StdOut + result.StdErr);
+            Assert.IsTrue(result.Succeeded, result.Describe());
             return project;
         }
 

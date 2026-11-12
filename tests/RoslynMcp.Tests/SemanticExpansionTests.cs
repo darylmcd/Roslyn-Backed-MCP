@@ -1,4 +1,5 @@
 using RoslynMcp.Core.Models;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -153,7 +154,7 @@ public class SemanticExpansionTests : SharedWorkspaceTestBase
     {
         var generatedWorkspace = await WorkspaceManager.LoadAsync(GeneratedDocumentSolutionPath, CancellationToken.None);
         var buildResult = await BuildService.BuildWorkspaceAsync(generatedWorkspace.WorkspaceId, CancellationToken.None);
-        Assert.IsTrue(buildResult.Execution.Succeeded, buildResult.Execution.StdErr);
+        Assert.IsTrue(buildResult.Execution.Succeeded, buildResult.Execution.Describe());
         var generatedDocuments = await WorkspaceManager.GetSourceGeneratedDocumentsAsync(
             generatedWorkspace.WorkspaceId,
             "ConsumerLib",

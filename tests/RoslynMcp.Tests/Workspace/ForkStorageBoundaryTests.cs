@@ -195,9 +195,9 @@ public sealed class ForkStorageBoundaryTests : IsolatedWorkspaceTestBase
         try
         {
             var restored = await DotnetCommandRunner.RunAsync(root, project, ["restore", project, "--nologo", "-nr:false"], timeout.Token);
-            Assert.IsTrue(restored.Succeeded, restored.StdOut + restored.StdErr);
+            Assert.IsTrue(restored.Succeeded, restored.Describe());
             var originalBuild = await DotnetCommandRunner.RunAsync(root, project, ["build", project, "--no-restore", "--nologo", "-nr:false"], timeout.Token);
-            Assert.IsTrue(originalBuild.Succeeded, originalBuild.StdOut + originalBuild.StdErr);
+            Assert.IsTrue(originalBuild.Succeeded, originalBuild.Describe());
             var loaded = await manager.LoadAsync(project, timeout.Token);
             ids.Add(loaded.WorkspaceId);
             var originalPreview = await refactoring.PreviewRenameAsync(loaded.WorkspaceId,
@@ -227,7 +227,7 @@ public sealed class ForkStorageBoundaryTests : IsolatedWorkspaceTestBase
                 Assert.IsFalse(Directory.GetDirectories(next.ForkPath, "*", SearchOption.AllDirectories)
                     .Any(path => Path.GetFileName(path).EndsWith("-" + generation, StringComparison.Ordinal)), "The actual destination must not recursively copy itself.");
                 var sourceBuild = await DotnetCommandRunner.RunAsync(root, project, ["build", project, "--no-restore", "--nologo", "-nr:false"], timeout.Token);
-                Assert.IsTrue(sourceBuild.Succeeded, "Retaining a fork cannot alter original-source default Compile membership: " + sourceBuild.StdOut + sourceBuild.StdErr);
+                Assert.IsTrue(sourceBuild.Succeeded, sourceBuild.Describe("Retaining a fork cannot alter original-source default Compile membership: "));
                 current = next.ForkWorkspaceId;
             }
             Assert.AreEqual("Required authored pool bytes", File.ReadAllText(content));
@@ -310,7 +310,7 @@ public sealed class ForkStorageBoundaryTests : IsolatedWorkspaceTestBase
         var project = Path.Combine(retained, "Entry.csproj");
         File.WriteAllText(project, "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net10.0</TargetFramework><EnableDefaultItems>false</EnableDefaultItems><NuGetAudit>false</NuGetAudit></PropertyGroup></Project>");
         var restored = await DotnetCommandRunner.RunAsync(retained, project, ["restore", "Entry.csproj", "--nologo", "-nr:false"], timeout.Token);
-        Assert.IsTrue(restored.Succeeded, restored.StdOut + restored.StdErr);
+        Assert.IsTrue(restored.Succeeded, restored.Describe());
         ForkAdmissionMaterial.Install(root, retained, [project], timeout.Token);
         var loaded = await WorkspaceManager.LoadAsync(project, timeout.Token);
         var store = new PreviewStore();

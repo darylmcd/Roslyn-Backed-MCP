@@ -2,6 +2,7 @@ using System.Xml.Linq;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -202,7 +203,7 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
         }
         else
         {
-            Assert.IsTrue(result.Succeeded, result.StdOut + result.StdErr);
+            Assert.IsTrue(result.Succeeded, result.Describe());
             Assert.IsTrue(File.Exists(protectedOutput), "The ordinary SDK task must independently demonstrate its source write.");
             if (consumer == "Cache") Assert.IsTrue(new FileInfo(protectedOutput).Length > 0, "Default cache writing must remain enabled.");
             else if (consumer.StartsWith("BuildProduct", StringComparison.Ordinal)) CollectionAssert.AreEqual(File.ReadAllBytes(fixture.PathInFork("obj/Debug/net10.0/Consumer.dll")), File.ReadAllBytes(protectedOutput));
@@ -277,7 +278,7 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
         TestContext.WriteLine(result.StdOut + result.StdErr);
         if (consumer.EndsWith("-disabled", StringComparison.Ordinal))
         {
-            Assert.IsTrue(result.Succeeded, result.StdOut + result.StdErr);
+            Assert.IsTrue(result.Succeeded, result.Describe());
             Assert.IsFalse(File.Exists(output), "A native disabled branch must not produce an admission refusal or effect.");
         }
         else if (guarded && sourceOutput)
@@ -288,7 +289,7 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
         }
         else
         {
-            Assert.IsTrue(result.Succeeded, result.StdOut + result.StdErr);
+            Assert.IsTrue(result.Succeeded, result.Describe());
             Assert.IsTrue(File.Exists(output), "The real native consumer must independently produce its output.");
             if (!marker) Assert.AreEqual("native late consumer bytes", File.ReadAllText(output));
         }
@@ -353,7 +354,7 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
         var result = await DotnetCommandRunner.RunAsync(fixture.Fork, root,
             execution.Arguments(["msbuild", root, "-t:Query", "-m:2", "-nr:false", "-nologo", "-p:ProofEvidence=" + fixture.Evidence]), timeout.Token);
         execution.Complete();
-        Assert.IsTrue(result.Succeeded, result.StdOut + result.StdErr);
+        Assert.IsTrue(result.Succeeded, result.Describe());
         execution.ThrowIfRefused();
         foreach (var flavor in new[] { "A", "B" })
             StringAssert.Contains(File.ReadAllText(Path.Combine(fixture.Evidence, "metadata-" + flavor + ".txt")), configuration.GuardTargetsPath.Replace("guard.targets", "config.json"));
@@ -383,7 +384,7 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
             execution.Arguments(["msbuild", project, "-t:GetTargetFrameworksWithPlatformFromInnerBuilds;DispatchToInnerBuilds",
                 "-p:InnerTargets=InnerConsumer", "-p:ProofEvidence=" + fixture.Evidence, "-m:2", "-nr:false", "-nologo"]), timeout.Token);
         execution.Complete();
-        Assert.IsTrue(result.Succeeded, result.StdOut + result.StdErr);
+        Assert.IsTrue(result.Succeeded, result.Describe());
         execution.ThrowIfRefused();
         foreach (var framework in new[] { "net10.0", "netstandard2.1" })
             foreach (var boundary in new[] { "query", "dispatch" })
@@ -470,13 +471,13 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
         var protectedOutput = mode == "default" ? fixture.ProtectedOutput : Path.Combine(fixture.Source, "child.txt");
         if (guarded && sourceOutput)
         {
-            Assert.IsFalse(result.Succeeded, result.StdOut + result.StdErr);
+            Assert.IsFalse(result.Succeeded, result.Describe());
             Assert.IsFalse(File.Exists(protectedOutput));
             Assert.ThrowsExactly<PublicInvalidOperationException>(execution!.ThrowIfRefused);
         }
         else
         {
-            Assert.IsTrue(result.Succeeded, result.StdOut + result.StdErr);
+            Assert.IsTrue(result.Succeeded, result.Describe());
             if (sourceOutput) Assert.AreEqual("child", File.ReadAllText(protectedOutput));
             else Assert.AreEqual("child", File.ReadAllText(Path.Combine(childDirectory, "bin", "child.txt")));
             var parentItems = File.ReadAllLines(Path.Combine(fixture.Evidence, "full-Parent.txt"));
@@ -559,18 +560,18 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
         TestContext.WriteLine(result.StdOut + result.StdErr);
         if (branch == "disabled")
         {
-            Assert.IsTrue(result.Succeeded, result.StdOut + result.StdErr);
+            Assert.IsTrue(result.Succeeded, result.Describe());
             Assert.IsFalse(File.Exists(output), "Native disabled branches must not cause false admission refusals or copies.");
         }
         else if (guarded && sourceOutput)
         {
-            Assert.IsFalse(result.Succeeded, result.StdOut + result.StdErr);
+            Assert.IsFalse(result.Succeeded, result.Describe());
             Assert.IsFalse(File.Exists(output));
             Assert.ThrowsExactly<PublicInvalidOperationException>(execution!.ThrowIfRefused);
         }
         else
         {
-            Assert.IsTrue(result.Succeeded, result.StdOut + result.StdErr);
+            Assert.IsTrue(result.Succeeded, result.Describe());
             var intermediate = fixture.PathInFork("obj/Debug/net10.0/" + (branch == "reference" ? "refint/Consumer.dll" : branch == "symbols" ? "Consumer.pdb" : branch == "documentation" ? "Consumer.xml" : "Consumer.dll"));
             CollectionAssert.AreEqual(File.ReadAllBytes(intermediate), File.ReadAllBytes(output));
         }
@@ -635,7 +636,7 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
         await fixture.RestoreAsync(project, DotnetCommandRunner, timeout.Token);
         string[] arguments = ["msbuild", project, "-nologo", "-nr:false", "-t:ResolvePackageAssets;RunProduceContentAssets"];
         var ordinary = await DotnetCommandRunner.RunAsync(fixture.Fork, project, arguments, timeout.Token);
-        Assert.IsTrue(ordinary.Succeeded, ordinary.StdOut + ordinary.StdErr);
+        Assert.IsTrue(ordinary.Succeeded, ordinary.Describe());
         var product = Directory.GetFiles(destination, "probe.cs", SearchOption.AllDirectories).Single();
         var bytes = File.ReadAllBytes(product);
         Assert.AreEqual("// native NativeMatrix", File.ReadAllText(product));
@@ -657,7 +658,7 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
         }
         else
         {
-            Assert.IsTrue(candidate.Succeeded, candidate.StdOut + candidate.StdErr);
+            Assert.IsTrue(candidate.Succeeded, candidate.Describe());
             CollectionAssert.AreEqual(bytes, File.ReadAllBytes(product));
             Assert.AreEqual(membership, string.Join("\n", File.ReadAllLines(Path.Combine(fixture.Evidence, "membership.txt"))));
         }
@@ -725,7 +726,7 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
         var solutionPath = Path.Combine(sourceRoot, "Entry.slnx");
         File.WriteAllText(solutionPath, "<Solution><Project Path=\"Entry.csproj\" /></Solution>");
         var restored = await DotnetCommandRunner.RunAsync(sourceRoot, project, ["restore", project, "--nologo", "-nr:false"], timeout.Token);
-        Assert.IsTrue(restored.Succeeded, restored.StdOut + restored.StdErr);
+        Assert.IsTrue(restored.Succeeded, restored.Describe());
         var source = await WorkspaceManager.LoadAsync(solutionPath, timeout.Token);
         var store = new PreviewStore();
         var validation = new WorkspaceValidationService(CompileCheckService, DiagnosticService, TestDiscoveryService,
@@ -794,7 +795,7 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
                 Assert.AreEqual(1200, reader.CurrentEncoding.CodePage);
                 var native = await GatedCommandExecutor.ExecuteAsync(second.ForkWorkspaceId, secondProject,
                     ["msbuild", "Entry.csproj", "-getProperty:MSBuildStartupDirectory", "-nr:false", "-nologo"], TimeSpan.FromSeconds(30), timeout.Token);
-                Assert.IsTrue(native.Succeeded, native.StdOut + native.StdErr);
+                Assert.IsTrue(native.Succeeded, native.Describe());
                 Assert.AreEqual(Path.TrimEndingDirectorySeparator(second.ForkPath), Path.TrimEndingDirectorySeparator(native.StdOut.Trim()),
                     "Relative SDK invocation must start in the actual returned fork.");
                 var secondSolution = WorkspaceManager.GetCurrentSolution(second.ForkWorkspaceId);
@@ -857,7 +858,7 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
                 : ["test", project, "--no-restore", "--nologo", "--logger", "trx", "--results-directory", results];
             var result = await GatedCommandExecutor.ExecuteAsync(loaded.WorkspaceId, project, arguments, TimeSpan.FromMinutes(2), timeout.Token);
             TestContext.WriteLine(result.StdOut + result.StdErr);
-            Assert.IsTrue(result.Succeeded, result.StdOut + result.StdErr);
+            Assert.IsTrue(result.Succeeded, result.Describe());
             var trx = XDocument.Load(Directory.GetFiles(results, "*.trx", SearchOption.AllDirectories).Single());
             var counters = trx.Descendants().Single(element => element.Name.LocalName == "Counters");
             Assert.AreEqual("1", (string?)counters.Attribute("total"));
@@ -1299,7 +1300,7 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
             : role == "ReferenceCopyLocalPaths" ? Path.Combine(fixture.Source, "input.txt") : fixture.ProtectedOutput;
         if (shape == "inactive")
         {
-            Assert.IsTrue(result.Succeeded, result.StdOut + result.StdErr);
+            Assert.IsTrue(result.Succeeded, result.Describe());
             Assert.IsFalse(File.Exists(output));
         }
         else if (guarded && shape == "source")
@@ -1310,7 +1311,7 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
         }
         else
         {
-            Assert.IsTrue(result.Succeeded, result.StdOut + result.StdErr);
+            Assert.IsTrue(result.Succeeded, result.Describe());
             Assert.AreEqual("native metadata bytes", File.ReadAllText(output), "The actual SDK owns item membership and TargetPath/Link precedence.");
         }
     }
@@ -1408,7 +1409,7 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
         ForkAdmissionMaterial.Install(fixture.Source, outer, [outerProject], timeout.Token);
         fixture.WriteProject(project, string.Empty);
         var restored = await DotnetCommandRunner.RunAsync(inner, project, ["restore", project, "-nr:false", "--nologo"], timeout.Token);
-        Assert.IsTrue(restored.Succeeded, restored.StdOut + restored.StdErr);
+        Assert.IsTrue(restored.Succeeded, restored.Describe());
         ForkAdmissionMaterial.Install(outer, inner, [project], timeout.Token);
         var loaded = await WorkspaceManager.LoadAsync(project, timeout.Token);
         var entered = Path.Combine(fixture.Evidence, "entered");
@@ -1436,7 +1437,7 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
             try
             {
                 var result = await running;
-                Assert.IsTrue(result.Succeeded, result.StdOut + result.StdErr);
+                Assert.IsTrue(result.Succeeded, result.Describe());
             }
             catch (Exception completion) when (primaryFailure is not null)
             { throw new AggregateException("The active-owner assertion and native completion both failed.", primaryFailure, completion); }
@@ -1455,7 +1456,7 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
         var project = Path.Combine(sourceRoot, "Entry.csproj");
         fixture.WriteProject(project, string.Empty);
         var restored = await DotnetCommandRunner.RunAsync(sourceRoot, project, ["restore", "Entry.csproj", "--nologo", "-nr:false"], timeout.Token);
-        Assert.IsTrue(restored.Succeeded, restored.StdOut + restored.StdErr);
+        Assert.IsTrue(restored.Succeeded, restored.Describe());
         var loaded = await WorkspaceManager.LoadAsync(project, timeout.Token);
         var store = new PreviewStore();
         var solution = WorkspaceManager.GetCurrentSolution(loaded.WorkspaceId);
@@ -1643,7 +1644,7 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
         ForkAdmissionMaterial.Install(fixture.Source, outer, [outerProject], timeout.Token);
         fixture.WriteProject(project, string.Empty);
         var restored = await DotnetCommandRunner.RunAsync(inner, project, ["restore", "Entry.csproj", "-nr:false", "--nologo"], timeout.Token);
-        Assert.IsTrue(restored.Succeeded, restored.StdOut + restored.StdErr);
+        Assert.IsTrue(restored.Succeeded, restored.Describe());
         ForkAdmissionMaterial.Install(outer, inner, [project], timeout.Token);
         var loaded = await WorkspaceManager.LoadAsync(project, timeout.Token);
         var store = new PreviewStore();
@@ -1722,7 +1723,7 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
         internal async Task RestoreAsync(string path, IDotnetCommandRunner runner, CancellationToken ct)
         {
             var restore = await runner.RunAsync(Fork, path, ["restore", path, "--nologo", "-nr:false"], ct);
-            Assert.IsTrue(restore.Succeeded, restore.StdOut + restore.StdErr);
+            Assert.IsTrue(restore.Succeeded, restore.Describe());
         }
 
         public void Dispose() => TestFixtureFileSystem.DeleteDirectoryIfExists(Root);
