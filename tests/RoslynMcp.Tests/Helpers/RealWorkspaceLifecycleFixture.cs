@@ -1,3 +1,4 @@
+using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Roslyn.Services;
 
@@ -23,6 +24,22 @@ internal static class RealWorkspaceLifecycleFixture
             () => TestFixtureFileSystem.CreateSampleSolutionCopy(repositoryRoot, sampleSolution),
             copyCount,
             body);
+    }
+
+    /// <summary>
+    /// Appends <paramref name="marker"/> to the first C# document via <c>TryApplyChanges</c>, which
+    /// bumps the workspace version. Returns the version it moved from.
+    /// </summary>
+    internal static async Task<int> BumpVersionAsync(WorkspaceManager manager, string id, string marker)
+    {
+        var before = manager.GetCurrentVersion(id);
+        var solution = manager.GetCurrentSolution(id);
+        var document = solution.Projects.SelectMany(p => p.Documents).First(d => d.FilePath?.EndsWith(".cs") == true);
+        var text = await document.GetTextAsync();
+        var changed = solution.WithDocumentText(document.Id, SourceText.From(text + "\n" + marker));
+        Assert.IsTrue(manager.TryApplyChanges(id, changed));
+        Assert.IsTrue(manager.GetCurrentVersion(id) > before, "Fixture precondition: the apply must bump the version.");
+        return before;
     }
 
     private static WorkspaceManager CreateManager() => new(

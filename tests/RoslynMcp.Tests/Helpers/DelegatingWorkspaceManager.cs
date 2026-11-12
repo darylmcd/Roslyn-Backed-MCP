@@ -65,5 +65,5 @@ internal abstract class DelegatingWorkspaceManager(IWorkspaceManager inner) : IW
     public Project? GetProject(string workspaceId, string projectNameOrPath) =>
         inner.GetProject(workspaceId, projectNameOrPath);
 
-    public void RestoreVersion(string workspaceId, int version) => inner.RestoreVersion(workspaceId, version);
+    public virtual void RestoreVersion(string workspaceId, int version) => inner.RestoreVersion(workspaceId, version);
 }

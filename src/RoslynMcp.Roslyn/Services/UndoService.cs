@@ -793,8 +793,13 @@ public sealed class UndoService : IUndoService, IDisposable
 
         // Restore the workspace version to the pre-apply value so that preview tokens
         // created before the reverted operation remain valid. The workspace state has
-        // been restored to its pre-apply form, so the pre-apply version is correct.
-        workspace.RestoreVersion(workspaceId, snapshot.PreApplyWorkspaceVersion);
+        // been restored to its pre-apply form, so the pre-apply version is correct — but only
+        // when something was actually restored; lowering the version under live version-keyed
+        // caches for a revert that did nothing would let them serve stale entries.
+        if (workspaceApplied || anyDiskWrite)
+        {
+            workspace.RestoreVersion(workspaceId, snapshot.PreApplyWorkspaceVersion);
+        }
 
         return diskOk && (workspaceApplied || anyDiskWrite);
     }
