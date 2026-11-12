@@ -157,15 +157,13 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
         return _refactoringServiceConcrete.PreviewRenameOnSolutionAsync(inputSolution, locator, op.NewName, ct);
     }
 
-    private async Task<(Solution NewSolution, IReadOnlyList<FileChangeDto> Changes, string Description)>
+    private Task<(Solution NewSolution, IReadOnlyList<FileChangeDto> Changes, string Description)>
         ExecuteEditOnSolutionAsync(Solution inputSolution, SymbolRefactorOperation op, CancellationToken ct)
     {
         if (op.FileEdits is null || op.FileEdits.Count == 0)
             throw new PublicArgumentException("kind='edit' requires FileEdits.", nameof(op.FileEdits));
-        var (newSolution, changes, description, _) = await _editServiceConcrete
-            .PreviewMultiFileTextEditsOnSolutionAsync(inputSolution, op.FileEdits, ct, skipSyntaxCheck: false)
-            .ConfigureAwait(false);
-        return (newSolution, changes, description);
+        return _editServiceConcrete.PreviewMultiFileTextEditsOnSolutionAsync(
+            inputSolution, op.FileEdits, ct, skipSyntaxCheck: false);
     }
 
     private Task<(Solution NewSolution, IReadOnlyList<FileChangeDto> Changes, string Description)>

@@ -71,11 +71,9 @@ internal static class DocumentResolution
 
     /// <summary>
     /// Resolves <paramref name="filePath"/> against the supplied <paramref name="solution"/>
-    /// (no re-acquisition). Use this overload when the caller is threading a progressively
-    /// mutated solution across multiple resolve steps — e.g. <c>EditService</c>'s multi-file
-    /// accumulator path — where re-reading from the workspace manager would drop the
-    /// in-progress edits. Raises the same consistent <see cref="InvalidOperationException"/>
-    /// as the workspace-manager overload so callers see one error shape regardless of source.
+    /// (no re-acquisition). Use this overload when the caller owns the input snapshot, for example
+    /// a batch preflight or a preview operating on the result of an earlier operation. Raises
+    /// the same consistent <see cref="InvalidOperationException"/> as the workspace-manager overload.
     /// </summary>
     public static Document GetDocumentInSolutionOrThrow(
         Solution solution,
