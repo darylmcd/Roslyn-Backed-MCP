@@ -1,6 +1,6 @@
 # edit-syntax-check-project-parse-options — Validate edits in loaded C# parse contexts
 
-**row:** `edit-syntax-check-project-parse-options` · **pri:** `Medium` · **size:** `S` · **verified:** `52f2c418cf5ba982b2a1c0914dd3977655d93eb4`
+**row:** `edit-syntax-check-project-parse-options` · **pri:** `Medium` · **size:** `S`
 
 ## Anchors
 
@@ -18,3 +18,7 @@
 ## Context
 
 - Re-vet the stable apply_text_edit result and refusal contract before selection. The titled-region false positive has a distinct cause (preprocessing messages set ContainsSkippedText).
+
+## Notes
+
+5.x screen at a12412bb: the default-options parser is shared by stable apply_text_edit and both experimental multi-file routes. The complete project-context fix can change an existing stable successful apply into a refusal when a loaded project defines a symbol. Qualify linked documents and the stable wire behavior together. If the refusal change requires a migration, reopen at the next major with ADR and both raw protocol eras.

@@ -17,3 +17,7 @@
 ## Evidence
 
 `ApplyTextEditsCoreAsync` already owns the resolved `Document`, but persistence discards that identity, walks every document in the updated solution, and selects the first `FilePath` matching a hard-coded case-insensitive comparison. This is unnecessary work and can select the wrong linked/case-distinct document on case-sensitive filesystems.
+
+## Notes
+
+PR #2079 carries the selected DocumentId into persistence and retains encoding and the canonical write target. Its new redirect regression covers refusal before undo capture. Keep this row open for the targeted write-through regression after identity selection: redirect an alternate spelling to a different loaded document and verify the original and decoy bytes plus the stable single-file result.
