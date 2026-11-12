@@ -120,6 +120,16 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Hosted Ubuntu images cap inotify instances at 128 per user. Each loaded
+      # workspace holds about a dozen FileSystemWatcher instances and the suite
+      # runs classes in parallel, so a shard fails with IOException
+      # ("configured user limit (128) on the number of inotify instances")
+      # depending on which classes land together.
+      - name: Raise inotify limits
+        if: runner.os == 'Linux'
+        shell: bash
+        run: sudo sysctl -w fs.inotify.max_user_instances=1024 fs.inotify.max_user_watches=524288
+
       - name: Initialize PowerShell startup cache
         if: runner.os == 'Linux'
         shell: bash
