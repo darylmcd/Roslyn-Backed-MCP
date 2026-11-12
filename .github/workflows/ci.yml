@@ -120,7 +120,8 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Hosted Ubuntu images cap inotify instances at 128 per user. Each loaded
+      # The ubuntu-26.04 hosted image no longer ships the 1280/655360 inotify limits
+      # the 24.04 image had, and caps instances at 128 per user. Each loaded
       # workspace holds about a dozen FileSystemWatcher instances and the suite
       # runs classes in parallel, so a shard fails with IOException
       # ("configured user limit (128) on the number of inotify instances")
@@ -128,7 +129,7 @@ jobs:
       - name: Raise inotify limits
         if: runner.os == 'Linux'
         shell: bash
-        run: sudo sysctl -w fs.inotify.max_user_instances=1024 fs.inotify.max_user_watches=524288
+        run: sudo sysctl -w fs.inotify.max_user_instances=1280 fs.inotify.max_user_watches=655360
 
       - name: Initialize PowerShell startup cache
         if: runner.os == 'Linux'
@@ -175,6 +176,21 @@ jobs:
         with:
           path: ${{ env.NUGET_CACHE_PATH }}
           key: ${{ steps.nuget_cache.outputs.cache-primary-key }}
+
+      # Read-only host diagnostics so child-process fixture failures can be correlated
+      # with kernel limits and memory pressure. Never fails the job.
+      - name: Linux host diagnostics
+        if: runner.os == 'Linux'
+        shell: bash
+        continue-on-error: true
+        run: |
+          uname -a
+          ulimit -a
+          sysctl fs.inotify kernel.pid_max vm.max_map_count
+          free -m
+          nproc
+          cat /proc/pressure/memory 2>/dev/null || true
+          dotnet --info | head -30
 
       - name: Verify release build (pull request)
         if: github.event_name == 'pull_request' || github.event_name == 'merge_group'

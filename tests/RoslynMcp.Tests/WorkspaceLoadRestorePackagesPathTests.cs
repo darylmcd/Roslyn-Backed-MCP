@@ -5,6 +5,7 @@ using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -81,7 +82,7 @@ public sealed class WorkspaceLoadRestorePackagesPathTests : SharedWorkspaceTestB
         var contextual = await fixture.Runner.RunAsync(dependencyDirectory, fixture.Projects[1],
             ["restore", fixture.Projects[1], "--nologo", "--no-dependencies", "--packages", fixture.CacheFor(fixture.Projects[1]),
                 "-p:Configuration=Release", "-p:Platform=x64", "-p:Flavor=Blue"], earlyKillPatterns: null, CancellationToken.None);
-        Assert.IsTrue(contextual.Succeeded, contextual.StdOut + contextual.StdErr);
+        Assert.IsTrue(contextual.Succeeded, contextual.Describe());
         WriteAssetsWithPackagesPath(fixture.Projects[1], Path.Combine(fixture.Root, "stale-default-cache"));
         fixture.Runner.Invocations.Clear();
         using var manager = fixture.CreateManager();
@@ -158,7 +159,7 @@ public sealed class WorkspaceLoadRestorePackagesPathTests : SharedWorkspaceTestB
             roots.Add(framework, cache);
             var restored = await fixture.Runner.RunAsync(Path.GetDirectoryName(fixture.TargetPath)!, fixture.TargetPath,
                 ["restore", fixture.TargetPath, "--nologo", "--no-dependencies", "--packages", cache, "-p:TargetFramework=" + framework], earlyKillPatterns: null, CancellationToken.None);
-            Assert.IsTrue(restored.Succeeded, restored.StdOut + restored.StdErr);
+            Assert.IsTrue(restored.Succeeded, restored.Describe());
             Assert.AreEqual(cache, RestoreStalenessDetector.TryReadRestorePackagesPath(fixture.TargetPath,
                 new Dictionary<string, string> { ["TargetFramework"] = framework }));
         }
@@ -620,7 +621,7 @@ public sealed class WorkspaceLoadRestorePackagesPathTests : SharedWorkspaceTestB
             {
                 var result = await Runner.RunAsync(Path.GetDirectoryName(project)!, project,
                     ["restore", project, "--nologo", "--packages", CacheFor(project), "--no-dependencies"], earlyKillPatterns: null, CancellationToken.None);
-                Assert.IsTrue(result.Succeeded, result.StdOut + result.StdErr);
+                Assert.IsTrue(result.Succeeded, result.Describe());
                 Assert.AreEqual(CacheFor(project), ReadPackageRoot(project));
             }
             Runner.Invocations.Clear();

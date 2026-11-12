@@ -73,7 +73,7 @@ public class ValidationIntegrationTests : SharedWorkspaceTestBase
     {
         var result = await BuildService.BuildWorkspaceAsync(WorkspaceId, CancellationToken.None);
 
-        Assert.IsTrue(result.Execution.Succeeded, result.Execution.StdErr);
+        Assert.IsTrue(result.Execution.Succeeded, result.Execution.Describe());
         Assert.AreEqual(0, result.Execution.ExitCode);
         Assert.AreEqual(0, result.ErrorCount, "Expected no build errors for the sample solution (warnings may appear in some SDK configurations).");
     }
@@ -130,7 +130,7 @@ public class ValidationIntegrationTests : SharedWorkspaceTestBase
                 loaded.WorkspaceId,
                 "RoslynMcp.Host.Stdio",
                 CancellationToken.None);
-            Assert.IsTrue(build.Execution.Succeeded, build.Execution.StdErr);
+            Assert.IsTrue(build.Execution.Succeeded, build.Execution.Describe());
             Assert.IsFalse(
                 (build.Execution.StdOut + build.Execution.StdErr).Contains("MSB3027", StringComparison.OrdinalIgnoreCase),
                 "The Release-configured build must not hit the analyzer DLL file-lock retry path.");
@@ -157,7 +157,7 @@ public class ValidationIntegrationTests : SharedWorkspaceTestBase
             filter: null,
             CancellationToken.None);
 
-        Assert.IsTrue(result.Execution.Succeeded, result.Execution.StdErr);
+        Assert.IsTrue(result.Execution.Succeeded, result.Execution.Describe());
         // Total includes AnimalServiceTests (2), AnimalFormatterTests (2), and the
         // test-related-files direct-reference ranking fixture (2).
         Assert.AreEqual(6, result.Total);

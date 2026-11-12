@@ -230,7 +230,7 @@ public sealed class WorkspaceForkSourceSessionTests
             var result = await _inner.RunAsync(workingDirectory, targetPath, arguments, earlyKillPatterns, ct);
             if (arguments[0] == "restore")
             {
-                Assert.IsTrue(result.Succeeded, $"Native fork restore failed: {result.StdOut} {result.StdErr}");
+                Assert.IsTrue(result.Succeeded, result.Describe("Native fork restore failed"));
                 Restored.TrySetResult();
                 await Release.Task.WaitAsync(ct);
             }

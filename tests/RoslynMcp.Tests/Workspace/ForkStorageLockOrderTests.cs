@@ -32,7 +32,7 @@ public sealed class ForkStorageLockOrderTests
         File.WriteAllText(project, "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net10.0</TargetFramework><EnableDefaultItems>false</EnableDefaultItems><NuGetAudit>false</NuGetAudit></PropertyGroup></Project>");
         var commands = new DotnetCommandRunner();
         var restore = await commands.RunAsync(source, project, ["restore", project, "--nologo", "-nr:false"], timeout.Token);
-        Assert.IsTrue(restore.Succeeded, restore.StdOut + restore.StdErr);
+        Assert.IsTrue(restore.Succeeded, restore.Describe());
         ForkAdmissionMaterial.Install(root, source, [project], timeout.Token);
         var loader = new PausedLoader();
         ObservedGate? gate = null;
