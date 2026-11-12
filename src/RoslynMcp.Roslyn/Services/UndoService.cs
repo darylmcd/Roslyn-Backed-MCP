@@ -268,7 +268,7 @@ public sealed class UndoService : IUndoService, IDisposable
     }
 
     /// <summary>A won claim on one undo snapshot: the history position it left (-1: none) and whether it was also the pending LIFO slot.</summary>
-    private sealed record RevertClaim(UndoSnapshot Target, List<UndoSnapshot> HistoryList, int HistoryIndex, bool WasPending);
+    private sealed record RevertClaim(UndoSnapshot Target, List<UndoSnapshot>? HistoryList, int HistoryIndex, bool WasPending);
 
     /// <summary>
     /// Claims the pending LIFO snapshot for <see cref="RevertAsync"/> under the per-workspace lock
@@ -279,7 +279,22 @@ public sealed class UndoService : IUndoService, IDisposable
     private bool TryClaimPending(string workspaceId, out RevertClaim claim)
     {
         claim = null!;
-        var historyList = _history.GetOrAdd(workspaceId, _ => new List<UndoSnapshot>());
+        if (!_history.TryGetValue(workspaceId, out var historyList))
+        {
+            // No history list exists (unknown/closed workspace, or nothing committed yet): only an
+            // uncommitted sequence-0 slot can be pending, it has no history entry to give up, and every
+            // other writer to the slot (capture, commit) is a compare-and-swap on the dictionary itself,
+            // so the compare-and-remove alone is the claim. Never allocate a list for an unknown id.
+            if (!_snapshots.TryGetValue(workspaceId, out var uncommitted) || uncommitted.SequenceNumber != 0)
+                return false;
+
+            if (!_snapshots.TryRemove(new KeyValuePair<string, UndoSnapshot>(workspaceId, uncommitted)))
+                return false;
+
+            claim = new RevertClaim(uncommitted, HistoryList: null, HistoryIndex: -1, WasPending: true);
+            return true;
+        }
+
         lock (historyList)
         {
             if (!_snapshots.TryGetValue(workspaceId, out var pending))
@@ -326,13 +341,20 @@ public sealed class UndoService : IUndoService, IDisposable
     /// </summary>
     private void UnclaimRevert(string workspaceId, RevertClaim claim)
     {
-        lock (claim.HistoryList)
+        if (claim.HistoryList is not { } historyList)
+        {
+            if (claim.WasPending)
+                _snapshots.TryAdd(workspaceId, claim.Target);
+            return;
+        }
+
+        lock (historyList)
         {
             if (claim.HistoryIndex >= 0)
             {
                 // Re-derive the insert position with a bounds check — concurrent CommitPendingCapture
                 // calls may have grown the list while the restore was in flight.
-                claim.HistoryList.Insert(Math.Min(claim.HistoryIndex, claim.HistoryList.Count), claim.Target);
+                historyList.Insert(Math.Min(claim.HistoryIndex, historyList.Count), claim.Target);
             }
 
             if (claim.WasPending)
@@ -573,67 +595,104 @@ public sealed class UndoService : IUndoService, IDisposable
     /// <paramref name="currentSolution"/> that a text-only solution-snapshot restore cannot undo (added
     /// or removed documents including additional/analyzer-config ones, added or removed projects,
     /// project/metadata/analyzer reference changes, parse/compilation option changes), or null.
-    /// <c>GetChanges</c> diffs the WHOLE current solution, so a committed snapshot only answers for
-    /// changes that involve its own <see cref="UndoSnapshot.AffectedFiles"/>: a document by its path, a
-    /// project by its project file or any of its documents' paths for add/remove, and by its project
-    /// file for reference/option changes (those apply through the project file). A later file-disjoint
-    /// sibling apply therefore never blocks an earlier revert. An uncommitted (sequence 0) snapshot has
-    /// no recorded files and is the latest apply by construction, so the whole diff is its own.
+    /// Projects are matched by project file path plus name, never by ProjectId: a reload builds a new
+    /// workspace whose ids share nothing with a pre-reload snapshot, and identical projects must not
+    /// read as removed+added. Documents are matched by path for the same reason.
+    /// A snapshot with recorded <see cref="UndoSnapshot.AffectedFiles"/> only answers for changes that
+    /// involve them (a document by its path; project-level changes by the project file), so a later
+    /// file-disjoint sibling apply never blocks an earlier revert. A snapshot with NO file scope (an
+    /// uncommitted one, or a committed solution-only one such as an option/reference change, which
+    /// records no files) cannot attribute anything by file, so the whole diff is its own.
     /// </summary>
     private static string? FindUnrestorableChange(UndoSnapshot snapshot, Solution preApplySolution, Solution currentSolution)
     {
-        var scope = snapshot.SequenceNumber == 0
+        var scope = snapshot.SequenceNumber == 0 || snapshot.AffectedFiles.Count == 0
             ? null
             : new HashSet<string>(snapshot.AffectedFiles, FileSystemPath.Comparer);
         bool InScope(string? path) => scope is null || (path is not null && scope.Contains(path));
-        bool ProjectInScope(Project project) =>
-            scope is null || InScope(project.FilePath) || project.Documents.Any(d => InScope(d.FilePath));
 
-        var changes = preApplySolution.GetChanges(currentSolution);
-        foreach (var project in changes.GetRemovedProjects())
+        var before = preApplySolution.Projects.ToDictionary(ProjectKey);
+        var after = currentSolution.Projects.ToDictionary(ProjectKey);
+
+        foreach (var (key, project) in before)
         {
-            if (ProjectInScope(project))
+            if (!after.ContainsKey(key) && (scope is null || InScope(project.FilePath) || project.Documents.Any(d => InScope(d.FilePath))))
                 return $"project '{project.Name}' was removed";
         }
 
-        foreach (var project in changes.GetAddedProjects())
+        foreach (var (key, project) in after)
         {
-            if (ProjectInScope(project))
+            if (!before.ContainsKey(key) && (scope is null || InScope(project.FilePath) || project.Documents.Any(d => InScope(d.FilePath))))
                 return $"project '{project.Name}' was added";
         }
 
-        foreach (var change in changes.GetProjectChanges())
+        foreach (var (key, oldProject) in before)
         {
-            var name = change.NewProject.Name;
-            var added = change.GetAddedDocuments().Select(id => change.NewProject.GetDocument(id)?.FilePath)
-                .Concat(change.GetAddedAdditionalDocuments().Select(id => change.NewProject.GetAdditionalDocument(id)?.FilePath))
-                .Concat(change.GetAddedAnalyzerConfigDocuments().Select(id => change.NewProject.GetAnalyzerConfigDocument(id)?.FilePath));
-            if (added.Any(InScope))
-                return $"a document was added to project '{name}'";
-
-            var removed = change.GetRemovedDocuments().Select(id => change.OldProject.GetDocument(id)?.FilePath)
-                .Concat(change.GetRemovedAdditionalDocuments().Select(id => change.OldProject.GetAdditionalDocument(id)?.FilePath))
-                .Concat(change.GetRemovedAnalyzerConfigDocuments().Select(id => change.OldProject.GetAnalyzerConfigDocument(id)?.FilePath));
-            if (removed.Any(InScope))
-                return $"a document was removed from project '{name}'";
-
-            if (!InScope(change.NewProject.FilePath) && !InScope(change.OldProject.FilePath))
+            if (!after.TryGetValue(key, out var newProject))
                 continue;
 
-            if (change.GetAddedProjectReferences().Any() || change.GetRemovedProjectReferences().Any())
-                return $"project references changed in '{name}'";
-            if (change.GetAddedMetadataReferences().Any() || change.GetRemovedMetadataReferences().Any())
-                return $"metadata references changed in '{name}'";
-            if (change.GetAddedAnalyzerReferences().Any() || change.GetRemovedAnalyzerReferences().Any())
-                return $"analyzer references changed in '{name}'";
-            if (!Equals(change.OldProject.ParseOptions, change.NewProject.ParseOptions))
+            var name = newProject.Name;
+            if (!DocumentPaths(oldProject).SetEquals(DocumentPaths(newProject)))
+            {
+                var added = DocumentPaths(newProject).Except(DocumentPaths(oldProject), FileSystemPath.Comparer);
+                var removed = DocumentPaths(oldProject).Except(DocumentPaths(newProject), FileSystemPath.Comparer);
+                if (added.Any(InScope))
+                    return $"a document was added to project '{name}'";
+                if (removed.Any(InScope))
+                    return $"a document was removed from project '{name}'";
+            }
+
+            if (!InScope(newProject.FilePath) && !InScope(oldProject.FilePath))
+                continue;
+
+            if (!ReferenceKeys(oldProject, before).SetEquals(ReferenceKeys(newProject, after)))
+                return $"references changed in '{name}'";
+            if (!Equals(oldProject.ParseOptions, newProject.ParseOptions))
                 return $"parse options changed in '{name}'";
-            if (!Equals(change.OldProject.CompilationOptions, change.NewProject.CompilationOptions))
+            if (!Equals(NormalizeOptions(oldProject.CompilationOptions), NormalizeOptions(newProject.CompilationOptions)))
                 return $"compilation options changed in '{name}'";
         }
 
         return null;
     }
+
+    private static string ProjectKey(Project project) => (project.FilePath ?? string.Empty) + "\n" + project.Name;
+
+    private static HashSet<string> DocumentPaths(Project project)
+    {
+        var paths = new HashSet<string>(FileSystemPath.Comparer);
+        foreach (var document in project.Documents.Concat(project.AdditionalDocuments).Concat(project.AnalyzerConfigDocuments))
+        {
+            paths.Add(document.FilePath ?? "<in-memory>:" + document.Name);
+        }
+
+        return paths;
+    }
+
+    /// <summary>Project, metadata and analyzer references as workspace-independent strings (project references by target project key).</summary>
+    private static HashSet<string> ReferenceKeys(Project project, Dictionary<string, Project> solutionProjects)
+    {
+        var keys = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var reference in project.ProjectReferences)
+        {
+            var target = solutionProjects.Values.FirstOrDefault(p => p.Id == reference.ProjectId);
+            keys.Add("project:" + (target is null ? reference.ProjectId.ToString() : ProjectKey(target)));
+        }
+
+        foreach (var reference in project.MetadataReferences)
+            keys.Add("metadata:" + reference.Display);
+        foreach (var reference in project.AnalyzerReferences)
+            keys.Add("analyzer:" + (reference.FullPath ?? reference.Display));
+        return keys;
+    }
+
+    /// <summary>Drops per-workspace resolver/provider instances, which differ across loads of identical projects.</summary>
+    private static CompilationOptions? NormalizeOptions(CompilationOptions? options) => options
+        ?.WithMetadataReferenceResolver(null)
+        .WithXmlReferenceResolver(null)
+        .WithSourceReferenceResolver(null)
+        .WithSyntaxTreeOptionsProvider(null)
+        .WithStrongNameProvider(null);
 
     /// <summary>
     /// Phase-1 helper for <see cref="RevertFromSolutionSnapshotAsync"/>. Walks

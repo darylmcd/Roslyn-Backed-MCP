@@ -1206,6 +1206,96 @@ public sealed class UndoServiceTests : IsolatedWorkspaceTestBase
         CollectionAssert.AreEqual(diskBefore, await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None));
     }
 
+    /// <summary>
+    /// The only production solution-only producer (an option/reference change with no document change)
+    /// commits with EMPTY affected files. Nothing can be attributed by file, so the whole diff is its own
+    /// and the revert must fail closed instead of "succeeding" with the option change still applied.
+    /// </summary>
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task Revert_CommittedSolutionOnlySnapshot_EmptyAffectedFiles_ParseOptionsChange_FailsClosed(bool bySequence)
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var preApply = WorkspaceManager.GetCurrentSolution(workspaceId);
+        var project = preApply.Projects.First();
+        var applied = preApply.WithProjectParseOptions(
+            project.Id, project.ParseOptions!.WithFeatures([new KeyValuePair<string, string>("undo-test", "1")]));
+        var manager = new CapturingWorkspaceManager(WorkspaceManager, applied);
+        using var undo = new UndoService(NullLogger<UndoService>.Instance, manager);
+        var capture = undo.CaptureBeforeApply(workspaceId, "options only", preApply, fileSnapshots: null);
+        undo.CommitPendingCapture(workspaceId, 1, [], capture);
+
+        if (bySequence)
+        {
+            var result = await undo.RevertBySequenceAsync(workspaceId, 1, CancellationToken.None);
+            Assert.IsFalse(result.Reverted);
+            Assert.AreEqual("revert-failed", result.Reason);
+        }
+        else
+        {
+            Assert.IsFalse(await undo.RevertAsync(workspaceId, CancellationToken.None));
+        }
+
+        Assert.IsNull(manager.AppliedSolution, "A refused revert must not touch the workspace.");
+        Assert.IsNotNull(undo.GetLastOperation(workspaceId));
+    }
+
+    [TestMethod]
+    public async Task Revert_SolutionSnapshot_GenuinelyAddedProject_FailsClosed()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var preApply = WorkspaceManager.GetCurrentSolution(workspaceId);
+        var applied = preApply.AddProject("Extra", "Extra", LanguageNames.CSharp).Solution;
+        var manager = new CapturingWorkspaceManager(WorkspaceManager, applied);
+        using var undo = new UndoService(NullLogger<UndoService>.Instance, manager);
+        undo.CaptureBeforeApply(workspaceId, "add project", preApply, fileSnapshots: null);
+
+        Assert.IsFalse(await undo.RevertAsync(workspaceId, CancellationToken.None));
+        Assert.IsNull(manager.AppliedSolution);
+        Assert.IsNotNull(undo.GetLastOperation(workspaceId));
+    }
+
+    /// <summary>
+    /// A reload builds a NEW workspace, so a pre-reload snapshot shares no ProjectIds or DocumentIds
+    /// with the current solution. Identical projects matched by path must not read as removed+added
+    /// (which would refuse every post-reload revert); the disk walk still restores the drifted file.
+    /// </summary>
+    [TestMethod]
+    public async Task Revert_SolutionSnapshot_AfterReload_IdenticalProjectsWithNewIds_DoesNotRefuse()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+        var originalBytes = await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None);
+        var preApply = WorkspaceManager.GetCurrentSolution(workspaceId);
+        await MaterializeDocumentTextAsync(preApply, dogFilePath);
+        await File.WriteAllTextAsync(dogFilePath, "// drifted\n", CancellationToken.None);
+        await workspace.ReloadAsync(CancellationToken.None);
+        var reloaded = WorkspaceManager.GetCurrentSolution(workspaceId);
+        Assert.AreNotEqual(preApply.Projects.First().Id, reloaded.Projects.First(p => p.Name == preApply.Projects.First().Name).Id,
+            "Fixture precondition: a reload must mint new ProjectIds.");
+
+        using var undo = new UndoService(NullLogger<UndoService>.Instance, WorkspaceManager);
+        undo.CaptureBeforeApply(workspaceId, "post-reload", preApply, fileSnapshots: null);
+
+        Assert.IsTrue(await undo.RevertAsync(workspaceId, CancellationToken.None),
+            "Identical projects under new ProjectIds are not an added/removed project.");
+        CollectionAssert.AreEqual(originalBytes, await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None));
+    }
+
+    [TestMethod]
+    public async Task RevertAsync_UnknownWorkspace_DoesNotAllocateHistory()
+    {
+        using var undo = new UndoService(NullLogger<UndoService>.Instance, WorkspaceManager);
+        Assert.IsFalse(await undo.RevertAsync("no-such-workspace", CancellationToken.None));
+        var history = typeof(UndoService).GetField("_history", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .GetValue(undo) as System.Collections.IDictionary;
+        Assert.AreEqual(0, history!.Count, "A revert for an unknown workspace must not allocate a history list.");
+    }
+
     [TestMethod]
     public async Task RevertBySequence_SolutionSnapshot_FileDisjointSiblingAddedDocument_StillReverts()
     {
