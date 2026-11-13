@@ -251,6 +251,8 @@
 | `undo-unclaim-resurrects-slot-after-clear` | Medium | — | **Stop UnclaimRevert resurrecting an undo slot after Clear().** Make UnclaimRevert a no-op when the workspace history was cleared while a revert was in flight, so a closed workspace gets no revived undo entry. | S | items/undo-unclaim-resurrects-slot-after-clear.md |
 | `undo-disk-walk-fallback-restores-drifted-sibling-docs` | Medium | — | **Stop the undo disk-walk fallback restoring drifted sibling docs.** Scope the revert disk-walk fallback to the apply's own files and report a non-success when nothing was restored. | S | items/undo-disk-walk-fallback-restores-drifted-sibling-docs.md |
 | `ci-restore-linux-leg-timeout-30-after-rebalance` | Medium | ci-ubuntu-duration-profile-refresh-2604 | **Restore the 30 minute Linux shard cap.** Undo the temporary 45 minute cap on the code and docs linux shard legs once the ubuntu profile refresh has rebalanced the shards. | S | items/ci-restore-linux-leg-timeout-30-after-rebalance.md |
+| `file-watcher-error-event-unhandled` | Medium | — | **Handle FileSystemWatcher.Error.** Subscribe to Error on the tree and shared ancestor watchers and mark the affected workspaces stale as external-edit so a buffer overflow cannot hide edits. [source: pr-2094-watcher-cold-review] | S | items/file-watcher-error-event-unhandled.md |
+| `file-watcher-test-gaps-after-consolidation` | Medium | — | **Add the missing FileWatcherService tests.** Cover a failed Watch releasing its registrations, the Linux inotify hint, nested workspaces, Dispose releasing shared watchers, and concurrent Subscribe/Unsubscribe. [source: pr-2094-watcher-cold-review] | S | items/file-watcher-test-gaps-after-consolidation.md |
 
 ## Low
 
@@ -530,6 +532,8 @@
 | `undo-reference-keys-ignore-aliases-and-embed-interop` | Low | — | **Include reference aliases and EmbedInteropTypes in undo restore comparison.** Make ReferenceKeys distinguish metadata-reference aliases and EmbedInteropTypes so FindUnrestorableChange refuses those changes. | S | items/undo-reference-keys-ignore-aliases-and-embed-interop.md |
 | `undo-seq0-history-entry-lost-on-commit-unclaim-race` | Low | — | **Keep the seq-0 undo history entry when commit races an unclaim.** Make commit and UnclaimRevert agree on a sequence-0 pending slot so a racing commit does not drop the history entry. | S | items/undo-seq0-history-entry-lost-on-commit-unclaim-race.md |
 | `undo-sourcecodekind-restore-possibly-dead` | Low | — | **Prove or delete the undo SourceCodeKind restore.** Show whether the MSBuild reload after an apply makes the WithDocumentSourceCodeKind restore dead and delete it if so. | S | items/undo-sourcecodekind-restore-possibly-dead.md |
+| `file-watcher-service-doc-misplaced` | Low | — | **Move the misplaced class doc.** The FileWatcherService summary and remarks sit above IEditorConfigWriteCoordinator; move them to the class and refresh the topology description. [source: pr-2094-watcher-cold-review] | S | items/file-watcher-service-doc-misplaced.md |
+| `file-watcher-degrade-on-ancestor-watch-failure` | Low | — | **Decide ancestor-watch failure policy.** An unreadable ancestor (EACCES) or an inotify limit hit while adding an ancestor fails the whole load; decide whether to degrade to a logged, status-visible partial watch. [source: pr-2094-watcher-cold-review] | S | items/file-watcher-degrade-on-ancestor-watch-failure.md |
 
 ## Defer
 
