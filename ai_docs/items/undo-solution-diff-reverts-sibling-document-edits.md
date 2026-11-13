@@ -1,6 +1,6 @@
 # undo-solution-diff-reverts-sibling-document-edits — Limit solution-snapshot undo to the documents this apply changed
 
-**row:** `undo-solution-diff-reverts-sibling-document-edits` · **pri:** `Medium` · **size:** `S` · **deps:** `undo-solution-snapshot-restore-incomplete`
+**row:** `undo-solution-diff-reverts-sibling-document-edits` · **pri:** `Medium` · **size:** `S`
 
 ## Anchors
 

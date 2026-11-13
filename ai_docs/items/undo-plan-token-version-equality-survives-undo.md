@@ -1,6 +1,6 @@
 # undo-plan-token-version-equality-survives-undo — Invalidate version-equality plan tokens and post-apply preview entries when undo lowers the workspace version
 
-**row:** `undo-plan-token-version-equality-survives-undo` · **pri:** `Medium` · **size:** `M` · **deps:** `undo-restore-version-lowering-version-keyed-caches`
+**row:** `undo-plan-token-version-equality-survives-undo` · **pri:** `Medium` · **size:** `M`
 
 ## Anchors
 

@@ -1,6 +1,6 @@
 # version-keyed-cache-straddling-publish-after-restore — Reject cache publishes captured before a version-lowering restore
 
-**row:** `version-keyed-cache-straddling-publish-after-restore` · **pri:** `Low` · **size:** `S` · **deps:** `undo-restore-version-lowering-version-keyed-caches`
+**row:** `version-keyed-cache-straddling-publish-after-restore` · **pri:** `Low` · **size:** `S`
 
 ## Anchors
 
