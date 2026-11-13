@@ -1367,8 +1367,10 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
         System.Diagnostics.Process? child = null;
         try
         {
-            while (!File.Exists(observed) && !running.IsCompleted) await Task.Delay(10, timeout.Token);
-            Assert.IsTrue(File.Exists(observed), "The native command must actually reach its owned child before cancellation.");
+            // The child's WriteAllText creates the file before it writes the PID: wait for the content.
+            static bool Published(string path) => File.Exists(path) && new FileInfo(path).Length > 0;
+            while (!Published(observed) && !running.IsCompleted) await Task.Delay(10, timeout.Token);
+            Assert.IsTrue(Published(observed), "The native command must actually reach its owned child before cancellation.");
             child = System.Diagnostics.Process.GetProcessById(int.Parse(File.ReadAllText(observed), System.Globalization.CultureInfo.InvariantCulture));
             Assert.IsFalse(child.HasExited);
             cancellation.Cancel();

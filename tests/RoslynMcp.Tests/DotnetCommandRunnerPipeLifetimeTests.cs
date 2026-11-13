@@ -28,6 +28,37 @@ public class DotnetCommandRunnerPipeLifetimeTests
     }
 
     [TestMethod]
+    public void CreateStartInfo_Strips_Inherited_MSBuild_Location_Variables()
+    {
+        // MSBuildLocator / `dotnet test` pin MSBuild to the server's SDK via these variables. A child
+        // dotnet that resolves a different SDK (ubuntu-26.04 ships 11.0.100 beside 10.0.404) would
+        // otherwise launch worker nodes from the pinned SDK and fail every node handshake.
+        string[] names = ["MSBUILD_EXE_PATH", "MSBuildExtensionsPath", "MSBuildSDKsPath"];
+        var saved = names.ToDictionary(n => n, Environment.GetEnvironmentVariable);
+        try
+        {
+            foreach (var name in names)
+            {
+                Environment.SetEnvironmentVariable(name, "/pinned/sdk/" + name);
+            }
+
+            var startInfo = DotnetCommandRunner.CreateStartInfo("work", ["msbuild", "x.proj"]);
+
+            foreach (var name in names)
+            {
+                Assert.IsFalse(startInfo.Environment.ContainsKey(name), name + " leaked into the child environment.");
+            }
+        }
+        finally
+        {
+            foreach (var (name, value) in saved)
+            {
+                Environment.SetEnvironmentVariable(name, value);
+            }
+        }
+    }
+
+    [TestMethod]
     public void CreateStartInfo_UsesConfiguredDotnetCompatibleExecutable()
     {
         var startInfo = DotnetCommandRunner.CreateStartInfo(
