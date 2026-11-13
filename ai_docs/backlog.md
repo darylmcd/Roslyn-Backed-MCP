@@ -50,6 +50,7 @@
 | `render-finding-linux-pwsh-exit-139` | High | — | BLOCKED: no witness — one hosted occurrence (run 40359428470, 2026-10-26), none in 219 runs since PR 1849; likely upstream dotnet/runtime#121977. Reopen on a recurrence with retained evidence. **Identify and repair the PowerShell child exit 139** [type: bug] [source: hosted-ci] | S | items/render-finding-linux-pwsh-exit-139.md |
 | `linux-pwsh-startup-profile-invalid-assembly-identity` | High | — | BLOCKED: no witness, upstream-blocked — one hosted hit (run 40373606428, pre-PR 1849), none in 219 runs since; dotnet/runtime#121977 and PowerShell#26528 open. **Diagnose native startup assembly-identity corruption** [type: bug] | S | items/linux-pwsh-startup-profile-invalid-assembly-identity.md |
 | `linux-pwsh-startup-cache-functional-cohort-failure` | High | — | BLOCKED: no witness — one hosted occurrence (run 41911201587); per-parent failure output landed in PR 1971 (c538b50b) and has not fired in 15 runs since. Reopen on the next recurrence. **Identify the failing native cache child** [type: test-infrastructure] [source: PR 1971 hosted Linux3] | S | items/linux-pwsh-startup-cache-functional-cohort-failure.md |
+| `ci-ubuntu-duration-profile-refresh-2604` | High | — | **Refresh the ubuntu duration profile on ubuntu-26.04.** Regenerate eng/shard-duration-profile.json from 5 complete green first-attempt runs so linux-2 stops carrying ~28 min of tests. | M | items/ci-ubuntu-duration-profile-refresh-2604.md |
 
 ## Medium
 
@@ -249,6 +250,7 @@
 | `native-late-consumer-marker-intermittent-missing-output` | Medium | — | **Root-cause intermittent missing marker output in the native late-consumer test.** Four marker variants exit 0 yet leave no output on one hosted linux-2 run; add Describe() output to the asserts and find the cause. | S | items/native-late-consumer-marker-intermittent-missing-output.md |
 | `undo-unclaim-resurrects-slot-after-clear` | Medium | — | **Stop UnclaimRevert resurrecting an undo slot after Clear().** Make UnclaimRevert a no-op when the workspace history was cleared while a revert was in flight, so a closed workspace gets no revived undo entry. | S | items/undo-unclaim-resurrects-slot-after-clear.md |
 | `undo-disk-walk-fallback-restores-drifted-sibling-docs` | Medium | — | **Stop the undo disk-walk fallback restoring drifted sibling docs.** Scope the revert disk-walk fallback to the apply's own files and report a non-success when nothing was restored. | S | items/undo-disk-walk-fallback-restores-drifted-sibling-docs.md |
+| `ci-restore-linux-leg-timeout-30-after-rebalance` | Medium | ci-ubuntu-duration-profile-refresh-2604 | **Restore the 30 minute Linux shard cap.** Undo the temporary 45 minute cap on linux-1..4-of-4 once the ubuntu profile refresh has rebalanced the shards. | S | items/ci-restore-linux-leg-timeout-30-after-rebalance.md |
 
 ## Low
 
