@@ -382,10 +382,11 @@ public sealed class CiTopologyDecisionContractTests
             ("windows-hosted-2-of-4", "windows-latest", false, 45, 1, 4),
             ("windows-hosted-3-of-4", "windows-latest", false, 45, 2, 4),
             ("windows-hosted-4-of-4", "windows-latest", false, 45, 3, 4),
-            ("linux-1-of-4", "ubuntu-latest", false, 30, 0, 4),
-            ("linux-2-of-4", "ubuntu-latest", false, 30, 1, 4),
-            ("linux-3-of-4", "ubuntu-latest", false, 30, 2, 4),
-            ("linux-4-of-4", "ubuntu-latest", true, 30, 3, 4),
+            // TEMPORARY 45: see eng/resolve-ci-topology.ps1 and row ci-restore-linux-leg-timeout-30-after-rebalance.
+            ("linux-1-of-4", "ubuntu-latest", false, 45, 0, 4),
+            ("linux-2-of-4", "ubuntu-latest", false, 45, 1, 4),
+            ("linux-3-of-4", "ubuntu-latest", false, 45, 2, 4),
+            ("linux-4-of-4", "ubuntu-latest", true, 45, 3, 4),
         };
 
         AssertExactMatrix(matrix, expected);
