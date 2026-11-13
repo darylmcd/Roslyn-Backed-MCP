@@ -272,7 +272,12 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
         await fixture.RestoreAsync(project, DotnetCommandRunner, timeout.Token);
         var config = guarded ? ForkAdmissionMaterial.Install(fixture.Source, fixture.Fork, [project], timeout.Token) : null;
         using var execution = config is null ? null : await ForkAdmissionExecution.CreateAsync(config, DateTimeOffset.UtcNow.AddMinutes(1), timeout.Token);
-        string[] arguments = ["msbuild", project, "-nologo", "-nr:false", "-t:PrepareForBuild;" + target];
+        // SDK 10 touches the CopyUpToDateMarker inside _CopyFilesMarkedCopyLocal; SDK 11 records the
+        // copy there and touches the marker later, in CopyFilesToOutputDirectory. Request both targets
+        // so the real native consumer runs on either SDK (SkipCopyBuildProduct: nothing is compiled).
+        string[] arguments = marker
+            ? ["msbuild", project, "-nologo", "-nr:false", "-p:SkipCopyBuildProduct=true", "-t:PrepareForBuild;" + target + ";CopyFilesToOutputDirectory"]
+            : ["msbuild", project, "-nologo", "-nr:false", "-t:PrepareForBuild;" + target];
         var result = await DotnetCommandRunner.RunAsync(fixture.Fork, project, execution?.Arguments(arguments) ?? arguments, timeout.Token);
         execution?.Complete();
         TestContext.WriteLine(result.StdOut + result.StdErr);

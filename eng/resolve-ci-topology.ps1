@@ -81,10 +81,12 @@ $codePullRequest = @(
     New-CiTopologyLeg -Name 'windows-hosted-2-of-4' -RunsOn 'windows-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 1 -TestShardCount 4
     New-CiTopologyLeg -Name 'windows-hosted-3-of-4' -RunsOn 'windows-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 2 -TestShardCount 4
     New-CiTopologyLeg -Name 'windows-hosted-4-of-4' -RunsOn 'windows-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 3 -TestShardCount 4
-    New-CiTopologyLeg -Name 'linux-1-of-4' -RunsOn 'ubuntu-latest' -ArtifactOwner $false -TimeoutMinutes 30 -TestShardIndex 0 -TestShardCount 4
-    New-CiTopologyLeg -Name 'linux-2-of-4' -RunsOn 'ubuntu-latest' -ArtifactOwner $false -TimeoutMinutes 30 -TestShardIndex 1 -TestShardCount 4
-    New-CiTopologyLeg -Name 'linux-3-of-4' -RunsOn 'ubuntu-latest' -ArtifactOwner $false -TimeoutMinutes 30 -TestShardIndex 2 -TestShardCount 4
-    New-CiTopologyLeg -Name 'linux-4-of-4' -RunsOn 'ubuntu-latest' -ArtifactOwner $true -TimeoutMinutes 30 -TestShardIndex 3 -TestShardCount 4
+    # TEMPORARY 45 (operator-approved 2026-11-13): linux-2 needs ~28 min of tests until the duration profile is refreshed;
+    # restore 30 with row ci-restore-linux-leg-timeout-30-after-rebalance.
+    New-CiTopologyLeg -Name 'linux-1-of-4' -RunsOn 'ubuntu-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 0 -TestShardCount 4
+    New-CiTopologyLeg -Name 'linux-2-of-4' -RunsOn 'ubuntu-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 1 -TestShardCount 4
+    New-CiTopologyLeg -Name 'linux-3-of-4' -RunsOn 'ubuntu-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 2 -TestShardCount 4
+    New-CiTopologyLeg -Name 'linux-4-of-4' -RunsOn 'ubuntu-latest' -ArtifactOwner $true -TimeoutMinutes 45 -TestShardIndex 3 -TestShardCount 4
 )
 $docsOnlyPullRequest = @(
     New-CiTopologyLeg -Name 'docs-linux-1-of-4' -RunsOn 'ubuntu-latest' -ArtifactOwner $false -TimeoutMinutes 30 -TestShardIndex 0 -TestShardCount 4
