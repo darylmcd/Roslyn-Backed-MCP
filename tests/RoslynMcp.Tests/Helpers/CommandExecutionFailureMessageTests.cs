@@ -23,6 +23,30 @@ public sealed class CommandExecutionFailureMessageTests
     }
 
     [TestMethod]
+    public void Describe_KeepsOnlyTheLastStreamCharsWithTruncationMarker()
+    {
+        var max = CommandExecutionFailureMessage.MaxStreamChars;
+        var stdout = "HEAD-MARK" + new string('x', max) + "TAIL-MARK";
+        var result = new CommandExecutionDto("dotnet", [], "/w", "t", 1, false, 1, stdout, "small-err");
+
+        var message = result.Describe();
+
+        var dropped = stdout.Length - max;
+        StringAssert.Contains(message, $"... [truncated {dropped} chars]");
+        StringAssert.Contains(message, "TAIL-MARK");
+        Assert.DoesNotContain("HEAD-MARK", message);
+        StringAssert.Contains(message, "small-err");
+        Assert.IsLessThan(2 * max, message.Length);
+    }
+
+    [TestMethod]
+    public void Tail_ReturnsShortTextUnchanged()
+    {
+        Assert.AreEqual("abc", CommandExecutionFailureMessage.Tail("abc", 3));
+        Assert.AreEqual(string.Empty, CommandExecutionFailureMessage.Tail(null));
+    }
+
+    [TestMethod]
     public void Describe_ReportsNoneWhenNotEarlyKilled()
     {
         var result = new CommandExecutionDto("dotnet", [], "/w", "t", 0, true, 1, "", "");

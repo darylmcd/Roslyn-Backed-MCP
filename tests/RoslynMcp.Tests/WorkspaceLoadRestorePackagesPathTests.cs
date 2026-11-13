@@ -80,8 +80,8 @@ public sealed class WorkspaceLoadRestorePackagesPathTests : SharedWorkspaceTestB
             "<Project><ItemGroup><ProjectReference Include=\"../B/B.proj\" ReferenceOutputAssembly=\"false\" AdditionalProperties=\"Configuration=Release;Platform=x64;Flavor=Blue\"/></ItemGroup></Project>");
         await fixture.RestoreInitialAsync();
         var contextual = await fixture.Runner.RunAsync(dependencyDirectory, fixture.Projects[1],
-            ["restore", fixture.Projects[1], "--nologo", "--no-dependencies", "--packages", fixture.CacheFor(fixture.Projects[1]),
-                "-p:Configuration=Release", "-p:Platform=x64", "-p:Flavor=Blue"], earlyKillPatterns: null, CancellationToken.None);
+            FixtureChildDiagnostics.Detailed(["restore", fixture.Projects[1], "--nologo", "--no-dependencies", "--packages", fixture.CacheFor(fixture.Projects[1]),
+                "-p:Configuration=Release", "-p:Platform=x64", "-p:Flavor=Blue"]), earlyKillPatterns: null, CancellationToken.None);
         Assert.IsTrue(contextual.Succeeded, contextual.Describe());
         WriteAssetsWithPackagesPath(fixture.Projects[1], Path.Combine(fixture.Root, "stale-default-cache"));
         fixture.Runner.Invocations.Clear();
@@ -158,7 +158,7 @@ public sealed class WorkspaceLoadRestorePackagesPathTests : SharedWorkspaceTestB
             var cache = Path.Combine(fixture.Root, "cache-" + framework);
             roots.Add(framework, cache);
             var restored = await fixture.Runner.RunAsync(Path.GetDirectoryName(fixture.TargetPath)!, fixture.TargetPath,
-                ["restore", fixture.TargetPath, "--nologo", "--no-dependencies", "--packages", cache, "-p:TargetFramework=" + framework], earlyKillPatterns: null, CancellationToken.None);
+                FixtureChildDiagnostics.Detailed(["restore", fixture.TargetPath, "--nologo", "--no-dependencies", "--packages", cache, "-p:TargetFramework=" + framework]), earlyKillPatterns: null, CancellationToken.None);
             Assert.IsTrue(restored.Succeeded, restored.Describe());
             Assert.AreEqual(cache, RestoreStalenessDetector.TryReadRestorePackagesPath(fixture.TargetPath,
                 new Dictionary<string, string> { ["TargetFramework"] = framework }));
@@ -620,7 +620,7 @@ public sealed class WorkspaceLoadRestorePackagesPathTests : SharedWorkspaceTestB
             foreach (var project in Projects)
             {
                 var result = await Runner.RunAsync(Path.GetDirectoryName(project)!, project,
-                    ["restore", project, "--nologo", "--packages", CacheFor(project), "--no-dependencies"], earlyKillPatterns: null, CancellationToken.None);
+                    FixtureChildDiagnostics.Detailed(["restore", project, "--nologo", "--packages", CacheFor(project), "--no-dependencies"]), earlyKillPatterns: null, CancellationToken.None);
                 Assert.IsTrue(result.Succeeded, result.Describe());
                 Assert.AreEqual(CacheFor(project), ReadPackageRoot(project));
             }

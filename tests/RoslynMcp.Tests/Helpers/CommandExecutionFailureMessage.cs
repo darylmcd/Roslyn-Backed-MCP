@@ -20,9 +20,23 @@ internal static class CommandExecutionFailureMessage
             workingDirectory: {result.WorkingDirectory}
             exitCode: {result.ExitCode}; succeeded: {result.Succeeded}; durationMs: {result.DurationMs}; earlyKillReason: {result.EarlyKillReason ?? "<none>"}
             --- stdout ---
-            {result.StdOut}
+            {Tail(result.StdOut)}
             --- stderr ---
-            {result.StdErr}
+            {Tail(result.StdErr)}
             """);
+    }
+
+    /// <summary>Maximum characters of each stream kept in a message (the end holds the failure).</summary>
+    internal const int MaxStreamChars = 64 * 1024;
+
+    internal static string Tail(string? text, int maxChars = MaxStreamChars)
+    {
+        if (string.IsNullOrEmpty(text) || text.Length <= maxChars)
+        {
+            return text ?? string.Empty;
+        }
+
+        var dropped = text.Length - maxChars;
+        return string.Create(CultureInfo.InvariantCulture, $"... [truncated {dropped} chars]{Environment.NewLine}") + text[dropped..];
     }
 }

@@ -188,8 +188,8 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
         using var execution = configuration is null ? null : await ForkAdmissionExecution.CreateAsync(configuration,
             DateTimeOffset.UtcNow.AddMinutes(1), timeout.Token);
         var arguments = consumer.StartsWith("BuildProduct", StringComparison.Ordinal)
-            ? new[] { "build", project, "--no-restore", "--nologo", "-nr:false", "-p:UseSharedCompilation=false" }
-            : new[] { "msbuild", project, "-nologo", "-nr:false", "-t:PrepareForBuild;" + target };
+            ? FixtureChildDiagnostics.Detailed(["build", project, "--no-restore", "--nologo", "-nr:false", "-p:UseSharedCompilation=false"])
+            : FixtureChildDiagnostics.Detailed(["msbuild", project, "-nologo", "-nr:false", "-t:PrepareForBuild;" + target]);
         var result = await DotnetCommandRunner.RunAsync(fixture.Fork, project,
             execution?.Arguments(arguments) ?? arguments.ToArray(), timeout.Token);
         execution?.Complete();
@@ -272,7 +272,7 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
         await fixture.RestoreAsync(project, DotnetCommandRunner, timeout.Token);
         var config = guarded ? ForkAdmissionMaterial.Install(fixture.Source, fixture.Fork, [project], timeout.Token) : null;
         using var execution = config is null ? null : await ForkAdmissionExecution.CreateAsync(config, DateTimeOffset.UtcNow.AddMinutes(1), timeout.Token);
-        string[] arguments = ["msbuild", project, "-nologo", "-nr:false", "-t:PrepareForBuild;" + target];
+        string[] arguments = FixtureChildDiagnostics.Detailed(["msbuild", project, "-nologo", "-nr:false", "-t:PrepareForBuild;" + target]);
         var result = await DotnetCommandRunner.RunAsync(fixture.Fork, project, execution?.Arguments(arguments) ?? arguments, timeout.Token);
         execution?.Complete();
         TestContext.WriteLine(result.StdOut + result.StdErr);
@@ -352,7 +352,7 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
         Assert.IsFalse(File.ReadAllText(child).Contains(ForkProjectImports.Label, StringComparison.Ordinal));
         using var execution = await ForkAdmissionExecution.CreateAsync(configuration, DateTimeOffset.UtcNow.AddMinutes(1), timeout.Token);
         var result = await DotnetCommandRunner.RunAsync(fixture.Fork, root,
-            execution.Arguments(["msbuild", root, "-t:Query", "-m:2", "-nr:false", "-nologo", "-p:ProofEvidence=" + fixture.Evidence]), timeout.Token);
+            execution.Arguments(FixtureChildDiagnostics.Detailed(["msbuild", root, "-t:Query", "-m:2", "-nr:false", "-nologo", "-p:ProofEvidence=" + fixture.Evidence])), timeout.Token);
         execution.Complete();
         Assert.IsTrue(result.Succeeded, result.Describe());
         execution.ThrowIfRefused();
@@ -381,8 +381,8 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
         var configuration = ForkAdmissionMaterial.Install(fixture.Source, fixture.Fork, [project], timeout.Token);
         using var execution = await ForkAdmissionExecution.CreateAsync(configuration, DateTimeOffset.UtcNow.AddMinutes(1), timeout.Token);
         var result = await DotnetCommandRunner.RunAsync(fixture.Fork, project,
-            execution.Arguments(["msbuild", project, "-t:GetTargetFrameworksWithPlatformFromInnerBuilds;DispatchToInnerBuilds",
-                "-p:InnerTargets=InnerConsumer", "-p:ProofEvidence=" + fixture.Evidence, "-m:2", "-nr:false", "-nologo"]), timeout.Token);
+            execution.Arguments(FixtureChildDiagnostics.Detailed(["msbuild", project, "-t:GetTargetFrameworksWithPlatformFromInnerBuilds;DispatchToInnerBuilds",
+                "-p:InnerTargets=InnerConsumer", "-p:ProofEvidence=" + fixture.Evidence, "-m:2", "-nr:false", "-nologo"])), timeout.Token);
         execution.Complete();
         Assert.IsTrue(result.Succeeded, result.Describe());
         execution.ThrowIfRefused();
@@ -460,7 +460,7 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
         await fixture.RestoreAsync(parent, DotnetCommandRunner, timeout.Token);
         var configuration = guarded ? ForkAdmissionMaterial.Install(fixture.Source, fixture.Fork, [parent, bridge, child, leaf], timeout.Token) : null;
         using var execution = configuration is null ? null : await ForkAdmissionExecution.CreateAsync(configuration, DateTimeOffset.UtcNow.AddMinutes(2), timeout.Token);
-        var arguments = new List<string> { "build", parent, "--no-restore", "--nologo", "-nr:false", "-p:UseSharedCompilation=false" };
+        var arguments = new List<string> { "build", parent, "--no-restore", "--nologo", "-nr:false", "-p:UseSharedCompilation=false", FixtureChildDiagnostics.DetailedVerbosity };
         if (mode == "nontransitive") arguments.Add("-p:MSBuildCopyContentTransitively=false");
         var result = await DotnetCommandRunner.RunAsync(fixture.Fork, parent, execution?.Arguments(arguments) ?? arguments.ToArray(), timeout.Token);
         execution?.Complete();
@@ -554,7 +554,7 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
         await fixture.RestoreAsync(project, DotnetCommandRunner, timeout.Token);
         var config = guarded ? ForkAdmissionMaterial.Install(fixture.Source, fixture.Fork, [project], timeout.Token) : null;
         using var execution = config is null ? null : await ForkAdmissionExecution.CreateAsync(config, DateTimeOffset.UtcNow.AddMinutes(1), timeout.Token);
-        string[] arguments = ["build", project, "--no-restore", "--nologo", "-nr:false", "-p:UseSharedCompilation=false"];
+        string[] arguments = FixtureChildDiagnostics.Detailed(["build", project, "--no-restore", "--nologo", "-nr:false", "-p:UseSharedCompilation=false"]);
         var result = await DotnetCommandRunner.RunAsync(fixture.Fork, project, execution?.Arguments(arguments) ?? arguments, timeout.Token);
         execution?.Complete();
         TestContext.WriteLine(result.StdOut + result.StdErr);
@@ -634,7 +634,7 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
                 new XElement("WriteLinesToFile", new XAttribute("File", Path.Combine(fixture.Evidence, "membership.txt")),
                     new XAttribute("Lines", "@(_ContentCopyLocalItems->'copy=%(FullPath)|%(TargetPath)|%(CopyToOutputDirectory)');@(_ProcessedContentItems->'processed=%(FullPath)|%(ProcessedItemType)');@(FileWrites->'sdk=%(FullPath)')"), new XAttribute("Overwrite", "true")))).ToString());
         await fixture.RestoreAsync(project, DotnetCommandRunner, timeout.Token);
-        string[] arguments = ["msbuild", project, "-nologo", "-nr:false", "-t:ResolvePackageAssets;RunProduceContentAssets"];
+        string[] arguments = FixtureChildDiagnostics.Detailed(["msbuild", project, "-nologo", "-nr:false", "-t:ResolvePackageAssets;RunProduceContentAssets"]);
         var ordinary = await DotnetCommandRunner.RunAsync(fixture.Fork, project, arguments, timeout.Token);
         Assert.IsTrue(ordinary.Succeeded, ordinary.Describe());
         var product = Directory.GetFiles(destination, "probe.cs", SearchOption.AllDirectories).Single();
@@ -725,7 +725,7 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
         File.WriteAllText(Path.Combine(sourceRoot, "Authored.targets"), "<Project><!-- Café Ω authored import --></Project>");
         var solutionPath = Path.Combine(sourceRoot, "Entry.slnx");
         File.WriteAllText(solutionPath, "<Solution><Project Path=\"Entry.csproj\" /></Solution>");
-        var restored = await DotnetCommandRunner.RunAsync(sourceRoot, project, ["restore", project, "--nologo", "-nr:false"], timeout.Token);
+        var restored = await DotnetCommandRunner.RunAsync(sourceRoot, project, FixtureChildDiagnostics.Detailed(["restore", project, "--nologo", "-nr:false"]), timeout.Token);
         Assert.IsTrue(restored.Succeeded, restored.Describe());
         var source = await WorkspaceManager.LoadAsync(solutionPath, timeout.Token);
         var store = new PreviewStore();
@@ -1292,7 +1292,7 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
             : mode.Equals("PreserveNewest", StringComparison.OrdinalIgnoreCase) ? "_CopyOutOfDateSourceItemsToOutputDirectory"
             : mode.Equals("IfDifferent", StringComparison.OrdinalIgnoreCase) ? "_CopyDifferingSourceItemsToOutputDirectory"
             : "_CopyOutOfDateSourceItemsToOutputDirectoryAlways";
-        string[] args = ["msbuild", project, "-nologo", "-nr:false", "-t:PrepareForBuild;GetCopyToOutputDirectoryItems;" + consumer];
+        string[] args = FixtureChildDiagnostics.Detailed(["msbuild", project, "-nologo", "-nr:false", "-t:PrepareForBuild;GetCopyToOutputDirectoryItems;" + consumer]);
         var result = await DotnetCommandRunner.RunAsync(fixture.Fork, project, execution?.Arguments(args) ?? args, timeout.Token);
         execution?.Complete();
         TestContext.WriteLine(result.StdOut + result.StdErr);
@@ -1408,7 +1408,7 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
         fixture.WriteProject(outerProject, string.Empty);
         ForkAdmissionMaterial.Install(fixture.Source, outer, [outerProject], timeout.Token);
         fixture.WriteProject(project, string.Empty);
-        var restored = await DotnetCommandRunner.RunAsync(inner, project, ["restore", project, "-nr:false", "--nologo"], timeout.Token);
+        var restored = await DotnetCommandRunner.RunAsync(inner, project, FixtureChildDiagnostics.Detailed(["restore", project, "-nr:false", "--nologo"]), timeout.Token);
         Assert.IsTrue(restored.Succeeded, restored.Describe());
         ForkAdmissionMaterial.Install(outer, inner, [project], timeout.Token);
         var loaded = await WorkspaceManager.LoadAsync(project, timeout.Token);
@@ -1455,7 +1455,7 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
         var sourceRoot = Path.Combine(fixture.Source, new string('p', 225 - fixture.Source.Length - 1));
         var project = Path.Combine(sourceRoot, "Entry.csproj");
         fixture.WriteProject(project, string.Empty);
-        var restored = await DotnetCommandRunner.RunAsync(sourceRoot, project, ["restore", "Entry.csproj", "--nologo", "-nr:false"], timeout.Token);
+        var restored = await DotnetCommandRunner.RunAsync(sourceRoot, project, FixtureChildDiagnostics.Detailed(["restore", "Entry.csproj", "--nologo", "-nr:false"]), timeout.Token);
         Assert.IsTrue(restored.Succeeded, restored.Describe());
         var loaded = await WorkspaceManager.LoadAsync(project, timeout.Token);
         var store = new PreviewStore();
@@ -1643,7 +1643,7 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
         fixture.WriteProject(outerProject, string.Empty);
         ForkAdmissionMaterial.Install(fixture.Source, outer, [outerProject], timeout.Token);
         fixture.WriteProject(project, string.Empty);
-        var restored = await DotnetCommandRunner.RunAsync(inner, project, ["restore", "Entry.csproj", "-nr:false", "--nologo"], timeout.Token);
+        var restored = await DotnetCommandRunner.RunAsync(inner, project, FixtureChildDiagnostics.Detailed(["restore", "Entry.csproj", "-nr:false", "--nologo"]), timeout.Token);
         Assert.IsTrue(restored.Succeeded, restored.Describe());
         ForkAdmissionMaterial.Install(outer, inner, [project], timeout.Token);
         var loaded = await WorkspaceManager.LoadAsync(project, timeout.Token);
@@ -1722,7 +1722,7 @@ public sealed class ForkNativeAdmissionTests : IsolatedWorkspaceTestBase
 
         internal async Task RestoreAsync(string path, IDotnetCommandRunner runner, CancellationToken ct)
         {
-            var restore = await runner.RunAsync(Fork, path, ["restore", path, "--nologo", "-nr:false"], ct);
+            var restore = await runner.RunAsync(Fork, path, FixtureChildDiagnostics.Detailed(["restore", path, "--nologo", "-nr:false"]), ct);
             Assert.IsTrue(restore.Succeeded, restore.Describe());
         }
 
