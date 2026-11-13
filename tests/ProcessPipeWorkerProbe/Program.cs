@@ -154,12 +154,16 @@ finally
     }
 }
 
+static bool HasContent(string path) => File.Exists(path) && new FileInfo(path).Length > 0;
+
 static void WaitForFile(string path)
 {
     var clock = Stopwatch.StartNew();
-    while (!File.Exists(path) && clock.Elapsed < TimeSpan.FromSeconds(10))
+    // File.WriteAllText creates the file before it writes the content: wait for the PID itself,
+    // not just the file, or the caller parses an empty string.
+    while (!HasContent(path) && clock.Elapsed < TimeSpan.FromSeconds(10))
         Thread.Sleep(10);
-    if (!File.Exists(path))
+    if (!HasContent(path))
         throw new InvalidOperationException("The owned child did not publish its PID.");
 }
 
