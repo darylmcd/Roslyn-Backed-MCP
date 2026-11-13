@@ -402,6 +402,118 @@ public sealed class UndoServiceTests : IsolatedWorkspaceTestBase
             "The newer operation's history entry must survive the race.");
     }
 
+    [TestMethod]
+    public async Task RevertAsync_ConcurrentSequenceRevert_OnlyOneRestores()
+    {
+        // undo-revert-async-peek-then-consume: RevertAsync peeked the pending slot and consumed it
+        // only after the restore, so a by-sequence revert of the SAME operation could claim and
+        // restore it inside that window. The LIFO claim must take the slot (and its history entry)
+        // atomically so the by-sequence caller is refused.
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+        var originalBytes = await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None);
+        using var undo = new UndoService(NullLogger<UndoService>.Instance, WorkspaceManager);
+        var capture = undo.CaptureBeforeApply(
+            workspaceId, "lifo-vs-sequence", preApplySolution: null,
+            fileSnapshots: [FileSnapshotDto.FromExistingBytes(dogFilePath, originalBytes)]);
+        undo.CommitPendingCapture(workspaceId, sequenceNumber: 1, affectedFiles: [dogFilePath], capture);
+        await File.WriteAllTextAsync(dogFilePath, "// post-apply\n", CancellationToken.None);
+
+        RevertBySequenceResult? concurrent = null;
+        var seamRuns = 0;
+        undo.AfterLifoClaim = async () =>
+        {
+            seamRuns++;
+            concurrent = await undo.RevertBySequenceAsync(workspaceId, 1, CancellationToken.None);
+        };
+
+        Assert.IsTrue(await undo.RevertAsync(workspaceId, CancellationToken.None));
+
+        Assert.AreEqual(1, seamRuns);
+        Assert.IsNotNull(concurrent);
+        Assert.IsFalse(concurrent.Reverted, "A by-sequence revert must not restore an operation the LIFO revert already claimed.");
+        Assert.AreEqual("unknown-sequence", concurrent.Reason);
+        CollectionAssert.AreEqual(originalBytes, await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None));
+        Assert.IsNull(undo.GetLastOperation(workspaceId));
+        Assert.IsFalse((await undo.RevertBySequenceAsync(workspaceId, 1, CancellationToken.None)).Reverted);
+    }
+
+    [TestMethod]
+    public async Task RevertAsync_RestoreFails_ClaimUndone_StillRetryableByBothPaths()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+        var originalBytes = await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None);
+        using var undo = new UndoService(NullLogger<UndoService>.Instance, WorkspaceManager);
+        var capture = undo.CaptureBeforeApply(
+            workspaceId, "lifo-fail", preApplySolution: null,
+            fileSnapshots: [FileSnapshotDto.FromExistingBytes(dogFilePath, originalBytes)]);
+        undo.CommitPendingCapture(workspaceId, sequenceNumber: 1, affectedFiles: [dogFilePath], capture);
+        File.Delete(dogFilePath);
+        Directory.CreateDirectory(dogFilePath);
+
+        try
+        {
+            Assert.IsFalse(await undo.RevertAsync(workspaceId, CancellationToken.None));
+            Assert.AreEqual("lifo-fail", undo.GetLastOperation(workspaceId)?.Description,
+                "A failed restore must leave the pending slot in place.");
+        }
+        finally
+        {
+            Directory.Delete(dogFilePath);
+        }
+
+        await File.WriteAllTextAsync(dogFilePath, "// post-apply\n", CancellationToken.None);
+        Assert.IsTrue((await undo.RevertBySequenceAsync(workspaceId, 1, CancellationToken.None)).Reverted,
+            "The history entry must survive a failed LIFO restore.");
+        CollectionAssert.AreEqual(originalBytes, await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None));
+    }
+
+    [TestMethod]
+    public async Task RevertBySequence_NonPendingTarget_FailedRestore_DoesNotBecomePendingSlot()
+    {
+        // Sequence 1 is committed, sequence 2 (pending) is LIFO-reverted, leaving the slot empty.
+        // A failed by-sequence revert of 1 must reinsert its history entry but must NOT install it
+        // as the pending slot: it was never the pending operation.
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+        var catFilePath = workspace.GetPath("SampleLib", "Cat.cs");
+        var dogBytes = await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None);
+        using var undo = new UndoService(NullLogger<UndoService>.Instance, WorkspaceManager);
+        var first = undo.CaptureBeforeApply(
+            workspaceId, "first", preApplySolution: null,
+            fileSnapshots: [FileSnapshotDto.FromExistingBytes(dogFilePath, dogBytes)]);
+        undo.CommitPendingCapture(workspaceId, 1, [dogFilePath], first);
+        var second = undo.CaptureBeforeApply(
+            workspaceId, "second", preApplySolution: null,
+            fileSnapshots: [FileSnapshotDto.FromExistingBytes(catFilePath, await File.ReadAllBytesAsync(catFilePath, CancellationToken.None))]);
+        undo.CommitPendingCapture(workspaceId, 2, [catFilePath], second);
+        Assert.IsTrue(await undo.RevertAsync(workspaceId, CancellationToken.None));
+        Assert.IsNull(undo.GetLastOperation(workspaceId));
+
+        File.Delete(dogFilePath);
+        Directory.CreateDirectory(dogFilePath);
+        try
+        {
+            var failed = await undo.RevertBySequenceAsync(workspaceId, 1, CancellationToken.None);
+            Assert.AreEqual("revert-failed", failed.Reason);
+            Assert.IsNull(undo.GetLastOperation(workspaceId),
+                "A non-pending target must not be re-added as the pending LIFO slot after a failed restore.");
+            Assert.IsFalse(await undo.RevertAsync(workspaceId, CancellationToken.None));
+        }
+        finally
+        {
+            Directory.Delete(dogFilePath);
+        }
+
+        await File.WriteAllTextAsync(dogFilePath, "// post-apply\n", CancellationToken.None);
+        Assert.IsTrue((await undo.RevertBySequenceAsync(workspaceId, 1, CancellationToken.None)).Reverted,
+            "The history entry itself must stay retryable by sequence.");
+    }
+
     // undo-audit-commit-reuses-completed-capture: an audit record that owns no capture must never
     // promote whatever snapshot the per-workspace slot still holds (an earlier completed operation's,
     // or a failed/cancelled apply's uncommitted one).
@@ -1021,6 +1133,218 @@ public sealed class UndoServiceTests : IsolatedWorkspaceTestBase
         Assert.AreEqual(
             (await preApplyDoc.GetTextAsync(CancellationToken.None)).ToString(),
             (await restored.GetTextAsync(CancellationToken.None)).ToString());
+    }
+
+    /// <summary>
+    /// undo-solution-snapshot-restore-incomplete: the solution-snapshot restore only rewrites document
+    /// text, so an apply that also added a document must fail closed (snapshot retained, nothing
+    /// partially restored) instead of "succeeding" with the added file left behind.
+    /// </summary>
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task Revert_SolutionSnapshot_AddedDocument_FailsClosed(bool bySequence)
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+        var extraFilePath = Path.Combine(Path.GetDirectoryName(dogFilePath)!, "Extra.cs");
+        var preApply = WorkspaceManager.GetCurrentSolution(workspaceId);
+        await MaterializeDocumentTextAsync(preApply, dogFilePath);
+        var dogId = preApply.GetDocumentIdsWithFilePath(dogFilePath).Single();
+        var applied = preApply
+            .WithDocumentText(dogId, Microsoft.CodeAnalysis.Text.SourceText.From("// applied\n"))
+            .GetDocument(dogId)!.Project
+            .AddDocument("Extra.cs", "class Extra { }\n", filePath: extraFilePath).Project.Solution;
+        Assert.IsTrue(WorkspaceManager.TryApplyChanges(workspaceId, applied), "Precondition: the synthetic apply lands.");
+        var dogBytesAfterApply = await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None);
+
+        using var undo = new UndoService(NullLogger<UndoService>.Instance, WorkspaceManager);
+        var capture = undo.CaptureBeforeApply(workspaceId, "add document", preApply, fileSnapshots: null);
+        if (bySequence)
+            undo.CommitPendingCapture(workspaceId, 1, [dogFilePath, extraFilePath], capture);
+
+        if (bySequence)
+        {
+            var result = await undo.RevertBySequenceAsync(workspaceId, 1, CancellationToken.None);
+            Assert.IsFalse(result.Reverted);
+            Assert.AreEqual("revert-failed", result.Reason);
+        }
+        else
+        {
+            Assert.IsFalse(await undo.RevertAsync(workspaceId, CancellationToken.None));
+        }
+
+        Assert.IsNotNull(undo.GetLastOperation(workspaceId), "A refused revert must retain the snapshot.");
+        CollectionAssert.AreEqual(dogBytesAfterApply, await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None),
+            "A refused revert must not partially restore text.");
+        Assert.IsTrue(File.Exists(extraFilePath));
+    }
+
+    [TestMethod]
+    public async Task Revert_SolutionSnapshot_ParseOptionsDiffer_FailsClosed()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+        var preApply = WorkspaceManager.GetCurrentSolution(workspaceId);
+        await MaterializeDocumentTextAsync(preApply, dogFilePath);
+        var dogId = preApply.GetDocumentIdsWithFilePath(dogFilePath).Single();
+        var project = preApply.GetDocument(dogId)!.Project;
+        var applied = preApply
+            .WithProjectParseOptions(project.Id, project.ParseOptions!.WithFeatures([new KeyValuePair<string, string>("undo-test", "1")]))
+            .WithDocumentText(dogId, Microsoft.CodeAnalysis.Text.SourceText.From("// applied\n"));
+        var manager = new CapturingWorkspaceManager(WorkspaceManager, applied);
+        using var undo = new UndoService(NullLogger<UndoService>.Instance, manager);
+        undo.CaptureBeforeApply(workspaceId, "options change", preApply, fileSnapshots: null);
+        var diskBefore = await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None);
+
+        Assert.IsFalse(await undo.RevertAsync(workspaceId, CancellationToken.None));
+
+        Assert.IsNull(manager.AppliedSolution, "A refused revert must not touch the workspace.");
+        Assert.IsNotNull(undo.GetLastOperation(workspaceId));
+        CollectionAssert.AreEqual(diskBefore, await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None));
+    }
+
+    /// <summary>
+    /// The only production solution-only producer (an option/reference change with no document change)
+    /// commits with EMPTY affected files. Nothing can be attributed by file, so the whole diff is its own
+    /// and the revert must fail closed instead of "succeeding" with the option change still applied.
+    /// </summary>
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task Revert_CommittedSolutionOnlySnapshot_EmptyAffectedFiles_ParseOptionsChange_FailsClosed(bool bySequence)
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var preApply = WorkspaceManager.GetCurrentSolution(workspaceId);
+        var project = preApply.Projects.First();
+        var applied = preApply.WithProjectParseOptions(
+            project.Id, project.ParseOptions!.WithFeatures([new KeyValuePair<string, string>("undo-test", "1")]));
+        var manager = new CapturingWorkspaceManager(WorkspaceManager, applied);
+        using var undo = new UndoService(NullLogger<UndoService>.Instance, manager);
+        var capture = undo.CaptureBeforeApply(workspaceId, "options only", preApply, fileSnapshots: null);
+        undo.CommitPendingCapture(workspaceId, 1, [], capture);
+
+        if (bySequence)
+        {
+            var result = await undo.RevertBySequenceAsync(workspaceId, 1, CancellationToken.None);
+            Assert.IsFalse(result.Reverted);
+            Assert.AreEqual("revert-failed", result.Reason);
+        }
+        else
+        {
+            Assert.IsFalse(await undo.RevertAsync(workspaceId, CancellationToken.None));
+        }
+
+        Assert.IsNull(manager.AppliedSolution, "A refused revert must not touch the workspace.");
+        Assert.IsNotNull(undo.GetLastOperation(workspaceId));
+    }
+
+    [TestMethod]
+    public async Task Revert_SolutionSnapshot_GenuinelyAddedProject_FailsClosed()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var preApply = WorkspaceManager.GetCurrentSolution(workspaceId);
+        var applied = preApply.AddProject("Extra", "Extra", LanguageNames.CSharp).Solution;
+        var manager = new CapturingWorkspaceManager(WorkspaceManager, applied);
+        using var undo = new UndoService(NullLogger<UndoService>.Instance, manager);
+        undo.CaptureBeforeApply(workspaceId, "add project", preApply, fileSnapshots: null);
+
+        Assert.IsFalse(await undo.RevertAsync(workspaceId, CancellationToken.None));
+        Assert.IsNull(manager.AppliedSolution);
+        Assert.IsNotNull(undo.GetLastOperation(workspaceId));
+    }
+
+    /// <summary>
+    /// A reload builds a NEW workspace, so a pre-reload snapshot shares no ProjectIds or DocumentIds
+    /// with the current solution. Identical projects matched by path must not read as removed+added
+    /// (which would refuse every post-reload revert); the disk walk still restores the drifted file.
+    /// </summary>
+    [TestMethod]
+    public async Task Revert_SolutionSnapshot_AfterReload_IdenticalProjectsWithNewIds_DoesNotRefuse()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+        var originalBytes = await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None);
+        var preApply = WorkspaceManager.GetCurrentSolution(workspaceId);
+        await MaterializeDocumentTextAsync(preApply, dogFilePath);
+        await File.WriteAllTextAsync(dogFilePath, "// drifted\n", CancellationToken.None);
+        await workspace.ReloadAsync(CancellationToken.None);
+        var reloaded = WorkspaceManager.GetCurrentSolution(workspaceId);
+        Assert.AreNotEqual(preApply.Projects.First().Id, reloaded.Projects.First(p => p.Name == preApply.Projects.First().Name).Id,
+            "Fixture precondition: a reload must mint new ProjectIds.");
+
+        using var undo = new UndoService(NullLogger<UndoService>.Instance, WorkspaceManager);
+        undo.CaptureBeforeApply(workspaceId, "post-reload", preApply, fileSnapshots: null);
+
+        Assert.IsTrue(await undo.RevertAsync(workspaceId, CancellationToken.None),
+            "Identical projects under new ProjectIds are not an added/removed project.");
+        CollectionAssert.AreEqual(originalBytes, await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None));
+    }
+
+    [TestMethod]
+    public async Task RevertAsync_UnknownWorkspace_DoesNotAllocateHistory()
+    {
+        using var undo = new UndoService(NullLogger<UndoService>.Instance, WorkspaceManager);
+        Assert.IsFalse(await undo.RevertAsync("no-such-workspace", CancellationToken.None));
+        Assert.AreEqual(0, undo.TrackedHistoryWorkspaceCount, "A revert for an unknown workspace must not allocate a history list.");
+    }
+
+    [TestMethod]
+    public async Task Revert_SolutionSnapshot_DuplicateProjectIdentity_FailsClosedWithoutThrowing()
+    {
+        // Two in-memory projects with the same name and no project file share one identity key; the
+        // refusal check must refuse deterministically rather than throw on the duplicate.
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var preApply = WorkspaceManager.GetCurrentSolution(workspaceId)
+            .AddProject("Dup", "Dup", LanguageNames.CSharp).Solution
+            .AddProject("Dup", "Dup", LanguageNames.CSharp).Solution;
+        var manager = new CapturingWorkspaceManager(WorkspaceManager, preApply);
+        using var undo = new UndoService(NullLogger<UndoService>.Instance, manager);
+        undo.CaptureBeforeApply(workspaceId, "duplicate identity", preApply, fileSnapshots: null);
+
+        Assert.IsFalse(await undo.RevertAsync(workspaceId, CancellationToken.None));
+        Assert.IsNull(manager.AppliedSolution);
+        Assert.IsNotNull(undo.GetLastOperation(workspaceId));
+    }
+
+    [TestMethod]
+    public async Task RevertBySequence_SolutionSnapshot_FileDisjointSiblingAddedDocument_StillReverts()
+    {
+        // The whole-solution diff also contains a LATER, file-disjoint sibling apply's added document;
+        // the refusal is scoped to this snapshot's affected files, so the earlier revert still lands.
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+        var catFilePath = workspace.GetPath("SampleLib", "Cat.cs");
+        var extraFilePath = Path.Combine(Path.GetDirectoryName(dogFilePath)!, "Extra.cs");
+        var originalBytes = await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None);
+        var preApply = WorkspaceManager.GetCurrentSolution(workspaceId);
+        await MaterializeDocumentTextAsync(preApply, dogFilePath);
+        var dogId = preApply.GetDocumentIdsWithFilePath(dogFilePath).Single();
+        var withSibling = preApply
+            .WithDocumentText(dogId, Microsoft.CodeAnalysis.Text.SourceText.From("// applied\n"))
+            .GetDocument(dogId)!.Project
+            .AddDocument("Extra.cs", "class Extra { }\n", filePath: extraFilePath).Project.Solution;
+        var manager = new CapturingWorkspaceManager(WorkspaceManager, withSibling);
+        using var undo = new UndoService(NullLogger<UndoService>.Instance, manager);
+        var first = undo.CaptureBeforeApply(workspaceId, "edit dog", preApply, fileSnapshots: null);
+        undo.CommitPendingCapture(workspaceId, 1, [dogFilePath], first);
+        var second = undo.CaptureBeforeApply(
+            workspaceId, "add extra", preApplySolution: null,
+            fileSnapshots: [FileSnapshotDto.FromExistingBytes(catFilePath, await File.ReadAllBytesAsync(catFilePath, CancellationToken.None))]);
+        undo.CommitPendingCapture(workspaceId, 2, [extraFilePath], second);
+        await File.WriteAllTextAsync(dogFilePath, "// applied\n", CancellationToken.None);
+
+        var result = await undo.RevertBySequenceAsync(workspaceId, 1, CancellationToken.None);
+
+        Assert.IsTrue(result.Reverted, $"A file-disjoint sibling apply must not block the earlier revert; got reason={result.Reason}.");
+        CollectionAssert.AreEqual(originalBytes, await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None));
     }
 
     private sealed class CapturingWorkspaceManager(IWorkspaceManager inner, Solution current)

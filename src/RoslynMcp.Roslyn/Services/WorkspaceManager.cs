@@ -1145,6 +1145,11 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
     public void RestoreVersion(string workspaceId, int version)
     {
         GetRequiredSession(workspaceId).SetVersion(version);
+
+        // Version-keyed caches (compilations, test discovery, DI scan, ...) may hold entries written at
+        // a version this call just lowered past; a later, different apply reuses that number and would
+        // hit them. Evict through the same event a reload raises (subscribers only evict).
+        RaiseWorkspaceReloaded(workspaceId);
     }
 
     public Solution GetCurrentSolution(string workspaceId)

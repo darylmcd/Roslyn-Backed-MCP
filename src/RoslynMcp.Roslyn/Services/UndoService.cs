@@ -28,8 +28,10 @@ namespace RoslynMcp.Roslyn.Services;
 /// <see cref="CaptureBeforeApply"/> (required, never defaulted), and <see cref="RevertAsync"/> restores those files
 /// directly from disk — no <c>GetChanges</c> dependency. <c>RefactoringService</c>
 /// captures physical source and project before-images for document or reference changes.
-/// Callers without file snapshots use a snapshot-wide document walk so
-/// empty-<c>GetChanges</c> no longer silently wins.
+/// Callers without file snapshots use a text-only solution-snapshot restore: it rewrites changed
+/// document text (with a disk walk of the pre-apply documents when <c>GetChanges</c> is empty, so
+/// an empty diff no longer silently wins) and FAILS CLOSED, retaining the snapshot, when the apply
+/// also added/removed documents or projects or changed references or options, which it cannot undo.
 /// </summary>
 public sealed class UndoService : IUndoService, IDisposable
 {
@@ -47,6 +49,12 @@ public sealed class UndoService : IUndoService, IDisposable
 
     /// <summary>Test seam: runs inside <see cref="CommitPendingCapture"/> after it read the matching pending slot and before it swaps the promoted snapshot in, i.e. the window a newer <see cref="CaptureBeforeApply"/> (which takes no lock) can land in.</summary>
     internal Action? BeforeCommitSwap { get; set; }
+
+    /// <summary>Test seam: runs in <see cref="RevertAsync"/> after the pending slot is claimed and before the restore starts, i.e. the window a concurrent by-sequence revert of the same operation can land in.</summary>
+    internal Func<Task>? AfterLifoClaim { get; set; }
+
+    /// <summary>Test seam: number of workspaces that own a history list. Production code must not read it.</summary>
+    internal int TrackedHistoryWorkspaceCount => _history.Count;
 
     public UndoService(
         ILogger<UndoService> logger,
@@ -111,49 +119,36 @@ public sealed class UndoService : IUndoService, IDisposable
 
     public async Task<bool> RevertAsync(string workspaceId, CancellationToken cancellationToken = default)
     {
-        // Peek — do NOT consume the snapshot until the restore confirms success. A failed
-        // (disk I/O) or cancelled restore must leave the snapshot and its history entry in
-        // place so the SAME call is retryable once the obstruction clears; consuming up front
-        // permanently destroys the retry target that the compensating callers depend on
-        // (ApplyWithVerifyTool's rollback and cancellation-recovery legs).
-        if (!_snapshots.TryGetValue(workspaceId, out var snapshot))
+        // Claim the pending slot (and its history entry) atomically under the per-workspace lock,
+        // exactly as RevertBySequenceAsync claims its target, so a concurrent by-sequence revert of
+        // the same operation is refused instead of restoring it a second time. A failed (disk I/O)
+        // or cancelled restore UNDOES the claim so the SAME call stays retryable once the
+        // obstruction clears (ApplyWithVerifyTool's rollback and cancellation-recovery legs).
+        if (!TryClaimPending(workspaceId, out var claim))
             return false;
 
-        // Fast path: the caller provided an explicit file-snapshot list. Restore those
-        // files directly — authoritative, independent of the workspace solution state.
-        // Legacy (else) path: solution-based restore with a snapshot-wide walk so
-        // empty-GetChanges no longer silently wins. A thrown OperationCanceledException
-        // propagates out of here without reaching the consume block below, so cancellation
-        // also leaves _snapshots/_history untouched (retryable) by construction.
-        var reverted = await RevertSnapshotAsync(workspaceId, snapshot, cancellationToken).ConfigureAwait(false);
+        bool reverted;
+        try
+        {
+            if (AfterLifoClaim is not null)
+                await AfterLifoClaim().ConfigureAwait(false);
+
+            // Fast path: the caller provided an explicit file-snapshot list. Restore those
+            // files directly — authoritative, independent of the workspace solution state.
+            // Legacy (else) path: solution-based restore with a snapshot-wide walk so
+            // empty-GetChanges no longer silently wins.
+            reverted = await RevertSnapshotAsync(workspaceId, claim.Target, cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            UnclaimRevert(workspaceId, claim);
+            throw;
+        }
 
         if (!reverted)
-            return false;
-
-        // Restore succeeded — consume the snapshot exactly once. Use the atomic
-        // compare-and-remove overload so a newer CaptureBeforeApply that landed while the
-        // restore was in flight is not clobbered (only the exact snapshot we restored is removed).
-        _snapshots.TryRemove(new KeyValuePair<string, UndoSnapshot>(workspaceId, snapshot));
-
-        // Also drop the matching history entry so the LIFO and by-sequence pathways agree
-        // on what's been reverted. The pending snapshot is identified by sequence number
-        // (assigned when ChangeTracker recorded the apply); look up the history entry by
-        // that key. When CommitPendingCapture has not yet run (apply succeeded but
-        // ChangeRecorded handler has not fired), the history list is empty for this id —
-        // skip silently.
-        if (snapshot.SequenceNumber > 0 && _history.TryGetValue(workspaceId, out var historyList))
         {
-            lock (historyList)
-            {
-                for (var i = historyList.Count - 1; i >= 0; i--)
-                {
-                    if (historyList[i].SequenceNumber == snapshot.SequenceNumber)
-                    {
-                        historyList.RemoveAt(i);
-                        break;
-                    }
-                }
-            }
+            UnclaimRevert(workspaceId, claim);
+            return false;
         }
 
         return true;
@@ -184,6 +179,7 @@ public sealed class UndoService : IUndoService, IDisposable
         BeforeSequenceClaim?.Invoke();
         UndoSnapshot target;
         int claimedIndex;
+        bool wasPending;
         lock (historyList)
         {
             claimedIndex = historyList.FindIndex(s => s.SequenceNumber == sequenceNumber);
@@ -231,28 +227,24 @@ public sealed class UndoService : IUndoService, IDisposable
                     BlockingSequences: blocking);
             }
 
-            historyList.RemoveAt(claimedIndex);
+            // Claim the history entry and, when the target is also the pending LIFO snapshot, the slot
+            // too (compare-and-remove: a newer capture that raced in is not clobbered) — all under
+            // this lock, so RevertAsync's claim cannot interleave.
+            wasPending = ClaimUnderLock(workspaceId, historyList, claimedIndex, target);
         }
 
-        // Only the winning claimant reaches here. If this is also the pending LIFO snapshot, drop it
-        // from _snapshots too — keeps GetLastOperation / RevertAsync consistent. Use the
-        // compare-and-remove overload so a newer capture that raced in is not clobbered.
-        if (_snapshots.TryGetValue(workspaceId, out var pending) && pending.SequenceNumber == sequenceNumber)
-        {
-            _snapshots.TryRemove(new KeyValuePair<string, UndoSnapshot>(workspaceId, pending));
-        }
-
+        var claim = new RevertClaim(target, historyList, claimedIndex, wasPending);
         bool reverted;
         try
         {
             reverted = await RevertSnapshotAsync(workspaceId, target, cancellationToken).ConfigureAwait(false);
         }
-        catch (OperationCanceledException)
+        catch
         {
-            // A cancelled restore must not destroy the retry target: undo the claim so the same
-            // sequence stays retryable with its ordering preserved, then rethrow so cancellation
+            // A cancelled or faulted restore must not destroy the retry target: undo the claim so the
+            // same sequence stays retryable with its ordering preserved, then rethrow so the failure
             // still surfaces to the caller.
-            RestoreSequenceClaim(workspaceId, historyList, claimedIndex, target);
+            UnclaimRevert(workspaceId, claim);
             throw;
         }
 
@@ -261,7 +253,7 @@ public sealed class UndoService : IUndoService, IDisposable
             // Restore failed (disk I/O). Undo the claim so the target sequence remains retryable
             // and keeps its ordinal position in the dependency-ordered history for future overlap
             // checks, then surface the failure.
-            RestoreSequenceClaim(workspaceId, historyList, claimedIndex, target);
+            UnclaimRevert(workspaceId, claim);
             return new RevertBySequenceResult(
                 Reverted: false,
                 RevertedOperation: target.Description,
@@ -278,28 +270,99 @@ public sealed class UndoService : IUndoService, IDisposable
             BlockingSequences: null);
     }
 
+    /// <summary>A won claim on one undo snapshot: the history position it left (-1: none) and whether it was also the pending LIFO slot.</summary>
+    private sealed record RevertClaim(UndoSnapshot Target, List<UndoSnapshot>? HistoryList, int HistoryIndex, bool WasPending);
+
     /// <summary>
-    /// Undoes a claimed-but-failed (or cancelled) sequence revert: reinserts the target history
-    /// entry at (or as close as bounds allow to) its original ordinal position so the
-    /// dependency-ordered overlap check stays correct, and best-effort restores it as the pending
-    /// LIFO snapshot (<see cref="ConcurrentDictionary{TKey,TValue}.TryAdd"/> won't overwrite a
-    /// newer capture that raced in during the restore). Callers pass only a claim they won.
+    /// Claims the pending LIFO snapshot for <see cref="RevertAsync"/> under the per-workspace lock
+    /// (the one <see cref="RevertBySequenceAsync"/> and <see cref="CommitPendingCapture"/> use). A
+    /// committed slot (sequence &gt; 0) also gives up its history entry; a sequence-0 slot has none,
+    /// so its claim is the compare-and-remove alone.
     /// </summary>
-    private void RestoreSequenceClaim(
-        string workspaceId,
-        List<UndoSnapshot> historyList,
-        int claimedIndex,
-        UndoSnapshot target)
+    private bool TryClaimPending(string workspaceId, out RevertClaim claim)
     {
-        lock (historyList)
+        claim = null!;
+        if (!_history.TryGetValue(workspaceId, out var historyList))
         {
-            // Re-derive the insert position with a bounds check — concurrent CommitPendingCapture
-            // calls may have grown the list while the restore was in flight.
-            var insertIndex = Math.Min(claimedIndex, historyList.Count);
-            historyList.Insert(insertIndex, target);
+            // No history list exists (unknown/closed workspace, or nothing committed yet): only an
+            // uncommitted sequence-0 slot can be pending, it has no history entry to give up, and every
+            // other writer to the slot (capture, commit) is a compare-and-swap on the dictionary itself,
+            // so the compare-and-remove alone is the claim. Never allocate a list for an unknown id.
+            if (!_snapshots.TryGetValue(workspaceId, out var uncommitted) || uncommitted.SequenceNumber != 0)
+                return false;
+
+            if (!_snapshots.TryRemove(new KeyValuePair<string, UndoSnapshot>(workspaceId, uncommitted)))
+                return false;
+
+            claim = new RevertClaim(uncommitted, HistoryList: null, HistoryIndex: -1, WasPending: true);
+            return true;
         }
 
-        _snapshots.TryAdd(workspaceId, target);
+        lock (historyList)
+        {
+            if (!_snapshots.TryGetValue(workspaceId, out var pending))
+                return false;
+
+            var index = -1;
+            if (pending.SequenceNumber > 0)
+            {
+                index = historyList.FindIndex(s => s.SequenceNumber == pending.SequenceNumber);
+                if (index < 0)
+                    return false; // A by-sequence revert already claimed it.
+            }
+
+            // CaptureBeforeApply writes the slot without this lock: a lost compare-and-remove means a
+            // newer capture replaced the slot, which must survive untouched.
+            if (!_snapshots.TryRemove(new KeyValuePair<string, UndoSnapshot>(workspaceId, pending)))
+                return false;
+
+            if (index >= 0)
+                historyList.RemoveAt(index);
+
+            claim = new RevertClaim(pending, historyList, index, WasPending: true);
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// Caller holds the <paramref name="historyList"/> lock. Drops the by-sequence target's history
+    /// entry and compare-removes it from the pending slot. Returns whether the target was the pending
+    /// slot, so <see cref="UnclaimRevert"/> restores exactly what was taken.
+    /// </summary>
+    private bool ClaimUnderLock(string workspaceId, List<UndoSnapshot> historyList, int historyIndex, UndoSnapshot target)
+    {
+        historyList.RemoveAt(historyIndex);
+        return _snapshots.TryRemove(new KeyValuePair<string, UndoSnapshot>(workspaceId, target));
+    }
+
+    /// <summary>
+    /// Undoes a claimed-but-failed (or cancelled) revert: reinserts the history entry at (or as close
+    /// as bounds allow to) its original ordinal position so the dependency-ordered overlap check stays
+    /// correct, and re-installs the target as the pending LIFO snapshot ONLY when it was the pending
+    /// slot when claimed (<see cref="ConcurrentDictionary{TKey,TValue}.TryAdd"/> won't overwrite a
+    /// newer capture that raced in during the restore). Callers pass only a claim they won.
+    /// </summary>
+    private void UnclaimRevert(string workspaceId, RevertClaim claim)
+    {
+        if (claim.HistoryList is not { } historyList)
+        {
+            if (claim.WasPending)
+                _snapshots.TryAdd(workspaceId, claim.Target);
+            return;
+        }
+
+        lock (historyList)
+        {
+            if (claim.HistoryIndex >= 0)
+            {
+                // Re-derive the insert position with a bounds check — concurrent CommitPendingCapture
+                // calls may have grown the list while the restore was in flight.
+                historyList.Insert(Math.Min(claim.HistoryIndex, historyList.Count), claim.Target);
+            }
+
+            if (claim.WasPending)
+                _snapshots.TryAdd(workspaceId, claim.Target);
+        }
     }
 
     public void CommitPendingCapture(
@@ -479,6 +542,22 @@ public sealed class UndoService : IUndoService, IDisposable
         }
 
         var currentSolution = workspace.GetCurrentSolution(workspaceId);
+
+        // The restore below rewrites document text only. Fail closed (snapshot retained by the
+        // caller) rather than report success while added/removed documents or projects, reference
+        // changes or option changes stay applied.
+        var unrestorable = FindUnrestorableChange(snapshot, snapshot.PreApplySolution, currentSolution);
+        if (unrestorable is not null)
+        {
+            _logger.LogWarning(
+                "UndoService.RevertAsync: refusing the solution-snapshot revert for '{WorkspaceId}' (description: '{Description}'): {Change}. " +
+                "Only document text can be restored from a solution snapshot; the snapshot is retained.",
+                workspaceId,
+                snapshot.Description,
+                unrestorable);
+            return false;
+        }
+
         // composite-apply-undo-encoding-still-lossy: the queued restores carry the pre-apply
         // `SourceText.Encoding` alongside the text so `PersistRevertChangesAsync` can rewrite each
         // file with its original BOM/encoding instead of collapsing everything to UTF-8-no-BOM.
@@ -513,6 +592,119 @@ public sealed class UndoService : IUndoService, IDisposable
         return await PersistRevertChangesAsync(
             workspaceId, workspace, snapshot, targetSolution, diskRestores, cancellationToken).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// Returns a description of the first change between <paramref name="preApplySolution"/> and
+    /// <paramref name="currentSolution"/> that a text-only solution-snapshot restore cannot undo (added
+    /// or removed documents including additional/analyzer-config ones, added or removed projects,
+    /// project/metadata/analyzer reference changes, parse/compilation option changes), or null.
+    /// Projects are matched by project file path plus name, never by ProjectId: a reload builds a new
+    /// workspace whose ids share nothing with a pre-reload snapshot, and identical projects must not
+    /// read as removed+added. Documents are matched by path for the same reason.
+    /// A snapshot with recorded <see cref="UndoSnapshot.AffectedFiles"/> only answers for changes that
+    /// involve them (a document by its path; project-level changes by the project file), so a later
+    /// file-disjoint sibling apply never blocks an earlier revert. A snapshot with NO file scope (an
+    /// uncommitted one, or a committed solution-only one such as an option/reference change, which
+    /// records no files) cannot attribute anything by file, so the whole diff is its own.
+    /// </summary>
+    private static string? FindUnrestorableChange(UndoSnapshot snapshot, Solution preApplySolution, Solution currentSolution)
+    {
+        var scope = snapshot.SequenceNumber == 0 || snapshot.AffectedFiles.Count == 0
+            ? null
+            : new HashSet<string>(snapshot.AffectedFiles, FileSystemPath.Comparer);
+        bool InScope(string? path) => scope is null || (path is not null && scope.Contains(path));
+
+        // Projects sharing one identity key (e.g. in-memory projects with the same name and no file) cannot
+        // be matched across the two solutions: refuse instead of guessing.
+        foreach (var solution in new[] { preApplySolution, currentSolution })
+        {
+            var duplicate = solution.Projects.GroupBy(ProjectKey).FirstOrDefault(g => g.Count() > 1);
+            if (duplicate is not null)
+                return $"project '{duplicate.First().Name}' has an ambiguous identity (duplicate name and path)";
+        }
+
+        var before = preApplySolution.Projects.ToDictionary(ProjectKey);
+        var after = currentSolution.Projects.ToDictionary(ProjectKey);
+
+        foreach (var (key, project) in before)
+        {
+            if (!after.ContainsKey(key) && (scope is null || InScope(project.FilePath) || project.Documents.Any(d => InScope(d.FilePath))))
+                return $"project '{project.Name}' was removed";
+        }
+
+        foreach (var (key, project) in after)
+        {
+            if (!before.ContainsKey(key) && (scope is null || InScope(project.FilePath) || project.Documents.Any(d => InScope(d.FilePath))))
+                return $"project '{project.Name}' was added";
+        }
+
+        foreach (var (key, oldProject) in before)
+        {
+            if (!after.TryGetValue(key, out var newProject))
+                continue;
+
+            var name = newProject.Name;
+            if (!DocumentPaths(oldProject).SetEquals(DocumentPaths(newProject)))
+            {
+                var added = DocumentPaths(newProject).Except(DocumentPaths(oldProject), FileSystemPath.Comparer);
+                var removed = DocumentPaths(oldProject).Except(DocumentPaths(newProject), FileSystemPath.Comparer);
+                if (added.Any(InScope))
+                    return $"a document was added to project '{name}'";
+                if (removed.Any(InScope))
+                    return $"a document was removed from project '{name}'";
+            }
+
+            if (!InScope(newProject.FilePath) && !InScope(oldProject.FilePath))
+                continue;
+
+            if (!ReferenceKeys(oldProject, before).SetEquals(ReferenceKeys(newProject, after)))
+                return $"references changed in '{name}'";
+            if (!Equals(oldProject.ParseOptions, newProject.ParseOptions))
+                return $"parse options changed in '{name}'";
+            if (!Equals(NormalizeOptions(oldProject.CompilationOptions), NormalizeOptions(newProject.CompilationOptions)))
+                return $"compilation options changed in '{name}'";
+        }
+
+        return null;
+    }
+
+    private static string ProjectKey(Project project) => (project.FilePath ?? string.Empty) + "\n" + project.Name;
+
+    private static HashSet<string> DocumentPaths(Project project)
+    {
+        var paths = new HashSet<string>(FileSystemPath.Comparer);
+        foreach (var document in project.Documents.Concat(project.AdditionalDocuments).Concat(project.AnalyzerConfigDocuments))
+        {
+            paths.Add(document.FilePath ?? "<in-memory>:" + document.Name);
+        }
+
+        return paths;
+    }
+
+    /// <summary>Project, metadata and analyzer references as workspace-independent strings (project references by target project key).</summary>
+    private static HashSet<string> ReferenceKeys(Project project, Dictionary<string, Project> solutionProjects)
+    {
+        var keys = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var reference in project.ProjectReferences)
+        {
+            var target = solutionProjects.Values.FirstOrDefault(p => p.Id == reference.ProjectId);
+            keys.Add("project:" + (target is null ? reference.ProjectId.ToString() : ProjectKey(target)));
+        }
+
+        foreach (var reference in project.MetadataReferences)
+            keys.Add("metadata:" + reference.Display);
+        foreach (var reference in project.AnalyzerReferences)
+            keys.Add("analyzer:" + (reference.FullPath ?? reference.Display));
+        return keys;
+    }
+
+    /// <summary>Drops per-workspace resolver/provider instances, which differ across loads of identical projects.</summary>
+    private static CompilationOptions? NormalizeOptions(CompilationOptions? options) => options
+        ?.WithMetadataReferenceResolver(null)
+        .WithXmlReferenceResolver(null)
+        .WithSourceReferenceResolver(null)
+        .WithSyntaxTreeOptionsProvider(null)
+        .WithStrongNameProvider(null);
 
     /// <summary>
     /// Phase-1 helper for <see cref="RevertFromSolutionSnapshotAsync"/>. Walks
@@ -672,8 +864,13 @@ public sealed class UndoService : IUndoService, IDisposable
 
         // Restore the workspace version to the pre-apply value so that preview tokens
         // created before the reverted operation remain valid. The workspace state has
-        // been restored to its pre-apply form, so the pre-apply version is correct.
-        workspace.RestoreVersion(workspaceId, snapshot.PreApplyWorkspaceVersion);
+        // been restored to its pre-apply form, so the pre-apply version is correct — but only
+        // when something was actually restored; lowering the version under live version-keyed
+        // caches for a revert that did nothing would let them serve stale entries.
+        if (workspaceApplied || anyDiskWrite)
+        {
+            workspace.RestoreVersion(workspaceId, snapshot.PreApplyWorkspaceVersion);
+        }
 
         return diskOk && (workspaceApplied || anyDiskWrite);
     }

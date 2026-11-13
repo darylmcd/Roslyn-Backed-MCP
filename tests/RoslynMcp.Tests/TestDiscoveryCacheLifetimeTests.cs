@@ -1,4 +1,3 @@
-using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
@@ -149,17 +148,6 @@ public sealed class TestDiscoveryCacheLifetimeTests
             Assert.AreNotSame(firstResult, secondResult);
         });
 
-    private static async Task BumpVersionAsync(WorkspaceManager manager, string id)
-    {
-        var before = manager.GetCurrentVersion(id);
-        var solution = manager.GetCurrentSolution(id);
-        var document = solution.Projects.SelectMany(p => p.Documents).First(d => d.FilePath?.EndsWith(".cs") == true);
-        var text = await document.GetTextAsync();
-        var changed = solution.WithDocumentText(document.Id, SourceText.From(text + "\n// bump"));
-        Assert.IsTrue(manager.TryApplyChanges(id, changed));
-        Assert.IsTrue(manager.GetCurrentVersion(id) > before, "Fixture precondition: the apply must bump the version.");
-    }
-
     // CONTROL (non-red): passes on the pre-fix code too; pins that eviction/liveness checks keep versioned hits.
     [TestMethod]
     public Task Control_VersionBumpMissesThenRecachesAndHitsAtTheNewVersion() =>
@@ -169,7 +157,7 @@ public sealed class TestDiscoveryCacheLifetimeTests
             var service = CreateService(manager);
             var atV1 = await service.DiscoverTestsAsync(id, CancellationToken.None);
 
-            await BumpVersionAsync(manager, id);
+            await RealWorkspaceLifecycleFixture.BumpVersionAsync(manager, id, "// bump");
             var atV2 = await service.DiscoverTestsAsync(id, CancellationToken.None);
             Assert.AreNotSame(atV1, atV2, "A version bump must miss.");
             Assert.AreSame(atV2, await service.DiscoverTestsAsync(id, CancellationToken.None));
