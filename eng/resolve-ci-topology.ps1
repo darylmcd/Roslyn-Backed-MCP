@@ -89,10 +89,10 @@ $codePullRequest = @(
     New-CiTopologyLeg -Name 'linux-4-of-4' -RunsOn 'ubuntu-latest' -ArtifactOwner $true -TimeoutMinutes 45 -TestShardIndex 3 -TestShardCount 4
 )
 $docsOnlyPullRequest = @(
-    New-CiTopologyLeg -Name 'docs-linux-1-of-4' -RunsOn 'ubuntu-latest' -ArtifactOwner $false -TimeoutMinutes 30 -TestShardIndex 0 -TestShardCount 4
-    New-CiTopologyLeg -Name 'docs-linux-2-of-4' -RunsOn 'ubuntu-latest' -ArtifactOwner $false -TimeoutMinutes 30 -TestShardIndex 1 -TestShardCount 4
-    New-CiTopologyLeg -Name 'docs-linux-3-of-4' -RunsOn 'ubuntu-latest' -ArtifactOwner $false -TimeoutMinutes 30 -TestShardIndex 2 -TestShardCount 4
-    New-CiTopologyLeg -Name 'docs-linux-4-of-4' -RunsOn 'ubuntu-latest' -ArtifactOwner $true -TimeoutMinutes 30 -TestShardIndex 3 -TestShardCount 4
+    New-CiTopologyLeg -Name 'docs-linux-1-of-4' -RunsOn 'ubuntu-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 0 -TestShardCount 4
+    New-CiTopologyLeg -Name 'docs-linux-2-of-4' -RunsOn 'ubuntu-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 1 -TestShardCount 4
+    New-CiTopologyLeg -Name 'docs-linux-3-of-4' -RunsOn 'ubuntu-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 2 -TestShardCount 4
+    New-CiTopologyLeg -Name 'docs-linux-4-of-4' -RunsOn 'ubuntu-latest' -ArtifactOwner $true -TimeoutMinutes 45 -TestShardIndex 3 -TestShardCount 4
 )
 $scheduledValidation = @(
     New-CiTopologyLeg -Name 'linux-full' -RunsOn 'ubuntu-latest' -ArtifactOwner $true -TimeoutMinutes 90 -TestShardIndex 0 -TestShardCount 1

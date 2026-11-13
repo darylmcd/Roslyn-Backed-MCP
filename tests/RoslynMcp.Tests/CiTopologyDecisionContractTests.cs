@@ -399,10 +399,10 @@ public sealed class CiTopologyDecisionContractTests
     {
         var expected = new (string Name, string RunsOn, bool ArtifactOwner, int TimeoutMinutes, int ShardIndex, int ShardCount)[]
         {
-            ("docs-linux-1-of-4", "ubuntu-latest", false, 30, 0, 4),
-            ("docs-linux-2-of-4", "ubuntu-latest", false, 30, 1, 4),
-            ("docs-linux-3-of-4", "ubuntu-latest", false, 30, 2, 4),
-            ("docs-linux-4-of-4", "ubuntu-latest", true, 30, 3, 4),
+            ("docs-linux-1-of-4", "ubuntu-latest", false, 45, 0, 4),
+            ("docs-linux-2-of-4", "ubuntu-latest", false, 45, 1, 4),
+            ("docs-linux-3-of-4", "ubuntu-latest", false, 45, 2, 4),
+            ("docs-linux-4-of-4", "ubuntu-latest", true, 45, 3, 4),
         };
 
         AssertExactMatrix(matrix, expected);
