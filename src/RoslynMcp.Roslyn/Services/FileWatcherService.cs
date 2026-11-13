@@ -162,7 +162,33 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
 
     public event Action<string>? WorkspaceRootMissing;
 
+    // Each FileSystemWatcher owns one inotify instance on Linux, and the default per-user cap is 128.
+    // A workspace therefore costs ONE tree watcher plus one subscription per ancestor directory, and the
+    // ancestor watchers are shared across workspaces (reference counted), so the footprint stays small
+    // enough for the default MaxConcurrentWorkspaces.
+    private const string EditorConfigName = ".editorconfig";
+
+    private static readonly HashSet<string> WatchedExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".cs", ".csproj", ".props", ".targets", ".sln", ".slnx",
+    };
+
+    private readonly object _sharedSync = new();
+    private readonly Dictionary<string, SharedDirectoryWatcher> _sharedWatchers = new(FileSystemPath.Comparer);
+
+    // Serializes registration so two Watch calls for one id cannot both pass Unwatch and overwrite
+    // (and leak) each other's entry. Event callbacks and Unwatch never take it.
+    private readonly object _watchSync = new();
+
     public void Watch(string workspaceId, string workspacePath)
+    {
+        lock (_watchSync)
+        {
+            WatchCore(workspaceId, workspacePath);
+        }
+    }
+
+    private void WatchCore(string workspaceId, string workspacePath)
     {
         Unwatch(workspaceId);
 
@@ -173,66 +199,204 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
         var entry = new WatcherEntry(directory);
         _watchers[workspaceId] = entry;
 
-        // Watch .cs source files
-        var csWatcher = CreateWatcher(directory, "*.cs", entry);
-        entry.AddWatcher(csWatcher);
-
-        // Watch project/solution files so project-level changes also mark the workspace stale
-        foreach (var filter in new[] { "*.csproj", "*.props", "*.targets", "*.sln", "*.slnx" })
+        try
         {
-            var projWatcher = CreateWatcher(directory, filter, entry);
-            entry.AddWatcher(projWatcher);
-        }
-
-        entry.AddWatcher(CreateWatcher(directory, ".editorconfig", entry));
-        // A config above the solution directory also applies to its documents. Watch each
-        // ancestor's single config name so external policy changes invalidate this workspace.
-        for (var ancestor = Path.GetDirectoryName(directory); ancestor is not null;
-             ancestor = Path.GetDirectoryName(ancestor))
-        {
-            if (Directory.Exists(ancestor))
+            // One recursive watcher covers source, project, solution and .editorconfig files under the
+            // root, plus deletion/rename of the loaded solution/project file itself.
+            var workspaceFilePath = Path.Combine(directory, Path.GetFileName(workspacePath));
+            var tree = new FileSystemWatcher(directory)
             {
-                entry.AddWatcher(CreateWatcher(ancestor, ".editorconfig", entry, recursive: false));
+                IncludeSubdirectories = true,
+                NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.DirectoryName,
+            };
+            // Changed/Created carry the file's own write time; Deleted/Renamed do not (a rename keeps
+            // the old times), so those are timed by arrival.
+            tree.Changed += (_, args) => MarkTreeChange(entry, args.FullPath, contentEvent: true);
+            tree.Created += (_, args) => MarkTreeChange(entry, args.FullPath, contentEvent: true);
+            tree.Deleted += (_, args) =>
+            {
+                MarkTreeChange(entry, args.FullPath, contentEvent: false);
+                // Windows reports the file an overwriting rename replaced as Deleted; only a file that is
+                // still absent means the workspace file is really gone.
+                if (FileSystemPath.Comparer.Equals(args.FullPath, workspaceFilePath) && !File.Exists(workspaceFilePath))
+                    RaiseWorkspaceRootMissing(workspaceId);
+            };
+            tree.Renamed += (_, args) =>
+            {
+                MarkTreeChange(entry, args.FullPath, contentEvent: false);
+                MarkTreeChange(entry, args.OldFullPath, contentEvent: false);
+                if (FileSystemPath.Comparer.Equals(args.OldFullPath, workspacePath) ||
+                    FileSystemPath.Comparer.Equals(args.OldFullPath, workspaceFilePath))
+                    RaiseWorkspaceRootMissing(workspaceId);
+            };
+            entry.AddWatcher(tree);
+            tree.EnableRaisingEvents = true;
+
+            // A config above the solution directory also applies to its documents, and the root
+            // directory's own deletion or rename is only visible from its parent. Both are served by
+            // one non-recursive watcher per ancestor directory, shared by every workspace beneath it.
+            for (var ancestor = Path.GetDirectoryName(directory); ancestor is not null;
+                 ancestor = Path.GetDirectoryName(ancestor))
+            {
+                if (Directory.Exists(ancestor))
+                {
+                    entry.AddWatcher(Subscribe(ancestor, workspaceId, entry));
+                }
             }
         }
-
-        // A workspace is anchored to the exact solution/project path that was loaded, not just
-        // its containing directory. Keep a non-recursive identity watcher so deleting or
-        // renaming that file retires the session even when sibling files keep the directory alive.
-        var workspaceFileName = Path.GetFileName(workspacePath);
-        if (!string.IsNullOrWhiteSpace(workspaceFileName))
+        catch (Exception ex)
         {
-            var workspaceFileWatcher = new FileSystemWatcher(directory)
+            // Never leave a half-built entry holding inotify instances behind a failed registration.
+            // Release exactly this attempt's entry, never a different registration for the same id.
+            if (((ICollection<KeyValuePair<string, WatcherEntry>>)_watchers).Remove(new(workspaceId, entry)))
             {
-                Filter = workspaceFileName,
-                IncludeSubdirectories = false,
-                NotifyFilter = NotifyFilters.FileName,
-            };
-            workspaceFileWatcher.Deleted += (_, _) => RaiseWorkspaceRootMissing(workspaceId);
-            workspaceFileWatcher.Renamed += (_, _) => RaiseWorkspaceRootMissing(workspaceId);
-            workspaceFileWatcher.EnableRaisingEvents = true;
-            entry.AddWatcher(workspaceFileWatcher);
-        }
+                logger.LogInformation("Stopped file watcher for workspace {WorkspaceId}", workspaceId);
+            }
 
-        var parentDirectory = Path.GetDirectoryName(directory);
-        var rootName = Path.GetFileName(directory);
-        if (!string.IsNullOrWhiteSpace(parentDirectory) &&
-            !string.IsNullOrWhiteSpace(rootName) &&
-            Directory.Exists(parentDirectory))
-        {
-            var rootWatcher = new FileSystemWatcher(parentDirectory)
+            entry.Dispose();
+            if (ex is IOException && OperatingSystem.IsLinux())
             {
-                Filter = rootName,
-                IncludeSubdirectories = false,
-                NotifyFilter = NotifyFilters.DirectoryName,
-            };
-            rootWatcher.Deleted += (_, _) => RaiseWorkspaceRootMissing(workspaceId);
-            rootWatcher.Renamed += (_, _) => RaiseWorkspaceRootMissing(workspaceId);
-            rootWatcher.EnableRaisingEvents = true;
-            entry.AddWatcher(rootWatcher);
+                throw new IOException(
+                    $"Could not start file watchers for workspace '{workspaceId}': {ex.Message} " +
+                    "On Linux raise fs.inotify.max_user_instances (and fs.inotify.max_user_watches), " +
+                    "or close unused workspaces.", ex);
+            }
+
+            throw;
         }
 
         logger.LogInformation("Started file watcher for workspace {WorkspaceId} at {Directory}", workspaceId, directory);
+    }
+
+    private static bool IsWatchedName(string path)
+    {
+        var name = Path.GetFileName(path);
+        return string.Equals(name, EditorConfigName, StringComparison.OrdinalIgnoreCase) ||
+               WatchedExtensions.Contains(Path.GetExtension(name));
+    }
+
+    private static void MarkTreeChange(WatcherEntry entry, string fullPath, bool contentEvent)
+    {
+        if (IsWatchedName(fullPath))
+            MarkStaleIfRelevant(entry, fullPath, checkExcludedPaths: true, contentEvent);
+    }
+
+    private Subscription Subscribe(string directory, string workspaceId, WatcherEntry entry)
+    {
+        lock (_sharedSync)
+        {
+            if (!_sharedWatchers.TryGetValue(directory, out var shared))
+            {
+                shared = new SharedDirectoryWatcher(directory, RaiseWorkspaceRootMissing);
+                _sharedWatchers[directory] = shared;
+            }
+
+            var subscription = new Subscription(this, directory, workspaceId, entry);
+            shared.Add(subscription);
+            return subscription;
+        }
+    }
+
+    private void Unsubscribe(Subscription subscription)
+    {
+        SharedDirectoryWatcher? orphaned = null;
+        lock (_sharedSync)
+        {
+            if (_sharedWatchers.TryGetValue(subscription.Directory, out var shared) && shared.Remove(subscription) == 0)
+            {
+                _sharedWatchers.Remove(subscription.Directory);
+                orphaned = shared;
+            }
+        }
+
+        // Disposed outside the lock: a watcher callback may re-enter Unwatch and must not wait on it.
+        orphaned?.Dispose();
+    }
+
+    private sealed class Subscription(
+        FileWatcherService owner, string directory, string workspaceId, WatcherEntry entry) : IDisposable
+    {
+        private int _disposed;
+
+        public string Directory { get; } = directory;
+        public string WorkspaceId { get; } = workspaceId;
+        public WatcherEntry Entry { get; } = entry;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 0)
+                owner.Unsubscribe(this);
+        }
+    }
+
+    /// <summary>One non-recursive watcher on a directory that is an ancestor of one or more watched workspaces.</summary>
+    private sealed class SharedDirectoryWatcher : IDisposable
+    {
+        private readonly FileSystemWatcher _watcher;
+        private readonly Action<string> _raiseRootMissing;
+        private volatile Subscription[] _subscribers = [];
+
+        public SharedDirectoryWatcher(string directory, Action<string> raiseRootMissing)
+        {
+            _raiseRootMissing = raiseRootMissing;
+            _watcher = new FileSystemWatcher(directory)
+            {
+                IncludeSubdirectories = false,
+                NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.DirectoryName,
+            };
+            _watcher.Changed += (_, args) => MarkConfig(args.FullPath, contentEvent: true);
+            _watcher.Created += (_, args) => MarkConfig(args.FullPath, contentEvent: true);
+            _watcher.Deleted += (_, args) =>
+            {
+                MarkConfig(args.FullPath, contentEvent: false);
+                RootRemoved(args.FullPath);
+            };
+            _watcher.Renamed += (_, args) =>
+            {
+                MarkConfig(args.FullPath, contentEvent: false);
+                MarkConfig(args.OldFullPath, contentEvent: false);
+                RootRemoved(args.OldFullPath);
+            };
+            try
+            {
+                _watcher.EnableRaisingEvents = true;
+            }
+            catch
+            {
+                _watcher.Dispose();
+                throw;
+            }
+        }
+
+        // Callers hold FileWatcherService._sharedSync.
+        public void Add(Subscription subscription) => _subscribers = [.. _subscribers, subscription];
+
+        public int Remove(Subscription subscription)
+        {
+            var remaining = _subscribers.Where(s => !ReferenceEquals(s, subscription)).ToArray();
+            _subscribers = remaining;
+            return remaining.Length;
+        }
+
+        private void MarkConfig(string fullPath, bool contentEvent)
+        {
+            if (!string.Equals(Path.GetFileName(fullPath), EditorConfigName, StringComparison.OrdinalIgnoreCase))
+                return;
+
+            foreach (var subscriber in _subscribers)
+                MarkStaleIfRelevant(subscriber.Entry, fullPath, checkExcludedPaths: false, contentEvent);
+        }
+
+        private void RootRemoved(string removedPath)
+        {
+            foreach (var subscriber in _subscribers)
+            {
+                if (FileSystemPath.Comparer.Equals(subscriber.Entry.RootDirectory, removedPath))
+                    _raiseRootMissing(subscriber.WorkspaceId);
+            }
+        }
+
+        public void Dispose() => _watcher.Dispose();
     }
 
     public void Unwatch(string workspaceId)
@@ -334,27 +498,16 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
             kvp.Value.Dispose();
         }
         _watchers.Clear();
-    }
 
-    private static FileSystemWatcher CreateWatcher(
-        string directory, string filter, WatcherEntry entry, bool recursive = true)
-    {
-        var watcher = new FileSystemWatcher(directory)
+        SharedDirectoryWatcher[] leftover;
+        lock (_sharedSync)
         {
-            Filter = filter,
-            IncludeSubdirectories = recursive,
-            NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.DirectoryName,
-            EnableRaisingEvents = true
-        };
+            leftover = [.. _sharedWatchers.Values];
+            _sharedWatchers.Clear();
+        }
 
-        // Changed/Created carry the file's own write time; Deleted/Renamed do not (a rename keeps
-        // the old times), so those are timed by arrival.
-        watcher.Changed += (_, args) => MarkStaleIfRelevant(entry, args.FullPath, recursive, contentEvent: true);
-        watcher.Created += (_, args) => MarkStaleIfRelevant(entry, args.FullPath, recursive, contentEvent: true);
-        watcher.Deleted += (_, args) => MarkStaleIfRelevant(entry, args.FullPath, recursive, contentEvent: false);
-        watcher.Renamed += (_, args) => MarkStaleIfRelevant(entry, args.FullPath, recursive, contentEvent: false);
-
-        return watcher;
+        foreach (var shared in leftover)
+            shared.Dispose();
     }
 
     private void RaiseWorkspaceRootMissing(string workspaceId)
@@ -425,14 +578,12 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
         private DateTime _latestExternalEditUtc = DateTime.MinValue;
         private readonly object _reasonLock = new();
         private readonly Dictionary<string, byte[]?> _ownedConfigBytes = new(FileSystemPath.Comparer);
-        // Intentionally unguarded: AddWatcher is called only from FileWatcherService.Watch() on a
-        // single thread during entry construction, and the FileSystemWatcher event callbacks
-        // (Changed/Created/Deleted/Renamed -> MarkStaleIfRelevant) only ever touch the
-        // _reasonLock-guarded reason state below — never this list — so _watchers has no concurrent
-        // mutation today even though watchers may fire mid-construction. If a concurrent AddWatcher
-        // path is ever introduced, guard this list consistently — e.g. under _reasonLock or a
-        // dedicated lock — to match the synchronization model used for the rest of the mutable state.
-        private readonly List<FileSystemWatcher> _watchers = [];
+        // Guarded by _resourceLock. A tree-watcher Deleted/Renamed callback can end in Unwatch and so
+        // Dispose this entry while Watch is still attaching ancestor subscriptions; a resource added
+        // after disposal is released immediately instead of leaking its inotify instance.
+        private readonly object _resourceLock = new();
+        private readonly List<IDisposable> _watchers = [];
+        private bool _resourcesDisposed;
 
         // Completed when the entry flips stale; reset on ClearStale so a reloaded workspace can be
         // awaited again. RunContinuationsAsynchronously keeps the watcher callback that sets the
@@ -459,7 +610,19 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
             }
         }
 
-        public void AddWatcher(FileSystemWatcher watcher) => _watchers.Add(watcher);
+        public void AddWatcher(IDisposable watcher)
+        {
+            lock (_resourceLock)
+            {
+                if (!_resourcesDisposed)
+                {
+                    _watchers.Add(watcher);
+                    return;
+                }
+            }
+
+            watcher.Dispose();
+        }
 
         public T RunOwnedWrite<T>(string path, Func<EditorConfigFileTransaction, T> write)
         {
@@ -759,7 +922,15 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
 
         public void Dispose()
         {
-            foreach (var w in _watchers)
+            IDisposable[] resources;
+            lock (_resourceLock)
+            {
+                _resourcesDisposed = true;
+                resources = [.. _watchers];
+                _watchers.Clear();
+            }
+
+            foreach (var w in resources)
                 w.Dispose();
         }
     }
