@@ -53,6 +53,14 @@ public sealed class DotnetCommandRunner : IDotnetCommandRunner
             new EventId(LogEvents.CommandProcessCompleted, LogEvents.CommandProcessCompletedName),
             "dotnet process boundary: verb={Verb} targetKind={TargetKind} outcome={Outcome} exitCode={ExitCode} durationMs={DurationMs}");
 
+    // Exported process-wide by MSBuildLocator.RegisterDefaults and by `dotnet test`; see CreateStartInfo.
+    private static readonly string[] InheritedMsBuildLocationVariables =
+    [
+        "MSBUILD_EXE_PATH",
+        "MSBuildExtensionsPath",
+        "MSBuildSDKsPath",
+    ];
+
     private readonly int _outputLimit;
     private readonly ILogger<DotnetCommandRunner>? _logger;
     private readonly Action<Process> _killProcessTree;
@@ -212,6 +220,17 @@ public sealed class DotnetCommandRunner : IDotnetCommandRunner
         // and accumulating orphaned dotnet processes on the host. Spawned commands are one-shot
         // from the runner's perspective, so node reuse buys nothing here.
         startInfo.Environment["MSBUILDDISABLENODEREUSE"] = "1";
+
+        // MSBuildLocator.RegisterDefaults (and `dotnet test`) export these three variables into
+        // this process, pinning MSBuild to the SDK the server itself selected. A child `dotnet`
+        // resolves its own SDK from the working directory's global.json, and when that differs
+        // (an image carrying a newer SDK, a workspace outside the server's global.json) the child
+        // host is one MSBuild version while the inherited MSBUILD_EXE_PATH launches worker nodes
+        // from another: every node handshake fails and the build ends "FAILED" with 0 errors.
+        foreach (var variable in InheritedMsBuildLocationVariables)
+        {
+            startInfo.Environment.Remove(variable);
+        }
 
         foreach (var argument in arguments)
         {
