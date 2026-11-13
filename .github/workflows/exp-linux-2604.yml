@@ -1,0 +1,91 @@
+name: exp-linux-2604
+
+# THROWAWAY experiment: isolate the ubuntu-26.04 silent exit-1 of fixture dotnet children.
+# Never merge. Row: linux-2604-fixture-child-silent-exit-1.
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  exp:
+    name: exp (${{ matrix.variant }})
+    runs-on: ubuntu-26.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { variant: plan-rt11, mode: plan, drop_rt11: false }
+          - { variant: plan-nort11, mode: plan, drop_rt11: true }
+          - { variant: native-rt11, mode: native, drop_rt11: false }
+          - { variant: native-nort11, mode: native, drop_rt11: true }
+    env:
+      ROSLYNMCP_BUILD_TIMEOUT_SECONDS: "150"
+      ROSLYNMCP_TEST_TIMEOUT_SECONDS: "300"
+      ROSLYNMCP_VULN_SCAN_TIMEOUT_SECONDS: "120"
+      MSBUILDDEBUGPATH: /tmp/msbdbg
+      MSBUILDDEBUGCOMM: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - name: Raise inotify limits
+        shell: bash
+        run: sudo sysctl -w fs.inotify.max_user_instances=1280 fs.inotify.max_user_watches=655360
+      - name: Initialize PowerShell startup cache
+        shell: bash
+        run: bash ./eng/initialize-pwsh-startup-cache.sh
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6
+        with:
+          dotnet-version: 10.0.x
+      - name: Drop .NET 11 runtime
+        if: matrix.drop_rt11
+        shell: bash
+        run: |
+          ls /usr/share/dotnet/shared/*/
+          sudo rm -rf /usr/share/dotnet/shared/Microsoft.NETCore.App/11.0.0 /usr/share/dotnet/shared/Microsoft.AspNetCore.App/11.0.0
+          dotnet --list-runtimes
+      - name: Environment snapshot
+        shell: bash
+        run: |
+          mkdir -p /tmp/msbdbg /tmp/expout
+          dotnet --list-runtimes
+          dotnet --list-sdks
+          env | sort | grep -v -i "token\|secret\|key" | tee /tmp/expout/env.txt
+          cat /usr/share/dotnet/sdk/10.0.404/MSBuild.runtimeconfig.json
+          cat /usr/share/dotnet/sdk/10.0.404/dotnet.runtimeconfig.json
+      - name: Run (plan order, linux-2 shard)
+        if: matrix.mode == 'plan'
+        shell: pwsh
+        run: |
+          ./eng/verify-release.ps1 -Configuration Release -NoCoverage -ExcludeNetworkTests -TestShardIndex 1 -TestShardCount 4 -HostedImage ubuntu-latest -TestShardOnly
+      - name: Run (Native fork admission class alone)
+        if: matrix.mode == 'native'
+        shell: bash
+        run: |
+          dotnet test tests/RoslynMcp.Tests/RoslynMcp.Tests.csproj -c Release --filter "FullyQualifiedName~ForkNativeAdmissionTests"
+      - name: Collect failure evidence
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p /tmp/expout
+          ls -la /tmp/msbdbg /tmp/MSBuild_* 2>&1 | head -80 > /tmp/expout/msbuild-files.txt || true
+          cp /tmp/MSBuild_*.txt /tmp/expout/ 2>/dev/null || true
+          cp -r /tmp/msbdbg /tmp/expout/msbdbg 2>/dev/null || true
+          sudo dmesg 2>&1 | tail -300 > /tmp/expout/dmesg.txt || true
+          ps -eo pid,ppid,stat,etime,rss,cmd 2>&1 | head -200 > /tmp/expout/ps.txt || true
+          free -m > /tmp/expout/free.txt || true
+          df -h /tmp > /tmp/expout/df.txt || true
+          cat /proc/sys/fs/protected_fifos /proc/sys/fs/protected_regular > /tmp/expout/protected.txt 2>&1 || true
+          ls -la /tmp | head -100 > /tmp/expout/tmp-ls.txt || true
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: always()
+        with:
+          name: exp-${{ matrix.variant }}
+          path: |
+            /tmp/expout
+            artifacts/test-results
+          if-no-files-found: warn
+          retention-days: 7
