@@ -250,7 +250,7 @@
 | `native-late-consumer-marker-intermittent-missing-output` | Medium | — | **Root-cause intermittent missing marker output in the native late-consumer test.** Four marker variants exit 0 yet leave no output on one hosted linux-2 run; add Describe() output to the asserts and find the cause. | S | items/native-late-consumer-marker-intermittent-missing-output.md |
 | `undo-unclaim-resurrects-slot-after-clear` | Medium | — | **Stop UnclaimRevert resurrecting an undo slot after Clear().** Make UnclaimRevert a no-op when the workspace history was cleared while a revert was in flight, so a closed workspace gets no revived undo entry. | S | items/undo-unclaim-resurrects-slot-after-clear.md |
 | `undo-disk-walk-fallback-restores-drifted-sibling-docs` | Medium | — | **Stop the undo disk-walk fallback restoring drifted sibling docs.** Scope the revert disk-walk fallback to the apply's own files and report a non-success when nothing was restored. | S | items/undo-disk-walk-fallback-restores-drifted-sibling-docs.md |
-| `ci-restore-linux-leg-timeout-30-after-rebalance` | Medium | ci-ubuntu-duration-profile-refresh-2604 | **Restore the 30 minute Linux shard cap.** Undo the temporary 45 minute cap on linux-1..4-of-4 once the ubuntu profile refresh has rebalanced the shards. | S | items/ci-restore-linux-leg-timeout-30-after-rebalance.md |
+| `ci-restore-linux-leg-timeout-30-after-rebalance` | Medium | ci-ubuntu-duration-profile-refresh-2604 | **Restore the 30 minute Linux shard cap.** Undo the temporary 45 minute cap on the code and docs linux shard legs once the ubuntu profile refresh has rebalanced the shards. | S | items/ci-restore-linux-leg-timeout-30-after-rebalance.md |
 
 ## Low
 
