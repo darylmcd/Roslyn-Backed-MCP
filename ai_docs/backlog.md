@@ -253,7 +253,7 @@
 | `file-watcher-test-gaps-after-consolidation` | Medium | — | **Add the missing FileWatcherService tests.** Cover a failed Watch releasing its registrations, the Linux inotify hint, nested workspaces, Dispose releasing shared watchers, and concurrent Subscribe/Unsubscribe. [source: pr-2094-watcher-cold-review] | S | items/file-watcher-test-gaps-after-consolidation.md |
 | `workspace-execution-gate-drain-on-dispose` | Medium | — | **Drain admitted workspace-gate operations before disposal**. [type: bug] [source: 2026-11-14 cold review] | M | items/workspace-execution-gate-drain-on-dispose.md |
 | `file-watcher-retire-after-ancestor-move` | Medium | — | **Retire descendant workspaces after an ancestor moves**. [type: bug] [source: 2026-11-14 cold review] | S | items/file-watcher-retire-after-ancestor-move.md |
-| `workspace-load-unresolved-sdk-diagnostic` | Medium | — | **Diagnose unavailable workspace SDKs** — report the exact missing SDK or build-host failure on workspace load and stale reload. [type: bug] [source: snipcue-remediation-20261114] | M | items/workspace-load-unresolved-sdk-diagnostic.md |
+| `workspace-load-unresolved-sdk-diagnostic` | Medium | — | BLOCKED: 5.x stable load/reload diagnostic impact uncertain. **Diagnose unavailable workspace SDKs** with verified SDK identity and corrective guidance. [type: bug] [source: snipcue-remediation-20261114] | M | items/workspace-load-unresolved-sdk-diagnostic.md |
 
 ## Low
 
