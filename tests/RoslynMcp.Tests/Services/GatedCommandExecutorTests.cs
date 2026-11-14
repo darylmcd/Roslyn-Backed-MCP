@@ -2,9 +2,11 @@ using System.Collections;
 using System.Reflection;
 using System.Text.RegularExpressions;
 using Microsoft.CodeAnalysis;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn;
 using RoslynMcp.Roslyn.Contracts;
 using RoslynMcp.Roslyn.Services;
 
@@ -34,7 +36,7 @@ public sealed class GatedCommandExecutorTests
         {
             var workspaceId = $"ws-{i}";
             await executor.ExecuteAsync(
-                workspaceId, @"C:\tmp\Sample.sln", new[] { "build" }, TimeSpan.FromMinutes(1), default);
+                workspaceId, Path.Combine(Path.GetTempPath(), "Sample.sln"), new[] { "build" }, TimeSpan.FromMinutes(1), default);
 
             Assert.AreEqual(1, GetGateCount(executor),
                 "A gate is created lazily on ExecuteAsync for the active workspace.");
@@ -53,8 +55,8 @@ public sealed class GatedCommandExecutorTests
         var runner = new StubCommandRunner();
         using var executor = new GatedCommandExecutor(ws, runner, NullLogger<GatedCommandExecutor>.Instance);
 
-        await executor.ExecuteAsync("ws-a", @"C:\tmp\A.sln", new[] { "build" }, TimeSpan.FromMinutes(1), default);
-        await executor.ExecuteAsync("ws-b", @"C:\tmp\B.sln", new[] { "build" }, TimeSpan.FromMinutes(1), default);
+        await executor.ExecuteAsync("ws-a", Path.Combine(Path.GetTempPath(), "A.sln"), new[] { "build" }, TimeSpan.FromMinutes(1), default);
+        await executor.ExecuteAsync("ws-b", Path.Combine(Path.GetTempPath(), "B.sln"), new[] { "build" }, TimeSpan.FromMinutes(1), default);
         Assert.AreEqual(2, GetGateCount(executor));
 
         ws.RaiseWorkspaceClosed("ws-a");
@@ -83,13 +85,100 @@ public sealed class GatedCommandExecutorTests
         var runner = new StubCommandRunner();
         var executor = new GatedCommandExecutor(ws, runner, NullLogger<GatedCommandExecutor>.Instance);
 
-        await executor.ExecuteAsync("ws-x", @"C:\tmp\X.sln", new[] { "build" }, TimeSpan.FromMinutes(1), default);
+        await executor.ExecuteAsync("ws-x", Path.Combine(Path.GetTempPath(), "X.sln"), new[] { "build" }, TimeSpan.FromMinutes(1), default);
         executor.Dispose();
 
-        // After disposal the handler is detached, so a late close must not touch the (cleared)
-        // dictionary or throw ObjectDisposedException from the handler.
+        Assert.AreEqual(0, ws.WorkspaceClosedSubscriberCount);
         ws.RaiseWorkspaceClosed("ws-x");
         Assert.AreEqual(0, GetGateCount(executor));
+    }
+
+    [TestMethod]
+    public async Task Dispose_WithRunningCommand_PreservesItsResult()
+    {
+        var ws = new FakeWorkspaceManager();
+        var runner = new ControlledCommandRunner();
+        using var executor = new GatedCommandExecutor(ws, runner, NullLogger<GatedCommandExecutor>.Instance);
+        var target = Path.Combine(TestFixtureFileSystem.FindRepositoryRoot(), "RoslynMcp.slnx");
+
+        var running = executor.ExecuteAsync("workspace", target, ["build"], TimeSpan.FromSeconds(30), CancellationToken.None);
+        try
+        {
+            await runner.Entered.WaitAsync(TimeSpan.FromSeconds(10));
+            executor.Dispose();
+        }
+        finally
+        {
+            runner.Release();
+        }
+
+        Assert.IsTrue((await running).Succeeded);
+    }
+
+    [TestMethod]
+    public async Task DisposeAsync_WithActiveAndQueuedCommands_DrainsAdmittedCalls()
+    {
+        var runner = new ControlledCommandRunner();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddRoslynServices();
+        services.AddSingleton<IDotnetCommandRunner>(runner);
+        await using var provider = services.BuildServiceProvider();
+        var executor = (GatedCommandExecutor)provider.GetRequiredService<IGatedCommandExecutor>();
+        var target = Path.Combine(TestFixtureFileSystem.FindRepositoryRoot(), "RoslynMcp.slnx");
+        var budget = TimeSpan.FromSeconds(30);
+        using var cancellation = new CancellationTokenSource();
+        var running = executor.ExecuteAsync("workspace", target, ["build"], budget, CancellationToken.None);
+        Task<CommandExecutionDto>? queued = null;
+        Task<CommandExecutionDto>? cancelled = null;
+        Task? providerShutdown = null;
+        try
+        {
+            await runner.Entered.WaitAsync(TimeSpan.FromSeconds(10));
+            queued = executor.ExecuteAsync("workspace", target, ["build"], budget, CancellationToken.None);
+            cancelled = executor.ExecuteAsync("workspace", target, ["build"], budget, cancellation.Token);
+
+            providerShutdown = provider.DisposeAsync().AsTask();
+            Assert.IsFalse(providerShutdown.IsCompleted);
+            await Assert.ThrowsExactlyAsync<ObjectDisposedException>(() =>
+                executor.ExecuteAsync("other-workspace", target, ["build"], budget, CancellationToken.None));
+            var executorShutdown = executor.DisposeAsync().AsTask();
+            Assert.IsFalse(executorShutdown.IsCompleted);
+
+            cancellation.Cancel();
+            await Assert.ThrowsAsync<OperationCanceledException>(async () =>
+                await cancelled.WaitAsync(TimeSpan.FromSeconds(10)));
+            Assert.IsFalse(queued.IsCompleted);
+            Assert.IsFalse(executorShutdown.IsCompleted);
+            runner.Release();
+            await Task.WhenAll(providerShutdown, executorShutdown).WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.IsTrue((await running).Succeeded);
+            Assert.IsTrue((await queued).Succeeded);
+        }
+        finally
+        {
+            runner.Release();
+            cancellation.Cancel();
+            if (providerShutdown is not null)
+            {
+                await providerShutdown.WaitAsync(TimeSpan.FromSeconds(10));
+            }
+
+            if (cancelled is not null)
+            {
+                try { await cancelled; }
+                catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+            }
+
+            if (queued is not null)
+            {
+                await Task.WhenAll(running, queued);
+            }
+            else
+            {
+                await running;
+            }
+        }
     }
 
     [TestMethod]
@@ -111,7 +200,7 @@ public sealed class GatedCommandExecutorTests
             var exception = await Assert.ThrowsExactlyAsync<TimeoutException>(() =>
                 executor.ExecuteAsync(
                     "ws-queued",
-                    @"C:\tmp\Queued.sln",
+                    Path.Combine(Path.GetTempPath(), "Queued.sln"),
                     new[] { "build" },
                     TimeSpan.FromMilliseconds(100),
                     CancellationToken.None));
@@ -216,6 +305,26 @@ public sealed class GatedCommandExecutorTests
         }
     }
 
+    private sealed class ControlledCommandRunner : IDotnetCommandRunner
+    {
+        private readonly TaskCompletionSource _entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task Entered => _entered.Task;
+
+        public void Release() => _release.TrySetResult();
+
+        public async Task<CommandExecutionDto> RunAsync(
+            string workingDirectory, string targetPath, IReadOnlyList<string> arguments,
+            IReadOnlyList<EarlyKillPattern>? earlyKillPatterns, CancellationToken ct)
+        {
+            _entered.TrySetResult();
+            await _release.Task.WaitAsync(ct);
+            return new CommandExecutionDto(
+                "dotnet", arguments, workingDirectory, targetPath, 0, true, 1, string.Empty, string.Empty);
+        }
+    }
+
     private sealed class PowerShellRunner : IDotnetCommandRunner
     {
         private readonly IDotnetCommandRunner _runner = new DotnetCommandRunner();
@@ -236,6 +345,8 @@ public sealed class GatedCommandExecutorTests
     {
         public event Action<string>? WorkspaceClosed;
         public event Action<string>? WorkspaceReloaded;
+
+        public int WorkspaceClosedSubscriberCount => WorkspaceClosed?.GetInvocationList().Length ?? 0;
 
         public void RaiseWorkspaceClosed(string workspaceId) => WorkspaceClosed?.Invoke(workspaceId);
         public void RaiseWorkspaceReloaded(string workspaceId) => WorkspaceReloaded?.Invoke(workspaceId);
