@@ -34,3 +34,7 @@
 - Installed tool may differ from current repository main; verify both before deciding the fix or release boundary.
 - Preserve public contract-care; any breaking refusal-category change needs the normal ADR/migration process.
 - backlog: sync ai_docs/backlog.md.
+
+## Notes
+
+Current source screens classify the route as experimental. PR 2073 corrected directive-parser false positives, but its fixture inserts text and does not reproduce the original existing-field/body replacement. Reconstruct the original reduced and complete-document fixtures against the current base; cover the common EditService route from both standalone and symbol-refactor previews.

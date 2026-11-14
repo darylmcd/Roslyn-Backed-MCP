@@ -21,3 +21,7 @@
 
 - Re-derived 2026-10-04 on `afa0ecea`: the opt-in workspace lifecycle path still calls the runner with `["build-server", "shutdown"]`; its working directory does not scope those servers.
 - This is an explicit public workspace-lifecycle contract, separate from automatic validation fixture/verifier cleanup. The validation-isolation task removes automatic broad shutdowns without redefining this opt-in surface.
+
+## Notes
+
+At 573540d5, WorkspaceTools.cs advertises `dotnet build-server shutdown` on stable `workspace_close(drainProcesses: true)` and invokes it on the successful close path. The ownership fix changes observable effects and published tool guidance. Resume at the next operator-approved major with ADR, migration note, both raw protocol eras and unrelated-workspace isolation tests. Qualify PID and isolated NuGet handle ownership together.

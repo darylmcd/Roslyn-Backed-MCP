@@ -17,3 +17,7 @@
 
 - Source audit at main `fc5bb88676214a942daa727c7ca88ac8dd34b61c`. TryGetResolvedPackageVersion returns the first libraries entry parsed as System.Version; TreeNodeFilterTranslator accepts one Version. Retained branch changes both to exact target selection and NuGetVersion lists.
 - Source: closed PR #1806 head `d333c2e9`, kept by GitHub as `refs/pull/1806/head` (archive branch and tag deleted 2026-10-27). No build/test ran in this content audit; historical receipts are not current runtime qualification.
+
+## Notes
+
+Current restore planning and package inspection use default assets. Match native test execution TFM, RID and property contexts and verify the stable TUnit version refusal. If the complete fix changes the released acceptance or error contract, resume at the next operator-approved major with ADR, migration note and both raw eras.
