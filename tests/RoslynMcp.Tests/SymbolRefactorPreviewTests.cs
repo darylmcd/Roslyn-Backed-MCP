@@ -169,6 +169,164 @@ public sealed class SymbolRefactorPreviewTests : IsolatedWorkspaceTestBase
             "The rename from op#1 must appear in the chained mutation's text.");
         Assert.IsTrue(dogMutation.UpdatedContent.Contains("\"Yip\"", StringComparison.Ordinal),
             "The literal edit from op#2 must appear in the chained mutation's text.");
+        var dogDiff = preview.Changes.Single(change => change.FilePath == dogFilePath).UnifiedDiff;
+        StringAssert.Contains(dogDiff, "-public class Dog");
+        StringAssert.Contains(dogDiff, "+public class Puppy");
+        StringAssert.Contains(dogDiff, "\"Yip\"");
+    }
+
+    [TestMethod]
+    public async Task CompositePreview_OnlyReviewsAndAppliesTheRemainingPhysicalChanges()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var linkedPath = workspace.GetPath("SampleLib", "Linked.cs");
+        var otherPath = workspace.GetPath("SampleLib", "Other.cs");
+        var revertedPath = workspace.GetPath("SampleLib", "Reverted.cs");
+        var appPath = workspace.GetPath("SampleApp", "SampleApp.csproj");
+        const string linkedBefore = "namespace SampleLib;\npublic class Linked {}\n";
+        const string otherBefore = "namespace SampleLib;\npublic class Other {}\n";
+        const string revertedBefore = "namespace SampleLib;\npublic class Reverted {}\n";
+        await File.WriteAllTextAsync(linkedPath, linkedBefore);
+        await File.WriteAllTextAsync(otherPath, otherBefore);
+        await File.WriteAllTextAsync(revertedPath, revertedBefore);
+        var app = (await File.ReadAllTextAsync(appPath)).Replace("</Project>",
+            "  <ItemGroup><Compile Include=\"../SampleLib/Linked.cs\" Link=\"Linked.cs\" /></ItemGroup>\n</Project>",
+            StringComparison.Ordinal);
+        await File.WriteAllTextAsync(appPath, app);
+        var workspaceId = await workspace.LoadAsync();
+        Assert.HasCount(2, WorkspaceManager.GetCurrentSolution(workspaceId).GetDocumentIdsWithFilePath(linkedPath));
+        var store = new CompositePreviewStore();
+        var preview = await CreateSymbolRefactorService(store).PreviewAsync(workspaceId,
+            [
+                new SymbolRefactorOperation(Kind: "edit", FileEdits: [new(linkedPath, [new(1, 1, 1, 1, "// linked edit\n")])]),
+                new SymbolRefactorOperation(Kind: "rename", MetadataName: "SampleLib.Linked", NewName: "Combined"),
+                new SymbolRefactorOperation(Kind: "edit", FileEdits:
+                [
+                    new(otherPath, [new(1, 1, 1, 1, "// retained\n")]),
+                    new(revertedPath, [new(1, 1, 1, 1, "// temporary\n")]),
+                ]),
+                new SymbolRefactorOperation(Kind: "edit", FileEdits: [new(revertedPath, [new(1, 1, 2, 1, "")])]),
+            ], CancellationToken.None);
+
+        CollectionAssert.AreEquivalent(new[] { linkedPath, otherPath }, preview.Changes.Select(change => change.FilePath).ToArray());
+        StringAssert.Contains(preview.Changes.Single(change => change.FilePath == linkedPath).UnifiedDiff, "+public class Combined {}");
+        Assert.AreEqual(revertedBefore, await File.ReadAllTextAsync(revertedPath));
+        Assert.AreEqual(linkedBefore, await File.ReadAllTextAsync(linkedPath));
+        Assert.AreEqual(otherBefore, await File.ReadAllTextAsync(otherPath));
+
+        var orchestrator = new CompositeApplyOrchestrator(WorkspaceManager, store, ChangeTracker);
+        var applied = await orchestrator.ApplyCompositeAsync(preview.PreviewToken, CompositeAdmission.AdmitAll, CancellationToken.None);
+        Assert.IsTrue(applied.Success, applied.Error);
+        CollectionAssert.AreEquivalent(new[] { linkedPath, otherPath }, applied.AppliedFiles.ToArray());
+        Assert.AreEqual(revertedBefore, await File.ReadAllTextAsync(revertedPath));
+        StringAssert.Contains(preview.Changes.Single(change => change.FilePath == linkedPath).UnifiedDiff, "+// linked edit");
+        Assert.AreEqual("// linked edit\n" + linkedBefore.Replace("class Linked", "class Combined", StringComparison.Ordinal),
+            await File.ReadAllTextAsync(linkedPath));
+        Assert.AreEqual("// retained\n" + otherBefore, await File.ReadAllTextAsync(otherPath));
+    }
+
+    [TestMethod]
+    [DataRow(1, 17_000, DisplayName = "one file exceeds the per-file review cap")]
+    [DataRow(5, 14_000, DisplayName = "multiple files exceed the aggregate review cap")]
+    public async Task CompositePreview_RefusesATokenWhenChangesCannotBeReviewed(int fileCount, int commentLength)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var edits = new List<FileEditsDto>();
+        for (var index = 0; index < fileCount; index++)
+        {
+            var path = workspace.GetPath("SampleLib", $"Budget{index}.cs");
+            await File.WriteAllTextAsync(path, $"public class Budget{index} {{}}\n");
+            edits.Add(new FileEditsDto(path, [new(1, 1, 1, 1, "// " + new string('x', commentLength) + "\n")]));
+        }
+
+        var workspaceId = await workspace.LoadAsync();
+        var store = new CompositePreviewStore(maxEntries: 1);
+        var priorToken = store.Store(workspaceId, WorkspaceManager.GetCurrentVersion(workspaceId), "prior preview", []);
+        var service = CreateSymbolRefactorService(store);
+        var refusal = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
+            service.PreviewAsync(workspaceId, [new SymbolRefactorOperation(Kind: "edit", FileEdits: edits)], CancellationToken.None));
+        StringAssert.Contains(refusal.Message, "review budget");
+        Assert.IsNotNull(store.PeekWorkspaceId(priorToken), "A refused preview must not create a token and evict the existing entry.");
+        for (var index = 0; index < fileCount; index++)
+        {
+            Assert.AreEqual($"public class Budget{index} {{}}\n", await File.ReadAllTextAsync(edits[index].FilePath));
+        }
+    }
+
+    [TestMethod]
+    [DataRow(500)]
+    [DataRow(501)]
+    public async Task CompositePreview_CapsAllFilesTouchedEvenWhenTheChangesAreReverted(int fileCount)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        const string originalIdentifier = "ClassWithEnoughCharactersToMakeTheIntermediateDiffLarge";
+        var declarationPath = workspace.GetPath("SampleLib", "RenameTarget.cs");
+        await File.WriteAllTextAsync(declarationPath, $"namespace SampleLib; public class {originalIdentifier} {{}}\n");
+        for (var index = 1; index < fileCount; index++)
+        {
+            var path = workspace.GetPath("SampleLib", $"RenameReference{index:D3}.cs");
+            await File.WriteAllTextAsync(path, $"namespace SampleLib; public class Reference{index} : {originalIdentifier} {{}}\n");
+        }
+
+        var workspaceId = await workspace.LoadAsync();
+        var store = new CompositePreviewStore();
+        var service = CreateSymbolRefactorService(store);
+        SymbolRefactorOperation[] operations =
+        [
+            new(Kind: "rename", MetadataName: "SampleLib." + originalIdentifier, NewName: "Replacement"),
+            new(Kind: "rename", MetadataName: "SampleLib.Replacement", NewName: originalIdentifier),
+        ];
+
+        if (fileCount == 500)
+        {
+            var preview = await service.PreviewAsync(workspaceId, operations, CancellationToken.None);
+            Assert.IsEmpty(preview.Changes);
+            Assert.IsEmpty(store.PeekChangedPaths(preview.PreviewToken)!);
+        }
+        else
+        {
+            var refusal = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+                service.PreviewAsync(workspaceId, operations, CancellationToken.None));
+            StringAssert.Contains(refusal.Message, "500-file diff cap");
+        }
+
+        Assert.AreEqual($"namespace SampleLib; public class {originalIdentifier} {{}}\n", await File.ReadAllTextAsync(declarationPath));
+    }
+
+    [TestMethod]
+    [DataRow(false, DisplayName = "valid supplementary character")]
+    [DataRow(true, DisplayName = "split surrogate")]
+    public async Task CompositePreview_RequiresTextThatTheTokenCanRepresent(bool splitSurrogate)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var path = workspace.GetPath("SampleLib", "UnicodeComment.cs");
+        const string original = "// \U0001F680\npublic class UnicodeComment {}\n";
+        await File.WriteAllTextAsync(path, original);
+        var workspaceId = await workspace.LoadAsync();
+        var store = new CompositePreviewStore(maxEntries: 1);
+        var priorToken = store.Store(workspaceId, WorkspaceManager.GetCurrentVersion(workspaceId), "prior preview", []);
+        var service = CreateSymbolRefactorService(store);
+        var edit = splitSurrogate ? new TextEditDto(1, 4, 1, 5, "") : new TextEditDto(1, 6, 1, 6, " ok");
+        SymbolRefactorOperation[] operations = [new(Kind: "edit", FileEdits: [new(path, [edit])])];
+
+        if (splitSurrogate)
+        {
+            var refusal = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
+                service.PreviewAsync(workspaceId, operations, CancellationToken.None));
+            StringAssert.Contains(refusal.Message, "valid Unicode");
+            Assert.IsNotNull(store.PeekWorkspaceId(priorToken));
+            Assert.AreEqual(original, await File.ReadAllTextAsync(path));
+        }
+        else
+        {
+            var preview = await service.PreviewAsync(workspaceId, operations, CancellationToken.None);
+            StringAssert.Contains(preview.Changes.Single().UnifiedDiff, "+// \U0001F680 ok");
+            Assert.AreEqual(original, await File.ReadAllTextAsync(path));
+            var orchestrator = new CompositeApplyOrchestrator(WorkspaceManager, store, ChangeTracker);
+            var applied = await orchestrator.ApplyCompositeAsync(preview.PreviewToken, CompositeAdmission.AdmitAll, CancellationToken.None);
+            Assert.IsTrue(applied.Success, applied.Error);
+            Assert.AreEqual("// \U0001F680 ok\npublic class UnicodeComment {}\n", await File.ReadAllTextAsync(path));
+        }
     }
 
     [TestMethod]

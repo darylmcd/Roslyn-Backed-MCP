@@ -559,6 +559,8 @@ public sealed class OrchestrationIntegrationTests : IsolatedWorkspaceTestBase
 
         var sourceFilePath = workspace.GetPath("SampleLib", "AnimalService.cs");
         var interfaceFilePath = workspace.GetPath("Contracts", "IAnimalService.cs");
+        var libraryProjectFile = workspace.GetPath("SampleLib", "SampleLib.csproj");
+        var originalLibraryProject = await File.ReadAllTextAsync(libraryProjectFile);
         InterfaceRouteTestBase.UseAcyclicAnimalServiceSignature(workspace);
         await workspace.LoadAsync(CancellationToken.None);
 
@@ -571,9 +573,17 @@ public sealed class OrchestrationIntegrationTests : IsolatedWorkspaceTestBase
             updateDiRegistrations: true,
             CancellationToken.None);
 
+        var projectDiff = preview.Changes.Single(change => change.FilePath == libraryProjectFile).UnifiedDiff;
+        StringAssert.Contains(projectDiff, "+    <ProjectReference Include=\"");
+        StringAssert.Contains(projectDiff, "Contracts.csproj\"");
+        Assert.AreEqual(originalLibraryProject, await File.ReadAllTextAsync(libraryProjectFile));
         var applyResult = await CompositeApplyOrchestrator.ApplyCompositeAsync(preview.PreviewToken, CompositeAdmission.AdmitAll, CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
         Assert.IsTrue(File.Exists(interfaceFilePath));
+        CollectionAssert.AreEquivalent(preview.Changes.Select(change => change.FilePath).ToArray(), applyResult.AppliedFiles.ToArray());
+        var appliedLibraryProject = await File.ReadAllTextAsync(libraryProjectFile);
+        Assert.AreEqual(projectDiff, RoslynMcp.Roslyn.Helpers.DiffGenerator.GenerateUnifiedDiff(
+            originalLibraryProject, appliedLibraryProject, libraryProjectFile));
 
         var registrationsContents = await File.ReadAllTextAsync(registrationsFile, CancellationToken.None);
         Assert.IsTrue(registrationsContents.Contains("AddSingleton<global::Contracts.IAnimalService, AnimalService>()", StringComparison.Ordinal));

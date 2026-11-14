@@ -132,12 +132,9 @@ public sealed class RefactoringService : IRefactoringService
     /// <c>apply_composite</c>.
     /// </summary>
     /// <remarks>
-    /// Returned tuple carries the modified solution plus a per-file <see cref="FileChangeDto"/>
-    /// list (full-diff form — summary mode is not relevant here because the composite caller
-    /// aggregates diffs across ops before applying its own truncation) and a human-readable
-    /// step description suitable for the composite preview's combined description string.
+    /// The composite caller renders its review from the initial snapshot and final solution.
     /// </remarks>
-    internal async Task<(Solution NewSolution, IReadOnlyList<FileChangeDto> Changes, string Description)>
+    internal async Task<(Solution NewSolution, string Description)>
         PreviewRenameOnSolutionAsync(
             Solution inputSolution, SymbolLocator locator, string newName, CancellationToken ct)
     {
@@ -156,10 +153,9 @@ public sealed class RefactoringService : IRefactoringService
         var newSolution = await Renamer.RenameSymbolAsync(
             inputSolution, symbol, new SymbolRenameOptions(), newName, ct).ConfigureAwait(false);
 
-        var changes = await SolutionDiffHelper.ComputeChangesAsync(inputSolution, newSolution, ct).ConfigureAwait(false);
         var description = $"Rename '{symbol.Name}' to '{newName}'";
 
-        return (newSolution, changes, description);
+        return (newSolution, description);
     }
 
     private static string BuildRenameTargetNotFoundMessage(SymbolLocator locator)

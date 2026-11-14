@@ -1,4 +1,7 @@
+using System.Text;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Text;
+using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
 
@@ -6,84 +9,164 @@ namespace RoslynMcp.Roslyn.Services;
 
 internal static class CompositeSolutionMutationPlanner
 {
-    internal static async Task<List<CompositeFileMutation>> BuildAsync(
+    internal sealed record FileEdit(CompositeFileMutation Mutation, string? OriginalContent);
+    private static readonly UTF8Encoding _strictUnicode = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+
+    internal static async Task<List<FileEdit>> BuildAsync(
         Solution baseline, Solution pending, IReadOnlyCollection<DocumentId> requiredCreates, CancellationToken ct)
     {
-        var affectedPaths = new Dictionary<string, (string RawPath, List<(Document Document, bool Added)> Writes)>(FileSystemPath.Comparer);
-        foreach (var change in pending.GetChanges(baseline).GetProjectChanges())
-        {
-            foreach (var id in change.GetChangedDocuments())
-                AddWrite(RequireDocument(pending, id), added: false);
-            foreach (var id in change.GetAddedDocuments())
-                AddWrite(RequireDocument(pending, id), added: true);
-            foreach (var id in change.GetRemovedDocuments())
-                _ = GetWrites(RequireDocument(baseline, id));
-        }
-
-        if (affectedPaths.Count == 0)
+        var affectedPaths = GetTouchedPaths(baseline, pending).DistinctBy(Path.GetFullPath, FileSystemPath.Comparer).ToArray();
+        if (affectedPaths.Length == 0)
             return [];
 
         var beforeByPath = IndexDocuments(baseline);
         var afterByPath = IndexDocuments(pending);
-        var mutations = new List<CompositeFileMutation>(affectedPaths.Count);
-        foreach (var (path, (rawPath, writes)) in affectedPaths)
+        var edits = new List<FileEdit>(affectedPaths.Length);
+        foreach (var rawPath in affectedPaths)
         {
             ct.ThrowIfCancellationRequested();
-            if (writes.Count == 0)
-            {
-                // Removing a link is a project change. Delete the file only once its last link is gone.
-                if (!afterByPath.Contains(path))
-                    mutations.Add(new CompositeFileMutation(rawPath, null, CompositeFileMutationMode.Delete));
-                continue;
-            }
-
-            var originalPath = RequirePath(writes[0].Document);
-            var mode = beforeByPath.Contains(path) ? CompositeFileMutationMode.Edit : CompositeFileMutationMode.Create;
-            if (writes.Any(write => requiredCreates.Contains(write.Document.Id)) &&
-                (mode != CompositeFileMutationMode.Create || BaselineUsesPhysicalPath(beforeByPath, path, ct)))
+            var path = ResolvePhysicalReviewPath(rawPath);
+            var originals = beforeByPath[path];
+            var surviving = afterByPath[path];
+            foreach (var owner in originals.Concat(surviving))
+                _ = ResolvePhysicalReviewPath(RequirePath(owner));
+            if (surviving.Any(document => requiredCreates.Contains(document.Id)) &&
+                (beforeByPath.Contains(path) || BaselineUsesPhysicalPath(beforeByPath, path, ct)))
             {
                 throw new PublicInvalidOperationException(
                     "A generated file's destination is already mapped by the workspace. Choose a different destination and re-issue the preview.");
             }
 
-            string? newContent = null;
-            foreach (var (document, _) in writes)
+            var originalContent = await ReadAgreedContentAsync(originals, ct).ConfigureAwait(false);
+            if (!afterByPath.Contains(path))
             {
-                if (mode == CompositeFileMutationMode.Create)
-                    CompositeCreateDestination.RequireAvailableForPreview(RequirePath(document));
-
-                var content = (await document.GetTextAsync(ct).ConfigureAwait(false)).ToString();
-                if (newContent is not null && !string.Equals(newContent, content, StringComparison.Ordinal))
-                    throw new PublicInvalidOperationException("Linked C# documents have divergent composite mutations.");
-                newContent = content;
+                // Removing a link only deletes disk content when its last owner is removed.
+                edits.Add(new FileEdit(new CompositeFileMutation(path, null, CompositeFileMutationMode.Delete), originalContent));
+                continue;
             }
 
-            if (mode == CompositeFileMutationMode.Edit && writes.All(write => write.Added))
+            if (originalContent is null)
             {
-                if (await BaselineMatchesAsync(beforeByPath[path], newContent, ct).ConfigureAwait(false))
-                    continue; // A link to the original content requires no disk rewrite.
-
-                throw new PublicInvalidOperationException("A new linked C# document cannot replace the existing content at its destination.");
+                CompositeCreateDestination.RequireAvailableForPreview(path);
+                var createdContent = await ReadAgreedContentAsync(surviving, ct).ConfigureAwait(false);
+                edits.Add(new FileEdit(new CompositeFileMutation(path, createdContent, CompositeFileMutationMode.Create), null));
+                continue;
             }
 
-            mutations.Add(new CompositeFileMutation(originalPath, newContent, mode));
+            var editedContent = await ResolveExistingEditAsync(originals, surviving, originalContent, ct).ConfigureAwait(false);
+            if (editedContent is not null)
+                edits.Add(new FileEdit(new CompositeFileMutation(path, editedContent, CompositeFileMutationMode.Edit), originalContent));
         }
 
-        return mutations;
+        return edits;
+    }
 
-        void AddWrite(Document document, bool added) => GetWrites(document).Add((document, added));
-
-        List<(Document Document, bool Added)> GetWrites(Document document)
+    internal static IEnumerable<string> GetTouchedPaths(Solution baseline, Solution pending)
+    {
+        foreach (var change in pending.GetChanges(baseline).GetProjectChanges())
         {
-            var rawPath = RequirePath(document);
-            var path = Path.GetFullPath(rawPath);
-            if (!affectedPaths.TryGetValue(path, out var affected))
+            foreach (var id in change.GetChangedDocuments())
             {
-                affected = (rawPath, []);
-                affectedPaths.Add(path, affected);
+                var before = RequireReviewPath(RequireDocument(baseline, id));
+                var after = RequireReviewPath(RequireDocument(pending, id));
+                if (!FileSystemPath.Comparer.Equals(before, after)) yield return before;
+                yield return after;
             }
+            foreach (var id in change.GetAddedDocuments())
+                yield return RequireReviewPath(RequireDocument(pending, id));
+            foreach (var id in change.GetRemovedDocuments())
+                yield return RequireReviewPath(RequireDocument(baseline, id));
+        }
+    }
 
-            return affected.Writes;
+    internal static async Task<Solution> PropagateLinkedEditsAsync(
+        Solution baseline, Solution pending, IReadOnlyCollection<string> touchedPaths, CancellationToken ct)
+    {
+        if (touchedPaths.Count == 0) return pending;
+
+        var afterByPath = IndexDocuments(pending);
+        var beforeByPath = IndexDocuments(baseline);
+        foreach (var path in touchedPaths)
+        {
+            var surviving = afterByPath[path].ToArray();
+            if (surviving.Length < 2) continue;
+
+            var originals = beforeByPath[path];
+            var originalContent = await ReadAgreedContentAsync(originals, ct).ConfigureAwait(false);
+            if (originalContent is null) continue;
+
+            var editedContent = await ResolveExistingEditAsync(originals, surviving, originalContent, ct).ConfigureAwait(false);
+            if (editedContent is null) continue;
+
+            foreach (var owner in surviving)
+            {
+                var text = await owner.GetTextAsync(ct).ConfigureAwait(false);
+                if (text.ToString() != editedContent)
+                    pending = pending.WithDocumentText(owner.Id, SourceText.From(editedContent, text.Encoding, text.ChecksumAlgorithm));
+            }
+        }
+
+        return pending;
+    }
+
+    internal static string ResolvePhysicalReviewPath(string path)
+    {
+        RequireReviewPath(path);
+        try
+        {
+            // Use the canonical spelling only after verifying that the raw path resolves to it.
+            if (CompositeCreateDestination.IsPhysicalPath(path)) return Path.GetFullPath(path);
+        }
+        catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException or NotSupportedException)
+        {
+            throw new PublicInvalidOperationException("The composite mutation's physical file path could not be verified.", ex);
+        }
+        throw new PublicInvalidOperationException("A composite mutation requires a physical file path without filesystem links.");
+    }
+
+    private static string RequireReviewPath(Document document) => RequireReviewPath(RequirePath(document));
+
+    private static string RequireReviewPath(string path)
+    {
+        if (!Path.IsPathFullyQualified(path) || path.Any(char.IsControl) ||
+            path.Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar]).Any(segment => segment is "." or ".."))
+            throw new PublicInvalidOperationException("A composite mutation requires an absolute file path without traversal or control characters.");
+        return path;
+    }
+
+    internal static IReadOnlyList<FileChangeDto> RenderReview(IReadOnlyList<FileEdit> edits, CancellationToken ct)
+    {
+        var changes = new List<FileChangeDto>(edits.Count);
+        var totalChars = 0;
+        foreach (var edit in edits)
+        {
+            ct.ThrowIfCancellationRequested();
+            var mutation = edit.Mutation;
+            RequireUnicode(mutation.FilePath);
+            RequireUnicode(edit.OriginalContent);
+            RequireUnicode(mutation.UpdatedContent);
+            var (diff, truncated) = DiffGenerator.RenderUnifiedDiff(
+                edit.OriginalContent, mutation.UpdatedContent, mutation.FilePath);
+            if (diff.Length == 0)
+                throw InvalidOperationErrors.Internal("A planned composite mutation must have a visible diff.");
+            totalChars += diff.Length;
+            if (truncated || diff.Length > DiffGenerator.DefaultMaxDiffChars || totalChars > SolutionDiffHelper.DefaultMaxTotalChars)
+                throw new PublicInvalidOperationException(
+                    "The composite preview exceeds the diff review budget. Split the operation and reissue the preview.");
+
+            changes.Add(new FileChangeDto(mutation.FilePath, diff));
+        }
+
+        return changes;
+    }
+
+    private static void RequireUnicode(string? text)
+    {
+        if (text is null) return;
+        try { _ = _strictUnicode.GetByteCount(text); }
+        catch (EncoderFallbackException ex)
+        {
+            throw new PublicInvalidOperationException("A composite mutation requires valid Unicode text. Correct the edit and reissue the preview.", ex);
         }
     }
 
@@ -110,23 +193,55 @@ internal static class CompositeSolutionMutationPlanner
     private static ILookup<string, Document> IndexDocuments(Solution solution) =>
         solution.Projects.SelectMany(project => project.Documents)
             .Where(document => Path.IsPathFullyQualified(document.FilePath ?? string.Empty))
-            .ToLookup(document => Path.GetFullPath(RequirePath(document)), FileSystemPath.Comparer);
+            .ToLookup(GetPath, FileSystemPath.Comparer);
 
-    private static async Task<bool> BaselineMatchesAsync(
-        IEnumerable<Document> originals, string? candidate, CancellationToken ct)
+    private static async Task<string?> ReadAgreedContentAsync(IEnumerable<Document> owners, CancellationToken ct)
     {
-        foreach (var original in originals)
+        string? agreed = null;
+        foreach (var owner in owners)
         {
-            var content = (await original.GetTextAsync(ct).ConfigureAwait(false)).ToString();
-            if (!string.Equals(content, candidate, StringComparison.Ordinal))
-                return false;
+            var content = (await owner.GetTextAsync(ct).ConfigureAwait(false)).ToString();
+            if (agreed is not null && agreed != content)
+                throw new PublicInvalidOperationException("Linked C# documents have divergent composite mutations.");
+            agreed = content;
         }
 
-        return true;
+        return agreed;
+    }
+
+    private static async Task<string?> ResolveExistingEditAsync(
+        IEnumerable<Document> originals, IEnumerable<Document> surviving, string originalContent, CancellationToken ct)
+    {
+        var originalIds = originals.Select(document => document.Id).ToHashSet();
+        string? editedContent = null;
+        var newOwners = new List<Document>();
+        foreach (var owner in surviving)
+        {
+            if (!originalIds.Contains(owner.Id))
+            {
+                newOwners.Add(owner);
+                continue;
+            }
+
+            var content = (await owner.GetTextAsync(ct).ConfigureAwait(false)).ToString();
+            // An unchanged linked view has no independent write intent. The changed view's edit will publish to both.
+            if (content == originalContent) continue;
+            if (editedContent is not null && editedContent != content)
+                throw new PublicInvalidOperationException("Linked C# documents have divergent composite mutations.");
+            editedContent = content;
+        }
+
+        var addedContent = await ReadAgreedContentAsync(newOwners, ct).ConfigureAwait(false);
+        if (addedContent is not null && addedContent != (editedContent ?? originalContent))
+            throw new PublicInvalidOperationException("A new linked C# document cannot replace the existing content at its destination.");
+
+        return editedContent;
     }
 
     private static Document RequireDocument(Solution solution, DocumentId id) =>
         solution.GetDocument(id) ?? throw InvalidOperationErrors.Internal("A composite C# document could not be resolved.");
+
+    private static string GetPath(Document document) => Path.GetFullPath(RequirePath(document));
 
     private static string RequirePath(Document document) =>
         document.FilePath is { } path && Path.IsPathFullyQualified(path)
