@@ -272,7 +272,8 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
             sessionLoader: null,
             evictionGate: evictionGate,
             ownsFileWatcher: false,
-            timeProvider: timeProvider) { ProviderOwned = true };
+            timeProvider: timeProvider)
+        { ProviderOwned = true };
 
     internal void AttachProviderGate(IWorkspaceExecutionGate gate)
     {
