@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Collections.Immutable;
 using System.Diagnostics;
 using Nito.AsyncEx;
 using RoslynMcp.Core.Services;
@@ -47,7 +46,7 @@ namespace RoslynMcp.Roslyn.Services;
 /// path.
 /// </para>
 /// </remarks>
-public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposable
+public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposable, IAsyncDisposable
 {
     /// <summary>Global concurrency limit across all workspaces.</summary>
     private static readonly int MaxGlobalConcurrency = Math.Max(2, Environment.ProcessorCount);
@@ -70,13 +69,10 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
     private readonly SemaphoreSlim _globalThrottle = new(MaxGlobalConcurrency, MaxGlobalConcurrency);
     private readonly AsyncReaderWriterLockRegistry _rwLocks = new();
 
-    /// <summary>
-    /// Tracks whether the current async context already holds a <see cref="_globalThrottle"/>
-    /// slot. Used to skip re-acquisition when a lifecycle method (e.g., <c>workspace_close</c>
-    /// nesting <c>RunWriteAsync</c> inside <c>RunLoadGateAsync</c>) would otherwise consume two
-    /// slots and risk deadlock when the throttle is saturated.
-    /// </summary>
-    private readonly AsyncLocal<int> _globalThrottleHeld = new();
+    private readonly object _lifecycleLock = new();
+    private readonly AsyncLocal<Admission?> _ambientAdmission = new();
+    private int _admittedOperations;
+    private TaskCompletionSource? _shutdown;
 
     /// <summary>Sliding window rate limiter — stores timestamps of recent requests.</summary>
     private readonly ConcurrentQueue<long> _requestTimestamps = new();
@@ -111,6 +107,7 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
     public async Task<T> RunLoadGateAsync<T>(Func<CancellationToken, Task<T>> action, CancellationToken ct)
     {
         var queueStopwatch = Stopwatch.StartNew();
+        using var admission = AdmitOperation(ct);
         EnforceRateLimit();
         var timeoutStarted = _timeProvider.GetTimestamp();
 
@@ -118,18 +115,17 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
         // CancelAfter below) is armed on _timeProvider's clock — TimeProvider.System in
         // production, a fake clock under test. CreateLinkedTokenSource has no TimeProvider
         // overload, so the linked token observes both the caller's ct and this timeout source.
-        using var timeoutCts = new CancellationTokenSource(_requestTimeout, _timeProvider);
-        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
-        var linked = linkedCts.Token;
+        var timeoutCts = admission.StartTimeout(_requestTimeout, _timeProvider);
+        var linked = admission.Token;
 
         // Publish the same deadline (same instant as timeoutCts) so the gated action can size its
         // own budgets against it (workspace auto-restore reserves time for the follow-up reload).
         // A write gate nested inside this one keeps the earlier deadline.
-        using var deadlineScope = RequestDeadline.Begin(_timeProvider, _requestTimeout);
+        using var deadlineScope = admission.StartDeadline(_timeProvider, _requestTimeout);
 
         try
         {
-            return await WithGlobalThrottle(async () =>
+            return await WithGlobalThrottle(admission, async () =>
             {
                 await _loadGate.WaitAsync(linked).ConfigureAwait(false);
                 try
@@ -155,38 +151,60 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
         }
     }
 
-    /// <summary>
-    /// Acquire the global throttle for the duration of <paramref name="body"/>, skipping the
-    /// physical wait if the current async context already holds a slot. The async-local depth
-    /// counter ensures one async stack frame can nest two gate calls (e.g.,
-    /// <c>workspace_close</c>'s <c>RunLoadGateAsync → RunWriteAsync</c>) without consuming two
-    /// slots, which would risk deadlock under throttle saturation.
-    /// </summary>
-    private async Task<T> WithGlobalThrottle<T>(Func<Task<T>> body, CancellationToken ct)
+    private Admission AdmitOperation(CancellationToken ct)
     {
-        if (_globalThrottleHeld.Value > 0)
+        lock (_lifecycleLock)
         {
-            _globalThrottleHeld.Value++;
-            try
+            // A copied ExecutionContext can outlive the operation it was captured from.
+            // Only a live enclosing invocation may lend its acquired throttle slot.
+            var ambient = _ambientAdmission.Value;
+            var parent = ambient;
+            while (parent is { IsActive: false })
+                parent = parent.Parent;
+            var permit = parent?.Permit;
+            if (permit is null && _shutdown is not null)
+                throw new ShutdownException();
+
+            permit ??= new ThrottlePermit();
+            permit.Owners++;
+            _admittedOperations++;
+
+            // The caller may explicitly pass a token issued by an enclosing gate operation.
+            // Keep that token's upstream registrations alive while this operation uses it.
+            var cancellationOwner = ct.CanBeCanceled ? ambient : null;
+            while (cancellationOwner is not null &&
+                   (cancellationOwner.CancellationUsers == 0 || cancellationOwner.Token != ct))
             {
-                return await body().ConfigureAwait(false);
+                cancellationOwner = cancellationOwner.Parent;
             }
-            finally
-            {
-                _globalThrottleHeld.Value--;
-            }
+            if (cancellationOwner is not null)
+                cancellationOwner.CancellationUsers++;
+
+            return new Admission(this, permit, ambient, ct, cancellationOwner);
+        }
+    }
+
+    private async Task<T> WithGlobalThrottle<T>(Admission admission, Func<Task<T>> body, CancellationToken ct)
+    {
+        if (!admission.Permit.Acquired)
+        {
+            await _globalThrottle.WaitAsync(ct).ConfigureAwait(false);
+            admission.Permit.Acquired = true;
         }
 
-        await _globalThrottle.WaitAsync(ct).ConfigureAwait(false);
-        _globalThrottleHeld.Value = 1;
+        var previous = _ambientAdmission.Value;
+        _ambientAdmission.Value = admission;
         try
         {
             return await body().ConfigureAwait(false);
         }
         finally
         {
-            _globalThrottleHeld.Value = 0;
-            _globalThrottle.Release();
+            // The admission still protects resource release and cancellation classification,
+            // but callers in other flows can no longer inherit authority from this body.
+            lock (_lifecycleLock)
+                admission.IsActive = false;
+            _ambientAdmission.Value = previous;
         }
     }
 
@@ -201,6 +219,7 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
         // wait, global throttle wait, and per-workspace lock wait under a single QueuedMs value.
         var queueStopwatch = Stopwatch.StartNew();
 
+        using var admission = AdmitOperation(ct);
         EnforceRateLimit();
 
         if (string.IsNullOrWhiteSpace(workspaceId))
@@ -219,13 +238,12 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
         // CancelAfter below) is armed on _timeProvider's clock — TimeProvider.System in
         // production, a fake clock under test. CreateLinkedTokenSource has no TimeProvider
         // overload, so the linked token observes both the caller's ct and this timeout source.
-        using var timeoutCts = new CancellationTokenSource(_requestTimeout, _timeProvider);
-        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
-        var linked = linkedCts.Token;
+        var timeoutCts = admission.StartTimeout(_requestTimeout, _timeProvider);
+        var linked = admission.Token;
 
         // Publish the same deadline (same instant as timeoutCts); re-armed alongside timeoutCts
         // after an auto-reload below. Nested inside the load gate, the earlier deadline wins.
-        using var deadlineScope = RequestDeadline.Begin(_timeProvider, _requestTimeout);
+        using var deadlineScope = admission.StartDeadline(_timeProvider, _requestTimeout);
 
         try
         {
@@ -274,7 +292,7 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
                 }
             }
 
-            return await WithGlobalThrottle(async () =>
+            return await WithGlobalThrottle(admission, async () =>
             {
                 var rwLock = _rwLocks.Get(workspaceId);
 
@@ -543,28 +561,27 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
         return reloaded;
     }
 
-    /// <summary>
-    /// Workspace ids whose per-workspace lock the CURRENT async flow already holds (set while a gated
-    /// action runs). Lets a nested same-workspace call skip the reload escalation that would wait
-    /// forever on its own enclosing reader. Immutable: an <see cref="AsyncLocal{T}"/> value is copied
-    /// into child flows, so it must never be mutated in place.
-    /// </summary>
-    private readonly AsyncLocal<ImmutableHashSet<string>?> _heldWorkspaces = new();
+    private bool HoldsWorkspaceLock(string workspaceId)
+    {
+        for (var scope = _ambientAdmission.Value; scope is not null; scope = scope.Parent)
+        {
+            if (scope.WorkspaceId == workspaceId) return true;
+        }
 
-    private bool HoldsWorkspaceLock(string workspaceId) =>
-        _heldWorkspaces.Value?.Contains(workspaceId) == true;
+        return false;
+    }
 
     private async Task<T> RunHoldingWorkspaceAsync<T>(string workspaceId, Func<Task<T>> body)
     {
-        var previous = _heldWorkspaces.Value;
-        _heldWorkspaces.Value = (previous ?? ImmutableHashSet.Create<string>(StringComparer.Ordinal)).Add(workspaceId);
+        var admission = _ambientAdmission.Value!;
+        admission.WorkspaceId = workspaceId;
         try
         {
             return await body().ConfigureAwait(false);
         }
         finally
         {
-            _heldWorkspaces.Value = previous;
+            admission.WorkspaceId = null;
         }
     }
 
@@ -602,19 +619,121 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
     /// Drop the per-workspace lock entry from the registry for a workspace that is being closed.
     /// </summary>
     /// <remarks>
-    /// The caller must already hold the per-workspace write lock so that no in-flight reader is
-    /// operating against the workspace when its lock entry is removed (see
-    /// <see cref="IWorkspaceExecutionGate.RemoveGate"/>).
+    /// The session must be closed under its writer before the registry entry is dropped.
     /// </remarks>
     public void RemoveGate(string workspaceId)
     {
         _rwLocks.Remove(workspaceId);
     }
 
-    public void Dispose()
+    public void Dispose() => RequestShutdown();
+
+    public ValueTask DisposeAsync() => new(RequestShutdown());
+
+    private Task RequestShutdown()
     {
+        lock (_lifecycleLock)
+        {
+            _shutdown ??= new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            CompleteShutdownIfDrained();
+            return _shutdown.Task;
+        }
+    }
+
+    private void CompleteShutdownIfDrained()
+    {
+        if (_shutdown is null || _shutdown.Task.IsCompleted || _admittedOperations != 0) return;
+
         _loadGate.Dispose();
         _globalThrottle.Dispose();
+        _shutdown.SetResult();
+    }
+
+    private void ReleaseAdmission(Admission admission)
+    {
+        // Keep the count until cancellation cleanup has finished. Dispose registrations
+        // outside the lifecycle lock because cancellation callbacks can enter the gate.
+        for (var owner = admission; owner is not null; owner = owner.CancellationOwner)
+        {
+            lock (_lifecycleLock)
+            {
+                if (--owner.CancellationUsers != 0) break;
+            }
+            owner.DisposeCancellation();
+        }
+
+        lock (_lifecycleLock)
+        {
+            var permit = admission.Permit;
+            if (--permit.Owners == 0 && permit.Acquired)
+                _globalThrottle.Release();
+
+            _admittedOperations--;
+            CompleteShutdownIfDrained();
+        }
+    }
+
+    private sealed class Admission(
+        WorkspaceExecutionGate gate, ThrottlePermit permit, Admission? parent,
+        CancellationToken callerToken, Admission? cancellationOwner) : IDisposable
+    {
+        private CancellationTokenSource? _timeout;
+        private CancellationTokenSource? _linked;
+        private RequestDeadline.Budget? _budget;
+
+        internal ThrottlePermit Permit { get; } = permit;
+        internal Admission? Parent { get; } = parent;
+        internal Admission? CancellationOwner { get; } = cancellationOwner;
+        internal int CancellationUsers { get; set; } = 1;
+        internal CancellationToken Token { get; private set; }
+        internal volatile string? WorkspaceId;
+        internal bool IsActive { get; set; } = true;
+
+        internal CancellationTokenSource StartTimeout(TimeSpan timeout, TimeProvider timeProvider)
+        {
+            _timeout = new CancellationTokenSource(timeout, timeProvider);
+            _linked = CancellationTokenSource.CreateLinkedTokenSource(callerToken, _timeout.Token);
+            Token = _linked.Token;
+            return _timeout;
+        }
+
+        internal void DisposeCancellation()
+        {
+            _linked?.Dispose();
+            _timeout?.Dispose();
+        }
+
+        internal RequestDeadline.Scope StartDeadline(TimeProvider timeProvider, TimeSpan timeout)
+        {
+            var scope = RequestDeadline.Begin(timeProvider, timeout,
+                CancellationOwner is null ? null : RetainedCancellationBudget);
+            _budget = scope.Budget;
+            return scope;
+        }
+
+        private TimeSpan? RetainedCancellationBudget()
+        {
+            TimeSpan? earliest = null;
+            for (var owner = CancellationOwner; owner is not null; owner = owner.CancellationOwner)
+            {
+                if (owner._budget?.Remaining is { } remaining && (earliest is null || remaining < earliest))
+                    earliest = remaining;
+            }
+            return earliest;
+        }
+
+        public void Dispose() => gate.ReleaseAdmission(this);
+    }
+
+    // A retirement that reaches the gate after shutdown begins leaves removal to the
+    // manager's shutdown. This signal is distinct from a failure inside the gate action.
+    internal sealed class ShutdownException(Exception? inner = null)
+        : ObjectDisposedException("The workspace execution gate is shutting down.", inner);
+
+    private sealed class ThrottlePermit
+    {
+        internal int Owners { get; set; }
+        internal bool Acquired { get; set; }
     }
 
     /// <summary>

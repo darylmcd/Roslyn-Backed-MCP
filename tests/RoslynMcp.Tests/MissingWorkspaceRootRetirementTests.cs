@@ -1,7 +1,10 @@
 namespace RoslynMcp.Tests;
 
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
+using RoslynMcp.Roslyn;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Services;
 
@@ -197,6 +200,114 @@ public sealed class MissingWorkspaceRootRetirementTests : SharedWorkspaceTestBas
         }
     }
 
+    [TestMethod]
+    public async Task ProviderDispose_DrainsAdmittedRootRetirementThroughTheProductionGate()
+    {
+        var solutionPath = CreateSampleSolutionCopy();
+        var root = Path.GetDirectoryName(solutionPath)!;
+        using var guard = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        using var release = new ManualResetEventSlim();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var watcher = new SignalingFileWatcher
+        {
+            OnUnwatch = () =>
+            {
+                entered.TrySetResult();
+                release.Wait(guard.Token);
+            },
+        };
+        var logger = new RetirementLogger();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddRoslynServices();
+        services.AddSingleton<ILogger<WorkspaceManager>>(logger);
+        services.AddSingleton<IFileWatcherService>(_ => watcher);
+        await using var provider = services.BuildServiceProvider();
+
+        Task? shutdown = null;
+        try
+        {
+            var manager = provider.GetRequiredService<IWorkspaceManager>();
+            var status = await manager.LoadAsync(solutionPath, EvictPolicy.Strict, guard.Token);
+            File.Delete(solutionPath);
+            watcher.RaiseRootMissing(status.WorkspaceId);
+            await entered.Task.WaitAsync(guard.Token);
+
+            shutdown = provider.DisposeAsync().AsTask();
+            Assert.IsFalse(shutdown.IsCompleted);
+            Assert.IsFalse(watcher.Disposed);
+            release.Set();
+            await shutdown.WaitAsync(guard.Token);
+
+            Assert.IsFalse(manager.ContainsWorkspace(status.WorkspaceId));
+            Assert.IsTrue(watcher.Disposed);
+            Assert.IsNull(logger.RetirementFailure,
+                $"An admitted retirement must release the production gate cleanly. {logger.RetirementFailure}");
+        }
+        finally
+        {
+            release.Set();
+            if (shutdown is not null) await shutdown.WaitAsync(guard.Token);
+            DeleteDirectoryIfExists(root);
+        }
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task ProviderDispose_LeavesLateRootRetirementToManagerShutdown(bool resolveGate)
+    {
+        var solutionPath = CreateSampleSolutionCopy();
+        var root = Path.GetDirectoryName(solutionPath)!;
+        using var guard = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var clock = new RetirementClock();
+        var watcher = new SignalingFileWatcher();
+        var logger = new RetirementLogger();
+        var providerStop = new PausedProviderDisposal();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddRoslynServices();
+        services.AddSingleton<ILogger<WorkspaceManager>>(logger);
+        services.AddSingleton<TimeProvider>(clock);
+        services.AddSingleton<IFileWatcherService>(_ => watcher);
+        services.AddSingleton<PausedProviderDisposal>(_ => providerStop);
+        await using var provider = services.BuildServiceProvider();
+
+        Task? shutdown = null;
+        Task? retirement = null;
+        try
+        {
+            var manager = (WorkspaceManager)provider.GetRequiredService<IWorkspaceManager>();
+            var status = await manager.LoadAsync(solutionPath, EvictPolicy.Strict, guard.Token);
+            _ = provider.GetRequiredService<PausedProviderDisposal>();
+            if (resolveGate)
+                _ = provider.GetRequiredService<IWorkspaceExecutionGate>();
+            File.Delete(solutionPath);
+
+            shutdown = provider.DisposeAsync().AsTask();
+            await providerStop.Entered.Task.WaitAsync(guard.Token);
+            watcher.RaiseRootMissing(status.WorkspaceId);
+            retirement = manager.GetRootRetirementTaskForTesting(status.WorkspaceId);
+            Assert.IsNotNull(retirement, "The manager must still be live while the provider has stopped resolving services.");
+            await clock.TimerCreated.Task.WaitAsync(guard.Token);
+            clock.Advance();
+            await retirement.WaitAsync(guard.Token);
+            Assert.IsTrue(manager.ContainsWorkspace(status.WorkspaceId));
+            Assert.IsNull(logger.RetirementFailure);
+
+            providerStop.Release.SetResult();
+            await shutdown.WaitAsync(guard.Token);
+            Assert.IsFalse(manager.ContainsWorkspace(status.WorkspaceId));
+        }
+        finally
+        {
+            providerStop.Release.TrySetResult();
+            if (shutdown is not null) await shutdown.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            if (retirement is not null) await retirement.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            DeleteDirectoryIfExists(root);
+        }
+    }
+
     private static WorkspaceManager CreateManager(
         IFileWatcherService watcher,
         IWorkspaceExecutionGate gate,
@@ -216,12 +327,13 @@ public sealed class MissingWorkspaceRootRetirementTests : SharedWorkspaceTestBas
         public event Action<string>? WorkspaceRootMissing;
 
         public bool Disposed { get; private set; }
+        internal Action? OnUnwatch { get; init; }
 
         public void RaiseRootMissing(string workspaceId) => WorkspaceRootMissing?.Invoke(workspaceId);
 
         public void Watch(string workspaceId, string workspacePath) { }
 
-        public void Unwatch(string workspaceId) { }
+        public void Unwatch(string workspaceId) => OnUnwatch?.Invoke();
 
         public bool IsStale(string workspaceId) => false;
 
@@ -234,6 +346,54 @@ public sealed class MissingWorkspaceRootRetirementTests : SharedWorkspaceTestBas
         public bool ClearStaleIfNoExternalEditSince(string workspaceId, DateTime sinceUtc) => false;
 
         public void Dispose() => Disposed = true;
+    }
+
+    private sealed class RetirementLogger : ILogger<WorkspaceManager>
+    {
+        internal Exception? RetirementFailure { get; private set; }
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            if (logLevel == LogLevel.Warning &&
+                formatter(state, exception).StartsWith("Failed to retire missing workspace backing path", StringComparison.Ordinal))
+            {
+                RetirementFailure = exception;
+            }
+        }
+    }
+
+    private sealed class PausedProviderDisposal : IAsyncDisposable
+    {
+        internal TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public ValueTask DisposeAsync()
+        {
+            Entered.SetResult();
+            return new(Release.Task);
+        }
+    }
+
+    private sealed class RetirementClock : TimeProvider
+    {
+        private readonly FakeTimeProvider _clock = new();
+        internal TaskCompletionSource TimerCreated { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public override DateTimeOffset GetUtcNow() => _clock.GetUtcNow();
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            var timer = _clock.CreateTimer(callback, state, dueTime, period);
+            TimerCreated.TrySetResult();
+            return timer;
+        }
+
+        internal void Advance() => _clock.Advance(TimeSpan.FromSeconds(1));
     }
 
     private sealed class RetryingGate : IWorkspaceExecutionGate
