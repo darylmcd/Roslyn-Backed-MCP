@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -8,8 +9,7 @@ namespace RoslynMcp.Tests;
 /// <see cref="FileSystemWatcher"/> owns one inotify instance and the default per-user cap is 128, so a
 /// workspace must cost one tree watcher plus shared ancestor watchers rather than a dozen private ones.
 /// The behavior tests run on every platform because the watcher topology is platform independent.
-/// The inotify descriptor count is process-wide, so the class runs exclusively: concurrent classes that hold
-/// their own watchers would otherwise move the baseline.
+/// The inotify footprint test measures descriptors inside a dedicated child process.
 /// </summary>
 [TestClass]
 [DoNotParallelize]
@@ -25,76 +25,22 @@ public sealed class FileWatcherSharedWatcherTests
             Assert.Inconclusive("Counts Linux inotify descriptors.");
         }
 
-        const int batch = 10;
-        var parent = NewTempRoot();
-        using var watcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance);
-        var ids = new List<string>();
-        void WatchBatch()
-        {
-            for (var i = 0; i < batch; i++)
-            {
-                var root = Path.Combine(parent, $"ws{ids.Count}");
-                Directory.CreateDirectory(root);
-                var id = Guid.NewGuid().ToString("N");
-                ids.Add(id);
-                watcher.Watch(id, Path.Combine(root, "Sample.slnx"));
-            }
-        }
-
+        var root = Path.Combine(TestTempRoot.Current, $"inotify-footprint-{Guid.NewGuid():N}");
+        var probe = Path.Combine(AppContext.BaseDirectory, "InotifyWatcherProbe.dll");
         try
         {
-            // Request shutdown of unreachable watchers from earlier tests before taking the baseline.
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
-            using var deadline = new CancellationTokenSource(SignalTimeout);
-            var baseline = GetInotifyDescriptors();
-            while (baseline.Values.Any(string.IsNullOrEmpty))
-            {
-                await Task.Delay(TimeSpan.FromMilliseconds(5), deadline.Token);
-                baseline = GetInotifyDescriptors();
-            }
-
-            WatchBatch();
-            var afterFirst = GetInotifyDescriptors();
-            WatchBatch();
-            var afterSecond = GetInotifyDescriptors();
-
-            // The ancestor watchers are shared, so every further workspace costs exactly one instance.
-            Assert.AreEqual(batch, afterSecond.Count - afterFirst.Count,
-                $"marginal cost per workspace must be 1 inotify instance (baseline {baseline.Count}, first {afterFirst.Count}, second {afterSecond.Count})");
-
-            // A descriptor number may be reused between snapshots. Its watched inode/device records
-            // help distinguish a new watcher from a baseline descriptor with the same number.
-            var owned = afterFirst.Concat(afterSecond)
-                .Where(pair => !baseline.TryGetValue(pair.Key, out var watches) || watches != pair.Value)
-                .Select(pair => pair.Key)
-                .ToHashSet(StringComparer.Ordinal);
-            Assert.IsNotEmpty(owned);
-
-            foreach (var id in ids) watcher.Unwatch(id);
-
-            // Linux FileSystemWatcher.Dispose signals its read loop, which closes the descriptor in its finally.
-            var remaining = GetInotifyDescriptors();
-            try
-            {
-                while (remaining.Keys.Any(owned.Contains) || remaining.Count != baseline.Count)
-                {
-                    await Task.Delay(TimeSpan.FromMilliseconds(5), deadline.Token);
-                    remaining = GetInotifyDescriptors();
-                }
-            }
-            catch (OperationCanceledException) when (deadline.IsCancellationRequested)
-            {
-                var stillOpen = remaining.Where(pair => owned.Contains(pair.Key));
-                Assert.Fail($"Unwatch must release every owned inotify descriptor and return to baseline {baseline.Count}; observed {remaining.Count}. Still open: {string.Join(", ", stillOpen)}.");
-            }
-
-            Assert.AreEqual(baseline.Count, remaining.Count, "Unwatch must return the inotify instance count to baseline.");
+            var result = await PwshScriptRunner.RunExecutableAsync(
+                "dotnet", [probe, root], environment: null,
+                timeout: SignalTimeout + TimeSpan.FromSeconds(15),
+                description: "Linux inotify watcher footprint probe");
+            Console.WriteLine(result.AllOutput);
+            Assert.AreEqual(0, result.ExitCode, result.AllOutput);
+            StringAssert.Contains(result.StdOut, "marginal=10 final=1", result.AllOutput);
+            StringAssert.Contains(result.StdOut, "remainingOwned=0 emptyBaselineRetained=true", result.AllOutput);
         }
         finally
         {
-            foreach (var id in ids) watcher.Unwatch(id);
-            Directory.Delete(parent, recursive: true);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(root);
         }
     }
 
@@ -234,31 +180,5 @@ public sealed class FileWatcherSharedWatcherTests
         var path = Path.Combine(Path.GetTempPath(), $"roslyn-shared-watch-{Guid.NewGuid():N}");
         Directory.CreateDirectory(path);
         return path;
-    }
-
-    private static Dictionary<string, string> GetInotifyDescriptors()
-    {
-        var descriptors = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var descriptorInfo in Directory.EnumerateFiles("/proc/self/fdinfo"))
-        {
-            try
-            {
-                var descriptor = Path.GetFileName(descriptorInfo);
-                if (new FileInfo($"/proc/self/fd/{descriptor}").LinkTarget == "anon_inode:inotify")
-                {
-                    // Keep watched inode/device records in failure evidence.
-                    var watches = File.ReadLines(descriptorInfo)
-                        .Where(line => line.StartsWith("inotify ", StringComparison.Ordinal))
-                        .Order(StringComparer.Ordinal);
-                    descriptors.Add(descriptor, string.Join("; ", watches));
-                }
-            }
-            catch (IOException)
-            {
-                // The descriptor closed while enumerating.
-            }
-        }
-
-        return descriptors;
     }
 }
