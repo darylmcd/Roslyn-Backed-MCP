@@ -537,6 +537,7 @@
 | `ci-duration-profile-excludes-zero-run-class-samples` | Low | — | **Require positive class duration in every sampled run**. [type: bug] [source: 2026-11-14 cold review] | S | items/ci-duration-profile-excludes-zero-run-class-samples.md |
 | `ci-duration-profile-requires-complete-shard-indices` | Low | — | **Validate every declared shard index in each profile run**. [type: bug] [source: 2026-11-14 cold review] | S | items/ci-duration-profile-requires-complete-shard-indices.md |
 | `interface-conflict-lookup-escaped-namespace` | Low | — | **Use metadata identity for escaped interface namespace conflicts**. [type: bug] [source: 2026-11-14 cold review] | M | items/interface-conflict-lookup-escaped-namespace.md |
+| `file-watcher-inotify-unwatch-count-mismatch` | Low | — | **Diagnose the Linux Unwatch descriptor count mismatch** — identify the extra inotify descriptors and verify disposal of every owned watcher. [type: test] [source: snipcue-remediation-20261114] | S | items/file-watcher-inotify-unwatch-count-mismatch.md |
 
 ## Defer
 
