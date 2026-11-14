@@ -1,6 +1,6 @@
 # workspace-execution-gate-drain-on-dispose — Drain admitted workspace-gate operations before disposal
 
-**row:** `workspace-execution-gate-drain-on-dispose` · **pri:** `Medium` · **size:** `M` · **verified:** `ddf4cc6d0f4d1ee8a165571c099820583f52eeb9` · **deps:** `gated-command-executor-disposal-drains-active-runs`
+**row:** `workspace-execution-gate-drain-on-dispose` · **pri:** `Medium` · **size:** `M` · **verified:** `ddf4cc6d0f4d1ee8a165571c099820583f52eeb9`
 
 ## Anchors
 

@@ -58,7 +58,7 @@ Each current finding is source-supported or explicitly an investigation. Require
 | `file-move-namespace-text-encoding` (shipped, PR 1862) | High / S | — | Preserve encoding during moved namespace rewrites |
 | `refactoring-rebase-source-kind-preservation` (shipped, #1908) | High / M | — | Preserve reviewed document source kind during replay |
 | `automatic-reload-analyzer-reader-lifetime` (shipped, #1909) | High / M | — | Exclude readers before automatic reload retires providers |
-| [gated-command-executor-disposal-drains-active-runs](../items/gated-command-executor-disposal-drains-active-runs.md) | Medium / M | — | Drain owned command runs before disposing gates |
+| [gated-command-executor-disposal-drains-active-runs](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/2100) (shipped, PR #2100) | Medium / M | — | Drain owned command runs before disposing gates |
 | [watcher-delivery-loss-observation](../items/watcher-delivery-loss-observation.md) | Medium / M | — | Treat lost watcher delivery as unknown freshness |
 | [cache-graph-identity-framing](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1940) (shipped, PR #1940) | Medium / S | — | Frame graph cache identity unambiguously |
 | `workspace-idle-diagnostic-touch-order` (shipped, PR #1920) | Low / S | — | Measure idle time before access updates |
