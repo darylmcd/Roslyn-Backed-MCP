@@ -13,6 +13,20 @@ namespace RoslynMcp.Roslyn.Helpers;
 internal static class TriviaNormalizationHelper
 {
     /// <summary>
+    /// Removes trivia preceding the first copied using directive, preserving the rest of the list.
+    /// </summary>
+    public static SyntaxList<UsingDirectiveSyntax> StripLeadingTriviaFromFirstUsing(SyntaxList<UsingDirectiveSyntax> usings)
+    {
+        if (usings.Count == 0)
+        {
+            return usings;
+        }
+
+        var first = usings[0];
+        return usings.Replace(first, first.WithoutLeadingTrivia());
+    }
+
+    /// <summary>
     /// Strips leading whitespace and end-of-line trivia from the file's first token.
     /// Use after a removal that may have left a blank line at the head of the file.
     /// </summary>
