@@ -34,3 +34,5 @@ Operator decision 2026-11-09: defer the stable extract_type_preview public-messa
 2026-11-11 5.x screen at 52f2c418: the live catalog marks extract_type_preview stable. ToolErrorHandler.cs:667 still passes BlockingDependencies as structured caller data. Keep member names in blockingDependencies; the next approved major trigger is the public-message migration, with ADR, release note and both raw protocol eras.
 
 5.x screen at a12412bb: extract_type_preview is stable, and ToolErrorHandler.cs still emits BlockingDependencies as the structured blockingDependencies field. Keep member names there. Reopen refusal-message publication only at the next major with an ADR, migration note and both supported raw protocol eras.
+
+2026-11-14 5.x screen at ddf4cc6d. Stable extract_type_preview still emits blockingDependencies through ToolErrorHandler.cs:665–667. Preserve structured member names. Reopen public refusal-message changes at the next operator-approved major with ADR, migration note and both raw protocol eras.
