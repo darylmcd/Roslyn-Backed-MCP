@@ -170,17 +170,24 @@ public sealed class CrossProjectInterfaceBindingIntegrationTests : IsolatedWorks
     }
 
     [TestMethod]
-    [DataRow("cross-project")]
-    [DataRow("extract-and-wire")]
-    public async Task Interfaces_Subfolder_Namespace_Is_Bound_Through_Every_Segment(string route)
+    [DataRow("cross-project", "Acme.Contracts")]
+    [DataRow("dependency-inversion", "Acme.Contracts")]
+    [DataRow("extract-and-wire", "Acme.Contracts")]
+    [DataRow("cross-project", "")]
+    [DataRow("dependency-inversion", "")]
+    [DataRow("extract-and-wire", "")]
+    public async Task Interfaces_Subfolder_Namespace_Is_Bound_Through_Every_Segment(string route, string rootNamespace)
     {
-        // ResolvePreferredInterfaceSubdirectory finds Contracts/Interfaces, so the namespace gains a segment.
-        await using var workspace = await LoadAsync(PlainSource, rootNamespace: "Acme.Contracts", interfacesFolder: true);
+        await using var workspace = await LoadAsync(PlainSource, rootNamespace: rootNamespace, interfacesFolder: true);
+        var receivingProject = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId).Projects
+            .Single(project => project.Name == "Contracts");
+        Assert.AreEqual(rootNamespace, receivingProject.DefaultNamespace);
         var pending = await PreviewAsync(workspace, route);
 
+        var expectedNamespace = InterfaceFolderNamespace(rootNamespace);
         await AssertCompilesAsync(pending);
-        await AssertImplementsContractsInterfaceAsync(pending, "Acme.Contracts.Interfaces");
-        StringAssert.Contains(await SourceTextAsync(pending), ": Acme.Contracts.Interfaces.IEchoService");
+        await AssertImplementsContractsInterfaceAsync(pending, expectedNamespace);
+        StringAssert.Contains(await SourceTextAsync(pending), $": {expectedNamespace}.IEchoService");
     }
 
     [TestMethod]
@@ -270,6 +277,9 @@ public sealed class CrossProjectInterfaceBindingIntegrationTests : IsolatedWorks
         StringAssert.Contains(consumer, "SampleLib.Decoy.EchoService decoy");
     }
 
+    private static string InterfaceFolderNamespace(string rootNamespace) =>
+        rootNamespace.Length == 0 ? "Interfaces" : rootNamespace + ".Interfaces";
+
     private async Task<IsolatedWorkspaceScope> LoadAsync(
         string source, bool? consumerReferencesContracts = null, string? rootNamespace = null, bool interfacesFolder = false,
         string? consumerSource = null)
@@ -292,7 +302,7 @@ public sealed class CrossProjectInterfaceBindingIntegrationTests : IsolatedWorks
                 // The conventional folder the cross-project route places (and namespaces) the interface in.
                 Directory.CreateDirectory(workspace.GetPath("Contracts", "Interfaces"));
                 await File.WriteAllTextAsync(workspace.GetPath("Contracts", "Interfaces", "Marker.cs"),
-                    $"namespace {rootNamespace ?? "Contracts"}.Interfaces;\n\npublic interface IMarker {{ }}\n");
+                    $"namespace {InterfaceFolderNamespace(rootNamespace ?? "Contracts")};\n\npublic interface IMarker {{ }}\n");
             }
 
             await File.WriteAllTextAsync(workspace.GetPath("SampleLib", "EchoService.cs"), source);
