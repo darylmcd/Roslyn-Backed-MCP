@@ -18,7 +18,7 @@ public sealed class FileWatcherSharedWatcherTests
     private static readonly TimeSpan SignalTimeout = TimeSpan.FromSeconds(30);
 
     [TestMethod]
-    public void Watch_ManyWorkspacesUnderOneParent_UsesSharedAncestorInstances()
+    public async Task Watch_ManyWorkspacesUnderOneParent_UsesSharedAncestorInstances()
     {
         if (!OperatingSystem.IsLinux())
         {
@@ -43,21 +43,53 @@ public sealed class FileWatcherSharedWatcherTests
 
         try
         {
-            // Finalize watchers leaked by earlier tests so they cannot close descriptors mid-measurement.
+            // Request shutdown of unreachable watchers from earlier tests before taking the baseline.
             GC.Collect();
             GC.WaitForPendingFinalizers();
-            var baseline = CountInotifyInstances();
+            using var deadline = new CancellationTokenSource(SignalTimeout);
+            var baseline = GetInotifyDescriptors();
+            while (baseline.Values.Any(string.IsNullOrEmpty))
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(5), deadline.Token);
+                baseline = GetInotifyDescriptors();
+            }
+
             WatchBatch();
-            var afterFirst = CountInotifyInstances();
+            var afterFirst = GetInotifyDescriptors();
             WatchBatch();
-            var afterSecond = CountInotifyInstances();
+            var afterSecond = GetInotifyDescriptors();
 
             // The ancestor watchers are shared, so every further workspace costs exactly one instance.
-            Assert.AreEqual(batch, afterSecond - afterFirst,
-                $"marginal cost per workspace must be 1 inotify instance (baseline {baseline}, first {afterFirst}, second {afterSecond})");
+            Assert.AreEqual(batch, afterSecond.Count - afterFirst.Count,
+                $"marginal cost per workspace must be 1 inotify instance (baseline {baseline.Count}, first {afterFirst.Count}, second {afterSecond.Count})");
+
+            // A descriptor number may be reused between snapshots. Its watched inode/device records
+            // help distinguish a new watcher from a baseline descriptor with the same number.
+            var owned = afterFirst.Concat(afterSecond)
+                .Where(pair => !baseline.TryGetValue(pair.Key, out var watches) || watches != pair.Value)
+                .Select(pair => pair.Key)
+                .ToHashSet(StringComparer.Ordinal);
+            Assert.IsNotEmpty(owned);
 
             foreach (var id in ids) watcher.Unwatch(id);
-            Assert.AreEqual(baseline, CountInotifyInstances(), "Unwatch must release every inotify instance.");
+
+            // Linux FileSystemWatcher.Dispose signals its read loop, which closes the descriptor in its finally.
+            var remaining = GetInotifyDescriptors();
+            try
+            {
+                while (remaining.Keys.Any(owned.Contains) || remaining.Count != baseline.Count)
+                {
+                    await Task.Delay(TimeSpan.FromMilliseconds(5), deadline.Token);
+                    remaining = GetInotifyDescriptors();
+                }
+            }
+            catch (OperationCanceledException) when (deadline.IsCancellationRequested)
+            {
+                var stillOpen = remaining.Where(pair => owned.Contains(pair.Key));
+                Assert.Fail($"Unwatch must release every owned inotify descriptor and return to baseline {baseline.Count}; observed {remaining.Count}. Still open: {string.Join(", ", stillOpen)}.");
+            }
+
+            Assert.AreEqual(baseline.Count, remaining.Count, "Unwatch must return the inotify instance count to baseline.");
         }
         finally
         {
@@ -204,14 +236,22 @@ public sealed class FileWatcherSharedWatcherTests
         return path;
     }
 
-    private static int CountInotifyInstances()
+    private static Dictionary<string, string> GetInotifyDescriptors()
     {
-        var count = 0;
-        foreach (var descriptor in Directory.EnumerateFileSystemEntries("/proc/self/fd"))
+        var descriptors = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var descriptorInfo in Directory.EnumerateFiles("/proc/self/fdinfo"))
         {
             try
             {
-                if (new FileInfo(descriptor).LinkTarget?.Contains("inotify", StringComparison.Ordinal) == true) count++;
+                var descriptor = Path.GetFileName(descriptorInfo);
+                if (new FileInfo($"/proc/self/fd/{descriptor}").LinkTarget == "anon_inode:inotify")
+                {
+                    // Keep watched inode/device records in failure evidence.
+                    var watches = File.ReadLines(descriptorInfo)
+                        .Where(line => line.StartsWith("inotify ", StringComparison.Ordinal))
+                        .Order(StringComparer.Ordinal);
+                    descriptors.Add(descriptor, string.Join("; ", watches));
+                }
             }
             catch (IOException)
             {
@@ -219,6 +259,6 @@ public sealed class FileWatcherSharedWatcherTests
             }
         }
 
-        return count;
+        return descriptors;
     }
 }
