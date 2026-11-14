@@ -26,3 +26,7 @@
 ## Context
 
 - Distinct from `new-file-apply-writes-bom-ignoring-editorconfig` (byte-order mark), but the same new-file write paths.
+
+## Notes
+
+Current-session split-service fixture confirms the generated partition path emits CRLF for an LF source on Windows (SymbolRefactorService.BuildPartitionFile, NormalizeWhitespace plus Environment.NewLine). Existing acceptance already owns this path. Preserve the distinct source-facade behavior.

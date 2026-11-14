@@ -1,6 +1,6 @@
 # preview-token-sibling-text-real-change-coverage — Assert real sibling text changes
 
-**row:** `preview-token-sibling-text-real-change-coverage` · **pri:** `Medium` · **size:** `S` · **deps:** `preview-project-reference-metadata-rebase`
+**row:** `preview-token-sibling-text-real-change-coverage` · **pri:** `Medium` · **size:** `S` · **deps:** `preview-project-reference-metadata-rebase,watcher-own-cs-write-echo-attribution`
 
 ## Anchors
 
@@ -16,3 +16,7 @@
 ## Evidence
 
 - 2026-10-23 cold rebase review: the existing Sibling_Text_Edit_Apply_Does_Not_Invalidate_Other_Text_Edit_Token test admits no-op organize-usings and asserts only file existence. New reference-focused tests do not repair that separate text-only contract.
+
+## Notes
+
+Red on unchanged production at 573540d5: host format_document_preview issued two real edits, first apply wrote expected bytes, second format_document_apply returned a stale-token result. Focused fixture plus related tests: 1 failed, 35 passed. WorkspaceManager increments on apply and reload; the default auto-reload may exceed the pinned preview span. Reproduce both raw eras and qualify owned-write attribution (watcher-own-cs-write-echo-attribution), version, stale metadata, genuine external reloads, conflicts and token eviction. If the complete fix requires changing the released contract, resume at the next operator-approved major with ADR and migration. Fixture and logs were retained in the run scratchpad.
