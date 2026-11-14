@@ -62,7 +62,8 @@ public static class ServiceCollectionExtensions
             catch (ObjectDisposedException exception) when (exception.ObjectName == nameof(IServiceProvider))
             {
                 // The provider stops resolving services before disposing its captured dependencies.
-                throw new WorkspaceExecutionGate.ShutdownException(exception);
+                WorkspaceExecutionGate.MarkShutdownRefusal(exception);
+                throw;
             }
         }));
         services.AddSingleton<IDotnetCommandRunner>(sp =>

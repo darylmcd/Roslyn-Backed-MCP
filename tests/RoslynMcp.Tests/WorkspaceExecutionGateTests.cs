@@ -30,8 +30,25 @@ public class WorkspaceExecutionGateTests
         }, CancellationToken.None);
 
         Assert.AreEqual(42, result);
-        await Assert.ThrowsAsync<ObjectDisposedException>(() =>
-            gate.RunLoadGateAsync(_ => Task.FromResult(0), CancellationToken.None));
+    }
+
+    [TestMethod]
+    [DataRow("load")]
+    [DataRow("read")]
+    [DataRow("write")]
+    public async Task DisposedGate_ReportsExactObjectDisposedException(string operation)
+    {
+        var gate = CreateGate();
+        await gate.DisposeAsync();
+
+        var exception = await Assert.ThrowsExactlyAsync<ObjectDisposedException>(() => operation switch
+        {
+            "load" => gate.RunLoadGateAsync(_ => Task.FromResult(0), CancellationToken.None),
+            "read" => gate.RunReadAsync(WorkspaceA, _ => Task.FromResult(0), CancellationToken.None),
+            "write" => gate.RunWriteAsync(WorkspaceA, _ => Task.FromResult(0), CancellationToken.None),
+            _ => throw new ArgumentOutOfRangeException(nameof(operation)),
+        });
+        Assert.AreEqual(typeof(SemaphoreSlim).FullName, exception.ObjectName);
     }
 
     [TestMethod]

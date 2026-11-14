@@ -835,7 +835,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
                 {
                     return;
                 }
-                catch (WorkspaceExecutionGate.ShutdownException)
+                catch (ObjectDisposedException exception) when (WorkspaceExecutionGate.IsShutdownRefusal(exception))
                 {
                     // Shutdown owns the remaining sessions. Do not retry or close outside the gate.
                     return;

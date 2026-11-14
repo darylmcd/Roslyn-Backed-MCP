@@ -118,12 +118,16 @@ public sealed class MissingWorkspaceRootRetirementTests : SharedWorkspaceTestBas
     }
 
     [TestMethod]
-    public async Task TransientGateFailure_RetriesUntilMissingWorkspaceRetires()
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task TransientGateFailure_RetriesUntilMissingWorkspaceRetires(bool disposeException)
     {
         var solutionPath = CreateSampleSolutionCopy();
         var root = Path.GetDirectoryName(solutionPath)!;
         var watcher = new SignalingFileWatcher();
-        var gate = new RetryingGate();
+        var gate = new RetryingGate(disposeException
+            ? new ObjectDisposedException(typeof(SemaphoreSlim).FullName)
+            : new TimeoutException("Injected transient gate failure."));
         // The retirement retry loop waits on the injected clock (300 ms, then 600 ms after the injected
         // failure), so the test drives time itself instead of racing a real timer under suite load.
         var clock = new FakeTimeProvider();
@@ -396,7 +400,7 @@ public sealed class MissingWorkspaceRootRetirementTests : SharedWorkspaceTestBas
         internal void Advance() => _clock.Advance(TimeSpan.FromSeconds(1));
     }
 
-    private sealed class RetryingGate : IWorkspaceExecutionGate
+    private sealed class RetryingGate(Exception firstFailure) : IWorkspaceExecutionGate
     {
         private int _attempts;
         private int _removeGateCalls;
@@ -424,7 +428,7 @@ public sealed class MissingWorkspaceRootRetirementTests : SharedWorkspaceTestBas
         {
             if (Interlocked.Increment(ref _attempts) == 1)
             {
-                throw new TimeoutException("Injected transient gate failure.");
+                throw firstFailure;
             }
 
             var result = await action(ct);

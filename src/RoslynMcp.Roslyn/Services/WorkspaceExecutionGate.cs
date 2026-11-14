@@ -50,6 +50,7 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
 {
     /// <summary>Global concurrency limit across all workspaces.</summary>
     private static readonly int MaxGlobalConcurrency = Math.Max(2, Environment.ProcessorCount);
+    private static readonly object s_shutdownRefusal = new();
 
     private readonly IWorkspaceManager _workspaceManager;
     private readonly TimeSpan _requestTimeout;
@@ -163,7 +164,12 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
                 parent = parent.Parent;
             var permit = parent?.Permit;
             if (permit is null && _shutdown is not null)
-                throw new ShutdownException();
+            {
+                // Preserve the exact exception that a disposed throttle used to report.
+                var exception = new ObjectDisposedException(typeof(SemaphoreSlim).FullName);
+                MarkShutdownRefusal(exception);
+                throw exception;
+            }
 
             permit ??= new ThrottlePermit();
             permit.Owners++;
@@ -725,10 +731,13 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
         public void Dispose() => gate.ReleaseAdmission(this);
     }
 
-    // A retirement that reaches the gate after shutdown begins leaves removal to the
-    // manager's shutdown. This signal is distinct from a failure inside the gate action.
-    internal sealed class ShutdownException(Exception? inner = null)
-        : ObjectDisposedException("The workspace execution gate is shutting down.", inner);
+    // The private marker lets root retirement recognize admission shutdown without
+    // conflating it with an ObjectDisposedException raised by its own action.
+    internal static void MarkShutdownRefusal(ObjectDisposedException exception) =>
+        exception.Data[s_shutdownRefusal] = true;
+
+    internal static bool IsShutdownRefusal(ObjectDisposedException exception) =>
+        exception.Data.Contains(s_shutdownRefusal);
 
     private sealed class ThrottlePermit
     {
