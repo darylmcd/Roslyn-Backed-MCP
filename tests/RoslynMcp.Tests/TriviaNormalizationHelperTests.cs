@@ -7,6 +7,21 @@ namespace RoslynMcp.Tests;
 [TestClass]
 public class TriviaNormalizationHelperTests
 {
+    [TestMethod]
+    [DataRow("", "")]
+    [DataRow("// header\nusing System; // trailing\n", "using System; // trailing\n")]
+    [DataRow("// header\nusing System; // trailing\n\n// later\nusing System.Linq;\n",
+        "using System; // trailing\n\n// later\nusing System.Linq;\n")]
+    public void StripLeadingTriviaFromFirstUsing_PreservesOtherTriviaAndSource(string source, string expected)
+    {
+        var root = CSharpSyntaxTree.ParseText(source).GetCompilationUnitRoot();
+
+        var result = TriviaNormalizationHelper.StripLeadingTriviaFromFirstUsing(root.Usings);
+
+        Assert.AreEqual(expected, result.ToFullString());
+        Assert.AreEqual(source, root.Usings.ToFullString());
+    }
+
     #region NormalizeLeadingTrivia
 
     [TestMethod]

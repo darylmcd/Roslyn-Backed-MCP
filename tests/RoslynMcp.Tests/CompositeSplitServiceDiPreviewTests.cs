@@ -210,6 +210,11 @@ public sealed class CompositeSplitServiceDiPreviewTests : IsolatedWorkspaceTestB
         var serviceFilePath = workspace.GetPath("SampleLib", "ShapeService.cs");
         await File.WriteAllTextAsync(
             serviceFilePath,
+            "// source file header\n" +
+            "using System;\n" +
+            "// later using comment\n" +
+            "using System.Linq;\n" +
+            "\n" +
             "namespace SampleLib;\n" +
             "\n" +
             "public interface IShapeService\n" +
@@ -257,6 +262,14 @@ public sealed class CompositeSplitServiceDiPreviewTests : IsolatedWorkspaceTestB
         await ApplyMutationsAsync(compositeStore, preview.PreviewToken, CancellationToken.None);
 
         var facadeContents = await File.ReadAllTextAsync(serviceFilePath, CancellationToken.None);
+        StringAssert.Contains(facadeContents, "// source file header");
+        foreach (var partitionName in new[] { "ShapeAreaService", "ShapePerimeterService" })
+        {
+            var partitionPath = workspace.GetPath("SampleLib", partitionName + ".cs");
+            var partitionContents = await File.ReadAllTextAsync(partitionPath, CancellationToken.None);
+            Assert.IsFalse(partitionContents.Contains("// source file header", StringComparison.Ordinal));
+            StringAssert.Contains(partitionContents.ReplaceLineEndings("\n"), "// later using comment\nusing System.Linq;");
+        }
 
         Assert.IsFalse(facadeContents.Contains('\r', StringComparison.Ordinal),
             "The facade rewrite must keep the source file's LF line endings (no mixed CRLF from synthesized members).");

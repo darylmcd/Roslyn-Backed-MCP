@@ -126,7 +126,7 @@ public sealed class ClassSplitOrchestrator : IClassSplitOrchestrator
         // The first `using` directive in the source carries the file-level license header in
         // its leading trivia. Copying `sourceRoot.Usings` verbatim duplicates that header
         // into the new partial. Strip the leading trivia from the first using only.
-        var copiedUsings = StripLeadingTriviaFromFirstUsing(sourceRoot.Usings);
+        var copiedUsings = TriviaNormalizationHelper.StripLeadingTriviaFromFirstUsing(sourceRoot.Usings);
         var compilationUnit = SyntaxFactory.CompilationUnit().WithUsings(copiedUsings);
         var nsDecl = ReceivingNamespaceFactory.Create(namespaceName, receivingOptions);
         if (nsDecl is null)
@@ -150,17 +150,5 @@ public sealed class ClassSplitOrchestrator : IClassSplitOrchestrator
                 .WithCloseBraceToken(closingBrace);
         }
         return compilationUnit.WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(nsDecl));
-    }
-
-    private static SyntaxList<UsingDirectiveSyntax> StripLeadingTriviaFromFirstUsing(SyntaxList<UsingDirectiveSyntax> usings)
-    {
-        if (usings.Count == 0)
-        {
-            return usings;
-        }
-
-        var first = usings[0];
-        var stripped = first.WithLeadingTrivia(SyntaxFactory.TriviaList());
-        return usings.Replace(first, stripped);
     }
 }

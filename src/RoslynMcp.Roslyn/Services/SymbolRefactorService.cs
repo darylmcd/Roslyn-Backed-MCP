@@ -371,7 +371,7 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
             constructorInjections,
             NamespaceMemberClassifier.GetContainingNamespaceName(typeDeclaration),
             sourceDirectory,
-            StripLeadingTriviaFromFirstUsing(root.Usings));
+            TriviaNormalizationHelper.StripLeadingTriviaFromFirstUsing(root.Usings));
     }
 
     // 1) Create partition files. Each partition file emits the requested methods PLUS any
@@ -1254,18 +1254,6 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
 
         var nsDecl = namespaceDeclaration.WithMembers(SyntaxFactory.SingletonList(member));
         return compilationUnit.WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(nsDecl));
-    }
-
-    private static SyntaxList<UsingDirectiveSyntax> StripLeadingTriviaFromFirstUsing(SyntaxList<UsingDirectiveSyntax> usings)
-    {
-        if (usings.Count == 0)
-        {
-            return usings;
-        }
-
-        var first = usings[0];
-        var stripped = first.WithLeadingTrivia(SyntaxFactory.TriviaList());
-        return usings.Replace(first, stripped);
     }
 
     private static string LowerFirst(string value)
