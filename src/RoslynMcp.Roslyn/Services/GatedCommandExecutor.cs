@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
@@ -12,7 +11,7 @@ namespace RoslynMcp.Roslyn.Services;
 /// concurrency gates and timeout enforcement. Used by <see cref="BuildService"/>
 /// and <see cref="TestRunnerService"/> to eliminate duplicated gating and process logic.
 /// </summary>
-public sealed class GatedCommandExecutor : IGatedCommandExecutor
+public sealed class GatedCommandExecutor : IGatedCommandExecutor, IAsyncDisposable
 {
     private static readonly Action<ILogger, string, string, int, Exception?> LogCommandExecuted =
         LoggerMessage.Define<string, string, int>(
@@ -29,7 +28,10 @@ public sealed class GatedCommandExecutor : IGatedCommandExecutor
             "dotnet gate boundary: verb={Verb} targetKind={TargetKind} outcome={Outcome} queueWaitMs={QueueWaitMs} durationMs={DurationMs} exitCode={ExitCode}");
 
     private readonly SemaphoreSlim _globalCommandGate;
-    private readonly ConcurrentDictionary<string, SemaphoreSlim> _workspaceCommandGates = new(StringComparer.Ordinal);
+    private readonly object _lifecycleLock = new();
+    private readonly Dictionary<string, SemaphoreSlim> _workspaceCommandGates = new(StringComparer.Ordinal);
+    private TaskCompletionSource? _shutdown;
+    private int _activeExecutions;
 
     private readonly IWorkspaceManager _workspaceManager;
     private readonly IDotnetCommandRunner _commandRunner;
@@ -63,7 +65,16 @@ public sealed class GatedCommandExecutor : IGatedCommandExecutor
     /// is documented as unsafe. Removing the dictionary entry alone satisfies bounded growth; the
     /// orphaned semaphore is GC'd once the in-flight caller's local reference goes out of scope.
     /// </remarks>
-    private void RemoveWorkspaceGate(string workspaceId) => _workspaceCommandGates.TryRemove(workspaceId, out _);
+    private void RemoveWorkspaceGate(string workspaceId)
+    {
+        lock (_lifecycleLock)
+        {
+            if (_shutdown is null)
+            {
+                _workspaceCommandGates.Remove(workspaceId);
+            }
+        }
+    }
 
     public Task<CommandExecutionDto> ExecuteAsync(
         string workspaceId,
@@ -82,7 +93,44 @@ public sealed class GatedCommandExecutor : IGatedCommandExecutor
         CancellationToken ct)
     {
         var deadline = DateTimeOffset.UtcNow + timeout;
-        var workspaceGate = _workspaceCommandGates.GetOrAdd(workspaceId, static _ => new SemaphoreSlim(1, 1));
+        SemaphoreSlim workspaceGate;
+        lock (_lifecycleLock)
+        {
+            ObjectDisposedException.ThrowIf(_shutdown is not null, this);
+            if (!_workspaceCommandGates.TryGetValue(workspaceId, out var existingGate))
+            {
+                existingGate = new SemaphoreSlim(1, 1);
+                _workspaceCommandGates.Add(workspaceId, existingGate);
+            }
+
+            workspaceGate = existingGate;
+            _activeExecutions++;
+        }
+
+        try
+        {
+            return await RunAdmittedAsync(workspaceGate, targetPath, arguments, timeout, deadline, earlyKillPatterns, ct)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            lock (_lifecycleLock)
+            {
+                _activeExecutions--;
+                CompleteShutdownIfDrained();
+            }
+        }
+    }
+
+    private async Task<CommandExecutionDto> RunAdmittedAsync(
+        SemaphoreSlim workspaceGate,
+        string targetPath,
+        IReadOnlyList<string> arguments,
+        TimeSpan timeout,
+        DateTimeOffset deadline,
+        IReadOnlyList<EarlyKillPattern>? earlyKillPatterns,
+        CancellationToken ct)
+    {
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeoutCts.CancelAfter(timeout);
         var globalGateAcquired = false;
@@ -185,14 +233,41 @@ public sealed class GatedCommandExecutor : IGatedCommandExecutor
         return string.IsNullOrWhiteSpace(directory) ? Environment.CurrentDirectory : directory;
     }
 
-    public void Dispose()
+    // An admitted command can use synchronous Dispose without waiting on itself.
+    public void Dispose() => RequestShutdown();
+
+    public ValueTask DisposeAsync() => new(RequestShutdown());
+
+    private Task RequestShutdown()
     {
-        _workspaceManager.WorkspaceClosed -= RemoveWorkspaceGate;
-        _globalCommandGate.Dispose();
-        foreach (var kvp in _workspaceCommandGates)
+        lock (_lifecycleLock)
         {
-            kvp.Value.Dispose();
+            if (_shutdown is null)
+            {
+                _shutdown = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                _workspaceManager.WorkspaceClosed -= RemoveWorkspaceGate;
+                CompleteShutdownIfDrained();
+            }
+
+            return _shutdown.Task;
         }
+    }
+
+    // The lifecycle lock protects the count, shutdown completion, and gate registry.
+    private void CompleteShutdownIfDrained()
+    {
+        if (_shutdown is null || _shutdown.Task.IsCompleted || _activeExecutions != 0)
+        {
+            return;
+        }
+
+        _globalCommandGate.Dispose();
+        foreach (var gate in _workspaceCommandGates.Values)
+        {
+            gate.Dispose();
+        }
+
         _workspaceCommandGates.Clear();
+        _shutdown.SetResult();
     }
 }
