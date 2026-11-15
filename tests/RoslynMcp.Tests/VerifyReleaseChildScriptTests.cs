@@ -263,7 +263,9 @@ public sealed class VerifyReleaseChildScriptTests
             Assert.IsFalse(command.Contains("${{", StringComparison.Ordinal), "Every workflow expression must be resolved for this executed route.");
             var wrapper = Path.Combine(fixtureRoot, "docs-workflow.ps1");
             await File.WriteAllTextAsync(wrapper,
+                "$ErrorActionPreference = 'Stop'\n" +
                 "$env:HOSTED_IMAGE = 'ubuntu-latest'\n" +
+                "$env:LINUX_SHARD_BUILD_SECONDS = '[52,68]'\n" +
                 $"$env:TEST_SHARD_INDEX = '{shardIndex}'\n" +
                 "$env:TEST_SHARD_COUNT = '2'\n" +
                 $"$env:ARTIFACT_OWNER = '{(shardIndex == 0 ? "true" : "false")}'\n" +
@@ -284,6 +286,7 @@ public sealed class VerifyReleaseChildScriptTests
                 : "ClassName=RoslynMcp.Tests.ShardSentinel1";
             Assert.AreEqual($"({expectedClasses})&TestCategory!=Benchmark&TestCategory!=Network", calls[0][filterIndex + 1], diagnostic);
             StringAssert.Contains(result.StdOut, "Test shard weighting: hosted-duration", diagnostic);
+            StringAssert.Contains(result.StdOut, "Linux shard partition SHA-256:", diagnostic);
             if (produceTrx)
             {
                 Assert.AreEqual(0, result.ExitCode, diagnostic);
@@ -911,7 +914,8 @@ public sealed class VerifyReleaseChildScriptTests
                 [Parameter(Mandatory)][int]$TestShardCount,
                 [Parameter(Mandatory)][int]$TestShardIndex,
                 [string]$DurationProfilePath,
-                [string]$HostedImage
+                [string]$HostedImage,
+                [double[]]$ShardBuildSeconds
             )
 
             if ($TestShardCount -ne 2 -or $TestShardIndex -lt 0 -or $TestShardIndex -gt 1) {
@@ -925,25 +929,34 @@ public sealed class VerifyReleaseChildScriptTests
                 (Split-Path -Leaf $DurationProfilePath) -cne 'shard-duration-profile.json')) {
                 throw 'Unexpected hosted duration profile selection.'
             }
+            if ($HostedImage -ceq 'ubuntu-latest' -and ($ShardBuildSeconds -join ',') -cne '52,68') {
+                throw 'The docs workflow must supply both measured Linux build times in shard order.'
+            }
 
+            $filters = @(
+                'ClassName=RoslynMcp.Tests.DocumentationContract|ClassName=RoslynMcp.Tests.ShardSentinel0',
+                'ClassName=RoslynMcp.Tests.ShardSentinel1'
+            )
             [pscustomobject]@{
                 SchemaVersion = 1
                 WeightingMode = if ($HostedImage) { 'hosted-duration' } else { 'static-cases' }
                 ProfiledClassCount = if ($HostedImage) { 3 } else { 0 }
                 FallbackClassCount = 0
-                SelectedFilter = if ($TestShardIndex -eq 0) {
-                    'ClassName=RoslynMcp.Tests.DocumentationContract|ClassName=RoslynMcp.Tests.ShardSentinel0'
-                } else {
-                    'ClassName=RoslynMcp.Tests.ShardSentinel1'
-                }
+                SelectedFilter = $filters[$TestShardIndex]
                 TestClasses = @(
                     [pscustomobject]@{ ClassName = 'RoslynMcp.Tests.DocumentationContract' },
                     [pscustomobject]@{ ClassName = 'RoslynMcp.Tests.ShardSentinel0' },
                     [pscustomobject]@{ ClassName = 'RoslynMcp.Tests.ShardSentinel1' }
                 )
                 Shards = @(
-                    [pscustomobject]@{ Index = 0; ClassCount = 2; StaticCaseWeight = 2; BalanceWeight = 2.0 },
-                    [pscustomobject]@{ Index = 1; ClassCount = 1; StaticCaseWeight = 1; BalanceWeight = 1.0 }
+                    [pscustomobject]@{
+                        Index = 0; ClassCount = 2; StaticCaseWeight = 2; BalanceWeight = 2.0
+                        Filter = $filters[0]
+                    },
+                    [pscustomobject]@{
+                        Index = 1; ClassCount = 1; StaticCaseWeight = 1; BalanceWeight = 1.0
+                        Filter = $filters[1]
+                    }
                 )
             } | ConvertTo-Json -Depth 4
             """);
