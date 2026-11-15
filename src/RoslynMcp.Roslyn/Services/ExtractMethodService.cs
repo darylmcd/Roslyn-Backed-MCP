@@ -644,10 +644,13 @@ public sealed class ExtractMethodService : IExtractMethodService
             throw new InvalidOperationException(
                 "Cannot extract a void expression to a helper. Select a typed sub-expression instead.");
 
-        // Scan candidate documents for structurally-identical expressions (phase 2).
+        // Scan candidate documents for structurally and semantically equivalent expressions (phase 2).
+        var exampleBindings = new SharedExpressionBindings(
+            exampleExpression, new SharedExpressionBindings.BindingContext(exampleModel),
+            exampleFreeVars.Select(variable => variable.Symbol), ct);
         var helperIdentifier = IdentifierValidation.CreateMemberIdentifierToken(helperName).ValueText;
         var hits = await CollectMatchingExpressionHitsAsync(
-            exampleDocument, exampleExpression, exampleType, exampleFreeVars, helperOwner, ownerTypeSyntax,
+            exampleDocument, exampleExpression, exampleType, exampleFreeVars, exampleBindings, helperOwner, ownerTypeSyntax,
             helperIdentifier, allowCrossFile, ct)
             .ConfigureAwait(false);
 
@@ -697,14 +700,14 @@ public sealed class ExtractMethodService : IExtractMethodService
     /// whole project otherwise) for expressions structurally equivalent to <paramref name="exampleExpression"/>.
     /// Applies the containing-type guard (same-type unless cross-file) and the semantic-type guard
     /// (every free variable must carry the same <see cref="ITypeSymbol"/> as the example's).
-    /// Throws <see cref="InvalidOperationException"/> when capture sets disagree — the caller
-    /// cannot synthesize a shared helper in that case.
+    /// Refuses extraction when a candidate's binding cannot be proven equivalent to the example.
     /// </summary>
     private static async Task<List<ExpressionHit>> CollectMatchingExpressionHitsAsync(
         Document exampleDocument,
         ExpressionSyntax exampleExpression,
         TypeDeclarationSyntax exampleType,
         IReadOnlyList<FreeVariable> exampleFreeVars,
+        SharedExpressionBindings exampleBindings,
         INamedTypeSymbol helperOwner,
         TypeSyntax ownerTypeSyntax,
         string helperIdentifier,
@@ -722,6 +725,9 @@ public sealed class ExtractMethodService : IExtractMethodService
             if (docRoot is null) continue;
             var docModel = await doc.GetSemanticModelAsync(ct).ConfigureAwait(false);
             if (docModel is null) continue;
+            var bindingContext = doc.Id == exampleDocument.Id
+                ? exampleBindings.Context
+                : new SharedExpressionBindings.BindingContext(docModel);
 
             foreach (var candidate in docRoot.DescendantNodes().OfType<ExpressionSyntax>())
             {
@@ -773,6 +779,15 @@ public sealed class ExtractMethodService : IExtractMethodService
                             "The shared helper's declaring type cannot be referenced at every matching expression. " +
                             "Select a different example or narrow the extraction scope.");
                     }
+                }
+
+                var isExample = doc.Id == exampleDocument.Id && candidate.Span == exampleExpression.Span;
+                if (!isExample && !exampleBindings.Matches(new SharedExpressionBindings(
+                        candidate, bindingContext, candidateFreeVars.Select(variable => variable.Symbol), ct), ct))
+                {
+                    throw new PublicInvalidOperationException(
+                        "The matching expressions do not have provably equivalent bindings. " +
+                        "Select a different example or narrow the extraction scope.");
                 }
 
                 hits.Add(new ExpressionHit(doc, candidate, candidateFreeVars, needsQualifiedOwner));
@@ -964,7 +979,7 @@ public sealed class ExtractMethodService : IExtractMethodService
                 _ => null
             };
             if (type is null) continue;
-            list.Add(new FreeVariable(name, type));
+            list.Add(new FreeVariable(name, type, symbol));
         }
         return list;
     }
@@ -1031,7 +1046,7 @@ public sealed class ExtractMethodService : IExtractMethodService
             : invocation;
     }
 
-    private sealed record FreeVariable(string Name, ITypeSymbol Type);
+    private sealed record FreeVariable(string Name, ITypeSymbol Type, ISymbol Symbol);
 
     private sealed record ExpressionHit(
         Document Document,
