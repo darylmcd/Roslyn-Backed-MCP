@@ -7,7 +7,9 @@ param(
     [switch]$TestShardOnly,
     [int]$TestShardIndex = 0,
     [int]$TestShardCount = 1,
-    [string]$HostedImage
+    [string]$HostedImage,
+    [double[]]$ShardBuildSeconds,
+    [switch]$CalibrateLinuxShardBuild
 )
 
 $ErrorActionPreference = "Stop"
@@ -29,6 +31,13 @@ if (-not [string]::IsNullOrWhiteSpace($HostedImage) -and $TestShardCount -eq 1) 
     throw 'HostedImage requires a sharded test run.'
 }
 
+if ($CalibrateLinuxShardBuild -and $PSBoundParameters.Count -ne 1) {
+    throw 'CalibrateLinuxShardBuild must be invoked by itself.'
+}
+if ($PSBoundParameters.ContainsKey('ShardBuildSeconds') -and $HostedImage -cne 'ubuntu-latest') {
+    throw 'ShardBuildSeconds requires a hosted Linux shard.'
+}
+
 # PowerShell does not honor $ErrorActionPreference = "Stop" for native commands.
 # Every dotnet invocation below must call this after returning.
 function Invoke-DotnetStep {
@@ -36,6 +45,13 @@ function Invoke-DotnetStep {
     if ($LASTEXITCODE -ne 0) {
         throw "$Description failed with exit code $LASTEXITCODE."
     }
+}
+
+function Invoke-ReleaseSolutionBuild {
+    param([string]$Solution, [string]$BuildConfiguration)
+
+    & dotnet build $Solution -c $BuildConfiguration --no-restore --nologo
+    Invoke-DotnetStep "dotnet build"
 }
 
 # Invoking a child PowerShell script with `&` does not make a nonzero `exit`
@@ -256,19 +272,21 @@ $testResultsDir = Join-Path $outputRootPath "test-results"
 $runSettingsPath = Join-Path $PSScriptRoot 'ci.runsettings'
 $hashManifestPath = Join-Path $manifestDir "host-stdio-sha256.txt"
 
-New-Item -ItemType Directory -Path $testResultsDir -Force | Out-Null
-if (-not $TestShardOnly) {
-    Reset-VerifierOwnedDirectory `
-        -OutputBoundary $outputRootPath `
-        -Path $publishDir `
-        -Description 'Publish directory'
-    Reset-VerifierOwnedDirectory `
-        -OutputBoundary $outputRootPath `
-        -Path $manifestDir `
-        -Description 'Manifest directory'
-}
-if (-not $NoCoverage) {
-    New-Item -ItemType Directory -Path $coverageDir -Force | Out-Null
+if (-not $CalibrateLinuxShardBuild) {
+    New-Item -ItemType Directory -Path $testResultsDir -Force | Out-Null
+    if (-not $TestShardOnly) {
+        Reset-VerifierOwnedDirectory `
+            -OutputBoundary $outputRootPath `
+            -Path $publishDir `
+            -Description 'Publish directory'
+        Reset-VerifierOwnedDirectory `
+            -OutputBoundary $outputRootPath `
+            -Path $manifestDir `
+            -Description 'Manifest directory'
+    }
+    if (-not $NoCoverage) {
+        New-Item -ItemType Directory -Path $coverageDir -Force | Out-Null
+    }
 }
 
 $primaryFailure = $null
@@ -287,6 +305,11 @@ foreach ($name in $buildEnvironment.Keys) {
     [Environment]::SetEnvironmentVariable($name, $buildEnvironment[$name])
 }
 try {
+if ($CalibrateLinuxShardBuild) {
+    Invoke-ReleaseSolutionBuild -Solution $solutionPath -BuildConfiguration Release
+    return
+}
+
 if (-not $TestShardOnly) {
     # Coordinated package families fail before restore so a split Dependabot update cannot
     # publish artifacts or reach MSBuildLocator's later runtime-asset failure.
@@ -352,8 +375,7 @@ if (-not $TestShardOnly) {
         -Parameters @{ RepoRoot = $repoRoot; SolutionPath = $solutionPath; Verify = $true; VerifyRestoredLicenses = $true }
 }
 
-dotnet build $solutionPath -c $Configuration --no-restore --nologo
-Invoke-DotnetStep "dotnet build"
+Invoke-ReleaseSolutionBuild -Solution $solutionPath -BuildConfiguration $Configuration
 
 # Logger verbosity `minimal` emits the run summary and failure details but skips
 # the per-test "Passed X [N ms]" lines that dominated the previous console output.
@@ -407,8 +429,16 @@ if ($TestShardCount -gt 1) {
         $planParameters.HostedImage = $HostedImage
         $planParameters.DurationProfilePath = Join-Path $PSScriptRoot 'shard-duration-profile.json'
     }
+    if ($PSBoundParameters.ContainsKey('ShardBuildSeconds')) {
+        $planParameters.ShardBuildSeconds = $ShardBuildSeconds
+    }
     $planJson = & (Join-Path $PSScriptRoot 'get-test-shard-plan.ps1') @planParameters
     $testShardPlan = $planJson | ConvertFrom-Json
+    if ($PSBoundParameters.ContainsKey('ShardBuildSeconds')) {
+        $partition = [Text.Encoding]::UTF8.GetBytes(($testShardPlan.Shards.Filter -join [char]10))
+        $partitionHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($partition))
+        Write-Host "Linux shard partition SHA-256: $partitionHash"
+    }
     if ([string]::IsNullOrWhiteSpace($testShardPlan.SelectedFilter)) {
         throw "Test shard $TestShardIndex produced an empty class filter."
     }
@@ -518,7 +548,7 @@ finally {
     }
 }
 
-if ($null -ne $primaryFailure -or $cleanupFailures.Count -gt 0) {
+if (-not $CalibrateLinuxShardBuild -and ($null -ne $primaryFailure -or $cleanupFailures.Count -gt 0)) {
     foreach ($ownedOutput in @(
         @{ Path = $publishDir; Description = 'Publish directory' },
         @{ Path = $manifestDir; Description = 'Manifest directory' })) {

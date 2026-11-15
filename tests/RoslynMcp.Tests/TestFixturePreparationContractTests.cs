@@ -94,8 +94,10 @@ public sealed class TestFixturePreparationContractTests
         Assert.IsFalse(preparation.Contains("Get-ChildItem", StringComparison.Ordinal));
         var populationPosition = release.IndexOf("'prepare-validation-dependencies.ps1'", StringComparison.Ordinal);
         var licensePosition = release.IndexOf("-Description 'Restored third-party license validation'", StringComparison.Ordinal);
-        var buildPosition = release.IndexOf("dotnet build $solutionPath", StringComparison.Ordinal);
-        Assert.IsTrue(populationPosition < licensePosition && licensePosition < buildPosition);
+        var buildPosition = release.IndexOf(
+            "Invoke-ReleaseSolutionBuild -Solution $solutionPath -BuildConfiguration $Configuration", StringComparison.Ordinal);
+        Assert.IsTrue(populationPosition >= 0 && populationPosition < licensePosition && licensePosition < buildPosition);
+        StringAssert.Contains(release, "& dotnet build $Solution -c $BuildConfiguration --no-restore --nologo");
         StringAssert.Contains(release, "RepoRoot = $repoRoot; SolutionPath = $solutionPath; Verify = $true; VerifyRestoredLicenses = $true");
         StringAssert.Contains(release, "'-p:TestFixturesPrepared=true'");
         Assert.IsFalse(release.Contains("dotnet restore $sampleSolutionPath", StringComparison.Ordinal));

@@ -34,10 +34,16 @@ public sealed class TimeBoundTestOperationTests
         var timeout = await Assert.ThrowsExactlyAsync<TimeoutException>(() =>
             TimeBoundTestOperation.RunAsync(async token =>
             {
-                using var registration = token.Register(() => throw new InvalidOperationException("callback failed"));
+                var canceled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                // The failing callback owns the cancellation signal until it has started.
+                using var registration = token.Register(() =>
+                {
+                    canceled.SetCanceled(token);
+                    throw new InvalidOperationException("callback failed");
+                });
                 try
                 {
-                    await Task.Delay(Timeout.InfiniteTimeSpan, token);
+                    await canceled.Task;
                 }
                 finally
                 {

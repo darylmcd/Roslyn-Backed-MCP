@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using RoslynMcp.Tests.Helpers;
@@ -153,6 +154,112 @@ public sealed class TestShardPlanContractTests
         {
             TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
         }
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
+    public async Task Planner_LinuxBuildTimes_RedistributeDurationWeightsDeterministicallyAsync()
+    {
+        var assemblyPath = typeof(TestShardPlanContractTests).Assembly.Location;
+        var baselineResult = await RunPlannerAsync(assemblyPath, shardCount: 1, shardIndex: 0);
+        AssertSucceeded(baselineResult);
+        var baseline = ParsePlan(baselineResult.StdOut);
+        var fixtureRoot = Path.Combine(TestTempRoot.Current, nameof(TestShardPlanContractTests),
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(fixtureRoot);
+        var profilePath = Path.Combine(fixtureRoot, "profile.json");
+        try
+        {
+            var profile = new
+            {
+                SchemaVersion = 1,
+                MinimumSamples = 5,
+                Images = new[]
+                {
+                    new
+                    {
+                        Image = "ubuntu-latest",
+                        RunIds = new[] { "r1", "r2", "r3", "r4", "r5" },
+                        Classes = baseline.TestClasses.Select((testClass, index) => new
+                        {
+                            testClass.ClassName,
+                            testClass.StaticCaseWeight,
+                            MeanCaseSeconds = index switch { 0 => 10d, 1 => 6d, 2 => 4d, _ => 0.0001d },
+                        }).ToArray(),
+                    },
+                },
+            };
+            await File.WriteAllTextAsync(profilePath, JsonSerializer.Serialize(profile));
+
+            Task<PwshScriptResult> RunDurationPlannerAsync(double[]? buildSeconds = null) =>
+                RunPlannerAsync(assemblyPath, shardCount: 2, shardIndex: 1,
+                    durationProfilePath: profilePath, hostedImage: "ubuntu-latest",
+                    shardBuildSeconds: buildSeconds);
+
+            var defaultResult = await RunDurationPlannerAsync();
+            var equalResult = await RunDurationPlannerAsync([2, 2]);
+            var weightedResult = await RunDurationPlannerAsync([4, 1]);
+            var repeatedResult = await RunDurationPlannerAsync([4, 1]);
+            var extremeResult = await RunDurationPlannerAsync([double.MaxValue, double.Epsilon]);
+            foreach (var result in new[] { defaultResult, equalResult, weightedResult, repeatedResult, extremeResult })
+                AssertSucceeded(result);
+
+            var defaultPlan = ParsePlan(defaultResult.StdOut);
+            var equalPlan = ParsePlan(equalResult.StdOut);
+            Assert.IsNull(defaultPlan.ShardBuildSeconds);
+            CollectionAssert.AreEqual(new[] { 2d, 2d }, equalPlan.ShardBuildSeconds);
+            CollectionAssert.AreEqual(defaultPlan.Shards.Select(shard => shard.Filter).ToArray(),
+                equalPlan.Shards.Select(shard => shard.Filter).ToArray());
+
+            Assert.AreEqual(weightedResult.StdOut, repeatedResult.StdOut);
+            var weightedPlan = ParsePlan(weightedResult.StdOut);
+            Assert.AreEqual(1, weightedPlan.SchemaVersion);
+            AssertCompleteDisjointBalancedPlan(baseline, weightedPlan, expectedShardCount: 2,
+                checkStaticBalance: false);
+            AssertSelectedShard(weightedPlan, expectedIndex: 1);
+            CollectionAssert.AreEqual(new[] { 4d, 1d }, weightedPlan.ShardBuildSeconds);
+            var expensiveClasses = baseline.TestClasses.Take(2).Select(testClass => testClass.ClassName).ToArray();
+            CollectionAssert.AreEqual(expensiveClasses, weightedPlan.Shards[1].Classes);
+            Assert.AreEqual(16d, weightedPlan.Shards[1].BalanceWeight, 0.000001);
+            Assert.AreEqual(4d + (baseline.TotalClassCount - 3) * 0.0001,
+                weightedPlan.Shards[0].BalanceWeight, 0.000001);
+            CollectionAssert.AreEqual(profile.Images[0].Classes.Select(entry => entry.MeanCaseSeconds).ToArray(),
+                weightedPlan.TestClasses.Select(entry => entry.BalanceWeight).ToArray());
+
+            var extremePlan = ParsePlan(extremeResult.StdOut);
+            AssertCompleteDisjointBalancedPlan(baseline, extremePlan, expectedShardCount: 2,
+                checkStaticBalance: false);
+            CollectionAssert.AreEqual(new[] { baseline.TestClasses[^1].ClassName }, extremePlan.Shards[0].Classes,
+                "Reserve the last class when the projected finish would leave a shard empty.");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
+    [DataRow(2, "ubuntu-latest", "", "exactly 2")]
+    [DataRow(2, "ubuntu-latest", "1", "exactly 2")]
+    [DataRow(1, "ubuntu-latest", "1", "at least two shards")]
+    [DataRow(2, null, "1,2", "Ubuntu hosted duration profile")]
+    [DataRow(2, "windows-latest", "1,2", "Ubuntu hosted duration profile")]
+    [DataRow(2, "ubuntu-latest", "1,0", "finite and strictly positive")]
+    [DataRow(2, "ubuntu-latest", "-1,2", "finite and strictly positive")]
+    [DataRow(2, "ubuntu-latest", "NaN,2", "finite and strictly positive")]
+    [DataRow(2, "ubuntu-latest", "1,Infinity", "finite and strictly positive")]
+    public async Task Planner_InvalidBuildTimes_FailClosedAsync(
+        int shardCount, string? hostedImage, string times, string diagnostic)
+    {
+        var assemblyPath = typeof(TestShardPlanContractTests).Assembly.Location;
+        var buildSeconds = times.Split(',', StringSplitOptions.RemoveEmptyEntries)
+            .Select(value => double.Parse(value, System.Globalization.CultureInfo.InvariantCulture)).ToArray();
+        var result = await RunPlannerAsync(assemblyPath, shardCount, shardIndex: 0,
+            durationProfilePath: hostedImage is null ? null : "profile-not-read-for-invalid-build-times.json",
+            hostedImage: hostedImage, shardBuildSeconds: buildSeconds);
+        Assert.AreNotEqual(0, result.ExitCode);
+        StringAssert.Contains(result.AllOutput, diagnostic);
     }
 
     [TestMethod]
@@ -499,38 +606,46 @@ public sealed class TestShardPlanContractTests
         int shardIndex,
         string? adapterResultsPath = null,
         string? durationProfilePath = null,
-        string? hostedImage = null)
+        string? hostedImage = null,
+        double[]? shardBuildSeconds = null)
     {
         var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
         var plannerPath = Path.Combine(repositoryRoot, "eng", "get-test-shard-plan.ps1");
-        var arguments = new List<string>
+        var plannerParameters = new Dictionary<string, object>
         {
-            "-NoProfile",
-            "-File",
-            plannerPath,
-            "-TestAssemblyPath",
-            testAssemblyPath,
-            "-TestShardCount",
-            shardCount.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            "-TestShardIndex",
-            shardIndex.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            ["TestAssemblyPath"] = testAssemblyPath,
+            ["TestShardCount"] = shardCount,
+            ["TestShardIndex"] = shardIndex,
         };
         if (adapterResultsPath is not null)
         {
-            arguments.Add("-AdapterResultsPath");
-            arguments.Add(adapterResultsPath);
+            plannerParameters.Add("AdapterResultsPath", adapterResultsPath);
         }
         if (durationProfilePath is not null)
         {
-            arguments.Add("-DurationProfilePath");
-            arguments.Add(durationProfilePath);
-            arguments.Add("-HostedImage");
-            arguments.Add(hostedImage!);
+            plannerParameters.Add("DurationProfilePath", durationProfilePath);
+            plannerParameters.Add("HostedImage", hostedImage!);
+        }
+        if (shardBuildSeconds is not null)
+        {
+            plannerParameters.Add("ShardBuildSeconds", shardBuildSeconds);
         }
 
         return PwshScriptRunner.RunAsync(
-            arguments,
+            [
+                "-NoProfile", "-Command",
+                """
+                $options = $env:ROSLYNMCP_TEST_SHARD_PLANNER_OPTIONS | ConvertFrom-Json -AsHashtable
+                & $env:ROSLYNMCP_TEST_SHARD_PLANNER_PATH @options
+                """,
+            ],
             workingDirectory: repositoryRoot,
+            environment: new Dictionary<string, string?>
+            {
+                ["ROSLYNMCP_TEST_SHARD_PLANNER_PATH"] = plannerPath,
+                ["ROSLYNMCP_TEST_SHARD_PLANNER_OPTIONS"] = JsonSerializer.Serialize(plannerParameters,
+                    new JsonSerializerOptions { NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals }),
+            },
             timeout: _processTimeout,
             description: "test-shard planner");
     }
@@ -590,14 +705,16 @@ public sealed class TestShardPlanContractTests
         int AdapterClassCount,
         TestClassPlan[] TestClasses,
         ShardPlan[] Shards,
-        string SelectedFilter);
+        string SelectedFilter,
+        double[]? ShardBuildSeconds);
 
-    private sealed record TestClassPlan(string ClassName, int StaticCaseWeight);
+    private sealed record TestClassPlan(string ClassName, int StaticCaseWeight, double BalanceWeight);
 
     private sealed record ShardPlan(
         int Index,
         int ClassCount,
         int StaticCaseWeight,
+        double BalanceWeight,
         string[] Classes,
         string Filter);
 }

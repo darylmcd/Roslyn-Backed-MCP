@@ -6,56 +6,11 @@ using static RoslynMcp.Tests.TestInfrastructure.InterfaceExtractionTestContext;
 
 namespace RoslynMcp.Tests;
 
-/// <summary>
-/// Parameter semantics of an extracted interface on every route (standalone, cross-project,
-/// dependency-inversion, extract-and-wire): each scenario is previewed, applied, reloaded and compiled, so the
-/// emitted interface must carry the parameter modifiers, defaults and contract attributes the source type
-/// declares. Signature types live in a third project (<c>Shared</c>) so the receiving project can name them;
-/// that dependency ownership is a separate row.
-/// </summary>
 [TestClass]
-public sealed class InterfaceParameterSemanticsRouteTests : InterfaceRouteTestBase
+public sealed class InterfaceParameterSemanticsModifiersRouteTests : InterfaceParameterSemanticsRouteTestBase
 {
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
-
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
-
-    private const string SharedSource = """
-        namespace SharedLib;
-
-        public enum Hue { Red = 1, Green = 2 }
-        public static class Limits { public const int Cap = 9; }
-        public class ParamBase { public const int Max = 3; }
-        """;
-
-    private const string ConsumerSource = """
-        namespace Contracts;
-
-        public class ParamConsumer
-        {
-            public ParamConsumer(ParamService service) { }
-        }
-        """;
-
-    private static string ServiceSource(string members) => $$"""
-        using System;
-        using System.Runtime.CompilerServices;
-        using System.Runtime.InteropServices;
-        using SharedLib;
-
-        namespace Contracts;
-
-        public class ParamService : ParamBase
-        {
-            private int _field;
-            private string _name = "";
-            public int Count;
-            public const int OwnMax = 4;
-        {{members}}
-        }
-        """;
 
     private const string ModifierMembers = """
             public void Modify(ref int @event, out int r, in int i) { r = 0; }
@@ -63,57 +18,6 @@ public sealed class InterfaceParameterSemanticsRouteTests : InterfaceRouteTestBa
             public void Scoped(scoped Span<int> s, scoped ref int i) { }
             public void Collect(params ReadOnlySpan<int> rest) { }
             public void Spread(params int[] rest) { }
-        """;
-
-    private const string DefaultMembers = """
-            public void NumericDefaults(double a = double.PositiveInfinity, double b = double.NegativeInfinity, double c = double.NaN) { }
-            public void Literals(float f = 1.5f, decimal m = 1m, char c = '\n', string s = "a\"b\\c\n", Hue h = Hue.Green) { }
-            public void MetadataDefaults([Optional, DateTimeConstant(123)] DateTime d) { }
-        """;
-
-    private const string AttributeDefaultMembers = """
-            public void AttributeDefaults(
-                [Optional, DefaultParameterValue(5)] int a,
-                [Optional, DefaultParameterValue(OwnMax)] int b,
-                [Optional, DecimalConstant(0, 0, 0, 0, 7)] decimal c) { }
-        """;
-
-    private const string CallerMembers = """
-            public void Caller([CallerMemberName] string c = "", int m = Max) { }
-            public int this[int a, [CallerMemberName] string c = "", int m = Max] => a;
-        """;
-
-    private const string NameofMembers = """
-            public void Names(string a = nameof(_name), string b = nameof(Max), string c = nameof(Count), string d = nameof(Names)) { }
-            public void Referencing(string a, [CallerArgumentExpression(nameof(a))] string b = "") { }
-        """;
-
-    private const string SourceOwnedConstantMembers = """
-            public enum Mode { A = 1, B = 2 }
-            public void Own(int z = OwnMax, int e = (int)Mode.B) { }
-        """;
-
-    private const string ForeignAttributeMembers = """
-            public void ForeignAttribute([Optional, DefaultParameterValue(Limits.Cap)] int a) { }
-        """;
-
-    private const string DroppedAttributeMembers = """
-            public void Dropped([MarshalAs(UnmanagedType.I4)] int a) { }
-        """;
-
-    private const string UnnameableConstantMembers = """
-            private enum Priv { A = 1 }
-            internal const int Internal = 5;
-            public void Hidden(int x = (int)Priv.A, int y = Internal + 1, int z = OwnMax) { }
-        """;
-
-    private const string NegativeEnumMembers = """
-            internal const Hue Unknown = (Hue)(-1);
-            public void Negative(Hue u = Unknown) { }
-        """;
-
-    private const string ForeignConstantMembers = """
-            public void Foreign(int c = Limits.Cap) { }
         """;
 
     private const string ArglistMembers = """
@@ -145,23 +49,55 @@ public sealed class InterfaceParameterSemanticsRouteTests : InterfaceRouteTestBa
     [DataRow("cross-project")]
     [DataRow("dependency-inversion")]
     [DataRow("extract-and-wire")]
-    public async Task Default_Values_Survive_Preview_Apply_And_Reload(string route) =>
-        await AssertRouteAsync(route, DefaultMembers, (contract, text) =>
+    public async Task Arglist_Method_Is_Extracted_Into_A_Compiling_Interface(string route) =>
+        await AssertRouteAsync(route, ArglistMembers, (contract, text) =>
         {
-            var numeric = Method(contract, "NumericDefaults").Parameters;
-            Assert.IsTrue(double.IsPositiveInfinity((double)numeric[0].ExplicitDefaultValue!), text);
-            Assert.IsTrue(double.IsNegativeInfinity((double)numeric[1].ExplicitDefaultValue!), text);
-            Assert.IsTrue(double.IsNaN((double)numeric[2].ExplicitDefaultValue!), text);
-            var literals = Method(contract, "Literals").Parameters;
-            Assert.AreEqual(1.5f, literals[0].ExplicitDefaultValue, text);
-            Assert.AreEqual(1m, literals[1].ExplicitDefaultValue, text);
-            Assert.AreEqual('\n', literals[2].ExplicitDefaultValue, text);
-            Assert.AreEqual("a\"b\\c\n", literals[3].ExplicitDefaultValue, text);
-            Assert.AreEqual(2, literals[4].ExplicitDefaultValue, text);
-            var metadata = Method(contract, "MetadataDefaults").Parameters[0];
-            Assert.IsTrue(metadata.HasExplicitDefaultValue, text);
-            Assert.IsTrue(metadata.GetAttributes().Any(a => a.AttributeClass?.Name == "DateTimeConstantAttribute"), text);
+            Assert.IsTrue(Method(contract, "Write").IsVararg, text);
+            Assert.AreEqual(1, Method(contract, "Write").Parameters.Length, text);
         });
+
+    [TestMethod]
+    public void Compiler_Accepts_Arglist_On_An_Interface_Member_And_Its_Implementation()
+    {
+        // The projector emits `__arglist` as written (no refusal): this pins that premise to the compiler this
+        // repo builds against, so a language change that rejects it fails here instead of in a user's extraction.
+        var tree = CSharpSyntaxTree.ParseText(
+            "interface I { void Write(int v, __arglist); } class C : I { public void Write(int v, __arglist) { } }");
+        var compilation = CSharpCompilation.Create(
+            "ArglistProbe", [tree], [MetadataReference.CreateFromFile(typeof(object).Assembly.Location)],
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+        var errors = compilation.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).Select(d => d.ToString()).ToArray();
+        Assert.AreEqual(0, errors.Length, string.Join(Environment.NewLine, errors));
+        Assert.IsTrue(compilation.GetTypeByMetadataName("I")!.GetMembers("Write").OfType<IMethodSymbol>().Single().IsVararg);
+    }
+}
+
+[TestClass]
+public sealed class InterfaceParameterSemanticsAttributesRouteTests : InterfaceParameterSemanticsRouteTestBase
+{
+    [ClassInitialize]
+    public static void ClassInit(TestContext _) => InitializeServices();
+
+    private const string AttributeDefaultMembers = """
+            public void AttributeDefaults(
+                [Optional, DefaultParameterValue(5)] int a,
+                [Optional, DefaultParameterValue(OwnMax)] int b,
+                [Optional, DecimalConstant(0, 0, 0, 0, 7)] decimal c) { }
+        """;
+
+    private const string CallerMembers = """
+            public void Caller([CallerMemberName] string c = "", int m = Max) { }
+            public int this[int a, [CallerMemberName] string c = "", int m = Max] => a;
+        """;
+
+    private const string ForeignAttributeMembers = """
+            public void ForeignAttribute([Optional, DefaultParameterValue(Limits.Cap)] int a) { }
+        """;
+
+    private const string DroppedAttributeMembers = """
+            public void Dropped([MarshalAs(UnmanagedType.I4)] int a) { }
+        """;
 
     [TestMethod]
     [DataRow("standalone")]
@@ -190,6 +126,96 @@ public sealed class InterfaceParameterSemanticsRouteTests : InterfaceRouteTestBa
             var indexer = contract.GetMembers().OfType<IPropertySymbol>().Single(p => p.IsIndexer).Parameters;
             Assert.IsTrue(indexer[1].GetAttributes().Any(a => a.AttributeClass?.Name == "CallerMemberNameAttribute"), text);
             Assert.AreEqual(3, indexer[2].ExplicitDefaultValue, text);
+        });
+
+    [TestMethod]
+    [DataRow("standalone")]
+    [DataRow("cross-project")]
+    [DataRow("dependency-inversion")]
+    [DataRow("extract-and-wire")]
+    public async Task Contract_Attribute_Argument_Naming_A_Constant_Of_An_Otherwise_Unreferenced_Type_Imports_Its_Namespace(string route) =>
+        await AssertRouteAsync(route, ForeignAttributeMembers, (contract, text) =>
+            Assert.AreEqual(9, Method(contract, "ForeignAttribute").Parameters[0].ExplicitDefaultValue, text));
+
+    [TestMethod]
+    [DataRow("standalone")]
+    [DataRow("cross-project")]
+    [DataRow("dependency-inversion")]
+    [DataRow("extract-and-wire")]
+    public async Task Dropped_Attribute_Argument_Does_Not_Import_Its_Namespace(string route) =>
+        await AssertRouteAsync(route, DroppedAttributeMembers, (contract, text) =>
+        {
+            Assert.AreEqual(0, Method(contract, "Dropped").Parameters[0].GetAttributes().Length, text);
+            Assert.IsFalse(text.Contains("InteropServices", StringComparison.Ordinal), text);
+        });
+
+    [TestMethod]
+    [DataRow("standalone")]
+    [DataRow("cross-project")]
+    [DataRow("dependency-inversion")]
+    [DataRow("extract-and-wire")]
+    public async Task Nameof_Of_A_Parameter_In_A_Contract_Attribute_Is_Left_As_Written(string route) =>
+        await AssertRouteAsync(route, NameofMembers, (contract, text) =>
+        {
+            var attribute = Method(contract, "Referencing").Parameters[1].GetAttributes().Single(a => a.AttributeClass?.Name == "CallerArgumentExpressionAttribute");
+            Assert.AreEqual("a", attribute.ConstructorArguments[0].Value, text);
+            StringAssert.Contains(text, "CallerArgumentExpression(nameof(a))");
+        });
+}
+
+[TestClass]
+public sealed class InterfaceParameterSemanticsDefaultsRouteTests : InterfaceParameterSemanticsRouteTestBase
+{
+    [ClassInitialize]
+    public static void ClassInit(TestContext _) => InitializeServices();
+
+    private const string DefaultMembers = """
+            public void NumericDefaults(double a = double.PositiveInfinity, double b = double.NegativeInfinity, double c = double.NaN) { }
+            public void Literals(float f = 1.5f, decimal m = 1m, char c = '\n', string s = "a\"b\\c\n", Hue h = Hue.Green) { }
+            public void MetadataDefaults([Optional, DateTimeConstant(123)] DateTime d) { }
+        """;
+
+    private const string SourceOwnedConstantMembers = """
+            public enum Mode { A = 1, B = 2 }
+            public void Own(int z = OwnMax, int e = (int)Mode.B) { }
+        """;
+
+    private const string UnnameableConstantMembers = """
+            private enum Priv { A = 1 }
+            internal const int Internal = 5;
+            public void Hidden(int x = (int)Priv.A, int y = Internal + 1, int z = OwnMax) { }
+        """;
+
+    private const string NegativeEnumMembers = """
+            internal const Hue Unknown = (Hue)(-1);
+            public void Negative(Hue u = Unknown) { }
+        """;
+
+    private const string ForeignConstantMembers = """
+            public void Foreign(int c = Limits.Cap) { }
+        """;
+
+    [TestMethod]
+    [DataRow("standalone")]
+    [DataRow("cross-project")]
+    [DataRow("dependency-inversion")]
+    [DataRow("extract-and-wire")]
+    public async Task Default_Values_Survive_Preview_Apply_And_Reload(string route) =>
+        await AssertRouteAsync(route, DefaultMembers, (contract, text) =>
+        {
+            var numeric = Method(contract, "NumericDefaults").Parameters;
+            Assert.IsTrue(double.IsPositiveInfinity((double)numeric[0].ExplicitDefaultValue!), text);
+            Assert.IsTrue(double.IsNegativeInfinity((double)numeric[1].ExplicitDefaultValue!), text);
+            Assert.IsTrue(double.IsNaN((double)numeric[2].ExplicitDefaultValue!), text);
+            var literals = Method(contract, "Literals").Parameters;
+            Assert.AreEqual(1.5f, literals[0].ExplicitDefaultValue, text);
+            Assert.AreEqual(1m, literals[1].ExplicitDefaultValue, text);
+            Assert.AreEqual('\n', literals[2].ExplicitDefaultValue, text);
+            Assert.AreEqual("a\"b\\c\n", literals[3].ExplicitDefaultValue, text);
+            Assert.AreEqual(2, literals[4].ExplicitDefaultValue, text);
+            var metadata = Method(contract, "MetadataDefaults").Parameters[0];
+            Assert.IsTrue(metadata.HasExplicitDefaultValue, text);
+            Assert.IsTrue(metadata.GetAttributes().Any(a => a.AttributeClass?.Name == "DateTimeConstantAttribute"), text);
         });
 
     [TestMethod]
@@ -239,40 +265,6 @@ public sealed class InterfaceParameterSemanticsRouteTests : InterfaceRouteTestBa
     [DataRow("cross-project")]
     [DataRow("dependency-inversion")]
     [DataRow("extract-and-wire")]
-    public async Task Contract_Attribute_Argument_Naming_A_Constant_Of_An_Otherwise_Unreferenced_Type_Imports_Its_Namespace(string route) =>
-        await AssertRouteAsync(route, ForeignAttributeMembers, (contract, text) =>
-            Assert.AreEqual(9, Method(contract, "ForeignAttribute").Parameters[0].ExplicitDefaultValue, text));
-
-    [TestMethod]
-    [DataRow("standalone")]
-    [DataRow("cross-project")]
-    [DataRow("dependency-inversion")]
-    [DataRow("extract-and-wire")]
-    public async Task Dropped_Attribute_Argument_Does_Not_Import_Its_Namespace(string route) =>
-        await AssertRouteAsync(route, DroppedAttributeMembers, (contract, text) =>
-        {
-            Assert.AreEqual(0, Method(contract, "Dropped").Parameters[0].GetAttributes().Length, text);
-            Assert.IsFalse(text.Contains("InteropServices", StringComparison.Ordinal), text);
-        });
-
-    [TestMethod]
-    [DataRow("standalone")]
-    [DataRow("cross-project")]
-    [DataRow("dependency-inversion")]
-    [DataRow("extract-and-wire")]
-    public async Task Nameof_Of_A_Parameter_In_A_Contract_Attribute_Is_Left_As_Written(string route) =>
-        await AssertRouteAsync(route, NameofMembers, (contract, text) =>
-        {
-            var attribute = Method(contract, "Referencing").Parameters[1].GetAttributes().Single(a => a.AttributeClass?.Name == "CallerArgumentExpressionAttribute");
-            Assert.AreEqual("a", attribute.ConstructorArguments[0].Value, text);
-            StringAssert.Contains(text, "CallerArgumentExpression(nameof(a))");
-        });
-
-    [TestMethod]
-    [DataRow("standalone")]
-    [DataRow("cross-project")]
-    [DataRow("dependency-inversion")]
-    [DataRow("extract-and-wire")]
     public async Task Source_Assembly_Constants_Stay_Symbolic_Only_Where_The_Interface_Shares_The_Source_Assembly(string route) =>
         await AssertRouteAsync(route, SourceOwnedConstantMembers, (contract, text) =>
         {
@@ -281,36 +273,58 @@ public sealed class InterfaceParameterSemanticsRouteTests : InterfaceRouteTestBa
             Assert.AreEqual(route == "standalone", text.Contains("ParamService.OwnMax", StringComparison.Ordinal), text);
             Assert.AreEqual(route == "standalone", text.Contains("ParamService.Mode.B", StringComparison.Ordinal), text);
         });
+}
 
-    [TestMethod]
-    [DataRow("standalone")]
-    [DataRow("cross-project")]
-    [DataRow("dependency-inversion")]
-    [DataRow("extract-and-wire")]
-    public async Task Arglist_Method_Is_Extracted_Into_A_Compiling_Interface(string route) =>
-        await AssertRouteAsync(route, ArglistMembers, (contract, text) =>
+/// <summary>
+/// Parameter semantics of an extracted interface on every route (standalone, cross-project,
+/// dependency-inversion, extract-and-wire): each scenario is previewed, applied, reloaded and compiled, so the
+/// emitted interface must carry the parameter modifiers, defaults and contract attributes the source type
+/// declares. Signature types live in a third project (<c>Shared</c>) so the receiving project can name them;
+/// that dependency ownership is a separate row.
+/// </summary>
+public abstract class InterfaceParameterSemanticsRouteTestBase : InterfaceRouteTestBase
+{
+    protected const string NameofMembers = """
+            public void Names(string a = nameof(_name), string b = nameof(Max), string c = nameof(Count), string d = nameof(Names)) { }
+            public void Referencing(string a, [CallerArgumentExpression(nameof(a))] string b = "") { }
+        """;
+
+    private const string SharedSource = """
+        namespace SharedLib;
+
+        public enum Hue { Red = 1, Green = 2 }
+        public static class Limits { public const int Cap = 9; }
+        public class ParamBase { public const int Max = 3; }
+        """;
+
+    private const string ConsumerSource = """
+        namespace Contracts;
+
+        public class ParamConsumer
         {
-            Assert.IsTrue(Method(contract, "Write").IsVararg, text);
-            Assert.AreEqual(1, Method(contract, "Write").Parameters.Length, text);
-        });
+            public ParamConsumer(ParamService service) { }
+        }
+        """;
 
-    [TestMethod]
-    public void Compiler_Accepts_Arglist_On_An_Interface_Member_And_Its_Implementation()
-    {
-        // The projector emits `__arglist` as written (no refusal): this pins that premise to the compiler this
-        // repo builds against, so a language change that rejects it fails here instead of in a user's extraction.
-        var tree = CSharpSyntaxTree.ParseText(
-            "interface I { void Write(int v, __arglist); } class C : I { public void Write(int v, __arglist) { } }");
-        var compilation = CSharpCompilation.Create(
-            "ArglistProbe", [tree], [MetadataReference.CreateFromFile(typeof(object).Assembly.Location)],
-            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+    private static string ServiceSource(string members) => $$"""
+        using System;
+        using System.Runtime.CompilerServices;
+        using System.Runtime.InteropServices;
+        using SharedLib;
 
-        var errors = compilation.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).Select(d => d.ToString()).ToArray();
-        Assert.AreEqual(0, errors.Length, string.Join(Environment.NewLine, errors));
-        Assert.IsTrue(compilation.GetTypeByMetadataName("I")!.GetMembers("Write").OfType<IMethodSymbol>().Single().IsVararg);
-    }
+        namespace Contracts;
 
-    private static IMethodSymbol Method(INamedTypeSymbol contract, string name) => contract.GetMembers(name).OfType<IMethodSymbol>().Single();
+        public class ParamService : ParamBase
+        {
+            private int _field;
+            private string _name = "";
+            public int Count;
+            public const int OwnMax = 4;
+        {{members}}
+        }
+        """;
+
+    protected static IMethodSymbol Method(INamedTypeSymbol contract, string name) => contract.GetMembers(name).OfType<IMethodSymbol>().Single();
 
     private static Task<string> PrepareFixtureAsync(IsolatedWorkspaceScope workspace, string members) =>
         PrepareInterfaceRouteFixtureAsync(workspace, "ParamService.cs", ServiceSource(members), "ParamConsumer.cs", ConsumerSource, SharedSource);
@@ -319,7 +333,7 @@ public sealed class InterfaceParameterSemanticsRouteTests : InterfaceRouteTestBa
         string route, string workspaceId, string sourcePath, CompositePreviewStore stores) =>
         PreviewInterfaceRouteAsync(route, workspaceId, sourcePath, "ParamService", stores);
 
-    private static async Task AssertRouteAsync(string route, string members, Action<INamedTypeSymbol, string> verify)
+    protected static async Task AssertRouteAsync(string route, string members, Action<INamedTypeSymbol, string> verify)
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
         var sourcePath = await PrepareFixtureAsync(workspace, members);

@@ -13,6 +13,10 @@ The JSON result contains every shard plus the selected shard's exact
 ClassName filter. Discovery or integrity failures terminate with a nonzero exit.
 When AdapterResultsPath names a structured TRX file from the installed adapter,
 the metadata catalog must exactly match the adapter-discovered class catalog.
+
+.PARAMETER ShardBuildSeconds
+Optional Release build durations in shard-index order for an ubuntu-latest
+hosted duration plan. Longer builds reduce the predicted test capacity.
 #>
 param(
     [Parameter(Mandatory)]
@@ -26,7 +30,9 @@ param(
 
     [string]$DurationProfilePath,
 
-    [string]$HostedImage
+    [string]$HostedImage,
+
+    [double[]]$ShardBuildSeconds
 )
 
 Set-StrictMode -Version Latest
@@ -93,6 +99,35 @@ if ($TestShardIndex -lt 0 -or $TestShardIndex -ge $TestShardCount) {
 if ([string]::IsNullOrWhiteSpace($DurationProfilePath) -ne
     [string]::IsNullOrWhiteSpace($HostedImage)) {
     throw 'DurationProfilePath and HostedImage must be supplied together.'
+}
+
+$buildTimesSupplied = $PSBoundParameters.ContainsKey('ShardBuildSeconds')
+$useBuildTimes = $false
+$buildTimeExponent = 0.75
+$buildTimeOffsets = @()
+if ($buildTimesSupplied) {
+    if ($HostedImage -cne 'ubuntu-latest' -or [string]::IsNullOrWhiteSpace($DurationProfilePath)) {
+        throw 'ShardBuildSeconds requires an Ubuntu hosted duration profile.'
+    }
+    if ($TestShardCount -lt 2) {
+        throw 'ShardBuildSeconds requires at least two shards.'
+    }
+    if ($null -eq $ShardBuildSeconds -or $ShardBuildSeconds.Count -ne $TestShardCount) {
+        throw "ShardBuildSeconds must contain exactly $TestShardCount entries in shard-index order."
+    }
+    foreach ($seconds in $ShardBuildSeconds) {
+        if (-not [double]::IsFinite($seconds) -or $seconds -le 0) {
+            throw 'Every ShardBuildSeconds entry must be finite and strictly positive.'
+        }
+    }
+
+    $useBuildTimes = @($ShardBuildSeconds -ne $ShardBuildSeconds[0]).Count -gt 0
+    # Compare log((assignedWeight + classWeight) * (buildSeconds / median)^exponent).
+    # The median contributes the same term to every score, so drop it. Comparing
+    # in log space also avoids overflow and underflow for extreme build durations.
+    $buildTimeOffsets = @(foreach ($seconds in $ShardBuildSeconds) {
+        $buildTimeExponent * [Math]::Log($seconds)
+    })
 }
 
 $canonicalAssemblyPath = [System.IO.Path]::GetFullPath($TestAssemblyPath)
@@ -389,16 +424,32 @@ for ($index = 0; $index -lt $TestShardCount; $index++) {
     })
 }
 
-foreach ($testClass in $assignmentOrder) {
-    $selectedShard = $mutableShards[0]
+$emptyShardCount = $TestShardCount
+for ($assignmentIndex = 0; $assignmentIndex -lt $assignmentOrder.Count; $assignmentIndex++) {
+    $testClass = $assignmentOrder[$assignmentIndex]
+    $mustFillEmptyShard = $assignmentOrder.Count - $assignmentIndex -eq $emptyShardCount
+    $selectedShard = $null
+    $selectedScore = [double]::PositiveInfinity
     foreach ($candidate in $mutableShards) {
-        if ($candidate.BalanceWeight -lt $selectedShard.BalanceWeight -or
-            ($candidate.BalanceWeight -eq $selectedShard.BalanceWeight -and
-             $candidate.Index -lt $selectedShard.Index)) {
+        if ($mustFillEmptyShard -and $candidate.Classes.Count -ne 0) {
+            continue
+        }
+        $score = if ($useBuildTimes) {
+            [Math]::Log($candidate.BalanceWeight + $testClass.BalanceWeight) + $buildTimeOffsets[$candidate.Index]
+        }
+        else {
+            $candidate.BalanceWeight
+        }
+        # Candidates are visited in shard-index order. Keep the first in a tie.
+        if ($null -eq $selectedShard -or $score -lt $selectedScore) {
             $selectedShard = $candidate
+            $selectedScore = $score
         }
     }
 
+    if ($selectedShard.Classes.Count -eq 0) {
+        $emptyShardCount--
+    }
     $selectedShard.Classes.Add($testClass)
     $selectedShard.StaticCaseWeight += $testClass.StaticCaseWeight
     $selectedShard.BalanceWeight += $testClass.BalanceWeight
@@ -465,6 +516,11 @@ $plan = [pscustomobject]@{
     TestClasses = @($classCatalog)
     Shards = @($shards)
     SelectedFilter = $shards[$TestShardIndex].Filter
+}
+
+if ($buildTimesSupplied) {
+    $plan | Add-Member -NotePropertyName ShardBuildSeconds -NotePropertyValue $ShardBuildSeconds
+    $plan | Add-Member -NotePropertyName ShardBuildTimeExponent -NotePropertyValue $buildTimeExponent
 }
 
 $plan | ConvertTo-Json -Depth 8 -Compress
