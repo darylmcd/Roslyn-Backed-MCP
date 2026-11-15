@@ -158,7 +158,7 @@ public sealed class EditService : IEditService
         {
             var targetPath = Path.GetFullPath(document.FilePath!);
             // Verification can run between target resolution and undo capture.
-            WorkspaceManager.EnsurePhysicalPath(targetPath);
+            WorkspacePhysicalPathGuard.EnsurePhysicalPath(targetPath);
             fileSnapshots.Add(await FileSnapshotCapture.CaptureAsync(
                 targetPath,
                 () => sourceText.ToString(),

@@ -94,7 +94,7 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
                 }
                 else
                 {
-                    WorkspaceManager.EnsurePhysicalPath(mutation.FilePath);
+                    WorkspacePhysicalPathGuard.EnsurePhysicalPath(mutation.FilePath);
                 }
             }
 
