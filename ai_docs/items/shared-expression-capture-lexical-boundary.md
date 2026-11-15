@@ -4,7 +4,7 @@
 
 ## Anchors
 
-- `src/RoslynMcp.Roslyn/Services/ExtractMethodService.cs:941`
+- `src/RoslynMcp.Roslyn/Services/ExtractMethodService.cs` (`CollectFreeVariables`, `BuildHelperMethod`, `BuildInvocation`)
 - `tests/RoslynMcp.Tests/ExtractSharedExpressionTests.cs`
 
 ## Acceptance
@@ -21,3 +21,5 @@
 ## Notes
 
 The exact 403de745 base generated an invalid reference to an inner lambda parameter. Cold review and a native preview/apply probe found that the lexical candidate built from that base generated compiling code and changed the lambda variant result from 2 to 1. The old collector had rejected or invalidated similar changes whose nested bindings differ between sites. Land the candidate-binding, projected-helper binding and eager-read timing prerequisites. Then require exact selected-operation ownership for already-enclosing query lambdas and preserve compile-time nameof without reading an unassigned variable. Keep safe immediately invoked lambdas and equivalent selection-owned declarations covered. This remains experimental 5.x work.
+
+Captured keywords also need their original C# identifier tokens. The old-code baseline failed compilation of the reparsed preview for the `@event` capture. Prove the generated parameter and argument preserve escaping in reparsed preview and applied source while confirming declaration ownership.
