@@ -54,6 +54,13 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             ?? throw new InvalidOperationException("Semantic model could not be created for the source document.");
         var typeSymbol = semanticModel.GetDeclaredSymbol(typeDeclaration, ct) as INamedTypeSymbol
             ?? throw new PublicInvalidOperationException($"Type '{typeName}' could not be resolved.");
+
+        if (typeSymbol.DeclaringSyntaxReferences.Length > 1)
+        {
+            throw new PublicInvalidOperationException(
+                "Moving a type with multiple declarations is unsupported. Select a type with a single declaration.");
+        }
+
         var sourceDocumentFilePath = sourceDocument.FilePath
             ?? throw new InvalidOperationException("Source document must have a file path on disk.");
         var targetProjectDirectory = Path.GetDirectoryName(targetProject.FilePath)
