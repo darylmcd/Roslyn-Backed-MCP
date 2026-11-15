@@ -16,6 +16,27 @@ namespace RoslynMcp.Tests;
 [TestClass]
 public sealed class SurfaceCatalogTests
 {
+    private static readonly string[] V231ToolsWithSummaryChanges =
+    [
+        "get_completions",
+        "bulk_replace_type_apply",
+        "replace_invocation_preview",
+        "change_signature_preview",
+        "validate_recent_git_changes",
+        "move_type_to_project_preview",
+        "change_type_namespace_preview",
+    ];
+
+    private static readonly string[] V231ChangedTools =
+    [
+        .. V231ToolsWithSummaryChanges,
+        "extract_type_preview",
+        "server_info",
+        "workspace_status",
+        "workspace_health",
+        "workspace_list",
+    ];
+
     [TestMethod]
     public void CatalogArguments_ValidateBindingsBeforePairSupportAndPreserveIdentity()
     {
@@ -278,38 +299,9 @@ public sealed class SurfaceCatalogTests
             diff.Tools.Added.Select(entry => entry.Name).ToArray());
         CollectionAssert.Contains(diff.Resources.Added.Select(entry => entry.Name).ToArray(), "server_catalog_version_diff");
 
-        // validate_recent_git_changes also corrects its tracker fallback summary.
-        // The full changed-tool set: get_completions, bulk_replace_type_apply, and
-        // replace_invocation_preview changed summary; server_info changed outputSchema. The three
-        // workspace-status-family tools below changed outputSchema because
-        // restore-required-vs-build-conflation added `buildRequired` to
-        // WorkspaceStatusSummaryDto, which every workspace-status tool serializes.
-        // extract_type_preview changed summary: extract-type-static-source-composition made the
-        // composition field and constructor parameter conditional on an instance member moving.
-        CollectionAssert.AreEquivalent(
-            new[]
-            {
-                "extract_type_preview",
-                "get_completions",
-                "bulk_replace_type_apply",
-                "replace_invocation_preview",
-                "change_signature_preview",
-                "validate_recent_git_changes",
-                "server_info",
-                "workspace_status",
-                "workspace_health",
-                "workspace_list",
-            },
-            diff.Tools.Changed.Select(entry => entry.Name).ToArray());
+        CollectionAssert.AreEquivalent(V231ChangedTools, diff.Tools.Changed.Select(entry => entry.Name).ToArray());
 
-        foreach (var summaryToolName in new[]
-                 {
-                     "get_completions",
-                     "bulk_replace_type_apply",
-                     "replace_invocation_preview",
-                     "change_signature_preview",
-                "validate_recent_git_changes",
-                 })
+        foreach (var summaryToolName in V231ToolsWithSummaryChanges)
         {
             var changedSummaryTool = diff.Tools.Changed.Single(entry => entry.Name == summaryToolName);
             CollectionAssert.AreEqual(
@@ -336,7 +328,7 @@ public sealed class SurfaceCatalogTests
             "The four 5.0.0 alias removals are the only removed tools since 2.3.1.");
         Assert.AreEqual(4, diff.Summary.Removed);
         Assert.AreEqual(0, diff.Summary.Promoted);
-        Assert.AreEqual(10, diff.Summary.Changed);
+        Assert.AreEqual(12, diff.Summary.Changed);
     }
 
     [TestMethod]
@@ -349,22 +341,11 @@ public sealed class SurfaceCatalogTests
         Assert.AreEqual("2.3.1", fromVersion.GetString());
         Assert.IsTrue(document.RootElement.TryGetProperty("summary", out var summary));
         Assert.AreEqual(5, summary.GetProperty("added").GetInt32());
+        Assert.AreEqual(12, summary.GetProperty("changed").GetInt32());
         Assert.IsTrue(document.RootElement.TryGetProperty("tools", out var tools));
         Assert.IsTrue(tools.TryGetProperty("changed", out var changed));
         CollectionAssert.AreEquivalent(
-            new[]
-            {
-                "extract_type_preview",
-                "get_completions",
-                "bulk_replace_type_apply",
-                "replace_invocation_preview",
-                "change_signature_preview",
-                "validate_recent_git_changes",
-                "server_info",
-                "workspace_status",
-                "workspace_health",
-                "workspace_list",
-            },
+            V231ChangedTools,
             changed.EnumerateArray().Select(entry => entry.GetProperty("name").GetString()).ToArray());
 
         var removed = tools.GetProperty("removed").EnumerateArray().Select(entry => entry.GetProperty("name").GetString()).ToArray();

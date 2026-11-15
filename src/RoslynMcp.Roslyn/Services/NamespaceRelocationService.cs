@@ -26,10 +26,10 @@ namespace RoslynMcp.Roslyn.Services;
 public interface INamespaceRelocationService
 {
     /// <summary>
-    /// Previews relocating a type between namespaces inside the same project.
+    /// Previews relocating a top-level type between namespaces inside the same project.
     /// </summary>
     /// <param name="workspaceId">The workspace session identifier returned by <c>workspace_load</c>.</param>
-    /// <param name="typeName">Name of the type to relocate (must be unique within <paramref name="fromNamespace"/>).</param>
+    /// <param name="typeName">Name of the top-level type to relocate (must be unique within <paramref name="fromNamespace"/>).</param>
     /// <param name="fromNamespace">Fully-qualified namespace currently containing the type.</param>
     /// <param name="toNamespace">Fully-qualified destination namespace inside the same project.</param>
     /// <param name="newFilePath">Optional absolute destination path. If null, the file stays in place and only its namespace declaration is rewritten.</param>
@@ -92,6 +92,7 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
         // whose name matches AND whose enclosing namespace matches fromNamespace.
         var (sourceDocument, sourceRoot, typeDecl, sourceProject) =
             await FindTypeInNamespaceAsync(solution, typeName, fromNamespace, ct).ConfigureAwait(false);
+        MovedDeclarationFileWriter.EnsureTopLevelDeclaration(typeDecl);
 
         // Compute destination file path. If the caller omitted newFilePath, the file stays put.
         var sourceFilePath = sourceDocument.FilePath
@@ -115,7 +116,7 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
 
         var warnings = new List<string>();
 
-        // Rewrite the type's nearest containing namespace, including when it is nested:
+        // Rewrite the type's containing namespace, which may itself be nested:
         //   (a) without file relocation or other members in that declaration, rename it in place;
         //   (b) without file relocation but with other members (types, enums, delegates, nested
         //       namespaces), move only the selected type into a new namespace declaration in the

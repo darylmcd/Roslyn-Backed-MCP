@@ -17,14 +17,14 @@ public static class CrossProjectRefactoringTools
 
     [McpServerTool(Name = "move_type_to_project_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("cross-project-refactoring", "experimental", true, false,
-        "Preview moving a type declaration into another project."),
-     Description("Preview moving a C# type declaration into another project.")]
+        "Preview moving a top-level type declaration into another project."),
+     Description("Preview moving a top-level C# type declaration into another project.")]
     public static Task<string> PreviewMoveTypeToProject(
         IWorkspaceExecutionGate gate,
         ICrossProjectRefactoringService crossProjectRefactoringService,
         [Description("Workspace session id from workspace_load.")] string workspaceId,
         [Description("Absolute path to the source file containing the type.")] string sourceFilePath,
-        [Description("Name of the type declaration to move")] string typeName,
+        [Description("Name of the top-level type declaration to move")] string typeName,
         [Description("Target project name or project file path")] string targetProjectName,
         [Description("Optional: explicit namespace for the moved type. When null and preserveNamespace is false, uses the target project's default namespace.")] string? targetNamespace = null,
         CancellationToken ct = default,

@@ -49,6 +49,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         var sourceRoot = await sourceDocument.GetSyntaxRootAsync(ct).ConfigureAwait(false) as CompilationUnitSyntax
             ?? throw new InvalidOperationException("Source document must be a C# compilation unit.");
         var typeDeclaration = FindTypeDeclaration(sourceRoot, typeName);
+        MovedDeclarationFileWriter.EnsureTopLevelDeclaration(typeDeclaration);
         var semanticModel = await sourceDocument.GetSemanticModelAsync(ct).ConfigureAwait(false)
             ?? throw new InvalidOperationException("Semantic model could not be created for the source document.");
         var typeSymbol = semanticModel.GetDeclaredSymbol(typeDeclaration, ct) as INamedTypeSymbol
