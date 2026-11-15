@@ -78,7 +78,7 @@ internal class WorkspaceLoadFinalizer(RestoreStalenessDetector restoreStalenessD
     {
         foreach (var project in solution.Projects)
         {
-            WorkspaceManager.EnsurePhysicalPath(project.FilePath);
+            WorkspacePhysicalPathGuard.EnsurePhysicalPath(project.FilePath);
             var projectDirectory = Path.GetDirectoryName(project.FilePath);
             foreach (var document in project.Documents
                          .Concat<TextDocument>(project.AdditionalDocuments)
@@ -92,7 +92,7 @@ internal class WorkspaceLoadFinalizer(RestoreStalenessDetector restoreStalenessD
                 // TryApplyChanges rejects edits to any document whose path is not physical.
                 if (IsPathUnderDirectory(physicalPath, projectDirectory))
                 {
-                    WorkspaceManager.EnsurePhysicalPath(document.FilePath);
+                    WorkspacePhysicalPathGuard.EnsurePhysicalPath(document.FilePath);
                 }
             }
         }

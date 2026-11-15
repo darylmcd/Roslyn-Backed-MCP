@@ -1,4 +1,6 @@
 using System.Collections.Concurrent;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.MSBuild;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -31,6 +33,19 @@ public sealed class WorkspaceLoadFinalizerTests
             "SampleSolution",
             "SampleSolution.slnx",
             "SampleSolution.sln");
+    }
+
+    [TestMethod]
+    public void LoadFinalizer_HasNoDependencyOnWorkspaceManager()
+    {
+        var path = Path.Combine(TestFixtureFileSystem.FindRepositoryRoot(),
+            "src", "RoslynMcp.Roslyn", "Services", "WorkspaceLoadFinalizer.cs");
+        var root = CSharpSyntaxTree.ParseText(File.ReadAllText(path)).GetRoot();
+        var managerReferences = root.DescendantNodes().OfType<IdentifierNameSyntax>()
+            .Where(identifier => identifier.Identifier.ValueText == nameof(WorkspaceManager))
+            .ToArray();
+
+        Assert.IsEmpty(managerReferences, "The load finalizer must use the shared path guard directly.");
     }
 
     private static CancellationToken Bounded(int seconds = 120) => new CancellationTokenSource(TimeSpan.FromSeconds(seconds)).Token;
