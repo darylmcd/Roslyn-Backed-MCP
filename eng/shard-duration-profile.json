@@ -2178,9 +2178,14 @@
           "MeanCaseSeconds": 0.056594
         },
         {
+          "ClassName": "RoslynMcp.Tests.TypeExtractionConstructorDispatchTests",
+          "StaticCaseWeight": 57,
+          "MeanCaseSeconds": 170.020141
+        },
+        {
           "ClassName": "RoslynMcp.Tests.TypeExtractionTests",
-          "StaticCaseWeight": 172,
-          "MeanCaseSeconds": 469.870215
+          "StaticCaseWeight": 115,
+          "MeanCaseSeconds": 299.850074
         },
         {
           "ClassName": "RoslynMcp.Tests.TypeExtractionTriviaPreservationTests",
@@ -4770,9 +4775,14 @@
           "MeanCaseSeconds": 0.088605
         },
         {
+          "ClassName": "RoslynMcp.Tests.TypeExtractionConstructorDispatchTests",
+          "StaticCaseWeight": 57,
+          "MeanCaseSeconds": 163.067288
+        },
+        {
           "ClassName": "RoslynMcp.Tests.TypeExtractionTests",
-          "StaticCaseWeight": 172,
-          "MeanCaseSeconds": 533.111054
+          "StaticCaseWeight": 115,
+          "MeanCaseSeconds": 370.043766
         },
         {
           "ClassName": "RoslynMcp.Tests.TypeExtractionTriviaPreservationTests",
