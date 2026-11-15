@@ -141,15 +141,11 @@ public sealed class TypeExtractionService : ITypeExtractionService
 
         var identifierCore = newTypeName[0] == '@' ? newTypeName[1..] : newTypeName;
         var fieldName = "_" + char.ToLowerInvariant(identifierCore[0]) + identifierCore[1..];
-        var extractionNamespace = new TypeExtractionNamespace(sourceRoot, typeDecl, newTypeName);
-        var referenceAlias = extractionNamespace.CreateReferenceAlias(semanticModel, ct);
-        var newTypeReference = referenceAlias?.Alias?.Name ?? extractionNamespace.GetQualifiedTypeName();
         var (rewrittenTypeDecl, referencedExtractedNames) = TypeExtractionSameFileConsumerRewriter.Rewrite(
             typeDecl,
             semanticModel,
             analysisNodes,
             newTypeName,
-            TypeExtractionNamespace.AsExpression(newTypeReference),
             fieldName,
             sourceTypeName,
             ct);
@@ -170,7 +166,7 @@ public sealed class TypeExtractionService : ITypeExtractionService
 
         // Build the new type declaration with extracted members
         var newFileRoot = BuildNewFileRoot(
-            extractionNamespace, membersToExtract, newTypeName, referencedExtractedNames);
+            sourceRoot, typeDecl, membersToExtract, newTypeName, referencedExtractedNames);
 
         // Remove extracted members from the source type. The composition field and constructor parameter
         // are injected only when an instance member moves: an all-static move is reached through the
@@ -178,15 +174,14 @@ public sealed class TypeExtractionService : ITypeExtractionService
         var sourceWithoutExtracted = rewrittenTypeDecl.WithMembers(SyntaxFactory.List(rewrittenMembersToKeep));
         var updatedTypeDecl = instanceSymbols.Count > 0
             ? InjectFieldAndCtorParameter(
-                sourceWithoutExtracted, typeDecl, semanticModel, newTypeName, newTypeReference, fieldName, sourceTypeName, ct)
+                sourceWithoutExtracted, typeDecl, semanticModel, newTypeName, fieldName, sourceTypeName, ct)
             : sourceWithoutExtracted;
-        var usedAlias = instanceSymbols.Count > 0 || referencedExtractedNames.Count > 0 ? referenceAlias : null;
 
-        // extract-type-preserve-untouched-trivia: only synthesized syntax carries
-        // Formatter.Annotation, so every other byte of the source file,
+        // extract-type-preserve-untouched-trivia: only the synthesized field, constructor, parameter,
+        // argument and assignment carry Formatter.Annotation, so every other byte of the source file,
         // including its line endings, is left exactly as the user wrote it.
         var formattedSource = await AnnotatedFormatting.FormatAsync(
-            sourceDocument.WithSyntaxRoot(extractionNamespace.ReplaceSourceType(updatedTypeDecl, usedAlias)),
+            sourceDocument.WithSyntaxRoot(sourceRoot.ReplaceNode(typeDecl, updatedTypeDecl)),
             (await sourceDocument.GetTextAsync(ct).ConfigureAwait(false)).ToString(),
             ct).ConfigureAwait(false);
         var newSolution = formattedSource.Project.Solution;
@@ -1166,7 +1161,8 @@ public sealed class TypeExtractionService : ITypeExtractionService
     }
 
     private static CompilationUnitSyntax BuildNewFileRoot(
-        TypeExtractionNamespace extractionNamespace,
+        CompilationUnitSyntax sourceRoot,
+        TypeDeclarationSyntax typeDecl,
         IReadOnlyList<MemberDeclarationSyntax> membersToExtract,
         string newTypeName,
         IReadOnlySet<string> referencedExtractedNames)
@@ -1188,7 +1184,22 @@ public sealed class TypeExtractionService : ITypeExtractionService
                 SyntaxFactory.Token(SyntaxKind.SealedKeyword)))
             .WithMembers(SyntaxFactory.List(extractedMembers));
 
-        var compilationUnit = extractionNamespace.Wrap(newTypeDecl).NormalizeWhitespace();
+        var namespaceDecl = typeDecl.Ancestors().OfType<BaseNamespaceDeclarationSyntax>().FirstOrDefault();
+        MemberDeclarationSyntax topLevelMember = namespaceDecl switch
+        {
+            FileScopedNamespaceDeclarationSyntax fileScopedNs =>
+                SyntaxFactory.FileScopedNamespaceDeclaration(fileScopedNs.Name)
+                    .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(newTypeDecl)),
+            NamespaceDeclarationSyntax blockNs =>
+                SyntaxFactory.NamespaceDeclaration(blockNs.Name)
+                    .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(newTypeDecl)),
+            _ => newTypeDecl
+        };
+
+        var compilationUnit = SyntaxFactory.CompilationUnit()
+            .WithUsings(sourceRoot.Usings)
+            .WithMembers(SyntaxFactory.SingletonList(topLevelMember))
+            .NormalizeWhitespace();
 
         // dr-9-5-strips-the-blank-line-between-namespace-and-clas:
         // `NormalizeWhitespace()` emits a single newline between a namespace declaration and
@@ -1209,15 +1220,35 @@ public sealed class TypeExtractionService : ITypeExtractionService
     /// </summary>
     private static CompilationUnitSyntax EnsureBlankLineBetweenNamespaceAndType(CompilationUnitSyntax root)
     {
-        var member = root.Members.Single();
-        while (member is BaseNamespaceDeclarationSyntax scope)
+        var blankLine = SyntaxFactory.EndOfLine(Environment.NewLine);
+
+        // File-scoped namespace: the type sits directly on the compilation unit's member
+        // list after the namespace declaration. Inject the blank line on the first type's
+        // leading trivia.
+        var fileScopedNs = root.Members.OfType<FileScopedNamespaceDeclarationSyntax>().FirstOrDefault();
+        if (fileScopedNs is not null)
         {
-            member = scope.Members.Single();
+            var firstType = fileScopedNs.Members.OfType<TypeDeclarationSyntax>().FirstOrDefault();
+            if (firstType is not null)
+            {
+                return root.ReplaceNode(firstType, PrependBlankLine(firstType, blankLine));
+            }
+            return root;
         }
 
-        return member is TypeDeclarationSyntax type && type.Parent is BaseNamespaceDeclarationSyntax
-            ? root.ReplaceNode(type, PrependBlankLine(type, SyntaxFactory.EndOfLine(Environment.NewLine)))
-            : root;
+        // Block namespace: type lives inside the namespace's Members list. Same injection —
+        // prepend a blank line to the first type declaration's leading trivia.
+        var blockNs = root.Members.OfType<NamespaceDeclarationSyntax>().FirstOrDefault();
+        if (blockNs is not null)
+        {
+            var firstType = blockNs.Members.OfType<TypeDeclarationSyntax>().FirstOrDefault();
+            if (firstType is not null)
+            {
+                return root.ReplaceNode(firstType, PrependBlankLine(firstType, blankLine));
+            }
+        }
+
+        return root;
     }
 
     private static TypeDeclarationSyntax PrependBlankLine(TypeDeclarationSyntax typeDecl, SyntaxTrivia blankLine)
@@ -1269,19 +1300,19 @@ public sealed class TypeExtractionService : ITypeExtractionService
     /// </summary>
     private static TypeDeclarationSyntax InjectFieldAndCtorParameter(
         TypeDeclarationSyntax typeDecl, TypeDeclarationSyntax originalTypeDecl,
-        SemanticModel semanticModel, string newTypeName, TypeSyntax newTypeReference, string fieldName, string sourceTypeName,
+        SemanticModel semanticModel, string newTypeName, string fieldName, string sourceTypeName,
         CancellationToken ct)
     {
         if (typeDecl.ParameterList is not null)
         {
-            throw InvalidOperationErrors.Internal(
+            throw new InvalidOperationException(
                 $"Refusing to extract type '{newTypeName}' from '{sourceTypeName}': the source type declares a " +
                 $"primary constructor, and the extraction cannot wire the composition field through primary-constructor " +
                 $"parameters. Convert the primary constructor to an explicit constructor first, then retry.");
         }
 
         var fieldDecl = SyntaxFactory.FieldDeclaration(
-            SyntaxFactory.VariableDeclaration(newTypeReference)
+            SyntaxFactory.VariableDeclaration(SyntaxFactory.ParseTypeName(newTypeName))
                 .WithVariables(SyntaxFactory.SingletonSeparatedList(
                     SyntaxFactory.VariableDeclarator(fieldName))))
             .WithModifiers(SyntaxFactory.TokenList(
@@ -1293,12 +1324,11 @@ public sealed class TypeExtractionService : ITypeExtractionService
         var camelCaseCore = char.ToLowerInvariant(identifierCore[0]) + identifierCore[1..];
         var paramName = newTypeName[0] == '@' ? "@" + camelCaseCore : camelCaseCore;
         var newParam = SyntaxFactory.Parameter(SyntaxFactory.Identifier(paramName))
-            .WithType(newTypeReference.WithTrailingTrivia(SyntaxFactory.Space));
+            .WithType(SyntaxFactory.ParseTypeName(newTypeName).WithTrailingTrivia(SyntaxFactory.Space));
         var assignment = SyntaxFactory.ExpressionStatement(
             SyntaxFactory.AssignmentExpression(
                 SyntaxKind.SimpleAssignmentExpression,
-                SyntaxFactory.MemberAccessExpression(
-                    SyntaxKind.SimpleMemberAccessExpression, SyntaxFactory.ThisExpression(), SyntaxFactory.IdentifierName(fieldName)),
+                SyntaxFactory.IdentifierName(fieldName),
                 SyntaxFactory.IdentifierName(paramName)))
             .WithAdditionalAnnotations(Formatter.Annotation);
 
@@ -1341,7 +1371,7 @@ public sealed class TypeExtractionService : ITypeExtractionService
             var ctor = ctors[i];
             if (ctor.Body is null && ctor.ExpressionBody is null)
             {
-                throw InvalidOperationErrors.Internal(
+                throw new InvalidOperationException(
                     $"Refusing to extract type '{newTypeName}' from '{sourceTypeName}': constructor " +
                     $"'{ctor.Identifier.Text}({ctor.ParameterList.Parameters.Count} parameter(s))' has no body " +
                     $"(extern or partial), so the composition field cannot be assigned on that construction path. " +
@@ -1362,7 +1392,7 @@ public sealed class TypeExtractionService : ITypeExtractionService
                 // resolves against the original in-tree initializer.
                 if (initializer.ArgumentList.Arguments.Any(a => a.NameColon is not null))
                 {
-                    throw InvalidOperationErrors.Internal(
+                    throw new InvalidOperationException(
                         $"Refusing to extract type '{newTypeName}' from '{sourceTypeName}': a 'this(...)' constructor " +
                         $"initializer uses named arguments, so the forwarded '{paramName}' argument cannot be inserted " +
                         $"positionally. Convert the initializer to positional arguments first, then retry.");
@@ -1376,7 +1406,7 @@ public sealed class TypeExtractionService : ITypeExtractionService
                         string.Equals(r.SyntaxTree.FilePath, c.SyntaxTree.FilePath, StringComparison.Ordinal)));
                 if (targetCtorIndex < 0)
                 {
-                    throw InvalidOperationErrors.Internal(
+                    throw new InvalidOperationException(
                         $"Refusing to extract type '{newTypeName}' from '{sourceTypeName}': the delegation target of a " +
                         $"'this(...)' constructor initializer could not be resolved, so the forwarded '{paramName}' " +
                         $"argument cannot be placed safely. Fix the constructor chain so it compiles, then retry.");
