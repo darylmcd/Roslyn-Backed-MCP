@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Text;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Helpers;
 using RoslynMcp.Roslyn.Services;
 using RoslynMcp.Tests.Helpers;
 
@@ -184,7 +185,7 @@ public sealed class CompositeSolutionMutationPlannerTests
         var edit = (await CompositeSolutionMutationPlanner.BuildAsync(baseline, pending, [], CancellationToken.None)).Single();
 
         Assert.AreEqual(path, edit.Mutation.FilePath);
-        WorkspaceManager.EnsurePhysicalPath(edit.Mutation.FilePath);
+        WorkspacePhysicalPathGuard.EnsurePhysicalPath(edit.Mutation.FilePath);
         Assert.AreEqual(path, CompositeSolutionMutationPlanner.RenderReview([edit], CancellationToken.None).Single().FilePath);
     }
 
