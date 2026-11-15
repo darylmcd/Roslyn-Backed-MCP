@@ -142,13 +142,14 @@ public sealed class TypeExtractionService : ITypeExtractionService
         var identifierCore = newTypeName[0] == '@' ? newTypeName[1..] : newTypeName;
         var fieldName = "_" + char.ToLowerInvariant(identifierCore[0]) + identifierCore[1..];
         var extractionNamespace = new TypeExtractionNamespace(sourceRoot, typeDecl, newTypeName);
-        var qualifiedNewType = extractionNamespace.GetQualifiedTypeName();
+        var referenceAlias = extractionNamespace.CreateReferenceAlias(semanticModel);
+        var newTypeReference = referenceAlias?.Alias?.Name ?? extractionNamespace.GetQualifiedTypeName();
         var (rewrittenTypeDecl, referencedExtractedNames) = TypeExtractionSameFileConsumerRewriter.Rewrite(
             typeDecl,
             semanticModel,
             analysisNodes,
             newTypeName,
-            TypeExtractionNamespace.AsExpression(qualifiedNewType),
+            TypeExtractionNamespace.AsExpression(newTypeReference),
             fieldName,
             sourceTypeName,
             ct);
@@ -177,14 +178,15 @@ public sealed class TypeExtractionService : ITypeExtractionService
         var sourceWithoutExtracted = rewrittenTypeDecl.WithMembers(SyntaxFactory.List(rewrittenMembersToKeep));
         var updatedTypeDecl = instanceSymbols.Count > 0
             ? InjectFieldAndCtorParameter(
-                sourceWithoutExtracted, typeDecl, semanticModel, newTypeName, qualifiedNewType, fieldName, sourceTypeName, ct)
+                sourceWithoutExtracted, typeDecl, semanticModel, newTypeName, newTypeReference, fieldName, sourceTypeName, ct)
             : sourceWithoutExtracted;
+        var usedAlias = instanceSymbols.Count > 0 || referencedExtractedNames.Count > 0 ? referenceAlias : null;
 
-        // extract-type-preserve-untouched-trivia: only the synthesized field, constructor, parameter,
-        // argument and assignment carry Formatter.Annotation, so every other byte of the source file,
+        // extract-type-preserve-untouched-trivia: only synthesized syntax carries
+        // Formatter.Annotation, so every other byte of the source file,
         // including its line endings, is left exactly as the user wrote it.
         var formattedSource = await AnnotatedFormatting.FormatAsync(
-            sourceDocument.WithSyntaxRoot(sourceRoot.ReplaceNode(typeDecl, updatedTypeDecl)),
+            sourceDocument.WithSyntaxRoot(extractionNamespace.ReplaceSourceType(updatedTypeDecl, usedAlias)),
             (await sourceDocument.GetTextAsync(ct).ConfigureAwait(false)).ToString(),
             ct).ConfigureAwait(false);
         var newSolution = formattedSource.Project.Solution;
@@ -1267,7 +1269,7 @@ public sealed class TypeExtractionService : ITypeExtractionService
     /// </summary>
     private static TypeDeclarationSyntax InjectFieldAndCtorParameter(
         TypeDeclarationSyntax typeDecl, TypeDeclarationSyntax originalTypeDecl,
-        SemanticModel semanticModel, string newTypeName, TypeSyntax qualifiedNewType, string fieldName, string sourceTypeName,
+        SemanticModel semanticModel, string newTypeName, TypeSyntax newTypeReference, string fieldName, string sourceTypeName,
         CancellationToken ct)
     {
         if (typeDecl.ParameterList is not null)
@@ -1279,7 +1281,7 @@ public sealed class TypeExtractionService : ITypeExtractionService
         }
 
         var fieldDecl = SyntaxFactory.FieldDeclaration(
-            SyntaxFactory.VariableDeclaration(qualifiedNewType)
+            SyntaxFactory.VariableDeclaration(newTypeReference)
                 .WithVariables(SyntaxFactory.SingletonSeparatedList(
                     SyntaxFactory.VariableDeclarator(fieldName))))
             .WithModifiers(SyntaxFactory.TokenList(
@@ -1291,7 +1293,7 @@ public sealed class TypeExtractionService : ITypeExtractionService
         var camelCaseCore = char.ToLowerInvariant(identifierCore[0]) + identifierCore[1..];
         var paramName = newTypeName[0] == '@' ? "@" + camelCaseCore : camelCaseCore;
         var newParam = SyntaxFactory.Parameter(SyntaxFactory.Identifier(paramName))
-            .WithType(qualifiedNewType.WithTrailingTrivia(SyntaxFactory.Space));
+            .WithType(newTypeReference.WithTrailingTrivia(SyntaxFactory.Space));
         var assignment = SyntaxFactory.ExpressionStatement(
             SyntaxFactory.AssignmentExpression(
                 SyntaxKind.SimpleAssignmentExpression,

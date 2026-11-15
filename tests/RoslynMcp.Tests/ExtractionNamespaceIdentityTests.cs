@@ -354,7 +354,7 @@ public sealed class ExtractionNamespaceIdentityTests : IsolatedWorkspaceTestBase
             """;
 
         await AssertTypePreviewAndApplyAsync(source, "Outer.Second.Tail.Extracted", ["Build"],
-            "Outer.Second.Tail.Original", expectComposition: false, checkAlternateNamespace: true);
+            "Outer.Second.Tail.Original", expectComposition: false, alternateNamespace: "Outer.First.Tail");
     }
 
     [TestMethod]
@@ -376,7 +376,102 @@ public sealed class ExtractionNamespaceIdentityTests : IsolatedWorkspaceTestBase
             """;
 
         await AssertTypePreviewAndApplyAsync(source, "Outer.Second.Extracted", ["Build"],
-            "Outer.Second.Original", expectComposition: false, checkAlternateNamespace: true);
+            "Outer.Second.Original", expectComposition: false, alternateNamespace: "Outer.First");
+    }
+
+    [TestMethod]
+    [DataRow("{", "}")]
+    [DataRow(";", "")]
+    public async Task ExtractType_ConditionalHeadersCanOwnTheNamespaceDelimiter(string delimiter, string close)
+    {
+        var source = $$"""
+            #if FIRST_BRANCH
+            namespace Outer.First{{delimiter}}
+            #else
+            namespace Outer.Second{{delimiter}}
+            #endif
+            using ItemCount = global::System.Int32;
+
+            public class Original
+            {
+                private static ItemCount Build() => 17;
+                public static int Read() => Build();
+            }
+            {{close}}
+            """;
+
+        await AssertTypePreviewAndApplyAsync(source, "Outer.Second.Extracted", ["Build"],
+            "Outer.Second.Original", expectComposition: false, alternateNamespace: "Outer.First");
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task ExtractType_HandlesOptionalNamespaceSegmentInBothLoadedConfigurations(bool firstBranch)
+    {
+        const string source = """
+            namespace Outer
+            #if FIRST_BRANCH
+                .First
+            #endif
+            {
+                public class Original
+                {
+                    private static int Build() => 17;
+                    public static int Read() => Build();
+                }
+            }
+            """;
+
+        var active = firstBranch ? "Outer.First" : "Outer";
+        var alternate = firstBranch ? "Outer" : "Outer.First";
+        await AssertTypePreviewAndApplyAsync(source, active + ".Extracted", ["Build"], active + ".Original",
+            expectComposition: false, alternateNamespace: alternate, prepareWorkspace: firstBranch ? EnableFirstBranch : null);
+    }
+
+    private static Task EnableFirstBranch(IsolatedWorkspaceScope workspace)
+    {
+        var projectPath = workspace.GetPath("SampleLib", "SampleLib.csproj");
+        var project = XDocument.Load(projectPath);
+        project.Root!.Add(new XElement("PropertyGroup", new XElement("DefineConstants", "$(DefineConstants);FIRST_BRANCH")));
+        project.Save(projectPath);
+        return Task.CompletedTask;
+    }
+
+    [TestMethod]
+    public async Task ExtractType_HeaderCanMutateItsConditionWhileSelectingNamespace()
+    {
+        const string source = """
+            #if FIRST_BRANCH
+            #undef FIRST_BRANCH
+            namespace Outer.First
+            #else
+            #define FIRST_BRANCH
+            namespace Outer.Second
+            #endif
+            {
+                public class Original
+                {
+                    private static int Build() => 17;
+                    public static int Read()
+                    {
+            #if USE_SECOND
+                        System.Func<int> __ExtractedType = () => -1;
+                        _ = __ExtractedType;
+            #endif
+                        return Build();
+                    }
+
+                    public class Extracted
+                    {
+                        public static int Build() => -2;
+                    }
+                }
+            }
+            """;
+
+        await AssertTypePreviewAndApplyAsync(source, "Outer.Second.Extracted", ["Build"],
+            "Outer.Second.Original", expectComposition: false, alternateNamespace: "Outer.First");
     }
 
     [TestMethod]
@@ -406,12 +501,12 @@ public sealed class ExtractionNamespaceIdentityTests : IsolatedWorkspaceTestBase
         var prefix = directiveStartsName ? "" : "Outer.";
         var suffix = directiveEndsName ? "" : ".Tail";
         await AssertTypePreviewAndApplyAsync(source, prefix + "Second" + suffix + ".Extracted", ["Build"],
-            prefix + "Second" + suffix + ".Original", expectComposition: false, checkAlternateNamespace: true);
+            prefix + "Second" + suffix + ".Original", expectComposition: false, alternateNamespace: prefix + "First" + suffix);
     }
 
     private static async Task AssertTypePreviewAndApplyAsync(
         string source, string extractedMetadataName, string[] members, string originalMetadataName,
-        bool expectComposition, bool checkAlternateNamespace = false,
+        bool expectComposition, string? alternateNamespace = null,
         Func<IsolatedWorkspaceScope, Task>? prepareWorkspace = null)
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
@@ -433,7 +528,7 @@ public sealed class ExtractionNamespaceIdentityTests : IsolatedWorkspaceTestBase
         Assert.AreEqual(2, preview.RootElement.GetProperty("changes").GetArrayLength(), json);
         Assert.IsFalse(File.Exists(extractedPath));
         await AssertExtractedTypeBindingsAsync(GetPreviewSolution(token), extractedPath, sourcePath, extractedMetadataName,
-            originalMetadataName, expectComposition, checkAlternateNamespace);
+            originalMetadataName, expectComposition, alternateNamespace);
 
         var appliedJson = await TypeExtractionTools.ApplyExtractType(
             WorkspaceExecutionGate, RefactoringService, PreviewStore, token);
@@ -441,31 +536,31 @@ public sealed class ExtractionNamespaceIdentityTests : IsolatedWorkspaceTestBase
         Assert.IsTrue(applied.RootElement.GetProperty("success").GetBoolean(), appliedJson);
         Assert.IsTrue(File.Exists(extractedPath));
         await AssertExtractedTypeBindingsAsync(WorkspaceManager.GetCurrentSolution(workspaceId), extractedPath, sourcePath,
-            extractedMetadataName, originalMetadataName, expectComposition, checkAlternateNamespace);
+            extractedMetadataName, originalMetadataName, expectComposition, alternateNamespace);
     }
 
     private static async Task AssertExtractedTypeBindingsAsync(
         Solution solution, string extractedPath, string sourcePath, string extractedMetadataName,
-        string originalMetadataName, bool expectComposition, bool checkAlternateNamespace)
+        string originalMetadataName, bool expectComposition, string? alternateNamespace)
     {
         var compilation = await GetCleanCompilationAsync(solution);
         await AssertExtractedTypeBindingsAsync(compilation, extractedPath, sourcePath, extractedMetadataName,
             originalMetadataName, expectComposition);
-        if (checkAlternateNamespace)
+        if (alternateNamespace is not null)
         {
             foreach (var tree in compilation.SyntaxTrees.Where(tree => tree.FilePath == sourcePath || tree.FilePath == extractedPath))
             {
                 var options = (CSharpParseOptions)tree.Options;
-                var alternate = CSharpSyntaxTree.ParseText(await tree.GetTextAsync(),
-                    options.WithPreprocessorSymbols(options.PreprocessorSymbolNames.Concat(["FIRST_BRANCH", "USE_SECOND"])),
-                    tree.FilePath);
+                var symbols = options.PreprocessorSymbolNames.Where(symbol => symbol != "FIRST_BRANCH").Append("USE_SECOND");
+                if (!options.PreprocessorSymbolNames.Contains("FIRST_BRANCH"))
+                    symbols = symbols.Append("FIRST_BRANCH");
+                var alternate = CSharpSyntaxTree.ParseText(await tree.GetTextAsync(), options.WithPreprocessorSymbols(symbols), tree.FilePath);
                 compilation = compilation.ReplaceSyntaxTree(tree, alternate);
             }
 
             AssertNoCompilerErrors(compilation);
             await AssertExtractedTypeBindingsAsync(compilation, extractedPath, sourcePath,
-                extractedMetadataName.Replace("Second.", "First.", StringComparison.Ordinal),
-                originalMetadataName.Replace("Second.", "First.", StringComparison.Ordinal), expectComposition);
+                alternateNamespace + ".Extracted", alternateNamespace + ".Original", expectComposition);
         }
     }
 
