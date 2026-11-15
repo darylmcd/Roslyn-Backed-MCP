@@ -12,13 +12,18 @@ using static RoslynMcp.Tests.TestInfrastructure.InterfaceExtractionTestContext;
 namespace RoslynMcp.Tests;
 
 [TestClass]
-public sealed class InterfaceBaseTypeInsertionIntegrationTests : IsolatedWorkspaceTestBase
+public sealed class InterfaceBaseTypeInsertionIntegrationTests : InterfaceBaseTypeInsertionTestBase
 {
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
-    [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
+    public static IEnumerable<object[]> HeaderCases() => HeaderCasesForRoute("standalone");
+
+    [TestMethod]
+    [DynamicData(nameof(HeaderCases))]
+    public Task Extraction_Preserves_Header_Boundaries_Through_Serialized_Preview_And_Apply(
+        string route, bool existingBase, string layout, bool nested, string kind) =>
+        AssertHeaderPreservedAsync(route, existingBase, layout, nested, kind);
 
     [TestMethod]
     [DataRow("class", false)]
@@ -58,26 +63,71 @@ public sealed class InterfaceBaseTypeInsertionIntegrationTests : IsolatedWorkspa
             Assert.AreEqual(declaration.SemicolonToken.RawKind, updated.SemicolonToken.RawKind);
         }
     }
+}
 
-    public static IEnumerable<object[]> HeaderCases()
+[TestClass]
+public sealed class CrossProjectInterfaceBaseTypeInsertionIntegrationTests : InterfaceBaseTypeInsertionTestBase
+{
+    [ClassInitialize]
+    public static void ClassInit(TestContext _) => InitializeServices();
+
+    public static IEnumerable<object[]> HeaderCases() => HeaderCasesForRoute("cross-project");
+
+    [TestMethod]
+    [DynamicData(nameof(HeaderCases))]
+    public Task Extraction_Preserves_Header_Boundaries_Through_Serialized_Preview_And_Apply(
+        string route, bool existingBase, string layout, bool nested, string kind) =>
+        AssertHeaderPreservedAsync(route, existingBase, layout, nested, kind);
+}
+
+[TestClass]
+public sealed class DependencyInversionInterfaceBaseTypeInsertionIntegrationTests : InterfaceBaseTypeInsertionTestBase
+{
+    [ClassInitialize]
+    public static void ClassInit(TestContext _) => InitializeServices();
+
+    public static IEnumerable<object[]> HeaderCases() => HeaderCasesForRoute("dependency-inversion");
+
+    [TestMethod]
+    [DynamicData(nameof(HeaderCases))]
+    public Task Extraction_Preserves_Header_Boundaries_Through_Serialized_Preview_And_Apply(
+        string route, bool existingBase, string layout, bool nested, string kind) =>
+        AssertHeaderPreservedAsync(route, existingBase, layout, nested, kind);
+}
+
+[TestClass]
+public sealed class ExtractAndWireInterfaceBaseTypeInsertionIntegrationTests : InterfaceBaseTypeInsertionTestBase
+{
+    [ClassInitialize]
+    public static void ClassInit(TestContext _) => InitializeServices();
+
+    public static IEnumerable<object[]> HeaderCases() => HeaderCasesForRoute("extract-and-wire");
+
+    [TestMethod]
+    [DynamicData(nameof(HeaderCases))]
+    public Task Extraction_Preserves_Header_Boundaries_Through_Serialized_Preview_And_Apply(
+        string route, bool existingBase, string layout, bool nested, string kind) =>
+        AssertHeaderPreservedAsync(route, existingBase, layout, nested, kind);
+}
+
+/// <summary>Exercises each route with an independent workspace per header case.</summary>
+public abstract class InterfaceBaseTypeInsertionTestBase : IsolatedWorkspaceTestBase
+{
+    protected static IEnumerable<object[]> HeaderCasesForRoute(string route)
     {
-        foreach (var route in new[] { "standalone", "cross-project", "dependency-inversion", "extract-and-wire" })
-        {
-            foreach (var existingBase in new[] { false, true })
-                foreach (var layout in new[] { "tight", "block", "line", "primary-tight", "primary-block", "primary-line", "inline", "multiline", "brace-leading" })
-                    yield return [route, existingBase, layout, false, "class"];
-        }
-        foreach (var route in new[] { "standalone", "cross-project", "dependency-inversion", "extract-and-wire" })
-            foreach (var kind in new[] { "struct", "record", "record struct" })
-                yield return [route, false, "block", false, kind];
-        foreach (var route in new[] { "standalone", "cross-project" })
+        foreach (var existingBase in new[] { false, true })
+            foreach (var layout in new[] { "tight", "block", "line", "primary-tight", "primary-block", "primary-line", "inline", "multiline", "brace-leading" })
+                yield return [route, existingBase, layout, false, "class"];
+
+        foreach (var kind in new[] { "struct", "record", "record struct" })
+            yield return [route, false, "block", false, kind];
+
+        if (route is "standalone" or "cross-project")
             foreach (var existingBase in new[] { false, true })
                 yield return [route, existingBase, "block", true, "class"];
     }
 
-    [TestMethod]
-    [DynamicData(nameof(HeaderCases))]
-    public async Task Extraction_Preserves_Header_Boundaries_Through_Serialized_Preview_And_Apply(
+    protected static async Task AssertHeaderPreservedAsync(
         string route, bool existingBase, string layout, bool nested, string kind)
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
