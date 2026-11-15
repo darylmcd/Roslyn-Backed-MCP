@@ -1,11 +1,11 @@
 # early-kill-reason-unconfirmed — Report early termination only after it occurs
 
-**row:** `early-kill-reason-unconfirmed` · **pri:** `Medium` · **size:** `M` · **verified:** `52f2c418cf5ba982b2a1c0914dd3977655d93eb4`
+**row:** `early-kill-reason-unconfirmed` · **pri:** `Medium` · **size:** `M`
 
 ## Anchors
 
-- `src/RoslynMcp.Roslyn/Helpers/DotnetCommandRunner.cs:227-239`
-- `src/RoslynMcp.Roslyn/Helpers/DotnetCommandRunner.cs:313-330`
+- `src/RoslynMcp.Roslyn/Helpers/DotnetCommandRunner.cs:245-259`
+- `src/RoslynMcp.Roslyn/Helpers/DotnetCommandRunner.cs:333-350`
 - `src/RoslynMcp.Roslyn/Helpers/DotnetOutputParser.cs:204-218`
 
 ## Acceptance
@@ -18,4 +18,4 @@
 
 ## Context
 
-- Leave unselected under 5.x until the release impact of removing the previously observable EarlyKillReason and changing the stable failure summary is resolved. If incompatible, resume at the next operator-approved major with ADR, migration, and raw-wire coverage.
+- Qualify stable test_run before selection. Measure whether the complete correction changes execution.earlyKillReason, failureEnvelope.summary, or execution.succeeded on both supported protocol eras. If incompatible, defer to the next operator-approved major with ADR, migration, and raw-wire coverage.
