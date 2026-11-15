@@ -12,9 +12,8 @@ namespace RoslynMcp.Core.Models;
 /// is empty — a gap that previously surfaced on large multi-project solutions (gh #615).
 /// </param>
 /// <param name="TotalNamespacesScanned">
-/// Total count of distinct namespace declarations encountered during the walk. Equals
-/// <paramref name="Nodes"/>.Count when no filtering has been applied at the tool-wrapper layer
-/// (the <c>circularOnly</c> filter can reduce <paramref name="Nodes"/> below this value).
+/// Number of distinct declared namespaces, including empty declarations and excluding namespaces
+/// referenced only by imports. The tool reports this count before applying the circular-only filter.
 /// </param>
 public sealed record NamespaceDependencyGraphDto(
     IReadOnlyList<NamespaceNodeDto> Nodes,
