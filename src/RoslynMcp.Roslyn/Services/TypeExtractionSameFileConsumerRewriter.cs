@@ -17,6 +17,7 @@ internal sealed class TypeExtractionSameFileConsumerRewriter : CSharpSyntaxRewri
     private readonly SemanticModel _semanticModel;
     private readonly IReadOnlySet<ISymbol> _extractedSymbols;
     private readonly string _newTypeName;
+    private readonly ExpressionSyntax _staticOwner;
     private readonly string _fieldName;
     private readonly string _sourceTypeName;
     private readonly CancellationToken _ct;
@@ -26,6 +27,7 @@ internal sealed class TypeExtractionSameFileConsumerRewriter : CSharpSyntaxRewri
         SemanticModel semanticModel,
         IReadOnlySet<ISymbol> extractedSymbols,
         string newTypeName,
+        ExpressionSyntax staticOwner,
         string fieldName,
         string sourceTypeName,
         CancellationToken ct)
@@ -33,6 +35,7 @@ internal sealed class TypeExtractionSameFileConsumerRewriter : CSharpSyntaxRewri
         _semanticModel = semanticModel;
         _extractedSymbols = extractedSymbols;
         _newTypeName = newTypeName;
+        _staticOwner = staticOwner;
         _fieldName = fieldName;
         _sourceTypeName = sourceTypeName;
         _ct = ct;
@@ -47,6 +50,7 @@ internal sealed class TypeExtractionSameFileConsumerRewriter : CSharpSyntaxRewri
         SemanticModel semanticModel,
         IReadOnlyList<SyntaxNode> analysisNodes,
         string newTypeName,
+        ExpressionSyntax staticOwner,
         string fieldName,
         string sourceTypeName,
         CancellationToken ct)
@@ -57,6 +61,7 @@ internal sealed class TypeExtractionSameFileConsumerRewriter : CSharpSyntaxRewri
             semanticModel,
             extractedSymbols,
             newTypeName,
+            staticOwner,
             fieldName,
             sourceTypeName,
             ct);
@@ -124,7 +129,7 @@ internal sealed class TypeExtractionSameFileConsumerRewriter : CSharpSyntaxRewri
         ExpressionSyntax owner;
         if (symbol.IsStatic)
         {
-            owner = SyntaxFactory.IdentifierName(_newTypeName);
+            owner = _staticOwner;
         }
         else
         {
@@ -166,10 +171,13 @@ internal sealed class TypeExtractionSameFileConsumerRewriter : CSharpSyntaxRewri
         }
 
         EnsureInstanceReferenceCanBeRewritten(node, symbol);
-        var owner = symbol.IsStatic ? _newTypeName : _fieldName;
+        var owner = symbol.IsStatic
+            ? _staticOwner
+            : SyntaxFactory.MemberAccessExpression(
+                SyntaxKind.SimpleMemberAccessExpression, SyntaxFactory.ThisExpression(), SyntaxFactory.IdentifierName(_fieldName));
         return SyntaxFactory.MemberAccessExpression(
                 SyntaxKind.SimpleMemberAccessExpression,
-                SyntaxFactory.IdentifierName(owner),
+                owner,
                 node.WithoutTrivia())
             .WithTriviaFrom(node);
     }

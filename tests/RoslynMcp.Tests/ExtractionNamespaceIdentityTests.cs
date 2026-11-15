@@ -82,6 +82,33 @@ public sealed class ExtractionNamespaceIdentityTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task ExtractSharedExpression_OtherPartialDeclarationDoesNotCallLocalDelegate()
+    {
+        const string ownerSource = """
+            namespace Outer.Inner;
+            public partial class Owner
+            {
+                public int Read(int input) => input * 31;
+            }
+            """;
+        const string callerSource = """
+            namespace Outer.Inner;
+            public partial class Owner
+            {
+                public int ReadAgain(int input)
+                {
+                    System.Func<int, int> SharedValue = value => -1;
+                    _ = SharedValue;
+                    return input * 31;
+                }
+            }
+            """;
+
+        await AssertSharedExpressionPreviewAndApplyAsync(
+            ownerSource, callerSource, "private", "Outer.Inner.Owner");
+    }
+
+    [TestMethod]
     public async Task ExtractSharedExpression_NestedGenericOwnerKeepsItsEnclosingTypeArgument()
     {
         const string ownerSource = """
@@ -287,14 +314,20 @@ public sealed class ExtractionNamespaceIdentityTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
-    public async Task ExtractType_ConditionalQualifiedNameRetainsBothNamespaceBranches()
+    public async Task ExtractType_FileLocalSymbolsPreserveConditionalNamespaceIdentity()
     {
         const string source = """
-            namespace Outer.
             #if FIRST_BRANCH
-                First
+            #undef USE_SECOND
             #else
+            #define USE_SECOND
+            #endif
+
+            namespace Outer.
+            #if USE_SECOND
                 Second
+            #else
+                First
             #endif
                 .Tail
             {
@@ -304,10 +337,76 @@ public sealed class ExtractionNamespaceIdentityTests : IsolatedWorkspaceTestBase
                     public static int Read() => Build();
                 }
             }
+
+            namespace Outer.
+            #if USE_SECOND
+                First
+            #else
+                Second
+            #endif
+                .Tail
+            {
+                public class Extracted
+                {
+                    public static int Build() => -1;
+                }
+            }
             """;
 
         await AssertTypePreviewAndApplyAsync(source, "Outer.Second.Tail.Extracted", ["Build"],
             "Outer.Second.Tail.Original", expectComposition: false, checkAlternateNamespace: true);
+    }
+
+    [TestMethod]
+    public async Task ExtractType_ConditionalHeadersWithRepeatedNamespaceKeywordRetainBothBranches()
+    {
+        const string source = """
+            #if FIRST_BRANCH
+            namespace Outer.First
+            #else
+            namespace Outer.Second
+            #endif
+            {
+                public class Original
+                {
+                    private static int Build() => 17;
+                    public static int Read() => Build();
+                }
+            }
+            """;
+
+        await AssertTypePreviewAndApplyAsync(source, "Outer.Second.Extracted", ["Build"],
+            "Outer.Second.Original", expectComposition: false, checkAlternateNamespace: true);
+    }
+
+    [TestMethod]
+    [DataRow(false, false)]
+    [DataRow(true, false)]
+    [DataRow(false, true)]
+    [DataRow(true, true)]
+    public async Task ExtractType_ConditionalQualifiedNameRetainsBothNamespaceBranches(bool directiveStartsName, bool directiveEndsName)
+    {
+        var source = $$"""
+            namespace{{(directiveStartsName ? "" : " Outer.")}}
+            #if FIRST_BRANCH
+                First
+            #else
+                Second
+            #endif
+            {{(directiveEndsName ? "" : "    .Tail")}}
+            {
+                public class Original
+                {
+                    private static int Build() => 17;
+                    public static int Read() => Build();
+                }
+            }
+            """;
+
+        var prefix = directiveStartsName ? "" : "Outer.";
+        var suffix = directiveEndsName ? "" : ".Tail";
+        await AssertTypePreviewAndApplyAsync(source, prefix + "Second" + suffix + ".Extracted", ["Build"],
+            prefix + "Second" + suffix + ".Original", expectComposition: false, checkAlternateNamespace: true);
     }
 
     private static async Task AssertTypePreviewAndApplyAsync(
@@ -358,13 +457,15 @@ public sealed class ExtractionNamespaceIdentityTests : IsolatedWorkspaceTestBase
             {
                 var options = (CSharpParseOptions)tree.Options;
                 var alternate = CSharpSyntaxTree.ParseText(await tree.GetTextAsync(),
-                    options.WithPreprocessorSymbols(options.PreprocessorSymbolNames.Append("FIRST_BRANCH")), tree.FilePath);
+                    options.WithPreprocessorSymbols(options.PreprocessorSymbolNames.Concat(["FIRST_BRANCH", "USE_SECOND"])),
+                    tree.FilePath);
                 compilation = compilation.ReplaceSyntaxTree(tree, alternate);
             }
 
             AssertNoCompilerErrors(compilation);
-            await AssertExtractedTypeBindingsAsync(compilation, extractedPath, sourcePath, "Outer.First.Tail.Extracted",
-                "Outer.First.Tail.Original", expectComposition);
+            await AssertExtractedTypeBindingsAsync(compilation, extractedPath, sourcePath,
+                extractedMetadataName.Replace("Second.", "First.", StringComparison.Ordinal),
+                originalMetadataName.Replace("Second.", "First.", StringComparison.Ordinal), expectComposition);
         }
     }
 

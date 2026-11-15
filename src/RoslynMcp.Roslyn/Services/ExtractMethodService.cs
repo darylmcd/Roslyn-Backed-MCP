@@ -627,6 +627,10 @@ public sealed class ExtractMethodService : IExtractMethodService
         var exampleType = exampleExpression.AncestorsAndSelf().OfType<TypeDeclarationSyntax>().FirstOrDefault()
             ?? throw new InvalidOperationException(
                 "Example expression must be inside a type declaration.");
+        var helperOwner = exampleModel.GetDeclaredSymbol(exampleType, ct)
+            ?? throw new InvalidOperationException("Could not resolve the shared helper's declaring type.");
+        var qualifiedOwner = helperOwner.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        var ownerTypeSyntax = SyntaxFactory.ParseTypeName(qualifiedOwner);
 
         // Derive the helper signature from free variables (locals + parameters) referenced by
         // the example expression. Each free variable becomes an ordered parameter; the expression's
@@ -642,7 +646,8 @@ public sealed class ExtractMethodService : IExtractMethodService
 
         // Scan candidate documents for structurally-identical expressions (phase 2).
         var hits = await CollectMatchingExpressionHitsAsync(
-            exampleDocument, exampleExpression, exampleType, exampleFreeVars, allowCrossFile, ct)
+            exampleDocument, exampleExpression, exampleType, exampleFreeVars, helperOwner, ownerTypeSyntax,
+            allowCrossFile, ct)
             .ConfigureAwait(false);
 
         if (hits.Count == 0)
@@ -654,22 +659,15 @@ public sealed class ExtractMethodService : IExtractMethodService
                 "Only one occurrence of the expression was found. Use `extract_method_preview` for a single-site extraction; " +
                 "`extract_shared_expression_to_helper_preview` is intended for 2+ call sites.");
 
-        // Build the helper method and resolve the type-qualified call-target for cross-file hits.
-        var helperTypeName = exampleType.Identifier.Text;
-        var helperNamespace = exampleType.Ancestors().OfType<BaseNamespaceDeclarationSyntax>()
-            .FirstOrDefault()?.Name.ToString();
-        var helperFullyQualifiedType = string.IsNullOrEmpty(helperNamespace)
-            ? helperTypeName
-            : $"{helperNamespace}.{helperTypeName}";
-
         var helperMethod = BuildHelperMethod(
             helperName, accessibilityToken, returnType, exampleFreeVars, exampleExpression);
+        var ownerExpression = SyntaxFactory.ParseExpression(qualifiedOwner);
 
         // Rewrite hits grouped by document (phase 3) and emit per-file change records.
         var hitsByDocument = hits.GroupBy(h => h.Document.Id).ToList();
         var (accumulator, fileChanges) = await RewriteHitsAndFormatDocumentsAsync(
             solution, hitsByDocument, exampleDocument, exampleType,
-            helperName, helperMethod, helperFullyQualifiedType, allowCrossFile, ct)
+            helperName, helperMethod, ownerExpression, ct)
             .ConfigureAwait(false);
 
         // Defense-in-depth: insert the helper if the example doc wasn't among the rewrite groups (phase 4).
@@ -706,6 +704,8 @@ public sealed class ExtractMethodService : IExtractMethodService
         ExpressionSyntax exampleExpression,
         TypeDeclarationSyntax exampleType,
         IReadOnlyList<FreeVariable> exampleFreeVars,
+        INamedTypeSymbol helperOwner,
+        TypeSyntax ownerTypeSyntax,
         bool allowCrossFile,
         CancellationToken ct)
     {
@@ -753,7 +753,24 @@ public sealed class ExtractMethodService : IExtractMethodService
                             "Cannot synthesize a shared helper with different parameter types.");
                 }
 
-                hits.Add(new ExpressionHit(doc, candidate, candidateFreeVars, candidateType));
+                // Another declaration, even a partial of the same type, may
+                // have a local with the helper's name.
+                var needsQualifiedOwner = candidateType != exampleType;
+                if (needsQualifiedOwner)
+                {
+                    // In particular, an open generic owner can only be named where its
+                    // actual type parameters are in scope, including its containing types.
+                    var boundOwner = docModel.GetSpeculativeSymbolInfo(
+                        candidate.SpanStart, ownerTypeSyntax, SpeculativeBindingOption.BindAsTypeOrNamespace).Symbol;
+                    if (!SymbolEqualityComparer.Default.Equals(boundOwner, helperOwner))
+                    {
+                        throw new PublicInvalidOperationException(
+                            "The shared helper's declaring type cannot be referenced at every matching expression. " +
+                            "Select a different example or narrow the extraction scope.");
+                    }
+                }
+
+                hits.Add(new ExpressionHit(doc, candidate, candidateFreeVars, needsQualifiedOwner));
             }
         }
         return hits;
@@ -775,8 +792,7 @@ public sealed class ExtractMethodService : IExtractMethodService
             TypeDeclarationSyntax exampleType,
             string helperName,
             MethodDeclarationSyntax helperMethod,
-            string helperFullyQualifiedType,
-            bool allowCrossFile,
+            ExpressionSyntax ownerExpression,
             CancellationToken ct)
     {
         var accumulator = solution;
@@ -795,18 +811,16 @@ public sealed class ExtractMethodService : IExtractMethodService
                 h => BuildInvocation(
                     helperName,
                     h.FreeVariables,
-                    allowCrossFile && h.ContainingType != exampleType ? helperFullyQualifiedType : null));
+                    h.NeedsQualifiedOwner ? ownerExpression : null));
 
+            // Rewrite the exact declaration together with its descendants. An earlier
+            // replacement can shift its span, and another declaration can share its name.
+            var editedNodes = doc.Id == exampleDocument.Id ? rewrites.Keys.Append(exampleType) : rewrites.Keys;
             var newDocRoot = docRoot.ReplaceNodes(
-                rewrites.Keys,
-                (original, _) => rewrites[original]
-                    .WithTriviaFrom(original)
-                    .WithAdditionalAnnotations(Formatter.Annotation));
-
-            if (doc.Id == exampleDocument.Id)
-            {
-                newDocRoot = InsertHelperIntoType(newDocRoot, exampleType, helperMethod);
-            }
+                editedNodes,
+                (original, rewritten) => rewritten is TypeDeclarationSyntax editedType
+                    ? editedType.AddMembers(helperMethod)
+                    : rewrites[original].WithTriviaFrom(original).WithAdditionalAnnotations(Formatter.Annotation));
 
             // Route the rewritten root through `Formatter.FormatAsync` so the synthesized helper
             // and the Formatter.Annotation-tagged invocation sites pick up editorconfig-driven
@@ -854,7 +868,7 @@ public sealed class ExtractMethodService : IExtractMethodService
         var docRoot = await exampleDocument.GetSyntaxRootAsync(ct).ConfigureAwait(false) as CompilationUnitSyntax
             ?? throw new InvalidOperationException("Could not re-read example document root.");
         var oldText = docRoot.ToFullString();
-        var newDocRoot = InsertHelperIntoType(docRoot, exampleType, helperMethod);
+        var newDocRoot = docRoot.ReplaceNode(exampleType, exampleType.AddMembers(helperMethod));
         var documentWithEdit = exampleDocument.WithSyntaxRoot(newDocRoot);
         var formattedDocument = await Formatter.FormatAsync(
             documentWithEdit,
@@ -987,37 +1001,21 @@ public sealed class ExtractMethodService : IExtractMethodService
     private static InvocationExpressionSyntax BuildInvocation(
         string helperName,
         IReadOnlyList<FreeVariable> freeVariables,
-        string? fullyQualifiedTypePrefix)
+        ExpressionSyntax? owner)
     {
         var argumentList = SyntaxFactory.ArgumentList(
             SyntaxFactory.SeparatedList(
                 freeVariables.Select(v => SyntaxFactory.Argument(SyntaxFactory.IdentifierName(v.Name)))));
 
-        ExpressionSyntax target = string.IsNullOrEmpty(fullyQualifiedTypePrefix)
-            ? SyntaxFactory.IdentifierName(IdentifierValidation.CreateMemberIdentifierToken(helperName))
-            : SyntaxFactory.ParseExpression($"{fullyQualifiedTypePrefix}.{IdentifierValidation.CreateMemberIdentifierToken(helperName).Text}");
+        var name = SyntaxFactory.IdentifierName(IdentifierValidation.CreateMemberIdentifierToken(helperName));
+        ExpressionSyntax target = owner is null
+            ? name
+            : SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, owner, name);
 
         // Formatter.Annotation lets `Formatter.FormatAsync` re-flow spacing around commas,
         // parentheses, and (when fully-qualified) dotted member-access chains per editorconfig.
         return SyntaxFactory.InvocationExpression(target, argumentList)
             .WithAdditionalAnnotations(Formatter.Annotation);
-    }
-
-    private static SyntaxNode InsertHelperIntoType(
-        SyntaxNode root, TypeDeclarationSyntax exampleType, MethodDeclarationSyntax helper)
-    {
-        // Locate the type in the possibly-rewritten tree by its identifier+position — the tree
-        // may already have been mutated (expression rewrites). Fall back to identifier-match
-        // when the span shifted.
-        var newType = root.DescendantNodes().OfType<TypeDeclarationSyntax>()
-            .FirstOrDefault(t => t.Identifier.Text == exampleType.Identifier.Text
-                                 && t.SpanStart == exampleType.SpanStart)
-            ?? root.DescendantNodes().OfType<TypeDeclarationSyntax>()
-                .FirstOrDefault(t => t.Identifier.Text == exampleType.Identifier.Text)
-            ?? throw new InvalidOperationException(
-                $"Could not re-locate type '{exampleType.Identifier.Text}' in the rewritten tree.");
-        var updatedType = newType.AddMembers(helper);
-        return root.ReplaceNode(newType, updatedType);
     }
 
     private sealed record FreeVariable(string Name, ITypeSymbol Type);
@@ -1026,5 +1024,5 @@ public sealed class ExtractMethodService : IExtractMethodService
         Document Document,
         ExpressionSyntax Expression,
         IReadOnlyList<FreeVariable> FreeVariables,
-        TypeDeclarationSyntax ContainingType);
+        bool NeedsQualifiedOwner);
 }

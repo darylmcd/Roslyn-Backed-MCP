@@ -60,28 +60,28 @@ public sealed class TypeExtractionTriviaPreservationTests : IsolatedWorkspaceTes
 
         var original = string.Join(eol, Lines([], constructor, "    public int UseCompute() => Compute( 5 );", withCompute: true));
         string[] synthesized = shape != "implicit"
-            ? ["    private readonly ComputeHelper _computeHelper;"]
+            ? ["    private readonly global::SampleLib.ComputeHelper _computeHelper;"]
             :
             [
-                "    private readonly ComputeHelper _computeHelper;",
+                "    private readonly global::SampleLib.ComputeHelper _computeHelper;",
                 "",
-                "    public TriviaFixture(ComputeHelper computeHelper)",
+                "    public TriviaFixture(global::SampleLib.ComputeHelper computeHelper)",
                 "    {",
-                "        _computeHelper = computeHelper;",
+                "        this._computeHelper = computeHelper;",
                 "    }",
                 "",
             ];
-        string[] assigned = ["    {", "        _computeHelper = computeHelper;", "        _seed  =  seed ;   // keep", "    }"];
+        string[] assigned = ["    {", "        this._computeHelper = computeHelper;", "        _seed  =  seed ;   // keep", "    }"];
         string[] rewrittenConstructor = shape switch
         {
-            "block" => ["    public TriviaFixture( int seed, ComputeHelper computeHelper )", .. assigned],
-            "optional" => ["    public TriviaFixture( int seed, ComputeHelper computeHelper, string tag = \"x\" )", .. assigned],
-            "chained" => ["    public TriviaFixture( int seed, ComputeHelper computeHelper )", .. assigned,
-                "    public TriviaFixture( ComputeHelper computeHelper) : this( 7, computeHelper ) { }"],
-            "expression" => ["    public TriviaFixture( int seed, ComputeHelper computeHelper )", "    {", "        _computeHelper = computeHelper;", "        _seed = seed;", "    }"],
+            "block" => ["    public TriviaFixture( int seed, global::SampleLib.ComputeHelper computeHelper )", .. assigned],
+            "optional" => ["    public TriviaFixture( int seed, global::SampleLib.ComputeHelper computeHelper, string tag = \"x\" )", .. assigned],
+            "chained" => ["    public TriviaFixture( int seed, global::SampleLib.ComputeHelper computeHelper )", .. assigned,
+                "    public TriviaFixture( global::SampleLib.ComputeHelper computeHelper) : this( 7, computeHelper ) { }"],
+            "expression" => ["    public TriviaFixture( int seed, global::SampleLib.ComputeHelper computeHelper )", "    {", "        this._computeHelper = computeHelper;", "        _seed = seed;", "    }"],
             _ => [],
         };
-        var expected = string.Join(eol, Lines(synthesized, rewrittenConstructor, "    public int UseCompute() => _computeHelper.Compute( 5 );", withCompute: false));
+        var expected = string.Join(eol, Lines(synthesized, rewrittenConstructor, "    public int UseCompute() => this._computeHelper.Compute( 5 );", withCompute: false));
 
         await using var workspace = CreateIsolatedWorkspaceCopy();
         var path = workspace.GetPath("SampleLib", "TriviaFixture.cs");

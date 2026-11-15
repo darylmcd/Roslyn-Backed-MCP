@@ -1256,7 +1256,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
                 CancellationToken.None);
 
             var updatedSource = await GetModifiedDocumentTextAsync(result.PreviewToken, fixturePath);
-            StringAssert.Contains(updatedSource, "public ImplicitCtorFixture(ComputeHelper computeHelper)",
+            StringAssert.Contains(updatedSource, "public ImplicitCtorFixture(global::SampleLib.ComputeHelper computeHelper)",
                 "a constructor accepting the extracted type must be synthesized when the type had only the implicit constructor");
             StringAssert.Contains(updatedSource, "_computeHelper = computeHelper;",
                 "the synthesized constructor must assign the composition field");
@@ -1307,9 +1307,9 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
                 CancellationToken.None);
 
             var updatedSource = await GetModifiedDocumentTextAsync(result.PreviewToken, fixturePath);
-            StringAssert.Contains(updatedSource, "ChainedCtorFixture(int seed, ComputeHelper computeHelper)",
+            StringAssert.Contains(updatedSource, "ChainedCtorFixture(int seed, global::SampleLib.ComputeHelper computeHelper)",
                 "the root constructor must gain the new parameter");
-            StringAssert.Contains(updatedSource, "ChainedCtorFixture(ComputeHelper computeHelper)",
+            StringAssert.Contains(updatedSource, "ChainedCtorFixture(global::SampleLib.ComputeHelper computeHelper)",
                 "the chained constructor must gain the new parameter too");
             StringAssert.Contains(updatedSource, "this(7, computeHelper)",
                 "the chained initializer must forward the new argument to the delegated constructor");
@@ -1363,7 +1363,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
                 CancellationToken.None);
 
             var updatedSource = await GetModifiedDocumentTextAsync(result.PreviewToken, fixturePath);
-            StringAssert.Contains(updatedSource, "ExpressionBodiedCtorFixture(int seed, ComputeHelper computeHelper)",
+            StringAssert.Contains(updatedSource, "ExpressionBodiedCtorFixture(int seed, global::SampleLib.ComputeHelper computeHelper)",
                 "the expression-bodied constructor must gain the new parameter");
             StringAssert.Contains(updatedSource, "_seed = seed;",
                 "the original expression body must survive as a block statement");
@@ -1576,7 +1576,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
 
             var updatedSource = await GetModifiedDocumentTextAsync(preview.PreviewToken, fixture.FilePath);
             StringAssert.Contains(updatedSource, "_caféHelper.Compute(21)");
-            StringAssert.Contains(updatedSource, "MethodGroupUser() => _caféHelper.Compute");
+            StringAssert.Contains(updatedSource, "MethodGroupUser() => this._caféHelper.Compute");
             StringAssert.Contains(updatedSource, "CaféHelper.StaticCompute(21)");
             await AssertModifiedSolutionCompilesAsync(preview.PreviewToken);
         }
@@ -1617,9 +1617,9 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
             var updatedSource = await GetModifiedDocumentTextAsync(preview.PreviewToken, fixture.FilePath);
 
             StringAssert.Contains(updatedSource,
-                "ParamsCtorFixture(int seed, ComputeHelper computeHelper, params string[] labels)");
+                "ParamsCtorFixture(int seed, global::SampleLib.ComputeHelper computeHelper, params string[] labels)");
             StringAssert.Contains(updatedSource,
-                "ParamsCtorFixture(ComputeHelper computeHelper, params string[] labels)");
+                "ParamsCtorFixture(global::SampleLib.ComputeHelper computeHelper, params string[] labels)");
             StringAssert.Contains(updatedSource, "this(0, computeHelper, labels)");
             await AssertModifiedSolutionCompilesAsync(preview.PreviewToken);
         }
@@ -2353,7 +2353,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
             """,
             "MixedHost", ["_count", "Twice", "Bump"]);
 
-        StringAssert.Contains(updated, "private readonly ExtractedHelper _extractedHelper");
+        StringAssert.Contains(updated, "private readonly global::SampleLib.ExtractedHelper _extractedHelper");
         StringAssert.Contains(updated, "_extractedHelper.Bump()");
     }
 
