@@ -49,7 +49,7 @@ Each current finding is source-supported or explicitly an investigation. Require
 | [test-trx-verdict-consistency](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1943) (shipped, PR #1943) | Medium / M | — | Reject inconsistent and unsuccessful test-report proof |
 | [mtp-resolved-engine-version-selection](../items/mtp-resolved-engine-version-selection.md) | Medium / M | — | Gate MTP filters on every applicable resolved engine |
 | [test-run-global-json-fail-closed-authority](../items/test-run-global-json-fail-closed-authority.md) | Medium / M | — | Distinguish invalid runner configuration from no configuration |
-| [composite-batch-final-diff-composition](../items/composite-batch-final-diff-composition.md) | Medium / M | — | Review the complete initial-to-final composite delta |
+| [composite-batch-final-diff-composition](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/2105) (shipped, PR #2105) | Medium / M | — | Review the complete initial-to-final composite delta |
 | [extract-and-wire-same-file-composition](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/2030) (shipped, PR #2030) | Medium / M | — | Compose DI edits on the extracted snapshot |
 | `cross-project-interface-reference-binding` (shipped, #1910) | High / M | — | Bind generated interface uses to the generated symbol |
 | [cross-project-interface-generic-type-parameters](../items/cross-project-interface-generic-type-parameters.md) | Medium / M | — | Preserve generic parameters in extracted interfaces |

@@ -22,3 +22,5 @@
 ## Notes
 
 Current base 573540d5: the original metadata-name helper is gone. SymbolFinder.FindSimilarSymbols resolves the selected concrete type and GeneratedInterfaceReference.IsSame checks containing types. Existing nested/decoy preview, top-level apply/reload paths and transitive consumer tests passed 4/4. The nested test directly proves preview; those separate tests cover the common apply path.
+
+Independent closeout review: CrossProjectRefactoringService FindSimilarSymbols and GeneratedInterfaceReference satisfy the selected nested symbol identity check. CrossProjectInterfaceBindingIntegrationTests covers nested/decoy preview only. Qualify the experimental apply_with_verify route with the same fixture through the MCP host, then reload and verify the consumer binding and compilation. The skill has an incorrect apply route and the catalog omits the route. Both findings are tracked under preview-apply-tool-descriptions. Initial same-file target selection is separate under cross-project-type-name-first-match.

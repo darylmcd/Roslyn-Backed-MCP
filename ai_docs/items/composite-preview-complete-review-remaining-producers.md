@@ -1,6 +1,6 @@
 # composite-preview-complete-review-remaining-producers — Refuse redeemable incomplete composite reviews
 
-**row:** `composite-preview-complete-review-remaining-producers` · **pri:** `Medium` · **size:** `M` · **verified:** `573540d5b8a720c92c479993804045c78c75676c` · **deps:** `composite-batch-final-diff-composition`
+**row:** `composite-preview-complete-review-remaining-producers` · **pri:** `Medium` · **size:** `M` · **verified:** `573540d5b8a720c92c479993804045c78c75676c`
 
 ## Anchors
 

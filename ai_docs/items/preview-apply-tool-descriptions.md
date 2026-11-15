@@ -22,3 +22,7 @@
 ## Context
 
 - Waits for the scaffold token routing decision so the description reports the final route. One documentation contract across the listed producers.
+
+## Notes
+
+5.x closeout: skills/refactor/SKILL.md directs dependency_inversion_preview to apply_composite. CrossProjectRefactoringService stores its token through IPreviewStore, while OrchestrationTools only redeems ICompositePreviewStore tokens. Exercise apply_with_verify through raw MCP for all three cross-project producers and correct skill, tool descriptions and catalog together. Keep the existing stable apply acceptance for Unspecified tokens unless its wire behavior has been separately assessed and approved.

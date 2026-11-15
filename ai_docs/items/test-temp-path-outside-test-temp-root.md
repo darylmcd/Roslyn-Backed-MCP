@@ -23,3 +23,7 @@
 - The cited file uses a GUID-unique directory it deletes itself, so it does not reproduce the shared-parent race; the defect is the unenforced, over-broad rule. Candidate type: test-infrastructure; filed investigate-first.
 
 Source: backlog-remediate 20260926T234932Z follow-up.
+
+## Notes
+
+5.x watcher cold review: FileWatcherSharedWatcherTests.NewTempRoot still creates separately owned GUID directories directly under the OS temp directory for the four behavior scenarios. Include this helper in the migration inventory if the suite-wide path rule is chosen. The isolated inotify assertion uses TestTempRoot.Current.
