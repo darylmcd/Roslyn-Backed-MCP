@@ -134,9 +134,17 @@ public sealed class ExtractSharedExpressionNamespaceIdentityTests : IsolatedWork
         await using var workspace = await CreateIsolatedWorkspaceAsync();
         var path = workspace.GetPath("SampleLib", "SharedExpressionProbe.cs");
         var workspaceId = workspace.WorkspaceId;
+        var root = CSharpSyntaxTree.ParseText(await File.ReadAllTextAsync(path)).GetRoot();
+        var load = root.DescendantNodes().OfType<MethodDeclarationSyntax>().Single(method => method.Identifier.ValueText == "Load");
+        var normalized = load.DescendantNodes().OfType<VariableDeclaratorSyntax>()
+            .Single(variable => variable.Identifier.ValueText == "normalized");
+        var expression = Assert.IsInstanceOfType<InvocationExpressionSyntax>(normalized.Initializer?.Value);
+        var span = expression.GetLocation().GetLineSpan();
         var json = await ExtractMethodTools.PreviewExtractSharedExpressionToHelper(
             WorkspaceExecutionGate, ExtractMethodService, workspaceId, path,
-            18, 13, 18, 104, "filePath", "private", allowCrossFile: false);
+            span.StartLinePosition.Line + 1, span.StartLinePosition.Character + 1,
+            span.EndLinePosition.Line + 1, span.EndLinePosition.Character + 1,
+            "filePath", "private", allowCrossFile: false);
         const string call = "global::SampleLib.SharedExpressionProbe.filePath(filePath)";
         StringAssert.Contains(json, call);
         using var preview = JsonDocument.Parse(json);
