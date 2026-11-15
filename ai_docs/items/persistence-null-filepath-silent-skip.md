@@ -1,6 +1,6 @@
 # persistence-null-filepath-silent-skip — Stop silently skipping null-FilePath documents at persistence
 
-**row:** `persistence-null-filepath-silent-skip` · **pri:** `Medium` · **size:** `S` · **verified:** `e220816e3fa161caca44362acb8c70e9390e73bf`
+**row:** `persistence-null-filepath-silent-skip` · **pri:** `Medium` · **size:** `S`
 
 ## Anchors
 
@@ -14,3 +14,7 @@
 ## Evidence
 
 - 2026-11-10 remediation (PRs #2055-#2057): persistence-stage silent drop of a reviewed effect, independent of the rebase stage.
+
+## Notes
+
+5.x screen at d9e2b3ff. PersistAddedDocumentsAsync, PersistChangedDocumentsAsync and PersistRemovedDocumentsAsync skip null FilePath. RefactoringService uses that persistence path from stable apply_code_action as well as experimental routes. Select when a stable-wire fixture establishes that the complete refusal or receipt correction fits 5.x, or at the next operator-approved major.

@@ -1,12 +1,12 @@
 # early-kill-matches-cross-read-boundaries — Recognize patterns across output reads
 
-**row:** `early-kill-matches-cross-read-boundaries` · **pri:** `Medium` · **size:** `M` · **verified:** `52f2c418cf5ba982b2a1c0914dd3977655d93eb4`
+**row:** `early-kill-matches-cross-read-boundaries` · **pri:** `Medium` · **size:** `M` · **deps:** `early-kill-reason-unconfirmed`
 
 ## Anchors
 
-- `src/RoslynMcp.Roslyn/Helpers/DotnetCommandRunner.cs:253-284`
+- `src/RoslynMcp.Roslyn/Helpers/DotnetCommandRunner.cs:279-351`
 - `src/RoslynMcp.Core/Services/IDotnetCommandRunner.cs`
-- `src/RoslynMcp.Roslyn/Services/TestRunnerService.cs:186-192`
+- `src/RoslynMcp.Roslyn/Services/TestRunnerService.cs:17-27`
 
 ## Acceptance
 
@@ -22,4 +22,6 @@
 
 ## Notes
 
-Adjacent implementation debt in the same scan loop: DotnetCommandRunner.cs:320 says Regex cannot accept spans, but net10 reference metadata exposes Regex.IsMatch(ReadOnlySpan<char>, int). The current slice-to-string allocation and stale comment should disappear with the corrected bounded scanner.
+Adjacent implementation debt in the same scan loop: DotnetCommandRunner.cs:339 says Regex cannot accept spans, but net10 reference metadata exposes Regex.IsMatch(ReadOnlySpan<char>, int). The current slice-to-string allocation and stale comment should disappear with the corrected bounded scanner.
+
+5.x screen at d9e2b3ff. The read-boundary fix changes when stable test_run exposes execution.earlyKillReason and failureEnvelope.summary, and whether execution.succeeded is false. Qualify with early-kill-reason-unconfirmed so newly detected markers cannot amplify a receipt for an unconfirmed kill. Select when the resulting wire behavior is qualified for 5.x or at the next approved major.

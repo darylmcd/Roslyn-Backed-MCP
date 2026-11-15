@@ -21,3 +21,7 @@
 ## Context
 
 - Dependency: land `cross-project-public-refusals-echo-input` first. That change removes free-text public caller detail from cross-project and extract-and-wire refusal emitters; this row changes the distinct compiler-diagnostic presentation contract.
+
+## Notes
+
+5.x screen at d9e2b3ff. The three current consumers are experimental, but ADR 0038 mandates each affected project name and this row requires the deferred cross-project refusal migration. Reopen the chain at the next operator-approved major. Revalidate the public contract and cover both raw protocol eras when superseding the ADR.

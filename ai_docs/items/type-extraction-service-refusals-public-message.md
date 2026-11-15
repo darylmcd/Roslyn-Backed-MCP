@@ -11,10 +11,10 @@
 
 ## Acceptance
 
-- [ ] Probe every InvalidOperationException construction in the defining service and its same-file rewriter. Classify caller corrections versus internal invariants; publish caller corrections with the existing sanctioned type and safe, path/name-free guidance.
-- [ ] Preserve exact error category, structured blocking-dependency contract and internal detail ownership. Do not mark raw interpolated caller names, paths or dependency summaries public.
-- [ ] Red-first service-to-wire tests cover partial declarations, missing source/member selection and external-consumer refusal; malicious sentinels never appear in the complete envelope. Internal semantic failures remain generic.
-- [ ] Pin verified ratchet baseline decreases after conversion; never expand the baseline. Keep existing compilation safety refusals effective.
+- [ ] Reopen at the next operator-approved major release. Probe each InvalidOperationException construction in the service and its same-file rewriter. Publish only actionable caller corrections with the sanctioned public exception type and safe, path-free guidance.
+- [ ] Preserve the exact error category, structured `blockingDependencies` field and its member names, and internal detail ownership. Keep raw caller names, paths and dependency summaries out of the public `message`.
+- [ ] Reproduce and verify the refusal-message migration on the raw wire in both supported protocol eras. Cover partial declarations, missing source/member selection and external-consumer refusals. Assert the full envelope exposes caller member names only through intended structured fields. Keep internal semantic failures generic.
+- [ ] Add the ADR and migration note for the message change. Pin verified construction-ratchet decreases and retain existing compilation safety refusals.
 
 ## Evidence
 
