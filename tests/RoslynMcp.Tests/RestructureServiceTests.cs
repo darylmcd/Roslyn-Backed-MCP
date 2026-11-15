@@ -222,10 +222,10 @@ public sealed class RestructureServiceTests : SharedWorkspaceTestBase
                 Microsoft.CodeAnalysis.Text.SourceText.From(source),
                 filePath: filePath);
 
-        var (newSolution, changes, _) = await Service.PreviewRestructureOnSolutionAsync(
+        var (newSolution, matchedDocuments, _) = await Service.PreviewRestructureOnSolutionAsync(
             solution, pattern, goal, new RestructureScope(null, null), CancellationToken.None);
 
-        Assert.AreEqual(1, changes.Count, "Exactly the one adhoc document should change.");
+        Assert.AreEqual(1, matchedDocuments, "Exactly the one adhoc document should change.");
         var document = newSolution.Projects.Single().Documents.Single();
         return (await document.GetTextAsync(CancellationToken.None)).ToString();
     }

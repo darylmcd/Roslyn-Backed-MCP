@@ -225,7 +225,9 @@ public sealed class CrossProjectRefactoringIntegrationTests : InterfaceRouteTest
     }
 
     [TestMethod]
-    public async Task Dependency_Inversion_Preview_And_Apply_Rewrites_Constructor_Parameters()
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task Dependency_Inversion_Preview_And_Apply_Rewrites_Constructor_Parameters(bool useInterfaceFolder)
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
         AddProjectToCopiedSolution(workspace.RootPath, "Contracts", "net10.0");
@@ -235,7 +237,12 @@ public sealed class CrossProjectRefactoringIntegrationTests : InterfaceRouteTest
             "using SampleLib;\n\npublic class AnimalCoordinator\n{\n    public AnimalCoordinator(AnimalService service)\n    {\n    }\n}\n");
 
         var sourceFilePath = workspace.GetPath("SampleLib", "AnimalService.cs");
-        var interfaceFilePath = workspace.GetPath("Contracts", "IAnimalService.cs");
+        var interfaceDirectory = useInterfaceFolder
+            ? workspace.GetPath("Contracts", "Interfaces")
+            : workspace.GetPath("Contracts");
+        Directory.CreateDirectory(interfaceDirectory);
+        var interfaceFilePath = Path.Combine(interfaceDirectory, "IAnimalService.cs");
+        var interfaceNamespace = useInterfaceFolder ? "Contracts.Interfaces" : "Contracts";
         UseAcyclicAnimalServiceSignature(workspace);
         await workspace.LoadAsync(CancellationToken.None);
 
@@ -247,7 +254,13 @@ public sealed class CrossProjectRefactoringIntegrationTests : InterfaceRouteTest
             "Contracts",
             CancellationToken.None);
 
-        await TestInfrastructure.InterfaceExtractionTestContext.AssertCompilesAsync(PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution);
+        var modified = PreviewStore.Retrieve(preview.PreviewToken)!.Value.ModifiedSolution;
+        var generatedInterface = modified.Projects.Single(project => project.Name == "Contracts").Documents
+            .Single(document => document.Name == "IAnimalService.cs");
+        Assert.AreEqual(interfaceFilePath, generatedInterface.FilePath);
+        var generatedCompilation = await generatedInterface.Project.GetCompilationAsync(CancellationToken.None);
+        Assert.IsNotNull(generatedCompilation!.GetTypeByMetadataName(interfaceNamespace + ".IAnimalService"));
+        await TestInfrastructure.InterfaceExtractionTestContext.AssertCompilesAsync(modified);
         var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
         Assert.IsTrue(File.Exists(interfaceFilePath));
@@ -261,6 +274,17 @@ public sealed class CrossProjectRefactoringIntegrationTests : InterfaceRouteTest
             consumerContents.Contains("(AnimalService service", StringComparison.Ordinal),
             $"Constructor still declares concrete type.\nConsumer contents:\n{consumerContents}");
         StringAssert.Contains(consumerContents, "IAnimalService service");
+
+        await WorkspaceManager.ReloadAsync(workspace.WorkspaceId, CancellationToken.None);
+        var reloadedConsumer = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId)
+            .Projects.Single(project => project.Name == "SampleApp");
+        var reloadedCompilation = await reloadedConsumer.GetCompilationAsync(CancellationToken.None);
+        var coordinator = reloadedCompilation!.GetTypeByMetadataName("AnimalCoordinator");
+        var parameter = coordinator!.InstanceConstructors.Single().Parameters.Single();
+        var reloadedInterface = reloadedCompilation.GetTypeByMetadataName(interfaceNamespace + ".IAnimalService");
+        Assert.IsNotNull(reloadedInterface);
+        Assert.AreEqual("Contracts", reloadedInterface.ContainingAssembly.Name);
+        Assert.IsTrue(Microsoft.CodeAnalysis.SymbolEqualityComparer.Default.Equals(reloadedInterface, parameter.Type));
     }
 
     [TestMethod]
@@ -998,7 +1022,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : InterfaceRouteTest
                 Microsoft.CodeAnalysis.Text.SourceText.From("interface IInside {}"), filePath: path);
         var method = typeof(RoslynMcp.Roslyn.Services.CrossProjectRefactoringService).GetMethod(
             "ResolvePreferredInterfaceSubdirectory", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
-        var result = method.Invoke(null, [solution, solution.GetProject(projectId)!, root]);
+        var result = method.Invoke(null, [solution.GetProject(projectId)!, root]);
         Assert.AreEqual(shape == "descendant" || shape == "case" && OperatingSystem.IsWindows()
             ? Path.Combine(root, "Interfaces") : root, result);
     }

@@ -77,7 +77,7 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
             throw new InvalidOperationException(
                 $"symbol_refactor_preview accepts at most {MaxOperations} operations per call.");
 
-        var aggregatedDiffs = new Dictionary<string, FileChangeDto>(StringComparer.OrdinalIgnoreCase);
+        var touchedPaths = new HashSet<string>(FileSystemPath.Comparer);
         var descriptions = new List<string>();
         var initialSolution = _workspace.GetCurrentSolution(workspaceId);
         var accumulator = initialSolution;
@@ -91,16 +91,17 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
                 if (op is null)
                     throw new PublicArgumentException("Each operation must be non-null.", nameof(operations));
 
-                var (nextSolution, stepChanges, stepDescription) =
+                var (nextSolution, stepDescription) =
                     await ExecuteOperationOnSolutionAsync(accumulator, op, ct).ConfigureAwait(false);
 
                 descriptions.Add($"[{i + 1}/{operations.Count}] {op.Kind}: {stepDescription}");
-                accumulator = nextSolution;
+                var stepPaths = CompositeSolutionMutationPlanner.GetTouchedPaths(accumulator, nextSolution)
+                    .Select(Path.GetFullPath).Distinct(FileSystemPath.Comparer).ToArray();
+                touchedPaths.UnionWith(stepPaths);
+                if (touchedPaths.Count > MaxFilesAffected) break;
 
-                foreach (var change in stepChanges)
-                {
-                    aggregatedDiffs[change.FilePath] = change;
-                }
+                accumulator = await CompositeSolutionMutationPlanner.PropagateLinkedEditsAsync(accumulator, nextSolution, stepPaths, ct)
+                    .ConfigureAwait(false);
             }
             catch (PublicArgumentException ex)
             {
@@ -112,16 +113,18 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
                 throw new InvalidOperationException(
                     $"symbol_refactor_preview operation #{i + 1} ({op.Kind}) failed: {ex.Message}", ex);
             }
+        }
 
-            if (aggregatedDiffs.Count > MaxFilesAffected)
-            {
-                throw new InvalidOperationException(
-                    $"symbol_refactor_preview exceeded the {MaxFilesAffected}-file diff cap. Split the operation list.");
-            }
+        if (touchedPaths.Count > MaxFilesAffected)
+        {
+            throw new InvalidOperationException(
+                $"symbol_refactor_preview exceeded the {MaxFilesAffected}-file diff cap. Split the operation list.");
         }
 
         // Materialize the accumulated solution delta as file intents for apply_composite.
-        var mutations = await CompositeSolutionMutationPlanner.BuildAsync(initialSolution, accumulator, [], ct).ConfigureAwait(false);
+        var edits = await CompositeSolutionMutationPlanner.BuildAsync(initialSolution, accumulator, [], ct).ConfigureAwait(false);
+        var changes = CompositeSolutionMutationPlanner.RenderReview(edits, ct);
+        var mutations = edits.Select(edit => edit.Mutation).ToArray();
 
         var description = "Composite refactor:\n  " + string.Join("\n  ", descriptions);
         var token = _compositePreviewStore.Store(
@@ -130,11 +133,11 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
         return new RefactoringPreviewDto(
             PreviewToken: token,
             Description: description,
-            Changes: aggregatedDiffs.Values.ToArray(),
+            Changes: changes,
             Warnings: null);
     }
 
-    private async Task<(Solution NewSolution, IReadOnlyList<FileChangeDto> Changes, string Description)>
+    private async Task<(Solution NewSolution, string Description)>
         ExecuteOperationOnSolutionAsync(Solution inputSolution, SymbolRefactorOperation op, CancellationToken ct)
     {
         return op.Kind?.ToLowerInvariant() switch
@@ -147,7 +150,7 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
         };
     }
 
-    private Task<(Solution NewSolution, IReadOnlyList<FileChangeDto> Changes, string Description)>
+    private Task<(Solution NewSolution, string Description)>
         ExecuteRenameOnSolutionAsync(Solution inputSolution, SymbolRefactorOperation op, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(op.NewName))
@@ -157,25 +160,27 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
         return _refactoringServiceConcrete.PreviewRenameOnSolutionAsync(inputSolution, locator, op.NewName, ct);
     }
 
-    private Task<(Solution NewSolution, IReadOnlyList<FileChangeDto> Changes, string Description)>
+    private async Task<(Solution NewSolution, string Description)>
         ExecuteEditOnSolutionAsync(Solution inputSolution, SymbolRefactorOperation op, CancellationToken ct)
     {
         if (op.FileEdits is null || op.FileEdits.Count == 0)
             throw new PublicArgumentException("kind='edit' requires FileEdits.", nameof(op.FileEdits));
-        return _editServiceConcrete.PreviewMultiFileTextEditsOnSolutionAsync(
-            inputSolution, op.FileEdits, ct, skipSyntaxCheck: false);
+        var (solution, _, description) = await _editServiceConcrete.PreviewMultiFileTextEditsOnSolutionAsync(
+            inputSolution, op.FileEdits, ct, skipSyntaxCheck: false).ConfigureAwait(false);
+        return (solution, description);
     }
 
-    private Task<(Solution NewSolution, IReadOnlyList<FileChangeDto> Changes, string Description)>
+    private async Task<(Solution NewSolution, string Description)>
         ExecuteRestructureOnSolutionAsync(Solution inputSolution, SymbolRefactorOperation op, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(op.Pattern))
             throw new PublicArgumentException("kind='restructure' requires a non-empty Pattern.", nameof(op.Pattern));
         if (op.Goal is null)
             throw new PublicArgumentException("kind='restructure' requires Goal.", nameof(op.Goal));
-        return _restructureServiceConcrete.PreviewRestructureOnSolutionAsync(
+        var (solution, _, description) = await _restructureServiceConcrete.PreviewRestructureOnSolutionAsync(
             inputSolution, op.Pattern, op.Goal,
-            new RestructureScope(op.ScopeFilePath, op.ScopeProjectName), ct);
+            new RestructureScope(op.ScopeFilePath, op.ScopeProjectName), ct).ConfigureAwait(false);
+        return (solution, description);
     }
 
     /// <summary>
@@ -371,7 +376,7 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
             constructorInjections,
             NamespaceMemberClassifier.GetContainingNamespaceName(typeDeclaration),
             sourceDirectory,
-            StripLeadingTriviaFromFirstUsing(root.Usings));
+            TriviaNormalizationHelper.StripLeadingTriviaFromFirstUsing(root.Usings));
     }
 
     // 1) Create partition files. Each partition file emits the requested methods PLUS any
@@ -1254,18 +1259,6 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
 
         var nsDecl = namespaceDeclaration.WithMembers(SyntaxFactory.SingletonList(member));
         return compilationUnit.WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(nsDecl));
-    }
-
-    private static SyntaxList<UsingDirectiveSyntax> StripLeadingTriviaFromFirstUsing(SyntaxList<UsingDirectiveSyntax> usings)
-    {
-        if (usings.Count == 0)
-        {
-            return usings;
-        }
-
-        var first = usings[0];
-        var stripped = first.WithLeadingTrivia(SyntaxFactory.TriviaList());
-        return usings.Replace(first, stripped);
     }
 
     private static string LowerFirst(string value)

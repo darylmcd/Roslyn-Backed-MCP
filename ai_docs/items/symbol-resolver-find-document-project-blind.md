@@ -1,6 +1,6 @@
 # symbol-resolver-find-document-project-blind — Make path-only document lookups project-aware
 
-**row:** `symbol-resolver-find-document-project-blind` · **pri:** `Medium` · **size:** `L` · **verified:** `e220816e3fa161caca44362acb8c70e9390e73bf`
+**row:** `symbol-resolver-find-document-project-blind` · **pri:** `Medium` · **size:** `L`
 
 ## Anchors
 
@@ -11,6 +11,8 @@
 - `src/RoslynMcp.Roslyn/Services/SymbolRefactorService.cs:344` — FindDocument; also :1096 path match.
 - `src/RoslynMcp.Roslyn/Services/TypeMoveService.cs:25` — FindDocument; also :89 path match.
 - `tests/RoslynMcp.Tests/RebaseDocumentIdentityTests.cs`
+
+- `src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs:40` — path-only FindDocument across move, interface extraction (:145), and dependency inversion (:228).
 
 ## Acceptance
 
@@ -26,4 +28,6 @@
 
 ### Context
 
-Size L: the six production files share one defect mechanism (path-only first-match document lookup) and one linked-file semantics decision, so triage and the shared helper land together; sites that do not need project identity close as triaged-no-change.
+Size L: the production files share one defect mechanism (path-only first-match document lookup) and one linked-file semantics decision, so triage and the shared helper land together; sites that do not need project identity close as triaged-no-change.
+
+The 5.x partial move cold review confirmed CrossProjectRefactoringService.cs:40 also calls the path-only resolver before acquiring the source project symbol. Add this experimental move consumer to the existing linked-document project-context sweep, with a fixture that distinguishes different compilations of the same physical file.

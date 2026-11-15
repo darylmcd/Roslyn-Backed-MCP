@@ -44,7 +44,7 @@ public sealed class WorkspaceForkSourceSessionTests
             services.AddSingleton<IWorkspaceManager>(sp => WorkspaceManager.CreateProviderOwned(
                 sp.GetRequiredService<ILogger<WorkspaceManager>>(), sp.GetRequiredService<IPreviewStore>(),
                 sp.GetRequiredService<IFileWatcherService>(), sp.GetRequiredService<WorkspaceManagerOptions>(),
-                cacheStore: null, sp.GetRequiredService<Lazy<IWorkspaceExecutionGate>>()));
+                cacheStore: null, sp.GetRequiredService<Lazy<IWorkspaceExecutionGate>>(), TimeProvider.System));
         var provider = services.BuildServiceProvider();
         var manager = provider.GetRequiredService<IWorkspaceManager>();
         var store = (PreviewStore)provider.GetRequiredService<IPreviewStore>();

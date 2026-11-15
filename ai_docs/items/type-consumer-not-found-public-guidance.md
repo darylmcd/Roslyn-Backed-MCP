@@ -10,9 +10,9 @@
 
 ## Acceptance
 
-- [ ] Return a path-free missing-type correction through PublicInvalidOperationException, without interpolating caller typeName; retain fully qualified/short-name and generic-arity guidance.
-- [ ] Keep released InvalidOperation category and InvalidOperationException envelope identity; do not change this to a not-found category in a minor release.
-- [ ] Observe old-red/new-green actual tool-envelope coverage with hostile typeName and valid type-consumer controls; retire only the replaced ratchet identity.
+- [ ] Derive current tool-envelope identity and metadata-name guidance from FindTypeConsumersAsync and the shared NotFound classifier.
+- [ ] Qualify stable navigation and every shared producer with not-found-metadata-only-message-classification before selecting.
+- [ ] Raw-wire coverage exercises hostile caller type text, actual metadata-only lookup, and valid consumer analysis. Preserve the released category and existing safe navigation guidance in 5.x.
 
 ## Evidence
 
@@ -25,3 +25,5 @@
 ## Notes
 
 5.x screen at a12412bb: the stale InvalidOperation acceptance conflicts with current NotFound/KeyNotFoundException on the experimental find_type_consumers tool. The installed 5.0.1 server reproduced a misleading metadata-only message when an unknown name contained that phrase. Leave unselected while assessing the shared classifier and stable navigation companions. See not-found-metadata-only-message-classification.
+
+TypeConsumersService.cs:52 now throws KeyNotFoundException. ToolErrorHandler.cs:118,564 shares caller-influenced classification with stable navigation (SymbolNavigationService.cs:93). Qualify companion not-found-metadata-only-message-classification across stable callers before selecting. If the complete fix changes the stable response, reopen at the next operator-approved major with ADR, migration note and both raw protocol eras.

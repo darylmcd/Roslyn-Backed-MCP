@@ -63,3 +63,9 @@
 | Bullet6 qualification of the unmerged fork contract | Fifth acceptance bullet. Parent delivered-scope qualification cannot prove this contract. |
 
 This is an independent open remainder under the operator's finite closeout directive. Closing the parent records the delivered source restore fixes and an explicit scope transfer; it does not mark the original fork clauses met.
+
+## Notes
+
+At 573540d5 the fork route refuses a stale source token and admits reviewed document snapshots. The acceptance changes both fork outcomes, with native planning, project/reference semantics and retained source authority. Decompose into complete dependency-chained pieces.
+
+Qualification: workspace_fork_apply itself is experimental. Changing only that route does not establish a major bump. Assess required shared rebase and physical-intent companions against stable source-token redemption and persistence. Resume at the next operator-approved major only if a stable break is established; otherwise reopen once a compatible decomposed plan preserves the stable contract.

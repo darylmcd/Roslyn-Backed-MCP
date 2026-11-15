@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Text;
 using RoslynMcp.Core.Services;
 
 namespace RoslynMcp.Roslyn.Helpers;
@@ -8,6 +9,15 @@ namespace RoslynMcp.Roslyn.Helpers;
 /// <summary>Preserves physical file roles when an existing declaration moves into a new document.</summary>
 internal static class MovedDeclarationFileWriter
 {
+    internal static void EnsureTopLevelDeclaration(TypeDeclarationSyntax declaration)
+    {
+        if (!NamespaceMemberClassifier.IsDirectNamespaceMember(declaration))
+        {
+            throw new PublicInvalidOperationException(
+                "Moving a nested type would change its containing type. Select a top-level type.");
+        }
+    }
+
     internal static BaseNamespaceDeclarationSyntax? FrameNamespace(
         BaseNamespaceDeclarationSyntax? destinationNamespace, SyntaxTriviaList bodySeparator) =>
         destinationNamespace switch
@@ -21,9 +31,9 @@ internal static class MovedDeclarationFileWriter
             _ => destinationNamespace
         };
 
-    internal static CompilationUnitSyntax CreateCompilationUnit(
+    internal static (CompilationUnitSyntax Root, TextSpan TypeIdentifier) CreateCompilationUnit(
         CompilationUnitSyntax sourceRoot,
-        MemberDeclarationSyntax member,
+        TypeDeclarationSyntax member,
         SyntaxList<UsingDirectiveSyntax> copiedUsings,
         BaseNamespaceDeclarationSyntax? destinationNamespace,
         SemanticModel semanticModel,
@@ -54,7 +64,7 @@ internal static class MovedDeclarationFileWriter
         else
         {
             outputMember = destinationNamespace.WithUsings(localUsings)
-                .WithMembers(SyntaxFactory.SingletonList(movedMember));
+                .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(movedMember));
         }
 
         var root = SyntaxFactory.CompilationUnit().WithUsings(usings)
@@ -70,7 +80,9 @@ internal static class MovedDeclarationFileWriter
             root = root.ReplaceNode(block, block.WithCloseBraceToken(block.CloseBraceToken
                 .WithLeadingTrivia(SyntaxFactory.CarriageReturnLineFeed)));
         }
-        return root;
+        var output = root.Members.Single();
+        var type = (TypeDeclarationSyntax)(output is BaseNamespaceDeclarationSyntax ns ? ns.Members.Single() : output);
+        return (root, type.Identifier.Span);
     }
 
     internal static CompilationUnitSyntax RemoveDeclaration(CompilationUnitSyntax sourceRoot, MemberDeclarationSyntax member)

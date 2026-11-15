@@ -23,7 +23,7 @@ public static partial class ServerSurfaceCatalog
         Tool("scaffold_test_batch_preview", "scaffolding", "experimental", true, false, "Preview scaffolding multiple test files for related target types in one composite preview."),
         Tool("scaffold_first_test_file_preview", "scaffolding", "experimental", true, false, "Preview scaffolding the first <Service>Tests.cs fixture for a service that has no existing test file."),
         Tool("scaffold_test_apply", "scaffolding", "experimental", false, true, "Apply a previously previewed test scaffolding operation."),
-        Tool("move_type_to_project_preview", "cross-project-refactoring", "experimental", true, false, "Preview moving a type declaration into another project."),
+        Tool("move_type_to_project_preview", "cross-project-refactoring", "experimental", true, false, "Preview moving a top-level type declaration into another project."),
         Tool("extract_interface_cross_project_preview", "cross-project-refactoring", "experimental", true, false, "Preview extracting an interface from a concrete type into a different project."),
         Tool("dependency_inversion_preview", "cross-project-refactoring", "experimental", true, false, "Preview extracting an interface and updating constructor dependencies."),
         Tool("migrate_package_preview", "orchestration", "experimental", true, false, "Preview migrating a package across affected projects."),

@@ -217,11 +217,12 @@ public sealed class PreviewMultiFileEditSyntaxRegressionTests : IsolatedWorkspac
             workspaceId, fileEdits, CancellationToken.None);
 
         CollectionAssert.AreEqual(
-            viaSolution.Changes.Select(c => c.FilePath).ToArray(),
+            viaSolution.Edits.Select(edit => edit.Path).ToArray(),
             viaWorkspace.Changes!.Select(c => c.FilePath).ToArray(),
             "Both preview entry points must report the same files in the same order.");
         CollectionAssert.AreEqual(
-            viaSolution.Changes.Select(c => c.UnifiedDiff).ToArray(),
+            viaSolution.Edits.Select(edit => RoslynMcp.Roslyn.Helpers.DiffGenerator.GenerateUnifiedDiff(
+                edit.Original.ToString(), edit.Patched.ToString(), edit.Path)).ToArray(),
             viaWorkspace.Changes!.Select(c => c.UnifiedDiff).ToArray(),
             "Both preview entry points must produce byte-identical unified diffs.");
         Assert.AreEqual(catFilePath, viaWorkspace.Changes![0].FilePath, "Input order must be preserved.");

@@ -8,11 +8,11 @@ namespace RoslynMcp.Core.Services;
 public interface ICrossProjectRefactoringService
 {
     /// <summary>
-    /// Previews moving a type declaration from its current project into a different project.
+    /// Previews moving a top-level type declaration from its current project into a different project.
     /// </summary>
     /// <param name="workspaceId">The workspace session identifier.</param>
     /// <param name="sourceFilePath">The absolute path to the file that declares the type.</param>
-    /// <param name="typeName">The simple name of the type to move.</param>
+    /// <param name="typeName">The simple name of the top-level type to move.</param>
     /// <param name="targetProjectName">The name of the destination project.</param>
     /// <param name="targetNamespace">Explicit namespace for the moved type. When <see langword="null"/>, the namespace is inferred from <paramref name="preserveNamespace"/> (see below).</param>
     /// <param name="ct">Cancellation token.</param>

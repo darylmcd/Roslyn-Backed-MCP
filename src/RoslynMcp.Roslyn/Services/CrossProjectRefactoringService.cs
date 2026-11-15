@@ -49,10 +49,18 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         var sourceRoot = await sourceDocument.GetSyntaxRootAsync(ct).ConfigureAwait(false) as CompilationUnitSyntax
             ?? throw new InvalidOperationException("Source document must be a C# compilation unit.");
         var typeDeclaration = FindTypeDeclaration(sourceRoot, typeName);
+        MovedDeclarationFileWriter.EnsureTopLevelDeclaration(typeDeclaration);
         var semanticModel = await sourceDocument.GetSemanticModelAsync(ct).ConfigureAwait(false)
             ?? throw new InvalidOperationException("Semantic model could not be created for the source document.");
         var typeSymbol = semanticModel.GetDeclaredSymbol(typeDeclaration, ct) as INamedTypeSymbol
             ?? throw new PublicInvalidOperationException($"Type '{typeName}' could not be resolved.");
+
+        if (typeSymbol.DeclaringSyntaxReferences.Length > 1)
+        {
+            throw new PublicInvalidOperationException(
+                "Moving a type with multiple declarations is unsupported. Select a type with a single declaration.");
+        }
+
         var sourceDocumentFilePath = sourceDocument.FilePath
             ?? throw new InvalidOperationException("Source document must have a file path on disk.");
         var targetProjectDirectory = Path.GetDirectoryName(targetProject.FilePath)
@@ -83,26 +91,27 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             ReceivingNamespaceFactory.RequireCSharpOptions(targetProject.ParseOptions));
         destinationNamespace = MovedDeclarationFileWriter.FrameNamespace(destinationNamespace,
             SyntaxFactory.TriviaList(SyntaxFactory.CarriageReturnLineFeed));
-        var movedRoot = MovedDeclarationFileWriter.CreateCompilationUnit(
+        var (movedRoot, movedTypeIdentifier) = MovedDeclarationFileWriter.CreateCompilationUnit(
             sourceRoot, typeDeclaration, sourceRoot.Usings, destinationNamespace, semanticModel, ct);
         // Item #1 — pass folders so MSBuildWorkspace.TryApplyChanges resolves the disk path
         // consistently with our explicit write. Without folders, Roslyn resolves cross-project
         // adds to {targetProjectDir}/{fileName} and produces a rogue project-root copy.
         var movedDocFolders = ProjectMetadataParser.ComputeDocumentFolders(targetProject.FilePath, targetFilePath);
-        var updatedSolution = solution.AddDocument(
-            DocumentId.CreateNewId(targetProject.Id),
+        var movedDocument = targetProject.AddDocument(
             Path.GetFileName(targetFilePath),
             SourceText.From(movedRoot.ToFullString()),
             folders: movedDocFolders,
             filePath: targetFilePath);
 
-        updatedSolution = EnsureProjectReference(updatedSolution, sourceDocument.Project.Id, targetProject.Id);
+        var updatedSolution = EnsureProjectReference(movedDocument.Project.Solution, sourceDocument.Project.Id, targetProject.Id);
 
         var updatedSourceRoot = MovedDeclarationFileWriter.RemoveDeclaration(sourceRoot, typeDeclaration);
         updatedSolution = NamespaceMemberClassifier.HasRemainingContent(updatedSourceRoot)
             ? updatedSolution.WithDocumentSyntaxRoot(sourceDocument.Id, updatedSourceRoot)
             : updatedSolution.RemoveDocument(sourceDocument.Id);
 
+        await MovedTypeDestinationIdentity.EnsureAvailableAsync(targetProject, movedDocument, movedTypeIdentifier,
+            updatedSolution, originalDeclarationInTargetProject: null, ct).ConfigureAwait(false);
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, updatedSolution, ct).ConfigureAwait(false);
         var description = $"Move type '{typeName}' to project '{targetProject.Name}'";
         var token = _previewStore.Store(workspaceId, updatedSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
@@ -158,18 +167,8 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
 
         var isCrossProject = targetProject.Id != sourceDocument.Project.Id;
 
-        // FLAG-10C: Resolve the interface subdirectory FIRST so the namespace can match the
-        // file's actual on-disk location. Previously the namespace was derived purely from the
-        // project default, producing files at e.g. src/Foo.Domain/Interfaces/IBar.cs that declared
-        // namespace Foo.Domain — inconsistent with sibling files like ISnapshotStore that live in
-        // Foo.Domain.Interfaces.
-        var interfaceDirectory = isCrossProject
-            ? ResolvePreferredInterfaceSubdirectory(solution, targetProject, targetProjectDirectory)
-            : targetProjectDirectory;
-
-        var namespaceName = isCrossProject
-            ? DeriveTargetNamespaceForPath(targetProject, targetProjectDirectory, interfaceDirectory)
-            : GetContainingNamespace(typeSymbol);
+        var (interfaceDirectory, namespaceName) = ResolveInterfaceDestination(
+            sourceDocument.Project, targetProject, targetProjectDirectory, typeSymbol);
 
         await DetectExistingTypeConflictAsync(
             workspaceId, _compilationCache, solution, namespaceName, resolvedInterfaceName, ct).ConfigureAwait(false);
@@ -340,7 +339,19 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         return new RefactoringPreviewDto(token, description, changes, null);
     }
 
-    private static string ResolvePreferredInterfaceSubdirectory(Solution solution, Project targetProject, string projectDirectory)
+    private static (string Directory, string Namespace) ResolveInterfaceDestination(
+        Project sourceProject, Project targetProject, string projectDirectory, INamedTypeSymbol sourceType)
+    {
+        if (sourceProject.Id == targetProject.Id)
+        {
+            return (projectDirectory, GetContainingNamespace(sourceType));
+        }
+
+        var directory = ResolvePreferredInterfaceSubdirectory(targetProject, projectDirectory);
+        return (directory, DeriveTargetNamespaceForPath(targetProject, projectDirectory, directory));
+    }
+
+    private static string ResolvePreferredInterfaceSubdirectory(Project targetProject, string projectDirectory)
     {
         var conventional = new[] { "Interfaces", "Abstractions", "Contracts" };
         foreach (var dir in conventional)
@@ -433,7 +444,13 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             .Select(segment => segment.Replace(' ', '_'))
             .ToArray();
 
-        return segments.Length == 0 ? baseNamespace : $"{baseNamespace}.{string.Join('.', segments)}";
+        if (segments.Length == 0)
+        {
+            return baseNamespace;
+        }
+
+        var suffix = string.Join('.', segments);
+        return string.IsNullOrWhiteSpace(baseNamespace) ? suffix : $"{baseNamespace}.{suffix}";
     }
 
     private static async Task DetectExistingTypeConflictAsync(
@@ -633,9 +650,8 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         var targetProjectDirectory = Path.GetDirectoryName(targetProject.FilePath)
             ?? throw new InvalidOperationException("Target project must have a file path on disk.");
         var isCrossProject = targetProject.Id != sourceDocument.Project.Id;
-        var namespaceName = isCrossProject
-            ? DeriveTargetNamespace(targetProject)
-            : GetContainingNamespace(typeSymbol);
+        var (interfaceDirectory, namespaceName) = ResolveInterfaceDestination(
+            sourceDocument.Project, targetProject, targetProjectDirectory, typeSymbol);
 
         await DetectExistingTypeConflictAsync(
             workspaceId, compilationCache, solution, namespaceName, interfaceName, ct).ConfigureAwait(false);
@@ -651,10 +667,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         var interfaceRoot = CreateInterfaceCompilationUnit(sourceRoot, typeDeclaration, typeSymbol, interfaceName, namespaceName, isCrossProject,
             ReceivingNamespaceFactory.RequireCSharpOptions(targetProject.ParseOptions), projector,
             destinationGlobalPlainNamespaces, sourceSemanticModel, ct);
-        var interfaceFileDirectory = isCrossProject
-            ? ResolvePreferredInterfaceSubdirectory(solution, targetProject, targetProjectDirectory)
-            : targetProjectDirectory;
-        var interfaceFilePath = Path.Combine(interfaceFileDirectory, interfaceName + ".cs");
+        var interfaceFilePath = Path.Combine(interfaceDirectory, interfaceName + ".cs");
         if (File.Exists(interfaceFilePath))
         {
             throw new PublicInvalidOperationException($"Target interface file already exists: {DescribeProjectRelativePath(targetProjectDirectory, interfaceFilePath)}");

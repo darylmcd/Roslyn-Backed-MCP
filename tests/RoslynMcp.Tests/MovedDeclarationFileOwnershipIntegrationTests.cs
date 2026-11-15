@@ -7,6 +7,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Services;
 using static RoslynMcp.Tests.TestInfrastructure.InterfaceExtractionTestContext;
@@ -21,6 +22,65 @@ public sealed class MovedDeclarationFileOwnershipIntegrationTests : IsolatedWork
 
     [ClassCleanup]
     public static void ClassCleanup() => DisposeServices();
+
+    [TestMethod]
+    [DataRow("cross-project")]
+    [DataRow("same-file")]
+    [DataRow("new-file")]
+    public async Task MovePreview_RefusesNestedTypesWithoutChangingTheirContainer(string route)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        AddProjectToCopiedSolution(workspace.RootPath, "Contracts", "net10.0");
+        var sourcePath = workspace.GetPath("SampleLib", "Container.cs");
+        var targetPath = route == "cross-project"
+            ? workspace.GetPath("Contracts", "Container.cs")
+            : workspace.GetPath("SampleLib", "Moved.cs");
+        const string nestedType = "PrivateNestedMoveTarget";
+        const string source = """
+            namespace Original;
+            public class Container
+            {
+                private class PrivateNestedMoveTarget { }
+                public object Create() => new PrivateNestedMoveTarget();
+            }
+            """;
+        await File.WriteAllTextAsync(sourcePath, source);
+        await workspace.LoadAsync();
+        var workspaceId = workspace.WorkspaceId;
+        var originalSolution = WorkspaceManager.GetCurrentSolution(workspaceId);
+        var originalVersion = WorkspaceManager.GetCurrentVersion(workspaceId);
+        var sourceProject = workspace.GetPath("SampleLib", "SampleLib.csproj");
+        var targetProject = workspace.GetPath("Contracts", "Contracts.csproj");
+        var sourceProjectBytes = await File.ReadAllBytesAsync(sourceProject);
+        var targetProjectBytes = await File.ReadAllBytesAsync(targetProject);
+        var relocation = new NamespaceRelocationService(
+            WorkspaceManager, PreviewStore, NullLogger<NamespaceRelocationService>.Instance);
+
+        var exception = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
+            route == "cross-project"
+                ? CrossProjectRefactoringTools.PreviewMoveTypeToProject(
+                    WorkspaceExecutionGate, CrossProjectRefactoringService, workspaceId,
+                    sourcePath, nestedType, "Contracts")
+                : TypeMoveTools.PreviewChangeTypeNamespace(
+                    WorkspaceExecutionGate, relocation, workspaceId,
+                    nestedType, "Original", "Destination", route == "new-file" ? targetPath : null));
+
+        var tool = route == "cross-project" ? "move_type_to_project_preview" : "change_type_namespace_preview";
+        var json = ToolErrorHandler.ClassifyAndFormat(exception, tool);
+        using var envelope = JsonDocument.Parse(json);
+        Assert.AreEqual("InvalidOperation", envelope.RootElement.GetProperty("category").GetString());
+        Assert.AreEqual("InvalidOperationException", envelope.RootElement.GetProperty("exceptionType").GetString());
+        Assert.AreEqual("Moving a nested type would change its containing type. Select a top-level type.",
+            envelope.RootElement.GetProperty("message").GetString());
+        Assert.IsFalse(envelope.RootElement.TryGetProperty("previewToken", out _));
+        Assert.IsFalse(json.Contains(nestedType, StringComparison.Ordinal));
+        Assert.AreSame(originalSolution, WorkspaceManager.GetCurrentSolution(workspaceId));
+        Assert.AreEqual(originalVersion, WorkspaceManager.GetCurrentVersion(workspaceId));
+        Assert.AreEqual(source, await File.ReadAllTextAsync(sourcePath));
+        CollectionAssert.AreEqual(sourceProjectBytes, await File.ReadAllBytesAsync(sourceProject));
+        CollectionAssert.AreEqual(targetProjectBytes, await File.ReadAllBytesAsync(targetProject));
+        Assert.IsFalse(File.Exists(targetPath));
+    }
 
     public static IEnumerable<object[]> OwnershipCases()
     {

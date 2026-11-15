@@ -11,10 +11,10 @@
 
 ## Acceptance
 
-- [ ] Probe every InvalidOperationException construction in the defining service and its same-file rewriter. Classify caller corrections versus internal invariants; publish caller corrections with the existing sanctioned type and safe, path/name-free guidance.
-- [ ] Preserve exact error category, structured blocking-dependency contract and internal detail ownership. Do not mark raw interpolated caller names, paths or dependency summaries public.
-- [ ] Red-first service-to-wire tests cover partial declarations, missing source/member selection and external-consumer refusal; malicious sentinels never appear in the complete envelope. Internal semantic failures remain generic.
-- [ ] Pin verified ratchet baseline decreases after conversion; never expand the baseline. Keep existing compilation safety refusals effective.
+- [ ] Reopen at the next operator-approved major release. Probe each InvalidOperationException construction in the service and its same-file rewriter. Publish only actionable caller corrections with the sanctioned public exception type and safe, path-free guidance.
+- [ ] Preserve the exact error category, structured `blockingDependencies` field and its member names, and internal detail ownership. Keep raw caller names, paths and dependency summaries out of the public `message`.
+- [ ] Reproduce and verify the refusal-message migration on the raw wire in both supported protocol eras. Cover partial declarations, missing source/member selection and external-consumer refusals. Assert the full envelope exposes caller member names only through intended structured fields. Keep internal semantic failures generic.
+- [ ] Add the ADR and migration note for the message change. Pin verified construction-ratchet decreases and retain existing compilation safety refusals.
 
 ## Evidence
 
@@ -34,3 +34,7 @@ Operator decision 2026-11-09: defer the stable extract_type_preview public-messa
 2026-11-11 5.x screen at 52f2c418: the live catalog marks extract_type_preview stable. ToolErrorHandler.cs:667 still passes BlockingDependencies as structured caller data. Keep member names in blockingDependencies; the next approved major trigger is the public-message migration, with ADR, release note and both raw protocol eras.
 
 5.x screen at a12412bb: extract_type_preview is stable, and ToolErrorHandler.cs still emits BlockingDependencies as the structured blockingDependencies field. Keep member names there. Reopen refusal-message publication only at the next major with an ADR, migration note and both supported raw protocol eras.
+
+2026-11-14 5.x screen at ddf4cc6d. Stable extract_type_preview still emits blockingDependencies through ToolErrorHandler.cs:665–667. Preserve structured member names. Reopen public refusal-message changes at the next operator-approved major with ADR, migration note and both raw protocol eras.
+
+2026-11-14 operator constraint reaffirmed on 5.1.1: hold the published extract_type_preview refusal-message change until the next operator-approved major with ADR, migration note and both raw eras. Preserve blockingDependencies member names as structured caller data. The retention is 5.x contract-preserving.

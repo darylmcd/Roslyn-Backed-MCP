@@ -7,9 +7,8 @@ namespace RoslynMcp.Roslyn.Helpers;
 /// <summary>
 /// Single definition of what occupies a C# namespace and of when a source file still has content.
 /// "Type-like" means <see cref="BaseTypeDeclarationSyntax"/> (class, struct, interface, record,
-/// enum) or <see cref="DelegateDeclarationSyntax"/>: both introduce a named type into their
-/// enclosing namespace, but only the former derive from <see cref="TypeDeclarationSyntax"/>, so
-/// <c>OfType&lt;TypeDeclarationSyntax&gt;()</c> silently drops enums and delegates.
+/// enum) or <see cref="DelegateDeclarationSyntax"/>. All introduce a named type, while
+/// <c>OfType&lt;TypeDeclarationSyntax&gt;()</c> excludes enums and delegates.
 /// </summary>
 /// <remarks>
 /// <c>NamespaceDependencyService</c> counts nested type-like declarations as well; it has
@@ -32,6 +31,21 @@ internal static class NamespaceMemberClassifier
         DelegateDeclarationSyntax @delegate => @delegate.Identifier.ValueText,
         _ => null,
     };
+
+    /// <summary>Finds a namespace by its successive names within the supplied namespace tree.</summary>
+    internal static INamespaceSymbol? FindNamespaceSymbol(INamespaceSymbol global, IEnumerable<string> segments)
+    {
+        var current = global;
+        foreach (var segment in segments)
+        {
+            var child = current.GetNamespaceMembers().FirstOrDefault(member =>
+                string.Equals(member.Name, segment, StringComparison.Ordinal));
+            if (child is null)
+                return null;
+            current = child;
+        }
+        return current;
+    }
 
     /// <summary>
     /// Fully-qualified source spelling of the namespace containing <paramref name="node"/>,

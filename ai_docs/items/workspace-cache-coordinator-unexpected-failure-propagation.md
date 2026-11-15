@@ -4,9 +4,9 @@
 
 ## Anchors
 
-- `src/RoslynMcp.Roslyn/Services/WorkspaceCacheCoordinator.cs:37`
-- `src/RoslynMcp.Roslyn/Services/WorkspaceCacheCoordinator.cs:74`
-- `src/RoslynMcp.Roslyn/Services/WorkspaceCacheCoordinator.cs:106`
+- `src/RoslynMcp.Roslyn/Services/WorkspaceCacheCoordinator.cs:41`
+- `src/RoslynMcp.Roslyn/Services/WorkspaceCacheCoordinator.cs:79`
+- `src/RoslynMcp.Roslyn/Services/WorkspaceCacheCoordinator.cs:110`
 
 ## Acceptance
 
@@ -18,3 +18,9 @@
 
 - Source audit at main `fc5bb88676214a942daa727c7ca88ac8dd34b61c`. Independent cold review identified TryProbeAsync, ResolveAndWriteAsync and WriteFreshEntryAsync catching every non-cancellation exception and returning null. Current source retains all three boundaries. This is distinct from graph framing, retention and proposal-only path authorization.
 - Source: closed PR #1806 head `d333c2e9`, kept by GitHub as `refs/pull/1806/head` (archive branch and tag deleted 2026-10-27). No build/test ran in this content audit; historical receipts are not current runtime qualification.
+
+## Notes
+
+5.x screen at d9e2b3ff. TryProbeAsync, ResolveAndWriteAsync and WriteFreshEntryAsync all catch unexpected non-cancellation errors. WorkspaceManager calls the pre-open probe and both post-load writers as part of stable workspace_load/reload. A complete propagation fix can turn a successful cold load into a tool failure. Select after qualifying the stable failure and recovery contract, or in the next approved major.
+
+Rechecked 5.1.1 base 9e7a9439. TryProbeAsync and both cache-write paths still return null on unexpected non-cancellation exceptions. WorkspaceManager.cs:1516 and :1579–1585 call them before publishing the stable workspace snapshot. Require raw evidence for initial load and reload under both supported protocol eras before concluding propagation fits 5.x. If the complete fix changes supported cold-load success/recovery into an error, reopen at the next operator-approved major with ADR, migration note and dual-era regression coverage.

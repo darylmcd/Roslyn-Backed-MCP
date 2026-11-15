@@ -20,3 +20,7 @@
 
 - regression_shape: the class's mean hosted case seconds above a stated ceiling is visible in the collector report.
 - Siblings: `test-heavy-integration-class-cost` (InterfaceBaseTypeInsertionIntegrationTests, 1013s), `test-heavy-class-cost-fork-native-admission`, `test-heavy-class-cost-moved-declaration-ownership`, `test-heavy-class-cost-crossproject-receiving-namespace`; `ci-shard-duration-profile-hosted` consumes the result.
+
+## Notes
+
+Ubuntu 26.04 evidence from the first refreshed profile PR 2097 / run 43617927737: ForkNativeAdmissionTests consumed 871.21 cumulative TRX case seconds in Linux 2. The leg took 29:39 despite near-equal projected weights. Isolate restore, build and native-probe costs using repeatable first-attempt evidence before choosing an optimization. See ci-ubuntu-duration-profile-refresh-2604.

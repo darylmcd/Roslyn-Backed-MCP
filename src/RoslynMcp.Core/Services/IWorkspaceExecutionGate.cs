@@ -67,13 +67,12 @@ public interface IWorkspaceExecutionGate
     Task<T> RunLoadGateAsync<T>(Func<CancellationToken, Task<T>> action, CancellationToken ct);
 
     /// <summary>
-    /// Remove and dispose the gate for a workspace that is being closed.
+    /// Remove the registry entry for a workspace that has been closed.
     /// </summary>
     /// <remarks>
-    /// The caller must already hold the per-workspace write lock so that no in-flight reader is
-    /// operating against the workspace when its lock entry is dropped from the registry.
-    /// <c>workspace_close</c> in <c>WorkspaceTools</c> handles the double-acquire (load gate →
-    /// per-workspace write lock → close → RemoveGate).
+    /// Close the session under its per-workspace write lock before dropping the registry entry.
+    /// Callers queued on the old lock retain it and recheck that the workspace still exists
+    /// before touching the session.
     /// </remarks>
     void RemoveGate(string workspaceId);
 }

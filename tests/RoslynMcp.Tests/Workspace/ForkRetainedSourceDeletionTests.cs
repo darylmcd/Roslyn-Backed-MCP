@@ -386,7 +386,7 @@ public sealed class ForkRetainedSourceDeletionTests
                 services.AddSingleton<IWorkspaceManager>(sp => WorkspaceManager.CreateProviderOwned(
                     sp.GetRequiredService<ILogger<WorkspaceManager>>(), sp.GetRequiredService<IPreviewStore>(),
                     sp.GetRequiredService<IFileWatcherService>(), sp.GetRequiredService<WorkspaceManagerOptions>(), null,
-                    sp.GetRequiredService<Lazy<IWorkspaceExecutionGate>>()));
+                    sp.GetRequiredService<Lazy<IWorkspaceExecutionGate>>(), TimeProvider.System));
             services.AddSingleton<IWorkspaceExecutionGate>(sp => new PausedGate(new WorkspaceExecutionGate(
                 new ExecutionGateOptions(), sp.GetRequiredService<IWorkspaceManager>())));
             services.AddSingleton<ForkStoragePathValidator>(async (id, path, ct) =>

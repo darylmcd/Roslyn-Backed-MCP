@@ -45,7 +45,7 @@ internal sealed class DocumentSetPersistenceService
         {
             // PersistCoreAsync writes document bytes before TryApplyChanges. Reject linked
             // document paths before the first snapshot or write, including imported files.
-            WorkspaceManager.EnsureChangedDocumentPathsArePhysical(currentSolution, modifiedSolution);
+            WorkspacePhysicalPathGuard.EnsureChangedDocumentPathsArePhysical(currentSolution, modifiedSolution);
             persistenceState = await CreatePersistenceStateAsync(
                 currentSolution,
                 modifiedSolution,

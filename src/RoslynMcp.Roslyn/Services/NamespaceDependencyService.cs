@@ -48,36 +48,9 @@ public sealed class NamespaceDependencyService : INamespaceDependencyService
             {
                 if (ct.IsCancellationRequested) break;
 
-                var root = await tree.GetRootAsync(ct).ConfigureAwait(false);
-                var semanticModel = compilation.GetSemanticModel(tree);
-
-                // Get the file's namespace
-                var nsDecl = root.DescendantNodes().OfType<BaseNamespaceDeclarationSyntax>().FirstOrDefault();
-                var fileNamespace = nsDecl is not null
-                    ? semanticModel.GetDeclaredSymbol(nsDecl, ct)?.ToDisplayString()
-                    : null;
-
-                if (fileNamespace is null) continue;
-
-                // Count types in this namespace (classes, records, structs, interfaces, enums, delegates)
-                var typeCount = root.DescendantNodes().OfType<BaseTypeDeclarationSyntax>().Count()
-                    + root.DescendantNodes().OfType<DelegateDeclarationSyntax>().Count();
-                if (namespaceCounts.TryGetValue(fileNamespace, out var existing))
-                    namespaceCounts[fileNamespace] = (existing.Count + typeCount, project.Name);
-                else
-                    namespaceCounts[fileNamespace] = (typeCount, project.Name);
-
-                // Track using directives as edges
-                var usingDirectives = root.DescendantNodes().OfType<UsingDirectiveSyntax>()
-                    .Where(u => u.GlobalKeyword.IsKind(SyntaxKind.None) && u.StaticKeyword.IsKind(SyntaxKind.None));
-
-                foreach (var usingDir in usingDirectives)
+                if (await tree.GetRootAsync(ct).ConfigureAwait(false) is CompilationUnitSyntax root)
                 {
-                    var usedNs = usingDir.Name?.ToString();
-                    if (usedNs is null || usedNs == fileNamespace) continue;
-
-                    var key = (fileNamespace, usedNs);
-                    edges[key] = edges.TryGetValue(key, out var count) ? count + 1 : 1;
+                    RecordTree(root, compilation.GetSemanticModel(tree), project.Name, namespaceCounts, edges, ct);
                 }
             }
         }
@@ -102,12 +75,7 @@ public sealed class NamespaceDependencyService : INamespaceDependencyService
         // Detect circular dependencies using DFS
         var cycles = DetectCycles(edgeList);
 
-        // TotalNamespacesScanned counts only namespaces that were actually declared in the walk
-        // (where namespaceCounts[ns].Count > 0 OR the namespace key existed before the edge-fill
-        // step). Edge-only nodes (Count == 0 with null project) are referenced-but-not-declared
-        // and should not inflate the scanned figure. Using the post-edge-fill keys minus the
-        // edge-only additions is equivalent to "namespaces that produced at least one type
-        // declaration during the walk", which is the metric callers want.
+        // Declarations include empty namespace blocks and exclude nodes added only as edge endpoints.
         var declaredNamespaceCount = namespaceCounts.Count(kvp => kvp.Value.Project is not null);
 
         return new NamespaceDependencyGraphDto(
@@ -116,6 +84,86 @@ public sealed class NamespaceDependencyService : INamespaceDependencyService
             cycles,
             AnalyzedProjectCount: analyzedProjectCount,
             TotalNamespacesScanned: declaredNamespaceCount);
+    }
+
+    private static void RecordTree(
+        CompilationUnitSyntax root,
+        SemanticModel semanticModel,
+        string projectName,
+        Dictionary<string, (int Count, string? Project)> namespaceCounts,
+        Dictionary<(string From, string To), int> edges,
+        CancellationToken ct)
+    {
+        var names = new Dictionary<BaseNamespaceDeclarationSyntax, string>();
+        foreach (var declaration in root.DescendantNodes().OfType<BaseNamespaceDeclarationSyntax>())
+        {
+            if (semanticModel.GetDeclaredSymbol(declaration, ct) is INamespaceSymbol symbol
+                && HasNamedNamespaceChain(symbol))
+            {
+                var name = symbol.ToDisplayString();
+                names.Add(declaration, name);
+                namespaceCounts[name] = (namespaceCounts.GetValueOrDefault(name).Count, projectName);
+            }
+        }
+
+        if (names.Count == 0)
+            return;
+
+        // A compilation-unit import applies to every named namespace in the file. Reopened
+        // declarations of the same namespace share that scope and must count the import once.
+        var fileImportOwners = names.Values.Distinct(StringComparer.Ordinal).ToArray();
+        foreach (var node in root.DescendantNodes())
+        {
+            if (NamespaceMemberClassifier.IsTypeLike(node)
+                && node.FirstAncestorOrSelf<BaseNamespaceDeclarationSyntax>() is { } owner
+                && names.TryGetValue(owner, out var typeNamespace))
+            {
+                namespaceCounts[typeNamespace] = (namespaceCounts[typeNamespace].Count + 1, projectName);
+            }
+
+            if (node is not UsingDirectiveSyntax import
+                || !import.GlobalKeyword.IsKind(SyntaxKind.None)
+                || !import.StaticKeyword.IsKind(SyntaxKind.None)
+                || import.Name is not { } importName)
+            {
+                continue;
+            }
+
+            var target = importName.ToString();
+            if (import.Parent is CompilationUnitSyntax)
+            {
+                foreach (var ownerName in fileImportOwners)
+                {
+                    RecordImport(edges, ownerName, target);
+                }
+            }
+            else if (import.Parent is BaseNamespaceDeclarationSyntax scope && names.TryGetValue(scope, out var scopeName))
+            {
+                RecordImport(edges, scopeName, target);
+            }
+        }
+    }
+
+    private static bool HasNamedNamespaceChain(INamespaceSymbol symbol)
+    {
+        // Error recovery can bind a missing name to an empty segment, including an
+        // ancestor of an otherwise named namespace. Neither is a declared graph owner.
+        for (INamespaceSymbol? scope = symbol; scope is { IsGlobalNamespace: false }; scope = scope.ContainingNamespace)
+        {
+            if (scope.Name.Length == 0)
+                return false;
+        }
+
+        return true;
+    }
+
+    private static void RecordImport(Dictionary<(string From, string To), int> edges, string owner, string target)
+    {
+        if (owner != target)
+        {
+            var edge = (owner, target);
+            edges[edge] = edges.GetValueOrDefault(edge) + 1;
+        }
     }
 
     private static IReadOnlyList<CircularDependencyDto> DetectCycles(IReadOnlyList<NamespaceEdgeDto> edges)

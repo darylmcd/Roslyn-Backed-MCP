@@ -446,7 +446,7 @@ public sealed class UndoService : IUndoService, IDisposable
         {
             foreach (var file in snapshot.FileSnapshots!)
             {
-                WorkspaceManager.EnsurePhysicalPath(file.FilePath);
+                WorkspacePhysicalPathGuard.EnsurePhysicalPath(file.FilePath);
             }
         }
         catch (InvalidOperationException)
@@ -814,7 +814,7 @@ public sealed class UndoService : IUndoService, IDisposable
     {
         foreach (var (filePath, _, _) in diskRestores)
         {
-            WorkspaceManager.EnsurePhysicalPath(filePath);
+            WorkspacePhysicalPathGuard.EnsurePhysicalPath(filePath);
         }
 
         var workspaceApplied = workspace.TryApplyChanges(workspaceId, targetSolution);

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -8,8 +9,7 @@ namespace RoslynMcp.Tests;
 /// <see cref="FileSystemWatcher"/> owns one inotify instance and the default per-user cap is 128, so a
 /// workspace must cost one tree watcher plus shared ancestor watchers rather than a dozen private ones.
 /// The behavior tests run on every platform because the watcher topology is platform independent.
-/// The inotify descriptor count is process-wide, so the class runs exclusively: concurrent classes that hold
-/// their own watchers would otherwise move the baseline.
+/// The inotify footprint test measures descriptors inside a dedicated child process.
 /// </summary>
 [TestClass]
 [DoNotParallelize]
@@ -18,51 +18,29 @@ public sealed class FileWatcherSharedWatcherTests
     private static readonly TimeSpan SignalTimeout = TimeSpan.FromSeconds(30);
 
     [TestMethod]
-    public void Watch_ManyWorkspacesUnderOneParent_UsesSharedAncestorInstances()
+    public async Task Watch_ManyWorkspacesUnderOneParent_UsesSharedAncestorInstances()
     {
         if (!OperatingSystem.IsLinux())
         {
             Assert.Inconclusive("Counts Linux inotify descriptors.");
         }
 
-        const int batch = 10;
-        var parent = NewTempRoot();
-        using var watcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance);
-        var ids = new List<string>();
-        void WatchBatch()
-        {
-            for (var i = 0; i < batch; i++)
-            {
-                var root = Path.Combine(parent, $"ws{ids.Count}");
-                Directory.CreateDirectory(root);
-                var id = Guid.NewGuid().ToString("N");
-                ids.Add(id);
-                watcher.Watch(id, Path.Combine(root, "Sample.slnx"));
-            }
-        }
-
+        var root = Path.Combine(TestTempRoot.Current, $"inotify-footprint-{Guid.NewGuid():N}");
+        var probe = Path.Combine(AppContext.BaseDirectory, "InotifyWatcherProbe.dll");
         try
         {
-            // Finalize watchers leaked by earlier tests so they cannot close descriptors mid-measurement.
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
-            var baseline = CountInotifyInstances();
-            WatchBatch();
-            var afterFirst = CountInotifyInstances();
-            WatchBatch();
-            var afterSecond = CountInotifyInstances();
-
-            // The ancestor watchers are shared, so every further workspace costs exactly one instance.
-            Assert.AreEqual(batch, afterSecond - afterFirst,
-                $"marginal cost per workspace must be 1 inotify instance (baseline {baseline}, first {afterFirst}, second {afterSecond})");
-
-            foreach (var id in ids) watcher.Unwatch(id);
-            Assert.AreEqual(baseline, CountInotifyInstances(), "Unwatch must release every inotify instance.");
+            var result = await PwshScriptRunner.RunExecutableAsync(
+                "dotnet", [probe, root], environment: null,
+                timeout: SignalTimeout + TimeSpan.FromSeconds(15),
+                description: "Linux inotify watcher footprint probe");
+            Console.WriteLine(result.AllOutput);
+            Assert.AreEqual(0, result.ExitCode, result.AllOutput);
+            StringAssert.Contains(result.StdOut, "marginal=10 final=1", result.AllOutput);
+            StringAssert.Contains(result.StdOut, "remainingOwned=0 emptyBaselineRetained=true", result.AllOutput);
         }
         finally
         {
-            foreach (var id in ids) watcher.Unwatch(id);
-            Directory.Delete(parent, recursive: true);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(root);
         }
     }
 
@@ -202,23 +180,5 @@ public sealed class FileWatcherSharedWatcherTests
         var path = Path.Combine(Path.GetTempPath(), $"roslyn-shared-watch-{Guid.NewGuid():N}");
         Directory.CreateDirectory(path);
         return path;
-    }
-
-    private static int CountInotifyInstances()
-    {
-        var count = 0;
-        foreach (var descriptor in Directory.EnumerateFileSystemEntries("/proc/self/fd"))
-        {
-            try
-            {
-                if (new FileInfo(descriptor).LinkTarget?.Contains("inotify", StringComparison.Ordinal) == true) count++;
-            }
-            catch (IOException)
-            {
-                // The descriptor closed while enumerating.
-            }
-        }
-
-        return count;
     }
 }

@@ -158,7 +158,7 @@ public sealed class EditService : IEditService
         {
             var targetPath = Path.GetFullPath(document.FilePath!);
             // Verification can run between target resolution and undo capture.
-            WorkspaceManager.EnsurePhysicalPath(targetPath);
+            WorkspacePhysicalPathGuard.EnsurePhysicalPath(targetPath);
             fileSnapshots.Add(await FileSnapshotCapture.CaptureAsync(
                 targetPath,
                 () => sourceText.ToString(),
@@ -305,10 +305,12 @@ public sealed class EditService : IEditService
         }
 
         var initialSolution = _workspace.GetCurrentSolution(workspaceId);
-        var (accumulator, changes) =
+        var (accumulator, edits) =
             await SimulatePreviewAsync(initialSolution, fileEdits, ct, skipSyntaxCheck).ConfigureAwait(false);
 
-        var description = $"Preview multi-file edit across {changes.Count} file(s)";
+        var changes = edits.Select(edit => new FileChangeDto(edit.Path,
+            DiffGenerator.GenerateUnifiedDiff(edit.Original.ToString(), edit.Patched.ToString(), edit.Path))).ToArray();
+        var description = $"Preview multi-file edit across {edits.Count} file(s)";
         // preview-token-apply-route-provenance: tag the token with its producer family so
         // preview_multi_file_edit_apply can refuse a token minted elsewhere before mutating.
         // diffTruncated: false reproduces exactly what the untagged 4-argument overload forwarded.
@@ -327,7 +329,7 @@ public sealed class EditService : IEditService
     /// <see cref="PreviewMultiFileTextEditsOnSolutionAsync"/>, which previously carried
     /// line-for-line duplicates of it (<c>edit-preview-validation-decomposition</c>). Pre-validates
     /// one edit group per resolved document against the input <see cref="Solution"/>, then
-    /// accumulates each distinct file's result and computes its diff from the input text. Touches neither
+    /// accumulates each distinct file's result with its original text. Touches neither
     /// the workspace, the disk, nor <see cref="Contracts.IPreviewStore"/> — the two callers differ
     /// only in how they package this result.
     /// </summary>
@@ -335,7 +337,7 @@ public sealed class EditService : IEditService
     /// Pre-validation runs to completion BEFORE any simulation so a malformed edit aborts the whole
     /// preview and the token-issuing caller never leaves a dangling token behind.
     /// </remarks>
-    private static async Task<(Solution Accumulator, List<FileChangeDto> Changes)> SimulatePreviewAsync(
+    private static async Task<(Solution Accumulator, List<SimulatedFileEdit> Edits)> SimulatePreviewAsync(
         Solution inputSolution,
         IReadOnlyList<FileEditsDto> fileEdits,
         CancellationToken ct,
@@ -344,7 +346,7 @@ public sealed class EditService : IEditService
         var perFile = await ResolveBatchSnapshotsAsync(inputSolution, fileEdits, ct).ConfigureAwait(false);
 
         var accumulator = inputSolution;
-        var changes = new List<FileChangeDto>();
+        var edits = new List<SimulatedFileEdit>();
         foreach (var (document, sourceText, fileEdit) in perFile)
         {
             var filePath = fileEdit.FilePath;
@@ -363,12 +365,13 @@ public sealed class EditService : IEditService
 
             accumulator = accumulator.WithDocumentText(document.Id, merged);
 
-            var unified = DiffGenerator.GenerateUnifiedDiff(sourceText.ToString(), merged.ToString(), filePath);
-            changes.Add(new FileChangeDto(filePath, unified));
+            edits.Add(new SimulatedFileEdit(filePath, sourceText, merged));
         }
 
-        return (accumulator, changes);
+        return (accumulator, edits);
     }
+
+    internal sealed record SimulatedFileEdit(string Path, SourceText Original, SourceText Patched);
 
     /// <summary>
     /// symbol-refactor-preview-auto-applies-without-explicit-apply-call: pure-functional
@@ -381,7 +384,7 @@ public sealed class EditService : IEditService
     /// auto-apply-each-step disk write that fired before the agent ever called
     /// <c>preview_multi_file_edit_apply</c>.
     /// </summary>
-    internal async Task<(Solution NewSolution, IReadOnlyList<FileChangeDto> Changes, string Description)>
+    internal async Task<(Solution NewSolution, IReadOnlyList<SimulatedFileEdit> Edits, string Description)>
         PreviewMultiFileTextEditsOnSolutionAsync(
             Solution inputSolution,
             IReadOnlyList<FileEditsDto> fileEdits,
@@ -393,11 +396,11 @@ public sealed class EditService : IEditService
             throw new InvalidOperationException("preview_multi_file_edit requires at least one file edit.");
         }
 
-        var (accumulator, changes) =
+        var (accumulator, edits) =
             await SimulatePreviewAsync(inputSolution, fileEdits, ct, skipSyntaxCheck).ConfigureAwait(false);
 
-        var description = $"Preview multi-file edit across {changes.Count} file(s)";
-        return (accumulator, changes, description);
+        var description = $"Preview multi-file edit across {edits.Count} file(s)";
+        return (accumulator, edits, description);
     }
 
     /// <summary>

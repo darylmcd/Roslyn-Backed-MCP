@@ -35,21 +35,37 @@ public static class ServiceCollectionExtensions
             sp.GetRequiredService<IFileWatcherService>(),
             sp.GetService<WorkspaceManagerOptions>(),
             sp.GetService<IWorkspaceCacheStore>(),
-            sp.GetService<Lazy<IWorkspaceExecutionGate>>()));
+            sp.GetService<Lazy<IWorkspaceExecutionGate>>(),
+            sp.GetService<TimeProvider>()));
         services.AddSingleton<ICompilationCache, CompilationCache>();
         services.AddSingleton<IWorkspaceExecutionGate>(sp =>
         {
             var opts = sp.GetService<ExecutionGateOptions>() ?? new ExecutionGateOptions();
-            return new WorkspaceExecutionGate(opts, sp.GetRequiredService<IWorkspaceManager>());
+            var manager = sp.GetRequiredService<IWorkspaceManager>();
+            var gate = new WorkspaceExecutionGate(opts, manager);
+            if (manager is WorkspaceManager concreteManager)
+                concreteManager.AttachProviderGate(gate);
+            return gate;
         });
         // lru-eviction-gate-layer-execution: WorkspaceManager needs a back-reference to the gate
         // so cap-pressure LRU eviction can run under the evicted workspace's per-workspace writer
         // lock. WorkspaceExecutionGate's constructor already takes IWorkspaceManager, so a direct
-        // injection would be a DI cycle. Registering the Lazy<T> breaks it: constructing the Lazy
-        // resolves nothing, and its factory only calls GetRequiredService on first .Value access —
-        // which happens during an eviction, long after both singletons are cached.
-        services.AddSingleton(sp =>
-            new Lazy<IWorkspaceExecutionGate>(() => sp.GetRequiredService<IWorkspaceExecutionGate>()));
+        // injection would be a DI cycle. A manager-first caller can resolve the gate through this
+        // lazy; once created, the attached gate stays available to admitted manager work without
+        // resolving services from a provider that may already have started disposing.
+        services.AddSingleton(sp => new Lazy<IWorkspaceExecutionGate>(() =>
+        {
+            try
+            {
+                return sp.GetRequiredService<IWorkspaceExecutionGate>();
+            }
+            catch (ObjectDisposedException exception) when (exception.ObjectName == nameof(IServiceProvider))
+            {
+                // The provider stops resolving services before disposing its captured dependencies.
+                WorkspaceExecutionGate.MarkShutdownRefusal(exception);
+                throw;
+            }
+        }));
         services.AddSingleton<IDotnetCommandRunner>(sp =>
             new DotnetCommandRunner(sp.GetRequiredService<ILogger<DotnetCommandRunner>>()));
         services.AddSingleton<IGatedCommandExecutor, GatedCommandExecutor>();

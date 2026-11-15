@@ -306,6 +306,12 @@
     "Count": 1
   },
   {
+    "Path": "src/RoslynMcp.Roslyn/Helpers/WorkspacePhysicalPathGuard.cs",
+    "Member": "M:RoslynMcp.Roslyn.Helpers.WorkspacePhysicalPathGuard.EnsurePhysicalPath(System.String)",
+    "Fingerprint": "BB2C1DAF464060B8F13479DFFA77B0D9554F0BF6B8FD54E179CADDA763C47BAE",
+    "Count": 1
+  },
+  {
     "Path": "src/RoslynMcp.Roslyn/ServiceCollectionExtensions.cs",
     "Member": "M:RoslynMcp.Roslyn.ServiceCollectionExtensions.AddRoslynServices(Microsoft.Extensions.DependencyInjection.IServiceCollection)",
     "Fingerprint": "A9AF8D9A6F46CEA95F93B4BCD8D43745D1247B0ADCCEC7EC3B25B46E2D3AAD5A",
@@ -1737,12 +1743,6 @@
     "Path": "src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs",
     "Member": "M:RoslynMcp.Roslyn.Services.WorkspaceManager.EnsureFreshForWritePreview(System.String)",
     "Fingerprint": "E74D02711C33972106581F0E099EB8D9A78A2320C9A13B2925D5BDE543E110A6",
-    "Count": 1
-  },
-  {
-    "Path": "src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs",
-    "Member": "M:RoslynMcp.Roslyn.Services.WorkspaceManager.EnsurePhysicalPath(System.String)",
-    "Fingerprint": "BB2C1DAF464060B8F13479DFFA77B0D9554F0BF6B8FD54E179CADDA763C47BAE",
     "Count": 1
   },
   {

@@ -93,16 +93,16 @@ public sealed class ExtractAndWireOrchestrator : IExtractAndWireOrchestrator
 
         modifiedSolution = await InterfaceLinkedDocumentReconciler.ReconcileAsync(currentSolution, modifiedSolution, generatedInterface.DocumentId.ProjectId, ct).ConfigureAwait(false);
         await InterfacePreviewCompilationGate.ValidateAsync(currentSolution, modifiedSolution, ct).ConfigureAwait(false);
-        var mutations = await BuildMutationsFromSolutionAsync(currentSolution, modifiedSolution, generatedInterface.DocumentId, ct).ConfigureAwait(false);
-        var changes = await SolutionDiffHelper.ComputeChangesAsync(currentSolution, modifiedSolution, ct).ConfigureAwait(false);
+        var edits = await BuildEditsFromSolutionAsync(currentSolution, modifiedSolution, generatedInterface.DocumentId, ct).ConfigureAwait(false);
+        var changes = CompositeSolutionMutationPlanner.RenderReview(edits, ct);
 
-        if (mutations.Count == 0)
+        if (edits.Count == 0)
         {
             throw new InvalidOperationException("The extract-and-wire orchestration did not produce any file changes.");
         }
 
         var description = $"Extract interface '{resolvedInterfaceName}' from '{typeName}' and wire consumers";
-        var token = _compositePreviewStore.Store(workspaceId, workspaceVersion, description, mutations);
+        var token = _compositePreviewStore.Store(workspaceId, workspaceVersion, description, edits.Select(edit => edit.Mutation).ToArray());
         return new RefactoringPreviewDto(token, description, changes, null);
     }
 
@@ -206,29 +206,30 @@ public sealed class ExtractAndWireOrchestrator : IExtractAndWireOrchestrator
         return lastDot >= 0 ? trimmed[(lastDot + 1)..] : trimmed;
     }
 
-    private static async Task<List<CompositeFileMutation>> BuildMutationsFromSolutionAsync(
+    private static async Task<List<CompositeSolutionMutationPlanner.FileEdit>> BuildEditsFromSolutionAsync(
         Solution currentSolution,
         Solution modifiedSolution,
         DocumentId generatedInterface,
         CancellationToken ct)
     {
-        var mutations = await CompositeSolutionMutationPlanner.BuildAsync(currentSolution, modifiedSolution, [generatedInterface], ct).ConfigureAwait(false);
+        var edits = await CompositeSolutionMutationPlanner.BuildAsync(currentSolution, modifiedSolution, [generatedInterface], ct).ConfigureAwait(false);
+        var paths = edits.ToDictionary(edit => Path.GetFullPath(edit.Mutation.FilePath), FileSystemPath.Comparer);
         foreach (var mutation in await ProjectReferenceMutationRenderer.PlanAsync(currentSolution, modifiedSolution, ct).ConfigureAwait(false))
         {
+            var path = CompositeSolutionMutationPlanner.ResolvePhysicalReviewPath(mutation.Path);
             var content = CsprojSemanticEquality.CreateSnapshot(mutation.Modified).Content;
-            var path = Path.GetFullPath(mutation.Path);
-            var existing = mutations.Find(candidate =>
-                FileSystemPath.Comparer.Equals(Path.GetFullPath(candidate.FilePath), path));
-            if (existing is null)
-            {
-                mutations.Add(new CompositeFileMutation(mutation.Path, content, CompositeFileMutationMode.Edit));
-            }
-            else if (existing.Mode != CompositeFileMutationMode.Edit || existing.UpdatedContent != content)
+            var originalContent = CsprojSemanticEquality.CreateSnapshot(mutation.Original).Content;
+            var edit = new CompositeSolutionMutationPlanner.FileEdit(
+                new CompositeFileMutation(path, content, CompositeFileMutationMode.Edit), originalContent);
+            if (paths.TryAdd(path, edit))
+                edits.Add(edit);
+            else if (paths[path].Mutation.Mode != CompositeFileMutationMode.Edit ||
+                paths[path].Mutation.UpdatedContent != content || paths[path].OriginalContent != originalContent)
             {
                 throw new PublicInvalidOperationException("The composite preview has divergent mutations for a project file.");
             }
         }
 
-        return mutations;
+        return edits;
     }
 }

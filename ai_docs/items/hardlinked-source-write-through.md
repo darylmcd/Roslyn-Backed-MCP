@@ -23,3 +23,7 @@
 ## Context
 
 - Separate from preview accumulator overwrite. Even an edit naming one path can write through to an unlisted hardlink.
+
+## Notes
+
+Composite review 2026-11-14: qualify unchanged document aliases when auditing hardlink identity across composite apply. The final delta validates and groups changed canonical paths.

@@ -90,14 +90,14 @@ public sealed class RestructureService : IRestructureService
     /// sees its predecessor's rewrites without the previous auto-apply-each-step disk write
     /// that fired before the agent ever called <c>apply_composite</c>.
     /// </summary>
-    internal async Task<(Solution NewSolution, IReadOnlyList<FileChangeDto> Changes, string Description)>
+    internal async Task<(Solution NewSolution, int MatchedDocuments, string Description)>
         PreviewRestructureOnSolutionAsync(
             Solution inputSolution, string pattern, string goal, RestructureScope scope, CancellationToken ct)
     {
         var (patternNode, goalNode, patternKind, goalPlaceholderNames) = ValidateAndParseArguments(pattern, goal);
 
         var accumulator = inputSolution;
-        var changes = new List<FileChangeDto>();
+        var matchedDocuments = 0;
         var totalMatches = 0;
 
         foreach (var project in SolutionScopeHelper.EnumerateProjects(inputSolution, scope))
@@ -113,27 +113,20 @@ public sealed class RestructureService : IRestructureService
 
                 if (rewriter.MatchCount == 0 || newRoot is null) continue;
                 totalMatches += rewriter.MatchCount;
-
-                var newText = newRoot.ToFullString();
-                var oldText = root.ToFullString();
-
-                accumulator = accumulator.WithDocumentText(document.Id, Microsoft.CodeAnalysis.Text.SourceText.From(newText));
-                var docPath = document.FilePath ?? document.Name;
-                changes.Add(new FileChangeDto(
-                    FilePath: docPath,
-                    UnifiedDiff: DiffGenerator.GenerateUnifiedDiff(oldText, newText, docPath)));
+                matchedDocuments++;
+                accumulator = accumulator.WithDocumentText(document.Id, Microsoft.CodeAnalysis.Text.SourceText.From(newRoot.ToFullString()));
             }
         }
 
-        if (changes.Count == 0)
+        if (matchedDocuments == 0)
         {
             throw new InvalidOperationException(
                 $"restructure_preview: no matches found for pattern in scope. " +
                 $"Verify pattern kind ({patternKind}), placeholder names, and scope filters.");
         }
 
-        var description = $"Restructure {totalMatches} match(es) across {changes.Count} file(s)";
-        return (accumulator, changes, description);
+        var description = $"Restructure {totalMatches} match(es) across {matchedDocuments} file(s)";
+        return (accumulator, matchedDocuments, description);
     }
 
     private static (SyntaxNode PatternNode, SyntaxNode GoalNode, string PatternKind,

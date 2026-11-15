@@ -36,22 +36,26 @@ public static class DiffGenerator
     /// Optional override for the per-file character cap. Pass <c>0</c> to disable truncation.
     /// </param>
     /// <returns>A string containing the unified diff, or an empty string if there are no differences.</returns>
-    public static string GenerateUnifiedDiff(string oldText, string newText, string filePath, int maxChars = DefaultMaxDiffChars)
+    public static string GenerateUnifiedDiff(string oldText, string newText, string filePath, int maxChars = DefaultMaxDiffChars) =>
+        RenderUnifiedDiff(oldText, newText, filePath, maxChars).Text;
+
+    internal static (string Text, bool IsTruncated) RenderUnifiedDiff(
+        string? oldText, string? newText, string filePath, int maxChars = DefaultMaxDiffChars)
     {
         if (oldText == newText)
         {
-            return string.Empty;
+            return (string.Empty, false);
         }
 
         var diffBuilder = new InlineDiffBuilder(new Differ());
         // DiffPlex's default ignores whitespace and its line splitter discards terminators.
         // Keep each line's terminator in its comparison token so every stored text change
         // (including CRLF/LF and the final newline) is represented by a changed line.
-        var diff = diffBuilder.BuildDiffModel(EncodeLines(oldText), EncodeLines(newText), ignoreWhitespace: false);
+        var diff = diffBuilder.BuildDiffModel(EncodeLines(oldText ?? string.Empty), EncodeLines(newText ?? string.Empty), ignoreWhitespace: false);
 
         var sb = new System.Text.StringBuilder();
-        sb.AppendLine($"--- a/{filePath}");
-        sb.AppendLine($"+++ b/{filePath}");
+        sb.AppendLine(oldText is null ? "--- /dev/null" : $"--- a/{filePath}");
+        sb.AppendLine(newText is null ? "+++ /dev/null" : $"+++ b/{filePath}");
 
         // DiffPlex represents an empty input with an empty pseudo-line. Encoded real lines
         // always carry a terminator marker, so omit only that pseudo-line.
@@ -117,12 +121,12 @@ public static class DiffGenerator
         }
 
         // Retain the no-change contract even if a diff builder yields only unchanged lines.
-        if (hunksWritten == 0 && !truncated)
+        if (hunksWritten == 0 && !truncated && oldText is not null && newText is not null)
         {
-            return string.Empty;
+            return (string.Empty, false);
         }
 
-        return sb.ToString();
+        return (sb.ToString(), truncated);
     }
 
     private static string EncodeLines(string text)

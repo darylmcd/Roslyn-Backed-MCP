@@ -106,6 +106,8 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
     /// </para>
     /// </summary>
     private readonly Lazy<IWorkspaceExecutionGate>? _evictionGate;
+    private IWorkspaceExecutionGate? _attachedProviderGate;
+    private bool ProviderOwned { get; init; }
     private readonly TimeProvider _timeProvider;
     private readonly ConcurrentDictionary<string, WorkspaceSession> _sessions = new(StringComparer.Ordinal);
     /// <summary>
@@ -259,7 +261,8 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
         IFileWatcherService fileWatcher,
         WorkspaceManagerOptions? options,
         IWorkspaceCacheStore? cacheStore,
-        Lazy<IWorkspaceExecutionGate>? evictionGate) =>
+        Lazy<IWorkspaceExecutionGate>? evictionGate,
+        TimeProvider? timeProvider) =>
         new(
             logger,
             previewStore,
@@ -268,7 +271,19 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
             cacheStore,
             sessionLoader: null,
             evictionGate: evictionGate,
-            ownsFileWatcher: false);
+            ownsFileWatcher: false,
+            timeProvider: timeProvider)
+        { ProviderOwned = true };
+
+    internal void AttachProviderGate(IWorkspaceExecutionGate gate)
+    {
+        // Directly constructed managers retain authority over their explicit lazy gate.
+        if (ProviderOwned)
+            Interlocked.CompareExchange(ref _attachedProviderGate, gate, null);
+    }
+
+    private IWorkspaceExecutionGate? ResolveEvictionGate() =>
+        Volatile.Read(ref _attachedProviderGate) ?? _evictionGate?.Value;
 
     /// <summary>
     /// Internal constructor used by <see cref="WorkspaceSessionLoaderFailureTests"/> to inject
@@ -611,7 +626,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
     /// </para>
     /// <para>
     /// Reentrancy is safe. In production <c>LoadAsync</c> already runs inside
-    /// <c>gate.RunLoadGateAsync</c>, whose <c>WithGlobalThrottle</c> depth counter lets this
+    /// <c>gate.RunLoadGateAsync</c>, whose ambient throttle admission lets this
     /// nested <c>RunWriteAsync</c> reuse the throttle slot instead of consuming a second one —
     /// the identical nesting <c>workspace_close</c> and <c>workspace_reload</c> already rely on.
     /// The writer lock taken here is for the EVICTED workspace, never the one being loaded, so it
@@ -626,13 +641,13 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
     private async Task EvictForCapAsync(WorkspaceSession candidate, CancellationToken ct)
     {
         var workspaceId = candidate.WorkspaceId;
-        if (_evictionGate is null)
+        var gate = ResolveEvictionGate();
+        if (gate is null)
         {
             CloseCore(workspaceId, recordEviction: true, refuseRetained: false, expected: candidate);
             return;
         }
 
-        var gate = _evictionGate.Value;
         var removed = false;
         try
         {
@@ -774,6 +789,12 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
         start.SetResult();
     }
 
+    internal Task? GetRootRetirementTaskForTesting(string workspaceId)
+    {
+        lock (_lifecycleSync)
+            return _rootRetirementTasks.GetValueOrDefault(workspaceId);
+    }
+
     private async Task RetireMissingWorkspaceAsync(string workspaceId, Task start)
     {
         await start.ConfigureAwait(false);
@@ -788,16 +809,17 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
                     return;
                 }
 
-                if (_evictionGate is null)
-                {
-                    if (CloseCore(workspaceId, recordEviction: false, refuseRetained: false, expected: null)) return;
-                    continue;
-                }
-
-                var gate = _evictionGate.Value;
+                IWorkspaceExecutionGate? gate;
                 var retired = false;
                 try
                 {
+                    gate = ResolveEvictionGate();
+                    if (gate is null)
+                    {
+                        if (CloseCore(workspaceId, recordEviction: false, refuseRetained: false, expected: null)) return;
+                        continue;
+                    }
+
                     await gate.RunWriteAsync(
                         workspaceId,
                         _ =>
@@ -811,6 +833,11 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
                 }
                 catch (KeyNotFoundException)
                 {
+                    return;
+                }
+                catch (ObjectDisposedException exception) when (WorkspaceExecutionGate.IsShutdownRefusal(exception))
+                {
+                    // Shutdown owns the remaining sessions. Do not retry or close outside the gate.
                     return;
                 }
                 catch (Exception exception) when (!_lifetimeCancellation.IsCancellationRequested)
@@ -1311,7 +1338,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
             throw new InvalidOperationException($"Workspace '{workspaceId}' is not loaded.");
         }
 
-        EnsureChangedDocumentPathsArePhysical(session.Workspace.CurrentSolution, newSolution);
+        WorkspacePhysicalPathGuard.EnsureChangedDocumentPathsArePhysical(session.Workspace.CurrentSolution, newSolution);
         var result = session.Workspace.TryApplyChanges(newSolution);
         if (result)
         {
@@ -1805,64 +1832,6 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable, IAsyncDis
         }
 
         return fullPath;
-    }
-
-    internal static void EnsureChangedDocumentPathsArePhysical(Solution current, Solution next)
-    {
-        foreach (var project in next.Projects)
-        {
-            EnsurePhysicalPath(project.FilePath);
-        }
-
-        var changes = next.GetChanges(current);
-        foreach (var project in changes.GetAddedProjects().Concat(changes.GetRemovedProjects()))
-        {
-            foreach (var document in project.Documents
-                         .Concat<TextDocument>(project.AdditionalDocuments)
-                         .Concat(project.AnalyzerConfigDocuments))
-            {
-                EnsurePhysicalPath(document.FilePath);
-            }
-        }
-
-        foreach (var change in changes.GetProjectChanges())
-        {
-            foreach (var id in change.GetChangedDocuments()
-                         .Concat(change.GetAddedDocuments())
-                         .Concat(change.GetRemovedDocuments()))
-            {
-                EnsurePhysicalPath(current.GetDocument(id)?.FilePath);
-                EnsurePhysicalPath(next.GetDocument(id)?.FilePath);
-            }
-
-            foreach (var id in change.GetChangedAdditionalDocuments()
-                         .Concat(change.GetAddedAdditionalDocuments())
-                         .Concat(change.GetRemovedAdditionalDocuments()))
-            {
-                EnsurePhysicalPath(current.GetAdditionalDocument(id)?.FilePath);
-                EnsurePhysicalPath(next.GetAdditionalDocument(id)?.FilePath);
-            }
-
-            foreach (var id in change.GetChangedAnalyzerConfigDocuments()
-                         .Concat(change.GetAddedAnalyzerConfigDocuments())
-                         .Concat(change.GetRemovedAnalyzerConfigDocuments()))
-            {
-                EnsurePhysicalPath(current.GetAnalyzerConfigDocument(id)?.FilePath);
-                EnsurePhysicalPath(next.GetAnalyzerConfigDocument(id)?.FilePath);
-            }
-        }
-    }
-
-    internal static void EnsurePhysicalPath(string? path)
-    {
-        if (string.IsNullOrWhiteSpace(path)) return;
-
-        var physicalPath = PhysicalPathResolver.Resolve(path);
-        if (FileSystemPath.Comparer.Equals(path, physicalPath)) return;
-
-        throw new InvalidOperationException(
-            "Workspace project or modified document path has a filesystem-link component. " +
-            "Load and edit through the physical path.");
     }
 
     private sealed class WorkspaceSession(string workspaceId, DateTimeOffset createdAtUtc, WorkspaceResourceDisposer disposer) : IDisposable

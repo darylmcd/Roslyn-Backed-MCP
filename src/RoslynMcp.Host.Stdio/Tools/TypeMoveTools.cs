@@ -69,13 +69,13 @@ public static class TypeMoveTools
     /// </remarks>
     [McpServerTool(Name = "change_type_namespace_preview", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("refactoring", "experimental", true, false,
-        "Preview relocating a type between namespaces in the same project. Rewrites the type's namespace declaration, optionally moves the file, and adjusts consumer using directives respecting ambient-namespace resolution."),
-     Description("Preview relocating a type between namespaces in one project, optionally moving its file and updating consumer using directives. Use get_namespace_dependencies to identify circular dependencies.")]
+        "Preview relocating a top-level type between namespaces in the same project. Rewrites the type's namespace declaration, optionally moves the file, and adjusts consumer using directives respecting ambient-namespace resolution."),
+     Description("Preview moving a top-level type between namespaces in one project. Updates consumer usings and can move its file. Use get_namespace_dependencies to identify circular dependencies.")]
     public static Task<string> PreviewChangeTypeNamespace(
         IWorkspaceExecutionGate gate,
         INamespaceRelocationService relocationService,
         [Description("Workspace session id from workspace_load.")] string workspaceId,
-        [Description("Name of the type to relocate (must be unique within fromNamespace)")] string typeName,
+        [Description("Name of the top-level type to relocate (must be unique within fromNamespace)")] string typeName,
         [Description("Fully-qualified namespace currently containing the type")] string fromNamespace,
         [Description("Fully-qualified destination namespace inside the same project")] string toNamespace,
         [Description("Optional: absolute destination file path. If omitted, the file stays in place and only its namespace declaration is rewritten")] string? newFilePath = null,

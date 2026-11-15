@@ -1,6 +1,6 @@
 # extract-type-nested-namespace-identity — Preserve the full extracted type namespace
 
-**row:** `extract-type-nested-namespace-identity` · **pri:** `Medium` · **size:** `S` · **verified:** `34a87d9c712c19c0af78caca46be5d50af6ab384`
+**row:** `extract-type-nested-namespace-identity` · **pri:** `Medium` · **size:** `S`
 
 ## Anchors
 
@@ -14,3 +14,7 @@
 ## Evidence
 
 - Cold namespace plan review at `34a87d9c`. The extracted file emitter copies only the innermost namespace name. Reuse the full containing namespace identity and preserve receiving-language syntax.
+
+## Notes
+
+5.1.1 screen at 9e7a9439 re-established stable extract_type_preview and reproduced old nested namespace loss. The candidate failed cold re-review on valid conditional C# branches that contain sibling declarations or split using syntax beside a namespace header. It can duplicate sibling declarations or emit malformed code in another configuration. Candidate 00a223ea and subsequent draft revisions are investigation only. Reopen after a complete compiler-backed projection is shown to preserve previously accepted preview/apply behavior and both supported wire eras. If complete repair changes the stable contract, use the next operator-approved major with ADR, migration note and dual-era raw regression. Preserve structured blockingDependencies names and leave public refusal messages to their dedicated Defer row.
