@@ -816,7 +816,8 @@ public sealed class ExtractMethodService : IExtractMethodService
                 h => BuildInvocation(
                     helperName,
                     h.FreeVariables,
-                    h.NeedsQualifiedOwner ? ownerExpression : null));
+                    h.NeedsQualifiedOwner ? ownerExpression : null,
+                    h.Expression));
 
             // Rewrite the exact declaration together with its descendants. An earlier
             // replacement can shift its span, and another declaration can share its name.
@@ -1003,10 +1004,11 @@ public sealed class ExtractMethodService : IExtractMethodService
             .WithAdditionalAnnotations(Formatter.Annotation);
     }
 
-    private static InvocationExpressionSyntax BuildInvocation(
+    private static ExpressionSyntax BuildInvocation(
         string helperName,
         IReadOnlyList<FreeVariable> freeVariables,
-        ExpressionSyntax? owner)
+        ExpressionSyntax? owner,
+        ExpressionSyntax occurrence)
     {
         var argumentList = SyntaxFactory.ArgumentList(
             SyntaxFactory.SeparatedList(
@@ -1019,8 +1021,14 @@ public sealed class ExtractMethodService : IExtractMethodService
 
         // Formatter.Annotation lets `Formatter.FormatAsync` re-flow spacing around commas,
         // parentheses, and (when fully-qualified) dotted member-access chains per editorconfig.
-        return SyntaxFactory.InvocationExpression(target, argumentList)
+        var invocation = SyntaxFactory.InvocationExpression(target, argumentList)
             .WithAdditionalAnnotations(Formatter.Annotation);
+
+        // In an interpolation, the first colon of global:: can be parsed as
+        // a format separator when the generated source is read back.
+        return owner is not null && occurrence.Ancestors().Any(ancestor => ancestor is InterpolationSyntax)
+            ? SyntaxFactory.ParenthesizedExpression(invocation)
+            : invocation;
     }
 
     private sealed record FreeVariable(string Name, ITypeSymbol Type);

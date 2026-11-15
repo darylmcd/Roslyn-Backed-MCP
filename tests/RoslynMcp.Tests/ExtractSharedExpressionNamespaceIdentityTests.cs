@@ -59,6 +59,45 @@ public sealed class ExtractSharedExpressionNamespaceIdentityTests : IsolatedWork
     }
 
     [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task ExtractSharedExpression_GlobalQualifierSurvivesStringInterpolation(bool nestedExpression)
+    {
+        const string ownerSource = """
+            namespace Outer
+            {
+                namespace Inner
+                {
+                    public class Owner
+                    {
+                        public int Read(int input) => input * 31;
+                    }
+                }
+            }
+            """;
+        var interpolation = nestedExpression ? "$\"{100 + input * 31}\"" : "$\"{input * 31}\"";
+        var callerSource = $$"""
+            namespace Inner
+            {
+                public class Owner
+                {
+                    public static int SharedValue(int input) => -1;
+                }
+            }
+
+            namespace Caller
+            {
+                public class Consumer
+                {
+                    public string Read(int input) => {{interpolation}};
+                }
+            }
+            """;
+
+        await AssertSharedExpressionPreviewAndApplyAsync(ownerSource, callerSource, "internal", "Outer.Inner.Owner");
+    }
+
+    [TestMethod]
     public async Task ExtractSharedExpression_OtherPartOfGenericOwnerCanCallPrivateHelper()
     {
         const string ownerSource = """
@@ -264,9 +303,12 @@ public sealed class ExtractSharedExpressionNamespaceIdentityTests : IsolatedWork
     private static async Task AssertCallsBindAsync(Solution solution, string path, string ownerMetadataName, int expectedCount)
     {
         var compilation = await GetCleanCompilationAsync(solution);
+        var projected = compilation.SyntaxTrees.Single(tree => tree.FilePath == path);
+        var tree = CSharpSyntaxTree.ParseText(await projected.GetTextAsync(), (CSharpParseOptions)projected.Options, path);
+        compilation = compilation.ReplaceSyntaxTree(projected, tree);
+        AssertNoCompilerErrors(compilation);
         var expected = compilation.GetTypeByMetadataName(ownerMetadataName);
         Assert.IsNotNull(expected);
-        var tree = compilation.SyntaxTrees.Single(tree => tree.FilePath == path);
         var calls = (await tree.GetRootAsync()).DescendantNodes().OfType<InvocationExpressionSyntax>().ToArray();
         Assert.HasCount(expectedCount, calls);
         var model = compilation.GetSemanticModel(tree);
