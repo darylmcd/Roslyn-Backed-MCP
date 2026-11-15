@@ -26,9 +26,10 @@ public static class RequestDeadline
             TimeSpan? min = null;
             for (var scope = _current.Value; scope is not null; scope = scope.Parent)
             {
-                var remaining = scope.DeadlineUtc - scope.TimeProvider.GetUtcNow();
-                if (remaining < TimeSpan.Zero) remaining = TimeSpan.Zero;
-                if (min is null || remaining < min) min = remaining;
+                if (scope.IsDisposed) continue;
+
+                min = Earlier(min, scope.Budget.Remaining);
+                min = Earlier(min, scope.ExternalBudget?.Invoke());
             }
 
             return min;
@@ -40,31 +41,29 @@ public static class RequestDeadline
     /// <paramref name="timeProvider"/>'s clock. Dispose the returned scope to restore the parent.
     /// </summary>
     public static IRequestDeadlineScope Begin(TimeProvider timeProvider, TimeSpan timeout)
+        => Begin(timeProvider, timeout, null);
+
+    internal static Scope Begin(TimeProvider timeProvider, TimeSpan timeout, Func<TimeSpan?>? externalBudget)
     {
         ArgumentNullException.ThrowIfNull(timeProvider);
-        var scope = new Scope(_current.Value, timeProvider, timeProvider.GetUtcNow() + timeout);
+        var scope = new Scope(_current.Value, new Budget(timeProvider, timeout), externalBudget);
         _current.Value = scope;
         return scope;
     }
 
-    private sealed class Scope : IRequestDeadlineScope
+    private static TimeSpan? Earlier(TimeSpan? current, TimeSpan? candidate) =>
+        candidate is not null && (current is null || candidate < current) ? candidate : current;
+
+    internal sealed class Scope(Scope? parent, Budget budget, Func<TimeSpan?>? externalBudget) : IRequestDeadlineScope
     {
-        private bool _disposed;
+        private volatile bool _disposed;
 
-        public Scope(Scope? parent, TimeProvider timeProvider, DateTimeOffset deadlineUtc)
-        {
-            Parent = parent;
-            TimeProvider = timeProvider;
-            DeadlineUtc = deadlineUtc;
-        }
+        internal Scope? Parent { get; } = parent;
+        internal bool IsDisposed => _disposed;
+        internal Budget Budget { get; } = budget;
+        internal Func<TimeSpan?>? ExternalBudget { get; } = externalBudget;
 
-        public Scope? Parent { get; }
-
-        public TimeProvider TimeProvider { get; }
-
-        public DateTimeOffset DeadlineUtc { get; private set; }
-
-        public void Reset(TimeSpan timeout) => DeadlineUtc = TimeProvider.GetUtcNow() + timeout;
+        public void Reset(TimeSpan timeout) => Budget.Reset(timeout);
 
         public void Dispose()
         {
@@ -72,6 +71,17 @@ public static class RequestDeadline
             _disposed = true;
             _current.Value = Parent;
         }
+    }
+
+    internal sealed class Budget(TimeProvider timeProvider, TimeSpan timeout)
+    {
+        private long _deadlineUtcTicks = (timeProvider.GetUtcNow() + timeout).UtcTicks;
+
+        internal TimeSpan Remaining => TimeSpan.FromTicks(Math.Max(0,
+            Volatile.Read(ref _deadlineUtcTicks) - timeProvider.GetUtcNow().UtcTicks));
+
+        internal void Reset(TimeSpan timeout) =>
+            Volatile.Write(ref _deadlineUtcTicks, (timeProvider.GetUtcNow() + timeout).UtcTicks);
     }
 }
 

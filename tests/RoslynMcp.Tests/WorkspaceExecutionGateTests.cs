@@ -20,6 +20,274 @@ public class WorkspaceExecutionGateTests
     }
 
     [TestMethod]
+    public async Task Dispose_FromAdmittedLoad_PreservesNestedWorkAndLoadRelease()
+    {
+        var gate = CreateGate();
+        var result = await gate.RunLoadGateAsync(outerToken =>
+        {
+            gate.Dispose();
+            return gate.RunWriteAsync(WorkspaceA, _ => Task.FromResult(42), outerToken);
+        }, CancellationToken.None);
+
+        Assert.AreEqual(42, result);
+    }
+
+    [TestMethod]
+    [DataRow("load")]
+    [DataRow("read")]
+    [DataRow("write")]
+    public async Task DisposedGate_ReportsExactObjectDisposedException(string operation)
+    {
+        var gate = CreateGate();
+        await gate.DisposeAsync();
+
+        var exception = await Assert.ThrowsExactlyAsync<ObjectDisposedException>(() => operation switch
+        {
+            "load" => gate.RunLoadGateAsync(_ => Task.FromResult(0), CancellationToken.None),
+            "read" => gate.RunReadAsync(WorkspaceA, _ => Task.FromResult(0), CancellationToken.None),
+            "write" => gate.RunWriteAsync(WorkspaceA, _ => Task.FromResult(0), CancellationToken.None),
+            _ => throw new ArgumentOutOfRangeException(nameof(operation)),
+        });
+        Assert.AreEqual(typeof(SemaphoreSlim).FullName, exception.ObjectName);
+    }
+
+    [TestMethod]
+    public async Task Dispose_RejectsDelayedChildOfCompletedGateInvocation()
+    {
+        var gate = CreateGate();
+        var resume = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task<int>? inheritedCall = null;
+        await gate.RunReadAsync(WorkspaceA, _ =>
+        {
+            inheritedCall = StartChildAsync();
+            return Task.FromResult(0);
+        }, CancellationToken.None);
+
+        gate.Dispose();
+        resume.SetResult();
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => inheritedCall!);
+
+        async Task<int> StartChildAsync()
+        {
+            await resume.Task;
+            return await gate.RunReadAsync(WorkspaceB, _ => Task.FromResult(1), CancellationToken.None);
+        }
+    }
+
+    [TestMethod]
+    public async Task DisposeAsync_DrainsQueuedLoadAndPreservesQueuedCancellation()
+    {
+        var gate = CreateGate();
+        using var guard = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var cancelled = CancellationTokenSource.CreateLinkedTokenSource(guard.Token);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var first = gate.RunLoadGateAsync(async ct =>
+        {
+            await release.Task.WaitAsync(ct);
+            return 1;
+        }, guard.Token);
+        var queued = gate.RunLoadGateAsync(_ => Task.FromResult(2), guard.Token);
+        var cancelledCall = gate.RunLoadGateAsync(_ => Task.FromResult(3), cancelled.Token);
+        Task? shutdown = null;
+        try
+        {
+            gate.Dispose();
+            shutdown = gate.DisposeAsync().AsTask();
+            Assert.IsFalse(shutdown.IsCompleted);
+            cancelled.Cancel();
+            await Assert.ThrowsAsync<OperationCanceledException>(() => cancelledCall);
+            Assert.IsTrue(cancelledCall.IsCanceled);
+            Assert.IsFalse(guard.IsCancellationRequested, "Only the queued caller's cancellation should end that request.");
+            await Assert.ThrowsAsync<ObjectDisposedException>(() =>
+                gate.RunReadAsync(WorkspaceA, _ => Task.FromResult(4), guard.Token));
+
+            release.SetResult();
+            Assert.AreEqual(1, await first.WaitAsync(guard.Token));
+            Assert.AreEqual(2, await queued.WaitAsync(guard.Token));
+            await shutdown.WaitAsync(guard.Token);
+            Assert.AreSame(shutdown, gate.DisposeAsync().AsTask());
+        }
+        finally
+        {
+            release.TrySetResult();
+            cancelled.Cancel();
+            await ObserveCompletionAsync(Task.WhenAll(first, queued, cancelledCall));
+        }
+    }
+
+    [TestMethod]
+    public async Task DisposeAsync_DrainsAdmittedChildAfterParentReturns()
+    {
+        var gate = CreateGate();
+        using var guard = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task<int>? nested = null;
+
+        try
+        {
+            await gate.RunReadAsync(WorkspaceA, async ct =>
+            {
+                nested = gate.RunLoadGateAsync(async nestedToken =>
+                {
+                    entered.TrySetResult();
+                    await release.Task.WaitAsync(nestedToken);
+                    return 7;
+                }, ct);
+                await entered.Task.WaitAsync(ct);
+                return 1;
+            }, guard.Token);
+
+            gate.Dispose();
+            var shutdown = gate.DisposeAsync().AsTask();
+            Assert.IsFalse(shutdown.IsCompleted);
+            release.SetResult();
+            Assert.AreEqual(7, await nested!.WaitAsync(guard.Token));
+            await shutdown.WaitAsync(guard.Token);
+        }
+        finally
+        {
+            release.TrySetResult();
+            if (nested is not null) await ObserveCompletionAsync(nested);
+        }
+    }
+
+    private static async Task ObserveCompletionAsync(Task task)
+    {
+        await task.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+    }
+
+    [TestMethod]
+    [DataRow(true)]
+    [DataRow(false)]
+    public async Task AdmittedChild_PreservesExplicitCancellationAuthorityAfterParentReturns(bool shareParentToken)
+    {
+        var clock = new FakeTimeProvider();
+        var gate = new WorkspaceExecutionGate(new ExecutionGateOptions(), new FakeGateWorkspaceManager(), clock);
+        using var caller = new CancellationTokenSource();
+        using var independent = new CancellationTokenSource();
+        using var guard = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var linked = default(CancellationToken);
+        var resume = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var budget = new TaskCompletionSource<TimeSpan?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task<int>? child = null;
+        try
+        {
+            await gate.RunLoadGateAsync(parentToken =>
+            {
+                linked = parentToken;
+                clock.Advance(TimeSpan.FromSeconds(5));
+                child = gate.RunReadAsync(WorkspaceA, async ct =>
+                {
+                    using var cleanup = CancellationTokenSource.CreateLinkedTokenSource(ct, guard.Token);
+                    await resume.Task.WaitAsync(cleanup.Token);
+                    budget.SetResult(RequestDeadline.Remaining);
+                    await Task.Delay(Timeout.InfiniteTimeSpan, cleanup.Token);
+                    return 1;
+                }, shareParentToken ? linked : independent.Token);
+                return Task.FromResult(0);
+            }, caller.Token);
+
+            resume.SetResult();
+            var expected = new ExecutionGateOptions().RequestTimeout - (shareParentToken ? TimeSpan.FromSeconds(5) : TimeSpan.Zero);
+            Assert.AreEqual(expected, await budget.Task.WaitAsync(guard.Token));
+            caller.Cancel();
+            if (shareParentToken)
+                Assert.IsTrue(linked.IsCancellationRequested);
+            else
+            {
+                Assert.IsFalse(child!.IsCompleted);
+                independent.Cancel();
+            }
+            await Assert.ThrowsAsync<OperationCanceledException>(() => child!);
+            Assert.IsFalse(guard.IsCancellationRequested, "Only the explicitly supplied caller token should end this child.");
+        }
+        finally
+        {
+            resume.TrySetResult();
+            guard.Cancel();
+            if (child is not null) await ObserveCompletionAsync(child);
+            await gate.DisposeAsync();
+        }
+    }
+
+    [TestMethod]
+    public async Task RequestDeadline_InheritedChildIgnoresEndedScopeButKeepsLiveAncestor()
+    {
+        var clock = new FakeTimeProvider();
+        using var outer = RequestDeadline.Begin(clock, TimeSpan.FromMinutes(1));
+        var resume = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task<TimeSpan?> captured;
+        using (RequestDeadline.Begin(clock, TimeSpan.FromSeconds(10)))
+        {
+            captured = ReadInheritedDeadlineAsync();
+        }
+
+        clock.Advance(TimeSpan.FromSeconds(20));
+        resume.SetResult();
+        Assert.AreEqual(TimeSpan.FromSeconds(40), await captured);
+
+        async Task<TimeSpan?> ReadInheritedDeadlineAsync()
+        {
+            await resume.Task;
+            return RequestDeadline.Remaining;
+        }
+    }
+
+    [TestMethod]
+    public async Task ChildOfCompletedReader_DoesNotSkipAutoReload()
+    {
+        var manager = new FakeGateWorkspaceManager();
+        await using var gate = new WorkspaceExecutionGate(
+            new ExecutionGateOptions { OnStale = StalenessPolicy.AutoReload }, manager);
+        var resume = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task<int>? captured = null;
+        await gate.RunReadAsync(WorkspaceA, _ =>
+        {
+            captured = ReadAfterParentAsync();
+            return Task.FromResult(0);
+        }, CancellationToken.None);
+
+        manager.MarkStale(WorkspaceA);
+        resume.SetResult();
+        Assert.AreEqual(1, await captured!);
+
+        async Task<int> ReadAfterParentAsync()
+        {
+            await resume.Task;
+            return await gate.RunReadAsync(WorkspaceA, _ => Task.FromResult(manager.ReloadCount), CancellationToken.None);
+        }
+    }
+
+    [TestMethod]
+    public async Task Dispose_AllowsDelayedChildOfLiveOuterAndCompletedInner()
+    {
+        var gate = CreateGate();
+        var resume = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var result = await gate.RunLoadGateAsync(async ct =>
+        {
+            Task<int>? child = null;
+            await gate.RunReadAsync(WorkspaceA, _ =>
+            {
+                child = StartChildAsync();
+                return Task.FromResult(0);
+            }, ct);
+            gate.Dispose();
+            resume.SetResult();
+            return await child!;
+        }, CancellationToken.None);
+
+        Assert.AreEqual(9, result);
+        await gate.DisposeAsync();
+
+        async Task<int> StartChildAsync()
+        {
+            await resume.Task;
+            return await gate.RunWriteAsync(WorkspaceB, _ => Task.FromResult(9), CancellationToken.None);
+        }
+    }
+
+    [TestMethod]
     public async Task NestedLoadAndWorkspaceGates_ReportOneWallClockHoldInterval()
     {
         var gate = CreateGate();
