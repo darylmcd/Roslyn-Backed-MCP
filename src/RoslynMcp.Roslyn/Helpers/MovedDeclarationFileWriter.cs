@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Text;
 using RoslynMcp.Core.Services;
 
 namespace RoslynMcp.Roslyn.Helpers;
@@ -30,9 +31,9 @@ internal static class MovedDeclarationFileWriter
             _ => destinationNamespace
         };
 
-    internal static CompilationUnitSyntax CreateCompilationUnit(
+    internal static (CompilationUnitSyntax Root, TextSpan TypeIdentifier) CreateCompilationUnit(
         CompilationUnitSyntax sourceRoot,
-        MemberDeclarationSyntax member,
+        TypeDeclarationSyntax member,
         SyntaxList<UsingDirectiveSyntax> copiedUsings,
         BaseNamespaceDeclarationSyntax? destinationNamespace,
         SemanticModel semanticModel,
@@ -63,7 +64,7 @@ internal static class MovedDeclarationFileWriter
         else
         {
             outputMember = destinationNamespace.WithUsings(localUsings)
-                .WithMembers(SyntaxFactory.SingletonList(movedMember));
+                .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(movedMember));
         }
 
         var root = SyntaxFactory.CompilationUnit().WithUsings(usings)
@@ -79,7 +80,9 @@ internal static class MovedDeclarationFileWriter
             root = root.ReplaceNode(block, block.WithCloseBraceToken(block.CloseBraceToken
                 .WithLeadingTrivia(SyntaxFactory.CarriageReturnLineFeed)));
         }
-        return root;
+        var output = root.Members.Single();
+        var type = (TypeDeclarationSyntax)(output is BaseNamespaceDeclarationSyntax ns ? ns.Members.Single() : output);
+        return (root, type.Identifier.Span);
     }
 
     internal static CompilationUnitSyntax RemoveDeclaration(CompilationUnitSyntax sourceRoot, MemberDeclarationSyntax member)

@@ -91,26 +91,27 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             ReceivingNamespaceFactory.RequireCSharpOptions(targetProject.ParseOptions));
         destinationNamespace = MovedDeclarationFileWriter.FrameNamespace(destinationNamespace,
             SyntaxFactory.TriviaList(SyntaxFactory.CarriageReturnLineFeed));
-        var movedRoot = MovedDeclarationFileWriter.CreateCompilationUnit(
+        var (movedRoot, movedTypeIdentifier) = MovedDeclarationFileWriter.CreateCompilationUnit(
             sourceRoot, typeDeclaration, sourceRoot.Usings, destinationNamespace, semanticModel, ct);
         // Item #1 — pass folders so MSBuildWorkspace.TryApplyChanges resolves the disk path
         // consistently with our explicit write. Without folders, Roslyn resolves cross-project
         // adds to {targetProjectDir}/{fileName} and produces a rogue project-root copy.
         var movedDocFolders = ProjectMetadataParser.ComputeDocumentFolders(targetProject.FilePath, targetFilePath);
-        var updatedSolution = solution.AddDocument(
-            DocumentId.CreateNewId(targetProject.Id),
+        var movedDocument = targetProject.AddDocument(
             Path.GetFileName(targetFilePath),
             SourceText.From(movedRoot.ToFullString()),
             folders: movedDocFolders,
             filePath: targetFilePath);
 
-        updatedSolution = EnsureProjectReference(updatedSolution, sourceDocument.Project.Id, targetProject.Id);
+        var updatedSolution = EnsureProjectReference(movedDocument.Project.Solution, sourceDocument.Project.Id, targetProject.Id);
 
         var updatedSourceRoot = MovedDeclarationFileWriter.RemoveDeclaration(sourceRoot, typeDeclaration);
         updatedSolution = NamespaceMemberClassifier.HasRemainingContent(updatedSourceRoot)
             ? updatedSolution.WithDocumentSyntaxRoot(sourceDocument.Id, updatedSourceRoot)
             : updatedSolution.RemoveDocument(sourceDocument.Id);
 
+        await MovedTypeDestinationIdentity.EnsureAvailableAsync(targetProject, movedDocument, movedTypeIdentifier,
+            updatedSolution, originalDeclarationInTargetProject: null, ct).ConfigureAwait(false);
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, updatedSolution, ct).ConfigureAwait(false);
         var description = $"Move type '{typeName}' to project '{targetProject.Name}'";
         var token = _previewStore.Store(workspaceId, updatedSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);

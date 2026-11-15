@@ -123,7 +123,7 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
         //       same file;
         //   (c) with file relocation, write the selected type to the destination file and
         //       remove its declaration from the source file.
-        var (updatedSolution, siblingTypesRemaining) = await ApplyNamespaceRewriteAsync(
+        var (destinationDocument, movedTypeIdentifier, siblingTypesRemaining) = await ApplyNamespaceRewriteAsync(
             solution,
             sourceDocument,
             sourceRoot,
@@ -133,16 +133,17 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
             resolvedDestinationPath,
             isRelocating,
             ct).ConfigureAwait(false);
-
         // Rewrite consumer using directives respecting ambient-namespace resolution.
         var consumerUpdates = await UpdateConsumerUsingsAsync(
-            updatedSolution,
+            destinationDocument.Project.Solution,
             typeName,
             fromNamespace,
             toNamespace,
             siblingTypesRemaining,
             ct).ConfigureAwait(false);
-        updatedSolution = consumerUpdates.Solution;
+        var updatedSolution = consumerUpdates.Solution;
+        await MovedTypeDestinationIdentity.EnsureAvailableAsync(sourceProject, destinationDocument, movedTypeIdentifier,
+            updatedSolution, typeDecl, ct).ConfigureAwait(false);
 
         if (consumerUpdates.FallbackKeptOldUsingFiles.Count > 0)
         {
@@ -272,14 +273,15 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
     }
 
     /// <summary>
-    /// Apply the namespace rewrite to the source file. Returns the updated solution and a flag
+    /// Apply the namespace rewrite to the source file. Returns the projected destination document,
+    /// the moved type's identifier span, and a flag
     /// describing whether sibling types (enums and delegates included) in
     /// <paramref name="fromNamespace"/> remain in the solution after the move (used later to
     /// decide whether stale <c>using</c> directives are safe to drop). Without file relocation, any
     /// other member of the containing namespace declaration (type, enum, delegate, nested
     /// namespace) stays in the source namespace; only the selected type moves.
     /// </summary>
-    private static async Task<(Solution Solution, bool SiblingTypesRemaining)> ApplyNamespaceRewriteAsync(
+    private static async Task<(Document Destination, TextSpan TypeIdentifier, bool SiblingTypesRemaining)> ApplyNamespaceRewriteAsync(
         Solution solution,
         Document sourceDocument,
         CompilationUnitSyntax sourceRoot,
@@ -306,32 +308,24 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
             solution, fromNamespace, excludeDocumentId: sourceDocument.Id, ct).ConfigureAwait(false);
         var siblingTypesRemaining = siblingTypesAnywhereInFromNs > 0;
 
-        if (!isRelocating && !hasOtherMembersInSameNs)
+        if (!isRelocating)
         {
-            // Simple case: rewrite the namespace declaration in place; the type is its only member.
-            var rewritten = RewriteNamespaceName(sourceRoot, containingNs, toNamespace);
-            // Another `namespace fromNamespace` block of this file keeps the namespace populated;
-            // the cross-document count above excludes this document.
-            siblingTypesRemaining |= NamespaceMemberClassifier.DeclaresTypeLikeMemberIn(rewritten, fromNamespace);
-            return (solution.WithDocumentSyntaxRoot(sourceDocument.Id, rewritten), siblingTypesRemaining);
-        }
-
-        if (!isRelocating && hasOtherMembersInSameNs)
-        {
-            // No relocation but other members remain in the same declaration. We must extract the
-            // type into its own namespace declaration within the same file.
-            var updatedRoot = MoveTypeIntoNewNamespaceInSameFile(sourceRoot, containingNs, typeDecl, toNamespace);
-
-            // The synthesized namespace declarations carry Formatter.Annotation; format only
-            // those spans so keyword/brace spacing and member indentation follow the project's
-            // editorconfig instead of the trivia-free SyntaxFactory shape (`namespaceX.Y{`).
-            var formattedDocument = await Formatter.FormatAsync(
-                sourceDocument.WithSyntaxRoot(updatedRoot),
-                Formatter.Annotation,
-                options: null,
-                cancellationToken: ct).ConfigureAwait(false);
+            var movedType = new SyntaxAnnotation();
+            var updatedRoot = hasOtherMembersInSameNs
+                ? MoveTypeIntoNewNamespaceInSameFile(sourceRoot, containingNs, typeDecl, toNamespace, movedType)
+                : RewriteNamespaceName(sourceRoot, containingNs, typeDecl, toNamespace, movedType);
             siblingTypesRemaining |= NamespaceMemberClassifier.DeclaresTypeLikeMemberIn(updatedRoot, fromNamespace);
-            return (formattedDocument.Project.Solution, siblingTypesRemaining);
+            var updatedDocument = sourceDocument.WithSyntaxRoot(updatedRoot);
+            if (hasOtherMembersInSameNs)
+            {
+                // Format only the synthesized namespace declarations so their layout follows editorconfig.
+                updatedDocument = await Formatter.FormatAsync(
+                    updatedDocument, Formatter.Annotation, options: null, cancellationToken: ct).ConfigureAwait(false);
+                updatedRoot = await updatedDocument.GetSyntaxRootAsync(ct).ConfigureAwait(false) as CompilationUnitSyntax
+                    ?? throw InvalidOperationErrors.Internal("The formatted destination syntax root is unavailable.");
+            }
+            var movedDeclaration = (TypeDeclarationSyntax)updatedRoot.GetAnnotatedNodes(movedType).Single();
+            return (updatedDocument, movedDeclaration.Identifier.Span, siblingTypesRemaining);
         }
 
         // Relocating: write a new file for the relocated type and either remove the type from the
@@ -355,7 +349,7 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
         // Build the new compilation unit for the moved type, wrapped in the destination namespace.
         var semanticModel = await sourceDocument.GetSemanticModelAsync(ct).ConfigureAwait(false)
             ?? throw InvalidOperationErrors.Internal("Semantic model could not be created for the source document.");
-        var newFileRoot = BuildMovedTypeCompilationUnit(sourceRoot, typeDecl, toNamespace,
+        var (newFileRoot, movedTypeIdentifier) = BuildMovedTypeCompilationUnit(sourceRoot, typeDecl, toNamespace,
             ReceivingNamespaceFactory.RequireCSharpOptions(sourceDocument.Project.ParseOptions), semanticModel, ct);
         var targetProject = newSolution.GetProject(sourceDocument.Project.Id)!;
         var targetFileName = Path.GetFileName(destinationFilePath);
@@ -365,16 +359,19 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
             SourceText.From(newFileRoot.ToFullString()),
             folders: folders,
             filePath: destinationFilePath);
-        return (newDoc.Project.Solution, siblingTypesRemaining);
+        return (newDoc, movedTypeIdentifier, siblingTypesRemaining);
     }
 
     private static CompilationUnitSyntax RewriteNamespaceName(
         CompilationUnitSyntax root,
         BaseNamespaceDeclarationSyntax ns,
-        string toNamespace)
+        TypeDeclarationSyntax typeDecl,
+        string toNamespace,
+        SyntaxAnnotation movedType)
     {
         var newName = SyntaxFactory.ParseName(toNamespace).WithTriviaFrom(ns.Name);
-        return root.ReplaceNode(ns, ns.WithName(newName));
+        var renamed = ns.ReplaceNode(typeDecl, typeDecl.WithAdditionalAnnotations(movedType)).WithName(newName);
+        return root.ReplaceNode(ns, renamed);
     }
 
     /// <summary>
@@ -389,7 +386,8 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
         CompilationUnitSyntax root,
         BaseNamespaceDeclarationSyntax ns,
         TypeDeclarationSyntax typeDecl,
-        string toNamespace)
+        string toNamespace,
+        SyntaxAnnotation movedType)
     {
         var endOfLine = root.DescendantTrivia().FirstOrDefault(t => t.IsKind(SyntaxKind.EndOfLineTrivia)) is var eol
             && eol.IsKind(SyntaxKind.EndOfLineTrivia)
@@ -433,9 +431,10 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
 
         // Append a new block-namespace declaration for the relocated type, reusing the file's own
         // line terminator for the separator and the final newline.
+        var relocatedType = typeDecl.WithLeadingTrivia(typeDecl.GetLeadingTrivia().SkipWhile(IsWhitespaceOrEndOfLine))
+            .WithAdditionalAnnotations(movedType);
         var appended = SyntaxFactory.NamespaceDeclaration(SyntaxFactory.ParseName(toNamespace))
-            .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(typeDecl.WithLeadingTrivia(
-                typeDecl.GetLeadingTrivia().SkipWhile(IsWhitespaceOrEndOfLine))))
+            .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(relocatedType))
             .WithCloseBraceToken(SyntaxFactory.Token(SyntaxKind.CloseBraceToken).WithTrailingTrivia(endOfLine))
             .WithLeadingTrivia(endOfLine)
             .WithAdditionalAnnotations(Formatter.Annotation);
@@ -446,7 +445,7 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
     private static bool IsWhitespaceOrEndOfLine(SyntaxTrivia trivia) =>
         trivia.IsKind(SyntaxKind.WhitespaceTrivia) || trivia.IsKind(SyntaxKind.EndOfLineTrivia);
 
-    private static CompilationUnitSyntax BuildMovedTypeCompilationUnit(
+    private static (CompilationUnitSyntax Root, TextSpan TypeIdentifier) BuildMovedTypeCompilationUnit(
         CompilationUnitSyntax sourceRoot,
         TypeDeclarationSyntax typeDecl,
         string toNamespace,
@@ -479,7 +478,8 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
             var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
             if (compilation is null) continue;
 
-            var nsSymbol = ResolveNamespaceSymbol(compilation.GlobalNamespace, ns);
+            var nsSymbol = NamespaceMemberClassifier.FindNamespaceSymbol(compilation.GlobalNamespace,
+                ns.Split('.', StringSplitOptions.RemoveEmptyEntries));
             if (nsSymbol is null) continue;
 
             foreach (var type in nsSymbol.GetTypeMembers())
@@ -498,23 +498,6 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
             }
         }
         return count;
-    }
-
-    /// <summary>
-    /// Walk <paramref name="global"/> down the dotted segments of <paramref name="ns"/> and return
-    /// the matching <see cref="INamespaceSymbol"/>, or <see langword="null"/> if any segment is
-    /// absent from the compilation.
-    /// </summary>
-    private static INamespaceSymbol? ResolveNamespaceSymbol(INamespaceSymbol global, string ns)
-    {
-        var current = global;
-        foreach (var segment in ns.Split('.', StringSplitOptions.RemoveEmptyEntries))
-        {
-            current = current.GetNamespaceMembers()
-                .FirstOrDefault(n => string.Equals(n.Name, segment, StringComparison.Ordinal));
-            if (current is null) return null;
-        }
-        return current;
     }
 
     /// <summary>
