@@ -1,6 +1,6 @@
 # ci-restore-linux-leg-timeout-30-after-rebalance — Restore the 30 minute cap on hosted Linux shard legs
 
-**row:** `ci-restore-linux-leg-timeout-30-after-rebalance` · **pri:** `Medium` · **size:** `S` · **deps:** `ci-ubuntu-duration-profile-refresh-2604`
+**row:** `ci-restore-linux-leg-timeout-30-after-rebalance` · **pri:** `Medium` · **size:** `S`
 
 ## Anchors
 
@@ -20,4 +20,8 @@
 
 ## Context
 
-- Do not execute before `ci-ubuntu-duration-profile-refresh-2604`. The existing weights put linux-2 near 28 minutes of tests.
+- The profile rebalance prerequisite shipped. Qualify the new 30-minute cap independently on code and policy-doc routes.
+
+## Notes
+
+PR #2097 merged as `d3802cc5aefe19aa55597f8e52a329e381186ede`. Hosted run [`43774416634`](https://github.com/darylmcd/Roslyn-Backed-MCP/actions/runs/43774416634) passed `validate`. Linux jobs finished in 21:19, 20:39, 21:13, 21:37, a 0:58 spread.

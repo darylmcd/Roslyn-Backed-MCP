@@ -4,13 +4,14 @@
 
 ## Anchors
 
-- `tests/RoslynMcp.Tests/Workspace/ForkNativeAdmissionTests.cs`
+- `tests/RoslynMcp.Tests/Workspace/ForkNativeAdmissionTestBase.cs` — shared native fixture, including restore and cleanup.
+- `tests/RoslynMcp.Tests/Workspace/ForkNativeAdmissionTests.cs` — native build-host cases.
 
 ## Acceptance
 
-- [ ] TRX shows what each test in `ForkNativeAdmissionTests` spends its seconds on (workspace load, restore, build, process start).
-- [ ] The dominant cost is removed by shared fixture amortization, a cheaper fixture, or splitting the class so class-level parallelism applies, without weakening any assertion.
-- [ ] Mean hosted case seconds per run for the class drop measurably on `windows-latest` (baseline 759s), measured from fresh hosted TRX.
+- [ ] TRX shows what each case across the four native admission classes spends its seconds on (workspace load, restore, build, process start).
+- [ ] The dominant cost is removed by shared fixture amortization or a cheaper fixture, without weakening any assertion.
+- [ ] Mean cumulative hosted case seconds per run across the four classes drop measurably on `windows-latest` (baseline 759s), measured from fresh hosted TRX.
 
 ## Evidence
 
@@ -23,4 +24,6 @@
 
 ## Notes
 
-Ubuntu 26.04 evidence from the first refreshed profile PR 2097 / run 43617927737: ForkNativeAdmissionTests consumed 871.21 cumulative TRX case seconds in Linux 2. The leg took 29:39 despite near-equal projected weights. Isolate restore, build and native-probe costs using repeatable first-attempt evidence before choosing an optimization. See ci-ubuntu-duration-profile-refresh-2604.
+Ubuntu 26.04 evidence from the first refreshed profile PR 2097 / run 43617927737: ForkNativeAdmissionTests consumed 871.21 cumulative TRX case seconds in Linux 2. The leg took 29:39 despite near-equal projected weights. Isolate restore, build and native-probe costs using repeatable first-attempt evidence before choosing an optimization. See PR #2097 for the class-level split.
+
+Compare phase timings and total case seconds using matched case identities across ForkNativeAdmissionTests, ForkNativeBuildOutputAdmissionTests, ForkNativeCopyAdmissionTests, and ForkNativeOwnershipTests.

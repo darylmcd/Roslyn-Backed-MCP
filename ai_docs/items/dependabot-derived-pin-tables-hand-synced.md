@@ -8,12 +8,12 @@
 - `THIRD-PARTY-NOTICES.md`
 - `docs/upgrade-matrix.md`
 - `eng/update-third-party-notices.ps1`
-- `tests/RoslynMcp.Tests/Workspace/ForkNativeAdmissionTests.cs:835`
+- `tests/RoslynMcp.Tests/Workspace/ForkNativeOwnershipTests.cs:207`
 
 ## Acceptance
 
 - [ ] A dependency-bump PR (including Dependabot) regenerates both derived tables automatically, or the verifiers derive the expected values so no hand edit is required.
-- [ ] ForkNativeAdmissionTests derives the MSTest version for its generated probe csproj from Directory.Packages.props instead of hardcoding it.
+- [ ] ForkNativeOwnershipTests derives the MSTest version for its generated probe csproj from Directory.Packages.props instead of hardcoding it.
 - [ ] The changelog-fragment requirement for dependency bumps is handled by the same automation or documented.
 
 ## Evidence

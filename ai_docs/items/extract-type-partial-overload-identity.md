@@ -6,7 +6,7 @@
 
 - `src/RoslynMcp.Roslyn/Services/TypeExtractionService.cs:1068-1070` — ambiguity check skipped when every candidate is partial.
 - `src/RoslynMcp.Roslyn/Services/TypeExtractionService.cs:1165-1184` — helper emitted as non-partial `public sealed class`.
-- `tests/RoslynMcp.Tests/TypeExtractionTests.cs:2109` — CS0751 compile-gate case (PartialHostFixture.Hook) pins today's refusal.
+- `tests/RoslynMcp.Tests/TypeExtractionTests.cs:2098` — CS0751 compile-gate case (PartialHostFixture.Hook) pins today's refusal.
 
 ## Acceptance
 

@@ -8,9 +8,9 @@
 
 ## Acceptance
 
-- [ ] TRX shows what each test in `InterfaceBaseTypeInsertionIntegrationTests` spends its seconds on (workspace load, restore, build, process start).
-- [ ] The dominant cost is removed by shared fixture amortization, a cheaper fixture, or splitting the class so class-level parallelism applies, without weakening any assertion.
-- [ ] Mean hosted case seconds per run for the class drop measurably on `windows-latest` (baseline 1013s), measured from fresh hosted TRX.
+- [ ] TRX shows what each case across the four interface base type insertion classes spends its seconds on (workspace load, restore, build, process start).
+- [ ] The dominant cost is removed by shared fixture amortization or a cheaper fixture, without weakening any assertion.
+- [ ] Mean cumulative hosted case seconds per run across the four classes drop measurably on `windows-latest` (baseline 1013s), measured from fresh hosted TRX.
 
 ## Evidence
 
@@ -20,3 +20,7 @@
 
 - regression_shape: the class's mean hosted case seconds above a stated ceiling is visible in the collector report.
 - Siblings: `test-heavy-integration-class-cost` (InterfaceBaseTypeInsertionIntegrationTests, 1013s), `test-heavy-class-cost-fork-native-admission`, `test-heavy-class-cost-moved-declaration-ownership`, `test-heavy-class-cost-crossproject-receiving-namespace`; `ci-shard-duration-profile-hosted` consumes the result.
+
+## Notes
+
+PR #2097 split the matrix by route. Compare matched case identities across all four classes.

@@ -4,7 +4,7 @@
 
 ## Anchors
 
-- `tests/RoslynMcp.Tests/Workspace/ForkNativeAdmissionTests.cs:1113` — `int.Parse(File.ReadAllText(pidPath).Trim())` after a gate on other files; confirm pidPath is published before the gate.
+- `tests/RoslynMcp.Tests/Workspace/ForkNativeAdmissionTests.cs:367` — `int.Parse(File.ReadAllText(pidPath).Trim())` after a gate on other files; confirm pidPath is published before the gate.
 - `tests/RoslynMcp.Tests/FormatterBaselineContractTests.cs:132` — parses `formatter.pid` after the probe exits; likely safe, confirm.
 - `tests/RoslynMcp.Tests/Helpers/PwshScriptRunnerTests.cs:298` — child.pid fixtures; confirm each wait reads content.
 
