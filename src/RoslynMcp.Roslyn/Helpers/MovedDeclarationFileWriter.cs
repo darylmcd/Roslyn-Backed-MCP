@@ -8,6 +8,15 @@ namespace RoslynMcp.Roslyn.Helpers;
 /// <summary>Preserves physical file roles when an existing declaration moves into a new document.</summary>
 internal static class MovedDeclarationFileWriter
 {
+    internal static void EnsureTopLevelDeclaration(TypeDeclarationSyntax declaration)
+    {
+        if (!NamespaceMemberClassifier.IsDirectNamespaceMember(declaration))
+        {
+            throw new PublicInvalidOperationException(
+                "Moving a nested type would change its containing type. Select a top-level type.");
+        }
+    }
+
     internal static BaseNamespaceDeclarationSyntax? FrameNamespace(
         BaseNamespaceDeclarationSyntax? destinationNamespace, SyntaxTriviaList bodySeparator) =>
         destinationNamespace switch
