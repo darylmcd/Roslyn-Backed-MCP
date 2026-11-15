@@ -4,13 +4,13 @@
 
 ## Anchors
 
-- `src/RoslynMcp.Roslyn/Services/ExtractMethodService.cs:724`
+- `src/RoslynMcp.Roslyn/Services/ExtractMethodService.cs:703` (`CollectMatchingExpressionHitsAsync`)
 - `tests/RoslynMcp.Tests/ExtractSharedExpressionTests.cs`
 
 ## Acceptance
 
-- [ ] Compare bound operations for matching shared-expression candidates. Allow corresponding free variables while requiring equivalent non-capture symbols and operations.
-- [ ] Prove red first through the public preview using identical syntax that binds to distinct enclosing members. Prevent a compiling rewrite that changes results and retain successful equivalent-binding preview/apply.
+- [ ] Compare bound operations in all original structurally matching occurrences before synthesizing the helper. Permit corresponding capture slots and equivalent declarations inside the selection. Require equivalent non-capture bindings, conversions, and operation semantics.
+- [ ] Prove red through the experimental preview for identical source binding to different enclosing methods, different bound lambda delegate types, and checked versus unchecked arithmetic. Keep preview and applied compilation and binding for equivalent qualified references and separate but equivalent captures.
 
 ## Evidence
 
