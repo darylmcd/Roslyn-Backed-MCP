@@ -1,6 +1,6 @@
 # shared-expression-capture-lexical-boundary — Recognize variables declared inside selected shared expressions
 
-**row:** `shared-expression-capture-lexical-boundary` · **pri:** `Medium` · **size:** `S` · **verified:** `9fa31b98e92d93a212c875450e99734706406d90`
+**row:** `shared-expression-capture-lexical-boundary` · **pri:** `Medium` · **size:** `S` · **verified:** `7a04f2923bb027553154418f5e9a21a4e6bd26f4`
 
 ## Anchors
 

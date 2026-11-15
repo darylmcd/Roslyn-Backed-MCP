@@ -1,10 +1,10 @@
 # shared-expression-dead-helper-insertion-fallback — Consolidate shared helper insertion
 
-**row:** `shared-expression-dead-helper-insertion-fallback` · **pri:** `Low` · **size:** `S` · **verified:** `9fa31b98e92d93a212c875450e99734706406d90`
+**row:** `shared-expression-dead-helper-insertion-fallback` · **pri:** `Low` · **size:** `S` · **verified:** `7a04f2923bb027553154418f5e9a21a4e6bd26f4`
 
 ## Anchors
 
-- `src/RoslynMcp.Roslyn/Services/ExtractMethodService.cs:673`
+- `src/RoslynMcp.Roslyn/Services/ExtractMethodService.cs:674`
 - `tests/RoslynMcp.Tests/ExtractSharedExpressionTests.cs`
 
 ## Acceptance
