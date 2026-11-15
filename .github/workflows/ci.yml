@@ -105,6 +105,10 @@ jobs:
       fail-fast: false
       matrix:
         leg: ${{ fromJSON(needs.route.outputs.runner_matrix) }}
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
     runs-on: ${{ matrix.leg.runs_on }}
     timeout-minutes: ${{ matrix.leg.timeout_minutes }}
     env:
@@ -192,6 +196,30 @@ jobs:
           cat /proc/pressure/memory 2>/dev/null || true
           dotnet --info | head -30
 
+      - name: Restore Linux calibration build inputs
+        if: runner.os == 'Linux' && matrix.leg.test_shard_count > 1
+        shell: pwsh
+        run: dotnet restore ./RoslynMcp.slnx --nologo
+
+      - name: Measure Linux Release build
+        if: runner.os == 'Linux' && matrix.leg.test_shard_count > 1
+        shell: pwsh
+        run: ./eng/verify-release.ps1 -CalibrateLinuxShardBuild
+
+      - name: Resolve Linux shard build times
+        id: linux_shard_times
+        if: runner.os == 'Linux' && matrix.leg.test_shard_count > 1
+        timeout-minutes: 4
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LEG_NAME: ${{ matrix.leg.name }}
+          TEST_SHARD_COUNT: ${{ matrix.leg.test_shard_count }}
+        run: |
+          $seconds = ./eng/resolve-linux-shard-build-times.ps1 -LegName $env:LEG_NAME -ShardCount ([int]$env:TEST_SHARD_COUNT)
+          Write-Host "Linux calibration build seconds: $seconds"
+          "seconds=$seconds" >> $env:GITHUB_OUTPUT
+
       - name: Verify release build (pull request)
         if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
         shell: pwsh
@@ -200,6 +228,7 @@ jobs:
           HOSTED_IMAGE: ${{ matrix.leg.runs_on }}
           TEST_SHARD_INDEX: ${{ matrix.leg.test_shard_index }}
           TEST_SHARD_COUNT: ${{ matrix.leg.test_shard_count }}
+          LINUX_SHARD_BUILD_SECONDS: ${{ steps.linux_shard_times.outputs.seconds }}
           ARTIFACT_OWNER: ${{ matrix.leg.artifact_owner }}
         run: |
           $parameters = @{
@@ -209,6 +238,9 @@ jobs:
             TestShardIndex = [int]$env:TEST_SHARD_INDEX
             TestShardCount = [int]$env:TEST_SHARD_COUNT
             HostedImage = $env:HOSTED_IMAGE
+          }
+          if ($env:HOSTED_IMAGE -ceq 'ubuntu-latest') {
+            $parameters.ShardBuildSeconds = ConvertFrom-Json -InputObject $env:LINUX_SHARD_BUILD_SECONDS -NoEnumerate
           }
           # The artifact owner runs every release gate on every route. Docs-tier files
           # (THIRD-PARTY-NOTICES.md, the packed README, CHANGELOG.md, allowlisted plugin
