@@ -70,7 +70,7 @@ public static class TypeMoveTools
     [McpServerTool(Name = "change_type_namespace_preview", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("refactoring", "experimental", true, false,
         "Preview relocating a top-level type between namespaces in the same project. Rewrites the type's namespace declaration, optionally moves the file, and adjusts consumer using directives respecting ambient-namespace resolution."),
-     Description("Preview relocating a top-level type between namespaces in one project, optionally moving its file and updating consumer using directives. Use get_namespace_dependencies to identify circular dependencies.")]
+     Description("Preview moving a top-level type between namespaces in one project. Updates consumer usings and can move its file. Use get_namespace_dependencies to identify circular dependencies.")]
     public static Task<string> PreviewChangeTypeNamespace(
         IWorkspaceExecutionGate gate,
         INamespaceRelocationService relocationService,
