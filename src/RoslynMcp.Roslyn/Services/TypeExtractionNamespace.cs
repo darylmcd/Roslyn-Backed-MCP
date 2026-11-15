@@ -16,7 +16,7 @@ internal sealed class TypeExtractionNamespace
     private readonly IdentifierNameSyntax _typeName;
     private readonly UsingDirectiveSyntax[] _fileUsings;
     private readonly SyntaxTriviaList _fileSymbols;
-    private readonly (BaseNamespaceDeclarationSyntax Declaration, Header Header, Trailer Trailer)[] _scopes;
+    private readonly (BaseNamespaceDeclarationSyntax Declaration, Header Header)[] _scopes;
     private readonly OrphanDirectiveRewriter _orphanDirectives;
 
     internal TypeExtractionNamespace(CompilationUnitSyntax sourceRoot, TypeDeclarationSyntax sourceType, string newTypeName)
@@ -28,19 +28,21 @@ internal sealed class TypeExtractionNamespace
         // would declare it twice in the same project.
         _fileUsings = sourceRoot.Usings.Where(import => !import.GlobalKeyword.IsKind(SyntaxKind.GlobalKeyword)).ToArray();
         _scopes = sourceType.Ancestors().OfType<BaseNamespaceDeclarationSyntax>()
-            .Select(scope =>
-            {
-                var header = GetHeader(scope);
-                return (scope, header, GetTrailer(scope, header, sourceRoot.EndOfFileToken));
-            }).ToArray();
+            .Select(scope => (scope, GetHeader(scope))).ToArray();
 
         var copiedNodes = sourceRoot.Externs.Cast<SyntaxNode>().Concat(_fileUsings)
             .Concat(_scopes.SelectMany(scope => scope.Declaration.Externs.Cast<SyntaxNode>().Concat(scope.Declaration.Usings)))
             .Concat(_scopes.Select(scope => scope.Declaration.Name)).ToArray();
-        var scopeTrivia = _scopes.SelectMany(scope => scope.Header.SelectedTrivia.Concat(scope.Trailer.SelectedTrivia)).ToArray();
+        var scopeTrivia = _scopes.SelectMany(scope => scope.Header.SelectedTrivia).ToArray();
         var fileSymbolDirectives = GetFileSymbolDirectives(sourceRoot, scopeTrivia);
         _fileSymbols = SyntaxFactory.TriviaList(fileSymbolDirectives.Select(directive => directive.ParentTrivia));
-        _orphanDirectives = GetOrphanedDirectives(copiedNodes, scopeTrivia, fileSymbolDirectives);
+        var inactiveSemicolons = _scopes.Where(scope => scope.Header.NormalizeToBlock)
+            .SelectMany(scope => scope.Header.SelectedTrivia)
+            .DistinctBy(trivia => trivia.SpanStart)
+            .Select(trivia => (Trivia: trivia, Delimiter: InactiveDelimiter(trivia)))
+            .Where(edit => edit.Delimiter.IsKind(SyntaxKind.SemicolonToken))
+            .ToDictionary(edit => edit.Trivia.SpanStart, edit => edit.Delimiter.SpanStart);
+        _orphanDirectives = GetOrphanedDirectives(copiedNodes, scopeTrivia, fileSymbolDirectives, inactiveSemicolons);
     }
 
     internal NameSyntax GetQualifiedTypeName()
@@ -78,7 +80,7 @@ internal sealed class TypeExtractionNamespace
         var alias = aliasPrefix;
         for (var suffix = 1;
              identifiers.Contains(alias) || model.LookupSymbols(_sourceType.OpenBraceToken.Span.End, name: alias).Length > 0 ||
-                 NamespaceHasMemberNamed(model.Compilation.GlobalNamespace, alias, ct);
+                 CompilationHasMemberNamed(model.Compilation, alias, ct);
              suffix++)
         {
             alias = aliasPrefix + suffix.ToString(System.Globalization.CultureInfo.InvariantCulture);
@@ -88,19 +90,46 @@ internal sealed class TypeExtractionNamespace
             .WithAdditionalAnnotations(Formatter.Annotation);
     }
 
-    private static bool NamespaceHasMemberNamed(INamespaceSymbol globalNamespace, string name, CancellationToken ct)
+    private static bool CompilationHasMemberNamed(Compilation compilation, string name, CancellationToken ct)
     {
-        var scopes = new Stack<INamespaceSymbol>();
-        scopes.Push(globalNamespace);
+        // A base type referenced only in another configuration can introduce
+        // an inherited member with the alias's name.
+        var scopes = new Stack<INamespaceOrTypeSymbol>();
+        scopes.Push(compilation.Assembly.GlobalNamespace);
+        foreach (var reference in compilation.References)
+        {
+            switch (compilation.GetAssemblyOrModuleSymbol(reference))
+            {
+                case IAssemblySymbol assembly:
+                    scopes.Push(assembly.GlobalNamespace);
+                    break;
+                case IModuleSymbol module:
+                    scopes.Push(module.GlobalNamespace);
+                    break;
+            }
+        }
+
+        var visited = new HashSet<INamespaceOrTypeSymbol>(SymbolEqualityComparer.Default);
         while (scopes.TryPop(out var scope))
         {
             ct.ThrowIfCancellationRequested();
-            if (scope.GetMembers(name).Length > 0)
+            if (!visited.Add(scope))
+            {
+                continue;
+            }
+
+            if (scope.GetMembers(name).Any())
             {
                 return true;
             }
 
-            foreach (var child in scope.GetNamespaceMembers())
+            if (scope is INamespaceSymbol namespaceScope)
+            {
+                foreach (var child in namespaceScope.GetNamespaceMembers())
+                    scopes.Push(child);
+            }
+
+            foreach (var child in scope.GetTypeMembers())
                 scopes.Push(child);
         }
 
@@ -120,7 +149,11 @@ internal sealed class TypeExtractionNamespace
         // The last #endif of a namespace header or using block can be owned by
         // the first member. Place the alias after those existing closures.
         var lastClosure = Directives(leading).OfType<EndIfDirectiveTriviaSyntax>().LastOrDefault(directive =>
-            directive.GetRelatedDirectives()[0].SpanStart < firstMember.FullSpan.Start);
+        {
+            var group = directive.GetRelatedDirectives();
+            return group.Count > 1 && (group[0].SpanStart < firstMember.FullSpan.Start ||
+                ContainsOnlyInactiveImports(leading, ConditionalSpan(group)));
+        });
         var precedingTriviaCount = lastClosure is null
             ? 0
             : leading.TakeWhile(trivia => trivia.SpanStart <= lastClosure.SpanStart).Count();
@@ -145,6 +178,23 @@ internal sealed class TypeExtractionNamespace
         });
     }
 
+    private static bool ContainsOnlyInactiveImports(SyntaxTriviaList leading, TextSpan span)
+    {
+        var hasImports = false;
+        foreach (var trivia in leading.Where(item => item.IsKind(SyntaxKind.DisabledTextTrivia) && span.Contains(item.FullSpan)))
+        {
+            var root = SyntaxFactory.ParseCompilationUnit(trivia.ToFullString());
+            if (root.ContainsDiagnostics || root.Members.Count > 0 || root.AttributeLists.Count > 0)
+            {
+                return false;
+            }
+
+            hasImports |= root.Externs.Count > 0 || root.Usings.Count > 0;
+        }
+
+        return hasImports;
+    }
+
     internal static ExpressionSyntax AsExpression(NameSyntax name) =>
         name is QualifiedNameSyntax dotted
             ? SyntaxFactory.MemberAccessExpression(
@@ -153,12 +203,7 @@ internal sealed class TypeExtractionNamespace
 
     private static Header GetHeader(BaseNamespaceDeclarationSyntax scope)
     {
-        var delimiter = scope switch
-        {
-            NamespaceDeclarationSyntax block => block.OpenBraceToken,
-            FileScopedNamespaceDeclarationSyntax fileScoped => fileScoped.SemicolonToken,
-            _ => default,
-        };
+        var delimiter = GetOpeningDelimiter(scope);
         var firstBodyToken = delimiter.GetNextToken(includeZeroWidth: true);
         var header = scope.NamespaceKeyword.LeadingTrivia.Concat(scope.NamespaceKeyword.TrailingTrivia)
             .Concat(scope.Name.DescendantTrivia()).Concat(delimiter.LeadingTrivia).Concat(delimiter.TrailingTrivia);
@@ -177,80 +222,54 @@ internal sealed class TypeExtractionNamespace
             : bodyPrefix;
         var selected = InGroups(header).Concat(bodyPrefix).ToArray();
         var otherDelimiter = delimiter.IsKind(SyntaxKind.SemicolonToken) ? SyntaxKind.OpenBraceToken : SyntaxKind.SemicolonToken;
-        var hasAlternateDelimiter = DisabledTokens(selected).Any(token => token.IsKind(otherDelimiter));
+        var normalizeToBlock = selected.Select(InactiveDelimiter).Any(token => token.IsKind(otherDelimiter));
 
         return new Header(InGroups(scope.NamespaceKeyword.LeadingTrivia), InGroups(delimiter.LeadingTrivia),
-            delimitersBodyPrefix, selected, spans.Length > 0, hasAlternateDelimiter);
+            delimitersBodyPrefix, selected, spans.Length > 0, normalizeToBlock);
 
         SyntaxTrivia[] InGroups(IEnumerable<SyntaxTrivia> trivia) =>
             trivia.Where(item => spans.Any(span => span.Contains(item.FullSpan))).ToArray();
     }
 
-    private static Trailer GetTrailer(BaseNamespaceDeclarationSyntax scope, Header header, SyntaxToken endOfFile)
+    private static SyntaxToken GetOpeningDelimiter(BaseNamespaceDeclarationSyntax scope) => scope switch
     {
-        if (!header.HasAlternateDelimiter)
+        NamespaceDeclarationSyntax block => block.OpenBraceToken,
+        FileScopedNamespaceDeclarationSyntax fileScoped => fileScoped.SemicolonToken,
+        _ => default,
+    };
+
+    private static SyntaxToken InactiveDelimiter(SyntaxTrivia trivia)
+    {
+        if (!trivia.IsKind(SyntaxKind.DisabledTextTrivia))
         {
-            return new Trailer([], [], []);
+            return default;
         }
 
-        // A shared body can be block-scoped in one branch and file-scoped in
-        // another. Preserve the matching conditional close on either parse.
-        if (scope is NamespaceDeclarationSyntax block)
-        {
-            var close = block.CloseBraceToken;
-            var next = close.GetNextToken(includeZeroWidth: true);
-            var groups = Directives(close.LeadingTrivia.Concat(close.TrailingTrivia).Concat(next.LeadingTrivia))
-                .OfType<IfDirectiveTriviaSyntax>()
-                .Select(directive => directive.GetRelatedDirectives())
-                .Where(group => group.Count > 1 && group[^1] is EndIfDirectiveTriviaSyntax end &&
-                    group[0].SpanStart < close.SpanStart && close.Span.End <= end.SpanStart && end.FullSpan.End <= next.SpanStart)
-                .Select(ConditionalSpan).ToArray();
-            return new Trailer(
-                close.LeadingTrivia.Where(item => groups.Any(group => group.Contains(item.FullSpan))).ToArray(),
-                next.LeadingTrivia.Where(item => groups.Any(group => group.Contains(item.FullSpan))).ToArray(), []);
-        }
-
-        var eofTrivia = endOfFile.LeadingTrivia;
-        var conditionalCloses = Directives(eofTrivia).OfType<IfDirectiveTriviaSyntax>()
-            .Select(directive => directive.GetRelatedDirectives())
-            .Where(group => group.Count > 1 && group[^1] is EndIfDirectiveTriviaSyntax)
-            .Select(ConditionalSpan)
-            .Where(span =>
-            {
-                var tokens = DisabledTokens(eofTrivia.Where(item => span.Contains(item.FullSpan))).ToArray();
-                return tokens.Length > 0 && tokens.All(token => token.IsKind(SyntaxKind.CloseBraceToken));
-            }).ToArray();
-        return new Trailer([], [],
-            eofTrivia.Where(item => conditionalCloses.Any(group => group.Contains(item.FullSpan))).ToArray());
+        // Only the first punctuation after a possible namespace name is its
+        // delimiter. A later semicolon may belong to an inactive import.
+        var token = SyntaxFactory.ParseTokens(trivia.ToFullString()).FirstOrDefault(token =>
+            token.Kind() is not (SyntaxKind.NamespaceKeyword or SyntaxKind.IdentifierToken or SyntaxKind.DotToken));
+        return token.Kind() is SyntaxKind.SemicolonToken or SyntaxKind.OpenBraceToken ? token : default;
     }
-
-    private static IEnumerable<SyntaxToken> DisabledTokens(IEnumerable<SyntaxTrivia> trivia) =>
-        trivia.Where(item => item.IsKind(SyntaxKind.DisabledTextTrivia))
-            .SelectMany(item => SyntaxFactory.ParseTokens(item.ToFullString()))
-            .Where(token => !token.IsKind(SyntaxKind.EndOfFileToken));
 
     internal CompilationUnitSyntax Wrap(TypeDeclarationSyntax type)
     {
         MemberDeclarationSyntax member = type;
-        foreach (var (scope, header, trailer) in _scopes)
+        foreach (var (scope, header) in _scopes)
         {
             var keyword = scope.NamespaceKeyword.WithLeadingTrivia(_orphanDirectives.CopyTrivia(header.KeywordPrefix));
             var name = _orphanDirectives.CopyNode(scope.Name);
-            SyntaxToken Delimiter(SyntaxToken token) => token
+            var sourceDelimiter = GetOpeningDelimiter(scope);
+            // Give every branch of a mixed header a block opener and one shared
+            // close. The original conditional tail can also contain unrelated declarations.
+            var delimiter = (header.NormalizeToBlock ? SyntaxFactory.Token(SyntaxKind.OpenBraceToken) : sourceDelimiter)
                 .WithLeadingTrivia(_orphanDirectives.CopyTrivia(header.DelimiterPrefix))
-                .WithTrailingTrivia(token.TrailingTrivia.AddRange(_orphanDirectives.CopyTrivia(header.BodyPrefix)));
-            BaseNamespaceDeclarationSyntax shell = scope is FileScopedNamespaceDeclarationSyntax fileScoped
+                .WithTrailingTrivia(sourceDelimiter.TrailingTrivia.AddRange(_orphanDirectives.CopyTrivia(header.BodyPrefix)));
+            BaseNamespaceDeclarationSyntax shell = delimiter.IsKind(SyntaxKind.SemicolonToken)
                 ? SyntaxFactory.FileScopedNamespaceDeclaration(name).WithNamespaceKeyword(keyword)
-                    .WithSemicolonToken(Delimiter(fileScoped.SemicolonToken))
+                    .WithSemicolonToken(delimiter)
                 : SyntaxFactory.NamespaceDeclaration(name).WithNamespaceKeyword(keyword)
-                    .WithOpenBraceToken(Delimiter(((NamespaceDeclarationSyntax)scope).OpenBraceToken));
-            if (scope is NamespaceDeclarationSyntax sourceBlock && shell is NamespaceDeclarationSyntax targetBlock &&
-                (trailer.ClosePrefix.Length > 0 || trailer.CloseSuffix.Length > 0))
-            {
-                shell = targetBlock.WithCloseBraceToken(sourceBlock.CloseBraceToken
-                    .WithLeadingTrivia(_orphanDirectives.CopyTrivia(trailer.ClosePrefix))
-                    .WithTrailingTrivia(sourceBlock.CloseBraceToken.TrailingTrivia.AddRange(_orphanDirectives.CopyTrivia(trailer.CloseSuffix))));
-            }
+                    .WithOpenBraceToken(delimiter);
 
             member = shell.WithExterns(_orphanDirectives.Copy(scope.Externs))
                 .WithUsings(_orphanDirectives.Copy(scope.Usings))
@@ -261,9 +280,7 @@ internal sealed class TypeExtractionNamespace
             .WithExterns(_orphanDirectives.Copy(_sourceRoot.Externs))
             .WithUsings(_orphanDirectives.Copy(_fileUsings))
             .WithMembers(SyntaxFactory.SingletonList(member));
-        var fileSuffix = _orphanDirectives.CopyTrivia(_scopes.SelectMany(scope => scope.Trailer.FileSuffix));
-        return root.WithEndOfFileToken(root.EndOfFileToken.WithLeadingTrivia(fileSuffix))
-            .WithLeadingTrivia(_fileSymbols.AddRange(root.GetLeadingTrivia()));
+        return root.WithLeadingTrivia(_fileSymbols.AddRange(root.GetLeadingTrivia()));
     }
 
     private static DirectiveTriviaSyntax[] GetFileSymbolDirectives(CompilationUnitSyntax sourceRoot, SyntaxTrivia[] headerTrivia)
@@ -293,7 +310,8 @@ internal sealed class TypeExtractionNamespace
     }
 
     private static OrphanDirectiveRewriter GetOrphanedDirectives(
-        SyntaxNode[] copiedNodes, SyntaxTrivia[] headerTrivia, DirectiveTriviaSyntax[] fileSymbolDirectives)
+        SyntaxNode[] copiedNodes, SyntaxTrivia[] headerTrivia, DirectiveTriviaSyntax[] fileSymbolDirectives,
+        Dictionary<int, int> inactiveSemicolons)
     {
         var retained = copiedNodes.Select(node => node.FullSpan)
             .Concat(headerTrivia.Select(trivia => trivia.FullSpan)).ToArray();
@@ -322,7 +340,7 @@ internal sealed class TypeExtractionNamespace
             }
         }
 
-        return new OrphanDirectiveRewriter(omitted, omittedBranches);
+        return new OrphanDirectiveRewriter(omitted, omittedBranches, inactiveSemicolons);
     }
 
     private static IEnumerable<DirectiveTriviaSyntax> Directives(IEnumerable<SyntaxTrivia> trivia) =>
@@ -333,14 +351,10 @@ internal sealed class TypeExtractionNamespace
 
     private sealed record Header(
         SyntaxTrivia[] KeywordPrefix, SyntaxTrivia[] DelimiterPrefix, SyntaxTrivia[] BodyPrefix,
-        SyntaxTrivia[] SelectedTrivia, bool IsConditional, bool HasAlternateDelimiter);
+        SyntaxTrivia[] SelectedTrivia, bool IsConditional, bool NormalizeToBlock);
 
-    private sealed record Trailer(SyntaxTrivia[] ClosePrefix, SyntaxTrivia[] CloseSuffix, SyntaxTrivia[] FileSuffix)
-    {
-        internal IEnumerable<SyntaxTrivia> SelectedTrivia => ClosePrefix.Concat(CloseSuffix).Concat(FileSuffix);
-    }
-
-    private sealed class OrphanDirectiveRewriter(HashSet<int> omitted, List<TextSpan> omittedBranches) : CSharpSyntaxRewriter
+    private sealed class OrphanDirectiveRewriter(
+        HashSet<int> omitted, List<TextSpan> omittedBranches, Dictionary<int, int> inactiveSemicolons) : CSharpSyntaxRewriter
     {
         internal SyntaxList<T> Copy<T>(IEnumerable<T> directives) where T : SyntaxNode =>
             SyntaxFactory.List(directives.Select(CopyNode));
@@ -351,10 +365,21 @@ internal sealed class TypeExtractionNamespace
         internal SyntaxTriviaList CopyTrivia(IEnumerable<SyntaxTrivia> trivia) =>
             SyntaxFactory.TriviaList(trivia.Select(VisitTrivia).Where(item => item.RawKind != 0));
 
-        public override SyntaxTrivia VisitTrivia(SyntaxTrivia trivia) =>
-            (trivia.IsDirective && omitted.Contains(trivia.SpanStart)) ||
-            (trivia.IsKind(SyntaxKind.DisabledTextTrivia) && omittedBranches.Any(branch => branch.Contains(trivia.Span)))
-                ? default
-                : trivia;
+        public override SyntaxTrivia VisitTrivia(SyntaxTrivia trivia)
+        {
+            if (trivia.IsDirective && omitted.Contains(trivia.SpanStart) ||
+                trivia.IsKind(SyntaxKind.DisabledTextTrivia) && omittedBranches.Any(branch => branch.Contains(trivia.Span)))
+            {
+                return default;
+            }
+
+            if (trivia.IsKind(SyntaxKind.DisabledTextTrivia) && inactiveSemicolons.TryGetValue(trivia.SpanStart, out var semicolon))
+            {
+                var text = trivia.ToFullString();
+                return SyntaxFactory.DisabledText(text[..semicolon] + "{" + text[(semicolon + 1)..]);
+            }
+
+            return trivia;
+        }
     }
 }

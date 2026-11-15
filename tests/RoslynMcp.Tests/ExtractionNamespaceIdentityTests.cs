@@ -435,6 +435,32 @@ public sealed class ExtractionNamespaceIdentityTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task ExtractType_AliasDoesNotPrecedeAnInactiveExternDirective()
+    {
+        const string source = """
+            namespace Outer.
+            #if FIRST_BRANCH
+                First
+            #else
+                Second
+            #endif
+            {
+            #if FIRST_BRANCH
+                extern alias LocalInput;
+            #endif
+                public class Original
+                {
+                    private static int Build() => 17;
+                    public static int Read() => Build();
+                }
+            }
+            """;
+
+        await AssertTypePreviewAndApplyAsync(source, "Outer.Second.Extracted", ["Build"], "Outer.Second.Original",
+            expectComposition: false, alternateNamespace: "Outer.First", prepareWorkspace: AddAliasedProjectReferenceAsync);
+    }
+
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public async Task ExtractType_HandlesOptionalNamespaceSegmentInBothLoadedConfigurations(bool firstBranch)
@@ -460,11 +486,16 @@ public sealed class ExtractionNamespaceIdentityTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
-    [DataRow(false)]
-    [DataRow(true)]
-    public async Task ExtractType_ConditionalNamespaceCanSwitchBetweenBlockAndFileScope(bool firstBranch)
+    [DataRow(false, "", "")]
+    [DataRow(true, "", "")]
+    [DataRow(false, "", "public class Tail { }")]
+    [DataRow(true, "", "public class Tail { }")]
+    [DataRow(false, "public class Tail { }", "")]
+    [DataRow(true, "public class Tail { }", "")]
+    public async Task ExtractType_ConditionalNamespaceCanSwitchBetweenBlockAndFileScope(
+        bool firstBranch, string conditionalSibling, string unconditionalSibling)
     {
-        const string source = """
+        var source = $$"""
             #if FIRST_BRANCH
             namespace Outer.First;
             #else
@@ -478,7 +509,9 @@ public sealed class ExtractionNamespaceIdentityTests : IsolatedWorkspaceTestBase
                 }
             #if !FIRST_BRANCH
             }
+            {{conditionalSibling}}
             #endif
+            {{unconditionalSibling}}
             """;
 
         var active = firstBranch ? "Outer.First" : "Outer.Second";
@@ -565,6 +598,66 @@ public sealed class ExtractionNamespaceIdentityTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task ExtractType_AliasAvoidsAnInheritedMetadataMemberInAnotherConfiguration()
+    {
+        const string source = """
+            namespace Outer.
+            #if FIRST_BRANCH
+                First
+            #else
+                Second
+            #endif
+            {
+                public class Original
+            #if FIRST_BRANCH
+                    : global::AliasMetadata.Base
+            #endif
+                {
+                    private static int Build() => 17;
+                    public int Read() => Build();
+                }
+            }
+            """;
+
+        await AssertTypePreviewAndApplyAsync(source, "Outer.Second.Extracted", ["Build"], "Outer.Second.Original",
+            expectComposition: false, alternateNamespace: "Outer.First", prepareWorkspace: AddMetadataDecoyAsync);
+    }
+
+    private static async Task AddMetadataDecoyAsync(IsolatedWorkspaceScope workspace)
+    {
+        const string source = """
+            namespace AliasMetadata;
+            public class Base
+            {
+                protected readonly Decoy __ExtractedType = new();
+            }
+            public class Decoy
+            {
+                public int Build() => -1;
+            }
+            """;
+        var workspaceId = await workspace.LoadAsync();
+        var references = WorkspaceManager.GetCurrentSolution(workspaceId).Projects
+            .Single(project => project.Name == "SampleLib").MetadataReferences;
+        var compilation = CSharpCompilation.Create("AliasMetadataDecoy", [CSharpSyntaxTree.ParseText(source)],
+            references,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        const string assemblyPath = "AliasMetadataDecoy.dll";
+        await using (var image = File.Create(workspace.GetPath("SampleLib", assemblyPath)))
+        {
+            var result = compilation.Emit(image);
+            Assert.IsTrue(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
+        }
+
+        var projectPath = workspace.GetPath("SampleLib", "SampleLib.csproj");
+        var project = XDocument.Load(projectPath);
+        project.Root!.Add(new XElement("ItemGroup", new XElement("Reference", new XAttribute("Include", "AliasMetadataDecoy"),
+            new XElement("HintPath", assemblyPath))));
+        project.Save(projectPath);
+        await workspace.ReloadAsync();
+    }
+
+    [TestMethod]
     [DataRow(false, false)]
     [DataRow(true, false)]
     [DataRow(false, true)]
@@ -600,12 +693,12 @@ public sealed class ExtractionNamespaceIdentityTests : IsolatedWorkspaceTestBase
         Func<IsolatedWorkspaceScope, Task>? prepareWorkspace = null)
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
-        if (prepareWorkspace is not null)
-            await prepareWorkspace(workspace);
-
         var sourcePath = workspace.GetPath("SampleLib", "NamespaceExtractionSource.cs");
         var extractedPath = workspace.GetPath("SampleLib", "NamespaceExtractedType.cs");
         await File.WriteAllTextAsync(sourcePath, source);
+        if (prepareWorkspace is not null)
+            await prepareWorkspace(workspace);
+
         var workspaceId = await workspace.LoadAsync();
         await GetCleanCompilationAsync(WorkspaceManager.GetCurrentSolution(workspaceId));
 
