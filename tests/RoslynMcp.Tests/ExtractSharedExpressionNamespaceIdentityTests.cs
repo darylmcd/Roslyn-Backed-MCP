@@ -108,6 +108,50 @@ public sealed class ExtractSharedExpressionNamespaceIdentityTests : IsolatedWork
     }
 
     [TestMethod]
+    public async Task ExtractSharedExpression_SameDeclarationDoesNotCallLocalDelegate()
+    {
+        const string source = """
+            namespace Outer.Inner;
+            public class Owner
+            {
+                public int Read(int input)
+                {
+                    System.Func<int, int> SharedValue = value => -1;
+                    _ = SharedValue;
+                    return input * 31;
+                }
+                public int ReadAgain(int input) => input * 31;
+            }
+            """;
+
+        await AssertSharedExpressionPreviewAndApplyAsync(
+            source, "", "private", "Outer.Inner.Owner", callerSharesDocument: true);
+    }
+
+    [TestMethod]
+    public async Task ExtractSharedExpression_SameDeclarationDoesNotCallParameter()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync();
+        var path = workspace.GetPath("SampleLib", "SharedExpressionProbe.cs");
+        var workspaceId = workspace.WorkspaceId;
+        var json = await ExtractMethodTools.PreviewExtractSharedExpressionToHelper(
+            WorkspaceExecutionGate, ExtractMethodService, workspaceId, path,
+            18, 13, 18, 104, "filePath", "private", allowCrossFile: false);
+        const string call = "global::SampleLib.SharedExpressionProbe.filePath(filePath)";
+        StringAssert.Contains(json, call);
+        using var preview = JsonDocument.Parse(json);
+        var token = preview.RootElement.GetProperty("previewToken").GetString()!;
+        await GetCleanCompilationAsync(GetPreviewSolution(token));
+
+        var appliedJson = await ApplyWithVerifyTool.ApplyWithVerify(
+            WorkspaceExecutionGate, ApplyUndoWorkflowService, PreviewStore, token);
+        using var applied = JsonDocument.Parse(appliedJson);
+        Assert.AreEqual("applied", applied.RootElement.GetProperty("status").GetString(), appliedJson);
+        await GetCleanCompilationAsync(WorkspaceManager.GetCurrentSolution(workspaceId));
+        StringAssert.Contains(await File.ReadAllTextAsync(path), call);
+    }
+
+    [TestMethod]
     public async Task ExtractSharedExpression_NestedGenericOwnerKeepsItsEnclosingTypeArgument()
     {
         const string ownerSource = """

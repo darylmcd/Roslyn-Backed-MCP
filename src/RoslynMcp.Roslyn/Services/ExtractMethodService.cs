@@ -645,9 +645,10 @@ public sealed class ExtractMethodService : IExtractMethodService
                 "Cannot extract a void expression to a helper. Select a typed sub-expression instead.");
 
         // Scan candidate documents for structurally-identical expressions (phase 2).
+        var helperIdentifier = IdentifierValidation.CreateMemberIdentifierToken(helperName).ValueText;
         var hits = await CollectMatchingExpressionHitsAsync(
             exampleDocument, exampleExpression, exampleType, exampleFreeVars, helperOwner, ownerTypeSyntax,
-            allowCrossFile, ct)
+            helperIdentifier, allowCrossFile, ct)
             .ConfigureAwait(false);
 
         if (hits.Count == 0)
@@ -706,6 +707,7 @@ public sealed class ExtractMethodService : IExtractMethodService
         IReadOnlyList<FreeVariable> exampleFreeVars,
         INamedTypeSymbol helperOwner,
         TypeSyntax ownerTypeSyntax,
+        string helperIdentifier,
         bool allowCrossFile,
         CancellationToken ct)
     {
@@ -753,9 +755,12 @@ public sealed class ExtractMethodService : IExtractMethodService
                             "Cannot synthesize a shared helper with different parameter types.");
                 }
 
-                // Another declaration, even a partial of the same type, may
-                // have a local with the helper's name.
-                var needsQualifiedOwner = candidateType != exampleType;
+                // A local name can hide a member even in the helper's own
+                // declaration. Other declarations also need the exact owner.
+                var needsQualifiedOwner = candidateType != exampleType ||
+                    docModel.LookupSymbols(candidate.SpanStart, name: helperIdentifier).Any(symbol =>
+                        symbol.Kind is SymbolKind.Local or SymbolKind.Parameter or SymbolKind.RangeVariable or SymbolKind.TypeParameter ||
+                        symbol is IMethodSymbol { MethodKind: MethodKind.LocalFunction });
                 if (needsQualifiedOwner)
                 {
                     // In particular, an open generic owner can only be named where its
