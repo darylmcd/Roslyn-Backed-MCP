@@ -1,6 +1,6 @@
 # shared-expression-projected-helper-binding — Verify bindings in the projected shared helper
 
-**row:** `shared-expression-projected-helper-binding` · **pri:** `Medium` · **size:** `M` · **deps:** `shared-expression-match-bound-symbols`
+**row:** `shared-expression-projected-helper-binding` · **pri:** `Medium` · **size:** `M`
 
 ## Anchors
 
@@ -17,3 +17,7 @@
 
 - At `403de745`, `BuildHelperMethod` copies the example expression to a static type member and converts free variables to parameters. Comparing original candidate bindings cannot verify bindings after this change of compilation context.
 - The cold plan probe resolved `const int n = 0; Bind(n)` to `Bind(byte)`. With a synthesized `int n` parameter it resolved the same source text to `Bind(long)`. Both versions compile. The prerequisite matcher should supply declaration and anonymous-function mappings that the projected comparison can reuse.
+
+## Notes
+
+Matcher review covered location-based interceptors as distinct original call targets. The actual projected-helper binding check should also account for the effective interceptor at the moved call, because a compiling location-based binding can disappear after relocation. The new helper body's semantic model owns that check.
