@@ -358,7 +358,9 @@ public sealed class ExtractionNamespaceIdentityTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
-    public async Task ExtractType_ConditionalHeadersWithRepeatedNamespaceKeywordRetainBothBranches()
+    [DataRow("Extracted")]
+    [DataRow("__ExtractedType")]
+    public async Task ExtractType_ConditionalHeadersWithRepeatedNamespaceKeywordRetainBothBranches(string newTypeName)
     {
         const string source = """
             #if FIRST_BRANCH
@@ -375,14 +377,16 @@ public sealed class ExtractionNamespaceIdentityTests : IsolatedWorkspaceTestBase
             }
             """;
 
-        await AssertTypePreviewAndApplyAsync(source, "Outer.Second.Extracted", ["Build"],
+        await AssertTypePreviewAndApplyAsync(source, "Outer.Second." + newTypeName, ["Build"],
             "Outer.Second.Original", expectComposition: false, alternateNamespace: "Outer.First");
     }
 
     [TestMethod]
-    [DataRow("{", "}")]
-    [DataRow(";", "")]
-    public async Task ExtractType_ConditionalHeadersCanOwnTheNamespaceDelimiter(string delimiter, string close)
+    [DataRow("{", "}", false)]
+    [DataRow(";", "", false)]
+    [DataRow("{", "}", true)]
+    [DataRow(";", "", true)]
+    public async Task ExtractType_ConditionalHeadersCanOwnTheNamespaceDelimiter(string delimiter, string close, bool hasImport)
     {
         var source = $$"""
             #if FIRST_BRANCH
@@ -390,14 +394,40 @@ public sealed class ExtractionNamespaceIdentityTests : IsolatedWorkspaceTestBase
             #else
             namespace Outer.Second{{delimiter}}
             #endif
-            using ItemCount = global::System.Int32;
+            {{(hasImport ? "using ItemCount = global::System.Int32;" : "")}}
 
             public class Original
             {
-                private static ItemCount Build() => 17;
+                private static {{(hasImport ? "ItemCount" : "int")}} Build() => 17;
                 public static int Read() => Build();
             }
             {{close}}
+            """;
+
+        await AssertTypePreviewAndApplyAsync(source, "Outer.Second.Extracted", ["Build"],
+            "Outer.Second.Original", expectComposition: false, alternateNamespace: "Outer.First");
+    }
+
+    [TestMethod]
+    public async Task ExtractType_AliasFollowsTheLastConditionalUsing()
+    {
+        const string source = """
+            namespace Outer.
+            #if FIRST_BRANCH
+                First
+            #else
+                Second
+            #endif
+            {
+            #if !FIRST_BRANCH
+                using ItemCount = global::System.Int32;
+            #endif
+                public class Original
+                {
+                    private static int Build() => 17;
+                    public static int Read() => Build();
+                }
+            }
             """;
 
         await AssertTypePreviewAndApplyAsync(source, "Outer.Second.Extracted", ["Build"],
@@ -425,6 +455,34 @@ public sealed class ExtractionNamespaceIdentityTests : IsolatedWorkspaceTestBase
 
         var active = firstBranch ? "Outer.First" : "Outer";
         var alternate = firstBranch ? "Outer" : "Outer.First";
+        await AssertTypePreviewAndApplyAsync(source, active + ".Extracted", ["Build"], active + ".Original",
+            expectComposition: false, alternateNamespace: alternate, prepareWorkspace: firstBranch ? EnableFirstBranch : null);
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task ExtractType_ConditionalNamespaceCanSwitchBetweenBlockAndFileScope(bool firstBranch)
+    {
+        const string source = """
+            #if FIRST_BRANCH
+            namespace Outer.First;
+            #else
+            namespace Outer.Second
+            {
+            #endif
+                public class Original
+                {
+                    private static int Build() => 17;
+                    public static int Read() => Build();
+                }
+            #if !FIRST_BRANCH
+            }
+            #endif
+            """;
+
+        var active = firstBranch ? "Outer.First" : "Outer.Second";
+        var alternate = firstBranch ? "Outer.Second" : "Outer.First";
         await AssertTypePreviewAndApplyAsync(source, active + ".Extracted", ["Build"], active + ".Original",
             expectComposition: false, alternateNamespace: alternate, prepareWorkspace: firstBranch ? EnableFirstBranch : null);
     }
@@ -475,6 +533,38 @@ public sealed class ExtractionNamespaceIdentityTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task ExtractType_AliasAvoidsAnAlternateNamespaceMemberInAnotherFile()
+    {
+        const string source = """
+            namespace Outer.
+            #if FIRST_BRANCH
+                First
+            #else
+                Second
+            #endif
+            {
+                public class Original
+                {
+                    private static int Build() => 17;
+                    public static int Read() => Build();
+                }
+            }
+            """;
+
+        await AssertTypePreviewAndApplyAsync(source, "Outer.Second.Extracted", ["Build"], "Outer.Second.Original",
+            expectComposition: false, alternateNamespace: "Outer.First",
+            prepareWorkspace: workspace => File.WriteAllTextAsync(workspace.GetPath("SampleLib", "AliasDecoy.cs"), """
+                #if FIRST_BRANCH
+                namespace Outer.First;
+                public class __ExtractedType
+                {
+                    public static int Build() => -1;
+                }
+                #endif
+                """));
+    }
+
+    [TestMethod]
     [DataRow(false, false)]
     [DataRow(true, false)]
     [DataRow(false, true)]
@@ -522,7 +612,7 @@ public sealed class ExtractionNamespaceIdentityTests : IsolatedWorkspaceTestBase
         var server = await GetPathAuthorizedServerAsync();
         var json = await TypeExtractionTools.PreviewExtractType(
             server, WorkspaceExecutionGate, TypeExtractionService,
-            workspaceId, sourcePath, "Original", members, "Extracted", extractedPath);
+            workspaceId, sourcePath, "Original", members, GetSimpleName(extractedMetadataName), extractedPath);
         using var preview = JsonDocument.Parse(json);
         var token = preview.RootElement.GetProperty("previewToken").GetString()!;
         Assert.AreEqual(2, preview.RootElement.GetProperty("changes").GetArrayLength(), json);
@@ -548,7 +638,7 @@ public sealed class ExtractionNamespaceIdentityTests : IsolatedWorkspaceTestBase
             originalMetadataName, expectComposition);
         if (alternateNamespace is not null)
         {
-            foreach (var tree in compilation.SyntaxTrees.Where(tree => tree.FilePath == sourcePath || tree.FilePath == extractedPath))
+            foreach (var tree in compilation.SyntaxTrees)
             {
                 var options = (CSharpParseOptions)tree.Options;
                 var symbols = options.PreprocessorSymbolNames.Where(symbol => symbol != "FIRST_BRANCH").Append("USE_SECOND");
@@ -560,9 +650,12 @@ public sealed class ExtractionNamespaceIdentityTests : IsolatedWorkspaceTestBase
 
             AssertNoCompilerErrors(compilation);
             await AssertExtractedTypeBindingsAsync(compilation, extractedPath, sourcePath,
-                alternateNamespace + ".Extracted", alternateNamespace + ".Original", expectComposition);
+                alternateNamespace + "." + GetSimpleName(extractedMetadataName),
+                alternateNamespace + "." + GetSimpleName(originalMetadataName), expectComposition);
         }
     }
+
+    private static string GetSimpleName(string metadataName) => metadataName[(metadataName.LastIndexOf('.') + 1)..];
 
     private static async Task AssertExtractedTypeBindingsAsync(
         Compilation compilation, string extractedPath, string sourcePath, string extractedMetadataName,

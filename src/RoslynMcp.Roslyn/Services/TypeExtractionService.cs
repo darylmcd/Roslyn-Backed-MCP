@@ -142,7 +142,7 @@ public sealed class TypeExtractionService : ITypeExtractionService
         var identifierCore = newTypeName[0] == '@' ? newTypeName[1..] : newTypeName;
         var fieldName = "_" + char.ToLowerInvariant(identifierCore[0]) + identifierCore[1..];
         var extractionNamespace = new TypeExtractionNamespace(sourceRoot, typeDecl, newTypeName);
-        var referenceAlias = extractionNamespace.CreateReferenceAlias(semanticModel);
+        var referenceAlias = extractionNamespace.CreateReferenceAlias(semanticModel, ct);
         var newTypeReference = referenceAlias?.Alias?.Name ?? extractionNamespace.GetQualifiedTypeName();
         var (rewrittenTypeDecl, referencedExtractedNames) = TypeExtractionSameFileConsumerRewriter.Rewrite(
             typeDecl,
@@ -1274,7 +1274,7 @@ public sealed class TypeExtractionService : ITypeExtractionService
     {
         if (typeDecl.ParameterList is not null)
         {
-            throw new InvalidOperationException(
+            throw InvalidOperationErrors.Internal(
                 $"Refusing to extract type '{newTypeName}' from '{sourceTypeName}': the source type declares a " +
                 $"primary constructor, and the extraction cannot wire the composition field through primary-constructor " +
                 $"parameters. Convert the primary constructor to an explicit constructor first, then retry.");
@@ -1341,7 +1341,7 @@ public sealed class TypeExtractionService : ITypeExtractionService
             var ctor = ctors[i];
             if (ctor.Body is null && ctor.ExpressionBody is null)
             {
-                throw new InvalidOperationException(
+                throw InvalidOperationErrors.Internal(
                     $"Refusing to extract type '{newTypeName}' from '{sourceTypeName}': constructor " +
                     $"'{ctor.Identifier.Text}({ctor.ParameterList.Parameters.Count} parameter(s))' has no body " +
                     $"(extern or partial), so the composition field cannot be assigned on that construction path. " +
@@ -1362,7 +1362,7 @@ public sealed class TypeExtractionService : ITypeExtractionService
                 // resolves against the original in-tree initializer.
                 if (initializer.ArgumentList.Arguments.Any(a => a.NameColon is not null))
                 {
-                    throw new InvalidOperationException(
+                    throw InvalidOperationErrors.Internal(
                         $"Refusing to extract type '{newTypeName}' from '{sourceTypeName}': a 'this(...)' constructor " +
                         $"initializer uses named arguments, so the forwarded '{paramName}' argument cannot be inserted " +
                         $"positionally. Convert the initializer to positional arguments first, then retry.");
@@ -1376,7 +1376,7 @@ public sealed class TypeExtractionService : ITypeExtractionService
                         string.Equals(r.SyntaxTree.FilePath, c.SyntaxTree.FilePath, StringComparison.Ordinal)));
                 if (targetCtorIndex < 0)
                 {
-                    throw new InvalidOperationException(
+                    throw InvalidOperationErrors.Internal(
                         $"Refusing to extract type '{newTypeName}' from '{sourceTypeName}': the delegation target of a " +
                         $"'this(...)' constructor initializer could not be resolved, so the forwarded '{paramName}' " +
                         $"argument cannot be placed safely. Fix the constructor chain so it compiles, then retry.");

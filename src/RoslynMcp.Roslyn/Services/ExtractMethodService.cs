@@ -628,7 +628,7 @@ public sealed class ExtractMethodService : IExtractMethodService
             ?? throw new InvalidOperationException(
                 "Example expression must be inside a type declaration.");
         var helperOwner = exampleModel.GetDeclaredSymbol(exampleType, ct)
-            ?? throw new InvalidOperationException("Could not resolve the shared helper's declaring type.");
+            ?? throw InvalidOperationErrors.Internal("Could not resolve the shared helper's declaring type.");
         var qualifiedOwner = helperOwner.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
         var ownerTypeSyntax = SyntaxFactory.ParseTypeName(qualifiedOwner);
 
@@ -738,7 +738,7 @@ public sealed class ExtractMethodService : IExtractMethodService
                 // example. Matches by position (structural equivalence aligns them 1:1).
                 var candidateFreeVars = CollectFreeVariables(candidate, docModel);
                 if (candidateFreeVars.Count != exampleFreeVars.Count)
-                    throw new InvalidOperationException(
+                    throw InvalidOperationErrors.Internal(
                         $"Structurally-identical match in '{doc.FilePath ?? doc.Name}' has {candidateFreeVars.Count} free variables; " +
                         $"the example has {exampleFreeVars.Count}. Cannot extract — the capture sets differ.");
                 for (var i = 0; i < candidateFreeVars.Count; i++)
@@ -746,7 +746,7 @@ public sealed class ExtractMethodService : IExtractMethodService
                     var a = exampleFreeVars[i].Type;
                     var b = candidateFreeVars[i].Type;
                     if (!SymbolEqualityComparer.Default.Equals(a, b))
-                        throw new InvalidOperationException(
+                        throw InvalidOperationErrors.Internal(
                             $"Free-variable semantic-type mismatch at match in '{doc.FilePath ?? doc.Name}': " +
                             $"example variable '{exampleFreeVars[i].Name}' is '{a?.ToDisplayString() ?? "<null>"}' but " +
                             $"candidate variable '{candidateFreeVars[i].Name}' is '{b?.ToDisplayString() ?? "<null>"}'. " +
@@ -803,7 +803,7 @@ public sealed class ExtractMethodService : IExtractMethodService
             ct.ThrowIfCancellationRequested();
             var doc = group.First().Document;
             var docRoot = await doc.GetSyntaxRootAsync(ct).ConfigureAwait(false)
-                ?? throw new InvalidOperationException($"Could not read syntax root for '{doc.FilePath ?? doc.Name}'.");
+                ?? throw InvalidOperationErrors.Internal($"Could not read syntax root for '{doc.FilePath ?? doc.Name}'.");
             var oldText = docRoot.ToFullString();
 
             var rewrites = group.ToDictionary(
@@ -834,7 +834,7 @@ public sealed class ExtractMethodService : IExtractMethodService
                 options: null,
                 cancellationToken: ct).ConfigureAwait(false);
             var formattedRoot = await formattedDocument.GetSyntaxRootAsync(ct).ConfigureAwait(false)
-                ?? throw new InvalidOperationException(
+                ?? throw InvalidOperationErrors.Internal(
                     $"Formatter produced no syntax root for '{doc.FilePath ?? doc.Name}'.");
 
             var newText = formattedRoot.ToFullString();
