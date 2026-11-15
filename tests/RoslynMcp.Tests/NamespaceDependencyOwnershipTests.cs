@@ -124,6 +124,51 @@ public sealed class NamespaceDependencyOwnershipTests : IsolatedWorkspaceTestBas
             result.Edges.Where(edge => edge.FromNamespace == "ScopeSingle").ToArray());
     }
 
+    [TestMethod]
+    public async Task NamespaceGraph_SkipsUnnamedRecoveryScopesAndIneligibleImports()
+    {
+        const string source = """
+            global using System.Net;
+            using static System.Math;
+            using System.Text;
+
+            namespace ScopeValid
+            {
+                public class Valid { }
+            }
+
+            namespace
+            {
+                public class Unnamed { }
+
+                namespace ScopeMissingParent
+                {
+                    public class AlsoUnnamed { }
+                }
+            }
+
+            namespace ScopeMissingSegment.
+            {
+                namespace ScopeMissingAncestor
+                {
+                    public class AlsoInvalid { }
+                }
+            }
+            """;
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        await File.WriteAllTextAsync(workspace.GetPath("SampleLib", "RecoveryScopes.cs"), source);
+        await workspace.LoadAsync();
+
+        var result = await ReadGraphAsync(workspace.WorkspaceId, circularOnly: false);
+        Assert.IsFalse(result.Nodes.Any(node =>
+            node.Namespace.Length == 0 || node.Namespace.Contains("ScopeMissing", StringComparison.Ordinal)));
+        Assert.AreEqual(new NamespaceNodeDto("ScopeValid", 1, "SampleLib"),
+            result.Nodes.Single(node => node.Namespace == "ScopeValid"));
+        CollectionAssert.AreEqual(
+            new[] { new NamespaceEdgeDto("ScopeValid", "System.Text", 1) },
+            result.Edges.Where(edge => edge.FromNamespace == "ScopeValid").ToArray());
+    }
+
     private static async Task<NamespaceDependencyGraphDto> ReadGraphAsync(string workspaceId, bool circularOnly)
     {
         var json = await AdvancedAnalysisTools.GetNamespaceDependencies(

@@ -97,7 +97,8 @@ public sealed class NamespaceDependencyService : INamespaceDependencyService
         var names = new Dictionary<BaseNamespaceDeclarationSyntax, string>();
         foreach (var declaration in root.DescendantNodes().OfType<BaseNamespaceDeclarationSyntax>())
         {
-            if (semanticModel.GetDeclaredSymbol(declaration, ct) is { } symbol)
+            if (semanticModel.GetDeclaredSymbol(declaration, ct) is INamespaceSymbol symbol
+                && HasNamedNamespaceChain(symbol))
             {
                 var name = symbol.ToDisplayString();
                 names.Add(declaration, name);
@@ -141,6 +142,19 @@ public sealed class NamespaceDependencyService : INamespaceDependencyService
                 RecordImport(edges, scopeName, target);
             }
         }
+    }
+
+    private static bool HasNamedNamespaceChain(INamespaceSymbol symbol)
+    {
+        // Error recovery can bind a missing name to an empty segment, including an
+        // ancestor of an otherwise named namespace. Neither is a declared graph owner.
+        for (INamespaceSymbol? scope = symbol; scope is { IsGlobalNamespace: false }; scope = scope.ContainingNamespace)
+        {
+            if (scope.Name.Length == 0)
+                return false;
+        }
+
+        return true;
     }
 
     private static void RecordImport(Dictionary<(string From, string To), int> edges, string owner, string target)
