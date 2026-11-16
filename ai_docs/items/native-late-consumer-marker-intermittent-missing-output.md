@@ -4,7 +4,7 @@
 
 ## Anchors
 
-- `tests/RoslynMcp.Tests/Workspace/ForkNativeAdmissionTests.cs:293` — `Assert.IsTrue(File.Exists(output))` carries no `Describe()` and the command ran at minimal verbosity, so the failure is undiagnosable.
+- `tests/RoslynMcp.Tests/Workspace/ForkNativeCopyAdmissionTests.cs:206` — `Assert.IsTrue(File.Exists(output))` carries no `Describe()` and the command ran at minimal verbosity, so the failure is undiagnosable.
 
 ## Acceptance
 
