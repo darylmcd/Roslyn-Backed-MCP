@@ -32,13 +32,13 @@ public sealed class CiTopologyDecisionContractTests
         var decision = ParseDecision(result.StdOut);
 
         Assert.IsFalse(decision.DocsOnly);
-        Assert.AreEqual("Code PR: four hosted Windows and four hosted Linux shards.", decision.Reason);
+        Assert.AreEqual("Code PR: six hosted Windows and five hosted Linux shards.", decision.Reason);
         AssertExactCodePullRequestMatrix(decision.RunnerMatrix);
     }
 
     [TestMethod]
     [TestCategory("Process")]
-    public async Task DocsOnlyPullRequest_PureMarkdownAndAiDocsJson_RoutesTwoLinuxShardsAsync()
+    public async Task DocsOnlyPullRequest_PureMarkdownAndAiDocsJson_RoutesFourDocsLinuxShardsAsync()
     {
         var result = await RunTopologyAsync(
             "pull_request",
@@ -71,7 +71,7 @@ public sealed class CiTopologyDecisionContractTests
         var decision = ParseDecision(result.StdOut);
 
         Assert.IsFalse(decision.DocsOnly, $"'{path}' is behavior-bearing and must force full validation.");
-        Assert.AreEqual("Code PR: four hosted Windows and four hosted Linux shards.", decision.Reason);
+        Assert.AreEqual("Code PR: six hosted Windows and five hosted Linux shards.", decision.Reason);
     }
 
     [TestMethod]
@@ -378,20 +378,24 @@ public sealed class CiTopologyDecisionContractTests
     {
         var expected = new (string Name, string RunsOn, bool ArtifactOwner, int TimeoutMinutes, int ShardIndex, int ShardCount)[]
         {
-            ("windows-hosted-1-of-4", "windows-latest", false, 45, 0, 4),
-            ("windows-hosted-2-of-4", "windows-latest", false, 45, 1, 4),
-            ("windows-hosted-3-of-4", "windows-latest", false, 45, 2, 4),
-            ("windows-hosted-4-of-4", "windows-latest", false, 45, 3, 4),
+            ("windows-hosted-1-of-6", "windows-latest", false, 45, 0, 6),
+            ("windows-hosted-2-of-6", "windows-latest", false, 45, 1, 6),
+            ("windows-hosted-3-of-6", "windows-latest", false, 45, 2, 6),
+            ("windows-hosted-4-of-6", "windows-latest", false, 45, 3, 6),
+            ("windows-hosted-5-of-6", "windows-latest", false, 45, 4, 6),
+            ("windows-hosted-6-of-6", "windows-latest", false, 45, 5, 6),
             // TEMPORARY 45: see eng/resolve-ci-topology.ps1 and row ci-restore-linux-leg-timeout-30-after-rebalance.
-            ("linux-1-of-4", "ubuntu-latest", false, 45, 0, 4),
-            ("linux-2-of-4", "ubuntu-latest", false, 45, 1, 4),
-            ("linux-3-of-4", "ubuntu-latest", false, 45, 2, 4),
-            ("linux-4-of-4", "ubuntu-latest", true, 45, 3, 4),
+            ("linux-1-of-5", "ubuntu-latest", false, 45, 0, 5),
+            ("linux-2-of-5", "ubuntu-latest", false, 45, 1, 5),
+            ("linux-3-of-5", "ubuntu-latest", false, 45, 2, 5),
+            ("linux-4-of-5", "ubuntu-latest", false, 45, 3, 5),
+            ("linux-5-of-5", "ubuntu-latest", true, 45, 4, 5),
         };
 
         AssertExactMatrix(matrix, expected);
-        AssertCompleteShardUnion(matrix, "windows-latest", expectedShardCount: 4);
-        AssertCompleteShardUnion(matrix, "ubuntu-latest", expectedShardCount: 4);
+        // A missing or duplicated index would silently drop or double-run one slice of the suite.
+        AssertCompleteShardUnion(matrix, "windows-latest", expectedShardCount: 6);
+        AssertCompleteShardUnion(matrix, "ubuntu-latest", expectedShardCount: 5);
         AssertSoleArtifactOwner(matrix);
     }
 
@@ -415,6 +419,10 @@ public sealed class CiTopologyDecisionContractTests
         (string Name, string RunsOn, bool ArtifactOwner, int TimeoutMinutes, int ShardIndex, int ShardCount)[] expected)
     {
         Assert.AreEqual(expected.Length, matrix.Length, "Leg count must match exactly -- no extra or missing legs.");
+        Assert.AreEqual(
+            matrix.Length,
+            matrix.Select(leg => leg.Name).Distinct(StringComparer.Ordinal).Count(),
+            "Leg names must be unique: they key the job name and the test-results artifact.");
         for (var index = 0; index < expected.Length; index++)
         {
             var leg = matrix.SingleOrDefault(candidate => candidate.Name == expected[index].Name)
@@ -445,10 +453,16 @@ public sealed class CiTopologyDecisionContractTests
     }
 
     private static void AssertSoleArtifactOwner(CiTopologyLeg[] matrix)
-        => Assert.AreEqual(
-            1,
-            matrix.Count(leg => leg.ArtifactOwner),
-            "Exactly one leg in the matrix must own policy/release artifacts.");
+    {
+        var owners = matrix.Where(leg => leg.ArtifactOwner).ToArray();
+        Assert.AreEqual(1, owners.Length, "Exactly one leg in the matrix must own policy/release artifacts.");
+        // Publish/hash and the release policy gates run on Linux because NuGet publication does.
+        Assert.AreEqual("ubuntu-latest", owners[0].RunsOn, "The sole artifact owner must be a hosted Linux leg.");
+        Assert.AreEqual(
+            owners[0].TestShardCount - 1,
+            owners[0].TestShardIndex,
+            "The artifact owner is the last Linux shard.");
+    }
 
     private static void AssertSucceeded(PwshScriptResult result)
         => Assert.AreEqual(
