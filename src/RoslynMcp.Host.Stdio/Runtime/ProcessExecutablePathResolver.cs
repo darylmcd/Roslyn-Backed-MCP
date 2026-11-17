@@ -43,8 +43,7 @@ internal readonly record struct ProcessExecutablePathResolution(
 }
 
 /// <summary>
-/// Resolves another process's executable image path from state the operating system records
-/// when it creates the process, so the path is readable as soon as the process exists.
+/// Resolves another process's executable image path from the image published by the operating system.
 /// </summary>
 /// <remarks>
 /// <para><see cref="Process.MainModule"/> is not safe for a process that may have just started.
@@ -54,8 +53,9 @@ internal readonly record struct ProcessExecutablePathResolution(
 /// <c>ERROR_PARTIAL_COPY</c>, which let a just-started <c>testhost</c> escape the
 /// <c>workspace_close</c> drain. <c>QueryFullProcessImageNameW</c> reads the image name the
 /// kernel stored at creation and needs only <c>PROCESS_QUERY_LIMITED_INFORMATION</c>.</para>
-/// <para>On Linux, <c>/proc/&lt;pid&gt;/exe</c> is the kernel's link to the executed image,
-/// which does not depend on the target's dynamic loader. Other platforms fall back to
+/// <para>On Linux, <c>/proc/&lt;pid&gt;/exe</c> refers to the current executable image independently
+/// of the dynamic loader. A forked child can still expose the inherited image until the kernel
+/// publishes the new image during <c>execve</c>. Other platforms fall back to
 /// <see cref="Process.MainModule"/>. On macOS and FreeBSD the runtime implements it with
 /// <c>proc_pidpath</c>, the kernel's recorded image path, so it has no loader race there.</para>
 /// </remarks>
