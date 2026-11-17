@@ -21,7 +21,7 @@ never be trusted to justify skipping test coverage.
 A single-line compressed JSON object on stdout: { "docs_only": bool, "evidence_only": bool,
 "runner_matrix": [...], "reason": "..." }. evidence_only implies docs_only. The `runner_matrix` shape matches the per-leg fields the `validate` job's
 matrix strategy consumes (name, runs_on, artifact_owner, timeout_minutes, test_shard_index,
-test_shard_count) -- unchanged from the pre-extraction inline script.
+test_shard_count, test_scope).
 #>
 [CmdletBinding()]
 param(
@@ -63,7 +63,12 @@ function New-CiTopologyLeg {
         [Parameter(Mandatory)][bool] $ArtifactOwner,
         [Parameter(Mandatory)][int] $TimeoutMinutes,
         [Parameter(Mandatory)][int] $TestShardIndex,
-        [Parameter(Mandatory)][int] $TestShardCount
+        [Parameter(Mandatory)][int] $TestShardCount,
+        # 'full' = the whole suite (this leg's shard of it); 'docs-consumers' = only the classes in
+        # eng/docs-tier-test-consumers.json. The workflow passes the value to verify-release.ps1.
+        [Parameter(Mandatory)]
+        [ValidateSet('full', 'docs-consumers')]
+        [string] $TestScope
     )
 
     [ordered]@{
@@ -73,6 +78,7 @@ function New-CiTopologyLeg {
         timeout_minutes   = $TimeoutMinutes
         test_shard_index  = $TestShardIndex
         test_shard_count  = $TestShardCount
+        test_scope        = $TestScope
     }
 }
 
@@ -80,28 +86,28 @@ $codePullRequest = @(
     # Six Windows + five Linux class shards (operator decision 2026-11-17; CI_POLICY.md § Linux Shard
     # Count Decision). Windows shard index 0 persists the NuGet cache (ci.yml); the last Linux shard is
     # the sole artifact owner.
-    New-CiTopologyLeg -Name 'windows-hosted-1-of-6' -RunsOn 'windows-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 0 -TestShardCount 6
-    New-CiTopologyLeg -Name 'windows-hosted-2-of-6' -RunsOn 'windows-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 1 -TestShardCount 6
-    New-CiTopologyLeg -Name 'windows-hosted-3-of-6' -RunsOn 'windows-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 2 -TestShardCount 6
-    New-CiTopologyLeg -Name 'windows-hosted-4-of-6' -RunsOn 'windows-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 3 -TestShardCount 6
-    New-CiTopologyLeg -Name 'windows-hosted-5-of-6' -RunsOn 'windows-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 4 -TestShardCount 6
-    New-CiTopologyLeg -Name 'windows-hosted-6-of-6' -RunsOn 'windows-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 5 -TestShardCount 6
+    New-CiTopologyLeg -Name 'windows-hosted-1-of-6' -RunsOn 'windows-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 0 -TestShardCount 6 -TestScope 'full'
+    New-CiTopologyLeg -Name 'windows-hosted-2-of-6' -RunsOn 'windows-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 1 -TestShardCount 6 -TestScope 'full'
+    New-CiTopologyLeg -Name 'windows-hosted-3-of-6' -RunsOn 'windows-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 2 -TestShardCount 6 -TestScope 'full'
+    New-CiTopologyLeg -Name 'windows-hosted-4-of-6' -RunsOn 'windows-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 3 -TestShardCount 6 -TestScope 'full'
+    New-CiTopologyLeg -Name 'windows-hosted-5-of-6' -RunsOn 'windows-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 4 -TestShardCount 6 -TestScope 'full'
+    New-CiTopologyLeg -Name 'windows-hosted-6-of-6' -RunsOn 'windows-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 5 -TestShardCount 6 -TestScope 'full'
     # TEMPORARY 45 (operator-approved 2026-11-13): linux-2 needs ~28 min of tests until the duration profile is refreshed;
     # restore 30 with row ci-restore-linux-leg-timeout-30-after-rebalance.
-    New-CiTopologyLeg -Name 'linux-1-of-5' -RunsOn 'ubuntu-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 0 -TestShardCount 5
-    New-CiTopologyLeg -Name 'linux-2-of-5' -RunsOn 'ubuntu-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 1 -TestShardCount 5
-    New-CiTopologyLeg -Name 'linux-3-of-5' -RunsOn 'ubuntu-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 2 -TestShardCount 5
-    New-CiTopologyLeg -Name 'linux-4-of-5' -RunsOn 'ubuntu-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 3 -TestShardCount 5
-    New-CiTopologyLeg -Name 'linux-5-of-5' -RunsOn 'ubuntu-latest' -ArtifactOwner $true -TimeoutMinutes 45 -TestShardIndex 4 -TestShardCount 5
+    New-CiTopologyLeg -Name 'linux-1-of-5' -RunsOn 'ubuntu-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 0 -TestShardCount 5 -TestScope 'full'
+    New-CiTopologyLeg -Name 'linux-2-of-5' -RunsOn 'ubuntu-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 1 -TestShardCount 5 -TestScope 'full'
+    New-CiTopologyLeg -Name 'linux-3-of-5' -RunsOn 'ubuntu-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 2 -TestShardCount 5 -TestScope 'full'
+    New-CiTopologyLeg -Name 'linux-4-of-5' -RunsOn 'ubuntu-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 3 -TestShardCount 5 -TestScope 'full'
+    New-CiTopologyLeg -Name 'linux-5-of-5' -RunsOn 'ubuntu-latest' -ArtifactOwner $true -TimeoutMinutes 45 -TestShardIndex 4 -TestShardCount 5 -TestScope 'full'
 )
 $docsOnlyPullRequest = @(
-    New-CiTopologyLeg -Name 'docs-linux-1-of-4' -RunsOn 'ubuntu-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 0 -TestShardCount 4
-    New-CiTopologyLeg -Name 'docs-linux-2-of-4' -RunsOn 'ubuntu-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 1 -TestShardCount 4
-    New-CiTopologyLeg -Name 'docs-linux-3-of-4' -RunsOn 'ubuntu-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 2 -TestShardCount 4
-    New-CiTopologyLeg -Name 'docs-linux-4-of-4' -RunsOn 'ubuntu-latest' -ArtifactOwner $true -TimeoutMinutes 45 -TestShardIndex 3 -TestShardCount 4
+    # One leg (operator decision 2026-11-17; CI_POLICY.md § Docs Route Test Selection). It is the
+    # artifact owner, so it runs every release gate, and its tests are the docs-tier consumer classes
+    # listed in eng/docs-tier-test-consumers.json rather than a partition of the whole suite.
+    New-CiTopologyLeg -Name 'docs-linux-1-of-1' -RunsOn 'ubuntu-latest' -ArtifactOwner $true -TimeoutMinutes 30 -TestShardIndex 0 -TestShardCount 1 -TestScope 'docs-consumers'
 )
 $scheduledValidation = @(
-    New-CiTopologyLeg -Name 'linux-full' -RunsOn 'ubuntu-latest' -ArtifactOwner $true -TimeoutMinutes 90 -TestShardIndex 0 -TestShardCount 1
+    New-CiTopologyLeg -Name 'linux-full' -RunsOn 'ubuntu-latest' -ArtifactOwner $true -TimeoutMinutes 90 -TestShardIndex 0 -TestShardCount 1 -TestScope 'full'
 )
 
 # Three validation tiers; a pull request takes the highest tier any of its paths (including rename
@@ -118,13 +124,20 @@ $evidenceExclusions = @(
     'audit-reports/_latest-promotion-scorecard.json'
 )
 # Docs tier: documentation-shaped paths (plus the tracked promotion scorecard and the evidence
-# exclusions above) whose contracts the complete test class partition covers. CHANGELOG.md is docs
-# tier: the docs route's artifact owner runs the complete release verifier, including the version-drift and breaking-version gates that guard it.
+# exclusions above). The docs route runs every release gate and the test classes that read these
+# paths (eng/docs-tier-test-consumers.json; DocsTierTestConsumerContractTests requires a reviewed
+# classification for every test class with a detectable docs-tier signal).
+# CHANGELOG.md is docs tier: the docs route's artifact owner runs the complete release verifier,
+# including the version-drift and breaking-version gates that guard it.
 $documentationPattern = '^(.*\.md|ai_docs/.*\.json|audit-reports/_latest-promotion-scorecard\.json)$'
 # Behavior-bearing Markdown (executable prompts/skills/agents) always forces full validation even
 # though its extension matches the documentation pattern.
 $behaviorBearingMarkdownPattern =
     '^(skills|\.claude/skills|agents|\.claude/agents|\.github/prompts)/'
+# Markdown inside a source root is a build, pack or fixture input rather than documentation
+# (analyzer release tracking files, the packed src/RoslynMcp.Host.Stdio/README.md, sample and test
+# fixtures), so it forces full validation as well.
+$sourceRootMarkdownPattern = '^(src|analyzers|samples|tests)/'
 
 function Get-PathTier {
     param([Parameter(Mandatory)][string] $Path)
@@ -132,7 +145,9 @@ function Get-PathTier {
     if ($Path -match $evidencePattern -and $evidenceExclusions -notcontains $Path) {
         return 'evidence'
     }
-    if ($Path -match $documentationPattern -and $Path -notmatch $behaviorBearingMarkdownPattern) {
+    if ($Path -match $documentationPattern -and
+        $Path -notmatch $behaviorBearingMarkdownPattern -and
+        $Path -notmatch $sourceRootMarkdownPattern) {
         return 'docs'
     }
     return 'code'
@@ -270,7 +285,7 @@ function Resolve-CiTopologyDecision {
             docs_only     = $true
             evidence_only = $false
             runner_matrix = @($docsOnlyPullRequest)
-            reason        = 'Policy-only docs PR: four hosted Linux test shards.'
+            reason        = 'Policy-only docs PR: one hosted Linux leg; every release gate and the docs-tier consumer test classes.'
         }
     }
 

@@ -40,6 +40,7 @@ See `justfile` for the full recipe list, including packaging, Docker, and securi
   - `dotnet test RoslynMcp.slnx --nologo`
   - `dotnet run --project src/RoslynMcp.Host.Stdio`
   - `pwsh ./eng/verify-release.ps1 -NoCoverage -ExcludeNetworkTests -TestShardOnly -TestShardIndex 0 -TestShardCount 2` — reproduce one CI non-owner class shard without duplicate policy/publish work; use the complementary zero-based index for the other half. Omit `-TestShardOnly` for a standalone full release gate.
+  - `pwsh ./eng/verify-release.ps1 -NoCoverage -ExcludeNetworkTests -DocsTierConsumerTests` — reproduce the CI policy-docs leg: every release gate plus only the classes under `consumers` in `eng/docs-tier-test-consumers.json` (about 2 to 3 minutes locally). Not combinable with `-TestShardOnly` or a shard count above 1. Contract: `CI_POLICY.md` § Docs Route Test Selection.
   - `pwsh ./eng/get-test-shard-plan.ps1 -TestAssemblyPath <RoslynMcp.Tests.dll> -TestShardCount 2 -TestShardIndex 0` — inspect the deterministic complete/disjoint class manifest as JSON. Discovery and integrity failures exit nonzero.
 
 ## Package Identity
