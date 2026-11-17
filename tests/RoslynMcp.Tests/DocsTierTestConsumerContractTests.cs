@@ -18,8 +18,10 @@ namespace RoslynMcp.Tests;
 ///         directory tree (directly, or through a script it names);</item>
 ///   <item>a test class whose file resolves the repository root and walks a tree, or lists the
 ///         tracked files;</item>
-///   <item>a test class that inherits from any of the above;</item>
-///   <item>a shared helper or fixture script under <c>tests/</c> that carries one of the signals.</item>
+///   <item>a concrete test class that inherits, at any depth, from a type declared in a file that
+///         carries one of those signals, whether or not that base is abstract or a test class;</item>
+///   <item>a shared helper or fixture script under <c>tests/</c> that carries one of the signals
+///         and that no test class derives from.</item>
 /// </list>
 /// Each candidate must be a consumer (it runs on docs pull requests) or a reviewed non-consumer
 /// with the reason its signal is not a read of a docs-tier file. When in doubt, list a consumer:
@@ -167,6 +169,88 @@ public sealed class DocsTierTestConsumerContractTests
         StringAssert.Contains(router, ExpectedSourceRootMarkdownPattern);
     }
 
+    // Synthetic hierarchy for the inheritance rules. None of these is a test class of the suite;
+    // the tests below hand them to the resolver as if they were.
+    private abstract class SyntheticScriptReadingBase;
+
+    private abstract class SyntheticIntermediateBase : SyntheticScriptReadingBase;
+
+    private sealed class SyntheticDirectLeaf : SyntheticScriptReadingBase;
+
+    private sealed class SyntheticTransitiveLeaf : SyntheticIntermediateBase;
+
+    private sealed class SyntheticUnrelatedLeaf;
+
+    private static readonly Type[] _syntheticTypes =
+    [
+        typeof(SyntheticScriptReadingBase),
+        typeof(SyntheticIntermediateBase),
+        typeof(SyntheticDirectLeaf),
+        typeof(SyntheticTransitiveLeaf),
+        typeof(SyntheticUnrelatedLeaf),
+    ];
+
+    private static Candidates ResolveSynthetic(bool baseCarriesTestClassAttribute, params Type[] declaredInSignalFile)
+    {
+        var concrete = _syntheticTypes.Where(type => !type.IsAbstract).ToDictionary(type => type.FullName!, StringComparer.Ordinal);
+        var file = new SignalFile(
+            "tests/Synthetic/SignalFile.cs",
+            new SortedSet<string>(StringComparer.Ordinal) { "names docs-reading script 'synthetic-reader' in tests/Synthetic/SignalFile.cs" },
+            [.. declaredInSignalFile.Select(type => new DeclaredType(type.FullName!, baseCarriesTestClassAttribute))]);
+        return ResolveCandidates(
+            [file],
+            name => _syntheticTypes.SingleOrDefault(type => type.FullName == name),
+            concrete);
+    }
+
+    /// <summary>
+    /// An abstract base is not itself a test class, so a signal in its file used to end on the
+    /// helper path and the classes that inherit its test methods were never asked for a
+    /// classification. Every concrete class below such a base, at any depth, must be a candidate.
+    /// </summary>
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public void SignalInAnAbstractBaseFile_MakesEveryConcreteDerivedClassACandidate(bool baseCarriesTestClassAttribute)
+    {
+        var candidates = ResolveSynthetic(baseCarriesTestClassAttribute, typeof(SyntheticScriptReadingBase));
+
+        CollectionAssert.AreEquivalent(
+            new[] { typeof(SyntheticDirectLeaf).FullName, typeof(SyntheticTransitiveLeaf).FullName },
+            candidates.Classes.Keys.ToArray(),
+            "Exactly the concrete classes deriving from the base are candidates: not the abstract base (it cannot run and " +
+            "cannot be listed as a consumer), not the unrelated class.");
+        Assert.IsEmpty(
+            candidates.Helpers,
+            "A base whose derived classes are candidates is classified through them, not waved through as a reviewed helper.");
+        foreach (var signals in candidates.Classes.Values)
+        {
+            Assert.IsTrue(
+                signals.Any(signal => signal.Contains("synthetic-reader", StringComparison.Ordinal)),
+                "A derived candidate must report the signal it inherited.");
+        }
+    }
+
+    [TestMethod]
+    public void SignalInAnIntermediateAbstractBaseFile_ReachesOnlyItsOwnDescendants()
+    {
+        var candidates = ResolveSynthetic(false, typeof(SyntheticIntermediateBase));
+
+        CollectionAssert.AreEquivalent(
+            new[] { typeof(SyntheticTransitiveLeaf).FullName },
+            candidates.Classes.Keys.ToArray());
+        Assert.IsEmpty(candidates.Helpers);
+    }
+
+    [TestMethod]
+    public void SignalInAFileWhoseTypesNoTestClassDerivesFrom_StaysAHelperForReview()
+    {
+        var candidates = ResolveSynthetic(false, typeof(Candidates));
+
+        Assert.IsEmpty(candidates.Classes);
+        CollectionAssert.AreEquivalent(new[] { "tests/Synthetic/SignalFile.cs" }, candidates.Helpers.Keys.ToArray());
+    }
+
     private const string DocsTokenSignal = "docs-tier token";
 
     private static Candidates FindCandidates(string repoRoot)
@@ -174,8 +258,7 @@ public sealed class DocsTierTestConsumerContractTests
         var files = EnumerateSourceFiles(repoRoot).ToArray();
         var readerScriptNames = FindDocsReaderScriptNames(repoRoot, files);
 
-        var classes = new SortedDictionary<string, SortedSet<string>>(StringComparer.Ordinal);
-        var helpers = new SortedDictionary<string, SortedSet<string>>(StringComparer.Ordinal);
+        var signalFiles = new List<SignalFile>();
         foreach (var relativePath in files.Where(IsTestSideFile))
         {
             var text = File.ReadAllText(Path.Combine(repoRoot, relativePath));
@@ -205,46 +288,83 @@ public sealed class DocsTierTestConsumerContractTests
                 continue;
             }
 
-            var declaredTestClasses = relativePath.EndsWith(".cs", StringComparison.Ordinal)
-                ? GetDeclaredTestClassNames(text)
+            var declaredTypes = relativePath.EndsWith(".cs", StringComparison.Ordinal)
+                ? GetDeclaredTypes(text)
                 : [];
-            if (declaredTestClasses.Count == 0)
-            {
-                helpers[relativePath] = signals;
-                continue;
-            }
-
-            foreach (var className in declaredTestClasses)
-            {
-                if (!classes.TryGetValue(className, out var existing))
-                {
-                    classes[className] = existing = new SortedSet<string>(StringComparer.Ordinal);
-                }
-
-                existing.UnionWith(signals);
-            }
+            signalFiles.Add(new SignalFile(relativePath, signals, declaredTypes));
         }
 
-        // A class that inherits a candidate's test methods runs the same reads.
-        var testClasses = GetTestClasses();
-        foreach (var className in classes.Keys.ToArray())
+        var assembly = typeof(DocsTierTestConsumerContractTests).Assembly;
+        return ResolveCandidates(signalFiles, assembly.GetType, GetTestClasses());
+    }
+
+    /// <summary>
+    /// Turns signal-carrying files into the classes that must be classified. Pure, so the
+    /// inheritance rules can be tested on synthetic types.
+    /// </summary>
+    private static Candidates ResolveCandidates(
+        IEnumerable<SignalFile> signalFiles,
+        Func<string, Type?> resolveType,
+        IReadOnlyDictionary<string, Type> concreteTestClasses)
+    {
+        var classes = new SortedDictionary<string, SortedSet<string>>(StringComparer.Ordinal);
+        var helpers = new SortedDictionary<string, SortedSet<string>>(StringComparer.Ordinal);
+        SortedSet<string> SignalsOf(string className)
         {
-            if (!testClasses.TryGetValue(className, out var baseType))
+            if (!classes.TryGetValue(className, out var existing))
             {
-                continue;
+                classes[className] = existing = new SortedSet<string>(StringComparer.Ordinal);
             }
 
-            foreach (var (derivedName, derivedType) in testClasses)
+            return existing;
+        }
+
+        foreach (var file in signalFiles)
+        {
+            var producedCandidate = false;
+            foreach (var declared in file.DeclaredTypes)
             {
-                if (derivedType != baseType && baseType.IsAssignableFrom(derivedType))
+                var type = resolveType(declared.Name);
+                if (type is null)
                 {
-                    if (!classes.TryGetValue(derivedName, out var existing))
+                    // Declared as a test class but not a type of this assembly (another test
+                    // project): still a candidate by name, so it cannot pass unreviewed.
+                    if (declared.IsTestClass)
                     {
-                        classes[derivedName] = existing = new SortedSet<string>(StringComparer.Ordinal);
+                        SignalsOf(declared.Name).UnionWith(file.Signals);
+                        producedCandidate = true;
                     }
 
-                    existing.Add($"inherits candidate {className}");
+                    continue;
                 }
+
+                // Every concrete test class that is the declared type or inherits from it, at any
+                // depth, runs the code in this file. The declared type itself may be abstract and
+                // may lack [TestClass]: it is then not a candidate (it cannot run and cannot be a
+                // consumer), but its descendants are.
+                foreach (var (className, testClass) in concreteTestClasses)
+                {
+                    if (!type.IsAssignableFrom(testClass))
+                    {
+                        continue;
+                    }
+
+                    var signals = SignalsOf(className);
+                    signals.UnionWith(file.Signals);
+                    if (testClass != type)
+                    {
+                        signals.Add($"inherits from {declared.Name}, declared in {file.Path}");
+                    }
+
+                    producedCandidate = true;
+                }
+            }
+
+            // No test class is, or derives from, anything this file declares: a static helper, a
+            // fixture script or a build file. Its users cannot be followed, so the file is reviewed.
+            if (!producedCandidate)
+            {
+                helpers[file.Path] = file.Signals;
             }
         }
 
@@ -349,35 +469,37 @@ public sealed class DocsTierTestConsumerContractTests
     /// Parsed rather than matched by pattern: many test files embed C# source in string literals,
     /// and a class declared inside one of those is not a test class of this assembly.
     /// </summary>
-    private static List<string> GetDeclaredTestClassNames(string source)
+    private static List<DeclaredType> GetDeclaredTypes(string source)
     {
-        var names = new List<string>();
+        // Reflection names: nested types join with '+', generic types carry their arity.
+        static string MetadataName(TypeDeclarationSyntax type)
+            => type.TypeParameterList is { Parameters.Count: > 0 } parameters
+                ? $"{type.Identifier.ValueText}`{parameters.Parameters.Count}"
+                : type.Identifier.ValueText;
+
+        var types = new List<DeclaredType>();
         foreach (var declaration in CSharpSyntaxTree.ParseText(source).GetRoot().DescendantNodes().OfType<ClassDeclarationSyntax>())
         {
             var isTestClass = declaration.AttributeLists
                 .SelectMany(list => list.Attributes)
                 .Select(attribute => attribute.Name.ToString().Split('.')[^1])
                 .Any(name => name is "TestClass" or "TestClassAttribute");
-            if (!isTestClass)
-            {
-                continue;
-            }
 
-            var name = declaration.Identifier.ValueText;
+            var name = MetadataName(declaration);
             for (var parent = declaration.Parent; parent is not null; parent = parent.Parent)
             {
                 name = parent switch
                 {
-                    TypeDeclarationSyntax type => type.Identifier.ValueText + "+" + name,
+                    TypeDeclarationSyntax type => MetadataName(type) + "+" + name,
                     BaseNamespaceDeclarationSyntax @namespace => @namespace.Name + "." + name,
                     _ => name,
                 };
             }
 
-            names.Add(name);
+            types.Add(new DeclaredType(name, isTestClass));
         }
 
-        return names;
+        return types;
     }
 
     private static Dictionary<string, Type> GetTestClasses()
@@ -398,6 +520,10 @@ public sealed class DocsTierTestConsumerContractTests
                     .SelectMany(attribute => attribute.TestCategories))
                 .Any(category => category is "Benchmark" or "Network"));
     }
+
+    private sealed record DeclaredType(string Name, bool IsTestClass);
+
+    private sealed record SignalFile(string Path, SortedSet<string> Signals, IReadOnlyList<DeclaredType> DeclaredTypes);
 
     private sealed record Candidates(
         SortedDictionary<string, SortedSet<string>> Classes,

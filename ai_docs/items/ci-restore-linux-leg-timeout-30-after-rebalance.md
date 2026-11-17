@@ -18,7 +18,7 @@
 - PR 2089 raised the code cap to 45 on operator approval (2026-11-13) after linux-2 hit 30 minutes with all tests passing. PR 2090 aligned the docs-only cap.
 - Release v5.1.0 consumed both original fragments.
 - PR 2135 (2026-11-17) changed the code route from four to five Linux legs and left every cap at 45. Its first run 44176184128 (head a6ac242a, first attempt, green): code Linux legs took 861 / 845 / 682 / 843 / 826 job seconds, against a 1800-second cap at 30 minutes. One run; see `CI_POLICY.md` § Linux Shard Count Decision.
-- Docs-only route: while it ran four complete-partition shards it was the tighter one for a 30-minute cap (runs 44136021009: 1494 / 1392 / 1410 / 1466 s; 43777684941: 1271 / 1365 / 1439 / 1280 s). The 2026-11-17 docs-route decision replaced it with one leg capped at 30 that runs only the docs-tier consumer classes (local Windows run: 121 cases, whole verifier 158 s). No hosted run of that leg existed when this was written.
+- Docs-only route: while it ran four complete-partition shards it was the tighter one for a 30-minute cap (runs 44136021009: 1494 / 1392 / 1410 / 1466 s; 43777684941: 1271 / 1365 / 1439 / 1280 s). The 2026-11-17 docs-route decision replaced it with one leg capped at 30 that runs only the docs-tier consumer classes (local Windows run: 143 cases, whole verifier 135 s). No hosted run of that leg existed when this was written.
 
 ## Context
 

@@ -125,7 +125,8 @@ $evidenceExclusions = @(
 )
 # Docs tier: documentation-shaped paths (plus the tracked promotion scorecard and the evidence
 # exclusions above). The docs route runs every release gate and the test classes that read these
-# paths (eng/docs-tier-test-consumers.json, kept complete by DocsTierTestConsumerContractTests).
+# paths (eng/docs-tier-test-consumers.json; DocsTierTestConsumerContractTests requires a reviewed
+# classification for every test class with a detectable docs-tier signal).
 # CHANGELOG.md is docs tier: the docs route's artifact owner runs the complete release verifier,
 # including the version-drift and breaking-version gates that guard it.
 $documentationPattern = '^(.*\.md|ai_docs/.*\.json|audit-reports/_latest-promotion-scorecard\.json)$'

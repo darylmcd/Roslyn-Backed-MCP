@@ -34,10 +34,10 @@ public sealed class CiEvidenceTierConsumerContractTests
     // Relative path -> why the reference cannot make an evidence-only change break CI.
     private static readonly Dictionary<string, string> _reviewedConsumers = new(StringComparer.Ordinal)
     {
-        ["eng/aggregate-promotion-scorecards.ps1"] = "Maintainer tool; CI runs it only against synthetic temp roots (AggregatePromotionScorecardsScriptTests).",
+        ["eng/aggregate-promotion-scorecards.ps1"] = "Maintainer tool. CI runs it through AggregatePromotionScorecardsScriptTests: against synthetic temp roots, and once with -IncludeSelf, where it reads this repository's audit-reports/_latest-promotion-scorecard.json (an evidence exclusion).",
         ["eng/intake-from-issues.py"] = "Maintainer intake tool; never run by CI.",
         ["eng/process-audit-reports.ps1"] = "Maintainer tool; never run by CI.",
-        ["eng/propose-promotion-scorecard-backlog-rows.ps1"] = "Maintainer tool; never run by CI.",
+        ["eng/propose-promotion-scorecard-backlog-rows.ps1"] = "Maintainer tool. CI runs it through AggregatePromotionScorecardsScriptTests with a synthetic aggregated scorecard; its other default input is ai_docs/backlog.md (docs tier). Its evidence-root default path is never used by CI.",
         ["eng/resolve-ci-topology.ps1"] = "Defines the evidence tier.",
         ["eng/stage-review-inbox.ps1"] = "Maintainer tool; never run by CI.",
         ["eng/verify-ai-docs.ps1"] = "Reads only ai_docs/items/backlog-d-fragment-schema.md (an evidence exclusion); runs on the evidence route itself.",
@@ -49,7 +49,7 @@ public sealed class CiEvidenceTierConsumerContractTests
         ["tests/RoslynMcp.Tests/DocsTierTestConsumerContractTests.cs"] = "Pins the router's docs-tier pattern text (which names the scorecard exclusion); reads tests/, script files and eng/docs-tier-test-consumers.json only.",
         ["tests/RoslynMcp.Tests/DocumentationOwnershipContractTests.cs"] = "Scans source comments and resolves docs-tier plan paths; the retired item path is a forbidden source-text literal only, never an evidence-file read.",
         ["tests/RoslynMcp.Tests/ReadmeSurfaceCountTests.cs"] = "Recursive ai_docs walk filtered to backlog.md, planning_index.md and plans/ (docs tier).",
-        ["tests/RoslynMcp.Tests/Skills/AggregatePromotionScorecardsScriptTests.cs"] = "Synthetic temp roots only.",
+        ["tests/RoslynMcp.Tests/Skills/AggregatePromotionScorecardsScriptTests.cs"] = "Synthetic temp roots, plus one -IncludeSelf run that reads this repository's promotion scorecard (an evidence exclusion) and a proposal run that reads ai_docs/backlog.md (docs tier).",
         ["tests/RoslynMcp.Tests/Skills/ArchiveOldReportsScriptTests.cs"] = "Synthetic temp roots only.",
         ["tests/RoslynMcp.Tests/Skills/IssueTemplateAndLabelSeedTests.cs"] = "Reads ai_docs/items/backlog-d-fragment-schema.md (an evidence exclusion).",
         ["tests/RoslynMcp.Tests/Skills/McpServerSurfaceTestSkillTests.cs"] = "Asserts the promotion scorecard (an evidence exclusion) stays git-tracked.",

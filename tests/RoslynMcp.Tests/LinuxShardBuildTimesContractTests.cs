@@ -29,7 +29,11 @@ public sealed class LinuxShardBuildTimesContractTests
         var result = await RunCollectorAsync(legName, Pages([Job(legName, 61)]));
 
         Assert.AreNotEqual(0, result.ExitCode, result.StdOut);
-        StringAssert.Contains(result.StdErr, "Linux build calibration requires the current Actions run, attempt and shard identity.");
+        // The error formatter wraps a message this long at the host's console width and styles
+        // it, so the raw stream holds the sentence split across gutter lines on hosted Linux.
+        StringAssert.Contains(
+            PowerShellOutputNormalizer.Normalize(result.StdErr),
+            "Linux build calibration requires the current Actions run, attempt and shard identity.");
     }
 
     [TestMethod]

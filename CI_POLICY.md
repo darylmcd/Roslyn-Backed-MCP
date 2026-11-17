@@ -79,15 +79,15 @@ Fail-closed rules of the verifier. Each fails the leg; none can pass with fewer 
 - `-DocsTierConsumerTests` combined with `-TestShardOnly` or a shard count above 1.
 - A `test_scope` value the workflow does not know.
 
-The list is kept complete by `DocsTierTestConsumerContractTests`, not by review. A test class is a candidate when one of these holds, and every candidate must be a `consumers` entry or a `nonConsumers` entry with a reason:
+`DocsTierTestConsumerContractTests` enforces one thing: every test class with a detectable signal is classified. It does not decide the classification. A `nonConsumers` entry is a person's judgment that the signal is not a read of a docs-tier file, and that judgment can be wrong (one was, and was corrected in review of this change). A test class is a candidate when one of these holds, and every candidate must be a `consumers` entry or a `nonConsumers` entry with a reason:
 
 | Signal | Detection |
 |---|---|
 | Docs-tier path token in the class file | `.md`, `ai_docs`, the promotion scorecard name, `changelog.d`, or a `docs` path segment. Tokens, not joined paths, so `Path.Combine(root, "docs", "setup.md")` matches |
 | Docs-reading script named in the class file | A script outside `tests/` and `samples/` whose text carries a docs-tier token or walks a tree (`git ls-files`, `-Recurse`, `AllDirectories`), or that names such a script (followed transitively). Derived from the scripts on every run; no script list is maintained |
 | Repository tree walk in the class file | `ls-files`, or a recursive walk in a file that also names the repository root |
-| Inheritance | A test class that derives from a candidate |
-| Shared helper or fixture script under `tests/` | A docs-tier token fails outright (move the read into the test classes). Any other signal needs a `reviewedHelperFiles` entry |
+| Inheritance | A concrete test class that derives, at any depth, from a type declared in a signal-carrying file. The base may be abstract and need not be a test class; it is resolved by reflection |
+| Shared helper or fixture script under `tests/` that no test class derives from | A docs-tier token fails outright (move the read into the test classes). Any other signal needs a `reviewedHelperFiles` entry |
 
 The guard also fails on a listed class that no longer exists or no longer carries a signal, on a consumer whose every case is in the `Benchmark` or `Network` category, and on a list that is unsorted or malformed. When in doubt, list a consumer: an extra class costs seconds, a missing one is an undetected break.
 
@@ -110,8 +110,8 @@ Evidence (hosted, `pull_request` runs of `ci.yml`, 2026-10-20 to 2026-11-17):
 | Docs-caused failures, all from gates this route keeps | 8: `eng/verify-ai-docs.ps1` 4, `eng/verify-changelog-fragments.ps1` 4 |
 | Red runs unrelated to the docs change | 6: five flaky tests in classes that read no docs (runs 43637525418, 43634218943, 43377558878, 42450892059, 40359428470), one build break on `main` (run 42266554397) |
 | Text scan when the decision was made | 45 test-class files with a docs-tier token |
-| List at this change | 14 consumer classes, 45 reviewed non-consumer classes, 4 reviewed helper files |
-| Local runs of the route (Windows dev host, two runs, not a hosted measurement) | 14 of 523 classes, 121 cases; test phase 118 s and 85 s; whole verifier 158 s and about 100 s |
+| List at this change | 16 consumer classes, 43 reviewed non-consumer classes, 4 reviewed helper files |
+| Local run of the route (Windows dev host, one run, not a hosted measurement) | 16 of 523 classes, 143 cases (142 passed, 1 platform skip); test phase 104 s; whole verifier 135 s. `FormatterBaselineContractTests` is about 90 s of the test phase when run alone |
 
 Evidence limit: 157 of the 170 docs-only runs changed `ai_docs/backlog.md`, and `README.md` never changed in the window, so the history barely exercised the documents that tests read. The guard test, not the history, is what makes the selection sound. No hosted run of the one-leg route existed when this was written; the first docs-only `validate` run after this change is its first measurement.
 
@@ -403,7 +403,7 @@ Basis: every `just ci` step runs inside `validate`, or cannot change outcome on 
 | `verify-changed-format` | `quality` | not run: the gate diffs `*.cs` only; a docs-tier PR changes none | not run: same |
 | `verify-actionlint` | artifact owner | artifact owner | not run: `.github/**` is code tier |
 | `verify-release-pr` release gates + publish/hash | artifact owner (full verifier) | artifact owner (full verifier) | `evidence-lint` runs the changelog contract; other gates read no evidence path |
-| `verify-release-pr` tests (`TestCategory!=Benchmark&TestCategory!=Network`, Release) | complete class partition, Windows x6 + Linux x5 | docs-tier consumer classes only, one Linux leg (`eng/docs-tier-test-consumers.json`); the other classes are not run: `DocsTierTestConsumerContractTests` finds no docs-tier read in them | not run: no test reads an evidence path (`CiEvidenceTierConsumerContractTests`) |
+| `verify-release-pr` tests (`TestCategory!=Benchmark&TestCategory!=Network`, Release) | complete class partition, Windows x6 + Linux x5 | docs-tier consumer classes only, one Linux leg (`eng/docs-tier-test-consumers.json`); the other classes are not run. `DocsTierTestConsumerContractTests` finds no detectable docs-tier signal in most of them; in the reviewed non-consumers it does find a signal, and a person judged each one not to be a read of a docs-tier file (reason recorded in the list) | not run: no test reads an evidence path (`CiEvidenceTierConsumerContractTests`) |
 | `vuln-audit` (`eng/verify-nuget-audit.ps1`) | `quality` | not run: package inputs (`Directory.Packages.props`, `*.csproj`, `global.json`) are code tier | not run: same |
 | (extra, not in `just ci`) exact SDK floor | `sdk-floor` | skipped | skipped |
 

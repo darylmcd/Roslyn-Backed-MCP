@@ -6,7 +6,7 @@
 
 - `.github/workflows/ci.yml:156` — Every matrix leg, including the policy-docs leg, acquires latest 10.0.x through setup-dotnet before its release gates and tests.
 - `CI_POLICY.md:10` — Policy-only docs run one hosted Linux leg: every release gate plus the docs-tier consumer test classes.
-- `eng/docs-tier-test-consumers.json` — The consumer class list the docs leg runs; `DocsTierTestConsumerContractTests` keeps it complete.
+- `eng/docs-tier-test-consumers.json` — The consumer class list the docs leg runs; `DocsTierTestConsumerContractTests` requires a reviewed classification for every test class with a detectable docs-tier signal.
 - `eng/verify-release.ps1` — `-DocsTierConsumerTests` is the docs leg's entry point; it builds the solution and runs `dotnet test`, so it needs an SDK.
 - [PR1836 corrected-head CI](https://github.com/darylmcd/Roslyn-Backed-MCP/actions/runs/40225081974) — Both docs-linux legs fail SDK setup HTTP 409 before repository tests.
 - `tests/RoslynMcp.Tests/CiTopologyDecisionContractTests.cs` — Preserve the docs route and fail-closed routing contracts.
@@ -23,4 +23,4 @@
 - Operator requested this row on 2026-10-25 after SDK 10.0.403 / runtime 10.0.14 origin HTTP 409 blocked unchanged docs and metadata heads.
 - Main run 40224224815 reproduced the installation failure; direct runtime origin probe 2026-10-25T19:26:28.9255502Z returned 409, exit 0.
 - SDK installation failure and Markdown contract test obligations are separate constraints. Keep both the requested download independence and the docs route's test obligation; surface any operator-level policy decision before implementation.
-- 2026-11-17: an operator decision replaced the four complete-partition docs shards with one leg that runs every release gate and only the docs-tier consumer classes (14 classes, 121 cases when it landed). The test obligation this row must preserve is that consumer set, no longer the whole suite. The SDK dependency is unchanged: the one leg still runs setup-dotnet, a Release build and `dotnet test`.
+- 2026-11-17: an operator decision replaced the four complete-partition docs shards with one leg that runs every release gate and only the docs-tier consumer classes (16 classes, 143 cases when it landed). The test obligation this row must preserve is that consumer set, no longer the whole suite. The SDK dependency is unchanged: the one leg still runs setup-dotnet, a Release build and `dotnet test`.
