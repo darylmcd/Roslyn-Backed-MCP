@@ -19,26 +19,12 @@ public sealed class TestShardPlanContractTests
 
         var oneShardResult = await RunPlannerAsync(testAssemblyPath, shardCount: 1, shardIndex: 0);
         var zeroIndexTwoShardResult = await RunPlannerAsync(testAssemblyPath, shardCount: 2, shardIndex: 0);
-        // Routed counts (eng/resolve-ci-topology.ps1): 4 docs Linux, 5 code Linux, 6 code Windows.
-        var firstMaxIndexFourShardResult = await RunPlannerAsync(testAssemblyPath, shardCount: 4, shardIndex: 3);
-        var secondMaxIndexFourShardResult = await RunPlannerAsync(testAssemblyPath, shardCount: 4, shardIndex: 3);
-        var maxIndexFiveShardResult = await RunPlannerAsync(testAssemblyPath, shardCount: 5, shardIndex: 4);
-        var maxIndexSixShardResult = await RunPlannerAsync(testAssemblyPath, shardCount: 6, shardIndex: 5);
 
         AssertSucceeded(oneShardResult);
         AssertSucceeded(zeroIndexTwoShardResult);
-        AssertSucceeded(firstMaxIndexFourShardResult);
-        AssertSucceeded(secondMaxIndexFourShardResult);
-        AssertSucceeded(maxIndexFiveShardResult);
-        AssertSucceeded(maxIndexSixShardResult);
-        Assert.AreEqual(
-            firstMaxIndexFourShardResult.StdOut.Trim(),
-            secondMaxIndexFourShardResult.StdOut.Trim(),
-            "The same assembly and shard arguments must produce byte-identical JSON.");
 
         var oneShardPlan = ParsePlan(oneShardResult.StdOut);
         var zeroIndexTwoShardPlan = ParsePlan(zeroIndexTwoShardResult.StdOut);
-        var maxIndexFourShardPlan = ParsePlan(firstMaxIndexFourShardResult.StdOut);
 
         Assert.AreEqual(1, oneShardPlan.SchemaVersion);
         Assert.AreEqual(1, oneShardPlan.TestShardCount);
@@ -47,17 +33,62 @@ public sealed class TestShardPlanContractTests
 
         AssertCompleteDisjointBalancedPlan(oneShardPlan, oneShardPlan, expectedShardCount: 1);
         AssertCompleteDisjointBalancedPlan(oneShardPlan, zeroIndexTwoShardPlan, expectedShardCount: 2);
-        AssertCompleteDisjointBalancedPlan(oneShardPlan, maxIndexFourShardPlan, expectedShardCount: 4);
         AssertSelectedShard(oneShardPlan, expectedIndex: 0);
         AssertSelectedShard(zeroIndexTwoShardPlan, expectedIndex: 0);
-        AssertSelectedShard(maxIndexFourShardPlan, expectedIndex: 3);
 
-        var maxIndexFiveShardPlan = ParsePlan(maxIndexFiveShardResult.StdOut);
-        var maxIndexSixShardPlan = ParsePlan(maxIndexSixShardResult.StdOut);
-        AssertCompleteDisjointBalancedPlan(oneShardPlan, maxIndexFiveShardPlan, expectedShardCount: 5);
-        AssertCompleteDisjointBalancedPlan(oneShardPlan, maxIndexSixShardPlan, expectedShardCount: 6);
-        AssertSelectedShard(maxIndexFiveShardPlan, expectedIndex: 4);
-        AssertSelectedShard(maxIndexSixShardPlan, expectedIndex: 5);
+        // Every shard count the CI router can hand the planner, read from the router itself so a
+        // topology change cannot leave a routed count unplanned here.
+        var routedShardCounts = await GetRoutedShardCountsAsync();
+        Assert.IsTrue(
+            routedShardCounts.Any(count => count > 1),
+            "The router must report at least one sharded pull-request route.");
+        foreach (var shardCount in routedShardCounts.Where(count => count > 1))
+        {
+            var maxIndex = shardCount - 1;
+            var firstResult = await RunPlannerAsync(testAssemblyPath, shardCount, shardIndex: maxIndex);
+            var secondResult = await RunPlannerAsync(testAssemblyPath, shardCount, shardIndex: maxIndex);
+            AssertSucceeded(firstResult);
+            AssertSucceeded(secondResult);
+            Assert.AreEqual(
+                firstResult.StdOut.Trim(),
+                secondResult.StdOut.Trim(),
+                $"The same assembly and shard arguments must produce byte-identical JSON at {shardCount} shards.");
+
+            var plan = ParsePlan(firstResult.StdOut);
+            AssertCompleteDisjointBalancedPlan(oneShardPlan, plan, expectedShardCount: shardCount);
+            AssertSelectedShard(plan, expectedIndex: maxIndex);
+        }
+    }
+
+    private static async Task<int[]> GetRoutedShardCountsAsync()
+    {
+        var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
+        var routerPath = Path.Combine(repositoryRoot, "eng", "resolve-ci-topology.ps1");
+        var routes = new[]
+        {
+            new[] { "-EventName", "pull_request", "-ChangedFilesJson", """[[{"filename":"src/Foo.cs"}]]""", "-ReportedChangedFileCount", "1" },
+            new[] { "-EventName", "pull_request", "-ChangedFilesJson", """[[{"filename":"README.md"}]]""", "-ReportedChangedFileCount", "1" },
+            new[] { "-EventName", "merge_group" },
+            new[] { "-EventName", "workflow_dispatch" },
+        };
+
+        var shardCounts = new SortedSet<int>();
+        foreach (var route in routes)
+        {
+            var result = await PwshScriptRunner.RunAsync(
+                ["-NoProfile", "-File", routerPath, .. route],
+                workingDirectory: repositoryRoot,
+                timeout: _processTimeout,
+                description: "CI topology resolver");
+            AssertSucceeded(result);
+            using var decision = JsonDocument.Parse(result.StdOut);
+            foreach (var leg in decision.RootElement.GetProperty("runner_matrix").EnumerateArray())
+            {
+                shardCounts.Add(leg.GetProperty("test_shard_count").GetInt32());
+            }
+        }
+
+        return [.. shardCounts];
     }
 
     [TestMethod]

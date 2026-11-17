@@ -266,6 +266,7 @@
 | `git-script-windows-pipe-worker-capacity` | Medium | — | **Qualify Windows worker capacity for Git and script reads** — exercise both production consumers with an isolated held-pipe probe. [type: bug] [source: 2026-11-17 Windows pipe review] | M | items/git-script-windows-pipe-worker-capacity.md |
 | `workspace-close-fixture-launcher-copy-lifetime` | Medium | — | **Bound Linux launcher copy cleanup in drain tests** — own and reap a stalled copy child before releasing its fixture. [type: test-infrastructure] [source: 2026-11-17 exec fixture cold review] | S | items/workspace-close-fixture-launcher-copy-lifetime.md |
 | `workspace-close-drain-status-lookup-failure` | Medium | — | BLOCKED: stable drain reporting impact unqualified. **Distinguish unexpected status failure before close drain**. [type: bug] [source: 2026-11-17 Linux fixture review] | S | items/workspace-close-drain-status-lookup-failure.md |
+| `ci-windows-six-shard-rebalance-remeasure` | Medium | — | **Re-measure and rebalance Windows under six shards.** Collect five complete green first-attempt 6+5 runs, regenerate the duration profile, restore measured weights for the fallback classes. [source: PR 2135 run 44176184128] | M | items/ci-windows-six-shard-rebalance-remeasure.md |
 
 ## Low
 
@@ -558,6 +559,7 @@
 | `namespace-relocation-candidate-refusal-message` | Low | — | **Explain unusable namespace relocation candidates** with safe public guidance and no token. [type: bug] [source: partial-move same-mechanism sweep] | S | items/namespace-relocation-candidate-refusal-message.md |
 | `shared-expression-dead-helper-insertion-fallback` | Low | — | **Consolidate shared helper insertion** — Prove the example occurrence reaches the exact declaration rewrite or report a specific refusal. Retire the duplicate fallback only after proving it is unreachable. [type: bug] [source: shared expression cold review] | S | items/shared-expression-dead-helper-insertion-fallback.md |
 | `shared-expression-fixture-syntax-selection` | Low | — | **Derive existing shared-expression fixture positions** — Select test fixture expressions by syntax so unrelated source line changes do not invalidate the tests. [type: bug] [source: shared expression cold review] | S | items/shared-expression-fixture-syntax-selection.md |
+| `ci-linux-calibration-sibling-wait-coupling` | Low | — | **One late Linux calibration build fails every Linux leg.** Decide whether sibling legs may fail on a late or failed calibration build and record it with hosted evidence. [source: PR 2135 run 44176184128] | M | items/ci-linux-calibration-sibling-wait-coupling.md |
 
 ## Defer
 

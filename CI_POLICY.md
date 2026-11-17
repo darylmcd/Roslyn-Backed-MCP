@@ -183,6 +183,20 @@ The Ubuntu 26.04 profile also carries forward timings for tests split into small
 
 The 2026-11-17 refresh used directly observed identities only, with no staged copies. Ten current classes therefore take the static fallback until five sampled runs carry them unchanged: `TypeExtractionTests`, `TypeExtractionConstructorDispatchTests`, the three `InterfaceParameterSemantics*RouteTests` classes, `CrossProjectInterfaceBindingIntegrationTests`, `TestShardPlanContractTests`, `WorkspaceCloseDrainTests`, `LinuxShardBuildTimesContractTests`, and the never-run `Benchmarks.WorkspaceReadConcurrencyBenchmark`.
 
+Known hole in the committed profile (2026-11-17). The fallback mis-weights five classes that the previous profile measured, in cumulative case seconds:
+
+| Class | Static cases | Previous `windows-latest` / `ubuntu-latest` | Fallback now `windows-latest` / `ubuntu-latest` |
+|---|---:|---:|---:|
+| `InterfaceParameterSemanticsDefaultsRouteTests` | 24 | 341.1 / 248.2 | 70.0 / 54.5 |
+| `InterfaceParameterSemanticsAttributesRouteTests` | 20 | 266.1 / 209.1 | 58.3 / 45.5 |
+| `InterfaceParameterSemanticsModifiersRouteTests` | 9 | 110.3 / 82.9 | 26.3 / 20.5 |
+| `CrossProjectInterfaceBindingIntegrationTests` | 19 (measured at 18) | 168.2 / 121.3 | 55.4 / 43.2 |
+| `WorkspaceCloseDrainTests` | 35 (measured at 33) | 0.7 / 0.8 | 102.1 / 79.5 |
+
+- Under-weighted: the first four classes hide about 676 s (`windows-latest`) and 498 s (`ubuntu-latest`) of previously measured cost from the planner. Over-weighted: `WorkspaceCloseDrainTests` by about 100 s and 79 s.
+- No qualifying input set closes the hole today. The three parameter-semantics classes have their current case counts in only four complete green first-attempt code runs (43765191714, 43774416634, 44121901489, 44128243501); `CrossProjectInterfaceBindingIntegrationTests` has its current count (changed by PR #2132) in one (44128243501); `WorkspaceCloseDrainTests` (changed by PR #2133) in two.
+- Do not hand-edit the profile. Close the hole by the documented refresh once five complete green first-attempt code runs carry these classes unchanged: `ci-windows-six-shard-rebalance-remeasure`.
+
 Hosted `verify-release.ps1` selects the profile by the matrix runner image. The planner uses per-class mean case seconds for a matching current class and static case weight. An absent class, or a class whose static case weight changed, falls back to static case weight scaled by the sampled image's mean seconds per static case. Local unsharded runs retain static weighting. A missing image, malformed profile, fewer than five source runs, or no matching current classes fails closed. Refresh after material test-class changes or hosted image changes; never silently reuse an invalid profile. After this change merges, measure five new complete green runs against the 2026-10-29 critical-path and achievable-gain baseline before closing `ci-shard-duration-profile-hosted`.
 
 Out-of-sample check: PR #1942 run `41474916090` is excluded from profile generation because its Linux shard 1 job was cancelled near the 30-minute cap after 1,971 tests passed. Its TRX class durations total 5,838 / 3,059 / 2,807 seconds under static assignment. Reassigning those same classes with the five-green-run profile yields 3,993 / 3,937 / 3,774 cumulative case seconds across the three Linux legs. These sums show partition balance; they do not predict wall time or turn the cancelled run green.
@@ -205,22 +219,35 @@ Operator decision 2026-11-17 supersedes the four-Windows + four-Linux code topol
 | Windows NuGet cache writer | Shard index 0 |
 | Detection | Same suite and filter, split across more legs |
 
-Basis (hosted measurements supplied with the decision):
+Basis (hosted measurements on the superseded 4 + 4 topology, supplied with the decision):
 
 | Measurement | Value |
 |---|---|
 | `pull_request` runs of `ci.yml`, 2026-10-20 to 2026-11-17 (28 days) | 600: 425 code, 170 docs-only |
 | Slowest Windows shard of a code PR, last 30 runs | Median 1657 s (27.6 min); Linux shards 1059-1239 s |
-| `dotnet test` share of a leg (job logs, runs 44128243501 and 44121901489) | 94-99%; fixed cost before the first test about 110 s (Linux) and 135 s (Windows) |
+| `dotnet test` share of the `Verify release build` step (job logs, runs 44128243501 and 44121901489) | 94-99% |
+| `Verify release build` step share of the whole job (same runs) | 89-91% Linux, 91-96% Windows |
+| Fixed cost before the first test | About 110 s (Linux) and 135 s (Windows) |
 | Run 44128243501 test phase per shard, Linux | 917 / 967 / 917 / 936 s (sum 3737, spread 50) |
 | Run 44128243501 test phase per shard, Windows | 1089 / 1218 / 1752 / 1388 s (sum 5447, spread 663) |
-| Estimate at six Windows shards, balanced | 5447 / 6 + 135 = about 1043 s |
-| Estimate at five Linux shards, balanced | 3737 / 5 + 110 = about 857 s |
-| Estimated code PR wall time | About 17-18 min, from about 28 |
-| Slowest single class (`CrossProjectReceivingNamespaceIntegrationTests`, about 706 s on Windows) | Below the per-shard estimate, so it does not floor a leg |
 | Hosted concurrency | Account plan allows 40 concurrent jobs; a code run uses 11 legs + quality + SDK floor = 13 |
 
-The Windows partition is fixed by `eng/shard-duration-profile.json`; the Linux partition is additionally scaled per run by the calibration build (§ Linux runner capacity). Every Linux leg now waits for five calibration builds instead of four, under the same 3-minute resolver limit.
+Pre-change estimate against the first measurement. Run 44176184128 (head a6ac242a, 2026-11-17, first attempt, green) is the only run of the 6 + 5 topology so far:
+
+| Quantity | Pre-change estimate | Run 44176184128 |
+|---|---|---|
+| Linux leg job seconds | 3737 / 5 + 110 = about 857 each | 861 / 845 / 682 / 843 / 826 |
+| Windows leg job seconds | 5447 / 6 + 135 = about 1043 each | 997 / 893 / 1413 / 1148 / 1227 / 1361 |
+| Windows `dotnet test` seconds, summed over legs | 5447 (unchanged from four shards) | 5940, spread 490 |
+| Run creation to `validate` | About 17-18 min | 24 min (21:05:48Z to 21:29:48Z) |
+
+- Linux met its estimate (slowest leg 861 s against 857 s).
+- Windows did not: the 1043 s figure was an estimate, and the slowest leg took 1413 s. Splitting into six shards did not keep total Windows test time constant, and the legs were not equal although the planner predicted equal shards.
+- The cause of the long `windows-hosted-3-of-6` and `windows-hosted-6-of-6` legs is not identified. No claim is made about whether a single class floors a Windows leg.
+- Against the prior 27.6-minute median for the slowest leg, the run is about 4 minutes faster. That is one run; the collector's single-leg noise band on Windows is about 205 s, so the size of the gain is not established.
+- Part of the Windows spread plausibly comes from the profile hole in § Hosted duration profile. Re-measurement and rebalancing are tracked in `ci-windows-six-shard-rebalance-remeasure`.
+
+The Windows partition is fixed by `eng/shard-duration-profile.json`; the Linux partition is additionally scaled per run by the calibration build (§ Linux runner capacity). Every Linux leg now waits for five calibration builds instead of four, under the same 3-minute resolver limit (longest wait in run 44176184128: 36 s); the coupling between sibling legs is tracked in `ci-linux-calibration-sibling-wait-coupling`.
 
 The shard-count change fired the re-check trigger below. `eng/collect-hosted-shard-timings.ps1` over the five most recent complete green first-attempt code runs (40 leg observations on the superseded 4 + 4 topology; TRX inside the 14-day window; no local timing):
 
@@ -246,7 +273,7 @@ The same five runs regenerated `eng/shard-duration-profile.json` (§ Hosted dura
 | `ubuntu-latest`, 5 | previous | 514 / 8 | 2892.0 each | 2506.5 / 2860.3 / 2772.7 / 3211.3 / 2696.6 |
 | `ubuntu-latest`, 5 | regenerated | 512 / 10 | 2914.8 each | 2535.5 / 3059.9 / 2620.1 / 3044.9 / 2787.0 |
 
-Evidence limits: the two scoring runs are also two of the five profile inputs, so the regenerated rows are partly in-sample; the Linux rows omit the per-run build-time scaling; no run of the 6 + 5 topology existed when this was written. The first `validate` run of the pull request that lands this decision is the first measurement of the new topology. Re-measure five complete green runs on it before changing counts or caps again.
+Evidence limits: the two scoring runs are also two of the five profile inputs, so the regenerated rows are partly in-sample; the Linux rows omit the per-run build-time scaling; the table was computed before any run of the 6 + 5 topology existed, and run 44176184128 (above) did not show the equal Windows legs it predicts. Re-measure five complete green runs on the new topology before changing counts or caps again.
 
 ### 2026-11-08: four Linux shards
 
