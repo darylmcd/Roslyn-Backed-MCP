@@ -21,3 +21,7 @@
 - Cluster-C sweep (PR for composite-apply-platform-path-identity) found 47 further physical-path OrdinalIgnoreCase sites of the same mechanism outside the fixed functions. Static finding; no runtime reproduction.
 
 - Rechecked e17fae0d on 2026-10-25: UnresolvedAnalyzerReferenceStripper.cs:112 passes a fresh empty skipPaths set and never inserts entries. Its comparer currently changes no behavior; removed that site from the behavioral defect anchors. Do not claim a Linux regression there.
+
+## Notes
+
+2026-11-17 screen at c705e2e1. Release impact unqualified across the full physical-path sweep. Decompose by verified ownership and qualify Linux case-distinct controls against each stable scope, diagnostic and reference projection before selecting. Preserve case-insensitive text identities and Windows controls.

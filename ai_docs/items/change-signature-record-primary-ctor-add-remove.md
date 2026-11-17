@@ -21,3 +21,7 @@
 ## Context
 
 - Split child of `change-signature-primary-constructor-parameters` (plan 20261001T034545Z shipped only its interim refusal: primary-constructor targets are now refused with a specific public message). Each child replaces the refusal for its own shape. Found during TradeWise bl-2752 (PR #2658). Children share `ChangeSignatureAddRemovePreviewBuilder.cs` and `ChangeSignaturePreviewTests.cs`, so they are chained by `deps`.
+
+## Notes
+
+2026-11-17 screen at c705e2e1. Preview is experimental. Re-derive independent add and remove slices before implementation. Qualify binding for synthesized property, Deconstruct, copy-constructor and with uses. Preserve positional record semantics when adapting the struct construction bridge. Preview storage still drops truncation/provenance. Qualify complete-review handling and stable shared apply acceptance before selecting in 5.x.
