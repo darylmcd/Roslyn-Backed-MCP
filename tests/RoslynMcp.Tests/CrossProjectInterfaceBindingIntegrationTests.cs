@@ -25,6 +25,15 @@ public sealed class CrossProjectInterfaceBindingIntegrationTests : IsolatedWorks
     private const string PlainSource =
         "namespace SampleLib { public class EchoService { public int Echo(int value) => value + 1; } }";
 
+    private const string NestedConsumerSource = """
+        public class EchoConsumer
+        {
+            public EchoConsumer(SampleLib.Outer.EchoService real, SampleLib.Decoy.EchoService decoy)
+            {
+            }
+        }
+        """;
+
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
@@ -263,9 +272,16 @@ public sealed class CrossProjectInterfaceBindingIntegrationTests : IsolatedWorks
     [TestMethod]
     public async Task Dependency_Inversion_A_Nested_Type_Of_The_Same_Name_Is_Not_Rewritten()
     {
-        await using var workspace = CreateIsolatedWorkspaceCopy();
-        await PrepareNestedDependencyInversionAsync(workspace);
-        await workspace.LoadAsync();
+        // `Decoy.EchoService` shares name, namespace and assembly with the extracted `Outer.EchoService`.
+        const string source = """
+            namespace SampleLib
+            {
+                public class Outer { public class EchoService { public int Echo(int value) => value + 1; } }
+
+                public class Decoy { public class EchoService { public int Echo(int value) => value + 2; } }
+            }
+            """;
+        await using var workspace = await LoadAsync(source, consumerSource: NestedConsumerSource + "\n");
         var pending = await PreviewAsync(workspace, "dependency-inversion");
 
         await AssertCompilesAsync(pending);
@@ -361,21 +377,15 @@ public sealed class CrossProjectInterfaceBindingIntegrationTests : IsolatedWorks
 
             public class Decoy { public class EchoService { public int Echo(int value) => value + 2; } }
             """);
-        await File.WriteAllTextAsync(workspace.GetPath("SampleApp", "EchoConsumer.cs"), """
-            public class EchoConsumer
-            {
-                public EchoConsumer(SampleLib.Outer.EchoService real, SampleLib.Decoy.EchoService decoy)
-                {
-                }
-            }
-            """);
+        await File.WriteAllTextAsync(workspace.GetPath("SampleApp", "EchoConsumer.cs"), NestedConsumerSource);
     }
 
     private static string InterfaceFolderNamespace(string rootNamespace) =>
         rootNamespace.Length == 0 ? "Interfaces" : rootNamespace + ".Interfaces";
 
     private async Task<IsolatedWorkspaceScope> LoadAsync(
-        string source, bool? consumerReferencesContracts = null, string? rootNamespace = null, bool interfacesFolder = false)
+        string source, bool? consumerReferencesContracts = null, string? rootNamespace = null, bool interfacesFolder = false,
+        string? consumerSource = null)
     {
         var workspace = CreateIsolatedWorkspaceCopy();
         try
@@ -400,7 +410,7 @@ public sealed class CrossProjectInterfaceBindingIntegrationTests : IsolatedWorks
 
             await File.WriteAllTextAsync(workspace.GetPath("SampleLib", "EchoService.cs"), source);
             await File.WriteAllTextAsync(workspace.GetPath("SampleApp", "EchoConsumer.cs"),
-                "using SampleLib;\n\npublic class EchoConsumer\n{\n    public EchoConsumer(EchoService service)\n    {\n    }\n}\n");
+                consumerSource ?? "using SampleLib;\n\npublic class EchoConsumer\n{\n    public EchoConsumer(EchoService service)\n    {\n    }\n}\n");
             if (consumerReferencesContracts == true)
             {
                 var appProject = workspace.GetPath("SampleApp", "SampleApp.csproj");
