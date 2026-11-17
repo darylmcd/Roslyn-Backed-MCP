@@ -125,7 +125,8 @@ public sealed class CiRunnerParityContractTests
     /// The router's docs-only/rename/count-mismatch classification behavior itself is table-tested
     /// in <see cref="CiTopologyDecisionContractTests"/>. This is the surviving integration sentinel:
     /// it proves the `validate` job consumes the `route` job's <c>docs_only</c> output to pick the
-    /// docs-route cache writer, and never to thin the release verifier or the test class set.
+    /// docs-route cache writer, and never to thin the release verifier. The docs route's smaller
+    /// test set comes from the routed leg's own <c>test_scope</c> field, not from that output.
     /// </summary>
     [TestMethod]
     public void ValidateJob_GatesStepsOnTheRoutedDocsOnlyOutput()
@@ -141,7 +142,8 @@ public sealed class CiRunnerParityContractTests
             "(needs.route.outputs.docs_only == 'true' && matrix.leg.artifact_owner == true)");
         Assert.IsFalse(
             releaseStep.Contains("docs_only", StringComparison.OrdinalIgnoreCase),
-            "The pull-request release step must not vary with the docs route: the artifact owner runs every release gate and every route runs the complete test class set.");
+            "The pull-request release step must not read the docs_only output: the artifact owner runs every release gate on every route, and the test set is chosen only by the routed leg's test_scope.");
+        StringAssert.Contains(releaseStep, "TEST_SCOPE: ${{ matrix.leg.test_scope }}");
     }
 
     [TestMethod]
@@ -292,16 +294,38 @@ public sealed class CiRunnerParityContractTests
 
     /// <summary>
     /// Docs-tier files feed release gates: THIRD-PARTY-NOTICES.md (restored-license verification),
-    /// src/RoslynMcp.Host.Stdio/README.md (registry ownership marker), CHANGELOG.md (version drift,
-    /// breaking-version bump) and allowlisted plugin files (package allowlist). The docs route's
-    /// artifact owner therefore runs the complete release verifier, exactly as the code route and
-    /// local `just ci` do, rather than a hand-picked subset of its gates.
+    /// CHANGELOG.md (version drift, breaking-version bump) and allowlisted plugin files (package
+    /// allowlist). The docs route's one leg is therefore the artifact owner and runs every gate of
+    /// the release verifier, exactly as the code route and local `just ci` do, rather than a
+    /// hand-picked subset of its gates. Only its test set differs: the docs-tier consumer classes
+    /// (<c>eng/docs-tier-test-consumers.json</c>), selected by the leg's <c>test_scope</c>.
     /// </summary>
     [TestMethod]
     public void DocsRoute_ArtifactOwnerRunsTheCompleteReleaseVerifier()
     {
         var validate = GetJobBlock(LoadCiWorkflow(), "validate");
         var releaseStep = GetNamedStepBlock(validate, "Verify release build (pull request)");
+
+        // The scope is an exact, case-sensitive match on the routed value; anything else throws
+        // instead of defaulting to a scope.
+        StringAssert.Contains(releaseStep, "if ($env:TEST_SCOPE -ceq 'full') {");
+        StringAssert.Contains(releaseStep, "elseif ($env:TEST_SCOPE -ceq 'docs-consumers') {");
+        StringAssert.Contains(releaseStep, "$parameters.DocsTierConsumerTests = $true");
+        StringAssert.Contains(releaseStep, "throw \"Unknown test scope '$env:TEST_SCOPE'.\"");
+
+        // The docs leg is unsharded, so the per-shard build calibration (and the Jobs API read it
+        // needs) must not run for it.
+        foreach (var calibrationStep in new[]
+        {
+            "Restore Linux calibration build inputs",
+            "Measure Linux Release build",
+            "Resolve Linux shard build times",
+        })
+        {
+            StringAssert.Contains(
+                GetNamedStepBlock(validate, calibrationStep),
+                "if: runner.os == 'Linux' && matrix.leg.test_shard_count > 1");
+        }
 
         Assert.IsFalse(
             validate.Contains("- name: Verify release version gates", StringComparison.Ordinal),

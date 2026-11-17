@@ -10,13 +10,26 @@ public sealed class LinuxShardBuildTimesContractTests
     [TestCategory("Process")]
     public async Task Collect_OrdersSuccessfulNamedStepsFromInProgressJobsAsync()
     {
-        var result = await RunCollectorAsync("docs-linux-2-of-4",
-            Pages([Job("docs-linux-3-of-4", 40), Job("docs-linux-1-of-4", 61)],
-                [Job("docs-linux-4-of-4", 53), Job("docs-linux-2-of-4", 59), Job("linux-1-of-4", 88)]));
+        // The last job belongs to another matrix shape (the single policy-docs leg) and must be ignored.
+        var result = await RunCollectorAsync("linux-2-of-4",
+            Pages([Job("linux-3-of-4", 40), Job("linux-1-of-4", 61)],
+                [Job("linux-4-of-4", 53), Job("linux-2-of-4", 59), Job("docs-linux-1-of-1", 88)]));
 
         Assert.AreEqual(0, result.ExitCode, result.StdErr);
         CollectionAssert.AreEqual(new double[] { 61, 59, 40, 53 },
             JsonSerializer.Deserialize<double[]>(result.StdOut));
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
+    [DataRow("docs-linux-1-of-4")]
+    [DataRow("windows-hosted-1-of-4")]
+    public async Task Collect_RejectsALegOutsideTheShardedLinuxCodeRouteAsync(string legName)
+    {
+        var result = await RunCollectorAsync(legName, Pages([Job(legName, 61)]));
+
+        Assert.AreNotEqual(0, result.ExitCode, result.StdOut);
+        StringAssert.Contains(result.StdErr, "Linux build calibration requires the current Actions run, attempt and shard identity.");
     }
 
     [TestMethod]

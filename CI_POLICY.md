@@ -7,7 +7,7 @@ This document is the canonical validation and merge-gating contract.
 | Event / trust state | Validation topology | Coverage / network |
 |---|---|---|
 | Evidence-only pull request (`ai_docs/audits/**`, `ai_docs/reports/**`, `ai_docs/items/**`, `audit-reports/**`, minus the exclusions below) | One pwsh `evidence-lint` job (changelog contract + `verify-ai-docs.ps1`); no .NET setup, build, or test legs; exact-floor probe and quality job skipped | Not applicable |
-| Policy-only documentation pull request (Markdown / `ai_docs/**/*.json` / the tracked promotion scorecard, excluding behavior-bearing paths) | Four hosted Linux class shards; the artifact owner runs the complete release verifier (every release policy gate plus publish/hash); exact-floor probe and quality job skipped | Coverage and `Network` tests skipped; audit skipped |
+| Policy-only documentation pull request (Markdown / `ai_docs/**/*.json` / the tracked promotion scorecard, excluding behavior-bearing paths and Markdown inside a source root) | One hosted Linux leg, the artifact owner: every gate of the release verifier (every release policy gate plus publish/hash) and the docs-tier consumer test classes only (§ Docs Route Test Selection); exact-floor probe and quality job skipped | Coverage and `Network` tests skipped; audit skipped |
 | Any code-bearing pull request | Six hosted Windows shards + five hosted Linux shards + one concurrent exact-SDK-floor build/workspace probe + one concurrent quality job | Coverage and `Network` tests skipped |
 | Merge-queue group (`merge_group`) | Always the full code-bearing topology (no trusted changed-file set, so no docs-only/evidence-only route) | Coverage and `Network` tests skipped |
 | Manual dispatch / weekly schedule (Mon 05:45 UTC) | One unsharded hosted Linux suite + one concurrent exact-SDK-floor build/workspace probe + one concurrent quality job | Coverage and live `Network` tests enabled |
@@ -21,7 +21,8 @@ Rules:
 - Classify both `filename` and `previous_filename` from the pull-request files API. A source-to-doc rename is code-bearing because its removed source path still requires full validation.
 - Require the files API record count to equal `pull_request.changed_files` and remain below the endpoint's 3,000-file cap before selecting the docs-only route. A capped or incomplete enumeration is code-bearing and receives full validation.
 - Treat behavior-bearing Markdown under `skills/`, `.claude/skills/`, `agents/`, `.claude/agents/`, and `.github/prompts/` as code-bearing. Those paths receive the full Windows/Linux matrix.
-- Docs-tier files feed release gates: `CHANGELOG.md` (version drift, breaking-version bump), `THIRD-PARTY-NOTICES.md` (restored-license verification), `src/RoslynMcp.Host.Stdio/README.md` (registry ownership marker), allowlisted plugin files (package allowlist). The docs route's artifact owner therefore runs the complete `verify-release.ps1`, never `-TestShardOnly`, so no release gate can be bypassed by a docs-tier change.
+- Treat Markdown under `src/`, `analyzers/`, `samples/`, and `tests/` as code-bearing. It is a build, pack or fixture input, not documentation: the analyzer release-tracking files (`AnalyzerReleases.*.md`), the packed `src/RoslynMcp.Host.Stdio/README.md` (also the registry ownership marker), and sample or test fixtures.
+- Docs-tier files feed release gates: `CHANGELOG.md` (version drift, breaking-version bump), `THIRD-PARTY-NOTICES.md` (restored-license verification), allowlisted plugin files (package allowlist). The docs route's one leg is therefore the artifact owner and runs every gate of `verify-release.ps1`, never `-TestShardOnly`, so no release gate can be bypassed by a docs-tier change. `-DocsTierConsumerTests` narrows only the test set.
 - A pull request takes the highest tier any of its paths (including rename origins) needs: code > docs > evidence.
 - The evidence tier is limited to paths no test or `eng/` script reads. Files inside evidence roots that CI does read stay docs tier through `$evidenceExclusions` in `eng/resolve-ci-topology.ps1` (currently `ai_docs/items/backlog-d-fragment-schema.md` and `audit-reports/_latest-promotion-scorecard.json`). `CiEvidenceTierConsumerContractTests` fails on any new reference to an evidence root until it is classified.
 - Never use workflow-level `paths`/`paths-ignore` to skip validation. The required `validate` check would never report and the pull request would stay blocked; skips must happen inside the workflow with `validate-gate` still reporting.
@@ -43,18 +44,76 @@ The router emits typed leg fields. Keep their concerns separate:
 | `artifact_owner` | Sole policy/release-artifact owner |
 | `timeout_minutes` | Explicit per-leg job cap |
 | `test_shard_index`, `test_shard_count` | Complete class partition passed to `verify-release.ps1` |
+| `test_scope` | `full` = this leg's shard of the whole suite; `docs-consumers` = only the classes in `eng/docs-tier-test-consumers.json` (policy-docs leg). The workflow fails a leg with any other value |
 
 ## Pull-Request Test Partition
 
 - Code pull requests and merge-queue groups run six concurrent Windows class shards and five concurrent Linux class shards (see § Linux Shard Count Decision).
 - All eleven code pull-request shards run on separate GitHub-hosted runners.
-- Policy-only documentation PRs run the same complete class partition as four Linux shards. Do not restore a zero-test docs route: repository tests consume Markdown contracts, and future consumers must be covered automatically. The evidence route is the one zero-test route; it is safe only for paths `CiEvidenceTierConsumerContractTests` proves no test reads.
+- Policy-only documentation PRs run one Linux leg whose tests are the docs-tier consumer classes, not a partition of the suite (§ Docs Route Test Selection; operator decision 2026-11-17, which supersedes the earlier rule that the docs route run the complete class partition). Do not restore a zero-test docs route: repository tests consume Markdown contracts, and `DocsTierTestConsumerContractTests` is what keeps a new consumer covered. The evidence route is the one zero-test route; it is safe only for paths `CiEvidenceTierConsumerContractTests` proves no test reads.
 - `eng/get-test-shard-plan.ps1` reads compiled MSTest metadata. It must fail on an invalid index/count, missing assembly, unreadable metadata, unsafe class name, zero discovered classes, empty shard, overlap, or incomplete assignment.
 - Shards use exact MSTest `ClassName` predicates. Do not use `FullyQualifiedName~` prefix matching.
 - `eng/ci.runsettings` enables `TreatNoTestsAsError`; an accidentally empty filter is a failure.
 - Keep pull-request coverage disabled. Keep dispatch/schedule coverage unsharded until coverage merge semantics are explicitly implemented.
 - Keep matrix `fail-fast: false` so independent OS/shard failures remain visible in one run.
 - Keep the exact SDK-floor lane isolated from hosted-image SDKs and bounded to restore, Release build, a representative MSBuildWorkspace load, and the native fork admission late-child metadata/copy cases. The latest-`10.0.x` matrix owns the complete suite.
+
+## Docs Route Test Selection
+
+Operator decision 2026-11-17. It supersedes the rule that a policy-only documentation pull request runs the complete class partition (four Linux shards). Code pull requests, merge-queue groups and dispatch/schedule runs are unchanged and run the whole suite.
+
+| Part | Contract |
+|---|---|
+| Topology | One leg, `docs-linux-1-of-1`: `ubuntu-latest`, artifact owner, 30-minute cap, `test_shard_count` 1, `test_scope` `docs-consumers` |
+| Non-test gates | Unchanged: `verify-ai-docs.ps1`, `verify-actionlint.ps1`, and every gate of `verify-release.ps1` (package family, version drift, shipped skills, package allowlist, changelog fragments, breaking version, registry readiness, restored licenses, Release build, publish/hash) |
+| Tests | Exactly the classes under `consumers` in `eng/docs-tier-test-consumers.json`, as an exact `ClassName=` filter, with the same category filter as every pull-request leg (`eng/verify-release.ps1 -DocsTierConsumerTests`) |
+| Calibration | Skipped: the Linux build-calibration steps require `test_shard_count > 1` |
+| Required check | `validate-gate` still requires the validate matrix (this leg) to succeed |
+
+Fail-closed rules of the verifier. Each fails the leg; none can pass with fewer tests:
+
+- List file missing, empty, not JSON, without `consumers`, or with zero entries.
+- An entry without a plain class name (`[A-Za-z_][A-Za-z0-9_.]*`), or a class listed twice.
+- A listed class that `eng/get-test-shard-plan.ps1` does not find in the built test assembly.
+- A listed class with no executed result in the TRX.
+- `-DocsTierConsumerTests` combined with `-TestShardOnly` or a shard count above 1.
+- A `test_scope` value the workflow does not know.
+
+The list is kept complete by `DocsTierTestConsumerContractTests`, not by review. A test class is a candidate when one of these holds, and every candidate must be a `consumers` entry or a `nonConsumers` entry with a reason:
+
+| Signal | Detection |
+|---|---|
+| Docs-tier path token in the class file | `.md`, `ai_docs`, the promotion scorecard name, `changelog.d`, or a `docs` path segment. Tokens, not joined paths, so `Path.Combine(root, "docs", "setup.md")` matches |
+| Docs-reading script named in the class file | A script outside `tests/` and `samples/` whose text carries a docs-tier token or walks a tree (`git ls-files`, `-Recurse`, `AllDirectories`), or that names such a script (followed transitively). Derived from the scripts on every run; no script list is maintained |
+| Repository tree walk in the class file | `ls-files`, or a recursive walk in a file that also names the repository root |
+| Inheritance | A test class that derives from a candidate |
+| Shared helper or fixture script under `tests/` | A docs-tier token fails outright (move the read into the test classes). Any other signal needs a `reviewedHelperFiles` entry |
+
+The guard also fails on a listed class that no longer exists or no longer carries a signal, on a consumer whose every case is in the `Benchmark` or `Network` category, and on a list that is unsorted or malformed. When in doubt, list a consumer: an extra class costs seconds, a missing one is an undetected break.
+
+What the guard cannot detect:
+
+- A path assembled at run time from parts that are not tokens (a name read from another file, an extension added by code).
+- A tree walk in a file that never names the repository root, or a wildcard listing of a mixed directory without a docs-tier token.
+- A docs-tier read made through reflection, by product code under `src/`, or by a script invoked under a computed name.
+- A wrong `nonConsumers` reason. Classification is a review judgment; the guard checks only that it was made.
+
+Exposure: a docs-tier change that breaks a class missing from the list is not caught on that docs pull request. The next code-bearing pull request or the Monday schedule catches it; both run the whole suite.
+
+Evidence (hosted, `pull_request` runs of `ci.yml`, 2026-10-20 to 2026-11-17):
+
+| Measurement | Value |
+|---|---|
+| Runs | 600, of which 170 docs-only (28%) |
+| Docs-only run before this decision | About 22 min wait (median leg 1244-1410 s), about 85 runner-minutes, all 6,677 cases |
+| Test failures caused by the docs change, in those 170 runs | 0 |
+| Docs-caused failures, all from gates this route keeps | 8: `eng/verify-ai-docs.ps1` 4, `eng/verify-changelog-fragments.ps1` 4 |
+| Red runs unrelated to the docs change | 6: five flaky tests in classes that read no docs (runs 43637525418, 43634218943, 43377558878, 42450892059, 40359428470), one build break on `main` (run 42266554397) |
+| Text scan when the decision was made | 45 test-class files with a docs-tier token |
+| List at this change | 14 consumer classes, 45 reviewed non-consumer classes, 4 reviewed helper files |
+| Local runs of the route (Windows dev host, two runs, not a hosted measurement) | 14 of 523 classes, 121 cases; test phase 118 s and 85 s; whole verifier 158 s and about 100 s |
+
+Evidence limit: 157 of the 170 docs-only runs changed `ai_docs/backlog.md`, and `README.md` never changed in the window, so the history barely exercised the documents that tests read. The guard test, not the history, is what makes the selection sound. No hosted run of the one-leg route existed when this was written; the first docs-only `validate` run after this change is its first measurement.
 
 ## Required Checks And Artifacts
 
@@ -72,7 +131,7 @@ The router emits typed leg fields. Keep their concerns separate:
 | Per-leg timing summary + TRX (`test-results-<leg>`) | Every pull-request/test leg, generated/uploaded with `always()`; 14 days |
 | Cobertura + HTML `code-coverage` | Dispatch/schedule artifact owner; 30 days |
 
-`eng/verify-release.ps1` remains a standalone release gate. It calls `eng/prepare-validation-dependencies.ps1` for checked main restore plus canonical all-sample preparation, verifies restored root-solution licenses on non-test-only legs, builds Release, runs tests in a private per-invocation `TEMP`/`TMP`/`TMPDIR`, disables reusable MSBuild and compiler servers within the invocation, removes the exact temp root, publishes the stdio host, and writes the hash manifest. The aggregate preparation script composes `eng/prepare-test-fixtures.ps1`, the sole sample-discovery owner also used by direct tests and `just test`. Restored-license verification retains the root solution and active package-root filters; sample assets do not replace root metadata. Preparation or license failure prevents build, tests, and publication. Test and cleanup failures are aggregated rather than hidden. CI passes `-TestShardOnly` only on non-owner legs, so platform-neutral policy and publish/hash work execute exactly once per code or policy-doc route, on the artifact owner; the default remains the complete standalone gate.
+`eng/verify-release.ps1` remains a standalone release gate. It calls `eng/prepare-validation-dependencies.ps1` for checked main restore plus canonical all-sample preparation, verifies restored root-solution licenses on non-test-only legs, builds Release, runs tests in a private per-invocation `TEMP`/`TMP`/`TMPDIR`, disables reusable MSBuild and compiler servers within the invocation, removes the exact temp root, publishes the stdio host, and writes the hash manifest. The aggregate preparation script composes `eng/prepare-test-fixtures.ps1`, the sole sample-discovery owner also used by direct tests and `just test`. Restored-license verification retains the root solution and active package-root filters; sample assets do not replace root metadata. Preparation or license failure prevents build, tests, and publication. Test and cleanup failures are aggregated rather than hidden. CI passes `-TestShardOnly` only on non-owner legs, so platform-neutral policy and publish/hash work execute exactly once per code or policy-doc route, on the artifact owner; the default remains the complete standalone gate. `-DocsTierConsumerTests` (the policy-docs leg) keeps every one of those steps and replaces only the test filter (§ Docs Route Test Selection).
 
 The quality job has a 30-minute cap, full-history checkout, and latest-`10.0.x` SDK. It runs the mandatory audit first to restore its own solution assets. On an exact cache miss it also prepares all canonical samples and explicitly saves packages before remaining quality work. Code PRs and merge groups then build `analyzers/ServerSurfaceCatalogAnalyzer/ServerSurfaceCatalogAnalyzer.csproj` in Debug with checked native exit before changed-file formatting with `-NoRestore`; restore alone does not produce the project analyzer binary. Dispatch/schedule retain the mandatory audit and conditional sample preparation/cache save. Policy-doc and evidence routes skip the job.
 
@@ -171,9 +230,9 @@ Evidence limits: five runs across five heads, one image version unknown, per-leg
 
 ### Linux runner capacity
 
-Each hosted Linux matrix leg times the same checked Release build with the release verifier's build-server settings. Read the successful build step durations from the current Actions run and order them by shard index. The planner minimizes projected completion time using each assigned class's measured cost and a relative speed multiplier from that shard's build duration. Faster runners receive more work. Every leg requires the complete vector and logs the partition hash. Partial reruns use the earliest successful build duration per index from the same run to preserve the partition already used by other jobs.
+Each sharded hosted Linux matrix leg (`test_shard_count > 1`: the code route) times the same checked Release build with the release verifier's build-server settings. The single policy-docs leg is unsharded and skips the calibration steps. Read the successful build step durations from the current Actions run and order them by shard index. The planner minimizes projected completion time using each assigned class's measured cost and a relative speed multiplier from that shard's build duration. Faster runners receive more work. Every leg requires the complete vector and logs the partition hash. Partial reruns use the earliest successful build duration per index from the same run to preserve the partition already used by other jobs.
 
-The ordinary release verifier still performs checked dependency preparation, policy, build and tests, followed by publish/hash on the artifact owner. Its build can reuse the calibration outputs. Windows, unsharded dispatch and scheduled validation use the existing plan. The Jobs API is read-only and scoped to the run.
+The ordinary release verifier still performs checked dependency preparation, policy, build and tests, followed by publish/hash on the artifact owner. Its build can reuse the calibration outputs. Windows, unsharded dispatch and scheduled validation use the existing plan; the policy-docs leg uses its consumer list and no plan. The Jobs API is read-only and scoped to the run.
 
 ### Hosted duration profile
 
@@ -212,7 +271,7 @@ Operator decision 2026-11-17 supersedes the four-Windows + four-Linux code topol
 
 | Unchanged by this decision | Value |
 |---|---|
-| Policy-doc route | Four `docs-linux-N-of-4` legs |
+| Policy-doc route | Four `docs-linux-N-of-4` legs (replaced the same day by one `docs-linux-1-of-1` leg: § Docs Route Test Selection) |
 | Dispatch / schedule | One unsharded Linux leg |
 | Per-leg cap | 45 minutes (temporary; row `ci-restore-linux-leg-timeout-30-after-rebalance`) |
 | Artifact owner | The last Linux shard, sole owner |
@@ -328,6 +387,7 @@ Combine filters with `&` (AND) or `|` (OR) per `dotnet test` syntax.
 | GitHub Actions workflow YAML/expression lint | `pwsh -NoProfile -File ./eng/verify-actionlint.ps1` |
 | Informational coverage/live-network gate | `just full` |
 | One release shard | `pwsh -NoProfile -File ./eng/verify-release.ps1 -NoCoverage -ExcludeNetworkTests -TestShardIndex <zero-based> -TestShardCount <count>` |
+| The policy-docs leg (every release gate, docs-tier consumer classes only) | `pwsh -NoProfile -File ./eng/verify-release.ps1 -NoCoverage -ExcludeNetworkTests -DocsTierConsumerTests` |
 
 `just ci` composes docs, shipped skills, the changed-file formatter gate, the checksum-pinned actionlint gate, unsharded PR-equivalent release validation, and the vulnerability audit. The same actionlint script also runs on the hosted artifact-owner PR leg. Local validation remains unsharded so one command proves the complete suite.
 
@@ -335,7 +395,7 @@ Combine filters with `&` (AND) or `|` (OR) per `dotnet test` syntax.
 
 Required check: `validate`, the `validate-gate` job of `.github/workflows/ci.yml` on `pull_request` (ruleset `Default Branch Ruleset`, context `validate`). A green `validate` on the PR head commit is the merge proof: the ship helper accepts it with `--ci-proof=validate`; a local `just ci` run is optional.
 
-Basis: every `just ci` step runs inside `validate`, or provably cannot change outcome on that route.
+Basis: every `just ci` step runs inside `validate`, or cannot change outcome on that route. For the policy-doc route's tests that claim rests on a guard test, not on a proof: see the residual below.
 
 | `just ci` step | Code route | Policy-doc route | Evidence route |
 |---|---|---|---|
@@ -343,11 +403,13 @@ Basis: every `just ci` step runs inside `validate`, or provably cannot change ou
 | `verify-changed-format` | `quality` | not run: the gate diffs `*.cs` only; a docs-tier PR changes none | not run: same |
 | `verify-actionlint` | artifact owner | artifact owner | not run: `.github/**` is code tier |
 | `verify-release-pr` release gates + publish/hash | artifact owner (full verifier) | artifact owner (full verifier) | `evidence-lint` runs the changelog contract; other gates read no evidence path |
-| `verify-release-pr` tests (`TestCategory!=Benchmark&TestCategory!=Network`, Release) | complete class partition, Windows x6 + Linux x5 | complete class partition, Linux x4 | not run: no test reads an evidence path (`CiEvidenceTierConsumerContractTests`) |
+| `verify-release-pr` tests (`TestCategory!=Benchmark&TestCategory!=Network`, Release) | complete class partition, Windows x6 + Linux x5 | docs-tier consumer classes only, one Linux leg (`eng/docs-tier-test-consumers.json`); the other classes are not run: `DocsTierTestConsumerContractTests` finds no docs-tier read in them | not run: no test reads an evidence path (`CiEvidenceTierConsumerContractTests`) |
 | `vuln-audit` (`eng/verify-nuget-audit.ps1`) | `quality` | not run: package inputs (`Directory.Packages.props`, `*.csproj`, `global.json`) are code tier | not run: same |
 | (extra, not in `just ci`) exact SDK floor | `sdk-floor` | skipped | skipped |
 
 Residual difference: a skipped step is change-independent, so it reports what it reported on the base. The weekly schedule and every code PR re-run the audit against fresh advisories. Re-classify any path a skipped step starts to read, or the merge-proof claim lapses.
+
+Policy-doc residual: a docs-tier change that breaks a test class missing from the consumer list is not caught on that docs pull request. It is caught by the next code-bearing pull request or the Monday schedule, both of which run the whole suite (§ Docs Route Test Selection lists what the guard cannot detect).
 
 ## Merge Gating Expectations
 
@@ -368,6 +430,7 @@ Residual difference: a skipped step is change-independent, so it reports what it
 
 - Workflow implementation: `.github/workflows/ci.yml`
 - Validation-topology decision (pure function, table-tested): `eng/resolve-ci-topology.ps1`
+- Policy-docs test selection: `eng/docs-tier-test-consumers.json`, guarded by `DocsTierTestConsumerContractTests`
 - Human self-hosted operations: `docs/self-hosted-runner.md`
 - Runtime and local commands: `ai_docs/runtime.md`
 - Branch/worktree/PR workflow: `ai_docs/workflow.md`

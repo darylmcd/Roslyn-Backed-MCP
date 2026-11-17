@@ -7,12 +7,14 @@ This repository is public. Pull-request validation therefore runs only on epheme
 | Situation | Windows | Linux |
 |---|---|---|
 | Code-bearing PR | Six hosted class shards | Five hosted class shards |
-| Policy-only documentation PR | No Windows leg | Four hosted class shards |
+| Policy-only documentation PR | No Windows leg | One hosted leg: every release gate, and only the test classes that read documentation |
 | Dispatch / weekly schedule | None | One unsharded hosted coverage/live-network leg |
 
-Each OS partition is complete and disjoint. `eng/get-test-shard-plan.ps1` derives exact class filters from the compiled MSTest assembly; the release verifier rejects invalid, empty, overlapping, or incomplete plans.
+Each code-route OS partition is complete and disjoint. `eng/get-test-shard-plan.ps1` derives exact class filters from the compiled MSTest assembly; the release verifier rejects invalid, empty, overlapping, or incomplete plans.
 
-The stable pull-request check remains `validate`. Dispatch and scheduled runs report `validate-informational`; they cannot substitute their single Linux leg for the event-specific routed pull-request matrix (eleven legs for code, four for policy-only documentation).
+A documentation-only pull request does not run the whole suite. Its single leg runs the classes listed in `eng/docs-tier-test-consumers.json`, and a guard test (`DocsTierTestConsumerContractTests`) fails when a test starts reading a documentation file without being on that list. A documentation change that breaks a test the list misses is caught by the next code-bearing pull request or the weekly run, not on the documentation pull request itself. See [Docs Route Test Selection](../CI_POLICY.md#docs-route-test-selection).
+
+The stable pull-request check remains `validate`. Dispatch and scheduled runs report `validate-informational`; they cannot substitute their single Linux leg for the event-specific routed pull-request matrix (eleven legs for code, one for policy-only documentation).
 
 ## Retired repository runner
 

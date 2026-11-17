@@ -46,6 +46,7 @@ public sealed class CiEvidenceTierConsumerContractTests
         ["tests/RoslynMcp.Tests/CiEvidenceTierConsumerContractTests.cs"] = "This guard.",
         ["tests/RoslynMcp.Tests/CiRunnerParityContractTests.cs"] = "NuGetCache_ActualPredicatesSelectOneWriterPerRoutedOsAsync DataRow supplies a synthetic router path only; never reads evidence files.",
         ["tests/RoslynMcp.Tests/CiTopologyDecisionContractTests.cs"] = "Synthetic router payloads only.",
+        ["tests/RoslynMcp.Tests/DocsTierTestConsumerContractTests.cs"] = "Pins the router's docs-tier pattern text (which names the scorecard exclusion); reads tests/, script files and eng/docs-tier-test-consumers.json only.",
         ["tests/RoslynMcp.Tests/DocumentationOwnershipContractTests.cs"] = "Scans source comments and resolves docs-tier plan paths; the retired item path is a forbidden source-text literal only, never an evidence-file read.",
         ["tests/RoslynMcp.Tests/ReadmeSurfaceCountTests.cs"] = "Recursive ai_docs walk filtered to backlog.md, planning_index.md and plans/ (docs tier).",
         ["tests/RoslynMcp.Tests/Skills/AggregatePromotionScorecardsScriptTests.cs"] = "Synthetic temp roots only.",

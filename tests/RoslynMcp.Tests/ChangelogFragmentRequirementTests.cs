@@ -18,7 +18,7 @@ public sealed class ChangelogFragmentRequirementTests
     };
 
     [TestMethod]
-    public void CiWorkflow_FetchesBaseHistoryAndRunsGateOnPolicyDocsShards()
+    public void CiWorkflow_FetchesBaseHistoryAndRunsGateOnThePolicyDocsLeg()
     {
         var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
         var workflow = File.ReadAllText(Path.Combine(repositoryRoot, ".github", "workflows", "ci.yml"))
@@ -41,7 +41,7 @@ public sealed class ChangelogFragmentRequirementTests
         // by CiTopologyDecisionContractTests) rather than inlined in this workflow file.
         var topologyScript = File.ReadAllText(Path.Combine(repositoryRoot, "eng", "resolve-ci-topology.ps1"));
         var docsOwnerLegIndex = topologyScript.IndexOf(
-            "New-CiTopologyLeg -Name 'docs-linux-4-of-4' -RunsOn 'ubuntu-latest' -ArtifactOwner $true",
+            "New-CiTopologyLeg -Name 'docs-linux-1-of-1' -RunsOn 'ubuntu-latest' -ArtifactOwner $true",
             StringComparison.Ordinal);
         // The changelog verifier is a child of the full release verifier, which the artifact owner
         // runs on every route; TestShardOnly is reserved for non-owner legs.
