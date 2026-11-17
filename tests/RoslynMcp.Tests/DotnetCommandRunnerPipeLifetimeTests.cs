@@ -28,6 +28,7 @@ public class DotnetCommandRunnerPipeLifetimeTests
     }
 
     [TestMethod]
+    [DoNotParallelize]
     public void CreateStartInfo_Strips_Inherited_MSBuild_Location_Variables()
     {
         // MSBuildLocator / `dotnet test` pin MSBuild to the server's SDK via these variables. A child

@@ -311,6 +311,7 @@ public sealed class ValidationBundleToolsTests
     }
 
     [TestMethod]
+    [DoNotParallelize]
     public void ResolveForkTtlHours_HonorsEnvOverrideAndFallsBack()
     {
         const string var = "ROSLYNMCP_FORK_TTL_HOURS";
@@ -345,6 +346,7 @@ public sealed class ValidationBundleToolsTests
     }
 
     [TestMethod]
+    [DoNotParallelize]
     public void ResolveForkRestoreTimeoutMinutes_HonorsEnvOverrideAndFallsBack()
     {
         const string var = "ROSLYNMCP_FORK_RESTORE_TIMEOUT_MINUTES";
@@ -375,6 +377,7 @@ public sealed class ValidationBundleToolsTests
     }
 
     [TestMethod]
+    [DoNotParallelize]
     public void ResolveForkDotnetPath_HonorsEnvOverrideAndFallsBack()
     {
         const string var = "ROSLYNMCP_FORK_DOTNET_PATH";
