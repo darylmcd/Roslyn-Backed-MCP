@@ -13,19 +13,24 @@ public sealed class TestShardPlanContractTests
 
     [TestMethod]
     [TestCategory("Process")]
-    public async Task Planner_OneTwoAndFourShards_AreCompleteDisjointBalancedAndDeterministicAsync()
+    public async Task Planner_OneTwoAndEveryRoutedShardCount_AreCompleteDisjointBalancedAndDeterministicAsync()
     {
         var testAssemblyPath = typeof(TestShardPlanContractTests).Assembly.Location;
 
         var oneShardResult = await RunPlannerAsync(testAssemblyPath, shardCount: 1, shardIndex: 0);
         var zeroIndexTwoShardResult = await RunPlannerAsync(testAssemblyPath, shardCount: 2, shardIndex: 0);
+        // Routed counts (eng/resolve-ci-topology.ps1): 4 docs Linux, 5 code Linux, 6 code Windows.
         var firstMaxIndexFourShardResult = await RunPlannerAsync(testAssemblyPath, shardCount: 4, shardIndex: 3);
         var secondMaxIndexFourShardResult = await RunPlannerAsync(testAssemblyPath, shardCount: 4, shardIndex: 3);
+        var maxIndexFiveShardResult = await RunPlannerAsync(testAssemblyPath, shardCount: 5, shardIndex: 4);
+        var maxIndexSixShardResult = await RunPlannerAsync(testAssemblyPath, shardCount: 6, shardIndex: 5);
 
         AssertSucceeded(oneShardResult);
         AssertSucceeded(zeroIndexTwoShardResult);
         AssertSucceeded(firstMaxIndexFourShardResult);
         AssertSucceeded(secondMaxIndexFourShardResult);
+        AssertSucceeded(maxIndexFiveShardResult);
+        AssertSucceeded(maxIndexSixShardResult);
         Assert.AreEqual(
             firstMaxIndexFourShardResult.StdOut.Trim(),
             secondMaxIndexFourShardResult.StdOut.Trim(),
@@ -46,6 +51,13 @@ public sealed class TestShardPlanContractTests
         AssertSelectedShard(oneShardPlan, expectedIndex: 0);
         AssertSelectedShard(zeroIndexTwoShardPlan, expectedIndex: 0);
         AssertSelectedShard(maxIndexFourShardPlan, expectedIndex: 3);
+
+        var maxIndexFiveShardPlan = ParsePlan(maxIndexFiveShardResult.StdOut);
+        var maxIndexSixShardPlan = ParsePlan(maxIndexSixShardResult.StdOut);
+        AssertCompleteDisjointBalancedPlan(oneShardPlan, maxIndexFiveShardPlan, expectedShardCount: 5);
+        AssertCompleteDisjointBalancedPlan(oneShardPlan, maxIndexSixShardPlan, expectedShardCount: 6);
+        AssertSelectedShard(maxIndexFiveShardPlan, expectedIndex: 4);
+        AssertSelectedShard(maxIndexSixShardPlan, expectedIndex: 5);
     }
 
     [TestMethod]

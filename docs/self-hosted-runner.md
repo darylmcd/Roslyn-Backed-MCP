@@ -6,13 +6,13 @@ This repository is public. Pull-request validation therefore runs only on epheme
 
 | Situation | Windows | Linux |
 |---|---|---|
-| Code-bearing PR | Four hosted class shards | Four hosted class shards |
+| Code-bearing PR | Six hosted class shards | Five hosted class shards |
 | Policy-only documentation PR | No Windows leg | Four hosted class shards |
 | Dispatch / weekly schedule | None | One unsharded hosted coverage/live-network leg |
 
 Each OS partition is complete and disjoint. `eng/get-test-shard-plan.ps1` derives exact class filters from the compiled MSTest assembly; the release verifier rejects invalid, empty, overlapping, or incomplete plans.
 
-The stable pull-request check remains `validate`. Dispatch and scheduled runs report `validate-informational`; they cannot substitute their single Linux leg for the event-specific routed pull-request matrix (eight legs for code, four for policy-only documentation).
+The stable pull-request check remains `validate`. Dispatch and scheduled runs report `validate-informational`; they cannot substitute their single Linux leg for the event-specific routed pull-request matrix (eleven legs for code, four for policy-only documentation).
 
 ## Retired repository runner
 
@@ -41,7 +41,7 @@ Do not restore a local Windows shard merely by adding `runs-on: [self-hosted, ..
 4. Ensure fork-authored workflow YAML cannot select the runner.
 5. Ensure only base-controlled automation can authorize a trusted same-repository head SHA.
 6. Report the local shard against that exact SHA with a distinct required check; never let dispatch/schedule substitute for it.
-7. Run the local and hosted Windows partitions concurrently. Keep the fully-hosted four-shard fallback until repeated TRX evidence proves the local path.
+7. Run the local and hosted Windows partitions concurrently. Keep the fully-hosted six-shard fallback until repeated TRX evidence proves the local path.
 
 A personal-account repository cannot create an organization runner group. Moving the repository to an organization or using a separate private/isolation control plane is therefore an infrastructure prerequisite, not a workflow-only edit.
 

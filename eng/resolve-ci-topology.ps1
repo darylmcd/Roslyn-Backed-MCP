@@ -77,16 +77,22 @@ function New-CiTopologyLeg {
 }
 
 $codePullRequest = @(
-    New-CiTopologyLeg -Name 'windows-hosted-1-of-4' -RunsOn 'windows-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 0 -TestShardCount 4
-    New-CiTopologyLeg -Name 'windows-hosted-2-of-4' -RunsOn 'windows-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 1 -TestShardCount 4
-    New-CiTopologyLeg -Name 'windows-hosted-3-of-4' -RunsOn 'windows-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 2 -TestShardCount 4
-    New-CiTopologyLeg -Name 'windows-hosted-4-of-4' -RunsOn 'windows-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 3 -TestShardCount 4
+    # Six Windows + five Linux class shards (operator decision 2026-11-17; CI_POLICY.md § Linux Shard
+    # Count Decision). Windows shard index 0 persists the NuGet cache (ci.yml); the last Linux shard is
+    # the sole artifact owner.
+    New-CiTopologyLeg -Name 'windows-hosted-1-of-6' -RunsOn 'windows-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 0 -TestShardCount 6
+    New-CiTopologyLeg -Name 'windows-hosted-2-of-6' -RunsOn 'windows-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 1 -TestShardCount 6
+    New-CiTopologyLeg -Name 'windows-hosted-3-of-6' -RunsOn 'windows-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 2 -TestShardCount 6
+    New-CiTopologyLeg -Name 'windows-hosted-4-of-6' -RunsOn 'windows-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 3 -TestShardCount 6
+    New-CiTopologyLeg -Name 'windows-hosted-5-of-6' -RunsOn 'windows-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 4 -TestShardCount 6
+    New-CiTopologyLeg -Name 'windows-hosted-6-of-6' -RunsOn 'windows-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 5 -TestShardCount 6
     # TEMPORARY 45 (operator-approved 2026-11-13): linux-2 needs ~28 min of tests until the duration profile is refreshed;
     # restore 30 with row ci-restore-linux-leg-timeout-30-after-rebalance.
-    New-CiTopologyLeg -Name 'linux-1-of-4' -RunsOn 'ubuntu-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 0 -TestShardCount 4
-    New-CiTopologyLeg -Name 'linux-2-of-4' -RunsOn 'ubuntu-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 1 -TestShardCount 4
-    New-CiTopologyLeg -Name 'linux-3-of-4' -RunsOn 'ubuntu-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 2 -TestShardCount 4
-    New-CiTopologyLeg -Name 'linux-4-of-4' -RunsOn 'ubuntu-latest' -ArtifactOwner $true -TimeoutMinutes 45 -TestShardIndex 3 -TestShardCount 4
+    New-CiTopologyLeg -Name 'linux-1-of-5' -RunsOn 'ubuntu-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 0 -TestShardCount 5
+    New-CiTopologyLeg -Name 'linux-2-of-5' -RunsOn 'ubuntu-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 1 -TestShardCount 5
+    New-CiTopologyLeg -Name 'linux-3-of-5' -RunsOn 'ubuntu-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 2 -TestShardCount 5
+    New-CiTopologyLeg -Name 'linux-4-of-5' -RunsOn 'ubuntu-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 3 -TestShardCount 5
+    New-CiTopologyLeg -Name 'linux-5-of-5' -RunsOn 'ubuntu-latest' -ArtifactOwner $true -TimeoutMinutes 45 -TestShardIndex 4 -TestShardCount 5
 )
 $docsOnlyPullRequest = @(
     New-CiTopologyLeg -Name 'docs-linux-1-of-4' -RunsOn 'ubuntu-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 0 -TestShardCount 4
@@ -272,7 +278,7 @@ function Resolve-CiTopologyDecision {
         docs_only     = $false
         evidence_only = $false
         runner_matrix = @($codePullRequest)
-        reason        = 'Code PR: four hosted Windows and four hosted Linux shards.'
+        reason        = 'Code PR: six hosted Windows and five hosted Linux shards.'
     }
 }
 

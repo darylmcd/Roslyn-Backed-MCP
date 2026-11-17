@@ -19,7 +19,7 @@ Use `just --list` for the full recipe menu. `just ci` is the canonical local CI 
 | `just build` | Debug build |
 | `just test` | Full test suite |
 | `just validate` | Fast local check (build + test) |
-| `just ci` | Required PR-equivalent gate: docs + shipped skills + release validation without coverage/network tests + vulnerability audit |
+| `just ci` | Optional local PR-equivalent aggregate (the merge proof is the hosted `validate` check on the PR head; `CI_POLICY.md` § Merge Proof): docs + shipped skills + release validation without coverage/network tests + vulnerability audit |
 | `just full` | Informational full lane: coverage + live network tests + publish/hash checks + docs/skills + vulnerability audit |
 | `just run` | Start the stdio host process |
 | `just reinstall` | Reinstall the global tool and Claude Code plugin from this repo |

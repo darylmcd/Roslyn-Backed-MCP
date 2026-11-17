@@ -36,10 +36,10 @@ Path to a JSON array. Each element describes one leg observation:
   [
     {
       "runId": "33657245113",
-      "leg": "windows-hosted-1-of-4",
+      "leg": "windows-hosted-1-of-6",
       "image": "windows-latest",
       "wallTimeSeconds": 635,
-      "path": "33657245113/test-results-windows-hosted-1-of-4"
+      "path": "33657245113/test-results-windows-hosted-1-of-6"
     }
   ]
 
