@@ -80,9 +80,9 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
         {
             throw new PublicArgumentException("Destination namespace must be provided.", nameof(toNamespace));
         }
-        if (string.Equals(fromNamespace, toNamespace, StringComparison.Ordinal))
+        if (NamespaceNameIdentity.AreSame(fromNamespace, toNamespace))
         {
-            throw new InvalidOperationException("Source and destination namespaces must differ.");
+            throw new PublicArgumentException("Source and destination namespaces must differ.", nameof(toNamespace));
         }
 
         var solution = _workspace.GetCurrentSolution(workspaceId);
@@ -188,6 +188,7 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
         FindTypeInNamespaceAsync(Solution solution, string typeName, string fromNamespace, CancellationToken ct)
     {
         var matches = new List<(Document Document, CompilationUnitSyntax Root, TypeDeclarationSyntax TypeDecl, Project Project)>();
+        var fromKey = NamespaceNameIdentity.Of(fromNamespace);
         foreach (var project in solution.Projects)
         {
             // Use Roslyn's pre-built declaration index instead of parsing every document's syntax
@@ -201,7 +202,7 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
             {
                 if (!string.Equals(symbol.Name, typeName, StringComparison.Ordinal)) continue;
                 if (symbol.ContainingNamespace is not { IsGlobalNamespace: false } nsSymbol) continue;
-                if (!string.Equals(nsSymbol.ToDisplayString(), fromNamespace, StringComparison.Ordinal)) continue;
+                if (!string.Equals(NamespaceNameIdentity.Of(nsSymbol), fromKey, StringComparison.Ordinal)) continue;
 
                 // Resolve the symbol back to its concrete syntax. A partial type surfaces one
                 // symbol with multiple declaring references — enumerate each so a split declaration
@@ -523,7 +524,7 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
             if (compilation is null) continue;
 
             var nsSymbol = NamespaceMemberClassifier.FindNamespaceSymbol(compilation.GlobalNamespace,
-                ns.Split('.', StringSplitOptions.RemoveEmptyEntries));
+                NamespaceNameIdentity.Of(ns).Split('.', StringSplitOptions.RemoveEmptyEntries));
             if (nsSymbol is null) continue;
 
             foreach (var type in nsSymbol.GetTypeMembers())
@@ -618,7 +619,7 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
     private static string GetDocumentPrimaryNamespace(CompilationUnitSyntax root)
     {
         return root.DescendantNodes().OfType<BaseNamespaceDeclarationSyntax>()
-            .FirstOrDefault()?.Name.ToString() ?? string.Empty;
+            .FirstOrDefault() is { } primary ? NamespaceNameIdentity.Of(primary.Name) : string.Empty;
     }
 
     /// <summary>
@@ -639,11 +640,14 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
         out bool keptFallback)
     {
         keptFallback = false;
-        var hasNewUsing = root.Usings.Any(u => string.Equals(u.Name?.ToString(), toNamespace, StringComparison.Ordinal));
-        var oldUsing = root.Usings.FirstOrDefault(u => string.Equals(u.Name?.ToString(), fromNamespace, StringComparison.Ordinal));
+        var fromKey = NamespaceNameIdentity.Of(fromNamespace);
+        var toKey = NamespaceNameIdentity.Of(toNamespace);
+        var hasNewUsing = root.Usings.Any(u => NamespaceNameIdentity.ImportsNamespace(u, toKey));
+        var oldUsing = root.Usings.FirstOrDefault(u => NamespaceNameIdentity.ImportsNamespace(u, fromKey));
 
-        var consumerCoversNewByAmbient = IsAmbientTo(consumerNamespace, toNamespace);
-        var consumerCoversOldByAmbient = IsAmbientTo(consumerNamespace, fromNamespace);
+        var consumerKey = NamespaceNameIdentity.Of(consumerNamespace);
+        var consumerCoversNewByAmbient = IsAmbientTo(consumerKey, toKey);
+        var consumerCoversOldByAmbient = IsAmbientTo(consumerKey, fromKey);
 
         var newRoot = root;
 
@@ -659,7 +663,7 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
                     usingKeyword: SyntaxFactory.Token(SyntaxKind.UsingKeyword).WithTrailingTrivia(SyntaxFactory.Space),
                     staticKeyword: default,
                     alias: null,
-                    name: SyntaxFactory.ParseName(toNamespace),
+                    name: ReceivingNamespaceFactory.CreateName(toNamespace),
                     semicolonToken: SyntaxFactory.Token(SyntaxKind.SemicolonToken))
                 .WithTrailingTrivia(SyntaxFactory.EndOfLine(Environment.NewLine));
             newRoot = newRoot.WithUsings(newRoot.Usings.Add(addUsing));
@@ -684,8 +688,7 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
             {
                 // Old namespace is empty after the move and the consumer can't see it ambiently.
                 // Safe to drop the using.
-                var updatedOldReference = newRoot.Usings.FirstOrDefault(u =>
-                    string.Equals(u.Name?.ToString(), fromNamespace, StringComparison.Ordinal));
+                var updatedOldReference = newRoot.Usings.FirstOrDefault(u => NamespaceNameIdentity.ImportsNamespace(u, fromKey));
                 if (updatedOldReference is not null)
                 {
                     newRoot = newRoot.WithUsings(newRoot.Usings.Remove(updatedOldReference));

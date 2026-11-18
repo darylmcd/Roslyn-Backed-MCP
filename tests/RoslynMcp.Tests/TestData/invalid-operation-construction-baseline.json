@@ -1051,12 +1051,6 @@
   },
   {
     "Path": "src/RoslynMcp.Roslyn/Services/NamespaceRelocationService.cs",
-    "Member": "M:RoslynMcp.Roslyn.Services.NamespaceRelocationService.PreviewChangeTypeNamespaceAsync(System.String,System.String,System.String,System.String,System.String,System.Threading.CancellationToken)",
-    "Fingerprint": "9981F5B79E372BF91A8B363FB573693A00B5E043B3565337504B1903B872DF5F",
-    "Count": 1
-  },
-  {
-    "Path": "src/RoslynMcp.Roslyn/Services/NamespaceRelocationService.cs",
     "Member": "M:RoslynMcp.Roslyn.Services.NamespaceRelocationService.ResolveDestinationPath(System.String,System.String,Microsoft.CodeAnalysis.Project)",
     "Fingerprint": "820C5B79D6633A67438A9CA15B50C7BEE87420B12E13D01EB25DE2470CE567EC",
     "Count": 1

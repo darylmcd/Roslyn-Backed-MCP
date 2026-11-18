@@ -156,6 +156,10 @@ public sealed class ExtractionArgumentRefusalWireTests : IsolatedWorkspaceTestBa
             args[parameter] = "  ";
             Add("change_type_namespace_preview", args, parameter, "must be provided");
         }
+        foreach (var destination in new[] { "SampleLib", "@SampleLib" })
+            Add("change_type_namespace_preview",
+                new() { ["typeName"] = "Dog", ["fromNamespace"] = "SampleLib", ["toNamespace"] = destination },
+                "toNamespace", "must differ");
         foreach (var destination in new[]
         {
             Path.Combine(root, "SampleLib2", Sentinel + ".cs"),
