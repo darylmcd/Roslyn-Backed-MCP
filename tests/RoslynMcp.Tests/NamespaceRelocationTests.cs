@@ -905,6 +905,87 @@ public sealed class NamespaceRelocationTests : IsolatedWorkspaceTestBase
         Assert.AreEqual(0, errors.Count, $"The previewed solution must compile. Errors:\n{string.Join("\n", errors)}\n{text}");
     }
 
+    /// <summary>
+    /// Regression (relocation-same-file-directive-ownership): the selected declaration was removed
+    /// with the conditional directive that opens in its own trivia (stranding the <c>#else</c> /
+    /// <c>#endif</c> that close it), and the new block was appended before the EOF trivia, so a
+    /// conditional closing at EOF cut across the artificial namespace boundary. The previewed AND
+    /// the applied source must parse and compile under both define sets, every retained
+    /// declaration must stay under its own condition, and only the selected type moves.
+    /// </summary>
+    [TestMethod]
+    [DataRow(true, false, DisplayName = "file-scoped, conditional wraps the selected type and closes at EOF")]
+    [DataRow(true, true, DisplayName = "file-scoped, conditional wraps the selected type, active sibling after it")]
+    [DataRow(false, false, DisplayName = "block, conditional wraps the selected type and closes before the brace")]
+    [DataRow(false, true, DisplayName = "block, conditional wraps the selected type, active sibling after it")]
+    public async Task Preview_SameFile_Keeps_Conditional_Directive_Pairs_Whole_Under_Both_Defines(bool fileScoped, bool tailSibling)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var indent = fileScoped ? "" : "    ";
+        var body =
+            $"{indent}public class Keep {{ }}\n\n" +
+            "#if !ALT\n" +
+            $"{indent}public class Selected {{ }}\n" +
+            "#else\n" +
+            $"{indent}public class AltKeep {{ }}\n" +
+            "#endif\n" +
+            (tailSibling ? $"{indent}public class Tail {{ }}\n" : "");
+        var source = fileScoped ? "namespace Old;\n\n" + body : "namespace Old\n{\n" + body + "}\n";
+
+        var (modified, sourceDocument, sourcePath, _, preview) = await PreviewRelocationAsync(workspace, source, relocate: false);
+        Assert.IsNotNull(sourceDocument);
+        var previewText = (await sourceDocument.GetTextAsync(CancellationToken.None)).ToString();
+        await AssertDirectiveConfigurationsAsync(modified, sourcePath, tailSibling, previewText);
+
+        var applied = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "same_file_directive_pairs", CancellationToken.None);
+        Assert.IsTrue(applied.Success, applied.Error);
+        await workspace.ReloadAsync();
+        var reloaded = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        var appliedText = await File.ReadAllTextAsync(sourcePath);
+        Assert.AreEqual(previewText, appliedText, "the applied file must equal the previewed text");
+        await AssertDirectiveConfigurationsAsync(reloaded, sourcePath, tailSibling, appliedText);
+    }
+
+    private static async Task AssertDirectiveConfigurationsAsync(
+        Microsoft.CodeAnalysis.Solution solution, string sourcePath, bool tailSibling, string text)
+    {
+        foreach (var defines in new[] { Array.Empty<string>(), new[] { "ALT" } })
+        {
+            var alt = defines.Length > 0;
+            var label = alt ? "ALT defined" : "ALT undefined";
+            var compilation = await CompileSampleLibUnderDefinesAsync(solution, defines);
+            var errors = compilation.GetDiagnostics(CancellationToken.None)
+                .Where(d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error &&
+                            string.Equals(d.Location.SourceTree?.FilePath, sourcePath, StringComparison.OrdinalIgnoreCase))
+                .Select(d => d.ToString()).ToList();
+            Assert.AreEqual(0, errors.Count, $"[{label}] The source must parse and compile. Errors:\n{string.Join("\n", errors)}\n{text}");
+            Assert.IsNotNull(compilation.GetTypeByMetadataName("Old.Keep"), $"[{label}] Keep must stay in Old:\n{text}");
+            Assert.AreEqual(alt, compilation.GetTypeByMetadataName("Old.AltKeep") is not null, $"[{label}] AltKeep must stay under its own condition:\n{text}");
+            Assert.AreEqual(!alt, compilation.GetTypeByMetadataName("New.Selected") is not null, $"[{label}] Selected must move to New, under its own condition:\n{text}");
+            Assert.IsNull(compilation.GetTypeByMetadataName("Old.Selected"), $"[{label}] Selected must leave Old:\n{text}");
+            if (tailSibling)
+                Assert.IsNotNull(compilation.GetTypeByMetadataName("Old.Tail"), $"[{label}] The active sibling after the conditional must stay in Old:\n{text}");
+        }
+    }
+
+    /// <summary>Reparses every SampleLib document from its text with the given extra defines and compiles it.</summary>
+    private static async Task<Microsoft.CodeAnalysis.Compilation> CompileSampleLibUnderDefinesAsync(
+        Microsoft.CodeAnalysis.Solution solution, string[] defines)
+    {
+        var project = solution.Projects.Single(p => p.Name == "SampleLib");
+        var options = ((Microsoft.CodeAnalysis.CSharp.CSharpParseOptions)project.ParseOptions!)
+            .WithPreprocessorSymbols(project.ParseOptions!.PreprocessorSymbolNames.Concat(defines));
+        var trees = new List<Microsoft.CodeAnalysis.SyntaxTree>();
+        foreach (var document in project.Documents)
+        {
+            var text = await document.GetTextAsync(CancellationToken.None);
+            trees.Add(Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(text, options, document.FilePath ?? document.Name));
+        }
+        var compilation = await project.GetCompilationAsync(CancellationToken.None);
+        Assert.IsNotNull(compilation);
+        return compilation.RemoveAllSyntaxTrees().AddSyntaxTrees(trees);
+    }
+
     [TestMethod]
     public async Task ArgumentRefusals_NamespaceMalformedDestinationIsNamedAndRedacted()
     {
